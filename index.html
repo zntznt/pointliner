@@ -840,6 +840,14 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .gr-roll.gr-bad{color:var(--del);border-style:dashed;cursor:default}
 .gr-roll.gr-bad:hover{box-shadow:none;border-color:var(--bdr)}
+/* #827 item 5: "inputs changed" whisper — a variable this frozen expansion read has a
+   different value now (see depsChanged). A small --info notification dot at the pill's
+   top-right corner (the semantic informational lane — not --warn, staleness is not an
+   error), backed by the title/aria "Inputs changed. Click to re-generate" suffix.
+   Anchored to the pill box, not .gr-ico, so the hover icon-spin doesn't swing it.
+   Result ink and pill chrome are untouched — identity at whisper level. */
+.gr-roll.gr-stale{position:relative}
+.gr-roll.gr-stale::after{content:'';position:absolute;top:-2px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--info);pointer-events:none}
 @keyframes roll-pop{0%{opacity:.3;transform:scale(.88)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
 .gr-roll.gr-rolled .gr-result{display:inline-block;animation:roll-pop .28s cubic-bezier(.2,.8,.3,1)}
 .gr-preview-result{font-weight:600;color:var(--acc)}
@@ -2266,7 +2274,7 @@ body:not(.v-guided) .bm-desc{display:none}
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
-    <button id="btn-done" class="tbtn-toggle" title="Done points" aria-label="Done points" aria-pressed="false"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
+    <button id="btn-done" class="tbtn-toggle active" title="Done points" aria-label="Done points" aria-pressed="true"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
     <button id="btn-notes" class="tbtn-toggle active" title="Notes" aria-label="Notes" aria-pressed="true"><i class="fa-regular fa-file-lines"></i></button>
     </div>
   </div>
@@ -2474,7 +2482,7 @@ body:not(.v-guided) .bm-desc{display:none}
 
 let root      = mkRoot();
 let focusedId = null;
-let showDone  = false;
+let showDone  = true;   // #827 owner decision: completed points stay visible (struck through) by default; a persisted preference in the autosave payload still wins on restore
 let showNotes = true;   // global notes visibility (the header toggle); hidden notes leave a .note-ind mark
 // The verbosity dial — a 3-POSITION control (guided → standard → lean), cycled by ⌘⇧. / the File-menu
 // row. Tiers strip progressively more guidance (ux.md dial table), never features:
@@ -3577,8 +3585,13 @@ function expandAggExpr(expr, node, vars = null) {
   if (/\bwords\s*\(/.test(e)) {
     // UXP-159: words() now shares the depth vocabulary — words(subtree|self|children) plus words(2)
     // for an exact depth. A bad scope stays literal so evalMath surfaces #ERR (P4).
-    e = e.replace(/\bwords\s*\(\s*(self|children|subtree|\d+)\s*\)/g,
-      (_, scope) => '(' + subtreeWords(node, scope) + ')');
+    // #827: per-point notes are excluded by default; `words(scope, notes)` opts them in. The
+    // opt-in is an optional second closed-keyword argument, mirroring the sum(prop, scope)
+    // two-arg form already in this family — no new delimiter (P5) — and it composes with every
+    // scope, including numeric depths, where a parallel keyword set (subtree_notes, …) could not
+    // spell words(2, notes). Any other second token fails the match → literal → #ERR (P4).
+    e = e.replace(/\bwords\s*\(\s*(self|children|subtree|\d+)\s*(?:,\s*(notes)\s*)?\)/g,
+      (_, scope, notes) => '(' + subtreeWords(node, scope, notes !== undefined) + ')');
   }
   return e;
 }
@@ -3618,16 +3631,18 @@ function countWords(text) {
 }
 
 // Pure: word count over a SCOPE of `node`. The scope is the shared depth vocabulary (UXP-159):
-//   self     → node's own text+note only
+//   self     → node's own text only
 //   children → direct children only, NOT self (the legacy count-the-parts keyword)
 //   subtree  → node's own words PLUS every descendant's (self-inclusive)
 //   N (a depth) → node's own words plus descendants down to N levels (self-inclusive)
 // The keyword `children` keeps its historical NO-self meaning; a numeric depth is self-inclusive (a
 // number reads as "me plus N levels down"), so words(children) and words(1) intentionally differ.
-// A per-point note is prose too, so it counts. `scope` may be a keyword or a number. Node-testable.
-function subtreeWords(node, scope) {
+// Per-point notes are EXCLUDED by default (#827 owner decision: a note is annotation about the
+// prose, not the prose a writing target measures); `withNotes` opts them back in, spelled
+// `words(scope, notes)` at the expr layer. `scope` may be a keyword or a number. Node-testable.
+function subtreeWords(node, scope, withNotes = false) {
   if (!node) return 0;
-  const own = n => countWords(n.text) + countWords(n.note);
+  const own = n => countWords(n.text) + (withNotes ? countWords(n.note) : 0);
   const t = String(scope == null ? '' : scope).trim().toLowerCase();
   if (t === 'self') return own(node);
   if (t === 'children') return (node.children || []).reduce((a, c) => a + own(c), 0);  // legacy: no self
@@ -6003,8 +6018,10 @@ function mdInline(s) {
       const icon = (cls) => `<i class="fa-solid ${glyph}${cls}" aria-hidden="true"></i>`;
       const icons = icon('').repeat(pool.filled) + icon(' meter-icon-empty').repeat(pool.empty);
       // the label reports the ROUNDED counts the icons actually show (#708), never the raw
-      // value — else a fractional hp:3.5 would show 4 filled icons but say "3.5 of 5".
-      return stash(`<span class="meter meter-pool${full}" aria-label="Meter, ${pool.filled} of ${pool.filled + pool.empty}">${icons}</span>`);
+      // value — else a fractional hp:3.5 would show 4 filled icons but say "3.5 of 5" — and
+      // names the pool's style word (hearts/skulls/…) so the announced label describes the
+      // row of icons the eye sees, in the clock's established "N of M filled" pattern.
+      return stash(`<span class="meter meter-pool${full}" aria-label="Meter, ${parsed.style}, ${pool.filled} of ${pool.filled + pool.empty} filled">${icons}</span>`);
     }
     // the bar's label carries the exact value (the bar's fill rounds visually, but the number
     // beside it is exact, so "8.5 of 12" matches what the pill shows).
@@ -7393,7 +7410,7 @@ const INSERT_CMDS = [
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Insert' },
-  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back. Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Insert' },
+  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Insert' },
   { id:'meter',    icon:'▰',  fa:'',   label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Reads the point’s own properties: {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Add a style word for a row of icons: {meter: hp/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: hp/hpmax}  ·  {meter: hp/5 hearts}', section:'Insert' },
   // Random — generators
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Random' },
@@ -19141,16 +19158,79 @@ function expandRule(name, ctx) {
   return out;
 }
 
+// ─── input-dependency snapshot (#827 item 5) ─────────────────────────────────
+// A grammar pill freezes its expansion by design (a document must not rewrite
+// itself), but a frozen conditional ({r == 20: crit | miss}) reads variables —
+// and when a referenced variable is later re-rolled, the pill keeps showing a
+// branch its inputs no longer support. The fix is DISPLAY-LAYER only: record, at
+// roll time, WHICH variables the taken expansion path actually consulted and the
+// value each had, then compare that snapshot against the live map at render and
+// whisper "Inputs changed" when they differ. Freeze semantics, click behavior,
+// and export output are untouched.
+//
+// recordVarReads wraps the resolved vars map handed to an expansion in a Proxy
+// that notes every consulted name into `deps` — {name: value} for a hit,
+// {name: null} for a miss (a `{name?}` marker still DEPENDS on the name being
+// undefined; declaring it later is an input change — deliberate). Every read
+// site funnels through the map object itself — resolveBrace's hasOwnProperty +
+// [name], evalMath's `name in vars` + vars[name], strCondVerdict, parseDice
+// variable modifiers, pickWeightedAlt's {= expr} weights, resolveDottedVar — so
+// the traps see the true dependency set with zero per-site instrumentation, and
+// only the TAKEN path records (dice/randomness in the output never enter deps:
+// the snapshot is about input VALUES, not whether a re-roll would differ).
+// Resolved-map values are finite numbers or strings (resolveVarDefs), so `deps`
+// is JSON-safe and rides the _grammar OPML attribute with the rest of the
+// record. Rule names never reach the vars map (rules are checked first), so
+// rule edits are deliberately out of scope for v1. Pure; Node-testable.
+function recordVarReads(vars, deps) {
+  const note = k => {
+    if (typeof k !== 'string') return false;
+    const has = Object.prototype.hasOwnProperty.call(vars, k);
+    deps[k] = has ? vars[k] : null;
+    return has;
+  };
+  return new Proxy(vars, {
+    get: (t, k) => { note(k); return t[k]; },
+    has: (t, k) => typeof k === 'string' ? note(k) : k in t,
+    getOwnPropertyDescriptor: (t, k) => { note(k); return Object.getOwnPropertyDescriptor(t, k); },
+  });
+}
+
+// Has any recorded input changed since the freeze? `deps` is the roll-time
+// snapshot ({name: value|null}); `vars` is the live resolved map the NEXT
+// re-roll would use (rerollGrammar → runGrammar → collectVars()), so the
+// comparison target and the re-roll input are the same map by construction.
+// A null snapshot entry means "was undefined at roll time" and changes by the
+// name becoming defined. Values compare strictly — a number/string type flip is
+// a real change (resolveVarDefs types follow the value). Records with no deps
+// (pre-feature docs, purely random pills) never whisper. Pure; never throws on
+// malformed deps (hostile OPML degrades to a harmless whisper, cleared by the
+// next click).
+function depsChanged(deps, vars) {
+  if (!deps || typeof deps !== 'object' || !vars) return false;
+  for (const name of Object.keys(deps)) {
+    const then = deps[name];
+    const has = Object.prototype.hasOwnProperty.call(vars, name);
+    if (then === null) { if (has) return true; continue; }
+    if (!has || vars[name] !== then) return true;
+  }
+  return false;
+}
+
 // Run a grammar definition, merged with document-wide rules. Local rules win.
 // Returns the expanded string, or null if the definition is malformed / origin
-// rule is missing.
-function runGrammar(def, origin, docRules = null, vars = null) {
+// rule is missing. When `depsOut` (a plain object) is given, the vars map is
+// wrapped in recordVarReads so the caller receives the expansion's input
+// snapshot (#827 item 5) — omitted by previews and expandText, so recording
+// costs nothing outside the freeze paths.
+function runGrammar(def, origin, docRules = null, vars = null, depsOut = null) {
   const parsed = parseRules(def);
   if (!parsed) return null;
   const rules = Object.assign(Object.create(null), docRules || collectRules(), parsed.rules);  // null-proto merge: don't reintroduce Object.prototype keys
   const start = (origin && origin.toLowerCase()) || parsed.order[0];
   if (!rules[start]) return null;
-  return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [] });
+  const baseVars = vars || collectVars();
+  return expandRule(start, { rules, vars: depsOut ? recordVarReads(baseVars, depsOut) : baseVars, depth: 0, stack: [] });
 }
 
 // Expand a plain string's {…} against document-wide rules + variables. Used by
@@ -20133,14 +20213,20 @@ function linkifyMention(text, title, targetId) {
 function grammarKey() { return 'g' + Math.random().toString(36).slice(2, 9); }
 
 // Build a fresh grammar record from a definition; null if malformed.
+// `deps` is the roll-time input snapshot (#827 item 5, see recordVarReads) —
+// stored only when the expansion actually read a variable, so var-free records
+// stay exactly as lean as before.
 function makeGrammarRoll(def, originInput) {
   const parsed = parseRules(def);
   if (!parsed) return null;
   const origin = (originInput && originInput.trim().toLowerCase()) || parsed.order[0];
   if (!parsed.rules[origin]) return null;
-  const result = runGrammar(def, origin);
+  const deps = Object.create(null);
+  const result = runGrammar(def, origin, null, null, deps);
   if (result === null) return null;
-  return { key: grammarKey(), def, origin, result };
+  const rec = { key: grammarKey(), def, origin, result };
+  if (Object.keys(deps).length) rec.deps = deps;
+  return rec;
 }
 
 // Build a fresh stateful-sequence record (a grammar record carrying mode/items +
@@ -20263,8 +20349,16 @@ function renderGrammarPill(key, g) {
   // wrong, so leave it neutral rather than mislead. Plain arms never carry a comma, so nothing is lost.
   const valence = isYesNoOracle(g) && !g.result.includes(',')
     ? (/^yes\b/i.test(g.result) ? ' gr-yes' : /^no\b/i.test(g.result) ? ' gr-no' : '') : '';
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. Click to re-generate` : 'Click to re-generate'}"`
-    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. Click to re-generate">`
+  // #827 item 5: the "inputs changed" whisper. Compare the roll-time input snapshot
+  // (g.deps, written by makeGrammarRoll/rerollGrammar) against the live map a re-roll
+  // would use — collectVars() IS the _varsVer-keyed doc cache, so this is an O(deps)
+  // read per pill, no new cache. Stale → a small --info dot (.gr-stale, CSS below the
+  // pill rules) plus the title/aria suffix, so AT hears what sighted users see (P3).
+  // The frozen result itself is untouched — display-layer only.
+  const stale = depsChanged(g.deps, collectVars());
+  const cta = stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate';
+  return `<span class="gr-roll${stale ? ' gr-stale' : ''}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${cta}` : cta}"`
+    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
     + `<span class="gr-result${valence}">${escHtml(g.result)}</span>`
@@ -20471,10 +20565,14 @@ function rerollGrammar(node, key) {
     el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
     return;
   }
-  const result = runGrammar(g.def, g.origin);
+  // #827 item 5: a re-roll refreshes the input snapshot too, so the "Inputs
+  // changed" whisper clears (or re-arms) on the same click that re-generates.
+  const deps = Object.create(null);
+  const result = runGrammar(g.def, g.origin, null, null, deps);
   if (result === null) return;
   if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   g.result = result;
+  if (Object.keys(deps).length) g.deps = deps; else delete g.deps;
   markDirty();
   announce(`Re-generated: ${g.result}`);
   const el = repaintAfterRoll(node);
@@ -20509,6 +20607,9 @@ function editGrammar(node, key) {
     def: g.def, origin: g.origin, existing: key,
     onResult: roll => {
       Object.assign(g, { def: roll.def, origin: roll.origin, result: roll.result });
+      // #827 item 5: the fresh roll carries a fresh input snapshot; a var-free
+      // edit clears any stale one (Object.assign can't remove a field).
+      if (roll.deps) g.deps = roll.deps; else delete g.deps;
       markDirty();
       repaintAfterRoll(node);
     },
@@ -21420,7 +21521,7 @@ const MATH_FN_DESC = {
   or:'1 if any is true, else 0', not:'flip a true/false (1/0)',
   // aggregates over children
   sum:"add up a property across this point's children", avg:"average a property across children",
-  count:"how many children have the property", words:'count words in a scope (subtree, self, children)',
+  count:"how many children have the property", words:'count words in a scope (subtree, self, children); words(scope, notes) counts notes too',
   // dates
   year:'the year of a date', month:'the month of a date (1 to 12)', day:'the day of the month', weekday:'the day of the week',
   quarter:'the quarter of the year (1 to 4)', daysuntil:'days from today until a date', daysbetween:'days between two dates',
@@ -27162,8 +27263,16 @@ if (IS_TOUCH) {
   outlineEl.addEventListener('pointermove', e => {
     if (lpTimer && (Math.abs(e.clientX - lpX) > 10 || Math.abs(e.clientY - lpY) > 10)) cancelLp();  // moved → a scroll, not a hold
   });
-  outlineEl.addEventListener('pointerup', cancelLp);
-  outlineEl.addEventListener('pointercancel', cancelLp);
+  // Release: stop a pending hold. If a hold DID fire, its trailing click may never arrive
+  // (a browser can suppress the click after its own long-press handling), so clear the
+  // suppression flag ourselves once any such click would have fired — else the NEXT tap on
+  // a clock is silently swallowed (the attachBulletTouchGestures endDrag precedent).
+  const releaseLp = () => {
+    cancelLp();
+    if (_clockLongPressed) setTimeout(() => { _clockLongPressed = false; }, 350);
+  };
+  outlineEl.addEventListener('pointerup', releaseLp);
+  outlineEl.addEventListener('pointercancel', releaseLp);
 }
 // Reveal is transient DOM state only (never written to node.text), so a spoiler
 // re-conceals on the next render — that is deliberate for the self-blinding use.
@@ -29519,6 +29628,10 @@ document.getElementById('btn-done').addEventListener('click', () => {
   // so AT reads "Done points, pressed" not "Hide done points, pressed" (which fought itself).
   btn.setAttribute('aria-pressed', String(showDone));
   btn.classList.toggle('active', showDone);
+  // Persist the explicit choice (rides the autosave payload, like the sibling Notes toggle). With
+  // the show-done default flipped ON (#827), a user who hides done must keep that across reloads
+  // even in a session with no edits; without this, only the next content edit would save it.
+  scheduleAutosave();
   render();
 });
 
@@ -30143,7 +30256,7 @@ const GUIDE = [
     ] },
   { id:'gen-conditions', cat:'generators',
     title:'Conditions & item details',
-    body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
+    body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). A pill keeps what it last showed, so re-rolling a variable never rewrites it; instead the pill grows a small dot and its tooltip says the inputs changed. Click the pill to re-judge. An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
     related:['gen-rules','variables','gen-modifiers'],
     examples:[
       { syn:'{hp>0: alive|dead}', desc:'show the first if true, else the second' },
@@ -30272,7 +30385,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
@@ -30282,6 +30395,7 @@ const GUIDE = [
       { syn:'{= count(cost)}',desc:'how many children have a cost' },
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
       { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
+      { syn:'{= words(subtree, notes)}', desc:'include per-point notes in the count' },
     ] },
   { id:'check', cat:'compute', covers:['check'], related:['rollups','properties','recipe-budget'],
     title:'Checks & rules',
@@ -30383,13 +30497,13 @@ const GUIDE = [
     ] },
   { id:'appearance-controls', cat:'files',
     title:'Appearance & display',
-    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or reveal completed tasks you'd normally keep out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Show done points is the checkmark button in the toolbar; turn it on and finished to-dos and DONE points reappear in the outline.\n\nHow much guidance the app shows is adjustable too. The File menu's Verbosity row cycles three tiers: Guided shows point hints, pill tooltips and the search cheatsheet; Standard turns those teaching aids off but keeps the menus and edit pencils; Lean also trims the / and @ menus to just what you type. `Ctrl/Cmd+Shift+.` steps quieter and `Ctrl/Cmd+Shift+,` brings the guidance back.",
+    body:"Tune how the outline looks and what it shows. Switch to dark mode for night work, pick an accent color, widen the editing column for a big screen or tuck completed tasks out of the way. The theme, color and width controls live in the File menu under Appearance; theme cycles system, light then dark each click. Done points is the checkmark button in the toolbar: finished to-dos and DONE points stay in the outline, struck through, until you turn the button off to hide them; turn it back on and they reappear.\n\nHow much guidance the app shows is adjustable too. The File menu's Verbosity row cycles three tiers: Guided shows point hints, pill tooltips and the search cheatsheet; Standard turns those teaching aids off but keeps the menus and edit pencils; Lean also trims the / and @ menus to just what you type. `Ctrl/Cmd+Shift+.` steps quieter and `Ctrl/Cmd+Shift+,` brings the guidance back.",
     related:['appearance'],
     examples:[
       { syn:'File → Theme',      desc:'cycle system, light then dark' },
       { syn:'File → Color',      desc:'pick an accent color' },
       { syn:'File → Full width', desc:'widen or narrow the editing column' },
-      { syn:'Show done points',  desc:'toolbar button: reveal completed points' },
+      { syn:'Done points',  desc:'toolbar button: show or hide completed points (shown by default)' },
       { syn:'File → Verbosity',  desc:'cycle Guided, Standard then Lean (how much the app teaches)' },
     ] },
   { id:'appearance', cat:'files',
@@ -31424,7 +31538,12 @@ function applyAutosaveData(data) {
   applyTheme();
   if (typeof data.fullWidth === 'boolean') { fullWidth = data.fullWidth; applyWidth(); }
   dirty = false; // restored state is "clean" relative to disk
-  if (!root.docId) { ensureDocId(root); scheduleAutosave(); } // backfill legacy autosave
+  // Backfill a legacy (pre-ensureDocId) autosave. The scheduleAutosave IS needed: the restore
+  // sets dirty=false and a read-only session never markDirty()s, so nothing else would persist
+  // the assigned docId and every boot would mint a new identity (breaking the per-docId
+  // earlier-version snapshots + cross-doc links). Safe mid-hydration: the _opfsReconciled boot
+  // gate defers the actual write until reconcile completes (adoptDoc's "normalization #2" idiom).
+  if (!root.docId) { ensureDocId(root); scheduleAutosave(); }
   return true;
 }
 
@@ -31471,6 +31590,14 @@ async function restoreEarlierVersion() {
   } catch (_) { flashHint('Could not read the earlier version'); return false; }
 }
 
+// UXP-126 first-run Examples state. DECLARED here, ABOVE the boot restore, because the restore
+// path reads it: applyAutosaveData's legacy-docId backfill calls scheduleAutosave(), which checks
+// _showingExamples. When these lived beside the examples code far below, that read was a TDZ
+// ReferenceError, swallowed by restoreAutosave's catch, so a docId-less autosave silently booted
+// as the Examples doc (#854). The examples logic itself (startBlankOutline / maybeShowFirstRun)
+// stays below with FIRST_RUN_EXAMPLES; only the flag declarations are hoisted.
+let _showingExamples = false;
+let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
 let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from localStorage?
 (function restoreAutosave() {
   if (loadedFromEmbed) return; // a shared snapshot is authoritative over local autosave
@@ -31984,8 +32111,8 @@ const STARTERS = [
   },
 ];
 
-let _showingExamples = false;
-let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
+// (_showingExamples / _adoptingExamples are declared above the boot restore — see the
+// hoist note beside restoreAutosave, #854.)
 function startBlankOutline() {
   _showingExamples = false;
   hideExamplesBanner();

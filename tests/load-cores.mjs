@@ -166,6 +166,7 @@ export function loadCores() {
     'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr',   // #649 moon phase + math display seam
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'strCondVerdict',
+    'recordVarReads', 'depsChanged',   // #827 item 5: input-dependency snapshot + stale-inputs compare
     'parseAlt', 'pickWeightedAlt', 'modParts', 'applyMods', 'pluralize', 'pastTense', 'presentParticiple', 'fieldParts', 'fieldModParts',
     'dottedVarParts', 'resolveDottedVar', 'varBaseName', 'varBaseDefs', 'varBaseDefsMemo', 'varMapAt', 'varBasePreview',   // variable bases (dotted projections)
     'promoteCellShorthand', 'promoteLoadedShorthand',   // per-cell base promotion (PR C)

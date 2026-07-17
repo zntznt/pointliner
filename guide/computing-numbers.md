@@ -270,14 +270,18 @@ of a property:
 
 ```
 {= words(subtree)}    self + every descendant (recurses the whole branch)
-{= words(self)}       just this point's text + note
-{= words(children)}   this point and its direct children
+{= words(self)}       just this point's text
+{= words(children)}   the direct children only
 ```
 
 So a heading can carry a live word total of everything under it, and reading time is just
 composition: `{= words(subtree) / 200}` (about 200 words a minute). The `subtree` / `children` scope
 here is the same vocabulary the property rollups take, so `sum(cost, subtree)` and `words(subtree)`
 reach exactly as deep as each other.
+
+Per-point [notes](writing-and-formatting.md#per-point-notes) do **not** count by default: a
+note is commentary about the prose, not the prose itself. Add `notes` as a second argument to
+count them too, with any scope: `{= words(subtree, notes)}`, `{= words(self, notes)}`.
 
 ---
 

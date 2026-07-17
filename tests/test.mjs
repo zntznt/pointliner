@@ -596,6 +596,84 @@ test('conditional standalone shorthand — wrapped def expands and unfolds back 
   assert.equal(c.artifactToShorthand('grammar', rec), '{hp > 0: a | b}');
 });
 
+// ── input-dependency snapshot (#827 item 5): recordVarReads / depsChanged ────
+test('runGrammar depsOut — records the vars the taken path read, with roll-time values', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {r == 20: crit | miss}', 'origin', {}, { r: 7 }, deps), 'miss');
+  assert.deepEqual({ ...deps }, { r: 7 });
+});
+
+test('runGrammar depsOut — only the TAKEN branch records (untaken refs are not inputs)', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {r == 20: {a} | miss}', 'origin', {}, { r: 7, a: 'x' }, deps), 'miss');
+  assert.deepEqual({ ...deps }, { r: 7 });   // `a` sits in the untaken branch
+});
+
+test('runGrammar depsOut — dice in the output are not inputs (no var read, empty deps)', () => {
+  const deps = {};
+  c.seedSequence([0]);
+  try { assert.equal(c.runGrammar('origin: {2d6}', 'origin', {}, {}, deps), '2'); }
+  finally { c.resetRandom(); }
+  assert.deepEqual({ ...deps }, {});
+});
+
+test('runGrammar depsOut — an unresolved name records as a null (missing) dep', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {foo}', 'origin', {}, {}, deps), '{foo?}');
+  assert.deepEqual({ ...deps }, { foo: null });
+});
+
+test('runGrammar depsOut — text pick vars and string conditionals record their values', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {mood == "angry": attacks | waits}', 'origin', {}, { mood: 'angry' }, deps), 'attacks');
+  assert.deepEqual({ ...deps }, { mood: 'angry' });
+});
+
+test('runGrammar depsOut — {= expr} weights (A5 dynamic odds) record the weight var', () => {
+  const deps = {};
+  c.seedSequence([0]);
+  try { c.runGrammar('origin: a {= w} | b', 'origin', {}, { w: 3 }, deps); }
+  finally { c.resetRandom(); }
+  assert.equal(deps.w, 3);
+});
+
+test('depsChanged — empty/absent deps never whisper; equal snapshot is quiet', () => {
+  assert.equal(c.depsChanged(null, { r: 7 }), false);
+  assert.equal(c.depsChanged(undefined, { r: 7 }), false);
+  assert.equal(c.depsChanged({}, { r: 7 }), false);
+  assert.equal(c.depsChanged({ r: 7 }, { r: 7 }), false);
+  assert.equal(c.depsChanged({ mood: 'angry' }, { mood: 'angry', other: 1 }), false);
+});
+
+test('depsChanged — a changed, removed, or type-flipped value is a change', () => {
+  assert.equal(c.depsChanged({ r: 7 }, { r: 20 }), true);       // re-rolled
+  assert.equal(c.depsChanged({ r: 7 }, {}), true);              // declaration deleted
+  assert.equal(c.depsChanged({ r: 7 }, { r: '7' }), true);      // number/string flip is real (resolveVarDefs types follow the value)
+  assert.equal(c.depsChanged({ mood: 'angry' }, { mood: 'calm' }), true);
+});
+
+test('depsChanged — a recorded miss (null) changes only by the name becoming defined', () => {
+  assert.equal(c.depsChanged({ foo: null }, {}), false);        // was undefined, still undefined
+  assert.equal(c.depsChanged({ foo: null }, { foo: 1 }), true); // {foo?} marker is now resolvable
+});
+
+test('depsChanged — survives the _grammar JSON round-trip unchanged', () => {
+  const deps = { r: 7, mood: 'angry', missing: null };
+  const roundTripped = JSON.parse(JSON.stringify(deps));
+  assert.equal(c.depsChanged(roundTripped, { r: 7, mood: 'angry' }), false);
+  assert.equal(c.depsChanged(roundTripped, { r: 8, mood: 'angry' }), true);
+});
+
+test('renderGrammarPill — stale inputs add .gr-stale and the title/aria suffix; fresh pills do not', () => {
+  const stale = c.renderGrammarPill('g', { key: 'g', def: 'origin: {q_stale_probe == 1: a | b}', origin: 'origin', result: 'b', anon: true, deps: { q_stale_probe: 3 } });
+  assert.ok(stale.includes('gr-stale'));
+  assert.ok(stale.includes('Inputs changed. Click to re-generate'));
+  const fresh = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x', anon: true });
+  assert.ok(!fresh.includes('gr-stale'));
+  assert.ok(!fresh.includes('Inputs changed'));
+  assert.ok(fresh.includes('Click to re-generate'));
+});
+
 // ── text modifiers (A1): {ref.mod} — cap/title/upper/lower/a/s ───────────────
 test('modParts — base + known modifier suffix(es); rejects non-modifiers', () => {
   assert.deepEqual(host(c.modParts('beast.cap')), { base: 'beast', mods: ['cap'] });
@@ -2021,6 +2099,25 @@ test('C1 front-door + hydrate wiring (src pins)', () => {
   assert.ok(_src.includes('function exportSelfContainedHtml('), 'export function missing');
   assert.ok(_src.includes('function restoreEmbeddedDoc('), 'hydrate-on-load missing');
   assert.ok(_src.includes('if (loadedFromEmbed) return;'), 'embed-wins-over-autosave guard missing');
+});
+
+// #854: a docId-less (legacy) autosave payload must restore at boot. applyAutosaveData's
+// backfill branch calls scheduleAutosave(), which reads _showingExamples — declared with
+// `let`, so if the declaration sits BELOW the restoreAutosave IIFE the read is a TDZ
+// ReferenceError, swallowed by restoreAutosave's catch, and the app silently boots the
+// Examples doc instead of the user's document. The boot path is DOM-bound (not harvestable
+// by load-cores), so pin the load-bearing pure part: source order + the backfill branch.
+test('#854: _showingExamples is declared above the boot restore (TDZ order pin)', () => {
+  const decl = _src.indexOf('let _showingExamples = false;');
+  const iife = _src.indexOf('(function restoreAutosave()');
+  assert.ok(decl > -1, '_showingExamples declaration missing');
+  assert.ok(iife > -1, 'restoreAutosave boot IIFE missing');
+  assert.ok(decl < iife, '_showingExamples must be declared before restoreAutosave runs, or the docId backfill TDZ-crashes the restore (#854)');
+  const adopting = _src.indexOf('let _adoptingExamples = false;');
+  assert.ok(adopting > -1 && adopting < iife, '_adoptingExamples must be hoisted with it');
+  // the backfill branch itself: a legacy payload gets a docId AND schedules its persistence
+  // (a read-only session never markDirty()s, so nothing else would save the new identity)
+  assert.ok(/if \(!root\.docId\) \{ ensureDocId\(root\); scheduleAutosave\(\); \}/.test(_src), 'legacy-docId backfill branch missing from applyAutosaveData');
 });
 
 // ── collectVars / collectRules (explicit root, parameterized) ───────────────
@@ -8632,10 +8729,21 @@ test('word count: subtreeWords scopes — subtree / self / children', () => {
   assert.equal(c.subtreeWords(null, 'subtree'), 0);
 });
 
-test('word count: a per-point note counts as prose', () => {
+// #827 owner decision (deliberate behavior change): per-point notes are EXCLUDED from
+// words() by default in every scope; the optional third arg (spelled `words(scope, notes)`
+// at the expr layer) opts them back in.
+test('word count: a per-point note is excluded by default; the notes arg opts it in (#827)', () => {
   const n = c.mkNode('title words here');                      // 3
   n.note = 'a note with five words';                            // 5
-  assert.equal(c.subtreeWords(n, 'self'), 8);
+  assert.equal(c.subtreeWords(n, 'self'), 3, 'default: note words do not count');
+  assert.equal(c.subtreeWords(n, 'self', true), 8, 'withNotes: note words count');
+  const p = c.mkNode('parent');                                 // 1
+  const kid = c.mkNode('kid words'); kid.note = 'noted twice';  // 2 text + 2 note
+  p.children = [kid];
+  assert.equal(c.subtreeWords(p, 'subtree'), 3, 'default excludes descendant notes too');
+  assert.equal(c.subtreeWords(p, 'subtree', true), 5, 'withNotes includes descendant notes');
+  assert.equal(c.subtreeWords(p, 'children'), 2);
+  assert.equal(c.subtreeWords(p, 'children', true), 4);
 });
 
 test('word count: expandAggExpr substitutes words(scope); reading-time idiom; unknown scope literal', () => {
@@ -8647,13 +8755,22 @@ test('word count: expandAggExpr substitutes words(scope); reading-time idiom; un
   assert.equal(c.evalMath(c.expandAggExpr('words(subtree) / 5', root), {}), 1); // {= words(subtree)/200} reading-time idiom
   assert.equal(c.expandAggExpr('words(foo)', root), 'words(foo)');              // unknown scope → left literal (→ #ERR)
   assert.equal(c.expandAggExpr('words(subtree)', null), '(0)');                 // node-less validation → 0
+  // #827: the `notes` opt-in arg, on every scope form (keyword + numeric depth)
+  root.note = 'two words';
+  assert.equal(c.expandAggExpr('words(self)', root), '(2)', 'default: own note excluded');
+  assert.equal(c.expandAggExpr('words(self, notes)', root), '(4)', 'notes arg: own note counted');
+  assert.equal(c.expandAggExpr('words(subtree, notes)', root), '(7)');
+  assert.equal(c.expandAggExpr('words(1, notes)', root), '(7)', 'composes with a numeric depth');
+  assert.equal(c.expandAggExpr('words(self,notes)', root), '(4)', 'space after the comma optional');
+  assert.equal(c.expandAggExpr('words(self, foo)', root), 'words(self, foo)', 'unknown second token → literal (→ #ERR)');
 });
 
 test('word count: cores + front door wired (src pins)', () => {
   assert.ok(_src.includes('function countWords'), 'countWords core missing');
   assert.ok(_src.includes('function subtreeWords'), 'subtreeWords core missing');
-  assert.ok(_src.includes('subtreeWords(node, scope)'), 'expandAggExpr words branch missing');
+  assert.ok(_src.includes('subtreeWords(node, scope, notes !== undefined)'), 'expandAggExpr words branch missing (#827: the notes opt-in arg)');
   assert.ok(_src.includes("syn:'{= words(subtree)}'"), 'GUIDE words front-door example missing (P2/P5-4)');
+  assert.ok(_src.includes("syn:'{= words(subtree, notes)}'"), 'GUIDE notes-opt-in example missing (#827, P2)');
 });
 
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
@@ -13524,6 +13641,22 @@ test('Done-button badge wiring: syncDoneBadge sets the count + recovery aria-lab
   assert.ok(/#btn-done\.has-hidden \.tbtn-badge\{[^}]*display:inline-flex/.test(_src), 'the badge shows only under .has-hidden');
 });
 
+// #827 owner decision (deliberate behavior change): the show-done default is FLIPPED to
+// shown. Completed points stay visible, struck through, until the user hides them. A user's
+// explicitly persisted preference (the showDone boolean in the autosave payload) still wins
+// on restore; only the fresh/unset default changed.
+test('#827: show-done defaults ON; the button ships pressed; a persisted preference still wins (src pins)', () => {
+  assert.ok(/let showDone\s*=\s*true;/.test(_src), 'showDone must default to true (owner decision #827)');
+  // the toolbar button's static state must match the default (no boot sync exists for a fresh profile)
+  assert.ok(/id="btn-done" class="tbtn-toggle active"[^>]*aria-pressed="true"/.test(_src), 'btn-done must ship active + aria-pressed="true" to match the default');
+  // restore honors a stored boolean either way — the persisted-preference-wins contract
+  assert.ok(_src.includes("typeof data.showDone === 'boolean'"), 'applyAutosaveData must keep honoring a stored showDone');
+  // an explicit toggle persists even in a session with no edits
+  assert.ok(/btn\.classList\.toggle\('active', showDone\);[\s\S]{0,400}?scheduleAutosave\(\);/.test(_src), 'the Done toggle must scheduleAutosave so the choice survives a no-edit session');
+  // the struck-through treatment for visible done points
+  assert.ok(/\.nt-todo\.checked>\.node-row>\.node-content\{[^}]*line-through/.test(_src), 'done points must render struck through when shown');
+});
+
 // ── Code-quality audit fixes: derived-hint re-derivation + sidecar carry ──
 test('rederiveFromText: restores BOTH type and checked from text (audit #2/#3 — checked was dropped)', () => {
   // the bug: applyEntry (undo) and exitZoomEdit re-derived type but forgot checked, so an
@@ -14466,6 +14599,24 @@ test('clock/spoiler (#701) — SOURCE PIN: pills are tabindex=-1 (out of the Tab
   assert.match(cpa, /toggleSpoilersOf\(node\.id\)/, 'collectPillActions surfaces a spoiler reveal action');
 });
 
+test('clock (#702) — SOURCE PIN: touch step-back is an IS_TOUCH long-press that swallows its own tap tail', () => {
+  // Touch has no Shift, so step-back on a manual clock is a 450ms long-press (tap still
+  // advances); Shift+click stays the desktop step-back twin. Two tail rules: (1) a FIRED
+  // hold must suppress the trailing synthesized click, or the click would also advance and
+  // net the step to zero; (2) because a browser may suppress that click entirely after its
+  // own long-press handling, the flag must self-clear after release (the
+  // attachBulletTouchGestures endDrag precedent), or the NEXT tap on a clock is swallowed.
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  assert.match(src, /step-back on a manual clock is a LONG-PRESS[\s\S]{0,400}?if \(IS_TOUCH\) \{/,
+    'the clock long-press block exists and is gated on IS_TOUCH (desktop untouched)');
+  assert.match(src, /_clockLongPressed = true;[\s\S]{0,200}?advanceClockAt\(clk, -1\)/,
+    'a fired hold flags the trailing click BEFORE stepping the clock back');
+  assert.match(src, /if \(clk && !_clockLongPressed\) advanceClockAt\(clk, e\.shiftKey \? -1 : 1\)/,
+    'the click handler advances only when no hold fired, and Shift+click stays the desktop step-back');
+  assert.match(src, /if \(_clockLongPressed\) setTimeout\(\(\) => \{ _clockLongPressed = false; \}, 350\)/,
+    'the flag self-clears after release, so a browser-suppressed trailing click cannot swallow the next tap');
+});
+
 // ── meter pills {meter: value/max} (#648) ──────────────────────────────────
 // A computed bar of a numeric property, in the sparkline/clock unicode-string idiom
 // (never SVG). These pins guard the pure cores that both the pill and the export share.
@@ -14527,17 +14678,19 @@ test('meter (#648) — a meter freezes to its bar string on export; unresolvable
   assert.equal(c.flattenArtifacts('{meter: mana/manamax}', node, {}), '{meter?}', 'a missing property exports the visible marker, not a wrong bar');
 });
 
-test('meter (#708) — a pool meter labels the ROUNDED icon counts, not the raw value', () => {
+test('meter (#708) — a pool meter labels its style word and the ROUNDED icon counts, not the raw value', () => {
   // The icons show Math.round(value) filled (via meterPool); the bar path shows the exact
   // value beside the bar. So the pool's aria must come from pool.filled/(filled+empty), NOT
   // formatMathResult(value) — else a fractional hp:3.5 shows 4 filled icons but says "3.5 of 5".
   // meterPool already rounds; this pins the label source so the render can't drift back.
   assert.deepEqual(host(c.meterPool(3.5, 5)), { filled: 4, empty: 1 }, 'the icons round 3.5 up to 4 filled');
   const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
-  // isolate the pool render branch and confirm its aria uses pool.filled, not the raw value.
+  // isolate the pool render branch and confirm its aria names the style word (the visual IS a
+  // row of hearts/skulls/…, so "Meter, hearts, 4 of 5 filled" describes what the eye sees —
+  // the clock's "N of M filled" pattern) and uses pool.filled, not the raw value. #708
   const poolBranch = src.slice(src.indexOf('meter meter-pool'), src.indexOf('meter meter-pool') + 240);
-  assert.match(poolBranch, /aria-label="Meter, \$\{pool\.filled\} of \$\{pool\.filled \+ pool\.empty\}"/,
-    'the pool aria reports the rounded icon counts (pool.filled), so the label matches the visual');
+  assert.match(poolBranch, /aria-label="Meter, \$\{parsed\.style\}, \$\{pool\.filled\} of \$\{pool\.filled \+ pool\.empty\} filled"/,
+    'the pool aria names the style word and reports the rounded icon counts (pool.filled), so the label matches the visual');
 });
 
 test('meter (#648) — every icon-pool glyph is in the FA subset AND has a ::before codepoint (font integrity)', () => {

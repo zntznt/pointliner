@@ -223,7 +223,9 @@ Implemented:
   `{cond:…}`/composition (no node context there). **Word count** `{= words(subtree|self|children)}`
   (`subtreeWords`/`countWords`) is the same family over **prose** instead of a property — it counts
   words in a **scope**: `subtree` = self + all descendants (so it *recurses*, unlike the
-  direct-children property rollups), `self`, or `children` (a per-point note counted too). Reading
+  direct-children property rollups), `self`, or `children`. A per-point note is **excluded by
+  default** (#827 owner decision); the optional second arg `words(scope, notes)` opts notes back
+  in (the `sum(prop, scope)` two-arg shape — no new syntax). Reading
   time is composition (`{= words(subtree)/200}`); no separate `readtime`. Same `expandAggExpr`
   substitution, so it resolves in pills, the math/check dialogs, and export.
 - **Outline constraints / lint** (F2) — a point may carry a reserved **`check` property**
@@ -821,10 +823,11 @@ Implemented:
   - **Done-ness derived from keyword:** `node.checked = keywordIsDone(keyword)` (sequence-aware,
     so a custom sequence's own done states count too), so the existing
     strikethrough (`.nt-todo.checked`) and the **hide-done filter (with the show-done toggle)
-    keep working unchanged** — completed items hiding is a deliberate, load-bearing feature.
+    keep working unchanged**. (Since #827 the toggle **defaults to shown** — completed points
+    stay visible, struck through; hiding them is the user's explicit, persisted choice.)
   - **Checkbox ⇄ keyword:** when a keyword is present, ticking the checkbox sets `#DONE` (the
-    item then hides until show-done); unticking steps back to `#WAITING`. No keyword → legacy
-    boolean behavior.
+    item hides while the Done toggle is off); unticking steps back to `#WAITING`. No keyword →
+    legacy boolean behavior.
   - **Changing state — two easy paths (no modifier chords):**
     - **Click-choose:** clicking the colored state badge (or priority chip) opens a compact
       popover picker (`— / TODO / NEXT / WAITING / DONE` and `— / A / B / C`); one click sets

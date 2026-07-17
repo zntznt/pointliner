@@ -2937,6 +2937,82 @@ finding (the `estimates` wall-paragraph claim — it already had breaks) recorde
   counting notes — if wanted, add a new scope value rather than changing `subtree`'s meaning (P1);
   frozen-conditional staleness — recommend a display-layer "inputs changed" whisper over any reversal
   of the freeze model). Tests 1341 → 1345 green across the batch; headless-verified per finding.
+  *(Superseded: all three were decided by the owner and shipped — see UXP-227 and UXP-228.)*
+
+### UXP-225 ✓ Conformance-nit batch #705/#706/#707/#708: vocabulary, fate-zero ink, sniff guard, meter pool label 🟢 — **RESOLVED**
+Three of the four were found ALREADY FIXED on main (in e447279 and b636fc9 — the issues were stale);
+each was verified against the decided direction rather than re-implemented, and only the real delta
+shipped:
+- **(#705) File menu vocabulary (P1/§1 V-1):** "Open an outline file" → "Open a document" (landed in
+  e447279, verified). A sweep found no other document-sense "outline" string; view-sense uses ("Show
+  outline levels") are §1-correct and untouched. Noted, not changed: `'outline'` survives as the
+  default *filename* base for an untitled document (a behavior default, not descriptive copy).
+- **(#706) Fate-zero opacity fade (DL §3):** the `opacity:.7` dropped, `color:var(--muted)` kept
+  (landed in b636fc9; browser-checked computed opacity 1).
+- **(#707) Inventory drift-guard blind spot (P5):** `countParts`/`oracleParts`/`parseMeter` present in
+  the SNIFFS map (landed in e447279); spellings confirmed against the sniffs and the §2 inventory.
+- **(#708) Meter pool aria omits the style word (P3) — the shipped delta:** the icon-pool meter
+  announced "Meter, 3 of 5" while the visual is a row of hearts/skulls/dots. The pool branch's label
+  now names the parsed style word in the clock's established pattern: "Meter, hearts, 3 of 5 filled";
+  the bar branch's exact-value label untouched; source pin updated.
+
+### UXP-226 ✓ Clock step-back close-out: stuck tap-tail flag, touch copy, §3 grammar row (#702, #703) 🟡 — **RESOLVED**
+- **Finding:** the #702/#703 core shipped earlier (97a3870: touch long-press step-back, announce +
+  clamp flash), but three gaps remained. The real one: a fired long-press's click-suppression flag
+  (`_clockLongPressed`) was cleared only by the trailing click handler — and a browser can suppress
+  that click after its own long-press handling (the documented `attachBulletTouchGestures` endDrag
+  hazard), leaving the flag stuck so the NEXT tap on a clock was silently swallowed (P1/P4). Also:
+  the `@clock` insert desc taught only Shift+click (P2), and the ux-discipline §3 grammar never
+  recorded the clock's advance/step-back pair.
+- **Fix:** `releaseLp` on pointerup/pointercancel self-clears the flag 350ms after release (anchored
+  at release, so it never fires mid-hold and the real trailing click is still swallowed); the
+  `@clock` desc gains "(press and hold on a touch screen)"; §3 gains the manual-clock row. New source
+  pin covers the IS_TOUCH gate, flag-set-before-step order, the suppression check, and the self-clear.
+  Verified headless 19/19 (desktop + touch): tap advances exactly once, a long-press steps back
+  exactly once with the trailing click confirmed fired-and-swallowed, a tap AFTER a long-press still
+  advances, clamps flash, advances announce "Clock, N of M".
+
+### UXP-227 ✓ Frozen grammar pill silently shows a branch its inputs no longer support (#827 item 5) 🟡 — **RESOLVED**
+A conditional pill (`{r == 20: CRIT | miss}`) freezes by design, but after re-rolling the variable it
+read, the pill kept presenting the old branch as current — a P4 silent-wrong state. Fixed display-layer
+only (the freeze model untouched, per the owner's call): roll paths snapshot the vars the taken
+expansion path actually consulted (`recordVarReads`, a recording Proxy around the vars map in
+`runGrammar`'s new `depsOut` — only the taken path records, so dice in the output can't
+false-positive; a miss records as `null` so a later declaration counts as a change), the snapshot
+rides the grammar record as `deps` (round-trips through `_grammar` for free; exports byte-identical),
+and `renderGrammarPill` compares against the live `collectVars()` map (`depsChanged`, pure + pinned;
+O(|deps|), no new cache). Stale = `.gr-stale` (a small `--info` dot, the whisper-dot precedent, both
+themes via the existing token) plus the title/aria suffix "Inputs changed. Click to re-generate."
+Click re-rolls as before, refreshing the snapshot and clearing the whisper. Deck/sequence pills and
+rule edits deliberately out of v1. 11 pins + headless E2E (whisper appears on the var re-roll's own
+render pass, clears on click, survives OPML round-trip).
+
+### UXP-228 ✓ #854 boot-restore TDZ + owner decisions: show-done default flipped, words() skips notes (#827 items 2, 4) 🔴 — **RESOLVED**
+- **(1) #854 (P4 silent failure, latent):** a docId-less (legacy) autosave payload failed to restore
+  at boot and the app silently fell to the Examples doc: `applyAutosaveData`'s docId backfill calls
+  `scheduleAutosave()`, which read `_showingExamples` before its `let` initializer ran (the
+  declaration sat below the restoreAutosave IIFE) — a TDZ ReferenceError swallowed by
+  `restoreAutosave`'s catch. Fixed by hoisting the `_showingExamples`/`_adoptingExamples`
+  declarations above the boot restore; the backfill's `scheduleAutosave` stays (a read-only session
+  never `markDirty()`s, so nothing else would persist the assigned docId, and the `_opfsReconciled`
+  gate already defers the write). Source-order pin; verified headless old-vs-new (the old build
+  reproduces the Examples fallback).
+- **(2) OWNER DECISION (#827 item 2) — a deliberate, recorded P1-exception default change:** the
+  show-done default is FLIPPED to shown. Completed points stay visible, struck through, until the
+  user hides them (list-makers were surprised by rows vanishing on check). A persisted `showDone`
+  boolean still wins on restore; only the fresh default changed. The Done toggle now
+  `scheduleAutosave()`s (its explicit choice previously persisted only with the next content edit);
+  the button ships pressed to match; both "Done, now hidden" cues already fire only when the point is
+  actually hidden. GUIDE appearance entry + guide/files-and-export.md refreshed; src pins added.
+- **(3) OWNER DECISION (#827 item 4) — a deliberate behavior change (recomputes values in existing
+  documents, explicitly accepted):** `words()` now EXCLUDES per-point notes in every scope; the
+  opt-in is the optional second closed-keyword argument `words(scope, notes)` (the `sum(prop, scope)`
+  two-arg shape: an argument value, no new delimiter, composes with numeric depths; an unknown second
+  token stays literal → #ERR). §7's recorded words() decision amended in ux-discipline.md;
+  MATH_FN_DESC, the GUIDE `rollups` entry + example, guide/computing-numbers.md and guide/features.md
+  freshened; prior pins updated deliberately, opt-in pins added.
+- **This closes #827 in full** (items 7/8 in UXP-218; 1/3/6/10/11/12/14/15 in UXP-224; 9/13 via
+  UXP-220/222; 2/4/5 here and in UXP-227).
 
 ## Closing order (recommended)
 
