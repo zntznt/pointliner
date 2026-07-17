@@ -16781,6 +16781,14 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       label: 'View & rows shown',
       fn: () => { hideBpop(); showBaseSettingsMenu(node, bulletEl); },
     });
+    // IA-1 (identity §3b): the exit verb. A base can always become plain text again —
+    // the reversible-structure guarantee. Primary + a clear icon so leaving is as
+    // discoverable as entering (the way IN, "Convert table to base", is prominent).
+    actions.push({
+      sec:'Base', prim:true, icon: { fa:'fa-solid fa-file-lines', fb:'≡' },
+      label: 'Convert to text',
+      fn: () => { hideBpop(); convertBaseToText(nodeId); },
+    });
     // #811: per-column ops from the bullet menu too. The header's own doors need a
     // pointer on the header; this one rides the menu every input method can open
     // (touch long-press on the bullet included). Authored bases only: a query
@@ -17572,6 +17580,49 @@ function promoteStaticTable(node, l0, l1) {
     nodeMap.set(tail.id, tail); parentMap.set(tail.id, parent);
   }
   markDirty(); render(); focusNewBase(focusId);   // focusId is always the base node (#441)
+}
+
+// IA-1 (product-identity §3b, freedom of form): the inverse of "Convert table to base".
+// Turns a base back into freeform content — a static markdown table in this SAME point,
+// which renders read-only but edits as raw markdown, so the point is fully freeform again
+// (the "one way of organizing thought, never THE way, opt-in AND reversible" guarantee;
+// entering structure was one verb, so leaving it must be too). Authored/variable bases
+// keep their cell literals + the `#+TBLFM:` recipe, so the static table still computes and
+// round-trips; a query base freezes its CURRENT projection into a static snapshot (a query
+// base is a rendering of the live outline, so leaving structure necessarily freezes it —
+// the title cells stay `[[#id]]` links, so they still navigate). Frozen cell pills survive
+// via the node's kept sidecars. Pure for the authored case; the query case reads the live
+// projection. See `baseToStaticText`'s two arms.
+function baseToStaticText(node) {
+  return node.qbase ? serializeTable(mtModel(node)) : baseRecipeMarkdown(node.text);
+}
+function convertBaseToText(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node || node.type !== 'base') return;
+  const wasQuery = !!node.qbase, wasVar = !!node.varbase && !node.qbase;
+  pushUndo();
+  node.text = baseToStaticText(node);
+  node.type = deriveTypeFromText(node.text) || 'ul';
+  // Drop every base view-state field (they OPML-round-trip only on a base): the node is a
+  // normal point now. Sidecars (dice/grammar/…) stay — they back the frozen pills in the
+  // static table; pruneArtifacts sheds any with no surviving token.
+  delete node.qbase; delete node.varbase; delete node.view;
+  delete node.colRole; delete node.colW; delete node.baseRows;
+  node.collapsed = false;
+  node.checked = todoDoneFromText(node.text);   // re-derive the cache (a text table is never done)
+  pruneArtifacts(node);
+  markDirty(); render();
+  // Land in DISPLAY mode showing the rendered static table (the "here's the result" the
+  // user asked for) — NOT edit mode. focusNode would enterEdit, which unfolds the frozen
+  // pills to {…} source and hides the table; instead focus the row's bullet (the point we
+  // just acted on), keyboard-reachable, caret-invariant-safe.
+  requestAnimationFrame(() => {
+    ensureRowVisible(node.id);
+    document.querySelector(`.node-content[data-id="${node.id}"]`)?.closest('.node-row')?.querySelector('.bullet')?.focus();
+  });
+  flashHint('Converted to a text table. Edit it as plain markdown; undo restores the base.'
+    + (wasQuery ? ' The query result is now a static snapshot.' : '')
+    + (wasVar ? ' Rows no longer declare variables.' : ''));
 }
 
 // Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)

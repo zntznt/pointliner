@@ -211,11 +211,27 @@ A static table follows the toggle (it is inline prose markup, so it lives in the
   - `@table` → insert a **static table** at the caret.
   - `/base` → create a **base**. **Converting an existing point to a base MUST be non-destructive** — existing text is preserved (kept as its own point, base placed adjacent), never overwritten. *(The current behavior of nuking the point's text is a bug this direction kills.)*
 - **Promote (table → base) — ✅ shipped:** "Convert to base" on a static table splits any surrounding content into sibling points — table-in-the-middle becomes point · base · point; table-at-the-end becomes point · base; a point that *is* just the table converts in place. The base then owns its own point. Children stay attached to the node that keeps the original id; the table's `#+TBLFM:` recipe rides along and recomputes in the new base; the whole move is one undo step. **Two doors (P2):** a hover-revealed `▦ base` button at the table's top-right (always visible on touch, a real `<button>` with `aria-label` + a `keydown` Enter/Space path beside its `mousedown`), **and** a **"Convert table to base"** item in the point's **bullet menu** (`showBulletPopup`) — the discoverable menu path, shown whenever the point holds a table, that rides the bullet popup's keyboard plan (UXP-14). Pure cores: `planTablePromote(text, l0, l1)` does the split (the rendered table carries its line range as `data-l0`/`data-l1`; the menu re-derives it with `findFirstTableRange`), and both return `null` / bail with a hint on anything that isn't a valid table block, so a stale or mirrored range never corrupts text. The hover button is suppressed in search results, link mirrors, and the zoomed-title view, where the action can't apply.
-- **Demote / export (base → markdown) — copy-only, never destructive:**
+- **Export (base → markdown, copy) — never destructive:**
   - **Copy as markdown** — the current rendered values, ready to paste anywhere as a static table.
   - **Copy with TBLFM** — the values plus the `#+TBLFM:` recipe.
-  - There is **no destructive "convert to static."** A base is not self-destructing.
-- **No type conversion (base → other block type).** A base cannot be turned into a bullet / heading / quote / etc. — its grid and cell data don't translate to a prose line, so allowing it would be lossy and surprising. The bullet menu omits the type switcher and `applyBlockCmd` hard-guards it (`node.type === 'base' && id !== 'base' → return`). The only ways "out" of a base are the copy ops (above) and Delete. Nothing turns *into* a base except the `/base` verb (via `createBaseAt`) and the static-table promote (via `promoteStaticTable`).
+- **Demote (base → text, IN PLACE) — ✅ shipped (IA-1, 2026-07-17).** "Convert to text" in the base
+  bullet menu (primary) turns the base back into a **static markdown table in the same point**
+  (`convertBaseToText`/`baseToStaticText`) — the true inverse of the table→base promote, and the
+  `product-identity.md` §3b reversible-structure guarantee made concrete: entering structure is one
+  verb, so leaving it must be too. Authored/variable bases keep cells + `#+TBLFM:` (still computes,
+  round-trips); a query base freezes its current projection (title cells stay `[[#id]]` links). Frozen
+  cell pills survive via the kept sidecars; every base view-state field (`qbase`/`varbase`/`view`/
+  `colRole`/`colW`/`baseRows`) drops; the node lands in **display mode** showing the rendered table;
+  one undo restores the base. *(This supersedes the former "there is no destructive convert to static;
+  a base is not self-destructing" line — reversibility with a single-undo restore IS the safety, and
+  §3b outranks the old caution.)*
+- **No type conversion to another BLOCK type (base → bullet / heading / quote).** Still true and
+  separate from the demote above: a base can't become a *prose line* (its grid doesn't translate), so
+  the bullet menu omits the type switcher and `applyBlockCmd` hard-guards it (`node.type === 'base' &&
+  id !== 'base' → return`). "Convert to text" is not this — it produces a static markdown TABLE, which
+  is exactly where the grid's data does translate. The ways "out" of a base are now **Convert to text**,
+  the copy ops, and Delete. Nothing turns *into* a base except `/base` (`createBaseAt`) and the
+  static-table promote (`promoteStaticTable`).
 
 ---
 
