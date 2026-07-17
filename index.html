@@ -10727,7 +10727,11 @@ function renderRow(r) {
   // the user is past that, so they strip to a bare '…' (ux.md dial table: empty-state hints "hidden" in
   // Lean). The 'Section label…' placeholder stays — it NAMES what the field is, a label, not a helper.
   const paraHint = isStandardOrLean() ? '…' : 'Prose block. Enter = line break · ⇧+Enter = new point';
-  const entryHint = isStandardOrLean() ? '' : 'Type / for a to-do, heading or list · @ for a pill · or just write';
+  // IA-2 (perception hypothesis): lead the very first cue with the ATOM — the fastest path
+  // to the "oh" moment is typing {2d6} and watching it become a live pill on blur. The
+  // outliner mechanics (/) come second, and "or just write" keeps the escape for a plain
+  // note-taker. (The @ dialog door is a slower path to the same pills; the literal atom teaches it.)
+  const entryHint = isStandardOrLean() ? '' : 'Try {2d6} for a live pill · / for a to-do or heading · or just write';
   content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? paraHint : (isEntryPoint ? entryHint : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
@@ -32078,7 +32082,7 @@ let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from l
 const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Welcome to Pointliner</title></head><body>
 <outline text="# Welcome to Pointliner">
-  <outline text="This whole document is one example you can build from. Every {curly-brace} thing is a live pill: click it to run it, click the text beside it to edit. Read top to bottom, it goes from basics to advanced. When you want your own, open the File menu and choose New, or just start editing right here.">
+  <outline text="This whole document is one example you can build from. Every {curly-brace} thing is a live pill: click it to run it, click the text beside it to edit. Here is one now, click it: {2d6}. Read top to bottom, it goes from basics to advanced. When you want your own, open the File menu and choose New, or just start editing right here.">
     <outline text="&gt; Tip: press Tab to indent a point under the one above, Shift+Tab to outdent. That is how you nest, and how this document is built."/>
     <outline text="&gt; Playing a solo RPG? That is the game Pointliner is built around: your dice, your oracle, and your journal in one file. The File menu's 'Start from an example' has ready-to-play starters."/>
   </outline>
