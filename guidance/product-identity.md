@@ -12,8 +12,8 @@ Provenance: distilled 2026-07-16 from an external product-identity questionnaire
 app and the recorded decisions, then corrected by the owner on the central point (§2:
 the identity is the substrate — a tool for thought; the origin is provenance, not
 positioning). Everything stated as fact below is **built truth or a
-recorded owner decision** — nothing aspirational is stated as fact, and the one genuinely
-open question is flagged as open rather than papered over.
+recorded owner decision** — nothing aspirational is stated as fact; the genuinely open
+questions and unvalidated hypotheses are flagged as such (§8, §10) rather than papered over.
 
 ---
 
@@ -86,6 +86,13 @@ The unfair advantage is not "offline" or "fast" (qualities); it is that the engi
 **native to the text as one language, enforced by conviction** (P5's closed syntax
 inventory is identity discipline, not just UX hygiene).
 
+**Translating the belief outward.** "Text should be alive" is a philosophy, not a user
+problem — it steers builds, and it stays internal. External copy translates it into
+problems a stranger already recognizes: *stop copying numbers between your notes and your
+spreadsheet* · *keep the plan, the math, and the random table in one document* · *notes
+that don't go stale the moment you write them.* The README's `{2d6}`-first opening is
+this rule executed: show the alive text, don't preach it.
+
 **The lineage, and the test we accept.** "Tools for thought" is a real tradition —
 Iverson (notation as a tool of thought), Engelbart (augmenting the capability to approach
 complex problems), Kay, Victor, Matuschak & Nielsen — and Pointliner claims a place in it
@@ -118,6 +125,11 @@ engine.
   tool serves a practice; the practice belongs to the user. **It never forces a way of
   doing things — at least it never wants to** — and any feature that quietly starts to is
   violating this section.
+
+This also settles a claim-size question: Pointliner claims to be an **instrument**, not
+an **environment**. An environment shapes how its inhabitants think and owns their
+process; that is exactly what freedom-to-leave refuses. If users one day report that it
+changed how they think, that is theirs to say — the product never claims it first.
 
 ## 4. What we are competing with
 
@@ -163,9 +175,15 @@ sampling — deterministic, offline, interpreter DSLs. If AI disappeared tomorro
 Pointliner would be exactly as useful. In a market crowded with "AI notes apps," this
 product is generative *without* AI — lead with that, don't apologize for it.
 
-## 7. The one demo (if only one workflow can be shown)
+## 7. The demo (thirty seconds first, then three minutes)
 
-One outline, three minutes, no setup. Write a short plan in prose. Give a few points a
+**The first thirty seconds — the atom of the whole product:** type `{2d6}` in a point,
+click away, and the text becomes a live pill; click the pill and it re-rolls. That single
+loop (type braces → get a live thing → click it → it answers again) is the "oh" moment
+every longer demo is built from, and the first ten minutes of real use is just that loop
+discovering its other bodies: `{a | b}`, `{= …}`, `{roll: #tag}`.
+
+**The three minutes, if one workflow can be shown:** one outline, no setup. Write a short plan in prose. Give a few points a
 `cost` property and drop `{= sum(cost)}` on the parent: the total is alive. Add a check
 (`sum(cost) <= budget`) and watch it flag the overflow the moment it happens. Declare
 `{budget := 500}`, change it, and everything propagates. Then break the rut: tag a few
@@ -183,7 +201,15 @@ a rigid schema?"* No removal is decided; the set stays shipped. But it is the st
 example of the substrate test (§9) applied to our own work, and future domain-shaped
 features get asked the same question BEFORE they ship, not after.
 
-**8b. "Why now?" has no recorded answer.** Nothing in the repo argues why someone should
+**8b. The falsification test for the tools-for-thought claim.** "Tools for thought" is
+a category with a history of vague claims, so this doc states what would DISPROVE ours:
+if real documents show the engine going unused — pills rare, the app living as "a nice
+outliner with some clever commands" — then the Matuschak & Nielsen bar (§3) is failed and
+Pointliner is a note app, whatever this document says. The claim is falsifiable by
+observed use, and the product surfaces (the `{2d6}`-first onboarding, the `?` cheat
+sheet, the concept guide) exist precisely to keep the engine from being missable.
+
+**8c. "Why now?" has no recorded answer.** Nothing in the repo argues why someone should
 switch today rather than next year. Candidate ingredients exist (local-first sentiment,
 subscription fatigue, the solo-RPG boom, AI-slop fatigue making deterministic tools
 fresh) but no thesis has been chosen. Until one is, marketing copy should not fake one.
@@ -209,3 +235,24 @@ This is the single identity gap; closing it is an owner decision, not a build ta
 - **As the questionnaire answer key:** the confident answers live here; empirical
   questions (what real users feel, who actually discovers it, retention) are marked
   unknowable-from-code and stay out until there is user evidence.
+
+## 10. Hypotheses only users can settle (held, not asserted)
+
+Design documents cannot validate these; only observed use over time can. They are
+recorded so we test them instead of assuming them:
+
+1. **The perception hypothesis.** Users experience the `{…}` engine as THE product, not
+   as an advanced feature bolted to a nice outliner. (If this fails, the fix is in the
+   product's first minutes, not in this document — see §8b.)
+2. **The habit hypothesis.** The reflex that forms is *reach for braces*: whenever a
+   thought needs a number, a pick, a roll, or a check, the hand types `{` before the
+   mind finishes asking. The tell, after a couple of weeks, is thinking "I wish I had
+   Pointliner for this" inside other tools. The candidate loop: a trigger that recurs
+   wherever text is written → one keystroke of syntax → an instant, visible payoff (the
+   pill) → the document is now smarter, which creates the next trigger.
+3. **The absence hypothesis.** Leaving is easy (§3b — that freedom is non-negotiable),
+   but the departed user misses the aliveness: opening dead text elsewhere and reaching
+   for a re-roll that isn't there. Retention through value, never through walls.
+
+When user evidence starts arriving, the answers get recorded here — and if any hypothesis
+fails, §8b says what that means honestly.
