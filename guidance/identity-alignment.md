@@ -205,3 +205,71 @@ relevant PR.
 
 Each lands as its own PR against this file; an item closes by linking the PR or the
 recorded decision beside its heading.
+
+---
+
+## Steering review — whole-app pass (2026-07-17)
+
+A three-lens read-only review fleet (solo-RPG contamination · outliner-as-end-vs-means ·
+substrate opportunities) against the settled identity (`product-identity.md` §2/§3b/§3c/§9).
+**Headline: the app is strongly loyal.** Behavior is clean — every structure is reversible
+(re-confirmed the IA-1 audit: no one-way door, no forced schema), the blank doc leads
+freeform+atom. The findings are almost entirely **copy/framing** (steer, don't rebuild) and
+**forward-looking substrate opportunities** (grow the tool-for-thought identity). Items tagged
+`SR-` (steering review). Filed as issues per the review-fleet convention.
+
+### Group A — copy steering (de-theme RPG, de-bolt-on the engine) · issue #874
+Small copy/ordering fixes, one PR. Behavior unchanged.
+
+- **SR-1 (RC-1, clearest §2 violation).** The first-run tour (`FIRST_RUN_EXAMPLES`, index.html)
+  says *"Playing a solo RPG? That is the game Pointliner is built around."* "Built around" states
+  provenance AS positioning — the exact §2 line. Steer: "Pointliner started at the solo-RPG table"
+  + point at the starters. Provenance, not center.
+- **SR-2 (OM-1, the §10.1 perception risk).** `guide/features.md:7-9` frames the engine as
+  "an **outliner** … with two extra powers built in." That makes the `{…}` engine — the product
+  (§1's 90%-core) — a bolt-on to the outliner identity, the exact "engine seen as an add-on to a
+  nice outliner" failure §10.1 names. Steer: the living/computing document is the noun; the
+  outliner is the surface it rides.
+- **SR-3 (OM-2).** The tour's teaching spine files the engine under `## Advanced`, atop
+  `## Basics` (the plain outliner). Steer: lift one generative/compute moment into the first tier
+  so the substrate reads as the point, not the graduation. (Mitigated by the IA-2 atom-first intro,
+  but the spine still says outliner=basics, engine=advanced.)
+- **SR-4 (RC-3).** The `STARTERS` gallery leads with two RPG starters (Campaign oracle,
+  Oracle-driven scene play). The mix is fine (IA-8); the first *impression* leans RPG. Steer:
+  interleave so a general starter shows first.
+- **SR-5 (RC-4).** A few generative GUIDE bodies lead with an RPG example ("encounter table,"
+  "useful in solo tabletop") where a general-first example would serve. Steer: general example
+  first, RPG second, in each generative concept-guide body. (The command NAMES — oracle, roll
+  table — stay: they are the clearest general names for those mechanics, provenance-fine.)
+
+### Group B — substrate opportunities (grow the identity) · one issue each
+Each points an already-proven pattern at a new surface, inside the one-language / no-new-syntax /
+deterministic / plain-text tenets. Build on demand, not on spec — these are proposals, owner to pick.
+
+- **SR-6 · Units as a declarable table (issue #875).** `FN1` hardcodes ~14 pairwise conversions
+  (`c2f`, `km2mi`, …). This is the calendars/sequences move untaken: "what is a quantity" (built-in
+  SI/imperial → any declared `{dimension, ratios}` table) feeding one `evalMath` primitive
+  `convert(x, from, to)`. Declarative data only, deterministic, composes with all math (result is a
+  number). **OUT (recorded):** unit-suffixed literals (`3mi`) — that is new syntax (P5). The
+  `convert()` FN form is in-bounds. Size: M. *Highest capability-per-risk.*
+- **SR-7 · Let estimates read variables (issue #876).** `parseUncertain`/`sampleUncAst` are a
+  second evaluator with NO `vars` param, so `{cost_low to cost_high}` is impossible and no variable
+  can hold a distribution. Small high-value: thread `collectVars()` into the sampler (a scalar var
+  broadcasts across the sample array trivially) so estimates compose with the whole variable/rollup
+  system. No new syntax; record stays `{key, expr, seed}`. Size: S (read-vars); L (full evaluator
+  unification — flag: touches evalMath's "always a NUMBER" invariant; do NOT force).
+- **SR-8 · Query reducers + shared scoped-fold (issue #877).** Only `count("query")` was
+  special-cased in `expandAggExpr`; `sum/avg/min/max("query", prop)` is the missing generalization
+  (reuse `queryMatchesNode` + `childPropNumber`). First extract a shared **scoped-fold**
+  (`(node, scope) → collectScoped`) that every reducer plugs into — it makes the query reducers (and
+  any future median/stdev rollup) nearly free, and centralizes the `self/children/subtree/N` depth
+  vocabulary currently re-implemented across `expandAggExpr`/`subtreeWords`/`firstEmptyRollup`/
+  `parseUncertain`. Size: S–M (scoped-fold) then M (query reducers).
+
+### Notes (recorded, no new issue)
+- **SR-9 (RC-2) — chronicle framing.** The chronicle is the one feature whose *identity* is
+  RPG-framed ("in-world log," "game log," `root.gamelog`) rather than "a dated log in any calendar"
+  — which is exactly IA-4's un-extracted **"dated log" substrate**. The mechanism is ratified
+  keep-as-is (§8a); the RPG *framing* is the contamination, and de-theming it converges with the
+  dated-log unification. **Tied to IA-4's recorded trigger** (the next substantive change to either
+  log): do the de-theme + unification together then, nearly free. No separate build now.
