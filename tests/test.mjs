@@ -596,6 +596,84 @@ test('conditional standalone shorthand — wrapped def expands and unfolds back 
   assert.equal(c.artifactToShorthand('grammar', rec), '{hp > 0: a | b}');
 });
 
+// ── input-dependency snapshot (#827 item 5): recordVarReads / depsChanged ────
+test('runGrammar depsOut — records the vars the taken path read, with roll-time values', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {r == 20: crit | miss}', 'origin', {}, { r: 7 }, deps), 'miss');
+  assert.deepEqual({ ...deps }, { r: 7 });
+});
+
+test('runGrammar depsOut — only the TAKEN branch records (untaken refs are not inputs)', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {r == 20: {a} | miss}', 'origin', {}, { r: 7, a: 'x' }, deps), 'miss');
+  assert.deepEqual({ ...deps }, { r: 7 });   // `a` sits in the untaken branch
+});
+
+test('runGrammar depsOut — dice in the output are not inputs (no var read, empty deps)', () => {
+  const deps = {};
+  c.seedSequence([0]);
+  try { assert.equal(c.runGrammar('origin: {2d6}', 'origin', {}, {}, deps), '2'); }
+  finally { c.resetRandom(); }
+  assert.deepEqual({ ...deps }, {});
+});
+
+test('runGrammar depsOut — an unresolved name records as a null (missing) dep', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {foo}', 'origin', {}, {}, deps), '{foo?}');
+  assert.deepEqual({ ...deps }, { foo: null });
+});
+
+test('runGrammar depsOut — text pick vars and string conditionals record their values', () => {
+  const deps = {};
+  assert.equal(c.runGrammar('origin: {mood == "angry": attacks | waits}', 'origin', {}, { mood: 'angry' }, deps), 'attacks');
+  assert.deepEqual({ ...deps }, { mood: 'angry' });
+});
+
+test('runGrammar depsOut — {= expr} weights (A5 dynamic odds) record the weight var', () => {
+  const deps = {};
+  c.seedSequence([0]);
+  try { c.runGrammar('origin: a {= w} | b', 'origin', {}, { w: 3 }, deps); }
+  finally { c.resetRandom(); }
+  assert.equal(deps.w, 3);
+});
+
+test('depsChanged — empty/absent deps never whisper; equal snapshot is quiet', () => {
+  assert.equal(c.depsChanged(null, { r: 7 }), false);
+  assert.equal(c.depsChanged(undefined, { r: 7 }), false);
+  assert.equal(c.depsChanged({}, { r: 7 }), false);
+  assert.equal(c.depsChanged({ r: 7 }, { r: 7 }), false);
+  assert.equal(c.depsChanged({ mood: 'angry' }, { mood: 'angry', other: 1 }), false);
+});
+
+test('depsChanged — a changed, removed, or type-flipped value is a change', () => {
+  assert.equal(c.depsChanged({ r: 7 }, { r: 20 }), true);       // re-rolled
+  assert.equal(c.depsChanged({ r: 7 }, {}), true);              // declaration deleted
+  assert.equal(c.depsChanged({ r: 7 }, { r: '7' }), true);      // number/string flip is real (resolveVarDefs types follow the value)
+  assert.equal(c.depsChanged({ mood: 'angry' }, { mood: 'calm' }), true);
+});
+
+test('depsChanged — a recorded miss (null) changes only by the name becoming defined', () => {
+  assert.equal(c.depsChanged({ foo: null }, {}), false);        // was undefined, still undefined
+  assert.equal(c.depsChanged({ foo: null }, { foo: 1 }), true); // {foo?} marker is now resolvable
+});
+
+test('depsChanged — survives the _grammar JSON round-trip unchanged', () => {
+  const deps = { r: 7, mood: 'angry', missing: null };
+  const roundTripped = JSON.parse(JSON.stringify(deps));
+  assert.equal(c.depsChanged(roundTripped, { r: 7, mood: 'angry' }), false);
+  assert.equal(c.depsChanged(roundTripped, { r: 8, mood: 'angry' }), true);
+});
+
+test('renderGrammarPill — stale inputs add .gr-stale and the title/aria suffix; fresh pills do not', () => {
+  const stale = c.renderGrammarPill('g', { key: 'g', def: 'origin: {q_stale_probe == 1: a | b}', origin: 'origin', result: 'b', anon: true, deps: { q_stale_probe: 3 } });
+  assert.ok(stale.includes('gr-stale'));
+  assert.ok(stale.includes('Inputs changed. Click to re-generate'));
+  const fresh = c.renderGrammarPill('g', { key: 'g', def: 'origin: x', origin: 'origin', result: 'x', anon: true });
+  assert.ok(!fresh.includes('gr-stale'));
+  assert.ok(!fresh.includes('Inputs changed'));
+  assert.ok(fresh.includes('Click to re-generate'));
+});
+
 // ── text modifiers (A1): {ref.mod} — cap/title/upper/lower/a/s ───────────────
 test('modParts — base + known modifier suffix(es); rejects non-modifiers', () => {
   assert.deepEqual(host(c.modParts('beast.cap')), { base: 'beast', mods: ['cap'] });

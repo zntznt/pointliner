@@ -192,7 +192,9 @@ DC 12 and shown either way. Use `r >= 12` instead of `r + mod >= 12` to check th
 
 To make a new attack, click the `r` pill (new die), then the verdict pill (it re-judges whatever
 `r` currently shows). Both freeze between clicks, like dice, so a resolved check stays on the page
-exactly as it landed; clicking only the verdict pill re-judges the same roll.
+exactly as it landed; clicking only the verdict pill re-judges the same roll. If you re-roll `r`
+and leave the verdict alone, the verdict pill grows a small dot at its corner and its tooltip
+reads "Inputs changed. Click to re-generate.", so a stale verdict never passes for a current one.
 
 ---
 

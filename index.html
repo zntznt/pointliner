@@ -840,6 +840,14 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-edit:hover{opacity:1;background:var(--acc);color:var(--acc-fg)}
 .gr-roll.gr-bad{color:var(--del);border-style:dashed;cursor:default}
 .gr-roll.gr-bad:hover{box-shadow:none;border-color:var(--bdr)}
+/* #827 item 5: "inputs changed" whisper — a variable this frozen expansion read has a
+   different value now (see depsChanged). A small --info notification dot at the pill's
+   top-right corner (the semantic informational lane — not --warn, staleness is not an
+   error), backed by the title/aria "Inputs changed. Click to re-generate" suffix.
+   Anchored to the pill box, not .gr-ico, so the hover icon-spin doesn't swing it.
+   Result ink and pill chrome are untouched — identity at whisper level. */
+.gr-roll.gr-stale{position:relative}
+.gr-roll.gr-stale::after{content:'';position:absolute;top:-2px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--info);pointer-events:none}
 @keyframes roll-pop{0%{opacity:.3;transform:scale(.88)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
 .gr-roll.gr-rolled .gr-result{display:inline-block;animation:roll-pop .28s cubic-bezier(.2,.8,.3,1)}
 .gr-preview-result{font-weight:600;color:var(--acc)}
@@ -19143,16 +19151,79 @@ function expandRule(name, ctx) {
   return out;
 }
 
+// ─── input-dependency snapshot (#827 item 5) ─────────────────────────────────
+// A grammar pill freezes its expansion by design (a document must not rewrite
+// itself), but a frozen conditional ({r == 20: crit | miss}) reads variables —
+// and when a referenced variable is later re-rolled, the pill keeps showing a
+// branch its inputs no longer support. The fix is DISPLAY-LAYER only: record, at
+// roll time, WHICH variables the taken expansion path actually consulted and the
+// value each had, then compare that snapshot against the live map at render and
+// whisper "Inputs changed" when they differ. Freeze semantics, click behavior,
+// and export output are untouched.
+//
+// recordVarReads wraps the resolved vars map handed to an expansion in a Proxy
+// that notes every consulted name into `deps` — {name: value} for a hit,
+// {name: null} for a miss (a `{name?}` marker still DEPENDS on the name being
+// undefined; declaring it later is an input change — deliberate). Every read
+// site funnels through the map object itself — resolveBrace's hasOwnProperty +
+// [name], evalMath's `name in vars` + vars[name], strCondVerdict, parseDice
+// variable modifiers, pickWeightedAlt's {= expr} weights, resolveDottedVar — so
+// the traps see the true dependency set with zero per-site instrumentation, and
+// only the TAKEN path records (dice/randomness in the output never enter deps:
+// the snapshot is about input VALUES, not whether a re-roll would differ).
+// Resolved-map values are finite numbers or strings (resolveVarDefs), so `deps`
+// is JSON-safe and rides the _grammar OPML attribute with the rest of the
+// record. Rule names never reach the vars map (rules are checked first), so
+// rule edits are deliberately out of scope for v1. Pure; Node-testable.
+function recordVarReads(vars, deps) {
+  const note = k => {
+    if (typeof k !== 'string') return false;
+    const has = Object.prototype.hasOwnProperty.call(vars, k);
+    deps[k] = has ? vars[k] : null;
+    return has;
+  };
+  return new Proxy(vars, {
+    get: (t, k) => { note(k); return t[k]; },
+    has: (t, k) => typeof k === 'string' ? note(k) : k in t,
+    getOwnPropertyDescriptor: (t, k) => { note(k); return Object.getOwnPropertyDescriptor(t, k); },
+  });
+}
+
+// Has any recorded input changed since the freeze? `deps` is the roll-time
+// snapshot ({name: value|null}); `vars` is the live resolved map the NEXT
+// re-roll would use (rerollGrammar → runGrammar → collectVars()), so the
+// comparison target and the re-roll input are the same map by construction.
+// A null snapshot entry means "was undefined at roll time" and changes by the
+// name becoming defined. Values compare strictly — a number/string type flip is
+// a real change (resolveVarDefs types follow the value). Records with no deps
+// (pre-feature docs, purely random pills) never whisper. Pure; never throws on
+// malformed deps (hostile OPML degrades to a harmless whisper, cleared by the
+// next click).
+function depsChanged(deps, vars) {
+  if (!deps || typeof deps !== 'object' || !vars) return false;
+  for (const name of Object.keys(deps)) {
+    const then = deps[name];
+    const has = Object.prototype.hasOwnProperty.call(vars, name);
+    if (then === null) { if (has) return true; continue; }
+    if (!has || vars[name] !== then) return true;
+  }
+  return false;
+}
+
 // Run a grammar definition, merged with document-wide rules. Local rules win.
 // Returns the expanded string, or null if the definition is malformed / origin
-// rule is missing.
-function runGrammar(def, origin, docRules = null, vars = null) {
+// rule is missing. When `depsOut` (a plain object) is given, the vars map is
+// wrapped in recordVarReads so the caller receives the expansion's input
+// snapshot (#827 item 5) — omitted by previews and expandText, so recording
+// costs nothing outside the freeze paths.
+function runGrammar(def, origin, docRules = null, vars = null, depsOut = null) {
   const parsed = parseRules(def);
   if (!parsed) return null;
   const rules = Object.assign(Object.create(null), docRules || collectRules(), parsed.rules);  // null-proto merge: don't reintroduce Object.prototype keys
   const start = (origin && origin.toLowerCase()) || parsed.order[0];
   if (!rules[start]) return null;
-  return expandRule(start, { rules, vars: vars || collectVars(), depth: 0, stack: [] });
+  const baseVars = vars || collectVars();
+  return expandRule(start, { rules, vars: depsOut ? recordVarReads(baseVars, depsOut) : baseVars, depth: 0, stack: [] });
 }
 
 // Expand a plain string's {…} against document-wide rules + variables. Used by
@@ -20135,14 +20206,20 @@ function linkifyMention(text, title, targetId) {
 function grammarKey() { return 'g' + Math.random().toString(36).slice(2, 9); }
 
 // Build a fresh grammar record from a definition; null if malformed.
+// `deps` is the roll-time input snapshot (#827 item 5, see recordVarReads) —
+// stored only when the expansion actually read a variable, so var-free records
+// stay exactly as lean as before.
 function makeGrammarRoll(def, originInput) {
   const parsed = parseRules(def);
   if (!parsed) return null;
   const origin = (originInput && originInput.trim().toLowerCase()) || parsed.order[0];
   if (!parsed.rules[origin]) return null;
-  const result = runGrammar(def, origin);
+  const deps = Object.create(null);
+  const result = runGrammar(def, origin, null, null, deps);
   if (result === null) return null;
-  return { key: grammarKey(), def, origin, result };
+  const rec = { key: grammarKey(), def, origin, result };
+  if (Object.keys(deps).length) rec.deps = deps;
+  return rec;
 }
 
 // Build a fresh stateful-sequence record (a grammar record carrying mode/items +
@@ -20265,8 +20342,16 @@ function renderGrammarPill(key, g) {
   // wrong, so leave it neutral rather than mislead. Plain arms never carry a comma, so nothing is lost.
   const valence = isYesNoOracle(g) && !g.result.includes(',')
     ? (/^yes\b/i.test(g.result) ? ' gr-yes' : /^no\b/i.test(g.result) ? ' gr-no' : '') : '';
-  return `<span class="gr-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. Click to re-generate` : 'Click to re-generate'}"`
-    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. Click to re-generate">`
+  // #827 item 5: the "inputs changed" whisper. Compare the roll-time input snapshot
+  // (g.deps, written by makeGrammarRoll/rerollGrammar) against the live map a re-roll
+  // would use — collectVars() IS the _varsVer-keyed doc cache, so this is an O(deps)
+  // read per pill, no new cache. Stale → a small --info dot (.gr-stale, CSS below the
+  // pill rules) plus the title/aria suffix, so AT hears what sighted users see (P3).
+  // The frozen result itself is untouched — display-layer only.
+  const stale = depsChanged(g.deps, collectVars());
+  const cta = stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate';
+  return `<span class="gr-roll${stale ? ' gr-stale' : ''}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${cta}` : cta}"`
+    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
     + `<span class="gr-result${valence}">${escHtml(g.result)}</span>`
@@ -20473,10 +20558,14 @@ function rerollGrammar(node, key) {
     el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
     return;
   }
-  const result = runGrammar(g.def, g.origin);
+  // #827 item 5: a re-roll refreshes the input snapshot too, so the "Inputs
+  // changed" whisper clears (or re-arms) on the same click that re-generates.
+  const deps = Object.create(null);
+  const result = runGrammar(g.def, g.origin, null, null, deps);
   if (result === null) return;
   if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   g.result = result;
+  if (Object.keys(deps).length) g.deps = deps; else delete g.deps;
   markDirty();
   announce(`Re-generated: ${g.result}`);
   const el = repaintAfterRoll(node);
@@ -20511,6 +20600,9 @@ function editGrammar(node, key) {
     def: g.def, origin: g.origin, existing: key,
     onResult: roll => {
       Object.assign(g, { def: roll.def, origin: roll.origin, result: roll.result });
+      // #827 item 5: the fresh roll carries a fresh input snapshot; a var-free
+      // edit clears any stale one (Object.assign can't remove a field).
+      if (roll.deps) g.deps = roll.deps; else delete g.deps;
       markDirty();
       repaintAfterRoll(node);
     },
@@ -30153,7 +30245,7 @@ const GUIDE = [
     ] },
   { id:'gen-conditions', cat:'generators',
     title:'Conditions & item details',
-    body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
+    body:"Two tools for smarter generators. A condition lets output adapt to what you're tracking: show 'alive' or 'dead' depending on a hit-points variable, change a description based on a stat or branch on a text value by quoting it ({mood == \"angry\": …} reads a text pick; matching ignores capitalization, and == / != are the text-friendly tests). A pill keeps what it last showed, so re-rolling a variable never rewrites it; instead the pill grows a small dot and its tooltip says the inputs changed. Click the pill to re-judge. An item detail keeps related facts together: pick a 'weapon' once and read that weapon's name and damage from the same pick, so the description is always consistent.",
     related:['gen-rules','variables','gen-modifiers'],
     examples:[
       { syn:'{hp>0: alive|dead}', desc:'show the first if true, else the second' },
