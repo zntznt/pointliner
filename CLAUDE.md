@@ -35,6 +35,18 @@ filesystem is storage; the user's choice of sync (Dropbox/iCloud/git/none) is
 sync. No backend, no auth, no accounts. Features that require running a backend
 are out of scope — not deferred, out.
 
+**Product identity (binding — the scope filter for any product/positioning call):**
+the canonical answers live in `guidance/product-identity.md`; the two that steer builds:
+(1) **the drive is solo-RPG and never drifts, but the product enables thought in writing**
+— free-flowing, flexible, variable thought (owner, 2026-07-16, amending roadmap #515's
+"THE customer" phrasing; solo-RPG stays the front door and flagship proof, not the
+boundary); (2) **the §0b mission test** — a feature earns its place where it composes with
+the generative/computational `{…}` layer; parity with database/PKM apps is the scope creep
+the fences exist to stop. The core, if someone deletes 90% of the features: any bullet can
+generate or compute. When a proposal leans database-parity, cite that file before building.
+Do NOT rewrite the README's opening to a narrower pitch; its current shape is the
+reference execution of §2.
+
 > **For reviewers / other AIs giving suggestions:** read "Core architecture" and
 > "The two-engine reality" first. The single most important constraint is that
 > **`node.text` is the source of truth and is plain text** — every widget is an
@@ -940,6 +952,9 @@ Details: `guidance/features.md`
 ## Direction, roadmap & backlog
 
 The product direction is now set. Read these before proposing or building:
+- `guidance/product-identity.md` — **the binding identity** (the customer per roadmap #515,
+  the 90%-core, the belief, the never-build list, who it is NOT for, the competitive frame,
+  the flagged open "why now" question). The first stop for any scope/positioning decision.
 - `guidance/ux-discipline.md` — **the binding UX standard** (vocabulary, the five principles,
   keyboard grammar, the closed syntax inventory, patterns, conformance matrix). Read before
   any UI work; clear `guidance/ux-definition-of-done.md` before merge.
@@ -950,8 +965,11 @@ The product direction is now set. Read these before proposing or building:
   remaining generative-engine ideas.
 - `guidance/bases-direction.md` — locked direction for markdown-first rendering and
   Bases (table-vs-base model, freeform-bases philosophy, base layout + header interaction,
-  and the scope fence: views/typed-fields/filters are deferred). Read before any
-  table/base work.
+  the shipped-record ledger in §4/§7, and §7c's recorded structural noes). Read before any
+  table/base work. Companions: `base-views-vision.md` (the views architecture argument +
+  the §0 red-team corrections; largely delivered), `query-base-proposal.md` (QP-2, shipped
+  through Phase C), `saved-views-proposal.md` (SV-1/SV-2 shipped; SV-3/SV-4 recorded NO —
+  the closed below-the-line list).
 - `guidance/plugins-direction.md` — **locked direction for extensibility/plugins** + the
   **code-execution gate**: extensibility is **declarative DATA packs only** (grammar/variables/
   emoji merged into the registries via a `<_plugins>` head element); **the app executes no
@@ -1037,8 +1055,10 @@ scope" in the old roadmap — are now the **planned direction** (Zettelkasten).
   clone can leave `main` pointing at an old snapshot, and you won't notice: your branch will pass
   its own outdated tests. Sanity-check you're current — the test count and recently-merged
   files/dirs (e.g. `guidance/`, the latest UXP entries) should match the latest work. As of the
-  last refresh of this doc (2026-07-16) `node --test tests/test.mjs` reported **1303 tests, all
+  last refresh of this doc (2026-07-16) `node --test tests/test.mjs` reported **1383 tests, all
   passing**; treat a *lower* count than that as a likely stale base and **STOP** to investigate. (The number only grows,
+  so it drifts upward over time — it's a floor, not an exact match. Trust the runner's reported total,
+  not a `grep -c 'test('`, which over-counts.) (The number only grows,
   so it drifts upward over time — it's a floor, not an exact match. Trust the runner's reported total,
   not a `grep -c 'test('`, which over-counts.)
 - **Parallel review fleets file GitHub Issues, never tree writes.** When several agents review/evaluate

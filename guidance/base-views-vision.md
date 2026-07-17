@@ -1,11 +1,14 @@
 # Base views: the rich-visualization vision
 
-**Status: VISION / thinking doc, adversarially reviewed, SOUND-BUT-RESCOPE.** This reframes and
-enlarges the QP-2 query-base proposal. It is not a build plan yet; it is the architecture argument for
-turning bases into a **view system** (table, kanban, gallery, calendar, list) under the single-file /
-no-backend / plain-text-truth constraints. Read alongside `bases-direction.md` (the locked doctrine,
-which already reserves the view-switcher strip and names views/typed-fields as deferred) and
-`query-base-proposal.md` (QP-2, now understood as one axis of this larger picture).
+**Status: LARGELY DELIVERED (2026-07); retained for the red-team corrections and the mission
+thesis' original argument.** What this doc argued for has shipped: the view system + board (BV-1),
+cards (BV-2), calendar (BV-3), the FR-1 display roles with per-role editors, query bases through
+QP-2 Phase C, and the SV-1/SV-2 sorts — each within the §0 corrections below, which remain binding
+on future view work. The §0b mission thesis' **canonical home is now `guidance/product-identity.md`**
+(it graduated from a bases argument to the product's scope filter); the §0.6 saved-views line was
+resolved by `guidance/saved-views-proposal.md` (SV-1/SV-2 shipped, SV-3/SV-4 recorded NO). The
+shipped-record ledger lives in `bases-direction.md` §4. Read this doc for WHY the fences sit where
+they do; read those for what exists.
 
 ---
 

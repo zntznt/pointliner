@@ -2,8 +2,8 @@
 
 This folder is the project's **build-steering set**: the documents the AI and human
 contributors read before changing the app. It is *not* end-user documentation (that
-will live in `docs/`). `CLAUDE.md` in the repo root is the always-loaded entry point;
-everything here is what it points at.
+lives in the sibling `guide/` directory). `CLAUDE.md` in the repo root is the
+always-loaded entry point; everything here is what it points at.
 
 ---
 
@@ -90,23 +90,55 @@ the reviewer catches the lie. Both failure modes (lazy skip + false claim) are c
 
 ## File map
 
+Grouped by kind. A **binding** doc governs every change in its area; a **direction** doc is a
+locked north star + scope fence; a **proposal** carries its own status header (read it — several
+have shipped in full and are retained as design rationale); a **ledger/reference** records state.
 
-| File                                        | What it is                                                                                                                                          |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ux-discipline.md`                          | **The binding standard** — vocabulary, the five principles, keyboard grammar, the syntax inventory, pattern catalog, per-feature conformance matrix |
-| `ux-definition-of-done.md`                  | **The gate** — the merge checklist + "How this gate is run" (the due process + Conformance Statement)                                               |
-| `ux-remediation.md`                         | **The fix list** — every non-conformance as a tracked defect (`UXP-1…70`, append-only record), incl. the standing syntax-sprawl guard               |
-| `adding-an-artifact.md`                     | The 12-step recipe for a new artifact + the step-13 UX gate                                                                                         |
-| `concept-guide.md`                          | How to add/fix an in-app concept-guide entry (the `GUIDE` array) + the drift-guard contract                                                         |
-| `design-language.md`                        | **The locked visual standard** — type roles, palettes, contrast floors, component rules, anti-decisions                                             |
-| `ux.md`                                     | Discoverability *strategy* / verbosity dial (vision — the standard governs behavior where they differ)                                              |
-| `accessibility.md`                          | A11y *sequencing* (phased tickets, now **complete** — the standard points down to it for order)                                                     |
-| `roadmap.md` · `backlog.md` · `features.md` | Direction, gaps, and current feature status                                                                                                          |
-| `generative-status.md`                      | Completion ledger for the generative + computational lane (shipped / deferred / out-of-scope)                                                       |
-| `bases-direction.md` · `generation-direction.md` · `typed-var-declaration-proposal.md` · `plugins-direction.md` · `plugins-data-packs-prerequisites.md` | Locked direction for tables/bases, the generation/variable model (incl. the shipped `{name := expr}` typed declaration), and declarative-data-pack plugins |
-| `enhancement-research.md` · `outliner-frontier-report.md` | Inspiration catalogue + competitive-landscape snapshot (candidate material, not commitments)                          |
-| `performance.md`                            | Measured performance baseline + an embedded re-run harness                                                                                          |
+**Identity & standards (binding):**
 
+| File | What it is |
+| --- | --- |
+| `product-identity.md` | **The binding identity** — the customer (#515), the 90%-core, the belief, never-build, who it is NOT for, the competitive frame, the open "why now" question. First stop for scope/positioning calls |
+| `ux-discipline.md` | **The binding UX standard** — vocabulary, the five principles, keyboard grammar, the closed syntax inventory, pattern catalog, conformance matrix |
+| `ux-definition-of-done.md` | **The merge gate** — the checklist + the Conformance Statement process |
+| `design-language.md` | **The locked visual standard** — type roles, palettes, contrast floors, component rules, anti-decisions |
+
+**Direction (locked north stars + scope fences):**
+
+| File | What it is |
+| --- | --- |
+| `roadmap.md` | Locked decisions + the phased plan; includes the completed bases-program record |
+| `bases-direction.md` | Tables/bases doctrine + the shipped-record ledger (§4, §7b) + the recorded structural noes (§7c) |
+| `generation-direction.md` | The Perchance-style generation / random-variable model |
+| `plugins-direction.md` | Extensibility = declarative data packs only; the code-execution gate. Companion: `plugins-data-packs-prerequisites.md` |
+| `concept-guide.md` | How to add/fix an in-app concept-guide entry + the drift-guard contract |
+| `adding-an-artifact.md` | The 12-step new-artifact recipe + the step-13 UX gate |
+
+**Proposals (each carries its own status header):**
+
+| File | Status |
+| --- | --- |
+| `query-base-proposal.md` | SHIPPED in full (Phases A/B/C); retained as design rationale |
+| `saved-views-proposal.md` | COMPLETE — SV-1/SV-2 shipped, SV-3/SV-4 recorded NO |
+| `typed-var-declaration-proposal.md` | SHIPPED (Stages A + B) |
+| `brace-completion-proposal.md` | Phases 1 + 2 shipped |
+| `base-views-vision.md` | Largely delivered; retained for the binding §0 red-team corrections (the §0b thesis' canonical home is now `product-identity.md`) |
+
+**Ledgers & references:**
+
+| File | What it is |
+| --- | --- |
+| `ux-remediation.md` | Every UX non-conformance as a tracked defect (append-only record) + the syntax-sprawl guard |
+| `generative-status.md` | Completion ledger for the generative + computational lane |
+| `backlog.md` | Consolidated feature gaps with status marks |
+| `features.md` | The exhaustive engine-level feature reference (contributor-facing; the user inventory is `guide/features.md`) |
+| `performance.md` | Measured performance baseline (incl. the bases sweep) + embedded re-run harnesses |
+| `accessibility.md` | A11y sequencing, complete; retained for the durable guardrails |
+| `ux.md` | Discoverability strategy / verbosity dial (vision; the standard governs where they differ) |
+| `enhancement-research.md` · `outliner-frontier-report.md` | Inspiration catalogue + competitive snapshot (candidate material, not commitments) |
+
+(Deliberately shelved direction lives in the sibling `parked/`, currently the version-control
+pivot. Not stray; don't resurrect without sign-off.)
 
 Engineering invariants and architecture live in the root `CLAUDE.md`. (User-facing how-to-use-the-pills
 docs live in the sibling `guide/` directory, not here.)

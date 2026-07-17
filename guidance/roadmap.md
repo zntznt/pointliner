@@ -22,6 +22,12 @@ discoverability / UX strategy in `guidance/ux.md`.
    *(Supersedes the former "Direction: balance both" — which conflated build order with positioning.
    Build-order interleaving of PKM and generative features is unchanged; only the customer the pitch
    names is now decided.)*
+   **Amended (owner, 2026-07-16):** the "THE customer" phrasing over-corrected. The drive that
+   created the app is solo-RPG and will never drift — it stays the front door, the worked examples,
+   the sharpest surface. But the product itself is broader: **it enables thought in writing** —
+   free-flowing, flexible, variable thought. The pitch leads with the living/thinking document and
+   names solo-RPG as the origin and flagship proof (the README's current opening is the reference
+   execution). Canonical statement: `guidance/product-identity.md` §2.
 2. **Link scope: multi-document Zettelkasten** — a workspace of many notes/files, with
    **cross-file *and* same-file** linking on top.
 3. **Mirrors / cloned items: shelved** — hardest item, conflicts with the strict
@@ -299,6 +305,19 @@ sugar onto the persistent variable system, not the reverted scope.)
   store, no query language of its own, no DB. **"Bases as queries"** (a base VIEW whose rows
   come from the same `queryRows` core) is the planned base-form sibling, the reason the core
   is factored out. See the register (QP-1).
-- **Still out of scope:** a **saved-views database layer** (a `{query: tag=…}` store of named,
-  persisted views as a data model). The query pill and the future query-base are renderings of
-  the outline, never a second base of the data; a views DB is the thing that stays parked.
+- **Still out of scope:** a **saved-views database layer** (a store of named, persisted views
+  as a data model). Resolved in full 2026-07-16 (`guidance/saved-views-proposal.md`): one-shot
+  authored sort (SV-1) and a query base's config sort (SV-2) shipped as data operations /
+  renderings; the persisted display predicate (SV-3) and the named view library (SV-4) are
+  recorded NOes. The query pill and the query base (shipped: QP-2 Phases A, B, C) are renderings
+  of the outline, never a second base of the data; the views DB is the thing that stays out.
+
+## Bases program — complete (2026-07-16)
+
+The bases suite ran its full arc under owner direction: a 4-lane adversarial review, four
+improvement rounds (correctness; model/perf consolidation; UX coherence; measured baseline +
+two recorded structural noes in `bases-direction.md` §7c), then the below-the-line pass
+(QP-2 Phases B + C, FR-1 per-role editors, `var:` over projections, SV-1/SV-2). Every item in
+`bases-direction.md` §4's deferred list is now shipped or a recorded, deliberate no; the only
+revisit triggers are written beside their decisions (§7c, `saved-views-proposal.md`). Ledgers:
+`bases-direction.md` §4 + §7b/§7c (records), `performance.md` §Bases (the measured envelope).
