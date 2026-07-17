@@ -43,8 +43,13 @@ served structurally (bases are the richer form of RPG tables), but it is provena
 positioning — do not lead docs, copy, or pitches with the origin story (the one full
 telling is `product-identity.md` §2, which amends roadmap #515); (2) **the §0b mission test** — a feature earns its place where it composes with
 the generative/computational `{…}` layer; parity with database/PKM apps is the scope creep
-the fences exist to stop. The core, if someone deletes 90% of the features: any bullet can
-generate or compute. When a proposal leans database-parity, cite that file before building.
+the fences exist to stop; (3) **the substrate test** — before shipping a domain-shaped
+feature ask "have I reached the substrate of this tool, or am I rushing to solve a problem
+with a rigid schema?" (freeform text is primary; every structure is ONE way of organizing
+thought, never THE way; the user must always be free to slot the app in and out of their
+process). The core, if someone deletes 90% of the features: any bullet can generate or
+compute. When a proposal leans database-parity or domain-schema, cite that file before
+building.
 Do NOT rewrite the README's opening to a narrower pitch; its current shape is the
 reference execution of §2.
 
