@@ -550,6 +550,15 @@ alike — counts words in a **scope** rather than a property: `subtree` = self +
 **recurses**, unlike the direct-children property rollups), `self`, or `children`. A per-point note
 is **excluded by default** (#827 owner decision); the optional second arg `words(scope, notes)` opts
 notes back in. Reading time is composition (`{= words(subtree)/200}`); there is no separate `readtime`.
+**Query reducers generalize `count("query")` (SR-8 / #877):** `{= sum|avg|min|max("query", prop)}`
+reduces a property over a **live query set** — every point in the render node's subtree matching the
+quoted search — via `queryReduce` (`collectScoped(scope, Infinity)` + `queryMatchesNode` +
+`childPropNumber` + the shared `reduceAgg` identity semantics; `queryCountIn` is now a thin
+`queryReduce('count', …)` delegate). A **quoted** first arg is the disambiguator (the bare arm needs
+an identifier first arg), so the two coexist with no ordering dependency. An empty match reduces to
+the identity **silently** (like `count("query")`) — an empty query is a valid dynamic answer, not a
+typo signal, so it deliberately does NOT feed `firstEmptyRollup`/`aggHasSkippedValues` (those guard
+the tight child-set rollups). Works in checks for free (`evalCheck` → `expandAggExpr`).
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
@@ -777,7 +786,8 @@ odds bands building an anonymous `Yes N | No M` weighted-alt pill; the odds fiel
 Math (incl. unit conversion + date math; **declarable units** `{= convert(x, from, to)}` over a
 built-in ratio table plus doc-declared `root.units` — File → Custom units, SR-6/#875; **subtree
 aggregation** `{= sum|avg|count(prop)}` rolls up a child points' property —
-`expandAggExpr`/`aggregateChildren`, render-time, live) ·
+`expandAggExpr`/`aggregateChildren`, render-time, live; **query reducers** `{= sum|avg|min|max("query", prop)}`
+reduce a property over a live query set — `queryReduce`, the `count("query")` generalization, SR-8/#877) ·
 **Uncertainty fields / estimates** (B2, frontier F3 — first-in-class: `@estimate` or `{5 to 10}`,
 an uncertain value sampled Monte-Carlo and shown as `mean ± [p5,p95]` + a unicode sparkline; click
 to re-sample. A **separate sampler** (`sampleUncertain`/`rngFromSeed`) since a distribution can't

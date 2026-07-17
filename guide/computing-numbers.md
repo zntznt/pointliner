@@ -303,6 +303,23 @@ the long way; `{= sum(hours) * rate}` mixes a rollup with a variable.
 Numeric properties roll up; date-shaped ones roll up as epoch-days (so `max(due)` finds the latest
 deadline, wrap it in `asdate(...)` to display it as a date).
 
+**Roll up over a search, not just child position.** Quote the first argument and give a property as
+the second, and the same reducers total that property over every point matching a **live search**,
+any depth below, instead of the direct children:
+
+```
+{= sum("#task", cost)}        total the cost of everything tagged #task
+{= avg("#risk", severity)}    average a tag's severity
+{= max("due:overdue", cost)}  the priciest overdue item
+{= count("is:todo")}          how many open tasks below (count needs no property)
+```
+
+The quoted search takes all the usual [operators](links-and-references.md) (`is:todo`, `#tag`,
+`-has:owner`, `due:overdue`, and so on), so the query is the filter and the property is what you
+add up. A bare name stays the child-position rollup (`sum(cost)`), so the two never collide. An
+empty match reduces to zero (or nothing for `min`/`max`), the same as `count("...")`, since a
+search matching nothing right now is a valid, changing answer.
+
 **Count words, not properties.** The same `{= …}` form also counts prose over a **scope** instead
 of a property:
 
@@ -386,9 +403,11 @@ count("is:todo") <= 5      no more than five open tasks in this section
 **Quote the argument and `count` changes meaning**: a bare name (`count(score)`) counts children
 carrying that property, while a quoted search (`count("is:todo #urgent")`) counts every point
 below this one matching it, any depth, with all the usual operators. Existence rules fall out of
-the negation: `count("-has:owner") == 0` reads "nothing below is missing an owner". (One limit:
-the quoted search can't itself contain a `"quoted phrase"`.) The same form works in `{= …}` math
-pills for a live subtree tally.
+the negation: `count("-has:owner") == 0` reads "nothing below is missing an owner". The other
+reducers take the same quoted-search form with a property to add up, so a check can assert a
+budget over a live query: `sum("#task", cost) <= budget`, or `max("is:todo", cost) <= cap`. (One
+limit: the quoted search can't itself contain a `"quoted phrase"`.) The same forms work in `{= …}`
+math pills for a live subtree tally.
 
 The point grows a small chip: a muted **✓** when it passes, a visible flag when it **fails** or
 can't evaluate. To sweep the whole document for problems, search **`is:failing`**, which lists every

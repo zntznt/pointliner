@@ -9114,6 +9114,50 @@ test('expandAggExpr — a QUOTED count() is the query count; a bare ident stays 
   assert.equal(c.evalMath(c.expandAggExpr('count("is:todo")', null)), 0);      // node-less → 0, like the rollups
 });
 
+test('reduceAgg — shared identity semantics (SR-8)', () => {
+  assert.equal(c.reduceAgg('count', [1, 2, 3]), 3);
+  assert.equal(c.reduceAgg('sum', [1, 2, 3]), 6);
+  assert.equal(c.reduceAgg('avg', [2, 4]), 3);
+  assert.equal(c.reduceAgg('min', [5, 2, 9]), 2);
+  assert.equal(c.reduceAgg('max', [5, 2, 9]), 9);
+  assert.equal(c.reduceAgg('sum', []), 0, 'sum/avg of nothing → 0');
+  assert.equal(c.reduceAgg('avg', []), 0);
+  assert.equal(c.reduceAgg('min', []), Infinity, 'min of ∅ → +∞ (vacuously-true constraints)');
+  assert.equal(c.reduceAgg('max', []), -Infinity, 'max of ∅ → -∞');
+});
+
+test('queryReduce / expandAggExpr — reduce a property over a live query set (SR-8 / #877)', () => {
+  const tree = { id: 'qr-r', text: 'project', children: [
+    { id: 'qr-a', text: '- [ ] design #task', props: [{ key: 'cost', val: '10' }], children: [
+      { id: 'qr-a1', text: '- [ ] nested #task', props: [{ key: 'cost', val: '4' }], children: [] },  // any depth
+    ] },
+    { id: 'qr-b', text: '- [x] build #task', props: [{ key: 'cost', val: '20' }], children: [] },
+    { id: 'qr-c', text: 'note #task', children: [] },                              // matches #task but has no cost
+    { id: 'qr-d', text: 'off-topic', props: [{ key: 'cost', val: '99' }], children: [] }, // has cost but not #task
+  ] };
+  // sum/avg/min/max over the query set (#task), reading the cost prop; the non-cost and
+  // non-matching points are excluded — 10 + 4 + 20.
+  assert.equal(c.queryReduce('sum', '#task', 'cost', tree, [], {}), 34);
+  assert.equal(c.queryReduce('min', '#task', 'cost', tree, [], {}), 4);
+  assert.equal(c.queryReduce('max', '#task', 'cost', tree, [], {}), 20);
+  assert.equal(Math.round(c.queryReduce('avg', '#task', 'cost', tree, [], {}) * 100) / 100, 11.33);
+  // count still ignores the prop (cardinality of matches, incl. the no-cost one)
+  assert.equal(c.queryReduce('count', '#task', 'cost', tree, [], {}), 4);
+  // an is: filter narrows the set: only the OPEN tasks (design + nested), cost 14
+  assert.equal(c.queryReduce('sum', 'is:todo', 'cost', tree, [], {}), 14);
+  // empty query set → the reducer identity, silent like count("query")
+  assert.equal(c.queryReduce('sum', 'nomatch', 'cost', tree, [], {}), 0);
+  assert.equal(c.queryReduce('min', 'nomatch', 'cost', tree, [], {}), Infinity);
+  assert.equal(c.queryReduce('sum', '#task', 'cost', null, [], {}), 0, 'node-less → identity');
+  // end-to-end through expandAggExpr + evalMath, and composition with the bare rollup + math
+  assert.equal(c.evalMath(c.expandAggExpr('sum("#task", cost)', tree)), 34);
+  assert.equal(c.evalMath(c.expandAggExpr('max("is:todo", cost)', tree)), 10);
+  assert.equal(c.evalMath(c.expandAggExpr('sum("#task", cost) / count("#task")', tree)), 8.5);
+  // the quoted-query reducer and the bare child-prop rollup coexist unambiguously in one expr
+  // (bare sum(cost) = direct children only: 10 + 20 + 99 = 129; the nested #task cost is out of it)
+  assert.equal(c.evalMath(c.expandAggExpr('sum("#task", cost) + sum(cost)', tree)), 34 + 129);
+});
+
 test('evalCheck — structural assertions: existence and caps via count("query") (F5-lite)', () => {
   const mk = (id, checkVal, kids) => ({ id, text: 'unit',
     props: [{ key: 'check', val: checkVal }], children: kids });
