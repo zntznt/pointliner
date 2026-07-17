@@ -556,10 +556,16 @@ notes back in. Reading time is composition (`{= words(subtree)/200}`); there is 
 deliberately separate. An estimate is an uncertain expression — `lo to hi` (a 90% CI →
 lognormal, p5=lo/p95=hi; normal fallback when a bound ≤ 0), `normal(m,s)`, `uniform(lo,hi)`,
 scalars, `+ − × ÷`, and `sum(prop)`/`avg(prop)` over **children's uncertain properties** — parsed
-by `parseUncertain` (tokenizer + recursive descent; precedence loosest-first `to` < `+−` < `×÷`
-< unary < atom) into an AST that `sampleUncertain(expr, n, seed, node?)` samples into a length-`n`
+by `parseUncertain(expr, vars?)` (tokenizer + recursive descent; precedence loosest-first `to` < `+−` < `×÷`
+< unary < atom) into an AST that `sampleUncertain(expr, n, seed, node?, vars?)` samples into a length-`n`
 **array** (distributions **zip** element-wise under arithmetic; scalars broadcast; `sum/avg(prop)`
-parse each child's prop string and zip-aggregate, child-as-node so nested rollups resolve). The
+parse each child's prop string and zip-aggregate, child-as-node so nested rollups resolve). **An
+expression may reference declared variables (SR-7 / #876):** a bare word resolves against the
+threaded `vars` map (a `{k:'var'}` AST node broadcasting the numeric value like a scalar; a
+text/non-finite var fills `NaN` → `#ERR`, the type-safety contract). `vars` is the **doc-wide**
+map (`collectVars()` / render-set `globalVarMap`), the same map `promoteBraceBody` uses for every
+other var sniff, so classify/promote/render agree on which names exist; `parseUncertain(b, vars)`
+is the promotion gate, so an unknown word (`{note to self}`) still fails → stays literal. The
 record is **`{key, expr, seed}` — not the samples**: re-sampling from the seed (`rngFromSeed`,
 mulberry32) reproduces the exact distribution, so it round-trips through `_est`, a C1 snapshot
 reproduces it, and a click just re-seeds (`rerollEst`). Display is `mean ± [p5,p95]` + a
@@ -776,8 +782,10 @@ aggregation** `{= sum|avg|count(prop)}` rolls up a child points' property —
 an uncertain value sampled Monte-Carlo and shown as `mean ± [p5,p95]` + a unicode sparkline; click
 to re-sample. A **separate sampler** (`sampleUncertain`/`rngFromSeed`) since a distribution can't
 ride `evalMath`; `lo to hi`/`normal`/`uniform` + `+−×÷`, and Phase-2 `sum|avg(prop)` rolls up
-children's uncertain properties. Storage is `{key, expr, seed}` — reproducible, round-trips via
-`_est`. Cores: `parseUncertain`/`distSummary`/`sparkline`/`formatDist`/`estParts`) ·
+children's uncertain properties. **Reads declared variables** (SR-7/#876): a bound may be a
+declared var — `{cost_low to cost_high}`, `{units * (5 to 10)}` — resolved through the threaded
+doc `vars` map; a text var fails visibly. Storage is `{key, expr, seed}` — reproducible, round-trips
+via `_est`. Cores: `parseUncertain`/`distSummary`/`sparkline`/`formatDist`/`estParts`) ·
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
 Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodies —

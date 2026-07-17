@@ -256,12 +256,17 @@ deterministic / plain-text tenets. Build on demand, not on spec — these are pr
   `<_units>` OPML head element; GUIDE `custom-units`. **OUT (recorded, held):** unit-suffixed literals
   (`3mi`) — that is new syntax (P5). The `convert()` FN form is in-bounds. Was: *highest
   capability-per-risk.*
-- **SR-7 · Let estimates read variables (issue #876).** `parseUncertain`/`sampleUncAst` are a
-  second evaluator with NO `vars` param, so `{cost_low to cost_high}` is impossible and no variable
-  can hold a distribution. Small high-value: thread `collectVars()` into the sampler (a scalar var
-  broadcasts across the sample array trivially) so estimates compose with the whole variable/rollup
-  system. No new syntax; record stays `{key, expr, seed}`. Size: S (read-vars); L (full evaluator
-  unification — flag: touches evalMath's "always a NUMBER" invariant; do NOT force).
+- **SR-7 · Let estimates read variables (issue #876). SHIPPED (read-vars version).**
+  `parseUncertain`/`sampleUncAst` were a second evaluator with NO `vars` param, so
+  `{cost_low to cost_high}` was impossible. Threaded the doc `vars` map (`collectVars()` /
+  render-set `globalVarMap`) through `parseUncertain(expr, vars)` → `sampleUncAst(…, vars)` →
+  `sampleUncertain(…, vars)`, plus `estParts`/`makeEstRoll`: a bare word resolves to a declared
+  variable (a `{k:'var'}` node broadcasting the scalar; a text var → `NaN` → `#ERR`, the
+  type-safety contract). `parseUncertain(b, vars)` is the promotion gate so an unknown word stays
+  literal; the map matches `promoteBraceBody`'s global-map sniffs so classify/promote/render agree.
+  No new syntax; record stays `{key, expr, seed}`. **The L option — full evaluator unification so a
+  distribution flows through `evalMath` — remains OUT (touches the "always a NUMBER" invariant; do
+  NOT force).**
 - **SR-8 · Query reducers + shared scoped-fold (issue #877).** Only `count("query")` was
   special-cased in `expandAggExpr`; `sum/avg/min/max("query", prop)` is the missing generalization
   (reuse `queryMatchesNode` + `childPropNumber`). First extract a shared **scoped-fold**

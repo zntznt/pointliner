@@ -96,7 +96,8 @@ A live calculator that can see your outline. Math pills recompute on their own. 
   of the count unless you write `{= words(subtree, notes)}`.
   ([word counts](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
 - **Uncertain estimates.** `{5 to 10}` models a range with a little distribution sparkline, and the
-  uncertainty propagates through math. ([estimates](computing-numbers.md#uncertain-values-estimates))
+  uncertainty propagates through math. Bounds can be declared variables (`{cost_low to cost_high}`).
+  ([estimates](computing-numbers.md#uncertain-values-estimates))
 - **Self-checking outlines.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
   ([constraints](computing-numbers.md#make-the-outline-check-itself-constraints))
