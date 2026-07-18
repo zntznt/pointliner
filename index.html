@@ -4005,6 +4005,12 @@ function evalCheck(node, vars = {}, ancestors = []) {
   // (P4). Require one of > >= < <= == != ; otherwise it's an authoring error.
   if (!/(?:[<>]=?|[=!]=)/.test(raw)) return 'error';
   if (aggHasSkippedValues(node, raw)) return 'error'; // #809: a skipped non-numeric child value must never yield a silent pass
+  // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
+  // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
+  // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
+  // firstEmptyRollup guard the math pill uses; it is bare-sum/avg-only, so min/max keep their deliberate ±∞
+  // vacuously-true empty case, count keeps 0 as its honest answer, and query reducers stay silent (SR-8).
+  if (firstEmptyRollup(raw, node)) return 'error';
   const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
   // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
   // pass no `ancestors` keep the own-node-only behavior (#460) unchanged.
@@ -11226,7 +11232,7 @@ function buildCheckChip(node) {
   const prev = _checkVerdicts.get(node.id);
   _checkVerdicts.set(node.id, verdict);
   const expr = checkExprOf(node) || '';
-  const word = verdict === 'pass' ? 'passing' : verdict === 'fail' ? 'failing' : 'cannot evaluate';
+  const word = verdict === 'pass' ? 'passing' : verdict === 'fail' ? 'failing' : 'unresolvable';
   const glyph = verdict === 'pass' ? '✓' : verdict === 'fail' ? '✗' : '⚠';
   const label = verdict === 'pass' ? 'check' : verdict === 'fail' ? 'check' : 'check?';
   const chip = document.createElement('span');
