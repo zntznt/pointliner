@@ -1282,6 +1282,10 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .graph-node:focus{outline:none}
 .graph-node:focus circle{stroke-width:2.4}
 .graph-node.graph-node-broken circle{fill:color-mix(in srgb,var(--bad) 16%,var(--bg));stroke:var(--bad)}
+/* 4b: folder scope — the toggle pair in the head, and the current document's accent ring */
+.graph-scope{display:flex;gap:3px;align-items:center}
+.graph-node.graph-node-current circle{stroke-width:2.6;fill:color-mix(in srgb,var(--acc) 34%,var(--bg))}
+.graph-node.graph-node-current text{font-weight:600}
 .graph-node text{fill:var(--fg);font-size:11px;font-family:var(--font);pointer-events:none;dominant-baseline:middle}
 .graph-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--muted);text-align:center;padding:24px}
 .graph-empty-title{font-size:14px;font-weight:600;color:var(--fg)}
@@ -20256,6 +20260,43 @@ function graphModel(links, titleOf, brokenSet) {
   return { nodes, edges };
 }
 
+// 4b (cross-document-direction.md): the DOC-LEVEL folder graph — documents as nodes, one
+// undirected edge per linked doc pair, weighted by how many cross-doc links join them.
+// Deliberately doc-level: an all-points folder graph is rejected on measurement (the force
+// layout is O(N²)·iterations — 21 s at 2,000 linked points), while 10–200 doc nodes are
+// trivial. Only docs PARTICIPATING in at least one cross-doc link appear (graphModel's
+// web-not-a-scatter rule); a link to a doc absent from the folder still shows, flagged
+// broken (P4 — a dangling document is visible, not silently dropped). Same node/edge shape
+// as graphModel so graphLayout runs unchanged; `weight` rides each edge for stroke width.
+// nameGetter: docId -> file name (or undefined when missing) — Map.get-shaped. Pure.
+function docGraphModel(outgoing, nameOf, currentDocId) {
+  const weights = new Map();            // "a\x00b" (a<b) -> cross-doc link count
+  const deg = new Map();                // docId -> total cross-doc links touching it
+  for (const l of outgoing || []) {
+    if (!l || !l.srcDocId || !l.dstDocId || l.srcDocId === l.dstDocId) continue;
+    const [a, b] = l.srcDocId < l.dstDocId ? [l.srcDocId, l.dstDocId] : [l.dstDocId, l.srcDocId];
+    const key = a + '\x00' + b;
+    weights.set(key, (weights.get(key) || 0) + 1);
+    deg.set(l.srcDocId, (deg.get(l.srcDocId) || 0) + 1);
+    deg.set(l.dstDocId, (deg.get(l.dstDocId) || 0) + 1);
+  }
+  const edges = [...weights.entries()].map(([key, weight]) => {
+    const [a, b] = key.split('\x00');
+    return { a, b, weight };
+  });
+  const nodes = [...deg.keys()].map(id => {
+    const name = nameOf(id);
+    return {
+      id,
+      title: (name ? displayName(name) : '') || '(missing document)',
+      deg: deg.get(id),
+      current: id === currentDocId,
+      broken: !name,                    // linked-to doc not in the folder → dangling
+    };
+  });
+  return { nodes, edges };
+}
+
 // Deterministic force-directed layout (Fruchterman-Reingold, seeded). PURE: the same
 // model always lays out to the same coordinates, because the initial placement is a
 // hash of each node id (never Math.random, which is unavailable in the test realm and
@@ -29832,6 +29873,7 @@ document.getElementById('agenda-strip').addEventListener('keydown', e => {
 // interaction. Click or Enter/Space a node to zoom the outline to that point.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 let graphOpen = false, graphReturnFocus = null;
+let graphScope = 'doc';   // 4b: 'doc' | 'folder' — session-only; the panel opens on the document view
 function openGraph() {
   const back = document.getElementById('graph-back');
   const panel = document.getElementById('graph-panel');
@@ -29857,16 +29899,39 @@ function toggleGraph() { if (graphOpen) closeGraph(); else openGraph(); }
 
 function renderGraph(panel) {
   panel.innerHTML = '';
-  // header: title, live count, close
+  // 4b: the Folder scope is offered only when the folder actually has 2+ indexed docs —
+  // a single-file session keeps the exact pre-4b panel (the toggle would be noise).
+  const folderable = (workspaceIndex?.nameByDocId?.size || 0) > 1;
+  if (!folderable) graphScope = 'doc';
+  const folder = graphScope === 'folder';
+  // header: title, scope toggle (folder sessions), live count, close
   const head = document.createElement('div'); head.className = 'graph-head';
   const ttl = document.createElement('div'); ttl.className = 'graph-title'; ttl.textContent = 'Link graph';
-  const model = graphModel(collectLinks(), id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; });
+  head.appendChild(ttl);
+  if (folderable) {
+    const scope = document.createElement('div'); scope.className = 'graph-scope';
+    for (const [key, lbl] of [['doc', 'This document'], ['folder', 'Folder']]) {
+      const b = document.createElement('button'); b.type = 'button';
+      b.className = 'ag-toggle ag-view' + (graphScope === key ? ' on' : '');
+      b.textContent = lbl;
+      b.setAttribute('aria-pressed', graphScope === key ? 'true' : 'false');
+      b.setAttribute('aria-label', key === 'doc' ? 'Show links within this document' : 'Show links between the folder’s documents');
+      b.addEventListener('click', () => { if (graphScope !== key) { graphScope = key; renderGraph(panel); panel.querySelector('.graph-scope .on')?.focus(); } });
+      scope.appendChild(b);
+    }
+    head.appendChild(scope);
+  }
+  const model = folder
+    ? docGraphModel(workspaceIndex.outgoing, id => workspaceIndex.nameByDocId.get(id), root.docId || '')
+    : graphModel(collectLinks(), id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; });
   const cnt = document.createElement('div'); cnt.className = 'graph-count';
-  cnt.textContent = model.nodes.length ? `${model.nodes.length} points, ${model.edges.length} links` : '';
+  cnt.textContent = !model.nodes.length ? ''
+    : folder ? `${model.nodes.length} documents, ${model.edges.length} connections`
+    : `${model.nodes.length} points, ${model.edges.length} links`;
   const close = document.createElement('button'); close.type = 'button'; close.className = 'graph-close';
   close.setAttribute('aria-label', 'Close link graph'); setIcon(close, { fa: 'fa-solid fa-xmark', fb: '×' });
   close.addEventListener('click', closeGraph);
-  head.append(ttl, cnt, close);
+  head.append(cnt, close);
   panel.appendChild(head);
 
   const canvas = document.createElement('div'); canvas.className = 'graph-canvas';
@@ -29874,9 +29939,12 @@ function renderGraph(panel) {
 
   if (!model.nodes.length) {
     const empty = document.createElement('div'); empty.className = 'graph-empty';
-    const et = document.createElement('div'); et.className = 'graph-empty-title'; et.textContent = 'No links yet';
+    const et = document.createElement('div'); et.className = 'graph-empty-title';
+    et.textContent = folder ? 'No links between documents yet' : 'No links yet';
     const eh = document.createElement('div'); eh.className = 'graph-empty-hint';
-    eh.textContent = 'Link points together and they appear here as a web you can browse. Type [[ inside a point to link it to another, then reopen the graph.';
+    eh.textContent = folder
+      ? 'Link a point in one document to a point in another and the documents appear here as a web. Type [[ inside a point; the picker searches the whole folder.'
+      : 'Link points together and they appear here as a web you can browse. Type [[ inside a point to link it to another, then reopen the graph.';
     empty.append(et, eh); canvas.appendChild(empty);
     return;
   }
@@ -29892,7 +29960,8 @@ function renderGraph(panel) {
   svg.setAttribute('role', 'group');
   svg.setAttribute('aria-label', `Link graph: ${model.nodes.length} points`);
 
-  // edges first (under the nodes)
+  // edges first (under the nodes). Folder edges carry a weight (cross-doc link count):
+  // stroke width scales gently with it, and a hover <title> names the exact count.
   for (const e of model.edges) {
     const pa = pos.get(e.a), pb = pos.get(e.b);
     if (!pa || !pb) continue;
@@ -29901,21 +29970,35 @@ function renderGraph(panel) {
     ln.setAttribute('x2', pb.x); ln.setAttribute('y2', pb.y);
     const na = model.nodes.find(n => n.id === e.a), nb = model.nodes.find(n => n.id === e.b);
     ln.setAttribute('class', 'graph-edge' + ((na?.broken || nb?.broken) ? ' graph-edge-broken' : ''));
+    if (folder && e.weight > 1) ln.setAttribute('stroke-width', Math.min(4, 1.2 + Math.log2(e.weight)));
+    if (folder) {
+      const tip = document.createElementNS(SVG_NS, 'title');
+      tip.textContent = `${e.weight} link${e.weight === 1 ? '' : 's'} between ${na?.title || e.a} and ${nb?.title || e.b}`;
+      ln.appendChild(tip);
+    }
     svg.appendChild(ln);
   }
 
-  // nodes: radius scales gently with degree; label truncated to keep the web legible
+  // nodes: radius scales gently with degree; label truncated to keep the web legible.
+  // Folder mode: a node is a DOCUMENT — activating it opens that document (dirty-guarded
+  // switch); the current document wears an accent ring so "you are here" is visible.
   const maxDeg = Math.max(...model.nodes.map(n => n.deg), 1);
-  const go = (id) => { closeGraph(); zoomInto(id); };
+  const go = folder
+    ? (id) => { const name = workspaceIndex?.nameByDocId?.get(id); if (!name) return; closeGraph(); switchWorkspaceDoc(name); }
+    : (id) => { closeGraph(); zoomInto(id); };
   for (const n of model.nodes) {
     const p = pos.get(n.id); if (!p) continue;
     const g = document.createElementNS(SVG_NS, 'g');
-    g.setAttribute('class', 'graph-node' + (n.broken ? ' graph-node-broken' : ''));
+    g.setAttribute('class', 'graph-node' + (n.broken ? ' graph-node-broken' : '') + (n.current ? ' graph-node-current' : ''));
     g.setAttribute('transform', `translate(${p.x},${p.y})`);
     g.setAttribute('tabindex', '0');
     g.setAttribute('role', 'button');
     const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title;
-    g.setAttribute('aria-label', (n.broken ? 'Broken link target' : label) + `, ${n.deg} link${n.deg === 1 ? '' : 's'}. Activate to open.`);
+    g.setAttribute('aria-label',
+      (n.broken ? (folder ? 'Missing document' : 'Broken link target') : label)
+      + (n.current ? ' (current document)' : '')
+      + `, ${n.deg} link${n.deg === 1 ? '' : 's'}.`
+      + (n.broken ? '' : folder ? ' Activate to open the document.' : ' Activate to open.'));
     const r = 4 + Math.round((n.deg / maxDeg) * 7);
     const c = document.createElementNS(SVG_NS, 'circle');
     c.setAttribute('r', r);
@@ -31454,13 +31537,14 @@ const GUIDE = [
 
   { id:'link-graph', cat:'links',
     title:'Link graph',
-    body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long project or a big set of notes: the source everything cites, the person who keeps recurring, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.",
+    body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long project or a big set of notes: the source everything cites, the person who keeps recurring, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.\n\nWith a connected folder of two or more documents, a Folder view joins the panel: each document becomes one dot, joined to the documents it links to, with a thicker line where more links run between them. Your current document wears a ring, and clicking a document opens it. It is the map of your notebook, one level up from the map of a document.",
     related:['point-links','backlinks','broken-links'],
     examples:[
       { syn:'Toolbar graph button', desc:'open the link graph (the linked-dots icon)' },
       { syn:'Click a dot',          desc:'jump to that point in the document' },
       { syn:'A larger dot',         desc:'a hub: a point many others link to' },
       { syn:'A red dot',            desc:'a link whose target point was deleted' },
+      { syn:'Folder',               desc:'documents as dots; click one to open it' },
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across documents',

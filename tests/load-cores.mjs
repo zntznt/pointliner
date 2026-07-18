@@ -175,6 +175,7 @@ export function loadCores() {
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'renderPosVarMaps',   // #767 positional per-pill var maps
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
+    'docGraphModel',                                                   // 4b: the doc-level folder graph
     'guideBodyHtml', 'shortcutsAllBody',   // #598/#599 guide body transform + the one-page shortcuts builder
     'timelineModel',   // #516 timeline pure core
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
