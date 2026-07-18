@@ -159,15 +159,17 @@ Use **estimates** for the uncertain pieces and let them roll up. Make each task 
 effort: 3 to 8       (on each child task)
 ```
 
-On the parent:
+On the parent, add the roll-up through **`@` then Estimate** and type `sum(effort)` in the dialog
+(this roll-up form is dialog-made: a bare `{sum(effort)}` typed inline will not promote to a pill,
+only the `{lo to hi}` constructors do). You get:
 
 ```
-Total effort: {sum(effort)} days
+Total effort: sum(effort) → mean with a low-to-high range
 ```
 
 The parent shows the **mean with its low-to-high range** and a sparkline: the whole project's
-uncertainty, composed from the parts. Click to re-sample. (Build the children's estimates with
-`@` → Estimate if you prefer the dialog.)
+uncertainty, composed from the parts. Click to re-sample. (Build each child's `effort` estimate the
+same way, `@` → Estimate.)
 
 A standalone Fermi line works too:
 

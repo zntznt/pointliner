@@ -377,7 +377,9 @@ so it survives save/reload and exports.
 **Rolling up estimates:** like `sum(cost)`, an estimate can aggregate **children's uncertain
 properties** with `sum(effort)` / `avg(effort)` over child points whose `effort` property is itself an
 estimate. That's how you Fermi-estimate a whole project from uncertain parts (see the
-[Cookbook](cookbook.md)).
+[Cookbook](cookbook.md)). Author this roll-up through **`@` then Estimate** (type `sum(effort)` in the
+dialog): unlike the `{lo to hi}` constructors, a bare `{sum(effort)}` you type inline does **not**
+promote to an estimate pill, so the roll-up is dialog-made.
 
 > Estimates are a **separate engine** from `{= …}` math (a distribution isn't a single number), so
 > you can't put an estimate inside a `{= …}` expression; it fails visibly if you try.

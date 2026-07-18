@@ -28,10 +28,10 @@ focus) reveals it. Click again to hide it. Type **`/secret`** to start one from 
 
 It is good for two things:
 
-- **Sharing.** Hand someone a self-contained copy of a document and your GM notes or answers stay
-  covered until they look.
-- **Blinding yourself.** Write down an oracle result, a clue or a twist you do not want to see yet,
-  and reveal it only when the story reaches it.
+- **Sharing.** Hand someone a self-contained copy of a document and your private notes or answers
+  stay covered until they look.
+- **Blinding yourself.** Write down an answer, a clue or a twist you do not want to see yet, and
+  reveal it only when you reach it.
 
 A spoiler can span several lines (one `>!` per line), and pills or links inside it still work once
 revealed. Revealing is not saved, so a spoiler is blurred again the next time the point is drawn. In

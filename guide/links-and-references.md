@@ -41,14 +41,14 @@ have open.
 ## Link graph
 
 See the whole document as a **web** instead of a list, so you can find something by looking rather than
-by naming it. This is the recognition half of a large campaign or a big set of notes: the town near
-the coast, the character who betrayed you, the note everything else points back to, all findable at a
-glance instead of only by an exact search.
+by naming it. This is the recognition half of a large project or a big set of notes: the source
+everything cites, the person who keeps recurring, the note everything else points back to, all findable
+at a glance instead of only by an exact search.
 
 Open it from the **graph button** in the toolbar (the linked-dots icon). Every point that links to
 another appears as a dot, joined by a line to what it connects to. The most-linked points are drawn
-larger, so the hubs of your world stand out. Click any dot to jump straight to that point in the
-outline; press `Esc` (or the ✕) to close and return to where you were.
+larger, so the hubs stand out. Click any dot to jump straight to that point in the document; press
+`Esc` (or the ✕) to close and return to where you were.
 
 A point that links to a **deleted** target shows as a red dot, so a dangling reference is visible
 rather than silently missing. Points with no links do not appear, keeping the graph a web rather than a
