@@ -483,7 +483,16 @@ when proposing features:
   styling (`checkInlineHighlight`), staying editable text so you can keep tweaking
   it. This is the same mechanism as the unfold model above: in edit mode artifacts
   are grammar text, out of edit mode they are pills. An invalid or unknown body is
-  left as literal text — that's the escape hatch.
+  left as literal text — that's the escape hatch. **A body that *reads* as an attempted
+  pill but can't promote no longer fails silently in display mode** (#888): `mdInline` flags
+  any leftover `{…}` that `classifyBraceBody` rules `'invalid'` (never `'literal'` prose)
+  with a quiet `.brace-attempt` cue + a `braceAttemptReason` tooltip — the render-side twin
+  of the edit-mode `gr-bad` marker, so a `{rumor}` / `{2d6x}` that stayed text on load says
+  why. **A deterministically-erroring `{= …}` DOES promote** (#889): a `{= convert(10, km, kg)}`
+  whose `expandAggExpr` pre-pass introduces a `#ERR` (cross-dimension convert — no answer) is a
+  real calculation that errors, so `classifyBraceBody`/`makeMathResult` (lockstep via
+  `mathPrepassErrs`) build the math pill and it renders a loud `#ERR (convert)` on every path,
+  not raw braces on load.
 
   Dice, roll tables, and markov chains all resolve through this one engine: a
   roll table is literally a one-rule grammar (weighted alternation — the collapse
@@ -799,7 +808,8 @@ via `_est`. Cores: `parseUncertain`/`distSummary`/`sparkline`/`formatDist`/`estP
 Variables (two value types: formula, and **random pick** — a frozen, re-rollable grammar
 pick; the Perchance-style generation model, see `guidance/generation-direction.md`) ·
 Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodies —
-`classifyBraceBody` keeps edit-mode styling and exit promotion in agreement) ·
+`classifyBraceBody` keeps edit-mode styling and exit promotion in agreement; and a display-mode
+`.brace-attempt` cue for an invalid `{…}` that stayed text on load, #888) ·
 Footnotes · Hashtags (incl. the `#` tag picker sourced from `collectTags`) ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
 Node links (same-doc **and cross-document** `[[docId#nodeId|label]]`, incl. live-title "mirror",

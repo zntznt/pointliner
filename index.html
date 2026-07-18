@@ -854,6 +854,10 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* grammar source, shown while editing so {…} artifacts read as editable text */
 .gr-src{font-family:var(--mono);font-size:.92em;background:color-mix(in srgb,var(--acc) 12%,var(--cbg));color:var(--acc);border-radius:var(--r-sm);padding:.5px 3px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .gr-src.gr-bad{background:color-mix(in srgb,var(--warn) 13%,var(--cbg));color:var(--warn);text-decoration:underline dotted;text-underline-offset:2px}
+/* display-mode "did not become a pill" cue: a {…} that classified as an attempted-but-broken
+   pill. Deliberately quiet (a faint dotted underline, muted ink, help cursor) — a hint, not an
+   alarm; the reason lives in the title/aria. The render-side twin of .gr-src.gr-bad. */
+.brace-attempt{color:var(--muted);text-decoration:underline dotted color-mix(in srgb,var(--warn) 60%,transparent);text-underline-offset:2px;cursor:help}
 /* shorthand live-preview tooltip (UXP-7) */
 #brace-preview{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);box-shadow:var(--sh-1);padding:3px 8px;font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none}
 #brace-preview.on{display:block}
@@ -3766,6 +3770,20 @@ function expandAggExpr(expr, node, vars = null) {
   return e;
 }
 
+// #889: did the expandAggExpr pre-pass INTRODUCE a deterministic #ERR into an expression that
+// did not already carry the sentinel? That happens when a cross-dimension convert() (a length
+// to a mass) has no answer, so replaceConvert substitutes #ERR. This is the signal that a
+// {= …} is a REAL calculation that errors — it should promote to a loud #ERR pill on every
+// path (the doc-promised behavior), distinct from prose that merely is not math (stays literal).
+// The `!raw.includes('#ERR')` guard keeps a body that literally typed the sentinel out of the pill
+// path. Pure; classifyBraceBody + makeMathResult call it so classify and promote agree (lockstep).
+function mathPrepassErrs(expr) {
+  const raw = String(expr || '');
+  if (!raw || raw.includes('#ERR')) return false;
+  const pre = expandAggExpr(raw, null);
+  return typeof pre === 'string' && pre.includes('#ERR');
+}
+
 // #557: the prop name of the FIRST sum/avg rollup in `expr` whose scope matched ZERO values, or
 // null. A sum/avg of nothing is 0, pixel-identical to a genuine computed 0, so a pill pointed at
 // the wrong subtree (or a typo'd prop) shows a confident wrong number. count() is excluded (0 is
@@ -6203,6 +6221,22 @@ function mdInline(s) {
     // beside it is exact, so "8.5 of 12" matches what the pill shows).
     return stash(`<span class="meter${full}" aria-label="Meter, ${formatMathResult(r.value)} of ${formatMathResult(r.max)}">${formatMeter(r.value, r.max)}</span>`);
   });
+  // "Did not become a pill" cue (P4). Any {…} still literal HERE never promoted: every valid
+  // artifact was rewritten to a [[type:key]] token (and stashed) on exit/load before this render.
+  // Flag only the bodies that CLASSIFY 'invalid' (an attempted-but-broken pill: {rumor}, {2d6x},
+  // {= convert(10, km, kg)}), never 'literal' prose braces ({note to self}, {a, b}). This is the
+  // render-side twin of the edit-mode gr-bad marker (a faint dotted underline + a title/aria that
+  // says why), so a silent "I typed a pill and got plain text" failure is no longer silent.
+  if (s.indexOf('{') >= 0) {
+    const braceRules = collectRules();
+    const braceVars = globalVarMap || collectVars();
+    s = s.replace(/\{([^{}]+)\}/g, (m, body) => {
+      if (classifyBraceBody(body, braceRules, braceVars) !== 'invalid') return m;   // 'literal'/'artifact' untouched
+      const why = braceAttemptReason(body, braceRules, braceVars);
+      // m is already &<>-escaped by mdInline's top pass; escQ the reason (it may echo user text).
+      return stash(`<span class="brace-attempt" title="${escQ(why)}" aria-label="${escQ('Did not become a pill. ' + why)}">${m}</span>`);
+    });
+  }
   s = mdEmph(s);
   // emoji shortcodes
   s = s.replace(/:([a-z0-9_+-]+):/gi, (m, name) => EMOJI[name.toLowerCase()] || m);
@@ -6957,6 +6991,10 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
   // crossing the boundary reads as 'estimate', not 'bad ref' (the `to` looks like
   // an unknown name) or a bare syntax error. Same sniff as estParts.
   if ((/\bto\b/i.test(s) && /\d/.test(s)) || /\b(?:normal|uniform)\s*\(/i.test(s)) return 'estimate';
+  // A #ERR sentinel survived the expandAggExpr pre-pass — a deterministic conversion failure
+  // (cross-dimension convert(), #889). Name it precisely so the pill does not blame a missing
+  // variable (km/kg read as unknown names). Checked before the identifier scan for that reason.
+  if (s.includes('#ERR')) return 'convert';
   const re = /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*/g;   // a dotted name (variable-base projection) is ONE identifier
   let m, sawNonNumeric = false, sawBadRef = false;
   while ((m = re.exec(s)) !== null) {
@@ -6977,6 +7015,7 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
 // for a generic/unknown code (the caller supplies its own "syntax error" fallback).
 function mathReasonPhrase(why) {
   return why === 'estimate'    ? 'an estimate like 5 to 10, which works on its own but not inside a math formula or check'
+       : why === 'convert'     ? 'a conversion between two different kinds of units (like a length and a mass), which has no answer'
        : why === 'bad ref'     ? 'a name with no value here; declare it as a variable or add it as a property'
        : why === 'non-numeric' ? 'a value that is not a number (a word or random pick can\'t be used in math)'
        : why === 'cycle'       ? 'a loop where a value depends on itself'
@@ -15108,7 +15147,11 @@ function classifyBraceBody(body, rules, vars) {
   if (isQuotedLiteral(body)) return 'literal';
   if (body[0] === '=') {                                                // {= expr}
     const expr = body.slice(1).trim();
-    return expr && evalMath(expandAggExpr(expr, null), vars) !== null ? 'artifact' : 'invalid';
+    if (!expr) return 'invalid';
+    if (evalMath(expandAggExpr(expr, null), vars) !== null) return 'artifact';
+    // #889: a deterministic conversion error (cross-dimension convert → #ERR from the pre-pass) is a
+    // real calculation that errors → promote to a loud #ERR pill, not raw-braces prose on load.
+    return mathPrepassErrs(expr) ? 'artifact' : 'invalid';
   }
   const decl = parseVarDecl(body);                                     // {name := expr}
   if (decl) {
@@ -15176,6 +15219,30 @@ function classifyBraceBody(body, rules, vars) {
     return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
   }
   return diceish ? 'invalid' : 'literal'; // dice-looking but unparseable → attempted roll
+}
+
+// A short, human reason a {body} that CLASSIFIES 'invalid' will not become a pill — the tooltip
+// for the display-mode .brace-attempt cue (the render-side twin of the edit-mode gr-bad marker).
+// Only ever called on bodies classifyBraceBody already ruled 'invalid', so it explains a known
+// attempt, never prose. AP-style copy (no em dashes). Pure + Node-testable.
+function braceAttemptReason(body, rules, vars) {
+  body = (body || '').trim();
+  if (body[0] === '=') {                                                // {= expr}
+    const phrase = mathReasonPhrase(mathErrorReason(body.slice(1).trim(), vars));
+    return phrase ? 'This calculation uses ' + phrase + '.'
+                  : 'This calculation could not be evaluated. Check the formula.';
+  }
+  const mp = modParts(body);                                           // {beast.cap} with no such rule/var
+  if (mp && !/^\d+$/.test(mp.base)) {
+    return 'No rule or variable named "' + mp.base + '" to build this from.';
+  }
+  if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
+    return 'No rule or variable named "' + body + '" is defined. Declare it, or wrap it in backticks to keep it as text.';
+  }
+  if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {                      // {2d6x} — dice-looking
+    return 'This looks like a dice roll but could not be read. Try a form like 2d6 or d20+3.';
+  }
+  return 'This looks like a pill but could not be created. Check the syntax, or wrap it in backticks to keep it as text.';
 }
 
 // Would a {body} promote to an artifact pill on exit? (Thin doc-context wrapper —
@@ -22289,7 +22356,14 @@ function makeMathResult(expr, scope = null) {
   // {= STR + 2} pill on a point that only sees STR through a prop / an ancestor still promotes
   // instead of staying raw text — parity with how renderMathPill will evaluate it.
   const v = evalMath(expandAggExpr(expr, null), scope || collectVars());
-  if (v === null) return null;
+  if (v === null) {
+    // #889: a deterministic conversion error (cross-dimension convert) still creates the pill so it
+    // renders a loud #ERR on every path (renderMathPill recomputes and surfaces #ERR with its reason);
+    // a plain parse failure (prose like {= not math}) returns null and stays literal. Lockstep with
+    // classifyBraceBody's {= } arm via the shared mathPrepassErrs.
+    if (mathPrepassErrs(expr)) return { key: mathKey(), expr, result: '#ERR', fmt: undefined };
+    return null;
+  }
   return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isMoonExpr(expr) ? 'moon' : isDateExpr(expr) ? 'date' : undefined };
 }
 
