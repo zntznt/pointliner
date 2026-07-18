@@ -8891,6 +8891,35 @@ test('#557 renderMathPill wires the empty-rollup "nothing matched" state (src pi
   assert.ok(_src.includes('No ${emptyProp} below this point'), 'the empty-rollup hint (naming the prop) is missing');
 });
 
+test('value-only math pill (m.bare): render, dialog toggle, edit round-trip, and reusable checkbox field (src pins)', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  // the bare branch renders ONLY the value (the math-bare class), and it sits AFTER the #ERR and
+  // empty-rollup returns so a failure can never hide behind a bare number.
+  assert.ok(rmp.includes('if (m.bare)'), 'renderMathPill must have a value-only branch');
+  assert.ok(rmp.includes('math-bare'), 'the value-only pill class is missing');
+  assert.ok(rmp.indexOf('math-err') < rmp.indexOf('if (m.bare)'), 'bare must come after the #ERR branch (a failure stays loud)');
+  assert.ok(rmp.indexOf('firstEmptyRollup') < rmp.indexOf('if (m.bare)'), 'bare must come after the empty-rollup branch');
+  // the bare pill still names the full expression for assistive tech and keeps click-to-edit
+  const bareChunk = rmp.slice(rmp.indexOf('if (m.bare)'), rmp.indexOf('if (m.bare)') + 600);
+  assert.ok(/aria-label="Math \$\{escQ\(m\.expr\)\}/.test(bareChunk), 'the bare pill aria-label must still carry the expression');
+  assert.ok(bareChunk.includes('math-edit'), 'the bare pill keeps its edit affordance');
+
+  // the math dialog offers the toggle and threads it onto the record only when on (records stay lean)
+  const omd = fnBody(_src, 'openMathDialog');
+  assert.ok(omd.includes("type: 'checkbox'") && omd.includes("key: 'bare'"), 'the math dialog is missing the value-only checkbox field');
+  assert.ok(omd.includes('if (v.bare) roll.bare = true'), 'the dialog must set bare only when checked');
+  // the live preview reflects the toggle
+  assert.ok(omd.includes('bare: !!(all && all.bare)'), 'the dialog preview must reflect the value-only toggle');
+  // edit reflects the toggle both ways (set when on, cleared when off)
+  const em = fnBody(_src, 'editMath');
+  assert.ok(em.includes('if (roll.bare) m.bare = true; else delete m.bare'), 'editMath must reflect the toggle both directions');
+
+  // openInsertDialog gained a reusable checkbox field kind, read as .checked (not .value) in vals()
+  const oid = fnBody(_src, 'openInsertDialog');
+  assert.ok(oid.includes("f.type === 'checkbox'"), 'openInsertDialog is missing the checkbox field kind');
+  assert.ok(oid.includes("inputs[k].type === 'checkbox' ? inputs[k].checked"), 'vals() must read a checkbox as .checked');
+});
+
 // ── outline constraints / lint (F2) ─────────────────────────────────────────
 // A reserved `check` property carries an evalMath boolean over the point + its
 // direct children (B1 aggregation) + the point's own numeric props. evalCheck →

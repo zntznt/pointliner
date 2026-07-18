@@ -84,6 +84,9 @@ A live calculator that can see your document. Math pills recompute on their own.
 
 - **Expressions.** `{= 2 * 19}` shows **38**; the usual arithmetic, powers, roots, functions.
   ([expressions](computing-numbers.md#expressions))
+- **Show just the value.** Any math pill can render only its result (no formula), so a number reads
+  like part of a heading or sentence. Open the pill and check **Show value only**.
+  ([show just the value](computing-numbers.md#show-just-the-value))
 - **Logic.** Combine comparisons with `and(…)` / `or(…)` / `not(x)`; one check can assert several
   rules at once. ([functions](computing-numbers.md#functions))
 - **Units and dates.** Convert units (`{= convert(10, km, mi)}` or `{= c2f(20)}`), and declare your

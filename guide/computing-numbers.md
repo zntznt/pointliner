@@ -27,6 +27,16 @@ Ordinary arithmetic, the operators you'd expect:
 Precedence runs the usual way: `^` before `× ÷ %` before `+ −`, with parentheses to override.
 You can use `×` `÷` `−` and `√` if you like typing them; `pi`, `e`, `tau` are built in.
 
+### Show just the value
+
+By default a math pill shows its recipe and its result together, like `sum(cost) = 70000`, so you can
+read the calculation at a glance. Sometimes you want only the number, so it reads like part of the
+sentence: a live word count in a chapter heading, a total in a title. Open the pill (click it, or its
+edit pencil) and check **Show value only** in the dialog. The pill then renders just the result,
+chrome-free, blending into the surrounding text. The formula is not lost: it stays in the point and
+comes back the moment you edit the pill again. A pill that cannot compute still shows its loud error,
+so a failure never hides behind a bare number.
+
 ---
 
 ## Functions
