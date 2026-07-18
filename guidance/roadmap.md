@@ -231,15 +231,15 @@ mirrors/archive stay shelved.
 ---
 
 ## Open questions to resolve as we go
-- Confirm the two foundation defaults above (global addressing, in-memory index).
+- ~~Confirm the two foundation defaults above (global addressing, in-memory index).~~ **Resolved:** both shipped (cross-doc `docId` addressing + the in-memory workspace index).
 - Phase 1 fallback UX: how gracefully does the app degrade for non-Chromium users — hide the
-  workspace UI entirely, or show it disabled with an explanation?
+  workspace UI entirely, or show it disabled with an explanation? **Resolved:** a non-Chromium invite is shown (the workspace UI stays visible with an explanation).
 - ~~Link display: how does a `[[node]]` link render (title snapshot vs live title) and behave on
   click (zoom in current view vs open the target doc)?~~ **Resolved for same-document:** live
   title (`[[#id|]]`), fixed caption (`[[#id|text]]`), or full content mirror (empty label);
   click zooms in the current view. The cross-doc half (open the target doc?) re-opens with
   Phase 2 step 5.
-- Where do these docs live long-term — alongside `CLAUDE.md` in the repo, or separate?
+- ~~Where do these docs live long-term — alongside `CLAUDE.md` in the repo, or separate?~~ **Resolved:** they live in `guidance/` (dev-facing steering docs), separate from the user-facing `guide/`.
 
 ---
 

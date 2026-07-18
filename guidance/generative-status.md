@@ -23,6 +23,18 @@ counts), the F5-lite `count("query")` structural checks (#577), and the #574 chi
 fix. The completeness claim stands: every addition was a new name or a recorded sub-form, no new
 delimiter. Rows below are struck/rewritten where those changes landed.
 
+**2026-07-17 addendum (the Group-B steering ships):** three more additions landed, each inside the
+same no-new-delimiter charter — the completeness claim still holds. (1) **Declarable units** (SR-6 /
+#875): `{= convert(x, from, to)}` over a built-in ratio table plus a doc-declared `root.units`
+(File → Custom units) — substituted to a number in the `expandAggExpr` pre-pass (`replaceConvert`),
+so `evalMath` stays number-only, the `sum(prop)` rollup model; a new FN-shaped name, not a unit-suffix
+sigil. (2) **Estimates read declared variables** (SR-7 / #876): the B2 sampler now threads the doc
+`vars` map (`parseUncertain(expr, vars)`/`sampleUncertain(…, vars)`), so `{cost_low to cost_high}`
+resolves declared bounds; no new syntax, record stays `{key, expr, seed}`. (3) **Query reducers**
+(SR-8 / #877): `{= sum|avg|min|max("query", prop)}` generalizes `count("query")` — reduce a property
+over a live query set (`queryReduce`/`reduceAgg`), the quoted-first-arg convention that already
+distinguished `count("query")`. Rows below are updated where these landed.
+
 ## Shipped (the engine, end to end)
 
 **Engine 1 — generative / random (`{…}` grammar + dice/markov):**
@@ -44,18 +56,24 @@ delimiter. Rows below are struck/rewritten where those changes landed.
 - Arithmetic/precedence, comparisons, ternary/`if`, constants (`pi`/`e`/`tau`/`today`).
 - **Logic** (#548): `and(…)`/`or(…)` (variadic beside `min`/`max`, 0/1 over nonzero-is-true,
   NaN-safe) + `not(x)` — one compound `check` asserts several rules.
-- Functions in `FN1`/`FN2`/`FN3`: math, **unit conversions** (`from2to`), **date math**
+- Functions in `FN1`/`FN2`/`FN3`: math, **unit conversions** (fixed `from2to` pairs **plus the
+  declarable `{= convert(x, from, to)}`** table — built-in ratios + doc-declared `root.units`, SR-6/#875,
+  substituted via `replaceConvert` so `evalMath` stays number-only), **date math**
   (`date`/`year`/`month`/`day`/`weekday`/`quarter`, plus the #554 menu:
   `weeknum`/`eom`/`age`/`addmonths`/`workdaysbetween`), and the utility helpers
   (`daysuntil`/`daysbetween`/`clamp`/`pctof`/`pctchange`/`gcd`/`lcm`/`roundto`, variadic `avg`).
 - **Subtree aggregation** (B1): `{= sum|avg|count|min|max(prop)}` over direct children — render-time,
-  live; numeric **and date-shaped** props (epoch-days), so F2 date-range checks compute. The QUOTED
-  overload `count("query")` (F5-lite, #577) counts matching descendants by the same substitution.
+  live; numeric **and date-shaped** props (epoch-days), so F2 date-range checks compute. Two QUOTED
+  overloads reduce over a **live query set** by the same substitution: `count("query")` (F5-lite, #577)
+  and the generalized `{= sum|avg|min|max("query", prop)}` reducers (SR-8/#877, `queryReduce`/`reduceAgg`).
 
 **Engine 3 — uncertainty sampler (B2, frontier F3, first-in-class):**
 - The `est` artifact: `lo to hi` / `normal` / `uniform` / `+−×÷`, Phase-2 `sum|avg(prop)` tree rollup;
   mean ± [p5,p95] + a unicode sparkline; storage `{key, expr, seed}` (reproducible). A **separate**
   Monte-Carlo sampler because a distribution can't ride `evalMath`'s number-only contract.
+- **Reads declared variables** (SR-7/#876): a bound may be a declared var — `{cost_low to cost_high}`,
+  `{units * (5 to 10)}` — resolved through the threaded doc `vars` map (`parseUncertain(expr, vars)`);
+  a text var fails visibly, the same type-safety contract math variables follow.
 
 **Cross-cutting:** outline constraints / lint (F2, a reserved `check` property + `is:failing`) ·
 declarative data-pack plugins (grammar/var packs, data-only) · self-contained HTML export (C1).

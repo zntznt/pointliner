@@ -175,21 +175,29 @@ Implemented:
   from its expression + seed, so the record is tiny, round-trips through OPML (`_est`),
   and a shared C1 self-contained doc reproduces the **exact** estimate; re-roll = a new
   random seed. Pure cores (all seeded, Node-tested): `rngFromSeed` (mulberry32),
-  `parseUncertain` (tokenizer + recursive descent; `to` < `+−` < `×÷` < unary < atom),
-  `sampleUncertain(expr, n, seed, node?)`, `distSummary`, `sparkline` (a histogram that
+  `parseUncertain(expr, vars?)` (tokenizer + recursive descent; `to` < `+−` < `×÷` < unary < atom),
+  `sampleUncertain(expr, n, seed, node?, vars?)`, `distSummary`, `sparkline` (a histogram that
   is literally a string — export-safe), `formatDist`, `estParts` (the constructor
   sniff for typed shorthand — `to`/`normal`/`uniform` only, so a bare `{sum(cost)}`
   never silently diverges from `{= sum(cost)}` deterministic math; rollups are authored
   via the dialog). The pill freezes + re-samples on click like dice, the pencil edits,
   and it unfolds to its `{expr}` source for inline editing. The dialog has a live
-  sparkline preview; `#ERR` chip on a malformed expression (never blank). **Out of
-  scope (recorded follow-ons)**: min/max/count in the uncertain context, mixtures
-  (`mx`), correlation/shared variables, more families (beta/…), the analytic `est+`
-  no-sampling variant, and cross-engine use (an estimate's mean as a number in `{= …}`).
+  sparkline preview; `#ERR` chip on a malformed expression (never blank). **Reads declared
+  variables (SR-7/#876)**: a bound may be a declared var — `{cost_low to cost_high}`,
+  `{units * (5 to 10)}` — resolved through the threaded doc `vars` map (`parseUncertain(expr, vars)`
+  is the promotion gate, so an unknown word still fails → literal); a text var fails visibly, the
+  type-safety contract math variables follow. **Out of scope (recorded follow-ons)**: min/max/count
+  in the uncertain context, mixtures (`mx`), *correlation* between variables (independent draws only),
+  more families (beta/…), the analytic `est+` no-sampling variant, and cross-engine use (an estimate's
+  mean as a number in `{= …}`).
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
-  **Unit conversions** are unary fns in `FN1` named `from2to` (`c2f`/`f2c`,
-  `km2mi`/`mi2km`, `m2ft`, `cm2in`, `kg2lb`, `kmh2mph`, `l2gal`, …). **Date math**:
+  **Unit conversions** come two ways: fixed unary fns in `FN1` named `from2to` (`c2f`/`f2c`,
+  `km2mi`/`mi2km`, `m2ft`, `cm2in`, `kg2lb`, `kmh2mph`, `l2gal`, …), and the general
+  **`{= convert(x, from, to)}`** (SR-6/#875) over a built-in ratio table (length/mass/volume/time)
+  plus a doc-declared `root.units` (File → Custom units); it is substituted to a number in the
+  `expandAggExpr` pre-pass (`replaceConvert`, so `evalMath` stays number-only), same-dimension only
+  (cross-dimension → `#ERR`), with temperature staying on the affine `c2f`/`f2c`. **Date math**:
   `today` (a constant = epoch-days of the local date), `date(y,m,d)` (a 3-arg fn,
   `FN3`), and `year`/`month`/`day`/`weekday`/`quarter` (`FN1`, `quarter` → 1–4).
   **Date utility helpers**: `daysuntil(d)` (days from today to date `d`, negative if
@@ -227,7 +235,14 @@ Implemented:
   default** (#827 owner decision); the optional second arg `words(scope, notes)` opts notes back
   in (the `sum(prop, scope)` two-arg shape — no new syntax). Reading
   time is composition (`{= words(subtree)/200}`); no separate `readtime`. Same `expandAggExpr`
-  substitution, so it resolves in pills, the math/check dialogs, and export.
+  substitution, so it resolves in pills, the math/check dialogs, and export. **Query reducers**
+  (SR-8/#877) generalize the QUOTED `count("query")` to the whole family: `{= sum|avg|min|max("query", prop)}`
+  reduces `prop` over every point in the subtree matching a **live search** (`queryReduce`, sharing the
+  `collectScoped` fold + `queryMatchesNode` + `childPropNumber` + the `reduceAgg` identity helper that
+  `aggregateChildren` was refactored onto). The quoted first arg disambiguates from the bare child-prop
+  rollup, so the two coexist with no ordering dependency; an empty match reduces to the identity silently
+  (like `count("query")`, since a query matching nothing now is a valid dynamic answer). Works in checks
+  for free — `sum("#task", cost) <= budget`.
 - **Outline constraints / lint** (F2) — a point may carry a reserved **`check` property**
   holding an `evalMath` boolean assertion that spans the point and its **direct children**:
   `sum(cost) <= budget`, `sum(weight) == 100`, `count(score) >= 3`, own-prop `hours <= 8`. **Zero
