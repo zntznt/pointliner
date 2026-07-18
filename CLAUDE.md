@@ -1022,6 +1022,16 @@ The product direction is now set. Read these before proposing or building:
   the §0 red-team corrections; largely delivered), `query-base-proposal.md` (QP-2, shipped
   through Phase C), `saved-views-proposal.md` (SV-1/SV-2 shipped; SV-3/SV-4 recorded NO —
   the closed below-the-line list).
+- `guidance/cross-document-direction.md` — **ACTIVE direction for cross-document interactions**
+  (owner-directed 2026-07-18: mirroring/transclusion, folder graph, folder-scoped aggregation/queries,
+  backlink previews — wanted; the constraint is performance/stability, not identity). Key facts it
+  records: the one-root rule governs *editing* while `workspaceIndex.roots` already retains every
+  parsed tree for reads; measured costs (scan ~50–400 ms at notebook scale; folder-wide agg walk
+  1.5–31 ms, safe only memoized on an index generation; the force-layout graph wall — doc-level
+  folder graph only, all-points rejected on measurement); the §5 liveness spine (index generation
+  counter, own-doc liveness, refresh-on-save, incremental rescan) that phases 4b/4c require.
+  Write-through editing and implicit cross-doc name resolution stay out (revisit-gated). Read it
+  before any workspace/index/cross-doc work.
 - `guidance/plugins-direction.md` — **locked direction for extensibility/plugins** + the
   **code-execution gate**: extensibility is **declarative DATA packs only** (grammar/variables/
   emoji merged into the registries via a `<_plugins>` head element); **the app executes no
