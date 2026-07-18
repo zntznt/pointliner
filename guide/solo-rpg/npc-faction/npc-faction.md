@@ -38,7 +38,7 @@ the board is just another way to look at it. Nothing is duplicated and the two n
 
 ## Scenes link to the cast
 
-In your own game, give each important NPC their own point in the outline, outside the base, and
+In your own game, give each important NPC their own point in the document, outside the base, and
 when a scene mentions them, **link to that point**. Type `[[`, pick the NPC, and Pointliner drops
 a link. From then on the NPC's point shows a **backlink** to every scene that mentions them, so
 you can stand on Vex's page and see every beat she has ever appeared in, both directions at once.

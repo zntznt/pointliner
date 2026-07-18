@@ -137,7 +137,7 @@ demo shows both forms so you can feel the difference.
 ## Run it yourself
 
 Open the [demo file](generators-demo.opml) in Pointliner (File menu, Open) and it comes up as a
-real outline with every pill live. A few things to try:
+real document with every pill live. A few things to try:
 
 - **Grow a dozen names.** Click the Markov pill over and over and watch it wander a different
   path each time. Then click the `{prefix}{suffix}` pair a few times to feel the difference
@@ -172,7 +172,7 @@ grammar engine adds is that the tables **compose and live in one file**:
 - modifiers (`.cap`, `.a`, `.s`) and hierarchical fields (`{item.field}`) let a small set of
   lists produce natural, detailed results without a combinatorial pile of pre-written entries
 - rules are document-wide, so your name lists, place lists and loot tables all live in the same
-  outline as the campaign they feed, one search away
+  document as the campaign they feed, one search away
 
 It is one offline file you own, and the generators you build open and re-roll on anyone's machine
 with no install and no account.

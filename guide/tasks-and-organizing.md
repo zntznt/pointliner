@@ -1,6 +1,6 @@
 # Tasks and organizing
 
-*Part of the [Pointliner guide](README.md). Turn an outline into a working system: to-dos and
+*Part of the [Pointliner guide](README.md). Turn a document into a working system: to-dos and
 custom workflows, structured properties, progress bars, reusable templates, quick capture and
 aliases. Like [getting around](getting-around.md), this is the plain outliner, no pills required.*
 
@@ -8,7 +8,7 @@ aliases. Like [getting around](getting-around.md), this is the plain outliner, n
 
 ## To-dos and tasks
 
-Track a shopping list, a reading list, a project backlog or a daily to-do, all in the same outline.
+Track a shopping list, a reading list, a project backlog or a daily to-do, all in the same document.
 
 Turn any point into a task two ways:
 
@@ -123,11 +123,11 @@ property inline with no dialog, or bare `/prop` to drop a fill-in-the-blank `{pr
 with the cursor waiting on the blank. Search by them with
 [`has:key`](getting-around.md#searching-and-filtering) to find every point that has a property, or
 `key:value` to match an exact one. Child properties feed the [roll-up
-totals](computing-numbers.md#roll-a-number-up-your-outline-aggregation).
+totals](computing-numbers.md#roll-a-number-up-your-document-aggregation).
 
 A **numeric** property is also a named variable you can compute with, not just a fact to filter on.
 Give a point a `str: 14` property and a `{= str + 2}` pill on it reads 16, no declaration needed. And
-properties inherit **down** the outline: a pill or a [check](computing-numbers.md#make-the-outline-check-itself-constraints)
+properties inherit **down** the document: a pill or a [check](computing-numbers.md#make-the-document-check-itself-constraints)
 on a child point can read a property set on any ancestor (a scene under a `budget: 12` project sees
 `budget`). The nearest value wins, so the point's own property beats an ancestor's.
 
@@ -160,7 +160,7 @@ markdown-aware, so a typed `- [ ]` becomes a to-do.
 
 Capture is a **toolbar strip**, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (or the toolbar
 **inbox button**) to toggle it open below the toolbar with the cursor already in its input, while the
-outline stays fully visible and usable underneath, so you insert without interrupting your work.
+document stays fully visible and usable underneath, so you insert without interrupting your work.
 `Ctrl/Cmd+Shift+1` through `0` open it targeting **inbox 1 through 10**. If a numbered slot has no
 inbox yet and a point is selected, that point **becomes** that inbox. While the strip is open the same
 keys switch the destination (they move the selector, they do not reopen it). Click the **pencil** on the

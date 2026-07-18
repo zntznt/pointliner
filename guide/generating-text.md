@@ -365,10 +365,10 @@ from anywhere.
 
 ---
 
-## Roll on your own outline
+## Roll on your own document
 
 Every generator so far draws from a list you typed. `{roll: SEARCH}` draws from your **live
-outline** instead: it picks one random point matching a search, so you can roll on the notes you
+document** instead: it picks one random point matching a search, so you can roll on the notes you
 already keep.
 
 Keep a list of open threads, NPCs or ideas as ordinary points, then roll:
@@ -433,7 +433,7 @@ Because the names are document-wide, you can also drop `{role}` or `{trait}` int
 ---
 
 **Next:** [Computing numbers](computing-numbers.md), the math side: expressions, dates, sums that
-roll up your outline and uncertain estimates. Or jump to the [Cookbook](cookbook.md) for
+roll up your document and uncertain estimates. Or jump to the [Cookbook](cookbook.md) for
 ready-made recipes.
 
 **Back to:** [the guide](README.md).

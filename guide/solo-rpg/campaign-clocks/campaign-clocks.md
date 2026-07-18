@@ -114,7 +114,7 @@ If you would rather keep the board *in* the document, drop a live query pill int
 That renders an always-current list of matching threads right where you put it, and it updates
 as you play, so a "campaign status" point at the top of your file can hold the whole board and
 never go stale. The saved search and the query pill are the same search wearing two faces, one
-in the search bar, one embedded in the outline. Use whichever fits how you play.
+in the search bar, one embedded in the document. Use whichever fits how you play.
 
 ---
 

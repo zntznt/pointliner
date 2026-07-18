@@ -109,7 +109,7 @@ you are in it.
 Capture is deliberately lossy about *where* an idea belongs, it just gets it out of your head and
 into the inbox. **Refile** is how you close that loop later. On a captured point, open the bullet
 menu and pick **Refile** (or type `/refile`, or `/refile:TITLE` to jump straight at a target),
-and a point-tree navigator opens: search or browse the outline, pick the scene the idea belongs
+and a point-tree navigator opens: search or browse the document, pick the scene the idea belongs
 under, and the captured subtree moves out of the inbox and becomes that scene's last child.
 
 So the full rhythm is: **capture** cheap and often mid-play, keep the scene moving and **refile**
@@ -121,7 +121,7 @@ inbox stays a scratchpad, not a graveyard.
 ## Run it yourself
 
 Open the [demo file](session-prep-demo.opml) in Pointliner (File menu, Open) and it comes up as a
-real outline. A few things to try:
+real document. A few things to try:
 
 - **Stamp a session.** Open the bullet menu on the `Session 2026-07-04` point and pick **Save as
   template** (name it `session`). Then add an empty point and run `/template:session`, a fresh

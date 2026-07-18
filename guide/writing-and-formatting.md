@@ -1,6 +1,6 @@
 # Writing and formatting
 
-*Part of the [Pointliner guide](README.md). Give your outline real document structure: headings and
+*Part of the [Pointliner guide](README.md). Give your document real structure: headings and
 other point types, inline styling, tables, footnotes, links, images and per-point notes. Like
 [getting around](getting-around.md), this is the plain outliner, no pills required.*
 
@@ -8,7 +8,7 @@ other point types, inline styling, tables, footnotes, links, images and per-poin
 
 ## Point types
 
-Give your outline real document structure: add headings to divide a long document into sections,
+Give your document real structure: add headings to divide a long document into sections,
 numbered steps for instructions, a code block for a snippet you want to copy, a quote block for a
 passage or a table for data you would otherwise put in a spreadsheet.
 
@@ -28,10 +28,10 @@ focus) reveals it. Click again to hide it. Type **`/secret`** to start one from 
 
 It is good for two things:
 
-- **Sharing.** Hand someone a self-contained copy of a document and your GM notes or answers stay
-  covered until they look.
-- **Blinding yourself.** Write down an oracle result, a clue or a twist you do not want to see yet,
-  and reveal it only when the story reaches it.
+- **Sharing.** Hand someone a self-contained copy of a document and your private notes or answers
+  stay covered until they look.
+- **Blinding yourself.** Write down an answer, a clue or a twist you do not want to see yet, and
+  reveal it only when you reach it.
 
 A spoiler can span several lines (one `>!` per line), and pills or links inside it still work once
 revealed. Revealing is not saved, so a spoiler is blurred again the next time the point is drawn. In
@@ -41,7 +41,7 @@ a reader is warned before they read it.
 ## Styling text
 
 Make key words stand out, mark something as code, highlight a phrase for review or drop in a
-clickable link, all without leaving the outline. Wrap words in these marks to apply the style; they
+clickable link, all without leaving the document. Wrap words in these marks to apply the style; they
 work on **any line of any point**, including headings and quotes.
 
 ```
@@ -111,13 +111,13 @@ card, dates as chips). Click a card (or press `Enter` on it) to move it to anoth
 with the mouse; the move writes the state back into the table, so switching back to **Table** shows
 the same data. A board sourced from a [query base](getting-around.md#query-bases) is read-only.
 
-In the outline (when you are not zoomed into it), a base can be **collapsed** to a single line
+In the document (when you are not zoomed into it), a base can be **collapsed** to a single line
 with the chevron in its header strip, and its **row count capped** (the **Rows** control: All, 5,
 10 or 20) so a long base does not stretch the page. The base's bullet menu carries the same
 settings under **View & rows shown**, so everything about a base is also reachable from its one
 menu. When rows are hidden, a **Zoom in to see N
 more** line appears at the bottom; click it (or zoom into the base) to see everything. Collapse and
-the cap only apply in the outline; a zoomed-in base always shows in full. **Cards** is the third
+the cap only apply in the document; a zoomed-in base always shows in full. **Cards** is the third
 view: every row becomes a card in a grid, with the first column as the title and images as covers.
 A column of `{pick | one | of these}` pills becomes a deck of generative cards, each re-rollable
 with a click. With a **Date** column, the **Calendar** view places each row on a month
@@ -174,7 +174,7 @@ text removes it.
 
 Open a point's menu and choose **Add note** (or **Edit note** if it already has one), or type `/note`
 to start or open the note without leaving the keyboard. Notes are searched along with the rest of your
-outline, and you can hide them all with the **notes button** in the header; a small mark stays on each
+document, and you can hide them all with the **notes button** in the header; a small mark stays on each
 noted point so you can click to peek.
 
 ---

@@ -45,13 +45,13 @@ overview](features.md#linking-and-connecting-documents).)
 
 ## Appearance and display
 
-Tune how the outline looks and what it shows: switch to dark mode for night work, pick an accent
+Tune how the document looks and what it shows: switch to dark mode for night work, pick an accent
 color, widen the editing column for a big screen or tuck completed tasks out of the way.
 
 - The **theme, color and width** controls live in the File menu under **Appearance**. Theme cycles
   system, then light, then dark on each click.
 - **Done points** is the checkmark button in the toolbar. Finished to-dos and `DONE` points stay
-  in the outline, struck through, until you turn the button off to hide them; a badge on the
+  in the document, struck through, until you turn the button off to hide them; a badge on the
   button then counts what is hidden, and turning it back on brings them back.
 
 ## Exporting and sharing
