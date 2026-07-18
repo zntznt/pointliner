@@ -13404,7 +13404,7 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
   // named rules the doc declares (a `name: a | b` point) register via parseRules → callable as {name}
   const rules = {};
   for (const t of texts) { const r = c.parseRules(t); if (r && r.rules) for (const k of Object.keys(r.rules)) rules[k] = 1; }
-  const vars = { level: 3, cost: 0 };
+  const vars = { rate: 40, cost: 0 };   // mirrors the doc's own {rate := 40} declaration (was level)
   let total = 0; const dead = [];
   for (const t of texts) for (const mm of t.matchAll(/\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/g)) {
     total++;
