@@ -13281,7 +13281,7 @@ test('first-run atom: the entry hint and the tour intro lead with a live pill (I
   // the Welcome tour's intro paragraph carries a real, clickable {2d6} pill (not only the
   // illustrative "{curly-brace}"), so the first paragraph delivers the atom hands-on
   const intro = _src.slice(_src.indexOf('const FIRST_RUN_EXAMPLES'), _src.indexOf('const FIRST_RUN_EXAMPLES') + 1200);
-  assert.ok(/Here is one now, click it: \{2d6\}/.test(intro), 'the tour intro has a clickable {2d6} in the first paragraph');
+  assert.ok(/Click this: \{2d6\}/.test(intro), 'the tour opens by handing the reader a clickable {2d6} (the IA-2 atom, first point)');
 });
 
 test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {
@@ -13412,7 +13412,7 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
       const r = c.parseRules(rec.def); if (r && r.rules) for (const k of Object.keys(r.rules)) rules[k] = 1;
     }
   }
-  const vars = { rate: 12, cost: 0, budget: 150 };   // mirrors the doc's own declarations ({rate := 12}, the budget prop)
+  const vars = { rate: 85, cost: 0, budget: 400 };   // mirrors the doc's own declarations ({rate := 85}, the budget prop)
   let total = 0; const dead = [];
   for (const t of texts) for (const mm of t.matchAll(/\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/g)) {
     total++;

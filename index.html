@@ -32371,69 +32371,55 @@ let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from l
 // suppresses autosave until they edit (markDirty clears the flag) or hit Start blank. Reachable
 // again afterward from the File menu. NOT gated on a verbosity dial (that dial isn't built).
 const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0"><head><title>Welcome to Pointliner</title></head><body>
-<outline text="# Welcome to Pointliner: a tour you can play">
-  <outline text="Everything on this page is live. The small rounded things are pills: click one and it answers again. Here is one now, click it: {2d6}"/>
-  <outline text="This document is yours. Edit anything, break anything, delete the whole tour when you are done."/>
-  <outline text="## Level 1: The spark">
-    <outline text="The whole idea in one line: type \`{2d6}\` in a point, click away, and it becomes this: {2d6}. Click it."/>
-    <outline text="That loop, type braces, get a live pill, click it for a new answer, is all there is. The rest is more kinds of braces."/>
-    <outline text="A pick pill decides for you: tonight we cook {pasta | soup | tacos}. Click to re-decide."/>
-    <outline text="Weights tilt the odds: tomorrow looks {sunny | cloudy 2 | rainy 3}. Rainy is three times as likely as sunny."/>
-    <outline text="A math pill starts with \`=\` and stays current: three movie tickets cost {= 3 * 12}."/>
-    <outline text="To change a pill, click the words beside it: the point opens and the pill unfolds back to its typed source. Click away to seal it again."/>
-    <outline text="Points are the other half. Press Enter for a new point, Tab to tuck it under the one above, Shift+Tab to pull it back out."/>
-    <outline text="Markdown works on any line: **bold**, *italic*, \`code\`, and a \`#\` starts a heading."/>
-    <outline text="&gt; Start a line with &gt; for a quote worth keeping."/>
-    <outline text="- [ ] Make a point a to-do by typing \`- [ ]\`. Tick this box."/>
-    <outline text="#TODO [#B] Or give a point a status badge with \`#TODO\`. Click the badge to move it along or set a priority."/>
+<opml version="2.0"><head><title>Poke this document</title></head><body>
+<outline text="# Poke this document">
+  <outline text="Click this: {2d6}"/>
+  <outline text="It rolled. Click it again. New answer, and the document keeps it until you ask again."/>
+  <outline text="That capsule is called a pill. You make one by typing braces: put \`{2d6}\` in any point, click away, and it comes alive. Everything below is the same trick wearing different clothes."/>
+  <outline text="One more, a different shape: heads or tails is {heads | tails}. Click it until it agrees with you."/>
+  <outline text="A long weekend, held to its budget">
+    <outline text="The plan{prop budget: 400}. Spent {= sum(cost)}, {= budget - sum(cost)} left." _props="[{&quot;key&quot;: &quot;check&quot;, &quot;val&quot;: &quot;sum(cost) &lt;= budget&quot;}]">
+      <outline text="Train there and back {prop cost: 120}"/>
+      <outline text="Two nights at the coast {prop cost: 180}"/>
+      <outline text="Food, plus one dinner that is not sensible {prop cost: 90}"/>
+    </outline>
+    <outline text="Push on it. Click the 180 chip, make it 260, save. The totals follow, and the quiet tick on the plan point flips to a flag."/>
+    <outline text="That tick is a check. It holds the plan to \`sum(cost) &lt;= budget\` so you stop re-adding the list in your head every time one number moves."/>
+    <outline text="Add your own expense under the plan, any cost you like. Nothing to update; the plan already counted it."/>
+    <outline text="These are ordinary points. Drag them, re-nest them with Tab, or type \`/base\` on the plan to see the same expenses as a table. Same points either way."/>
   </outline>
-  <outline text="## Level 2: The document computes">
-    <outline text="A tiny budget that adds itself up:">
-      <outline text="Weekend trip: {= sum(cost)} spent of the 150 budget {prop budget: 150}" _props="[{&quot;key&quot;: &quot;check&quot;, &quot;val&quot;: &quot;sum(cost) &lt;= budget&quot;}]">
-        <outline text="Train tickets {prop cost: 60}"/>
-        <outline text="One night in a hostel {prop cost: 70}"/>
-        <outline text="Snacks and coffee {prop cost: 15}"/>
-      </outline>
-      <outline text="The small key and value chips are properties. The trip point's \`{= sum(cost)}\` pill totals its children live: raise a cost above and watch it follow."/>
-      <outline text="The trip point also carries a check, \`sum(cost) &lt;= budget\`, set with \`/check\`. It shows a quiet check mark now; push the costs past 150 and it flags itself."/>
-    </outline>
-    <outline text="Declare a value once, reuse it anywhere:">
-      <outline text="{rate := 12} This pill declares a variable named rate."/>
-      <outline text="Four hours of babysitting: {= rate * 4}. Change rate above and this recomputes on its own."/>
-    </outline>
-    <outline text="Dates are numbers you can compute with:">
-      <outline text="Library books go back {date due: today+3}. The chip colors itself by urgency as the day gets close."/>
-      <outline text="Type \`/due\` on any point to schedule it; the calendar button in the toolbar gathers everything dated."/>
-    </outline>
-    <outline text="Tags and search:">
-      <outline text="Type \`#\` and a word to tag a point; a slash nests tags, so \`#book/sci-fi\` files under \`#book\`."/>
-      <outline text="Take a long walk with no phone #idea"/>
-      <outline text="Learn to bake real bread #idea/big"/>
-      <outline text="The search box speaks operators: \`is:todo\`, \`due:overdue\`, \`#book\`, \`-word\` to exclude, \`&quot;exact phrase&quot;\`. Star a search to save it."/>
-      <outline text="Ideas collected so far: {count: #idea}. A live number, never a stale note."/>
-    </outline>
-    <outline text="Type \`[[\` to link one point to another. The link always shows the target's current title, and the target lists who points back."/>
+  <outline text="The album, without a fake deadline">
+    <outline text="Eight songs left to mix, maybe fourteen if the old demos count. Do not pick a number; keep the range: {8 to 14}"/>
+    <outline text="Each song takes an evening, sometimes four: {2 to 4}"/>
+    <outline text="So &quot;when will it be done&quot; honestly comes to {(8 to 14) * (2 to 4)} evenings. Click it a few times. The middle wobbles; the spread does not."/>
+    <outline text="That is an estimate. Ranges add and multiply like numbers, so what you do not know gets totaled instead of rounded away."/>
   </outline>
-  <outline text="## Level 3: The document thinks along">
-    <outline text="Name a list once, call it anywhere:">
-      <outline text="These two named pills hold a rule each, topic and voice, built once in the @ Grammar dialog: [[grammar:tg1]] [[grammar:tg2]]" _grammar="[{&quot;key&quot;:&quot;tg1&quot;,&quot;def&quot;:&quot;topic: a locked door | an old photograph | the last train | a borrowed coat&quot;,&quot;origin&quot;:&quot;topic&quot;,&quot;result&quot;:&quot;the last train&quot;},{&quot;key&quot;:&quot;tg2&quot;,&quot;def&quot;:&quot;voice: a stranger | your future self | the house itself&quot;,&quot;origin&quot;:&quot;voice&quot;,&quot;result&quot;:&quot;a stranger&quot;}]"/>
-      <outline text="Any point can now call them by name: write about {topic} in the voice of {voice}. Click each for a fresh pick."/>
-    </outline>
-    <outline text="A deck deals without repeats: five-minute reset, {shuffle: stretch | water a plant | clear one shelf | step outside}. Click to draw the next card."/>
-    <outline text="A cycle takes turns in order: tonight the dinner picker is {cycle: my pick | your pick}."/>
-    <outline text="Roll on your own writing: stuck? {roll: #idea} draws a random idea from anywhere on this page."/>
-    <outline text="When a number is honestly a range, estimate it: repainting the hall takes {2 to 5} hours."/>
-    <outline text="Estimates carry their uncertainty through math: hall plus trim is {(2 to 5) * (1 to 2)} hours."/>
-    <outline text="Ask a yes or no question: should we invite the neighbors? {oracle: even}"/>
-    <outline text="Embed a live search: {query: is:todo} lists every open to-do on this page, always current."/>
+  <outline text="The number you keep retyping">
+    <outline text="{rate := 85} is the hourly rate you have punched into a phone calculator all year. Now it has a name."/>
+    <outline text="Below its name it just works: a light week is {= rate * 12}, a real month closer to {= rate * 30}."/>
+    <outline text="Click the little pencil on the rate pill, make 85 into 100, save. Every figure follows. Raise your rate once, not in nine places."/>
+    <outline text="Names work for lists too. The house dinner rotation lives here now:"/>
+    <outline text="[[grammar:tg1]]" _grammar="[{&quot;key&quot;: &quot;tg1&quot;, &quot;def&quot;: &quot;weeknight: soup and good bread | eggs on toast | the pasta that always works | whatever the freezer says&quot;, &quot;origin&quot;: &quot;weeknight&quot;, &quot;result&quot;: &quot;eggs on toast&quot;}]"/>
+    <outline text="So any point can ask. Tonight: {weeknight}. Tomorrow: {weeknight}. Click either; they answer on their own."/>
   </outline>
-  <outline text="## Make it yours">
-    <outline text="Save any subtree as a template from its point menu, then stamp a fresh copy anytime with \`/template\`."/>
-    <outline text="When the hints feel like noise, press Ctrl/Cmd+Shift+. to quiet the guidance; Ctrl/Cmd+Shift+, brings it back."/>
-    <outline text="The \`?\` button at the bottom right is the cheat sheet; the \`@\` menu builds any pill with a dialog; typing \`{\` lists every pill form."/>
-    <outline text="Pointliner was born at the solo-RPG table. Curious? File then Start from an example has ready-made live starters, for games and everyday plans alike."/>
-    <outline text="Delete this tour whenever you like: it is only points, and the document is yours."/>
+  <outline text="For when you are stuck">
+    <outline text="A stalled side project keeps a pile of questions, {count: #openq} of them so far. Here is the pile:">
+      <outline text="Who is this actually for? #openq"/>
+      <outline text="What is the smallest version that could ship? #openq"/>
+      <outline text="What am I avoiding because it sounds boring? #openq"/>
+      <outline text="What did the last attempt get right? #openq"/>
+    </outline>
+    <outline text="Do not reread the pile. Ask it: {roll: #openq}"/>
+    <outline text="Click until one stings, then go answer that one. It draws live from the points above; add a fifth question carrying the same mark and it joins the pool, and the count above follows."/>
+    <outline text="When choosing is the problem, deal instead: {shuffle: write one bad paragraph on purpose | reread the last part that worked | explain it out loud to nobody | delete something you are protecting}"/>
+    <outline text="That one is a deck: it will not repeat until it has dealt everything once, which is the fairness you want from advice."/>
+    <outline text="And the question under the pile, tonight, yes or no: {oracle: even}"/>
+  </outline>
+  <outline text="Make it yours">
+    <outline text="This tour is ordinary points. Rewrite it, reorder it, or delete the whole thing whenever you like."/>
+    <outline text="The \`?\` button, bottom right, is the cheat sheet for everything you just met; the \`@\` menu builds any pill with you; a structure you like can be saved as a template and stamped again later."/>
+    <outline text="For a running start, the File menu's &quot;Start from an example&quot; drops in a live starter: a project tracker, a decision helper, a trip planner, and, from the game table Pointliner was born at, oracles and character sheets that play along."/>
+    <outline text="Now start a point about the thing actually on your mind, and put one brace in it."/>
   </outline>
 </outline>
 </body></opml>`;
