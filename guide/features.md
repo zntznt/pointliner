@@ -240,8 +240,9 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   behave.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides.
-- **[Cookbook](cookbook.md)** has copy-paste recipes: a name generator, a dungeon stocker, a
-  self-linting budget, a Fermi estimate and more.
+- **[Cookbook](cookbook.md)** has copy-paste recipes that each start from an everyday itch: a plan
+  sized in honest ranges, a budget that flags itself wherever the costs hide, a reading pile that
+  only offers what is left, journal prompts that refuse autopilot, and more.
 - **[Solo RPG guides](solo-rpg/README.md)** show the generators, oracle and journal
   working together at the table, with importable demo files.
 
