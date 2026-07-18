@@ -1,6 +1,6 @@
 # Dates and planning
 
-*Part of the [Pointliner guide](README.md). Turn the outline into a lightweight planner: schedule
+*Part of the [Pointliner guide](README.md). Turn the document into a lightweight planner: schedule
 points with start and due dates, see them on an agenda and calendar, and keep a daily journal. This
 is the scheduling side; for date arithmetic (`{= daysuntil(due)}` and friends) see
 [Computing numbers](computing-numbers.md#dates).*
@@ -40,7 +40,7 @@ landed ("Rescheduled to ...").
 
 ## Agenda and calendar
 
-See all your upcoming work without scrolling the outline. Click the **calendar button** in the
+See all your upcoming work without scrolling the document. Click the **calendar button** in the
 toolbar to open the agenda below the breadcrumb (click it again to close).
 
 A compact **List** is always shown, ordered by urgency (most overdue and soonest-due first, with
@@ -103,7 +103,7 @@ whole archive and reads as a chronicle.
 Keep a running log of what you worked on, decisions you made or anything worth noting each day.
 
 Entries file themselves by date under a **Journal** point, nested year then month then day
-(`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your outline. The
+(`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your document. The
 toolbar book button toggles the **Journal bar**: type a point and press Enter to file it under
 today's entry without leaving your place. The bar shows the date it is saving to; click the
 year, month or day to jump to that part of the journal. Type **`/journal`** to open today's

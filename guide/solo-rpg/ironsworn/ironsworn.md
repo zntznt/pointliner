@@ -6,7 +6,7 @@
 
 Ironsworn is a solo-and-co-op tabletop RPG by Shawn Tomkin. Its rules are released free under
 a Creative Commons licence, which is what makes this guide possible: it adapts the game's system
-into Pointliner's outline and live pills, so your action rolls, momentum, progress tracks and
+into Pointliner's points and live pills, so your action rolls, momentum, progress tracks and
 oracles all live and compute in the same file you write your journal in.
 
 This guide is a **Pointliner workflow**, not a replacement for the rulebook. It shows you how to
@@ -20,7 +20,7 @@ game and want it running in Pointliner.
 > **Shawn Tomkin**, used under the **Creative Commons Attribution 4.0 International licence**
 > (CC BY 4.0): <https://creativecommons.org/licenses/by/4.0/>. The Ironsworn SRD is available from
 > its publisher; this is an **adaptation** (the moves and oracle tables are restructured into
-> Pointliner outline points and `{…}` pills), and **changes have been made** from the original
+> Pointliner points and `{…}` pills), and **changes have been made** from the original
 > layout and presentation. "Ironsworn" is used here descriptively to name the game; no logo or
 > artwork is reproduced. This guide itself is offered under the same CC BY 4.0 terms.
 

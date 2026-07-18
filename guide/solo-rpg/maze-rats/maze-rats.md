@@ -20,7 +20,7 @@ rolling in Pointliner.
 > This guide and its demo adapt material from **Maze Rats** by **Ben Milton**, used under the
 > **Creative Commons Attribution 4.0 International licence** (CC BY 4.0):
 > <https://creativecommons.org/licenses/by/4.0/>. **Changes have been made** (the tables and
-> procedures are restructured into Pointliner outline points and `{…}` pills). "Maze Rats" is
+> procedures are restructured into Pointliner points and `{…}` pills). "Maze Rats" is
 > used descriptively to name the game; no logo or artwork is reproduced. This guide itself is
 > offered under the same CC BY 4.0 terms.
 

@@ -74,12 +74,12 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 - **Markov chains and a yes/no oracle** for organic sequences and solo-play decisions; type an
   oracle as `{oracle: likely}`.
   ([Markov](generating-text.md#markov-chains) · [oracle](generating-text.md#yesno-oracle))
-- **Roll on your own outline.** `{roll: is:todo}` picks a random point from your live outline (the points below it, or a `#tag` anywhere), so a random open thread or NPC gets chosen from what you already wrote.
-  ([roll on your outline](generating-text.md#roll-on-your-own-outline))
+- **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (the points below it, or a `#tag` anywhere), so a random open thread or NPC gets chosen from what you already wrote.
+  ([roll on your document](generating-text.md#roll-on-your-own-document))
 
 ## Computing with numbers
 
-A live calculator that can see your outline. Math pills recompute on their own. Full guide:
+A live calculator that can see your document. Math pills recompute on their own. Full guide:
 **[Computing numbers](computing-numbers.md)**.
 
 - **Expressions.** `{= 2 * 19}` shows **38**; the usual arithmetic, powers, roots, functions.
@@ -92,16 +92,16 @@ A live calculator that can see your outline. Math pills recompute on their own. 
   ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
   spreadsheet column, and `{= sum("#task", cost)}` totals it over everything matching a live search.
-  ([aggregation](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
+  ([aggregation](computing-numbers.md#roll-a-number-up-your-document-aggregation))
 - **Word counts.** `{= words(subtree)}` counts the prose under a heading; per-point notes stay out
   of the count unless you write `{= words(subtree, notes)}`.
-  ([word counts](computing-numbers.md#roll-a-number-up-your-outline-aggregation))
+  ([word counts](computing-numbers.md#roll-a-number-up-your-document-aggregation))
 - **Uncertain estimates.** `{5 to 10}` models a range with a little distribution sparkline, and the
   uncertainty propagates through math. Bounds can be declared variables (`{cost_low to cost_high}`).
   ([estimates](computing-numbers.md#uncertain-values-estimates))
 - **Self-checking outlines.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
-  ([constraints](computing-numbers.md#make-the-outline-check-itself-constraints))
+  ([constraints](computing-numbers.md#make-the-document-check-itself-constraints))
 - **Progress cookies.** Drop `[/]` or `[%]` for a live tally of checkboxes and child to-dos.
 - **Progress clocks.** Drop `[o 0/6]` for a segmented tension clock you fill by hand, click to
   advance. ([progress clocks](tasks-and-organizing.md#progress-clocks))
@@ -117,7 +117,7 @@ A live calculator that can see your outline. Math pills recompute on their own. 
 
 ## Dates, planning and journaling
 
-Turn the outline into a lightweight planner.
+Turn the document into a lightweight planner.
 
 - **Start and due dates.** Schedule any point with a start, a deadline or both; color-coded chips
   show what is due, soon or overdue. ([scheduling](dates-and-planning.md#scheduling-dates))
@@ -154,7 +154,7 @@ Turn the outline into a lightweight planner.
   ([embedded queries](getting-around.md#embedded-queries))
 - **Query bases.** Turn a live search into a table: rows are the matching points, columns show the
   title, a property or a formula computed per point (`= daysuntil(due)`, `= sum(cost)`), always in
-  sync with the outline. Property cells edit in place, writing back to the matching point.
+  sync with the document. Property cells edit in place, writing back to the matching point.
   ([query bases](getting-around.md#query-bases))
 - **Pills in base cells.** Type `{2d6}`, `{= price * 1.1}` or `{Orc.HP}` straight into a base
   cell and it becomes the live pill when you leave the cell, exactly as in a point.
@@ -170,7 +170,7 @@ Turn the outline into a lightweight planner.
   ([tables](writing-and-formatting.md#tables))
 - **Calendar view.** A base with a Date column shows its rows on a month grid, undated rows
   counted below, never lost. ([tables](writing-and-formatting.md#tables))
-- **Collapse and cap a base.** In the outline, collapse a base to one line or cap how many rows it
+- **Collapse and cap a base.** In the document, collapse a base to one line or cap how many rows it
   shows (5/10/20/all); a "zoom in for more" line reveals the rest. ([tables](writing-and-formatting.md#tables))
 - **A base from the keyboard.** Move a column or row with `Alt`+arrow, insert with `Alt+Shift`+arrow,
   cycle a column role with `Alt+R`, resize with `Alt+,` / `Alt+.`, and move a board card between lanes
@@ -206,7 +206,7 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **One file, fully offline.** The whole app is a single `index.html`. No account, no network, no
   install. Your filesystem is the storage; your choice of sync (Dropbox, iCloud, git or none) is
   the sync. ([saving](files-and-export.md#saving-your-work))
-- **Open formats.** The native save format is a plain outline file; export to Markdown or plain text for sharing.
+- **Open formats.** The native save format is a plain, open document file (OPML); export to Markdown or plain text for sharing.
   ([exporting](files-and-export.md#exporting-and-sharing))
 - **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.

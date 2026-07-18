@@ -19,7 +19,7 @@ little live element you can click.
 That's the whole model. **Type in braces, get a live pill.** No coding required: if you can type
 `{` you can use everything in this guide. There are two families of pills, **Generate** (random
 text: dice, tables, name generators, decks, oracles) and **Compute** (math: arithmetic, dates,
-sums that roll up your outline, uncertain estimates), and we will get to how the hell all of it
+sums that roll up your document, uncertain estimates), and we will get to how the hell all of it
 works.
 
 ## Your first pill (30 seconds)

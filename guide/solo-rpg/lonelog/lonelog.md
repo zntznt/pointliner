@@ -11,7 +11,7 @@ works as well in a paper notebook as on a screen.
 
 This guide is **not** the Lonelog specification, and it does not reproduce it. It shows how to
 take the *idea* behind Lonelog, keeping mechanics and fiction cleanly separated in one running
-log, and run it inside Pointliner, where the dice are live and the log is an outline you can
+log, and run it inside Pointliner, where the dice are live and the log is a document you can
 link, tag and search later. For the real notation, its full rules and the people behind it,
 go to the source:
 
@@ -43,9 +43,9 @@ Keeping those on separate, marked lines is the whole trick. The mechanics (the r
 answer) never get tangled up in the prose (what actually happened in the story), and weeks
 later you can still read the log and see exactly how each moment resolved.
 
-In Pointliner, **each beat is a point** (one line in the outline), and a scene is just a
+In Pointliner, **each beat is a point** (one line in the document), and a scene is just a
 parent point with its beats nested under it. That nesting is the one thing Pointliner adds for
-free: a paper log is flat, but an outline lets you fold a whole scene closed, or zoom into one.
+free: a paper log is flat, but a nested document lets you fold a whole scene closed, or zoom into one.
 
 ---
 
@@ -90,7 +90,7 @@ Scene: The nervous merchant
   => He won't say it aloud, but he slides a torn scrap of paper across the table.
 ```
 
-Open the [demo file](lonelog-demo.opml) and you will find exactly this scene as a real outline,
+Open the [demo file](lonelog-demo.opml) and you will find exactly this scene as a real document,
 with the `{2d6}` rolls live. Click a roll to see it change; notice the prose lines stay put.
 
 A few things to try once it is open:

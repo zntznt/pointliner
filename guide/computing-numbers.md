@@ -1,7 +1,7 @@
 # Computing numbers
 
 *Part of the [generative & computational guide](README.md). This is the **Compute** family:
-pills that do math, including arithmetic, dates, sums that roll up your outline, uncertain
+pills that do math, including arithmetic, dates, sums that roll up your document, uncertain
 estimates and pass/fail checks.*
 
 The core is one syntax: **`{= expression}`**. The leading `=` says "compute this." Type it, click
@@ -209,7 +209,7 @@ A point's own numeric **properties** are visible to its math pills by their key.
 `STR: 14` property and a `{= STR + 2}` pill on that same point reads **16**, no separate `{STR := …}`
 declaration needed.
 
-Properties also **inherit down the outline**. A pill reads any numeric property set on an **ancestor**
+Properties also **inherit down the document**. A pill reads any numeric property set on an **ancestor**
 point, so you can put shared values on a parent and use them in the children:
 
 ```
@@ -271,7 +271,7 @@ panel, a base's names fold under one collapsible header so your own variables st
 
 ---
 
-## Roll a number up your outline (aggregation)
+## Roll a number up your document (aggregation)
 
 This is the one that makes the math pill see the *tree*. A `{= …}` expression can **roll up a
 property of the point's direct children**:
@@ -386,7 +386,7 @@ promote to an estimate pill, so the roll-up is dialog-made.
 
 ---
 
-## Make the outline check itself (constraints)
+## Make the document check itself (constraints)
 
 A **check** is a pass/fail rule you attach to a point. Type **`/check:sum(cost) <= budget`** to set it
 inline, or **`/check`** on its own (or bullet menu → Add check) for the dialog. It's a math-expression
@@ -413,7 +413,7 @@ math pills for a live subtree tally.
 
 The point grows a small chip: a muted **✓** when it passes, a visible flag when it **fails** or
 can't evaluate. To sweep the whole document for problems, search **`is:failing`**, which lists every
-point whose check fails or errors. (Same machinery as [aggregation](#roll-a-number-up-your-outline-aggregation):
+point whose check fails or errors. (Same machinery as [aggregation](#roll-a-number-up-your-document-aggregation):
 zero new syntax, just a boolean.)
 
 ---

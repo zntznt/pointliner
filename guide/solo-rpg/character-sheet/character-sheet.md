@@ -111,7 +111,7 @@ The interesting part is on the pack point itself: it carries a **check** of `sum
 You add one from the point's bullet menu (**Add check**) or by typing **`/check`**, then writing the
 test; it is not a property you type inline, it gets its own small pass/fail chip below the point.
 
-A **check** is a linter for your outline. It carries a comparison (a check *must* have one:
+A **check** is a linter for your document. It carries a comparison (a check *must* have one:
 `<=`, `<`, `>`, `>=`, `==`, `!=`), and it evaluates that comparison over the point and its
 children. Here it asks: **is the total carried weight 10 or under?** While it is, the chip sits
 quiet as a small muted tick. The moment the total crosses 10, the chip turns **red** and the point

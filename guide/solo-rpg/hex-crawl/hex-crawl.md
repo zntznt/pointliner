@@ -9,7 +9,7 @@ you fill it in one hex at a time. You pick a direction, you find out what the la
 find out whether anything is out there, and you write down what you found. Do that enough
 times and a world exists that did not exist an hour ago.
 
-This example shows how to run that loop inside Pointliner, where **the outline is the map**.
+This example shows how to run that loop inside Pointliner, where **the document is the map**.
 A region is a point, a hex is a point nested under its region, and everything you discover in
 a hex hangs under the hex. Terrain comes off a deck, encounters are live dice, and your
 supplies count themselves down as you go. Nothing here is a new notation to learn: it is the
@@ -17,10 +17,10 @@ same `{…}` pills as the rest of the guide, arranged into a travel log.
 
 ---
 
-## The map is the outline
+## The map is the document
 
 The one idea this example is built around: **you do not need a separate map view, because the
-outline already nests.** Put the Vale at the top. Put each region under it. Put each hex under
+document already nests.** Put the Vale at the top. Put each region under it. Put each hex under
 its region. Put what you found under the hex.
 
 ```
@@ -137,7 +137,7 @@ aggregations work the same way if you want them: `{= avg(supplies)}`, `{= count(
 ## Run it yourself
 
 Open the [demo file](hex-crawl-demo.opml) in Pointliner (File menu, Open) and it comes up as a
-real outline with every pill live. A few things to try:
+real document with every pill live. A few things to try:
 
 - **Draw a region's worth of terrain.** Click the terrain pill on each hex of the Fenlands and
   watch the deck hand out different terrains, then announce its reshuffle when it runs dry.
@@ -147,7 +147,7 @@ real outline with every pill live. A few things to try:
   and watch the region's `{= sum(supplies)}` total jump. That live re-total is the whole point
   of putting the number in a property instead of adding it up by hand.
 - **Extend the map.** Add a new hex under a region (Tab to indent), give it a terrain draw, an
-  encounter check and a `{prop supplies: N}`. Add a whole new region as a sibling. The outline
+  encounter check and a `{prop supplies: N}`. Add a whole new region as a sibling. The document
   is the map, so it grows by outlining.
 - **Tag a thread.** The demo tags a beat `#thread/the-pass`. Click the tag to pull every beat
   that touches it, the same queryable-journal payoff the other solo-RPG examples lean on.

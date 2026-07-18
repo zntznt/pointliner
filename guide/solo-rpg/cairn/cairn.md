@@ -6,7 +6,7 @@
 
 Cairn is a rules-light OSR adventure game by Yochai Gal, built for the classic loop of careful
 dungeon exploration, risky saves and hard-won treasure. Its rules are released free under an open
-Creative Commons licence, which is what lets this guide adapt the system into Pointliner's outline
+Creative Commons licence, which is what lets this guide adapt the system into Pointliner's points and pills
 and live pills: your saves, damage, inventory and the game's many little tables all roll and compute
 in the same file you keep your journal in.
 
@@ -21,7 +21,7 @@ running in Pointliner.
 > This guide and its demo adapt material from **Cairn** by **Yochai Gal**, used under the
 > **Creative Commons Attribution-ShareAlike 4.0 International licence** (CC BY-SA 4.0):
 > <https://creativecommons.org/licenses/by-sa/4.0/>. **Changes have been made** (the tables and
-> procedures are restructured into Pointliner outline points and `{…}` pills). Because Cairn is
+> procedures are restructured into Pointliner points and `{…}` pills). Because Cairn is
 > ShareAlike, **the adapted Cairn material in this guide and demo is likewise licensed CC BY-SA
 > 4.0** (this is separate from Pointliner's own MIT licence, which covers the app, not this game
 > content). "Cairn" is used descriptively to name the game; no logo or artwork is reproduced.

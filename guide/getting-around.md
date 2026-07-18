@@ -12,7 +12,7 @@ pills you drop *inside* points. This page covers moving around the tree itself.
 
 ## Moving and nesting points
 
-Reshape the outline as your thinking changes: reorder points and change how deeply they nest.
+Reshape the document as your thinking changes: reorder points and change how deeply they nest.
 
 - **Keyboard:** `Tab` indents a point (it becomes a child of the point above); `Shift+Tab` outdents
   it (it pops out to its parent's level). `Alt+Up` / `Alt+Down` moves a point among its siblings.
@@ -32,7 +32,7 @@ Reshape the outline as your thinking changes: reorder points and change how deep
 
 ## Zoom into a point
 
-Work on one branch full-screen with the rest of the outline out of sight: drill into a single
+Work on one branch full-screen with the rest of the document out of sight: drill into a single
 project, a chapter or a busy task list so only it and its children fill the page.
 
 To zoom in: press `Ctrl/Cmd+Enter` while editing a point, click a point's **bullet**, or open the
@@ -41,7 +41,7 @@ and children below.
 
 A **breadcrumb** row appears at the top: `Home › ancestor › … › current point`. Climb back out
 through it, click or press `Enter` on any ancestor crumb to jump to that level, or the **Home** crumb
-to return to the full outline. Press `Esc` to step up just one level toward the parent rather than
+to return to the full document. Press `Esc` to step up just one level toward the parent rather than
 exiting all the way.
 
 ## Selecting many points
@@ -61,10 +61,10 @@ selected point at once (the same two chords cycle a single point while you are e
 
 ## Refile a point
 
-Move a point and everything under it to a new home far across the outline: drop a stray idea into the
+Move a point and everything under it to a new home far across the document: drop a stray idea into the
 right project, tuck a finished item under an archive or pull a buried note up to the top.
 
-Open the point's menu and choose **Refile** to browse the whole outline as a searchable tree: type to
+Open the point's menu and choose **Refile** to browse the whole document as a searchable tree: type to
 filter to a destination, walk it with the arrow keys, then press `Enter` to move the point there as
 the chosen parent's last child. Pick **Top level** to lift it out of all nesting. It is the
 searchable alternative to dragging or indenting one step at a time.
@@ -77,7 +77,7 @@ Keyboard-first: type `/refile` for the searchable tree, or name the destination 
 
 ## Searching and filtering
 
-Find anything in a large outline without scrolling. Narrow to a topic, surface all open tasks or
+Find anything in a large document without scrolling. Narrow to a topic, surface all open tasks or
 spot everything that is overdue.
 
 Type words in the search box and **every word must appear**. The operators:
@@ -150,7 +150,7 @@ When a list is not enough, turn the same live search into a **table**. A query b
 points matching a search; its columns show whatever you pick per point: the clickable title, a
 property like `due` or `cost`, or a formula computed for each row (`= daysuntil(due)`,
 `= sum(cost)` to roll up a point's children). The grid updates itself as the document changes;
-nothing is stored, it is always a view of the live outline.
+nothing is stored, it is always a view of the live document.
 
 Type `/` and choose **Query base** (or `/querybase`), then give it a search and one column per line
 (`title`, a property key or `= formula`; put `Name:` in front to label a column). The strip above the grid
@@ -181,7 +181,7 @@ to just that branch.
 
 As you type `#`, a menu lists tags you have already used with a **count** of how many points carry
 each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press `Enter`, or keep
-typing a fresh word to coin a new tag. Click any tag in the outline to instantly filter to every
+typing a fresh word to coin a new tag. Click any tag in the document to instantly filter to every
 point that shares it.
 
 **Give a tag a color.** Open **File then Tag & property styling**, type a tag name and click one of

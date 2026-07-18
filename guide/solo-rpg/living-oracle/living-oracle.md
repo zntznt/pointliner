@@ -39,7 +39,7 @@ Who walks into the scene? {roll: #npc}
 
 Click the pill and it draws one of the four at random. Click again for another. It is a search that
 returns one random match instead of a filtered list, so it reaches every `#npc` point wherever it
-lives in your outline. The cast list above and the roll do not have to sit next to each other.
+lives in your document. The cast list above and the roll do not have to sit next to each other.
 
 Because the pool *is* your notes, it is always current. Introduce a new contact mid-session, tag it
 `#npc`, and the next roll can pick them with no setup. That is the whole trick: the table maintains
