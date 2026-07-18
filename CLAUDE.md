@@ -994,8 +994,9 @@ The product direction is now set. Read these before proposing or building:
 - `guidance/ux-discipline.md` — **the binding UX standard** (vocabulary, the five principles,
   keyboard grammar, the closed syntax inventory, patterns, conformance matrix). Read before
   any UI work; clear `guidance/ux-definition-of-done.md` before merge.
-- `guidance/ux-remediation.md` — every current UX non-conformance, tracked as a defect to close
-  (including the standing syntax-sprawl guard).
+- `guidance/ux-remediation.md` — the **active** UX non-conformance register (now just the two open
+  items: UXP-20 the standing syntax-sprawl guard, UXP-170 a deferred glyph rebuild). File new defects
+  here. The ~226 closed entries are the frozen record in `guidance/ux-remediation-archive.md`.
 - `guidance/roadmap.md` — locked decisions + the phased plan (multi-document Zettelkasten,
   node links + backlinks, storage/durability, the lean↔guided UX modes), plus the
   remaining generative-engine ideas.
