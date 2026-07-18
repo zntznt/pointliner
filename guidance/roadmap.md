@@ -178,6 +178,10 @@ Zettelkasten shipped first and everywhere; the multi-file network rode on Phase 
 > **CF-2** the `[[docId#nodeId|label]]` token (render + click-to-navigate), **CF-3** the `[[` picker
 > spanning the whole folder, **CF-4** cross-doc backlinks ("what links here, across my notebook"),
 > **CF-5** cross-doc link-and-create ("+ New note"). See `guidance/features.md`.
+> **Next arc (owner-directed 2026-07-18):** the wider cross-document family — mirror/transclusion
+> across docs, a doc-level folder graph, folder-scoped aggregation/queries, backlink previews — is
+> ACTIVE direction, gated on performance/stability, not identity. The study with measured costs and
+> the phased order is `guidance/cross-document-direction.md`.
 
 1. ✅ **Same-file link token** `[[#nodeId|label]]` + resolver (click → zoom to target). Links are
    plain editable text in edit mode (not atomic pills); render as a widget in display mode.

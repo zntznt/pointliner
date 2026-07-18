@@ -131,7 +131,10 @@ Grouped by how far each sits from the current fences:
 - **Cross-*document* aggregation** — Sam's unlock: `{= sum("#project cost")}` across a whole folder,
   with a resident multi-document index so folder-wide search/backlinks/compute work without the
   one-doc-in-memory limit. This is the single thing that would move him from "scratchpad" to "real
-  work here." (Weigh hard against the per-document identity and the memory model.)
+  work here." *(Superseded 2026-07-18: the owner directed that cross-document interactions — linking,
+  mirroring, transclusion, graph, aggregation — are wanted; the constraint is performance/stability,
+  not identity. The direction study with measured costs is `guidance/cross-document-direction.md`.
+  Sam's vault migration stays a non-goal; the target is the notebook.)*
 
 ## What was acted on
 
