@@ -1,14 +1,13 @@
 # Base views: the rich-visualization vision
 
-**Status: LARGELY DELIVERED (2026-07); retained for the red-team corrections and the mission
-thesis' original argument.** What this doc argued for has shipped: the view system + board (BV-1),
-cards (BV-2), calendar (BV-3), the FR-1 display roles with per-role editors, query bases through
-QP-2 Phase C, and the SV-1/SV-2 sorts — each within the §0 corrections below, which remain binding
-on future view work. The §0b mission thesis' **canonical home is now `guidance/product-identity.md`**
-(it graduated from a bases argument to the product's scope filter); the §0.6 saved-views line was
-resolved by `guidance/saved-views-proposal.md` (SV-1/SV-2 shipped, SV-3/SV-4 recorded NO). The
-shipped-record ledger lives in `bases-direction.md` §4. Read this doc for WHY the fences sit where
-they do; read those for what exists.
+**Status: DELIVERED (2026-07); trimmed to the durable parts (2026-07-18).** What this doc argued
+for has shipped: the view system + board (BV-1), cards (BV-2), calendar (BV-3), the FR-1 display
+roles with per-role editors, query bases through QP-2 Phase C, and the SV-1/SV-2 sorts. The shipped
+narrative (the axes reframing, the field-roles keystone argument, the view sketches, the data model,
+the build-order recommendation) has been removed as history the ledgers now carry. **Two parts
+remain, because they still bind future work:** §0 (the red-team corrections) and §3b (the column
+type catalogue / possibility map). Everything else now lives in the docs named under "Where the rest
+lives" at the foot of this file.
 
 ---
 
@@ -86,139 +85,13 @@ review intact and anchor the rescoped version.
 
 ---
 
-## 0b. The mission thesis (owner-set, 2026-07-02): views in service of the generative layer
 
-The owner's framing, recorded verbatim in spirit: the self-imposed mission is to take on all
-outliners and prove a personal one could exist; **the generative layer is the "mine" part made
-manifest**. The app creates things the others won't or haven't because they aren't its author.
+## 0b. The mission thesis (moved)
 
-That gives every view a sharper acceptance test than "does Notion have this":
-
-> **A view earns its place only where it composes with the generative/computational layer,
-> because that composition is the thing only this app can do.**
-
-Concretely: a plain kanban of plain text cells is database-app parity, exactly the scope-creep the
-§4 fence exists to stop. A kanban whose lanes are the user's own **sequences** and whose cards carry
-`{= }` rollups and estimate sparklines; a gallery whose card subtitle is a **grammar roll**; a query
-base that computes over matched points with the same engine that rolls the dice: those cannot exist
-in any other outliner, because no other outliner has the engine. The board is the frame; the mine
-part is what renders inside the cells.
-
-Two downstream consequences bind the rest of this doc:
-- **Type-role priority is generative-first.** The roles that unlock composition (status/sequence for
-  lanes, date for calendar, the computed/formula and pill-bearing columns) come before the parity
-  types (currency, rating stars). Build the ones that make the mine part visible.
-- **QP-2 Phase C (write-through) is a line, not a ceiling, for now.** It is about editing, not
-  generating, advances the mission little, and carries the known footgun (§0.4). It stays unbuilt
-  until a real need argues otherwise.
-
----
-
-## 1. The reframing: two orthogonal axes, not one feature
-
-The QP-2 proposal framed "bases as queries" as the next step. That was aiming too small. The real
-picture has **two independent axes** that the base doctrine's object/view split already implies:
-
-- **Axis 1, the row source (the data object).** Where do the rows come from?
-  - **Authored:** hand-entered rows (today's base).
-  - **Query-sourced:** rows produced by a search over the outline (QP-2).
-- **Axis 2, the view (the display).** How are the rows shown?
-  - **Table** (today's only view), **kanban**, **gallery**, **calendar**, **list**.
-
-These **multiply, they do not stack.** An authored base can be shown as kanban. A query base can be
-shown as a gallery. Any row source composes with any view, because the doctrine already separates the
-*object* (a base, the data) from the *view* (how it renders). The reserved `.mt-base-views` header
-strip and §2's "when future views arrive (cards, board, list), table view becomes one named view" were
-laid down for exactly this.
-
-So the endgame is not "query bases." It is: **a base is a data object; a view is a lens; the base
-carries a small view config; the switcher picks the lens.** Query-sourcing is one way to fill the
-object; the views are how you look at it.
-
----
-
-## 2. The keystone the deferred list hid: rich views REQUIRE field roles
-
-Here is the insight that reshapes everything. Kanban, gallery, and calendar are **not** alternate
-renderings of an untyped grid. They need semantics a grid cell does not carry:
-
-- **Kanban** needs to know *which column is the group/status field* (it becomes the lanes) and how to
-  *move a card between lanes* (drag writes that field).
-- **Gallery** needs *which field is the cover/image* and *which is the title*.
-- **Calendar** needs *which field is the date*.
-- **List** is the soft case (it can fall back to title + a subtitle field).
-
-Today a base cell is an **untyped string** (`model.rows[r][c]`, plain text in `node.text`; the only
-per-column metadata is alignment and width). You cannot build kanban on top of that without first
-answering "which field are the lanes," and **that answer is a lightweight role/type on a column.**
-
-This is why `bases-direction.md` §4 deferred **views AND typed fields** together. They are not two
-independent deferrals; they are **one feature wearing two names.** You cannot ship the rich views
-without a minimal field-role concept, and a field-role concept is only worth building because the rich
-views need it. **Field roles are the keystone**, and the honest version of "add kanban/gallery" starts
-there.
-
-Crucially, this stays inside the freeform philosophy (§3). A **role is optional and user-assigned**,
-not a forced schema. A column with no role is a plain string column, exactly like today. You only tag
-"this column is the status" when you want a kanban lane out of it. No mandatory title column, no lock-
-in, no "every base is a list of pages." The role is a hint the views read, not a type system the data
-must obey.
-
----
-
-## 3. Why the single-file / no-backend constraint does NOT block this
-
-Notion's richness comes from a server: it runs queries in a database and stores view configs in
-tables. We have neither, and we do not need them, because every ingredient of a rich view is a
-client-side operation we can already do or add cheaply:
-
-| Rich-view ingredient | How it works here | Cost |
-|---|---|---|
-| Group rows by a field value (kanban lanes, calendar days) | pure array reduce over the row model | trivial, a pure core |
-| Render a card / gallery tile | reuse the existing `mtInline` cell renderer inside a `<div>` card instead of a `<td>` | small, the renderer is already field-agnostic |
-| Move a card between lanes | write the group field on that row (authored: a cell in `node.text`; query: the source node's property) | reuses the base edit path / QP-2 write-through |
-| A cover image in a gallery | a cell holding an image markdown / URL, rendered via the existing `md-img` support | already exists |
-| Which view + which field is group/cover/date | a tiny JSON view-config sidecar on the base node, `_view` OPML attribute | small, same mechanism as `_colw` |
-| The view switcher UI | the reserved `.mt-base-views` strip, already held empty for this | already reserved |
-
-Nothing here needs async, a framework, rich inline state, or a second file. The rendering stays
-synchronous (a view is a pure function of the row model + the view config), which honors the
-`mdToHtml`-is-synchronous invariant. The data stays plain-text-backed: authored cells stay in
-`node.text`; the view config and field roles ride the node as underscore-prefixed OPML attributes,
-exactly like the artifact sidecars and `colW` do.
-
-**The one thing the constraint genuinely limits** is scale: a client-side group-and-render over a
-large query result has no server pagination. That is the same cap/liveness boundary QP-2 Phase B
-already names, and it is honest to say a 5000-card kanban is not the target. The target is the human-
-scale board, and that is comfortably in reach.
-
----
-
-## 3a. The load-bearing law: a base is always text that must render
-
-Before the type catalogue, the rule everything below obeys, stated plainly:
-
-> **A base is text.** Whether authored (a pipe table you typed) or query-sourced, the base is
-> ultimately GFM pipe-table markdown in `node.text` (plus underscore-OPML sidecars, which are just
-> serialized strings). A "column type" does **not** store a typed value anywhere. It is a **(parse,
-> render, write-back) triple over a cell's text**: parse the cell string, render it richly, and any
-> editor affordance writes plain text back into that same cell. **Nothing exists that cannot be
-> reconstructed from the text and its sidecars.** If a visualization cannot round-trip through a
-> copy-paste of the markdown, it does not exist.
-
-This is why type roles and view config live in **sidecar attributes** (`_colrole`, `_view`), not in
-`node.text`: they are pure view state with no markdown representation, exactly like column widths
-already ride `_colw` and never the text. Formulas are the one thing that MUST stay in the text (the
-`#+TBLFM:` line), because that is how `computeTable` finds and recomputes them and how a pasted table
-recomputes elsewhere. So the split is: **content and formulas in the text (they must be, to
-render/compute); type roles and view config in sidecars (pure view state, kept out so the markdown
-stays clean and portable).** "Copy as markdown" keeps producing a clean GFM table; the roles and views
-are a lens the renderer applies, never a schema the data obeys.
-
-A role is therefore always **optional and non-destructive.** A column with no role is a plain text
-column, exactly like today. This preserves the freeform philosophy: no forced schema, no mandatory
-title column, no lock-in. You tag "this column is a date" only when you want the chip and the picker;
-the cell is still `2026-06-13` in the markdown either way.
+The §0b mission thesis — *views in service of the generative layer; parity with database/PKM apps is
+the scope creep the fences stop* — **graduated to `guidance/product-identity.md`** (§0b/§2, the
+product's scope filter and the §0b mission test). Read it there; it is no longer a bases-only
+argument.
 
 ---
 
@@ -318,191 +191,19 @@ architecture without a single new storage type.
 
 ---
 
-## 3c. The picker: rich type set, no overwhelm
+## Where the rest lives (shipped / superseded)
 
-A twenty-entry type list shown as a flat menu at column creation is exactly the barrage to avoid. The
-design keeps the richness reachable without ever confronting the user with all of it:
+The removed sections became the following authoritative records:
 
-1. **Never force a type at creation.** A new column is always plain **Text**, zero friction, the
-   default today. Type is an *optional enrichment* from the Column menu ("Format as..."), reached when
-   the user wants a view feature, never demanded up front. This inverts the Notion/Airtable "pick a
-   type first" model and matches the freeform philosophy: a role is a hint you add, not a schema you
-   satisfy.
+- **The shipped-record ledger** (what exists, PR by PR — QP-2 A/B/C, FR-1 roles, BV-1..3, SV-1/SV-2):
+  `bases-direction.md` §4/§7.
+- **The mission thesis / scope filter** (former §0b, §1's reframing, §8's "is this the right
+  endgame" question): `guidance/product-identity.md` §0b/§2 + the §9 substrate test.
+- **The saved-views below-the-line decisions** (former §0.6, §7's out-of-scope, the SV-3/SV-4 NOs):
+  `guidance/saved-views-proposal.md`.
+- **The query-base rationale** (former §4 data model, §6 sequencing): `guidance/query-base-proposal.md`
+  (Status: SHIPPED through Phase C).
+- **The base-is-always-text law** (former §3a) and the layout/interaction model (former §5):
+  `bases-direction.md` §3/§5.
 
-2. **Contextual promotion.** When the picker opens, it reads the column's current values and floats
-   the types that fit to the top. A column full of `2026-06-13`-shaped strings promotes **Date** as
-   the first option; a column of `#tags` promotes **Tags**; a column of numbers promotes **Number**
-   and **Currency**. The obvious conversion is the first thing you see, not buried at position nine.
-   (This reuses `parseDueDate` and the existing value sniffers, so "does this column look like dates"
-   is a pure check we already have.)
-
-3. **Grouped by family, collapsible.** The full list is the seven families above (Text, Number, Date,
-   Choice, Link/Media, Generative, Row-meta), each a small group header. The surface is seven headers,
-   not twenty rows; you expand the family you want. A search box filters by name for power users.
-
-4. **Applicability, not a wall.** A type whose values cannot coerce is de-emphasized (an "Image" type
-   over a column of integers is grayed with a "convert anyway" escape hatch), never hidden entirely,
-   so nothing is lost but the relevant choices lead. This respects the freeform philosophy (you can
-   always force it) while keeping the default view sane.
-
-The net effect: a beginner sees "Text" and never touches the picker; someone building a board opens
-the Column menu on their status column, sees **Select** promoted at the top of the Choice family
-because the values look like keywords, and turns it into lanes. The richness is deep but the entry
-point is one obvious click.
-
----
-
-## 4. The data model, made concrete
-
-A base gains two small pieces of optional state, both view config, neither touching `node.text`:
-
-1. **Column roles** (`node.colRole`, `_colrole` OPML, index-aligned with columns like `colW`): an
-   optional per-column role from a **small closed set**: `title`, `status` (a select/group field),
-   `date`, `image`, `number`, or none (a plain string column, the default). A role is a *hint*, not a
-   storage type: the cell is still a string in `node.text`; the role tells views how to treat it and
-   optionally constrains the editor (a `status` cell offers its known values; a `date` cell offers the
-   date picker). This is the minimal "typed fields" the deferred list named, scoped to what views need
-   and no more.
-
-2. **View config** (`node.view`, `_view` OPML): `{ kind, groupBy, coverBy, dateBy, ... }` where `kind`
-   is `table | kanban | gallery | calendar | list` and the `*By` fields name which column plays each
-   role for this view. A base with no `view` config renders as table (today's behavior, unchanged).
-
-For a **query base**, add the QP-2 pieces: the query expr and the column-to-field projection. The row
-model is computed by `queryTableRows` instead of decoded from `node.text`, but downstream, a view is a
-pure function of `{ rows, roles, viewConfig }` regardless of whether the base is authored or query-
-sourced. **That is the payoff of separating the axes:** the view layer never asks where the rows came
-from.
-
----
-
-## 5. The views, sketched
-
-Each view is a pure function `(rowModel, roles, viewConfig) -> DOM`, dispatched by the switcher, all
-reusing `mtInline` for cell content:
-
-- **Table** (shipped): the grid. The default and the fallback.
-- **Kanban:** group rows by the `status` column into lanes; each row a card showing title + a few
-  fields; drag a card to another lane writes the status field. The single richest view and the one
-  that most needs a role (`status`).
-- **Gallery:** a responsive card grid; each card shows the `image` cover, the `title`, and a couple of
-  fields. Needs `image` + `title` roles.
-- **Calendar:** place rows on days by the `date` column (reuses the existing `calendarMonthGrid` /
-  agenda month machinery). Needs `date`.
-- **List:** the soft view, title + subtitle, no roles strictly required; a good "zero-config" first
-  extra view.
-
-Every view degrades gracefully: no `status` role set → kanban shows a "pick a group field" empty
-state (P4, never a crash), never a silent misgroup.
-
----
-
-## 6. How this relates to QP-2, and the revised sequencing
-
-QP-2 (query bases) is **one axis, not the whole feature.** The larger arc, if you want the endgame:
-
-1. **Field roles (the keystone).** Add the optional `title/status/date/image/number` column role, the
-   `_colrole` round-trip, and the role picker in the Column menu. Ships on authored bases first (a
-   role is useful even in table view: a `status` cell offers its values, a `date` cell offers the
-   picker). This is the "typed fields" deferral, scoped minimally. **This is the real first build**,
-   because every rich view depends on it.
-2. **The view system + list/gallery.** The `_view` config, the switcher in the reserved strip, a pure
-   view-dispatch layer, and the two easiest views (list = zero-config, gallery = title+image+cover).
-   Proves the view architecture with the low-semantic views.
-3. **Kanban.** The richest view: lane grouping by `status`, card drag-to-move writing the field. Built
-   once the role + view infrastructure exists.
-4. **Calendar.** Reuses the agenda month grid; date-role grouping.
-5. **Query bases (QP-2), composed in.** Because a view is source-agnostic, query bases get every view
-   for free once the axes are separated; QP-2's own work is just the row source + column projection +
-   the read-only/write-through decision. It can land before or after the views; the cleanest order is
-   **roles → views → query-source**, so query bases arrive into a world that already has kanban and
-   gallery.
-
-Each is a normal PR with its own conformance gate. This is a multi-PR arc, deliberately, the same way
-the bases MVP was.
-
----
-
-## 7. What stays out of scope, even with all of this
-
-The fence still holds against the scope-eating version:
-
-- **No saved-views database.** A base carries *one* view config at a time (or a small switchable set,
-  a later decision), not a store of named persisted filtered views as a data model. The switcher flips
-  the lens; it does not manage a library of saved queries.
-- **No relation engine.** Bases source from the outline (authored cells or a query over points), never
-  from another base via relations. The freeform philosophy holds: no "every base is a list of linked
-  pages."
-- **No full type system.** Field roles are a small closed set of *view hints* (title/status/date/
-  image/number), not a schema the data must validate against. A cell is always still a string in the
-  text; the role only shapes how views read and how the editor helps.
-- **No async / no second file / no framework.** Every view is a synchronous pure function of the row
-  model; all new state rides the node as OPML attributes.
-
-So the doctrine's §4 moves by exactly the coupled pair it always implied: **views + minimal field
-roles go above the line together** (they are one feature), and query-sourcing (QP-2) is the third,
-independent item. Filters-as-a-database, relations, and a real type system stay below.
-
----
-
-## 8. The recommendation
-
-Treat this, not QP-2 alone, as the direction. The endgame is **a base view system**, and its keystone
-is **optional field roles**, because kanban/gallery/calendar are impossible without knowing which field
-is the group/cover/date, and that knowledge is a lightweight role. The single-file constraint does not
-block any of it; grouping and card layout are trivial client-side, and all new state fits the existing
-OPML-sidecar pattern.
-
-is **optional field roles**, because kanban/gallery/calendar are impossible without knowing which field
-is the group/cover/date, and that knowledge is a lightweight role. The single-file constraint does not
-block the RENDERING of any of it (see §0.2/§0.3 for the interaction and re-query costs that are real).
-
-**The build-order question is now genuinely contested** (the review split on it, and it is your call):
-
-- **Thin-slice first (the review's recommendation):** ship **QP-2 Phase A alone**, a read-only query
-  base, one pure `queryTableRows` core extending `queryRows`, rendered in today's table through the
-  single `mtModel` seam. No roles, no new views, no write-through. It stands alone, delivers the one
-  thing the solo-RPG/notes user actually asks for (a live outline-sourced table), moves the §4 fence by
-  exactly one clean item, and reopens nothing risky. The whole view-system edifice waits until a real
-  user asks for a board.
-- **Keystone first (this doc's original framing):** ship **field roles on authored bases**, because
-  roles are the substrate every rich view needs. Roles have an immediate in-table payoff (a status
-  cell offers its values, a date cell offers the picker) before any view, so it is not pure invisible
-  infrastructure, but it IS building toward a board nobody has asked for yet, and per §0.5 it moves a
-  bigger piece of the fence (typed fields) than the thin slice does.
-
-The keystone logic is sound (you genuinely must build roles before the first *view* payoff), which is
-an argument for MORE skepticism about the view system, not less: if kanban is the goal, a lot lands
-before anything visible.
-
-**The four decisions, now TAKEN (owner call, 2026-07-02, under the §0b mission thesis):**
-1. **Build order: thin-slice first.** QP-2 Phase A (the read-only query base) ships first; it is the
-   shortest path to the first place the generative layer shows up in a base view, and it proves the
-   seam before roles/kanban investment.
-2. **The direction is approved, reframed.** Not "add Notion views" but §0b: a base view system in
-   service of the generative layer, each view justified by composition with the engine.
-3. **Phase C write-through stays a line** (see §0b), revisited only on demonstrated need.
-   *(Superseded 2026-07-16, owner call: Phase C SHIPPED for plain-property columns — see
-   `bases-direction.md` §4 for the record and how the §0.4 footguns were answered. Query
-   boards/cards remain read-only; title/`=` columns remain read-only.)*
-4. **The catalogue is the possibility map; the build set is minimal and generative-first.**
-
-*(The original open framing of these four, kept for the record:)*
-1. **Build order:** thin-slice-first (QP-2 Phase A, read-only query table) or keystone-first (field
-   roles on authored bases). Recommendation leans thin-slice: it is the cheapest genuinely-wanted thing.
-2. **Is the view system the right endgame at all?** A Notion-grade kanban/gallery/calendar is database-
-   app parity; this app's differentiator is the generative/grammar/dice engine and freeform bases. The
-   vision reframes a near-blessed bounded feature (QP-2) UP into a multi-PR view system. Approving it
-   reopens the §4 fence for the coupled views+roles pair (two deferred items, plus a third partially),
-   a bigger move than QP-2's clean single-item reopen.
-3. **Is Phase C write-through a ceiling or a line?** Editing a query-base cell (or dragging a card)
-   that silently rewrites a different, possibly-offscreen point breaks "a point owns its own text,"
-   with no undo-locality or visual signal. It gates every interactive query-sourced view. Reach for it,
-   or never cross it.
-4. **Full 20-type catalogue (§3b) or the 6-role minimal fence (§7)?** These two halves of the doc are
-   in tension (§0.7). A build commits to one; the catalogue is the possibility map, not the manifest.
-
-If you pick thin-slice, the next artifact is the (already-written) QP-2 proposal, corrected for the
-§0.1 cell-content pre-resolution and the §0.3 re-query memoization. If you pick keystone, the next
-artifact is a field-roles build proposal scoped to the minimal set. Either way, the four fatal/serious
-corrections in §0 are prerequisites, not optional.
+The four build-order decisions (former §8) are all taken and shipped; that section is retired.

@@ -122,13 +122,14 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `saved-views-proposal.md` | COMPLETE — SV-1/SV-2 shipped, SV-3/SV-4 recorded NO |
 | `typed-var-declaration-proposal.md` | SHIPPED (Stages A + B) |
 | `brace-completion-proposal.md` | Phases 1 + 2 shipped |
-| `base-views-vision.md` | Largely delivered; retained for the binding §0 red-team corrections (the §0b thesis' canonical home is now `product-identity.md`) |
+| `base-views-vision.md` | Delivered; trimmed to the two durable parts — §0 (binding red-team corrections) + §3b (column-type catalogue). The rest moved to `bases-direction.md` §4 / `product-identity.md` |
 
 **Ledgers & references:**
 
 | File | What it is |
 | --- | --- |
-| `ux-remediation.md` | Every UX non-conformance as a tracked defect (append-only record) + the syntax-sprawl guard |
+| `ux-remediation.md` | The **active** UX non-conformance register — the two open items (UXP-20 syntax-sprawl guard, UXP-170 deferred glyph). File new defects here |
+| `ux-remediation-archive.md` | The frozen record of the ~226 **closed** UX defects (decisions + regression tripwires); not active work |
 | `identity-alignment.md` | **ACTIVE program** — the gap list between `product-identity.md` and the shipped app (IA-1…9, tiered, each ending in a PR or a recorded decision) |
 | `generative-status.md` | Completion ledger for the generative + computational lane |
 | `backlog.md` | Consolidated feature gaps with status marks |
