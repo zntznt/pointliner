@@ -243,7 +243,7 @@ export function loadCores() {
 
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
-    'childPropNumber','aggregateChildren','reduceAgg','queryReduce','expandAggExpr','mathPrepassErrs','firstEmptyRollup','countWords','subtreeWords',
+    'childPropNumber','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','countWords','subtreeWords',
     'parseUnitDecls','unitTable','normalizeUnits','convertUnits','splitArgsTopLevel','replaceConvert','unitsToText', // #875 units
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','resolveNodeScope','checkExprOf','hasVisibleProps','buildIndex','ancestorsOf',

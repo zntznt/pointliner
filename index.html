@@ -1067,6 +1067,10 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .query-row::before{content:'\2022';color:color-mix(in srgb,var(--pill) 70%,var(--muted));margin-right:6px}
 .query-row:hover{background:color-mix(in srgb,var(--pill) 9%,transparent);color:color-mix(in srgb,var(--pill) 90%,var(--fg))}
 .query-more{padding:2px 10px 2px 22px;font-size:.82em;color:var(--muted);font-style:normal}
+/* 4c: folder-scoped query pills — a row's source-document hint, and the visible degraded
+   state when a folder pill runs with no folder connected (dashed, tooltip says why). */
+.query-doc{color:var(--muted);font-size:.85em}
+.query-pill.query-folder-off{border-style:dashed}
 .query-empty{display:block;padding:5px 10px;font-size:.86em;color:var(--muted)}
 .query-pill.query-bad{border-style:dashed;color:var(--del);cursor:default}
 /* #541: the count variant is a compact INLINE pill (the number is the content), not the block list */
@@ -3718,8 +3722,12 @@ function expandAggExpr(expr, node, vars = null) {
   // asserts every descendant carries hp; `count("is:todo") <= 5` caps a section's open
   // tasks. A node-less caller (dialog validation) counts an empty scope → 0, like the
   // rollups. v1 fence: the argument cannot contain a double quote (no "exact phrase").
+  // 4c: an optional trailing `, folder` widens the count to the whole reading set (own doc
+  // live, other docs as saved) via the gen-memoized queryReduceFolder. Only the word `folder`
+  // matches; any other scope word leaves the call literal → visible #ERR (P4).
   if (/\bcount\s*\(\s*"/.test(e)) {
-    e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*\)/g, (_, q) => '(' + queryCountIn(q, node) + ')');
+    e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*(?:,\s*(folder)\s*)?\)/g,
+      (_, q, sc) => '(' + (sc ? queryReduceFolder('count', q, null) : queryCountIn(q, node)) + ')');
   }
   // sum/avg/min/max("query", prop) — REDUCE a property over a live query set (SR-8 / #877), the
   // generalization of count("query"). The quoted 1st arg is the search, the 2nd a property key, so
@@ -3730,9 +3738,11 @@ function expandAggExpr(expr, node, vars = null) {
   // there is no ambiguity and no ordering dependency. A node-less caller (validation) reduces an
   // empty scope → the identity, silent like count("query"). v1 fence: the query cannot contain a
   // double quote (matches count("query")).
+  // 4c: same optional `, folder` third arg as count("query") — {= sum("has:cost", cost, folder)}
+  // reduces across the whole reading set. Any other third word → literal → #ERR.
   if (/\b(?:sum|avg|min|max)\s*\(\s*"/.test(e)) {
-    e = e.replace(/\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*\)/g,
-      (m, fn, q, prop) => '(' + queryReduce(fn, q, prop, node) + ')');
+    e = e.replace(/\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*(?:,\s*(folder)\s*)?\)/g,
+      (m, fn, q, prop, sc) => '(' + (sc ? queryReduceFolder(fn, q, prop) : queryReduce(fn, q, prop, node)) + ')');
   }
   // sum/avg/count are NOT evalMath functions — the rollup is their only meaning — so the
   // 2nd arg can be a keyword scope OR a numeric depth: sum(cost) = direct children (default),
@@ -14466,6 +14476,69 @@ function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) 
   return queryReduce('count', expr, null, scope, seqs, vars);
 }
 
+// 4c (cross-document-direction.md): the FOLDER-scoped reducer behind {= sum("query", prop,
+// folder)} and {= count("query", folder)}. Walks every doc in the reading set (own doc LIVE,
+// others as saved — wsAllDocRoots) with PER-DOC context, the searchWorkspace model: a doc's own
+// sequences/vars drive its is:done / is:failing, its own link index drives is:broken. Memoized
+// on (workspaceIndex.gen, _varsVer) — the folder walk is 1.5–31 ms measured, so it must never
+// run per render pass: a foreign change bumps gen (rescan / refresh-on-save), an own-doc edit
+// bumps _varsVer, everything else is a map hit. Cleared in resetDocCaches on doc swap.
+let _qrfMemo = new Map(), _qrfGen = -1, _qrfVer = -1;
+function queryReduceFolder(fn, expr, prop) {
+  const gen = workspaceIndex?.gen || 0;
+  if (gen !== _qrfGen || _varsVer !== _qrfVer) { _qrfMemo.clear(); _qrfGen = gen; _qrfVer = _varsVer; }
+  const k = fn + '\x00' + (expr || '') + '\x00' + (prop || '');
+  if (_qrfMemo.has(k)) return _qrfMemo.get(k);
+  const terms = parseSearchQuery(expr || '');
+  let v;
+  if (!terms.length) v = reduceAgg(fn, []);
+  else {
+    const needsCtx = terms.some(t => t.kind === 'is');
+    const needsLinks = terms.some(t => (t.kind === 'is' && (t.value === 'broken' || t.value === 'orphan')) || (t.kind === 'has' && t.value === 'backlink'));
+    const vals = []; let count = 0;
+    for (const [, r] of wsAllDocRoots()) {
+      if (!r) continue;
+      const seqs = allSequences(r);
+      const vars = needsCtx ? collectVars(r) : undefined;
+      const links = needsLinks ? collectLinks(r) : undefined;
+      (function walk(n) {
+        for (const c of (n.children || [])) {
+          if (queryMatchesNode(terms, c, seqs, vars, links)) {
+            if (fn === 'count') count++;
+            else { const pv = childPropNumber(c, prop); if (pv !== null) vals.push(pv); }
+          }
+          walk(c);
+        }
+      })(r);
+    }
+    v = fn === 'count' ? count : reduceAgg(fn, vals);
+  }
+  _qrfMemo.set(k, v);
+  return v;
+}
+
+// 4c: folder-scoped query ROWS — queryRows run over every doc in the reading set (own live,
+// others as saved), merged in folder order, each row carrying its docId so the pill can
+// navigate cross-doc. Same cap/truncation contract as queryRows (per-doc context computed
+// inside it). Memoized like queryReduceFolder, same invalidation pair.
+let _qpfMemo = new Map(), _qpfGen = -1, _qpfVer = -1;
+function queryRowsFolder(expr, hostId, cap = QUERY_ROW_CAP) {
+  const gen = workspaceIndex?.gen || 0;
+  if (gen !== _qpfGen || _varsVer !== _qpfVer) { _qpfMemo.clear(); _qpfGen = gen; _qpfVer = _varsVer; }
+  const k = (expr || '') + '\x00' + (hostId || '') + '\x00' + cap;
+  if (_qpfMemo.has(k)) return _qpfMemo.get(k);
+  const rows = []; let total = 0;
+  for (const [docId, r] of wsAllDocRoots()) {
+    if (!r) continue;
+    const res = queryRows(expr, r, hostId, cap);
+    total += res.total;
+    for (const row of res.rows) if (rows.length < cap) rows.push({ ...row, docId });
+  }
+  const out = { rows, total, truncated: total > rows.length };
+  _qpfMemo.set(k, out);
+  return out;
+}
+
 // #558: the {roll: query} payoff should read as fiction, not as its own database key.
 // A `#npc` in the query is plumbing, so strip it from the drawn point's text — but ONLY
 // the tags the query itself asked for; any OTHER hashtag on the point stays (it can carry
@@ -18133,6 +18206,7 @@ function insertInlineArtifact(id, nodeId, content) {
     openQueryDialog({
       title: 'Roll on your document',
       submitLabel: 'Roll',
+      folderOption: false,   // a {roll:} grammar reads the live document; folder rolls are not a thing (yet)
       onResult: expr => {
         const n = nodeById(nodeId); if (!n) return;
         const roll = makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin');
@@ -18212,9 +18286,10 @@ function insertInlineArtifact(id, nodeId, content) {
     openQueryDialog({
       title: 'Embedded query',
       submitLabel: 'Insert',
-      onResult: expr => {
+      onResult: (expr, scope) => {
         const n = nodeById(nodeId); if (!n) return;
         const rec = { key: queryKey(), expr };
+        if (scope) rec.scope = scope;   // 4c: 'folder' — absent = document, records stay lean
         (n.query ||= []).push(rec);
         applyInlineInsertion(nodeId, offset, `[[query:${rec.key}]]`);
       },
@@ -18224,9 +18299,10 @@ function insertInlineArtifact(id, nodeId, content) {
     openQueryDialog({
       title: 'Count matching points',
       submitLabel: 'Insert',
-      onResult: expr => {
+      onResult: (expr, scope) => {
         const n = nodeById(nodeId); if (!n) return;
         const rec = { key: queryKey(), expr, show: 'count' };
+        if (scope) rec.scope = scope;   // 4c
         (n.query ||= []).push(rec);
         applyInlineInsertion(nodeId, offset, `[[query:${rec.key}]]`);
       },
@@ -18348,6 +18424,7 @@ function insertCellArtifact(id, node, r, c, offset) {
     openQueryDialog({
       title: 'Roll on your document',
       submitLabel: 'Roll',
+      folderOption: false,   // 4c: grammar rolls stay document-scoped
       onResult: expr => {
         const roll = makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin');
         if (!roll) return;
@@ -20594,6 +20671,23 @@ function wsDocRoot(docId) {
   return workspaceIndex?.roots?.get(docId) || null;
 }
 
+// 4c: the folder READING SET — [docId, root] pairs covering every indexed doc, with the
+// CURRENT doc always live (wsDocRoot's rule applied across the folder). No workspace → a
+// folder of one: just the live doc, so a folder-scoped pill/reducer degrades to the document
+// (the folder genuinely contains only this document there), never to an empty answer.
+function wsAllDocRoots() {
+  if (!workspaceIndex?.roots) return [[root?.docId || '', root]];
+  const out = [];
+  let sawOwn = false;
+  for (const [docId, r] of workspaceIndex.roots) {
+    const own = root && (root.docId || '') === docId;
+    if (own) sawOwn = true;
+    out.push([docId, own ? root : r]);
+  }
+  if (!sawOwn && root) out.push([root.docId || '', root]);
+  return out;
+}
+
 // Find a node by id inside an arbitrary parsed tree — nodeById only knows the live doc's
 // nodeMap, so cross-doc targets (mirrors, backlink previews) walk the retained root. Pure DFS.
 function findNodeInRoot(rootNode, id) {
@@ -21670,6 +21764,9 @@ function artifactToShorthand(type, rec) {
     // the expr verbatim; the key is a private sidecar handle nothing references, so a fresh key on
     // re-promote is harmless. The block-level render is a DISPLAY-mode concern; unfold rewrites the
     // token to {query: …} TEXT before editModeHTML runs, so the caret machinery just sees plain text.
+    // 4c: a FOLDER-scoped pill stays ATOMIC — the scope is config the {query: …} text can't carry,
+    // so unfolding would silently drop it on exit (the same rule as a NAMED grammar/markov).
+    if (rec.scope) return null;
     return rec.expr ? `{${rec.show === 'count' ? 'count' : 'query'}: ${rec.expr}}` : null;   // #541: a count pill unfolds to its own verb
   }
   if (type === 'markov') {
@@ -23018,6 +23115,10 @@ function renderMathPill(key, m) {
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr);
+  // 4c: a folder-scoped reducer (`…, folder)` after a quoted query) mixes the live doc with
+  // other documents AS SAVED — say so in the tooltip/aria so the staleness is visible (P4).
+  const folderTip = /"[^"]*"\s*,[^)]*\bfolder\s*\)/.test(m.expr)
+    ? ' Folder totals count other documents as saved.' : '';
   // #557: a sum/avg that matched no property renders 0, indistinguishable from a real computed 0
   // (a pill placed as a sibling instead of a parent, or a typo'd prop). Surface it as a muted
   // "nothing matched" state with the prop name, instead of a confident wrong number. Display-only:
@@ -23042,8 +23143,8 @@ function renderMathPill(key, m) {
   // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
   // (which still names the full expr for assistive tech), and click-to-edit.
   if (m.bare) {
-    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
-      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}. Click to edit">`
+    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit.${escQ(folderTip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit">`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
@@ -23051,8 +23152,8 @@ function renderMathPill(key, m) {
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}. Click to edit">`
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit.${escQ(folderTip)}"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
@@ -23178,18 +23279,30 @@ function renderSeqPill(key, sq) {
 function renderQueryPill(key, q) {
   if (!q) return `<span class="query-pill query-bad" data-key="${escQ(key)}" aria-label="Query (missing data)"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> ?</span>`;
   const expr = q.expr || '';
+  // 4c: a folder-scoped pill (q.scope === 'folder') searches the whole reading set — own doc
+  // live, other documents as saved — via the gen-memoized queryRowsFolder. With no workspace
+  // connected the reading set IS the current document (a folder of one); the pill still says
+  // it is folder-scoped so the narrowing is visible, never silent (query-folder-off, P4).
   // 4a: inside a cross-doc mirror the pill queries ITS OWN doc's retained tree (queryRows takes
   // an explicit root and computes that doc's seqs/vars/links itself) — never the live doc, which
   // would be a silently wrong result set. Rows carry data-doc so clicks navigate cross-doc.
-  const foreignRoot = _inlineDocId ? wsDocRoot(_inlineDocId) : null;
-  const runQuery = () => foreignRoot ? queryRows(expr, foreignRoot, cookieNode?.id) : queryRowsMemo(expr, cookieNode?.id);
+  // A folder pill takes the folder path even inside a mirror: its answer is doc-independent.
+  const folderScope = q.scope === 'folder';
+  const folderLive = folderScope && !!workspaceIndex?.roots;
+  const foreignRoot = !folderScope && _inlineDocId ? wsDocRoot(_inlineDocId) : null;
+  const runQuery = () => folderScope ? queryRowsFolder(expr, cookieNode?.id)
+    : foreignRoot ? queryRows(expr, foreignRoot, cookieNode?.id) : queryRowsMemo(expr, cookieNode?.id);
+  const scopeCls = folderScope ? (folderLive ? ' query-folder' : ' query-folder-off') : '';
+  const scopeTip = !folderScope ? '' : folderLive
+    ? ' Searches the whole folder; other documents count as saved.'
+    : ' Folder search: no folder is connected, so this shows the current document only.';
   // #541: the count variant is a compact INLINE number, not the block list — same record,
   // same live recompute, only the render differs. 0 is a valid, visible answer (P4).
   if (q.show === 'count') {
     const total = expr.trim() ? runQuery().total : 0;
-    return `<span class="query-pill query-pill-count" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
-      + ` title="Count of: ${escQ(expr || 'empty query')}. Click to edit"`
-      + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}. Click to edit the search">`
+    return `<span class="query-pill query-pill-count${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
+      + ` title="Count of: ${escQ(expr || 'empty query')}.${escQ(scopeTip)} Click to edit"`
+      + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}.${escQ(scopeTip)} Click to edit the search">`
       + `<span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
       + `<span class="query-count">${total}</span>`
       + `<span class="query-edit" role="button" tabindex="-1" aria-label="Edit query" title="Edit query"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -23204,14 +23317,19 @@ function renderQueryPill(key, q) {
   if (!expr.trim()) body = `<span class="query-empty">No query yet. Click to edit.</span>`;
   else if (!total) body = `<span class="query-empty">No matching points.</span>`;
   else {
-    const docAttr = foreignRoot ? ` data-doc="${escQ(_inlineDocId)}"` : '';
-    const items = rows.map(r =>
-      `<a class="query-row node-link"${docAttr} data-target="${escQ(r.id)}" href="#" tabindex="-1">${escHtml(r.title)}</a>`).join('');
+    const items = rows.map(r => {
+      // 4c: a folder row from ANOTHER doc navigates cross-doc (data-doc) and names its document.
+      const cross = folderLive && r.docId !== (root.docId || '');
+      const docAttr = cross ? ` data-doc="${escQ(r.docId)}"` : (foreignRoot ? ` data-doc="${escQ(_inlineDocId)}"` : '');
+      const hint = cross ? `<span class="query-doc"> · ${escHtml(displayName(workspaceIndex.nameByDocId.get(r.docId) || 'another document'))}</span>` : '';
+      return `<a class="query-row node-link"${docAttr} data-target="${escQ(r.id)}" href="#" tabindex="-1">${escHtml(r.title)}${hint}</a>`;
+    }).join('');
     const more = truncated ? `<span class="query-more">+${total - rows.length} more</span>` : '';
     body = `<span class="query-rows">${items}${more}</span>`;
   }
-  return `<span class="query-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
-    + ` aria-label="Query ${escQ(expr)}: ${total} matching point${total === 1 ? '' : 's'}. Click a result to jump, or click the pill to edit its search.">`
+  return `<span class="query-pill${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
+    + (scopeTip ? ` title="${escQ(scopeTip.trim())}"` : '')
+    + ` aria-label="Query ${escQ(expr)}: ${total} matching point${total === 1 ? '' : 's'}.${escQ(scopeTip)} Click a result to jump, or click the pill to edit its search.">`
     + head + body + `</span>`;
 }
 
@@ -23264,22 +23382,31 @@ const QUERY_CHIPS = [
   { label:'| OR', title:'Match either side (a spaced | is OR)',              insert: el => insertAtCaret(el, ' | ') },
 ];
 
-function openQueryDialog({ title, submitLabel, expr = '', onResult }) {
+function openQueryDialog({ title, submitLabel, expr = '', scope = '', folderOption = true, onResult }) {
+  // 4c: the folder checkbox is offered only where the capability exists (a connected folder)
+  // and where the caller's record can carry it (the {roll:} door passes folderOption:false —
+  // a grammar roll stays document-scoped). The preview follows the toggle live.
+  const offerFolder = folderOption && !!workspaceDir;
   openInsertDialog({
     icon: { fa: 'fa-solid fa-magnifying-glass', fb: '🔍' },
     title,
     submitLabel,
     fields: [
       { key: 'expr', label: 'Search', placeholder: 'is:todo | due:week', value: expr, required: true, chips: QUERY_CHIPS,
-        preview: (v) => {
+        preview: (v, all) => {
           if (!v.trim()) return '<span class="io-preview-bad">Type a search, like is:todo or #idea -is:done</span>';
-          const { total } = queryRows(v, root, null);
-          return `<span class="io-preview-ok">${total} matching point${total === 1 ? '' : 's'} right now</span>`;
+          const useFolder = offerFolder && all?.folder;
+          const { total } = useFolder ? queryRowsFolder(v, null) : queryRows(v, root, null);
+          return `<span class="io-preview-ok">${total} matching point${total === 1 ? '' : 's'}${useFolder ? ' across the folder' : ''} right now</span>`;
         },
         hint: 'Any search the box accepts: words, #tag, is:todo, due:week, key:value and | for OR. The list updates itself as the document changes.' },
+      ...(offerFolder ? [{
+        key: 'folder', type: 'checkbox', label: 'Search the whole folder', value: scope === 'folder',
+        hint: 'Matches in every document of the connected folder. Other documents count as saved on disk.',
+      }] : []),
     ],
     validate: (v) => !!v.expr.trim(),
-    onSubmit: (v) => onResult(v.expr.trim()),
+    onSubmit: (v) => onResult(v.expr.trim(), offerFolder && v.folder ? 'folder' : undefined),
   });
 }
 
@@ -23429,8 +23556,10 @@ function editQuery(node, key) {
     title: 'Edit query',
     submitLabel: 'Save',
     expr: q.expr,
-    onResult: expr => {
+    scope: q.scope || '',
+    onResult: (expr, scope) => {
       q.expr = expr;
+      if (scope) q.scope = scope; else delete q.scope;   // 4c: reflect the toggle both ways
       markDirty();
       // repaint the host point so the new results show; in edit mode it unfolds to {query: expr} text
       // (LEAN FLOOR: query is now inline-editable), reflecting the just-saved expr.
@@ -25853,7 +25982,7 @@ function performMultiDrop(ids, targetId, position) {
 // would be served until the first keystroke (UXP-32). Call beside every
 // buildIndex(root, null) that swaps the tree. The invariant is pinned by the
 // "doc-cache invalidation" regression test in tests/test.mjs.
-function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); _dupTitleCached = null; }
+function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); _qrfMemo.clear(); _qpfMemo.clear(); _dupTitleCached = null; }
 
 // UXP-103: the persistence signals must all mean the SAME thing — "unsaved to a named disk
 // target," not "there is any unpersisted keystroke." In default (no-handle) mode autosave keeps
@@ -31154,12 +31283,13 @@ const GUIDE = [
     ] },
   { id:'query', cat:'todos', covers:['query','count'], related:['querybase','search-ops','progress','recipe-dashboard'],
     title:'Embedded queries',
-    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more. Want just the number? {count: is:todo} (or @ then Count) shows a live count instead of the list, handy for a dashboard line like open bugs: 7.",
+    body:"Drop a live search into a point that lists every matching point and keeps itself up to date. Use it for a this-week view, an open-questions roundup, everything tagged a project or any slice you want to see in one place without moving the points. Type @ and choose Query, or type it inline: {query: is:todo | due:week}. The body is a normal search (words, #tag, is:todo, due:week, key:value, | for OR), and the list re-runs every time the document changes. Click a result to jump to it, or click the pill to change the search. Long lists cap with a +N more. Want just the number? {count: is:todo} (or @ then Count) shows a live count instead of the list, handy for a dashboard line like open bugs: 7.\n\nWith a connected folder, the dialog offers Search the whole folder: the pill then matches across every document, each result naming the document it lives in (click to open it there). Your current document counts live; the others count as they were last saved.",
     examples:[
       { syn:'{query: is:todo}',        desc:'every open task, live' },
       { syn:'{query: #idea -is:done}', desc:'combine any search operators' },
       { syn:'{count: #thread is:todo}',desc:'just the number, live' },
       { syn:'@ then Query',            desc:'insert one from the menu' },
+      { syn:'Search the whole folder', desc:'the dialog checkbox: match across every document' },
     ] },
   { id:'templates', cat:'todos', covers:['template','savetemplate'],
     title:'Templates',

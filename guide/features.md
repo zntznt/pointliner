@@ -153,8 +153,10 @@ Turn the document into a lightweight planner.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 - **Embedded queries.** Drop `{query: is:todo | due:week}` into a point for a live, self-updating
   list of matching points; reuses every search operator, click a result to jump. `{count: is:todo}`
-  shows just the live number instead.
-  ([embedded queries](getting-around.md#embedded-queries))
+  shows just the live number instead. With a folder connected, a **Search the whole folder**
+  checkbox widens either pill to every document, and `{= sum("has:cost", cost, folder)}` totals a
+  property across the folder the same way.
+  ([embedded queries](getting-around.md#embedded-queries) · [folder search](getting-around.md#search-the-whole-folder) · [folder totals](computing-numbers.md#roll-a-number-up-your-document-aggregation))
 - **Query bases.** Turn a live search into a table: rows are the matching points, columns show the
   title, a property or a formula computed per point (`= daysuntil(due)`, `= sum(cost)`), always in
   sync with the document. Property cells edit in place, writing back to the matching point.

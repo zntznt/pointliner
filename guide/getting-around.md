@@ -144,6 +144,17 @@ Open threads: {count: #thread is:todo} · Overdue: {count: due:overdue}
 It updates as the document changes, `0` is a valid answer, and the pencil edits the search, same
 as a query pill. The same search counts what the matching `{query: …}` would list.
 
+### Search the whole folder
+
+With a [connected folder](files-and-export.md#working-with-a-folder-of-documents), both dialogs
+offer a **Search the whole folder** checkbox: the pill then matches across **every document** in
+the folder, and each result from another document names it (click one to open that document at
+that point). Your current document counts live; the other documents count **as they were last
+saved** to disk, and the pill's tooltip says so. A folder-scoped pill opened without a folder
+(say, in a shared copy) shows the current document only and marks itself, so nothing narrows
+silently. In a folder pill's edit mode the pill stays whole (the scope lives in the pill, not in
+the text); use its pencil to change the search.
+
 ## Query bases
 
 When a list is not enough, turn the same live search into a **table**. A query base's rows are the

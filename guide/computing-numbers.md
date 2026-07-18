@@ -330,6 +330,20 @@ add up. A bare name stays the child-position rollup (`sum(cost)`), so the two ne
 empty match reduces to zero (or nothing for `min`/`max`), the same as `count("...")`, since a
 search matching nothing right now is a valid, changing answer.
 
+**Reach across the whole folder.** With a
+[connected folder](files-and-export.md#working-with-a-folder-of-documents), add `folder` as a
+final argument and the quoted-search reducers total across **every document** in it, not just
+this one:
+
+```
+{= sum("has:cost", cost, folder)}   total cost across all your documents
+{= count("#openq", folder)}         open questions anywhere in the folder
+```
+
+The document you are in counts live; the other documents count **as they were last saved** to
+disk (a folder total says so in its tooltip). Without a folder connected, the folder scope
+covers just the current document, so the same file still computes when opened on its own.
+
 **Count words, not properties.** The same `{= …}` form also counts prose over a **scope** instead
 of a property:
 

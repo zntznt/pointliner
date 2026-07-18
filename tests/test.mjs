@@ -6909,6 +6909,65 @@ test('renderGraph forks on graphScope: the Folder view wiring (4b src pins)', ()
   assert.ok(rg.includes("aria-pressed"), 'the scope toggle is a pressed-state control (P3)');
 });
 
+test('folder-scoped reducers + query rows: sum/count("q", …, folder) across the reading set (4c)', () => {
+  // live doc "da": one #task with cost 10 (+ one non-matching point); foreign doc "db": two
+  // #task points, costs 20 and 5. The folder answer must mix own-LIVE with the retained tree.
+  const live = c.mkRoot(); live.docId = 'da';
+  const l1 = c.mkNode('alpha #task'); l1.id = 'l1'; l1.props = [{ key: 'cost', val: '10' }];
+  const l2 = c.mkNode('plain point'); l2.id = 'l2';
+  live.children.push(l1, l2);
+  const db = cfDocFor('db', 'b.opml', [['f1', 'beta #task'], ['f2', 'gamma #task'], ['f3', 'no tag']]);
+  db.root.children[0].props = [{ key: 'cost', val: '20' }];
+  db.root.children[1].props = [{ key: 'cost', val: '5' }];
+  c._context.__live = live;
+  c._context.__wi = c.buildWorkspaceIndex([db]);
+  vm.runInContext('root = __live; workspaceIndex = __wi; workspaceIndex.gen = 1; resetDocCaches();', c._context);
+  try {
+    assert.equal(c.expandAggExpr('sum("#task", cost, folder)', null), '(35)', 'sum across own-live + foreign as-saved');
+    assert.equal(c.expandAggExpr('count("#task", folder)', null), '(3)', 'count across the reading set');
+    // the document scope is untouched (no third arg), and a WRONG scope word stays literal → #ERR
+    assert.equal(c.expandAggExpr('count("#task")', null), '(0)', 'node-less doc scope still counts an empty scope');
+    assert.ok(c.expandAggExpr('sum("#task", cost, subtree)', null).includes('sum("#task"'), 'an unknown scope word stays literal');
+    assert.equal(c.evalMath(c.expandAggExpr('sum("#task", cost, subtree)', null), {}), null, '…so evalMath surfaces #ERR');
+    // folder rows: merged across docs, each row carrying its docId; total = 3
+    const r = c.queryRowsFolder('#task', null);
+    assert.equal(r.total, 3);
+    assert.deepEqual(host(r.rows.map(x => x.docId).sort()), ['da', 'db', 'db']);
+    // memo correctness: an own-doc edit (a new matching point + the _varsVer bump) recomputes
+    const l3 = c.mkNode('delta #task'); l3.id = 'l3'; l3.props = [{ key: 'cost', val: '1' }];
+    live.children.push(l3);
+    vm.runInContext('resetDocCaches();', c._context);
+    assert.equal(c.expandAggExpr('count("#task", folder)', null), '(4)', 'the memo invalidates on _varsVer');
+    assert.equal(c.expandAggExpr('sum("#task", cost, folder)', null), '(36)');
+    // no workspace → a folder of one (the live doc), never an empty answer
+    vm.runInContext('workspaceIndex = null; resetDocCaches();', c._context);
+    assert.equal(c.expandAggExpr('count("#task", folder)', null), '(2)', 'folder-of-one degradation');
+  } finally {
+    vm.runInContext('workspaceIndex = null; root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('4c wiring: the query dialog folder checkbox, the pill folder branch, and the atomic scoped pill (src pins)', () => {
+  const oqd = fnBody(_src, 'openQueryDialog');
+  assert.ok(oqd.includes("folderOption && !!workspaceDir"), 'the folder checkbox is offered only with a connected folder');
+  assert.ok(oqd.includes("key: 'folder', type: 'checkbox'"), 'the dialog reuses the checkbox field kind');
+  assert.ok(oqd.includes("v.folder ? 'folder' : undefined"), 'submit threads the scope');
+  const rqp = fnBody(_src, 'renderQueryPill');
+  assert.ok(rqp.includes("q.scope === 'folder'"), 'the pill branches on the record scope');
+  assert.ok(rqp.includes('queryRowsFolder(expr, cookieNode?.id)'), 'folder scope routes through the gen-memoized folder rows');
+  assert.ok(rqp.includes('query-folder-off'), 'a folder pill with no folder connected is VISIBLY degraded (P4)');
+  assert.ok(rqp.includes('other documents count as saved') || rqp.includes('as saved'), 'staleness is named in the tip');
+  // a folder-scoped record must NOT unfold — the {query: …} text cannot carry the scope
+  const ats = fnBody(_src, 'artifactToShorthand');
+  assert.ok(ats.includes('if (rec.scope) return null'), 'a scoped query pill stays atomic in edit mode');
+  // the two folder memos are cleared on doc swap alongside the other doc caches
+  const rdc = fnBody(_src, 'resetDocCaches');
+  assert.ok(rdc.includes('_qrfMemo.clear()') && rdc.includes('_qpfMemo.clear()'), 'resetDocCaches must clear the folder memos');
+  // the math pill names the folder staleness in its tip
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('Folder totals count other documents as saved'), 'folder-scoped math pills carry the as-saved tip');
+});
+
 test('renderCrossLinkPill: unknown doc or node → broken pill, never silent (P4)', () => {
   cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
   const unknownNode = c.renderCrossLinkPill('db', 'zzz', '');    // doc known, node missing
