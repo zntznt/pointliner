@@ -880,6 +880,13 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-roll.math-bad:hover{box-shadow:none;border-color:var(--bdr)}
 .math-roll.math-err{border-color:var(--bad);border-style:dashed}
 .math-roll.math-err .math-result{color:var(--bad);font-weight:600}
+/* value-only math pill (opt-in per pill, from the math dialog): render just the computed value,
+   chrome-free, so a number reads as part of the prose or heading instead of a monospace code
+   capsule. The recipe still shows on edit; a failure never hides (bare applies only to a good
+   value). Quiet by design — a faint hover tint + the edit pencil are the only affordances. */
+.math-roll.math-bare{border-color:transparent;background:transparent;padding:0 1px;gap:2px;font-size:inherit}
+.math-roll.math-bare:hover{border-color:transparent;background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:var(--r-sm)}
+.math-roll.math-bare .math-result{font-family:inherit;color:inherit;font-weight:inherit}
 /* #557: a sum/avg that matched nothing — a muted WARNING (not an error): the 0 is real but likely
    unintended (pill on the wrong point / typo'd prop). Dashed warm border + a small muted tag. */
 .math-roll.math-empty{border-color:var(--warn);border-style:dashed}
@@ -1342,6 +1349,11 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-field textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
 .io-field textarea::placeholder{color:var(--muted)}/* UXP-107: no opacity fade (see input::placeholder) */
 .io-hint{font-size:11px;color:var(--muted);margin-top:5px;line-height:1.4}
+/* checkbox field (io-check): box then a normal-case inline label (not the uppercase eyebrow). */
+.io-field.io-check{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.io-field.io-check input[type=checkbox]{width:16px;height:16px;flex-shrink:0;accent-color:var(--acc);cursor:pointer;margin:0}
+.io-field.io-check label{display:inline;margin:0;font-size:12.5px;font-weight:500;color:var(--fg);text-transform:none;letter-spacing:normal;cursor:pointer}
+.io-field.io-check .io-hint{flex-basis:100%;margin-top:0}
 .props-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
 .props-list-row{display:flex;align-items:center;gap:6px}
 .props-list-sep{color:var(--muted);font-size:13px;flex-shrink:0}
@@ -18564,6 +18576,25 @@ function openInsertDialog(opts) {
   const _previewFns = [];
   opts.fields.forEach((f, i) => {
     const wrap = document.createElement('div'); wrap.className = 'io-field';
+    // Checkbox field: a single boolean toggle (box then label). Reusable across dialogs; vals()
+    // and the preview refresh read .checked for these (see the checkbox-aware reads below).
+    if (f.type === 'checkbox') {
+      wrap.classList.add('io-check');
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!f.value;
+      const _cid = 'io-fld-' + f.key; cb.id = _cid;
+      const clab = document.createElement('label'); clab.textContent = f.label; clab.setAttribute('for', _cid);
+      inputs[f.key] = cb;
+      cb.addEventListener('change', () => { validate(); _previewFns.forEach(fn => fn()); });
+      cb.addEventListener('keydown', e => {
+        if (e.key !== 'Tab') e.stopPropagation();
+        if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+        else if (e.key === 'Enter') { e.preventDefault(); submit(); }
+      });
+      wrap.append(cb, clab);
+      if (f.hint) { const h = document.createElement('div'); h.className = 'io-hint'; h.textContent = f.hint; wrap.appendChild(h); }
+      ioCard.appendChild(wrap);
+      return;
+    }
     const lab = document.createElement('label'); lab.textContent = f.label;
     const area = f.type === 'textarea';
     const inp = document.createElement(area ? 'textarea' : 'input');
@@ -18593,7 +18624,7 @@ function openInsertDialog(opts) {
     if (f.preview) {
       const prev = document.createElement('div'); prev.className = 'io-preview';
       const updatePrev = () => {
-        const all = {}; for (const k in inputs) all[k] = inputs[k].value;
+        const all = {}; for (const k in inputs) all[k] = inputs[k].type === 'checkbox' ? inputs[k].checked : inputs[k].value;
         prev.innerHTML = f.preview(inp.value, all);
       };
       _previewFns.push(updatePrev);
@@ -18616,7 +18647,7 @@ function openInsertDialog(opts) {
   // cross-field previews stay live: any field edit refreshes every preview
   if (_previewFns.length > 1) ioCard.addEventListener('input', () => _previewFns.forEach(fn => fn()));
 
-  const vals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].value.trim(); return v; };
+  const vals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].type === 'checkbox' ? inputs[k].checked : inputs[k].value.trim(); return v; };
   const valid = () => opts.fields.every(f => !f.required || vals()[f.key]) && (!opts.validate || opts.validate(vals()));
   function validate() { okBtn.disabled = !valid(); }
   function submit() { if (!valid()) return; closeIo(); opts.onSubmit(vals()); }
@@ -22863,6 +22894,19 @@ function renderMathPill(key, m) {
       + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
+  // Value-only display (opt-in per pill, m.bare): render JUST the computed value, chrome-free, so
+  // it reads as part of the prose or heading instead of a monospace `expr = value` capsule (the
+  // "make numbers look like writing" ask). Only the successful branch is bare — an #ERR or empty
+  // rollup above already returned its loud state, so a failure can never hide behind a bare number.
+  // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
+  // (which still names the full expr for assistive tech), and click-to-edit.
+  if (m.bare) {
+    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}. Click to edit">`
+      + `<span class="math-result">${escHtml(display)}</span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `</span>`;
+  }
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
@@ -23282,7 +23326,7 @@ const MATH_CHIPS = [
   { label:'round', insert: el => insertAndSelect(el, 'round(', 'x', ')') },
 ];
 
-function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, onResult }) {
+function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, bare = false, onResult }) {
   openInsertDialog({
     icon: { fa:'fa-solid fa-calculator', fb:'🖩' },
     title,
@@ -23296,8 +23340,9 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         value: expr,
         chips: MATH_CHIPS,
         hint: 'A live calculation over variables and child points. Full reference in the concept guide.',
-        // live preview rendered right below the input as the user types
-        preview: v => {
+        // live preview rendered right below the input as the user types. Reads the "value only"
+        // checkbox (second arg) so the preview pill matches how it will render.
+        preview: (v, all) => {
           if (!v) return '';
           const vars = collectVars();
           const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
@@ -23306,9 +23351,16 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
             return `<span class="io-preview-bad">Invalid expression${phrase ? ': ' + phrase : ''}</span>`;
           }
           const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
-          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v) }); }
+          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v), bare: !!(all && all.bare) }); }
           finally { cookieNode = save; }
         },
+      },
+      {
+        key: 'bare',
+        type: 'checkbox',
+        label: 'Show value only (hide the formula)',
+        value: bare,
+        hint: 'Renders just the result, so a number reads like part of the text. The formula shows again when you edit.',
       },
     ],
     validate: v => evalMath(expandAggExpr(v.expr, node), collectVars()) !== null,
@@ -23317,6 +23369,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
       const r = evalMath(expandAggExpr(v.expr, node), vars);
       if (r === null) return;
       const roll = { key: existing || mathKey(), expr: v.expr, result: formatMathResult(r) };
+      if (v.bare) roll.bare = true;   // absent unless on, so ordinary records stay lean
       onResult(roll);
     },
   });
@@ -23329,9 +23382,10 @@ function editMath(node, key) {
   openMathDialog({
     title: 'Edit expression',
     submitLabel: 'Save',
-    expr: m.expr, existing: key, node,
+    expr: m.expr, existing: key, node, bare: !!m.bare,
     onResult: roll => {
       Object.assign(m, { expr: roll.expr, result: roll.result });
+      if (roll.bare) m.bare = true; else delete m.bare;   // reflect the toggle both ways
       markDirty();
       const el = repaintNodeContent(node);
       el?.querySelector(`.math-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('math-edited');
@@ -31094,7 +31148,7 @@ const GUIDE = [
   // ── Compute (guide) ───────────────────────────────────────────────────────
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
-    body:"Build a budget where every line adds to a running sum, or track a project cost that recomputes when you change a rate, all live in the document. Write `{= expression}` and the result appears inline as a pill; change a variable the expression uses and it updates the moment you do.\n\nThe expression handles arithmetic and parentheses, powers with `^`, remainder with `%`, and percentages. Comparisons (`>`, `<`, `==`) return 1 or 0, and a ternary `a > b ? x : y` (or `if(a>b, x, y)`) picks between two results, so a pill can decide as well as compute. Constants `pi`, `e`, `tau` and `today` are built in, and any variable you have set is a name you can use.\n\nThis is the base calculator; three companions build on it. Named functions like `sqrt`, `round` and the unit conversions are on the functions page, dates are their own arithmetic (see calculating with dates), and a parent point can roll up its children with `sum`, `avg` or `count` (see roll up children). Every result stays a number, so pills, variables and rollups all compose.",
+    body:"Build a budget where every line adds to a running sum, or track a project cost that recomputes when you change a rate, all live in the document. Write `{= expression}` and the result appears inline as a pill; change a variable the expression uses and it updates the moment you do.\n\nThe expression handles arithmetic and parentheses, powers with `^`, remainder with `%`, and percentages. Comparisons (`>`, `<`, `==`) return 1 or 0, and a ternary `a > b ? x : y` (or `if(a>b, x, y)`) picks between two results, so a pill can decide as well as compute. Constants `pi`, `e`, `tau` and `today` are built in, and any variable you have set is a name you can use.\n\nThis is the base calculator; three companions build on it. Named functions like `sqrt`, `round` and the unit conversions are on the functions page, dates are their own arithmetic (see calculating with dates), and a parent point can roll up its children with `sum`, `avg` or `count` (see roll up children). Every result stays a number, so pills, variables and rollups all compose.\n\nIf a pill's formula reads as clutter in your prose (a word count inside a heading, say), open it and check Show value only to render just the result; the formula comes back when you edit the pill.",
     related:['math-fns','math-dates','variables'],
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },

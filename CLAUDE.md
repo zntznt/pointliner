@@ -796,7 +796,12 @@ Math (incl. unit conversion + date math; **declarable units** `{= convert(x, fro
 built-in ratio table plus doc-declared `root.units` — File → Custom units, SR-6/#875; **subtree
 aggregation** `{= sum|avg|count(prop)}` rolls up a child points' property —
 `expandAggExpr`/`aggregateChildren`, render-time, live; **query reducers** `{= sum|avg|min|max("query", prop)}`
-reduce a property over a live query set — `queryReduce`, the `count("query")` generalization, SR-8/#877) ·
+reduce a property over a live query set — `queryReduce`, the `count("query")` generalization, SR-8/#877;
+**value-only display** — a per-pill "Show value only" dialog toggle (`m.bare`) renders just the result
+chrome-free so a number reads as prose/heading text, not a monospace `expr = value` capsule; the recipe
+stays in `node.text` and shows on edit; `.math-bare`, applied only to the successful branch so an #ERR or
+empty-rollup never hides; round-trips via `_math`; the reusable `openInsertDialog` `type:'checkbox'`
+field kind carries it) ·
 **Uncertainty fields / estimates** (B2, frontier F3 — first-in-class: `@estimate` or `{5 to 10}`,
 an uncertain value sampled Monte-Carlo and shown as `mean ± [p5,p95]` + a unicode sparkline; click
 to re-sample. A **separate sampler** (`sampleUncertain`/`rngFromSeed`) since a distribution can't
