@@ -190,6 +190,9 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Multi-document folders.** Connect a folder of documents on disk; switch between them, link
   across them and search the whole folder at once.
   ([links across documents](links-and-references.md#links-across-documents) · [folder of documents](files-and-export.md#working-with-a-folder-of-documents))
+- **Mirrors across documents.** `[[docId#id|]]` embeds a point from another document where you
+  write it, shown as last saved in its file; click it to open the source.
+  ([links across documents](links-and-references.md#links-across-documents))
 - **Broken-links report.** File menu, Broken links: rounds up every link whose target is gone, in
   this document and across the folder, and jumps you to the point that holds each one.
   ([find broken links](links-and-references.md#find-broken-links))

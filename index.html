@@ -1993,6 +1993,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 #bl-panel.on{transform:translateY(0)}
 #bl-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 .bl-item{padding:3px 0;cursor:pointer;font-size:13px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 4d: the context line under a backlink row — what the source point says around the link */
+.bl-snippet{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .bl-item:hover{text-decoration:underline}
 .bl-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px;text-decoration:underline}
 .bl-doc-hint{color:var(--muted);font-size:11px}
@@ -6035,13 +6037,20 @@ function mdEmph(s) {
 // Depth guard + save/restore wrapper for rendering a target node's HTML inside
 // another node's inline render pass. Prevents clobbering the caller's render-list
 // globals, and caps transclusion depth at 1 so A↔B cycles can't recurse.
+// 4a (cross-document-direction.md): an optional docId renders a node from ANOTHER workspace
+// doc's retained tree. _inlineDocId is the foreign-doc render context: while set, mdInline's
+// bare [[#id]] tokens resolve within THAT doc (renderCrossLinkPill) and query pills query THAT
+// doc's tree, so a mirrored point's references never silently resolve against the live doc.
 let _inlineDepth = 0;
-function renderNodeInline(node) {
+let _inlineDocId = null;   // non-null only while rendering a FOREIGN doc's node (never the live doc)
+function renderNodeInline(node, docId = null) {
+  const foreign = docId != null && docId !== (root.docId || '');
   const saved = { dice: diceRenderList, markov: markovRenderList,
                   math: mathRenderList, est: estRenderList,
                   vars: varRenderList, grammar: grammarRenderList, seq: seqRenderList,
                   query: queryRenderList,
-                  cookie: cookieNode, varMap: renderVarMap, posVarMap: renderPosVarMap };
+                  cookie: cookieNode, varMap: renderVarMap, posVarMap: renderPosVarMap,
+                  inlineDoc: _inlineDocId };
   _inlineDepth++;
   // try/finally so a throw inside the mirrored target's render (a malformed sidecar surfacing in
   // a pill renderer, codeNodeHTML) can never leave these module-level render globals pointing at
@@ -6054,10 +6063,20 @@ function renderNodeInline(node) {
     seqRenderList = node.seq || null;
     queryRenderList = node.query || null;
     cookieNode = node;
-    // globalVarMap is document-wide — leave it. renderVarMap is POSITIONAL scope, so it must
-    // follow the mirrored target or its var/math pills resolve against the source's scope.
-    renderVarMap = varMapAt(node);
-    renderPosVarMap = renderPosVarMaps(node);   // #767: positional per-pill maps follow the mirrored target
+    if (foreign) {
+      // Foreign doc: var scope is THAT doc's resolved map (wsDocVars, memoized on the index
+      // generation). Positional maps (varMapAt/renderPosVarMaps) are live-doc walks cached on
+      // _varsVer, so they don't apply; foreign pills read the doc-wide map — a documented
+      // approximation (a positional {name := …} elsewhere in the foreign doc resolves globally).
+      renderVarMap = wsDocVars(docId);
+      renderPosVarMap = null;
+      _inlineDocId = docId;
+    } else {
+      // globalVarMap is document-wide — leave it. renderVarMap is POSITIONAL scope, so it must
+      // follow the mirrored target or its var/math pills resolve against the source's scope.
+      renderVarMap = varMapAt(node);
+      renderPosVarMap = renderPosVarMaps(node);   // #767: positional per-pill maps follow the mirrored target
+    }
     return node.type === 'code' ? codeNodeHTML(node) : mdToHtml(node.text);
   } finally {
     diceRenderList = saved.dice; markovRenderList = saved.markov;
@@ -6068,6 +6087,7 @@ function renderNodeInline(node) {
     cookieNode = saved.cookie;
     renderVarMap = saved.varMap;
     renderPosVarMap = saved.posVarMap;
+    _inlineDocId = saved.inlineDoc;
     _inlineDepth--;
   }
 }
@@ -6105,6 +6125,23 @@ function renderLinkPill(target, label) {
 function renderCrossLinkPill(docId, target, label) {
   if (docId === (root.docId || '')) return renderLinkPill(target, label);   // self → same-doc (incl. mirror)
   const title = workspaceIndex?.titles?.get(docId)?.get(target);
+  // 4a (cross-document-direction.md): [[docId#nodeId|]] — the explicit empty-label mirror form —
+  // now transcludes ACROSS documents like its same-doc twin, rendered from the index's retained
+  // tree via renderNodeInline's foreign-doc mode. Depth-guarded exactly like renderLinkPill (a
+  // mirror inside a mirror falls through to the title caption below, so A→B→A chains can't
+  // recurse, cross-doc included). The content is the target AS LAST SAVED — the index is
+  // scan-fed — and the pill says so in its title/aria (P4: stale must be visible, never a
+  // silently fresh-looking copy). A target missing from the index falls through (caption/broken).
+  if (label === '' && _inlineDepth === 0) {
+    const tn = findNodeInRoot(wsDocRoot(docId), target);
+    if (tn) {
+      const docLabel = displayName(workspaceIndex?.nameByDocId?.get(docId) || 'another document');
+      const inner = renderNodeInline(tn, docId);
+      return `<span class="node-link node-link-mirror node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false"`
+        + ` title="${escQ('Mirrored from ' + docLabel + ', as saved. Click to open the source.')}"`
+        + ` aria-label="${escQ('Mirrored content from ' + docLabel + ', as saved. Click to open the source point.')}">${inner}</span>`;
+    }
+  }
   // UXP-172: a broken cross-doc link (unreachable in a self-contained export, where no other doc is
   // embedded) named itself "link" when it had no label and no resolvable title — a cluster of
   // identical dead pills. Fall back to the DOC NAME instead: "in <doc>" reads as a real destination.
@@ -6171,8 +6208,11 @@ function mdInline(s) {
   // (the default every creation door emits); [[#id|]] (pipe, empty label) = the explicit
   // MIRROR/transclusion; [[#id|text]] = a fixed caption. The old `label ?? ''` collapse made
   // every picker-made link a whole-body transclusion the moment the target carried prose.
+  // 4a: inside a FOREIGN doc's render (a cross-doc mirror), a bare [[#id]] means a point in
+  // THAT doc — route it through the cross-doc pill so it resolves (and navigates) in its own
+  // document instead of silently hitting the live doc's ids. _inlineDocId is null otherwise.
   s = s.replace(/\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, target, label) =>
-    stash(renderLinkPill(target, label)));
+    stash(_inlineDocId ? renderCrossLinkPill(_inlineDocId, target, label) : renderLinkPill(target, label)));
   // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:). The URL
   // char classes exclude \x00 so a stashed pill/footnote/code placeholder (\x00N\x00) glued to
@@ -20502,6 +20542,66 @@ function workspaceBacklinks(targetDocId, targetNodeId, index) {
   return out;
 }
 
+// ── §5 spine helpers (cross-document-direction.md) ───────────────────────────────
+// wsDocRoot: THE own-doc-liveness chokepoint (§5.3). Every cross-doc read resolves a docId
+// through here so the CURRENT doc always reads live — the index's copy of self is only as
+// fresh as the last disk write, and serving it for the doc being edited would be the silent
+// staleness class this arc exists to avoid. Foreign docs read the index's retained tree.
+function wsDocRoot(docId) {
+  if (!docId) return null;
+  if (root && (root.docId || '') === docId) return root;
+  return workspaceIndex?.roots?.get(docId) || null;
+}
+
+// Find a node by id inside an arbitrary parsed tree — nodeById only knows the live doc's
+// nodeMap, so cross-doc targets (mirrors, backlink previews) walk the retained root. Pure DFS.
+function findNodeInRoot(rootNode, id) {
+  if (!rootNode || id == null) return null;
+  const stack = [...(rootNode.children || [])];
+  while (stack.length) {
+    const n = stack.pop();
+    if (n.id === id) return n;
+    for (const c of n.children || []) stack.push(c);
+  }
+  return null;
+}
+
+// Resolved variable map of ANOTHER doc, memoized on the index generation (§5.1). collectVars
+// with an explicit root is pure and UNCACHED, so the mirror render path must not re-walk a
+// foreign tree on every render pass; the generation key means a rescan (or refreshOwnDocInIndex)
+// invalidates for free. The live doc routes to its own per-_varsVer cache (identity path).
+let _wsVarsMemo = new Map();   // docId -> { gen, vars }
+function wsDocVars(docId) {
+  if (root && (root.docId || '') === docId) return collectVars();
+  const gen = workspaceIndex?.gen || 0;
+  const hit = _wsVarsMemo.get(docId);
+  if (hit && hit.gen === gen) return hit.vars;
+  const r = wsDocRoot(docId);
+  const vars = r ? collectVars(r) : {};
+  _wsVarsMemo.set(docId, { gen, vars });
+  return vars;
+}
+
+// 4d: the context a backlink row shows under its title — the source LINE around the first link
+// token targeting `targetId` (same-doc [[#id…]] or cross-doc [[doc#id…]] form), windowed, with
+// markdown/link tokens rendered legibly. '' when the token isn't found (the row shows title-only).
+function backlinkSnippet(text, targetId, win = 120) {
+  const t = String(text || '');
+  const m = t.match(new RegExp('\\[\\[(?:[a-z0-9]+#|#)' + targetId + '(?:\\|[^\\]\\n]*)?\\]\\]', 'i'));
+  if (!m) return '';
+  const ls = t.lastIndexOf('\n', m.index) + 1;
+  const leRaw = t.indexOf('\n', m.index);
+  const le = leRaw < 0 ? t.length : leRaw;
+  let line = t.slice(ls, le);
+  const pos = m.index - ls;
+  if (line.length > win) {
+    const a = Math.max(0, pos - Math.floor(win / 3));
+    const b = Math.min(line.length, a + win);
+    line = (a > 0 ? '…' : '') + line.slice(a, b) + (b < line.length ? '…' : '');
+  }
+  return stripMd(linkText(line)).trim();
+}
+
 // WS-1: workspace-wide search. Points across the folder (excluding the current doc, which
 // the in-outline filter already covers) that match the SAME query engine as in-doc search —
 // queryMatchesNode/termMatchesNode are pure and node-object-based, so they run verbatim over
@@ -23037,10 +23137,15 @@ function renderSeqPill(key, sq) {
 function renderQueryPill(key, q) {
   if (!q) return `<span class="query-pill query-bad" data-key="${escQ(key)}" aria-label="Query (missing data)"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> ?</span>`;
   const expr = q.expr || '';
+  // 4a: inside a cross-doc mirror the pill queries ITS OWN doc's retained tree (queryRows takes
+  // an explicit root and computes that doc's seqs/vars/links itself) — never the live doc, which
+  // would be a silently wrong result set. Rows carry data-doc so clicks navigate cross-doc.
+  const foreignRoot = _inlineDocId ? wsDocRoot(_inlineDocId) : null;
+  const runQuery = () => foreignRoot ? queryRows(expr, foreignRoot, cookieNode?.id) : queryRowsMemo(expr, cookieNode?.id);
   // #541: the count variant is a compact INLINE number, not the block list — same record,
   // same live recompute, only the render differs. 0 is a valid, visible answer (P4).
   if (q.show === 'count') {
-    const total = expr.trim() ? queryRowsMemo(expr, cookieNode?.id).total : 0;
+    const total = expr.trim() ? runQuery().total : 0;
     return `<span class="query-pill query-pill-count" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
       + ` title="Count of: ${escQ(expr || 'empty query')}. Click to edit"`
       + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}. Click to edit the search">`
@@ -23049,7 +23154,7 @@ function renderQueryPill(key, q) {
       + `<span class="query-edit" role="button" tabindex="-1" aria-label="Edit query" title="Edit query"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
-  const { rows, total, truncated } = queryRowsMemo(expr, cookieNode?.id);
+  const { rows, total, truncated } = runQuery();
   const head = `<span class="query-head" contenteditable="false"><span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
     + `<span class="query-expr">${escHtml(expr || 'empty query')}</span>`
     + `<span class="query-count">${total}</span>`
@@ -23058,8 +23163,9 @@ function renderQueryPill(key, q) {
   if (!expr.trim()) body = `<span class="query-empty">No query yet. Click to edit.</span>`;
   else if (!total) body = `<span class="query-empty">No matching points.</span>`;
   else {
+    const docAttr = foreignRoot ? ` data-doc="${escQ(_inlineDocId)}"` : '';
     const items = rows.map(r =>
-      `<a class="query-row node-link" data-target="${escQ(r.id)}" href="#" tabindex="-1">${escHtml(r.title)}</a>`).join('');
+      `<a class="query-row node-link"${docAttr} data-target="${escQ(r.id)}" href="#" tabindex="-1">${escHtml(r.title)}</a>`).join('');
     const more = truncated ? `<span class="query-more">+${total - rows.length} more</span>` : '';
     body = `<span class="query-rows">${items}${more}</span>`;
   }
@@ -26167,6 +26273,7 @@ function captureDocView(name) {
 }
 let workspaceFile = null;  // the current doc's FileSystemFileHandle within the folder, or null. Folder-backed ⇔ non-null (brief #4: continuous auto-write)
 let workspaceIndex = null; // CF-1: the in-memory cross-doc link/backlink index (buildWorkspaceIndex), or null when no workspace. NOT a _varsVer doc-cache — rebuilt on workspace/FS events, not per-edit.
+let _wsIndexGen = 0;       // §5.1: the cross-doc generation — monotonic, bumped on every successful index (re)build; every cross-doc memo (wsDocVars, future folder reducers) keys on workspaceIndex.gen, the _varsVer twin for the folder.
 let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
 let _wsWarned = false;     // one lost-access warning per event — never re-nag per tick (reset on reconnect/disconnect/swap)
 let _wsKnownModified = 0;  // sync-safety: lastModified of the workspace file as we last READ or WROTE it. The pre-write staleness check compares disk vs this; anchored on every load (anchorWorkspaceFile) and after every successful write (post-write getFile().lastModified, NOT wall-clock, so our own writes never read as external).
@@ -26880,8 +26987,38 @@ async function scanWorkspace(dir) {
 // No workspace -> null; a transient scan failure leaves the prior index in place.
 async function refreshWorkspaceIndex() {
   if (!workspaceDir) { workspaceIndex = null; return; }
-  try { workspaceIndex = await scanWorkspace(workspaceDir); }
+  try { workspaceIndex = await scanWorkspace(workspaceDir); workspaceIndex.gen = ++_wsIndexGen; }
   catch (_) { /* transient FS error -> keep prior index */ }
+}
+
+// §5.4: refresh-on-save — after a successful folder write of the CURRENT doc, fold its live
+// tree back into the index instead of waiting for the next workspace event, so index-driven
+// surfaces (cross-doc mirrors of this doc rendered elsewhere next session, the [[ picker's
+// candidates, backlink titles) stop lagging by a whole event cycle. Rebuilds from the RETAINED
+// roots (no FS reads — measured 9–62 ms at notebook scale), throttled to one rebuild per 10 s
+// with a trailing run so a typing burst costs one rebuild, not one per autosave flush.
+let _wsOwnIdxAt = 0, _wsOwnIdxTimer = 0;
+function refreshOwnDocInIndex() {
+  if (!workspaceIndex?.roots || !root?.docId) return;
+  const run = () => {
+    _wsOwnIdxAt = Date.now(); _wsOwnIdxTimer = 0;
+    if (!workspaceIndex?.roots || !root?.docId) return;
+    const docs = [];
+    let sawOwn = false;
+    for (const [docId, r] of workspaceIndex.roots) {
+      const own = docId === root.docId;
+      if (own) sawOwn = true;
+      docs.push({ docId, name: own ? fileName : (workspaceIndex.nameByDocId.get(docId) || ''), root: own ? root : r });
+    }
+    if (!sawOwn) docs.push({ docId: root.docId, name: fileName, root });
+    const unmarked = workspaceIndex.unmarked;
+    workspaceIndex = buildWorkspaceIndex(docs);
+    workspaceIndex.unmarked = unmarked;
+    workspaceIndex.gen = ++_wsIndexGen;
+  };
+  const since = Date.now() - _wsOwnIdxAt;
+  if (since >= 10000) run();
+  else if (!_wsOwnIdxTimer) _wsOwnIdxTimer = setTimeout(run, 10000 - since);
 }
 
 // ── document switcher (brief #5b: the multi-doc workspace) ────────────────────────
@@ -27193,6 +27330,7 @@ async function flushWorkspaceFile() {
     await safeWriteOpml(workspaceDir, fileName, opml);
     markClean();
     await anchorWorkspaceFile();                    // re-anchor to OUR write's lastModified
+    refreshOwnDocInIndex();                         // §5.4: fold the just-written doc into the index (throttled)
   } catch (e) {
     degradeWorkspace();
   } finally {
@@ -28374,7 +28512,14 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.title = 'Open this point';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable backlink rows
     item.setAttribute('tabindex', '0');
-    item.setAttribute('aria-label', `Linked from "${t}". Open`);
+    // 4d: context preview — the source line around the link, so a row answers "what does it
+    // say about this?" without a visit. Skipped when it would just repeat the title.
+    const snip = backlinkSnippet(src.text, blNodeId);
+    item.setAttribute('aria-label', `Linked from "${t}"${snip && snip !== t ? ': ' + snip : ''}. Open`);
+    if (snip && snip !== t) {
+      const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;
+      item.appendChild(sn);
+    }
     const go = () => { hideBlPanel(); zoomInto(src.id); };
     item.addEventListener('click', go);
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
@@ -28395,7 +28540,14 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.title = 'Open this document';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable cross-doc backlink rows
     item.setAttribute('tabindex', '0');
-    item.setAttribute('aria-label', `Linked from "${t}" in ${displayName(docName || 'another document')}. Open`);
+    // 4d: same context preview as the same-doc rows, read from the index's retained tree.
+    const srcNode = findNodeInRoot(wsDocRoot(docId), nodeId);
+    const snip = srcNode ? backlinkSnippet(srcNode.text, blNodeId) : '';
+    item.setAttribute('aria-label', `Linked from "${t}" in ${displayName(docName || 'another document')}${snip && snip !== t ? ': ' + snip : ''}. Open`);
+    if (snip && snip !== t) {
+      const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;
+      item.appendChild(sn);
+    }
     const go = () => {
       hideBlPanel();
       followLinkTarget(docId, nodeId);                          // open source note, or flash if it's gone (P4)
@@ -31292,7 +31444,7 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Click into a point and the Linked from panel rises from the bottom of the screen whenever other points link to it or mention its title; it updates as you move between points. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Click into a point and the Linked from panel rises from the bottom of the screen whenever other points link to it or mention its title; it updates as you move between points. Each row shows a line of context from the source under its title, so you can see what it says about this point without visiting. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
     related:['point-links','link-graph','cross-doc-links'],
     examples:[
       { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
@@ -31312,12 +31464,13 @@ const GUIDE = [
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across documents',
-    body:"Weave a network out of separate files: link a project to a person's page, connect a meeting to an action item in another document or build a topic index that points across your whole library. This works once you have a connected folder, a folder of documents Pointliner reads together (see connecting a folder).\n\nWith a folder connected, the `[[` picker searches every document, not just the one you are in, so linking to a point in another file is the same move as linking inside this one. Pick it and Pointliner writes a cross-document link that carries which file it lives in, and clicking it opens that document at that point. If the point you want does not exist yet, choose New document from the picker to create it and link to it in one step.\n\nCross-document links are two-way like ordinary ones: a point lists the links that reach it from other documents too, so a person's page shows every project, meeting and note that mentions it, gathered from across the folder.",
+    body:"Weave a network out of separate files: link a project to a person's page, connect a meeting to an action item in another document or build a topic index that points across your whole library. This works once you have a connected folder, a folder of documents Pointliner reads together (see connecting a folder).\n\nWith a folder connected, the `[[` picker searches every document, not just the one you are in, so linking to a point in another file is the same move as linking inside this one. Pick it and Pointliner writes a cross-document link that carries which file it lives in, and clicking it opens that document at that point. If the point you want does not exist yet, choose New document from the picker to create it and link to it in one step.\n\nCross-document links are two-way like ordinary ones: a point lists the links that reach it from other documents too, so a person's page shows every project, meeting and note that mentions it, gathered from across the folder.\n\nMirrors work across documents too: an empty pipe (`[[docId#id|]]`) embeds the other document's point right here, the same live-mirror move as inside one document. The copy shows that point as it was last saved in its file; hover the mirror to see which document it comes from, and click it to open the source.",
     related:['point-links','workspace-documents','backlinks'],
     examples:[
       { syn:'[[',                   desc:'search every document in the folder' },
       { syn:'+ New document',       desc:'make a document and link to it at once' },
       { syn:'[[docId#id|label]]',   desc:'the written form of a cross-doc link' },
+      { syn:'[[docId#id|]]',        desc:'embed a point from another document (as saved)' },
     ] },
   { id:'broken-links', cat:'links',
     title:'Find broken links',

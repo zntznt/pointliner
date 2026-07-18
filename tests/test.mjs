@@ -6794,15 +6794,78 @@ function cfSetGlobals(ownDocId, docs) {
 
 test('renderCrossLinkPill: cross-doc target → .node-link-cross with data-doc/target + indexed title', () => {
   cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
-  const html = c.renderCrossLinkPill('db', 'm1', '');
+  const html = c.renderCrossLinkPill('db', 'm1', undefined);   // [[db#m1]] — the title form
   assert.match(html, /class="node-link node-link-cross"/);
   assert.match(html, /data-doc="db"/);
   assert.match(html, /data-target="m1"/);
-  assert.match(html, />Gamma</);                        // empty label → live title from the index
+  assert.match(html, />Gamma</);                        // no label → live title from the index
   assert.match(html, /title="b"/);                      // doc-name tooltip — displayName, no .opml extension
   assert.match(html, /aria-label="[^"]*point in b"/);   // P3: doc name (extension-less) in the accessible name
   assert.doesNotMatch(html, /\.opml/);                  // the .opml extension is never shown to the user
   assert.match(c.renderCrossLinkPill('db', 'm1', 'see B'), />see B</); // explicit label wins
+});
+
+test('renderCrossLinkPill: [[db#m1|]] (empty label) MIRRORS across docs from the retained tree (4a)', () => {
+  cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
+  const html = c.renderCrossLinkPill('db', 'm1', '');
+  assert.match(html, /node-link-mirror node-link-cross/, 'the cross-doc mirror wrapper');
+  assert.match(html, /data-doc="db"/);
+  assert.match(html, /data-target="m1"/);
+  assert.match(html, /Gamma/, 'the target CONTENT renders, not just a caption');
+  assert.match(html, /as saved/, 'staleness is visible (P4): the pill says the copy is as-saved');
+  // depth guard: inside an inline render the same call falls back to the title caption (no recursion)
+  vm.runInContext('_inlineDepth = 1;', c._context);
+  try {
+    const nested = c.renderCrossLinkPill('db', 'm1', '');
+    assert.doesNotMatch(nested, /node-link-mirror/, 'a mirror inside a mirror renders title-only');
+    assert.match(nested, />Gamma</, 'the caption falls back to the indexed title');
+  } finally { vm.runInContext('_inlineDepth = 0;', c._context); }
+  // a target absent from the retained tree falls through to the broken pill, never a throw
+  assert.match(c.renderCrossLinkPill('db', 'zzz', ''), /node-link-broken/);
+  vm.runInContext('workspaceIndex = null; root.docId = null;', c._context);
+});
+
+test('findNodeInRoot + backlinkSnippet — the cross-doc lookup/preview pure cores (spine + 4d)', () => {
+  const doc = cfDocFor('dx', 'x.opml', [['a1', 'Alpha'], ['a2', 'Beta']]);
+  const kid = c.mkNode('Nested'); kid.id = 'a3';
+  doc.root.children[1].children.push(kid);
+  assert.equal(c.findNodeInRoot(doc.root, 'a1').text, 'Alpha');
+  assert.equal(c.findNodeInRoot(doc.root, 'a3').text, 'Nested', 'DFS reaches nested points');
+  assert.equal(c.findNodeInRoot(doc.root, 'zz'), null);
+  assert.equal(c.findNodeInRoot(null, 'a1'), null);
+  // backlinkSnippet: the source LINE around the link token, both token forms, windowed
+  assert.ok(c.backlinkSnippet('see [[#t9]] for the plan', 't9').includes('for the plan'), 'same-doc token found');
+  assert.ok(c.backlinkSnippet('see [[docb#t9|caption]] here', 't9').includes('caption'), 'cross-doc labeled token found, label kept legible');
+  assert.equal(c.backlinkSnippet('no link here', 't9'), '', 'miss → empty (row shows title-only)');
+  assert.ok(!c.backlinkSnippet('first line\nsee [[#t9]] mid\nlast', 't9').includes('first'), 'only the line containing the token');
+  const long = 'x'.repeat(200) + ' [[#t9]] ' + 'y'.repeat(200);
+  const snip = c.backlinkSnippet(long, 't9');
+  assert.ok(snip.length < 140 && snip.includes('…'), 'a long line is windowed around the token');
+});
+
+test('§5 spine wiring: index generation + own-doc liveness + refresh-on-save (src pins)', () => {
+  // gen: every successful (re)build stamps a fresh monotonic generation
+  assert.ok(fnBody(_src, 'refreshWorkspaceIndex').includes('workspaceIndex.gen = ++_wsIndexGen'),
+    'refreshWorkspaceIndex must stamp the generation');
+  const roi = fnBody(_src, 'refreshOwnDocInIndex');
+  assert.ok(roi.includes('workspaceIndex.gen = ++_wsIndexGen'), 'refreshOwnDocInIndex must stamp the generation too');
+  assert.ok(roi.includes('own ? root : r'), 'the rebuild must fold the LIVE root in for the current doc');
+  // refresh-on-save: the folder-write path folds the just-written doc back into the index
+  assert.ok(fnBody(_src, 'flushWorkspaceFile').includes('refreshOwnDocInIndex()'),
+    'flushWorkspaceFile must call refreshOwnDocInIndex after a successful write');
+  // own-doc liveness: the chokepoint serves the LIVE root for the current doc
+  const wdr = fnBody(_src, 'wsDocRoot');
+  assert.ok(wdr.includes('(root.docId || \'\') === docId ? root : ') || (wdr.includes('=== docId) return root') && wdr.includes('workspaceIndex?.roots?.get(docId)')),
+    'wsDocRoot must serve the live root for the current doc, the retained tree otherwise');
+  // wsDocVars memoizes on the generation and routes the live doc to its own cache
+  const wdv = fnBody(_src, 'wsDocVars');
+  assert.ok(wdv.includes('hit.gen === gen') && wdv.includes('return collectVars()'),
+    'wsDocVars must memo on workspaceIndex.gen and route the live doc to collectVars()');
+  // foreign render context: renderNodeInline sets the foreign var scope + doc id, restores both
+  const rni = fnBody(_src, 'renderNodeInline');
+  assert.ok(rni.includes('renderVarMap = wsDocVars(docId)') && rni.includes('renderPosVarMap = null'),
+    'the foreign branch must scope vars to the target doc');
+  assert.ok(rni.includes('_inlineDocId = saved.inlineDoc'), 'the foreign doc context must restore in finally');
 });
 
 test('renderCrossLinkPill: unknown doc or node → broken pill, never silent (P4)', () => {
@@ -14325,11 +14388,14 @@ test('query-pill memo is _varsVer-guarded and cleared on doc reset (#451 item 4)
     'the memo must stamp the current _varsVer');
   assert.ok(fnBody(_src, 'resetDocCaches').includes('_queryPillCache.clear()'),
     'resetDocCaches must clear the query-pill cache on doc swap');
-  // renderQueryPill must READ through the memo, not call queryRows directly anymore
-  // (window widened for the #541 count branch, which also routes through the memo)
+  // renderQueryPill must READ through the memo for the LIVE doc; the ONE sanctioned uncached
+  // call is the cross-doc-mirror arm (4a), which queries a FOREIGN doc's retained tree — the
+  // live-doc memo would be both wrong (different tree) and unkeyable (_varsVer is per-doc).
   const rqp = fnBody(_src, 'renderQueryPill');
-  assert.ok(/queryRowsMemo\(expr, cookieNode\?\.id\)/.test(rqp), 'renderQueryPill must route through queryRowsMemo');
-  assert.ok(!/queryRows\(/.test(rqp.replace(/queryRowsMemo\(/g, '')), 'renderQueryPill must never call the uncached queryRows');
+  assert.ok(rqp.includes('foreignRoot ? queryRows(expr, foreignRoot, cookieNode?.id) : queryRowsMemo(expr, cookieNode?.id)'),
+    'renderQueryPill must route live-doc reads through queryRowsMemo, foreign-doc reads through the explicit-root queryRows');
+  assert.ok(!/queryRows\(/.test(rqp.replace(/queryRowsMemo\(/g, '').replace(/foreignRoot \? queryRows\(expr, foreignRoot/g, '')),
+    'no OTHER uncached queryRows call may exist in renderQueryPill');
 });
 
 // #452: dead CSS removal — these selectors matched no DOM element (present only in their
@@ -15866,7 +15932,10 @@ test('#809 wiring: evalCheck consults aggHasSkippedValues before evaluating', ()
 // ─── test-user review fix batch 3 (#805/#810/#813) ────────────────────────────
 const _fix3 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 test('#805: the pipe carries meaning — render passthrough + title-form creation doors', () => {
-  assert.match(_fix3, /stash\(renderLinkPill\(target, label\)\)/, 'mdInline must pass label through (undefined = title form)');
+  // 4a: the same-doc callsite gained the foreign-context redirect (a bare [[#id]] inside a
+  // cross-doc mirror resolves in ITS doc) — the label still passes through untouched on both arms.
+  assert.match(_fix3, /stash\(_inlineDocId \? renderCrossLinkPill\(_inlineDocId, target, label\) : renderLinkPill\(target, label\)\)/,
+    'mdInline must pass label through (undefined = title form), with the foreign-doc redirect');
   assert.match(_fix3, /stash\(renderCrossLinkPill\(docId, target, label\)\)/, 'cross-doc callsite too');
   assert.ok(!_fix3.includes('renderLinkPill(target, label ?? '), 'the label ?? \'\' collapse must be gone');
   assert.match(_fix3, /token = \(workspaceDir && root\.docId\) \? `\[\[\$\{root\.docId\}#\$\{id\}\]\]` : `\[\[#\$\{id\}\]\]`/, 'Copy link must emit the title form');
