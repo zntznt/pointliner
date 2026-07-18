@@ -27136,16 +27136,62 @@ function unmarkedFilesNote(count) {
     ? '1 file in the folder carries no identity mark yet, so links and search skip it; open it to stamp it.'
     : n + ' files in the folder carry no identity mark yet, so links and search skip them; open one to stamp it.';
 }
+// §5.2 (cross-document-direction.md): which files a rescan must actually re-read + re-parse.
+// A file is REUSED from the cache when its (lastModified, size) fingerprint is unchanged — the
+// #840 active-file model generalized to the whole folder; everything else (new files, changed
+// files, files with no cache entry) is re-parsed. The DOM parse (fromOpml) is the scan's real
+// cost, so skipping it for the typically 0–2 files that changed between events turns a
+// full-folder re-parse into a fingerprint check plus a couple of parses. Pure: `present` is
+// [{name, lastModified, size}], `cache` a Map(name -> {lastModified, size, …}); returns the
+// names to re-parse. The caller prunes the cache to `present` (a deleted file just drops out).
+function scanReparseList(present, cache) {
+  const out = [];
+  for (const f of present || []) {
+    const c = cache && cache.get(f.name);
+    if (!c || c.lastModified !== f.lastModified || c.size !== f.size) out.push(f.name);
+  }
+  return out;
+}
+
+// §5.2 incremental rescan. Still visits every file (so additions/deletions are always caught —
+// the full pass stays the correctness anchor), but re-parses only fingerprint-changed files and
+// reuses the parsed roots of the rest from _wsScanCache. Each cache entry remembers its state
+// ('doc' with a root+docId / 'unmarked' with no docId / 'bad' unreadable) so an unmarked or
+// corrupt file is not re-read every scan either — only when its fingerprint changes. The cache
+// is per-folder: a different dir handle clears it (a same-named file in another folder is a
+// different file). getFile() is a metadata read (lastModified/size); only .text() reads content.
+let _wsScanCache = new Map();   // name -> {lastModified, size, state, docId?, root?}
+let _wsScanDir = null;
+let _wsLastScanReparsed = 0;    // instrumentation: files actually re-parsed on the last scan
 async function scanWorkspace(dir) {
-  const docs = [];
-  let unmarked = 0;                      // #845: files skipped for lacking a <_docid>, surfaced via unmarkedFilesNote
+  if (dir !== _wsScanDir) { _wsScanCache = new Map(); _wsScanDir = dir; }
+  const present = [], fileByName = new Map();
   for (const name of await listWorkspaceNames(dir)) {
     try {
-      const fh = await dir.getFileHandle(name);
-      const r = fromOpml(await (await fh.getFile()).text());
-      if (!r.docId) { unmarked++; continue; }   // no stable address yet -> not cross-link-targetable
-      docs.push({ docId: r.docId, name, root: r });
-    } catch (_) { /* skip unreadable / unparseable file */ }
+      const f = await (await dir.getFileHandle(name)).getFile();
+      present.push({ name, lastModified: f.lastModified || 0, size: f.size || 0 });
+      fileByName.set(name, f);
+    } catch (_) { /* skip a file that vanished mid-scan */ }
+  }
+  const reparse = new Set(scanReparseList(present, _wsScanCache));
+  _wsLastScanReparsed = reparse.size;
+  const next = new Map();       // the fresh cache — exactly the present set, so deletions drop out
+  for (const { name, lastModified, size } of present) {
+    if (!reparse.has(name)) { next.set(name, _wsScanCache.get(name)); continue; }   // unchanged → reuse
+    try {
+      const r = fromOpml(await fileByName.get(name).text());
+      next.set(name, r.docId ? { lastModified, size, state: 'doc', docId: r.docId, root: r }
+                             : { lastModified, size, state: 'unmarked' });   // #845: parsed, no stable address
+    } catch (_) { next.set(name, { lastModified, size, state: 'bad' }); }    // unreadable/unparseable — remember so we don't retry every scan
+  }
+  _wsScanCache = next;
+  const docs = [];
+  let unmarked = 0;
+  for (const { name } of present) {
+    const c = next.get(name);
+    if (!c) continue;
+    if (c.state === 'doc') docs.push({ docId: c.docId, name, root: c.root });
+    else if (c.state === 'unmarked') unmarked++;   // 'bad' → skipped, matching the pre-§5.2 catch
   }
   const idx = buildWorkspaceIndex(docs);
   idx.unmarked = unmarked;

@@ -191,12 +191,17 @@ feature — it is making the index a dependable substrate:
    `collectVars(root)` caches, the doc-level graph model) keys on it. This is the
    cross-doc twin of `_varsVer`, with the same registry discipline: one generation, every
    cache checks it, a new cache joins the list or it silently serves stale data.
-2. **Incremental rescan.** Today every event re-parses the whole folder; fine at 50–400 ms,
-   but the liveness upgrade wants more frequent refreshes. FSA has no file watcher, so:
-   poll or opportunistically check `lastModified`/`size` per file (the #840 fingerprint
-   model, generalized from the active file to the folder) and re-parse **only changed
-   files**, merging into the index. Full rescan stays the fallback and the correctness
-   anchor.
+2. ✅ **Incremental rescan** (shipped 2026-07-18). `scanWorkspace` still visits every file
+   each event (additions/deletions always caught — the full pass is the correctness anchor),
+   but re-parses only files whose `(lastModified, size)` fingerprint changed (the #840 model
+   generalized to the folder, decided by the pure `scanReparseList`); unchanged files reuse
+   their parsed root from `_wsScanCache`. Each cache entry remembers its state (`doc` /
+   `unmarked` / `bad`) so an unmarked or corrupt file is not re-read every scan either. The
+   cache is per-folder (a different dir handle clears it). Measured: a warm rescan with nothing
+   changed does **zero** content reads and zero parses; a one-file edit re-parses one file.
+   `getFile()` is a metadata read; only `.text()` reads content, so the fingerprint check is
+   cheap. This is a **freshness** win (safe to rescan more often), not a correctness change —
+   the folder memos in 4c were already exact via the generation key.
 3. **Own-doc liveness.** The index's copy of the *current* doc is stale from the last disk
    write. Every cross-doc read path must substitute the live `root` for
    `roots.get(root.docId)` (whole-folder search already excludes the current doc for this
@@ -222,7 +227,9 @@ feature — it is making the index a dependable substrate:
 1. ✅ **Spine first, minimally** (shipped 2026-07-18): the generation counter
    (`workspaceIndex.gen` / `_wsIndexGen`) + own-doc liveness (`wsDocRoot`, the chokepoint) +
    refresh-on-save (`refreshOwnDocInIndex`, throttled 10 s trailing, called from
-   `flushWorkspaceFile`) — §5.1, 5.3, 5.4. §5.2 (incremental rescan) deferred to step 4.
+   `flushWorkspaceFile`) — §5.1, 5.3, 5.4. §5.2 incremental rescan followed (shipped
+   2026-07-18): `scanWorkspace` re-parses only fingerprint-changed files (`scanReparseList` +
+   `_wsScanCache`), a warm rescan doing zero content reads.
 2. ✅ **4a mirror/transclusion + 4d backlink previews** (shipped 2026-07-18, same PR):
    `[[docId#nodeId|]]` transcludes via `renderNodeInline(node, docId)` foreign mode
    (`wsDocVars` gen-memoized scope; `_inlineDocId` context so inner bare links and query
@@ -246,9 +253,8 @@ feature — it is making the index a dependable substrate:
    (`query-folder-off`), and a scoped pill ATOMIC in edit mode (the text can't carry the scope).
    **Decision recorded:** the pill's folder scope is a dialog toggle + record field, NOT a query
    word — `folder` must remain searchable text (P1); the reducers use the arg slot where no
-   collision exists. **Remaining from this step:** §5.2 incremental rescan (freshness, not
-   correctness — the memo pair is already exact); a folder-scoped `{roll:}` (kept document-scoped,
-   `folderOption:false`, revisit on demand).
+   collision exists. §5.2 incremental rescan shipped after this (see §5.2). **Remaining:** a
+   folder-scoped `{roll:}` (kept document-scoped, `folderOption:false`, revisit on demand).
 5. Neighborhood graph, and any 4e revisit, strictly after the above are in daily use.
 
 Each step is a normal PR with tests on the pure cores (`buildWorkspaceIndex` extensions,
