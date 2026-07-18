@@ -13401,10 +13401,18 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
   // 3. every {…} body classifies as a real artifact (0 dead text) — seed the doc's own rules + vars
   const texts = [...opml.matchAll(/text="([^"]*)"/g)].map(s => s[1]
     .replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', String.fromCharCode(34)).replaceAll('&amp;', '&'));
-  // named rules the doc declares (a `name: a | b` point) register via parseRules → callable as {name}
+  // named rules register ONLY via non-anon grammar PILL records (collectRules reads pills, not
+  // plain text — a plain `name: a | b` line never registers; the old seeding modeled that wrong
+  // and masked dead {name} calls). Harvest the doc's embedded _grammar records instead.
   const rules = {};
-  for (const t of texts) { const r = c.parseRules(t); if (r && r.rules) for (const k of Object.keys(r.rules)) rules[k] = 1; }
-  const vars = { rate: 40, cost: 0 };   // mirrors the doc's own {rate := 40} declaration (was level)
+  for (const gm of opml.matchAll(/_grammar="([^"]*)"/g)) {
+    const raw = gm[1].replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', String.fromCharCode(34)).replaceAll('&amp;', '&');
+    for (const rec of JSON.parse(raw)) {
+      if (rec.anon) continue;
+      const r = c.parseRules(rec.def); if (r && r.rules) for (const k of Object.keys(r.rules)) rules[k] = 1;
+    }
+  }
+  const vars = { rate: 12, cost: 0, budget: 150 };   // mirrors the doc's own declarations ({rate := 12}, the budget prop)
   let total = 0; const dead = [];
   for (const t of texts) for (const mm of t.matchAll(/\{([^{}]+(?:\{[^{}]*\}[^{}]*)*)\}/g)) {
     total++;

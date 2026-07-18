@@ -32372,88 +32372,68 @@ let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from l
 // again afterward from the File menu. NOT gated on a verbosity dial (that dial isn't built).
 const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Welcome to Pointliner</title></head><body>
-<outline text="# Welcome to Pointliner">
-  <outline text="This whole document is one example you can build from. Every {curly-brace} thing is a live pill: click it to run it, click the text beside it to edit. Here is one now, click it: {2d6}. Read top to bottom, it goes from basics to advanced. When you want your own, open the File menu and choose New, or just start editing right here.">
-    <outline text="&gt; Tip: press Tab to indent a point under the one above, Shift+Tab to outdent. That is how you nest, and how this document is built."/>
-    <outline text="&gt; Playing a solo RPG? That is where Pointliner started, and it still fits well there: your dice, your oracle, and your journal in one file. The File menu's 'Start from an example' has ready-to-play starters for that and plenty else."/>
+<outline text="# Welcome to Pointliner: a tour you can play">
+  <outline text="Everything on this page is live. The small rounded things are pills: click one and it answers again. Here is one now, click it: {2d6}"/>
+  <outline text="This document is yours. Edit anything, break anything, delete the whole tour when you are done."/>
+  <outline text="## Level 1: The spark">
+    <outline text="The whole idea in one line: type \`{2d6}\` in a point, click away, and it becomes this: {2d6}. Click it."/>
+    <outline text="That loop, type braces, get a live pill, click it for a new answer, is all there is. The rest is more kinds of braces."/>
+    <outline text="A pick pill decides for you: tonight we cook {pasta | soup | tacos}. Click to re-decide."/>
+    <outline text="Weights tilt the odds: tomorrow looks {sunny | cloudy 2 | rainy 3}. Rainy is three times as likely as sunny."/>
+    <outline text="A math pill starts with \`=\` and stays current: three movie tickets cost {= 3 * 12}."/>
+    <outline text="To change a pill, click the words beside it: the point opens and the pill unfolds back to its typed source. Click away to seal it again."/>
+    <outline text="Points are the other half. Press Enter for a new point, Tab to tuck it under the one above, Shift+Tab to pull it back out."/>
+    <outline text="Markdown works on any line: **bold**, *italic*, \`code\`, and a \`#\` starts a heading."/>
+    <outline text="&gt; Start a line with &gt; for a quote worth keeping."/>
+    <outline text="- [ ] Make a point a to-do by typing \`- [ ]\`. Tick this box."/>
+    <outline text="#TODO [#B] Or give a point a status badge with \`#TODO\`. Click the badge to move it along or set a priority."/>
   </outline>
-  <outline text="## Basics">
-    <outline text="The live pills: this is the part no plain outliner has. Type inside {curly braces} and it becomes a small live thing you click.">
-      <outline text="Roll dice, click to re-roll: {2d6}"/>
-      <outline text="Pick one at random from a list: {yes | no | maybe}"/>
-      <outline text="Weight a choice so it comes up more often: {yes | yes | no}"/>
-      <outline text="Do quick math right in the text: {= 2 * 19}"/>
+  <outline text="## Level 2: The document computes">
+    <outline text="A tiny budget that adds itself up:">
+      <outline text="Weekend trip: {= sum(cost)} spent of the 150 budget {prop budget: 150}" _props="[{&quot;key&quot;: &quot;check&quot;, &quot;val&quot;: &quot;sum(cost) &lt;= budget&quot;}]">
+        <outline text="Train tickets {prop cost: 60}"/>
+        <outline text="One night in a hostel {prop cost: 70}"/>
+        <outline text="Snacks and coffee {prop cost: 15}"/>
+      </outline>
+      <outline text="The small key and value chips are properties. The trip point's \`{= sum(cost)}\` pill totals its children live: raise a cost above and watch it follow."/>
+      <outline text="The trip point also carries a check, \`sum(cost) &lt;= budget\`, set with \`/check\`. It shows a quiet check mark now; push the costs past 150 and it flags itself."/>
     </outline>
-    <outline text="The outline underneath: write, format, and track to-dos. If you have used any outliner, this part is home, and it is what lets you reorganize freely.">
-      <outline text="Write anything. Press Enter for a new point at the same level, Tab to nest it deeper."/>
-      <outline text="Format with markdown: **bold**, *italic*, \`code\`, and headings with #, ##, ### at the line start."/>
-      <outline text="&gt; A line starting with &gt; is a quote block."/>
-      <outline text="- [ ] A to-do you can check off"/>
-      <outline text="- [x] One that is already done"/>
-      <outline text="#TODO [#A] A task with a state and an A priority (type #TODO, #NEXT, #WAITING, or #DONE)"/>
+    <outline text="Declare a value once, reuse it anywhere:">
+      <outline text="{rate := 12} This pill declares a variable named rate."/>
+      <outline text="Four hours of babysitting: {= rate * 4}. Change rate above and this recomputes on its own."/>
     </outline>
+    <outline text="Dates are numbers you can compute with:">
+      <outline text="Library books go back {date due: today+3}. The chip colors itself by urgency as the day gets close."/>
+      <outline text="Type \`/due\` on any point to schedule it; the calendar button in the toolbar gathers everything dated."/>
+    </outline>
+    <outline text="Tags and search:">
+      <outline text="Type \`#\` and a word to tag a point; a slash nests tags, so \`#book/sci-fi\` files under \`#book\`."/>
+      <outline text="Take a long walk with no phone #idea"/>
+      <outline text="Learn to bake real bread #idea/big"/>
+      <outline text="The search box speaks operators: \`is:todo\`, \`due:overdue\`, \`#book\`, \`-word\` to exclude, \`&quot;exact phrase&quot;\`. Star a search to save it."/>
+      <outline text="Ideas collected so far: {count: #idea}. A live number, never a stale note."/>
+    </outline>
+    <outline text="Type \`[[\` to link one point to another. The link always shows the target's current title, and the target lists who points back."/>
   </outline>
-  <outline text="## Intermediate">
-    <outline text="Once the basics feel easy, these add structure: dates, properties, tags, search, and links.">
-      <outline text="Properties tag a point with key: value data you can compute over and search.">
-        <outline text="Coffee {prop cost: 8}"/>
-        <outline text="Milk {prop cost: 3}"/>
-        <outline text="Bread {prop cost: 4}"/>
-      </outline>
-      <outline text="Give a point a date and it shows up in the agenda (toolbar calendar button). {date due: today+3}"/>
-      <outline text="Tag points with #hashtags. Click a tag to filter to it. Tags can nest: #work/urgent."/>
+  <outline text="## Level 3: The document thinks along">
+    <outline text="Name a list once, call it anywhere:">
+      <outline text="These two named pills hold a rule each, topic and voice, built once in the @ Grammar dialog: [[grammar:tg1]] [[grammar:tg2]]" _grammar="[{&quot;key&quot;:&quot;tg1&quot;,&quot;def&quot;:&quot;topic: a locked door | an old photograph | the last train | a borrowed coat&quot;,&quot;origin&quot;:&quot;topic&quot;,&quot;result&quot;:&quot;the last train&quot;},{&quot;key&quot;:&quot;tg2&quot;,&quot;def&quot;:&quot;voice: a stranger | your future self | the house itself&quot;,&quot;origin&quot;:&quot;voice&quot;,&quot;result&quot;:&quot;a stranger&quot;}]"/>
+      <outline text="Any point can now call them by name: write about {topic} in the voice of {voice}. Click each for a fresh pick."/>
     </outline>
-    <outline text="Search is powerful: press Ctrl/Cmd+F and try operators.">
-      <outline text="Type is:todo to find open tasks, is:done for finished ones, #gear for a tag, or cost:&gt;10 to compare a property. Combine them; a space is AND, a bare | is OR. Star a search to save it."/>
-    </outline>
-    <outline text="Link points together to build a web, not just a tree.">
-      <outline text="Type [[ to open the link picker and point at any other point (even in another document if you have a folder connected). The point you link to shows a backlink to here, so you can navigate both ways."/>
-    </outline>
+    <outline text="A deck deals without repeats: five-minute reset, {shuffle: stretch | water a plant | clear one shelf | step outside}. Click to draw the next card."/>
+    <outline text="A cycle takes turns in order: tonight the dinner picker is {cycle: my pick | your pick}."/>
+    <outline text="Roll on your own writing: stuck? {roll: #idea} draws a random idea from anywhere on this page."/>
+    <outline text="When a number is honestly a range, estimate it: repainting the hall takes {2 to 5} hours."/>
+    <outline text="Estimates carry their uncertainty through math: hall plus trim is {(2 to 5) * (1 to 2)} hours."/>
+    <outline text="Ask a yes or no question: should we invite the neighbors? {oracle: even}"/>
+    <outline text="Embed a live search: {query: is:todo} lists every open to-do on this page, always current."/>
   </outline>
-  <outline text="## Advanced">
-    <outline text="This is what no other outliner does: a generative and computational engine, all inside the {…} you already know.">
-      <outline text="Roll on your own outline: your document is the random table. Keep a list as ordinary points, then let it surprise you.">
-        <outline text="Write a how-to post #idea"/>
-        <outline text="Refresh the about page #idea"/>
-        <outline text="Record a short demo #idea"/>
-        <outline text="Today's pick: {roll: #idea}. Click it to re-roll; add a point above and it joins the pool."/>
-      </outline>
-      <outline text="Named tables and rules. Define a rule once, call it anywhere by name.">
-        <outline text="weather: sunny | overcast | rain | fog"/>
-        <outline text="Today it is: {weather}. Roll two words for a writing prompt: {weather} and a {market | kitchen | station}."/>
-        <outline text="A rule can roll dice or call another rule inside itself. Define one on its own line, name first:"/>
-        <outline text="warmup: {2d6} minutes stretching | a {weather} walk"/>
-        <outline text="Then call it: {warmup}."/>
-      </outline>
-      <outline text="Decks and sequences: draw without repeating, or cycle in order.">
-        <outline text="A deck draws each item once, then reshuffles (it tells you when): {shuffle: dishes | laundry | trash | floors}"/>
-        <outline text="A cycle steps through in order every click: {cycle: to do | doing | done}"/>
-      </outline>
-      <outline text="A yes/no decision helper, weighted toward yes: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}"/>
-      <outline text="Compute over your outline, not just single numbers.">
-        <outline text="Total a property across the children below this point: {= sum(cost)}. Average, count, min, max work the same way: {= avg(cost)}.">
-          <outline text="Notebook {prop cost: 6}"/>
-          <outline text="Pens {prop cost: 3}"/>
-          <outline text="Folder {prop cost: 4}"/>
-        </outline>
-        <outline text="Date math: days until the deadline is {= date(2026,12,31) - today}."/>
-      </outline>
-      <outline text="Variables tie numbers together. Change one, everything downstream updates.">
-        <outline text="Set a value inline: {rate := 40}"/>
-        <outline text="Then use it: an hour of work is {= rate}, a half-day is {= rate * 4}, and the odds shift with a value too: {on track | tight {= rate}}."/>
-      </outline>
-      <outline text="Estimates carry uncertainty, sampled and shown as a range with a little sparkline: {5 to 10} hours."/>
-      <outline text="Checks lint your outline: this one passes only if the supplies below stay under budget.">
-        <outline text="Under budget (green while the supplies below total 12 or less)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(cost) &lt;= 12&quot;}]">
-          <outline text="Notebook {prop cost: 6}"/>
-          <outline text="Pens {prop cost: 5}"/>
-        </outline>
-      </outline>
-      <outline text="A base is an editable, interactive table. Type /base on a blank point to make one, then its top-left switcher turns the same rows into a Board (kanban), Cards, or Calendar. Mark a column as Status or Date (Alt+R on a cell, or the column menu) to power the Board and Calendar."/>
-    </outline>
-    <outline text="Make it yours.">
-      <outline text="Duplicate any branch as a template (bullet menu, Save as template) and stamp it later with /template. Move a point anywhere with Refile in its bullet menu. And press Ctrl/Cmd+Shift+. to cycle the verbosity dial (Guided, Standard, Lean) as you get comfortable and want less hand-holding."/>
-    </outline>
+  <outline text="## Make it yours">
+    <outline text="Save any subtree as a template from its point menu, then stamp a fresh copy anytime with \`/template\`."/>
+    <outline text="When the hints feel like noise, press Ctrl/Cmd+Shift+. to quiet the guidance; Ctrl/Cmd+Shift+, brings it back."/>
+    <outline text="The \`?\` button at the bottom right is the cheat sheet; the \`@\` menu builds any pill with a dialog; typing \`{\` lists every pill form."/>
+    <outline text="Pointliner was born at the solo-RPG table. Curious? File then Start from an example has ready-made live starters, for games and everyday plans alike."/>
+    <outline text="Delete this tour whenever you like: it is only points, and the document is yours."/>
   </outline>
 </outline>
 </body></opml>`;
