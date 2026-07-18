@@ -28,6 +28,9 @@ See the full web of what connects to an idea: not just what you linked *from* th
 everything across your documents that links *to* it. Useful in a personal wiki or research notes when you
 want to know what else depends on or references a concept.
 
+Each row shows a **line of context** from the source under its title, the words around the link, so
+you can see what that point says about this one without visiting it.
+
 The backlinks panel also surfaces **mentions of the title that are not linked yet**, so you can
 connect them with one click.
 
@@ -62,6 +65,15 @@ action item in another file or build a topic index that points to pages across y
 
 In a [connected folder](features.md#linking-and-connecting-documents) the `[[` picker searches **all**
 your documents, not just the one you are in, so a link can reach a point in any file.
+
+**Mirrors work across documents too.** The empty-pipe form (`[[docId#id|]]`) embeds the other
+document's point right where you write it, the same live-mirror move as inside one document: a
+character sheet in one file can show inside a session log in another, a definition can appear inside
+every document that needs it. The embedded copy shows the point **as it was last saved** in its file
+(another document is its file on disk, so the mirror follows the file). Hover the mirror to see which
+document it comes from; click it to open the source. Links, tallies and searches inside the mirrored
+point resolve in **their own document**, so a query pill mirrored from a project file still counts
+that project's points, not the ones where you are reading it.
 
 ## Find broken links
 

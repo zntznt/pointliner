@@ -219,10 +219,16 @@ feature — it is making the index a dependable substrate:
 
 ## 6. Recommended order
 
-1. **Spine first, minimally:** the generation counter + own-doc liveness + refresh-on-save
-   (§5.1, 5.3, 5.4). Small, unblocks everything, hardens what is already shipped.
-2. **4a mirror/transclusion + 4d backlink previews** — the visible payoff, cheap, no new
-   syntax, lifts a named v1 fence.
+1. ✅ **Spine first, minimally** (shipped 2026-07-18): the generation counter
+   (`workspaceIndex.gen` / `_wsIndexGen`) + own-doc liveness (`wsDocRoot`, the chokepoint) +
+   refresh-on-save (`refreshOwnDocInIndex`, throttled 10 s trailing, called from
+   `flushWorkspaceFile`) — §5.1, 5.3, 5.4. §5.2 (incremental rescan) deferred to step 4.
+2. ✅ **4a mirror/transclusion + 4d backlink previews** (shipped 2026-07-18, same PR):
+   `[[docId#nodeId|]]` transcludes via `renderNodeInline(node, docId)` foreign mode
+   (`wsDocVars` gen-memoized scope; `_inlineDocId` context so inner bare links and query
+   pills resolve in THEIR doc; depth guard covers cross-doc chains); the pill's title/aria
+   say "as saved" (P4). Backlink rows carry a `backlinkSnippet` context line, same-doc and
+   cross rows alike.
 3. **4b doc-level folder graph** — bounded by construction, reuses the panel.
 4. **4c folder-scoped reducers/queries** — the deepest one; by now the memo/staleness
    substrate exists. Incremental rescan (§5.2) lands with or just before this.

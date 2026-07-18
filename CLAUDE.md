@@ -331,6 +331,13 @@ current globals, set them for the target, render, and then RESTORE them** (not c
 to null — that would break the rest of the source render). A depth guard caps nesting
 at 1 (a link inside a mirror renders title-only) so `A↔B` links can't recurse. Any new
 "render a node inside another" path must follow the same save/restore + depth discipline.
+**The cross-doc mirror rides the same wrapper** (4a, `guidance/cross-document-direction.md`):
+`renderNodeInline(node, docId)` with a foreign docId scopes vars to THAT doc (`wsDocVars`,
+memoized on `workspaceIndex.gen`) and sets `_inlineDocId` — the foreign render context — so
+mdInline's bare `[[#id]]` tokens resolve in that doc (via `renderCrossLinkPill`) and query
+pills query that doc's retained tree (`queryRows` with the explicit root), never the live
+doc. Positional var maps don't apply cross-doc (documented approximation: foreign pills
+read the doc-wide map). The depth guard covers cross-doc chains for free.
 
 ### Edit-mode serialization and caret math (the subtle part)
 
@@ -719,7 +726,13 @@ attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption fo
 the re-entrancy note above). Missing target → `.node-link-broken`. **Cross-document links**
 (`[[docId#nodeId|label]]`) now also ship on the multi-doc workspace (delivered June 2026: the
 workspace-wide index CF-1, navigation CF-2, the folder-spanning `[[` picker CF-3, cross-doc
-backlinks CF-4, "+ New note" CF-5; see `guidance/features.md`). Creation paths: typing `[[`
+backlinks CF-4, "+ New note" CF-5; see `guidance/features.md`). **The cross-doc MIRROR shipped
+2026-07-18** (4a, `guidance/cross-document-direction.md`): `[[docId#nodeId|]]` transcludes the
+target from the index's retained tree ("as saved" in its title/aria — the staleness is visible,
+P4), on the §5 spine — `workspaceIndex.gen` (the folder's `_varsVer` twin; every cross-doc memo
+keys on it), `wsDocRoot` (own-doc-liveness chokepoint: the current doc always reads live),
+`wsDocVars`, `findNodeInRoot`, and refresh-on-save (`refreshOwnDocInIndex`, throttled, called
+from `flushWorkspaceFile`). Backlink rows show a context line (`backlinkSnippet`, 4d). Creation paths: typing `[[`
 opens the **link picker** (always on since
 UXP-4, rollout kill switch retired 2026-07-02; candidates via the pure `linkCandidates`, applied as the live-TITLE form
 `[[#id]]` — no pipe; since #805/UXP-204 the pipe carries meaning: `[[#id]]` = title reference (every creation door's
@@ -817,8 +830,11 @@ Typed shorthand (with a live typo marker for attempted-but-invalid `{…}` bodie
 `.brace-attempt` cue for an invalid `{…}` that stayed text on load, #888) ·
 Footnotes · Hashtags (incl. the `#` tag picker sourced from `collectTags`) ·
 Tables (incl. Org `#+TBLFM:` formulas) · Collapse-to-level ·
-Node links (same-doc **and cross-document** `[[docId#nodeId|label]]`, incl. live-title "mirror",
-the `[[` picker, backlinks, link-and-create / "+ New note", aliases, unlinked refs) ·
+Node links (same-doc **and cross-document** `[[docId#nodeId|label]]`, incl. live-title "mirror" —
+**and the cross-doc mirror**: `[[docId#nodeId|]]` transcludes from the index's retained tree, "as
+saved", with foreign-doc resolution for inner links/queries/vars (4a + the §5 spine, see
+`guidance/cross-document-direction.md`) — the `[[` picker, backlinks (each row with a
+`backlinkSnippet` context line, 4d), link-and-create / "+ New note", aliases, unlinked refs) ·
 Multi-document workspace (a folder of `.opml` notes on real disk — FSA + IndexedDB, Chromium-gated;
 durable continuous auto-write, document switcher, **document tabs** — a `#doc-tabs` `role=tablist`
 strip over the switcher: `openTabs` filenames persisted in IndexedDB, `tabAdd`/`tabClose`/`tabCycle`
