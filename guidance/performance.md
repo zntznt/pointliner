@@ -1,7 +1,7 @@
 # Pointliner — Performance baseline
 
-**Measured:** 2026-06-29 · **Build:** `main` @ `bdd7bad` · **Machine:** Apple Silicon Mac
-(headless Chrome via DevTools, the full real app — not a Node micro-benchmark).
+**Measured:** 2026-07-18 · **Build:** `main` @ `9fb9133` · **Machine:** Apple Silicon Mac
+(headless Chromium driving the full real app — not a Node micro-benchmark).
 **Method:** synthetic trees of N nodes driven through the live code paths; times in ms.
 Re-run harness at the bottom; re-measure and update the date/commit when the numbers
 move materially.
@@ -24,9 +24,11 @@ move materially.
   (measured: 4 MB writes, 5 MB throws). At ~240 bytes/node that's ~17k nodes; past it the
   app trips its own `autosaveDisabled` guard, warns, and stops re-serializing. **Escape
   hatch:** connect a workspace folder — it writes to disk with no cap.
-- **The first thing you *feel* is structural editing past ~25k.** Enter / indent / delete /
-  move each do a full `render()` + a whole-tree `JSON.stringify` undo snapshot: ~6ms at
-  10k, ~30ms at 25k, ~88ms at 50k. Plain typing never pays this.
+- **The first thing you *feel* is search past ~25k.** Each applied query walks the whole
+  tree: ~34ms at 10k, ~82ms at 25k, ~156ms at 50k. Structural edits (Enter / indent /
+  delete / move: a full `render()` + a whole-tree `JSON.stringify` undo snapshot) came
+  down ~3× since the June run and now stay under ~30ms even at 50k. Plain typing pays
+  neither cost.
 - **Why it doesn't lag like Logseq/Roam at a few thousand nodes:** two deliberate choices —
   (1) a genuinely **virtualized DOM** (~35 row elements exist at any size), and (2) the
   **keystroke hot path does near-zero whole-tree work** (the 9 doc-caches are lazy *and*
@@ -44,9 +46,9 @@ Real `input` events fired through the live `attachContentEvents` handler (`edita
 
 | metric | value |
 |---|---|
-| median | **0.2 ms** |
-| p95 | 1.2 ms |
-| max | 2.3 ms |
+| median | **0.1 ms** |
+| p95 | 0.2 ms |
+| max | 1.8 ms |
 
 Even forcing `markDirty()` *before every keystroke* (worst case — every doc-cache
 invalidated) held the median at **0.1 ms**: the input handler does not read the caches on a
@@ -56,17 +58,21 @@ plain keystroke. Typing is effectively O(1) regardless of document size, by desi
 
 | nodes | render | structural edit | search (plain term) | autosave `JSON.stringify` | `toOpml` | undo `snapshot` | doc size |
 |------:|-------:|----------------:|--------------------:|--------------------------:|---------:|----------------:|---------:|
-| 1k    | 11 | 2.5 | 10  | 0.7 | 4  | 0.3 | 0.24 MB |
-| 5k    | 6  | 17  | 21  | 2.3 | 10 | 1.7 | 1.2 MB |
-| 10k   | 10 | 6   | 34  | 2.2 | 10 | 3.2 | 2.4 MB |
-| 25k   | 88 | 31  | 84  | 17  | 35 | 14  | 5.8 MB |
-| 50k   | 41\* | 88 | **231** | 29 | 58 | 30 | 11.5 MB |
+| 1k    | 7  | 2.7 | 13  | 0.8 | 4.6 | 0.7 | 0.25 MB |
+| 5k    | 10 | 6.3 | 35  | 2.0 | 7.1 | 1.8 | 1.25 MB |
+| 10k   | 5  | 4.5 | 34  | 3.4 | 8.0 | 2.8 | 2.5 MB |
+| 25k   | 9  | 11  | 82  | 8.0 | 25  | 5.0 | 6.2 MB |
+| 50k   | 21 | 29  | **156** | 17 | 37 | 22 | 12.5 MB |
 
-\* `render()` is virtualized so the initial paint is bounded; the apparent dip at 50k is
-GC/JIT noise, not a real improvement. The genuine growth is in the O(total-nodes) paths
-(serialize / search / snapshot), not render.
+`render()` is virtualized, so the initial paint stays bounded (~5–21 ms at any size). The
+genuine growth is in the O(total-nodes) paths (serialize / search / snapshot), not render.
+Versus the 2026-06-29 run (`bdd7bad`): structural edit and `snapshot` came down ~3× at the
+top end (88 → 29 ms and 30 → 22 ms at 50k) and search dropped 231 → 156 ms at 50k.
 
 ### Scroll (fully-expanded 10k doc) and pill-heavy documents
+
+*(2026-06-29 run @ `bdd7bad` — these scenarios are not part of the embedded harness and
+were not re-measured; the paths they exercise are the window-bounded ones that move least.)*
 
 | scenario | result |
 |---|---|
@@ -90,39 +96,45 @@ touch lower in practice — the payload also carries sidecars + `focusedId` etc.
 
 ---
 
-## Bases (measured 2026-07-16 · `main` @ post-#792 · Linux container, headless Chromium)
+## Bases (measured 2026-07-18 · `main` @ `9fb9133` · same Apple Silicon Mac as above)
 
 Bases are the one surface the outline's row virtualization does NOT cover: a base is a
 single outline row whose widget holds ALL its cell DOM. Measured through the live code
 paths (real `input` events in a cell, the real focusout commit), 4 columns per row.
-**Hardware caveat:** this section was measured on a slower container CPU than the Apple
-Silicon numbers above — compare within this table, not across sections.
+Now measured on the **same machine as the outline numbers above**, so the sections are
+directly comparable (the 2026-07-16 first pass ran on a slower Linux container; these Mac
+numbers are ~4× faster with the same shape and the same conclusions). Render is given as
+plain base / projecting varbase — a projecting base pays `collectVars` + projection in
+the same pass.
 
-| rows | widget build | full render (doc w/ base) | cell keystroke (med) | focusout commit | focusout, projecting varbase |
-|-----:|-------------:|--------------------------:|---------------------:|----------------:|------------------------------:|
-| 100  | ~10 ms  | ~45 ms   | 0.3 ms | ~1 ms  | ~5 ms |
-| 500  | ~25 ms  | ~150 ms  | ~1 ms  | ~1 ms  | ~18 ms |
-| 1k   | ~45 ms  | ~240 ms  | ~1.5 ms | ~3 ms | ~28 ms |
-| 5k   | ~230 ms | ~1.6 s   | ~7–20 ms | ~12 ms | ~150 ms |
+| rows | widget build | full render (plain / varbase) | cell keystroke (med) | focusout commit | focusout, projecting varbase |
+|-----:|-------------:|------------------------------:|---------------------:|----------------:|------------------------------:|
+| 100  | ~1.3 ms | ~6 ms / ~6 ms     | <0.1 ms | ~0.1 ms | ~0.9 ms |
+| 500  | ~6 ms   | ~14 ms / ~22 ms   | ~0.2 ms | ~0.3 ms | ~3.4 ms |
+| 1k   | ~12 ms  | ~37 ms / ~45 ms   | ~0.3 ms | ~0.6 ms | ~7 ms |
+| 5k   | ~60 ms  | ~140 ms / ~246 ms | ~1.6 ms | ~2.8 ms | ~36–43 ms |
 
-- **The envelope: a base is comfortable to a few hundred rows, usable to ~1k.** Widget
-  build is linear in cells; typing stays flat (the per-keystroke session parse reuse) until
-  the whole-table serialize itself grows (~5k rows).
+- **The envelope: comfortable to ~1k rows on this hardware (a few hundred on slower
+  machines), heavy by 5k.** Widget build is linear in cells; typing stays flat (the
+  per-keystroke session parse reuse) until the whole-table serialize itself grows
+  (~5k rows).
 - **The lever is the rows cap, not virtualization.** The BC rows cap (All/5/10/20) clips
   the inline DOM; a capped 5k-row base paints like a 20-row one in the outline. In-widget
   row virtualization was CONSIDERED AND REJECTED for now (bases-direction §7c): sticky
   header/focus/selection across a virtual window inside a `<table>` is high-complexity for
   a case the cap already handles. Revisit trigger: a real workflow needs a >1k-row base
   fully expanded (zoomed) at typing speed.
-- **The varbase focusout was the real hot spot — fixed in the same pass.** The B1 sibling
-  repaint patched ALL N×C cells on every cell blur of a projecting base (~870 ms at 5k
-  rows). `mtPatchCells` is now token-scoped there (only cells holding pill tokens can
-  change from a sibling edit): ~5 ms at 100 rows, ~150 ms at 5k (the residue is the
-  commit epilogue's prune + recompute over the large text, plus the cell scan).
+- **The varbase focusout was the real hot spot — fixed in the 2026-07-16 pass.** The B1
+  sibling repaint patched ALL N×C cells on every cell blur of a projecting base (~870 ms
+  at 5k rows on the container). `mtPatchCells` is now token-scoped there (only cells
+  holding pill tokens can change from a sibling edit): ~1 ms at 100 rows, ~36–43 ms at 5k
+  on this Mac (the residue is the commit epilogue's prune + recompute over the large
+  text, plus the cell scan).
 - **Query bases are bounded by their cap** (`QBASE_ROW_CAP` 100): the projected model over
-  5k matching points computes in ~8 ms cold and is generation-memoized (0 ms warm).
+  5k matching points computes in ~8 ms cold (2026-07-16 container run, not re-measured)
+  and is generation-memoized (0 ms warm).
 - **Varbase projection cost rides the vars generation:** `collectVars` with a 5k-row
-  projection is ~50–80 ms per cold read — lazy (only on the next read after an edit), but
+  projection is ~16 ms per cold read — lazy (only on the next read after an edit), but
   a reason big reference tables belong capped, not sprawling.
 
 <details>
@@ -172,13 +184,14 @@ Silicon numbers above — compare within this table, not across sections.
    (`autosaveDisabled` + `STORAGE_SOFT_LIMIT` warning; see `writeLocalAutosave`). The
    workspace-folder path (`flushWorkspaceFile` → `toOpml` to disk) has **no** such cap, so a
    power user with a huge doc uses the folder workflow.
-2. **Structural-edit latency (degrades past ~25k).** Each structural op pays `pushUndo` →
-   `snapshot` (`JSON.stringify(root)`, O(total)) + a full `render()` + the next reads of the
-   doc-caches. ~30 ms at 25k, ~88 ms at 50k. *Plain text typing avoids all of this*
-   (`recordTextEdit` is an O(1) per-node diff; no `render()`, no `snapshot()`).
-3. **Search (~230 ms/query at 50k).** Each *applied* query (debounced 140 ms, so not
+2. **Search (~156 ms/query at 50k).** Each *applied* query (debounced 140 ms, so not
    per-keystroke) is a full `computeMatchSet` walk; `is:failing` additionally runs
-   `evalCheck` per node. Fine to ~10k (~34 ms), noticeable past ~25k.
+   `evalCheck` per node. Fine to ~10k (~34 ms), noticeable past ~25k (~82 ms).
+3. **Structural-edit latency (grows with size, but no longer perceptible even at 50k).**
+   Each structural op pays `pushUndo` → `snapshot` (`JSON.stringify(root)`, O(total)) + a
+   full `render()` + the next reads of the doc-caches. ~11 ms at 25k, ~29 ms at 50k —
+   down ~3× from the June run's 88 ms. *Plain text typing avoids all of this*
+   (`recordTextEdit` is an O(1) per-node diff; no `render()`, no `snapshot()`).
 
 ---
 
@@ -240,7 +253,8 @@ storage-bound, with a disk fallback) than a cloud-backed tool's theoretical max.
   numbers. The honest numbers above come from firing **real `input` events** through the
   live handler in a **fully-expanded** doc. If you re-measure, do it that way — the real
   keystroke path (caret math + reconcile + the trigger-check chain) is what matters, not a
-  bare `render()` call.
+  bare `render()` call. Also run the sweep **twice and read the second pass** — the first
+  pass carries JIT warmup (search at 1k reads ~30 ms cold vs ~13 ms warm).
 - **No incremental persistence.** Autosave re-serializes the whole tree (the ~17k wall). A
   delta-based or chunked save would push that ceiling out a lot — a real architectural cost
   the single-file model trades away on purpose.
