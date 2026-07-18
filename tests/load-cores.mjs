@@ -221,7 +221,7 @@ export function loadCores() {
     'searchTokenAt','searchCompletions','oracleCompletions','meterTokenAt','meterCompletions',
     'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
-    'classifyBraceBody','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
+    'classifyBraceBody','braceAttemptReason','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
@@ -241,7 +241,7 @@ export function loadCores() {
 
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
-    'childPropNumber','aggregateChildren','reduceAgg','queryReduce','expandAggExpr','firstEmptyRollup','countWords','subtreeWords',
+    'childPropNumber','aggregateChildren','reduceAgg','queryReduce','expandAggExpr','mathPrepassErrs','firstEmptyRollup','countWords','subtreeWords',
     'parseUnitDecls','unitTable','normalizeUnits','convertUnits','splitArgsTopLevel','replaceConvert','unitsToText', // #875 units
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','resolveNodeScope','checkExprOf','hasVisibleProps','buildIndex','ancestorsOf',

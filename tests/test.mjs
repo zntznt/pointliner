@@ -341,6 +341,31 @@ test('classifyBraceBody / braceTypeLabel — a typed markov is a valid markov ar
   assert.equal(c.classifyBraceBody('markov: a→b, b→c', {}, {}), 'artifact');
   assert.deepEqual(host(c.braceTypeLabel('markov: a→b, b→c', {}, {})), ['markov', null]);
 });
+test('braceAttemptReason — explains why an INVALID {…} did not become a pill (the display cue)', () => {
+  // Only ever called on bodies classifyBraceBody ruled 'invalid'; each returns a concrete phrase.
+  // bare unknown name ({rumor}): names the missing rule/variable
+  assert.equal(c.classifyBraceBody('rumor', {}, {}), 'invalid');
+  assert.match(c.braceAttemptReason('rumor', {}, {}), /No rule or variable named "rumor"/);
+  // dice-looking but unparseable ({2d6x})
+  assert.equal(c.classifyBraceBody('2d6x', {}, {}), 'invalid');
+  assert.match(c.braceAttemptReason('2d6x', {}, {}), /dice roll/i);
+  // a broken calculation ({= badname + 1}) borrows mathReasonPhrase (bad ref)
+  assert.equal(c.classifyBraceBody('= badname + 1', {}, {}), 'invalid');
+  assert.match(c.braceAttemptReason('= badname + 1', {}, {}), /calculation uses .*no value here/i);
+  // an estimate crossing into a math formula ({= 5 to 10}) reads as 'estimate', not 'bad ref'
+  assert.match(c.braceAttemptReason('= 5 to 10', {}, {}), /estimate/i);
+  // a modifier on an unknown base ({beast.cap}) names the missing base
+  assert.equal(c.classifyBraceBody('beast.cap', {}, {}), 'invalid');
+  assert.match(c.braceAttemptReason('beast.cap', {}, {}), /No rule or variable named "beast"/);
+  // AP-style copy: no em dashes in any of the user-facing reasons
+  for (const b of ['rumor', '2d6x', '= badname + 1', 'beast.cap']) {
+    assert.ok(!c.braceAttemptReason(b, {}, {}).includes('—'), 'no em dash in ' + b);
+  }
+  // a KNOWN name is a valid artifact, never flagged (the cue only fires on 'invalid')
+  assert.equal(c.classifyBraceBody('rumor', { rumor: ['x'] }, {}), 'artifact');
+  // prose braces classify 'literal' and are left entirely alone by the cue
+  assert.equal(c.classifyBraceBody('note to self', {}, {}), 'literal');
+});
 test('promoteBraceBody — {markov: …} builds an anonymous, typed markov record', () => {
   const node = { text: '', markov: [] };
   const tok = c.promoteBraceBody(node, 'markov: a→b, b→c');
@@ -12952,6 +12977,27 @@ test('units — parse decls, convert, normalize, and the substitution (SR-6)', (
   assert.match(txt, /^sp = 10 cp$/m, 'a derived unit names its base');
   assert.match(txt, /^league = 4828\.032 m$/m, 'a built-in-dimension extension names the built-in base');
   assert.equal(c.unitsToText(null), '', 'no units → empty text');
+});
+
+test('#889 — a deterministically-erroring {= …} (cross-dimension convert) becomes a loud #ERR pill', () => {
+  // mathPrepassErrs: the pre-pass INTRODUCED a #ERR (cross-dim convert), so it is a real
+  // calculation that errors, not prose. Same-dim convert does NOT (it resolves to a number).
+  assert.equal(c.mathPrepassErrs('convert(10, km, kg)'), true, 'cross-dimension → deterministic #ERR');
+  assert.equal(c.mathPrepassErrs('convert(10, km, mi)'), false, 'same-dimension resolves, no #ERR');
+  assert.equal(c.mathPrepassErrs('not math'), false, 'prose with no convert → not our #ERR');
+  assert.equal(c.mathPrepassErrs('2 + I love #ERR'), false, 'a literally-typed #ERR is not the pre-pass sentinel');
+  // classifyBraceBody: the cross-dim convert now classifies 'artifact' (was 'invalid' → raw braces on load)
+  assert.equal(c.classifyBraceBody('= convert(10, km, kg)', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('= convert(10, km, mi)', {}, {}), 'artifact');   // same-dim still promotes
+  assert.equal(c.classifyBraceBody('= not math', {}, {}), 'invalid');               // prose escape hatch intact
+  // makeMathResult creates the record so a pill exists to render #ERR
+  const roll = c.makeMathResult('convert(10, km, kg)', {});
+  assert.ok(roll && roll.key, 'a record is created for the deterministic error');
+  assert.equal(roll.result, '#ERR');
+  assert.equal(c.makeMathResult('not math', {}), null, 'genuine prose still returns null (stays literal)');
+  // the rendered reason names the real cause, not a missing variable (km/kg would read as bad refs)
+  assert.equal(c.mathErrorReason('#ERR', {}), 'convert');
+  assert.match(c.mathReasonPhrase('convert'), /different kinds of units/);
 });
 
 test('parseQBaseSort + the qbase sort wiring (SV-2)', () => {
