@@ -6868,6 +6868,47 @@ test('§5 spine wiring: index generation + own-doc liveness + refresh-on-save (s
   assert.ok(rni.includes('_inlineDocId = saved.inlineDoc'), 'the foreign doc context must restore in finally');
 });
 
+test('docGraphModel — documents as nodes, undirected weighted edges, current + missing flags (4b)', () => {
+  const names = new Map([['da', 'alpha.opml'], ['db', 'beta.opml'], ['dc', 'gamma.opml']]);
+  const nameOf = id => names.get(id);
+  const outgoing = [
+    { srcDocId: 'da', srcNodeId: 'n1', dstDocId: 'db', dstNodeId: 'm1' },   // a→b
+    { srcDocId: 'db', srcNodeId: 'm2', dstDocId: 'da', dstNodeId: 'n2' },   // b→a (same pair)
+    { srcDocId: 'da', srcNodeId: 'n3', dstDocId: 'db', dstNodeId: 'm3' },   // a→b again
+    { srcDocId: 'da', srcNodeId: 'n4', dstDocId: 'da', dstNodeId: 'n5' },   // same-doc → excluded
+    { srcDocId: 'da', srcNodeId: 'n6', dstDocId: 'dz', dstNodeId: 'x1' },   // → a doc not in the folder
+  ];
+  const g = c.docGraphModel(outgoing, nameOf, 'da');
+  // dc has no cross-doc links → not a node (web, not a scatter); dz appears, flagged broken
+  assert.deepEqual(host(g.nodes.map(n => n.id).sort()), ['da', 'db', 'dz']);
+  const ab = g.edges.find(e => (e.a === 'da' && e.b === 'db'));
+  assert.equal(ab.weight, 3, 'a↔b collapses to ONE undirected edge weighted by link count');
+  assert.equal(g.edges.length, 2, 'a-b and a-dz only (the same-doc link never edges)');
+  const da = g.nodes.find(n => n.id === 'da');
+  assert.equal(da.current, true, 'the current doc is flagged');
+  assert.equal(da.title, 'alpha', 'doc titles are display names, extension stripped');
+  assert.equal(da.deg, 4, 'degree counts every cross-doc link touching the doc');
+  const dz = g.nodes.find(n => n.id === 'dz');
+  assert.equal(dz.broken, true, 'a linked-to doc missing from the folder is visible, flagged');
+  assert.equal(dz.title, '(missing document)');
+  // graphLayout runs unchanged over the doc model (same node/edge shape)
+  const pos = c.graphLayout(g, { width: 400, height: 300, iterations: 40 });
+  assert.equal(pos.size, 3, 'every doc node gets coordinates');
+  // empty inputs
+  assert.deepEqual(host(c.docGraphModel([], nameOf, 'da').nodes), []);
+  assert.deepEqual(host(c.docGraphModel(undefined, nameOf, '').edges), []);
+});
+
+test('renderGraph forks on graphScope: the Folder view wiring (4b src pins)', () => {
+  const rg = fnBody(_src, 'renderGraph');
+  assert.ok(rg.includes("(workspaceIndex?.nameByDocId?.size || 0) > 1"), 'the Folder toggle only offers itself when the folder has 2+ docs');
+  assert.ok(rg.includes('docGraphModel(workspaceIndex.outgoing'), 'folder scope builds the doc-level model');
+  assert.ok(rg.includes('switchWorkspaceDoc(name)'), 'activating a doc node switches to that document');
+  assert.ok(rg.includes('graph-node-current'), 'the current document is marked');
+  assert.ok(rg.includes('No links between documents yet'), 'the folder empty state is distinct (P4)');
+  assert.ok(rg.includes("aria-pressed"), 'the scope toggle is a pressed-state control (P3)');
+});
+
 test('renderCrossLinkPill: unknown doc or node → broken pill, never silent (P4)', () => {
   cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
   const unknownNode = c.renderCrossLinkPill('db', 'zzz', '');    // doc known, node missing

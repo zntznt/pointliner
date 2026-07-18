@@ -58,6 +58,15 @@ rather than silently missing. Points with no links do not appear, keeping the gr
 scatter of unconnected dots. The graph is a live rendering of your links, so it is always current: link
 two points and they join the next time you open it.
 
+With a [connected folder](files-and-export.md#working-with-a-folder-of-documents) of two or more
+documents, the panel gains a **Folder** view (a This document / Folder toggle in its header): each
+document becomes one dot, joined by a line to every document it links to, with a **thicker line**
+where more links run between the two (hover it for the exact count). Your current document wears a
+ring so you can see where you are, and clicking a document opens it. A link that points at a document
+no longer in the folder shows as a red dot, same as a deleted point. Documents with no cross-document
+links stay off the map, and the toggle only appears when the folder actually has several documents.
+It is the map of your notebook, one level up from the map of a document.
+
 ## Links across documents
 
 Weave together a network of documents: link a project document to a person document, connect a meeting document to an

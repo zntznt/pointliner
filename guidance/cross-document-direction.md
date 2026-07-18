@@ -229,7 +229,13 @@ feature — it is making the index a dependable substrate:
    pills resolve in THEIR doc; depth guard covers cross-doc chains); the pill's title/aria
    say "as saved" (P4). Backlink rows carry a `backlinkSnippet` context line, same-doc and
    cross rows alike.
-3. **4b doc-level folder graph** — bounded by construction, reuses the panel.
+3. ✅ **4b doc-level folder graph** (shipped 2026-07-18): a `This document | Folder` toggle in
+   the graph panel head (shown only when the folder has 2+ indexed docs; single-file sessions
+   keep the exact pre-4b panel). Pure `docGraphModel` — documents as nodes, one undirected
+   edge per linked pair weighted by cross-doc link count (stroke width + hover count), the
+   current doc ringed, a linked-to doc missing from the folder flagged broken, unlinked docs
+   excluded (the web-not-a-scatter rule). Activating a doc node `switchWorkspaceDoc`s to it.
+   `graphLayout` runs unchanged over 10–200 doc nodes. The neighborhood graph stays step 5.
 4. **4c folder-scoped reducers/queries** — the deepest one; by now the memo/staleness
    substrate exists. Incremental rescan (§5.2) lands with or just before this.
 5. Neighborhood graph, and any 4e revisit, strictly after the above are in daily use.

@@ -186,7 +186,9 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Internal links.** `[[#point]]` links to any other point, with live titles and backlinks.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
 - **Link graph.** See your document as a browsable web of its links instead of a list, and jump to
-  any point by recognizing it. ([link graph](links-and-references.md#link-graph))
+  any point by recognizing it. With a folder connected, a **Folder** view maps the documents
+  themselves: one dot per document, thicker lines where more links run between them, click to open.
+  ([link graph](links-and-references.md#link-graph))
 - **Multi-document folders.** Connect a folder of documents on disk; switch between them, link
   across them and search the whole folder at once.
   ([links across documents](links-and-references.md#links-across-documents) · [folder of documents](files-and-export.md#working-with-a-folder-of-documents))
