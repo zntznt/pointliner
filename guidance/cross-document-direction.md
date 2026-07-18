@@ -236,8 +236,19 @@ feature — it is making the index a dependable substrate:
    current doc ringed, a linked-to doc missing from the folder flagged broken, unlinked docs
    excluded (the web-not-a-scatter rule). Activating a doc node `switchWorkspaceDoc`s to it.
    `graphLayout` runs unchanged over 10–200 doc nodes. The neighborhood graph stays step 5.
-4. **4c folder-scoped reducers/queries** — the deepest one; by now the memo/staleness
-   substrate exists. Incremental rescan (§5.2) lands with or just before this.
+4. ✅ **4c folder-scoped reducers/queries** (shipped 2026-07-18): a trailing `, folder` on the
+   quoted reducers — `{= sum("has:cost", cost, folder)}` / `{= count("q", folder)}` — routes to
+   `queryReduceFolder` (per-doc context over `wsAllDocRoots()`, own doc live / others as saved,
+   memoized on `(workspaceIndex.gen, _varsVer)`; any other scope word stays literal → #ERR); and
+   query/count pills gain a **"Search the whole folder"** dialog checkbox (`q.scope='folder'`,
+   `_query` round-trip) — rows across the folder via `queryRowsFolder`, foreign rows navigating
+   cross-doc with a doc-name hint, staleness named in every tip, no-folder degradation visible
+   (`query-folder-off`), and a scoped pill ATOMIC in edit mode (the text can't carry the scope).
+   **Decision recorded:** the pill's folder scope is a dialog toggle + record field, NOT a query
+   word — `folder` must remain searchable text (P1); the reducers use the arg slot where no
+   collision exists. **Remaining from this step:** §5.2 incremental rescan (freshness, not
+   correctness — the memo pair is already exact); a folder-scoped `{roll:}` (kept document-scoped,
+   `folderOption:false`, revisit on demand).
 5. Neighborhood graph, and any 4e revisit, strictly after the above are in daily use.
 
 Each step is a normal PR with tests on the pure cores (`buildWorkspaceIndex` extensions,

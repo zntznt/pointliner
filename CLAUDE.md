@@ -575,6 +575,13 @@ an identifier first arg), so the two coexist with no ordering dependency. An emp
 the identity **silently** (like `count("query")`) — an empty query is a valid dynamic answer, not a
 typo signal, so it deliberately does NOT feed `firstEmptyRollup`/`aggHasSkippedValues` (those guard
 the tight child-set rollups). Works in checks for free (`evalCheck` → `expandAggExpr`).
+**A trailing `, folder` widens a quoted reducer to the whole reading set** (4c,
+`guidance/cross-document-direction.md`): `{= sum("has:cost", cost, folder)}` / `{= count("q", folder)}`
+route to `queryReduceFolder` — a per-doc-context walk over `wsAllDocRoots()` (own doc LIVE, others
+as saved), memoized on (`workspaceIndex.gen`, `_varsVer`) so the measured 1.5–31 ms folder walk never
+runs per render pass (`_qrfMemo`/`_qpfMemo`, cleared in `resetDocCaches`). Only the word `folder`
+matches; any other third word stays literal → #ERR. No workspace → a folder of one (the live doc).
+`renderMathPill` names the staleness ("Folder totals count other documents as saved") in title/aria.
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
@@ -944,7 +951,12 @@ Query pills (a live embedded search: `[[query:KEY]]` + `node.query` sidecar, bod
 search string; renders matching points as links, capped +N more, recomputed each render, never
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`
 door + typed `{query: expr}` promotion + `editQuery`; atomic in edit mode; `_query` OPML
-round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB) ·
+round-trip; scope reversal recorded QP-1 — a rendering of the live data, not a saved-views DB;
+**folder scope** (4c): the dialog's "Search the whole folder" checkbox sets `q.scope='folder'` —
+rows across `wsAllDocRoots()` via the gen-memoized `queryRowsFolder`, foreign rows carrying
+`data-doc` + a doc-name hint, own doc live / others as-saved (named in the tip); a SCOPED pill
+stays ATOMIC in edit mode (`artifactToShorthand` returns null — the `{query:…}` text can't carry
+the scope, the named-grammar rule); no folder connected → visibly degraded `query-folder-off`) ·
 Base inline collapse + row cap (BC: in the OUTLINE view a base can be collapsed
 (node.collapsed, reusing the outline field) or capped to N rows (node.baseRows +
 _baserows OPML). Pure core baseInlineView(collapsed, baseRows, total, isZoomed) ->
