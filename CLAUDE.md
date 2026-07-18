@@ -1058,8 +1058,11 @@ The product direction is now set. Read these before proposing or building:
   1.5–31 ms, safe only memoized on an index generation; the force-layout graph wall — doc-level
   folder graph only, all-points rejected on measurement); the §5 liveness spine (index generation
   counter, own-doc liveness, refresh-on-save, incremental rescan) that phases 4b/4c require.
-  Write-through editing and implicit cross-doc name resolution stay out (revisit-gated). Read it
-  before any workspace/index/cross-doc work.
+  **§6 phases 1–4 + §5.2 are shipped** (spine, mirror/transclusion + backlink previews, doc-level
+  folder graph, folder-scoped reducers/query pills, and the incremental rescan: `scanWorkspace`
+  re-parses only fingerprint-changed files via `scanReparseList` + `_wsScanCache`, a warm rescan
+  doing zero content reads). Write-through editing and implicit cross-doc name resolution stay out
+  (revisit-gated). Read it before any workspace/index/cross-doc work.
 - `guidance/plugins-direction.md` — **locked direction for extensibility/plugins** + the
   **code-execution gate**: extensibility is **declarative DATA packs only** (grammar/variables/
   emoji merged into the registries via a `<_plugins>` head element); **the app executes no

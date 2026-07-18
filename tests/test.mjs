@@ -6774,6 +6774,27 @@ test('dupDocIdGroups — flags docIds shared by >1 file, sorted; ignores singlet
   assert.deepEqual(host(c.dupDocIdGroups(undefined)), []);
 });
 
+test('scanReparseList — a rescan re-parses only fingerprint-changed / new files (§5.2)', () => {
+  const cache = new Map([
+    ['a.opml', { lastModified: 100, size: 10, state: 'doc' }],
+    ['b.opml', { lastModified: 200, size: 20, state: 'unmarked' }],
+    ['gone.opml', { lastModified: 5, size: 5, state: 'doc' }],   // absent from present → just not reused
+  ]);
+  const present = [
+    { name: 'a.opml', lastModified: 100, size: 10 },   // unchanged → reuse
+    { name: 'b.opml', lastModified: 200, size: 22 },   // size changed → reparse
+    { name: 'c.opml', lastModified: 300, size: 30 },   // new file → reparse
+  ];
+  assert.deepEqual(host(c.scanReparseList(present, cache)).sort(), ['b.opml', 'c.opml']);
+  // a changed mtime alone (same size) also re-parses (the #840 model)
+  assert.deepEqual(host(c.scanReparseList([{ name: 'a.opml', lastModified: 101, size: 10 }], cache)), ['a.opml']);
+  // an empty/absent cache re-parses everything; empty present re-parses nothing
+  assert.deepEqual(host(c.scanReparseList(present, new Map())).length, 3);
+  assert.deepEqual(host(c.scanReparseList(present, null)).length, 3);
+  assert.deepEqual(host(c.scanReparseList([], cache)), []);
+  assert.deepEqual(host(c.scanReparseList(undefined, cache)), []);
+});
+
 // ── cross-document link token (CF-2) ──────────────────────────────────────────
 // renderCrossLinkPill reads the module-level root.docId and workspaceIndex (CF-1) rather
 // than taking them as params, so we set those let-bound globals in the vm realm before each
@@ -16219,7 +16240,10 @@ test('#845 item 2 — unmarkedFilesNote (pure): the no-docId scan skip is named,
   assert.ok(!c.unmarkedFilesNote(1).includes('—') && !c.unmarkedFilesNote(2).includes('—'), 'user-facing copy carries no em dash');
 });
 test('#845 item 2 — scanWorkspace counts the skips and the broken-links report surfaces them', () => {
-  assert.match(_fSync, /if \(!r\.docId\) \{ unmarked\+\+; continue; \}/, 'the scan must count, not silently continue');
+  // §5.2: the count is now tallied from the cache states ('unmarked' = parsed, no docId), still
+  // riding the returned index; a 'bad' (unreadable) entry stays a silent skip like the old catch.
+  assert.match(_fSync, /else if \(c\.state === 'unmarked'\) unmarked\+\+;/, 'the scan must count an unmarked (no-docId) file, not silently continue');
+  assert.match(_fSync, /r\.docId \?[^:]*state: 'doc'[\s\S]*?\{ lastModified, size, state: 'unmarked' \}/, 'a parsed file with no docId caches as unmarked');
   assert.match(_fSync, /const idx = buildWorkspaceIndex\(docs\);\s*\n\s*idx\.unmarked = unmarked;\s*\n\s*return idx;/, 'the count must ride the returned index');
   assert.match(_fSync, /const unmarkedMsg = unmarkedFilesNote\(workspaceIndex \? workspaceIndex\.unmarked : 0\);/, 'the broken-links report must consume the count');
 });

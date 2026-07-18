@@ -182,6 +182,7 @@ export function loadCores() {
     'parseRulesLoose',   // #582 pack-tolerant rule parser
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'parseLinkToken', 'buildWorkspaceIndex', 'dupDocIdGroups',   // CF-1: cross-doc link index pure cores
+    'scanReparseList',                          // §5.2: incremental-rescan fingerprint decision (pure)
     'linkText',                                 // render link tokens to legible plain text (breadcrumb/backlinks)
     'displayText',                              // rendered display text (markdown/pills resolved) for backlinks + unlinked-ref matching
     'renderCrossLinkPill',                      // CF-2: cross-doc link pill (reads root.docId + workspaceIndex via vm)
