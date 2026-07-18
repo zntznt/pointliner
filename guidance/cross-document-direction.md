@@ -169,6 +169,9 @@ Reuse it in the panel. Small, do it with 4a.
 
 ### 4e. Out (recorded, revisit-gated): write-through and implicit cross-doc namespaces
 
+*(Also registered in `guidance/backlog.md` under "Off the table / shelved", where the parked
+directions live; this section is the detailed rationale.)*
+
 - **Editing another doc's point from here** (via a mirror, a folder query row, or a
   cross-doc board) breaks the one-editable-root model: it needs a second dirty/undo/
   autosave lane and reintroduces every sync/conflict hazard per foreign doc. Out until the
@@ -254,8 +257,10 @@ feature — it is making the index a dependable substrate:
    **Decision recorded:** the pill's folder scope is a dialog toggle + record field, NOT a query
    word — `folder` must remain searchable text (P1); the reducers use the arg slot where no
    collision exists. §5.2 incremental rescan shipped after this (see §5.2). **Remaining:** a
-   folder-scoped `{roll:}` (kept document-scoped, `folderOption:false`, revisit on demand).
-5. Neighborhood graph, and any 4e revisit, strictly after the above are in daily use.
+   folder-scoped `{roll:}` (kept document-scoped, `folderOption:false`, revisit on demand) —
+   filed as a **doable** issue (GH #899).
+5. **Neighborhood graph** — doable, sequencing-deferred until the shipped surface is in daily
+   use; filed as **GH #898**. Any 4e revisit stays parked (see §4e / `backlog.md`).
 
 Each step is a normal PR with tests on the pure cores (`buildWorkspaceIndex` extensions,
 the doc-graph model, the folder reducer arm, the incremental-merge function) and the UX
