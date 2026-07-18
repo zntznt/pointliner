@@ -8885,7 +8885,28 @@ const mkCheckNode = (checkExpr, ownProps = {}, childCosts = []) => {
 test('evalCheck: child-aggregation budget assertion passes / fails', () => {
   assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', { budget: 100 }, [30, 50]), {}), 'pass'); // 80 ≤ 100
   assert.equal(c.evalCheck(mkCheckNode('sum(cost) <= budget', { budget: 100 }, [30, 80]), {}), 'fail'); // 110 ≤ 100
-  assert.equal(c.evalCheck(mkCheckNode('sum(weight) == 100', {}, []), {}), 'fail'); // 0 == 100 → fail (no children)
+  // #887: an EMPTY sum/avg rollup is an authoring/scope error, not a real verdict — no data to check.
+  // (Was 'fail' via 0 == 100; now 'error' in BOTH directions, matching the vacuous-pass fix below.)
+  assert.equal(c.evalCheck(mkCheckNode('sum(weight) == 100', {}, []), {}), 'error'); // no children → empty rollup → error
+});
+
+test('evalCheck #887: a check whose sum/avg matched ZERO values errors, never a vacuous pass', () => {
+  // The trust-breaking case: the check sits on a parent, the cost line items are nested one level DEEPER,
+  // so sum(cost) over DIRECT children = 0 and `0 <= budget` used to read as a confident green pass on a
+  // blown budget. It must now surface as a visible error (firstEmptyRollup detects the empty match).
+  const nested = c.mkNode('Budget');
+  nested.props = [{ key: 'check', val: 'sum(cost) <= budget' }, { key: 'budget', val: '2000' }];
+  const design = c.mkNode('Design');
+  const a = c.mkNode('A'); a.props = [{ key: 'cost', val: '1500' }];
+  const b = c.mkNode('B'); b.props = [{ key: 'cost', val: '900' }];
+  design.children = [a, b]; nested.children = [design];
+  assert.equal(c.evalCheck(nested, {}), 'error', 'grandchildren costs -> empty direct-child rollup -> error, not a false pass');
+  // control: the SAME costs as direct children genuinely fail (2400 > 2000), not error
+  nested.children = [a, b];
+  assert.equal(c.evalCheck(nested, {}), 'fail', 'direct-child costs -> a real, non-empty rollup -> honest fail');
+  // count keeps 0 as its honest answer; min/max keep the deliberate ±∞ vacuously-true empty case
+  assert.equal(c.evalCheck(mkCheckNode('count(cost) == 0', {}, []), {}), 'pass', 'count empty is not guarded');
+  assert.equal(c.evalCheck(mkCheckNode('min(start) >= 0', {}, []), {}), 'pass', 'min empty = +inf, vacuously true (by design)');
 });
 
 test('evalCheck: count / avg aggregations and own-prop assertions', () => {
