@@ -160,7 +160,9 @@ enumerates each; the requirements are:
   records in `node.vars`; only resolution became position-aware.
 
 **Still DEFERRED (do not build on spec):**
-- **Modifiers** (`a/an`, plural, capitalize) on a reference — a separable follow-up.
+- **Modifiers** (`a/an`, plural, capitalize) on a reference — ~~a separable follow-up~~ **SHIPPED** as A1
+  text modifiers (`{ref.mod}`, the closed set `cap/title/upper/lower/a/s/ed/ord` plus `.poss`/`.ing`
+  and irregulars; `modParts`/`applyMods`), routed through the grammar pill for both rule and var bases.
 - **Using a pick value in math** — ~~out; pick values are text~~ **SHIPPED for numeric rolls** (2026-07-10, PR #429): a pure-number roll resolves as a number; text picks stay out of math (fail visibly).
 - **Per-reference (non-global) re-roll** — out; the model is one value, all references update together.
 - **Random variables referencing other random variables** in deep chains — keep v1 to a pick whose

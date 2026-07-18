@@ -98,7 +98,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 
 | File | What it is |
 | --- | --- |
-| `product-identity.md` | **The binding identity** — the customer (#515), the 90%-core, the belief, never-build, who it is NOT for, the competitive frame, the open "why now" question. First stop for scope/positioning calls |
+| `product-identity.md` | **The binding identity** — the substrate / tool-for-thought thesis (§2), the 90%-core, the two freedoms (§3b) + inviting-not-persuasive (§3c), the belief, never-build, who it is NOT for, the substrate test (§9). First stop for scope/positioning calls |
 | `ux-discipline.md` | **The binding UX standard** — vocabulary, the five principles, keyboard grammar, the closed syntax inventory, pattern catalog, conformance matrix |
 | `ux-definition-of-done.md` | **The merge gate** — the checklist + the Conformance Statement process |
 | `design-language.md` | **The locked visual standard** — type roles, palettes, contrast floors, component rules, anti-decisions |

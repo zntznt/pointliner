@@ -55,9 +55,9 @@ effort/risk** (V/E/R = High/Medium/Low):
    consumer of the built-but-unread `workspaceIndex.outgoing`), each row jumping to the source point.
    Pure core `collectBrokenLinks(links, titleOf, wsIndex, ownDocId)` (Node-tested); concept-guide entry
    `broken-links` + `guide/` docs. E:L held: mostly wiring the already-computed broken data into a panel.
-5. **Tag inheritance + `OR`** — V:L-M · E:L-M · R:L. The only remaining "tag power" (tags-as-index
-   already works: clicking `#tag` runs a workspace-wide search). Minor; do only when a real query
-   demands `OR`.
+5. **Tag inheritance** — V:L-M · E:L-M · R:L. The only remaining "tag power" (tags-as-index
+   already works: clicking `#tag` runs a workspace-wide search; **`OR` shipped** as QX-5, a standalone
+   spaced `|` between search clauses). Minor; do tag inheritance only when a real query demands it.
 
 **🟠 Niche / poor ratio** (Tier 3 below)
 - **Board / Kanban view** — V:M (PM niche) · E:**H** · R:M (a whole new view).
@@ -125,8 +125,8 @@ focus-shown legend under the search box + the `?` panel as front doors, and pure
 (`parseSearchQuery`/`queryMatchesNode`) pinned in tests. Because `#KEYWORD` states are
 hashtag-shaped, `#waiting` filters by state with no `state:` operator. **Saved searches
 shipped** (2026-06-13): star the query to save it doc-level (OPML head element), saved
-queries are chips in the focus-shown panel — apply/forget by mouse or keyboard. Missing:
-tag inheritance and `OR` (deferred until real queries demand a precedence rule).
+queries are chips in the focus-shown panel — apply/forget by mouse or keyboard. `OR` has since
+shipped (QX-5, a standalone spaced `|`); only tag inheritance remains.
 - **Fit — medium.** Inheritance layered on the tag-term matcher.
 
 ---
@@ -283,10 +283,11 @@ shelved with a clearer conscience.
 
 ### ☐ Doc-cache registry / `makeDocCache` refactor (deferred)
 
-PR #99 *guarded* the eight-cache `_varsVer` invalidation invariant (named caches,
-`// doc-cache` markers, a regression test with a proven negative control). A follow-on could
+PR #99 *guarded* the whole-tree `_varsVer` invalidation invariant (named caches,
+`// doc-cache` markers, a regression test with a proven negative control). The canonical registry is
+now **nine** caches (CLAUDE.md; `collectPropKeys` was the ninth). A follow-on could
 *cure* the class by construction: a `DOC_CACHES` registry that `resetDocCaches()` **and** the
-invalidation test **derive from** (so a ninth cache is auto-covered), optionally routing the
+invalidation test **derive from** (so a tenth cache is auto-covered), optionally routing the
 *vanilla* caches through a `makeDocCache(name, compute)` factory while leaving `collectVars`
 (Proxy / cycle-detection / `_varShadowedKeys`/`_varActiveExprs`/`_varCycles` side-effects) and
 `stateCmds` (no dual-mode) **bespoke-but-registered**. Registry-first, factory-second.
@@ -299,6 +300,6 @@ actual eighth-set member is `collectSequences` — `allSequences` is an uncached
 ## Out of scope
 - **Non-image file attachments** — nowhere clean to store binaries without bloating the file.
 - **Code execution in code blocks** — security + complexity for a single-file browser app.
-- **Column view** — depends on properties; niche, defer.
+- **Column view** — largely served now by the bases suite + FR-1 column display roles (status/date/number); a standalone outline column view stays deferred.
 - **Very broad export** (LaTeX / Beamer / ODT) — has OPML / Markdown / text; HTML / PDF could
   extend later, but the long tail isn't worth it.

@@ -29,7 +29,7 @@ move materially.
   10k, ~30ms at 25k, ~88ms at 50k. Plain typing never pays this.
 - **Why it doesn't lag like Logseq/Roam at a few thousand nodes:** two deliberate choices —
   (1) a genuinely **virtualized DOM** (~35 row elements exist at any size), and (2) the
-  **keystroke hot path does near-zero whole-tree work** (the 8 doc-caches are lazy *and*
+  **keystroke hot path does near-zero whole-tree work** (the 9 doc-caches are lazy *and*
   not read on every keystroke — only when you type a trigger like `/`, `{`, `#`).
 
 ---
@@ -73,7 +73,7 @@ GC/JIT noise, not a real improvement. The genuine growth is in the O(total-nodes
 | Scroll, per virtual-window recompute frame (10k expanded) | median **2.3 ms**, max 16 ms (~60fps) |
 | Pill-heavy render: 5k rows, each a dice pill + var ref + `#tag` | 24 ms |
 | Pill-heavy structural edit (insert mid-tree) | 6.4 ms |
-| All 8 doc-caches cold re-walk at 10k | 6 ms |
+| All 9 doc-caches cold re-walk at 10k | 6 ms |
 | Pill-heavy `collectTags` (5k tagged rows) | 11.7 ms |
 
 ### The hard ceiling: `localStorage`
@@ -189,10 +189,11 @@ Silicon numbers above — compare within this table, not across sections.
   edit DOM work is bounded by the *window*, not the document. This is the single biggest
   reason it doesn't die where DOM-the-whole-tree outliners do.
 - **Lazy, generation-keyed caches.** `markDirty()`/`resetDocCaches()` do exactly `_varsVer++`;
-  the 8 whole-tree collectors (`collectVars`, `collectRules`, `collectLinks`, `collectTags`,
-  `collectCallables`, `allSequences`, `knownStates`, `stateCmds`) re-walk only on the *next
-  read after* an edit — and the keystroke path doesn't read them. A full cold re-walk of all
-  eight is ~6 ms at 10k, so even pathological invalidation is cheap.
+  the 9 whole-tree collectors (`collectVars`, `collectRules`, `collectLinks`, `collectTags`,
+  `collectCallables`, `collectSequences`, `knownStates`, `stateCmds`, `collectPropKeys`) re-walk only
+  on the *next read after* an edit — and the keystroke path doesn't read them. A full cold re-walk of
+  all nine is ~6 ms at 10k, so even pathological invalidation is cheap. (`allSequences` is an uncached
+  wrapper over the cached `collectSequences`.)
 - **Hybrid undo.** Text edits = O(1) `recordTextEdit` diffs; only *structural* ops snapshot
   the tree. `UNDO_MAX_ENTRIES=100`, `UNDO_MAX_BYTES≈24 MB` — on a large tree the byte budget
   caps history depth well below 100.
