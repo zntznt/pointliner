@@ -128,16 +128,16 @@ Turn the outline into a lightweight planner.
   ([agenda](dates-and-planning.md#agenda-and-calendar))
 - **Timeline.** Browse every dated point in chronological order, grouped by month, as the history of
   your document: scheduled tasks, daily journal entries, lore events (a `when` or `date` property) and
-  in-world chronicle beats, each toggleable; calendar-aware. ([timeline](dates-and-planning.md#timeline))
+  chronicle entries, each toggleable; calendar-aware. ([timeline](dates-and-planning.md#timeline))
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
   ([journal](dates-and-planning.md#daily-journal))
-- **Chronicle.** An in-world campaign log: a journal twin whose date is a movable game-day cursor
-  (step it with ◂ / ▸ or jump to a date), so you log events in the game's calendar, not the real one.
-  ([chronicle](dates-and-planning.md#the-chronicle-an-in-world-log))
-- **Custom calendars.** Give a document a fictional calendar (your months, week, and era) and every
-  date and agenda view speaks it; advance the in-world clock from the agenda. The journal stays on the
-  real calendar, and you can bind one subtree as an in-world log with its own calendar, so real and
-  in-world dates coexist in one document. ([custom calendars](dates-and-planning.md#custom-calendars))
+- **Chronicle.** A log dated on a day you choose: a journal twin whose date is a movable cursor
+  (step it with ◂ / ▸ or jump to a date), so you log entries in a custom calendar, not the real one.
+  ([chronicle](dates-and-planning.md#the-chronicle-a-dated-log))
+- **Custom calendars.** Give a document its own calendar (your months, week, and era) and every
+  date and agenda view speaks it; advance the clock from the agenda. The journal stays on the
+  real calendar, and you can set one subtree as a chronicle with its own calendar, so real and
+  custom-calendar dates coexist in one document. ([custom calendars](dates-and-planning.md#custom-calendars))
 - **Search and filter.** Filter with `#tag`, the `is:todo` / `is:done` / `is:note` / `is:failing` /
   `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` / `is:held` flags, structure and pill flags
   (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus

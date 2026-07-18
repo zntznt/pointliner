@@ -2270,7 +2270,7 @@ body:not(.v-guided) .bm-desc{display:none}
     <div id="tbtn-cluster">
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
-    <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (in-world log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
+    <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (dated log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
@@ -7511,7 +7511,7 @@ const BLOCK_CMDS = [
   { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
   { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'secret',  icon:'🙈',   fa:'fa-solid fa-eye-slash',     label:'Secret',     desc:'Hide a line behind a blur until you click or press it to reveal. Good for GM notes or a twist you do not want to see yet.', ex:'>! hidden text', section:'Blocks' },
+  { id:'secret',  icon:'🙈',   fa:'fa-solid fa-eye-slash',     label:'Secret',     desc:'Hide a line behind a blur until you click or press it to reveal. Good for spoilers or a surprise you do not want to see yet.', ex:'>! hidden text', section:'Blocks' },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'A structured table with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
   { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A base whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
@@ -11620,7 +11620,7 @@ function openCalendarDialog() {
       { key: 'eras', label: 'Era, optional', type: 'textarea', rows: 2, value: t.eras, placeholder: 'AE: 1200', preview: erasPrev,
         hint: 'Name and offset: with "AE: 1200", year 4 displays as 1204 AE.' },
       { key: 'current', label: 'Today in this world', value: t.current, placeholder: '1204-04-12', required: true, preview: currentPrev,
-        hint: 'The in-world day your dates and agenda count from. Advance it as your story moves.' },
+        hint: 'The current day your dates and agenda count from. Advance it as time passes.' },
     ],
     validate: vals => buildCalendarFromFields(vals) != null,
     onSubmit: vals => { const next = buildCalendarFromFields(vals); if (next) applyCalendarChange(next); },
@@ -13783,7 +13783,7 @@ function syncChronicleButton() {
 }
 function toggleChronicleStrip() { if (chronicleOpen) closeChronicleStrip(); else openChronicleStrip(); }
 function openChronicleStrip() {
-  if (!chronicleHome()) { flashHint('Bind a point as an in-world log first (its bullet menu), then chronicle to it.'); return; }
+  if (!chronicleHome()) { flashHint('Set a point as the chronicle first (its bullet menu), then log to it.'); return; }
   if (!chronicleOpen) { chronicleCount = 0; chronicleReturnFocus = document.activeElement; }  // draft survives close/reopen
   chronicleOpen = true;
   document.getElementById('chronicle-strip').classList.add('on');
@@ -13810,7 +13810,7 @@ function renderChronicleStrip() {
 
   const input = document.createElement('textarea');
   input.id = 'chr-input'; input.className = 'cap-input'; input.rows = 1; input.value = chronicleDraft;
-  input.placeholder = 'Log a beat in the chronicle…';
+  input.placeholder = 'Log an entry in the chronicle…';
   input.setAttribute('aria-label', 'Text for the chronicle');
   input.spellcheck = true;
   input.addEventListener('input', () => { chronicleDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
@@ -13821,18 +13821,18 @@ function renderChronicleStrip() {
   });
   row.appendChild(input);
 
-  // the in-world cursor: ◂ / ▸ nudge one game-day; the middle segment jumps to a date + zooms in.
+  // the movable cursor: ◂ / ▸ nudge one day; the middle segment jumps to a date + zooms in.
   const cur = document.createElement('div'); cur.className = 'cap-cursor';
-  cur.setAttribute('role', 'group'); cur.setAttribute('aria-label', 'In-world date');
+  cur.setAttribute('role', 'group'); cur.setAttribute('aria-label', 'Chronicle date');
   const prev = document.createElement('button'); prev.type = 'button'; prev.className = 'cap-cursor-nudge';
-  prev.textContent = '◂'; prev.title = 'Previous in-world day'; prev.setAttribute('aria-label', 'Previous in-world day');
+  prev.textContent = '◂'; prev.title = 'Previous day'; prev.setAttribute('aria-label', 'Previous day');
   prev.addEventListener('click', () => nudgeChronicleCursor(-1));
   const dateBtn = document.createElement('button'); dateBtn.type = 'button'; dateBtn.className = 'cap-cursor-date';
   dateBtn.textContent = calDayLabel(cursor, cal);
-  dateBtn.title = 'Jump to a date in the chronicle'; dateBtn.setAttribute('aria-label', 'In-world date ' + calDayLabel(cursor, cal) + '. Jump to a date');
+  dateBtn.title = 'Jump to a date in the chronicle'; dateBtn.setAttribute('aria-label', 'Chronicle date ' + calDayLabel(cursor, cal) + '. Jump to a date');
   dateBtn.addEventListener('click', () => openChronicleDate());
   const next = document.createElement('button'); next.type = 'button'; next.className = 'cap-cursor-nudge';
-  next.textContent = '▸'; next.title = 'Next in-world day'; next.setAttribute('aria-label', 'Next in-world day');
+  next.textContent = '▸'; next.title = 'Next day'; next.setAttribute('aria-label', 'Next day');
   next.addEventListener('click', () => nudgeChronicleCursor(1));
   cur.append(prev, dateBtn, next);
   row.appendChild(cur);
@@ -13865,16 +13865,16 @@ function openChronicleDate() {
 }
 function doChronicleAdd() {
   const text = (chronicleDraft || '').replace(/\s+$/, '');
-  if (!text.trim()) { flashHint('Type a beat to log'); return; }
+  if (!text.trim()) { flashHint('Type an entry to log'); return; }
   const home = chronicleHome();
-  if (!home) { flashError('The in-world log is no longer bound. Bind a point first.'); closeChronicleStrip(); return; }
+  if (!home) { flashError('The chronicle is no longer set. Set a point first.'); closeChronicleStrip(); return; }
   const cal = chronicleCal();
   const iso = formatEpochDays(chronicleCursor(), cal);
   pushUndo();
   const { entry } = findOrCreateDatedEntry(home, iso, (t, p) => { const n = mkNode(t); n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); return n; });
   appendJournalPoint(entry, text);   // shares the journal's markdown-aware append
   chronicleCount++; chronicleDraft = '';
-  flashHint('✓ Logged ' + (chronicleCount === 1 ? '1 beat' : chronicleCount + ' beats') + ' · ' + calDayLabel(chronicleCursor(), cal));
+  flashHint('✓ Logged ' + (chronicleCount === 1 ? '1 entry' : chronicleCount + ' entries') + ' · ' + calDayLabel(chronicleCursor(), cal));
   renderChronicleStrip();
   document.getElementById('chr-input')?.focus();
 }
@@ -16947,12 +16947,12 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     // first (File then Custom calendar); the row explains that when none exists. #652 builds the
     // dated game-log strip on top of this binding.
     { sec:'More', icon:{ fa:'fa-solid fa-hourglass-half', fb:'⧗' },
-      label: root.gamelog?.targetId === nodeId ? 'Unbind in-world log' : (activeCalendar() ? 'Bind as in-world log' : 'In-world log (needs a custom calendar)'),
+      label: root.gamelog?.targetId === nodeId ? 'Unset chronicle' : (activeCalendar() ? 'Set as chronicle' : 'Chronicle (needs a custom calendar)'),
       fn: () => {
         hideBpop();
         if (root.gamelog?.targetId === nodeId) {
           root.gamelog = null;
-          markDirty(); render(); flashHint('In-world log unbound. Its dates read the regular calendar again.');
+          markDirty(); render(); flashHint('Chronicle unset. Its dates read the regular calendar again.');
           return;
         }
         const cal = activeCalendar();
@@ -16962,7 +16962,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
         root.calendars = { ...(root.calendars || {}), [cid]: cal };   // register the doc's calendar as a named one to bind against
         root.gamelog = { targetId: nodeId, calendarId: cid };
         markDirty(); render();
-        flashHint('In-world log bound to ' + (cal.name || 'the custom calendar') + '. Its dates now read in world time.');
+        flashHint('Chronicle set to ' + (cal.name || 'the custom calendar') + '. Its dates now read in that calendar.');
       } },
     { sec:'Danger', prim:true, icon:{ fa:'fa-solid fa-trash-can',  fb:'✕' }, label:'Delete',
       fn: isBase
@@ -28868,7 +28868,7 @@ function renderAgenda() {
   const calClk = activeCalendar();
   if (calClk && Number.isInteger(calClk.current)) {
     const clockRow = document.createElement('div'); clockRow.className = 'ag-filters';
-    clockRow.setAttribute('role', 'group'); clockRow.setAttribute('aria-label', 'The in-world date');
+    clockRow.setAttribute('role', 'group'); clockRow.setAttribute('aria-label', "The calendar's current date");
     const cc = calComponents(calClk.current);
     // NEUTRAL chip, not the active-toggle tint: `on` means "this toggle is pressed" everywhere
     // else in the strip, and the clock has no pressed state — it opens a menu. The visible ▾ is
@@ -30625,7 +30625,7 @@ const GUIDE = [
     ] },
   { id:'secret', cat:'writing', covers:['secret'],
     title:'Secret and spoiler blocks',
-    body:"Hide a line behind a blur until you choose to reveal it. Start a line with >! and it becomes a spoiler: in reading view it shows as a soft blur, and a click (or Enter or Space when it has focus) reveals it, click again to hide it. It is good for two things. Hand someone a self-contained copy of a document and your game master (GM) notes or answers stay covered until they look. Or blind yourself: write down an oracle result, a clue or a twist you do not want to see yet, and reveal it only when the story reaches it. A spoiler can span several lines, one >! per line, and pills and links inside it still work once revealed. Revealing is not saved, so a spoiler is blurred again next time the point is drawn. In an exported Markdown or text file a spoiler line is written with a (spoiler) label in front so a reader is warned before they read it.",
+    body:"Hide a line behind a blur until you choose to reveal it. Start a line with >! and it becomes a spoiler: in reading view it shows as a soft blur, and a click (or Enter or Space when it has focus) reveals it, click again to hide it. It is good for two things. Hand someone a self-contained copy of a document and your private notes or answers stay covered until they look. Or blind yourself: write down an oracle result, a clue or a twist you do not want to see yet, and reveal it only when you reach it. A spoiler can span several lines, one >! per line, and pills and links inside it still work once revealed. Revealing is not saved, so a spoiler is blurred again next time the point is drawn. In an exported Markdown or text file a spoiler line is written with a (spoiler) label in front so a reader is warned before they read it.",
     related:['inline-md','point-types'],
     examples:[
       { syn:'>! hidden text',   desc:'a spoiler line, blurred until revealed' },
@@ -30849,7 +30849,7 @@ const GUIDE = [
 
   { id:'timeline', cat:'dates',
     title:'Timeline',
-    body:"See the whole story of your document in time order, so you can find something by when it happened rather than by its exact date. Every dated point lines up in one chronological list, grouped by month, from the earliest to the far future. This is the history view for a long campaign or a big set of notes: the war, the treaty, the comet, in the order they land, so you can browse the arc instead of searching a date you half-remember.\n\nIt draws from three kinds of dated point, so a whole session sits on one line: tasks (anything with a start or due date), your daily journal entries, and lore events (any point carrying a when or date property, for world events that are not tasks). A row of source toggles (Tasks, Journal, Lore) at the top shows or hides each kind, so you can read the planned schedule alone, the journal alone, or the whole braided history.\n\nOpen it from the hourglass button in the toolbar. Each entry shows its date and title, colored by urgency (an overdue task in red), with done points struck through, start-only points marked with a small arrow, and journal and lore entries tagged with their source; click any entry to jump to that point. It opens scrolled near today, so a long history starts at 'now'. When a custom calendar is active, the months and years are your world's own, so a campaign reads in campaign time. This is different from the agenda's Timeline (a Gantt of the near-term schedule): this one spans the whole archive and reads as a chronicle, not a work plan.",
+    body:"See the whole story of your document in time order, so you can find something by when it happened rather than by its exact date. Every dated point lines up in one chronological list, grouped by month, from the earliest to the far future. This is the history view for a long project or a big set of notes: a launch, a decision, a milestone, in the order they land, so you can browse the arc instead of searching a date you half-remember.\n\nIt draws from three kinds of dated point, so a whole session sits on one line: tasks (anything with a start or due date), your daily journal entries, and lore events (any point carrying a when or date property, for world events that are not tasks). A row of source toggles (Tasks, Journal, Lore) at the top shows or hides each kind, so you can read the planned schedule alone, the journal alone, or the whole braided history.\n\nOpen it from the hourglass button in the toolbar. Each entry shows its date and title, colored by urgency (an overdue task in red), with done points struck through, start-only points marked with a small arrow, and journal and lore entries tagged with their source; click any entry to jump to that point. It opens scrolled near today, so a long history starts at 'now'. When a custom calendar is active, the months and years are that calendar's own, so the history reads in its own time. This is different from the agenda's Timeline (a Gantt of the near-term schedule): this one spans the whole archive and reads as a chronicle, not a work plan.",
     related:['agenda','dates','chronicle'],
     examples:[
       { syn:'Toolbar hourglass button', desc:'open the timeline' },
@@ -30866,23 +30866,23 @@ const GUIDE = [
       { syn:'Ctrl/Cmd+Shift+J', desc:'switch in-doc / file per day' },
     ] },
   { id:'chronicle', cat:'dates',
-    title:'Chronicle (in-world log)',
-    body:"Keep a campaign log dated in the game's own time instead of the real day. The journal records the day you actually wrote it; a chronicle records the day you decide, so session four can log day 300 of the campaign year. First give the document a custom calendar, then make the point that will hold the log and choose Bind as in-world log from its bullet menu; a chronicle button then appears in the toolbar. Its bar works like the journal's, but the date is a cursor you steer: the left and right arrows step one game-day back or forward (honoring your calendar's months and week), and clicking the date jumps to a day you name. Type a beat and press Enter to file it under the cursor's date, nested year then month then day in the game calendar. Chronicle beats appear on the timeline as their own Chronicle source, dated in world time and toggleable on their own.",
+    title:'Chronicle (dated log)',
+    body:"Keep a log dated on a day you choose instead of the real day. The journal records the day you actually wrote an entry; a chronicle records the day you decide, so you can log an event under a date in a custom calendar, past or future. First give the document a custom calendar, then make the point that will hold the log and choose Set as chronicle from its bullet menu; a chronicle button then appears in the toolbar. Its bar works like the journal's, but the date is a cursor you steer: the left and right arrows step one day back or forward (honoring the calendar's months and week), and clicking the date jumps to a day you name. Type an entry and press Enter to file it under the cursor's date, nested year then month then day in that calendar. Chronicle entries appear on the timeline as their own Chronicle source, dated in the calendar and toggleable on their own.",
     related:['journal','custom-calendars','timeline'],
     examples:[
-      { syn:'Menu → Bind as in-world log', desc:'make this point the chronicle home' },
-      { syn:'◂ / ▸',           desc:'step the in-world day back or forward' },
+      { syn:'Menu → Set as chronicle', desc:'make this point the chronicle home' },
+      { syn:'◂ / ▸',           desc:'step the current day back or forward' },
       { syn:'Click the date',  desc:'jump the cursor to a day you name' },
     ] },
   { id:'custom-calendars', cat:'dates',
     title:'Custom calendars',
-    body:"Give a document its own fictional calendar: your world's months, week length, day names, and era, plus the current in-world date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, dates in the document speak that calendar: due dates, the agenda month and week, the date picker, and date math. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as your story moves. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.\n\nReal and in-world dates can coexist in one document, because a date's calendar is decided by where the point lives. Your journal always reads the real calendar, even in a fiction-calendar document, so it keeps tracking actual days. To keep a campaign log in world time, make its home point, open its bullet menu and choose Bind as in-world log: every date inside that subtree then reads the campaign's calendar while the rest of the document stays on the regular one. The timeline lays each row out under its own calendar, real and in-world months on separate axes.",
+    body:"Give a document its own calendar, a fictional world's or any alternate scheme: your months, week length, day names, and era, plus the current date. Open File then Custom calendar and type the months one per line (like Firstfrost: 30), the week as day names or a length, and an era offset (with AE: 1200, year 4 displays as 1204 AE). Once active, dates in the document speak that calendar: due dates, the agenda month and week, the date picker, and date math. There is no wall clock in a fiction, so the agenda counts from the calendar's Today in this world; edit it in the dialog (or the agenda's date chip) as time passes. Dates you type follow the same Year-Month-Day form the chips show. Changing or removing a calendar re-reads every stored date, so the dialog first shows what would change and what would become unreadable; your text is never touched, and undo reverses the switch.\n\nReal and custom-calendar dates can coexist in one document, because a date's calendar is decided by where the point lives. Your journal always reads the real calendar, even in a custom-calendar document, so it keeps tracking actual days. To keep a dated log in that calendar, make its home point, open its bullet menu and choose Set as chronicle: every date inside that subtree then reads the custom calendar while the rest of the document stays on the regular one. The timeline lays each row out under its own calendar, real and custom months on separate axes.",
     related:['dates','agenda','chronicle'],
     examples:[
       { syn:'File → Custom calendar', desc:"define or edit this document's calendar" },
       { syn:'Firstfrost: 30',         desc:'a month line: name and day count' },
       { syn:'due: 1204-04-12',        desc:"dates use the calendar's own year-month-day" },
-      { syn:'Menu → Bind as in-world log', desc:'this subtree reads the campaign calendar; the rest stays real' },
+      { syn:'Menu → Set as chronicle', desc:'this subtree reads the custom calendar; the rest stays real' },
     ] },
 
   // ── Generators (guide) ────────────────────────────────────────────────────

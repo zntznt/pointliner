@@ -72,11 +72,11 @@ and re-opens when you complete it.
 
 See the whole story of your document in time order. Where the agenda is a planner for what is coming
 up, the **timeline** is the history: every dated point laid out in one chronological list from the
-earliest to the far future, grouped by month. It is the view for a long campaign or a big set of
-notes, where you want to browse the arc ("the war, the treaty, the comet, in the order they landed")
-instead of searching for a date you only half-remember.
+earliest to the far future, grouped by month. It is the view for a long project or a big set of
+notes, where you want to browse the arc ("the launch, the decision, the milestone, in the order they
+landed") instead of searching for a date you only half-remember.
 
-It draws from **three kinds of dated point**, so a whole session sits on one line:
+It draws from **three kinds of dated point**, so a whole day sits on one line:
 
 - **Tasks**, anything with a start or due date, the same scheduled points the agenda plans.
 - **Journal**, each daily entry from your [journal](#daily-journal), so what actually happened lands
@@ -93,8 +93,8 @@ a small `▸`; journal and lore entries carry a small source tag. Click any entr
 press `Esc` to close. It opens scrolled near today, so a long history starts at "now" rather than at
 year one.
 
-When a [custom calendar](#custom-calendars) is active, the month headers and dates are your world's
-own (Firstfrost, Longnight, the era year), so a campaign reads in campaign time. This is distinct from
+When a [custom calendar](#custom-calendars) is active, the month headers and dates are that calendar's
+own (Firstfrost, Longnight, the era year), so the history reads in its own time. This is distinct from
 the agenda's own **Timeline** view, which is a Gantt of the near-term schedule; this one spans the
 whole archive and reads as a chronicle.
 
@@ -112,41 +112,42 @@ entry directly.
 (When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
 journal can instead write one file per day on disk.)
 
-## The chronicle: an in-world log
+## The chronicle: a dated log
 
-The journal logs the **real** day, the day you actually wrote it. A campaign also wants a log dated in
-the **game's** time, where "now" is the day you decide, not the day it is. That is the **chronicle**:
-a journal twin whose date is a movable in-world cursor, so session 4 can chronicle day 300 of the
-campaign year.
+The journal logs the **real** day, the day you actually wrote it. Sometimes you want a log dated on a
+day you **choose** instead, where "now" is a day in a [custom calendar](#custom-calendars), not the day
+it is. That is the **chronicle**: a journal twin whose date is a movable cursor, so you can log an entry
+under any date, past or future.
 
-Set it up in two steps: define a [custom calendar](#custom-calendars) for your world, then make the
-point that will hold the log and choose **Bind as in-world log** from its bullet menu (this is the
-same binding that keeps that subtree on the world's calendar, see
+Set it up in two steps: define a [custom calendar](#custom-calendars), then make the point that will
+hold the log and choose **Set as chronicle** from its bullet menu (this is the same binding that keeps
+that subtree on the custom calendar, see
 [two calendars in one document](#two-calendars-in-one-document)). A **chronicle button** then appears
 in the toolbar.
 
-Open it and a bar appears like the journal's, with one difference: the date is an **in-world cursor**
-you steer. The **◂** and **▸** buttons step one game-day back or forward (honoring your calendar's own
-months and week), and clicking the date jumps to a day you name. Type a beat and press Enter to file it
-under the cursor's date, nested year then month then day in the game calendar, the same tidy structure
-as the journal. Chronicle beats show on the [timeline](#timeline) as their own **Chronicle** source,
-dated in world time and toggleable on their own, so a session's real notes and in-world events sit side
-by side without ever being confused for each other.
+Open it and a bar appears like the journal's, with one difference: the date is a **cursor** you steer.
+The **◂** and **▸** buttons step one day back or forward (honoring the calendar's own months and week),
+and clicking the date jumps to a day you name. Type an entry and press Enter to file it under the
+cursor's date, nested year then month then day in that calendar, the same tidy structure as the
+journal. Chronicle entries show on the [timeline](#timeline) as their own **Chronicle** source, dated
+in the custom calendar and toggleable on their own, so the real-day notes and the chosen-day entries
+sit side by side without ever being confused for each other.
 
 ---
 
 ## Custom calendars
 
-Run a campaign or write a world on its own calendar instead of the real one: your months, your week,
-your era. Open **File then Custom calendar** and type the calendar as text:
+Give a document its own calendar instead of the real one, a fictional world's or any alternate
+scheme: your months, your week, your era. Open **File then Custom calendar** and type the calendar as
+text:
 
 - **Months**, one per line, name and day count: `Firstfrost: 30`. Multi-word names work
   (`The Fading: 28`).
 - **Week**: day names (`Moonday Tilday Windday...`), a bare length like `10`, or `10: Sul Mol` to
   name just the first days. Blank keeps a 7-day week.
 - **Era**, optional: `AE: 1200` makes year 4 display as `1204 AE`.
-- **Today in this world**: the current in-world date, like `1204-04-12`. A fictional world has no
-  wall clock, so this is the day your dates, urgency colors, and agenda count from.
+- **Today in this world**: the calendar's current date, like `1204-04-12`. An alternate calendar has
+  no wall clock, so this is the day your dates, urgency colors, and agenda count from.
 
 Two example chips fill the fields with a complete working calendar to edit; the live preview under
 each field checks your lines as you type and shows what "today" resolves to before you commit.
@@ -154,12 +155,12 @@ each field checks your lines as you type and shows what "today" resolves to befo
 Once active, the document speaks that calendar: due and start dates read and write the calendar's own
 year-month-day (`due: 1204-04-12`), the agenda's month and week views take its shape (a 10-day week
 really shows ten columns), the date picker in the Schedule dialog renders its months, and date math
-like `{= daysuntil(due)}` counts its days. Relative dates (`today+3`, `tomorrow`) mean in-world days.
+like `{= daysuntil(due)}` counts its days. Relative dates (`today+3`, `tomorrow`) mean days in that calendar.
 (Your [journal](#daily-journal) is the one part that stays on the real calendar, so it keeps tracking
 actual days; see [two calendars in one document](#two-calendars-in-one-document) below.)
 
-**Let time pass** from the agenda: with a calendar active, a **Today** chip shows the in-world date;
-click it to advance the clock (+1 day, +3 days, +1 week) or set an exact date. Advancing never
+**Let time pass** from the agenda: with a calendar active, a **Today** chip shows the calendar's current
+date; click it to advance the clock (+1 day, +3 days, +1 week) or set an exact date. Advancing never
 touches your points, it just moves "now", and every date label follows.
 
 **Changing or removing a calendar re-reads every stored date.** Dates are saved as the text you
@@ -173,25 +174,25 @@ the month list in; it takes about two minutes. One honest caveat: calendars with
 festival days that sit outside any month (Harptos' Midwinter, for example) can't be represented
 exactly yet; the usual workaround is folding each festival into the preceding month as an extra day.
 
-For a worked campaign example with an importable demo, see
+For a worked example on a fictional calendar with an importable demo, see
 [the campaign calendar](solo-rpg/campaign-calendar/campaign-calendar.md) in the solo-RPG guides.
 
 ### Two calendars in one document
 
-Solo and GM play often wants **both** clocks at once: real dates for the journal and your actual
-scheduling, in-world dates for the campaign. A calendar is decided by **where a point lives**, not by
+You may want **both** clocks at once: real dates for the journal and your actual scheduling,
+custom-calendar dates for a chronicle. A calendar is decided by **where a point lives**, not by
 the date you type, so the two coexist without ever tagging a value:
 
-- Your **journal** always reads the **real (Gregorian) calendar**, even in a world that runs on a
-  custom one. What you did on a given day is an IRL fact.
-- An **in-world log** reads a custom calendar you bind to it. Make a point the home of your campaign
-  log, open its bullet menu and choose **Bind as in-world log** (it needs a custom calendar defined
-  first). Every date inside that point's subtree then reads the campaign's own year, month and day,
-  while the rest of the document stays on the regular calendar. Unbind it from the same menu.
+- Your **journal** always reads the **real (Gregorian) calendar**, even in a document that runs on a
+  custom one. What you did on a given day is a real-world fact.
+- A **chronicle** reads a custom calendar you set on it. Make a point the home of the log, open its
+  bullet menu and choose **Set as chronicle** (it needs a custom calendar defined first). Every date
+  inside that point's subtree then reads the custom calendar's own year, month and day, while the rest
+  of the document stays on the regular calendar. Unset it from the same menu.
 
 Because the calendar follows the subtree, nothing you already typed changes: a `due` inside the
-in-world log is read in world time, the same string elsewhere is read normally, and the
-[timeline](#timeline) lays each row out under its own calendar (in-world months and real months on
+chronicle is read in the custom calendar, the same string elsewhere is read normally, and the
+[timeline](#timeline) lays each row out under its own calendar (custom months and real months on
 separate axes, never merged).
 
 ---

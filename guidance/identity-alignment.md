@@ -281,9 +281,17 @@ deterministic / plain-text tenets. Build on demand, not on spec — these are pr
   convention already existed for `count`).
 
 ### Notes (recorded, no new issue)
-- **SR-9 (RC-2) — chronicle framing.** The chronicle is the one feature whose *identity* is
-  RPG-framed ("in-world log," "game log," `root.gamelog`) rather than "a dated log in any calendar"
-  — which is exactly IA-4's un-extracted **"dated log" substrate**. The mechanism is ratified
-  keep-as-is (§8a); the RPG *framing* is the contamination, and de-theming it converges with the
-  dated-log unification. **Tied to IA-4's recorded trigger** (the next substantive change to either
-  log): do the de-theme + unification together then, nearly free. No separate build now.
+- **SR-9 (RC-2) — chronicle framing. SHIPPED (copy-only de-theme; owner-scoped).** The chronicle's
+  *identity* read RPG-framed ("in-world log," "game log," "beat," "campaign," "GM") rather than "a
+  dated log in any calendar." De-themed the **user-facing copy** across the core app (button title,
+  strip placeholder + cursor labels, the four flash messages, the bullet-menu Set/Unset door, the
+  calendar-clock aria + dialog hint, the Secret block's "GM notes") and the **general guide pages**
+  (the `chronicle`/`custom-calendars`/`timeline` GUIDE entries; `guide/dates-and-planning.md` +
+  `guide/features.md`) — dropping in-world/game-log/GM/beat/campaign/time-travel, keeping the neutral
+  word **chronicle** (a dated record of events). The **solo-RPG worked examples (`guide/solo-rpg/`)
+  stay themed** — provenance, served explicitly. **Internal identifiers kept unchanged** per the
+  canonical-vocabulary rule (`root.gamelog`, `collectChronicleDates`, the `<_gamelog>` OPML element,
+  the `'chronicle'` source key, `#btn-chronicle`) — **no data migration**, so every saved document
+  opens byte-identical. The **dated-log collector unification** (IA-4's `collectJournalDates` +
+  `collectChronicleDates` extraction) and the cursor generalization remain **deferred** — a copy
+  change doesn't touch those collectors, so IA-4's build-on-demand trigger has not fired.
