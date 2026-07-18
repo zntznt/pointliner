@@ -72,7 +72,9 @@ opportunistically the next time a doc-cache is added (see Tech debt below).
 
 **⛔ Off the table (by decision)** — **CRDT / version-control pivot** (parked; would break the
 single-file identity + reintroduce the out-of-scope sync/collab — revisit only if the "more than a
-single file" gate trips); **Mirrors / cloned items** and **Archive done items** (shelved).
+single file" gate trips); **Mirrors / cloned items** and **Archive done items** (shelved);
+**cross-document write-through editing** and **implicit cross-doc name resolution** (parked,
+revisit-gated — see the shelved entry below and `guidance/cross-document-direction.md` §4e).
 
 > **TL;DR:** best cheap win = **Daily notes**; highest-impact investment = **verbosity /
 > discoverability**; everything below #5 is interleave-filler or niche.
@@ -275,7 +277,25 @@ one-parent tree model. **Decision: full version shelved.** But the link **mirror
 already covers the most-wanted slice: a display-only, one-way reflection of a node's live title
 *and* rendered content (pills + state). It's not edit-back or shared-identity, but it handles
 "I want this reference to always show that node's current state" — so the heavy mirror work stays
-shelved with a clearer conscience.
+shelved with a clearer conscience. (The mirror shipped **cross-document** too — `[[docId#id|]]` —
+in the 2026-07-18 cross-doc arc; see `guidance/cross-document-direction.md` and Tier-1 links above.)
+
+### ⊘ Cross-document write-through + implicit cross-doc names — *parked, revisit-gated (2026-07-18)*
+The two members of the cross-document family (`guidance/cross-document-direction.md` §4e) deliberately
+left **out** of the shipped arc (§6 steps 1–4 + §5.2 delivered — the read-only family: cross-doc
+mirror/transclusion, doc-level folder graph, folder-scoped reducers/query pills, backlink previews).
+Recorded here so they sit with the other shelved directions, not buried in an active doc.
+- **Write-through editing across documents** (editing another doc's point from a mirror, a folder
+  query row, or a cross-doc board). **Parked:** it breaks the one-editable-`root` model — a second
+  dirty/undo/autosave lane per foreign doc, reintroducing every sync/conflict hazard the single
+  resident root avoids. **Revisit trigger:** the read-only family in daily use **and** a concrete ask.
+- **Implicit cross-doc name resolution** (`{someOtherDocsVar}` / `{someOtherDocsRule}` just resolving
+  across the folder). **Parked:** name collisions across a folder would be silent and unscoped, and
+  the doc-cache model (`_varsVer`) has no cross-doc invalidation. **Sanctioned alternative today:**
+  the **data-pack** lane (`plugins-direction.md`) for shared rules/vars. An *explicitly-addressed*
+  future form (`{doc:name.var}`) would be a new §2 syntax-inventory decision, not a silent behavior.
+- **Doable remainder filed as issues** (not parked — sequencing-deferred): **neighborhood graph**
+  (§6 step 5) and a **folder-scoped `{roll:}`** (§6 step 4 remainder). See the open issue queue.
 
 ---
 
