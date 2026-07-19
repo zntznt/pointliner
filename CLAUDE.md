@@ -597,6 +597,16 @@ as saved), memoized on (`workspaceIndex.gen`, `_varsVer`) so the measured 1.5–
 runs per render pass (`_qrfMemo`/`_qpfMemo`, cleared in `resetDocCaches`). Only the word `folder`
 matches; any other third word stays literal → #ERR. No workspace → a folder of one (the live doc).
 `renderMathPill` names the staleness ("Folder totals count other documents as saved") in title/aria.
+**A trailing `, document` (or `, doc`) widens a quoted reducer to the WHOLE current document** (#914):
+`{= count("is:todo", document)}` searches `root`, not the pill's subtree — the explicit door for a
+dashboard pill that lives on a leaf, without changing the default subtree meaning of every existing
+reducer. Routes to `queryCountIn(q, root)` / `queryReduce(fn, q, prop, root)` (same regex arm as
+`folder`, `folder|document|doc`). Its companion is the **leaf cue** (P4): a subtree-scoped quoted
+reducer sitting on a point with **no descendants** can only ever return the identity — structural
+emptiness, distinct from "candidates exist, none matched" (the legitimate silent dynamic 0). The pure
+`queryReducerLeaf(expr, node)` (a quoted reducer, not already widened, `collectScoped(node, ∞)` empty)
+gates a quiet `renderMathPill` "0 in scope" state (reusing the `math-empty` chrome) naming the two
+fixes: move the pill onto a parent, or add `, document` / `, folder`.
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
