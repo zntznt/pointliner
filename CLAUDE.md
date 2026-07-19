@@ -1026,7 +1026,20 @@ menu-path cell writer routing authored→epilogue, query→Phase C); a QUERY bas
 are inferred from its projection instead — qbaseColRoles (due/start field -> date,
 = expr -> number) behind the one accessor mtColRoles that every colRole READ site
 consults, so Calendar/Cards open read-only on query bases while write sites stay
-authored-only; editors and further roles stay below the line) ·
+authored-only; editors and further roles stay below the line.
+#922: an AUTHORED base with no hand-set roles INFERS status/date columns from its data
+(inferColRolesFromModel: a column is 'status' when every non-empty data cell is a
+recognized sequence keyword, 'date' when every one parseDueDate-parses; number is NOT
+inferred so an id/year column never silently reformats), so Board/Calendar light up
+without the manual Column-menu trip. mtColRoles falls back to the memoized
+inferredColRoles (_mtInferRoleCache, ver-guarded + text-checked over mtModelRead, like
+mtModelRead itself) only while node.colRole is absent; the first explicit mtSetColRole
+SEEDS the array from the current inference so promoting one column to explicit mode
+doesn't drop the others' auto-detected roles, and from then on node.colRole is returned
+verbatim (explicit mode). The "Show as" menu and Alt+R cycle read the EFFECTIVE role via
+mtColRoles so they reflect inference. This is a hint the user can override, not a schema
+(the substrate test: inference over declaration; NOT schema-first base creation, which
+stays out per the #922 panel verdict)) ·
 Query bases (QP-2 Phase A, the bases-direction §4 above-the-line move under the
 base-views-vision §0b mission thesis: a base whose ROWS are a live search. node.qbase =
 {expr, cols:[{name,field}]} (_qbase OPML); pure core queryTableRows projects each match

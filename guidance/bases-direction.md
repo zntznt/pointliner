@@ -106,6 +106,25 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   cell (no context menu — its column ops are authored-only) enters the grid on the same
   Shift+F10 key. **Still below the line:** image/title roles and any validation.
 
+  **Authored-base role inference (#922, 2026-07-19; agent-review productivity persona).** An
+  authored base with no hand-set roles now INFERS status/date columns from its data, so Board and
+  Calendar light up without the manual Column-menu trip a database/planner user expects to skip.
+  `inferColRolesFromModel(model, hasFooter, states, cal)` (pure): a column is `status` when every
+  non-empty data cell is a recognized sequence keyword, `date` when every one `parseDueDate`-parses;
+  a mixed/free-text column stays null. **Number is deliberately NOT inferred** — an id/year column
+  must never silently reformat — so it remains an explicit choice. `mtColRoles` falls back to the
+  memoized `inferredColRoles` (`_mtInferRoleCache`, ver-guarded + text-checked over `mtModelRead`,
+  self-invalidated by the `_varsVer` bump like `mtModelRead`) ONLY while `node.colRole` is absent;
+  the first explicit `mtSetColRole` SEEDS the array from the current inference so promoting one
+  column to explicit mode doesn't drop the others' auto-detected roles, and from then on
+  `node.colRole` is returned verbatim (explicit mode; data changes no longer re-infer). The "Show
+  as" menu and the Alt+R cycle read the EFFECTIVE role via `mtColRoles`, so they reflect inference.
+  This is the **substrate-test-clean** half of #922 (inference over declaration, an overridable
+  hint): **schema-first base creation stays OUT** (the #922 panel verdict — un-dim views via
+  inference, not a "declare your column types up front" wizard). The header-defaults half of #922
+  (a `/base` keeping generic `Column 1/2/3`, first typed row not treated as a header) is a separate,
+  still-open item.
+
 - **The view system + the board view (BV-1) — moved above the line 2026-07-02 (owner call, the
   base-views-vision §0b sequence).** `node.view = {kind, groupBy}` (`_view` OPML; absent = table),
   the switcher in the reserved `.mt-base-views` strip (the zone §5 held for exactly this), and the
