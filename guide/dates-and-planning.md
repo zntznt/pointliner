@@ -112,6 +112,28 @@ entry directly.
 (When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
 journal can instead write one file per day on disk.)
 
+## Roll log
+
+Every generating pill normally keeps only its latest result: click a dice pill or an oracle again
+and the previous answer is replaced. When you are playing a solo game or want a record of what
+actually happened, that record is the whole point, so Pointliner can log every roll as it happens.
+
+Turn it on from the **File menu, Log rolls** (Off/On). While it is on, **every** random or generated
+result is also written to a **Rolls** log the instant you roll it, this covers all of the generating
+pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, roll on your
+document, and estimates. Entries file themselves by date exactly like the journal (`2026 › 07 › 19`),
+each line reading the time, what was rolled and the result:
+
+```
+14:32 · 2d6 → 9
+14:33 · Ambush? (likely) → Yes, but
+14:35 · loot → a silver ring
+```
+
+To keep the log in a particular place, open any point's bullet menu and choose **Log rolls here**;
+that point becomes the home and logging turns on. The entries are ordinary points, so you can search,
+export or annotate them. Logging is off by default and adds nothing until you switch it on.
+
 ## The chronicle: a dated log
 
 The journal logs the **real** day, the day you actually wrote it. Sometimes you want a log dated on a

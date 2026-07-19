@@ -10796,6 +10796,61 @@ test('findOrCreateDatedEntry matches a space-suffixed day node', () => {
   assert.equal(entry.id, 'h2');
 });
 
+// ─── #918: the roll / oracle history log ──────────────────────────────────────
+
+test('#918 rollLogEntry — HH:MM · source → result, source omitted when empty', () => {
+  assert.equal(c.rollLogEntry('2d6', '9', '14:32'), '14:32 · 2d6 → 9');
+  assert.equal(c.rollLogEntry('Ambush? (likely)', 'Yes, but', '09:05'), '09:05 · Ambush? (likely) → Yes, but');
+  assert.equal(c.rollLogEntry('', '7', '00:00'), '00:00 · 7', 'an empty source drops the arrow');
+  assert.equal(c.rollLogEntry('  x  ', '  y  ', '1:1'), '1:1 · x → y', 'trims both');
+});
+
+test('#918 grammarLogSource — named logs its name, anonymous logs its template', () => {
+  assert.equal(c.grammarLogSource({ anon: true, def: 'origin: {Grey|Salt}haven' }), '{Grey|Salt}haven');
+  assert.equal(c.grammarLogSource({ anon: true, def: 'origin: Yes 3 | No 1' }), 'Yes 3 | No 1', 'an oracle logs its odds');
+  assert.equal(c.grammarLogSource({ anon: false, origin: 'loot' }), 'loot', 'a named table logs its name');
+  assert.equal(c.grammarLogSource(null), '');
+});
+
+// The COVERAGE contract: every generative/randomizing pill's reroll MUST call logRoll, or its
+// results never reach the roll log. This drift guard is the enforcement the owner asked for —
+// a new such pill added without a logRoll call fails here (and guidance/adding-an-artifact.md
+// step tells the author to add its reroll fn to this list).
+test('#918 roll-log coverage — every reroll function calls logRoll', () => {
+  const REROLLS = ['rerollDice', 'rerollGrammar', 'rerollMarkov', 'rerollEst', 'rerollPickVar'];
+  for (const fn of REROLLS) {
+    const start = _src.indexOf('function ' + fn + '(');
+    assert.ok(start >= 0, `${fn} not found — did a generative pill's reroll get renamed?`);
+    // the function body up to the next top-level "function " declaration
+    const next = _src.indexOf('\nfunction ', start + 1);
+    const body = _src.slice(start, next < 0 ? undefined : next);
+    assert.ok(/\blogRoll\(/.test(body), `${fn} must call logRoll(...) so its result reaches the roll log (#918 coverage contract)`);
+  }
+  // rerollGrammar covers BOTH its branches (deck/sequence + plain grammar): two logRoll calls
+  const gStart = _src.indexOf('function rerollGrammar(');
+  const gBody = _src.slice(gStart, _src.indexOf('\nfunction ', gStart + 1));
+  assert.ok((gBody.match(/\blogRoll\(/g) || []).length >= 2, 'rerollGrammar must log BOTH the deck branch and the grammar branch');
+});
+
+test('#918 wiring — config round-trips + the front doors exist', () => {
+  // head element serialize + parse
+  assert.ok(_src.includes("headEl('_rolllog', JSON.stringify(r.rollLog))"), 'the _rolllog head element must be serialized');
+  assert.ok(_src.includes("doc.querySelector('head > _rolllog')"), 'the _rolllog head element must be parsed');
+  assert.ok(/rollLog\s*=\s*\(\(\)\s*=>\s*\{[\s\S]*?on:\s*!!j\.on/.test(_src), 'the parse must validate rollLog.on to a boolean');
+  // mkRoot default
+  assert.ok(_src.includes("rollLog: { on: false, targetId: null }"), 'mkRoot must default rollLog off');
+  // logRoll is opt-in and appends under a dated entry
+  const lr = _src.slice(_src.indexOf('function logRoll('), _src.indexOf('function logRoll(') + 900);
+  assert.ok(lr.includes('if (!root.rollLog?.on) return false'), 'logRoll must be a no-op unless logging is on');
+  assert.ok(lr.includes('findOrCreateDatedEntry'), 'roll entries nest under today (the dated-log substrate)');
+  // the shared home resolver (§8a substrate) backs both journal and rolls
+  assert.ok(_src.includes('function findOrCreateNamedHome('), 'the shared named-home resolver must exist');
+  assert.ok(/function findOrCreateJournalHome\(\)\s*\{[\s\S]*?findOrCreateNamedHome\(root\.journal/.test(_src), 'the journal home must route through the shared resolver');
+  // front doors: File-menu toggle + bullet-menu home door
+  assert.ok(_src.includes('id="btn-rolllog"'), 'the File-menu roll-log toggle is missing');
+  assert.ok(_src.includes("'Log rolls here'"), 'the bullet-menu roll-log home door is missing');
+});
+
 // ─── splitForSibling (UXP-60: Enter splits at the caret) ──────────────────────
 test('splitForSibling caret-at-start: whole text moves to the trailing half', () => {
   assert.deepEqual(host(c.splitForSibling('hello world', 0, '')), { before: '', after: 'hello world' });
