@@ -7490,6 +7490,18 @@ test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
     `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
 });
 
+// #915 (agent-review): the @ menu must LEAD with the generative + compute pills (the app's thesis),
+// not the basic inserts — and the sections are named for the thesis words so the door self-labels.
+test('#915: the @ menu leads with the generative + compute sections', () => {
+  const arr = _src.slice(_src.indexOf('const INSERT_CMDS = ['), _src.indexOf('];', _src.indexOf('const INSERT_CMDS = [')));
+  assert.ok(arr.indexOf("id:'dice'") < arr.indexOf("id:'footnote'"),
+    'dice (Generate) must precede footnote (Insert) in the @ menu order');
+  assert.ok(arr.indexOf("section:'Generate'") >= 0 && arr.indexOf("section:'Generate'") < arr.indexOf("section:'Compute'"),
+    'the Generate section leads and precedes Compute');
+  assert.ok(arr.indexOf("section:'Compute'") < arr.indexOf("section:'Insert'"),
+    'the Compute section precedes the basic Insert section');
+});
+
 test('GUIDE drift guard: every essSection has its own Shortcuts nav entry', () => {
   // The Shortcuts nav group is five entries, one per essSection: each renders the one
   // scrollable page (shortcutsAllBody) and scrolls to its own section via scrollTo. A new
