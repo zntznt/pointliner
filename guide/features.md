@@ -31,7 +31,8 @@ The everyday outliner. This is the part you use without thinking about it.
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
   with `[#A]` priorities. ([to-dos](tasks-and-organizing.md#to-dos-and-tasks))
 - **Collapse and zoom.** Fold any branch; click a bullet to zoom in and work on just that subtree.
-  ([zoom](getting-around.md#zoom-into-a-point))
+  A **paragraph's** bullet instead collapses it to just its first line, so long notes stay scannable.
+  ([zoom](getting-around.md#zoom-into-a-point) · [collapse a paragraph](getting-around.md#collapse-a-paragraph-to-its-first-line))
 - **Reorder by dragging** (mouse or touch), or move points with the keyboard.
   ([moving and nesting](getting-around.md#moving-and-nesting-points))
 - **Per-point notes.** Attach a longer note under any point; hide them all with one toggle.

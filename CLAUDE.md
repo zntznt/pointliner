@@ -91,7 +91,14 @@ reference execution of §2.
 - **Click any empty / non-interactive part of a node to enter edit mode** (caret at the
   click point, end-of-text as the fallback). Interactive elements — bullet, links, pills,
   checkboxes, hashtags, footnote refs, table widgets — keep their own behavior; shift-click
-  still range-selects. Navigating into a node places the caret at the end.
+  still range-selects. Navigating into a node places the caret at the end. **A bullet-click
+  zooms into the point, EXCEPT on a `para`, where it toggles `node.folded`** — a first-line
+  collapse (`setFolded`/`toggleFold`, para-gated), since zooming a lone paragraph is a
+  degenerate view swap. `folded` is a distinct field from `collapsed` (which hides children),
+  round-trips via `_folded`, and the CSS clamp (`.nt-para.folded>.node-row>.node-content:not([data-editing])`,
+  `-webkit-line-clamp:1`) is disabled in edit mode so editing always shows the full text.
+  Body-click still enters edit mode on a folded paragraph (the invariant holds); the zoom
+  keyboard shortcut (Ctrl/⌘+Enter) and the bullet menu's first row fold it too.
 - **Pure cores return `null` on invalid input**; callers branch on `null`. Keep
   parsing/rolling free of DOM access so they stay testable in plain Node.
 - **`mdToHtml` must stay synchronous** (render-context globals depend on it).

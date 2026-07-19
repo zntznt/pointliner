@@ -2032,6 +2032,23 @@ test('toOpml — strips C0 control chars XML forbids (keeps the file loadable)',
   assert.ok(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(xml), 'no raw control char remains in the document');
 });
 
+test('paragraph fold: node.folded round-trips via _folded; only emitted when set', () => {
+  const root = c.mkRoot();
+  const para = c.mkNode('a long paragraph', 'para'); para.folded = true;
+  const plain = c.mkNode('a bullet');            // non-para, not folded
+  const paraOpen = c.mkNode('another para', 'para');   // para, folded false
+  root.children.push(para, plain, paraOpen);
+  const xml = c.toOpml(root);
+  assert.match(xml, /_folded="true"/, 'a folded paragraph serializes _folded');
+  assert.equal((xml.match(/_folded=/g) || []).length, 1, 'only the folded node emits it (lean records)');
+  // wiring pins: fold is para-gated and separate from collapsed
+  assert.match(_src, /function setFolded\(id, val\) \{[\s\S]*?node\.type !== 'para'/, 'setFolded gates on para type');
+  assert.match(_src, /function toggleFold\(id\)[^\n]*type === 'para'/, 'toggleFold gates on para type');
+  assert.match(_src, /node\.folded && node\.type === 'para' \? 'folded' : ''/, 'renderRow only folds a para');
+  assert.match(_src, /if \(isPara\) \{ hideBpop\(\); toggleFold\(node\.id\); return; \}/, 'a paragraph bullet folds instead of zooming');
+  assert.match(_src, /\.nt-para\.folded>\.node-row>\.node-content:not\(\[data-editing\]\)/, 'the clamp is disabled while editing');
+});
+
 test('toOpml — strips lone surrogates and U+FFFE/U+FFFF; valid emoji pairs survive', () => {
   // U+FFFE/U+FFFF and unpaired surrogate halves are also illegal in XML 1.0, but a
   // surrogate inside a valid pair (😀 is \uD83D\uDE00) is legal and must NOT be eaten.

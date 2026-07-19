@@ -44,6 +44,15 @@ through it, click or press `Enter` on any ancestor crumb to jump to that level, 
 to return to the full document. Press `Esc` to step up just one level toward the parent rather than
 exiting all the way.
 
+### Collapse a paragraph to its first line
+
+Zooming into a lone **paragraph** is pointless, so a paragraph's bullet does something more useful:
+it **collapses the paragraph to just its first line**. Click a paragraph's bullet (or press
+`Ctrl/Cmd+Enter`, or choose **Collapse to first line** from its menu) and a long paragraph folds down
+to a one-line peek ending in an ellipsis, so a page of long notes stays scannable. Click the bullet
+again to show the whole thing, or just click the text to edit it (editing always shows the full
+paragraph). The folded state is saved with the document.
+
 ## Selecting many points
 
 Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole
