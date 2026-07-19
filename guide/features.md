@@ -59,6 +59,9 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
   rule and variable names, a point's own properties. ([the two doors](generating-text.md))
 - **Pick from a list.** `{sword | shield | potion}` shows one at random, click to re-pick.
   ([weights too](generating-text.md#pick-one-of-several-alternation): make some choices rarer.)
+- **Glue pieces into one name.** `{{Ael|Bor}{ric|wyn}}` builds a whole syllable name as ONE pill
+  that re-rolls as a unit; `{{Grey|Salt|Storm}haven}` glues a suffix on.
+  ([templates](generating-text.md#glue-pieces-into-one-name-templates))
 - **Roll dice.** `{2d6}`, `{1d20+5}`, plus exploding, keep-highest, Fate and success pools.
   ([dice](generating-text.md#roll-dice-ndm))
 - **Named rules.** Build a name generator or loot table once, reuse it anywhere.

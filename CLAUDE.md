@@ -506,7 +506,15 @@ when proposing features:
   whose `expandAggExpr` pre-pass introduces a `#ERR` (cross-dimension convert — no answer) is a
   real calculation that errors, so `classifyBraceBody`/`makeMathResult` (lockstep via
   `mathPrepassErrs`) build the math pill and it renders a loud `#ERR (convert)` on every path,
-  not raw braces on load.
+  not raw braces on load. **Glue templates** (#916): a body of nested balanced groups optionally
+  glued to bare chunks (`{{Ael|Bor}{ric|wyn}}`, `{{Grey|Salt}haven}`) promotes as ONE anonymous
+  grammar pill via `templateParts` — the engine's existing rule-level template expansion surfaced
+  at the top level; the sniff is strict (every space-chunk braced, every nested body classifying
+  `'artifact'`) so prose braces stay prose, and UNWRAPPED adjacent braces keep their two-pill
+  meaning. **Anti-shred** (#916): a failed outer form is never promoted piecemeal — the walks
+  (`promoteInlineShorthand`/`promoteCellShorthand`) keep a closed-but-`'invalid'` span intact and
+  leave the line-tail of an unclosed `{` alone when it reads as a form, so a mid-authoring
+  `{hero := {a|b}{c|d` survives a blur instead of its inner braces becoming fragment pills.
 
   Dice, roll tables, and markov chains all resolve through this one engine: a
   roll table is literally a one-rule grammar (weighted alternation — the collapse
