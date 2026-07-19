@@ -86,7 +86,9 @@ automatically:
 ```
 
 For a table you can **click into and edit cell by cell** (or add formulas), type **`/base`** instead.
-Static tables can also carry a spreadsheet formula line; see
+When you make a base, the caret starts in the **first header cell** with its placeholder selected, so
+naming your columns is the first thing you do: type a name, `Tab` to the next header, then arrow down
+into the rows. Static tables can also carry a spreadsheet formula line; see
 [table formulas](computing-numbers.md#table-formulas-briefly).
 
 Base cells take **pills** the same way a point does: type `{2d6}`, `{= price * 1.1}` or `{Orc.HP}`

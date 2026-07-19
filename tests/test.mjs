@@ -4545,6 +4545,13 @@ test('planBaseConvert: empty point converts IN PLACE (no data loss path needed)'
   assert.equal(plan.text, 'STARTER');
 });
 
+test('#922 header defaults: a new base lands the caret on the HEADER cell (name columns first)', () => {
+  const fnb = fnBody(_src, 'focusNewBase');
+  assert.ok(/mtFocusCell\(base, 0, 0\)/.test(fnb), 'focus lands on the first header cell (r0/c0), not the data row');
+  assert.ok(!/mtFocusCell\(base, 1, 0\)/.test(fnb), 'the old data-cell target is gone');
+  assert.ok(/name/i.test(fnb) && /announce\(/.test(fnb), 'the announcement tells the user to name the column');
+});
+
 test('planBaseConvert: content-bearing point keeps text, base inserted AFTER (the data-loss fix)', () => {
   const plan = planBaseConvert('My notes', 'STARTER');
   assert.equal(plan.mode, 'after');

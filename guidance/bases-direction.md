@@ -121,9 +121,15 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   as" menu and the Alt+R cycle read the EFFECTIVE role via `mtColRoles`, so they reflect inference.
   This is the **substrate-test-clean** half of #922 (inference over declaration, an overridable
   hint): **schema-first base creation stays OUT** (the #922 panel verdict — un-dim views via
-  inference, not a "declare your column types up front" wizard). The header-defaults half of #922
-  (a `/base` keeping generic `Column 1/2/3`, first typed row not treated as a header) is a separate,
-  still-open item.
+  inference, not a "declare your column types up front" wizard). **The header-defaults half of #922
+  shipped alongside it (2026-07-19):** `focusNewBase` now lands the new-base caret on the FIRST
+  HEADER cell (r0/c0), not the first data cell (r1/c0), with its "Column 1" placeholder selected
+  (mtFocusCell selects contents), so naming the columns is the first action (the spreadsheet/database
+  flow) and generic `Column 1/2/3` labels stop leaking into Cards/Board field labels. Row 0 always
+  exists, so this is also more robust than the old r1/c0 target (which no-oped on a body-less 1×1
+  starter). Not done under the header banner: auto-promoting an already-typed first data row to the
+  header, and smarter default names than `Column N` — both would change existing data semantics and
+  neither is needed once naming is the first thing you do.
 
 - **The view system + the board view (BV-1) — moved above the line 2026-07-02 (owner call, the
   base-views-vision §0b sequence).** `node.view = {kind, groupBy}` (`_view` OPML; absent = table),

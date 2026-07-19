@@ -18274,19 +18274,25 @@ function closeSizePicker() {
   slashMenu.innerHTML = '';
 }
 
-// Land focus in a freshly-created base's first editable cell (#441). focusNode()
+// Land focus in a freshly-created base's HEADER cell (#441; #922 header half). focusNode()
 // deliberately no-ops for a base (it manages its own cell focus), so a plain
 // focusNode(baseId) after createBaseAt left focus on <body> with no cue that a grid
 // appeared. rAF-deferred like focusNode so the widget DOM exists; announces the grid
 // for AT (there is otherwise no spoken signal the point became a base).
+//
+// #922 (header defaults): the caret lands on row 0, column 0 — the first HEADER cell —
+// with its "Column 1" placeholder selected (mtFocusCell selects contents), so naming the
+// columns is the first thing you do (the spreadsheet/database flow) and the generic
+// Column 1/2/3 labels don't leak into Cards/Board. Tab moves across the header to name the
+// rest, then into the data. Row 0 always exists (even a header-only 1×1 base), so this is
+// also more robust than the old r1/c0 target, which no-oped on a body-less starter.
 function focusNewBase(baseId) {
   requestAnimationFrame(() => {
     ensureRowVisible(baseId);
     const base = nodeById(baseId);
     if (!base || base.type !== 'base') return;
-    // row 0 is the header; the first editable data cell is r1/c0 (starterTableText).
-    mtFocusCell(base, 1, 0);
-    announce('Base added. A grid of cells; type to fill a cell, arrow keys move between cells.');
+    mtFocusCell(base, 0, 0);   // the first header cell — name the column first
+    announce('Base added. A grid of cells; the first column name is selected, type to name it, Tab moves across the header, then arrow down to the rows.');
   });
 }
 
@@ -31764,7 +31770,7 @@ const GUIDE = [
     ] },
   { id:'tables', cat:'writing', covers:['table'],
     title:'Tables',
-    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead.\n\nIn a base, arrow keys move between cells, and the Alt combinations below move, insert and resize columns and rows and set a column's role without leaving the keyboard; the column menu (or Shift+F10 on a cell) has sorting, delete, the Width presets and the rest. On touch, press and hold a column header (or tap the arrow at its right edge) to open that menu; the base's bullet menu lists it too, under Column options.\n\nCells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
+    body:"Put information in columns to compare options, lay out a small dataset or present a schedule. Type rows separated by | bars with a row of dashes under the header and it formats as a table automatically. For a table you can click into and edit cell by cell (or add formulas), type /base instead.\n\nWhen you make a base the caret starts in the first header cell with its placeholder selected, so naming the columns is the first thing you do: type a name, Tab to the next header, then arrow down into the rows. Once a column's cells are all task states or all dates, the base detects it and Board or Calendar light up on their own.\n\nIn a base, arrow keys move between cells, and the Alt combinations below move, insert and resize columns and rows and set a column's role without leaving the keyboard; the column menu (or Shift+F10 on a cell) has sorting, delete, the Width presets and the rest. On touch, press and hold a column header (or tap the arrow at its right edge) to open that menu; the base's bullet menu lists it too, under Column options.\n\nCells take pills too: type {2d6}, {= price * 1.1} or {Orc.HP} in a cell and it becomes the live pill when you leave the cell, exactly as it would in a point (the cell's @ menu inserts the same things by dialog).",
     related:['base-views','querybase'],
     examples:[
       { syn:'| A | B |\n|---|---|\n| 1 | 2 |', desc:'a typed table that renders formatted' },
