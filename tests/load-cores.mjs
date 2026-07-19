@@ -163,7 +163,7 @@ export function loadCores() {
   const need = [
     'parseDice', 'rollParsed', 'diceExprStr',
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
-    'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr',   // #649 moon phase + math display seam
+    'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr', 'groupThousands', 'formatNumDisplay', 'parseNumFmt',   // #649 moon phase + math display seam; #946 number formatting
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'strCondVerdict',
     'recordVarReads', 'depsChanged',   // #827 item 5: input-dependency snapshot + stale-inputs compare

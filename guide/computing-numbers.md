@@ -37,6 +37,23 @@ chrome-free, blending into the surrounding text. The formula is not lost: it sta
 comes back the moment you edit the pill again. A pill that cannot compute still shows its loud error,
 so a failure never hides behind a bare number.
 
+### Format the number
+
+Big results **group their thousands automatically**, so a total reads `840,000`, not `840000` (this
+is display only, so the value still computes at full precision, and a table cell still stores the plain
+number). For money or units, open the pill and set a **format** in the dialog:
+
+- **Decimal places** fixes how many digits show after the point (`2` for money, so `1200` reads
+  `1,200.00`). Blank rounds automatically.
+- **Prefix** goes in front (`$` → `$1,200.00`).
+- **Suffix** goes after (` kg` → `12 kg`, or `%`).
+
+```
+{= 70000 * 12}        →  840,000        (grouped by default)
+{= 1200}  + $ / 2dp   →  $1,200.00      (money format)
+{= weight}  + " kg"   →  12 kg          (unit suffix)
+```
+
 ---
 
 ## Functions

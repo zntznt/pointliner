@@ -2121,6 +2121,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .lp-item.lp-create:hover,.lp-item.lp-create.hi{color:var(--acc)}
 .lp-menu .lp-item.lp-create:first-child{margin-top:0}
 .lp-item.lp-create:not(:first-child){margin-top:3px;border-top:1px solid var(--bdr);padding-top:7px}
+/* #945: the embed-door hint under the link picker rows */
+.lp-foot{margin-top:4px;padding:5px 10px 2px;border-top:1px solid var(--bdr);font-size:11px;color:var(--muted)}
 /* alias hint: why a non-title match surfaced */
 .lp-alias-hint,.lp-doc-hint{color:var(--muted);font-size:11px}
 /* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
@@ -9016,7 +9018,7 @@ function mtCellHtml(node, raw, c) {
       }
     } else if (role === 'number') {
       const n = Number(s);
-      if (Number.isFinite(n)) return escHtml(formatMathResult(n));
+      if (Number.isFinite(n)) return escHtml(formatNumDisplay(n));   // #946: group thousands (display only; cell text unchanged)
     }
   }
   return mtInline(node, raw);
@@ -16568,6 +16570,10 @@ function onKeyDown(e, id, content) {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
     hideInlineMenus();
   }
+  // #945: Shift+Enter in the [[ link picker inserts the MIRROR/embed form ([[#id|]]) instead of a
+  // title reference — the discoverable keyboard door to transclusion. Handled before the generic
+  // sweep because that sweep calls apply() with no key info; a plain Enter still title-references.
+  if (lpState && isLpMenuOpen() && e.key === 'Enter' && e.shiftKey) { e.preventDefault(); lpApply(true); return; }
   // The single-column inline picker menus (link / slash / brace / tag / emoji) all navigate
   // identically: ↓/↑ move, Enter/Tab apply, Escape hide (#450). Only one is ever open, so a
   // table-driven sweep replaces five copy-paste blocks. The sizePicker below is NOT in the set
@@ -23235,8 +23241,10 @@ function moonGlyph(phase) {
 // Glyph-format only a BARE moonphase call (the whole expression), so composing it for the raw number
 // works: moonphase(d, 28, 0) → 🌒, but moonphase(d, 28, 0) * 8 or floor(moonphase(…) * 8) → a number.
 function isMoonExpr(expr) { return /^\s*moonphase\s*\(.*\)\s*$/i.test(expr || ''); }
-function formatMathDisplay(v, expr) {
-  return isMoonExpr(expr) ? moonGlyph(v) : isDateExpr(expr) ? formatEpochDays(v) : formatMathResult(v);
+function formatMathDisplay(v, expr, fmt) {
+  // #946: a plain-number result groups thousands (and honors a per-pill fmt); dates/moon are their
+  // own display forms and never group.
+  return isMoonExpr(expr) ? moonGlyph(v) : isDateExpr(expr) ? formatEpochDays(v) : formatNumDisplay(v, fmt);
 }
 
 function formatMathResult(n) {
@@ -23254,10 +23262,42 @@ function formatMathResult(n) {
   return parseFloat(n.toPrecision(8)).toString();
 }
 
+// #946: DISPLAY-only number formatting — thousands separators by default, plus an optional
+// per-pill format (fixed decimals / prefix / suffix). It is NEVER the value written back into
+// node.text: formatMathResult stays the canonical, separator-free formatter that table recompute
+// serializes (a grouped "840,000" persisted into a cell would stop re-parsing as a number). Used
+// only at the render sinks — math + variable pills and base number cells — so a big number reads
+// "840,000", a money model "$1,200.00", a mass "12 kg". `fmt` = { decimals?, prefix?, suffix? }.
+function groupThousands(s) {
+  const m = /^(-?)(\d+)(\.\d+)?$/.exec(s);
+  if (!m) return s;   // ∞ / NaN / already-formatted → untouched
+  return m[1] + m[2].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (m[3] || '');
+}
+function formatNumDisplay(n, fmt) {
+  if (typeof n !== 'number' || !isFinite(n)) return formatMathResult(n);   // ∞ / NaN / non-number
+  let body;
+  if (fmt && Number.isInteger(fmt.decimals) && fmt.decimals >= 0 && Math.abs(n) < 1e15) {
+    body = n.toFixed(Math.min(fmt.decimals, 20));
+  } else {
+    body = formatMathResult(n);
+  }
+  return (fmt?.prefix || '') + groupThousands(body) + (fmt?.suffix || '');
+}
+// Pure: build a lean fmt record from the math dialog's three text fields (or null when all blank),
+// so an ordinary math pill carries no fmt. Decimals must be a non-negative integer 0-20.
+function parseNumFmt(decimals, prefix, suffix) {
+  const fmt = {};
+  const d = String(decimals ?? '').trim();
+  if (d !== '') { const n = Number(d); if (Number.isInteger(n) && n >= 0 && n <= 20) fmt.decimals = n; }
+  const p = String(prefix ?? ''); if (p) fmt.prefix = p;
+  const s = String(suffix ?? ''); if (s) fmt.suffix = s;
+  return Object.keys(fmt).length ? fmt : null;
+}
+
 // A resolved variable value is a number (formula var) or a string (random pick).
 // Use this — not formatMathResult directly — anywhere a varMap value is displayed,
 // or a pick's text value renders as "NaN".
-function formatVarValue(v) { return typeof v === 'string' ? v : formatMathResult(v); }
+function formatVarValue(v) { return typeof v === 'string' ? v : formatNumDisplay(v); }   // #946: group thousands
 
 function mathKey() { return 'x' + Math.random().toString(36).slice(2, 9); }
 
@@ -23759,7 +23799,7 @@ function renderMathPill(key, m) {
       + `<span class="math-result">${escHtml(label)}</span>`
       + `</span>`;
   }
-  const display = formatMathDisplay(fresh, m.expr);
+  const display = formatMathDisplay(fresh, m.expr, m.fmt);   // #946: grouping + optional per-pill format
   // 4c: a folder-scoped reducer (`…, folder)` after a quoted query) mixes the live doc with
   // other documents AS SAVED — say so in the tooltip/aria so the staleness is visible (P4).
   const folderTip = /"[^"]*"\s*,[^)]*\bfolder\s*\)/.test(m.expr)
@@ -24277,7 +24317,10 @@ const MATH_CHIPS = [
   { label:'round', insert: el => insertAndSelect(el, 'round(', 'x', ')') },
 ];
 
-function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, bare = false, onResult }) {
+function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, bare = false, fmt = null, onResult }) {
+  // #946: assemble a fmt from the dialog's three format fields (or null) — thousands separators are
+  // the default, so an ordinary pill needs none of these.
+  const fmtOf = all => all ? parseNumFmt(all.decimals, all.prefix, all.suffix) : null;
   openInsertDialog({
     icon: { fa:'fa-solid fa-calculator', fb:'🖩' },
     title,
@@ -24291,8 +24334,8 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         value: expr,
         chips: MATH_CHIPS,
         hint: 'A live calculation over variables and child points. Full reference in the concept guide.',
-        // live preview rendered right below the input as the user types. Reads the "value only"
-        // checkbox (second arg) so the preview pill matches how it will render.
+        // live preview rendered right below the input as the user types. Reads the other fields
+        // (second arg) so the preview pill matches how it will render (value-only + number format).
         preview: (v, all) => {
           if (!v) return '';
           const vars = collectVars();
@@ -24301,8 +24344,9 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
             const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node), vars));
             return `<span class="io-preview-bad">Invalid expression${phrase ? ': ' + phrase : ''}</span>`;
           }
+          const f = fmtOf(all);
           const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
-          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v), bare: !!(all && all.bare) }); }
+          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v, f), bare: !!(all && all.bare), fmt: f }); }
           finally { cookieNode = save; }
         },
       },
@@ -24313,6 +24357,25 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         value: bare,
         hint: 'Renders just the result, so a number reads like part of the text. The formula shows again when you edit.',
       },
+      {
+        key: 'decimals',
+        label: 'Decimal places',
+        value: (fmt && Number.isInteger(fmt.decimals)) ? String(fmt.decimals) : '',
+        placeholder: 'auto (e.g. 2 for money)',
+        hint: 'How many digits after the point. Blank rounds automatically; big numbers always group thousands.',
+      },
+      {
+        key: 'prefix',
+        label: 'Prefix',
+        value: (fmt && fmt.prefix) || '',
+        placeholder: 'e.g. $',
+      },
+      {
+        key: 'suffix',
+        label: 'Suffix',
+        value: (fmt && fmt.suffix) || '',
+        placeholder: 'e.g. kg or %',
+      },
     ],
     validate: v => evalMath(expandAggExpr(v.expr, node), collectVars()) !== null,
     onSubmit: v => {
@@ -24321,6 +24384,8 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
       if (r === null) return;
       const roll = { key: existing || mathKey(), expr: v.expr, result: formatMathResult(r) };
       if (v.bare) roll.bare = true;   // absent unless on, so ordinary records stay lean
+      const f = parseNumFmt(v.decimals, v.prefix, v.suffix);
+      if (f) roll.fmt = f;            // absent unless the user set a format
       onResult(roll);
     },
   });
@@ -24333,10 +24398,11 @@ function editMath(node, key) {
   openMathDialog({
     title: 'Edit expression',
     submitLabel: 'Save',
-    expr: m.expr, existing: key, node, bare: !!m.bare,
+    expr: m.expr, existing: key, node, bare: !!m.bare, fmt: m.fmt || null,
     onResult: roll => {
       Object.assign(m, { expr: roll.expr, result: roll.result });
       if (roll.bare) m.bare = true; else delete m.bare;   // reflect the toggle both ways
+      if (roll.fmt) m.fmt = roll.fmt; else delete m.fmt;   // #946: reflect the format both ways
       markDirty();
       const el = repaintNodeContent(node);
       el?.querySelector(`.math-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('math-edited');
@@ -24701,7 +24767,8 @@ function renderLinkMenu() {
     item.id = 'lp-opt-' + i;
     item.setAttribute('aria-selected', String(i === lpState.activeIdx));
     item.addEventListener('mouseenter', () => { lpState.activeIdx = i; renderLinkMenu(); });
-    item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = i; lpApply(); });
+    // #945: Shift+click embeds (mirror) instead of title-referencing — the pointer twin of Shift+Enter.
+    item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = i; lpApply(e.shiftKey); });
     lpMenu.appendChild(item);
   });
   // link-and-create: a "+ New point" row is always last when the query is non-empty,
@@ -24733,6 +24800,13 @@ function renderLinkMenu() {
     item.addEventListener('mousedown', e => { e.preventDefault(); lpState.activeIdx = ni; lpApply(); });
     lpMenu.appendChild(item);
   }
+  // #945: a persistent hint teaching the embed door — a title reference is the default, Shift+Enter
+  // (or Shift+click) inserts the mirror/embed form instead. Makes transclusion discoverable at the
+  // one place you're already choosing a point. Not an option row (aria-hidden), so it never steals Enter.
+  const foot = document.createElement('div');
+  foot.className = 'lp-foot'; foot.setAttribute('aria-hidden', 'true');
+  foot.textContent = 'Enter links · Shift+Enter embeds';
+  lpMenu.appendChild(foot);
   // focus stays at the caret — the active option is exposed via activedescendant
   // (the slash menu's screen-reader pattern, shared by all caret pickers)
   lpState.content?.setAttribute('aria-activedescendant', 'lp-opt-' + lpState.activeIdx);
@@ -24748,7 +24822,7 @@ function lpMove(dir) {
   renderLinkMenu();
 }
 
-async function lpApply() {
+async function lpApply(asMirror = false) {
   if (!lpState) return;
   const { nodeId, content, triggerOffset, query, activeIdx, matches, create, createNote } = lpState;
   // create rows sit after the matches: "+ New point" at matches.length (when `create`),
@@ -24756,6 +24830,11 @@ async function lpApply() {
   const pointIdx = create ? matches.length : -1;
   const noteIdx  = createNote ? matches.length + (create ? 1 : 0) : -1;
   hideLinkMenu();
+  // #945: an EMBED accept (Shift+Enter / Shift+click) inserts the MIRROR form ([[#id|]]) instead of
+  // a title reference — the discoverable door to transclusion. No new syntax: the empty pipe already
+  // means mirror (#805). `pipe` is appended for a picked/created point; a New-note token is already
+  // the |-form.
+  const pipe = asMirror ? '|' : '';
 
   let token;
   if (activeIdx === noteIdx) {
@@ -24781,13 +24860,13 @@ async function lpApply() {
     // full render so the new stub actually appears when this edit exits (exitEdit
     // honors _pendingFullRender — a partial single-node re-render would hide it).
     _pendingFullRender = true;
-    token = `[[#${nn.id}]]`;                       // #805: live-title reference
+    token = `[[#${nn.id}${pipe}]]`;                // #805: live-title reference (or #945 mirror on Shift+Enter)
   } else {
     // Pick an existing point — same-doc or cross-doc (the candidate carries a docId for
     // the portable [[docId#id]] form, CF-3; same-doc is [[#id]]). #805: the picker emits
-    // the TITLE-reference form; the [[#id|]] mirror stays the explicit typed embed.
+    // the TITLE-reference form; the [[#id|]] mirror stays the explicit typed embed (#945: Shift+Enter).
     const chosen = matches[activeIdx];
-    token = (chosen && chosen.docId) ? `[[${chosen.docId}#${chosen.id}]]` : `[[#${chosen.id}]]`;
+    token = (chosen && chosen.docId) ? `[[${chosen.docId}#${chosen.id}${pipe}]]` : `[[#${chosen.id}${pipe}]]`;
   }
 
   const fullText = editableText(content);
@@ -28695,7 +28774,9 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
   if (type === 'math') {
     const m = node.math?.find(x => x.key === key); if (!m) return '';
     const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
-    return fresh !== null ? formatMathResult(fresh) : m.result;
+    // #946: export the SHOWN value (grouping + any per-pill format), so a lossy snapshot reads like
+    // the pill ("$1,200.00"), matching what was on screen. Export is one-way, so grouping is safe here.
+    return fresh !== null ? formatMathDisplay(fresh, m.expr, m.fmt) : m.result;
   }
   // var: "name = value" for defining pills, or just "value" for display-only
   const rec = node.vars?.find(x => x.key === key);
@@ -32420,7 +32501,7 @@ const GUIDE = [
   // ── Compute (guide) ───────────────────────────────────────────────────────
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
-    body:"Build a budget where every line adds to a running sum, or track a project cost that recomputes when you change a rate, all live in the document. Write `{= expression}` and the result appears inline as a pill; change a variable the expression uses and it updates the moment you do.\n\nThe expression handles arithmetic and parentheses, powers with `^`, remainder with `%`, and percentages. Comparisons (`>`, `<`, `==`) return 1 or 0, and a ternary `a > b ? x : y` (or `if(a>b, x, y)`) picks between two results, so a pill can decide as well as compute. Constants `pi`, `e`, `tau` and `today` are built in, and any variable you have set is a name you can use.\n\nThis is the base calculator; three companions build on it. Named functions like `sqrt`, `round` and the unit conversions are on the functions page, dates are their own arithmetic (see calculating with dates), and a parent point can roll up its children with `sum`, `avg` or `count` (see roll up children). Every result stays a number, so pills, variables and rollups all compose.\n\nIf a pill's formula reads as clutter in your prose (a word count inside a heading, say), open it and check Show value only to render just the result; the formula comes back when you edit the pill.",
+    body:"Build a budget where every line adds to a running sum, or track a project cost that recomputes when you change a rate, all live in the document. Write `{= expression}` and the result appears inline as a pill; change a variable the expression uses and it updates the moment you do.\n\nThe expression handles arithmetic and parentheses, powers with `^`, remainder with `%`, and percentages. Comparisons (`>`, `<`, `==`) return 1 or 0, and a ternary `a > b ? x : y` (or `if(a>b, x, y)`) picks between two results, so a pill can decide as well as compute. Constants `pi`, `e`, `tau` and `today` are built in, and any variable you have set is a name you can use.\n\nThis is the base calculator; three companions build on it. Named functions like `sqrt`, `round` and the unit conversions are on the functions page, dates are their own arithmetic (see calculating with dates), and a parent point can roll up its children with `sum`, `avg` or `count` (see roll up children). Every result stays a number, so pills, variables and rollups all compose.\n\nIf a pill's formula reads as clutter in your prose (a word count inside a heading, say), open it and check Show value only to render just the result; the formula comes back when you edit the pill.\n\nBig numbers group their thousands automatically, so a total reads `840,000`, not `840000`. For money or units, open the pill and set a format: Decimal places (2 for money), a Prefix (`$`) and a Suffix (` kg` or `%`), and it renders `$1,200.00` or `12 kg`. The format is display only, so the value still computes at full precision.",
     related:['math-fns','math-dates','variables'],
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },
@@ -32428,6 +32509,7 @@ const GUIDE = [
       { syn:'{= price * 1.1}',   desc:'use a variable you set' },
       { syn:'{= a > b ? a : b}', desc:'if a is bigger use a, else b' },
       { syn:'{= if(stock>0, price, 0)}', desc:'another way to choose' },
+      { syn:'{= 70000 * 12}',    desc:'big results group thousands: 840,000' },
       { syn:'{= pi * r ^ 2}',    desc:'constants: pi, e, tau, today' },
     ] },
   { id:'math-fns', cat:'compute',
@@ -32555,7 +32637,7 @@ const GUIDE = [
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
     title:'Linking points',
-    body:"Build a personal wiki where ideas refer to each other, create a table of contents that jumps to sections or connect a task to its full context note. Type `[[` and pick the point to link to, then click the link to go straight there.\n\nA link tracks the point it points at, so it never goes stale. The picker makes a title reference (`[[#id]]`): it shows that point's current title, so renaming the point updates every link to it at once. Give it a label (`[[#id|my wording]]`) when you want your own phrasing instead. And to embed rather than refer, add an empty pipe (`[[#id|]]`): the linked point's rendered content appears right there inline, a live mirror of the other point, so a summary can pull in a definition or a stat block without copying it.\n\nA mirror on its own line goes further: it embeds the point AND everything under it, indented like the source, so an overview note can compose whole sections of other points without copying them. Collapse a point in the source and the mirror hides its children too, which is how you control how much a mirror shows. Long subtrees cap at 40 rows with a note to open the source; a mirror inside a sentence stays a single line so prose never breaks.\n\nLinks are two-way for free: the point you link to lists everything that links to it, covered under backlinks. That turns a pile of points into a connected web you can navigate from either end.",
+    body:"Build a personal wiki where ideas refer to each other, create a table of contents that jumps to sections or connect a task to its full context note. Type `[[` and pick the point to link to, then click the link to go straight there.\n\nA link tracks the point it points at, so it never goes stale. The picker makes a title reference (`[[#id]]`): it shows that point's current title, so renaming the point updates every link to it at once. Give it a label (`[[#id|my wording]]`) when you want your own phrasing instead. And to embed rather than refer, add an empty pipe (`[[#id|]]`): the linked point's rendered content appears right there inline, a live mirror of the other point, so a summary can pull in a definition or a stat block without copying it. You do not have to type the pipe: in the `[[` picker, press Shift+Enter (or Shift+click a result) to embed instead of reference.\n\nA mirror on its own line goes further: it embeds the point AND everything under it, indented like the source, so an overview note can compose whole sections of other points without copying them. Collapse a point in the source and the mirror hides its children too, which is how you control how much a mirror shows. Long subtrees cap at 40 rows with a note to open the source; a mirror inside a sentence stays a single line so prose never breaks.\n\nLinks are two-way for free: the point you link to lists everything that links to it, covered under backlinks. That turns a pile of points into a connected web you can navigate from either end.",
     related:['backlinks','cross-doc-links','aliases'],
     examples:[
       { syn:'[[',                   desc:'open the link picker' },

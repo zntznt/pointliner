@@ -15,9 +15,10 @@ Type **`[[`** and pick the point to link to. Two things make these links low-mai
 
 - **The link always shows the current title**, so renaming a point keeps every link to it correct.
   The picker writes this form: `[[#id]]`, a title reference.
-- **Add an empty pipe** (`[[#id|]]`, typed) and the linked point's content appears *inline*
-  wherever the link is placed (a live transclusion, not just a reference). Embedding is an
-  explicit choice; picking from the `[[` menu never transcludes.
+- **Add an empty pipe** (`[[#id|]]`) and the linked point's content appears *inline* wherever the
+  link is placed (a live transclusion, not just a reference). You do not have to type the pipe: in
+  the `[[` picker, **Shift+Enter** (or **Shift+click** a result) inserts the embed form instead of a
+  reference. Plain Enter still references, so embedding stays an explicit choice.
 
 **A mirror on its own line embeds the whole subtree.** Put `[[#id|]]` alone on a line and the
 linked point's content appears *with everything under it*, indented like the source, so an

@@ -98,6 +98,8 @@ A live calculator that can see your document. Math pills recompute on their own.
   own units (a currency, a fictional measure) under File then Custom units. Do date math
   (`{= daysuntil(due)}`).
   ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))
+- **Number formatting.** Results group thousands automatically (`840,000`); set decimal places, a
+  prefix (`$`) or a suffix (`kg`) per pill for money or units. ([format](computing-numbers.md#format-the-number))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
   spreadsheet column, and `{= sum("#task", cost)}` totals it over everything matching a live search.
   Add `, document` (or `, folder`) to search the whole document or folder from any point.
@@ -198,7 +200,8 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
 - **Mirrors and subtree embeds.** `[[#id|]]` embeds a point's content inline; alone on its line it
   embeds the point **and everything under it**, so an overview note composes whole sections without
-  copying (source folds bound it; long subtrees cap at 40 rows).
+  copying (source folds bound it; long subtrees cap at 40 rows). In the `[[` picker, Shift+Enter (or
+  Shift+click) embeds instead of referencing.
   ([linking points](links-and-references.md#linking-points))
 - **Link graph.** See your document as a browsable web of its links instead of a list, and jump to
   any point by recognizing it. With a folder connected, a **Folder** view maps the documents
