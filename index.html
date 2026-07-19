@@ -278,6 +278,30 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #file-menu .cmd-item.is-status .cmd-icon{color:var(--ok)}
 #file-menu .cmd-sep{margin:5px 8px}
 .cmd-key,#search-key,.guide-sc kbd{margin-left:auto;align-self:center;font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;white-space:nowrap;flex-shrink:0;line-height:1.5}
+/* settings CARDS (verbosity, toolbar-feature chooser): a bordered group of choice rows that
+   set state IN PLACE — clicking one never closes the menu (unlike the navigating rows). */
+.fm-scard{border:1px solid var(--bdr);border-radius:var(--r-md);padding:4px;margin:6px 0}
+/* head reuses the section-eyebrow recipe (10px/600/.07em caps muted), matching COLOR / SETTINGS */
+.fm-scard-head{display:flex;align-items:center;gap:8px;padding:6px 6px 7px;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.fm-scard-head .cmd-key{margin-left:auto}
+.fm-choice{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--r-sm);cursor:pointer}
+.fm-choice-info{display:flex;flex-direction:column;min-width:0;flex:1}
+.fm-choice-name{font-size:13px;font-weight:500;color:var(--fg)}
+.fm-choice-desc{font-size:11px;color:var(--muted);line-height:1.35}
+/* hover comes from the shared .cmd-item:hover (10% accent tint, the one menu hover language).
+   The current/selected choice wears the badge tint recipe (16% accent + accent ink); the filled
+   radio/checkbox mark is the selection affordance, so no separate 35% border is added. */
+.fm-choice.cur{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.fm-choice.cur .fm-choice-name{color:var(--acc)}
+.fm-choice:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.fm-choice-mark{flex-shrink:0;width:16px;height:16px;border:1.5px solid var(--bdr-ui);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--acc-fg);font-size:10px;transition:background .12s,border-color .12s}
+.fm-choice.cur .fm-choice-mark{border-color:var(--acc);background:var(--acc)}
+.fm-choice.cur:not(.fm-toggle) .fm-choice-mark::after{content:'';width:6px;height:6px;border-radius:50%;background:var(--acc-fg)}
+.fm-toggle .fm-choice-mark{border-radius:var(--r-xs)}
+.fm-toggle.cur .fm-choice-mark::after{content:'✓'}
+/* a toolbar feature the user has hidden from the top-right cluster (item 5). !important so it
+   wins over each button's own conditional display logic (chronicle's calendar gate, etc.). */
+.tb-user-hidden{display:none!important}
 /* accent picker row */
 #accent-row{display:flex;align-items:center;gap:8px;padding:5px 9px 8px 45px}
 .acc-row-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;flex-shrink:0}
@@ -2057,6 +2081,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .bm-desc{order:4;flex:1 0 100%;font-size:11px;color:var(--muted);line-height:1.3;padding-top:1px}
 body.v-lean .bm-help{display:none}
 body:not(.v-guided) .bm-desc{display:none}
+/* the "File ▾" cue beside the wordmark is a teaching affordance — it names the menu the logo
+   opens. Guided only; Standard/Lean users know the logo is the menu (item, modes batch). */
+body:not(.v-guided) .logo-file-cue{display:none}
 /* ── variables overview panel ── */
 #var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);box-shadow:var(--sh-up);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
 #var-panel.on{transform:translateY(0)}
@@ -2373,7 +2400,16 @@ body:not(.v-guided) .bm-desc{display:none}
         <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
         <div id="accent-row"><span class="acc-row-lbl">Color</span><div id="accent-swatches"></div></div>
         <div class="cmd-item" id="btn-width" aria-pressed="false"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Width: Narrow</span><span class="cmd-desc">Widen the editing column</span></div></div>
-        <div class="cmd-item" id="btn-verbosity"><div class="cmd-icon" data-fa="fa-solid fa-feather" data-fb="≈">≈</div><div class="cmd-info"><span class="cmd-label" id="verbosity-label">Verbosity: Guided ●○○</span><span class="cmd-desc" id="verbosity-desc">Now Guided: point hints, pill tooltips and the search cheatsheet all shown. Next: Standard</span></div><span class="cmd-key">⌘⇧.</span></div>
+        <div class="fm-scard" id="fm-verbosity-card" role="radiogroup" aria-label="Guidance level">
+          <div class="fm-scard-head"><span>Guidance</span><span class="cmd-key" id="verbosity-key">⌘⇧.</span></div>
+          <div class="cmd-item fm-choice" data-tier="guided" role="radio"><span class="fm-choice-mark" aria-hidden="true"></span><span class="fm-choice-info"><span class="fm-choice-name">Guided</span><span class="fm-choice-desc">Point hints, pill tooltips and the search cheatsheet all shown.</span></span></div>
+          <div class="cmd-item fm-choice" data-tier="standard" role="radio"><span class="fm-choice-mark" aria-hidden="true"></span><span class="fm-choice-info"><span class="fm-choice-name">Standard</span><span class="fm-choice-desc">Teaching aids off; the menus and edit pencils stay.</span></span></div>
+          <div class="cmd-item fm-choice" data-tier="lean" role="radio"><span class="fm-choice-mark" aria-hidden="true"></span><span class="fm-choice-info"><span class="fm-choice-name">Lean</span><span class="fm-choice-desc">Minimal chrome; the / and @ menus show only what you type.</span></span></div>
+        </div>
+        <div class="fm-scard" id="fm-toolbar-card" aria-label="Toolbar features">
+          <div class="fm-scard-head"><span>Toolbar features</span></div>
+          <div id="fm-toolbar-opts"></div>
+        </div>
         <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
         <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
         <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
@@ -2523,13 +2559,15 @@ let root      = mkRoot();
 let focusedId = null;
 let showDone  = true;   // #827 owner decision: completed points stay visible (struck through) by default; a persisted preference in the autosave payload still wins on restore
 let showNotes = true;   // global notes visibility (the header toggle); hidden notes leave a .note-ind mark
-// The verbosity dial — a 3-POSITION control (guided → standard → lean), cycled by ⌘⇧. / the File-menu
-// row. Tiers strip progressively more guidance (ux.md dial table), never features:
+// The verbosity dial — a 3-POSITION control (guided → standard → lean), cycled by ⌘⇧. or set
+// directly from the File-menu Guidance card. Tiers strip progressively more guidance (ux.md dial
+// table), never features:
 //   guided (default): everything shown — the teaching layer is on (hints, search legend, tooltips).
 //   standard: "I know the commands, stop explaining, keep the conveniences" — the teaching TEXT is off
 //     (empty-state hints, search legend, pill tooltips) but the / @ menus render + pencils reveal on hover.
 //   lean: the keyboard canvas — ALSO blinds the / @ menus (typed blind, keydown still routes) + hides the
-//     hover pencils. The top bar is invariant in all tiers (user spec: the toolbar never changes).
+//     hover pencils. The top bar is invariant ACROSS TIERS (changing tier never moves the toolbar); WHICH
+//     optional feature buttons show is a separate, user-chosen preference (the File-menu toolbar chooser).
 // Persisted in the autosave payload. The body carries a `v-<tier>` class so CSS can target each tier.
 const VERBOSITY_TIERS = ['guided', 'standard', 'lean'];
 let verbosity = 'guided';
@@ -30497,7 +30535,8 @@ function updateFmStatus() {
 const fmtKey = k => (typeof IS_MAC !== 'undefined' && IS_MAC) ? '⌘' + k : 'Ctrl+' + k;
 function openFileMenu() {
   armChromeReturn();
-  syncVerbosityLabel();   // LEAN FLOOR p2: the row offers the OTHER mode, reflecting current state
+  syncVerbosityCard();       // modes batch item 4: highlight the current tier in the 3-choice card
+  buildToolbarChooser();     // modes batch item 5: (re)build the toolbar-feature toggles, reflecting current prefs
   // platform-correct shortcut chips (⌘K on Mac, Ctrl+K elsewhere)
   const keySave = document.getElementById('key-save');
   if (keySave) keySave.textContent = fmtKey('S');
@@ -30570,7 +30609,7 @@ const fmNavBtns = () => [...fileMenu.querySelectorAll('.guide-nav-btn')];
 // <button> (Install) keeps its own role. tabindex=-1 on all of them so arrow-roving owns
 // the tab order (they're reachable by arrows/Tab-wrap, not the page tab sequence).
 fileMenu.querySelectorAll('.cmd-item').forEach(it => {
-  if (it.tagName === 'DIV') it.setAttribute('role', 'button');
+  if (it.tagName === 'DIV' && !it.hasAttribute('role')) it.setAttribute('role', 'button');   // preserve radio/checkbox roles on the settings cards
   it.setAttribute('tabindex', '-1');
 });
 // #603: three focus zones — the search input, the category nav, and the visible action rows.
@@ -30657,26 +30696,87 @@ document.getElementById('btn-datapacks')?.addEventListener('click', () => { clos
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
 document.getElementById('btn-calendar')?.addEventListener('click', () => { closeFileMenu(); openCalendarDialog(); });   // #527
 document.getElementById('btn-units')?.addEventListener('click', () => { closeFileMenu(); openUnitsDialog(); });   // #875
-document.getElementById('btn-verbosity')?.addEventListener('click', () => { closeFileMenu(); toggleVerbosity(); });   // LEAN FLOOR p2
-// the File-menu row is a CYCLE button (guided → standard → lean → …): the label names where the next
-// press lands + the desc names the current tier, so the user always sees both. Refreshed on menu open.
-// The File-menu row is a self-explaining 3-stop indicator: the label names the CURRENT tier + a
-// position dot-track (●○○ / ○●○ / ○○●) so it reads as a dial with a known position (panel review: tiers
-// are defined by absence, so an at-rest tell is the fix for "which tier am I in?"); the desc says what
-// the next press does. A capitalized tier name for the label.
-const VERBOSITY_DOTS = { guided: '●○○', standard: '○●○', lean: '○○●' };
-const VERBOSITY_CUR_DESC = {
-  guided:   'Now Guided: point hints, pill tooltips and the search cheatsheet all shown. Next: Standard',
-  standard: 'Now Standard: those three teaching aids are off, but the menus and edit pencils stay. Next: Lean.',
-  lean:     'Now Lean: the / and @ menus show only the match you type, and pencils appear on focus. Next: Guided.',
-};
-function syncVerbosityLabel() {
-  const el = document.getElementById('verbosity-label');
-  const dsc = document.getElementById('verbosity-desc');
-  const name = verbosity[0].toUpperCase() + verbosity.slice(1);
-  if (el) el.textContent = `Verbosity: ${name} ${VERBOSITY_DOTS[verbosity]}`;
-  if (dsc) dsc.textContent = VERBOSITY_CUR_DESC[verbosity];
+// Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
+// leaves the menu open, so the user can try each tier and watch the app change behind the dialog.
+// The keyboard cycle (⌘⇧.) still works; both paths converge on setVerbosity so the card stays in sync.
+const VERBOSITY_NAMES = { guided: 'Guided', standard: 'Standard', lean: 'Lean' };
+function syncVerbosityCard() {
+  document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
+    const on = el.dataset.tier === verbosity;
+    el.classList.toggle('cur', on);
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
 }
+function setVerbosity(tier) {
+  if (!VERBOSITY_TIERS.includes(tier) || tier === verbosity) { syncVerbosityCard(); return; }
+  verbosity = tier;
+  syncVerbosityClass();
+  syncVerbosityCard();
+  scheduleAutosave();
+  render();
+  flashHint(VERBOSITY_FLASH[verbosity]);
+}
+document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
+  // deliberately does not close the menu: the card sets state in place (item 4). mousedown+
+  // preventDefault is not needed (no contenteditable is active while the menu is open).
+  el.addEventListener('click', () => setVerbosity(el.dataset.tier));
+});
+
+// ── Toolbar-feature chooser (modes batch, item 5) ────────────────────────────
+// Let the user pick which OPTIONAL feature buttons appear in the top-right cluster. Core controls
+// (search/levels/File) stay fixed and are not listed. A hidden set is persisted in localStorage
+// and applied by toggling .tb-user-hidden (which wins over each button's own display logic); an
+// un-hidden button falls back to its own gate (e.g. Chronicle stays governed by the calendar gate).
+const TOOLBAR_FEATURES = [
+  { id: 'btn-capture',   name: 'Capture' },
+  { id: 'btn-journal',   name: 'Journal' },
+  { id: 'btn-chronicle', name: 'Chronicle' },
+  { id: 'btn-agenda',    name: 'Agenda' },
+  { id: 'btn-graph',     name: 'Link graph' },
+  { id: 'btn-notes',     name: 'Notes' },
+];
+const TOOLBAR_PREF_KEY = 'pl-hidden-toolbar';
+const hiddenToolbar = new Set();
+(function loadToolbarPrefs() {
+  try {
+    const raw = localStorage.getItem(TOOLBAR_PREF_KEY);
+    if (raw) JSON.parse(raw).forEach(id => { if (TOOLBAR_FEATURES.some(f => f.id === id)) hiddenToolbar.add(id); });
+  } catch (_) { /* private mode / malformed: fall back to all-shown */ }
+})();
+function saveToolbarPrefs() {
+  try { localStorage.setItem(TOOLBAR_PREF_KEY, JSON.stringify([...hiddenToolbar])); } catch (_) {}
+}
+function applyToolbarPrefs() {
+  TOOLBAR_FEATURES.forEach(f => {
+    document.getElementById(f.id)?.classList.toggle('tb-user-hidden', hiddenToolbar.has(f.id));
+  });
+}
+function buildToolbarChooser() {
+  const host = document.getElementById('fm-toolbar-opts');
+  if (!host) return;
+  host.innerHTML = '';
+  TOOLBAR_FEATURES.forEach(f => {
+    const shown = !hiddenToolbar.has(f.id);
+    const row = document.createElement('div');
+    row.className = 'cmd-item fm-choice fm-toggle' + (shown ? ' cur' : '');
+    row.setAttribute('role', 'checkbox');
+    row.setAttribute('aria-checked', shown ? 'true' : 'false');
+    row.tabIndex = -1;   // arrow-roving owns the tab order, like the static rows
+    row.innerHTML = `<span class="fm-choice-mark" aria-hidden="true"></span><span class="fm-choice-info"><span class="fm-choice-name">${f.name}</span></span>`;
+    // deliberately keeps the menu open (item 5). Update the row IN PLACE (no full rebuild)
+    // so keyboard focus stays on the row the user just toggled.
+    row.addEventListener('click', () => {
+      if (hiddenToolbar.has(f.id)) hiddenToolbar.delete(f.id); else hiddenToolbar.add(f.id);
+      saveToolbarPrefs();
+      applyToolbarPrefs();
+      const on = !hiddenToolbar.has(f.id);
+      row.classList.toggle('cur', on);
+      row.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    host.appendChild(row);
+  });
+}
+applyToolbarPrefs();   // apply saved prefs on load
 document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
 // Inline rename: the menu-header filename edits IN PLACE (no dialog). Click or Enter
 // turns it into an editable field; Enter or blur commits, Escape cancels. Single-file
@@ -30930,7 +31030,7 @@ document.getElementById('btn-width').addEventListener('click', () => {
   fullWidth = !fullWidth;
   applyWidth();
   scheduleAutosave();
-  closeFileMenu();
+  // stays open (item, modes batch): width is an in-place setting, not a navigation.
 });
 document.getElementById('btn-done').addEventListener('click', () => {
   showDone = !showDone;
@@ -30998,6 +31098,7 @@ function toggleVerbosity(dir = 1) {
   const n = VERBOSITY_TIERS.length;
   verbosity = VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + dir + n) % n];   // dir +1 forward (quieter), -1 reverse (more guidance)
   syncVerbosityClass();
+  syncVerbosityCard();
   scheduleAutosave();
   render();
   flashHint(VERBOSITY_FLASH[verbosity]);
