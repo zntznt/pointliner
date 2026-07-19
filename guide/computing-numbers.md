@@ -344,6 +344,20 @@ The document you are in counts live; the other documents count **as they were la
 disk (a folder total says so in its tooltip). Without a folder connected, the folder scope
 covers just the current document, so the same file still computes when opened on its own.
 
+**Reach the whole document, not just below.** A search reducer looks below the point it sits on.
+To search the entire document from anywhere, including a point with nothing under it, add
+`document` (or `doc`) as the final argument:
+
+```
+{= count("is:todo", document)}   open tasks anywhere in this document
+{= sum("has:cost", cost, doc)}   total cost across the whole document
+```
+
+This is the door for a status line that lives on its own point, off to one side of the work it
+reports on. If a quoted-search reducer sits on a point that has **nothing below it** and you have
+not widened it, the pill reads `0 in scope` instead of a silent `0`, to tell you it needs a parent
+or a `, document` / `, folder` scope, rather than looking broken.
+
 **Count words, not properties.** The same `{= …}` form also counts prose over a **scope** instead
 of a property:
 

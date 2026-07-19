@@ -100,6 +100,7 @@ A live calculator that can see your document. Math pills recompute on their own.
   ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
   spreadsheet column, and `{= sum("#task", cost)}` totals it over everything matching a live search.
+  Add `, document` (or `, folder`) to search the whole document or folder from any point.
   ([aggregation](computing-numbers.md#roll-a-number-up-your-document-aggregation))
 - **Word counts.** `{= words(subtree)}` counts the prose under a heading; per-point notes stay out
   of the count unless you write `{= words(subtree, notes)}`.

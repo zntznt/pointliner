@@ -9319,6 +9319,60 @@ test('#557 renderMathPill wires the empty-rollup "nothing matched" state (src pi
   assert.ok(_src.includes('No ${emptyProp} below this point'), 'the empty-rollup hint (naming the prop) is missing');
 });
 
+test('#914 expandAggExpr — a ", document" / ", doc" widener reaches the whole doc (root), not the node subtree', () => {
+  // A doc tree with two #task points at different depths (costs 10 and 5) plus a leaf that has NO
+  // descendants of its own — the "dashboard pill on a leaf" case a subtree reducer would zero out.
+  const live = c.mkRoot(); live.docId = 'dd';
+  const a = c.mkNode('alpha #task'); a.id = 'a'; a.props = [{ key: 'cost', val: '10' }];
+  const b = c.mkNode('branch'); b.id = 'b';
+  const b1 = c.mkNode('beta #task'); b1.id = 'b1'; b1.props = [{ key: 'cost', val: '5' }];
+  b.children.push(b1);
+  const leaf = c.mkNode('a leaf point'); leaf.id = 'lf';   // no children
+  live.children.push(a, b, leaf);
+  c._context.__live = live;
+  vm.runInContext('root = __live; resetDocCaches();', c._context);
+  try {
+    // subtree-scoped (default) on the leaf sees nothing below it → identity
+    assert.equal(c.expandAggExpr('count("#task")', leaf), '(0)', 'default subtree scope on a leaf is empty');
+    // the document widener reaches every #task in the doc, regardless of the node it sits on
+    assert.equal(c.expandAggExpr('count("#task", document)', leaf), '(2)', '", document" counts the whole doc');
+    assert.equal(c.expandAggExpr('count("#task", doc)', leaf), '(2)', '", doc" is the same widener');
+    assert.equal(c.expandAggExpr('sum("#task", cost, document)', leaf), '(15)', 'sum over the whole doc');
+    assert.equal(c.expandAggExpr('avg("#task", cost, doc)', leaf), '(7.5)', 'avg over the whole doc');
+    // a WRONG scope word still stays literal → visible #ERR (P4), unchanged by #914
+    assert.ok(c.expandAggExpr('count("#task", everywhere)', leaf).includes('count("#task"'), 'an unknown scope word stays literal');
+  } finally {
+    vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('#914 queryReducerLeaf — flags a subtree-scoped quoted reducer on a childless point; excludes widened / bare / non-reducers', () => {
+  const leaf = c.mkNode('leaf');                       // no children
+  const parent = c.mkNode('p'); parent.children.push(c.mkNode('kid'));
+  assert.equal(c.queryReducerLeaf('count("is:todo")', leaf), true, 'a quoted reducer on a leaf → flagged');
+  assert.equal(c.queryReducerLeaf('sum("has:cost", cost)', leaf), true, 'sum("q", prop) on a leaf too');
+  assert.equal(c.queryReducerLeaf('count("is:todo")', parent), false, 'a point WITH children is not flagged');
+  assert.equal(c.queryReducerLeaf('count("is:todo", folder)', leaf), false, 'an already-folder-widened reducer is not flagged');
+  assert.equal(c.queryReducerLeaf('count("is:todo", document)', leaf), false, 'a document-widened reducer is not flagged');
+  assert.equal(c.queryReducerLeaf('sum("q", cost, doc)', leaf), false, 'a doc-widened sum is not flagged');
+  assert.equal(c.queryReducerLeaf('count(cost)', leaf), false, 'a bare child-prop rollup (no quote) is not a query reducer');
+  assert.equal(c.queryReducerLeaf('2 + 2', leaf), false, 'a plain expression is not flagged');
+  assert.equal(c.queryReducerLeaf('count("q")', null), false, 'a null node is never flagged');
+});
+
+test('#914 renderMathPill + expandAggExpr wire the leaf cue and the document widener (src pins)', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('queryReducerLeaf(m.expr, cookieNode)'), 'renderMathPill must check the leaf query-reducer case');
+  assert.ok(rmp.includes('0 in scope'), 'the leaf cue mark is missing');
+  // the cue comes AFTER the #ERR and empty-rollup returns (a real failure stays loud)
+  assert.ok(rmp.indexOf('firstEmptyRollup') < rmp.indexOf('queryReducerLeaf'), 'the leaf cue must come after the empty-rollup branch');
+  // the expandAggExpr reducer arms accept the document/doc widener and route it to the doc root
+  const eae = fnBody(_src, 'expandAggExpr');
+  assert.ok(/folder\|document\|doc/.test(eae), 'the reducer arms must accept the document/doc scope word');
+  assert.ok(eae.includes('queryCountIn(q, root)'), 'a document-scoped count must search the doc root');
+  assert.ok(eae.includes('queryReduce(fn, q, prop, root)'), 'a document-scoped reducer must search the doc root');
+});
+
 test('value-only math pill (m.bare): render, dialog toggle, edit round-trip, and reusable checkbox field (src pins)', () => {
   const rmp = fnBody(_src, 'renderMathPill');
   // the bare branch renders ONLY the value (the math-bare class), and it sits AFTER the #ERR and

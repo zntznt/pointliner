@@ -3821,9 +3821,12 @@ function expandAggExpr(expr, node, vars = null) {
   // 4c: an optional trailing `, folder` widens the count to the whole reading set (own doc
   // live, other docs as saved) via the gen-memoized queryReduceFolder. Only the word `folder`
   // matches; any other scope word leaves the call literal → visible #ERR (P4).
+  // #914: a `, document` (or `, doc`) widener reaches the WHOLE current document (root), not just the
+  // node's subtree — the explicit way a dashboard pill on a leaf searches the doc, without changing
+  // the default subtree meaning of every existing reducer. `, folder` still widens to the notebook.
   if (/\bcount\s*\(\s*"/.test(e)) {
-    e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*(?:,\s*(folder)\s*)?\)/g,
-      (_, q, sc) => '(' + (sc ? queryReduceFolder('count', q, null) : queryCountIn(q, node)) + ')');
+    e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*(?:,\s*(folder|document|doc)\s*)?\)/g,
+      (_, q, sc) => '(' + (sc === 'folder' ? queryReduceFolder('count', q, null) : sc ? queryCountIn(q, root) : queryCountIn(q, node)) + ')');
   }
   // sum/avg/min/max("query", prop) — REDUCE a property over a live query set (SR-8 / #877), the
   // generalization of count("query"). The quoted 1st arg is the search, the 2nd a property key, so
@@ -3837,8 +3840,8 @@ function expandAggExpr(expr, node, vars = null) {
   // 4c: same optional `, folder` third arg as count("query") — {= sum("has:cost", cost, folder)}
   // reduces across the whole reading set. Any other third word → literal → #ERR.
   if (/\b(?:sum|avg|min|max)\s*\(\s*"/.test(e)) {
-    e = e.replace(/\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*(?:,\s*(folder)\s*)?\)/g,
-      (m, fn, q, prop, sc) => '(' + (sc ? queryReduceFolder(fn, q, prop) : queryReduce(fn, q, prop, node)) + ')');
+    e = e.replace(/\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*([A-Za-z_]\w*)\s*(?:,\s*(folder|document|doc)\s*)?\)/g,
+      (m, fn, q, prop, sc) => '(' + (sc === 'folder' ? queryReduceFolder(fn, q, prop) : sc ? queryReduce(fn, q, prop, root) : queryReduce(fn, q, prop, node)) + ')');
   }
   // sum/avg/count are NOT evalMath functions — the rollup is their only meaning — so the
   // 2nd arg can be a keyword scope OR a numeric depth: sum(cost) = direct children (default),
@@ -3925,6 +3928,20 @@ function firstEmptyRollup(expr, node) {
     if (!any) return prop;
   }
   return null;
+}
+
+// #914: a QUOTED query reducer ({= count("q")} / {= sum("q", prop)}) that is subtree-scoped (no
+// `, folder` / `, document` widener) on a point with NO descendants can only ever return the
+// identity, because there is nothing below it to search — almost always a "dashboard" pill dropped
+// on a leaf. That STRUCTURAL emptiness (zero candidate points in scope) is a different fact from
+// "candidates exist, none matched" (a legitimate dynamic 0, which deliberately stays silent), so it
+// earns a quiet P4 cue instead of a number that reads as broken. Pure (explicit node).
+function queryReducerLeaf(expr, node) {
+  if (!expr || !node) return false;
+  const s = String(expr);
+  if (!/\b(?:count|sum|avg|min|max)\s*\(\s*"/.test(s)) return false;   // a quoted reducer is present…
+  if (/,\s*(?:folder|document|doc)\s*\)/.test(s)) return false;         // …but not one already widened past the subtree
+  return collectScoped(node, Infinity).length === 0;                    // …and the node has nothing below it
 }
 
 // Pure: an estimate-grade word count of prose — block + inline markdown, artifact tokens,
@@ -23439,6 +23456,21 @@ function renderMathPill(key, m) {
       + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
+  // #914: a quoted query reducer on a LEAF point (no descendants) can only return the identity —
+  // almost always a dashboard pill dropped on a leaf. Name it (P4, reusing the math-empty chrome)
+  // and point at the two fixes, instead of a silent number that reads as broken.
+  if (queryReducerLeaf(m.expr, cookieNode)) {
+    const tip = 'No points below this one to search. Move the pill onto a parent, or add ", document" to search the whole document (", folder" for the notebook).';
+    return `<span class="math-roll math-empty" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
+      + ` aria-label="Math ${escQ(m.expr)}: nothing in scope. ${escQ(tip)}">`
+      + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
+      + `<span class="math-expr">${escHtml(m.expr)}</span>`
+      + `<span class="math-eq">=</span>`
+      + `<span class="math-result">${escHtml(display)}</span>`
+      + `<span class="math-empty-mark" aria-hidden="true">0 in scope</span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `</span>`;
+  }
   // Value-only display (opt-in per pill, m.bare): render JUST the computed value, chrome-free, so
   // it reads as part of the prose or heading instead of a monospace `expr = value` capsule (the
   // "make numbers look like writing" ask). Only the successful branch is bare — an #ERR or empty
@@ -32136,7 +32168,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
@@ -32145,6 +32177,8 @@ const GUIDE = [
       { syn:'{= avg(score)}', desc:'average the scores' },
       { syn:'{= count(cost)}',desc:'how many children have a cost' },
       { syn:'{= sum("#task", cost)}', desc:'total a property over everything matching a search' },
+      { syn:'{= count("is:todo", document)}', desc:'count across the whole document, from any point' },
+      { syn:'{= sum("has:cost", cost, folder)}', desc:'total across every note in the folder' },
       { syn:'{= max("due:overdue", cost)}', desc:'the priciest overdue item below' },
       { syn:'{= asdate(max(due))}', desc:'the latest due date below' },
       { syn:'{= words(subtree)}', desc:'count every word beneath this point' },
