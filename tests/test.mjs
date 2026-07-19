@@ -13677,6 +13677,35 @@ test('modes batch — search-hint tiered display + clickable examples', () => {
     'example chips must keep the caret (mousedown preventDefault) and be keyboard-operable (role/button + tabindex)');
 });
 
+// item 8 (modes batch): the { grammar picker matches the lean / and @ commands — a one-line tip.
+test('modes batch — lean { picker shows the one-line tip, like / and @', () => {
+  assert.ok(_src.includes('function renderLeanBraceTip('), 'renderLeanBraceTip (the lean { tip) is missing');
+  // both trigger paths (forms + body) switch to the tip in lean instead of the full DOM menu
+  assert.ok(/if \(isLean\(\)\) \{ renderLeanBraceTip\(\); return; \}/.test(_src), 'checkBraceTrigger must show the lean tip instead of the full menu');
+  assert.ok(_src.includes('if (isLean()) renderLeanBraceTip(); else renderBraceMenu();'), 'braceMove must update the lean tip in lean');
+  // the tip drives the SHARED #lean-slash-tip element (one lean voice across the inline pickers)
+  assert.ok(/function renderLeanBraceTip\(\)[\s\S]{0,500}leanSlashTip\.classList\.add\('on'\)/.test(_src),
+    'the lean { tip must drive the shared #lean-slash-tip element');
+  // key routing works in lean (the DOM menu is not open, so route on state, like the slash menu)
+  assert.ok(_src.includes('braceState && (isBraceMenuOpen() || isLean())'), 'brace key routing must work in lean (state-based)');
+});
+
+// item 9 (modes batch): the lean bullet hover menu is reduced to four ops; "More" is transient in lean.
+test('modes batch — lean bullet menu reduced to four ops, transient More', () => {
+  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function showBulletPopup(') + 19000);
+  // the four lean-tier ops are flagged lean:true — Zoom + Collapse(para) + Note + Dates + Delete = 5 markers
+  assert.ok((fn.match(/lean:true/g) || []).length >= 5, 'the lean-tier ops must be flagged lean:true (Zoom/Collapse, Note, Dates, Delete)');
+  // a lean hover filters to the lean-tier rows; guided/standard keep the primary set
+  assert.ok(fn.includes('leanCollapsed ? actions.filter(a => a.lean) : actions.filter(a => a.prim)'),
+    'a lean hover must filter to the lean-tier rows');
+  // lean ignores the sticky expand flag, and the type switcher is hidden in a lean-collapsed hover
+  assert.ok(fn.includes('(bpopExpanded && !isLean())'), 'lean must ignore the sticky bpopExpanded flag');
+  assert.ok(fn.includes('if (!isBase && !leanCollapsed)'), 'the type switcher must hide in a lean-collapsed hover');
+  // "More" is transient in lean (opts.expand, this-open only), sticky in guided/standard (bpopExpanded)
+  assert.ok(fn.includes('if (!isLean()) bpopExpanded = true;') && fn.includes('{ ...opts, expand: true }'),
+    'More must be transient in lean (opts.expand) and sticky in guided/standard (bpopExpanded)');
+});
+
 test('#616 real bugs: platform MOD in verbosity toasts, conjugated rename announce, Ctrl/Cmd order', () => {
   // Bug 1: VERBOSITY_FLASH builds the chord from the platform MOD, never a hardcoded Mac glyph a
   // non-Mac user can't press. MOD is defined ABOVE the object so the template can reference it.
