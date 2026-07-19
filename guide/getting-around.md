@@ -53,6 +53,13 @@ to a one-line peek ending in an ellipsis, so a page of long notes stays scannabl
 again to show the whole thing, or just click the text to edit it (editing always shows the full
 paragraph). The folded state is saved with the document.
 
+A paragraph is prose-first in one more way: any pills inside it are drawn **lighter**, without the
+usual capsule, icon or dice breakdown, so a generated sentence reads as a sentence rather than a row
+of widgets (they still work: hover shows a faint tint, click re-rolls). And when you export a
+paragraph to Markdown or plain text, each pill flattens to just its **result** (`9`, not `2d6 = 9`),
+so the exported prose reads clean. Pills in ordinary bullets keep their full capsule and export their
+recipe, as before.
+
 ## Selecting many points
 
 Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole

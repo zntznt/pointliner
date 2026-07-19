@@ -1096,6 +1096,23 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .seq-pill .seq-states{color:var(--muted);font-size:.92em}
 .seq-pill .seq-pipe{color:var(--acc);font-weight:700;padding:0 1px}
 .seq-pill.seq-bad{color:var(--del);border-style:dashed;cursor:default}
+/* #925f: PROSE-MODE PILLS. In a PARAGRAPH point, inline generators shed the stadium chrome (and
+   the dice recipe + leading icons), reading as tinted inline text so a generated sentence reads as
+   prose, not a row of widgets — the readability the writer persona asked for. It's the same
+   restraint the math "Show value only" (.math-bare) mode established, applied to every inline
+   generator in a para; the family hue survives at whisper level (identity, DL §4), and the pill
+   stays clickable with a faint hover tint. Block pills (query) are unaffected; edit pencils stay
+   hover-revealed. On .md/.txt export a paragraph's pills flatten to their RESULT only (frozenTokenText),
+   so the two stay in step: prose on screen, prose in the file. Recorded in design-language.md. */
+.nt-para .dice-roll, .nt-para .gr-roll, .nt-para .mk-roll,
+.nt-para .est-pill, .nt-para .var-pill, .nt-para .seq-pill{
+  border-color:transparent;background:transparent;padding:0;margin:0;gap:2px;font-size:inherit}
+.nt-para .dice-roll:hover, .nt-para .gr-roll:hover, .nt-para .mk-roll:hover,
+.nt-para .est-pill:hover, .nt-para .var-pill:hover, .nt-para .seq-pill:hover{
+  border-color:transparent;background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:var(--r-sm)}
+.nt-para .dice-ico, .nt-para .gr-ico, .nt-para .mk-ico, .nt-para .est-ico, .nt-para .var-ico, .nt-para .seq-ico,
+.nt-para .dice-formula, .nt-para .dice-eq{display:none}
+.nt-para .dice-total, .nt-para .var-val{font-weight:inherit;font-family:inherit}   /* read as prose, not a bold-mono island */
 /* query pill (block): a live embedded search. --pill hue #4a6b8a (info-family blue, distinct
    from the artifact hues per design-language §4). Uses only tokens + the --r-* radii. */
 .query-pill{--pill:#4a6b8a;display:block;margin:3px 0;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.92em;cursor:pointer;user-select:none;overflow:hidden}
@@ -28257,8 +28274,14 @@ function maybePeerNotice() {
 // UXP-137: the frozen plain-text form of ONE artifact token — the value it currently shows,
 // per type. Factored out of flattenArtifacts so the whole-doc flatten AND the per-pill "Freeze to
 // text" action stay in lockstep (P1). Returns '' when the sidecar record is missing.
-function frozenTokenText(type, key, node, varMap, rootNode = root) {
+function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport = false) {
   type = type.toLowerCase();
+  // #925f: on a prose EXPORT of a PARAGRAPH point, a pill flattens to just its RESULT (the prose it
+  // reads as), not the recipe — `9`, not `2d6 = 9` — so the exported paragraph is clean prose. Only
+  // the recipe-carrying types differ (dice/est/var/query); grammar/markov/math already emit the
+  // result alone. Scoped to the export path (proseExport) + the para type, so display labels
+  // (breadcrumbs, backlinks, pickers) keep the informative `expr = value` form.
+  const prose = proseExport && node?.type === 'para';
   if (type === 'grammar') {
     const g = node.grammar?.find(x => x.key === key); if (!g) return '';
     return g.result;
@@ -28266,7 +28289,8 @@ function frozenTokenText(type, key, node, varMap, rootNode = root) {
   if (type === 'est') {
     const e = node.est?.find(x => x.key === key); if (!e) return '';
     const samples = sampleUncertain(e.expr, EST_N, e.seed, node, varMap);   // SR-7: resolve declared vars in export too
-    return `${e.expr} ≈ ${samples ? formatDist(samples) : '#ERR'}`;
+    const dist = samples ? formatDist(samples) : '#ERR';
+    return prose ? dist : `${e.expr} ≈ ${dist}`;
   }
   if (type === 'seq') {
     const sq = node.seq?.find(x => x.key === key); if (!sq) return '';
@@ -28276,7 +28300,7 @@ function frozenTokenText(type, key, node, varMap, rootNode = root) {
     const d = node.dice?.find(x => x.key === key); if (!d) return '';
     const isFate = d.parts?.some(p => p.kind === 'dice' && p.sides === 'F');
     const total = isFate && d.total > 0 ? '+' + d.total : String(d.total);
-    return `${d.expr} = ${total}`;
+    return prose ? total : `${d.expr} = ${total}`;
   }
   if (type === 'markov') {
     const mk = node.markov?.find(x => x.key === key); if (!mk) return '';
@@ -28290,9 +28314,10 @@ function frozenTokenText(type, key, node, varMap, rootNode = root) {
     const expr = (q.expr || '').trim();
     if (!expr) return '(empty query)';
     const { rows, total, truncated } = queryRows(expr, rootNode, node.id);
-    if (!total) return `${expr} → (no matches)`;
+    if (!total) return prose ? '(no matches)' : `${expr} → (no matches)`;
     const titles = rows.map(r => r.title).join(', ');
-    return `${expr} → ${titles}${truncated ? ` (+${total - rows.length} more)` : ''}`;
+    const tail = `${titles}${truncated ? ` (+${total - rows.length} more)` : ''}`;
+    return prose ? tail : `${expr} → ${tail}`;
   }
   if (type === 'math') {
     const m = node.math?.find(x => x.key === key); if (!m) return '';
@@ -28304,12 +28329,12 @@ function frozenTokenText(type, key, node, varMap, rootNode = root) {
   if (!rec) return '';
   const val = varMap[(rec.name || '').toLowerCase()];
   const valStr = val !== undefined ? formatVarValue(val) : '?';
-  return rec.expr ? `${rec.name} = ${valStr}` : valStr;
+  return (rec.expr && !prose) ? `${rec.name} = ${valStr}` : valStr;
 }
 
-function flattenArtifacts(text, node, varMap) {
+function flattenArtifacts(text, node, varMap, proseExport = false) {
   const flat = (text || '').replace(/\[\[(dice|markov|math|var|grammar|seq|est|query):([a-z0-9]+)\]\]/gi,
-    (_, type, key) => frozenTokenText(type, key, node, varMap));
+    (_, type, key) => frozenTokenText(type, key, node, varMap, root, proseExport));   // #925f: para export → result-only
   // progress cookies freeze to their computed tally in a one-way snapshot (UXP-159: honor the depth scope)
   const cooked = flat.replace(/\[(\/|%)(self|children|subtree|\d+)?\]/g, (m, k, scope) => {
     const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
@@ -28378,7 +28403,7 @@ function toMarkdown(rootNode) {
       // To-dos carry their own markdown (`- [ ]` marker / Org keyword) in node.text —
       // export it verbatim instead of synthesizing a marker from type+checked.
       const isTodo = node.type === 'todo';
-      let body = linkText(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap)); // #806: links → titles
+      let body = linkText(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)); // #806: links → titles; #925f: para pills → result-only
       const hLvl = { h1:1, h2:2, h3:3, h4:4, h5:5, h6:6 }[node.type];
       if (node.type === 'quote') body = `> ${body}`;
       else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
@@ -28430,7 +28455,7 @@ function toPlainText(rootNode) {
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
-      let body = stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap))); // #806: links → titles
+      let body = stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))); // #806: links → titles; #925f: para pills → result-only
       if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);

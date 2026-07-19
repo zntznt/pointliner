@@ -197,6 +197,16 @@ two shapes, two meanings, shared vertical metrics (`.72em/600/.06em`, `padding:1
 - **The `--ring` glow means focus, not hover.** Pill hover = accent border + 6% tint;
   `:focus-visible` = solid accent outline (the glow may remain as decoration around it).
   Don't re-blur the focus indicator into a 20%-alpha ghost.
+- **Sanctioned exception — the prose-mode pill (`.nt-para`, #925f).** Inside a **paragraph**
+  point the stadium is *dropped*: inline generators (dice/grammar/markov/est/var/seq) shed the
+  capsule, the leading icon, and the dice recipe, and read as tinted inline text so a generated
+  sentence reads as prose, not a row of widgets. This is the same restraint the math **"Show value
+  only"** (`.math-bare`) mode already established, generalized to every inline generator *in a
+  paragraph only*. The family hue survives at whisper level (identity is kept), the pill stays
+  clickable with a faint hover tint, and the stadium is untouched everywhere else (bullets, headings,
+  bases). Block pills (query) are exempt. This is the ONLY context in which the artifact signature is
+  suppressed, and it is intentional: the paragraph type is prose-first, so its export flattens pills
+  to their result too (the two stay in step). Do not extend the chrome-drop beyond paragraphs.
 
 **Decision: tables.** The **static** rendered table (`.md-table-static`) is editorial —
 horizontal rules only, 2px head rule, mono caps header, no vertical lines, no header fill.
