@@ -1170,7 +1170,11 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
    mode; an open editor ([data-editing]) always shows the full text so editing is never clamped.
    The fade cue reads "there's more here" without a chevron. Toggled by the paragraph's bullet. */
 .nt-para.folded>.node-row>.node-content:not([data-editing]){display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;line-clamp:1;overflow:hidden}
-.nt-para.folded>.node-row>.bullet .bullet-dot{box-shadow:0 0 0 2px color-mix(in srgb,var(--muted) 40%,transparent)}
+/* a paragraph's point is the faint ¶ pilcrow (.bullet::after, opacity .35). When FOLDED it turns
+   solid and present — full ink, semibold, on a soft accent-tint chip — so a collapsed paragraph
+   reads at a glance as a distinct, "active" mark against the whisper-quiet ¶ of open paragraphs. */
+.nt-para.folded>.node-row>.bullet::after{color:var(--fg);opacity:.9;font-weight:700;background:color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:0 2px}
+.nt-para.folded>.node-row>.bullet:hover::after{background:color-mix(in srgb,var(--acc) 24%,transparent)}
 
 /* search highlight */
 mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
