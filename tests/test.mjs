@@ -2062,7 +2062,7 @@ test('paragraph traps: prose slash gate, ¶ alignment, and the fold clearing on 
   // 3) the fold is a paragraph-only state — converting away clears it everywhere.
   assert.ok(fnBody(_src, 'applyBlockCmd').includes("if (node.type !== 'para') node.folded = false"),
     'applyBlockCmd clears folded on conversion');
-  const n = { text: '- [ ] task now', type: 'para', folded: true };
+  const n = { text: '- [ ] task now', type: 'ul', folded: true };
   c.rederiveFromText(n);
   assert.equal(n.type, 'todo');
   assert.equal(n.folded, false, 'a text-derived conversion clears the fold');
@@ -2070,6 +2070,26 @@ test('paragraph traps: prose slash gate, ¶ alignment, and the fold clearing on 
   c.rederiveFromText(stays);
   assert.equal(stays.type, 'para');
   assert.equal(stays.folded, true, 'a paragraph that stays a paragraph keeps its fold');
+});
+
+test('a paragraph is an explicit mode: markdown on the FIRST line styles it, never re-types it', () => {
+  // The reported bug: opening a paragraph's first line with `# ` flipped the node to h1
+  // (destroying prose mode), while `# ` on line 2+ just rendered a heading — arbitrary.
+  // A para now NEVER re-derives from text; markdown styles the prose on any line alike.
+  for (const first of ['# wagoo', '> quoted', '- [ ] task', '1. numbered', '```']) {
+    const p = { text: `${first}\nwagoo`, type: 'para', folded: false };
+    c.rederiveFromText(p);
+    assert.equal(p.type, 'para', `"${first.slice(0, 8)}…" first line must not re-type a paragraph`);
+  }
+  // a plain bullet keeps the markdown-first hint behavior (dimming/spacing/OPML)
+  const u = { text: '# title', type: 'ul' };
+  c.rederiveFromText(u);
+  assert.equal(u.type, 'h1', 'a bullet still derives the h1 hint');
+  // wiring pins: the same guard at the LIVE site and the exitEdit site
+  assert.ok(fnBody(_src, 'checkMdBlockPrefix').includes("if (node.type === 'para') return false"),
+    'checkMdBlockPrefix must never re-type a paragraph live');
+  assert.match(_src, /const et = node\.type === 'para' \? null : deriveTypeFromText\(node\.text\);/,
+    'exitEdit must never re-type a paragraph on commit');
 });
 
 test('toOpml — strips lone surrogates and U+FFFE/U+FFFF; valid emoji pairs survive', () => {

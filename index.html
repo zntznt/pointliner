@@ -2624,7 +2624,10 @@ function deriveTypeFromText(text) {
 // Show-Done off. One helper so a fourth path can't drop it again. Matches exitEdit's fallback.
 function rederiveFromText(node) {
   if (!node) return;
-  const t = deriveTypeFromText(node.text);
+  // A paragraph is an explicit mode, never a derived hint: markdown on its first line
+  // (`# `, `> `, `- [ ]`) styles the prose via mdToHtml without changing what the point
+  // IS — the same guard as checkMdBlockPrefix and exitEdit. Only explicit doors leave para.
+  const t = node.type === 'para' ? null : deriveTypeFromText(node.text);
   if (t) node.type = t;
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
   if (node.type !== 'para') node.folded = false;   // the fold is para-only; clear it when the text derives another type
@@ -15671,7 +15674,10 @@ function exitEdit(content, node) {
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   warnVarDeclRipple(node, declsBefore, prevText); // announce value changes / confirm orphaning renames
-  const et = deriveTypeFromText(node.text);
+  // A paragraph never re-derives: `# `/`> `/`- [ ]` on ANY line (the first included) is
+  // markdown rendered inside the prose, not a change of what the point IS (see
+  // checkMdBlockPrefix — the same guard, live). Only explicit doors leave para.
+  const et = node.type === 'para' ? null : deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
   if (node.type !== 'para') node.folded = false;   // the fold is para-only (matches rederiveFromText)
@@ -24739,6 +24745,12 @@ function emojiApply() {
 }
 
 function checkMdBlockPrefix(content, node) {
+  // A PARAGRAPH is an explicit mode, not a derived hint — markdown on ANY line (a `# `
+  // heading, a `> ` quote, a task) renders inside the prose via mdToHtml without changing
+  // what the node IS. Deriving here would make the FIRST line special (line 2+ never
+  // re-derives), silently flipping the paragraph to a heading/bullet node the moment its
+  // prose opens with styled markdown. Only /para, the type switcher, or the menu leave para.
+  if (node.type === 'para') return false;
   const text = editableText(content);
   // Divider still converts immediately (its row hides the content element, so
   // staying in edit mode isn't useful) — but the break now STAYS in node.text
