@@ -7241,6 +7241,22 @@ test('workspaceCandidates: absent or empty index → []', () => {
   assert.deepEqual(host(c.workspaceCandidates('x', c.buildWorkspaceIndex([]), 'da')), []);
 });
 
+// #925a: the backlinks panel is ALWAYS-ON — it no longer hides when a point has nothing inbound;
+// the two strips ("Linked from" / "Unlinked references") show just their titles at 0 matches, with
+// no empty content region below. Browser-side render, so source-pinned (like the rest of this panel).
+test('#925a: backlinks panel is always-on, both strip titles shown at 0 matches', () => {
+  const fn = _src.slice(_src.indexOf('function showBlPanel('), _src.indexOf('function showBlPanel(') + 900);
+  assert.ok(!/if \(!sources\.length && !unlinked\.length && !cross\.length && !crossUnlinked\.length\) \{ hideBlPanel/.test(fn),
+    'showBlPanel must NOT hide when everything is empty (always-on)');
+  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlPanel(') + 4000);
+  assert.ok(rp.includes("hd.textContent = total ? `Linked from · ${total}` : 'Linked from'"),
+    'the "Linked from" title shows always (title-only at 0)');
+  assert.ok(rp.includes("subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '')"),
+    'the "Unlinked references" strip shows its title always (title-only at 0)');
+  assert.ok(!/if \(!unlinked\.length\) return;\s*\n\s*const subhd/.test(rp),
+    'the unlinked subheader must no longer be gated behind a non-empty check');
+});
+
 // ── cross-document backlinks (CF-4) ───────────────────────────────────────────
 // workspaceBacklinks(targetDocId, targetNodeId, index) is pure — the panel merge
 // (showBlPanel/renderBlPanel) is browser-side (mock-index harness). Reuses cfDocFor.

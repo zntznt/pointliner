@@ -29060,12 +29060,14 @@ function showBlPanel(nodeId) {
   const cross = (workspaceDir && workspaceIndex) ? workspaceBacklinks(root.docId, nodeId, workspaceIndex) : [];
   // backlog #3: unlinked mentions of this point in OTHER folder docs (view-only, no auto-link).
   const crossUnlinked = (workspaceDir && workspaceIndex) ? collectCrossUnlinkedRefs(nodeById(nodeId), root.docId, workspaceIndex) : [];
-  if (!sources.length && !unlinked.length && !cross.length && !crossUnlinked.length) { hideBlPanel(); return false; }
+  // 925a: always-on. The panel no longer hides when a point has nothing inbound; instead the two
+  // strips ("Linked from" / "Unlinked references") show just their titles, so the sections are always
+  // present and discoverable (Roam/Tana-style) without an empty content region below them.
   blNodeId = nodeId;
   renderBlPanel(sources, unlinked, cross, crossUnlinked);
   document.getElementById('bl-panel').classList.add('on');
   syncBlPanelBottom();
-  return true;
+  return (sources.length + unlinked.length + cross.length + crossUnlinked.length) > 0;
 }
 
 function hideBlPanel() {
@@ -29083,8 +29085,10 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   const hd = document.getElementById('bl-panel-hd');
   const total = sources.length + cross.length;   // "Linked from" is all inbound links (CF-4)
   if (hd) {
-    if (!total) hd.style.display = 'none';
-    else { hd.style.display = ''; hd.textContent = total === 1 ? 'Linked from' : `Linked from · ${total}`; }
+    // 925a: the title is ALWAYS shown (title-only when 0 inbound links), never hidden and never an
+    // empty box below it — the rows that follow are the only content.
+    hd.style.display = '';
+    hd.textContent = total ? `Linked from · ${total}` : 'Linked from';
   }
   inner.innerHTML = '';
   sources.forEach(src => {
@@ -29139,10 +29143,11 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     inner.appendChild(item);
   });
-  if (!unlinked.length) return;
+  // 925a: the "Unlinked references" strip always shows its title (title-only when there are 0
+  // matches, no empty content below), so the section is a permanent, discoverable affordance.
   const subhd = document.createElement('div');
   subhd.className = 'bl-subhd';
-  subhd.textContent = `Unlinked references · ${unlinked.length}`;
+  subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '');
   inner.appendChild(subhd);
   const focusedTitle = textForDisplay(nodeById(blNodeId)) || '';
   unlinked.forEach(({ id, title }) => {
