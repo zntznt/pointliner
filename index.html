@@ -1772,6 +1772,11 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 /* Three month blocks side by side (prev · current · next). The scroller centres the current
    one; when the pane is wider than one month the sides peek in from the edges, otherwise
    they're clipped. Every block is the SAME width, so their cells match the centred month. */
+/* #921: cap the (Gregorian) calendar so a wide pane doesn't spread the prev/next month blocks into
+   near-full months side by side (it read as three months / a "doubled" calendar at ~1300px). Centered
+   and bounded, the current month stays 520px with a ~1-column peek each side, the intended affordance.
+   cal-wide (fiction weeks > 8 columns) is exempt: it has its own overflow-x:auto scroll model. */
+.ag-calendar:not(.cal-wide){max-width:728px;margin-inline:auto}
 .agc-months{display:flex;gap:16px;overflow-x:hidden}
 /* Each month is a fixed ideal width, capped at 100% of the pane. So when the pane is narrow
    the current month fills it and the sides are pushed fully out of view; only once the pane

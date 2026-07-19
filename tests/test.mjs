@@ -9765,6 +9765,13 @@ test('calendarMonthGrid — fiction week length + month length shape the grid (#
   // Gregorian unchanged: 42 cells (6×7).
   assert.equal(c.calendarMonthGrid(20617, null).length, 42, 'no calendar → the Gregorian 6×7 grid');
 });
+// #921 (agent-review): the agenda month calendar is width-capped + centered so a wide pane doesn't
+// spread its prev/next month peeks into near-full months (it read as a "doubled" calendar at ~1300px).
+// cal-wide (fiction weeks > 8 cols) is exempt — it has its own overflow-x scroll model.
+test('#921: the Gregorian month calendar is width-capped and centered', () => {
+  assert.match(_src, /\.ag-calendar:not\(\.cal-wide\)\{max-width:728px;margin-inline:auto\}/,
+    'a max-width cap + centering keeps the current month prominent with ~1-column peeks, not multiple months');
+});
 test('addMonths — clamps day to the fiction month length, wraps the year (#527)', () => {
   const cal = c.normalizeCalendar(HARPTOS); // all months 30 days
   // epoch 29 = year 1 month 1 day 30; +1 month → month 2 day 30 (both 30-day, no clamp).
