@@ -8647,6 +8647,74 @@ test('treeRows: untitled / base targets still surface with a label (pickerTitle)
   assert.equal(c.pickerTitle(base), 'Base');
 });
 
+test('tagTreeRows — builds the hashtag hierarchy from the flat collectTags list (browse mode)', () => {
+  const tags = [
+    { name: 'thread/torn-letter', count: 3 },
+    { name: 'thread/caravan', count: 1 },
+    { name: 'idea', count: 5 },
+    { name: 'thread', count: 2 },   // #thread also used bare
+  ];
+  // all parents expanded
+  const rows = c.tagTreeRows(tags, { expanded: new Set(['thread']) });
+  const byPath = Object.fromEntries(rows.map(r => [r.id, r]));
+  // top level is alpha-sorted: idea, thread
+  assert.deepEqual(host(rows.filter(r => r.depth === 0).map(r => r.id)), ['idea', 'thread']);
+  // a bare-used tag carries its exact count and is not structural
+  assert.equal(byPath['thread'].count, 2);
+  assert.equal(byPath['thread'].structural, false);
+  assert.equal(byPath['thread'].hasChildren, true);
+  // children appear (thread is expanded), alpha-sorted, titles are the leaf segment
+  assert.deepEqual(host(rows.filter(r => r.depth === 1).map(r => r.id)), ['thread/caravan', 'thread/torn-letter']);
+  assert.equal(byPath['thread/torn-letter'].title, 'torn-letter');
+  assert.equal(byPath['thread/torn-letter'].count, 3);
+  // collapsed: without 'thread' in expanded, its children don't show
+  const collapsed = c.tagTreeRows(tags, { expanded: new Set() });
+  assert.ok(!collapsed.some(r => r.depth === 1), 'a collapsed parent hides its children');
+});
+
+test('tagTreeRows — a prefix used only in nested tags is a structural (dimmed, count-less) group', () => {
+  const tags = [{ name: 'project/alpha', count: 4 }, { name: 'project/beta', count: 2 }];
+  const rows = c.tagTreeRows(tags, { expanded: new Set(['project']) });
+  const proj = rows.find(r => r.id === 'project');
+  assert.equal(proj.structural, true, '#project is never used bare → a grouping row');
+  assert.equal(proj.count, 0);
+  assert.ok(proj.hasChildren);
+  assert.match(proj.ariaLabel, /tag group/);
+  // clicking still targets #project (hierarchical filter) via its id; children carry real counts
+  assert.equal(rows.find(r => r.id === 'project/alpha').count, 4);
+});
+
+test('tagTreeRows — filter keeps matching paths plus ancestors (auto-expanded), strips a leading #', () => {
+  const tags = [{ name: 'thread/torn-letter', count: 1 }, { name: 'idea', count: 1 }];
+  const rows = c.tagTreeRows(tags, { query: 'torn' });
+  assert.deepEqual(host(rows.map(r => r.id)), ['thread', 'thread/torn-letter'], 'the match + its ancestor, no unrelated tag');
+  assert.equal(rows.find(r => r.id === 'thread').match, false, 'the ancestor is context (match:false → dimmed)');
+  assert.equal(rows.find(r => r.id === 'thread/torn-letter').match, true);
+  // a typed leading # is ignored so "#idea" and "idea" both find it
+  assert.deepEqual(host(c.tagTreeRows(tags, { query: '#idea' }).map(r => r.id)), ['idea']);
+  // no tags → no rows
+  assert.equal(c.tagTreeRows([], {}).length, 0);
+});
+
+test('tag browser — reusable tree navigator + File-menu door (src pins)', () => {
+  // buildTreePicker is generalized: an optional rowsFn drives any tree, passed the picker's own expanded Set
+  const btp = fnBody(_src, 'buildTreePicker');
+  assert.ok(/const rowsFn = opts\.rowsFn \|\|/.test(btp), 'buildTreePicker must accept an optional rowsFn');
+  assert.ok(/rows = \[\.\.\.lead, \.\.\.rowsFn\(q, expanded\)\]/.test(btp), 'rebuild must call rowsFn with the query and the shared expanded set');
+  assert.ok(/if \(opts\.rowsFn\) \{\s*\(opts\.initialExpanded/.test(btp), 'rowsFn callers seed expansion from opts.initialExpanded');
+  // openTagBrowser wires the tag rows + applies the picked tag as a hierarchical document filter
+  const otb = fnBody(_src, 'openTagBrowser');
+  assert.ok(otb.includes('tagTreeRows(tags,'), 'the browser drives buildTreePicker with tagTreeRows');
+  assert.ok(/applySearch\(q\)/.test(otb) && otb.includes("'#' + it.id"), 'picking a tag applies #tag as the search filter');
+  // renderTreeRows renders the trailing count badge for tag rows (outline pickers set no count)
+  const rtr = fnBody(_src, 'renderTreeRows');
+  assert.ok(/typeof r\.count === 'number' && !r\.structural/.test(rtr), 'the count badge is gated to non-structural counted rows');
+  assert.ok(rtr.includes('tp-count'), 'the badge uses the tp-count class');
+  // the File-menu door
+  assert.ok(_src.includes('id="btn-tags"'), 'the Browse tags File-menu item is present');
+  assert.ok(/getElementById\('btn-tags'\)[\s\S]{0,80}openTagBrowser\(\)/.test(_src), 'the door opens the tag browser');
+});
+
 test('refile: UI wiring + ancestor guard present (src pins)', () => {
   assert.ok(_src.includes('openRefileDialog'),  'refile dialog missing');
   assert.ok(_src.includes('function refileNodeTo'), 'mover missing');
