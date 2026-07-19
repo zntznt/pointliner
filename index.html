@@ -2071,6 +2071,16 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .node-link-broken{color:var(--del);text-decoration:underline dotted;cursor:pointer;border-radius:var(--r-xs);padding:0 1px}
 /* mirror: inline accent underline, no box — flows with the line like a caption link */
 .node-link-mirror{display:inline;color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:var(--r-xs);padding:0 1px}
+/* #917 block mirror: a solo-line mirror transcludes the target's SUBTREE. Quiet quote-style
+   block — hairline left rule, indented muted rows — all spans display:block so the markup
+   stays valid inside the paragraph mdToHtml emits. The whole block is one navigate pill. */
+.node-link-mirror-block{display:block;text-decoration:none;color:inherit;border-left:2px solid var(--bdr);padding:2px 4px 2px 10px;margin:2px 0;border-radius:0 var(--r-xs) var(--r-xs) 0}
+.node-link-mirror-block:hover{background:color-mix(in srgb,var(--acc) 6%,transparent);border-left-color:var(--acc)}
+.mirror-head{display:block}
+.mirror-row{display:block;padding-left:calc(var(--md,1)*14px);font-size:.93em;line-height:1.5}
+.mirror-bullet{color:var(--muted);margin-right:6px;font-size:.8em;vertical-align:.1em}
+.mirror-row-body{color:inherit}
+.mirror-more{display:block;color:var(--muted);font-size:.85em;padding:2px 0 0 14px}
 /* cross-doc link (CF-2): same as a same-doc link plus a muted trailing arrow so a jump to another note reads distinctly */
 .node-link-cross::after{content:"\2197";font-size:.78em;color:var(--muted);margin-left:1px;vertical-align:baseline}
 /* ── backlinks panel ── */
@@ -6181,6 +6191,37 @@ function mdEmph(s) {
 // doc's tree, so a mirrored point's references never silently resolve against the live doc.
 let _inlineDepth = 0;
 let _inlineDocId = null;   // non-null only while rendering a FOREIGN doc's node (never the live doc)
+
+// #917: subtree transclusion. A mirror token ALONE on its line renders the target's SUBTREE
+// (the MOC/structure-note composition Zettelkasten needs), not just its single line; a
+// mid-sentence mirror keeps the inline single-line form so prose never breaks — position
+// determines form, the same convention as a GFM table needing its own lines.
+// Pure: flatten the target's descendants into render rows, capped. Respects `collapsed` —
+// a collapsed point renders its own line but NOT its children, so folding in the SOURCE is
+// the author's lever for how much a mirror transcludes (a collapsed target mirrors title-only).
+// `total` counts every visible-eligible descendant (the walk keeps counting past the cap so
+// the "+N more" footer is honest); `clipped` says the cap bit.
+const MIRROR_ROW_CAP = 40;
+function mirrorSubtreeRows(node, cap = MIRROR_ROW_CAP) {
+  const rows = []; let total = 0;
+  const walk = (n, d) => {
+    if (n.collapsed) return;                       // the source's fold bounds the mirror
+    for (const ch of (n.children || [])) {
+      total++;
+      if (rows.length < cap) rows.push({ node: ch, depth: d });
+      walk(ch, d + 1);
+    }
+  };
+  walk(node, 1);
+  return { rows, total, clipped: total > rows.length };
+}
+// Set per line at mdInline entry (sync render, same module-global discipline as cookieNode):
+// true only when the whole line is exactly one mirror token, the block-form gate. The pill
+// renderers read it FIRST (before renderNodeInline recurses into mdInline for the rows, which
+// re-stamps the flag per inner line). _mirrorBlockSuppress turns the gate off wholesale for
+// render contexts where a block can't sit — base cells (mtInline) keep the single-line form.
+let _mirrorBlockLine = false;
+let _mirrorBlockSuppress = false;
 function renderNodeInline(node, docId = null) {
   const foreign = docId != null && docId !== (root.docId || '');
   const saved = { dice: diceRenderList, markov: markovRenderList,
@@ -6230,6 +6271,25 @@ function renderNodeInline(node, docId = null) {
   }
 }
 
+// #917: the block-mirror BODY — the target's own rendered line (the head) plus its subtree
+// rows, each row rendered through renderNodeInline so it inherits the save/restore + depth
+// discipline (a nested mirror inside any row is at _inlineDepth ≥ 1 → title-only, so A↔B
+// chains can't recurse — the existing guard, no new code). Shared by the same-doc and
+// cross-doc pills; the caller wraps it in its own outer span (attrs differ). All spans with
+// CSS display:block so the markup stays valid inside the paragraph mdToHtml emits.
+function mirrorBlockHtml(tn, docId = null) {
+  const head = renderNodeInline(tn, docId);
+  const { rows, total, clipped } = mirrorSubtreeRows(tn);
+  let h = `<span class="mirror-head">${head}</span>`;
+  for (const r of rows) {
+    h += `<span class="mirror-row" style="--md:${r.depth}">`
+      + `<span class="mirror-bullet" aria-hidden="true">•</span>`
+      + `<span class="mirror-row-body">${renderNodeInline(r.node, docId)}</span></span>`;
+  }
+  if (clipped) h += `<span class="mirror-more">+${total - rows.length} more · open the source</span>`;
+  return { html: h, total };
+}
+
 // inline markdown within a single line (text is NOT yet escaped)
 function renderLinkPill(target, label) {
   const tn = nodeById(target);
@@ -6245,6 +6305,14 @@ function renderLinkPill(target, label) {
     if (_inlineDepth > 0) {
       const title = escHtml(textForDisplay(tn) || '(untitled)');
       return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
+    }
+    // #917: read the block gate BEFORE rendering — renderNodeInline recurses into mdInline,
+    // which re-stamps _mirrorBlockLine per inner line.
+    const block = _mirrorBlockLine && (tn.children || []).length > 0;
+    if (block) {
+      const { html, total } = mirrorBlockHtml(tn);
+      return `<span class="node-link node-link-mirror node-link-mirror-block" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false"`
+        + ` aria-label="${escQ('Mirrored content, ' + (total + 1) + ' points. Click to open the source point.')}">${html}</span>`;
     }
     const inner = renderNodeInline(tn);
     return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${inner}</span>`;
@@ -6274,6 +6342,16 @@ function renderCrossLinkPill(docId, target, label) {
     const tn = findNodeInRoot(wsDocRoot(docId), target);
     if (tn) {
       const docLabel = displayName(workspaceIndex?.nameByDocId?.get(docId) || 'another document');
+      // #917: same block gate as the same-doc mirror — a solo-line cross-doc mirror transcludes
+      // the target's SUBTREE from the retained tree (rows "as saved", like the head; the
+      // staleness stays named in title/aria). Read the gate before rendering (see renderLinkPill).
+      const block = _mirrorBlockLine && (tn.children || []).length > 0;
+      if (block) {
+        const { html, total } = mirrorBlockHtml(tn, docId);
+        return `<span class="node-link node-link-mirror node-link-mirror-block node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false"`
+          + ` title="${escQ('Mirrored from ' + docLabel + ', as saved. Click to open the source.')}"`
+          + ` aria-label="${escQ('Mirrored content from ' + docLabel + ', ' + (total + 1) + ' points, as saved. Click to open the source point.')}">${html}</span>`;
+      }
       const inner = renderNodeInline(tn, docId);
       return `<span class="node-link node-link-mirror node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false"`
         + ` title="${escQ('Mirrored from ' + docLabel + ', as saved. Click to open the source.')}"`
@@ -6297,6 +6375,11 @@ function mdInline(s) {
   // Strip NUL first: \x00 is our stash sentinel (\x00N\x00), so a literal NUL in user
   // text could otherwise collide with a placeholder and inject a stashed fragment.
   s = (s || '').replace(/\x00/g, '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // #917: the block-mirror gate — this line is EXACTLY one mirror token ([[#id|]] or
+  // [[docId#id|]], nothing else), so the mirror may render the target's subtree as a block.
+  // Stamped per mdInline call (each line stamps its own value; the pill renderer reads it
+  // before recursing, see renderLinkPill). Suppressed wholesale in cell contexts (mtInline).
+  _mirrorBlockLine = !_mirrorBlockSuppress && /^\s*\[\[[a-z0-9]*#[a-z0-9]+\|\]\]\s*$/i.test(s);
   // Stash code/image/link/footnote as opaque tokens so later passes (emoji,
   // hashtags, autolink) can't reach inside their URLs or attributes.
   const tok = [];
@@ -8759,7 +8842,9 @@ function mtInline(node, raw) {
   cookieNode        = node;
   globalVarMap      = collectVars();
   renderVarMap      = varMapAt(node);   // positional scope for this cell's var/math pills
-  const html = mdInline(raw || '');
+  _mirrorBlockSuppress = true;          // #917: a solo-mirror CELL keeps the single-line form (no block in a grid cell)
+  let html;
+  try { html = mdInline(raw || ''); } finally { _mirrorBlockSuppress = false; }
   diceRenderList = markovRenderList = mathRenderList = estRenderList = varRenderList = grammarRenderList = seqRenderList = queryRenderList = null;
   cookieNode = null;
   return html;
@@ -15972,8 +16057,17 @@ function exitEdit(content, node) {
     // full render() — an edit must not leave stale captions/transclusions on
     // screen (UXP-4). Off-screen sources have no DOM and render fresh on scroll.
     if (node.text !== prevText) {
-      const bl = collectLinks().backlinks[node.id];
-      if (bl) for (const srcId of bl) {
+      // #917: with subtree transclusion, an edit anywhere UNDER a mirrored target changes that
+      // mirror's rows — so repaint the backlink sources of this node AND every ancestor (a
+      // mirror of any ancestor may transclude this point). Bounded by tree depth; the
+      // backlinks map is the cached collectLinks. Deduped so a source repaints once.
+      const backlinks = collectLinks().backlinks;
+      const srcIds = new Set();
+      for (let n = node; n; n = parentOf(n.id) || null) {
+        const bl = backlinks[n.id];
+        if (bl) for (const srcId of bl) srcIds.add(srcId);
+      }
+      for (const srcId of srcIds) {
         if (srcId === node.id) continue;
         const src = nodeById(srcId);
         if (src) repaintNodeContent(src);
@@ -32270,7 +32364,7 @@ const GUIDE = [
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
     title:'Linking points',
-    body:"Build a personal wiki where ideas refer to each other, create a table of contents that jumps to sections or connect a task to its full context note. Type `[[` and pick the point to link to, then click the link to go straight there.\n\nA link tracks the point it points at, so it never goes stale. The picker makes a title reference (`[[#id]]`): it shows that point's current title, so renaming the point updates every link to it at once. Give it a label (`[[#id|my wording]]`) when you want your own phrasing instead. And to embed rather than refer, add an empty pipe (`[[#id|]]`): the linked point's rendered content appears right there inline, a live mirror of the other point, so a summary can pull in a definition or a stat block without copying it.\n\nLinks are two-way for free: the point you link to lists everything that links to it, covered under backlinks. That turns a pile of points into a connected web you can navigate from either end.",
+    body:"Build a personal wiki where ideas refer to each other, create a table of contents that jumps to sections or connect a task to its full context note. Type `[[` and pick the point to link to, then click the link to go straight there.\n\nA link tracks the point it points at, so it never goes stale. The picker makes a title reference (`[[#id]]`): it shows that point's current title, so renaming the point updates every link to it at once. Give it a label (`[[#id|my wording]]`) when you want your own phrasing instead. And to embed rather than refer, add an empty pipe (`[[#id|]]`): the linked point's rendered content appears right there inline, a live mirror of the other point, so a summary can pull in a definition or a stat block without copying it.\n\nA mirror on its own line goes further: it embeds the point AND everything under it, indented like the source, so an overview note can compose whole sections of other points without copying them. Collapse a point in the source and the mirror hides its children too, which is how you control how much a mirror shows. Long subtrees cap at 40 rows with a note to open the source; a mirror inside a sentence stays a single line so prose never breaks.\n\nLinks are two-way for free: the point you link to lists everything that links to it, covered under backlinks. That turns a pile of points into a connected web you can navigate from either end.",
     related:['backlinks','cross-doc-links','aliases'],
     examples:[
       { syn:'[[',                   desc:'open the link picker' },
@@ -32302,7 +32396,7 @@ const GUIDE = [
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across documents',
-    body:"Weave a network out of separate files: link a project to a person's page, connect a meeting to an action item in another document or build a topic index that points across your whole library. This works once you have a connected folder, a folder of documents Pointliner reads together (see connecting a folder).\n\nWith a folder connected, the `[[` picker searches every document, not just the one you are in, so linking to a point in another file is the same move as linking inside this one. Pick it and Pointliner writes a cross-document link that carries which file it lives in, and clicking it opens that document at that point. If the point you want does not exist yet, choose New document from the picker to create it and link to it in one step.\n\nCross-document links are two-way like ordinary ones: a point lists the links that reach it from other documents too, so a person's page shows every project, meeting and note that mentions it, gathered from across the folder.\n\nMirrors work across documents too: an empty pipe (`[[docId#id|]]`) embeds the other document's point right here, the same live-mirror move as inside one document. The copy shows that point as it was last saved in its file; hover the mirror to see which document it comes from, and click it to open the source.",
+    body:"Weave a network out of separate files: link a project to a person's page, connect a meeting to an action item in another document or build a topic index that points across your whole library. This works once you have a connected folder, a folder of documents Pointliner reads together (see connecting a folder).\n\nWith a folder connected, the `[[` picker searches every document, not just the one you are in, so linking to a point in another file is the same move as linking inside this one. Pick it and Pointliner writes a cross-document link that carries which file it lives in, and clicking it opens that document at that point. If the point you want does not exist yet, choose New document from the picker to create it and link to it in one step.\n\nCross-document links are two-way like ordinary ones: a point lists the links that reach it from other documents too, so a person's page shows every project, meeting and note that mentions it, gathered from across the folder.\n\nMirrors work across documents too: an empty pipe (`[[docId#id|]]`) embeds the other document's point right here, the same live-mirror move as inside one document; on its own line it brings that point's whole subtree along, so an index note can compose sections from several files. The copy shows that point as it was last saved in its file; hover the mirror to see which document it comes from, and click it to open the source.",
     related:['point-links','workspace-documents','backlinks'],
     examples:[
       { syn:'[[',                   desc:'search every document in the folder' },

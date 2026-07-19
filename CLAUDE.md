@@ -345,6 +345,21 @@ mdInline's bare `[[#id]]` tokens resolve in that doc (via `renderCrossLinkPill`)
 pills query that doc's retained tree (`queryRows` with the explicit root), never the live
 doc. Positional var maps don't apply cross-doc (documented approximation: foreign pills
 read the doc-wide map). The depth guard covers cross-doc chains for free.
+**Subtree transclusion (#917):** a mirror token ALONE on its line renders the target's
+SUBTREE as a block, not just its single line — position determines form (mid-sentence
+mirrors stay single-line, like a GFM table needing its own lines). The gate is
+`_mirrorBlockLine`, stamped per line at `mdInline` entry (same sync module-global
+discipline as `cookieNode`; suppressed in base cells via `_mirrorBlockSuppress` in
+`mtInline`) and read by the pill renderer BEFORE it renders (renderNodeInline recurses
+into mdInline, which re-stamps the flag). Rows come from the pure `mirrorSubtreeRows(node,
+cap)` (cap `MIRROR_ROW_CAP` = 40, "+N more" footer keeps the total honest; **respects
+`collapsed`** — folding in the SOURCE is the author's lever for how much a mirror shows, a
+collapsed target mirrors title-only) and each row renders through `renderNodeInline`
+(shared `mirrorBlockHtml`, same-doc + cross-doc), so the depth guard applies per row and a
+mirror inside a mirrored subtree is title-only — cycles stay impossible with no new guard.
+Markup is all spans with CSS `display:block` (valid inside the paragraph mdToHtml emits).
+Freshness: exitEdit's partial repaint walks the edited node's ANCESTORS too (a mirror of
+any ancestor transcludes this point), repainting each ancestor's backlink sources, deduped.
 
 ### Edit-mode serialization and caret math (the subtle part)
 
@@ -755,7 +770,9 @@ footnote ref `[^key]`), so it round-trips through OPML as plain text with no `_l
 attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption for
 `[[#id|text]]`, the target's **live** title for `[[#id|]]`, or — when the label is empty
 — *mirrors* the target by transcluding its rendered content (display-only, inline; see
-the re-entrancy note above). Missing target → `.node-link-broken`. **Cross-document links**
+the re-entrancy note above — and since #917, a mirror ALONE on its line transcludes the
+target's whole SUBTREE as a block, same-doc and cross-doc, collapse-aware and capped; see
+the subtree-transclusion note there). Missing target → `.node-link-broken`. **Cross-document links**
 (`[[docId#nodeId|label]]`) now also ship on the multi-doc workspace (delivered June 2026: the
 workspace-wide index CF-1, navigation CF-2, the folder-spanning `[[` picker CF-3, cross-doc
 backlinks CF-4, "+ New note" CF-5; see `guidance/features.md`). **The cross-doc MIRROR shipped

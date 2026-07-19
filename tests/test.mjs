@@ -7069,6 +7069,31 @@ test('renderCrossLinkPill: [[db#m1|]] (empty label) MIRRORS across docs from the
   vm.runInContext('workspaceIndex = null; root.docId = null;', c._context);
 });
 
+test('#917 renderCrossLinkPill: a solo-line cross-doc mirror transcludes the SUBTREE from the retained tree', () => {
+  const doc = cfDocFor('db', 'b.opml', [['m1', 'Gamma']]);
+  const k1 = c.mkNode('child one'); k1.id = 'k1';
+  const k2 = c.mkNode('child two'); k2.id = 'k2';
+  doc.root.children[0].children.push(k1, k2);
+  cfSetGlobals('da', [doc]);
+  vm.runInContext('_mirrorBlockLine = true;', c._context);   // the solo-line gate, as mdInline stamps it
+  try {
+    const html = c.renderCrossLinkPill('db', 'm1', '');
+    assert.match(html, /node-link-mirror-block/, 'the block wrapper');
+    assert.match(html, /mirror-head/, 'the target line is the head');
+    assert.match(html, /child one/, 'descendant rows transclude');
+    assert.match(html, /child two/);
+    assert.match(html, /as saved/, 'staleness stays named (P4)');
+    assert.match(html, /3 points/, 'aria counts head + rows');
+    // the gate off → the single-line mirror form, unchanged
+    vm.runInContext('_mirrorBlockLine = false;', c._context);
+    const inline = c.renderCrossLinkPill('db', 'm1', '');
+    assert.doesNotMatch(inline, /node-link-mirror-block/, 'mid-sentence keeps the single-line form');
+    assert.doesNotMatch(inline, /child one/, 'no subtree rows inline');
+  } finally {
+    vm.runInContext('_mirrorBlockLine = false; workspaceIndex = null; root.docId = null;', c._context);
+  }
+});
+
 test('findNodeInRoot + backlinkSnippet — the cross-doc lookup/preview pure cores (spine + 4d)', () => {
   const doc = cfDocFor('dx', 'x.opml', [['a1', 'Alpha'], ['a2', 'Beta']]);
   const kid = c.mkNode('Nested'); kid.id = 'a3';
@@ -9378,6 +9403,48 @@ test('#914 renderMathPill + expandAggExpr wire the leaf cue and the document wid
   assert.ok(/folder\|document\|doc/.test(eae), 'the reducer arms must accept the document/doc scope word');
   assert.ok(eae.includes('queryCountIn(q, root)'), 'a document-scoped count must search the doc root');
   assert.ok(eae.includes('queryReduce(fn, q, prop, root)'), 'a document-scoped reducer must search the doc root');
+});
+
+test('#917 mirrorSubtreeRows — flattens descendants in document order, capped, collapse-aware', () => {
+  const t = c.mkNode('target');
+  const a = c.mkNode('a'), b = c.mkNode('b'), a1 = c.mkNode('a1'), a2 = c.mkNode('a2');
+  a.children.push(a1, a2); t.children.push(a, b);
+  const r = c.mirrorSubtreeRows(t, 40);
+  assert.deepEqual(host(r.rows.map(x => x.node.text)), ['a', 'a1', 'a2', 'b'], 'document order (depth-first)');
+  assert.deepEqual(host(r.rows.map(x => x.depth)), [1, 2, 2, 1], 'depths align to nesting');
+  assert.equal(r.total, 4); assert.equal(r.clipped, false);
+  // the cap clips rows but the total stays honest (feeds the "+N more" footer)
+  const big = c.mkNode('big');
+  for (let i = 0; i < 50; i++) big.children.push(c.mkNode('c' + i));
+  const rc = c.mirrorSubtreeRows(big, 40);
+  assert.equal(rc.rows.length, 40); assert.equal(rc.total, 50); assert.equal(rc.clipped, true);
+  // collapsed: a collapsed CHILD shows its own line but not its children; a collapsed TARGET → no rows
+  a.collapsed = true;
+  const rf = c.mirrorSubtreeRows(t, 40);
+  assert.deepEqual(host(rf.rows.map(x => x.node.text)), ['a', 'b'], 'a collapsed point hides its children, keeps its line');
+  t.collapsed = true;
+  assert.equal(c.mirrorSubtreeRows(t, 40).rows.length, 0, 'a collapsed target mirrors title-only');
+});
+
+test('#917 wiring — solo-line gate, block branch in both pills, ancestor repaint (src pins)', () => {
+  // the gate is stamped per line at mdInline entry and suppressed in cell renders
+  assert.ok(_src.includes('_mirrorBlockLine = !_mirrorBlockSuppress && /'), 'mdInline must stamp the block gate per line');
+  assert.ok(/_mirrorBlockSuppress = true;.*#917/.test(_src), 'mtInline must suppress the block form in cells');
+  // both pill renderers read the gate BEFORE rendering (renderNodeInline re-stamps it) and share the body builder
+  const rlp = fnBody(_src, 'renderLinkPill');
+  assert.ok(/const block = _mirrorBlockLine && \(tn\.children \|\| \[\]\)\.length > 0;/.test(rlp), 'same-doc pill reads the gate first');
+  assert.ok(rlp.includes('mirrorBlockHtml(tn)'), 'same-doc pill uses the shared block builder');
+  const rcp = fnBody(_src, 'renderCrossLinkPill');
+  assert.ok(rcp.includes('mirrorBlockHtml(tn, docId)'), 'cross-doc pill uses the shared builder with the foreign docId');
+  assert.ok(rcp.includes('as saved'), 'the cross-doc block keeps the staleness named');
+  // the block builder renders every row through renderNodeInline (depth guard for free) + the cap footer
+  const mbh = fnBody(_src, 'mirrorBlockHtml');
+  assert.ok(/renderNodeInline\(r\.node, docId\)/.test(mbh), 'rows render through renderNodeInline');
+  assert.ok(mbh.includes('mirror-more'), 'the cap footer is present');
+  assert.ok(mbh.includes('mirrorSubtreeRows(tn)'), 'rows come from the pure core');
+  // exitEdit repaints backlink sources of the edited node AND its ancestors (a mirror of any
+  // ancestor may transclude this point)
+  assert.ok(/for \(let n = node; n; n = parentOf\(n\.id\) \|\| null\)/.test(_src), 'exitEdit must walk ancestors for backlink sources');
 });
 
 test('value-only math pill (m.bare): render, dialog toggle, edit round-trip, and reusable checkbox field (src pins)', () => {
@@ -16459,8 +16526,8 @@ test('mergeBodyText: split→merge round-trips a to-do byte-identically (the #81
 const _fix = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 test('#801 wiring: exitEdit repaints computed dependents on text change', () => {
   assert.ok(_fix.includes('function repaintComputedDependents'), 'helper missing');
-  assert.match(_fix, /node\.text !== prevText\) \{[\s\S]{0,900}repaintComputedDependents\(node\.id\)/,
-    'exitEdit partial path must repaint computed dependents when text changed');
+  assert.match(_fix, /node\.text !== prevText\) \{[\s\S]{0,1600}repaintComputedDependents\(node\.id\)/,
+    'exitEdit partial path must repaint computed dependents when text changed');   // window widened for the #917 ancestor walk
 });
 test('#802 wiring: pending autosave flushes on pagehide/hidden', () => {
   assert.ok(_fix.includes('function flushPendingAutosave'), 'flush fn missing');
