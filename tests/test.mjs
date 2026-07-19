@@ -13293,15 +13293,49 @@ test('qbaseColRoles — roles inferred from the projection, aligned to the rende
   assert.deepEqual(host(c.qbaseColRoles(undefined)), []);
 });
 
-test('mtColRoles — query bases infer, authored bases keep the hand-set roles (B4)', () => {
+test('mtColRoles — query bases infer, authored bases keep hand-set roles and fall back to data inference (B4 + #922)', () => {
+  // an explicit hand-set role is returned verbatim (explicit mode)
   assert.deepEqual(c.mtColRoles({ colRole: ['status', null] }), ['status', null]);
   const q = { qbase: { expr: 'is:todo', cols: [{ name: 'P', field: 'title' }, { name: 'D', field: 'due' }] } };
   assert.deepEqual(host(c.mtColRoles(q)), [null, 'date']);
-  assert.equal(c.mtColRoles({}), undefined);
+  // an authored base with no id (or no rows) infers nothing → []
+  assert.deepEqual(host(c.mtColRoles({})), []);
   // and mtCellHtml consults it: a query base's due column paints date chips with no colRole set
   const qn = Object.assign({ dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] }, q);
   assert.match(c.mtCellHtml(qn, '2199-01-01', 1), /ag-chip/);
   assert.doesNotMatch(c.mtCellHtml(qn, '2199-01-01', 0), /ag-chip/);
+  // #922: an authored base with NO colRole infers Status/Date from the data — Board/Calendar light up
+  const base = c.mkNode('| Task | State | Due |\n| --- | --- | --- |\n| A | TODO | 2026-01-02 |\n| B | DONE | 2026-03-04 |');
+  base.id = 'b922'; base.type = 'base';
+  assert.deepEqual(host(c.mtColRoles(base)), [null, 'status', 'date'], 'a state column → status, a date column → date, the label column → null');
+  // an explicit role puts the base in explicit mode (inference no longer fills the gaps)
+  base.colRole = [null, null, null];
+  assert.deepEqual(host(c.mtColRoles(base)), [null, null, null], 'once colRole is set, it is returned verbatim');
+});
+
+test('#922 inferColRolesFromModel — status/date columns from data; mixed/empty/footer excluded', () => {
+  const STATES = ['TODO', 'NEXT', 'WAITING', 'DONE'];
+  const model = { aligns: [null, null, null, null], rows: [
+    ['Task', 'State', 'Due', 'Note'],
+    ['A', 'TODO', '2026-01-02', 'hi'],
+    ['B', 'DONE', '2026-03-04', 'yo'],
+  ] };
+  assert.deepEqual(host(c.inferColRolesFromModel(model, false, STATES)), [null, 'status', 'date', null],
+    'a keyword column → status, a date column → date, free text and labels → null');
+  // a column mixing a keyword and a date is ambiguous → null
+  const mixed = { aligns: [null], rows: [['X'], ['TODO'], ['2026-01-02']] };
+  assert.deepEqual(host(c.inferColRolesFromModel(mixed, false, STATES)), [null]);
+  // an all-empty column → null (nothing to infer)
+  const empty = { aligns: [null, null], rows: [['A', 'B'], ['x', ''], ['y', '']] };
+  assert.deepEqual(host(c.inferColRolesFromModel(empty, false, STATES)), [null, null]);
+  // a footer row is excluded from the scan: the data rows are all dates, only the footer is a keyword
+  const footer = { aligns: [null], rows: [['When'], ['2026-01-02'], ['2026-03-04'], ['TODO']] };
+  assert.deepEqual(host(c.inferColRolesFromModel(footer, true, STATES)), ['date'], 'the footer keyword does not break the date inference');
+  // one non-empty keyword cell is enough (a status column need not be full)
+  const sparse = { aligns: [null], rows: [['S'], ['DONE'], ['']] };
+  assert.deepEqual(host(c.inferColRolesFromModel(sparse, false, STATES)), ['status']);
+  // a header-only table infers nothing
+  assert.deepEqual(host(c.inferColRolesFromModel({ aligns: [null], rows: [['H']] }, false, STATES)), []);
 });
 
 test('bases round 1 — B4 read sites + write sites stay split (source pins)', () => {
@@ -13312,9 +13346,12 @@ test('bases round 1 — B4 read sites + write sites stay split (source pins)', (
   const sv = fnBody(_src, 'mtSetView');
   assert.equal((sv.match(/mtColRoles\(node\)/g) || []).length, 2, 'both view gates (board + calendar) read via the accessor');
   assert.ok(/_colRoles\[c\] === 'number'/.test(_src), 'the right-align check reads the hoisted roles');
-  // write sites stay authored-only: mtSetColRole and the Alt+R cycle never touch a qbase (the
-  // keyboard chord lives below buildTableWidget's readOnly return, verified by position)
-  assert.ok(!/mtColRoles/.test(fnBody(_src, 'mtSetColRole')), 'the role writer still writes node.colRole directly');
+  // write sites stay authored-only: mtSetColRole writes node.colRole (never a qbase) and, per #922,
+  // SEEDS the array from the current inference on first touch so promoting one column to explicit
+  // mode doesn't drop the others' auto-detected roles.
+  const scr = fnBody(_src, 'mtSetColRole');
+  assert.ok(/node\.colRole \|\| inferredColRoles\(node\)\.slice\(\)/.test(scr), 'the role writer seeds from inference on first touch (#922)');
+  assert.ok(/node\.colRole = arr\.every\(x => x == null\) \? undefined : arr;/.test(scr), 'the role writer still writes node.colRole directly (authored-only)');
 });
 
 test('bases round 1 — B1/B2/B3 wiring (source pins)', () => {
@@ -14050,7 +14087,7 @@ test('cycleColRole — the same set + order as the Show-as menu, wrapping both w
 
 test('LEAN-FLOOR p3: the Alt+R column-role-cycle wiring is present (DOM-bound keydown)', () => {
   assert.ok(_src.includes("(e.key === 'r' || e.key === 'R')"), 'the Alt+R role-cycle branch is missing');
-  assert.ok(_src.includes('cycleColRole(node.colRole?.[c] || null, e.shiftKey ? -1 : 1)'), 'Alt+R must cycle via cycleColRole (Shift = backward)');
+  assert.ok(_src.includes('cycleColRole((mtColRoles(node) || [])[c] || null, e.shiftKey ? -1 : 1)'), 'Alt+R must cycle via cycleColRole from the EFFECTIVE role (#922), Shift = backward');
   assert.ok(_src.includes("flashHint('Column shown as: "), 'the role-cycle must flash the new role (P4, no menu)');
 });
 

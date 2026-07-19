@@ -8817,12 +8817,58 @@ function qbaseColRoles(cols) {
   });
 }
 
-// The one accessor every colRole READ site consults: authored bases keep the
-// hand-set node.colRole; query bases derive from the projection. Write sites
-// (mtSetColRole, the cycleColRole keyboard chord) stay authored-only — a query
-// base's roles are a consequence of its columns, not a stored hint.
+// #922: infer a display role for each column of an AUTHORED base from its data, so Board
+// and Calendar light up without the manual Column-menu trip a database user expects to skip.
+// A column is 'status' when EVERY non-empty data cell is a recognized sequence keyword, and
+// 'date' when every one parses as a date; a mixed or free-text column stays null. Number is
+// deliberately NOT inferred (an id/year column shouldn't silently reformat) — it stays an
+// explicit choice. Strict "all non-empty cells match" keeps the false-positive rate near zero.
+// Pure: the state set + calendar are passed in (states = an iterable of keyword strings).
+function inferColRolesFromModel(model, hasFooter, states, cal) {
+  if (!model || !model.rows || model.rows.length < 2) return [];
+  const ncol = model.aligns ? model.aligns.length : (model.rows[0] || []).length;
+  const last = hasFooter ? model.rows.length - 2 : model.rows.length - 1;   // inclusive last data-row index
+  const lc = new Set([...(states || [])].map(s => String(s).toLowerCase()));
+  const out = [];
+  for (let c = 0; c < ncol; c++) {
+    let seen = 0, allState = true, allDate = true;
+    for (let r = 1; r <= last; r++) {
+      const cell = String((model.rows[r] || [])[c] ?? '').trim();
+      if (!cell) continue;
+      seen++;
+      if (allState && !lc.has(cell.toLowerCase())) allState = false;
+      if (allDate && parseDueDate(cell, cal) === null) allDate = false;
+      if (!allState && !allDate) break;
+    }
+    out[c] = seen === 0 ? null : allState ? 'status' : allDate ? 'date' : null;
+  }
+  return out;
+}
+// Memoized wrapper over the live node (authored bases only). Keyed like mtModelRead — a
+// per-node cache, ver-guarded with a text check on top — so the O(rows·cols) scan runs once
+// per (generation, text), not per cell paint (mtColRoles is read for every cell). Self-invalidated
+// by the _varsVer bump, like mtModelRead (no explicit clear needed in resetDocCaches).
+let _mtInferRoleCacheVer = -1, _mtInferRoleCache = new Map(); // doc-cache: inferredColRoles, keyed by node id
+function inferredColRoles(node) {
+  if (!node || node.qbase || node.id == null) return [];
+  if (_mtInferRoleCacheVer !== _varsVer) { _mtInferRoleCache = new Map(); _mtInferRoleCacheVer = _varsVer; }
+  const hit = _mtInferRoleCache.get(node.id);
+  if (hit && hit.text === node.text) return hit.roles;
+  const roles = inferColRolesFromModel(mtModelRead(node), mtHasFooter(extractTblfm(node.text)), knownStates(), activeCalendar());
+  _mtInferRoleCache.set(node.id, { text: node.text, roles });
+  return roles;
+}
+
+// The one accessor every colRole READ site consults: authored bases keep the hand-set
+// node.colRole and fall back to inference (#922) only while the user has set NO roles yet;
+// query bases derive from the projection. Write sites (mtSetColRole, the cycleColRole
+// keyboard chord) stay authored-only — a query base's roles are a consequence of its columns,
+// not a stored hint. Once the user sets any role, mtSetColRole seeds the array FROM the current
+// inference (so nothing visually shifts on first touch) and the base is in explicit mode from
+// then on: node.colRole present → returned verbatim, absent → inferred.
 function mtColRoles(node) {
-  return node.qbase ? qbaseColRoles(node.qbase.cols) : node.colRole;
+  if (node.qbase) return qbaseColRoles(node.qbase.cols);
+  return (node.colRole && node.colRole.length) ? node.colRole : inferredColRoles(node);
 }
 
 function mtCellHtml(node, raw, c) {
@@ -9373,7 +9419,11 @@ function cycleColRole(current, dir = 1) {
 
 function mtSetColRole(node, colIdx, role) {
   const nc = mtModel(node).aligns.length;
-  const arr = node.colRole || Array(nc).fill(null);
+  // #922: the first explicit set SEEDS the array from the current inference, so promoting one
+  // column to explicit mode doesn't drop the other columns' auto-detected roles (nothing shifts
+  // visually on first touch). Once node.colRole exists, mtColRoles returns it verbatim (explicit
+  // mode); an inferred base has node.colRole absent.
+  const arr = node.colRole || inferredColRoles(node).slice();
   while (arr.length < nc) arr.push(null);
   arr[colIdx] = role;
   node.colRole = arr.every(x => x == null) ? undefined : arr;
@@ -9620,7 +9670,7 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   }
 
   addSection('Show as', true);
-  const curRole = (node.colRole && node.colRole[colIdx]) || null;
+  const curRole = (mtColRoles(node) || [])[colIdx] || null;   // #922: reflect the EFFECTIVE role (inferred or hand-set)
   [[null, 'Plain text'], ['status', 'Status'], ['date', 'Date'], ['number', 'Number']]
     .forEach(([role, label]) => addItem(label, { active: curRole === role, onApply: () => mtSetColRole(node, colIdx, role) }));
 
@@ -9799,8 +9849,9 @@ function mtViewSwitcherHtml(node) {
   // UXP-169: Board needs a Status column, Calendar a Date column (mtSetView flashHints the catch).
   // Dim + aria-disabled the button until an eligible column exists, so the control stops advertising
   // a view it will punt. The click still works (it fires the explaining flashHint). On an authored
-  // base a role is a hint the user adds, not a schema (vision §3); on a query base roles are
-  // inferred from the projection (B4) since its read-only headers have no Column menu.
+  // base a role is a hint the user can override, not a schema (vision §3) — but #922 auto-detects
+  // Status/Date columns from the data so the views light up without a manual trip; on a query base
+  // roles are inferred from the projection (B4) since its read-only headers have no Column menu.
   const roles = mtColRoles(node) || [];
   const ready = { board: roles.includes('status'), calendar: roles.includes('date') };
   const btn = (k, label) => {
@@ -10824,7 +10875,7 @@ function buildTableWidget(node, readOnly) {
     if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'r' || e.key === 'R')) {
       e.preventDefault();
       const r = +cell.dataset.r, c = +cell.dataset.c;
-      const next = cycleColRole(node.colRole?.[c] || null, e.shiftKey ? -1 : 1);
+      const next = cycleColRole((mtColRoles(node) || [])[c] || null, e.shiftKey ? -1 : 1);   // #922: cycle from the EFFECTIVE role
       mtSetColRole(node, c, next);
       mtFocusCell(node, r, c);
       flashHint('Column shown as: ' + (next ? next[0].toUpperCase() + next.slice(1) : 'Plain text'));
@@ -26356,6 +26407,7 @@ function performMultiDrop(ids, targetId, position) {
 //   renderPosVarMaps  (_posVarMapCacheVer)     ← per-pill positional maps (#767)
 //   varBaseDefs       (_varBaseDefsCacheVer)   ← variable-base row projections (varBaseDefsMemo)
 //   mtModelRead       (_mtModelReadCacheVer)   ← base grid parse for PAINT paths (text-checked on top; write paths stay on mtModel)
+//   inferredColRoles  (_mtInferRoleCacheVer)   ← authored-base column role inference (#922; text-checked, over mtModelRead)
 //
 // markDirty does this on every edit, but a fresh document load (newFile/openFile/
 // restore) replaces `root` without an edit — so the previous document's caches
@@ -31726,7 +31778,7 @@ const GUIDE = [
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
   { id:'base-views', cat:'writing',
     title:'Base views',
-    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable one), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date: mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role. A query base figures this out from its own columns (a due or start column is the date), so its Calendar just works. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.\n\nA long base can also stay out of the way in the document. The chevron at its top left collapses it to a one-line strip (click it again, or zoom in, to see the rows), and the Rows button beside it caps how many rows show there (All, 5, 10 or 20), with a Zoom in to see more footer for the rest. Zoomed into the base, every row always shows. The view and the rows cap are also in the point's menu under View & rows shown.",
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable one), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date, and most of the time they figure it out on their own: a column whose cells are all task states (TODO, DONE) is detected as Status, and a column of dates as Date, so Board and Calendar light up with nothing to set. When a column is ambiguous, mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role (your choice sticks from then on). A query base figures this out from its own columns (a due or start column is the date) the same way. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.\n\nA long base can also stay out of the way in the document. The chevron at its top left collapses it to a one-line strip (click it again, or zoom in, to see the rows), and the Rows button beside it caps how many rows show there (All, 5, 10 or 20), with a Zoom in to see more footer for the rest. Zoomed into the base, every row always shows. The view and the rows cap are also in the point's menu under View & rows shown.",
     related:['tables','querybase','properties'],
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },

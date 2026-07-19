@@ -98,7 +98,10 @@ A base column can also be given a **display role** from its Column menu (**Show 
 column renders known state keywords as colored chips (including states from your own
 [sequences](tasks-and-organizing.md#custom-workflows), so `PLANNED ACTIVE | CLEARED` becomes chips with the
 done side muted), a **Date** column shows each date as a color-coded urgency chip, and a **Number**
-column right-aligns and formats. The cell text stays plain (edit it and you see the raw value); the
+column right-aligns and formats. **Status and Date are detected for you:** a column whose cells are
+all task states is shown as Status, and a column of dates as Date, so Board and Calendar work with
+nothing to set. Set a role by hand only to override the guess (Number is never auto-applied); your
+choice sticks from then on. The cell text stays plain (edit it and you see the raw value); the
 role only changes how it is shown, and a value that does not fit its role just renders as text.
 Roles also help you enter values: while a **Date** cell is focused a small calendar opens under it
 (click a day to fill the date), and a **Status** cell offers its states as clickable chips. Typing
