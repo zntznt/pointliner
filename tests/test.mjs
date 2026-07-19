@@ -15623,13 +15623,48 @@ test('#603 — every menu action survived the restructure (no dropped rows)', ()
     'btn-new', 'btn-open', 'btn-save', 'btn-save-as', 'btn-restore', 'btn-workspace',
     'btn-workspace-switch', 'btn-workspace-disconnect', 'workspace-invite',
     'btn-export-md', 'btn-export-txt', 'btn-export-html',
-    'btn-theme', 'accent-row', 'btn-width', 'btn-verbosity', 'btn-appearance', 'btn-datapacks',
+    'btn-theme', 'accent-row', 'btn-width', 'fm-verbosity-card', 'btn-appearance', 'btn-datapacks',
     'btn-calendar', 'btn-install',
     'btn-guide', 'btn-examples', 'btn-starters', 'btn-webguide', 'btn-github',
     'btn-brokenlinks', 'fm-levels-row', 'fm-levels',
   ];
   const missing = ids.filter(id => !menu.includes(`id="${id}"`));
   assert.deepEqual(missing, [], `these menu actions were lost in the #603 restructure: ${missing.join(', ')}`);
+});
+
+// modes batch (items 1/4/5/7): the settings that set state IN PLACE live as CARDS that never close
+// the menu — guidance is a 3-choice radiogroup, the toolbar chooser is a checkbox list — and the
+// "File ▾" cue is Guided-only.
+test('modes batch — verbosity card, toolbar chooser, File-pill gate, no-close settings', () => {
+  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  // item 4: guidance is a 3-choice radiogroup card, not a cycle button.
+  assert.ok(menu.includes('id="fm-verbosity-card"') && menu.includes('role="radiogroup"'),
+    'the guidance card (radiogroup) is missing');
+  for (const tier of ['guided', 'standard', 'lean']) {
+    assert.ok(menu.includes(`data-tier="${tier}"`), `the ${tier} choice is missing from the guidance card`);
+  }
+  assert.ok(!menu.includes('id="btn-verbosity"'), 'the old cycle button must be gone (replaced by the card)');
+  // item 5: the toolbar-feature chooser host exists.
+  assert.ok(menu.includes('id="fm-toolbar-card"') && menu.includes('id="fm-toolbar-opts"'),
+    'the toolbar-feature chooser card/host is missing');
+  // setVerbosity sets state in place and does NOT close the menu (body only, up to the wiring block).
+  const setVStart = GUIDE_SRC.indexOf('function setVerbosity(');
+  const setV = GUIDE_SRC.slice(setVStart, GUIDE_SRC.indexOf("document.querySelectorAll('#fm-verbosity-card", setVStart));
+  assert.ok(!setV.includes('closeFileMenu'), 'picking a guidance tier must NOT close the menu (item 4)');
+  assert.ok(setV.includes('syncVerbosityClass') && setV.includes('render('), 'setVerbosity must apply the class and re-render');
+  // the toolbar chooser toggles persist to localStorage and never close the menu (function body only).
+  const buildStart = GUIDE_SRC.indexOf('function buildToolbarChooser(');
+  const buildTC = GUIDE_SRC.slice(buildStart, GUIDE_SRC.indexOf('\napplyToolbarPrefs()', buildStart));
+  assert.ok(!buildTC.includes('closeFileMenu'), 'toggling a toolbar feature must NOT close the menu (item 5)');
+  assert.ok(GUIDE_SRC.includes('saveToolbarPrefs') && GUIDE_SRC.includes("localStorage.setItem(TOOLBAR_PREF_KEY"),
+    'the toolbar chooser must persist its hidden set to localStorage');
+  assert.ok(GUIDE_SRC.includes('tb-user-hidden'), 'the toolbar chooser must hide via .tb-user-hidden');
+  // item 1: the File-pill cue is Guided-only.
+  assert.ok(GUIDE_SRC.includes('body:not(.v-guided) .logo-file-cue{display:none}'),
+    'the File cue must be hidden outside Guided mode (item 1)');
+  // item 7: the width toggle no longer closes the menu.
+  const widthH = GUIDE_SRC.slice(GUIDE_SRC.indexOf("getElementById('btn-width').addEventListener"), GUIDE_SRC.indexOf("getElementById('btn-width').addEventListener") + 300);
+  assert.ok(!widthH.includes('closeFileMenu'), 'the width toggle must NOT close the menu (item 7)');
 });
 
 // #603 — CONSISTENCY: the file menu and the concept guide must share ONE visual structure — the
