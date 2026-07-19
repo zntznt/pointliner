@@ -352,10 +352,13 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted)}
 /* The panel opens on focus, but only with content to show, never an empty rectangle (item 3):
    - Guided (and a classless fresh boot, fail-open): the cheatsheet rows are always content.
-   - Standard: the rows are hidden, so open ONLY when there are saved searches or cross-doc hits.
-   - Lean: gone entirely (no rule opens it). */
+   - Standard AND Lean: the cheatsheet rows are hidden, so open ONLY when there are saved searches
+     or cross-doc hits. The teaching cheatsheet never pops in these tiers, but saved searches are
+     user DATA and must stay reachable (you can't recall what you saved with no surface for it), so
+     the data islands still open the panel. */
 body:not(.v-standard):not(.v-lean) #search-wrap:focus-within #search-hint{display:block}
-body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])){display:block}
+body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])),
+body.v-lean #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])){display:block}
 /* DIAL: the search legend TEACHES the query operators (is:done, #tag, "phrase") via the .sh-row cheatsheet
    rows. Standard AND Lean strip those rows (teaching text off once you know the commands); Guided keeps
    them. The operators still work, the cheatsheet just doesn't pop. #sh-saved (saved searches) + #sh-workspace

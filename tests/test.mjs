@@ -13656,15 +13656,16 @@ test('modes batch — search-hint tiered display + clickable examples', () => {
   // Guided (and a classless fresh boot) always open the panel on focus (the cheatsheet is content).
   assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-wrap:focus-within #search-hint{display:block}'),
     'Guided/classless must open the search-hint on focus');
-  // Standard opens ONLY when there is live data (saved searches or cross-doc hits) — no empty rectangle.
-  assert.ok(_src.includes('body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])){display:block}'),
+  // Standard AND Lean open ONLY with live data (saved searches or cross-doc hits) — no empty rectangle,
+  // and no cheatsheet, but saved searches stay reachable (a user must be able to recall what they saved).
+  assert.ok(_src.includes('body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]))'),
     'Standard must open the panel only when saved searches or cross-doc hits exist (no empty rectangle)');
-  // Lean is gone entirely: the old UNCONDITIONAL opener (a bare selector, no body-class prefix) is
-  // retired — every opener now leads with a body tier gate, so no rule matches a v-lean body.
+  assert.ok(_src.includes('body.v-lean #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]))'),
+    'Lean must still open the panel for saved searches / cross-doc data (data, not a helper)');
+  // the old UNCONDITIONAL opener (a bare selector, no body-class prefix) is retired: every opener now
+  // leads with a body tier gate, so the cheatsheet never pops in Standard/Lean.
   assert.ok(!/(^|\n)#search-wrap:focus-within #search-hint\{display:block\}/.test(_src),
-    'the old unconditional focus-within opener must be gone (Lean shows no panel at all)');
-  assert.ok(!/body\.v-lean[^\n]*#search-hint\{display:block\}/.test(_src),
-    'no rule may open the search-hint in Lean');
+    'the old unconditional focus-within opener must be gone (the cheatsheet never pops in Standard/Lean)');
   // the example chips are clickable in Guided (pointer-events re-enabled on the kbd), border-highlight on hover.
   assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}'),
     'Guided example chips must be clickable (pointer-events re-enabled on the kbd)');
