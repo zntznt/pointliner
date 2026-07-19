@@ -900,6 +900,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    pill. Deliberately quiet (a faint dotted underline, muted ink, help cursor) — a hint, not an
    alarm; the reason lives in the title/aria. The render-side twin of .gr-src.gr-bad. */
 .brace-attempt{color:var(--muted);text-decoration:underline dotted color-mix(in srgb,var(--warn) 60%,transparent);text-underline-offset:2px;cursor:help}
+/* #950: an estimate inside {= …} is loud, not a whisper — the render twin of a math #ERR */
+.brace-attempt-est{color:var(--bad);text-decoration-color:var(--bad)}
+.brace-attempt-est .brace-attempt-tag{font-size:.7em;font-weight:600;color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent);border-radius:var(--r-xs);padding:0 4px;margin-left:4px;vertical-align:.05em;white-space:nowrap}
 /* shorthand live-preview tooltip (UXP-7) */
 #brace-preview{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);box-shadow:var(--sh-1);padding:3px 8px;font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none}
 #brace-preview.on{display:block}
@@ -1112,6 +1115,10 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
   border-color:transparent;background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:var(--r-sm)}
 .nt-para .dice-ico, .nt-para .gr-ico, .nt-para .mk-ico, .nt-para .est-ico, .nt-para .var-ico, .nt-para .seq-ico,
 .nt-para .dice-formula, .nt-para .dice-eq{display:none}
+/* #944: in prose, a variable REFERENCE reads as just its value (the name is shown on the
+   declaration pill) — a reused frozen name renders "Sor", not "captainSor". Reference-only
+   (.var-ref); the declaration pill keeps its name=value form. */
+.nt-para .var-ref .var-name{display:none}
 .nt-para .dice-total, .nt-para .var-val{font-weight:inherit;font-family:inherit}   /* read as prose, not a bold-mono island */
 /* query pill (block): a live embedded search. --pill hue #4a6b8a (info-family blue, distinct
    from the artifact hues per design-language §4). Uses only tokens + the --r-* radii. */
@@ -2783,6 +2790,17 @@ function linkText(str, depth = 0) {
     return id;                                                 // unresolvable → bare id (better than the raw token)
   });
 }
+// #943: strip hashtag tokens from a title/snippet shown as a link CAPTION or backlink row.
+// A point's title and its #tags share one line, so a live-title link caption or a backlink row
+// otherwise drags the target's tags along ("Atomic notes #zettelkasten/principle"). This is a
+// display-only strip applied at the caption sinks — NOT in textForDisplay/displayText, which feed
+// SEARCH matching (a plain-word search for a tagged word must still match). Mirrors the mdInline /
+// collectTags hashtag rule (nested tags via /), then collapses the whitespace it leaves behind.
+const CAPTION_TAG_RE = /(?<![a-zA-Z0-9])#(?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*/g;
+function stripCaptionTags(s) {
+  return String(s ?? '').replace(CAPTION_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 // Title for a no-pill display sink: textForDisplay (prefixes/markers stripped) with
 // ARTIFACT tokens flattened to their shown value ([[dice:KEY]] → "2d6 = 8", etc.) and
 // link tokens resolved to legible text. Use this for breadcrumbs / "Linked from".
@@ -3955,6 +3973,16 @@ function queryReducerLeaf(expr, node) {
   if (!/\b(?:count|sum|avg|min|max)\s*\(\s*"/.test(s)) return false;   // a quoted reducer is present…
   if (/,\s*(?:folder|document|doc)\s*\)/.test(s)) return false;         // …but not one already widened past the subtree
   return collectScoped(node, Infinity).length === 0;                    // …and the node has nothing below it
+}
+
+// #950: a words(subtree)/words(children) count on a point with NO descendants can only ever count
+// the point's own line — almost always a writer who put the pill on a heading while the prose sits
+// in a SIBLING (an outliner mental model a Scrivener refugee won't guess), so the small number reads
+// as correct. words(self) is legitimately just this line, so it is excluded. Pure (explicit node).
+function wordsScopeLeaf(expr, node) {
+  if (!expr || !node) return false;
+  if (!/\bwords\s*\(\s*(?:subtree|children)\b/i.test(String(expr))) return false;
+  return (node.children || []).length === 0;
 }
 
 // Pure: an estimate-grade word count of prose — block + inline markdown, artifact tokens,
@@ -6306,7 +6334,7 @@ function renderLinkPill(target, label) {
   // a transclusion (_inlineDepth > 0) fall back to title-only so A↔B cycles can't recurse.
   if (label === '') {
     if (_inlineDepth > 0) {
-      const title = escHtml(textForDisplay(tn) || '(untitled)');
+      const title = escHtml(stripCaptionTags(textForDisplay(tn)) || '(untitled)');
       return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
     }
     // #917: read the block gate BEFORE rendering — renderNodeInline recurses into mdInline,
@@ -6320,7 +6348,9 @@ function renderLinkPill(target, label) {
     const inner = renderNodeInline(tn);
     return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${inner}</span>`;
   }
-  const title = escHtml(label || textForDisplay(tn) || '(untitled)');
+  // #943: a live TITLE reference (label undefined) strips the target's #tags from the caption;
+  // a fixed caption (label set) is the user's own words and is left untouched (the `||` short-circuits).
+  const title = escHtml(label || stripCaptionTags(textForDisplay(tn)) || '(untitled)');
   return `<span class="node-link" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
 }
 
@@ -6365,7 +6395,8 @@ function renderCrossLinkPill(docId, target, label) {
   // embedded) named itself "link" when it had no label and no resolvable title — a cluster of
   // identical dead pills. Fall back to the DOC NAME instead: "in <doc>" reads as a real destination.
   const docName = workspaceIndex?.nameByDocId?.get(docId);
-  const capText = label || title || (docName ? 'in ' + displayName(docName) : 'another document');
+  // #943: strip the target's #tags from the live-title caption (label undefined); a fixed label wins first.
+  const capText = label || stripCaptionTags(title) || (docName ? 'in ' + displayName(docName) : 'another document');
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another document)')}">${cap}</span>`;
@@ -6509,8 +6540,14 @@ function mdInline(s) {
     s = s.replace(/\{([^{}]+)\}/g, (m, body) => {
       if (classifyBraceBody(body, braceRules, braceVars) !== 'invalid') return m;   // 'literal'/'artifact' untouched
       const why = braceAttemptReason(body, braceRules, braceVars);
+      // #950: an estimate inside {= …} is a category error (the two engines are separate), not a
+      // mid-authoring typo — make it LOUD (a visible "estimate, not math" tag, the render-side twin
+      // of a math #ERR) instead of a whisper-level dotted underline a quant user only sees on hover.
+      const estBoundary = /^\s*=/.test(body) && mathErrorReason(body.replace(/^\s*=\s*/, ''), braceVars) === 'estimate';
+      const cls = 'brace-attempt' + (estBoundary ? ' brace-attempt-est' : '');
+      const tag = estBoundary ? '<span class="brace-attempt-tag" aria-hidden="true">estimate, not math</span>' : '';
       // m is already &<>-escaped by mdInline's top pass; escQ the reason (it may echo user text).
-      return stash(`<span class="brace-attempt" title="${escQ(why)}" aria-label="${escQ('Did not become a pill. ' + why)}">${m}</span>`);
+      return stash(`<span class="${cls}" title="${escQ(why)}" aria-label="${escQ('Did not become a pill. ' + why)}">${m}${tag}</span>`);
     });
   }
   s = mdEmph(s);
@@ -9951,6 +9988,34 @@ function mtViewSwitcherHtml(node) {
   return `<div class="mt-base-views" role="group" aria-label="Base view">${btn('table', 'Table')}${btn('board', 'Board')}${btn('cards', 'Cards')}${btn('calendar', 'Calendar')}</div>`;
 }
 
+// Wire the view-switcher buttons (mousedown + preventDefault per the caret invariant, Enter/Space
+// for keyboard). Extracted so the initial chrome build AND the #939 in-place refresh share it.
+function wireViewButtons(host, node) {
+  host.querySelectorAll('.mt-view-btn').forEach(b => {
+    b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); });
+    b.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); }
+    });
+  });
+}
+
+// #939: repaint the view-switcher strip IN PLACE so Board/Calendar enable/disable follows the
+// auto-inferred column roles (#922) after a cell edit. The cell focusout runs mtPatchCells (cell
+// innerHTML only) and never rebuilds the chrome, so without this the switcher's dimmed state stayed
+// stale — typing status keywords into a column left Board disabled until an explicit role re-pick.
+// Authored, inference-mode bases only (`!node.colRole`): an explicit role can't change on a cell
+// edit, and a query base's switcher is projection-driven (rebuilt via refreshTable). The strip is
+// separate from the cells, so replacing it never disturbs cell focus during cell-to-cell nav.
+function mtRefreshViewSwitcher(node) {
+  if (node.qbase || node.colRole) return;
+  const host = mtHost(node.id); if (!host) return;
+  const strip = host.querySelector('.mt-base-views'); if (!strip) return;
+  const tmp = document.createElement('div'); tmp.innerHTML = mtViewSwitcherHtml(node);
+  const fresh = tmp.firstElementChild; if (!fresh) return;
+  strip.replaceWith(fresh);
+  wireViewButtons(host, node);
+}
+
 function mtSetView(node, kind) {
   if (kind === 'board') {
     const gi = (mtColRoles(node) || []).findIndex(r => r === 'status');
@@ -10279,12 +10344,7 @@ function mtWireBaseChrome(host, node) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); editQBase(node); }
     });
   }
-  host.querySelectorAll('.mt-view-btn').forEach(b => {
-    b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); });
-    b.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); mtSetView(node, b.dataset.view); }
-    });
-  });
+  wireViewButtons(host, node);
   // variable-base badge: opens the naming dialog (mousedown + preventDefault per the caret
   // invariant, Enter/Space for keyboard — the view-button pattern).
   const vbb = host.querySelector('.mt-varbase-badge');
@@ -10819,6 +10879,10 @@ function buildTableWidget(node, readOnly) {
     // cell-to-cell nav keeps focus). Never any of this in the per-keystroke handler.
     const repaint = mtCommitEpilogue(node);
     if (repaint) mtPatchCells(node, cell, repaint === 'tokens');
+    // #939: a status/date value edit can change the auto-inferred column roles, which decide whether
+    // Board/Calendar are enabled — repaint the switcher strip in place (no-op unless the value changed
+    // and the base is in inference mode). Cheap; never touches cell focus.
+    if (raw !== enteredWith) mtRefreshViewSwitcher(node);
     scheduleCellPopHide(cell);   // FR-1: close the role popover on a genuine focus-leave
     // B1: and referencing points ELSEWHERE repaint via a deferred, focus-aware render —
     // only when the value actually changed on a projecting base.
@@ -23732,6 +23796,21 @@ function renderMathPill(key, m) {
       + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
+  // #950: a words(subtree)/words(children) count on a childless point can only ever count its own
+  // line — almost always the pill sits on a heading while the prose is a SIBLING. Cue it (reusing
+  // the math-empty chrome) instead of a small number that reads as a correct total.
+  if (wordsScopeLeaf(m.expr, cookieNode)) {
+    const tip = 'No points below this one to count. Nest the text under this point, or count this point only with words(self).';
+    return `<span class="math-roll math-empty" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
+      + ` aria-label="Math ${escQ(m.expr)}: nothing below to count. ${escQ(tip)}">`
+      + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
+      + `<span class="math-expr">${escHtml(m.expr)}</span>`
+      + `<span class="math-eq">=</span>`
+      + `<span class="math-result">${escHtml(display)}</span>`
+      + `<span class="math-empty-mark" aria-hidden="true">nothing below</span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `</span>`;
+  }
   // Value-only display (opt-in per pill, m.bare): render JUST the computed value, chrome-free, so
   // it reads as part of the prose or heading instead of a monospace `expr = value` capsule (the
   // "make numbers look like writing" ask). Only the successful branch is bare — an #ERR or empty
@@ -29413,14 +29492,14 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   sources.forEach(src => {
     const item = document.createElement('div');
     item.className = 'bl-item';
-    const t = displayText(src) || '(untitled)';
+    const t = stripCaptionTags(displayText(src)) || '(untitled)';   // #943: keep the row title tag-free
     item.textContent = t;
     item.title = 'Open this point';
     item.setAttribute('role', 'link');           // UXP-54: keyboard/AT-operable backlink rows
     item.setAttribute('tabindex', '0');
     // 4d: context preview — the source line around the link, so a row answers "what does it
     // say about this?" without a visit. Skipped when it would just repeat the title.
-    const snip = backlinkSnippet(src.text, blNodeId);
+    const snip = stripCaptionTags(backlinkSnippet(src.text, blNodeId));   // #943: tag-free context line
     item.setAttribute('aria-label', `Linked from "${t}"${snip && snip !== t ? ': ' + snip : ''}. Open`);
     if (snip && snip !== t) {
       const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;
@@ -29437,7 +29516,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   cross.forEach(({ docId, nodeId, title, docName }) => {
     const item = document.createElement('div');
     item.className = 'bl-item bl-cross';
-    const t = linkText(title) || '(untitled)';   // index title may hold link tokens — render legibly
+    const t = stripCaptionTags(linkText(title)) || '(untitled)';   // #943: tag-free (index title may hold link tokens — render legibly)
     item.textContent = t;
     const hint = document.createElement('span');
     hint.className = 'bl-doc-hint';
@@ -29448,7 +29527,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.setAttribute('tabindex', '0');
     // 4d: same context preview as the same-doc rows, read from the index's retained tree.
     const srcNode = findNodeInRoot(wsDocRoot(docId), nodeId);
-    const snip = srcNode ? backlinkSnippet(srcNode.text, blNodeId) : '';
+    const snip = srcNode ? stripCaptionTags(backlinkSnippet(srcNode.text, blNodeId)) : '';   // #943: tag-free context line
     item.setAttribute('aria-label', `Linked from "${t}" in ${displayName(docName || 'another document')}${snip && snip !== t ? ': ' + snip : ''}. Open`);
     if (snip && snip !== t) {
       const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;

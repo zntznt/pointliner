@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Campaign clocks and threads</title></head><body>
 <outline text="# Campaign clocks and threads">
-  <outline text="The pressure layer of a solo campaign: clocks that fill as danger builds, and threads that tick on a date. A clock is a progress cookie [/] over checkbox segments, a thread is a point with a {date due: today+3}, and one saved search pulls every open thread at once. See campaign-clocks.md for the walkthrough."/>
-  <outline text="## Clocks (fill a segment, the cookie ticks)">
-    <outline text="A clock is one point whose text carries a [/] cookie. The cookie counts the checkbox children below it and shows filled/total. Check a segment and the number climbs. Fill the last one and the clock is full: something happens in the fiction."/>
-    <outline text="The Ashguild moves against you [/]">
+  <outline text="The pressure layer of a solo campaign: clocks that fill as danger builds, and threads that tick on a date. A clock is the built-in [o /6] ring over checkbox segments (or [o 3/6] to click by hand), a thread is a point with a {date due: today+3}, and one saved search pulls every open thread at once. See campaign-clocks.md for the walkthrough."/>
+  <outline text="## Clocks (fill a segment, the ring ticks)">
+    <outline text="A clock is one point whose text carries an [o /6] clock. It counts the checkbox children below it and fills a quarter-ring gauge as you check them. Check a segment and the ring climbs. Fill the last one and the clock is full: something happens in the fiction. (Write [o 3/6] with a number instead to click the ring by hand, no children needed.)"/>
+    <outline text="The Ashguild moves against you [o /6]">
       <outline text="- [x] a paid informant marks your safehouse"/>
       <outline text="- [x] the guild posts watchers on your street"/>
       <outline text="- [ ] a bravo shadows you across the market"/>
@@ -12,7 +12,7 @@
       <outline text="- [ ] they name the price on your head"/>
       <outline text="- [ ] the raid comes at dawn"/>
     </outline>
-    <outline text="The flood behind the sea-gate [3/6]">
+    <outline text="The flood behind the sea-gate [o /6]">
       <outline text="- [x] a hairline crack weeps at the mortar"/>
       <outline text="- [x] the low cells take an inch of water"/>
       <outline text="- [x] the night watch reports a groan in the stone"/>
@@ -31,7 +31,7 @@
     <outline text="A thread is an open question with a clock or a deadline. Give it a {date due: today+3} and it becomes a due-date chip that shows up in the agenda, so the campaign nudges you when the thread is ready to pay off. Tag each one #thread so the search below can find it."/>
     <outline text="Who set the fire at the granary? #thread {date due: today+3}">
       <outline text="Ask the oracle when a lead turns up: {Yes 6 | No 6}. On a yes, advance the clock a segment."/>
-      <outline text="Progress toward an answer [1/4]">
+      <outline text="Progress toward an answer [o /4]">
         <outline text="- [x] a witness half-remembers a hooded figure"/>
         <outline text="- [ ] the figure's cloak bore a guild pin"/>
         <outline text="- [ ] the pin traces to a name"/>
@@ -51,9 +51,9 @@
     <outline text="Narrow to what is on the clock this week with a saved search like: #thread due:week"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="Tick a clock: click the bullet of a clock to open it, then check a segment box. The [/] cookie beside the clock's title climbs on its own. Fill the last box and read the fiction that the full clock triggers."/>
+    <outline text="Tick a clock: click the bullet of a clock to open it, then check a segment box. The [o /6] ring beside the clock's title climbs on its own (or click the ring itself on a manual [o 3/6] clock). Fill the last box and read the fiction that the full clock triggers."/>
     <outline text="Start a thread: make a point for the open question, tag it #thread, and set a date with {date due: today+3} (or a real date like {date due: 2026-12-21}). Open the agenda from the toolbar calendar to see it tick closer."/>
-    <outline text="Work the board: search #thread to list every open thread, star it to keep the chip, and click any result to jump to that thread and advance its clock. Nothing here is new syntax: a clock is a progress cookie, a thread is a dated point, and the board is a saved search."/>
+    <outline text="Work the board: search #thread to list every open thread, star it to keep the chip, and click any result to jump to that thread and advance its clock. Nothing here is new syntax: a clock is the built-in [o N/M] ring, a thread is a dated point, and the board is a saved search."/>
   </outline>
 </outline>
 </body></opml>

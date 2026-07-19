@@ -185,7 +185,7 @@ export function loadCores() {
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'parseLinkToken', 'buildWorkspaceIndex', 'dupDocIdGroups',   // CF-1: cross-doc link index pure cores
     'scanReparseList',                          // §5.2: incremental-rescan fingerprint decision (pure)
-    'linkText',                                 // render link tokens to legible plain text (breadcrumb/backlinks)
+    'linkText','stripCaptionTags',              // render link tokens to legible plain text (breadcrumb/backlinks); #943 tag-free captions
     'displayText',                              // rendered display text (markdown/pills resolved) for backlinks + unlinked-ref matching
     'renderCrossLinkPill',                      // CF-2: cross-doc link pill (reads root.docId + workspaceIndex via vm)
     'workspaceCandidates',                      // CF-3: cross-doc [[ picker candidates (pure)
@@ -247,7 +247,7 @@ export function loadCores() {
 
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
-    'childPropNumber','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','queryReducerLeaf','countWords','subtreeWords',
+    'childPropNumber','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
     'parseUnitDecls','unitTable','normalizeUnits','convertUnits','splitArgsTopLevel','replaceConvert','unitsToText', // #875 units
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','resolveNodeScope','checkExprOf','hasVisibleProps','buildIndex','ancestorsOf',

@@ -517,7 +517,10 @@ when proposing features:
   any leftover `{…}` that `classifyBraceBody` rules `'invalid'` (never `'literal'` prose)
   with a quiet `.brace-attempt` cue + a `braceAttemptReason` tooltip — the render-side twin
   of the edit-mode `gr-bad` marker, so a `{rumor}` / `{2d6x}` that stayed text on load says
-  why. **A deterministically-erroring `{= …}` DOES promote** (#889): a `{= convert(10, km, kg)}`
+  why. **One brace-attempt is LOUD, not a whisper** (#950, agent-review): an estimate inside
+  `{= …}` (`{= rate * (6 to 10)}`, `mathErrorReason` === `'estimate'`) is a category error between
+  the two engines, not a typo — it renders `.brace-attempt-est` (bad-colored) plus a visible
+  "estimate, not math" tag, the render twin of a math `#ERR`, instead of the hover-only underline. **A deterministically-erroring `{= …}` DOES promote** (#889): a `{= convert(10, km, kg)}`
   whose `expandAggExpr` pre-pass introduces a `#ERR` (cross-dimension convert — no answer) is a
   real calculation that errors, so `classifyBraceBody`/`makeMathResult` (lockstep via
   `mathPrepassErrs`) build the math pill and it renders a loud `#ERR (convert)` on every path,
@@ -621,7 +624,11 @@ reducer sitting on a point with **no descendants** can only ever return the iden
 emptiness, distinct from "candidates exist, none matched" (the legitimate silent dynamic 0). The pure
 `queryReducerLeaf(expr, node)` (a quoted reducer, not already widened, `collectScoped(node, ∞)` empty)
 gates a quiet `renderMathPill` "0 in scope" state (reusing the `math-empty` chrome) naming the two
-fixes: move the pill onto a parent, or add `, document` / `, folder`.
+fixes: move the pill onto a parent, or add `, document` / `, folder`. **A sibling leaf cue**
+(#950, agent-review): `wordsScopeLeaf(expr, node)` gates the same `math-empty` "nothing below" state
+for a `words(subtree)`/`words(children)` on a childless point (a heading whose prose is a sibling);
+`words(self)` is excluded (legitimately just this line). Both leaf cues sit AFTER the `#ERR` and
+empty-rollup branches so a real failure stays loud.
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
@@ -772,7 +779,13 @@ attribute and needs no prune. Display: `renderLinkPill` shows a fixed caption fo
 — *mirrors* the target by transcluding its rendered content (display-only, inline; see
 the re-entrancy note above — and since #917, a mirror ALONE on its line transcludes the
 target's whole SUBTREE as a block, same-doc and cross-doc, collapse-aware and capped; see
-the subtree-transclusion note there). Missing target → `.node-link-broken`. **Cross-document links**
+the subtree-transclusion note there). Missing target → `.node-link-broken`. **A live-title caption
+strips the target's `#tags`** (#943, agent-review): `stripCaptionTags` (mirrors the mdInline/collectTags
+hashtag rule, then collapses whitespace) is applied at the caption sinks only — `renderLinkPill` /
+`renderCrossLinkPill` live-title and the backlink panel row titles/snippets — so a reference reads
+"Atomic notes", not "Atomic notes #zettelkasten/principle". It is NOT applied in `textForDisplay`/
+`displayText`, which feed SEARCH matching (a plain-word search for a tagged word must still match); a
+fixed `[[#id|caption]]` is the user's words and is left untouched. **Cross-document links**
 (`[[docId#nodeId|label]]`) now also ship on the multi-doc workspace (delivered June 2026: the
 workspace-wide index CF-1, navigation CF-2, the folder-spanning `[[` picker CF-3, cross-doc
 backlinks CF-4, "+ New note" CF-5; see `guidance/features.md`). **The cross-doc MIRROR shipped
@@ -1064,7 +1077,11 @@ mtColRoles so they reflect inference. This is a hint the user can override, not 
 stays out per the #922 panel verdict). #922 header half: focusNewBase lands the new-base
 caret on the FIRST HEADER cell (r0/c0), not the first data cell, with its placeholder
 selected, so naming columns is the first action and generic Column 1/2/3 labels stop
-leaking into Cards/Board) ·
+leaking into Cards/Board. #939 (agent-review): a cell edit that changes an inferred role now
+repaints the view-switcher strip in place (mtRefreshViewSwitcher, authored inference-mode only)
+so Board/Calendar enable/disable follows inference — mtPatchCells patches cells only, so without
+it the switcher stayed stale until an explicit role re-pick; the view-button wiring is extracted
+to wireViewButtons, shared by the initial build and the refresh) ·
 Query bases (QP-2 Phase A, the bases-direction §4 above-the-line move under the
 base-views-vision §0b mission thesis: a base whose ROWS are a live search. node.qbase =
 {expr, cols:[{name,field}]} (_qbase OPML); pure core queryTableRows projects each match

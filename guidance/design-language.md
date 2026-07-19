@@ -207,6 +207,10 @@ two shapes, two meanings, shared vertical metrics (`.72em/600/.06em`, `padding:1
   bases). Block pills (query) are exempt. This is the ONLY context in which the artifact signature is
   suppressed, and it is intentional: the paragraph type is prose-first, so its export flattens pills
   to their result too (the two stay in step). Do not extend the chrome-drop beyond paragraphs.
+  **#944 (agent-review) extends this one step:** in a paragraph a variable *reference* pill
+  (`.var-ref`) also drops its **name**, reading as just its value — a reused frozen name renders
+  "Sor", not "captainSor" (the name still shows on the declaration pill; the aria-label keeps it).
+  Reference-only, paragraph-only; the declaration pill's name=value form is untouched.
 
 **Decision: tables.** The **static** rendered table (`.md-table-static`) is editorial —
 horizontal rules only, 2px head rule, mono caps header, no vertical lines, no header fill.
