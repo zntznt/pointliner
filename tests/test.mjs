@@ -5667,6 +5667,44 @@ test('flattenArtifacts: a display-only reference to a pick exports the frozen te
   assert.equal(out, 'It was wyrm!');
 });
 
+// #925f: on a prose EXPORT (proseExport=true) of a PARAGRAPH point, a pill flattens to just its
+// RESULT — the recipe (2d6 =, name =, expr ≈) is dropped so the exported paragraph is clean prose.
+// A bullet, or any non-para type, keeps the informative recipe. Scoped to the export flag, so
+// display labels are untouched.
+test('#925f: a paragraph exports pills as result-only; a bullet keeps the recipe', () => {
+  const dice = { key: 'd1', expr: '2d6', total: 9, parts: [{ kind: 'dice', sides: 6 }] };
+  const defVar = { key: 'v1', name: 'beast', kind: 'pick', expr: 'dragon|wyrm', rolled: 'dragon' };
+  // a PARAGRAPH: result-only
+  const para = c.mkNode('You take [[dice:d1]] from the [[var:v1]]'); para.type = 'para';
+  para.dice = [dice]; para.vars = [defVar];
+  assert.equal(c.flattenArtifacts(para.text, para, { beast: 'dragon' }, true), 'You take 9 from the dragon');
+  // a BULLET (default type): the recipe stays
+  const bullet = c.mkNode('Damage [[dice:d1]] from [[var:v1]]');
+  bullet.dice = [dice]; bullet.vars = [defVar];
+  assert.equal(c.flattenArtifacts(bullet.text, bullet, { beast: 'dragon' }, true), 'Damage 2d6 = 9 from beast = dragon',
+    'a non-para node ignores proseExport — the recipe is informative there');
+  // the SAME paragraph WITHOUT the export flag (a display label) keeps the recipe
+  assert.equal(c.flattenArtifacts(para.text, para, { beast: 'dragon' }, false), 'You take 2d6 = 9 from the beast = dragon',
+    'display sinks (proseExport=false) keep the recipe even for a paragraph');
+  // frozenTokenText directly: the para+prose combo drops the recipe, everything else keeps it
+  assert.equal(c.frozenTokenText('dice', 'd1', para, {}, undefined, true), '9');
+  assert.equal(c.frozenTokenText('dice', 'd1', bullet, {}, undefined, true), '2d6 = 9');
+});
+
+test('#925f: the prose-mode pill CSS drops the stadium in a paragraph', () => {
+  assert.ok(_src.includes('.nt-para .dice-roll, .nt-para .gr-roll, .nt-para .mk-roll,'),
+    'a .nt-para-scoped rule must lighten the inline pills');
+  assert.ok(/\.nt-para \.dice-roll[^{]*\{[^}]*background:transparent/.test(_src),
+    'para pills drop the capsule background');
+  assert.ok(_src.includes('.nt-para .dice-formula, .nt-para .dice-eq{display:none}') ||
+            /\.nt-para \.dice-formula, \.nt-para \.dice-eq\}/.test(_src) ||
+            /\.nt-para \.dice-ico[\s\S]*\.nt-para \.dice-formula, \.nt-para \.dice-eq\{display:none\}/.test(_src),
+    'the dice recipe (formula/=) is hidden in a paragraph (result-only)');
+  // both export paths (markdown + plain text) pass proseExport=true to flattenArtifacts
+  assert.ok((_src.match(/flattenArtifacts\([\s\S]*?, node, varMap, true\)/g) || []).length >= 2,
+    'both the markdown and plain-text export bodies must pass proseExport=true');
+});
+
 // UXP-137: the freeze-to-text core produces exactly what flattenArtifacts inlines (lockstep).
 test('frozenTokenText — per type, and matches flattenArtifacts', () => {
   const node = c.mkNode('x');
@@ -7239,6 +7277,22 @@ test('workspaceCandidates: absent or empty index → []', () => {
   assert.deepEqual(host(c.workspaceCandidates('x', undefined, 'da')), []);
   assert.deepEqual(host(c.workspaceCandidates('x', {}, 'da')), []);         // no .candidates
   assert.deepEqual(host(c.workspaceCandidates('x', c.buildWorkspaceIndex([]), 'da')), []);
+});
+
+// #925a: the backlinks panel is ALWAYS-ON — it no longer hides when a point has nothing inbound;
+// the two strips ("Linked from" / "Unlinked references") show just their titles at 0 matches, with
+// no empty content region below. Browser-side render, so source-pinned (like the rest of this panel).
+test('#925a: backlinks panel is always-on, both strip titles shown at 0 matches', () => {
+  const fn = _src.slice(_src.indexOf('function showBlPanel('), _src.indexOf('function showBlPanel(') + 900);
+  assert.ok(!/if \(!sources\.length && !unlinked\.length && !cross\.length && !crossUnlinked\.length\) \{ hideBlPanel/.test(fn),
+    'showBlPanel must NOT hide when everything is empty (always-on)');
+  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlPanel(') + 4000);
+  assert.ok(rp.includes("hd.textContent = total ? `Linked from · ${total}` : 'Linked from'"),
+    'the "Linked from" title shows always (title-only at 0)');
+  assert.ok(rp.includes("subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '')"),
+    'the "Unlinked references" strip shows its title always (title-only at 0)');
+  assert.ok(!/if \(!unlinked\.length\) return;\s*\n\s*const subhd/.test(rp),
+    'the unlinked subheader must no longer be gated behind a non-empty check');
 });
 
 // ── cross-document backlinks (CF-4) ───────────────────────────────────────────
