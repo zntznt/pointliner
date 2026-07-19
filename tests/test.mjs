@@ -7318,7 +7318,7 @@ test('#925a: backlinks panel is always-on, both strip titles shown at 0 matches'
   const fn = _src.slice(_src.indexOf('function showBlPanel('), _src.indexOf('function showBlPanel(') + 900);
   assert.ok(!/if \(!sources\.length && !unlinked\.length && !cross\.length && !crossUnlinked\.length\) \{ hideBlPanel/.test(fn),
     'showBlPanel must NOT hide when everything is empty (always-on)');
-  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlPanel(') + 4000);
+  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlPanel(') + 5200);
   assert.ok(rp.includes("hd.textContent = total ? `Linked from · ${total}` : 'Linked from'"),
     'the "Linked from" title shows always (title-only at 0)');
   assert.ok(rp.includes("subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '')"),
@@ -11273,10 +11273,59 @@ test('breadcrumb + backlinks render link-legible titles (displayTitle/linkText w
     'displayTitle must flatten artifacts (F1) then wrap in linkText');
   assert.match(_src, /function crumbLabel[\s\S]{0,160}displayTitle\(n\)/,
     'crumbLabel must use displayTitle');
-  assert.match(_src, /bl-item['"];\s*\n\s*const t = displayText\(src\)/,
-    'same-doc backlink rows must use displayText (resolves markdown/pills to shown text)');
+  assert.match(_src, /bl-item['"];\s*\n\s*const t = stripCaptionTags\(displayText\(src\)\)/,
+    'same-doc backlink rows must use displayText (resolves markdown/pills to shown text), tag-stripped for the caption (#943)');
   assert.ok(!/function textForDisplay\([^)]*\)\s*\{[\s\S]{0,400}linkText/.test(_src),
     'textForDisplay must NOT call linkText (keeps the workspace titles index raw)');
+});
+
+test('#943 stripCaptionTags — removes hashtags from a caption, keeps the title, collapses spaces', () => {
+  assert.equal(c.stripCaptionTags('Atomic notes #zettelkasten/principle'), 'Atomic notes');
+  assert.equal(c.stripCaptionTags('Two #a tags #b/c here'), 'Two tags here');
+  assert.equal(c.stripCaptionTags('No tags here'), 'No tags here');
+  assert.equal(c.stripCaptionTags('#lead trailing'), 'trailing', 'a leading tag is stripped, spaces collapse');
+  assert.equal(c.stripCaptionTags('snake_case and c#sharp stay'), 'snake_case and c#sharp stay', 'a # not at a word boundary / not a real tag is left');
+  assert.equal(c.stripCaptionTags(''), '');
+  assert.equal(c.stripCaptionTags(null), '');
+  // it is NOT applied inside textForDisplay/displayText (search matching must still see the tag word)
+  assert.ok(!/function textForDisplay[\s\S]{0,300}stripCaptionTags/.test(_src), 'textForDisplay must not strip tags (feeds search)');
+  // it IS applied at the caption sinks: the live-title link pill + the cross-doc caption
+  assert.ok(/label \|\| stripCaptionTags\(textForDisplay\(tn\)\)/.test(_src), 'renderLinkPill live-title strips caption tags');
+  assert.ok(/label \|\| stripCaptionTags\(title\)/.test(_src), 'renderCrossLinkPill live-title strips caption tags');
+});
+
+test('#950 wordsScopeLeaf — flags words(subtree)/words(children) on a childless point; not words(self) or non-words', () => {
+  const leaf = c.mkNode('Chapter One');
+  const parent = c.mkNode('p'); parent.children.push(c.mkNode('kid'));
+  assert.equal(c.wordsScopeLeaf('words(subtree)', leaf), true);
+  assert.equal(c.wordsScopeLeaf('words(children)', leaf), true);
+  assert.equal(c.wordsScopeLeaf('words(subtree) / 200', leaf), true, 'still flagged inside a larger expression');
+  assert.equal(c.wordsScopeLeaf('words(subtree)', parent), false, 'a point with children is not flagged');
+  assert.equal(c.wordsScopeLeaf('words(self)', leaf), false, 'words(self) is legitimately just this line');
+  assert.equal(c.wordsScopeLeaf('sum(cost)', leaf), false, 'not a words() call');
+  assert.equal(c.wordsScopeLeaf('words(subtree)', null), false);
+  // renderMathPill wires it after the empty-rollup + query-reducer leaf cues (a real failure stays loud)
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('wordsScopeLeaf(m.expr, cookieNode)'), 'renderMathPill checks the words-leaf case');
+  assert.ok(rmp.indexOf('queryReducerLeaf') < rmp.indexOf('wordsScopeLeaf'), 'words-leaf cue comes after the query-reducer cue');
+});
+
+test('#950 estimate-in-math boundary renders LOUD (visible tag), not a hover-only underline (src pins)', () => {
+  const md = fnBody(_src, 'mdInline');
+  assert.ok(/mathErrorReason\(body\.replace\(\/\^\\s\*=\\s\*\/, ''\), braceVars\) === 'estimate'/.test(md), 'the brace-attempt path detects the estimate-in-math boundary');
+  assert.ok(md.includes("'brace-attempt-est'") || md.includes('brace-attempt-est'), 'the loud class is applied');
+  assert.ok(md.includes('estimate, not math'), 'a visible tag names the boundary');
+  assert.ok(_src.includes('.brace-attempt-est{'), 'the loud CSS is present');
+});
+
+test('#939 view-switcher repaints after a cell edit changes inferred roles (src pins)', () => {
+  assert.ok(_src.includes('function wireViewButtons(host, node)'), 'the view-button wiring is extracted');
+  const rvs = fnBody(_src, 'mtRefreshViewSwitcher');
+  assert.ok(/if \(node\.qbase \|\| node\.colRole\) return;/.test(rvs), 'the refresh is authored inference-mode only');
+  assert.ok(rvs.includes("host.querySelector('.mt-base-views')") && rvs.includes('strip.replaceWith(fresh)') && rvs.includes('wireViewButtons(host, node)'),
+    'it replaces the switcher strip in place and re-wires the buttons');
+  // the cell focusout calls it only on a real value change
+  assert.ok(/if \(raw !== enteredWith\) mtRefreshViewSwitcher\(node\)/.test(_src), 'cell focusout refreshes the switcher on a value change');
 });
 
 // ── search: sequence status as key:value (state:/status:) ───────────────────

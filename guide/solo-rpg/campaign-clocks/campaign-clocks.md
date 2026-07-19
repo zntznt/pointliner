@@ -16,25 +16,35 @@ tool they are, no setting text borrowed. A thread is just an open question you h
 yourself to return to.
 
 This guide shows how to run both inside Pointliner using pieces the outliner already has:
-a **progress cookie** for the clock, a **due date** for the thread and a **saved search**
+a **segmented clock** for the pressure, a **due date** for the thread and a **saved search**
 for the board that holds them all. Nothing here is a new notation. It is the same `{…}` and
 `[…]` you already type, pointed at pressure instead of prose.
 
 ---
 
-## The clock: a progress cookie over segments
+## The clock: a segmented ring you fill
 
-Pointliner has a built-in tally called a **progress cookie**. You write it as `[/]` (a
-fraction) or `[%]` (a percent) inside a point's text, and it counts the checkbox tasks under
-that point, filling as you check them. It was built for checklists. A Blades-in-the-Dark-style
-clock is exactly that, a checklist you read as a gauge, so the cookie *is* a clock with no
-extra machinery.
+Pointliner has a built-in **clock** made for exactly this. You write it as `[o N/M]` inside a
+point's text (the letter `o`, a space, then how many of how many segments are filled), and it
+renders as a little quarter-fill ring gauge, `[o 3/6]` showing a three-quarters-ish `◑`. It is
+the Blades-in-the-Dark / Ironsworn tension clock as a native piece, no extra machinery.
 
-Make the clock a single point whose text ends in the cookie, then list the segments as
-checkbox children:
+There are two ways to drive it, and it is worth knowing which you want:
+
+- **Click to fill (`[o 0/6]`).** A manual clock. Write it at the fill you want, then **click the
+  ring to advance one segment** and **Shift-click to step it back**. This is the quickest clock:
+  one point, one gauge you tick as the fiction moves.
 
 ```
-The Ashguild moves against you [/]
+The Ashguild moves against you [o 0/6]
+```
+
+- **Count named segments (`[o /6]`).** Leave the count **empty** and the clock **fills from its
+  sub-points** instead, so each segment can be a named line you check off. Same face, but now you
+  see what each tick *means*:
+
+```
+The Ashguild moves against you [o /6]
   - [ ] a paid informant marks your safehouse
   - [ ] the guild posts watchers on your street
   - [ ] a bravo shadows you across the market
@@ -43,21 +53,16 @@ The Ashguild moves against you [/]
   - [ ] the raid comes at dawn
 ```
 
-The `[/]` beside the title reads `[0/6]`, then `[1/6]`, then `[2/6]` as you tick boxes. It
-counts the children for you, so a six-segment clock has six boxes and you never do the
-arithmetic. When the last box goes `- [x]`, the cookie shows `[6/6]` and the fiction it
-promised happens.
+The ring beside the title reads `[o 0/6]`, then climbs as you tick boxes, and when the last box
+goes `- [x]` it fills to `●` and the fiction it promised happens. Six segments, six boxes, no
+arithmetic.
 
-Two ways to write the cookie, and it is worth knowing which you have:
-
-- `[/]` **auto-counts.** It always reports the real state of the boxes below it. Use this for
-  a live clock you actually tick.
-- `[3/6]` is a **manual fraction.** Handy when you want to seed a clock that is already
-  partway filled (the flood in the demo starts at `[3/6]`) or when the segments live somewhere
-  the cookie cannot reach. Once boxes are present, the auto form is less bookkeeping.
-
-`[%]` works the same way and renders a percent instead, which reads nicely for a "how much of
-this holds" gauge, like the cover-story clock in the demo. Same boxes, different face.
+Seed a clock partway just by writing the number: `[o 3/6]` starts three segments in (the flood in
+the demo begins there). The count must be `N/M` with the `o` prefix, `[o 3/6]`, not a bare
+`[3/6]` (a bare bracket-fraction is plain text). If you prefer a percent face for a "how much of
+this still holds" gauge, the `[/]` and `[%]` **progress cookies** count the same checkbox children
+and render a fraction or a percent instead of a ring, `[%]` reading nicely for the cover-story
+clock in the demo. Same boxes, a different face.
 
 ---
 
@@ -86,8 +91,8 @@ campaigns. If you want the world to run on its **own** calendar, with threads du
 and a clock you advance when the story moves, see [the campaign calendar](../campaign-calendar/campaign-calendar.md).)
 
 A thread is often a clock *and* a date together: the open question carries the deadline, and a
-progress cookie inside it tracks how close you are to an answer. The granary thread in the demo
-does exactly that, a due date on the question and a `[1/4]` clock nested under it. The date tells
+clock inside it tracks how close you are to an answer. The granary thread in the demo
+does exactly that, a due date on the question and an `[o /4]` clock nested under it. The date tells
 you *when it matters*; the clock tells you *how far along you are*.
 
 Notice the `#thread` tag on each one. That is not decoration, it is the hook for the board.
@@ -125,7 +130,7 @@ under pressure: three clocks partway filled, three threads with dates set and a 
 lists them.
 
 - **Tick a clock.** Click the bullet of "The Ashguild moves against you" to open it, then check
-  one of the empty segment boxes. Watch the `[/]` cookie beside the title climb on its own. Fill
+  one of the empty segment boxes. Watch the `[o /6]` ring beside the title climb on its own. Fill
   the last box and read what a full clock is supposed to trigger. This is the core loop: a clock
   is just a checklist you have agreed to treat as a countdown.
 - **Watch a thread come due.** Open the agenda (the toolbar calendar button) and you will see the
@@ -135,7 +140,7 @@ lists them.
   the chip. Click any result to jump straight to that thread and advance its clock. The embedded
   `{query: #thread}` pill in the demo shows the same list without leaving the page.
 
-To build your own from scratch: make a point for a danger, put `[/]` at the end of its text and
+To build your own from scratch: make a point for a danger, put `[o /6]` at the end of its text and
 add a few `- [ ]` segment lines under it. Make a point for an open question, tag it `#thread` and
 give it a `{date due: today+3}`. Search `#thread`, star it, and you have a campaign board. That is
 the whole system.
@@ -147,12 +152,12 @@ the whole system.
 You could track all of this on paper, and plenty of people do. The trade Pointliner offers is that
 the clocks and threads **do their own bookkeeping**:
 
-- the cookie counts its own segments, so a clock is never one box out of sync with its number
+- the clock counts its own segments, so a clock is never one box out of sync with its number
 - a due date puts a thread into the agenda and colors it by urgency, so time pressure is visible
   instead of remembered
 - one saved search assembles the whole pressure board on demand, and the query pill keeps a copy
   of it live inside the document
-- none of it is new syntax to learn, a clock is a progress cookie, a thread is a dated point, and
+- none of it is new syntax to learn, a clock is the built-in `[o N/M]` ring, a thread is a dated point, and
   the board is a search you already know how to write
 
 If your campaign never grows past a couple of threads, a sticky note is genuinely fine. When the
