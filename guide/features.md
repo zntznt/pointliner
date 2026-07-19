@@ -194,6 +194,10 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 
 - **Internal links.** `[[#point]]` links to any other point, with live titles and backlinks.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
+- **Mirrors and subtree embeds.** `[[#id|]]` embeds a point's content inline; alone on its line it
+  embeds the point **and everything under it**, so an overview note composes whole sections without
+  copying (source folds bound it; long subtrees cap at 40 rows).
+  ([linking points](links-and-references.md#linking-points))
 - **Link graph.** See your document as a browsable web of its links instead of a list, and jump to
   any point by recognizing it. With a folder connected, a **Folder** view maps the documents
   themselves: one dot per document, thicker lines where more links run between them, click to open.
@@ -202,7 +206,8 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   across them and search the whole folder at once.
   ([links across documents](links-and-references.md#links-across-documents) · [folder of documents](files-and-export.md#working-with-a-folder-of-documents))
 - **Mirrors across documents.** `[[docId#id|]]` embeds a point from another document where you
-  write it, shown as last saved in its file; click it to open the source.
+  write it, shown as last saved in its file (alone on its line, its whole subtree comes along);
+  click it to open the source.
   ([links across documents](links-and-references.md#links-across-documents))
 - **Broken-links report.** File menu, Broken links: rounds up every link whose target is gone, in
   this document and across the folder, and jumps you to the point that holds each one.

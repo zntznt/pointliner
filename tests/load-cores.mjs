@@ -191,6 +191,7 @@ export function loadCores() {
     'workspaceCandidates',                      // CF-3: cross-doc [[ picker candidates (pure)
     'workspaceBacklinks',                       // CF-4: cross-doc backlinks (pure)
     'findNodeInRoot','backlinkSnippet','renderCrossLinkPill','renderNodeInline',   // 4a/4d: cross-doc mirror + backlink previews
+    'mirrorSubtreeRows',   // #917: subtree transclusion rows (pure)
     'searchWorkspace',                          // WS-1: workspace-wide search matcher (pure)
     'searchSnippet',                            // UXP-64: context-aware snippet for workspace results
     'validPluginPack', 'mergePackRules', 'packVarDefs', 'packTemplateDefs', 'mergedTemplates',   // packTemplateDefs/mergedTemplates: #583

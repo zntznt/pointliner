@@ -239,6 +239,18 @@ feature — it is making the index a dependable substrate:
    pills resolve in THEIR doc; depth guard covers cross-doc chains); the pill's title/aria
    say "as saved" (P4). Backlink rows carry a `backlinkSnippet` context line, same-doc and
    cross rows alike.
+   **Extended by #917 subtree transclusion (shipped 2026-07-19):** a mirror token ALONE on
+   its line renders the target's SUBTREE as a block (same-doc and cross-doc — the ZK
+   structure-note/MOC composition; GH #917, the persona panel's top ZK ask). Gate:
+   `_mirrorBlockLine`, stamped per line at `mdInline` entry, suppressed in base cells;
+   mid-sentence mirrors keep the single-line form (position determines form, the GFM-table
+   convention). Rows: pure `mirrorSubtreeRows` — `MIRROR_ROW_CAP` 40 + honest "+N more"
+   footer, **collapse-aware** (folding in the source is the author's transclusion lever; a
+   collapsed target mirrors title-only) — each rendered through `renderNodeInline` (shared
+   `mirrorBlockHtml`), so the depth-1 guard applies per row and mirror cycles stay
+   impossible with no new guard code. Freshness: exitEdit's partial repaint walks the
+   edited node's ancestors so an edit under a mirrored target repaints its mirrors.
+   Cross-doc rows are "as saved" like the head, staleness still named in title/aria.
 3. ✅ **4b doc-level folder graph** (shipped 2026-07-18): a `This document | Folder` toggle in
    the graph panel head (shown only when the folder has 2+ indexed docs; single-file sessions
    keep the exact pre-4b panel). Pure `docGraphModel` — documents as nodes, one undirected
