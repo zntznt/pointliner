@@ -66,8 +66,18 @@ Every artifact follows the same path. To add one (say `@weather`):
    pencil exits edit mode then opens the dialog. (Note: inline-able artifacts are
    unfolded to `{…}` text in edit mode, so only complex pills — tables/markov — get
    edit-mode clicks; dice/math/grammar pills only exist in display mode.)
-10. **Prune + edit** — `pruneWeather(node)` (drop records with no token) called in
-    `exitEdit`; `editWeather(node, key)` opens the dialog prefilled.
+9a. **Roll-log coverage (MANDATORY for any generative/randomizing pill, #918).** If your
+    artifact produces a *random or generated* result (it has a reroll — dice, a generator, an
+    oracle, a deck, a chain, an estimate, a pick), its reroll function MUST call
+    `logRoll(node, source, result)` right where it `announce()`s the new value — `source` is the
+    pill's own label (its expr / def / name), `result` the frozen value it just produced. This is
+    the single opt-in hook that lets **every** generative pill land in the user's Rolls log; a new
+    such pill that skips it is silently missing from the log, which the owner has ruled out. Two
+    things enforce it: add your reroll function name to the `REROLLS` list in the
+    **`#918 roll-log coverage`** test (`tests/test.mjs`) — it fails if any listed reroll lacks a
+    `logRoll(` call — and this step. A *deterministic* pill (math, query/count, meter, a display-only
+    variable) has no reroll and does NOT log. `logRoll` is a no-op unless the user turned logging on,
+    so it costs nothing when off.
 11. **CSS** — a `.weather-pill` block near the other pill styles; reuse the
     `--acc` / `--ring` / `--bdr` tokens so light/dark themes work automatically.
     Follow the pill grammar in `guidance/design-language.md` §4: pick a distinct

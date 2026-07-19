@@ -2438,6 +2438,7 @@ body:not(.v-guided) .logo-file-cue{display:none}
         <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
         <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
         <div class="cmd-item" id="btn-units"><div class="cmd-icon" data-fa="fa-solid fa-arrow-right-arrow-left" data-fb="⇄">⇄</div><div class="cmd-info"><span class="cmd-label">Custom units</span><span class="cmd-desc">Define your own units, then convert with {= convert(x, from, to)}</span></div></div>
+        <div class="cmd-item" id="btn-rolllog" role="button" aria-pressed="false"><div class="cmd-icon" data-fa="" data-fb="⚄">⚄</div><div class="cmd-info"><span class="cmd-label" id="rolllog-label">Log rolls: Off</span><span class="cmd-desc">Record every dice roll, generator, oracle and pick to a dated Rolls log. Set a home with the bullet menu.</span></div></div>
         <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
       </div>
 
@@ -2632,7 +2633,7 @@ let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, appearance: { tags: {}, props: {} }, calendar: null, calendars: {}, gamelog: null };
+  return { id: uid(), text: '', note: '', type: 'ul', children: [], checked: false, collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, rollLog: { on: false, targetId: null }, appearance: { tags: {}, props: {} }, calendar: null, calendars: {}, gamelog: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -7523,12 +7524,13 @@ function toOpml(r) {
   // file-per-day journal (or a custom home point) to the defaults on EVERY OPML save/load.
   // Emit only when non-default (the _appearance/_calendar empty-skip), so a plain doc stays clean.
   const journalHas = r.journal && (r.journal.mode !== 'append' || r.journal.targetId != null);
+  const rollLogHas = r.rollLog && (r.rollLog.on || r.rollLog.targetId != null);   // #918: the roll-log config
   // #653: the extra named calendars + the game-log binding. Emit only when present so a
   // single-calendar (or no-calendar) doc stays byte-identical — the empty-skip discipline.
   const calsHas = r.calendars && Object.keys(r.calendars).length;
   const gamelogHas = r.gamelog && r.gamelog.targetId != null;
   const unitsHas = r.units && typeof r.units === 'object' && Object.keys(r.units).length;   // #875: declared units only, built-ins never serialized
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '');
+  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -7663,6 +7665,10 @@ function fromOpml(xml) {
   if (!inboxes.length) { const legacy = doc.querySelector('head > _inbox')?.textContent?.trim(); if (legacy) inboxes = [legacy]; }
   const journalRaw    = doc.querySelector('head > _journal')?.textContent?.trim();
   const journal       = (() => { try { const j = JSON.parse(journalRaw || 'null'); return (j && typeof j.mode === 'string') ? j : { mode: 'append', targetId: null }; } catch(_) { return { mode: 'append', targetId: null }; } })();
+  // #918: the roll-log config — { on, targetId }. Validated to booleans/string-or-null so a
+  // tampered <_rolllog> can never inject a bad shape; default off, so a legacy doc loads unchanged.
+  const rollLogRaw    = doc.querySelector('head > _rolllog')?.textContent?.trim();
+  const rollLog       = (() => { try { const j = JSON.parse(rollLogRaw || 'null'); return (j && typeof j === 'object') ? { on: !!j.on, targetId: typeof j.targetId === 'string' ? j.targetId : null } : { on: false, targetId: null }; } catch(_) { return { on: false, targetId: null }; } })();
   const docId         = doc.querySelector('head > _docid')?.textContent?.trim() || null;
   // data packs (plugins): the validator drops shape-invalid packs (no string id);
   // bad rules/vars inside a kept pack are neutralized defensively at collect time.
@@ -7692,7 +7698,7 @@ function fromOpml(xml) {
   // legacy doc loads unchanged and convert() still works off the built-ins.
   const unitsRaw      = doc.querySelector('head > _units')?.textContent?.trim();
   const units         = (() => { try { return normalizeUnits(JSON.parse(unitsRaw || 'null')) || undefined; } catch(_) { return undefined; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, journal,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, journal, rollLog,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -13940,28 +13946,79 @@ function appendJournalPoint(entry, text) {
   markDirty(); render();
 }
 
-function findOrCreateJournalHome() {
-  // If a targetId is set, use that point (user-designated home).
-  if (root.journal?.targetId) {
-    const n = nodeById(root.journal.targetId);
-    if (n) return n;
-    // Stale pointer — clear it and fall through to auto-create.
-    root.journal = { mode: root.journal?.mode || 'append', targetId: null };
+// Shared "dated log" home resolver (product-identity §8a substrate): a user-designated target
+// point, else a top-level point whose first line is exactly `title`, else a freshly created one.
+// Returns { home, staleTarget } — staleTarget true when a targetId was set but resolves nowhere,
+// so the caller clears its OWN config pointer (journal / rollLog keep their own shape). Journal
+// and the roll log both resolve here; the chronicle's in-world binding stays separate (it is bound
+// by id only, never auto-created by title).
+function findOrCreateNamedHome(targetId, title) {
+  let stale = false;
+  if (targetId) {
+    const n = nodeById(targetId);
+    if (n) return { home: n, staleTarget: false };
+    stale = true;   // pointer set but dangling — caller clears its config
   }
-  // Look for an existing top-level point whose first line is exactly "Journal".
   for (const ch of root.children) {
-    const line = (ch.text || '').split('\n', 1)[0].trim();
-    if (line === 'Journal') return ch;
+    if ((ch.text || '').split('\n', 1)[0].trim() === title) return { home: ch, staleTarget: stale };
   }
-  // Auto-create a top-level "Journal" point.
   pushUndo();
-  const home = mkNode('Journal');
+  const home = mkNode(title);
   home.type = 'ul';
   root.children.push(home);
   nodeMap.set(home.id, home);
   parentMap.set(home.id, root);
   markDirty();
+  return { home, staleTarget: stale };
+}
+function findOrCreateJournalHome() {
+  const { home, staleTarget } = findOrCreateNamedHome(root.journal?.targetId, 'Journal');
+  if (staleTarget) root.journal = { mode: root.journal?.mode || 'append', targetId: null };
   return home;
+}
+// The roll-log home (#918). Same substrate as the journal: an explicit target or a top-level
+// "Rolls" point. Roll entries nest under today's date (findOrCreateDatedEntry) exactly like the
+// journal, so a session reads as a dated log.
+function resolveRollLogHome() {
+  const { home, staleTarget } = findOrCreateNamedHome(root.rollLog?.targetId, 'Rolls');
+  if (staleTarget) root.rollLog = { on: !!root.rollLog?.on, targetId: null };
+  return home;
+}
+// Pure: one roll-log line, `HH:MM · <source> → <result>`. The source (the pill's expr / def /
+// name) is context and is omitted when empty. Node-testable.
+function rollLogEntry(source, result, hhmm) {
+  const s = String(source ?? '').trim();
+  const r = String(result ?? '').trim();
+  return `${hhmm} · ${s ? s + ' → ' : ''}${r}`;
+}
+// #918: append ONE roll's result to the roll-log home when logging is on. This is the single
+// contract EVERY generative/randomizing pill must honor: its reroll function calls logRoll with
+// the value it just produced (dice, grammar + deck/sequence, markov, estimate, and pick vars all
+// do — enforced by the `roll-log coverage` drift test, and required of any NEW such pill by
+// guidance/adding-an-artifact.md). Opt-in: a no-op unless root.rollLog.on. The record is the
+// point itself (searchable, exportable, annotatable) nested under today's date like the journal;
+// it appears in the home on the next render, the same as a capture. Returns true when it logged.
+function logRoll(node, source, result) {
+  if (!root.rollLog?.on) return false;
+  const r = String(result ?? '').trim();
+  if (!r) return false;                          // a spent deck / null roll → nothing to record
+  const home = resolveRollLogHome();
+  if (!home) return false;
+  const mk = (t, p) => { const n = mkNode(t); n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); return n; };
+  const { entry: day } = findOrCreateDatedEntry(home, todayISO(), mk);
+  const d = new Date(), pad = x => String(x).padStart(2, '0');
+  const pt = mk(rollLogEntry(source, r, `${pad(d.getHours())}:${pad(d.getMinutes())}`), day);
+  day.children.push(pt);
+  markDirty();
+  return true;
+}
+// The roll-log source label for a grammar pill: a NAMED grammar/table logs its callable name; an
+// ANONYMOUS one (an inline {a|b}, oracle, glue template, {ref}) logs its template (the def's RHS),
+// which is the most useful "what was rolled" context. Pure.
+function grammarLogSource(g) {
+  if (!g) return '';
+  if (g.anon) { const m = (g.def || '').match(/^[a-z_][\w]*\s*:\s*([\s\S]+)$/i); return (m ? m[1] : (g.def || '')).trim(); }
+  return g.origin || g.name || 'grammar';
 }
 
 // ── chronicle strip (#652): the journal's in-world twin. The journal logs the REAL day
@@ -17305,6 +17362,19 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
         } else {
           root.journal = { mode: root.journal?.mode || 'append', targetId: nodeId };
           markDirty(); flashHint('Journal home set to ' + crumbLabel(node));
+        }
+      } },
+    // #918: make THIS point the roll-log home, and turn logging on so rolls start landing here.
+    { sec:'More', icon:{ fa:'', fb:'⚄' },
+      label: root.rollLog?.targetId === nodeId ? 'Unset as roll-log home' : 'Log rolls here',
+      fn: () => {
+        hideBpop();
+        if (root.rollLog?.targetId === nodeId) {
+          root.rollLog = { on: !!root.rollLog?.on, targetId: null };
+          markDirty(); flashHint('Roll-log home cleared (logging stays ' + (root.rollLog.on ? 'on' : 'off') + ')');
+        } else {
+          root.rollLog = { on: true, targetId: nodeId };
+          markDirty(); flashHint('Logging rolls to ' + crumbLabel(node));
         }
       } },
     // #653: bind this subtree as the IN-WORLD LOG — every date inside it reads the campaign's own
@@ -21437,6 +21507,7 @@ function rerollGrammar(node, key) {
     g.result = advanceSeq(g);
     markDirty();
     announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
+    logRoll(node, `deck (${g.mode})`, g.result);   // #918 (a spent deck → '' → logRoll no-ops)
     if (willReshuffle) flashHint('Deck reshuffled');
     const el = repaintAfterRoll(node);
     el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
@@ -21452,6 +21523,7 @@ function rerollGrammar(node, key) {
   if (Object.keys(deps).length) g.deps = deps; else delete g.deps;
   markDirty();
   announce(`Re-generated: ${g.result}`);
+  logRoll(node, grammarLogSource(g), g.result);   // #918
   const el = repaintAfterRoll(node);
   el?.querySelector(`.gr-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('gr-rolled');
 }
@@ -23271,6 +23343,7 @@ function rerollEst(node, key) {
   markDirty();
   const sm = (() => { const s = sampleUncertain(e.expr, EST_N, e.seed, node, collectVars()); return s && distSummary(s); })();
   announce(sm ? `${e.expr} re-sampled: ${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : `${e.expr} re-sampled`);
+  logRoll(node, e.expr, sm ? `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : '');   // #918
   const el = repaintNodeContent(node);
   el?.querySelector(`.est-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('est-rolled');
 }
@@ -24100,6 +24173,7 @@ function rerollPickVar(node, key, opts) {
   v.rolled = rolled;
   markDirty();
   announce(`${v.name} re-rolled: ${rolled}`);
+  logRoll(node, v.name, rolled);   // #918
   if (opts?.repaintAll === false) return; // edit-mode caller swaps its own buffer
   render();
   document.querySelector(`.var-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('var-rolled');
@@ -25354,6 +25428,7 @@ function rerollDice(node, key) {
   d.total = total; d.parts = parts;
   markDirty();
   announce(`${d.expr} re-rolled: ${diceTotalStr(d)}`);
+  logRoll(node, d.expr, diceTotalStr(d));   // #918
   const el = repaintAfterRoll(node);
   el?.querySelector(`.dice-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('dice-rolled');
 }
@@ -25398,6 +25473,7 @@ function rerollMarkov(node, key) {
   mk.path = walkMarkov(parsed, mk.start, mk.steps);
   markDirty();
   announce(`${mk.name || 'Chain'} re-rolled: ${mk.path.join(' → ')}`);
+  logRoll(node, mk.name || 'chain', mk.path.join(' → '));   // #918
   const el = repaintNodeContent(node);
   el?.querySelector(`.mk-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('mk-rolled');
 }
@@ -30732,6 +30808,7 @@ function openFileMenu() {
   armChromeReturn();
   syncVerbosityCard();       // modes batch item 4: highlight the current tier in the 3-choice card
   buildToolbarChooser();     // modes batch item 5: (re)build the toolbar-feature toggles, reflecting current prefs
+  syncRollLogLabel();        // #918: reflect the roll-log on/off state
   // platform-correct shortcut chips (⌘K on Mac, Ctrl+K elsewhere)
   const keySave = document.getElementById('key-save');
   if (keySave) keySave.textContent = fmtKey('S');
@@ -30891,6 +30968,20 @@ document.getElementById('btn-datapacks')?.addEventListener('click', () => { clos
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
 document.getElementById('btn-calendar')?.addEventListener('click', () => { closeFileMenu(); openCalendarDialog(); });   // #527
 document.getElementById('btn-units')?.addEventListener('click', () => { closeFileMenu(); openUnitsDialog(); });   // #875
+// #918: the roll-log on/off toggle. Sets state IN PLACE (no closeFileMenu) so it reads like the
+// other settings toggles; flashes the change (P4) and points at the Rolls home the first time on.
+function syncRollLogLabel() {
+  const on = !!root.rollLog?.on;
+  const lbl = document.getElementById('rolllog-label');
+  if (lbl) lbl.textContent = 'Log rolls: ' + (on ? 'On' : 'Off');
+  document.getElementById('btn-rolllog')?.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+document.getElementById('btn-rolllog')?.addEventListener('click', () => {
+  root.rollLog = { on: !root.rollLog?.on, targetId: root.rollLog?.targetId ?? null };
+  markDirty();
+  syncRollLogLabel();
+  flashHint(root.rollLog.on ? 'Logging rolls to your Rolls log' : 'Roll logging off');
+});
 // Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
 // leaves the menu open, so the user can try each tier and watch the app change behind the dialog.
 // The keyboard cycle (⌘⇧.) still works; both paths converge on setVerbosity so the card stays in sync.
@@ -31764,6 +31855,15 @@ const GUIDE = [
     examples:[
       { syn:'/journal', desc:"open or start today's entry" },
       { syn:'Ctrl/Cmd+Shift+J', desc:'switch in-doc / file per day' },
+    ] },
+  { id:'roll-log', cat:'dates',
+    title:'Roll log',
+    body:"Keep a running record of every random or generated result, so nothing is lost when you click a pill again. Normally re-rolling a pill replaces its result; with the roll log on, each roll is ALSO written to a dated Rolls log the moment it happens. This covers all of the generating pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, roll-on-your-document, and estimates. Turn it on from the File menu (Log rolls: Off/On). Entries land under a top-level Rolls point, filed by date like the journal (year then month then day), each line reading the time, what was rolled, and the result. To keep the log somewhere specific, open any point's bullet menu and choose Log rolls here; that point becomes the home and logging turns on. It is off by default and adds nothing until you switch it on, so an ordinary document is untouched. Handy for solo journaling play, where the log of what the oracle said is the record you keep.",
+    related:['journal','dice','gen-rules'],
+    examples:[
+      { syn:'Menu → Log rolls: On', desc:'start recording every roll' },
+      { syn:'Menu → Log rolls here', desc:'set a point as the Rolls home (bullet menu)' },
+      { syn:'14:32 · 2d6 → 9',  desc:'a log line: time, source, result' },
     ] },
   { id:'chronicle', cat:'dates',
     title:'Chronicle (dated log)',
