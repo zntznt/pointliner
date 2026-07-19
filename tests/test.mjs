@@ -3111,6 +3111,23 @@ test('tagColorOf — returns a configured swatch, null otherwise, hierarchical',
   // an unknown color value is ignored (only the curated swatch names apply)
   assert.equal(c.tagColorOf('x', { tags: { x: 'chartreuse' }, props: {} }), null);
 });
+// item 10 (modes batch): the tag palette mirrors the nine accent hues, and retired swatch names
+// (amber/violet) migrate to the nearest accent hue on load; gray (no accent equivalent) drops.
+test('tag palette mirrors the nine accent hues + migrates retired names', () => {
+  // the picker offers exactly the nine accent hues, in the accent-picker order
+  assert.ok(/const APPEARANCE_COLORS = \['blue', 'purple', 'green', 'teal', 'orange', 'red', 'pink', 'indigo', 'oxblood'\]/.test(_src),
+    'APPEARANCE_COLORS must be the nine accent hues in accent-picker order');
+  // load migrates amber -> orange, violet -> purple; keeps a valid new name; drops gray + unknowns
+  const out = c.normalizeAppearance({ tags: { a: 'amber', b: 'violet', d: 'indigo', e: 'gray', f: 'chartreuse' }, props: {} });
+  assert.equal(out.tags.a, 'orange', 'amber migrates to orange');
+  assert.equal(out.tags.b, 'purple', 'violet migrates to purple');
+  assert.equal(out.tags.d, 'indigo', 'a valid new hue survives');
+  assert.equal(out.tags.e, undefined, 'gray (no accent equivalent) drops');
+  assert.equal(out.tags.f, undefined, 'an unknown color drops');
+  // every accent hue is a valid, settable tag color
+  const set = c.setTagColor({ tags: {}, props: {} }, 'x', 'oxblood');
+  assert.equal(set.tags.x, 'oxblood', 'oxblood (a new accent hue) is settable');
+});
 test('propIconOf — returns a configured in-subset icon, null otherwise', () => {
   const ap = { tags: {}, props: { cost: 'fa-dollar-sign' } };
   assert.equal(c.propIconOf('cost', ap), 'fa-dollar-sign');
@@ -3168,7 +3185,7 @@ test('appearance is display-only wired at the render sites (#464)', () => {
   const subset = new Set(m[1].replace(/'/g, '').split(',').map(s => s.trim()));
   const iconLit = _src.match(/APPEARANCE_ICONS\s*=\s*\[([^\]]*)\]/)[1];
   const icons = iconLit.replace(/'/g, '').split(',').map(s => s.trim()).filter(Boolean);
-  assert.ok(icons.length >= 8, 'a usable icon shortlist');
+  assert.ok(icons.length >= 24, 'the expanded property-icon shortlist (item 11)');   // was >=8 before the expansion
   for (const g of icons) assert.ok(subset.has(g), `${g} must be in the embedded FA subset`);
 });
 
