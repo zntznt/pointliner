@@ -4869,6 +4869,31 @@ test('todo: tolerant of extra whitespace + lowercase priority', () => {
   assert.deepEqual(host(parseTodo('#TODO   [#b]   tidy')), { keyword: 'TODO', priority: 'B', body: 'tidy' });
 });
 
+test('#947 parseTodo — a leading RUN of keywords collapses to the LAST (last typed wins)', () => {
+  // typing #NEXT [#B] after a #TODO continuation → NEXT, priority B, clean body (no stray #NEXT hashtag)
+  assert.deepEqual(host(parseTodo('#TODO #NEXT [#B] body')), { keyword: 'NEXT', priority: 'B', body: 'body' });
+  assert.deepEqual(host(parseTodo('#TODO #WAITING #DONE x')), { keyword: 'DONE', priority: null, body: 'x' }, 'a run of three collapses to the last');
+  // a keyword AFTER ordinary text is a mid-sentence hashtag, never collapsed
+  assert.deepEqual(host(parseTodo('#TODO call #NEXT week')), { keyword: 'TODO', priority: null, body: 'call #NEXT week' });
+  // a single keyword is unchanged
+  assert.deepEqual(host(parseTodo('#TODO [#A] Buy milk')), { keyword: 'TODO', priority: 'A', body: 'Buy milk' });
+});
+
+test('#947 collapseDoubledKeyword — rewrites a doubled prefix on commit; leaves everything else alone', () => {
+  assert.equal(c.collapseDoubledKeyword('#TODO #NEXT [#B] body'), '#NEXT [#B] body');
+  assert.equal(c.collapseDoubledKeyword('#TODO body'), '#TODO body', 'a single keyword: unchanged (no whitespace touch)');
+  assert.equal(c.collapseDoubledKeyword('#TODO   [#a]   tidy'), '#TODO   [#a]   tidy', 'a single keyword with extra spaces stays byte-for-byte');
+  assert.equal(c.collapseDoubledKeyword('plain text'), 'plain text', 'no keyword → unchanged');
+  assert.equal(c.collapseDoubledKeyword('#TODO call #NEXT week'), '#TODO call #NEXT week', 'a mid-sentence keyword is not a doubled prefix');
+  // it is wired into exitEdit's commit
+  assert.ok(/node\.text = collapseDoubledKeyword\(node\.text\);/.test(_src), 'exitEdit collapses a doubled keyword on commit');
+});
+
+test('#941 agenda calendar hides the peeking months’ weekday headers (src pin)', () => {
+  assert.ok(_src.includes('.agc-month-prev .agc-dow,.agc-month-next .agc-dow{visibility:hidden}'),
+    'the prev/next weekday-header rows are hidden so only the centered month labels weekdays');
+});
+
 test('todo: priority bracket may directly abut the keyword (no space)', () => {
   // LEAD_WORD_RE lookahead must accept `[` so `#TODO[#A]` is recognized, not left as plain text.
   assert.deepEqual(host(parseTodo('#TODO[#A] buy milk')), { keyword: 'TODO', priority: 'A', body: 'buy milk' });

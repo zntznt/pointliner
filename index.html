@@ -1809,6 +1809,11 @@ body.agg-resizing{cursor:col-resize;user-select:none}
    is WIDER than one month does the leftover space reveal the flanking months. */
 .agc-month{flex:0 0 min(100%,520px);min-width:0;display:flex;flex-direction:column;gap:6px}
 .agc-month-prev,.agc-month-next{opacity:.5;cursor:pointer;transition:opacity .12s}
+/* #941: the peeking prev/next months are a day-cell PREVIEW — hide their weekday-header row so the
+   view shows ONE set of weekday labels (the centered month), not a confusing "SA SU MO…SA SU" run.
+   visibility:hidden (not display:none) keeps the row's height so the peeking day cells stay aligned
+   with the centered month's cells. */
+.agc-month-prev .agc-dow,.agc-month-next .agc-dow{visibility:hidden}
 .agc-month-prev:hover,.agc-month-next:hover,.agc-month-prev:focus-visible,.agc-month-next:focus-visible{opacity:.8}
 .agc-month-prev:focus-visible,.agc-month-next:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-sm)}
 .agc-month-prev *,.agc-month-next *{cursor:pointer}
@@ -3175,9 +3180,17 @@ const LEAD_WORD_RE = /^#([A-Z][A-Z0-9_-]*)(?=[\s\[]|$)/;
 // keyword is returned WITHOUT the leading `#` (e.g. 'TODO', not '#TODO').
 function parseTodo(text, states = knownStates()) {
   const s = text == null ? '' : String(text);
-  const km = s.match(LEAD_WORD_RE);
+  let km = s.match(LEAD_WORD_RE);
   if (!km || !states.has(km[1])) return { keyword: '', priority: null, body: s };
   let rest = s.slice(km[0].length).replace(/^\s+/, '');  // km[0] = '#KEYWORD'
+  // #947: a leading RUN of state keywords collapses to the LAST one (last-typed wins). Enter after a
+  // `#TODO` writes `#TODO ` into the sibling; typing `#NEXT [#B] …` there means NEXT, not "#TODO with
+  // a stray #NEXT hashtag and an unparsed priority". Only CONSECUTIVE leading keywords collapse — a
+  // keyword after ordinary text (`#TODO call #NEXT week`) stays a mid-sentence hashtag.
+  let nk;
+  while ((nk = rest.match(LEAD_WORD_RE)) && states.has(nk[1])) {
+    km = nk; rest = rest.slice(nk[0].length).replace(/^\s+/, '');
+  }
   let priority = null;
   const pm = rest.match(/^\[#([A-Za-z])\]\s*/);
   if (pm) { priority = pm[1].toUpperCase(); rest = rest.slice(pm[0].length); }
@@ -3190,6 +3203,20 @@ function formatTodo({ keyword, priority, body }) {
   const head = [keyword ? '#' + keyword : '', priority ? '[#' + priority + ']' : ''].filter(Boolean).join(' ');
   body = body || '';
   return head ? (body ? head + ' ' + body : head) : body;
+}
+// #947: collapse a leading RUN of ≥2 state keywords to the canonical single-keyword form
+// (`#TODO #NEXT [#B] body` → `#NEXT [#B] body`). Pure; returns the text UNCHANGED when there is
+// no doubled keyword, so a normal todo's whitespace is never touched. Applied on edit commit so a
+// keyword typed over a continuation prefix REPLACES it rather than stacking (parseTodo already
+// reads the last keyword for the render; this keeps the stored text clean too).
+function collapseDoubledKeyword(text, states = knownStates()) {
+  const s = text == null ? '' : String(text);
+  const km = s.match(LEAD_WORD_RE);
+  if (!km || !states.has(km[1])) return s;
+  const after = s.slice(km[0].length).replace(/^\s+/, '');
+  const nk = after.match(LEAD_WORD_RE);
+  if (!nk || !states.has(nk[1])) return s;   // no second leading keyword → nothing to collapse
+  return formatTodo(parseTodo(s, states));
 }
 
 // Step through an ordered cycle list with wraparound; unknown current → start.
@@ -16130,6 +16157,7 @@ function exitEdit(content, node) {
   }
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
+  node.text = collapseDoubledKeyword(node.text);   // #947: a retyped state keyword replaces the continuation's prefix, never stacks
 
   if (node.type === 'base') {
     // Re-read with block awareness: a #+TBLFM: line typed on a fresh Enter lands in a
