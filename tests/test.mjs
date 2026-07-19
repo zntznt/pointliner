@@ -2049,6 +2049,14 @@ test('paragraph fold: node.folded round-trips via _folded; only emitted when set
   assert.match(_src, /\.nt-para\.folded>\.node-row>\.node-content:not\(\[data-editing\]\)/, 'the clamp is disabled while editing');
 });
 
+// #919 (agent-review): a `/`/`@` typed right after an unfolded pill's closing brace
+// ({= sum(cost)}/base) must open the menu, not stay glued to the pill as literal text — so `}` is a
+// command position alongside start-of-text and whitespace. The no-match branch keeps a stray `}/x` safe.
+test('#919: the slash/@ trigger fires after a pill boundary (})', () => {
+  assert.match(_src, /const m = before\.match\(\/\(\^\|\[\\s\}\]\)\(\[\/@\]\)/,
+    'the slash trigger must treat } as a command position (fires a /-menu right after an unfolded pill)');
+});
+
 test('paragraph traps: prose slash gate, ¶ alignment, and the fold clearing on conversion', () => {
   // 1) the / block menu inside a PARAGRAPH triggers only at the very start of the text —
   // mid-prose, Enter means LINE BREAK, so an open menu would apply "Bullet" and destroy
@@ -16156,7 +16164,19 @@ test('#804 wiring: emoji trigger excludes code colons; unengaged menu never stea
   assert.match(_fix, /\(\?<!\[a-zA-Z0-9\):\\\]\}\]\):/, 'lookbehind must exclude ) : ] }');
   assert.match(_fix, /engaged: m\[1\]\.length > 0/, 'engagement flag missing from emojiState');
   assert.match(_fix, /canApply: \(\) => !!emojiState\?\.engaged/, 'emoji canApply gate missing');
-  assert.match(_fix, /if \(m\.canApply && !m\.canApply\(\)\) \{ m\.hide\(\); break; \}/, 'dispatcher fall-through missing');
+  // #913 generalized the gate to receive the key (so a menu can accept Tab while declining Enter)
+  assert.match(_fix, /if \(m\.canApply && !m\.canApply\(e\.key\)\) \{ m\.hide\(\); break; \}/, 'dispatcher fall-through missing');
+});
+// #913 (agent-review): a typed #tag is final content, so an UNENGAGED Enter must not swap it for the
+// highlighted longer tag and keep the caret on the line (which silently merged the next typed line).
+// Enter applies only when arrowed (engaged); Tab still completes. Unengaged Enter falls through → new point.
+test('#913 wiring: the tag picker declines an unengaged Enter but accepts Tab', () => {
+  assert.match(_fix, /tagState = \{ nodeId, content, hashAt, prefix: m\[1\], activeIdx: 0, matches, engaged: false \}/,
+    'tagState must carry an engaged flag (false at open)');
+  const tm = _fix.slice(_fix.indexOf('function tagMove('), _fix.indexOf('function tagMove(') + 220);
+  assert.ok(tm.includes('tagState.engaged = true'), 'arrowing must engage the tag picker');
+  assert.match(_fix, /canApply: \(key\) => key === 'Tab' \|\| !!tagState\?\.engaged/,
+    'the tag picker must accept Tab always but Enter only when engaged');
 });
 test('#807 wiring: adoptDoc resets doc caches BEFORE the migrations', () => {
   const fn = _fix.slice(_fix.indexOf('function adoptDoc'));

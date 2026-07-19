@@ -16006,7 +16006,13 @@ const INLINE_MENU_NAV = [
     // with typing by construction (every printable char, `?` included, must keep going
     // into the text). The keyboard twin of the mouse-only .bm-help mark (P3, #736).
     help: () => { const it = braceState?.matches[braceState.activeIdx]; openBraceHelp(it?.guide || 'brace-picker'); } },
-  { open: () => tagState && isTagMenuOpen(),     move: tagMove,   apply: tagApply,   hide: hideTagMenu },
+  { open: () => tagState && isTagMenuOpen(),     move: tagMove,   apply: tagApply,   hide: hideTagMenu,
+    // #913: a tag you type IS the final content (unlike an emoji shortcode you want replaced), so
+    // Enter must not silently swap it for the highlighted longer tag and keep the caret on the line
+    // (which merged the next typed line). Enter applies only when you deliberately arrowed (engaged);
+    // Tab still completes to the top candidate (the autocomplete convention). Unengaged Enter falls
+    // through to "new point" (P1). Same shape as the emoji canApply, but keyed.
+    canApply: (key) => key === 'Tab' || !!tagState?.engaged },
   { open: () => emojiState && isEmojiMenuOpen(), move: emojiMove, apply: emojiApply, hide: hideEmojiMenu,
     // #804 (agent-review, UXP-196): an UNENGAGED emoji menu (opened by a bare `:` with no
     // filter chars typed and no arrowing) must never steal Enter/Tab — the menu closes and
@@ -16113,9 +16119,11 @@ function onKeyDown(e, id, content) {
     if (e.key==='ArrowDown')            { e.preventDefault(); m.move(1);  return; }
     if (e.key==='ArrowUp')              { e.preventDefault(); m.move(-1); return; }
     if (e.key==='Enter'||e.key==='Tab') {
-      // #804: a menu may decline the apply (unengaged emoji hint) — it closes and the
-      // key falls through to its structural meaning instead of being swallowed.
-      if (m.canApply && !m.canApply()) { m.hide(); break; }
+      // #804/#913: a menu may decline the apply for THIS key — it closes and the key falls
+      // through to its structural meaning (Enter = new point, Tab = indent) instead of being
+      // swallowed. canApply receives the key so a menu can accept Tab (autocomplete "complete")
+      // while declining an unengaged Enter (the tag picker: don't swap the typed tag on Enter).
+      if (m.canApply && !m.canApply(e.key)) { m.hide(); break; }
       e.preventDefault(); m.apply();  return;
     }
     if (e.key==='Escape')               { e.preventDefault(); m.hide();   return; }
@@ -17568,7 +17576,10 @@ function checkSlash(content, nodeId) {
   // (`/check:sum(cost) <= budget`, `/alias:wyrm, drake`) stays one slash token; for a
   // non-opted-in verb the colon-tail is dropped below, so this greediness is inert
   // there (a space-free date like `/due:tomorrow` is captured the same either way).
-  const m = before.match(/(^|[\s])([/@])(\w*(?::.*)?)$/);
+  // #919: `}` is a command position too — a `/`/`@` typed right after an unfolded pill's closing
+  // brace ({= sum(cost)}/base) must open the menu, not stay glued to the pill as literal text. The
+  // no-match branch below hides the menu, so a stray `}/2` in prose just flashes and closes (safe).
+  const m = before.match(/(^|[\s}])([/@])(\w*(?::.*)?)$/);
   if (!m) { hideSlashMenu(); return; }
   const trigger = m[2];
   const rawQuery = m[3];                                // what the regex captured (orig case)
@@ -24709,7 +24720,7 @@ function checkTagTrigger(content, nodeId) {
   const matches = filterTagCandidates(collectTags(), m[1])
     .filter(t => !(t.count === 1 && t.name === m[1]));
   if (!matches.length) { hideTagMenu(); return; }
-  tagState = { nodeId, content, hashAt, prefix: m[1], activeIdx: 0, matches };
+  tagState = { nodeId, content, hashAt, prefix: m[1], activeIdx: 0, matches, engaged: false };   // #913: engaged only on arrow-nav
   renderTagMenu();
   positionCaretMenu(tagMenu, content, hashAt); // anchor at the #, which always exists
 }
@@ -24746,6 +24757,7 @@ function tagMove(dir) {
   if (!tagState) return;
   const n = tagState.matches.length;
   tagState.activeIdx = (tagState.activeIdx + dir + n) % n;
+  tagState.engaged = true;   // #913: arrowing = deliberate engagement — Enter may now apply
   renderTagMenu();
 }
 
