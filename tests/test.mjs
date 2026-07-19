@@ -11540,6 +11540,40 @@ test('parsePropSlash — /prop:key=value (or key:value) one-shot; incomplete →
   assert.equal(c.parsePropSlash('due:friday'), null);         // a different verb is not a prop slash
 });
 
+test('#948 parsePropLines — a multi-line key:value block → props; skips separator-less / empty-key lines', () => {
+  assert.deepEqual(host(c.parsePropLines('hp: 10\nstr: 14\ndex = 12')),
+    [{ key: 'hp', val: '10' }, { key: 'str', val: '14' }, { key: 'dex', val: '12' }]);
+  // a title / blank / separator-less line is skipped, not an error
+  assert.deepEqual(host(c.parsePropLines('Stat block\n\nhp: 10\njust prose')), [{ key: 'hp', val: '10' }]);
+  // interior spaces in the value are kept; ends trimmed
+  assert.deepEqual(host(c.parsePropLines('owner:  Ana Vega  ')), [{ key: 'owner', val: 'Ana Vega' }]);
+  assert.deepEqual(host(c.parsePropLines('')), []);
+  // the dialog wires the batch paste + tip
+  assert.ok(/const parsed = parsePropLines\(txt\);/.test(_src), 'the Properties dialog parses a pasted block');
+  assert.ok(_src.includes('paste a list of "key: value" lines'), 'the batch-paste tip is shown');
+});
+
+test('#954 exclude-from-export — noexport skips the point + subtree; round-trips; bullet toggle', () => {
+  const root = c.mkRoot();
+  const keep = c.mkNode('The captain, Mae, watched the harbor.');
+  const scaffold = c.mkNode('Scaffolding'); scaffold.noexport = true;
+  const under = c.mkNode('a planning note'); scaffold.children.push(under);
+  root.children.push(keep, scaffold);
+  const md = c.toMarkdown(root);
+  assert.ok(md.includes('The captain, Mae'), 'a normal point exports');
+  assert.ok(!md.includes('Scaffolding'), 'a noexport point is skipped');
+  assert.ok(!md.includes('planning note'), 'its subtree is skipped too');
+  const txt = c.toPlainText(root);
+  assert.ok(!txt.includes('Scaffolding') && !txt.includes('planning note'), 'plain-text export skips it too');
+  // OPML round-trip: the flag serializes as _noexport
+  assert.ok(c.toOpml(root).includes('_noexport="true"'), 'the flag serializes to OPML');
+  // src pins: the export guards + the bullet-menu toggle + the parse
+  assert.ok(/function emit\(node, depth, ordinal\) \{\s*if \(node\.noexport\) return;/.test(_src), 'toMarkdown emit guards on noexport');
+  assert.ok(/function emit\(node, depth\) \{\s*if \(node\.noexport\) return;/.test(_src), 'toPlainText emit guards on noexport');
+  assert.ok(_src.includes("node.noexport ? 'Include in export' : 'Exclude from export'"), 'the bullet menu offers the toggle');
+  assert.ok(_src.includes("noexport: el.getAttribute('_noexport') === 'true'"), 'OPML parse reads the flag');
+});
+
 test('LEAN-FLOOR: {prop …} promotes to node.props via promoteBraceBody, leaving no inline token', () => {
   // the whole point of the sidecar stub: it writes the chip and CONSUMES the brace (no [[…]] token).
   const node = { text: '', props: [] };

@@ -118,7 +118,9 @@ Tag a point with structured facts (an owner, a status, a cost, a category) so yo
 total by them later. Each property is a **key and a value**, shown as a small pill below the point.
 
 Open a point's menu and choose **Add property** to open the editor; type a key and a value, then
-**Save**. Click any property pill to edit it again. Keyboard-first: type `/prop:owner=zeo` to set a
+**Save**. Click any property pill to edit it again. To add several at once, **paste a list of
+`key: value` lines** into the key field (a character stat block, a set of line items) and each line
+becomes its own property, no adding rows one at a time. Keyboard-first: type `/prop:owner=zeo` to set a
 property inline with no dialog, or bare `/prop` to drop a fill-in-the-blank `{prop key: value}` stub
 with the cursor waiting on the blank. Search by them with
 [`has:key`](getting-around.md#searching-and-filtering) to find every point that has a property, or

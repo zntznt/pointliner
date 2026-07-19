@@ -69,6 +69,12 @@ and choose **Export to Markdown** (that point and everything under it), or **sel
 and use **Export .md** on the selection bar. The file is named after the first point, and pills are
 frozen to their current values (the same one-way snapshot as the full Markdown export).
 
+**Leave scaffolding out.** If a point is planning material, not prose (a variable declaration, a
+note to self, a private section), open its **bullet menu** and choose **Exclude from export**: the
+Markdown and plain-text exports skip that point and everything under it, while your OPML save and
+the Web page export keep it. An excluded point shows a faint ring on its bullet so you can see at a
+glance what a shared copy will leave out; choose **Include in export** to undo it.
+
 ## Taking your work elsewhere
 
 Your work is never trapped here. Whatever you write stays plain text you own, and there are three
