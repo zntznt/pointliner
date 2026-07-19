@@ -166,4 +166,4 @@ follow. [`CLAUDE.md`](CLAUDE.md) is the entry point. The headline constraints:
 ## License
 
 [AGPLv3](LICENSE). Font Awesome icons are bundled under their own licenses (CC BY 4.0 for
-icons, SIL OFL 1.1 for fonts, MIT for code); see the note in `index.html`.
+icons, SIL OFL 1.1 for fonts, AGPLv3 for code); see the note in `index.html`.
