@@ -424,6 +424,12 @@ a flat file can't re-roll or recompute. Markdown emits a nested bullet list (2
 spaces/level, todos as `- [ ]`, ol numbered, headings bolded, tables as raw md
 blocks); plain text is tab-indented with `stripInlineMd()` removing emphasis
 markers. Neither calls `markClean()` — OPML save remains the canonical "saved".
+**Exclude-from-export (#954, agent-review):** a point flagged `node.noexport` (bullet menu
+"Exclude from export", `_noexport` OPML round-trip) is skipped by BOTH `emit`s — the guard
+sits at the top of `emit` so the point AND its subtree drop out, keeping scaffolding
+(variable declarations, planning notes) out of the prose snapshot. Display-only elsewhere:
+the OPML save, the self-contained-HTML export (which embeds the full OPML), and the in-app
+view are untouched; the flagged point carries a faint `.nt-noexport` bullet-ring cue.
 
 ### Export — self-contained HTML (the app + the document as one file)
 
@@ -968,7 +974,10 @@ serialize+parse-in-one-change rule; dialog editor from bullet menu "Add property
 and chip click; chips render below the note row (gutter mark reuses `.note-mark`), also in the zoom
 view; `has:key` / `key:value` search operators added to `parseSearchQuery`/`termMatchesNode` —
 `is:` stays a reserved prefix and `is:unrecognised` falls through to text; exported as
-`[key: val · …]` continuation lines in markdown/plain text) ·
+`[key: val · …]` continuation lines in markdown/plain text; **batch entry (#948, agent-review):**
+the dialog opens with one empty row and **pastes a multi-line `key: value` block** into the key
+field to add several at once (`parsePropLines` pure core + a paste handler; a separator-less/blank
+line is skipped), so a stat block or a line-item set drops in in one go) ·
 Outline constraints / lint (F2: a reserved **`check` property** carries an `evalMath` boolean
 assertion over a point + its direct children — `sum(cost) <= budget`, `count(score) >= 3`, own-prop
 `hours <= 8`; **zero new syntax** on the dates precedent — reuses `evalMath` + the B1 child

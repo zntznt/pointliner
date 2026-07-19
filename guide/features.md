@@ -38,7 +38,8 @@ The everyday outliner. This is the part you use without thinking about it.
 - **Per-point notes.** Attach a longer note under any point; hide them all with one toggle.
   ([per-point notes](writing-and-formatting.md#per-point-notes))
 - **Properties.** Give a point `key: value` data (like `cost: 12` or `owner: me`) you can total
-  and search. ([properties](tasks-and-organizing.md#properties))
+  and search; paste a list of `key: value` lines into the editor to add a whole stat block at once.
+  ([properties](tasks-and-organizing.md#properties))
 - **Tag colors and property icons.** File then Tag & property styling: give a `#tag` its own
   on-brand color (nested tags inherit it) and a property key a small icon. Purely visual, stored
   with the document.
@@ -235,6 +236,8 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   the sync. ([saving](files-and-export.md#saving-your-work))
 - **Open formats.** The native save format is a plain, open document file (OPML); export to Markdown or plain text for sharing.
   ([exporting](files-and-export.md#exporting-and-sharing))
+- **Exclude from export.** Flag a point (and its subtree) to skip the Markdown/plain-text export, so
+  scaffolding and planning notes stay out of a shared copy. ([exporting](files-and-export.md#exporting-and-sharing))
 - **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))

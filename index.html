@@ -474,6 +474,9 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .node-content.swipe-settle{transition:transform .18s cubic-bezier(.2,.8,.3,1)}
 .swipe-cue{position:absolute;top:50%;transform:translateY(-50%);display:none;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--acc) 14%,var(--hbg));color:var(--acc);font-size:14px;font-weight:700;pointer-events:none;z-index:0;opacity:.5;transition:opacity .1s,background .1s}
 .node-row.swipe-active .swipe-cue{display:flex}
+/* #954: a point excluded from prose export gets a faint ring on its bullet — a "this point is
+   flagged, left out of Markdown/text export" cue that never touches legibility or layout. */
+.nt-noexport>.node-row>.bullet .bullet-dot{box-shadow:0 0 0 1.5px color-mix(in srgb,var(--muted) 40%,transparent)}
 .swipe-cue.swipe-in{right:6px}    /* indent: chip on the right, content slides right */
 .swipe-cue.swipe-out{left:6px}    /* outdent: chip on the left, content slides left */
 .node-row.swipe-armed .swipe-cue{opacity:1;background:var(--acc);color:var(--acc-fg)}
@@ -4860,6 +4863,20 @@ function parsePropSlash(query) {
   return { key, val };
 }
 
+// parsePropLines(text) — pure. #948: a multi-line block of `key: value` (or `key = value`) lines,
+// one per line, → [{ key, val }]. The batch-entry bridge so a stat block or a line-item set drops
+// in at once (paste into the Properties dialog) instead of one Add-property trip each. A line with
+// no separator or an empty key is skipped (so a pasted title/blank line is ignored, not an error).
+// The value keeps interior spaces; only the ends are trimmed. Node-testable.
+function parsePropLines(text) {
+  const out = [];
+  for (const line of String(text || '').split(/\r?\n/)) {
+    const m = line.match(/^\s*([^:=\n]+?)\s*[:=]\s*(.*?)\s*$/);
+    if (m && m[1].trim()) out.push({ key: m[1].trim(), val: m[2] });
+  }
+  return out;
+}
+
 // parseBaseSlash(query) — pure. LEAN FLOOR: /base:RxC (e.g. /base:3x4) → { rows, cols } clamped to a
 // sane grid, so a base can be created keyboard-only without the size picker. Returns null when there's
 // no valid RxC (a bare /base defaults to 3x3 directly). Node-testable.
@@ -7680,6 +7697,7 @@ function toOpml(r) {
       n.checked   ? `_checked="true"` : '',
       n.collapsed ? `_collapsed="true"` : '',
       n.folded ? `_folded="true"` : '',                   // paragraph collapsed to its first line
+      n.noexport ? `_noexport="true"` : '',               // #954: skipped by the lossy markdown/text export
       n.footnotes?.length ? `_footnotes="${ex(JSON.stringify(n.footnotes))}"` : '',
       n.dice?.length ? `_dice="${ex(JSON.stringify(n.dice))}"` : '',
       n.markov?.length ? `_markov="${ex(JSON.stringify(n.markov))}"` : '',
@@ -7796,6 +7814,7 @@ function fromOpml(xml) {
       checked: el.getAttribute('_checked') === 'true',
       collapsed: el.getAttribute('_collapsed') === 'true',
       folded: el.getAttribute('_folded') === 'true',
+      noexport: el.getAttribute('_noexport') === 'true',   // #954
       // Every sidecar is an ARRAY of records; downstream code calls .find/.map on it. A
       // corrupt/hostile .opml can carry valid JSON that isn't an array (_dice="{}"), which
       // would make renderContentHTML throw. arrAttr guards ALL of them uniformly (#448:
@@ -11252,6 +11271,7 @@ function renderRow(r) {
     visKids.length ? 'has-children' : '',
     node.collapsed  ? 'collapsed' : '',
     node.folded && node.type === 'para' ? 'folded' : '',   // para collapsed to its first line
+    node.noexport   ? 'nt-noexport' : '',                  // #954: a faint cue that this point is left out of prose export
     node.checked    ? 'checked' : '',
     opts.searchCtx  ? 'search-ctx' : '',
     selectedIds.has(node.id) ? 'node-selected' : '',
@@ -11792,6 +11812,7 @@ function openPropsDialog(nodeId, targets = null) {
   // single point: prefill its own (non-reserved) props for editing.
   let props = applyList.length > 1 ? [{ key: '', val: '' }]
     : (node.props || []).filter(p => !reserved(p.key.trim().toLowerCase())).map(p => ({ key: p.key, val: p.val }));
+  if (!props.length) props.push({ key: '', val: '' });   // #948: always show one empty row (a type/paste target, not an empty void)
   const reservedProps = (node.props || []).filter(p => reserved(p.key.trim().toLowerCase()));
 
   ioCard.innerHTML = '';
@@ -11817,6 +11838,18 @@ function openPropsDialog(nodeId, targets = null) {
       keyIn.setAttribute('aria-label', 'Property key');
       keyIn.addEventListener('input', () => { props[i].key = keyIn.value; });
       keyIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); valIn.focus(); } });
+      // #948: paste a multi-line `key: value` block into the key field to add several at once (a stat
+      // block, a line-item set). A single-line paste falls through to the normal input.
+      keyIn.addEventListener('paste', e => {
+        const txt = e.clipboardData?.getData('text') || '';
+        if (!/\r?\n/.test(txt)) return;                       // one line → ordinary paste
+        const parsed = parsePropLines(txt);
+        if (!parsed.length) return;                           // nothing key:value-shaped → ordinary paste
+        e.preventDefault();
+        if (!props[i].key && !props[i].val) props.splice(i, 1);   // drop the empty row we pasted into
+        props.push(...parsed);
+        renderRows(true);
+      });
       const sep = document.createElement('span'); sep.className = 'props-list-sep'; sep.textContent = ':';
       const valIn = document.createElement('input');
       valIn.className = 'props-input val-in'; valIn.type = 'text';
@@ -11852,6 +11885,12 @@ function openPropsDialog(nodeId, targets = null) {
   addBtn.append(document.createTextNode(' Add property'));
   addBtn.addEventListener('click', () => { props.push({ key: '', val: '' }); renderRows(true); });
   ioCard.appendChild(addBtn);
+
+  // #948: teach the batch-paste path (a stat block / line-item set in one go)
+  const tip = document.createElement('div');
+  tip.className = 'props-tip'; tip.style.cssText = 'font-size:11px;color:var(--muted);margin:-6px 0 12px';
+  tip.textContent = 'Tip: paste a list of "key: value" lines to add several at once.';
+  ioCard.appendChild(tip);
 
   const errDiv = document.createElement('div');
   errDiv.style.cssText = 'display:none;color:var(--bad);font-size:11px;padding:0 16px 8px';
@@ -17730,6 +17769,16 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openAddToPackDialog(nodeId); } },
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
       fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
+    // #954: keep scaffolding (variable declarations, planning notes) out of the lossy Markdown / text
+    // export. The flag skips this point AND its subtree; the OPML save and the in-app view are untouched.
+    { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' },
+      label: node.noexport ? 'Include in export' : 'Exclude from export',
+      fn: () => {
+        hideBpop(); const n = nodeById(nodeId); if (!n) return;
+        if (n.noexport) delete n.noexport; else n.noexport = true;
+        markDirty(); render();
+        flashHint(n.noexport ? 'Excluded from Markdown / text export' : 'Included in export');
+      } },
     { sec:'More', icon:{ fa:'fa-solid fa-inbox', fb:'⤓' },
       label: (() => { const s = inboxSlotOf(nodeId); const next = (root.inboxes || []).length + 1;
         return s ? `Remove from inbox ${s === 10 ? '0' : s}` : (next <= MAX_INBOXES ? `Set as inbox ${next === 10 ? '0' : next}` : 'Inboxes full (10)'); })(),
@@ -28869,6 +28918,7 @@ function toMarkdown(rootNode) {
   const varMap = collectVars();
   const out = [];
   function emit(node, depth, ordinal) {
+    if (node.noexport) return;   // #954: a point flagged exclude-from-export drops it AND its subtree (scaffolding stays out of the prose snapshot)
     const indent = '  '.repeat(depth);
     if (node.type === 'base') {
       // a table node's text is already a markdown table — emit it as its own block
@@ -28927,6 +28977,7 @@ function toPlainText(rootNode) {
   const varMap = collectVars();
   const out = [];
   function emit(node, depth) {
+    if (node.noexport) return;   // #954: exclude-from-export skips the point and its subtree
     const indent = '\t'.repeat(depth);
     if (node.type === 'base') {
       stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))).split('\n').forEach(l => out.push(indent + l)); // #806
@@ -32241,7 +32292,7 @@ const GUIDE = [
     ] },
   { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
-    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Type /prop:owner=zeo to set one inline, or /prop to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.",
+    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Type /prop:owner=zeo to set one inline, or /prop to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again. To add several at once (a character stat block, a set of line items), paste a list of key: value lines into the key field of the editor and each line becomes a property. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.",
     related:['check','rollups','hashtags'],
     examples:[
       { syn:'/prop:owner=zeo',     desc:'set a property inline, no dialog' },
@@ -32759,11 +32810,12 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: the Markdown and plain-text exports skip that point and everything under it, while your OPML save and the web-page export keep it. An excluded point shows a faint ring on its bullet so you can see what will be left out.",
     related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },
       { syn:'File → Export a copy → Markdown', desc:'a one-way plain text snapshot for sharing' },
+      { syn:'Menu → Exclude from export', desc:'leave a point (and its subtree) out of the prose export' },
       { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable file that reopens as the live app' },
     ] },
 
