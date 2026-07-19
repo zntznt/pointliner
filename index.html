@@ -152,11 +152,13 @@ button,[contenteditable],input{touch-action:manipulation}
   --row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);
   --sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);
   --hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff;
-  /* #464 appearance swatches: a curated on-brand tag palette. Reuse the semantic inks where they
-     fit (red/amber/green/blue) + four more, all contrast-floor-safe. Config stores the NAME, so a
-     tag stays legible + theme-portable. Dark values below (dual-home palette invariant, DL §4). */
-  --sw-red:#b3271f;--sw-amber:#8a5300;--sw-green:#1e7029;--sw-teal:#0f766e;
-  --sw-blue:#0f5cb0;--sw-violet:#6d28d9;--sw-pink:#a3327a;--sw-gray:#5c574d;
+  /* #464 appearance swatches: the tag palette mirrors the NINE accent hues (item 10) — same hues,
+     same order as the accent picker (blue/purple/green/teal/orange/red/pink/indigo/oxblood) — but
+     rendered as contrast-floor-safe INKS (the tag chip uses the swatch as TEXT color, not a fill),
+     all ≥4.5:1 on paper. Config stores the NAME, so a tag stays legible + theme-portable. Dark
+     values below (dual-home palette invariant, DL §4). */
+  --sw-blue:#0f5cb0;--sw-purple:#6d28d9;--sw-green:#1e7029;--sw-teal:#0f766e;--sw-orange:#9a5518;
+  --sw-red:#b3271f;--sw-pink:#a3327a;--sw-indigo:#4338ca;--sw-oxblood:#8f2f22;
 }
 @media(prefers-color-scheme:dark){:root{
   color-scheme:dark;
@@ -164,9 +166,9 @@ button,[contenteditable],input{touch-action:manipulation}
   --cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--acc:#a5b4fc;--acc-fg:#16130f;--ring:rgba(165,180,252,.25);/* UXP-157: .25 matches applyAccentCSS's live value (the appended <style> always wins), so the static fallback shows the same effect */
   --cbg:#272320;--del:#a39a8d;--qbdr:color-mix(in srgb,var(--acc) 50%,transparent);
   --ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;
-  /* #464 swatches, dark: pastels that read on the dark paper, mirroring --ok/--warn/--bad/--info */
-  --sw-red:#f0928b;--sw-amber:#d9a25a;--sw-green:#84b389;--sw-teal:#5ec8bd;
-  --sw-blue:#82b4e8;--sw-violet:#c4b5fd;--sw-pink:#e79ac8;--sw-gray:#b0a99c;
+  /* #464 swatches, dark: pastels of the nine accent hues that read on the dark paper (item 10) */
+  --sw-blue:#82b4e8;--sw-purple:#c4b5fd;--sw-green:#84b389;--sw-teal:#5ec8bd;--sw-orange:#e0a45e;
+  --sw-red:#f0928b;--sw-pink:#e79ac8;--sw-indigo:#a5b4fc;--sw-oxblood:#e0937a;
   --sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);
   --sh-2:0 4px 10px rgba(0,0,0,.5),0 14px 28px rgba(0,0,0,.48);
   --sh-up:0 -6px 28px rgba(0,0,0,.5);
@@ -812,10 +814,11 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    it beats `.node-content a{color:var(--acc)}` (0,1,1) — a bare .hashtag[data-color] (0,2,0) already
    out-specifies it, but .hashtag's own color rule is 0,1,0, so we must restate color here. */
 .hashtag[data-color]{color:var(--tc);background:color-mix(in srgb,var(--tc) 12%,transparent)}
-.hashtag[data-color=red]{--tc:var(--sw-red)}.hashtag[data-color=amber]{--tc:var(--sw-amber)}
+.hashtag[data-color=blue]{--tc:var(--sw-blue)}.hashtag[data-color=purple]{--tc:var(--sw-purple)}
 .hashtag[data-color=green]{--tc:var(--sw-green)}.hashtag[data-color=teal]{--tc:var(--sw-teal)}
-.hashtag[data-color=blue]{--tc:var(--sw-blue)}.hashtag[data-color=violet]{--tc:var(--sw-violet)}
-.hashtag[data-color=pink]{--tc:var(--sw-pink)}.hashtag[data-color=gray]{--tc:var(--sw-gray)}
+.hashtag[data-color=orange]{--tc:var(--sw-orange)}.hashtag[data-color=red]{--tc:var(--sw-red)}
+.hashtag[data-color=pink]{--tc:var(--sw-pink)}.hashtag[data-color=indigo]{--tc:var(--sw-indigo)}
+.hashtag[data-color=oxblood]{--tc:var(--sw-oxblood)}
 /* dice roll pill */
 .dice-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .dice-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -1545,11 +1548,12 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-chip{font-family:var(--mono);font-size:11.5px;line-height:1;padding:4px 9px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
 .io-chip:hover{background:color-mix(in srgb,var(--acc) 6%,var(--cbg));border-color:var(--acc)}/* UXP-136: the tint hover recipe (DL §4); solid accent fill is reserved for the primary commit button */
 /* #464 appearance dialog: color swatches + icon buttons */
-.appr-swatch{width:24px;height:24px;padding:0;border-radius:var(--r-sm);border:1px solid var(--bdr);cursor:pointer;background:var(--sw-gray)}
-.appr-swatch[data-color=red]{background:var(--sw-red)}.appr-swatch[data-color=amber]{background:var(--sw-amber)}
+.appr-swatch{width:24px;height:24px;padding:0;border-radius:var(--r-sm);border:1px solid var(--bdr);cursor:pointer;background:var(--sw-blue)}
+.appr-swatch[data-color=blue]{background:var(--sw-blue)}.appr-swatch[data-color=purple]{background:var(--sw-purple)}
 .appr-swatch[data-color=green]{background:var(--sw-green)}.appr-swatch[data-color=teal]{background:var(--sw-teal)}
-.appr-swatch[data-color=blue]{background:var(--sw-blue)}.appr-swatch[data-color=violet]{background:var(--sw-violet)}
-.appr-swatch[data-color=pink]{background:var(--sw-pink)}.appr-swatch[data-color=gray]{background:var(--sw-gray)}
+.appr-swatch[data-color=orange]{background:var(--sw-orange)}.appr-swatch[data-color=red]{background:var(--sw-red)}
+.appr-swatch[data-color=pink]{background:var(--sw-pink)}.appr-swatch[data-color=indigo]{background:var(--sw-indigo)}
+.appr-swatch[data-color=oxblood]{background:var(--sw-oxblood)}
 .appr-swatch:hover{transform:scale(1.08)}.appr-swatch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .appr-icon{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--muted);cursor:pointer;transition:border-color .12s,color .12s}
 .appr-icon:hover{border-color:var(--acc);color:var(--acc)}.appr-icon:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -3963,11 +3967,22 @@ const REPEAT_KEY = 'repeat';
 // no node.text change; round-trips as the <_appearance> head element like savedSearches. A tag
 // gets an on-brand swatch color; a property key gets an FA icon from the bundled subset. Names
 // are lowercased to match how tags/props are keyed. Stores the swatch/icon NAME (theme-portable).
-const APPEARANCE_COLORS = ['red', 'amber', 'green', 'teal', 'blue', 'violet', 'pink', 'gray'];
+// item 10: the tag palette mirrors the nine accent hues, in the accent picker's order.
+const APPEARANCE_COLORS = ['blue', 'purple', 'green', 'teal', 'orange', 'red', 'pink', 'indigo', 'oxblood'];
+// Retired swatch names map to the nearest accent hue on load, so existing tag colors survive the
+// palette change (gray has no accent equivalent, so a gray tag drops to its default color).
+const APPEARANCE_COLOR_ALIAS = { amber: 'orange', violet: 'purple' };
 // Curated FA icon shortlist — ONLY glyphs already in the embedded subset (no CDN / no rebuild).
+// item 11: more property icons. ONLY glyphs already in the embedded FA subset (verified against
+// FA_GLYPHS below), so no CDN and no font rebuild; each is distinct enough to avoid a look-alike
+// cluster (e.g. no second calendar/check glyph beside the ones already present). Keep this a flat
+// string-only literal: a test parses it by splitting on commas, so no inline comments inside it.
 const APPEARANCE_ICONS = ['fa-tag', 'fa-dollar-sign', 'fa-calendar-day', 'fa-inbox', 'fa-book',
   'fa-circle-check', 'fa-clipboard-check', 'fa-calculator', 'fa-image', 'fa-folder-open',
-  'fa-pen', 'fa-dice-d20', 'fa-circle-nodes', 'fa-link'];  // ONLY in-subset glyphs (verified against FA_GLYPHS)
+  'fa-pen', 'fa-dice-d20', 'fa-circle-nodes', 'fa-link',
+  'fa-star', 'fa-heart', 'fa-shield', 'fa-droplet', 'fa-skull', 'fa-hourglass-half',
+  'fa-triangle-exclamation', 'fa-list-check', 'fa-bars-progress', 'fa-file-lines', 'fa-code',
+  'fa-magnifying-glass'];
 // A valid hashtag name: `[\w-]+` segments joined by `/` (mirrors the mdInline / collectTags
 // grammar, incl. the #827 first-segment-needs-a-letter rule — a bare number like "1" could
 // never render as a #tag). Used to reject a color on a name that could never render. Pure.
@@ -4016,7 +4031,7 @@ function setPropIcon(appearance, key, icon) {
 function normalizeAppearance(a) {
   const out = { tags: {}, props: {} };
   if (a && typeof a === 'object') {
-    for (const [k, v] of Object.entries(a.tags || {})) if (APPEARANCE_COLORS.includes(v)) out.tags[String(k).toLowerCase()] = v;
+    for (const [k, v] of Object.entries(a.tags || {})) { const c = APPEARANCE_COLOR_ALIAS[v] || v; if (APPEARANCE_COLORS.includes(c)) out.tags[String(k).toLowerCase()] = c; }
     for (const [k, v] of Object.entries(a.props || {})) if (APPEARANCE_ICONS.includes(v)) out.props[String(k).toLowerCase()] = v;
   }
   return out;
@@ -31058,8 +31073,8 @@ function applyTheme() {
   const forcedMeta = forcedTheme && themeColorMetas.find(m => (m.media || '').includes('dark') === (forcedTheme === 'dark'));
   themeColorMetas.forEach(m => { m.content = forcedMeta ? forcedMeta.dataset.sys : m.dataset.sys; });
   themeStyle.textContent = forcedTheme ? (forcedTheme === 'dark'
-    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sw-red:#f0928b;--sw-amber:#d9a25a;--sw-green:#84b389;--sw-teal:#5ec8bd;--sw-blue:#82b4e8;--sw-violet:#c4b5fd;--sw-pink:#e79ac8;--sw-gray:#b0a99c;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 14px 28px rgba(0,0,0,.48);--sh-up:0 -6px 28px rgba(0,0,0,.5);--row-hover:rgba(255,255,255,.04);--edit-row:color-mix(in srgb,var(--acc) 8%,transparent);--sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);--hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f}'
-    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sw-red:#b3271f;--sw-amber:#8a5300;--sw-green:#1e7029;--sw-teal:#0f766e;--sw-blue:#0f5cb0;--sw-violet:#6d28d9;--sw-pink:#a3327a;--sw-gray:#5c574d;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 12px 26px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10);--row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);--sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);--hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff}'
+    ? ':root{color-scheme:dark;--bg:#1b1815;--fg:#ece7de;--muted:#a39a8d;--bullet:#7a7268;--cb:#7a7268;--hbg:#252220;--bdr:#37322b;--bdr-ui:#7a7268;--cbg:#272320;--del:#a39a8d;--ok:#84b389;--warn:#d9a25a;--bad:#f0928b;--info:#82b4e8;--sw-blue:#82b4e8;--sw-purple:#c4b5fd;--sw-green:#84b389;--sw-teal:#5ec8bd;--sw-orange:#e0a45e;--sw-red:#f0928b;--sw-pink:#e79ac8;--sw-indigo:#a5b4fc;--sw-oxblood:#e0937a;--sh-1:0 2px 6px rgba(0,0,0,.45),0 10px 28px rgba(0,0,0,.40);--sh-2:0 4px 10px rgba(0,0,0,.5),0 14px 28px rgba(0,0,0,.48);--sh-up:0 -6px 28px rgba(0,0,0,.5);--row-hover:rgba(255,255,255,.04);--edit-row:color-mix(in srgb,var(--acc) 8%,transparent);--sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);--hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f}'
+    : ':root{color-scheme:light;--bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--cb:#8f887b;--hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--cbg:#eee9dd;--del:#6b665c;--ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;--sw-blue:#0f5cb0;--sw-purple:#6d28d9;--sw-green:#1e7029;--sw-teal:#0f766e;--sw-orange:#9a5518;--sw-red:#b3271f;--sw-pink:#a3327a;--sw-indigo:#4338ca;--sw-oxblood:#8f2f22;--sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);--sh-2:0 2px 4px rgba(45,35,25,.10),0 12px 26px rgba(45,35,25,.14);--sh-up:0 -4px 24px rgba(45,35,25,.10);--row-hover:rgba(0,0,0,.028);--edit-row:color-mix(in srgb,var(--acc) 5.5%,transparent);--sel:color-mix(in srgb,var(--acc) 10%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 18%,transparent);--hl:color-mix(in srgb,#e2c044 40%,transparent);--scrim:rgba(30,24,18,.38);--bad-fg:#fff}'
   ) : '';
   document.documentElement.style.colorScheme = forcedTheme || '';
   applyAccentCSS(dark);
@@ -33706,11 +33721,14 @@ function openStarterGallery() {
   STARTERS.forEach(st => {
     const pick = document.createElement('button');
     pick.className = 'tpl-pick'; pick.type = 'button';
-    pick.style.cssText = 'display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%';
+    // align-items:stretch (not flex-start): in a column flex, flex-start sizes each child to its
+    // max-content width, so a long description grew past the button's right edge (item 6). Stretch
+    // bounds both children to the button width, so the name ellipsizes and the description wraps.
+    pick.style.cssText = 'display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%';
     pick.setAttribute('aria-label', `Insert the ${st.name} example`);
     const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = st.name;
     const ds = document.createElement('span');
-    ds.style.cssText = 'font-size:12px;color:var(--muted);line-height:1.4;font-weight:400';
+    ds.style.cssText = 'font-size:12px;color:var(--muted);line-height:1.4;font-weight:400;white-space:normal;overflow-wrap:anywhere';
     ds.textContent = st.desc;
     pick.append(nm, ds);
     pick.addEventListener('click', () => { closeIo(); insertStarterSubtree(st.opml, st.name); });
