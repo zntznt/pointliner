@@ -24039,13 +24039,16 @@ function linkCandidates(query, excludeId, rootNode = root) {
   const out = [];
   function walk(n) {
     if (n.id !== excludeId) {
-      const title = textForDisplay(n);
+      const title = textForDisplay(n);                  // raw; the empty-title guard + match provenance
       if (title) {
         const names = nodeNames(n);
         if (query === '' || names.some(nm => nm.toLowerCase().includes(query))) {
           const hitTitle = query === '' || title.toLowerCase().includes(query);
           const alias = hitTitle ? null : (names.slice(1).find(nm => nm.toLowerCase().includes(query)) || null);
-          out.push({ id: n.id, title, alias });
+          // #912: the DISPLAYED label flows through displayTitle (the no-pill sink resolver used by
+          // breadcrumbs), so artifact tokens are flattened and links resolved — the picker never
+          // shows a raw [[type:key]] (the never-user-visible invariant). Matching stays on the raw title.
+          out.push({ id: n.id, title: displayTitle(n), alias });
         }
       }
     }
