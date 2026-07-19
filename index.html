@@ -1166,6 +1166,11 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
    physical trace and deep nests become scannable */
 .node{background:repeating-linear-gradient(to right,transparent 0,transparent calc(var(--ind) - 4px),color-mix(in srgb,var(--bullet) 38%,transparent) calc(var(--ind) - 4px),color-mix(in srgb,var(--bullet) 38%,transparent) calc(var(--ind) - 3px),transparent calc(var(--ind) - 3px),transparent var(--ind)) no-repeat;background-size:var(--depth-w,0) 100%}
 .collapsed>.children{display:none}
+/* paragraph first-line collapse (fold): show only the first visual line + ellipsis in DISPLAY
+   mode; an open editor ([data-editing]) always shows the full text so editing is never clamped.
+   The fade cue reads "there's more here" without a chevron. Toggled by the paragraph's bullet. */
+.nt-para.folded>.node-row>.node-content:not([data-editing]){display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;line-clamp:1;overflow:hidden}
+.nt-para.folded>.node-row>.bullet .bullet-dot{box-shadow:0 0 0 2px color-mix(in srgb,var(--muted) 40%,transparent)}
 
 /* search highlight */
 mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
@@ -2567,7 +2572,7 @@ function ensureDocId(root, gen) {
   return root.docId;
 }
 function mkNode(text = '', type = 'ul') {
-  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [], query: [], baseRows: null };
+  return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, folded: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [], query: [], baseRows: null };
 }
 // type that a new Enter-sibling should inherit
 function inheritedType(type) {
@@ -7403,6 +7408,7 @@ function toOpml(r) {
       n.type && n.type !== 'ul' ? `_type="${n.type}"` : '',
       n.checked   ? `_checked="true"` : '',
       n.collapsed ? `_collapsed="true"` : '',
+      n.folded ? `_folded="true"` : '',                   // paragraph collapsed to its first line
       n.footnotes?.length ? `_footnotes="${ex(JSON.stringify(n.footnotes))}"` : '',
       n.dice?.length ? `_dice="${ex(JSON.stringify(n.dice))}"` : '',
       n.markov?.length ? `_markov="${ex(JSON.stringify(n.markov))}"` : '',
@@ -7517,6 +7523,7 @@ function fromOpml(xml) {
       underline: el.getAttribute('_underline') === 'true',
       checked: el.getAttribute('_checked') === 'true',
       collapsed: el.getAttribute('_collapsed') === 'true',
+      folded: el.getAttribute('_folded') === 'true',
       // Every sidecar is an ARRAY of records; downstream code calls .find/.map on it. A
       // corrupt/hostile .opml can carry valid JSON that isn't an array (_dice="{}"), which
       // would make renderContentHTML throw. arrAttr guards ALL of them uniformly (#448:
@@ -10885,6 +10892,7 @@ function renderRow(r) {
     `nt-${node.type}`,
     visKids.length ? 'has-children' : '',
     node.collapsed  ? 'collapsed' : '',
+    node.folded && node.type === 'para' ? 'folded' : '',   // para collapsed to its first line
     node.checked    ? 'checked' : '',
     opts.searchCtx  ? 'search-ctx' : '',
     selectedIds.has(node.id) ? 'node-selected' : '',
@@ -10957,17 +10965,23 @@ function renderRow(r) {
     bullet.setAttribute('role', 'button');
     bullet.setAttribute('tabindex', '-1');
     bullet.setAttribute('aria-haspopup', 'menu');
-    bullet.setAttribute('aria-label', node.type === 'base' ? 'Base actions' : 'Point actions');
+    // A paragraph's bullet-click FOLDS it to the first line instead of zooming: zooming into a
+    // paragraph (a leaf of prose, rarely a container) is a degenerate view swap, so the gesture
+    // is repurposed to the useful action. Its accessible name states that action.
+    const isPara = node.type === 'para';
+    bullet.setAttribute('aria-label', node.type === 'base' ? 'Base actions'
+      : isPara ? (node.folded ? 'Show the full paragraph' : 'Collapse paragraph to its first line')
+      : 'Point actions');
     bullet.addEventListener('click', e => {
       if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
-      // every point (incl. a base) zooms in on a bullet click; the hover/long-press menu
+      if (node.type === 'divider') return;
+      if (isPara) { hideBpop(); toggleFold(node.id); return; }
+      // every other point (incl. a base) zooms in on a bullet click; the hover/long-press menu
       // carries the per-node ops (dismiss it so it doesn't linger over the zoomed view)
-      if (node.type !== 'divider') {
-        hideBpop(); zoomInto(node.id);
-        // #823 (agent-review): the first bullet-click zoom of a session explains itself —
-        // a first-timer reads the view swap as "my list disappeared" (P4). Once per session.
-        if (!_zoomToastShown) { _zoomToastShown = true; flashHint('Zoomed into one point. Esc or the breadcrumb takes you back'); }
-      }
+      hideBpop(); zoomInto(node.id);
+      // #823 (agent-review): the first bullet-click zoom of a session explains itself —
+      // a first-timer reads the view swap as "my list disappeared" (P4). Once per session.
+      if (!_zoomToastShown) { _zoomToastShown = true; flashHint('Zoomed into one point. Esc or the breadcrumb takes you back'); }
     });
     // Keyboard: Enter/Space on the focused bullet opens its menu (beside mousedown/hover).
     bullet.addEventListener('keydown', e => {
@@ -16114,7 +16128,7 @@ function onKeyDown(e, id, content) {
   const isPara = nodeById(id)?.type === 'para';
   if (e.key==='Enter' && e.shiftKey && !ctrl) { e.preventDefault(); isPara ? insertSiblingAfter(id) : insertLineBreak(content); }
   else if (e.key==='Enter' && !ctrl) { e.preventDefault(); isPara ? insertLineBreak(content) : insertSiblingAfter(id); }
-  else if (e.key==='Enter' && ctrl) { e.preventDefault(); zoomInto(id); }
+  else if (e.key==='Enter' && ctrl) { e.preventDefault(); if (isPara) { content.blur(); toggleFold(id); } else zoomInto(id); }
   else if (e.key==='Tab' && !e.shiftKey) { e.preventDefault(); indentNode(id); }
   else if (e.key==='Tab' && e.shiftKey)  { e.preventDefault(); outdentNode(id); }
   else if (e.key==='Backspace') {
@@ -17101,7 +17115,9 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // pill rows are also always shown on a full open, since they're the only keyboard/AT
   // path to re-roll a pill.
   const actions = [
-    { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
+    node.type === 'para'
+      ? { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label: node.folded ? 'Show the full paragraph' : 'Collapse to first line', fn: () => { toggleFold(nodeId); hideBpop(); } }
+      : { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
     { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
     { sec:'Annotate', prim:true, icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
@@ -25526,6 +25542,19 @@ function setCollapsed(id, val) {
 }
 function toggleCollapse(id) { const n=nodeById(id); if(n) setCollapsed(id,!n.collapsed); }
 
+// Paragraph first-line collapse ("fold"). A separate state from `collapsed` (which hides
+// children) so folding a paragraph never disturbs an existing child-collapse and vice versa.
+// Only meaningful on `para` nodes; the render, the bullet-click, and the menu all gate on type.
+function setFolded(id, val) {
+  const node = nodeById(id);
+  if (!node || node.type !== 'para') return;
+  node.folded = val; markDirty();
+  const editing = activeContentId === id;
+  render();
+  if (editing) focusNode(id);
+}
+function toggleFold(id) { const n = nodeById(id); if (n && n.type === 'para') setFolded(id, !n.folded); }
+
 // Collapse the whole (current viewport) outline so only its first `n` levels show.
 // Depth is counted from the viewport root's direct children (depth 0). A node at
 // depth d is collapsed once d >= n-1, so its children at depth n and deeper hide;
@@ -31143,12 +31172,13 @@ const GUIDE = [
     ] },
   { id:'zoom', cat:'getting-around',
     title:'Zoom into a point',
-    body:"Work on one branch full-screen with the rest of the document out of sight, so a single project, a chapter or a busy task list fills the page with just it and its children. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet, or choose Zoom into from its menu. The point becomes a large editable title with its note and children below.\n\nA breadcrumb row at the top shows Home then each ancestor then the current point. Click any crumb to jump to that level, the Home crumb to return to the full document, or press Esc to step up one level toward the parent.",
+    body:"Work on one branch full-screen with the rest of the document out of sight, so a single project, a chapter or a busy task list fills the page with just it and its children. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet, or choose Zoom into from its menu. The point becomes a large editable title with its note and children below.\n\nA breadcrumb row at the top shows Home then each ancestor then the current point. Click any crumb to jump to that level, the Home crumb to return to the full document, or press Esc to step up one level toward the parent.\n\nParagraphs work differently. Zooming into a lone paragraph is pointless, so a paragraph's bullet collapses it to its first line instead: click the bullet (or Ctrl/Cmd+Enter, or Collapse to first line in its menu) and a long paragraph folds down to a one-line peek with an ellipsis. Click the bullet again, or click the text to edit it, to see the whole thing; the folded state is saved with the document.",
     related:['move-nest','point-types'],
     examples:[
       { syn:'Ctrl/Cmd+Enter',  desc:"zoom into the point you're editing" },
-      { syn:'click the bullet', desc:'zoom into that point' },
+      { syn:'click the bullet', desc:'zoom into that point (a paragraph folds to its first line)' },
       { syn:'Menu → Zoom into', desc:'zoom in from the point menu' },
+      { syn:'paragraph bullet', desc:'collapse a paragraph to just its first line' },
       { syn:'Esc',              desc:'zoom out one level toward the parent' },
       { syn:'Home crumb',       desc:'return to the full document' },
       { syn:'ancestor crumb',   desc:'jump to that level (click or Enter)' },
