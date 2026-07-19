@@ -16746,6 +16746,52 @@ test('#809 wiring: evalCheck consults aggHasSkippedValues before evaluating', ()
 
 // ─── test-user review fix batch 3 (#805/#810/#813) ────────────────────────────
 const _fix3 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+test('#946 groupThousands — inserts separators, keeps decimals + sign, leaves non-numeric', () => {
+  assert.equal(c.groupThousands('840000'), '840,000');
+  assert.equal(c.groupThousands('1234567.89'), '1,234,567.89');
+  assert.equal(c.groupThousands('-52000'), '-52,000');
+  assert.equal(c.groupThousands('999'), '999', 'under 1000 is untouched');
+  assert.equal(c.groupThousands('0.3333'), '0.3333', 'a pure fraction has no grouping');
+  assert.equal(c.groupThousands('∞'), '∞', 'non-numeric passes through');
+});
+
+test('#946 formatNumDisplay — grouping by default; per-pill decimals/prefix/suffix', () => {
+  assert.equal(c.formatNumDisplay(840000), '840,000', 'default groups thousands');
+  assert.equal(c.formatNumDisplay(18.85), '18.85', 'small values unchanged but pass through');
+  assert.equal(c.formatNumDisplay(1200, { decimals: 2, prefix: '$' }), '$1,200.00', 'currency: fixed decimals + prefix + grouping');
+  assert.equal(c.formatNumDisplay(12, { suffix: ' kg' }), '12 kg');
+  assert.equal(c.formatNumDisplay(0.33333333, { decimals: 2 }), '0.33', 'decimals cap the display');
+  assert.equal(c.formatNumDisplay(Infinity), '∞', '∞ passes through, never grouped');
+});
+
+test('#946 parseNumFmt — a lean fmt or null; decimals bounded 0-20', () => {
+  assert.deepEqual(host(c.parseNumFmt('2', '$', '')), { decimals: 2, prefix: '$' });
+  assert.deepEqual(host(c.parseNumFmt('', '', ' kg')), { suffix: ' kg' });
+  assert.equal(c.parseNumFmt('', '', ''), null, 'all blank → null (lean record)');
+  assert.equal(c.parseNumFmt('abc', '', ''), null, 'a non-integer decimals is ignored');
+  assert.equal(c.parseNumFmt('99', '', ''), null, 'decimals > 20 rejected');
+  // formatMathResult (the PERSISTED value) must NEVER group — a grouped cell would stop re-parsing
+  assert.equal(c.formatMathResult(840000), '840000', 'the canonical value formatter stays separator-free');
+  // the display sinks use the display formatter: renderMathPill + the number cell + formatVarValue
+  assert.ok(/const display = formatMathDisplay\(fresh, m\.expr, m\.fmt\)/.test(_src), 'renderMathPill groups + honors the per-pill format');
+  assert.ok(/return escHtml\(formatNumDisplay\(n\)\)/.test(_src), 'a base number cell groups (display only)');
+  assert.ok(/function formatVarValue\(v\) \{ return typeof v === 'string' \? v : formatNumDisplay\(v\); \}/.test(_src), 'variable values group too');
+});
+
+test('#945 link picker embeds on Shift+Enter / Shift+click (src pins)', () => {
+  // the applier takes an asMirror flag and appends the empty pipe (the mirror form)
+  const lp = fnBody(_src, 'lpApply');
+  assert.ok(/async function lpApply\(asMirror = false\)/.test(_src), 'lpApply gains the asMirror flag');
+  assert.ok(lp.includes("const pipe = asMirror ? '|' : '';"), 'the mirror pipe is empty unless embedding');
+  assert.ok(/token = `\[\[#\$\{nn\.id\}\$\{pipe\}\]\]`/.test(lp) && /`\[\[#\$\{chosen\.id\}\$\{pipe\}\]\]`/.test(lp), 'the pipe threads into the created + picked tokens');
+  // Shift+Enter routes to the mirror apply before the generic sweep; Shift+click too
+  assert.ok(_src.includes("if (lpState && isLpMenuOpen() && e.key === 'Enter' && e.shiftKey) { e.preventDefault(); lpApply(true); return; }"), 'Shift+Enter embeds');
+  assert.ok(/lpState\.activeIdx = i; lpApply\(e\.shiftKey\)/.test(_src), 'Shift+click embeds');
+  // the hint teaches it (discoverability)
+  assert.ok(_src.includes("'Enter links · Shift+Enter embeds'"), 'the picker shows the embed hint');
+  assert.ok(_src.includes('.lp-foot{'), 'the hint has its CSS');
+});
+
 test('#805: the pipe carries meaning — render passthrough + title-form creation doors', () => {
   // 4a: the same-doc callsite gained the foreign-context redirect (a bare [[#id]] inside a
   // cross-doc mirror resolves in ITS doc) — the label still passes through untouched on both arms.
@@ -16754,8 +16800,8 @@ test('#805: the pipe carries meaning — render passthrough + title-form creatio
   assert.match(_fix3, /stash\(renderCrossLinkPill\(docId, target, label\)\)/, 'cross-doc callsite too');
   assert.ok(!_fix3.includes('renderLinkPill(target, label ?? '), 'the label ?? \'\' collapse must be gone');
   assert.match(_fix3, /token = \(workspaceDir && root\.docId\) \? `\[\[\$\{root\.docId\}#\$\{id\}\]\]` : `\[\[#\$\{id\}\]\]`/, 'Copy link must emit the title form');
-  assert.match(_fix3, /token = `\[\[#\$\{nn\.id\}\]\]`/, 'link-and-create must emit the title form');
-  assert.match(_fix3, /`\[\[\$\{chosen\.docId\}#\$\{chosen\.id\}\]\]` : `\[\[#\$\{chosen\.id\}\]\]`/, 'the picker must emit the title form');
+  assert.match(_fix3, /token = `\[\[#\$\{nn\.id\}\$\{pipe\}\]\]`/, 'link-and-create emits the title form by default (#945: pipe empty unless Shift+Enter embeds)');
+  assert.match(_fix3, /`\[\[\$\{chosen\.docId\}#\$\{chosen\.id\}\$\{pipe\}\]\]` : `\[\[#\$\{chosen\.id\}\$\{pipe\}\]\]`/, 'the picker emits the title form by default (#945: pipe empty unless embed)');
 });
 test('#805: linkifyMention wraps the mention as the label (round-trip visible text)', () => {
   assert.equal(c.linkifyMention('meet Karl Friston today', 'Karl Friston', 'x1'),

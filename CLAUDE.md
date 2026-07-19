@@ -799,7 +799,10 @@ opens the **link picker** (always on since
 UXP-4, rollout kill switch retired 2026-07-02; candidates via the pure `linkCandidates`, applied as the live-TITLE form
 `[[#id]]` — no pipe; since #805/UXP-204 the pipe carries meaning: `[[#id]]` = title reference (every creation door's
 default), `[[#id|]]` = the explicit typed mirror/transclusion, `[[#id|text]]` = fixed caption — the trigger regex
-excludes `#` so a raw token is never intercepted), or
+excludes `#` so a raw token is never intercepted; **#945 (agent-review): the picker's `Shift+Enter`
+(or `Shift+click`) inserts the `[[#id|]]` MIRROR/embed form instead of the title reference** — `lpApply(asMirror)`
+appends the empty pipe, a visible "Enter links · Shift+Enter embeds" hint teaches it, so transclusion has a
+discoverable door with no new syntax), or
 "Copy link" → `[[#id]]` + paste (the keyboard-first power path). Because live
 titles are render-time values, `exitEdit` repaints on-screen backlink sources when
 a node's text changes, so a rename never leaves stale captions/mirrors visible.
@@ -876,7 +879,13 @@ reduce a property over a live query set — `queryReduce`, the `count("query")` 
 chrome-free so a number reads as prose/heading text, not a monospace `expr = value` capsule; the recipe
 stays in `node.text` and shows on edit; `.math-bare`, applied only to the successful branch so an #ERR or
 empty-rollup never hides; round-trips via `_math`; the reusable `openInsertDialog` `type:'checkbox'`
-field kind carries it) ·
+field kind carries it; **number formatting (#946, agent-review)** — big numbers group thousands BY
+DEFAULT and a per-pill format (`m.fmt = {decimals?, prefix?, suffix?}`, three math-dialog fields,
+round-trips via `_math`) renders `$1,200.00` / `12 kg`. **Display-only:** `formatNumDisplay`/`groupThousands`
+run ONLY at the render sinks (math + var pills via `formatMathDisplay(v, expr, fmt)`/`formatVarValue`, base
+number cells, and one-way export) — `formatMathResult` stays the canonical separator-free formatter that
+TABLE RECOMPUTE serializes into `node.text` (a grouped "840,000" persisted would stop re-parsing as a
+number). `parseNumFmt` builds the lean fmt or null) ·
 **Uncertainty fields / estimates** (B2, frontier F3 — first-in-class: `@estimate` or `{5 to 10}`,
 an uncertain value sampled Monte-Carlo and shown as `mean ± [p5,p95]` + a unicode sparkline; click
 to re-sample. A **separate sampler** (`sampleUncertain`/`rngFromSeed`) since a distribution can't
