@@ -2049,6 +2049,29 @@ test('paragraph fold: node.folded round-trips via _folded; only emitted when set
   assert.match(_src, /\.nt-para\.folded>\.node-row>\.node-content:not\(\[data-editing\]\)/, 'the clamp is disabled while editing');
 });
 
+test('paragraph traps: prose slash gate, ¶ alignment, and the fold clearing on conversion', () => {
+  // 1) the / block menu inside a PARAGRAPH triggers only at the very start of the text —
+  // mid-prose, Enter means LINE BREAK, so an open menu would apply "Bullet" and destroy
+  // the paragraph (the reported bug). The @ insert menu stays live everywhere.
+  assert.match(_src, /if \(m\[2\] === '\/' && slashOffset !== 0 && nodeById\(nodeId\)\?\.type === 'para'\) \{ hideSlashMenu\(\); return; \}/,
+    'checkSlash must gate the / trigger to text start inside a paragraph');
+  // 2) the ¶ replaces the dot IN PLACE: the placeholder dot leaves the layout entirely, so the
+  // ¶ (and the paragraph text) align with sibling rows instead of sitting ~10px right.
+  assert.match(_src, /\.nt-para>\.node-row>\.bullet \.bullet-dot\{display:none\}/,
+    'the paragraph placeholder dot must be display:none, not opacity:0');
+  // 3) the fold is a paragraph-only state — converting away clears it everywhere.
+  assert.ok(fnBody(_src, 'applyBlockCmd').includes("if (node.type !== 'para') node.folded = false"),
+    'applyBlockCmd clears folded on conversion');
+  const n = { text: '- [ ] task now', type: 'para', folded: true };
+  c.rederiveFromText(n);
+  assert.equal(n.type, 'todo');
+  assert.equal(n.folded, false, 'a text-derived conversion clears the fold');
+  const stays = { text: 'still prose', type: 'para', folded: true };
+  c.rederiveFromText(stays);
+  assert.equal(stays.type, 'para');
+  assert.equal(stays.folded, true, 'a paragraph that stays a paragraph keeps its fold');
+});
+
 test('toOpml — strips lone surrogates and U+FFFE/U+FFFF; valid emoji pairs survive', () => {
   // U+FFFE/U+FFFF and unpaired surrogate halves are also illegal in XML 1.0, but a
   // surrogate inside a valid pair (😀 is \uD83D\uDE00) is legal and must NOT be eaten.

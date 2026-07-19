@@ -1008,8 +1008,11 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 /* while editing a code node the raw ``` text shows in monospace */
 .nt-code>.node-row>.node-content[data-editing]{font-family:var(--mono);font-size:.9em}
 .nt-code>.node-row>.bullet .bullet-dot{opacity:.2}
-/* paragraph */
-.nt-para>.node-row>.bullet .bullet-dot{opacity:0}
+/* paragraph. The ¶ REPLACES the dot in place: display:none (not opacity:0) removes the
+   invisible placeholder dot from the flex flow, so the ¶ sits at the same x as every other
+   row's dot and the paragraph's text lines up with its siblings (the hidden dot + gap used
+   to push both ~10px right). */
+.nt-para>.node-row>.bullet .bullet-dot{display:none}
 .nt-para>.node-row>.bullet::after{content:'¶';color:var(--muted);opacity:.35;font-size:.75em;position:relative;top:1px}
 /* divider */
 .nt-divider>.node-row{padding:8px 0;cursor:default;user-select:none}
@@ -1173,7 +1176,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 /* a paragraph's point is the faint ¶ pilcrow (.bullet::after, opacity .35). When FOLDED it turns
    solid and present — full ink, semibold, on a soft accent-tint chip — so a collapsed paragraph
    reads at a glance as a distinct, "active" mark against the whisper-quiet ¶ of open paragraphs. */
-.nt-para.folded>.node-row>.bullet::after{color:var(--fg);opacity:.9;font-weight:700;background:color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:0 2px}
+.nt-para.folded>.node-row>.bullet::after{color:var(--fg);opacity:.9;font-weight:700;background:color-mix(in srgb,var(--acc) 15%,transparent);border-radius:var(--r-xs);padding:0 2px;margin:0 -2px}
 .nt-para.folded>.node-row>.bullet:hover::after{background:color-mix(in srgb,var(--acc) 24%,transparent)}
 
 /* search highlight */
@@ -2624,6 +2627,7 @@ function rederiveFromText(node) {
   const t = deriveTypeFromText(node.text);
   if (t) node.type = t;
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
+  if (node.type !== 'para') node.folded = false;   // the fold is para-only; clear it when the text derives another type
   node.checked = todoDoneFromText(node.text);
 }
 
@@ -15670,6 +15674,7 @@ function exitEdit(content, node) {
   const et = deriveTypeFromText(node.text);
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
+  if (node.type !== 'para') node.folded = false;   // the fold is para-only (matches rederiveFromText)
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   const wasDone = todoDoneFromText(prevText);
@@ -17489,6 +17494,13 @@ function checkSlash(content, nodeId) {
   // The trigger char sits right before the captured query; pin the offset to that
   // position so it stays correct even when we trim a non-arg ":value" off the query.
   const slashOffset = pos - rawQuery.length - 1;
+  // Prose-mode carve-out: inside a PARAGRAPH the `/` block menu triggers only at the very
+  // start of the text. Mid-prose, a typed "3 / 4" or a "/" on a fresh inner line would pop
+  // the menu — and Enter (which means LINE BREAK in a paragraph, the sanctioned P1 exception)
+  // would apply the highlighted command and convert the whole multi-line paragraph to a
+  // Bullet, destroying it. In prose you type freely; new structure is Shift+Enter (a new
+  // point) then `/`. The `@` insert menu stays live everywhere (inline pills belong in prose).
+  if (m[2] === '/' && slashOffset !== 0 && nodeById(nodeId)?.type === 'para') { hideSlashMenu(); return; }
   const { word, query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
   // "start" is an alias of the single "due" (Schedule) command so /start:VALUE has a
@@ -24758,6 +24770,7 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   // re-entering edit mode on the raw source. finishBlockCmd is the shared tail for the
   // todo/state/block branches: it repaints and either exits edit (display) or re-focuses.
   const finishBlockCmd = () => {
+    if (node.type !== 'para') node.folded = false;   // the first-line fold is a paragraph state; never leave it dormant on another type
     markDirty();
     if (opts.display) {
       const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
