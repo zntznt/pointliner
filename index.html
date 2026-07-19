@@ -350,7 +350,12 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
   width:min(592px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 60px);overflow-y:auto;
   overscroll-behavior:contain;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);
   padding:8px 12px;box-shadow:var(--sh-2);z-index:60;font-size:11px;color:var(--muted)}
-#search-wrap:focus-within #search-hint{display:block}
+/* The panel opens on focus, but only with content to show, never an empty rectangle (item 3):
+   - Guided (and a classless fresh boot, fail-open): the cheatsheet rows are always content.
+   - Standard: the rows are hidden, so open ONLY when there are saved searches or cross-doc hits.
+   - Lean: gone entirely (no rule opens it). */
+body:not(.v-standard):not(.v-lean) #search-wrap:focus-within #search-hint{display:block}
+body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])){display:block}
 /* DIAL: the search legend TEACHES the query operators (is:done, #tag, "phrase") via the .sh-row cheatsheet
    rows. Standard AND Lean strip those rows (teaching text off once you know the commands); Guided keeps
    them. The operators still work, the cheatsheet just doesn't pop. #sh-saved (saved searches) + #sh-workspace
@@ -362,6 +367,13 @@ body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:n
 .sh-row{display:flex;align-items:center;gap:6px;padding:2px 0;white-space:normal;flex-wrap:wrap;pointer-events:none}/* #587: inert teaching rows never steal the click/focus from the search box (the panel itself is now interactive so it can scroll); the saved-chip + workspace islands re-enable pointer-events */
 .sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.guide-sc kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
 .sh-row code{font-family:var(--mono);font-size:11px}/* #414: the info-text floor (UXP-78 raised the sibling kbd chips; the code examples lagged) */
+/* item 3: in Guided the example chips are clickable — click (or Enter/Space) to add the token to the
+   search box. Only the kbd re-enables pointer-events (the row stays inert per #587); the rows show only
+   in Guided, so this is Guided-scoped for free. Hover/focus use the border-only highlight of the saved
+   chips in the same panel (DL §4: a keycap's ink never changes on hover), keeping one interaction voice. */
+body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}
+#search-hint .sh-row kbd:hover{border-color:var(--acc)}
+#search-hint .sh-row kbd:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* saved searches: the one interactive island in the otherwise inert hint panel */
 #sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
 .sh-saved-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px}/* UXP-135: the one eyebrow recipe (DL §4): 10px/600/.07em, was missing font-weight */
@@ -11073,15 +11085,15 @@ function renderRow(r) {
   // structural entry points a newcomer lands on (top level + a parent's first child); deeper
   // empties stay unlabeled so an experienced user isn't nagged on every new point.
   const isEntryPoint = depth === 0 || (parent && parent.children[0] === node);
-  // LEAN FLOOR: the entry-point + para hints TEACH the syntax (/ @ [[, Enter/Shift+Enter). In lean mode
-  // the user is past that, so they strip to a bare '…' (ux.md dial table: empty-state hints "hidden" in
-  // Lean). The 'Section label…' placeholder stays — it NAMES what the field is, a label, not a helper.
-  const paraHint = isStandardOrLean() ? '…' : 'Prose block. Enter = line break · ⇧+Enter = new point';
-  // IA-2 (perception hypothesis): lead the very first cue with the ATOM — the fastest path
-  // to the "oh" moment is typing {2d6} and watching it become a live pill on blur. The
-  // outliner mechanics (/) come second, and "or just write" keeps the escape for a plain
-  // note-taker. (The @ dialog door is a slower path to the same pills; the literal atom teaches it.)
-  const entryHint = isStandardOrLean() ? '' : 'Try {2d6} for a live pill · / for a to-do or heading · or just write';
+  // The entry-point + para placeholders TEACH the syntax, and how much shows TRACKS THE GUIDANCE
+  // DIAL (item 2, modes batch): Guided gets the full plain cue, Standard a short whisper, Lean none
+  // (its users are past hints). The 'Section label…' placeholder stays every tier — it NAMES the
+  // field (a label), not a helper.
+  const paraHint  = isLean() ? '' : isGuided() ? 'Prose block. Enter = line break · ⇧+Enter = new point' : 'Prose block';
+  // Guided names the four moves in one plain line (write, then / @ { for format/insert/compute — the
+  // owner's simpler wording); Standard keeps only the primary door (/), so a returning user sees a
+  // whisper, not a paragraph. The { still cues the pill atom without spelling out {2d6}.
+  const entryHint = isLean() ? '' : isGuided() ? 'Write, format with /, insert with @, or compute with {' : 'Write, or / to format';
   content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? paraHint : (isEntryPoint ? entryHint : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
@@ -28481,6 +28493,42 @@ shSavedList.addEventListener('keydown', e => {
 });
 syncSearchSave();
 renderSavedSearches();
+
+// item 3 (modes batch): in Guided the cheatsheet example chips are clickable — click one (or
+// Enter/Space) to ADD its token to the search box and run it, so you can build a query by picking.
+// The rows are display:none outside Guided, so hidden chips aren't focusable and this stays
+// Guided-only for free. mousedown+preventDefault keeps the caret in the search box (the saved-chip
+// model), so the panel never blurs shut mid-click.
+(function wireSearchExamples() {
+  const hint = document.getElementById('search-hint');
+  if (!hint) return;
+  hint.querySelectorAll('.sh-row kbd').forEach(k => {
+    k.setAttribute('role', 'button');
+    k.setAttribute('tabindex', '0');
+    k.setAttribute('aria-label', `Add ${k.textContent} to the search`);
+  });
+  const applyExample = tok => {
+    const sb = document.getElementById('search-box');
+    const cur = sb.value.trim();
+    sb.value = cur ? `${cur} ${tok}` : tok;   // stack filters by picking several
+    applySearch(sb.value);
+    sb.focus();
+    const n = sb.value.length; sb.setSelectionRange(n, n);
+  };
+  hint.addEventListener('mousedown', e => {
+    const k = e.target.closest('.sh-row kbd');
+    if (!k) return;
+    e.preventDefault();   // keep the search box focused so the panel stays open
+    applyExample(k.textContent);
+  });
+  hint.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const k = e.target.closest('.sh-row kbd');
+    if (!k) return;
+    e.preventDefault();
+    applyExample(k.textContent);
+  });
+})();
 document.getElementById('search-box').addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.getElementById('search-box').value = '';
