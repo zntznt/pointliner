@@ -13615,9 +13615,10 @@ test('DIAL: LEAN is the keyboard canvas — blind menu shows a one-line match ti
 
 // IA-2 (perception hypothesis): the first cue leads with the atom
 test('first-run atom: the entry hint and the tour intro lead with a live pill (IA-2)', () => {
-  // the blank-canvas entry hint leads with the concrete atom {2d6}, not the / menu or the @ dialog
-  assert.ok(/const entryHint = isStandardOrLean\(\) \? '' : 'Try \{2d6\} for a live pill/.test(_src),
-    'the entry-point cue leads with {2d6} (the fastest path to the first live pill)');
+  // item 2 (modes batch): the Guided entry cue is the owner's simpler four-move wording; it still
+  // cues the { pill atom (no longer spelled out as {2d6}; the tour intro below still hands that over).
+  assert.ok(_src.includes("isGuided() ? 'Write, format with /, insert with @, or compute with {'"),
+    'the Guided entry cue is the simpler four-move wording that still cues {');
   // the Welcome tour's intro paragraph carries a real, clickable {2d6} pill (not only the
   // illustrative "{curly-brace}"), so the first paragraph delivers the atom hands-on
   const intro = _src.slice(_src.indexOf('const FIRST_RUN_EXAMPLES'), _src.indexOf('const FIRST_RUN_EXAMPLES') + 1200);
@@ -13625,9 +13626,11 @@ test('first-run atom: the entry hint and the tour intro lead with a live pill (I
 });
 
 test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {
-  // 1. empty-state hints strip in standard AND lean (isStandardOrLean), not just lean
-  assert.ok(_src.includes("const entryHint = isStandardOrLean() ? '' :"), 'the entry-point hint must strip in standard + lean');
-  assert.ok(_src.includes("const paraHint = isStandardOrLean() ? '…' :"), 'the para keyboard-hint must strip in standard + lean');
+  // 1. empty-state hints now track the dial in THREE tiers (item 2, modes batch): Lean shows none,
+  // Standard a short whisper, Guided the full cue (was a two-way isStandardOrLean split).
+  assert.ok(_src.includes("const entryHint = isLean() ? '' : isGuided() ?"), 'the entry hint must be a three-tier lean/guided/standard split');
+  assert.ok(/const paraHint\s+= isLean\(\) \? '' : isGuided\(\) \?/.test(_src), 'the para hint must be a three-tier split (Lean shows none)');
+  assert.ok(_src.includes("'Write, or / to format'"), 'Standard keeps a short entry whisper (not empty like Lean, not the full Guided cue)');
   // 2. the search legend rows strip in standard + lean; saved searches / cross-doc matches (data) stay.
   // #586: the gate is written fail-OPEN (name the tiers that hide, not "not guided"), so a classless
   // fresh boot shows the guided aid instead of hiding all rows on a body that has no v-* class yet.
@@ -13645,6 +13648,32 @@ test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill 
   assert.ok(_src.includes('.node-content .dice-roll[title]'), 'the tooltip sweep must target the pill classes');
   // 4. the 'Section label…' placeholder is a LABEL not a helper — it survives every tier (over-strip guard)
   assert.ok(_src.includes("isDivider ? 'Section label…' : node.type === 'para' ? paraHint"), 'the Section label placeholder must survive (it names the field, not a helper)');
+});
+
+// item 3 (modes batch): the search-hint card opens only with content (never an empty rectangle),
+// is gone entirely in Lean, and its example chips are clickable in Guided.
+test('modes batch — search-hint tiered display + clickable examples', () => {
+  // Guided (and a classless fresh boot) always open the panel on focus (the cheatsheet is content).
+  assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-wrap:focus-within #search-hint{display:block}'),
+    'Guided/classless must open the search-hint on focus');
+  // Standard opens ONLY when there is live data (saved searches or cross-doc hits) — no empty rectangle.
+  assert.ok(_src.includes('body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])){display:block}'),
+    'Standard must open the panel only when saved searches or cross-doc hits exist (no empty rectangle)');
+  // Lean is gone entirely: the old UNCONDITIONAL opener (a bare selector, no body-class prefix) is
+  // retired — every opener now leads with a body tier gate, so no rule matches a v-lean body.
+  assert.ok(!/(^|\n)#search-wrap:focus-within #search-hint\{display:block\}/.test(_src),
+    'the old unconditional focus-within opener must be gone (Lean shows no panel at all)');
+  assert.ok(!/body\.v-lean[^\n]*#search-hint\{display:block\}/.test(_src),
+    'no rule may open the search-hint in Lean');
+  // the example chips are clickable in Guided (pointer-events re-enabled on the kbd), border-highlight on hover.
+  assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}'),
+    'Guided example chips must be clickable (pointer-events re-enabled on the kbd)');
+  // the applier stacks the token onto the search box and keeps focus (the saved-chip mousedown model).
+  const wire = _src.slice(_src.indexOf('function wireSearchExamples('), _src.indexOf('function wireSearchExamples(') + 1100);
+  assert.ok(wire.includes("cur ? `${cur} ${tok}` : tok") && wire.includes('applySearch(sb.value)'),
+    'clicking an example must add its token to the search box and run the search');
+  assert.ok(wire.includes("e.preventDefault()") && wire.includes("k.setAttribute('role', 'button')") && wire.includes("k.setAttribute('tabindex', '0')"),
+    'example chips must keep the caret (mousedown preventDefault) and be keyboard-operable (role/button + tabindex)');
 });
 
 test('#616 real bugs: platform MOD in verbosity toasts, conjugated rename announce, Ctrl/Cmd order', () => {
