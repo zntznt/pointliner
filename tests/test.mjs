@@ -1160,6 +1160,88 @@ test('resolveBrace — {3x: ★} expands the template N times, joined by space',
   assert.equal(c.resolveBrace('1x: hi', ctx), 'hi');
 });
 
+// ─── #916: glue templates + the anti-shred promotion guards ─────────────────────
+
+test('#916 templateParts — accepts glue templates, rejects prose/unresolvable/malformed', () => {
+  const R = {}, V = {};
+  const tp = (b) => !!c.templateParts(b, R, V);
+  assert.ok(tp('{Grey|Salt|Storm}haven'), 'a brace glued to a suffix is a template');
+  assert.ok(tp('{Ael|Bor}{ric|wyn}'), 'two adjacent groups are a template');
+  assert.ok(tp('{a|b} {c|d}'), 'space-separated groups are a template (a full name)');
+  assert.ok(tp('{2d6}dmg'), 'a dice group glues too');
+  assert.equal(c.templateParts('see {a|b} sample', R, V), null, 'a bare-word chunk reads as prose');
+  assert.equal(c.templateParts('{foo}haven', R, V), null, 'an unresolvable nested body never promotes (no {foo?} marker pills from prose)');
+  assert.equal(c.templateParts('plainword', R, V), null, 'no braces, no template');
+  assert.equal(c.templateParts('{a|b}{c', R, V), null, 'an unclosed group is rejected');
+  assert.equal(c.templateParts('{a|b} {= 3}', R, V), null, 'a trailing {= …} group is parseAlt\'s weight form, not a template');
+  assert.equal(c.templateParts('{a|b}\n{c|d}', R, V), null, 'a newline is rejected');
+  // a nested body may be resolvable via rules/vars, matching the bare-name branch
+  assert.ok(!!c.templateParts('{color}shade', { color: [{ template: 'red', weight: 1 }] }, V), 'a known rule resolves the nested body');
+});
+
+test('#916 — a wrapped glue template promotes to ONE anonymous grammar pill (and round-trips)', () => {
+  const n = c.mkNode('{{Grey|Salt|Storm}haven}');
+  assert.ok(c.promoteInlineShorthand(n));
+  assert.match(n.text, /^\[\[grammar:[a-z0-9]+\]\]$/, 'one token, no shred');
+  assert.equal((n.grammar || []).length, 1, 'exactly one pill');
+  const rec = n.grammar[0];
+  assert.equal(rec.def, 'origin: {Grey|Salt|Storm}haven');
+  assert.ok(rec.anon, 'anonymous (the synthetic origin never joins the doc namespace)');
+  assert.match(rec.result, /^(Grey|Salt|Storm)haven$/, 'the roll is one glued name');
+  // unfold round-trip: the pill unfolds to exactly the typed source
+  assert.equal(c.artifactToShorthand('grammar', rec), '{{Grey|Salt|Storm}haven}');
+  // UNWRAPPED adjacent braces keep their existing meaning: two independent pills
+  const two = c.mkNode('{Ael|Bor}{ric|wyn}');
+  c.promoteInlineShorthand(two);
+  assert.equal((two.grammar || []).length, 2, 'no auto-glue: unwrapped adjacent braces stay two pills');
+});
+
+test('#916 — classify and promote agree on templates (lockstep)', () => {
+  const R = {}, V = {};
+  assert.equal(c.classifyBraceBody('{Grey|Salt|Storm}haven', R, V), 'artifact');
+  assert.equal(c.classifyBraceBody('{Ael|Bor}{ric|wyn}', R, V), 'artifact');
+  assert.equal(c.classifyBraceBody('see {a|b} sample', R, V), 'literal', 'prose around a brace stays prose');
+  assert.equal(c.classifyBraceBody('{foo}haven', R, V), 'literal', 'unresolvable template reads as prose, not an attempt');
+});
+
+test('#916 anti-shred — a failed outer form is never promoted piecemeal', () => {
+  // closed but invalid ({= junk {2d6} +}): the whole span stays intact, the inner dice does NOT promote
+  const inv = c.mkNode('{= junk {2d6} +}');
+  assert.equal(c.promoteInlineShorthand(inv), false);
+  assert.equal(inv.text, '{= junk {2d6} +}');
+  assert.equal((inv.dice || []).length, 0);
+  // UNCLOSED declaration (the reviewer's catastrophic path): blur mid-typing leaves it intact,
+  // so adding the final } later completes the capture instead of finding shrapnel
+  const u = c.mkNode('{hero := {Ael|Bor}{ric|wyn}');
+  assert.equal(c.promoteInlineShorthand(u), false);
+  assert.equal(u.text, '{hero := {Ael|Bor}{ric|wyn}');
+  assert.equal((u.grammar || []).length + (u.vars || []).length, 0, 'no fragment pills');
+  // prose braces keep the descent: a {2d6} inside prose braces still comes alive
+  const pr = c.mkNode('{note to self {2d6} damage}');
+  assert.ok(c.promoteInlineShorthand(pr));
+  assert.equal((pr.dice || []).length, 1);
+  // an unclosed line never suppresses promotion on the NEXT line
+  const ml = c.mkNode('{hero := {Ael|Bor}\nplain {2d6} here');
+  assert.ok(c.promoteInlineShorthand(ml));
+  assert.equal((ml.dice || []).length, 1);
+  // the completed declaration still captures (the regression guard for the fix itself)
+  const ok = c.mkNode('{hero := {Ael|Bor}{ric|wyn}}');
+  assert.ok(c.promoteInlineShorthand(ok));
+  assert.equal(ok.vars?.[0]?.name, 'hero');
+  assert.equal(ok.vars?.[0]?.kind, 'pick');
+  assert.match(ok.vars?.[0]?.rolled, /^(Ael|Bor)(ric|wyn)$/, 'one glued frozen name');
+});
+
+test('#916 anti-shred — promoteCellShorthand carries the same guards (load/focusout parity)', () => {
+  const host = c.mkNode('#+ base'); host.type = 'base';
+  const inv = c.promoteCellShorthand(host, '{= junk {2d6} +}');
+  assert.equal(inv.changed, false);
+  assert.equal(inv.text, '{= junk {2d6} +}');
+  const u = c.promoteCellShorthand(host, '{r := {a|b}{c');
+  assert.equal(u.changed, false);
+  assert.equal(u.text, '{r := {a|b}{c');
+});
+
 test('repeatParts — a dice-shaped count is recognized; anything impure stays out (#545)', () => {
   assert.deepEqual(host(c.repeatParts('2d4x: goblin')), { dice: '2d4', template: 'goblin' });
   assert.deepEqual(host(c.repeatParts('2d4+1X: {beast}')), { dice: '2d4+1', template: '{beast}' });

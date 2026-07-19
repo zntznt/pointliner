@@ -43,6 +43,23 @@ Put a number after a choice to weight it (default weight is 1):
 Here `rare` is five times as likely as `common`. Weights can even be **live expressions** over
 your variables: see [dynamic odds](#when-the-odds-depend-on-something-dynamic-odds).
 
+### Glue pieces into one name (templates)
+
+Two side-by-side generators are two separate pills; each one re-rolls on its own. To build one
+name from parts, wrap the whole thing in **one more brace** and it becomes a single pill that
+re-rolls as a unit:
+
+```
+{{Ael | Bor | Cael}{ric | wyn | dor}}     →  Borwyn, Caelric, Aeldor …
+{{Grey | Salt | Storm}haven}              →  Salthaven, Greyhaven …
+{{adj} {beast}}                           →  one two-word phrase from your rules
+```
+
+Plain letters glue directly onto a brace group (`haven` above); spaces are fine between groups.
+Every piece has to be a real generator or a known rule, and every word must touch a brace; a
+sentence with loose words around a brace stays ordinary text, so prose is never captured by
+accident.
+
 ---
 
 ## Name things you'll reuse (rules)

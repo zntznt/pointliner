@@ -15448,7 +15448,47 @@ function classifyBraceBody(body, rules, vars) {
     const low = body.toLowerCase();
     return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
   }
+  if (templateParts(body, rules, vars)) return 'artifact';              // {…}glue{…} template (#916)
   return diceish ? 'invalid' : 'literal'; // dice-looking but unparseable → attempted roll
+}
+
+// #916: a GLUE TEMPLATE body — nested balanced {…} groups optionally glued to bare literal
+// chunks — promotes as ONE anonymous grammar pill whose single alternative IS the template:
+// {Ael|Bor}{ric|wyn} rolls one glued name, {Grey|Salt|Storm}haven one place name, {adj} {beast}
+// one two-word phrase, and the pill re-rolls as a unit. This is the engine's EXISTING rule-level
+// template expansion surfaced at the top level (a rule alternative like `a {color} {animal}`
+// already expands this way) — no new syntax, just a promotion branch for it. The sniff is
+// deliberately strict so prose braces stay prose (the escape hatch):
+//   · at least one balanced nested {…} group; any unclosed brace or a newline → null;
+//   · every whitespace-separated chunk carries a brace group ({see {color} sample} has bare
+//     word chunks → prose, stays literal and its inner braces promote individually as before);
+//   · every nested body itself classifies 'artifact' (resolvable NOW, the same rule as the
+//     bare-name / {ref.mod} branches — prose mentioning an unknown {word} never becomes a
+//     {word?} marker pill);
+//   · the body must not end in a whitespace-separated {= …} group (parseAlt reads that as a
+//     dynamic WEIGHT, which would silently truncate the template).
+// Returns { bodies } (the nested brace bodies) or null. Pure — rules/vars are explicit.
+function templateParts(body, rules, vars) {
+  body = (body || '').trim();
+  if (!body || body.indexOf('{') < 0 || body.indexOf('\n') >= 0) return null;
+  if (/\S\s+\{=\s*[\s\S]*\}\s*$/.test(body)) return null;   // trailing {= …} = parseAlt's weight form
+  const bodies = [];
+  let i = 0, depth = 0;
+  while (i < body.length) {
+    const ch = body[i];
+    if (ch === '}') return null;                            // stray close at top level
+    if (ch === '{') {
+      const j = matchBrace(body, i);
+      if (j < 0) return null;                               // unclosed group
+      bodies.push(body.slice(i + 1, j));
+      i = j + 1; continue;
+    }
+    i++;
+  }
+  if (!bodies.length) return null;
+  for (const chunk of body.split(/\s+/)) if (chunk && chunk.indexOf('{') < 0) return null;  // a bare-word chunk = prose
+  for (const b of bodies) if (classifyBraceBody(b, rules, vars) !== 'artifact') return null;
+  return { bodies };
 }
 
 // A short, human reason a {body} that CLASSIFIES 'invalid' will not become a pill — the tooltip
@@ -21748,6 +21788,16 @@ function promoteBraceBody(node, body) {
       return `[[var:${rec.key}]]`;
     }
   }
+  // glue template: {{Ael|Bor}{ric|wyn}} / {{Grey|Salt|Storm}haven} → ONE anonymous grammar
+  // pill whose single alternative is the template — the engine's existing rule-level template
+  // expansion (a rule alternative already expands its nested braces + concatenates literals),
+  // surfaced at the top level so a syllable name is one re-rollable unit (#916). Placed LAST,
+  // mirroring classifyBraceBody: every keyword/alternation form wins first, and the strict
+  // templateParts sniff keeps prose braces prose.
+  if (templateParts(body, collectRules(), collectVars())) {
+    const roll = makeGrammarRoll(`origin: ${body}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
   return null;
 }
 
@@ -21785,6 +21835,25 @@ function promoteInlineShorthand(node) {
         // unresolved marker because r's token isn't in the text yet (its cache reset in
         // promoteBraceBody is not enough on its own).
         if (token != null) { out += token; i = j + 1; changed = true; node.text = out + text.slice(i); continue; }
+        // #916 anti-shred: an ATTEMPTED-but-unpromotable outer form ({= junk {2d6} +}, an oracle
+        // typo…) is kept INTACT as one literal span — descending into it would promote its inner
+        // braces to fragments, destroying the form the user was building (and the render-side
+        // .brace-attempt cue needs the intact text to flag). Prose braces ('literal') keep the
+        // descent, so a {2d6} inside prose braces still comes alive.
+        if (classifyBraceBody(text.slice(i + 1, j), collectRules(), collectVars()) === 'invalid') {
+          out += text.slice(i, j + 1); i = j + 1; continue;
+        }
+      } else {
+        // #916 anti-shred, the UNCLOSED half: a `{` with no balancing close whose line-tail READS
+        // as a form ({hero := {Ael|Bor}{ric|wyn} missing its final }) is mid-authoring — leave the
+        // whole line-tail untouched so finishing the close later completes the declaration, instead
+        // of promoting the inner braces to fragments (which destroyed it irreversibly). A prose
+        // tail ('literal') keeps today's char walk, so its inner braces still promote.
+        const lineEnd = (() => { const nl = text.indexOf('\n', i); return nl < 0 ? text.length : nl; })();
+        const tail = text.slice(i + 1, lineEnd).trim();
+        if (tail && classifyBraceBody(tail, collectRules(), collectVars()) !== 'literal') {
+          out += text.slice(i, lineEnd); i = lineEnd; continue;
+        }
       }
     }
     out += text[i++];
@@ -21814,6 +21883,18 @@ function promoteCellShorthand(node, cellText) {
       if (j > i) {
         const token = promoteBraceBody(node, text.slice(i + 1, j));
         if (token != null) { out += token; i = j + 1; changed = true; continue; }
+        // #916 anti-shred (see promoteInlineShorthand): an attempted-but-invalid outer form stays
+        // one intact literal span — never promoted piecemeal into fragments.
+        if (classifyBraceBody(text.slice(i + 1, j), collectRules(), collectVars()) === 'invalid') {
+          out += text.slice(i, j + 1); i = j + 1; continue;
+        }
+      } else {
+        // #916 anti-shred, unclosed half: a form-reading tail after an unmatched { is mid-authoring
+        // — preserved whole (cells are single-line, so the tail runs to the end of the cell).
+        const tail = text.slice(i + 1).trim();
+        if (tail && classifyBraceBody(tail, collectRules(), collectVars()) !== 'literal') {
+          out += text.slice(i); i = text.length; continue;
+        }
       }
     }
     out += text[i++];
@@ -31757,12 +31838,13 @@ const GUIDE = [
     ] },
   { id:'gen-rules', cat:'generators',
     title:'Building generators',
-    body:"Build a name generator, a themed random list, a full story prompt or a procedural description (of a place, a person, an item, anything). The building block is a named list, a rule: write `color: red | blue | green` and then `{color}` picks one at random wherever you use it.\n\nRules call each other, which is what makes them powerful. A sentence rule can pull from `{subject}`, `{verb}` and `{object}`, each its own list, so a small set of short rules produces enormous variety. A rule can also roll dice (`reward: {2d6} gold`) or calculate (`price: {= base * 2}`), so the pieces that vary and the pieces that compute live side by side and the whole thing stays short to read.\n\nWeight a choice by writing a number after it (`orc | dragon 2` makes the dragon twice as likely), or let a variable decide the odds live with `{= ...}`. Rule names are known across the whole document, not just the point they sit in, so a rule you define once is callable from anywhere. Cover finer control of the output with text modifiers and conditions, the next two entries.",
+    body:"Build a name generator, a themed random list, a full story prompt or a procedural description (of a place, a person, an item, anything). The building block is a named list, a rule: write `color: red | blue | green` and then `{color}` picks one at random wherever you use it.\n\nRules call each other, which is what makes them powerful. A sentence rule can pull from `{subject}`, `{verb}` and `{object}`, each its own list, so a small set of short rules produces enormous variety. A rule can also roll dice (`reward: {2d6} gold`) or calculate (`price: {= base * 2}`), so the pieces that vary and the pieces that compute live side by side and the whole thing stays short to read.\n\nTo build one name from parts, wrap the parts in one more brace: `{{Ael|Bor}{ric|wyn}}` is a single pill that re-rolls the whole syllable name as a unit, and plain letters glue straight onto a group (`{{Grey|Salt}haven}`). Weight a choice by writing a number after it (`orc | dragon 2` makes the dragon twice as likely), or let a variable decide the odds live with `{= ...}`. Rule names are known across the whole document, not just the point they sit in, so a rule you define once is callable from anywhere. Cover finer control of the output with text modifiers and conditions, the next two entries.",
     related:['gen-modifiers','gen-conditions','grammar'],
     examples:[
       { syn:'color: red | blue | green', desc:'define a named list (a rule)' },
       { syn:'{color}',                desc:'use it anywhere' },
       { syn:'origin: a {color} {animal}', desc:'one rule built from others' },
+      { syn:'{{Ael|Bor}{ric|wyn}}',   desc:'glue syllables into one name, one pill' },
       { syn:'reward: {2d6} gold',     desc:'a rule that rolls dice' },
       { syn:'price: {= base * 2}',    desc:'a rule that calculates' },
       { syn:'{common | rare {= luck}}', desc:'a choice weighted by a variable' },
