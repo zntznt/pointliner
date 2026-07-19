@@ -6412,6 +6412,17 @@ test('linkCandidates: non-alias behavior unchanged — alias defaults to null on
   assert.equal(out[0].alias, null);
 });
 
+// #912 (agent-review): the [[ link picker must never show a raw [[type:key]] artifact token in a
+// candidate label — it flows the DISPLAYED title through displayTitle (flatten + link-resolve), the
+// same no-pill sink resolver breadcrumbs use, while matching + the empty-title guard stay on raw text.
+test('#912: linkCandidates displays via displayTitle (artifact tokens never leak raw)', () => {
+  const fn = _src.slice(_src.indexOf('function linkCandidates('), _src.indexOf('function linkCandidates(') + 1400);
+  assert.ok(fn.includes('out.push({ id: n.id, title: displayTitle(n), alias });'),
+    'linkCandidates must build the displayed title via displayTitle (flattens [[type:key]])');
+  assert.ok(fn.includes('const title = textForDisplay(n)'),
+    'the empty-title guard + match provenance stay on raw textForDisplay');
+});
+
 test('collectUnlinkedRefs: finds a point via an alias (title itself absent)', () => {
   // §8 integration: Wyrm is aliased "dragon"; a sibling says "the dragon sleeps"
   // (never the word "Wyrm"). It must still surface as an unlinked reference.
