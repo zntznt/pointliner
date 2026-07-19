@@ -1039,7 +1039,10 @@ doesn't drop the others' auto-detected roles, and from then on node.colRole is r
 verbatim (explicit mode). The "Show as" menu and Alt+R cycle read the EFFECTIVE role via
 mtColRoles so they reflect inference. This is a hint the user can override, not a schema
 (the substrate test: inference over declaration; NOT schema-first base creation, which
-stays out per the #922 panel verdict)) ·
+stays out per the #922 panel verdict). #922 header half: focusNewBase lands the new-base
+caret on the FIRST HEADER cell (r0/c0), not the first data cell, with its placeholder
+selected, so naming columns is the first action and generic Column 1/2/3 labels stop
+leaking into Cards/Board) ·
 Query bases (QP-2 Phase A, the bases-direction §4 above-the-line move under the
 base-views-vision §0b mission thesis: a base whose ROWS are a live search. node.qbase =
 {expr, cols:[{name,field}]} (_qbase OPML); pure core queryTableRows projects each match
