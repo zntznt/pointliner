@@ -255,7 +255,7 @@ export function loadCores() {
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',
-    'pickerTitle','treeRows','selectionRoots','resolveRefileTarget',   // LEAN FLOOR: /refile:title resolution
+    'pickerTitle','treeRows','tagTreeRows','selectionRoots','resolveRefileTarget',   // LEAN FLOOR: /refile:title resolution; tag browser
     'dueDateToday','parseDueDate','formatDueDate','formatDateConcrete','parseRepeat','nextOccurrence','describeRepeat','ordinalSuffix','buildSharePointText','collectDueDates','collectActions','priorityRank','oracleSwingBody',
     'collectJournalDates','collectLoreDates','collectTimelineItems',   // #647 timeline sources
     'collectChronicleDates',   // #652 chronicle (in-world game log) timeline source

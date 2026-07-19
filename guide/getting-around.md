@@ -211,6 +211,13 @@ each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and pre
 typing a fresh word to coin a new tag. Click any tag in the document to instantly filter to every
 point that shares it.
 
+**Browse all your tags as a tree.** Open **File then Browse tags** to see the whole tag namespace at
+once, laid out as a tree with a count on each: nested tags sit under their parent (`#thread/torn-letter`
+under `#thread`), and a name used only to group others (say `#project`, when you only ever wrote
+`#project/alpha` and `#project/beta`) shows as a dimmed heading you can still pick. Type in the box to
+filter, arrow up and down to browse, and press `Enter` or click to filter the document to that tag,
+its nested tags included.
+
 **Give a tag a color.** Open **File then Tag & property styling**, type a tag name and click one of
 the color swatches. Every `#tag` with that name then shows in that color, and nested tags inherit it
 (coloring `#thread` also colors `#thread/idea`). To change a color, type the same name and pick a

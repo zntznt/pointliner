@@ -1471,6 +1471,8 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .tp-title{font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}
 .tp-row.tp-top .tp-title{font-weight:600}
 .tp-title.tp-anc{color:var(--muted)}
+/* tag-browser trailing count badge: quiet, right-aligned, tabular */
+.tp-count{flex:0 0 auto;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;padding:0 2px 0 6px}
 .rf-empty{font-size:13px;color:var(--muted);padding:10px 2px}
 /* ── capture strip (toolbar dock, like the agenda — not a modal) ── */
 #capture-strip,#journal-strip,#chronicle-strip{display:none;flex-direction:column;gap:4px;padding:4px 12px 5px;border-top:1px solid var(--bdr);background:var(--hbg)}
@@ -2481,6 +2483,7 @@ body:not(.v-guided) .logo-file-cue{display:none}
       <div class="fm-cat" data-cat="tools">
         <div class="fm-cat-head">Tools</div>
         <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
+        <div class="cmd-item" id="btn-tags"><div class="cmd-icon" data-fa="fa-solid fa-tag" data-fb="#">#</div><div class="cmd-info"><span class="cmd-label">Browse tags</span><span class="cmd-desc">See every hashtag as a tree; pick one to filter the document</span></div></div>
         <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
              version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels-row). -->
         <div class="cmd-item" id="fm-levels-row">
@@ -13261,6 +13264,59 @@ function treeRows(rootNode, opts) {
   return out;
 }
 
+// Pure model behind the TAG BROWSER (the tag-tree front door). Turns collectTags' flat dotted
+// list [{name:'thread/torn-letter', count}] into an indented, expand/collapsible tree of hashtag
+// SEGMENTS, so the already-hierarchical tag namespace finally has a browsable door (P2). Emits the
+// SAME row shape treeRows does, so renderTreeRows/buildTreePicker drive it with no fork — plus
+// `count` (occurrences of this exact tag) and `structural` (a segment used only as a PREFIX of
+// other tags, never bare: a grouping row, dimmed, no count — clicking it still filters
+// hierarchically since `#thread` matches `#thread/*`). Two modes, content-sniffed on `query`,
+// mirroring treeRows:
+//   • browse (empty query): honor `expanded` (a Set of full tag paths).
+//   • filter (non-empty): keep every tag path CONTAINING the query, plus the ancestors that lead
+//     to a match (context), all auto-expanded; non-matching ancestors flagged match:false.
+// Row: { id:fullPath, title:lastSegment, depth, hasChildren, expanded, match, count, structural }.
+// Pure over `tags`.
+function tagTreeRows(tags, opts = {}) {
+  const expanded = opts.expanded || new Set();
+  const q = (opts.query || '').trim().toLowerCase().replace(/^#/, '');
+  const rootT = { kids: new Map() };
+  for (const { name, count } of (tags || [])) {
+    let cur = rootT, path = '';
+    for (const seg of String(name).split('/')) {
+      path = path ? path + '/' + seg : seg;
+      if (!cur.kids.has(seg)) cur.kids.set(seg, { seg, path, count: 0, structural: true, kids: new Map() });
+      cur = cur.kids.get(seg);
+    }
+    cur.count += count; cur.structural = false;   // a real (bare-used) tag at this exact path
+  }
+  const alpha = (a, b) => a.seg.localeCompare(b.seg);
+  const row = (n, depth, extra) => ({ id: n.path, title: n.seg, depth, count: n.count,
+    structural: n.structural,
+    ariaLabel: n.structural ? ('#' + n.path + ', tag group') : ('#' + n.path + ', ' + n.count + ' point' + (n.count === 1 ? '' : 's')),
+    ...extra });
+  const out = [];
+  if (q) {
+    const collect = (n, depth) => {
+      const kept = [];
+      for (const k of [...n.kids.values()].sort(alpha)) { const r = collect(k, depth + 1); if (r) kept.push(...r); }
+      const selfMatch = n.path.toLowerCase().includes(q);
+      if (!selfMatch && !kept.length) return null;
+      return [row(n, depth, { hasChildren: kept.length > 0, expanded: true, match: selfMatch }), ...kept];
+    };
+    for (const k of [...rootT.kids.values()].sort(alpha)) { const r = collect(k, 0); if (r) out.push(...r); }
+  } else {
+    const walk = (n, depth) => {
+      const kids = [...n.kids.values()].sort(alpha);
+      const isExp = expanded.has(n.path);
+      out.push(row(n, depth, { hasChildren: kids.length > 0, expanded: isExp, match: false }));
+      if (kids.length && isExp) for (const k of kids) walk(k, depth + 1);
+    };
+    for (const k of [...rootT.kids.values()].sort(alpha)) walk(k, 0);
+  }
+  return out;
+}
+
 // Move moveId's subtree under targetId (becomes targetId's last child). targetId ===
 // root.id refiles to the top level. Guards self + own-descendant (would orphan the tree).
 // LEAN FLOOR: resolve a /refile:TITLE query to a target point id, so a subtree can be refiled
@@ -13344,7 +13400,7 @@ function renderTreeRows(listEl, rows, h) {
     row.setAttribute('role', 'treeitem');
     row.setAttribute('aria-level', String((r.depth || 0) + 1));
     row.setAttribute('aria-selected', String(active));
-    row.setAttribute('aria-label', r.title);
+    row.setAttribute('aria-label', r.ariaLabel || r.title);
     if (r.hasChildren) row.setAttribute('aria-expanded', String(!!r.expanded));
     row.style.paddingLeft = (8 + (r.depth || 0) * TP_INDENT) + 'px';
 
@@ -13364,9 +13420,18 @@ function renderTreeRows(listEl, rows, h) {
     row.appendChild(twist);
 
     const title = document.createElement('span');
-    title.className = 'tp-title' + (h.filtering && !r.match ? ' tp-anc' : '');
+    // `r.structural` (a tag-browser grouping row) dims like a filter ancestor.
+    title.className = 'tp-title' + ((h.filtering && !r.match) || r.structural ? ' tp-anc' : '');
     title.textContent = r.title;
     row.appendChild(title);
+
+    // Optional trailing count badge (the tag browser; outline pickers never set `count`).
+    if (typeof r.count === 'number' && !r.structural) {
+      const badge = document.createElement('span');
+      badge.className = 'tp-count'; badge.textContent = String(r.count);
+      badge.setAttribute('aria-hidden', 'true');   // the count is decorative; aria-label already reads the tag
+      row.appendChild(badge);
+    }
 
     row.addEventListener('mouseenter', () => h.onHover(i));
     row.addEventListener('mousedown', e => { e.preventDefault(); h.onHover(i); });
@@ -13416,10 +13481,17 @@ function buildTreePicker(opts) {
   const expanded  = new Set();
   let activeIdx = 0, rows = [];
 
+  // rowsFn: a caller can drive ANY tree (the tag browser passes tagTreeRows) instead of the
+  // outline — buildTreePicker becomes the shared tree navigator the component was designed to be.
+  // With rowsFn set, initial expansion comes from opts.initialExpanded (the caller knows its own
+  // structure); the outline-seed below is skipped.
+  const rowsFn = opts.rowsFn || ((q, exp) => treeRows(rootNode, { expanded: exp, excludeId, excludeIds, query: q }));
   // Initial expansion: small trees open fully (immediate overview); big ones start
   // collapsed to top-level points only (drill via twist / →, or just search). The
   // excluded subtree is ignored when counting. The 40-node threshold is a heuristic.
-  {
+  if (opts.rowsFn) {
+    (opts.initialExpanded || []).forEach(id => expanded.add(id));
+  } else {
     const parents = []; let count = 0;
     const seed = n => {
       if (n.id === excludeId) return;
@@ -13446,7 +13518,7 @@ function buildTreePicker(opts) {
     const lead = leading
       .filter(l => q === '' || l.title.toLowerCase().includes(ql))
       .map(l => ({ id: l.id, title: l.title, depth: 0, hasChildren: false, expanded: false, match: true, top: true }));
-    rows = [...lead, ...treeRows(rootNode, { expanded, excludeId, excludeIds, query: q })];
+    rows = [...lead, ...rowsFn(q, expanded)];
     // #822 (agent-review): while filtering, default-highlight the first row that actually
     // MATCHES the query — ancestors are shown for context but must not steal Enter (they
     // used to: typing "Chapter Two" highlighted the book title and refiled to the wrong
@@ -13579,6 +13651,44 @@ function openRefileDialog(moveId) {
     onFoot: closeIo,
   });
   ioCard.setAttribute('aria-label', 'Refile to');
+  ioBack.classList.add('on');
+}
+
+// The TAG BROWSER (File menu → Browse tags): a front door onto the hashtag namespace, which is
+// already hierarchical (#thread/torn-letter) and doc-wide indexed (collectTags) but had no way
+// to see it whole. Reuses the shared tree navigator (buildTreePicker + tagTreeRows); the search
+// box filters, ↑/↓ + →/← browse, Enter/click applies that tag as a document filter (the same
+// `#tag` search a tag click in text runs — hierarchical, so #thread pulls in #thread/*). All
+// parent paths open on entry (tag trees are shallow); a structural-only group is dimmed.
+function openTagBrowser() {
+  const tags = collectTags();
+  ioReturnFocus = document.activeElement;
+  ioCancel = closeIo;
+  const initialExpanded = [];
+  const seen = new Set();
+  for (const { name } of tags) {
+    const parts = String(name).split('/'); let p = '';
+    for (let i = 0; i < parts.length - 1; i++) { p = p ? p + '/' + parts[i] : parts[i]; if (!seen.has(p)) { seen.add(p); initialExpanded.push(p); } }
+  }
+  buildTreePicker({
+    icon: { fa: 'fa-solid fa-tag', fb: '#' },
+    title: 'Browse tags',
+    placeholder: 'Filter tags…',
+    searchAria: 'Filter tags',
+    listAria: 'Tags',
+    emptyText: tags.length ? 'No matching tags.' : 'No tags yet. Type # in a point to make one.',
+    rowsFn: (q, expanded) => tagTreeRows(tags, { expanded, query: q }),   // expanded is buildTreePicker's own Set
+    initialExpanded,
+    onPick: it => {
+      closeIo();
+      const q = '#' + it.id;
+      const sb = document.getElementById('search-box');
+      sb.value = q; applySearch(q); sb.focus();
+    },
+    footLabel: 'Close',
+    onFoot: closeIo,
+  });
+  ioCard.setAttribute('aria-label', 'Browse tags');
   ioBack.classList.add('on');
 }
 
@@ -31178,6 +31288,7 @@ document.getElementById('btn-open').addEventListener('click', () => { openFile()
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
 document.getElementById('btn-starters')?.addEventListener('click', () => { openStarterGallery(); });   // #565 (closes the menu itself)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
+document.getElementById('btn-tags')?.addEventListener('click', () => { closeFileMenu(); openTagBrowser(); });   // tag browser
 document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
 document.getElementById('btn-calendar')?.addEventListener('click', () => { closeFileMenu(); openCalendarDialog(); });   // #527
@@ -31760,13 +31871,14 @@ const GUIDE = [
     ] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
-    body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.",
+    body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.\n\nTo see all your tags at once, open File then Browse tags: it shows the whole tag hierarchy as a tree with a count on each, so nested tags sit under their parent. Type to filter, arrow to browse, and press Enter (or click) to filter the document to that tag.",
     related:['search-ops','properties'],
     examples:[
       { syn:'#tag',         desc:'label a point by topic, status or project' },
       { syn:'#tag/subtag',  desc:'nest a tag; searching #tag also finds #tag/subtag' },
       { syn:'#',            desc:"opens a menu of tags you've used, with counts" },
       { syn:'click a tag',  desc:'filter to every point that shares it' },
+      { syn:'File, Browse tags', desc:'see every tag as a tree; pick one to filter' },
     ] },
   { id:'refile', cat:'getting-around', covers:['refile'],
     title:'Refile a point',

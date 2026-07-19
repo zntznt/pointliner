@@ -157,6 +157,8 @@ Turn the document into a lightweight planner.
   `priority:a`, `var:name`, `has:key`, `key:value`, numeric compares `key:>N` / `key:<=N`), exact
   `"phrases"`, `-` to exclude, and `a | b` for either-side (OR) matching. Star a search to save it.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
+- **Browse tags.** File then Browse tags shows every hashtag as a tree with a count on each (nested
+  tags under their parent); pick one to filter the document to it. ([hashtags](getting-around.md#hashtags))
 - **Embedded queries.** Drop `{query: is:todo | due:week}` into a point for a live, self-updating
   list of matching points; reuses every search operator, click a result to jump. `{count: is:todo}`
   shows just the live number instead. With a folder connected, a **Search the whole folder**
