@@ -215,7 +215,7 @@ export function loadCores() {
     'tblfmGetAssign', 'tblfmSetAssign',
     'mtModelText', 'mtModel', 'mtModelRead', 'isVarBase', 'baseFrozenMarkdown', 'baseRecipeMarkdown', 'baseToStaticText',
     'mtColumnLabel',   // #811: the columns-menu door's per-column label
-    'parseTodo','formatTodo','collapseDoubledKeyword','cyclePriority',
+    'parseTodo','formatTodo','collapseDoubledKeyword','collapseTaskKeywordCollision','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix','toggleTaskLine',

@@ -4950,6 +4950,29 @@ test('#947 collapseDoubledKeyword — rewrites a doubled prefix on commit; leave
   assert.ok(/node\.text = collapseDoubledKeyword\(node\.text\);/.test(_src), 'exitEdit collapses a doubled keyword on commit');
 });
 
+// agent-review: the app's OTHER to-do dialect collision. Enter after a checkbox task ("- [ ] ")
+// pre-fills that same marker into the new sibling; typing a real state keyword there ("#TODO body")
+// used to be swallowed as inert task-body text — parseTodo only recognizes a keyword at the very
+// start of a string, and the task marker sat in front of it, so the point silently stayed a plain
+// unchecked checkbox with "#TODO" as decoration, no visible sign anything failed. Same "retyped
+// marker replaces the stale continuation" principle as #947, extended to the OTHER marker pair.
+test('agent-review: collapseTaskKeywordCollision — a retyped state keyword replaces a task-marker continuation', () => {
+  assert.equal(c.collapseTaskKeywordCollision('- [ ] #TODO Call movers for quotes'), '#TODO Call movers for quotes');
+  assert.equal(c.collapseTaskKeywordCollision('- [x] #DONE archived already'), '#DONE archived already', 'a checked box collapses too');
+  assert.equal(c.collapseTaskKeywordCollision('- [ ] #TODO #NEXT [#B] body'), '#TODO #NEXT [#B] body',
+    'strips only the task marker; a trailing doubled keyword is collapseDoubledKeyword\'s job');
+  assert.equal(c.collapseTaskKeywordCollision('- [ ] TodoIsh but not a real keyword'), '- [ ] TodoIsh but not a real keyword',
+    'an unrecognized word right after the box is ordinary task text, left alone');
+  assert.equal(c.collapseTaskKeywordCollision('- [ ] plain task, no keyword'), '- [ ] plain task, no keyword', 'no keyword → unchanged');
+  assert.equal(c.collapseTaskKeywordCollision('#TODO body'), '#TODO body', 'no task marker → nothing to strip (collapseDoubledKeyword\'s domain)');
+  assert.equal(c.collapseTaskKeywordCollision('plain text'), 'plain text', 'neither marker → unchanged');
+  // chained correctly at the exitEdit chokepoint: task-collision runs BEFORE doubled-keyword, so a
+  // compound collision ("- [ ] #TODO #NEXT [#B] body") fully collapses to "#NEXT [#B] body"
+  assert.equal(c.collapseDoubledKeyword(c.collapseTaskKeywordCollision('- [ ] #TODO #NEXT [#B] body')), '#NEXT [#B] body');
+  assert.ok(/node\.text = collapseTaskKeywordCollision\(node\.text\);\s*\/\/[^\n]*\n\s*node\.text = collapseDoubledKeyword\(node\.text\);/.test(_src),
+    'exitEdit runs collapseTaskKeywordCollision BEFORE collapseDoubledKeyword (order matters for the compound case)');
+});
+
 test('#941 agenda calendar hides the peeking months’ weekday headers (src pin)', () => {
   assert.ok(_src.includes('.agc-month-prev .agc-dow,.agc-month-next .agc-dow{visibility:hidden}'),
     'the prev/next weekday-header rows are hidden so only the centered month labels weekdays');
@@ -16588,6 +16611,22 @@ test('#603 — closeFileMenu no-ops when the menu is closed (does not kill the s
   assert.ok(guardAt >= 0, 'closeFileMenu must early-return when the menu is not open');
   const scrimAt = fn.indexOf("ioBack.classList.remove('on')");
   assert.ok(scrimAt > guardAt, 'the not-open guard must come BEFORE removing the shared scrim');
+});
+
+// agent-review: File > New silently did nothing. newFile() opens the in-app "New document" name
+// prompt via openInsertDialog, which shares the #io-back scrim with the file menu (see the #603
+// pin above). btn-new wired action-BEFORE-close ("newFile(); closeFileMenu();"), so the dialog
+// opened and claimed the scrim, then closeFileMenu tore that same scrim down in the same click —
+// the dialog was fully built in the DOM but invisible/inert, with no error. Every other
+// dialog-opening row (btn-appearance, btn-calendar, btn-units, btn-datapacks, btn-brokenlinks,
+// btn-tags, btn-guide) already closes FIRST, then opens; btn-new was the outlier. btn-open/
+// btn-save/btn-save-as are correctly left action-before-close: openFile/saveFile/saveAsFile use
+// native browser/OS file pickers, which never touch #io-back.
+test('agent-review: btn-new closes the file menu BEFORE opening the New-document dialog (shared #io-back scrim)', () => {
+  assert.ok(GUIDE_SRC.includes("document.getElementById('btn-new').addEventListener('click', () => { closeFileMenu(); newFile(); });"),
+    'btn-new must close-then-open, not open-then-close (the shared scrim gets torn down otherwise)');
+  assert.ok(!GUIDE_SRC.includes("document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });"),
+    'the old open-then-close wiring must be gone, not just superseded');
 });
 
 // #603 — the menu is a SINGLE scrollable page: all categories stacked with section headings, and a

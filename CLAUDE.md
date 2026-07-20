@@ -262,7 +262,16 @@ rides the OPML `<head>`: `savedSearches`, `templates`, `inboxId`, `plugins`,
   LAST of a leading RUN of state keywords (`#TODO #NEXT [#B] body` → NEXT, priority B, clean
   body — no stray `#NEXT` hashtag), and `exitEdit` runs `collapseDoubledKeyword` so the stored
   text collapses too; only CONSECUTIVE leading keywords collapse (`#TODO call #NEXT week` keeps
-  the mid-sentence hashtag). **An untouched continuation stub EXITS the format on a second Enter
+  the mid-sentence hashtag). **A retyped keyword also REPLACES a task-marker continuation
+  (agent-review):** the app's OTHER to-do dialect collision. Enter after a checkbox task
+  pre-fills `- [ ] ` into the new sibling, and typing a real state keyword there (`#TODO body`)
+  used to be swallowed as inert task-body text (`parseTodo` only recognizes a keyword at the very
+  start of the string, and the task marker sat in front of it), silently staying a plain unchecked
+  checkbox with `#TODO` as decoration, no visible sign anything failed. `collapseTaskKeywordCollision`
+  strips the task marker whenever a RECOGNIZED state keyword immediately follows it (unconditional on
+  the text pattern, same discipline as `collapseDoubledKeyword`); `exitEdit` runs it BEFORE
+  `collapseDoubledKeyword` so a compound collision (`- [ ] #TODO #NEXT [#B] body`) fully collapses to
+  `#NEXT [#B] body`. **An untouched continuation stub EXITS the format on a second Enter
   or on outdent, never on typed content (agent-review):** continuation had no keyboard way to STOP
   continuing — every Enter (or the "+ New point" ghost row, sharing `insertSiblingAfter`) pre-filled
   the marker into every following point until manually deleted, so a mixed outline of tasks and
