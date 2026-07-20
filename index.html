@@ -22788,6 +22788,13 @@ function checkInlineHighlight(content, node) {
   // the marker's AT twin (UXP-15): the visual signal is also announced
   if (braceCls === 'invalid') { hideBracePreview(); announce('Not recognized, so it stays plain text'); }
   content.innerHTML = editModeHTML(node);
+  // #942 (agent-review): restore the caret SYNCHRONOUSLY, not only in the deferred rAF below.
+  // The innerHTML rebuild collapses the selection to offset 0; at very fast typing speed the next
+  // keystrokes arrive BEFORE the rAF fires and insert at 0, pushing the just-typed segment to the
+  // end — the multi-pill line scramble (`{1d6}+2 vs challenge …Roll action:`). A sync restore
+  // closes that window so interim keystrokes land at the caret; the rAF still refines the parking
+  // to just after the new grammar span.
+  try { setCaretByOffset(content, off); } catch(_) {}
   // Preview: show what the valid body promotes to (UXP-7). Sync after innerHTML set
   // so positionCaretMenu's getBoundingClientRect sees the updated DOM layout.
   if (braceCls === 'artifact') showBracePreview(body, content, off - 1);

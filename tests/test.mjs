@@ -5164,6 +5164,21 @@ test('highlightGrammarText: prose braces stay literal (no span, no marker)', () 
   assert.ok(!out.includes('gr-src'), 'no span for an intentional literal brace');
 });
 
+test('agent-review (#942): checkInlineHighlight restores the caret SYNCHRONOUSLY after the innerHTML rebuild', () => {
+  // The live-highlight innerHTML rebuild collapses the selection to offset 0; at very fast typing
+  // the next keystrokes arrive before the deferred rAF and insert at 0, scrambling a multi-pill
+  // line. A synchronous setCaretByOffset right after the rebuild closes that window. Verified in
+  // headless Chromium: 0/30 scrambled at 3ms/char (was ~4/12); this pin guards the fix from regressing.
+  // Anchor on checkInlineHighlight's own innerHTML rebuild (the one followed by showBracePreview).
+  const anchor = _src.indexOf('content.innerHTML = editModeHTML(node);\n  // #942');
+  assert.ok(anchor >= 0, 'the #942 sync-restore comment tags checkInlineHighlight’s innerHTML rebuild');
+  const region = _src.slice(anchor, anchor + 900);
+  const syncIdx = region.indexOf('setCaretByOffset(content, off)');
+  const rafIdx = region.indexOf('requestAnimationFrame');
+  assert.ok(syncIdx >= 0 && rafIdx >= 0 && syncIdx < rafIdx,
+    'a synchronous setCaretByOffset sits between the innerHTML rebuild and the deferred rAF');
+});
+
 // ── grSrcSpanClean (UXP-28 normalization predicate) ──
 // A live .gr-src span is clean iff its text is exactly one balanced {…} — the only
 // shape highlightGrammarText ever emits. Dirty = the browser merged typed/pasted
