@@ -320,6 +320,13 @@ text — `flushActiveTextEdit` records `foldedTextForSave(node)`, never the raw
 buffer (UXP-31). Typed `{…}` shorthand is no
 longer promoted live; it stays grammar-styled text while editing and promotes on
 exit (`checkInlineHighlight` only re-applies styling, it does not build a pill).
+**Fast-typing caret invariant (#942, agent-review):** `checkInlineHighlight`'s live styling does a
+full `content.innerHTML = editModeHTML(node)` rebuild on the keystroke that closes a `{…}`, which
+collapses the selection to offset 0. It MUST restore the caret **synchronously** right after that
+rebuild (not only in the deferred rAF) — otherwise, at very fast typing speed, keystrokes arriving
+before the rAF insert at 0 and shred a multi-pill line (`{1d6}+2 vs challenge …Roll action:`). The
+rAF stays, to refine the parking to just after the new grammar span; the sync restore closes the
+race window. Verified 0/30 scrambled at 3ms/char (was ~4/12).
 **A document arriving via `adoptDoc` (OPML/HTML import, new file, swap) never
 passes through `exitEdit`, so it would render typed `{…}` as raw source.**
 `promoteLoadedShorthand(root)` (a tree-walk over `promoteInlineShorthand`) runs in
