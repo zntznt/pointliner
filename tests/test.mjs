@@ -4019,6 +4019,134 @@ import assert2 from 'node:assert/strict';
     assert2.ok(dist <= Math.hypot(600, 600) * 0.95, 'linked nodes are pulled together, not flung to opposite corners');
   });
 
+  // ── graph unlinked (textual-match) edges: matchableNodeNames / graphUnlinkedEdges / mergeUnlinkedEdges ──
+  ltest('matchableNodeNames — behavior-preserving extraction (title+aliases, tag-stripped, min-length)', () => {
+    const n = c2.mkNode('Dragon Lord #beast/major'); n.id = 'dl';
+    assert2.deepEqual(host2(c2.matchableNodeNames(n)), ['Dragon Lord']);   // tag stripped (#943 rule)
+    const withAlias = c2.mkNode('DLo'); withAlias.id = 'dl2'; withAlias.props = [{ key: 'aliases', val: 'Dragon Lord' }];
+    assert2.deepEqual(host2(c2.matchableNodeNames(withAlias)).sort(), ['DLo', 'Dragon Lord'].sort());
+    const tooShort = c2.mkNode('ab'); tooShort.id = 'sh';
+    assert2.deepEqual(host2(c2.matchableNodeNames(tooShort)), []);   // below UNLINKED_MIN_LEN
+    // precomputed displayTitle arg is honored (avoids a second displayText call)
+    assert2.deepEqual(host2(c2.matchableNodeNames(n, 'Dragon Lord')), ['Dragon Lord']);
+  });
+
+  function graphRefTree() {
+    const root3 = c2.mkRoot();
+    const a = c2.mkNode('Dragon Lord'); a.id = 'a';
+    const b = c2.mkNode('the dragon lord awakens'); b.id = 'b';   // unlinked mention of a, case-insensitive
+    const linked = c2.mkNode('[[#a|]] guards the hoard'); linked.id = 'linked';   // real link to a → excluded
+    const noMatch = c2.mkNode('nothing relevant here'); noMatch.id = 'nm';
+    const shortTitle = c2.mkNode('hi'); shortTitle.id = 'sh';   // below UNLINKED_MIN_LEN
+    const mentionsShort = c2.mkNode('hi there, general greeting'); mentionsShort.id = 'ms';
+    root3.children.push(a, b, linked, noMatch, shortTitle, mentionsShort);
+    return { root3, a, b, linked, noMatch, shortTitle, mentionsShort };
+  }
+
+  ltest('graphUnlinkedEdges — basic prose mention produces an edge, case-insensitive', () => {
+    const { root3, a, b } = graphRefTree();
+    const links = c2.collectLinks(root3);
+    const { edges, total, capped } = c2.graphUnlinkedEdges(root3, links, 100);
+    const keys = host2(edges).map(e => [e.a, e.b].sort().join('-'));
+    assert2.ok(keys.includes([a.id, b.id].sort().join('-')), 'unlinked mention must produce an edge');
+    assert2.equal(capped, false);
+    assert2.ok(total >= 1);
+  });
+
+  ltest('graphUnlinkedEdges — a real link (either direction) suppresses the unlinked edge', () => {
+    const { root3, a, linked } = graphRefTree();
+    const links = c2.collectLinks(root3);
+    const { edges } = c2.graphUnlinkedEdges(root3, links, 100);
+    const key = [a.id, linked.id].sort().join('-');
+    assert2.ok(!host2(edges).some(e => [e.a, e.b].sort().join('-') === key), 'already-linked pair must not also get a dashed edge');
+  });
+
+  ltest('graphUnlinkedEdges — self-match and sub-UNLINKED_MIN_LEN titles are excluded', () => {
+    const { root3, shortTitle, mentionsShort } = graphRefTree();
+    const links = c2.collectLinks(root3);
+    const { edges } = c2.graphUnlinkedEdges(root3, links, 100);
+    const key = [shortTitle.id, mentionsShort.id].sort().join('-');
+    assert2.ok(!host2(edges).some(e => [e.a, e.b].sort().join('-') === key), 'a 2-char title must never produce noise edges');
+    // no node ever edges to itself
+    assert2.ok(!host2(edges).some(e => e.a === e.b));
+  });
+
+  ltest('graphUnlinkedEdges — a tagged title is matched on the title only (#976 rule)', () => {
+    const root3 = c2.mkRoot();
+    const target = c2.mkNode('Torn Letter #thread/major'); target.id = 't1';
+    const mention = c2.mkNode('found the torn letter in the drawer'); mention.id = 'm1';
+    root3.children.push(target, mention);
+    const links = c2.collectLinks(root3);
+    const { edges } = c2.graphUnlinkedEdges(root3, links, 100);
+    assert2.equal(edges.length, 1);
+    assert2.deepEqual([edges[0].a, edges[0].b].sort(), [target.id, mention.id].sort());
+  });
+
+  ltest('graphUnlinkedEdges — mutual mentions dedup to ONE edge', () => {
+    // A node's registered "name" is its ENTIRE display text, so two nodes can only mention each
+    // other in BOTH directions via a short alias distinct from their own prose (the same
+    // decoupling collectUnlinkedRefs already relies on for alias matching) — otherwise each
+    // node's own full-sentence "name" would need to appear verbatim inside the other's text.
+    const p1 = c2.mkNode("A tale of two keeps, guarded by Belltower's watch."); p1.id = 'p1';
+    p1.props = [{ key: 'aliases', val: 'Ashkeep' }];
+    const p2 = c2.mkNode("Belltower stands watch over Ashkeep's gates."); p2.id = 'p2';
+    p2.props = [{ key: 'aliases', val: 'Belltower' }];
+    const root4 = c2.mkRoot(); root4.children.push(p1, p2);
+    const links4 = c2.collectLinks(root4);
+    const { edges, total } = c2.graphUnlinkedEdges(root4, links4, 100);
+    const key = [p1.id, p2.id].sort().join('-');
+    const matching = host2(edges).filter(e => [e.a, e.b].sort().join('-') === key);
+    assert2.equal(matching.length, 1, 'a mutual mention must dedup to exactly one edge');
+    assert2.equal(total, matching.length, 'total must count the deduped edge once, not twice');
+  });
+
+  ltest('graphUnlinkedEdges — cap is honest: total keeps counting past the returned edges', () => {
+    // one hub whose title every other point mentions — N unlinked edges, capped low
+    const root3 = c2.mkRoot();
+    const hub = c2.mkNode('Central Hub'); hub.id = 'hub';
+    root3.children.push(hub);
+    const N = 12;
+    for (let i = 0; i < N; i++) {
+      const p = c2.mkNode(`point ${i} mentions Central Hub`); p.id = 'p' + i;
+      root3.children.push(p);
+    }
+    const links = c2.collectLinks(root3);
+    const cap = 5;
+    const { edges, total, capped } = c2.graphUnlinkedEdges(root3, links, cap);
+    assert2.equal(edges.length, cap);
+    assert2.equal(total, N);
+    assert2.equal(capped, true);
+  });
+
+  ltest('graphUnlinkedEdges — fewer than 2 matchable nodes yields an empty result', () => {
+    const root3 = c2.mkRoot();
+    root3.children.push(c2.mkNode('Solo Title'));
+    const links = c2.collectLinks(root3);
+    const { edges, total, capped } = c2.graphUnlinkedEdges(root3, links, 100);
+    assert2.deepEqual(host2(edges), []);
+    assert2.equal(total, 0);
+    assert2.equal(capped, false);
+  });
+
+  ltest('mergeUnlinkedEdges — adds unlinked-only nodes, tags edges, leaves real deg untouched', () => {
+    const links = { outgoing: { a: [{ target: 'b' }] }, backlinks: {}, broken: [] };
+    const model = c2.graphModel(links, titleOf);   // nodes: a, b (deg 1 each)
+    const unlTitleOf = (id) => ({ c: 'Gamma', d: 'Delta' }[id] || id);
+    const merged = c2.mergeUnlinkedEdges(model, [{ a: 'b', b: 'c' }, { a: 'c', b: 'd' }], unlTitleOf);
+    const ids = host2(merged.nodes.map(n => n.id)).sort();
+    assert2.deepEqual(ids, ['a', 'b', 'c', 'd'], 'unlinked-only nodes (c, d) must still appear');
+    const bNode = merged.nodes.find(n => n.id === 'b');
+    assert2.equal(bNode.deg, 1, 'real deg is untouched by unlinked edges');
+    assert2.equal(bNode.unlinkedDeg, 1);
+    const cNode = merged.nodes.find(n => n.id === 'c');
+    assert2.equal(cNode.deg, 0, 'an unlinked-only node has zero real deg');
+    assert2.equal(cNode.unlinkedDeg, 2);
+    assert2.equal(cNode.title, 'Gamma');
+    const unlEdges = merged.edges.filter(e => e.kind === 'unlinked');
+    assert2.equal(unlEdges.length, 2);
+    assert2.equal(merged.edges.length - unlEdges.length, model.edges.length, 'real edges are preserved unchanged');
+  });
+
   // ── #516 timeline pure core ─────────────────────────────────────────────────
   // a monthOf callback that buckets by a fixed 30-day "month" so the test is
   // calendar-agnostic (the real callback wraps calComponents/calMonthTitle)
@@ -9073,6 +9201,29 @@ test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
   // Escape closes + returns focus to the toggle (P1-3 outward resolve)
   const cg = fnBody(_src, 'closeGraph');
   assert.ok(cg.includes("btn.setAttribute('aria-pressed', 'false')") && cg.includes('.focus()'), 'close must release pressed state + restore focus');
+});
+
+test('link graph: unlinked (textual-match) edges — wiring + v1 scope guard (src pins)', () => {
+  const rg = fnBody(_src, 'renderGraph');
+  // wired into the same-doc branch...
+  assert.ok(rg.includes('graphUnlinkedEdges(') && rg.includes('mergeUnlinkedEdges('), 'renderGraph must call the unlinked-edge cores');
+  // ...but NOT inside the folder branch: split renderGraph at the `if (folder)`/`docGraphModel(` call
+  // and confirm the folder-scope model construction (everything before the doc-scope graphModel call)
+  // never mentions the unlinked cores — v1 is deliberately same-doc only.
+  const folderSlice = rg.slice(rg.indexOf('docGraphModel('), rg.indexOf('graphModel(linked'));
+  assert.ok(folderSlice.length > 0, 'expected to find the folder-branch model construction');
+  assert.ok(!folderSlice.includes('graphUnlinkedEdges'), 'folder-scope must stay real-links-only (v1 scope guard)');
+  // count line + aria-label copy use the shared vocabulary term
+  assert.ok(rg.includes('unlinked reference'), 'count line must name unlinked references');
+  assert.ok(rg.includes("n.unlinkedDeg ? ` ${n.unlinkedDeg} unlinked reference"), 'node aria-label must include the unlinked count');
+  assert.ok(rg.includes('mention each other by name'), 'empty-state hint must teach the capability (P2)');
+  // the toggle mirrors the existing graph-scope button pattern (ag-toggle/ag-view, aria-pressed)
+  assert.ok(rg.includes('graph-unlinked-toggle') && rg.includes("ag-toggle ag-view"), 'unlinked toggle must reuse the scope-toggle button pattern');
+  // CSS: the new edge kind is styled distinctly from a real link and from a broken link
+  assert.ok(_src.includes('.graph-edge.graph-edge-unlinked'), 'graph-edge-unlinked CSS rule missing');
+  // cache resets on open (fresh per "summon"), never on the scope toggle alone
+  const og = fnBody(_src, 'openGraph');
+  assert.ok(og.includes('_graphUnlinkedCache = null'), 'openGraph must reset the unlinked-edge cache (compute-on-open, never cache-between-opens)');
 });
 
 test('#516 timeline: UI wiring + front doors + a11y (src pins)', () => {

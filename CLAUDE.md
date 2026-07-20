@@ -1012,6 +1012,22 @@ Node links (same-doc **and cross-document** `[[docId#nodeId|label]]`, incl. live
 saved", with foreign-doc resolution for inner links/queries/vars (4a + the §5 spine, see
 `guidance/cross-document-direction.md`) — the `[[` picker, backlinks (each row with a
 `backlinkSnippet` context line, 4d), link-and-create / "+ New note", aliases, unlinked refs) ·
+**The link graph surfaces unlinked (textual-match) references too**, not just deliberate `[[#id]]`
+links (product-identity.md §2c, "the scratchpad test": a graph that only rewards curation effort is
+closer to the "second brain" pattern the doc steers away from). `graphUnlinkedEdges(rootNode, links,
+cap)` runs the SAME textual-overlap signal `collectUnlinkedRefs` already shows per-point in the
+backlinks panel — a title/alias mention with no explicit link — but for the whole document in one
+tree-walk + one combined regex (not `collectUnlinkedRefs` called once per node, which would be
+O(n²)); `mergeUnlinkedEdges` folds the result into the same-doc `graphModel` as dashed
+`graph-edge-unlinked` edges, so the graph shows overlap the user never had to build, not just
+curated structure — a concrete, shipped instance of §2c's "resurface because it mattered, not
+because indexed." Computed fresh only when the graph is opened (`openGraph` resets
+`_graphUnlinkedCache`; toggling the panel's "Unlinked" button re-renders from the cached result
+instead of recomputing), never on every edit. Capped (`GRAPH_UNLINKED_CAP`, see its comment for the
+measured numbers behind the value) because unlinked matches can inflate the same-doc graph's node
+count far past what deliberate linking ever produced, and `graphLayout`'s existing O(N²)·iterations
+force simulation is the dominant cost, not the regex pass. Same-doc scope only in v1 — folder-scope
+unlinked-matching is a deliberately deferred follow-up (`guidance/cross-document-direction.md`). ·
 Multi-document workspace (a folder of `.opml` notes on real disk — FSA + IndexedDB, Chromium-gated;
 durable continuous auto-write, document switcher, **document tabs** — a `#doc-tabs` `role=tablist`
 strip over the switcher: `openTabs` filenames persisted in IndexedDB, `tabAdd`/`tabClose`/`tabCycle`
