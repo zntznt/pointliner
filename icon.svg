@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Pointliner">
   <!-- Editorial ink-on-paper. Maskable-safe: an OPAQUE warm-paper field fills the whole
-       canvas (a whisper-warm radial, like a sheet under a desk lamp, never a flashy
+       canvas (a whisper-warm radial, like a sheet under a desk lamp — never a flashy
        gradient, per design-language.md), and the mark sits inside the ~80% safe zone so
-       the OS icon mask (circle/squircle/rounded) never clips it. -->
+       the OS icon mask (circle/squircle/rounded) never clips it. Warm paper #f7f4ed + ink
+       #1f1d1a — the app's own palette tokens; no tech-blue. -->
   <defs>
     <radialGradient id="paper" cx="38%" cy="32%" r="85%">
       <stop offset="0%" stop-color="#faf7f0"/>
@@ -11,13 +12,14 @@
     </radialGradient>
   </defs>
   <rect width="512" height="512" rx="96" fill="url(#paper)"/>
-  <!-- UXP-122: the ONE canonical Pointliner mark, identical to .logo-mark / #favicon /
-       updateFavicon(): a solid accent disc with the point and line knocked out via the
-       evenodd compound path (the knockouts read as paper-colored voids, exactly as they
-       do at favicon size). Rendered in the default-accent indigo #4338ca to match the
-       accent-tinted favicon and wordmark. DL section 1: the mark and favicon never diverge.
-       Scaled to ~74% so the disc stays well inside the 410px safe circle. -->
-  <g transform="translate(256 256) scale(0.74) translate(-256 -256)">
-    <path fill="#4338ca" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/>
+  <!-- The Pointliner mark (ring + point + line — a bullet with a line of text), rebuilt as a
+       stroked ring + solid dot + solid bar (the in-app .logo-mark is a single compound path
+       whose disc swallows the dot/bar under one fill; the explicit shapes read correctly and
+       stay crisp at favicon size). Bold weight, tuned for the icon tile. Centered, scale 0.74
+       → well inside the 410px safe circle. -->
+  <g transform="translate(256 256) scale(0.74) translate(-256 -256)" fill="none">
+    <circle cx="256" cy="256" r="224" fill="none" stroke="#1f1d1a" stroke-width="58"/>
+    <circle cx="160" cy="256" r="52" fill="#1f1d1a"/>
+    <rect x="250" y="224" width="140" height="64" rx="32" fill="#1f1d1a"/>
   </g>
 </svg>

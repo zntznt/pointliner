@@ -12,7 +12,7 @@
 // first; bump CACHE_VERSION to force those (and a cold offline shell) to refresh.
 // skipWaiting + clients.claim mean a new SW takes over immediately, never waiting for all
 // tabs to close. There is no backend/API/runtime fetch, so the shell IS the app.
-const CACHE_VERSION = 'pointliner-v3';
+const CACHE_VERSION = 'pointliner-v4';
 // Relative URLs: the app is served from a subpath (/pointliner/), so the SW scope is its
 // own directory. './' caches the directory index (index.html) under the navigated URL.
 const SHELL = ['./', './index.html', './icon.svg'];

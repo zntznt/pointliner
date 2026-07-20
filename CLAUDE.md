@@ -28,7 +28,16 @@ necessary "no binary files in git" exception:** the installed-app icon (manifest
 and falls back to the **root domain's** `/favicon.ico`), so `icon.svg` alone is not enough.
 Regenerate them from `icon.svg` (render to a canvas at 192/512, export PNG) if the mark
 changes; the in-tab favicon is separate and stays the dynamic accent-tinted
-`updateFavicon` data-URL.
+`updateFavicon` data-URL. **The installed-app icon is intentionally the standalone
+black ink-on-paper editorial mark, NOT the accent disc** — a ring + point + line in `#1f1d1a` on
+the warm-paper tile (`icon.svg`). The reason is structural, not taste: the tile is a **static file
+baked ahead of time and physically CANNOT track the runtime accent** (which the user can change),
+so "matching it to the accent favicon" is category-moot. It is therefore a fixed, accent-neutral
+mark that reads on any home screen, and it deliberately DIVERGES from the accent-tinted in-app
+isotype/favicon — the design-language "mark and favicon never diverge" rule binds the in-app
+isotype ↔ tab favicon only. Do NOT "re-sync" the tile to indigo `#4338ca` to match the favicon
+(that regression shipped once as UXP-122 and was reverted); the tile stays black regardless of the
+accent.
 
 **Storage & sync model:** Pointliner runs on the user's computer. The user's
 filesystem is storage; the user's choice of sync (Dropbox/iCloud/git/none) is

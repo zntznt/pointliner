@@ -41,9 +41,17 @@ embed a true text italic rather than widening Fraunces' role.
 **Decision — the brand is a masthead.** The wordmark is Fraunces (17px / 640 /
 `'opsz' 28`) — a sanctioned display use under the role rule above. The isotype is the
 accent disc with a **point and a line** knocked out (the product's name and anatomy drawn
-literally); `updateFavicon` repaints the *same path*, and **the mark and the favicon must
-never diverge** — change both in the same commit or neither. No stock icon-font glyph may
-serve as the brand mark.
+literally); `updateFavicon` repaints the *same path*, and **the in-app isotype and the tab
+favicon must never diverge** — change both in the same commit or neither. No stock icon-font
+glyph may serve as the brand mark. **Scope:** this binds the *in-app* isotype ↔ tab favicon
+(both accent-tinted, tracking the theme accent, which the user can change at runtime). The
+**installed-app tile icon** (`icon.svg`/`icon-192`/`icon-512`) is deliberately OUTSIDE this rule.
+It is a **static file baked ahead of time** — it physically CANNOT track the runtime accent — so
+"matching it to the accent favicon" is category-moot, not a real consistency win. The tile is
+therefore the standalone **black ink-on-paper** editorial mark (a ring + point + line in `#1f1d1a`
+on the warm-paper field): a fixed, accent-neutral identity that reads on any home screen. Do NOT
+re-sync it to the accent disc `#4338ca` to "match" the favicon — that regression shipped as UXP-122
+and was reverted; the tile stays black regardless of the accent.
 
 **Decision — icon policy: one language per altitude.** Control affordances use the
 embedded Font Awesome subset through `setIcon`/`paintIcon`; typographic marks (¶, the
