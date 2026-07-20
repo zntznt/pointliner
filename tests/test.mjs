@@ -14445,11 +14445,13 @@ test('first-run atom: the entry hint and the tour intro lead with a live pill (I
 });
 
 test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {
-  // 1. empty-state hints now track the dial in THREE tiers (item 2, modes batch): Lean shows none,
-  // Standard a short whisper, Guided the full cue (was a two-way isStandardOrLean split).
-  assert.ok(_src.includes("const entryHint = isLean() ? '' : isGuided() ?"), 'the entry hint must be a three-tier lean/guided/standard split');
-  assert.ok(/const paraHint\s+= isLean\(\) \? '' : isGuided\(\) \?/.test(_src), 'the para hint must be a three-tier split (Lean shows none)');
-  assert.ok(_src.includes("'Write, or / to format'"), 'Standard keeps a short entry whisper (not empty like Lean, not the full Guided cue)');
+  // 1. empty-state hints track the dial (agent-review: Standard dropped its short whisper too, so
+  // this is now a two-way Guided-only split — Standard and Lean both show nothing).
+  assert.ok(_src.includes("const entryHint = isGuided() ? 'Write, format with /, insert with @, or compute with {' : '';"),
+    'the entry hint must be Guided-only (Standard/Lean show nothing)');
+  assert.ok(/const paraHint\s+= isGuided\(\) \? 'Prose block\. Enter = line break/.test(_src),
+    'the para hint must be Guided-only (Standard/Lean show nothing)');
+  assert.ok(!_src.includes("'Write, or / to format'"), 'the old Standard-tier whisper must be gone, not just unreachable');
   // 2. the search legend rows strip in standard + lean; saved searches / cross-doc matches (data) stay.
   // #586: the gate is written fail-OPEN (name the tiers that hide, not "not guided"), so a classless
   // fresh boot shows the guided aid instead of hiding all rows on a body that has no v-* class yet.
@@ -14467,6 +14469,8 @@ test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill 
   assert.ok(_src.includes('.node-content .dice-roll[title]'), 'the tooltip sweep must target the pill classes');
   // 4. the 'Section label…' placeholder is a LABEL not a helper — it survives every tier (over-strip guard)
   assert.ok(_src.includes("isDivider ? 'Section label…' : node.type === 'para' ? paraHint"), 'the Section label placeholder must survive (it names the field, not a helper)');
+  // 5. agent-review: the floating help pill (#sc-toggle) follows .bm-help's own Lean-only-hides rule
+  assert.ok(_src.includes('body.v-lean #sc-toggle{display:none}'), 'the floating help pill must hide in Lean, like .bm-help');
 });
 
 // item 3 (modes batch): the search-hint card opens only with content (never an empty rectangle),
