@@ -29647,6 +29647,9 @@ function scheduleBlHide() {
     // or the zoomed-in title (.zoom-title), which is a separate hand-rolled editor.
     const ae = document.activeElement;
     if (ae?.classList.contains('node-content') || ae?.classList.contains('zoom-title')) return;
+    // When zoomed, the title's footer is ALWAYS shown — moving focus off a child reverts to it
+    // rather than hiding. On the plain outline, focus leaving everything hides the footer.
+    if (focusedId != null) { updateBlPanel(focusedId); return; }
     hideBlPanel();
   }, 150);
 }
@@ -29676,7 +29679,9 @@ function syncHelpBtnBottom() {
   tog.style.bottom = stack ? `calc(${stack + 16}px + ${safe})` : `calc(16px + ${safe})`;
 }
 
-function showBlPanel(nodeId) {
+// Gather a point's inbound references: same-doc backlinks + unlinked mentions, plus the cross-doc
+// twins when a workspace is connected. `has` is the show/hide signal used by updateBlPanel.
+function blGather(nodeId) {
   const idx = collectLinks();
   const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
   const unlinked = collectUnlinkedRefs(nodeId);
@@ -29684,14 +29689,18 @@ function showBlPanel(nodeId) {
   const cross = (workspaceDir && workspaceIndex) ? workspaceBacklinks(root.docId, nodeId, workspaceIndex) : [];
   // backlog #3: unlinked mentions of this point in OTHER folder docs (view-only, no auto-link).
   const crossUnlinked = (workspaceDir && workspaceIndex) ? collectCrossUnlinkedRefs(nodeById(nodeId), root.docId, workspaceIndex) : [];
-  // 925a: always-on. The panel no longer hides when a point has nothing inbound; instead the two
-  // strips ("Linked from" / "Unlinked references") show just their titles, so the sections are always
-  // present and discoverable (Roam/Tana-style) without an empty content region below them.
+  return { sources, unlinked, cross, crossUnlinked, has: (sources.length + unlinked.length + cross.length + crossUnlinked.length) > 0 };
+}
+function blShowWith(nodeId, d) {
   blNodeId = nodeId;
-  renderBlPanel(sources, unlinked, cross, crossUnlinked);
+  renderBlPanel(d.sources, d.unlinked, d.cross, d.crossUnlinked);
   document.getElementById('bl-panel').classList.add('on');
   syncBlPanelBottom();
-  return (sources.length + unlinked.length + cross.length + crossUnlinked.length) > 0;
+}
+function showBlPanel(nodeId) {
+  const d = blGather(nodeId);
+  blShowWith(nodeId, d);
+  return d.has;
 }
 
 function hideBlPanel() {
@@ -29848,9 +29857,17 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
 }
 
 function updateBlPanel(nodeId) {
-  // showBlPanel does the full gather (incl. the cross-doc unlinked scan) and returns whether it had
-  // anything to show — so we don't duplicate the folder-wide walk here just to decide show-vs-hide.
-  showBlPanel(nodeId);
+  // Visibility model (owner-directed): on the OUTLINE (not zoomed) the Linked/Unlinked footer shows
+  // ONLY when the interacted point has inbound refs — no empty footer clutter on the plain view.
+  // When ZOOMED, the footer is ALWAYS present and reflects the ZOOMED point (the header-styled title)
+  // by default; focusing a CHILD switches it to that child's refs ONLY if the child has data, else it
+  // falls back to the title's always-on panel. De-selecting a child reverts to the title (scheduleBlHide).
+  const zoomed = focusedId != null;
+  if (zoomed && nodeId === focusedId) { showBlPanel(nodeId); return; }   // the zoomed title: always shown, even empty
+  const d = blGather(nodeId);
+  if (d.has) { blShowWith(nodeId, d); return; }                          // this point has inbound refs → show them
+  if (zoomed) { showBlPanel(focusedId); return; }                        // empty child under a zoom → fall back to the title
+  hideBlPanel();                                                         // outline view, nothing inbound → hide (no empty footer)
 }
 
 // Keep the panel docked above the software keyboard on mobile. Crucially the

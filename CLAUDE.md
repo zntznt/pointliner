@@ -857,6 +857,16 @@ focusedId`, non-base), `render()` calls `updateBlPanel(focusedId)` as its LAST s
 "Linked from" panel shows the ZOOMED point's inbound links, winning over the auto-focused empty
 child (whose focus handler would otherwise overwrite it with an empty panel) and never leaving a
 child-bearing note's panel hidden; as the user then focuses child rows the panel tracks them.
+**Panel visibility model (owner-directed):** the show/hide DECISION lives in `updateBlPanel`
+(`showBlPanel`/`renderBlPanel` keep the #925a always-on RENDER capability, now used only for the
+empty zoom-title). On the **outline** (not zoomed) the footer shows ONLY when the interacted point
+has inbound refs — `blGather(nodeId).has` gates it, else `hideBlPanel()` (no empty-footer clutter).
+When **zoomed**, the footer is ALWAYS present and reflects the ZOOMED point (the header-styled title)
+by default (`nodeId === focusedId` → always `showBlPanel`); focusing a CHILD switches to that child's
+refs only if it `has` data, else falls back to `showBlPanel(focusedId)` (the title); de-selecting a
+child reverts to the title via `scheduleBlHide` (`focusedId != null` → `updateBlPanel(focusedId)`
+instead of hiding). `blGather` is the shared gather (same-doc backlinks + unlinked + the cross-doc
+twins); `blShowWith` renders a pre-gathered set so the decision path never double-scans.
 
 ---
 
