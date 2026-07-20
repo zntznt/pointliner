@@ -637,9 +637,12 @@ emptiness, distinct from "candidates exist, none matched" (the legitimate silent
 gates a quiet `renderMathPill` "0 in scope" state (reusing the `math-empty` chrome) naming the two
 fixes: move the pill onto a parent, or add `, document` / `, folder`. **A sibling leaf cue**
 (#950, agent-review): `wordsScopeLeaf(expr, node)` gates the same `math-empty` "nothing below" state
-for a `words(subtree)`/`words(children)` on a childless point (a heading whose prose is a sibling);
-`words(self)` is excluded (legitimately just this line). Both leaf cues sit AFTER the `#ERR` and
-empty-rollup branches so a real failure stays loud.
+for a `words(subtree)`/`words(children)` on a childless **heading** (whose prose is a sibling);
+`words(self)` is excluded (legitimately just this line). **The heading gate is load-bearing
+(agent-review):** a childless PARAGRAPH's `words(subtree)` === `words(self)` and legitimately counts
+its own prose, so the cue is scoped to `node.type` matching `^h[1-6]$` — firing "nothing below" beside
+a real non-zero count (`= 17 nothing below`) was a self-contradicting false positive. Both leaf cues
+sit AFTER the `#ERR` and empty-rollup branches so a real failure stays loud.
 
 **Engine 3 — uncertainty sampler (B2).** Because `evalMath` *always returns a number*, a
 **distribution can't ride it** — so the `est` artifact has its own tiny Monte-Carlo engine,
@@ -679,7 +682,10 @@ handed to `evalMath`, and an active-resolution stack detects reference cycles
 (`a→b→a`), flagging every member of the loop (`_varCycles`) instead of
 overflowing. The resolved `{name: value}` map is cached per `markDirty()`
 generation and exposed as `globalVarMap` so math/var pills recompute live when a
-referenced variable changes. `parseDice` accepts variable identifiers as flat
+referenced variable changes. **`editVar`'s dialog Save re-renders document-wide (agent-review):**
+a variable's value is doc-wide, so onResult calls `render()` unconditionally (not `repaintNodeContent`
+for a formula var, which left every `{= var*…}` dependent silently stale until reload — inline
+retyping already recomputed via `exitEdit`'s full render; the dialog now matches). `parseDice` accepts variable identifiers as flat
 modifiers (`2d6+str_mod`). Both `collectVars(rootNode = root)` and
 `collectRules(rootNode = root)` take an optional root: no-arg = the live document
 with the per-generation cache (production); an explicit root walks that tree and
@@ -817,6 +823,11 @@ discoverable door with no new syntax), or
 "Copy link" → `[[#id]]` + paste (the keyboard-first power path). Because live
 titles are render-time values, `exitEdit` repaints on-screen backlink sources when
 a node's text changes, so a rename never leaves stale captions/mirrors visible.
+**Zoom reflects the zoom root's backlinks (agent-review):** on a zoom-IN (`_focusChanged &&
+focusedId`, non-base), `render()` calls `updateBlPanel(focusedId)` as its LAST step so the
+"Linked from" panel shows the ZOOMED point's inbound links, winning over the auto-focused empty
+child (whose focus handler would otherwise overwrite it with an empty panel) and never leaving a
+child-bearing note's panel hidden; as the user then focuses child rows the panel tracks them.
 
 ---
 
@@ -1033,7 +1044,12 @@ Dates (start + due) + Agenda (dates live as `start` and/or `due` properties in `
 Rolls log (#918: File menu "Log rolls" **and** a first-class toolbar toggle `#btn-rolllog-tb` with the
 `fa-scroll` glyph — both call `toggleRollLog`, `syncRollLogLabel` mirrors the state to both; records
 every dice roll, generator, oracle and pick to a dated log; `@` menu **Trackers** section (#951: `progress`/
-`clock`/`meter` lifted out of Insert so the native clock isn't below the fold)) ·
+`clock`/`meter` lifted out of Insert so the native clock isn't below the fold). **Logged rolls render
+live (agent-review):** a roll's entry lands on the log-HOME subtree, elsewhere in the tree, so the
+rolled pill's partial repaint would never surface it — `logRoll` sets `_rollLogged` and `repaintAfterRoll`
+consumes it to force a full `render()` (a roll is a user click, not a hot path); the est + markov re-roll
+paths route through `repaintAfterRoll` too, so the log visibly grows as you roll rather than looking dead
+until an unrelated render) ·
 Query pills (a live embedded search: `[[query:KEY]]` + `node.query` sidecar, body a normal
 search string; renders matching points as links, capped +N more, recomputed each render, never
 stored; pure core `queryRows` shared with the planned query-base "bases as queries"; `@ Query`

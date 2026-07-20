@@ -4009,12 +4009,16 @@ function queryReducerLeaf(expr, node) {
   return collectScoped(node, Infinity).length === 0;                    // …and the node has nothing below it
 }
 
-// #950: a words(subtree)/words(children) count on a point with NO descendants can only ever count
-// the point's own line — almost always a writer who put the pill on a heading while the prose sits
+// #950: a words(subtree)/words(children) count on a childless HEADING can only ever count the
+// heading's own words — almost always a writer who put the pill on a heading while the prose sits
 // in a SIBLING (an outliner mental model a Scrivener refugee won't guess), so the small number reads
 // as correct. words(self) is legitimately just this line, so it is excluded. Pure (explicit node).
+// agent-review: gated to headings. On a childless PARAGRAPH, words(subtree) === words(self) and
+// legitimately counts that point's own prose, so firing "nothing below" beside a real, non-zero
+// count (e.g. `= 17 nothing below`) was a self-contradicting false positive.
 function wordsScopeLeaf(expr, node) {
   if (!expr || !node) return false;
+  if (!/^h[1-6]$/.test(node.type || '')) return false;   // only a heading; prose points self-count
   if (!/\bwords\s*\(\s*(?:subtree|children)\b/i.test(String(expr))) return false;
   return (node.children || []).length === 0;
 }
@@ -8544,6 +8548,12 @@ function render() {
   if (typeof syncChronicleButton === 'function') syncChronicleButton();   // #652: show the Chronicle button only when an in-world log is bound
 
   if (firstChildId) focusNode(firstChildId);
+  // agent-review: on zoom-IN, the "Linked from" panel must reflect the ZOOMED point, not an
+  // auto-focused empty child (whose focus handler above would otherwise overwrite it with an
+  // empty panel) nor stay hidden on a child-bearing note. Runs last so it wins over focusNode;
+  // as the user then focuses child rows, the panel tracks them (unchanged). Bases have no title
+  // backlink panel, so skip them.
+  if (_focusChanged && focusedId && vp.type !== 'base') updateBlPanel(focusedId);
 }
 let _lastRenderFocusedId = null; // #488: detect a zoom (focusedId change) to skip scroll-restore
 
@@ -14424,9 +14434,14 @@ function logRoll(node, source, result) {
   const d = new Date(), pad = x => String(x).padStart(2, '0');
   const pt = mk(rollLogEntry(source, r, `${pad(d.getHours())}:${pad(d.getMinutes())}`), day);
   day.children.push(pt);
+  // agent-review: the entry lands on the log-HOME subtree, elsewhere in the tree, so the
+  // rolled pill's partial repaint would never show it. Flag it so repaintAfterRoll full-renders
+  // (a roll is a user click, not a hot path), keeping the roll log visibly live as you roll.
+  _rollLogged = true;
   markDirty();
   return true;
 }
+let _rollLogged = false;
 // The roll-log source label for a grammar pill: a NAMED grammar/table logs its callable name; an
 // ANONYMOUS one (an inline {a|b}, oracle, glue template, {ref}) logs its template (the def's RHS),
 // which is the most useful "what was rolled" context. Pure.
@@ -23823,7 +23838,7 @@ function rerollEst(node, key) {
   const sm = (() => { const s = sampleUncertain(e.expr, EST_N, e.seed, node, collectVars()); return s && distSummary(s); })();
   announce(sm ? `${e.expr} re-sampled: ${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : `${e.expr} re-sampled`);
   logRoll(node, e.expr, sm ? `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : '');   // #918
-  const el = repaintNodeContent(node);
+  const el = repaintAfterRoll(node);   // agent-review: full-render when the roll logged, so the log shows live
   el?.querySelector(`.est-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('est-rolled');
 }
 
@@ -24688,9 +24703,11 @@ function editVar(node, key) {
       // (undefined fields drop out of the JSON sidecar on serialize)
       Object.assign(v, { name: result.name, expr: result.expr, kind: result.kind, rolled: result.rolled });
       markDirty();
-      // a pick's value is document-wide ({name} references in other nodes) —
-      // re-render everything, not just the declaring node
-      if (result.kind === 'pick') render(); else repaintNodeContent(node);
+      // A variable's value is document-wide: {name} / {= name * …} references in OTHER points
+      // depend on it, so a dialog Save must re-render everything, not just the declaring node.
+      // (Formerly only a pick re-rendered; a formula edit left dependents silently stale until
+      // reload, agent-review — inline retyping already recomputed via exitEdit's full render.)
+      render();
     },
   });
 }
@@ -25958,7 +25975,10 @@ function scheduleVarBaseRender(host) {
 // full render(), the rerollPickVar idiom; any other node keeps the cheap single-node
 // repaint. Returns the node's content element (for the celebratory flash class).
 function repaintAfterRoll(node) {
-  if (isVarBase(node)) {
+  // A logged roll appended an entry on the log-home subtree (agent-review); a varbase re-roll
+  // changes document-wide projections — both need a full render, not a single-node repaint.
+  const logged = _rollLogged; _rollLogged = false;
+  if (logged || isVarBase(node)) {
     render();
     return document.querySelector(`.node-content[data-id="${CSS.escape(node.id)}"]`);
   }
@@ -26022,7 +26042,7 @@ function rerollMarkov(node, key) {
   markDirty();
   announce(`${mk.name || 'Chain'} re-rolled: ${mk.path.join(' → ')}`);
   logRoll(node, mk.name || 'chain', mk.path.join(' → '));   // #918
-  const el = repaintNodeContent(node);
+  const el = repaintAfterRoll(node);   // agent-review: full-render when the roll logged, so the log shows live
   el?.querySelector(`.mk-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('mk-rolled');
 }
 

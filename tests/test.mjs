@@ -11339,12 +11339,16 @@ test('#943 stripCaptionTags — removes hashtags from a caption, keeps the title
   assert.ok(/label \|\| stripCaptionTags\(title\)/.test(_src), 'renderCrossLinkPill live-title strips caption tags');
 });
 
-test('#950 wordsScopeLeaf — flags words(subtree)/words(children) on a childless point; not words(self) or non-words', () => {
-  const leaf = c.mkNode('Chapter One');
-  const parent = c.mkNode('p'); parent.children.push(c.mkNode('kid'));
+test('#950 wordsScopeLeaf — flags words(subtree)/words(children) on a childless HEADING; not a paragraph, words(self) or non-words', () => {
+  const leaf = c.mkNode('# Chapter One'); leaf.type = 'h1';   // a childless heading: prose lives in a sibling
+  const para = c.mkNode('The quick brown fox jumped over the lazy dog again');   // a childless paragraph self-counts
+  const parent = c.mkNode('# p'); parent.type = 'h1'; parent.children.push(c.mkNode('kid'));
   assert.equal(c.wordsScopeLeaf('words(subtree)', leaf), true);
   assert.equal(c.wordsScopeLeaf('words(children)', leaf), true);
   assert.equal(c.wordsScopeLeaf('words(subtree) / 200', leaf), true, 'still flagged inside a larger expression');
+  // agent-review: a childless PARAGRAPH legitimately self-counts, so the cue must NOT fire (the
+  // `= 17 nothing below` self-contradiction). Only a heading (prose-in-a-sibling) is flagged.
+  assert.equal(c.wordsScopeLeaf('words(subtree)', para), false, 'a childless paragraph self-counts, not flagged');
   assert.equal(c.wordsScopeLeaf('words(subtree)', parent), false, 'a point with children is not flagged');
   assert.equal(c.wordsScopeLeaf('words(self)', leaf), false, 'words(self) is legitimately just this line');
   assert.equal(c.wordsScopeLeaf('sum(cost)', leaf), false, 'not a words() call');
@@ -11353,6 +11357,30 @@ test('#950 wordsScopeLeaf — flags words(subtree)/words(children) on a childles
   const rmp = fnBody(_src, 'renderMathPill');
   assert.ok(rmp.includes('wordsScopeLeaf(m.expr, cookieNode)'), 'renderMathPill checks the words-leaf case');
   assert.ok(rmp.indexOf('queryReducerLeaf') < rmp.indexOf('wordsScopeLeaf'), 'words-leaf cue comes after the query-reducer cue');
+});
+
+test('agent-review: variable pill-dialog Save re-renders document-wide (formula var no longer leaves dependents stale)', () => {
+  const ev = fnBody(_src, 'editVar');
+  // the buggy conditional (formula → repaintNodeContent only) is gone; onResult renders unconditionally
+  assert.ok(!/result\.kind === 'pick'\) render\(\); else repaintNodeContent/.test(ev), 'the pick-only render conditional is removed');
+  assert.ok(/markDirty\(\);\s*[\s\S]*?render\(\);/.test(ev), 'onResult calls render() after markDirty');
+});
+
+test('agent-review: a logged roll full-renders so the roll log shows live', () => {
+  const lr = fnBody(_src, 'logRoll');
+  assert.ok(lr.includes('_rollLogged = true'), 'logRoll flags that an entry landed on the log-home subtree');
+  const rar = fnBody(_src, 'repaintAfterRoll');
+  assert.ok(/const logged = _rollLogged; _rollLogged = false;/.test(rar), 'repaintAfterRoll reads and clears the flag');
+  assert.ok(/if \(logged \|\| isVarBase\(node\)\)/.test(rar), 'a logged roll (or varbase) triggers a full render');
+  // the est + markov re-roll paths route through repaintAfterRoll so they honor the flag too
+  assert.ok(/const el = repaintAfterRoll\(node\);[\s\S]*est-rolled/.test(fnBody(_src, 'rerollEst')), 'rerollEst uses repaintAfterRoll');
+  assert.ok(/const el = repaintAfterRoll\(node\);[\s\S]*mk-rolled/.test(fnBody(_src, 'rerollMarkov')), 'rerollMarkov uses repaintAfterRoll');
+});
+
+test('agent-review: zoom-in reflects the zoomed point’s backlinks, not an auto-focused child', () => {
+  assert.ok(/if \(_focusChanged && focusedId && vp\.type !== 'base'\) updateBlPanel\(focusedId\);/.test(_src), 'a zoom-in updates the backlink panel for the zoom root');
+  // it runs after focusNode so it wins over the empty-child auto-focus
+  assert.ok(_src.indexOf('if (firstChildId) focusNode(firstChildId)') < _src.indexOf("vp.type !== 'base') updateBlPanel(focusedId)"), 'the panel update runs after focusNode');
 });
 
 test('#950 estimate-in-math boundary renders LOUD (visible tag), not a hover-only underline (src pins)', () => {
