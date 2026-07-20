@@ -11444,6 +11444,37 @@ test('caret-split wiring: insertSiblingAfter has the caret-aware path', () => {
     'insertSiblingAfter must split on the folded text at the translated offset');
 });
 
+// agent-review: a #TODO/-[ ]/>/1. continuation list had no keyboard way to STOP continuing —
+// every Enter (or the "+ New point" ghost row, which shares insertSiblingAfter) kept pre-filling
+// the marker into every following point until manually deleted, so a mixed outline of tasks and
+// section headings had every heading silently become a to-do. Fixed with the standard "Enter twice
+// exits the list" convention (Notion, WorkFlowy, org-mode): Enter on an ALREADY-empty continuation
+// stub (text byte-identical to what continuationPrefix just produced — i.e. nothing typed into it
+// since the prior Enter created it) clears the marker instead of perpetuating another one. Verified
+// in headless Chromium: #TODO→Enter→Enter exits to a plain empty 'ul' point, and typing new content
+// afterward does NOT inherit #TODO; a SINGLE Enter + typing directly into the fresh stub still
+// correctly carries the marker (the intended, unchanged continuation feature); the task/quote/ol
+// families all exit the same way; the ghost row's second click matches the keyboard behavior.
+test('agent-review: insertSiblingAfter exits an untouched continuation stub instead of re-continuing forever', () => {
+  const _insSib = fnBody(_src, 'insertSiblingAfter');
+  assert.ok(/if \(cont && srcNode\.text === cont\) \{/.test(_insSib),
+    'the classic branch detects an untouched (byte-identical) continuation stub');
+  assert.ok(/if \(ed\) ed\.blur\(\);\s*\n\s*srcNode\.text = '';\s*\n\s*rederiveFromText\(srcNode\);/.test(_insSib),
+    'it blurs first (the DOM buffer is still live) then clears + rederives the node in place');
+  assert.ok(/srcNode\.text = '';[\s\S]{0,120}return;\s*\n\s*\}\s*\n\s*const nn = cont/.test(_insSib),
+    'the exit branch returns WITHOUT falling into the normal new-sibling creation below it');
+});
+
+test('agent-review: outdentNode clears an untouched continuation stub, never a real typed one', () => {
+  const _outdent = fnBody(_src, 'outdentNode');
+  assert.ok(/const cont = srcNode \? continuationPrefix\(srcNode\.text\) : '';/.test(_outdent),
+    'outdentNode checks the same untouched-scaffold signal as insertSiblingAfter');
+  assert.ok(/if \(srcNode && cont && srcNode\.text === cont\) \{/.test(_outdent),
+    'only an EXACT match (nothing typed since creation) triggers the clear');
+  assert.ok(/if \(ed\) ed\.blur\(\);\s*\n\s*srcNode\.text = '';\s*\n\s*rederiveFromText\(srcNode\);/.test(_outdent),
+    'blurs first (mirrors insertSiblingAfter) before clearing + rederiving');
+});
+
 // ── linkText: link tokens render legibly in no-pill contexts ─────────────────
 // Breadcrumbs and "Linked from" show titles as PLAIN TEXT — a raw [[#id|]]/[[#id]]
 // there is noise. linkText prettifies a title: a labelled link → its label; a token
