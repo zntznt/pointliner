@@ -7422,13 +7422,14 @@ test('workspaceCandidates: absent or empty index → []', () => {
   assert.deepEqual(host(c.workspaceCandidates('x', c.buildWorkspaceIndex([]), 'da')), []);
 });
 
-// #925a: the backlinks panel is ALWAYS-ON — it no longer hides when a point has nothing inbound;
-// the two strips ("Linked from" / "Unlinked references") show just their titles at 0 matches, with
-// no empty content region below. Browser-side render, so source-pinned (like the rest of this panel).
-test('#925a: backlinks panel is always-on, both strip titles shown at 0 matches', () => {
+// #925a: showBlPanel/renderBlPanel keep the ALWAYS-ON render capability — an empty panel still shows
+// both strip titles ("Linked from" / "Unlinked references") with no empty content region. This
+// capability now backs the ZOOMED-TITLE path (see the visibility-model test below); the show/hide
+// DECISION lives in updateBlPanel. Browser-side render, so source-pinned (like the rest of this panel).
+test('#925a: backlinks panel can render always-on (both strip titles shown at 0 matches)', () => {
   const fn = _src.slice(_src.indexOf('function showBlPanel('), _src.indexOf('function showBlPanel(') + 900);
   assert.ok(!/if \(!sources\.length && !unlinked\.length && !cross\.length && !crossUnlinked\.length\) \{ hideBlPanel/.test(fn),
-    'showBlPanel must NOT hide when everything is empty (always-on)');
+    'showBlPanel must NOT hide when everything is empty (always-on render)');
   const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlPanel(') + 5200);
   assert.ok(rp.includes("hd.textContent = total ? `Linked from · ${total}` : 'Linked from'"),
     'the "Linked from" title shows always (title-only at 0)');
@@ -7436,6 +7437,23 @@ test('#925a: backlinks panel is always-on, both strip titles shown at 0 matches'
     'the "Unlinked references" strip shows its title always (title-only at 0)');
   assert.ok(!/if \(!unlinked\.length\) return;\s*\n\s*const subhd/.test(rp),
     'the unlinked subheader must no longer be gated behind a non-empty check');
+});
+
+test('backlinks footer visibility: conditional on the outline, always for the zoomed title (owner-directed)', () => {
+  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1100);
+  assert.ok(/const zoomed = focusedId != null;/.test(ub), 'updateBlPanel branches on zoom state');
+  assert.ok(/if \(zoomed && nodeId === focusedId\) \{ showBlPanel\(nodeId\); return; \}/.test(ub),
+    'the zoomed title always shows its own panel, even empty');
+  assert.ok(/const d = blGather\(nodeId\);/.test(ub) && /if \(d\.has\) \{ blShowWith\(nodeId, d\); return; \}/.test(ub),
+    'any point with inbound refs shows its own panel');
+  assert.ok(/if \(zoomed\) \{ showBlPanel\(focusedId\); return; \}/.test(ub),
+    'an empty child under a zoom falls back to the zoomed title');
+  assert.ok(/hideBlPanel\(\);\s+\/\/ outline view/.test(ub),
+    'on the plain outline, a point with nothing inbound hides the footer (no empty clutter)');
+  // scheduleBlHide reverts to the title when zoomed instead of hiding (de-select a child → title)
+  const sb = _src.slice(_src.indexOf('function scheduleBlHide('), _src.indexOf('function scheduleBlHide(') + 1400);
+  assert.ok(/if \(focusedId != null\) \{ updateBlPanel\(focusedId\); return; \}/.test(sb),
+    'zoomed: focus leaving a child reverts to the title, not hide');
 });
 
 // ── cross-document backlinks (CF-4) ───────────────────────────────────────────
