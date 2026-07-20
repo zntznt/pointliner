@@ -831,7 +831,15 @@ hashtag rule, then collapses whitespace) is applied at the caption sinks only �
 `renderCrossLinkPill` live-title and the backlink panel row titles/snippets — so a reference reads
 "Atomic notes", not "Atomic notes #zettelkasten/principle". It is NOT applied in `textForDisplay`/
 `displayText`, which feed SEARCH matching (a plain-word search for a tagged word must still match); a
-fixed `[[#id|caption]]` is the user's words and is left untouched. **Cross-document links**
+fixed `[[#id|caption]]` is the user's words and is left untouched. **It IS applied at the two "name a
+point answers to" chokepoints — `nodeNames` and `unlinkedNameRegex` (agent-review)** — a different
+rationale from display legibility: a tag lives only on the target's OWN line, so leaving it in the
+match needle required another point's prose to literally contain the tag text, which real prose never
+does. Before the fix, a tagged note's unlinked-mention scan (`collectUnlinkedRefs`) silently returned
+zero for the exact "does anyone mention my title in plain prose" case tags are common on, and the
+backlink panel's "Link" button (`nodeNames` → `linkifyMention`) silently no-op'd for the same reason.
+Both now strip first; a title that is ENTIRELY a tag has no matchable name (`[]`), same as any other
+title below `UNLINKED_MIN_LEN`. **Cross-document links**
 (`[[docId#nodeId|label]]`) now also ship on the multi-doc workspace (delivered June 2026: the
 workspace-wide index CF-1, navigation CF-2, the folder-spanning `[[` picker CF-3, cross-doc
 backlinks CF-4, "+ New note" CF-5; see `guidance/features.md`). **The cross-doc MIRROR shipped

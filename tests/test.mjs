@@ -6532,6 +6532,47 @@ test('collectUnlinkedRefs: unknown targetId → []', () => {
   assert.equal(out.length, 0);
 });
 
+// agent-review: a point's title and its #tags share one line, so the RAW title carries the tag
+// (e.g. "Emergence beats hierarchy #zettelkasten/principle"). Unlinked-reference matching must use
+// the TITLE ONLY as its needle (stripCaptionTags, the #943 rule) — otherwise it requires prose to
+// contain the literal tag text, which real prose never does, so a tagged note NEVER finds its own
+// unlinked mentions. The panel's "Link" button shares the same bug (nodeNames feeds linkifyMention).
+test('collectUnlinkedRefs: a tagged title matches on the TITLE, not the title+tag (agent-review)', () => {
+  const root2 = c.mkRoot();
+  const target = c.mkNode('Emergence beats hierarchy #zettelkasten/principle'); target.id = 'tag1';
+  const mention = c.mkNode('As emergence beats hierarchy shows, systems self-organize.'); mention.id = 'm1';
+  root2.children.push(target, mention);
+  const out = c.collectUnlinkedRefs('tag1', root2);
+  assert.equal(out.length, 1, 'the tag on the target title must not block matching its plain-prose mention');
+  assert.equal(out[0].id, mention.id);
+});
+
+test('nodeNames: strips a trailing #tag from the title and from aliases (agent-review)', () => {
+  const node = c.mkNode('Combinatorial creativity #zettelkasten/insight');
+  node.props = [{ key: 'aliases', val: 'combo idea' }];
+  assert.deepEqual(host(c.nodeNames(node)), ['Combinatorial creativity', 'combo idea']);
+});
+
+test('nodeNames + linkifyMention: the click-to-link flow finds the mention using the untagged name (agent-review)', () => {
+  const target = c.mkNode('Emergence beats hierarchy #zettelkasten/principle'); target.id = 'tag2';
+  const mentionText = 'As emergence beats hierarchy shows, systems self-organize.';
+  const names = c.nodeNames(target);
+  let linked = null;
+  for (const name of names) { linked = c.linkifyMention(mentionText, name, target.id); if (linked != null) break; }
+  assert.equal(linked, 'As [[#tag2|emergence beats hierarchy]] shows, systems self-organize.',
+    'linkifyMention must succeed using the tag-stripped name (the old tag-suffixed name silently no-op\'d)');
+});
+
+test('nodeNames: a title that is ENTIRELY a tag has no matchable name, without throwing (agent-review)', () => {
+  const node = c.mkNode('#zettelkasten/principle');
+  assert.deepEqual(host(c.nodeNames(node)), []);
+  const root2 = c.mkRoot();
+  node.id = 'tagonly'; const other = c.mkNode('unrelated prose');
+  root2.children.push(node, other);
+  assert.doesNotThrow(() => c.collectUnlinkedRefs('tagonly', root2));
+  assert.equal(c.collectUnlinkedRefs('tagonly', root2).length, 0);
+});
+
 test('linkifyMention: wraps the first outside-token occurrence', () => {
   const result = c.linkifyMention('the dragon sleeps', 'Dragon', 'drg');
   assert.equal(result, 'the [[#drg|dragon]] sleeps');   // #805: mention preserved as the label
