@@ -2857,11 +2857,23 @@ function aliasesOf(node) {
 
 // Every name a point answers to: canonical title first, then aliases (deduped
 // case-insensitively, non-empty). Used by linkCandidates + collectUnlinkedRefs.
+// agent-review: a point's title and its #tags share one line, so the RAW title text carries
+// the tag (e.g. "Emergence beats hierarchy #zettelkasten/principle"). A note doesn't "answer
+// to" its own hashtag — that's metadata, not identity — so strip it here (stripCaptionTags,
+// the #943 caption rule) before the name is used to find/create a link. Without this, a
+// tagged note's unlinked-mention scan required prose to contain the literal tag text (which
+// real prose never does, since the tag only exists on the note's own line), silently returning
+// zero matches for the exact "search for my title in other prose" case tags are common on; the
+// panel's "Link" button had the same failure (linkifyMention searching for the untagged prose
+// using the tag-suffixed name never found it, silently no-op'ing the click).
 function nodeNames(node) {
   const out = [];
-  const t = (textForDisplay(node) || '').trim();
+  const t = stripCaptionTags(textForDisplay(node) || '');
   if (t) out.push(t);
-  for (const a of aliasesOf(node)) if (a && !out.some(x => x.toLowerCase() === a.toLowerCase())) out.push(a);
+  for (const raw of aliasesOf(node)) {
+    const a = stripCaptionTags(raw);
+    if (a && !out.some(x => x.toLowerCase() === a.toLowerCase())) out.push(a);
+  }
   return out;
 }
 
@@ -21561,8 +21573,11 @@ const UNLINKED_MIN_LEN = 3;
 // ref. Returns null when the target has no matchable name (so the caller skips the scan). Factored out
 // (backlog #3) so the cross-doc scan reuses the exact same-doc matching rules — no drift between them.
 function unlinkedNameRegex(target) {
+  // agent-review: strip trailing #tags from each candidate name (stripCaptionTags, the #943 rule)
+  // before it becomes the literal needle — see the nodeNames comment for why (a tag is metadata
+  // on the target's own line, never present in another point's prose mention of the title).
   const names = [displayText(target, { forMatch: true }), ...aliasesOf(target)]
-    .map(s => (s || '').trim()).filter((s, i, a) => s.length >= UNLINKED_MIN_LEN && a.indexOf(s) === i);
+    .map(s => stripCaptionTags(s)).filter((s, i, a) => s.length >= UNLINKED_MIN_LEN && a.indexOf(s) === i);
   if (!names.length) return null;
   const alt = names.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
   return new RegExp(`(?<![a-zA-Z0-9])(?:${alt})(?![a-zA-Z0-9])`, 'i');
