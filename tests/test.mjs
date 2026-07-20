@@ -2162,6 +2162,67 @@ test('paragraph traps: prose slash gate, ¶ alignment, and the fold clearing on 
   assert.equal(stays.folded, true, 'a paragraph that stays a paragraph keeps its fold');
 });
 
+test('agent-review: menu commands match on hidden `keys` synonyms (within their own door; aliases never cross)', () => {
+  // the shared predicate matches id / label / a keys synonym. `keys` are search-only (never rendered)
+  // and stay in the command's OWN pool — @ finds its pills by alias, / stays "turn into something".
+  assert.ok(/c\.id\.startsWith\(matchWord\) \|\| c\.label\.toLowerCase\(\)\.includes\(matchWord\) \|\| \(c\.keys \|\| \[\]\)\.some\(k => k\.startsWith\(matchWord\)\)/.test(_src),
+    'the match predicate includes a keys-synonym arm');
+  // the / door does NOT fall through to insert @-pills (that would blur / into @, against the door model)
+  assert.ok(!_src.includes("INSERT_CMDS.filter(c => ['Generate', 'Compute', 'Trackers'].includes(c.section)).filter(matchPred)"),
+    'no /-inserts-pills fallback: / never inserts at the caret');
+  assert.ok(!/trigger === '@' \|\| insert\)/.test(_src), 'slashApply routes inserts through @ only');
+});
+
+// Parse a command pool (INSERT_CMDS / BLOCK_CMDS) from source into [{id,label,keys}] in order.
+// Each command is one line, so a per-line regex is exact.
+function parseCmdPool(src, marker) {
+  const start = src.indexOf(marker);
+  const body = src.slice(start, src.indexOf('\n];', start));
+  const cmds = [];
+  for (const line of body.split('\n')) {
+    const idm = line.match(/\{\s*id:'([^']+)'/); if (!idm) continue;
+    const labelm = line.match(/label:'([^']*)'/);
+    const keysm = line.match(/keys:\[([^\]]*)\]/);
+    const keys = keysm ? keysm[1].split(',').map(s => s.trim().replace(/^'|'$/g, '')).filter(Boolean) : [];
+    cmds.push({ id: idm[1], label: (labelm ? labelm[1] : '').toLowerCase(), keys });
+  }
+  return cmds;
+}
+
+test('agent-review: no menu alias hijacks a later command’s own id (collision guard for @ and /)', () => {
+  // The menu selects the FIRST command (in pool order) matching the query. An alias `keys` entry on
+  // an EARLIER command that is a prefix of a LATER command's id steals that command's own /id or @id
+  // query (the clock:'countdown'→@count and todo:'checkbox'→/check hijacks caught in review). Guard it.
+  for (const [marker, door] of [['const INSERT_CMDS = [', '@'], ['const BLOCK_CMDS = [', '/']]) {
+    const pool = parseCmdPool(_src, marker);
+    assert.ok(pool.length > 10, `${door} pool parsed`);
+    for (let i = 0; i < pool.length; i++) {
+      for (let j = i + 1; j < pool.length; j++) {
+        for (const k of pool[i].keys) {
+          assert.ok(!k.startsWith(pool[j].id),
+            `${door}: alias "${k}" on ${pool[i].id} would hijack ${door}${pool[j].id}`);
+        }
+      }
+    }
+  }
+  // spot-check the aliases the personas reached for actually landed (within their own door)
+  const ins = parseCmdPool(_src, 'const INSERT_CMDS = [');
+  const blk = parseCmdPool(_src, 'const BLOCK_CMDS = [');
+  const has = (pool, id, key) => pool.find(c => c.id === id)?.keys.includes(key);
+  assert.ok(has(ins, 'math', 'sum') && has(ins, 'math', 'convert') && !has(ins, 'math', 'count'), 'math: sum/convert, no count');
+  assert.ok(has(ins, 'meter', 'hp'), 'meter: hp');
+  assert.ok(has(ins, 'grammar', 'npc') && has(ins, 'est', 'range') && has(ins, 'oracle', 'yesno'), '@ generate/compute aliases');
+  assert.ok(has(blk, 'base', 'kanban') && has(blk, 'due', 'date') && has(blk, 'divider', 'hr'), '/ block aliases');
+});
+
+test('agent-review: the @ Meter default inserts a working literal {meter: 8/12}, not the dead {meter: hp/hpmax}', () => {
+  const fn = fnBody(_src, 'insertInlineArtifact');
+  assert.ok(fn.includes("applyInlineInsertion(nodeId, offset, '{meter: 8/12}')"), 'meter inserts the literal working form');
+  assert.ok(!fn.includes("applyInlineInsertion(nodeId, offset, '{meter: hp/hpmax}')"), 'the property-bound default is gone');
+  assert.ok(c.resolveMeter({ props: [] }, c.parseMeter('meter: 8/12')), 'literal meter resolves with no props');
+  assert.equal(c.resolveMeter({ props: [] }, c.parseMeter('meter: hp/hpmax')), null, 'prop meter needs properties');
+});
+
 test('a paragraph is an explicit mode: markdown on the FIRST line styles it, never re-types it', () => {
   // The reported bug: opening a paragraph's first line with `# ` flipped the node to h1
   // (destroying prose mode), while `# ` on line 2+ just rendered a heading — arbitrary.
