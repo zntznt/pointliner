@@ -7693,6 +7693,26 @@ test('#915: the @ menu leads with the generative + compute sections', () => {
     'the Generate section leads and precedes Compute');
   assert.ok(arr.indexOf("section:'Compute'") < arr.indexOf("section:'Insert'"),
     'the Compute section precedes the basic Insert section');
+  // #951: Trackers (progress/clock/meter) is lifted out of Insert so the native clock isn't below the fold
+  assert.ok(/id:'clock'[^\n]*section:'Trackers'/.test(arr) && /id:'meter'[^\n]*section:'Trackers'/.test(arr) && /id:'progress'[^\n]*section:'Trackers'/.test(arr),
+    'progress/clock/meter sit in a Trackers section');
+  assert.ok(arr.indexOf("section:'Trackers'") < arr.indexOf("section:'Insert'"),
+    'Trackers precedes the basic Insert section (surfaced above the fold)');
+});
+
+test('#951: the Rolls log has a first-class toolbar toggle (fa-scroll) mirroring the File-menu control', () => {
+  assert.ok(_src.includes('id="btn-rolllog-tb"') && _src.includes('fa-solid fa-scroll'), 'the toolbar button + glyph are present');
+  assert.ok(/const FA_GLYPHS = new Set\([^)]*'fa-scroll'/.test(_src), 'fa-scroll is in the FA subset allow-list');
+  assert.ok(_src.includes('.fa-scroll::before'), 'fa-scroll has a ::before content rule in the embedded font CSS');
+  assert.ok(_src.includes('function toggleRollLog()'), 'the toggle is extracted so both doors share it');
+  assert.ok(/getElementById\('btn-rolllog'\)\?\.addEventListener\('click', toggleRollLog\)/.test(_src) &&
+            /getElementById\('btn-rolllog-tb'\)\?\.addEventListener\('click', toggleRollLog\)/.test(_src),
+    'both the File-menu and toolbar buttons call toggleRollLog');
+  assert.ok(/document\.getElementById\('btn-rolllog-tb'\);[\s\S]{0,120}classList\.toggle\('active', on\)/.test(_src),
+    'syncRollLogLabel mirrors the on-state to the toolbar button');
+  // the meter icons stayed in the subset through the rebuild (a rebuild that dropped them would regress)
+  ['heart','skull','star','shield','droplet'].forEach(g =>
+    assert.ok(_src.includes(`'fa-${g}'`), `fa-${g} must remain in the FA subset`));
 });
 
 test('GUIDE drift guard: every essSection has its own Shortcuts nav entry', () => {

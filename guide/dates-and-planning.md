@@ -118,7 +118,7 @@ Every generating pill normally keeps only its latest result: click a dice pill o
 and the previous answer is replaced. When you are playing a solo game or want a record of what
 actually happened, that record is the whole point, so Pointliner can log every roll as it happens.
 
-Turn it on from the **File menu, Log rolls** (Off/On). While it is on, **every** random or generated
+Turn it on with the **scroll button in the toolbar** (or the **File menu, Log rolls**). While it is on, **every** random or generated
 result is also written to a **Rolls** log the instant you roll it, this covers all of the generating
 pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, roll on your
 document, and estimates. Entries file themselves by date exactly like the journal (`2026 › 07 › 19`),
