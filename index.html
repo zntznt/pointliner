@@ -6561,7 +6561,19 @@ function mdInline(s) {
   s = s.replace(/\{meter\s*:\s*[^{}]*\}/gi, (m) => {
     const parsed = parseMeter(m.slice(1, -1));
     const r = parsed && resolveMeter(cookieNode, parsed);
-    if (!r) return stash(`<span class="meter meter-bad" aria-label="Meter, cannot resolve">{meter?}</span>`);
+    if (!r) {
+      // agent-review: name WHY (P4). The concept-guide example {meter: hp/5 hearts} shows a bare
+      // red {meter?} until an `hp` property exists, and never says that is the reason — so a
+      // first-timer copying the example thinks meters are broken. Name the missing property.
+      let tip = 'Check the recipe: {meter: value/max}, like {meter: hp/hpmax}.';
+      if (parsed) {
+        const missing = [parsed.value, parsed.max]
+          .filter(x => x.kind === 'prop' && !Number.isFinite(childPropNumber(cookieNode, x.v)))
+          .map(x => x.v);
+        if (missing.length) tip = `Add a numeric ${missing.join(' and ')} property to this point (bullet menu, Add property).`;
+      }
+      return stash(`<span class="meter meter-bad" tabindex="-1" title="${escQ(tip)}" aria-label="Meter unresolved. ${escQ(tip)}">{meter?}</span>`);
+    }
     const full = r.value >= r.max ? ' meter-full' : '';
     // an icon-pool style draws one FA glyph per unit (filled vs dimmed) when the max is within
     // the cap; a bigger max falls back to the bar so the pool can never blow out the line.
@@ -7349,7 +7361,7 @@ const MATH_CONST_NAMES = new Set(['pi', 'e', 'tau', 'inf', 'infinity', 'today'])
 //   'non-numeric' — an identifier names a variable whose value is a string (e.g. a pick)
 //   'bad ref'     — an identifier names nothing resolvable (deleted / never declared)
 //   ''            — no offending identifier; a generic malformed expression
-function mathErrorReason(expr, vars = {}, cycles = new Set()) {
+function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null) {
   const s = String(expr || '');
   // Estimate-constructor syntax (`lo to hi`, normal(…), uniform(…)) is a SEPARATE
   // engine — a distribution can't ride evalMath (number-only). Catch it first so
@@ -7361,16 +7373,22 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
   // variable (km/kg read as unknown names). Checked before the identifier scan for that reason.
   if (s.includes('#ERR')) return 'convert';
   const re = /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*/g;   // a dotted name (variable-base projection) is ONE identifier
-  let m, sawNonNumeric = false, sawBadRef = false;
+  let m, sawNonNumeric = false, sawBadRef = false, sawLater = false;
   while ((m = re.exec(s)) !== null) {
     if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;  // followed by '(' → function call, not a var
     const id = m[0].toLowerCase();
     if (MATH_CONST_NAMES.has(id)) continue;
     if (cycles.has(id)) return 'cycle';                  // cycle is the most specific reason
     if (id in vars) { if (typeof vars[id] === 'string') sawNonNumeric = true; }
+    // agent-review: a name absent from the positional scope but present doc-wide is a FORWARD
+    // reference (values resolve top to bottom, Stage B), not a typo. Name it distinctly so the
+    // pill says "declared later, move it up" instead of the misleading "bad ref" (which sent a
+    // calculator user chasing a phantom typo). Only when the caller opts in by passing globalVars.
+    else if (globalVars && (id in globalVars)) sawLater = true;
     else sawBadRef = true;
   }
-  if (sawBadRef) return 'bad ref';
+  if (sawBadRef) return 'bad ref';                       // a truly-unknown name is the more actionable fix
+  if (sawLater) return 'declared later';
   if (sawNonNumeric) return 'non-numeric';
   return '';
 }
@@ -7381,6 +7399,7 @@ function mathErrorReason(expr, vars = {}, cycles = new Set()) {
 function mathReasonPhrase(why) {
   return why === 'estimate'    ? 'an estimate like 5 to 10, which works on its own but not inside a math formula or check'
        : why === 'convert'     ? 'a conversion between two different kinds of units (like a length and a mass), which has no answer'
+       : why === 'declared later' ? 'a variable declared later in the document; values resolve top to bottom, so move its declaration above this point'
        : why === 'bad ref'     ? 'a name with no value here; declare it as a variable or add it as a property'
        : why === 'non-numeric' ? 'a value that is not a number (a word or random pick can\'t be used in math)'
        : why === 'cycle'       ? 'a loop where a value depends on itself'
@@ -20543,6 +20562,15 @@ function expandText(str) {
 function rollPickSource(source, rules = collectRules(), vars = collectVars()) {
   source = (source || '').trim();
   if (!source) return null;
+  // agent-review: a glue-template VALUE arrives fully brace-wrapped ({hero := {{Ael|Bor}{ric|wyn}}}
+  // stores `{{Ael|Bor}{ric|wyn}}`). expandTemplate would see the whole thing as ONE outer group and
+  // hand resolveBrace a template-shaped body it can't expand, freezing the RAW grammar. Strip one
+  // fully-enclosing wrapper when its inner is itself a template (contains `{…}`), so the inner glue
+  // expands. A `{2d6}` / `{a|b}` / `{color}` inner has no brace and is left untouched.
+  if (source[0] === '{' && matchBrace(source, 0) === source.length - 1) {
+    const inner = source.slice(1, -1);
+    if (inner.includes('{')) source = inner.trim();
+  }
   const ctx = { rules, vars, depth: 0, stack: [] };
   // Top-level alternation and brace-free sources are brace *bodies* (resolveBrace
   // sniffs alternation / dice / bare names / a "quoted" literal); a brace-bearing
@@ -23882,7 +23910,7 @@ function renderMathPill(key, m) {
     // cyclic, or redeclared non-numeric). Surface the failure with its reason rather
     // than the stale last-good m.result (UXP-34); the pill stays clickable so the user
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
-    const reason = mathErrorReason(expr, scope, _varCycles);
+    const reason = mathErrorReason(expr, scope, _varCycles, globalVarMap);   // agent-review: globalVarMap → distinguish a forward ref ("declared later") from a typo
     const label = reason ? `#ERR (${reason})` : '#ERR';
     const phrase = mathReasonPhrase(reason);
     const tip = phrase ? `This uses ${phrase}. Click to edit.` : 'This can\'t be computed. Click to edit.';

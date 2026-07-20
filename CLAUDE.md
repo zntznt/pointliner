@@ -544,6 +544,12 @@ when proposing features:
   (`promoteInlineShorthand`/`promoteCellShorthand`) keep a closed-but-`'invalid'` span intact and
   leave the line-tail of an unclosed `{` alone when it reads as a form, so a mid-authoring
   `{hero := {a|b}{c|d` survives a blur instead of its inner braces becoming fragment pills.
+  **A glue template as a pick-var VALUE expands, not freezes raw (agent-review):** `{hero :=
+  {{Ael|Bor}{ric|wyn}}}` stores the source fully brace-wrapped (`{{Ael|Bor}{ric|wyn}}`), so
+  `rollPickSource` strips one fully-enclosing wrapper when its inner is itself a template (contains
+  `{…}`) before deciding body-vs-template — otherwise `expandTemplate` saw ONE outer group and handed
+  `resolveBrace` a template-shaped body it can't expand, freezing the raw grammar. A `{2d6}`/`{a|b}`/
+  `{color}` inner has no brace and is untouched.
 
   Dice, roll tables, and markov chains all resolve through this one engine: a
   roll table is literally a one-rule grammar (weighted alternation — the collapse
@@ -708,7 +714,14 @@ per-expansion bound-picks *scope* (`ctx.binds`, PR #51) — that must not return
 the reverted model. **Stage B, positional resolution** (`varMapAt(node)`/`resolveVarDefs`) further
 supersedes the old global declare-once / call-anywhere model: a `{name}` resolves to the nearest
 preceding `{name := …}` in document order, falling back to the global map when there is no anchor.
-See `guidance/typed-var-declaration-proposal.md` (Status: SHIPPED).
+**A FORWARD reference reads legibly, not as a typo (agent-review):** because the math pill resolves
+against the positional map (`renderVarMap = varMapAt(node)`), a `{= rate*40}` placed ABOVE its
+`{rate := 85}` is genuinely unresolved by design — but `mathErrorReason(expr, scope, cycles,
+globalVarMap)` now returns `declared later` (not `bad ref`) when the name is absent from the
+positional scope yet present doc-wide, so the pill says "declared later, move it up" instead of
+sending a calculator user chasing a phantom typo. A truly-unknown name still outranks it (`bad ref`
+is the more actionable fix); only `renderMathPill` opts in by passing `globalVarMap` (dialog callers
+keep the old behavior). See `guidance/typed-var-declaration-proposal.md` (Status: SHIPPED).
 **Variable bases project dotted variables.** A base marked `node.varbase = {name?}` (OPML
 `_varbase`; query bases never qualify) projects each data row as dotted defs — row "Orc" +
 column "HP" → `orc.hp`, readable in `{Orc.HP}` and `{= Orc.HP + 5}`, chaining like any formula
