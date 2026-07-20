@@ -45,7 +45,7 @@ sync. No backend, no auth, no accounts. Features that require running a backend
 are out of scope — not deferred, out.
 
 **Product identity (binding — the scope filter for any product/positioning call):**
-the canonical answers live in `guidance/product-identity.md`; the two that steer builds:
+the canonical answers live in `guidance/product-identity.md`; what steers builds:
 (1) **the identity is the substrate — a tool for thought** (owner, 2026-07-17): an
 instrument for freeform, adaptable thinking in writing. Solo-RPG is the origin and stays
 served structurally (bases are the richer form of RPG tables), but it is provenance, not
@@ -56,9 +56,15 @@ the fences exist to stop; (3) **the substrate test** — before shipping a domai
 feature ask "have I reached the substrate of this tool, or am I rushing to solve a problem
 with a rigid schema?" (freeform text is primary; every structure is ONE way of organizing
 thought, never THE way; the user must always be free to slot the app in and out of their
-process). The core, if someone deletes 90% of the features: any bullet can generate or
-compute. When a proposal leans database-parity or domain-schema, cite that file before
-building.
+process); (4) **the scratchpad test** (owner, 2026-07-20, `product-identity.md` §2c) —
+does a feature keep the user inside present-tense, generative thinking, or does it ask
+them to defer understanding to a later organizing session? Pointliner is **not a second
+brain**: the workspace exists for parallel trains of thought to run unobstructed, and a
+relationship one finds with another is fodder the current thought can use, never an
+archive-building obligation — a feature can pass the mission test and the substrate test
+and still fail this one if its real effect is "capture now, connect later." The core, if
+someone deletes 90% of the features: any bullet can generate or compute. When a proposal
+leans database-parity or domain-schema, cite that file before building.
 Do NOT rewrite the README's opening to a narrower pitch; its current shape is the
 reference execution of §2.
 
@@ -1226,9 +1232,12 @@ Details: `guidance/features.md`
 The product direction is now set. Read these before proposing or building:
 - `guidance/product-identity.md` — **the binding identity** (the 90%-core, the tools-for-
   thought lineage + accepted test, the two freedoms, **§3c inviting-not-persuasive** — the
-  product is not sold, only made inviting; optimize for welcome, never capture — the
-  never-build list, who it is NOT for, the substrate test, the held hypotheses). The first
-  stop for any scope/positioning decision. Its gap list against the shipped app is
+  product is not sold, only made inviting; optimize for welcome, never capture —
+  **§2c not a second brain / the scratchpad test** — Pointliner is a generative scratchpad,
+  not a PKM; storage must never substitute for cognition, and the workspace's link/mirror/
+  cross-doc features exist for parallel trains of thought to find each other as fodder,
+  never as an archive-building obligation — the never-build list, who it is NOT for, the
+  substrate test, the held hypotheses). The first stop for any scope/positioning decision. Its gap list against the shipped app is
   `guidance/identity-alignment.md` (ACTIVE; IA-1 the missing base→text exit verb leads).
 - `guidance/ux-discipline.md` — **the binding UX standard** (vocabulary, the five principles,
   keyboard grammar, the closed syntax inventory, patterns, conformance matrix). Read before
