@@ -26299,6 +26299,30 @@ function insertSiblingAfter(id) {
   // continues the same keyword, DONE restarts as TODO), a new quote its `> `. The
   // type then derives from that markdown. Elsewhere, type inheritance covers ul/ol/para.
   const cont = srcNode ? continuationPrefix(srcNode.text) : '';
+  // agent-review: Enter on an ALREADY-empty continuation stub — text is BYTE-IDENTICAL to
+  // the bare prefix continuationPrefix just produced, i.e. this very node was created by a
+  // PRIOR Enter and nothing has been typed into it since — EXITS the format instead of
+  // perpetuating another prefixed sibling. The standard "press Enter twice to break out of
+  // a list" convention (Notion, WorkFlowy, org-mode). Without this, a #TODO/- [ ]/>/1. list
+  // has no keyboard way to stop continuing: every following point (a section heading, a plain
+  // note) silently inherits the marker until manually deleted — the reported friction of
+  // headings becoming to-dos. Scoped tight: only fires on the untouched scaffold itself, never
+  // on a point the user has actually typed content into (text is truth, never silently rewritten
+  // once real content exists).
+  if (cont && srcNode.text === cont) {
+    pushUndo();
+    // Blur BEFORE mutating (mirrors the caret-split branch above): the node is still the
+    // live-focused contenteditable, whose DOM buffer still shows the untouched "#TODO "/etc.
+    // Without this, exitEdit's own blur handler fires later (e.g. off the focusNode() call
+    // below) and recommits that stale DOM text over this mutation, silently reverting it.
+    if (ed) ed.blur();
+    srcNode.text = '';
+    rederiveFromText(srcNode);
+    markDirty();
+    render();
+    focusNode(id);
+    return;
+  }
   const nn = cont
     ? mkNode(cont, deriveTypeFromText(cont) || 'ul')
     : mkNode('', srcNode ? inheritedType(srcNode.type) : 'ul');
@@ -26389,6 +26413,22 @@ function outdentNode(id) {
   if (!gp) return;
   const off = caretOffsetIfEditing(id);   // #814
   pushUndo();
+  // agent-review: an outdented point whose text is STILL the bare continuation prefix (an
+  // untouched #TODO/- [ ]/>/1. scaffold, never typed into since the Enter that created it) drops
+  // the marker — outdenting is a clear "this isn't the next item in that list, it's a new branch"
+  // signal (the reported friction: a promoted section heading silently keeping the task marker
+  // from the list it grew out of). Scoped tight: only the untouched scaffold, never a point the
+  // user actually typed content into (text is truth, never rewritten once real content exists).
+  // Blur first (mirrors insertSiblingAfter's own fix): the DOM buffer may still be live and would
+  // otherwise recommit the unchanged text over this mutation on its own later blur.
+  const srcNode = nodeById(id);
+  const cont = srcNode ? continuationPrefix(srcNode.text) : '';
+  if (srcNode && cont && srcNode.text === cont) {
+    const ed = document.querySelector(`.node-content[data-id="${id}"][data-editing]`);
+    if (ed) ed.blur();
+    srcNode.text = '';
+    rederiveFromText(srcNode);
+  }
   const idx = parent.children.findIndex(c => c.id === id);
   const [node] = parent.children.splice(idx,1);
   const pi = gp.children.findIndex(c => c.id === parent.id);

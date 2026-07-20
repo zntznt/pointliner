@@ -262,7 +262,24 @@ rides the OPML `<head>`: `savedSearches`, `templates`, `inboxId`, `plugins`,
   LAST of a leading RUN of state keywords (`#TODO #NEXT [#B] body` → NEXT, priority B, clean
   body — no stray `#NEXT` hashtag), and `exitEdit` runs `collapseDoubledKeyword` so the stored
   text collapses too; only CONSECUTIVE leading keywords collapse (`#TODO call #NEXT week` keeps
-  the mid-sentence hashtag). Legacy
+  the mid-sentence hashtag). **An untouched continuation stub EXITS the format on a second Enter
+  or on outdent, never on typed content (agent-review):** continuation had no keyboard way to STOP
+  continuing — every Enter (or the "+ New point" ghost row, sharing `insertSiblingAfter`) pre-filled
+  the marker into every following point until manually deleted, so a mixed outline of tasks and
+  section headings had every heading silently become a to-do. Fixed with the standard "Enter twice
+  exits the list" convention (Notion, WorkFlowy, org-mode): both `insertSiblingAfter` (Enter/"New
+  point") and `outdentNode` (Shift+Tab) check `srcNode.text === continuationPrefix(srcNode.text)` —
+  BYTE-IDENTICAL to the bare prefix just produced, meaning nothing has been typed into this specific
+  point since the prior Enter created it — and if so `rederiveFromText` it back to a plain empty
+  point instead of perpetuating/keeping the marker. Scoped tight to the untouched scaffold only: a
+  point the user has actually typed content into is never touched (text is truth, never silently
+  rewritten once real content exists) — a single Enter followed by typing straight into the fresh
+  stub still correctly carries the marker forward, the original intended feature. **Blur before
+  mutating (bites easily, verified by a real repro):** the stub's contenteditable DOM buffer is
+  still live/focused at this point, and mutating `node.text` without blurring first gets silently
+  reverted — a LATER blur (e.g. off the subsequent `focusNode`) recommits the stale unchanged DOM
+  text over the mutation. Both call sites `ed.blur()` before touching `node.text`, mirroring the
+  pattern the caret-split branch above already used for the same reason. Legacy
   `_type="todo"` nodes are migrated on load (`migrateTodoText`, in
   `migrateNodePrefixes`); bare-keyword saves (`TODO body`) are deliberately NOT
   migrated — a load-time rewrite would also capture plain prose typed after the
