@@ -5564,6 +5564,16 @@ test('rollPickSource: template source expands embedded braces', () => {
   c.resetRandom();
 });
 
+test('agent-review: rollPickSource expands a brace-wrapped GLUE template value ({{a|b}{c|d}}), not the raw grammar', () => {
+  // A glue-template var value ({hero := {{Ael|Bor}{ric|wyn}}}) stores the source fully brace-wrapped;
+  // the outer wrapper must be stripped so the inner glue expands (was frozen as raw `{Ael|Bor}{ric|wyn}`).
+  c.seedSequence([0, 0]);
+  assert.equal(c.rollPickSource('{{Ael|Bor}{ric|wyn}}', {}, {}), 'Aelric');
+  c.resetRandom();
+  // a fully-wrapped simple body is untouched (inner has no brace): {a|b} still alternates, {2d6} still rolls
+  c.seedSequence([0]); assert.equal(c.rollPickSource('{dragon|wyrm}', {}, {}), 'dragon'); c.resetRandom();
+});
+
 test('rollPickSource: bare name resolves a rule, then a variable, else marker', () => {
   const rules = { color: [{ template: 'blue', weight: 1 }] };
   c.seedSequence([0]);
@@ -9264,6 +9274,14 @@ test('#648 parseMeter — the four forms, the trailing style word, and the non-m
   assert.deepEqual(host(c.parseMeter('meter: hp/5 hearts')), { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 5 }, style: 'hearts' });
   assert.equal(c.parseMeter('foo: bar'), null, 'not a meter body');
   assert.equal(c.parseMeter('meter: '), null, 'empty spec');
+});
+
+test('agent-review: an unresolved meter names the missing property in its tooltip/aria (src pin)', () => {
+  const md = fnBody(_src, 'mdInline');
+  // the {meter?} marker branch computes the missing prop names and puts them in the tip
+  assert.ok(/filter\(x => x\.kind === 'prop' && !Number\.isFinite\(childPropNumber\(cookieNode, x\.v\)\)\)/.test(md), 'the marker collects unresolved prop refs');
+  assert.ok(/Add a numeric \$\{missing\.join\(' and '\)\} property to this point/.test(md), 'the tip names the property to add');
+  assert.ok(/aria-label="Meter unresolved\. \$\{escQ\(tip\)\}"/.test(md), 'the aria carries the same reason');
 });
 test('#648 meterPool — icon-pool fill counts, or null past the cap (#668)', () => {
   assert.deepEqual(host(c.meterPool(3, 5)), { filled: 3, empty: 2 });
@@ -15161,7 +15179,18 @@ test('renderMathPill wiring: builds the merged own+ancestor scope and uses it fo
   assert.ok(/const vmap = \(renderPosVarMap && renderPosVarMap\.get\(key\)\) \|\| renderVarMap/.test(fn), 'the scope base is the per-pill positional map');
   assert.ok(/const scope = resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), vmap\)/.test(fn), 'the pill scope inherits ancestor props via resolveNodeScope (own props win last)');
   assert.ok(/evalMath\(expr, scope\)/.test(fn), 'the fresh compute uses the merged scope');
-  assert.ok(/mathErrorReason\(expr, scope, _varCycles\)/.test(fn), 'the error-reason path uses the SAME scope (or a prop-resolved expr shows a false #ERR reason)');
+  assert.ok(/mathErrorReason\(expr, scope, _varCycles, globalVarMap\)/.test(fn), 'the error-reason path uses the SAME scope (globalVarMap is passed only to distinguish a forward ref, not to resolve)');
+});
+
+test('agent-review: mathErrorReason distinguishes a forward reference ("declared later") from a typo ("bad ref")', () => {
+  // rate is unknown in the positional scope but present doc-wide (declared below) → declared later
+  assert.equal(c.mathErrorReason('rate * 40', {}, new Set(), { rate: 85 }), 'declared later');
+  // rate is truly unknown (not in either map) → bad ref
+  assert.equal(c.mathErrorReason('rate * 40', {}, new Set(), {}), 'bad ref');
+  assert.equal(c.mathErrorReason('rate * 40', {}, new Set()), 'bad ref', 'no globalVars (dialog callers) keeps the old bad-ref behavior');
+  // a truly-unknown name outranks a declared-later one (the more actionable fix)
+  assert.equal(c.mathErrorReason('rate + nope', {}, new Set(), { rate: 85 }), 'bad ref');
+  assert.ok(c.mathReasonPhrase('declared later').includes('move its declaration above'), 'the phrase names the fix');
 });
 
 // ── #448 correctness hazards batch ───────────────────────────────────────────
