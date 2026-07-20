@@ -73,6 +73,39 @@ accidental):
 - **Vaults past ~17k points on default storage** (the measured `localStorage` wall;
   the workspace folder lifts it, but a 100k-node graph-base is not this product).
 
+## 2c. Not a second brain: the scratchpad test (owner, 2026-07-20)
+
+Sourced from the owner's own use — the generative moment, the architect's doodle, a dozen
+movie ideas run in parallel — and from Ryder Carroll's *"I Deleted My Second Brain"*
+(bulletjournal.com, 2026). The PKM "second brain" promise — capture everything, forget
+nothing, let the structure remember for you — has a real failure mode: storage
+substitutes for cognition (*"a tag is not an insight... an idea not re-encountered might
+as well have never been had"*), and the bigger the archive grows, the more thinking gets
+deferred to a future self who will sort, connect, and understand it later. That self
+never arrives. This is the Appleton critique (§3) from the inside, and mistaking
+collect/store/search/link for the product is exactly the failure the mission test (§9)
+exists to catch.
+
+**Pointliner's answer is structural, not just stated.** Its primitives invite
+re-encounter rather than filing: a pill is live, re-read or re-rolled on THIS look, not
+archived for a later session (`{= sum(cost)}` is never stale; `{2d6}` answers again on
+click). §8b's falsification test — pills going unused, the app reducing to "a nice
+outliner" — is already the guard against the archive taking over the engine. And the
+resurfacing the article asks for is a shipped mechanic, not an aspiration: `{roll: #idea}`
+pulls a past thought back into present attention as material for what the user is doing
+right now (§7's own demo), never a browse of a maintained graph.
+
+**The workspace exists for parallel trains of thought, not a connected graph.** Multiple
+documents let unrelated brainstorms run unobstructed, side by side; when one reaches for
+another — a link, a mirror, a cross-doc query — that relationship is fodder the CURRENT
+thought can use, never an archive-building obligation. A feature that nudges a user
+toward "link it now, make sense of it later" is optimizing for the deferral trap,
+whatever the mission test says about composing with the engine.
+
+Pointliner is not a second brain. If it lands anywhere in this argument, it's where
+Carroll himself lands — a workspace for the mind the user already has, never a
+replacement for it.
+
 ## 3. The belief (what competitors don't hold)
 
 > **Text should be alive: generation and computation are writing primitives, not a
@@ -267,7 +300,7 @@ answer is that it does not ask the question.
 
 ## 9. How this file is used
 
-- **As a scope filter, twice:**
+- **As a scope filter, three times:**
   1. **The mission test** (§0b, born in `base-views-vision.md`, canonical here) — *a
      feature earns its place where it composes with the generative/computational layer;
      parity with database/PKM apps is the scope creep the fences exist to stop.*
@@ -276,6 +309,11 @@ answer is that it does not ask the question.
      a problem with a rigid schema?* A feature passes when its general instrument is
      identifiable (bases pass: they are the substrate of every RPG table); it gets
      flagged when it encodes one domain's shape directly (§8a is the standing example).
+  3. **The scratchpad test** (§2c, owner, 2026-07-20) — does this feature keep a user
+     inside present-tense, generative thinking, or does it ask them to defer
+     understanding to a later organizing session? A feature can pass the mission test
+     (composes with the engine) and the substrate test (reaches the general instrument)
+     and still fail this one if its real effect is "capture now, connect later."
   When a proposal leans database-parity or domain-schema, this file is the counterweight
   to cite.
 - **As the voice source (invitingness, §3c — show, don't sell):** README and first-run
