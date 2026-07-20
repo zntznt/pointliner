@@ -63,6 +63,11 @@ ICONS = [
     # capture chips (2026-07-09, #421): the jump-away segment wears the outward arrow
     # (the same metaphor as the cross-doc link's trailing cue)
     "arrow-up-right-from-square",
+    # meter icon-rows (were shipped in FA_GLYPHS but not synced here — re-added so a rebuild
+    # doesn't drop them): {meter: hp/5 hearts | skulls | stars | shields | droplets}
+    "heart", "skull", "star", "shield", "droplet",
+    # rolls-log toolbar toggle (2026-07-20, #951): a scroll = the running log of rolls/oracles
+    "scroll",
 ]
 
 # Some icons are used in BOTH solid and regular in the app. The font subset must
@@ -79,7 +84,9 @@ def fetch(path):
     local = os.path.join(CACHE_DIR, os.path.basename(path))
     if os.path.exists(local) and os.path.getsize(local) > 0:
         return open(local, "rb").read()
-    url = f"https://github.com/FortAwesome/Font-Awesome/raw/{FA_VERSION}/{path}"
+    # raw.githubusercontent.com is the canonical raw host; github.com/.../raw/ is a 302 redirect
+    # to it that some proxies block (403 on the hop), so hit raw directly.
+    url = f"https://raw.githubusercontent.com/FortAwesome/Font-Awesome/{FA_VERSION}/{path}"
     subprocess.run(["curl", "-sL", "--fail", "--max-time", "60", "-o", local, url], check=True)
     return open(local, "rb").read()
 
