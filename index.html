@@ -7937,30 +7937,30 @@ function fromOpml(xml) {
 // Point-level commands — change WHAT THIS POINT IS. Triggered by "/".
 const BLOCK_CMDS = [
   // Lists — the everyday blocks, shown first
-  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       label:'Bullet',     desc:'Plain bullet point, the default block.', ex:'- text', section:'Lists', turn:true },
-  { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Lists', turn:true },
-  { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Lists', turn:true },
+  { id:'ul',      icon:'•',    fa:'fa-solid fa-list-ul',       keys:['list','bullet'], label:'Bullet',     desc:'Plain bullet point, the default block.', ex:'- text', section:'Lists', turn:true },
+  { id:'ol',      icon:'1.',   fa:'fa-solid fa-list-ol',       keys:['number','ordered'], label:'Numbered',   desc:'Auto-numbered list; renumbers itself.',   ex:'1. text', section:'Lists', turn:true },
+  { id:'todo',    icon:'☐',    fa:'fa-regular fa-square-check', keys:['task','tick'], label:'To-do',     desc:'Checkbox you can tick off.',              ex:'- [ ] text', section:'Lists', turn:true },
   // Headings
-  { id:'h1',      icon:'H1',   fa:'',                          label:'Heading 1',  desc:'Largest section heading.',                ex:'# text', section:'Headings', turn:true },
+  { id:'h1',      icon:'H1',   fa:'',                          keys:['title'], label:'Heading 1',  desc:'Largest section heading.',                ex:'# text', section:'Headings', turn:true },
   { id:'h2',      icon:'H2',   fa:'',                          label:'Heading 2',  desc:'Medium sub-section heading.',             ex:'## text', section:'Headings', turn:true },
   { id:'h3',      icon:'H3',   fa:'',                          label:'Heading 3',  desc:'Smallest heading.',                       ex:'### text', section:'Headings', turn:true },
   // Blocks
-  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     label:'Paragraph',  desc:'Prose block where Enter makes a line break and Shift+Enter starts a new point.', ex:'text\nmore text', section:'Blocks', turn:true },
-  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
-  { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
-  { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
-  { id:'secret',  icon:'🙈',   fa:'fa-solid fa-eye-slash',     label:'Secret',     desc:'Hide a line behind a blur until you click or press it to reveal. Good for spoilers or a surprise you do not want to see yet.', ex:'>! hidden text', section:'Blocks' },
-  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   label:'Base',       desc:'A structured table with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
+  { id:'para',    icon:'¶',    fa:'fa-solid fa-paragraph',     keys:['prose','text','writing'], label:'Paragraph',  desc:'Prose block where Enter makes a line break and Shift+Enter starts a new point.', ex:'text\nmore text', section:'Blocks', turn:true },
+  { id:'code',    icon:'</>',  fa:'fa-solid fa-code',          keys:['pre','monospace','snippet'], label:'Code block', desc:'Monospaced code block. Shift+Enter adds lines and Enter exits to a new point.',     ex:'```', section:'Blocks', turn:true },
+  { id:'divider', icon:'—',    fa:'fa-solid fa-minus',         keys:['hr','rule','line','separator','break'], label:'Divider',    desc:'Horizontal rule between sections.',       ex:'---', section:'Blocks', turn:true },
+  { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   keys:['blockquote','callout','cite'], label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
+  { id:'secret',  icon:'🙈',   fa:'fa-solid fa-eye-slash',     keys:['spoiler','hide','blur','hidden'], label:'Secret',     desc:'Hide a line behind a blur until you click or press it to reveal. Good for spoilers or a surprise you do not want to see yet.', ex:'>! hidden text', section:'Blocks' },
+  { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   keys:['database','grid','board','kanban','cards','calendar','spreadsheet'], label:'Base',       desc:'A structured table with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
   { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A base whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
-  { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
+  { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         keys:['stamp','insert'], label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-stamp',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
-  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or bare /due to open the Schedule dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
-  { id:'check',   icon:'✓',    fa:'fa-solid fa-clipboard-check',  label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
-  { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
-  { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
+  { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  keys:['date','deadline','when','remind'], label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or bare /due to open the Schedule dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
+  { id:'check',   icon:'✓',    fa:'fa-solid fa-clipboard-check',  keys:['constraint','assert','lint','validate','budget'], label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
+  { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           keys:['aka','synonym'], label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
+  { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          keys:['property','field','attribute','meta'], label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
   { id:'note',    icon:'≡',    fa:'fa-solid fa-pen',           label:'Note',       desc:'Add a plain-text note under this point for context that does not belong on the line. Opens the note editor right below the point, no dialog.', ex:'/note', section:'Organize' },
-  { id:'refile',  icon:'⇄',    fa:'fa-solid fa-arrow-right-arrow-left', label:'Refile', desc:'Move this point and its children under another point. Type /refile:title to move it there directly (or /refile:top to lift it out), or /refile to pick from a tree.', ex:'/refile:Inbox · /refile:top', section:'Organize' },
-  { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
+  { id:'refile',  icon:'⇄',    fa:'fa-solid fa-arrow-right-arrow-left', keys:['move'], label:'Refile', desc:'Move this point and its children under another point. Type /refile:title to move it there directly (or /refile:top to lift it out), or /refile to pick from a tree.', ex:'/refile:Inbox · /refile:top', section:'Organize' },
+  { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
   { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', section:'Organize' },
 ];
 
@@ -8022,30 +8022,30 @@ const INSERT_CMDS = [
   // can generate or compute). A curious @ opens on the thesis, not below the basic inserts. The
   // sections are named for the thesis words (Generate / Compute) so the door is self-labelling.
   // Generate — the generative pills
-  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Generate' },
-  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Generate' },
-  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Generate' },
-  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     label:'Roll on your document', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
-  { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math.', ex:'origin: a {color} {animal}', section:'Generate' },
-  { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
-  { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Generate' },
+  { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     keys:['roll','d20','d100','d6','fudge','pool'], label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Generate' },
+  { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', keys:['chain'], label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Generate' },
+  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  keys:['loot','treasure','encounter'], label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Generate' },
+  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
+  { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     keys:['generate','name','npc','tracery','generator'], label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math.', ex:'origin: a {color} {animal}', section:'Generate' },
+  { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
+  { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Generate' },
   // Compute — live numbers and values
-  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   label:'Math',         desc:'Live calculator; recomputes with variables.', ex:'sqrt(16) · 2*pi*r · a>b?x:y', section:'Compute' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Compute' },
-  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Compute' },
+  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','convert','unit','units','words','formula','equation'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units, and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Compute' },
+  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess'], label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Compute' },
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
-  { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
-  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
-  { id:'meter',    icon:'▰',  fa:'',   label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Reads the point’s own properties: {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Add a style word for a row of icons: {meter: hp/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: hp/hpmax}  ·  {meter: hp/5 hearts}', section:'Trackers' },
+  { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
+  { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', keys:['tension','segment','pie','timer'], label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
+  { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: 5/5 hearts}', section:'Trackers' },
   // Insert — basic inline elements
-  { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
-  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
-  { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
-  { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
+  { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  keys:['fn'], label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
+  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      keys:['img','picture','photo'], label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
+  { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         keys:['url','hyperlink'], label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
+  { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  keys:['grid'], label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   // Organize — document-wide state sets and live searches
-  { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
-  { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
-  { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. Type {count: is:todo} to write one inline.', ex:'{count: is:todo}', section:'Organize' },
+  { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  keys:['state','status','workflow','kanban','stages'], label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
+  { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  keys:['search','find','filter'], label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
+  { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  keys:['howmany','number','total'], label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. Type {count: is:todo} to write one inline.', ex:'{count: is:todo}', section:'Organize' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -18188,8 +18188,13 @@ function checkSlash(content, nodeId) {
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
   // "start" is an alias of the single "due" (Schedule) command so /start:VALUE has a
   // menu door too; the actual key (due vs start) is read from the query at apply time.
+  // A command matches on its id, its label, or a `keys` synonym. `keys` are hidden aliases
+  // (never rendered — search-only) so a pill answers the natural word for it in ITS OWN door:
+  // @calc / @sum / @hp / @convert all find the Math or Meter pill. Aliases never cross doors —
+  // `/` stays "turn this point into something", `@` stays "insert at the caret" (and { is grammar).
+  // Block commands carry no keys → their matching is unchanged.
   const matches = pool.filter(c =>
-    c.id.startsWith(matchWord) || c.label.toLowerCase().includes(matchWord)
+    c.id.startsWith(matchWord) || c.label.toLowerCase().includes(matchWord) || (c.keys || []).some(k => k.startsWith(matchWord))
   );
   if (!matches.length) { hideSlashMenu(); return; }
   // When a ":value" was typed, keep the exact-id verb selected (so Enter applies it)
@@ -19037,9 +19042,12 @@ function insertInlineArtifact(id, nodeId, content) {
     // the Blades default; edit the 6 for any size, click a segment to advance. #646.
     applyInlineInsertion(nodeId, offset, '[o 0/6]');
   } else if (id === 'meter') {
-    // a meter is plain text (no sidecar), computed live from the point's props — insert the
-    // {meter: hp/hpmax} recipe; edit the prop names, or use a literal max / bare percent. #648.
-    applyInlineInsertion(nodeId, offset, '{meter: hp/hpmax}');
+    // a meter is plain text (no sidecar), computed live. agent-review: insert the LITERAL
+    // {meter: 8/12} — a working bar you edit in place — not the property-bound {meter: hp/hpmax},
+    // which renders a dead {meter?} until you separately add hp/hpmax properties (the persona
+    // "the default is undiscoverable / dead-on-arrival" finding). The prop form stays documented
+    // in the menu desc for the character-sheet use. #648.
+    applyInlineInsertion(nodeId, offset, '{meter: 8/12}');
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
