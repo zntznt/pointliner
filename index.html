@@ -3238,6 +3238,27 @@ function collapseDoubledKeyword(text, states = knownStates()) {
   if (!nk || !states.has(nk[1])) return s;   // no second leading keyword → nothing to collapse
   return formatTodo(parseTodo(s, states));
 }
+// agent-review: the app's OTHER to-do dialect collision — a TASK-MARKER continuation prefix
+// (`- [ ] `, pre-filled by Enter after a checkbox task) immediately followed by a freshly-typed
+// STATE KEYWORD (`- [ ] #TODO body`). parseTodo only recognizes a keyword at the very start of the
+// text, so the marker silently swallows it as inert task-body text — the #TODO/#NEXT/etc. renders
+// as plain (or hashtag-styled) decoration, never registers as a real state, with no visual cue that
+// anything failed. Same "a retyped marker replaces the stale continuation, never stacks" principle
+// #947 already established for two colliding state keywords — just the other marker pair. A bare
+// `#KEYWORD` at text-start is ALREADY unconditionally treated as a state everywhere in the app
+// (parseTodo/deriveTypeFromText), so this closes a gap in that same rule rather than introducing a
+// new ambiguity. Unconditional on the text pattern (mirrors collapseDoubledKeyword — no separate
+// "was this a continuation" check needed). Called BEFORE collapseDoubledKeyword at the exitEdit
+// chokepoint so a compound collision (`- [ ] #TODO #NEXT body`) fully collapses to `#NEXT body`.
+function collapseTaskKeywordCollision(text, states = knownStates()) {
+  const s = text == null ? '' : String(text);
+  const m = s.match(TASK_STRIP_RE);
+  if (!m) return s;
+  const after = s.slice(m[0].length);
+  const km = after.match(LEAD_WORD_RE);
+  if (!km || !states.has(km[1])) return s;   // no recognized keyword right after the task marker → leave alone
+  return after;
+}
 
 // Step through an ordered cycle list with wraparound; unknown current → start.
 function cycleIn(list, current, dir) {
@@ -16248,6 +16269,7 @@ function exitEdit(content, node) {
   }
   const prevText = content.dataset.prevText ?? '';
   node.text = editableText(content);
+  node.text = collapseTaskKeywordCollision(node.text);   // agent-review: a retyped keyword replaces a task-marker continuation too (run first — see comment)
   node.text = collapseDoubledKeyword(node.text);   // #947: a retyped state keyword replaces the continuation's prefix, never stacks
 
   if (node.type === 'base') {
@@ -31663,7 +31685,15 @@ logoBtn.addEventListener('keydown', e => {
 fileMenu.addEventListener('click', e => e.stopPropagation());
 document.addEventListener('click', closeFileMenu);
 
-document.getElementById('btn-new').addEventListener('click', () => { newFile(); closeFileMenu(); });
+// agent-review: close-THEN-open, matching every other dialog-opening row (btn-appearance,
+// btn-calendar, btn-units, etc. below). newFile() opens the in-app "New document" name prompt
+// via openInsertDialog, which shares the #io-back scrim with the file menu itself. The old
+// newFile();closeFileMenu() order opened that dialog FIRST, then immediately tore the shared
+// scrim down in the same click — the dialog was fully built in the DOM but invisible/inert, a
+// silent no-op on a menu action a first-time user is very likely to try. btn-open/btn-save/
+// btn-save-as are unaffected (openFile/saveFile/saveAsFile use native browser/OS pickers, which
+// never touch #io-back), so only this row needed reordering.
+document.getElementById('btn-new').addEventListener('click', () => { closeFileMenu(); newFile(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
 document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
 document.getElementById('btn-starters')?.addEventListener('click', () => { openStarterGallery(); });   // #565 (closes the menu itself)
