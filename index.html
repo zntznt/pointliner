@@ -28192,7 +28192,13 @@ async function reopenWorkspaceDoc(dir, name) {
   const localId = root?.docId || null;   // the in-memory doc's identity, captured before any adopt
   let restoreFocusId = null;
   if (localPayload) {
-    try { restoreFocusId = JSON.parse(localPayload).focusedId ?? null; } catch (_) {}
+    try {
+      const lp = JSON.parse(localPayload);
+      // Only restore zoom when the autosave is for THIS document — a different doc's focusedId
+      // would inject into the wrong tree. The docId check happens below, once we have the file's
+      // docId, so stash both and gate at the adoptDoc call sites.
+      restoreFocusId = { focusedId: lp.focusedId ?? null, docId: lp.root?.docId ?? null };
+    } catch (_) {}
   }
 
   if (fileIsAuthoritative) {                             // the file is the newer/authoritative copy
@@ -28215,7 +28221,7 @@ async function reopenWorkspaceDoc(dir, name) {
     // case on a large doc) is exactly when silence would hide an unrecoverable loss, so the
     // failure variant says so honestly instead of gating the whole hint on success.
     const sameDocDiverged = knownFileMod > 0 && localId && fileRoot.docId && localId === fileRoot.docId;
-    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });
+    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId: restoreFocusId && fileRoot.docId && restoreFocusId.docId === fileRoot.docId ? restoreFocusId.focusedId : null });
     if (sameDocDiverged) {
       const stashed = await stashPayloadAsPrev(localPayload, localId);
       flashHint(stashed
@@ -28252,7 +28258,7 @@ async function reopenWorkspaceDoc(dir, name) {
       // a docId (ensureDocId) and the next auto-write persists it into the file, so a
       // legacy file takes this branch at most once.
       const unknownIdentity = !fileRoot.docId;   // localPayload/localId are hoisted above (pre-adopt)
-      adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });
+      adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId: restoreFocusId && fileRoot.docId && restoreFocusId.docId === fileRoot.docId ? restoreFocusId.focusedId : null });
       // Key the restore point where the user will look for it: identity-unknown means the
       // discarded edits are almost certainly THIS document's, so they go under the doc now
       // on screen (root.docId, freshly minted by the adopt; the payload is re-keyed to carry
