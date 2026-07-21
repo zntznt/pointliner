@@ -33868,7 +33868,7 @@ function readPrevVersions() {
 // path fires-and-forgets it (see writeLocalAutosave).
 function withPrevStoreLock(fn) {
   if (typeof navigator !== 'undefined' && 'locks' in navigator && navigator.locks && typeof navigator.locks.request === 'function') {
-    return navigator.locks.request('pl-prev-store', async () => { fn(); }).catch(() => {});
+    return navigator.locks.request('pl-prev-store', async () => { fn(); }).catch(() => { console.warn('Pointliner: could not acquire lock for autosave restore point'); });
   }
   try { fn(); } catch (_) {}
   return Promise.resolve();
