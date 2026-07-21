@@ -8617,6 +8617,7 @@ function render() {
   // as the user then focuses child rows, the panel tracks them (unchanged). Bases have no title
   // backlink panel, so skip them.
   if (_focusChanged && focusedId && vp.type !== 'base') updateBlPanel(focusedId);
+  else if (_focusChanged && !focusedId) { hideBlPanel(); hideFnPanel(); }
 }
 let _lastRenderFocusedId = null; // #488: detect a zoom (focusedId change) to skip scroll-restore
 
