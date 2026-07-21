@@ -154,7 +154,7 @@ button,[contenteditable],input{touch-action:manipulation}
   --hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--acc:#4338ca;--acc-fg:#fff;--ring:rgba(67,56,202,.25);
   --cbg:#eee9dd;--del:#6b665c;--qbdr:color-mix(in srgb,var(--acc) 55%,transparent);
   --ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;
-  --r-xs:3px;--r-sm:6px;--r-md:8px;--r-lg:12px;
+  --r-xs:3px;--r-sm:6px;--r-md:8px;--r-lg:12px;--r-badge:4px;
   --sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);
   --sh-2:0 2px 4px rgba(45,35,25,.10),0 12px 26px rgba(45,35,25,.14);
   --sh-up:0 -4px 24px rgba(45,35,25,.10);
@@ -168,6 +168,10 @@ button,[contenteditable],input{touch-action:manipulation}
      values below (dual-home palette invariant, DL §4). */
   --sw-blue:#0f5cb0;--sw-purple:#6d28d9;--sw-green:#1e7029;--sw-teal:#0f766e;--sw-orange:#9a5518;
   --sw-red:#b3271f;--sw-pink:#a3327a;--sw-indigo:#4338ca;--sw-oxblood:#8f2f22;
+  /* Per-family pill identity hues (DL §4). Fixed colours — never themed — but collected
+     as named tokens so the palette lives in :root rather than scattered across selectors. */
+  --pill-dice:#9a3b2e;--pill-markov:#3d6280;--pill-grammar:#4a7a4d;--pill-math:#8a5300;
+  --pill-var:#2a7f74;--pill-est:#5a4a8a;--pill-query:#4a6b8a;
 }
 @media(prefers-color-scheme:dark){:root{
   color-scheme:dark;
@@ -657,7 +661,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-qbase-strip .mt-qbase-head{flex:1;margin-bottom:0}
 .mt-qbase-cap{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid var(--bdr);border-radius:var(--r-md);padding:2px 10px;cursor:pointer;white-space:nowrap}
 .mt-qbase-cap:hover{color:var(--fg);border-color:color-mix(in srgb,var(--acc) 40%,var(--bdr))}
-.mt-qbase-head{--pill:#4a6b8a;display:flex;align-items:center;gap:6px;padding:4px 8px;margin-bottom:2px;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.85em;cursor:pointer;user-select:none}
+.mt-qbase-head{--pill:var(--pill-query);display:flex;align-items:center;gap:6px;padding:4px 8px;margin-bottom:2px;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.85em;cursor:pointer;user-select:none}
 .mt-qbase-head:hover{border-color:color-mix(in srgb,var(--pill) 40%,var(--bdr))}
 /* UXP-179: the base-view focusable controls share ONE canonical focus recipe (DL §4) — a solid
    accent outline, not a suppressed-outline --ring ghost (which failed the §3 3:1 non-text floor and
@@ -1100,7 +1104,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 /* Base rule carries the accent tint so custom-sequence states render themed;
    the four built-in classes override it, and any sequence's DONE-side state
    gets the muted look via .todo-state-isdone (declared last so it wins). */
-.todo-state{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;cursor:pointer;user-select:none;background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
+.todo-state{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:var(--r-badge);vertical-align:middle;margin-right:4px;line-height:1.5;cursor:pointer;user-select:none;background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
 .todo-state-todo{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc)}
 .todo-state-next{background:color-mix(in srgb,var(--ok) 16%,transparent);color:var(--ok)}
 .todo-state-waiting{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
@@ -1141,7 +1145,7 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .nt-para .dice-total, .nt-para .var-val{font-weight:inherit;font-family:inherit}   /* read as prose, not a bold-mono island */
 /* query pill (block): a live embedded search. --pill hue #4a6b8a (info-family blue, distinct
    from the artifact hues per design-language §4). Uses only tokens + the --r-* radii. */
-.query-pill{--pill:#4a6b8a;display:block;margin:3px 0;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.92em;cursor:pointer;user-select:none;overflow:hidden}
+.query-pill{--pill:var(--pill-query);display:block;margin:3px 0;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.92em;cursor:pointer;user-select:none;overflow:hidden}
 .query-pill:hover{border-color:color-mix(in srgb,var(--pill) 40%,var(--bdr))}
 .query-head{display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid color-mix(in srgb,var(--pill) 14%,var(--bdr))}
 .query-head .query-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));font-size:.85em;display:inline-flex;flex-shrink:0}
@@ -1167,12 +1171,12 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .query-pill-count .query-count{font-weight:600;font-variant-numeric:tabular-nums;color:var(--fg)}
 .query-pill-count .query-edit{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .query-pill-count:hover .query-edit{opacity:.6}
-.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:4px;vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;cursor:pointer;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback for out-of-range letters; the a/b/c variants override. UXP-177: cursor:pointer — it's clickable (opens the state/priority picker) like .todo-state */
+.todo-prio{display:inline-block;font-size:.72em;font-weight:600;letter-spacing:.06em;padding:1px 6px;border-radius:var(--r-badge);vertical-align:middle;margin-right:4px;line-height:1.5;user-select:none;cursor:pointer;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}/* UXP-151: a muted fallback for out-of-range letters; the a/b/c variants override. UXP-177: cursor:pointer — it's clickable (opens the state/priority picker) like .todo-state */
 .todo-prio-a{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
 .todo-prio-b{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
 .todo-prio-c{background:color-mix(in srgb,var(--info) 16%,transparent);color:var(--info)}
 /* progress cookie [/]/[%] — a muted monospace tally; goes success-hued when complete */
-.cookie{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 5px;border-radius:4px;vertical-align:baseline;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
+.cookie{display:inline-block;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 5px;border-radius:var(--r-badge);vertical-align:baseline;line-height:1.5;user-select:none;background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
 .cookie-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
 /* progress clock [o N/M]: the cookie's compact bracket look, but CLICKABLE (advances a
    manual counter). The ring glyph is content, the mono count is truth. #646. */
@@ -1202,9 +1206,9 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .meter-icon-empty{opacity:.28}
 /* per-node properties — a row of key:value chips below the content */
 .props-area{display:flex;flex-wrap:wrap;gap:4px;padding:1px 3px 3px;flex:1;min-width:0}
-.prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:4px;padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
+.prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:var(--r-badge);padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
 .prop-chip:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
-.prop-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
+.prop-chip:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-badge)}
 .prop-key{color:var(--muted);font-weight:600}
 .prop-icon{color:var(--muted);margin-right:4px;font-size:.9em;align-self:center}/* #464: optional per-property icon */
 .prop-sep{color:var(--muted);margin:0 3px}
@@ -1240,8 +1244,8 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .node-props-row>.props-area{padding-top:0}
 /* pill family hues: one custom property per artifact family, mixed at whisper level so
    each widget kind is identifiable without turning the line into candy */
-.dice-roll{--pill:#9a3b2e}.mk-roll{--pill:#3d6280}
-.gr-roll{--pill:#4a7a4d}.math-roll{--pill:#8a5300}.var-pill{--pill:#2a7f74}.seq-pill{--pill:#3d6280}.est-pill{--pill:#5a4a8a}
+.dice-roll{--pill:var(--pill-dice)}.mk-roll{--pill:var(--pill-markov)}
+.gr-roll{--pill:var(--pill-grammar)}.math-roll{--pill:var(--pill-math)}.var-pill{--pill:var(--pill-var)}.seq-pill{--pill:var(--pill-markov)}.est-pill{--pill:var(--pill-est)}
 .dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.seq-pill,.est-pill{
   padding:1px 8px 1px 6px;gap:5px;
   background:color-mix(in srgb,var(--pill) 7%,var(--cbg));
@@ -2185,7 +2189,7 @@ body:not(.v-guided) .logo-file-cue{display:none}
 /* variable-base panel group header: one collapsible row per projecting base */
 .vp-group{display:flex;align-items:center;gap:5px;width:100%;font-family:var(--font);font-size:12px;font-weight:600;color:var(--fg);background:none;border:none;border-top:1px solid var(--bdr);padding:5px 0 3px;margin-top:3px;cursor:pointer;text-align:left}
 .vp-group:hover{color:var(--acc)}
-.vp-group:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:4px}
+.vp-group:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-badge)}
 .vp-group-chev{color:var(--muted);font-size:10px}
 .vp-group-count{color:var(--muted);font-weight:400;margin-left:auto}
 .vp-eq{color:var(--muted);font-size:11px}
