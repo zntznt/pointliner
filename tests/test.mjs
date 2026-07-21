@@ -563,6 +563,29 @@ test('oracleParts — unknown band or malformed body is null (stays literal on e
   assert.equal(c.oracleParts('oracle: yes 3 | no 1'), null); // free-form odds are the plain alternation's job
 });
 
+test('oracleParts — numeric odds {oracle: 25} builds weighted Yes/No body', () => {
+  assert.equal(c.oracleParts('oracle: 25').body, 'Yes 25 | No 75');
+  assert.equal(c.oracleParts('oracle: 0').body, 'Yes 0 | No 100');
+  assert.equal(c.oracleParts('oracle: 100').body, 'Yes 100 | No 0');
+  assert.equal(c.oracleParts('oracle: 50').swing, false);
+});
+
+test('oracleParts — numeric odds + swing builds six-way swing body', () => {
+  const p = c.oracleParts('oracle: 25 + swing');
+  assert.equal(p.swing, true);
+  assert.match(p.body, /^Yes, and \d+ \| Yes \d+ \| Yes, but \d+ \| No, but \d+ \| No \d+ \| No, and \d+$/);
+});
+
+test('oracleParts — out-of-bounds numeric odds return null (stays literal)', () => {
+  assert.equal(c.oracleParts('oracle: 101'), null);
+  assert.equal(c.oracleParts('oracle: 999'), null);
+});
+
+test('oracleParts — numeric and band-name forms coexist', () => {
+  assert.equal(c.oracleParts('oracle: likely').body, 'Yes 3 | No 1');   // band name still works
+  assert.equal(c.oracleParts('oracle: 25').body, 'Yes 25 | No 75');     // numeric still works
+});
+
 test('promoteBraceBody — {oracle: band} builds the dialog-identical anonymous grammar (#543)', () => {
   const node = { text: '', grammar: [] };
   const tok = c.promoteBraceBody(node, 'oracle: likely');
@@ -5164,6 +5187,17 @@ test('todo: todoSortKey + compareTodo (not-done before done, A<B<C<none)', () =>
   const items = ['#DONE done it', '#TODO [#C] low', '#NEXT [#A] hot', 'plain note'];
   assert.deepEqual(items.slice().sort(compareTodo),
     ['#NEXT [#A] hot', '#TODO [#C] low', 'plain note', '#DONE done it']);
+});
+
+test('sortChildrenByProp — sorts children by property, numeric-aware, nulls last', () => {
+  const r = c.mkNode('');
+  const a = c.mkNode('A'); a.props = [{ key: 'cost', val: '30' }]; r.children.push(a);
+  const b = c.mkNode('B'); b.props = [{ key: 'cost', val: '10' }]; r.children.push(b);
+  const c2 = c.mkNode('C'); r.children.push(c2);           // no cost prop
+  const d = c.mkNode('D'); d.props = [{ key: 'cost', val: '5' }]; r.children.push(d);
+  c.buildIndex(r, null);
+  c.sortChildrenByProp(r, 'cost');
+  assert.deepEqual(r.children.map(n => n.id), [d.id, b.id, a.id, c2.id]);   // 5, 10, 30, null
 });
 
 // ── markdown-first to-dos: type/checked DERIVE from the text ───────────────────
@@ -14689,7 +14723,7 @@ test('modes batch — lean { picker shows the one-line tip, like / and @', () =>
 
 // item 9 (modes batch): the lean bullet hover menu is reduced to four ops; "More" is transient in lean.
 test('modes batch — lean bullet menu reduced to four ops, transient More', () => {
-  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function showBulletPopup(') + 19000);
+  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function showBulletPopup(') + 20000);
   // the four lean-tier ops are flagged lean:true — Zoom + Collapse(para) + Note + Dates + Delete = 5 markers
   assert.ok((fn.match(/lean:true/g) || []).length >= 5, 'the lean-tier ops must be flagged lean:true (Zoom/Collapse, Note, Dates, Delete)');
   // a lean hover filters to the lean-tier rows; guided/standard keep the primary set
