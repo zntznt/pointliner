@@ -68,6 +68,10 @@ ICONS = [
     "heart", "skull", "star", "shield", "droplet",
     # rolls-log toolbar toggle (2026-07-20, #951): a scroll = the running log of rolls/oracles
     "scroll",
+    # 2026-07-21 audit: 7 icons referenced in data-fa/setIcon but never added to the subset
+    # (rendered unicode fallbacks; fa-angles-down was a blank box — no setIcon path)
+    "angles-down", "clock-rotate-left", "download", "eye-slash", "list",
+    "fingerprint", "snowflake",
 ]
 
 # Some icons are used in BOTH solid and regular in the app. The font subset must
