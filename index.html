@@ -303,7 +303,6 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .tfr-grip:active{cursor:grabbing;color:var(--muted)}
 .tfr-grip span{display:block;width:3px;height:3px;border-radius:50%;background:currentColor}
 .fm-choice.tfr-dragging{opacity:.42;background:color-mix(in srgb,var(--acc) 12%,transparent)}
-.fm-choice.tfr-dragover{border-top:2px solid var(--acc)}
 .fm-choice:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .fm-choice-mark{flex-shrink:0;width:16px;height:16px;border:1.5px solid var(--bdr-ui);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--acc-fg);font-size:10px;transition:background .12s,border-color .12s}
 .fm-choice.cur .fm-choice-mark{border-color:var(--acc);background:var(--acc)}
@@ -470,7 +469,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .zoom-title:empty::before{content:'(untitled)';color:var(--muted);font-style:italic;font-weight:400;pointer-events:none}
 .zoom-title:focus{box-shadow:0 0 0 2px var(--ring);border-radius:var(--r-xs)}
 .zoom-title:focus-visible{outline:2px solid var(--acc);outline-offset:1px}/* #399: the solid ring — the one diluted ring in the app was unrecorded */
-.zoom-title-base{cursor:default;white-space:normal;overflow-x:visible;overflow-y:visible;max-height:none;font-size:inherit;font-weight:inherit;letter-spacing:inherit}
+.zoom-title-base{cursor:default;white-space:normal;overflow-x:visible;overflow-y:visible;max-height:none;font-size:inherit;font-weight:inherit;letter-spacing:inherit;font-family:var(--font);font-variation-settings:normal}
 
 /* node base */
 .node{position:relative}
@@ -32011,27 +32010,20 @@ function buildToolbarChooser() {
         _dragSrc = f;
         _dragEl = row;
         row.classList.add('tfr-dragging');
-        row.setPointerCapture(e.pointerId);
+        grip.setPointerCapture(e.pointerId);
       });
       grip.addEventListener('pointermove', e => {
-        if (!_dragEl) return;
+        if (!_dragEl || !grip.hasPointerCapture(e.pointerId)) return;
         _dragY = e.clientY;
-        const rows = [...host.querySelectorAll('.cmd-item')];
-        rows.forEach(r => r.classList.remove('tfr-dragover'));
-        let target = null, bestY = Infinity;
-        for (const r of rows) {
-          if (r === _dragEl) continue;
-          const box = r.getBoundingClientRect();
-          const mid = box.top + box.height / 2;
-          const d = Math.abs(_dragY - mid);
-          if (d < bestY) { bestY = d; target = r; }
-        }
-        if (target) target.classList.add('tfr-dragover');
+        e.preventDefault();
       });
       grip.addEventListener('pointerup', e => {
-        if (!_dragEl) return;
+        if (!_dragEl || !grip.hasPointerCapture(e.pointerId)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        grip.releasePointerCapture(e.pointerId);
         const rows = [...host.querySelectorAll('.cmd-item')];
-        rows.forEach(r => r.classList.remove('tfr-dragover', 'tfr-dragging'));
+        rows.forEach(r => r.classList.remove('tfr-dragging'));
         let targetIdx = -1;
         for (const [idx, r] of rows.entries()) {
           if (r === _dragEl) continue;
@@ -32051,8 +32043,6 @@ function buildToolbarChooser() {
       });
       grip.addEventListener('pointercancel', () => {
         if (_dragEl) _dragEl.classList.remove('tfr-dragging');
-        const rows = [...host.querySelectorAll('.cmd-item')];
-        rows.forEach(r => r.classList.remove('tfr-dragover'));
         _dragSrc = null; _dragEl = null;
       });
 
