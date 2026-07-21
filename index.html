@@ -548,6 +548,21 @@ body.v-lean .est-edit:focus-visible,
 body.v-lean .var-edit:focus-visible,
 body.v-lean .query-edit:focus-visible,
 body.v-lean .mt-promote:focus-visible{opacity:1}   /* keyboard focus still reveals (P3) */
+/* Lean mode: hide the level control and auto-hide the toolbar. The toolbar slides up
+   leaving a 4px peek strip at the top — hover or search focus reveals it. Same animation
+   curve and duration as the footer panels for a consistent stack-language. */
+body.v-lean #level-ctl{display:none}
+body.v-lean #toolbar{
+  transform:translateY(calc(-100% + 4px));
+  transition:transform .22s cubic-bezier(.4,0,.2,1);
+}
+body.v-lean #toolbar:hover,
+body.v-lean #toolbar:has(#search-box:focus){transform:translateY(0)}
+/* Touch devices have no hover — keep the toolbar always visible. */
+@media(hover:none){body.v-lean #toolbar{transform:none}}
+@media(prefers-reduced-motion:reduce){
+  body.v-lean #toolbar{transition:none}
+}
 @media(prefers-reduced-motion:reduce){
   .node-row:hover,.bullet:hover .bullet-dot,.bullet-base:hover .bullet-base-ic,
   .nt-divider>.node-row>.bullet:hover .bullet-dot,.nt-ol>.node-row>.bullet:hover .bullet-dot,
