@@ -28134,7 +28134,7 @@ async function connectAdoptExisting(dir, name) {
   try { fh = await dir.getFileHandle(name); fileRoot = fromOpml(await (await fh.getFile()).text()); }
   catch (_) { fileRoot = null; }
   if (fileRoot) {
-    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });   // renders, marks clean, sets the title
+    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });   // renders, marks clean, sets the title
     await anchorWorkspaceFile();       // sync-safety: anchor to the version we just read
     startWorkspaceWatch();             // sync-safety: watch the connected file
     await idbSet(WORKSPACE_KEY, { dir, name });
@@ -28190,6 +28190,10 @@ async function reopenWorkspaceDoc(dir, name) {
   const fileIsAuthoritative = bootPrefersFile({ diskModified: file.lastModified, knownFileMod, localSavedAt: lastAutosaveSavedAt() });
   let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
   const localId = root?.docId || null;   // the in-memory doc's identity, captured before any adopt
+  let restoreFocusId = null;
+  if (localPayload) {
+    try { restoreFocusId = JSON.parse(localPayload).focusedId ?? null; } catch (_) {}
+  }
 
   if (fileIsAuthoritative) {                             // the file is the newer/authoritative copy
     let fileRoot;
@@ -28211,7 +28215,7 @@ async function reopenWorkspaceDoc(dir, name) {
     // case on a large doc) is exactly when silence would hide an unrecoverable loss, so the
     // failure variant says so honestly instead of gating the whole hint on success.
     const sameDocDiverged = knownFileMod > 0 && localId && fileRoot.docId && localId === fileRoot.docId;
-    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
+    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });
     if (sameDocDiverged) {
       const stashed = await stashPayloadAsPrev(localPayload, localId);
       flashHint(stashed
@@ -28248,7 +28252,7 @@ async function reopenWorkspaceDoc(dir, name) {
       // a docId (ensureDocId) and the next auto-write persists it into the file, so a
       // legacy file takes this branch at most once.
       const unknownIdentity = !fileRoot.docId;   // localPayload/localId are hoisted above (pre-adopt)
-      adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });
+      adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });
       // Key the restore point where the user will look for it: identity-unknown means the
       // discarded edits are almost certainly THIS document's, so they go under the doc now
       // on screen (root.docId, freshly minted by the adopt; the payload is re-keyed to carry
