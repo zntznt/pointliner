@@ -13997,7 +13997,7 @@ test('#922 inferColRolesFromModel — status/date columns from data; mixed/empty
 test('bases round 1 — B4 read sites + write sites stay split (source pins)', () => {
   // every colRole READ site consults mtColRoles: the cell paint, the switcher, the view gates,
   // and the number right-align in the row loop
-  assert.ok(/const roles = mtColRoles\(node\);\n\s*const role = roles && roles\[c\];/.test(fnBody(_src, 'mtCellHtml')), 'mtCellHtml reads via the accessor');
+  assert.ok(/const roles = (_colRoles \|\| )?mtColRoles\(node\);\n\s*const role = roles && roles\[c\];/.test(fnBody(_src, 'mtCellHtml')), 'mtCellHtml reads via the accessor');
   assert.ok(/const roles = mtColRoles\(node\) \|\| \[\];/.test(fnBody(_src, 'mtViewSwitcherHtml')), 'the switcher ready-state reads via the accessor');
   const sv = fnBody(_src, 'mtSetView');
   assert.equal((sv.match(/mtColRoles\(node\)/g) || []).length, 2, 'both view gates (board + calendar) read via the accessor');
