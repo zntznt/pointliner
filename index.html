@@ -2447,7 +2447,7 @@ body:not(.v-guided) .logo-file-cue{display:none}
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (dated log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
     <button id="btn-rolllog-tb" class="tbtn-toggle" title="Log rolls: record every dice roll, generator, oracle and pick to a dated Rolls log" aria-label="Log rolls" aria-pressed="false"><i class="fa-solid fa-scroll"></i></button>
-    <button id="btn-agenda" class="tbtn-toggle" title="Agenda of dated points" aria-label="Agenda of dated points" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
+    <button id="btn-agenda" class="tbtn-toggle" title="Agenda: deadlines and schedule" aria-label="Agenda: deadlines and schedule" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
     <button id="btn-done" class="tbtn-toggle active" title="Done points" aria-label="Done points" aria-pressed="true"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
@@ -2541,7 +2541,7 @@ body:not(.v-guided) .logo-file-cue{display:none}
       <div class="fm-cat" data-cat="tools">
         <div class="fm-cat-head">Tools</div>
         <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
-        <div class="cmd-item" id="btn-tags"><div class="cmd-icon" data-fa="fa-solid fa-tag" data-fb="#">#</div><div class="cmd-info"><span class="cmd-label">Browse tags</span><span class="cmd-desc">See every hashtag as a tree; pick one to filter the document</span></div></div>
+        <div class="cmd-item" id="btn-tags"><div class="cmd-icon" data-fa="fa-solid fa-tag" data-fb="#">#</div><div class="cmd-info"><span class="cmd-label">Browse tags &amp; properties</span><span class="cmd-desc">See every hashtag as a tree; pick one to filter the document</span></div></div>
         <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
              version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels-row). -->
         <div class="cmd-item" id="fm-levels-row">
@@ -3343,6 +3343,23 @@ function compareTodo(a, b) {
   const ka = todoSortKey(a), kb = todoSortKey(b);
   for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
   return 0;
+}
+
+// Sort a node's children by a property key, ascending. Numbers sort naturally; dates sort
+// as epoch-days; strings sort alphabetically. Children without the property sink to the end.
+// Returns the sorted array (also mutates in place). Pure — callers supply pushUndo/render.
+function sortChildrenByProp(node, key) {
+  const lk = key.toLowerCase();
+  node.children.sort((a, b) => {
+    const av = childPropNumber(a, lk) ?? (a.props?.find(p => p.key.toLowerCase() === lk)?.val || '');
+    const bv = childPropNumber(b, lk) ?? (b.props?.find(p => p.key.toLowerCase() === lk)?.val || '');
+    if (av === bv) return 0;
+    if (av === '' || av == null) return 1;
+    if (bv === '' || bv == null) return -1;
+    if (typeof av === 'number' && typeof bv === 'number') return av - bv;
+    return String(av).localeCompare(String(bv));
+  });
+  return node.children;
 }
 
 // Direct setters for a one-click state/priority picker (vs. the cycle helpers).
@@ -14688,9 +14705,9 @@ function doChronicleAdd() {
   document.getElementById('chr-input')?.focus();
 }
 
-async function openJournalEntry() {
+async function openJournalEntry(dateIso = todayISO()) {
   const mode = root.journal?.mode || 'append';
-  const iso = todayISO();
+  const iso = dateIso;
 
   if (mode === 'file') {
     if (!workspaceDir) {
@@ -18073,6 +18090,23 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       label: 'Sort children by state / priority',
       fn: () => { pushUndo(); node.children.sort((a,b) => compareTodo(a.text, b.text)); markDirty(); render(); hideBpop(); },
     });
+    // Sort children by date properties (only when ≥1 child carries the prop)
+    for (const [key, icon] of [['due', '📅'], ['start', '📅']]) {
+      if (node.children.some(c => (c.props || []).some(p => p.key.toLowerCase() === key))) {
+        const label = key === 'due' ? 'Sort children by due date' : 'Sort children by start date';
+        actions.push({
+          sec:'Organize', icon: { fb:icon },
+          label,
+          fn: () => { pushUndo(); sortChildrenByProp(node, key); markDirty(); render(); hideBpop(); },
+        });
+      }
+    }
+    // Sort alphabetically
+    actions.push({
+      sec:'Organize', icon: { fa:'fa-solid fa-arrow-up-a-z', fb:'⇵' },
+      label: 'Sort children A–Z',
+      fn: () => { pushUndo(); node.children.sort((a,b) => (textForDisplay(a)||'').localeCompare(textForDisplay(b)||'')); markDirty(); render(); hideBpop(); },
+    });
   }
   // Inline-artifact (pill) actions (C4): the pill wall is keyboard-reachable only by
   // landing focus on a tabindex=-1 pill, which a sighted keyboard-only user can't do. So
@@ -18644,7 +18678,11 @@ function slashApply() {
     return;
   }
   if (trigger !== '@' && cmd.id === 'journal') {
-    openJournalEntry();
+    const arg = (rawArg || '').trim();
+    if (arg === 'yesterday') openJournalEntry(formatEpochDays(dueDateToday() - 1));
+    else if (arg === 'tomorrow') openJournalEntry(formatEpochDays(dueDateToday() + 1));
+    else if (/^\d{4}-\d{2}-\d{2}$/.test(arg)) { const d = parseDueDate(arg); if (d !== null) openJournalEntry(formatEpochDays(d)); else openJournalEntry(); }
+    else openJournalEntry();
     return;
   }
   // /variables opens the panel in place (the keyboard door beside the toolbar button
@@ -22183,8 +22221,13 @@ const ORACLE_SWING_CHIPS = ORACLE_SWING_BANDS.map(b => ({ label: b.label, insert
 // (unknown band → null; classifyBraceBody styles the attempt as invalid, and the text stays
 // literal on exit — the dateDeclParts model). Pure, Node-testable.
 function oracleParts(body) {
-  const m = /^oracle\s*:\s*([a-z]+)\s*(\+\s*swing)?\s*$/i.exec((body || '').trim());
+  const m = /^oracle\s*:\s*([a-z]+|\d{1,3})\s*(\+\s*swing)?\s*$/i.exec((body || '').trim());
   if (!m) return null;
+  const num = parseInt(m[1], 10);
+  if (!isNaN(num) && num >= 0 && num <= 100) {
+    const oddsBody = m[2] ? oracleSwingBody(num, 100 - num) : `Yes ${num} | No ${100 - num}`;
+    return { label: String(num), body: oddsBody, swing: !!m[2] };
+  }
   const bands = m[2] ? ORACLE_SWING_BANDS : ORACLE_BANDS;
   const band = bands.find(b => b.label.toLowerCase() === m[1].toLowerCase());
   return band ? { label: band.label, body: band.body, swing: !!m[2] } : null;
