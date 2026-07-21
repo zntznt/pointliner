@@ -17139,8 +17139,8 @@ test('mergeBodyText: split→merge round-trips a to-do byte-identically (the #81
 const _fix = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 test('#801 wiring: exitEdit repaints computed dependents on text change', () => {
   assert.ok(_fix.includes('function repaintComputedDependents'), 'helper missing');
-  assert.match(_fix, /node\.text !== prevText\) \{[\s\S]{0,1600}repaintComputedDependents\(node\.id\)/,
-    'exitEdit partial path must repaint computed dependents when text changed');   // window widened for the #917 ancestor walk
+  assert.match(_fix, /node\.text !== prevText\) \{[\s\S]{0,2000}repaintComputedDependents\(node\.id\)/,
+    'exitEdit partial path must repaint computed dependents when text changed');   // window widened for the computed-node set guard
 });
 test('#802 wiring: pending autosave flushes on pagehide/hidden', () => {
   assert.ok(_fix.includes('function flushPendingAutosave'), 'flush fn missing');
