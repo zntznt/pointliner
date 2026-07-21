@@ -296,6 +296,14 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    radio/checkbox mark is the selection affordance, so no separate 35% border is added. */
 .fm-choice.cur{background:color-mix(in srgb,var(--acc) 16%,transparent)}
 .fm-choice.cur .fm-choice-name{color:var(--acc)}
+/* toolbar-feature reorder grip: a subtle 4-dot handle kept in the muted ink, dragged items pick up
+   the accent tint (the one menu hover language) to signal the drag state. The grip is tappable
+   standalone so a click never toggles visibility and a drag never fires the checkbox. */
+.tfr-grip{display:flex;flex-shrink:0;flex-direction:column;align-items:center;gap:1px;padding:3px 4px 3px 2px;cursor:grab;color:var(--bdr);border-radius:var(--r-sm);margin-left:-2px;touch-action:none}
+.tfr-grip:active{cursor:grabbing;color:var(--muted)}
+.tfr-grip span{display:block;width:3px;height:3px;border-radius:50%;background:currentColor}
+.fm-choice.tfr-dragging{opacity:.42;background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.fm-choice.tfr-dragover{border-top:2px solid var(--acc)}
 .fm-choice:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .fm-choice-mark{flex-shrink:0;width:16px;height:16px;border:1.5px solid var(--bdr-ui);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--acc-fg);font-size:10px;transition:background .12s,border-color .12s}
 .fm-choice.cur .fm-choice-mark{border-color:var(--acc);background:var(--acc)}
@@ -31923,53 +31931,168 @@ document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
 // and applied by toggling .tb-user-hidden (which wins over each button's own display logic); an
 // un-hidden button falls back to its own gate (e.g. Chronicle stays governed by the calendar gate).
 const TOOLBAR_FEATURES = [
-  { id: 'btn-capture',   name: 'Capture' },
-  { id: 'btn-journal',   name: 'Journal' },
-  { id: 'btn-chronicle', name: 'Chronicle' },
-  { id: 'btn-agenda',    name: 'Agenda' },
-  { id: 'btn-graph',     name: 'Link graph' },
-  { id: 'btn-notes',     name: 'Notes' },
+  { id: 'btn-capture',    name: 'Capture' },
+  { id: 'btn-journal',    name: 'Journal' },
+  { id: 'btn-chronicle',  name: 'Chronicle' },
+  { id: 'btn-rolllog-tb', name: 'Log rolls' },
+  { id: 'btn-agenda',     name: 'Agenda' },
+  { id: 'btn-graph',      name: 'Link graph' },
+  { id: 'btn-timeline',   name: 'Timeline' },
+  { id: 'btn-done',       name: 'Done points' },
+  { id: 'btn-notes',      name: 'Notes' },
 ];
 const TOOLBAR_PREF_KEY = 'pl-hidden-toolbar';
+const TOOLBAR_ORDER_KEY = 'pl-toolbar-order';
 const hiddenToolbar = new Set();
 (function loadToolbarPrefs() {
   try {
     const raw = localStorage.getItem(TOOLBAR_PREF_KEY);
     if (raw) JSON.parse(raw).forEach(id => { if (TOOLBAR_FEATURES.some(f => f.id === id)) hiddenToolbar.add(id); });
   } catch (_) { /* private mode / malformed: fall back to all-shown */ }
+  try {
+    const order = localStorage.getItem(TOOLBAR_ORDER_KEY);
+    if (order) {
+      const ids = JSON.parse(order);
+      if (Array.isArray(ids) && ids.length === TOOLBAR_FEATURES.length && TOOLBAR_FEATURES.every(f => ids.includes(f.id)))
+        TOOLBAR_FEATURES.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+    }
+  } catch (_) { /* keep default order */ }
 })();
 function saveToolbarPrefs() {
   try { localStorage.setItem(TOOLBAR_PREF_KEY, JSON.stringify([...hiddenToolbar])); } catch (_) {}
 }
+function saveToolbarOrder() {
+  try { localStorage.setItem(TOOLBAR_ORDER_KEY, JSON.stringify(TOOLBAR_FEATURES.map(f => f.id))); } catch (_) {}
+}
 function applyToolbarPrefs() {
+  const cluster = document.getElementById('tbtn-cluster');
   TOOLBAR_FEATURES.forEach(f => {
-    document.getElementById(f.id)?.classList.toggle('tb-user-hidden', hiddenToolbar.has(f.id));
+    const btn = document.getElementById(f.id);
+    if (btn) {
+      btn.classList.toggle('tb-user-hidden', hiddenToolbar.has(f.id));
+      if (cluster) cluster.appendChild(btn);  // reorder buttons to match TOOLBAR_FEATURES order
+    }
   });
 }
 function buildToolbarChooser() {
   const host = document.getElementById('fm-toolbar-opts');
   if (!host) return;
   host.innerHTML = '';
-  TOOLBAR_FEATURES.forEach(f => {
-    const shown = !hiddenToolbar.has(f.id);
-    const row = document.createElement('div');
-    row.className = 'cmd-item fm-choice fm-toggle' + (shown ? ' cur' : '');
-    row.setAttribute('role', 'checkbox');
-    row.setAttribute('aria-checked', shown ? 'true' : 'false');
-    row.tabIndex = -1;   // arrow-roving owns the tab order, like the static rows
-    row.innerHTML = `<span class="fm-choice-mark" aria-hidden="true"></span><span class="fm-choice-info"><span class="fm-choice-name">${f.name}</span></span>`;
-    // deliberately keeps the menu open (item 5). Update the row IN PLACE (no full rebuild)
-    // so keyboard focus stays on the row the user just toggled.
-    row.addEventListener('click', () => {
-      if (hiddenToolbar.has(f.id)) hiddenToolbar.delete(f.id); else hiddenToolbar.add(f.id);
-      saveToolbarPrefs();
-      applyToolbarPrefs();
-      const on = !hiddenToolbar.has(f.id);
-      row.classList.toggle('cur', on);
-      row.setAttribute('aria-checked', on ? 'true' : 'false');
+  let _dragSrc = null, _dragEl = null, _dragY = 0;
+
+  const commitOrder = () => {
+    const rows = [...host.querySelectorAll('.cmd-item')];
+    const newOrder = rows.map(r => r.dataset.fid);
+    if (newOrder.length !== TOOLBAR_FEATURES.length) return;
+    TOOLBAR_FEATURES.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
+    saveToolbarOrder();
+    applyToolbarPrefs();
+    saveToolbarPrefs();
+  };
+
+  const renderRows = () => {
+    host.innerHTML = '';
+    TOOLBAR_FEATURES.forEach((f, i) => {
+      const shown = !hiddenToolbar.has(f.id);
+      const row = document.createElement('div');
+      row.className = 'cmd-item fm-choice fm-toggle' + (shown ? ' cur' : '');
+      row.setAttribute('role', 'checkbox');
+      row.setAttribute('aria-checked', shown ? 'true' : 'false');
+      row.tabIndex = -1;
+      row.dataset.fid = f.id;
+
+      const grip = document.createElement('span');
+      grip.className = 'tfr-grip';
+      grip.setAttribute('aria-label', 'Drag to reorder ' + f.name);
+      grip.innerHTML = '<span></span><span></span><span></span><span></span>';
+      grip.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        _dragSrc = f;
+        _dragEl = row;
+        row.classList.add('tfr-dragging');
+        row.setPointerCapture(e.pointerId);
+      });
+      grip.addEventListener('pointermove', e => {
+        if (!_dragEl) return;
+        _dragY = e.clientY;
+        const rows = [...host.querySelectorAll('.cmd-item')];
+        rows.forEach(r => r.classList.remove('tfr-dragover'));
+        let target = null, bestY = Infinity;
+        for (const r of rows) {
+          if (r === _dragEl) continue;
+          const box = r.getBoundingClientRect();
+          const mid = box.top + box.height / 2;
+          const d = Math.abs(_dragY - mid);
+          if (d < bestY) { bestY = d; target = r; }
+        }
+        if (target) target.classList.add('tfr-dragover');
+      });
+      grip.addEventListener('pointerup', e => {
+        if (!_dragEl) return;
+        const rows = [...host.querySelectorAll('.cmd-item')];
+        rows.forEach(r => r.classList.remove('tfr-dragover', 'tfr-dragging'));
+        let targetIdx = -1;
+        for (const [idx, r] of rows.entries()) {
+          if (r === _dragEl) continue;
+          const box = r.getBoundingClientRect();
+          if (_dragY >= box.top && _dragY <= box.bottom) { targetIdx = idx; break; }
+        }
+        if (targetIdx >= 0) {
+          const srcIdx = rows.indexOf(_dragEl);
+          if (srcIdx >= 0 && srcIdx !== targetIdx && targetIdx < rows.length) {
+            const moved = rows.splice(srcIdx, 1)[0];
+            rows.splice(targetIdx > srcIdx ? targetIdx - 1 : targetIdx, 0, moved);
+            rows.forEach(r => host.appendChild(r));
+            commitOrder();
+          }
+        }
+        _dragSrc = null; _dragEl = null;
+      });
+      grip.addEventListener('pointercancel', () => {
+        if (_dragEl) _dragEl.classList.remove('tfr-dragging');
+        const rows = [...host.querySelectorAll('.cmd-item')];
+        rows.forEach(r => r.classList.remove('tfr-dragover'));
+        _dragSrc = null; _dragEl = null;
+      });
+
+      row.appendChild(grip);
+      const mark = document.createElement('span'); mark.className = 'fm-choice-mark'; mark.setAttribute('aria-hidden', 'true');
+      const info = document.createElement('span'); info.className = 'fm-choice-info';
+      const name = document.createElement('span'); name.className = 'fm-choice-name'; name.textContent = f.name;
+      info.appendChild(name);
+      row.appendChild(mark);
+      row.appendChild(info);
+
+      row.addEventListener('click', () => {
+        if (hiddenToolbar.has(f.id)) hiddenToolbar.delete(f.id); else hiddenToolbar.add(f.id);
+        saveToolbarPrefs();
+        applyToolbarPrefs();
+        const on = !hiddenToolbar.has(f.id);
+        row.classList.toggle('cur', on);
+        row.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+      // keyboard reorder: Alt+ArrowUp/Down while any row has focus (the menu is arrow-roving)
+      row.addEventListener('keydown', e => {
+        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault(); e.stopPropagation();
+          const rows = [...host.querySelectorAll('.cmd-item')];
+          const idx = rows.indexOf(row);
+          if (idx < 0) return;
+          const target = e.key === 'ArrowUp' ? idx - 1 : idx + 1;
+          if (target < 0 || target >= rows.length) return;
+          rows.splice(idx, 1);
+          rows.splice(target, 0, row);
+          rows.forEach(r => host.appendChild(r));
+          commitOrder();
+          row.focus();
+        }
+      });
+
+      host.appendChild(row);
     });
-    host.appendChild(row);
-  });
+  };
+  renderRows();
 }
 applyToolbarPrefs();   // apply saved prefs on load
 document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
