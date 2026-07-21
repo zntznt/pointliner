@@ -1,27 +1,35 @@
 # Pointliner
 
-**Type `{2d6}` in a point and it rolls. Type `{= sum(cost)}` and it keeps a live total
-of the points beneath it.** Pointliner is an outliner whose text is alive: dice, running
-totals, random draws from your own document, checks that flag a budget the moment it
-overflows. The whole app is one `index.html`: it runs with the wifi off, needs nothing
-installed, and keeps your work in files you own.
-
-Pointliner was born at the solo-RPG table, and that is still where it is sharpest:
-[the dice, the oracle, and the journal in one place](guide/solo-rpg/README.md), with your
-own cast and open threads as the random tables. The same engine runs a research inbox, a
-project tracker, or a budget just as readily; live computation over your own notes is a
-general-purpose trick that happens to be excellent at dragons.
+**Any bullet can generate or compute.** Type `{2d6}` in a point, click away, and it becomes a
+live pill. Click the pill and it re-rolls. That single loop — type braces, get a live thing,
+click it, it answers again — is the whole idea.
 
 **[→ Try it now](https://zntznt.com/pointliner/)** · no account, no install, runs in your browser.
 
+![Pointliner at rest, showing the toolbar and outline with live pills](https://github.com/user-attachments/assets/740a21cc-36d0-41e0-a721-dd0cceb5fd3f)
+
 ---
 
-## The 30-second version
+## What it is
 
-Underneath, Pointliner is an outliner: nested bullet points, markdown, collapse, zoom,
-to-dos, dates, links, search. What makes it different is **pills**. Type something
-inside `{curly braces}` and, when you click away, it turns into a small live widget, so
-your dice, tables, oracles, and sheet math all live in the same document as your notes:
+Pointliner is a tool for thought wrapped in an outliner. It replaces the stack of single-purpose
+tools a thinking session otherwise juggles: the calculator, the dice roller, the generator tab,
+the spreadsheet — all living inside the same document as your notes. Generation and computation
+are writing primitives here, not a separate app.
+
+Pointliner is **not a second brain.** It does not want to be your archive, your PKM, or your
+"capture everything" system. It is a generative scratchpad — a place where thinking happens, not
+where it goes to retire. A pill is live on this look: `{2d6}` answers again on click, `{= sum(cost)}`
+is never stale, and `{roll: #idea}` pulls a past thought back into present attention as material
+for what you are doing right now.
+
+The whole app is one `index.html`. It runs with the wifi off, needs nothing installed, and keeps
+your work in files you own. Save it anywhere, sync it however you like, and export everything to
+Markdown, plain text, OPML, or a self-contained runnable HTML you can hand to anyone.
+
+---
+
+## The idea in 30 seconds
 
 | You type | You get |
 |---|---|
@@ -33,137 +41,89 @@ your dice, tables, oracles, and sheet math all live in the same document as your
 | `{shuffle: a \| b \| c}` | a deck you draw from without replacement |
 | `{roll: #npc}` | a random point from your own outline (tag some points, roll on them) |
 
-That last one is the pill no other tool has: the table it rolls on is your own living
-document, so your campaign, backlog, or idea list surprises you with its own contents.
+That last one is the pill no other tool has: the table it rolls on is your own living document,
+so your campaign, your backlog, or your idea list surprises you with its own contents.
 
-That's the whole idea: **type in braces, get a live pill.** To edit one, click the text
-next to it. The pill unfolds back to the `{…}` you typed; fix it and click away.
+To edit a pill, click the text next to it. The pill unfolds back to the `{…}` you typed; fix it
+and click away.
 
-## Why it's different
+![Pills side by side: dice, math, grammar, estimate, all rendered live](https://github.com/user-attachments/assets/d3afd2b5-16db-41e8-ae14-6f5b9fb804f7)
 
-- **It's one file.** The entire app (HTML, CSS, JS, fonts) is `index.html`. No build
-  step, no dependencies, no bundler, no `node_modules`. Open the file, it runs.
-- **It's genuinely offline.** No network, no backend, no account. Your filesystem is the
-  storage; your choice of sync (Dropbox, iCloud, git, or none) is the sync.
-- **A document *is* a generator.** Because the logic lives in the document, you can export
-  a **self-contained `.html`** and hand someone a dungeon stocker, a name generator, or a
-  budget tracker they just double-click. It re-rolls and recomputes on *their* machine,
-  with no install and no account.
-- **Installable.** Served over https it's a PWA, so "Install" gives you a standalone app
-  that works offline; the downloaded `index.html` still works identically from disk.
-- **No AI required.** The generative layer is deterministic and local: dice, grammars, a
-  real expression engine, Monte-Carlo estimates. Nothing phones a model; if AI vanished
-  tomorrow, Pointliner would work exactly the same.
-- **It slots in and out of how you already think.** Freeform text is the primary surface;
-  every structure (tables, boards, properties, workflows) is one optional, reversible way
-  to organize it, never the required way. And leaving is always whole: Markdown, plain
-  text, OPML, or a runnable HTML take everything with you. Pointliner earns its place in
-  your process instead of locking the door behind you.
+---
+
+## What Pointliner replaces
+
+**The calculator you keep re-punching.** Give a few points a `cost` property, drop `{= sum(cost)}`
+on the parent, and the total follows every edit. Declare `{budget := 500}` once and change it
+anywhere — every dependent number recomputes. Add a check (`sum(cost) <= budget`) and the document
+flags the overflow the moment it happens.
+
+**The list you stare at when stuck.** Tag a few points `#idea` and type `{roll: #idea}`. The
+document resurface a past thought into your present attention — a surprise from your own material,
+not a browse of a maintained graph.
+
+**The solo-RPG table you have to leave your notes for.** Dice, oracles, name generators, decks,
+journals, and your own cast of characters as the random tables — all in one document that rolls
+and tracks state for you. Pointliner was born here, and the [worked examples](guide/solo-rpg/README.md)
+(thirteen cases with importable demos) are the fastest way to see the whole engine at work.
+
+And underneath it all, a full outliner: nested points, markdown, to-dos with states and priorities,
+per-point notes, properties, `[[links]]` with backlinks and live mirrors, a multi-document workspace
+with whole-folder search, a daily journal, an agenda with timeline and calendar views, interactive
+tables and bases, and more. The [complete feature list](guide/features.md) covers everything.
+What makes it different is not the list — it is that every bullet can generate or compute.
+
+![Interactive base with rows, columns, and a sum(cost) formula](https://github.com/user-attachments/assets/f9c631a1-b78a-4251-96fb-7bc0c773ae8d)
+
+---
 
 ## What it will never be
 
 Strong tools exclude on purpose. These are commitments, not gaps on a roadmap:
 
-- **No accounts, no cloud backend, no team collaboration.** Your filesystem is the
-  storage; your choice of sync (Dropbox, iCloud, git, none) is the sync.
-- **No build step, no dependencies.** The app stays one file you can read, save, and run.
-- **No plugin code execution.** Extensibility is data (grammar rules, variables, emoji
-  packs), never programs running inside your notes.
+- **No accounts, no cloud backend, no team collaboration.**
+- **No build step, no runtime dependencies.** The app stays one file.
+- **No plugin code execution.** Extensibility is data (grammar rules, variables), never programs.
 - **No second syntax.** Everything generative or computed speaks the one `{…}` language.
 
-If you need real-time team editing, a cloud workspace, or WYSIWYG rich text, Pointliner
-is deliberately not your tool, and it won't grow into one.
+If you need real-time team editing, a cloud workspace, or WYSIWYG rich text, Pointliner is
+deliberately not your tool, and it will not grow into one.
 
-## What's in the box
+---
 
-An outliner with the usual depth, plus:
+## Get started
 
-- **Editing:** markdown per line, to-dos (`- [ ]` and `#TODO` states + priorities),
-  per-point notes, properties, collapse-to-level, zoom, drag to reorder/nest (mouse *and*
-  touch), keyboard-first throughout.
-- **Generators:** dice (exploding, keep-highest, success pools), weighted random tables,
-  a recursive grammar engine (name generators, loot tables), decks, a yes/no oracle,
-  Markov chains.
-- **Compute:** a math engine with units, dates, and functions; **subtree roll-ups**
-  (`sum`/`avg`/`count`/`min`/`max` over child properties); variables; **uncertain
-  estimates** sampled Monte-Carlo; **checks** (live pass/fail constraints like
-  `sum(cost) <= budget`); progress cookies; org-style table formulas.
-- **Structure & knowledge:** interactive tables and "bases", `[[#point]]` links with
-  backlinks and live-title mirrors, a multi-document workspace (a folder of `.opml` notes
-  on disk), whole-folder search with operators, daily journal, quick-capture inbox,
-  agenda with timeline + calendar views.
-- **Files:** OPML is the native format; export to Markdown, plain text, or a
-  self-contained interactive HTML.
+1. **Open it:** [zntznt.com/pointliner](https://zntznt.com/pointliner/) — no install, no account.
+   Or download [`index.html`](index.html) and open it from disk. Same app either way.
+2. **Type:** Press `Enter` for a new point, `Tab`/`Shift+Tab` to indent or outdent. Type `{2d6}`
+   and click away to see your first pill.
+3. **Learn:** The **`?` button** (bottom right) is the always-there cheat sheet. The
+   Concept guide (in the File menu / `?` panel) explains every feature with examples.
 
-The complete, current feature list lives in [**What Pointliner can do**](guide/features.md) (the
-canonical user-facing inventory; the list above is a teaser). For contributors, the exhaustive
-engine-level reference is the separate [`guidance/features.md`](guidance/features.md).
+The [pill guide](guide/README.md) covers the two engine families behind everything:
+[generating text](guide/generating-text.md) and [computing numbers](guide/computing-numbers.md),
+with a [cookbook](guide/cookbook.md) of copy-paste recipes.
 
-## Quick start
-
-You don't have to clone anything:
-
-1. **Use it hosted:** [zntznt.com/pointliner](https://zntznt.com/pointliner/). Install it
-   from your browser ("Install app" / "Add to Home Screen") for an offline standalone app.
-2. **Or run it from a file:** download [`index.html`](index.html), open it in any modern
-   browser. That's the whole app. Save it to Dropbox/iCloud/a git repo and it syncs like
-   any file.
-
-To start writing: just type. Press `Enter` for a new point, `Tab`/`Shift+Tab` to indent or
-outdent, type `{2d6}` and click away to see your first pill. The **`?` button** (bottom
-right) is the always-there cheat sheet for every syntax.
-
-## Learn it
-
-The outliner is self-explanatory; the pills have a friendly guide.
-
-- **[The pill guide](guide/README.md)** covers the one big idea, then the two engine
-  families behind everything:
-  - **[Generating text](guide/generating-text.md):** alternation, weights, named rules,
-    modifiers (`{beast.a}` becomes "an ogre"), conditionals, decks, oracles, Markov chains.
-  - **[Computing numbers](guide/computing-numbers.md):** expressions, units, dates,
-    variables, subtree roll-ups, uncertain estimates, checks, table formulas.
-  - **[Cookbook](guide/cookbook.md):** copy-paste recipes such as a name generator, a
-    dungeon stocker, a yes/no oracle, a self-linting budget, a Fermi estimate, a card deck.
-- **[Solo RPG guides](guide/solo-rpg/README.md)** are the flagship worked examples, from
-  the table Pointliner was born at: thirteen cases, each with a walkthrough and an
-  importable demo `.opml` you can open and take apart, from a Lonelog-style session log to
-  a living oracle that rolls on your own cast, a campaign calendar, and full open-licence
-  systems (Ironsworn, Cairn, Maze Rats). The demos are the fastest way to see the whole
-  engine at work, dice or no dice.
-- **In-app:** the **`?` panel** is the look-it-up reference; the **Concept guide** button
-  (in the file menu / `?` panel) explains every feature with examples.
+---
 
 ## How it works (for the curious)
 
-The document is an in-memory tree of plain-object nodes; `node.text` is plain text and the
-source of truth. A pill is a markdown-style `[[type:key]]` token in that text plus a record
-in a sidecar array. The view is **virtualized** (only a screenful of rows is ever in the
-DOM), so it stays responsive on large documents. There's no framework and no build step:
-rendering is hand-written per-line markdown plus a small set of pure cores
-(parsers/evaluators) that are unit-tested in plain Node.
+The document is an in-memory tree of plain-text nodes. A pill is a markdown-style token in that
+text plus a record in a sidecar array — plain text is always the source of truth. The view is
+virtualized (only a screenful of rows is ever in the DOM), so it stays comfortable past 10,000
+points. No framework, no build step — rendering is hand-written per-line markdown plus pure
+cores (parsers and evaluators) that are unit-tested in plain Node.
 
-Measured performance: comfortable to ~10k points, with the practical ceiling being browser
-`localStorage` (~17k points) rather than lag. Connect a workspace folder to write to disk
-with no cap. Details and a re-run harness are in
-[`guidance/performance.md`](guidance/performance.md).
+Measured performance and a re-run harness live in [`guidance/performance.md`](guidance/performance.md).
+
+---
 
 ## Contributing
 
-The repo carries its own build-steering docs under [`guidance/`](guidance/): the design
-language, UX standard, and architecture notes that any change (human or AI) is expected to
-follow. [`CLAUDE.md`](CLAUDE.md) is the entry point. The headline constraints:
+[`CLAUDE.md`](CLAUDE.md) is the entry point for contributors. Run `node --test tests/test.mjs`
+before and after touching any parser or evaluator. The [`guidance/`](guidance/) directory carries
+the design language, UX standard, and architecture notes that every change follows.
 
-- **It stays one file.** No build step, no runtime dependencies. (The only sanctioned
-  extras are the PWA install assets, which the downloaded `index.html` never depends on.)
-- **`node.text` is plain text, always**, never HTML. Pills are tokens plus sidecar records.
-- **Pure cores stay DOM-free and tested.** Run `node --test tests/test.mjs` before and
-  after touching any parser/evaluator.
-- **UX and visual design are governed**, not ad hoc. See
-  [`guidance/ux-discipline.md`](guidance/ux-discipline.md) and
-  [`guidance/design-language.md`](guidance/design-language.md).
+---
 
-## License
-
-[AGPLv3](LICENSE). Font Awesome icons are bundled under their own licenses (CC BY 4.0 for
-icons, SIL OFL 1.1 for fonts, AGPLv3 for code); see the note in `index.html`.
+[AGPLv3](LICENSE)
