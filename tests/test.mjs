@@ -5197,9 +5197,7 @@ test('sortChildrenByProp — sorts children by property, numeric-aware, nulls la
   const d = c.mkNode('D'); d.props = [{ key: 'cost', val: '5' }]; r.children.push(d);
   c.buildIndex(r, null);
   c.sortChildrenByProp(r, 'cost');
-  // 5, 10, 30, null — host() needed because nodes live in the VM cross-realm
-  const labels = r.children.map(n => n.text);
-  assert.deepEqual(labels, ['D', 'B', 'A', 'C']);
+  assert.deepEqual(host(r.children.map(n => n.text)), ['D', 'B', 'A', 'C']);   // 5, 10, 30, null
 });
 
 // ── markdown-first to-dos: type/checked DERIVE from the text ───────────────────
