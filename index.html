@@ -5615,6 +5615,7 @@ function renderContentHTML(node) {
   queryRenderList   = node.query   || null;
   cookieNode        = node;
   globalVarMap      = collectVars();
+  globalRuleMap      = collectRules();   // document-wide rule map — the globalVarMap twin, so mdInline never calls collectRules() per cell
   // Positional resolution (Stage B): this node's pills resolve {name} against the variables
   // visible AT this node (declarations above it), not the document-wide last-wins map. The
   // render-path readers (renderVarPill, the math-pill eval below) use renderVarMap; search /
@@ -6510,6 +6511,10 @@ function mdInline(s) {
   // Stamped per mdInline call (each line stamps its own value; the pill renderer reads it
   // before recursing, see renderLinkPill). Suppressed wholesale in cell contexts (mtInline).
   _mirrorBlockLine = !_mirrorBlockSuppress && /^\s*\[\[[a-z0-9]*#[a-z0-9]+\|\]\]\s*$/i.test(s);
+  // Fast-path: the vast majority of table cells are plain text with no special characters.
+  // If none of the inline-markdown trigger characters are present, the escaped string is
+  // already the correct output — all the substitution passes below would be no-ops.
+  if (!/[`[!{*_~:^#]/.test(s) && !/https?:\/\//i.test(s)) return s;
   // Stash code/image/link/footnote as opaque tokens so later passes (emoji,
   // hashtags, autolink) can't reach inside their URLs or attributes.
   const tok = [];
@@ -6643,7 +6648,7 @@ function mdInline(s) {
   // render-side twin of the edit-mode gr-bad marker (a faint dotted underline + a title/aria that
   // says why), so a silent "I typed a pill and got plain text" failure is no longer silent.
   if (s.indexOf('{') >= 0) {
-    const braceRules = collectRules();
+    const braceRules = globalRuleMap || collectRules();
     const braceVars = globalVarMap || collectVars();
     s = s.replace(/\{([^{}]+)\}/g, (m, body) => {
       if (classifyBraceBody(body, braceRules, braceVars) !== 'invalid') return m;   // 'literal'/'artifact' untouched
@@ -6694,6 +6699,7 @@ let cookieNode = null;
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
+let globalRuleMap = null; // document-wide grammar rule map, cached per _varsVer — the globalVarMap twin for collectRules()
 // Positional (per-node) variable map for the node currently rendering — the variables
 // VISIBLE AT that node (declarations above it), set by renderContentHTML via varMapAt(node).
 // The render-path pill readers use this; search / check eval use globalVarMap (document-wide).
@@ -8987,15 +8993,10 @@ function stepColW(base, dir) {
 }
 
 function mtHost(id) { return document.querySelector(`.md-table-host[data-id="${id}"]`); }
-// Cell-scope mdInline: set the node's artifact sidecars as the render context so
-// [[type:key]] tokens inside cells resolve to live pills (mirrors renderContentHTML;
-// safe only because mdInline is synchronous).
-function mtInline(node, raw) {
-  // WAVE-2 HARD-9 (degradation): a computed cell showing computeTable's #ERR marker must NOT run
-  // through mdInline's hashtag pass, or `#ERR (loops on itself)` becomes a live #ERR hashtag pill
-  // that filters the whole doc on click (and mtRecompute would bake it into node.text → the tag
-  // picker). Escape-only so the marker reads as plain text. Keeps the #ERR return contract intact.
-  if (/^#ERR\b/.test(String(raw || '').trim())) return escHtml(raw);
+// Pre-set the render globals for a base node so every subsequent mtInlineRaw() call skips
+// the per-cell global setup (the caller holds them across a batch of cells from the SAME node,
+// then calls mtInlineTeardown()). The standalone mtInline() path uses these internally.
+function mtInlineSetup(node) {
   diceRenderList    = node.dice    || null;
   markovRenderList  = node.markov  || null;
   mathRenderList    = node.math    || null;
@@ -9006,13 +9007,25 @@ function mtInline(node, raw) {
   queryRenderList   = node.query   || null;
   cookieNode        = node;
   globalVarMap      = collectVars();
-  renderVarMap      = varMapAt(node);   // positional scope for this cell's var/math pills
+  globalRuleMap      = collectRules();
+  renderVarMap      = varMapAt(node);
   _mirrorBlockSuppress = true;          // #917: a solo-mirror CELL keeps the single-line form (no block in a grid cell)
-  let html;
-  try { html = mdInline(raw || ''); } finally { _mirrorBlockSuppress = false; }
+}
+function mtInlineTeardown() {
   diceRenderList = markovRenderList = mathRenderList = estRenderList = varRenderList = grammarRenderList = seqRenderList = queryRenderList = null;
   cookieNode = null;
-  return html;
+  _mirrorBlockSuppress = false;
+}
+// Render one cell's raw text through mdInline, assuming mtInlineSetup() was called
+// ahead of a batch. The #ERR guard is downstream (mdInline handles it via escHtml).
+function mtInlineRaw(raw) {
+  if (/^#ERR\b/.test(String(raw || '').trim())) return escHtml(raw);
+  return mdInline(raw || '');
+}
+// Standalone cell render — sets up & tears down globals (the pre-batch form).
+function mtInline(node, raw) {
+  mtInlineSetup(node);
+  try { return mtInlineRaw(raw); } finally { mtInlineTeardown(); }
 }
 // Select a cell's whole contents (type-to-overwrite) and remember the cell so the
 // selection toolbar knows this selection was navigation-placed, not intentional.
@@ -9121,8 +9134,8 @@ function mtColRoles(node) {
   return (node.colRole && node.colRole.length) ? node.colRole : inferredColRoles(node);
 }
 
-function mtCellHtml(node, raw, c) {
-  const roles = mtColRoles(node);
+function mtCellHtml(node, raw, c, _colRoles = null) {
+  const roles = _colRoles || mtColRoles(node);
   const role = roles && roles[c];
   const s = String(raw || '').trim();
   if (role && s) {
@@ -10914,7 +10927,7 @@ function buildTableWidget(node, readOnly) {
         h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
         const qEdit = _qFields && qbaseFieldWritable(_qFields[c]);
-        h += `<td class="mt-cell${aCls(model.aligns[c])}${(_colRoles[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}${qEdit?' mt-qcell':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':(qEdit?` contenteditable="true" title="Edits write to the matching point's ${escQ(_qFields[c])} property"`:ro)}>${mtCellHtml(node, model.rows[r][c]||'', c)}</td>`;
+        h += `<td class="mt-cell${aCls(model.aligns[c])}${(_colRoles[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}${qEdit?' mt-qcell':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':(qEdit?` contenteditable="true" title="Edits write to the matching point's ${escQ(_qFields[c])} property"`:ro)}>${mtCellHtml(node, model.rows[r][c]||'', c, _colRoles)}</td>`;
       }
     }
     h += '</tr>';
