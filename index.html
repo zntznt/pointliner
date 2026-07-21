@@ -5672,6 +5672,10 @@ function renderContentHTML(node) {
   renderVarMap      = globalVarMap;
   renderPosVarMap   = null;
   cookieNode        = null;
+  // Track nodes whose display depends on document-wide state so repaintComputedDependents
+  // can target them specifically instead of scanning every visible DOM row after each edit.
+  if ((node.math?.length) || (node.vars?.length) || (node.est?.length) || (node.query?.length) || /\[[\/%]/.test(node.text))
+    _computedNodeIds.add(node.id);
   return html;
 }
 
@@ -6707,6 +6711,7 @@ let globalRuleMap = null; // document-wide grammar rule map, cached per _varsVer
 let renderVarMap = {};
 let renderPosVarMap = null;   // #767: per-pill positional var maps (key -> map) for the node being rendered; null = share renderVarMap
 let _varsCacheVer = -1, _varsVer = 0, _varsCached = {}; // doc-cache 1: collectVars; _varsVer is the shared generation counter (see resetDocCaches registry)
+let _computedNodeIds = new Set(); // nodes whose renderContentHTML output depends on document-wide state (math/vars/est/query pills, progress cookies)
 let _varCycles        = new Set(); // names that participate in a reference cycle
 let _varShadowedKeys  = new Set(); // sidecar keys whose name is overridden by a later declaration
 let _varActiveExprs   = {};        // name -> expr for the last/active declaration of each var
@@ -16416,6 +16421,12 @@ function exitEdit(content, node) {
       // visible point that displays computed values. Without this, a {= 2*pi*r} pill keeps
       // its old number after r changes and a words(subtree) target never ticks (the values
       // recompute per render; only this repaint was missing after the partial-repaint work).
+      // Update the computed-node set so the repaint below only targets nodes that genuinely
+      // hold computed state, rather than scanning every visible DOM row.
+      if ((node.math?.length) || (node.vars?.length) || (node.est?.length) || (node.query?.length) || /\[[\/%]/.test(node.text))
+        _computedNodeIds.add(node.id);
+      else
+        _computedNodeIds.delete(node.id);
       repaintComputedDependents(node.id);
     }
   }
@@ -16437,14 +16448,14 @@ function exitEdit(content, node) {
 // backlink-source repaint in exitEdit. Skips the just-committed node (already
 // repainted), live editors (never clobber a caret), and bases (own machinery).
 function repaintComputedDependents(exceptId) {
-  document.querySelectorAll('.node-content[data-id]').forEach(el => {
-    const nid = el.dataset.id;
-    if (nid === exceptId || el.dataset.editing) return;
+  for (const nid of _computedNodeIds) {
+    if (nid === exceptId) continue;
+    const el = document.querySelector(`.node-content[data-id="${escQ(nid)}"]`);
+    if (!el || el.dataset.editing) continue;
     const n = nodeById(nid);
-    if (!n || n.type === 'base') return;
-    if ((n.math?.length) || (n.vars?.length) || (n.est?.length) || (n.query?.length) || /\[[\/%]/.test(n.text))
-      el.innerHTML = renderContentHTML(n);
-  });
+    if (!n || n.type === 'base') continue;
+    el.innerHTML = renderContentHTML(n);
+  }
   document.querySelectorAll('.prop-check[data-props-id]').forEach(chip => {
     const n = nodeById(chip.dataset.propsId);
     if (!n) return;
@@ -27164,7 +27175,7 @@ function performMultiDrop(ids, targetId, position) {
 // would be served until the first keystroke (UXP-32). Call beside every
 // buildIndex(root, null) that swaps the tree. The invariant is pinned by the
 // "doc-cache invalidation" regression test in tests/test.mjs.
-function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); _qrfMemo.clear(); _qpfMemo.clear(); _dupTitleCached = null; }
+function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); _qrfMemo.clear(); _qpfMemo.clear(); _dupTitleCached = null; _computedNodeIds.clear(); }
 
 // UXP-103: the persistence signals must all mean the SAME thing — "unsaved to a named disk
 // target," not "there is any unpersisted keystroke." In default (no-handle) mode autosave keeps

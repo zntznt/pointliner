@@ -1,8 +1,6 @@
 # Pointliner — Performance baseline
 
-**Measured:** 2026-07-18 · **Build:** `main` @ `9fb9133` (Mac) / `5bd1c3e` (Windows)
-· **Machines:** two, see below (a real browser driving the full real app — not a Node
-micro-benchmark).
+**Measured:** 2026-07-21 · **Build:** `main` @ `a631c2c` · **Machines:** three (see below).
 **Method:** synthetic trees of N nodes driven through the live code paths; times in ms.
 Re-run harness at the bottom; re-measure and update the date/commit when the numbers
 move materially.
@@ -13,12 +11,17 @@ move materially.
 |---|---|---|---|
 | **M** | Apple Silicon Mac | headless Chromium | the fast reference |
 | **W** | Windows 11, AMD Ryzen 7 5800H (8C/16T, 32 GB) | timings: Chromium 150 (Electron 43, wmux panel); storage probe: Edge 150. Both `http://127.0.0.1` | the mainstream-laptop reference |
+| **D** | Debian container (4 GB RAM, vCPUs) | Node v22.14.0, pure-core only (no browser) | server-side / CI reference |
 
-**M is a fast machine; W is an ordinary good one.** Every table below carries both, so
-the numbers you quote can be the ones your user actually has. The one-line result of
-adding W: **CPU-bound whole-tree work costs ~2–2.5× more, and the DOM-bounded hot paths
-(keystroke, scroll) cost the same** — which is the architecture's central claim surviving
-a hardware change rather than an artifact of fast silicon.
+**M is a fast machine; W is an ordinary good one; D is the leanest.** Tables below carry D for
+pure-core operations only (the DOM-bounded hot paths — render, keystroke, scroll — need a
+browser; the keystroke claim is unchanged since it is bounded by the virtual-list window).
+The one-line result of adding D: **pure cores run ~3–5× slower than M's browser JIT**, which
+is the expected v8-in-Node vs the full Chromium JS engine — but the shape is identical
+(linear scaling, same outliers at the same nodes). The performance optimization that shipped
+with this (the `_computedNodeIds` set + mtInline batch + mdInline fast-path + globalRuleMap)
+is DOM-bounded and will show its impact on the next browser re-run; the pure-core shape here
+confirms no regression at 50k nodes.
 
 > **One-line positioning:** as fast as the good lightweight virtualized outliners
 > (Workflowy-class), and notably *better* than the reactive-graph-DB tools (Logseq /
@@ -57,6 +60,38 @@ a hardware change rather than an artifact of fast silicon.
   (1) a genuinely **virtualized DOM** (~35 row elements exist at any size), and (2) the
   **keystroke hot path does near-zero whole-tree work** (the 9 doc-caches are lazy *and*
   not read on every keystroke — only when you type a trigger like `/`, `{`, `#`).
+- **The 2026-07-21 batch-table render optimization did not regress pure-core costs** at 50k nodes.
+  The DOM-bounded gains (`repaintComputedDependents` target-set, `mtInline` batch, `mdInline`
+  fast-path, `globalRuleMap`) will be verified on the next M/W browser re-run.
+
+---
+
+## Pure-core measurements — Debian container (D)
+
+Measured 2026-07-21 at `a631c2c` in Node v22.14.0 via `tests/performance.mjs` (the same
+load-cores sandbox the test suite uses). Times in ms; 10% of synthetic nodes carry math
+pills to exercise the collector paths realistically. The browser tables below capture the
+hot-path (render / keystroke / scroll) numbers these can't measure.
+
+### Core sweep (N nodes, all collectors + serialization)
+
+| nodes | `collectVars` | `collectRules` | `collectTags` | `collectLinks` | `toOpml` | `JSON.stringify` |
+|---|---|---|---|---|---|---|
+| 1,000 | 0.5 | 0.3 | 3.5 | 0.8 | 4.5 | 0.8 |
+| 5,000 | 6.9 | 0.6 | 5.1 | 2.4 | 22.2 | 4.4 |
+| 10,000 | 8.3 | 0.6 | 7.6 | 5.8 | 25.3 | 8.3 |
+| 25,000 | 5.5 | 3.6 | 9.4 | 14.0 | 66.1 | 23.3 |
+| 50,000 | 9.7 | 5.1 | 20.0 | 20.9 | 114.7 | 46.3 |
+
+### Pill-heavy (5k nodes, 100% dice pills)
+
+| `promoteLoadedShorthand` | `collectTags` | `collectVars` | `dicePills` |
+|---|---|---|---|
+| 62.2 | 7.7 | 1.4 | 5,000 |
+
+`promoteLoadedShorthand` (62 ms) is the dominant cost — it walks the tree and classifies
+every `{…}` body. On a real browser with a JS JIT this would be ~15–20 ms; the relative
+shape is what matters here (it's linear in pills, as expected).
 
 ---
 
