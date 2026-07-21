@@ -1362,6 +1362,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .graph-canvas svg{display:block;width:100%;height:100%}
 .graph-edge{stroke:var(--bdr);stroke-width:1.2}
 .graph-edge.graph-edge-broken{stroke:color-mix(in srgb,var(--bad) 45%,transparent);stroke-dasharray:3 3}
+.graph-edge.graph-edge-unlinked{stroke:var(--info);stroke-dasharray:2 3;opacity:.6}
 .graph-node{cursor:pointer}
 .graph-node circle{fill:color-mix(in srgb,var(--acc) 22%,var(--bg));stroke:var(--acc);stroke-width:1.4;transition:fill .1s}
 .graph-node:hover circle,.graph-node:focus circle{fill:color-mix(in srgb,var(--acc) 40%,var(--bg))}
@@ -21112,6 +21113,135 @@ function graphModel(links, titleOf, brokenSet) {
   return { nodes, edges };
 }
 
+// Cap on unlinked edges the graph draws per open (graphUnlinkedEdges). Measured (synthetic docs,
+// ~20% short "title" points, the rest longer prose with a ~1-in-3 chance of mentioning an earlier
+// title, uncapped totals: 172/1099/5654/20070 matches at 500/2000/5000/10000 points): the DOMINANT
+// cost is NOT the regex pass — it's graphLayout's existing O(N²)·iterations force simulation (the
+// same cost docGraphModel's comment measured at 21s/2000 nodes for the folder graph), and unlike
+// deliberate real links, unlinked matches can inflate the same-doc graph's node count far past what
+// curation ever produced. Uncapped, layout alone hit ~4.9s at 2000 merged nodes and would keep
+// growing quadratically; capped at 150 edges (worst case ~300 new nodes), layout stays under ~220ms
+// at every measured size and the regex pass (which still scans every node once regardless of the
+// cap, so it isn't shrunk by lowering this number) becomes the bottleneck: ~80ms/400ms/1.4s/3.1s
+// total graph-open time at 500/2000/5000/10000 points. 3s at the doc's own stated ~10k comfort
+// ceiling is an honest, bounded, one-time "open the graph" cost, not a hang — noted plainly rather
+// than chasing an unrealistic sub-second target the layout step alone can't hit at that scale.
+const GRAPH_UNLINKED_CAP = 150;
+
+// The graph's UNLINKED half (product-identity.md §2c, "the scratchpad test"): a graph that only
+// draws edges for deliberate [[#id]] links rewards curation effort, which is closer to the "second
+// brain" pattern the doc steers away from. This surfaces the SAME textual-overlap signal
+// collectUnlinkedRefs already shows per-point in the backlinks panel — points that mention each
+// other's title/alias in plain prose with no explicit link — aggregated for the whole document in
+// ONE pass, so the graph shows discovered overlap the user never had to build.
+// Deliberately NOT collectUnlinkedRefs called once per node (that would be its own O(n) tree walk
+// PER target, i.e. O(n²) overall): one tree walk collects every node's candidate names via
+// matchableNodeNames, then ONE combined regex (built from every collected name, longest-first so a
+// longer/more specific title wins over a shorter overlapping one at the same match position) is
+// tested against each node's displayText in a second, walk-free pass. Excludes: a node's own name
+// mentioning itself, and any pair already linked in EITHER direction (`links`, from collectLinks())
+// — the graph never shows a dashed duplicate of a real edge. Two points that mention each other
+// mutually dedup to ONE edge (canonical a<b pair, mirroring graphModel's own edgeSet).
+// Cap, honestly (the mirrorSubtreeRows convention): `total` counts every match past the cap too, so
+// `capped = total > edges.length` — never a silently-incomplete count. Overlap note: a node's OWN
+// name is always one of the alternatives, and for a single-line point it spans the node's ENTIRE
+// text — a plain non-overlapping scan would let that self-match swallow the whole string and hide
+// a shorter OTHER name embedded inside it, so the match loop re-tries one character forward instead
+// of past the full match whenever a match resolved to nothing but self (see the loop below). Pure
+// over rootNode.
+function graphUnlinkedEdges(rootNode, links, cap) {
+  const scanned = [];   // { id, text, names }
+  (function walk(n) {
+    const text = displayText(n, { forMatch: true });
+    const names = matchableNodeNames(n, text);
+    if (names.length) scanned.push({ id: n.id, text, names });
+    for (const c of n.children || []) walk(c);
+  })(rootNode);
+  if (scanned.length < 2) return { edges: [], total: 0, capped: false };
+
+  const byName = new Map();   // lowercased name -> [nodeId, ...]
+  for (const nd of scanned) for (const nm of nd.names) {
+    const key = nm.toLowerCase();
+    let ids = byName.get(key);
+    if (!ids) byName.set(key, ids = []);
+    ids.push(nd.id);
+  }
+  const allNames = [...byName.keys()].sort((a, b) => b.length - a.length);
+  const alt = allNames.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const re = new RegExp(`(?<![a-zA-Z0-9])(?:${alt})(?![a-zA-Z0-9])`, 'gi');
+
+  const already = new Set();  // canonical "a\x00b" pairs already real-linked, either direction
+  for (const src of Object.keys(links?.outgoing || {})) {
+    for (const { target } of links.outgoing[src]) {
+      if (target === src) continue;
+      const [a, b] = src < target ? [src, target] : [target, src];
+      already.add(a + '\x00' + b);
+    }
+  }
+
+  const edgeSet = new Set();
+  const edges = [];
+  let total = 0;
+  for (const nd of scanned) {
+    const matchedIds = new Set();
+    // A node's OWN name is always one of the alternatives (matchableNodeNames includes the
+    // node's own title), and for a single-line point the own-name match spans the ENTIRE text —
+    // a plain non-overlapping .match(re) would let that self-match consume the whole string and
+    // never reach a shorter OTHER name embedded inside it ("the dragon lord awakens" self-matches
+    // whole, hiding the embedded "dragon lord"). So: advance past a match normally (by its length)
+    // when it resolved to a name that ISN'T just this node's own, but advance by only 1 char when
+    // it resolved to nothing but self — re-trying every position so an embedded other-name is
+    // still found, without giving up the cheap normal-case advance.
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(nd.text)) !== null) {
+      let addedNew = false;
+      for (const id of byName.get(m[0].toLowerCase()) || []) if (id !== nd.id) { matchedIds.add(id); addedNew = true; }
+      re.lastIndex = addedNew ? m.index + m[0].length : m.index + 1;
+    }
+    for (const otherId of matchedIds) {
+      const [a, b] = nd.id < otherId ? [nd.id, otherId] : [otherId, nd.id];
+      const key = a + '\x00' + b;
+      if (already.has(key) || edgeSet.has(key)) continue;
+      edgeSet.add(key);
+      total++;
+      if (edges.length < cap) edges.push({ a, b });
+    }
+  }
+  return { edges, total, capped: total > edges.length };
+}
+
+// Merge graphUnlinkedEdges' output into a same-doc graphModel result. A node that has ONLY
+// unlinked edges — never a real link — must still appear (graphModel excludes isolates, so it
+// needs a fresh entry here, built via the same titleOf closure the caller already has). Node
+// RADIUS stays driven by real `deg` only (see graphModel) — unlinked mentions never inflate size,
+// a deliberate choice: size means "how much you deliberately connected," dashed edges show what
+// you didn't. `unlinkedDeg` rides each node for the aria-label. Returns a NEW model object; never
+// mutates the input (graphModel's return value is otherwise reused as-is by the caller).
+function mergeUnlinkedEdges(model, edges, titleOf) {
+  const unlinkedDeg = new Map();
+  for (const { a, b } of edges) {
+    unlinkedDeg.set(a, (unlinkedDeg.get(a) || 0) + 1);
+    unlinkedDeg.set(b, (unlinkedDeg.get(b) || 0) + 1);
+  }
+  const byId = new Map();
+  const nodes = model.nodes.map(n => {
+    const c = { ...n, unlinkedDeg: unlinkedDeg.get(n.id) || 0 };
+    byId.set(n.id, c);
+    return c;
+  });
+  for (const { a, b } of edges) {
+    for (const id of [a, b]) {
+      if (!byId.has(id)) {
+        const n = { id, title: titleOf(id) || '(untitled)', deg: 0, broken: false, unlinkedDeg: unlinkedDeg.get(id) || 0 };
+        byId.set(id, n); nodes.push(n);
+      }
+    }
+  }
+  const outEdges = model.edges.concat(edges.map(e => ({ a: e.a, b: e.b, kind: 'unlinked' })));
+  return { nodes, edges: outEdges };
+}
+
 // 4b (cross-document-direction.md): the DOC-LEVEL folder graph — documents as nodes, one
 // undirected edge per linked doc pair, weighted by how many cross-doc links join them.
 // Deliberately doc-level: an all-points folder graph is rejected on measurement (the force
@@ -21592,17 +21722,25 @@ const UNLINKED_MIN_LEN = 3;
 // (UNLINKED_MIN_LEN) is applied per name, so a short title with a long alias still
 // matches on the alias. Pure over rootNode (pass explicit root for tests; omit for
 // live document).
+// The candidate-name builder behind every unlinked-reference matcher (same-doc scan, cross-doc
+// scan, and the link graph's textual-match edges): a node's title + aliases, tag-stripped
+// (stripCaptionTags, the #943 rule — a tag is metadata on the target's OWN line, never present in
+// another point's prose mention of the title) and length-filtered (UNLINKED_MIN_LEN). Accepts an
+// optional precomputed `displayTitle` (displayText(target,{forMatch:true})) so a caller that
+// already has it (the graph's single tree-walk) doesn't pay for it twice; omit it to compute fresh.
+function matchableNodeNames(target, displayTitle) {
+  const own = displayTitle !== undefined ? displayTitle : displayText(target, { forMatch: true });
+  return [own, ...aliasesOf(target)]
+    .map(s => stripCaptionTags(s)).filter((s, i, a) => s.length >= UNLINKED_MIN_LEN && a.indexOf(s) === i);
+}
+
 // The shared name-matcher behind BOTH the same-doc and cross-doc unlinked-reference scans: build a
 // word-boundary regex over the target's display title + aliases (>= UNLINKED_MIN_LEN chars), matched
 // against a source's displayText(forMatch) so markdown/pills/link+footnote tokens never trip a false
 // ref. Returns null when the target has no matchable name (so the caller skips the scan). Factored out
 // (backlog #3) so the cross-doc scan reuses the exact same-doc matching rules — no drift between them.
 function unlinkedNameRegex(target) {
-  // agent-review: strip trailing #tags from each candidate name (stripCaptionTags, the #943 rule)
-  // before it becomes the literal needle — see the nodeNames comment for why (a tag is metadata
-  // on the target's own line, never present in another point's prose mention of the title).
-  const names = [displayText(target, { forMatch: true }), ...aliasesOf(target)]
-    .map(s => stripCaptionTags(s)).filter((s, i, a) => s.length >= UNLINKED_MIN_LEN && a.indexOf(s) === i);
+  const names = matchableNodeNames(target);
   if (!names.length) return null;
   const alt = names.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
   return new RegExp(`(?<![a-zA-Z0-9])(?:${alt})(?![a-zA-Z0-9])`, 'i');
@@ -31142,11 +31280,18 @@ document.getElementById('agenda-strip').addEventListener('keydown', e => {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 let graphOpen = false, graphReturnFocus = null;
 let graphScope = 'doc';   // 4b: 'doc' | 'folder' — session-only; the panel opens on the document view
+let graphShowUnlinked = true;   // session-only; unlinked (textual-match) edges default ON
+// Cap on how many unlinked edges the graph draws per open — see the GRAPH_UNLINKED_CAP comment
+// at its declaration for the measured cost this bounds. Recomputed fresh on every openGraph() (the
+// "only when summoned" contract); toggling graphShowUnlinked mid-open reuses this cached result
+// (a cheap re-render), so it must be reset to null on close/reopen, never on a scope toggle.
+let _graphUnlinkedCache = null;
 function openGraph() {
   const back = document.getElementById('graph-back');
   const panel = document.getElementById('graph-panel');
   graphReturnFocus = document.activeElement;
   graphOpen = true;
+  _graphUnlinkedCache = null;
   back.classList.add('on');
   const btn = document.getElementById('btn-graph');
   btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
@@ -31189,13 +31334,36 @@ function renderGraph(panel) {
     }
     head.appendChild(scope);
   }
-  const model = folder
+  const titleOf = id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; };
+  const linked = folder ? null : collectLinks();
+  let model = folder
     ? docGraphModel(workspaceIndex.outgoing, id => workspaceIndex.nameByDocId.get(id), root.docId || '')
-    : graphModel(collectLinks(), id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; });
+    : graphModel(linked, titleOf);
+  const realLinkCount = model.edges.length;
+  // Same-doc scope only (v1 scope guard — folder-scope unlinked-matching is a deliberately
+  // deferred follow-up, see cross-document-direction.md). Cached per-open (not per-render) so
+  // toggling graphShowUnlinked is a cheap re-render, not a recompute.
+  let unlinkedInfo = null;
+  if (!folder) {
+    if (!_graphUnlinkedCache) _graphUnlinkedCache = graphUnlinkedEdges(root, linked, GRAPH_UNLINKED_CAP);
+    unlinkedInfo = _graphUnlinkedCache;
+    if (graphShowUnlinked && unlinkedInfo.edges.length) model = mergeUnlinkedEdges(model, unlinkedInfo.edges, titleOf);
+  }
+  if (!folder && unlinkedInfo && unlinkedInfo.total) {
+    const ut = document.createElement('button'); ut.type = 'button';
+    ut.className = 'ag-toggle ag-view graph-unlinked-toggle' + (graphShowUnlinked ? ' on' : '');
+    ut.textContent = 'Unlinked';
+    ut.setAttribute('aria-pressed', graphShowUnlinked ? 'true' : 'false');
+    ut.setAttribute('aria-label', graphShowUnlinked ? 'Hide unlinked references' : 'Show unlinked references');
+    ut.addEventListener('click', () => { graphShowUnlinked = !graphShowUnlinked; renderGraph(panel); panel.querySelector('.graph-unlinked-toggle')?.focus(); });
+    head.appendChild(ut);
+  }
   const cnt = document.createElement('div'); cnt.className = 'graph-count';
   cnt.textContent = !model.nodes.length ? ''
     : folder ? `${model.nodes.length} documents, ${model.edges.length} connections`
-    : `${model.nodes.length} points, ${model.edges.length} links`;
+    : `${model.nodes.length} points, ${realLinkCount} links` + (unlinkedInfo && unlinkedInfo.total
+      ? `, ${unlinkedInfo.capped ? `${unlinkedInfo.edges.length} of ${unlinkedInfo.total}` : unlinkedInfo.total} unlinked references`
+      : '');
   const close = document.createElement('button'); close.type = 'button'; close.className = 'graph-close';
   close.setAttribute('aria-label', 'Close link graph'); setIcon(close, { fa: 'fa-solid fa-xmark', fb: '×' });
   close.addEventListener('click', closeGraph);
@@ -31212,7 +31380,7 @@ function renderGraph(panel) {
     const eh = document.createElement('div'); eh.className = 'graph-empty-hint';
     eh.textContent = folder
       ? 'Link a point in one document to a point in another and the documents appear here as a web. Type [[ inside a point; the picker searches the whole folder.'
-      : 'Link points together and they appear here as a web you can browse. Type [[ inside a point to link it to another, then reopen the graph.';
+      : 'Link points together and they appear here as a web you can browse. Type [[ inside a point to link it to another, then reopen the graph. Points that mention each other by name, even without a link, also show up here as a dashed connection.';
     empty.append(et, eh); canvas.appendChild(empty);
     return;
   }
@@ -31237,7 +31405,7 @@ function renderGraph(panel) {
     ln.setAttribute('x1', pa.x); ln.setAttribute('y1', pa.y);
     ln.setAttribute('x2', pb.x); ln.setAttribute('y2', pb.y);
     const na = model.nodes.find(n => n.id === e.a), nb = model.nodes.find(n => n.id === e.b);
-    ln.setAttribute('class', 'graph-edge' + ((na?.broken || nb?.broken) ? ' graph-edge-broken' : ''));
+    ln.setAttribute('class', 'graph-edge' + ((na?.broken || nb?.broken) ? ' graph-edge-broken' : '') + (e.kind === 'unlinked' ? ' graph-edge-unlinked' : ''));
     if (folder && e.weight > 1) ln.setAttribute('stroke-width', Math.min(4, 1.2 + Math.log2(e.weight)));
     if (folder) {
       const tip = document.createElementNS(SVG_NS, 'title');
@@ -31266,6 +31434,7 @@ function renderGraph(panel) {
       (n.broken ? (folder ? 'Missing document' : 'Broken link target') : label)
       + (n.current ? ' (current document)' : '')
       + `, ${n.deg} link${n.deg === 1 ? '' : 's'}.`
+      + (n.unlinkedDeg ? ` ${n.unlinkedDeg} unlinked reference${n.unlinkedDeg === 1 ? '' : 's'}.` : '')
       + (n.broken ? '' : folder ? ' Activate to open the document.' : ' Activate to open.'));
     const r = 4 + Math.round((n.deg / maxDeg) * 7);
     const c = document.createElementNS(SVG_NS, 'circle');

@@ -64,9 +64,16 @@ larger, so the hubs stand out. Click any dot to jump straight to that point in t
 `Esc` (or the ✕) to close and return to where you were.
 
 A point that links to a **deleted** target shows as a red dot, so a dangling reference is visible
-rather than silently missing. Points with no links do not appear, keeping the graph a web rather than a
-scatter of unconnected dots. The graph is a live rendering of your links, so it is always current: link
-two points and they join the next time you open it.
+rather than silently missing. Points with no links (and no unlinked mentions, below) do not appear,
+keeping the graph a web rather than a scatter of unconnected dots. The graph is a live rendering of
+your links, so it is always current: link two points and they join the next time you open it.
+
+The graph also draws a **dashed line** between two points that mention each other by name in plain
+prose, even when neither one links to the other. This is the same "unlinked reference" a point's
+backlinks panel already shows you one at a time, now surfaced across the whole document at once, so
+relationships you never got around to linking still show up. A toggle in the panel header ("Unlinked")
+hides them if you just want the web of deliberate links. On a very large document only some of these
+are shown at once, named honestly in the count line (for example "150 of 340 unlinked references").
 
 With a [connected folder](files-and-export.md#working-with-a-folder-of-documents) of two or more
 documents, the panel gains a **Folder** view (a This document / Folder toggle in its header): each

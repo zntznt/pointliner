@@ -271,7 +271,23 @@ feature — it is making the index a dependable substrate:
    collision exists. §5.2 incremental rescan shipped after this (see §5.2). **Remaining:** a
    folder-scoped `{roll:}` (kept document-scoped, `folderOption:false`, revisit on demand) —
    filed as a **doable** issue (GH #899).
-5. **Neighborhood graph** — doable, sequencing-deferred until the shipped surface is in daily
+5. ✅ **Graph unlinked (textual-match) edges, same-doc only** (product-identity.md §2c, "the
+   scratchpad test"): the graph now also draws dashed edges for points that mention each
+   other's title/alias in plain prose with no `[[#id]]` link — the same signal
+   `collectUnlinkedRefs` already surfaces per-point in the backlinks panel, aggregated for the
+   whole document via `graphUnlinkedEdges` (one tree walk + one combined regex, not
+   `collectUnlinkedRefs` called per node) and merged into the same-doc `graphModel` via
+   `mergeUnlinkedEdges`. Computed fresh only when the graph is opened, capped
+   (`GRAPH_UNLINKED_CAP`) because unlinked matches — unlike deliberate links — can inflate node
+   count far past anything curation ever produced, and it's `graphLayout`'s existing
+   O(N²)·iterations cost (§3 above) that bites first, not the regex pass. **Deliberately
+   same-document only** — a folder-scope unlinked-match pass would reuse `docGraphModel`'s
+   own doc-level-aggregation trick (participating docs get one edge, weighted by cross-doc
+   textual-overlap count, the same shape as 4b's real-link edges) but is a separate, larger
+   risk layered on top of an already-rejected all-points folder graph (§3), so it stays a
+   deliberately deferred follow-up, not a TODO buried in code — revisit once the same-doc
+   version has measured usage, same sequencing discipline as the neighborhood graph below.
+6. **Neighborhood graph** — doable, sequencing-deferred until the shipped surface is in daily
    use; filed as **GH #898**. Any 4e revisit stays parked (see §4e / `backlog.md`).
 
 Each step is a normal PR with tests on the pure cores (`buildWorkspaceIndex` extensions,
