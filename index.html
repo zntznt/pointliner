@@ -1652,11 +1652,15 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .guide-wrap{display:flex;flex-direction:column;height:calc(100dvh - 10vh)}
 .guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 .guide-title{font-size:13px;font-weight:600;flex-shrink:0}
-/* Tier indicator — compact inline label showing current verbosity. Click to cycle.
-   Sits beside the title in the header row. 0 vertical overhead. */
-.fm-tier-ind{font-size:11px;color:var(--muted);cursor:pointer;flex-shrink:0;user-select:none}
-.fm-tier-ind:hover{color:var(--acc);text-decoration:underline}
-.fm-tier-ind:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-xs)}
+/* 3-dot verbosity indicator — visible in Standard/Lean, hidden in Guided.
+   Filled dot = active tier. 28px wide, 0 vertical overhead. Click to cycle. */
+.fm-tier-dots{display:flex;gap:3px;align-items:center;cursor:pointer;flex-shrink:0;padding:3px 4px;border-radius:var(--r-sm)}
+.fm-tier-dot{width:6px;height:6px;border-radius:50%;border:1px solid var(--bdr-ui);background:transparent;transition:background .12s,border-color .12s}
+.fm-tier-dot.active{background:var(--acc);border-color:var(--acc)}
+.fm-tier-dots:hover .fm-tier-dot{border-color:var(--fg)}
+.fm-tier-dots:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* Hidden in Guided: descriptions are already on, no return-path control needed */
+body.v-guided .fm-tier-dots{display:none}
 .guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
 .guide-search::placeholder{color:var(--muted)}
 .guide-search:focus{outline:2px solid var(--acc);outline-offset:-1px}
@@ -2476,7 +2480,11 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
        so every handler wired elsewhere by id still fires; only their grouping/presentation changed. -->
   <div class="guide-header">
     <span class="guide-title">Menu</span>
-    <span class="fm-tier-ind" id="fm-tier-ind" title="Guidance level. Click to cycle." role="button" tabindex="0">Guided</span>
+    <span class="fm-tier-dots" id="fm-tier-ind" role="button" tabindex="0" title="Guidance level: Guided. Click to cycle." aria-label="Guidance level: Guided. Click to cycle.">
+      <span class="fm-tier-dot active" aria-hidden="true"></span>
+      <span class="fm-tier-dot" aria-hidden="true"></span>
+      <span class="fm-tier-dot" aria-hidden="true"></span>
+    </span>
     <input class="guide-search" id="fm-search" type="search" placeholder="Search the menu…" aria-label="Search the menu" autocomplete="off">
   </div>
   <div class="guide-body fm-body">
@@ -32032,7 +32040,12 @@ function syncVerbosityCard() {
 }
 function syncVerbosityStrip() {
   const ind = document.getElementById('fm-tier-ind');
-  if (ind) ind.textContent = verbosity.charAt(0).toUpperCase() + verbosity.slice(1);
+  if (!ind) return;
+  const dots = ind.querySelectorAll('.fm-tier-dot');
+  dots.forEach((d, i) => d.classList.toggle('active', VERBOSITY_TIERS[i] === verbosity));
+  const label = verbosity.charAt(0).toUpperCase() + verbosity.slice(1);
+  ind.title = `Guidance level: ${label}. Click to cycle.`;
+  ind.setAttribute('aria-label', ind.title);
 }
 function setVerbosity(tier) {
   if (!VERBOSITY_TIERS.includes(tier) || tier === verbosity) { syncVerbosityCard(); return; }
