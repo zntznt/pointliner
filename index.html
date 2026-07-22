@@ -1722,6 +1722,25 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
 .builder-no-results{font-size:12px;color:var(--muted);padding:16px;text-align:center}
 .builder-pane .guide-entry{margin-bottom:16px;padding-bottom:14px}
 .builder-pane .guide-entry-title{font-size:12px}
+.builder-search-hint{font-size:10px;color:var(--muted);padding:2px 14px 0;letter-spacing:.02em}
+.builder-insert-btn{flex-shrink:0;padding:5px 12px;font-size:12px;font-weight:600;color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 22%,transparent);border-radius:var(--r-sm);cursor:pointer;transition:background .12s,border-color .12s}
+.builder-insert-btn:hover{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.builder-insert-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* builder embedded form */
+.builder-form{padding:16px 18px}
+.builder-form-title{font-size:13px;font-weight:600;margin-bottom:2px}
+.builder-form-desc{font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:12px}
+.builder-field{margin-bottom:10px}
+.builder-field-label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px;letter-spacing:.02em}
+.builder-field-input{width:100%;padding:5px 8px;font-size:12.5px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:var(--bg);color:var(--fg);box-sizing:border-box}
+.builder-field-input:focus{outline:2px solid var(--acc);outline-offset:-1px}
+.builder-field-input::placeholder{color:var(--muted)}
+.builder-form-actions{display:flex;gap:8px;margin-top:14px}
+.builder-form-submit{padding:5px 16px;font-size:12px;font-weight:600;color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 22%,transparent);border-radius:var(--r-sm);cursor:pointer}
+.builder-form-submit:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.builder-form-submit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.builder-form-cancel{padding:5px 14px;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-sm);cursor:pointer}
+.builder-form-cancel:hover{color:var(--fg);border-color:var(--acc)}
 .guide-no-results{color:var(--muted);font-size:12.5px;padding:16px 12px;text-align:center}
 /* Shortcuts page: five sections on one scrollable page, each under an eyebrow heading (the
    .guide-nav-group recipe) with the .sc-row grid beneath. .active is the section the clicked
@@ -33914,6 +33933,84 @@ function renderBuilderPane(cmd) {
     });
   });
 }
+// ─── builder embedded forms ──────────────────────────────────────────────────
+// Commands that need a dialog get a mini-form rendered in the builder's right
+// pane instead. The form replaces the GUIDE entry. On submit: strips the trigger
+// text, inserts/applies the result, and closes the builder.
+
+const BUILDER_FORMS = {
+  // @link: URL + display text
+  'link': { fields: [
+    { name:'url', label:'URL', type:'text', required:true },
+    { name:'text', label:'Display text', type:'text' },
+  ], insert: vals => '[' + (vals.text || vals.url) + '](' + vals.url + ')' },
+  // @image: URL + alt text
+  'image': { fields: [
+    { name:'url', label:'Image URL', type:'text', required:true },
+    { name:'alt', label:'Alt text', type:'text' },
+  ], insert: vals => '![' + (vals.alt || '') + '](' + vals.url + ')' },
+};
+
+function showBuilderForm(cmd, pane) {
+  const cfg = BUILDER_FORMS[cmd.id];
+  if (!cfg) return false;
+  let html =
+    '<div class="builder-form">' +
+      '<div class="builder-form-title">' + escHtml(cmd.label) + '</div>' +
+      '<div class="builder-form-desc">' + escHtml(cmd.desc || '') + '</div>';
+  for (const f of cfg.fields) {
+    html += '<div class="builder-field">' +
+      '<label class="builder-field-label">' + escHtml(f.label) + '</label>' +
+      '<input class="builder-field-input" type="' + (f.type || 'text') + '" placeholder="' + escHtml(f.placeholder || f.label) + '" data-bf="' + f.name + '">' +
+    '</div>';
+  }
+  html += '<div class="builder-form-actions">' +
+    '<button class="builder-form-submit" type="button">Insert</button>' +
+    '<button class="builder-form-cancel" type="button">Cancel</button>' +
+  '</div></div>';
+  pane.innerHTML = html;
+  // Focus first input
+  const first = pane.querySelector('.builder-field-input');
+  if (first) first.focus();
+  // Submit handler
+  pane.querySelector('.builder-form-submit').addEventListener('click', () => builderFormApply(cmd, pane));
+  pane.querySelector('.builder-form-cancel').addEventListener('click', () => {
+    // Return to GUIDE entry view
+    renderBuilderPane(cmd);
+  });
+  pane.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); builderFormApply(cmd, pane); }
+    if (e.key === 'Escape') { renderBuilderPane(cmd); }
+  });
+  return true;
+}
+
+function builderFormApply(cmd, pane) {
+  const cfg = BUILDER_FORMS[cmd.id];
+  if (!cfg) return;
+  const vals = {};
+  for (const f of cfg.fields) {
+    const el = pane.querySelector('[data-bf="' + f.name + '"]');
+    const v = (el?.value || '').trim();
+    if (f.required && !v) { el?.focus(); return; }
+    vals[f.name] = v;
+  }
+  const st = builderState;
+  const node = nodeById(st.nodeId);
+  if (!node || !st.content) { closeBuilder(); return; }
+  const result = cfg.insert(vals);
+  // Strip trigger text and insert the result
+  const rawLen = 1 + st.query.length;
+  const currentText = editableText(st.content);
+  node.text = currentText.slice(0, st.offset) + result + currentText.slice(st.offset + rawLen);
+  st.content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(st.content, st.offset + result.length); } catch (_) {}
+  markDirty();
+  scheduleReconcile();
+  closeBuilder();
+  commitActiveEdit();
+  render();
+}
 
 function openBuilder(trigger) {
   if (!builderState) return;
@@ -33930,8 +34027,10 @@ function openBuilder(trigger) {
     '<div class="builder-wrap">' +
       '<div class="builder-header" role="search">' +
         '<span class="builder-title">' + escHtml(title) + '</span>' +
-        '<input class="guide-search" type="search" placeholder="Search commands…" aria-label="Search commands" data-first>' +
+        '<input class="guide-search builder-search" type="search" placeholder="Search commands — Enter to insert" aria-label="Search commands" data-first>' +
+        '<button class="builder-insert-btn" type="button" aria-label="Insert selected command">Insert</button>' +
       '</div>' +
+      '<div class="builder-search-hint">Type to filter or write what you want to insert, then Enter</div>' +
       '<div class="builder-body">' +
         '<div class="builder-nav" role="listbox" aria-label="Commands"></div>' +
         '<div class="builder-pane guide-pane" tabindex="-1" role="document" aria-label="Command detail"></div>' +
@@ -33940,9 +34039,10 @@ function openBuilder(trigger) {
   ioBack.classList.add('on');
   ioReturnFocus = builderState.content;
 
-  const searchEl = ioCard.querySelector('.guide-search');
+  const searchEl = ioCard.querySelector('.builder-search');
   const nav = ioCard.querySelector('.builder-nav');
   const pane = ioCard.querySelector('.builder-pane');
+  const insertBtn = ioCard.querySelector('.builder-insert-btn');
 
   let activeIdx = 0;
 
@@ -33989,6 +34089,12 @@ function openBuilder(trigger) {
     if (!vis.length) return;
     const cmd = vis[activeIdx];
     if (!cmd) return;
+    // Commands with embedded forms: show the form in the right pane instead
+    // of applying immediately. The form's submit handler does the insert + close.
+    if (BUILDER_FORMS[cmd.id]) {
+      showBuilderForm(cmd, pane);
+      return;
+    }
     const st = builderState;
     const node = nodeById(st.nodeId);
     if (!node || !st.content) { closeBuilder(); return; }
@@ -34000,6 +34106,21 @@ function openBuilder(trigger) {
     st.content.innerHTML = editModeHTML(node);
     try { setCaretByOffset(st.content, st.offset); } catch (_) {}
     markDirty();
+    // Commands that open the standard dialog harness: swap the builder content
+    // for the dialog without removing the scrim (no blink).
+    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
+      const nid = st.nodeId;
+      const content = st.content;
+      builderState = null;
+      ioCard.classList.remove('builder-open');
+      ioCard.innerHTML = '';
+      ioCard.removeAttribute('aria-label');
+      ioCancel = null;
+      insertInlineArtifact(cmd.id, nid, content);
+      return;
+    }
+    // Commands that fall through to the / block-command path (non-@{</>) or
+    // brace-forms also close the builder before applying.
     closeBuilder();
     // Apply the selected command
     if (cmd.trigger === '/' || cmd.trigger === '@') {
@@ -34010,15 +34131,13 @@ function openBuilder(trigger) {
       }
     } else if (cmd.trigger === '{' && cmd._brace) {
       // Insert the brace scaffold — fall through to blink in content
-      const insert = cmd._brace.insert;
       const cur = nodeById(st.nodeId);
       if (cur) {
-        cur.text = currentText.slice(0, st.offset) + insert + currentText.slice(st.offset + rawLen);
+        cur.text = currentText.slice(0, st.offset) + cmd._brace.insert + currentText.slice(st.offset + rawLen);
         st.content.innerHTML = editModeHTML(cur);
         try {
           const caret = st.offset + cmd._brace.sel[0];
           setCaretByOffset(st.content, caret);
-          // Select the placeholder range if there is one
           if (cmd._brace.sel[1] > cmd._brace.sel[0]) {
             const [s, e] = [st.offset + cmd._brace.sel[0], st.offset + cmd._brace.sel[1]];
             const sel = domSelectionForChars(st.content, s, e);
@@ -34100,11 +34219,16 @@ function openBuilder(trigger) {
       e.preventDefault();
       const first = nav.querySelector('.builder-item');
       if (first) { activeIdx = 0; syncActive(); first.focus(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      applyBuilder();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
       closeBuilder();
     }
   });
+  // Insert button
+  insertBtn.addEventListener('click', () => applyBuilder());
   // Close on backdrop click
   ioBack.addEventListener('click', e => { if (e.target === ioBack) closeBuilder(); }, { once: true });
   requestAnimationFrame(() => { searchEl.focus(); });
