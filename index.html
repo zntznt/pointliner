@@ -268,7 +268,8 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-cat{display:flex;flex-direction:column;scroll-margin-top:8px}   /* all sections stacked; scroll-margin lands the heading in view */
 .fm-cat[hidden]{display:none}                  /* search hides a category with no matches (class+attr > class) */
 /* section eyebrow: a category label + a divider from the section above (the guide-nav-group recipe) */
-.fm-cat-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:14px 2px 5px;margin-top:6px;border-top:1px solid var(--bdr)}
+.fm-cat-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:10px 10px 5px;border-top:1px solid var(--bdr)}
+.fm-cat:first-child .fm-cat-head{border-top:none;padding-top:6px}
 .cmd-item.fm-search-hidden{display:none}      /* a row filtered out by the menu search (2 classes > .cmd-item) */
 #accent-row.fm-search-hidden{display:none}    /* the color swatches have no searchable text: hidden while searching */
 /* header */
@@ -302,7 +303,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-choice{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--r-sm);cursor:pointer}
 .fm-choice-info{display:flex;flex-direction:column;min-width:0;flex:1}
 .fm-choice-name{font-size:13px;font-weight:500;color:var(--fg)}
-.fm-choice-desc{font-size:11px;color:var(--muted);line-height:1.35}
+.fm-choice-desc{font-size:12px;color:var(--muted);line-height:1.35}
 /* hover comes from the shared .cmd-item:hover (10% accent tint, the one menu hover language).
    The current/selected choice wears the badge tint recipe (16% accent + accent ink); the filled
    radio/checkbox mark is the selection affordance, so no separate 35% border is added. */
@@ -1649,18 +1650,20 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
    no 680px cap. */
 #io-card.guide-open{width:min(760px,calc(100vw - 32px));margin-top:5vh;max-height:calc(100dvh - 10vh);padding:0;overflow:hidden}
 .guide-wrap{display:flex;flex-direction:column;height:calc(100dvh - 10vh)}
-.guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0;flex-wrap:wrap}
+.guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0;flex-wrap:wrap}
 .guide-title{font-size:13px;font-weight:600;flex-shrink:0}
 .guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
 .guide-search::placeholder{color:var(--muted)}
 .guide-search:focus{outline:2px solid var(--acc);outline-offset:-1px}
-/* ── verbosity strip (File menu header) ──────────────────────────────────── */
-.fm-verb-strip{flex-basis:100%;display:flex;align-items:center;gap:4px;padding-top:6px}
-.fm-verb-strip .fm-verb-seg{border:none;border-radius:var(--r-sm);padding:3px 10px;font-size:12px;color:var(--muted);background:transparent;cursor:pointer}
-.fm-verb-strip .fm-verb-seg:hover{background:var(--hbg);color:var(--fg)}
-.fm-verb-strip .fm-verb-seg.cur{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);font-weight:600}
-.fm-verb-strip .fm-verb-seg:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
-.fm-verb-desc{font-size:11px;color:var(--muted);margin-left:4px;flex:1}
+/* ── verbosity strip (File menu header) — chip grammar with top rule ────── */
+.fm-verb-strip{flex-basis:100%;display:flex;align-items:center;gap:6px;padding:8px 0 4px;margin-top:4px;border-top:1px solid var(--bdr)}
+.fm-verb-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);flex-shrink:0}
+.fm-verb-strip .fm-verb-seg{border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:2px 8px;font-size:11px;font-weight:600;color:var(--muted);background:transparent;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.fm-verb-strip .fm-verb-seg:hover{background:color-mix(in srgb,var(--acc) 10%,transparent);color:var(--fg);border-color:var(--acc)}
+.fm-verb-strip .fm-verb-seg.cur{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.fm-verb-strip .fm-verb-seg:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.fm-verb-desc-row{flex-basis:100%;padding:3px 0 2px}
+.fm-verb-desc{font-size:11px;color:var(--muted);line-height:1.35}
 .guide-close{flex-shrink:0;width:26px;height:26px;font-size:14px}
 .guide-body{display:flex;flex:1;overflow:hidden;min-height:0}
 .guide-nav{width:194px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--bdr);padding:6px 0}
@@ -2479,11 +2482,12 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
     <span class="guide-title">Menu</span>
     <input class="guide-search" id="fm-search" type="search" placeholder="Search the menu…" aria-label="Search the menu" autocomplete="off">
     <div class="fm-verb-strip" id="fm-verb-strip" role="radiogroup" aria-label="Guidance level">
-      <button class="lvl-btn fm-verb-seg" type="button" role="radio" data-tier="guided" aria-checked="false">Guided</button>
-      <button class="lvl-btn fm-verb-seg" type="button" role="radio" data-tier="standard" aria-checked="false">Standard</button>
-      <button class="lvl-btn fm-verb-seg" type="button" role="radio" data-tier="lean" aria-checked="false">Lean</button>
-      <span class="fm-verb-desc" id="fm-verb-desc"></span>
+      <span class="fm-verb-lbl">Guidance</span>
+      <button class="fm-verb-seg" type="button" role="radio" data-tier="guided" aria-checked="false">Guided</button>
+      <button class="fm-verb-seg" type="button" role="radio" data-tier="standard" aria-checked="false">Standard</button>
+      <button class="fm-verb-seg" type="button" role="radio" data-tier="lean" aria-checked="false">Lean</button>
     </div>
+    <div class="fm-verb-desc-row"><span class="fm-verb-desc" id="fm-verb-desc"></span></div>
   </div>
   <div class="guide-body fm-body">
     <nav class="guide-nav" id="fm-nav" aria-label="Menu categories">
