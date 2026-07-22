@@ -1655,8 +1655,11 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 /* 3-dot verbosity indicator — visible in Standard/Lean, hidden in Guided.
    Filled dot = active tier. 28px wide, 0 vertical overhead. Click to cycle. */
 .fm-tier-dots{display:flex;gap:3px;align-items:center;cursor:pointer;flex-shrink:0;padding:3px 4px;border-radius:var(--r-sm)}
-.fm-tier-dot{width:6px;height:6px;border-radius:50%;border:1px solid var(--bdr-ui);background:transparent;transition:background .12s,border-color .12s}
+.fm-tier-dot{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--bdr-ui);background:transparent;transition:background .12s,border-color .12s}
 .fm-tier-dot.active{background:var(--acc);border-color:var(--acc)}
+/* Inactive dots get a faint fill so they register against the header background.
+   Without this, a 1.5px hairline border on 7px at ≈3:1 contrast is invisible. */
+.fm-tier-dot:not(.active){background:color-mix(in srgb,var(--muted) 18%,transparent)}
 .fm-tier-dots:hover .fm-tier-dot{border-color:var(--fg)}
 .fm-tier-dots:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
