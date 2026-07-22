@@ -34170,7 +34170,13 @@ function openBuilder(trigger) {
     items.forEach((it, i) => { it.classList.toggle('active', i === activeIdx); it.setAttribute('aria-selected', String(i === activeIdx)); });
     const active = items[activeIdx];
     if (active) active.scrollIntoView({ block: 'nearest' });
-    if (activeIdx < vis.length) renderBuilderPane(vis[activeIdx]);
+    if (activeIdx < vis.length) {
+      // Keep active dialog/form in the pane while browsing — only update
+      // when no form is showing (user is viewing GUIDE entries).
+      if (!_dialogRoot && !_restoreState && !pane.querySelector('.builder-form, .io-foot')) {
+        renderBuilderPane(vis[activeIdx]);
+      }
+    }
   }
 
   function applyBuilder() {
@@ -34380,8 +34386,7 @@ function openBuilder(trigger) {
       if (first) { activeIdx = 0; syncActive(); first.focus(); }
     } else if (e.key === 'Tab' || e.key === 'ArrowRight') {
       e.preventDefault();
-      const v = visibleCmds();
-      if (v.length) loadPaneForCmd(v[activeIdx]);
+      // Let the pane focus event handle content loading — avoids double-load.
       pane.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
