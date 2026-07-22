@@ -56,6 +56,8 @@ That is the entire interaction model. Everything else is just more kinds of `{�
   archive you can reopen, Markdown/text for readable snapshots, HTML to hand someone a live copy.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides for the pill families above.
+- **[Composing pills](composing-pills.md)** shows how to put pills together — side by side,
+  through variables, and through the tree — so one pill feeds another.
 - **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
 - **[Solo RPG guides](solo-rpg/README.md)** are worked examples for the use Pointliner was born
   from: playing and journaling a tabletop game in one file, each with an importable demo.
