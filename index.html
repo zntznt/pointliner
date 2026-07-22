@@ -1649,11 +1649,18 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
    no 680px cap. */
 #io-card.guide-open{width:min(760px,calc(100vw - 32px));margin-top:5vh;max-height:calc(100dvh - 10vh);padding:0;overflow:hidden}
 .guide-wrap{display:flex;flex-direction:column;height:calc(100dvh - 10vh)}
-.guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0;flex-wrap:wrap}
 .guide-title{font-size:13px;font-weight:600;flex-shrink:0}
 .guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
 .guide-search::placeholder{color:var(--muted)}
 .guide-search:focus{outline:2px solid var(--acc);outline-offset:-1px}
+/* ── verbosity strip (File menu header) ──────────────────────────────────── */
+.fm-verb-strip{flex-basis:100%;display:flex;align-items:center;gap:4px;padding-top:6px}
+.fm-verb-strip .fm-verb-seg{border:none;border-radius:var(--r-sm);padding:3px 10px;font-size:12px;color:var(--muted);background:transparent;cursor:pointer}
+.fm-verb-strip .fm-verb-seg:hover{background:var(--hbg);color:var(--fg)}
+.fm-verb-strip .fm-verb-seg.cur{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);font-weight:600}
+.fm-verb-strip .fm-verb-seg:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.fm-verb-desc{font-size:11px;color:var(--muted);margin-left:4px;flex:1}
 .guide-close{flex-shrink:0;width:26px;height:26px;font-size:14px}
 .guide-body{display:flex;flex:1;overflow:hidden;min-height:0}
 .guide-nav{width:194px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--bdr);padding:6px 0}
@@ -2194,6 +2201,9 @@ body.v-lean #sc-toggle{display:none}
 /* the "File ▾" cue beside the wordmark is a teaching affordance — it names the menu the logo
    opens. Guided only; Standard/Lean users know the logo is the menu (item, modes batch). */
 body:not(.v-guided) .logo-file-cue{display:none}
+/* File menu: hide action-row descriptions in Standard/Lean (teaching text, like .bm-desc).
+   The verbosity strip's own tier descriptions are never gated — always visible. */
+body:not(.v-guided) #file-menu .cmd-desc{display:none}
 /* ── variables overview panel ── */
 #var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
 #var-panel.on{transform:translateY(0);box-shadow:var(--sh-up)}
@@ -2468,6 +2478,12 @@ body:not(.v-guided) .logo-file-cue{display:none}
   <div class="guide-header">
     <span class="guide-title">Menu</span>
     <input class="guide-search" id="fm-search" type="search" placeholder="Search the menu…" aria-label="Search the menu" autocomplete="off">
+    <div class="fm-verb-strip" id="fm-verb-strip" role="radiogroup" aria-label="Guidance level">
+      <button class="lvl-btn fm-verb-seg" type="button" role="radio" data-tier="guided" aria-checked="false">Guided</button>
+      <button class="lvl-btn fm-verb-seg" type="button" role="radio" data-tier="standard" aria-checked="false">Standard</button>
+      <button class="lvl-btn fm-verb-seg" type="button" role="radio" data-tier="lean" aria-checked="false">Lean</button>
+      <span class="fm-verb-desc" id="fm-verb-desc"></span>
+    </div>
   </div>
   <div class="guide-body fm-body">
     <nav class="guide-nav" id="fm-nav" aria-label="Menu categories">
@@ -31819,6 +31835,7 @@ const fmtKey = k => (typeof IS_MAC !== 'undefined' && IS_MAC) ? '⌘' + k : 'Ctr
 function openFileMenu() {
   armChromeReturn();
   syncVerbosityCard();       // modes batch item 4: highlight the current tier in the 3-choice card
+  syncVerbosityStrip();      // highlight the current tier in the header strip
   buildToolbarChooser();     // modes batch item 5: (re)build the toolbar-feature toggles, reflecting current prefs
   syncRollLogLabel();        // #918: reflect the roll-log on/off state
   // platform-correct shortcut chips (⌘K on Mac, Ctrl+K elsewhere)
@@ -31888,6 +31905,7 @@ function closeFileMenu() {
 // is display:none). #603: this replaces the old style.display check, which couldn't see category/search hiding.
 const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')].filter(el => el.offsetParent !== null);
 const fmNavBtns = () => [...fileMenu.querySelectorAll('.guide-nav-btn')];
+const fmStripSegs = () => [...fileMenu.querySelectorAll('#fm-verb-strip .fm-verb-seg')];
 // #507: only the plain <div> rows get role=button — the two external-link <a> rows keep
 // their native link semantics (a SR announces "opens in new window") and the native
 // <button> (Install) keeps its own role. tabindex=-1 on all of them so arrow-roving owns
@@ -31905,8 +31923,10 @@ fileMenu.addEventListener('keydown', e => {
   const active = document.activeElement;
   const onSearch = active === search;
   const onNav = !!active?.classList?.contains('guide-nav-btn');
+  const onStrip = !!active?.classList?.contains('fm-verb-seg');
   const rows = fmItems();
   const navBtns = fmNavBtns();
+  const stripSegs = fmStripSegs();
 
   if (e.key === 'Escape') {
     e.preventDefault();
@@ -31915,14 +31935,23 @@ fileMenu.addEventListener('keydown', e => {
   }
   if (e.key === 'Tab') {   // trap: cycle search → nav → rows → search
     e.preventDefault();
-    const order = [search, ...navBtns, ...rows].filter(Boolean);
+    const order = [...stripSegs, search, ...navBtns, ...rows].filter(Boolean);
     const i = order.indexOf(active);
     const d = e.shiftKey ? -1 : 1;
     order[(i + d + order.length) % order.length]?.focus();
     return;
   }
+  if (onStrip && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    e.preventDefault();
+    const d = e.key === 'ArrowRight' ? 1 : -1;
+    const i = stripSegs.indexOf(active);
+    const next = stripSegs[i + d];
+    if (next) { next.click(); next.focus(); }
+    return;
+  }
   if (e.key === 'Enter' || e.key === ' ') {
     if (onSearch) return;   // typing space in the search box is a space, not an activate
+    if (onStrip) return;     // left/right already handles the strip; Enter/Space is a no-op here
     e.preventDefault();
     if (onNav) { active.click(); fmItems()[0]?.focus(); return; }   // pick the category, dive into it
     active?.click();   // a row: run its handler
@@ -31932,6 +31961,7 @@ fileMenu.addEventListener('keydown', e => {
     e.preventDefault();
     const d = e.key === 'ArrowDown' ? 1 : -1;
     if (onSearch) { (d > 0 ? rows[0] : navBtns[navBtns.length - 1])?.focus(); return; }
+    if (onStrip) { (d > 0 ? search : null)?.focus(); return; }
     if (onNav) {
       const i = navBtns.indexOf(active), next = navBtns[i + d];
       if (next) { next.click(); next.focus(); }        // switch category live as you arrow
@@ -32019,11 +32049,24 @@ function syncVerbosityCard() {
     el.setAttribute('aria-checked', on ? 'true' : 'false');
   });
 }
+function syncVerbosityStrip() {
+  const desc = document.getElementById('fm-verb-desc');
+  const descs = { guided: 'Every menu explains itself. Point hints, pill tooltips, and the search cheatsheet are all on.',
+                  standard: 'Explanations are off. Menus and edit pencils stay.',
+                  lean: 'Bare canvas. Everything still works, just quieter.' };
+  if (desc) desc.textContent = descs[verbosity] || '';
+  document.querySelectorAll('#fm-verb-strip .fm-verb-seg').forEach(el => {
+    const on = el.dataset.tier === verbosity;
+    el.classList.toggle('cur', on);
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+}
 function setVerbosity(tier) {
   if (!VERBOSITY_TIERS.includes(tier) || tier === verbosity) { syncVerbosityCard(); return; }
   verbosity = tier;
   syncVerbosityClass();
   syncVerbosityCard();
+  syncVerbosityStrip();
   scheduleAutosave();
   render();
   flashHint(VERBOSITY_FLASH[verbosity]);
@@ -32031,6 +32074,10 @@ function setVerbosity(tier) {
 document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
   // deliberately does not close the menu: the card sets state in place (item 4). mousedown+
   // preventDefault is not needed (no contenteditable is active while the menu is open).
+  el.addEventListener('click', () => setVerbosity(el.dataset.tier));
+});
+// Header strip counterparts — same contract: set state, keep menu open.
+document.querySelectorAll('#fm-verb-strip .fm-verb-seg').forEach(el => {
   el.addEventListener('click', () => setVerbosity(el.dataset.tier));
 });
 
@@ -32517,6 +32564,7 @@ function toggleVerbosity(dir = 1) {
   verbosity = VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + dir + n) % n];   // dir +1 forward (quieter), -1 reverse (more guidance)
   syncVerbosityClass();
   syncVerbosityCard();
+  syncVerbosityStrip();
   scheduleAutosave();
   render();
   flashHint(VERBOSITY_FLASH[verbosity]);
