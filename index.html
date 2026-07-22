@@ -32887,7 +32887,7 @@ const GUIDE = [
   { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
     body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Type /prop:owner=zeo to set one inline, or /prop to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again. To add several at once (a character stat block, a set of line items), paste a list of key: value lines into the key field of the editor and each line becomes a property. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.",
-    related:['check','rollups','hashtags'],
+    related:['check','rollups','hashtags','recipe-budget'],
     examples:[
       { syn:'/prop:owner=zeo',     desc:'set a property inline, no dialog' },
       { syn:'/prop',               desc:'write the fill-in-the-blank stub' },
@@ -32917,7 +32917,7 @@ const GUIDE = [
   { id:'meter', cat:'todos', covers:['meter'],
     title:'Meters',
     body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change.\n\nYou can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row.\n\nIf a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
-    related:['progress','clock'],
+    related:['progress','clock','math','variables','rollups'],
     examples:[
       { syn:'{meter: hp/hpmax}', desc:'a bar of one property over another' },
       { syn:'{meter: hp/20}',    desc:'a fixed maximum' },
@@ -33153,7 +33153,7 @@ const GUIDE = [
   { id:'markov', cat:'generators', covers:['markov'],
     title:'Markov chains',
     body:"Generate made-up text that sounds like it belongs to a style you define: invented place names, character names in the style of a language, sample dialogue or procedural flavor text. You give it a set of transitions (each state points to the next, with optional weights) and it walks them at random. Type {markov: a→b, b→c} to make one inline, or use the @ Markov chain dialog to name it and set a start and length. Click the pill to walk it again.",
-    related:['grammar','gen-rules'],
+    related:['grammar','gen-rules','recipe-stocker'],
     examples:[
       { syn:'{markov: a→b, b→c}', desc:'make one by typing (→ or ->)' },
       { syn:'{markov: sun→rain, sun→sun 2}', desc:'weight a transition' },
@@ -33307,6 +33307,15 @@ const GUIDE = [
       { syn:'strength: 3d6',          desc:'a random pick variable, rolled once on save then fixed' },
       { syn:'toggle off',             desc:'disable a pack without deleting it' },
     ] },
+  { id:'composing-pills', cat:'compute',
+    title:'Composing pills',
+    body:"Pills are not meant to be used one at a time. The whole engine is designed so one pill can feed another: a variable holds a die roll, a condition reads that variable, a math pill reads the same one. Pills work together in three basic patterns.\n\nPut pills side by side in the same line to make a combined readout. Type `Spent {= sum(cost)} of {= budget}` and the point reads \"Spent 320 of 500\" — a live budget statement with two pills and a few words of text between them. The range of a property across children is just two math pills and a dash: `{= min(cost)}–{= max(cost)}`. A progress bar toward a word-count goal is `{= words(subtree)} / 5,000` with a meter underneath.\n\nCapture a value in a variable, then read that variable from other pills. Declare `{r := 1d20}`, and every other pill that reads `r` sees the same rolled number: `{= r + mod}` adds a modifier, and `{r == 20: Critical!}` branches on it. The variable freezes the random result so the condition and the math agree.\n\nProperties inherit down the tree, so a child point reads its ancestor's numbers. Put `budget: 500` on a heading, and a child underneath writes `{= sum(cost)}` and a check `sum(cost) <= budget` — the child reads the parent's number without declaring anything itself. The nearest value wins: a point's own property beats an ancestor's, and a nearer ancestor beats a farther one.\n\nEstimates and math are separate engines and cannot mix inside one pill (`{= (5 to 10) * 2}` fails). Compose them side by side instead: `{5 to 10} × 2 ≈ {= avg_cost * 2}`. The Put it together recipes at the end of this guide show every pattern at work in a finished document you can copy.",
+    related:['variables','math','rollups','estimates','meter','gen-conditions','check','recipe-crit','recipe-npc','recipe-budget','recipe-dashboard','recipe-stocker'],
+    examples:[
+      { syn:'{= sum(cost)} of {= budget}', desc:'side by side — a live budget statement' },
+      { syn:'{r := 1d20} {= r + mod}', desc:'through a variable — capture once, read many times' },
+      { syn:'budget: 500', desc:'through the tree — ancestor holds it, children read it' },
+    ] },
 
   // ── Links & knowledge (guide) ─────────────────────────────────────────────
   { id:'point-links', cat:'links',
@@ -33426,7 +33435,7 @@ const GUIDE = [
   //    from the entries above; the "See also" chips link back to the pieces. ──────────────────────
   { id:'recipe-crit', cat:'recipes', related:['variables','dice','gen-conditions','math'],
     title:'Capture a roll, then branch on it',
-    body:"The move behind every crit, save and skill check: roll once, remember the result, then react to it. Type a variable that captures a die and the same number is there to test and to add to. The capture holds still until you click it, so the whole line stays consistent and one click re-rolls the lot.",
+    body:"The move behind every crit, save and skill check: roll once, remember the result, then react to it. Type a variable that captures a die and the same number is there to test and to add to. The capture holds still until you click it, so the whole line stays consistent and one click re-rolls the lot. This is composition through a variable: one pill captures a die roll, and a condition and a math pill both read the same captured value.",
     examples:[
       { syn:'{r := 1d20}',          desc:'roll a d20 and remember it as r' },
       { syn:'{r == 20: Critical!}', desc:'react when it is a natural 20' },
@@ -33434,7 +33443,7 @@ const GUIDE = [
     ] },
   { id:'recipe-npc', cat:'recipes', related:['grammar','gen-conditions','variables'],
     title:'A character who stays consistent',
-    body:"Roll up a character once and have every mention agree: the same weapon, the same damage die, all the way down the sentence. Write the choices as a rule, give each choice its own fields, then freeze the pick in a variable so it holds still. Click the pill to meet someone new.",
+    body:"Roll up a character once and have every mention agree: the same weapon, the same damage die, all the way down the sentence. Write the choices as a rule, give each choice its own fields, then freeze the pick in a variable so it holds still. Click the pill to meet someone new. This is composition through item details: grammar picks a weapon once, and conditions read that weapon's name and damage from the same choice.",
     examples:[
       { syn:'weapon: longsword | warhammer | dagger', desc:'a rule of choices (@ Grammar)' },
       { syn:'longsword.dmg: 1d8',                      desc:'give a choice its own field' },
@@ -33443,7 +33452,7 @@ const GUIDE = [
     ] },
   { id:'recipe-budget', cat:'recipes', related:['properties','rollups','check','search-ops'],
     title:'A budget that totals and checks itself',
-    body:"Make a parent point a budget and each line item a child with a cost, and the total keeps itself. Add a check and the point flags the moment you go over, with no watching on your part. One search then finds every over-budget point in the document.",
+    body:"Make a parent point a budget and each line item a child with a cost, and the total keeps itself. Add a check and the point flags the moment you go over, with no watching on your part. One search then finds every over-budget point in the document. This is composition through the tree: properties feed roll-ups, roll-ups feed checks, and checks feed search.",
     examples:[
       { syn:'Trip: spent {= sum(cost)} of {budget}', desc:'totals the children live' },
       { syn:'sum(cost) <= budget',                   desc:'a check on the parent (/check)' },
@@ -33451,7 +33460,7 @@ const GUIDE = [
     ] },
   { id:'recipe-dashboard', cat:'recipes', related:['query','progress','search-ops'],
     title:'A live status line',
-    body:"Turn the top of a project into a line that reads itself. A count pill shows how many points match a search, an embedded query lists them and a progress cookie tallies the boxes below. Every piece updates on its own as the work moves.",
+    body:"Turn the top of a project into a line that reads itself. A count pill shows how many points match a search, an embedded query lists them and a progress cookie tallies the boxes below. Every piece updates on its own as the work moves. This is composition side by side: different pill forms on the same line each pull from a different part of the document.",
     examples:[
       { syn:'{count: is:todo} open',    desc:'just the number, live' },
       { syn:'[/]',                      desc:'a done tally over the child tasks' },
