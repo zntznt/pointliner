@@ -268,7 +268,8 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-cat{display:flex;flex-direction:column;scroll-margin-top:8px}   /* all sections stacked; scroll-margin lands the heading in view */
 .fm-cat[hidden]{display:none}                  /* search hides a category with no matches (class+attr > class) */
 /* section eyebrow: a category label + a divider from the section above (the guide-nav-group recipe) */
-.fm-cat-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:14px 2px 5px;margin-top:6px;border-top:1px solid var(--bdr)}
+.fm-cat-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:10px 10px 5px;border-top:1px solid var(--bdr)}
+.fm-cat:first-child .fm-cat-head{border-top:none;padding-top:6px}
 .cmd-item.fm-search-hidden{display:none}      /* a row filtered out by the menu search (2 classes > .cmd-item) */
 #accent-row.fm-search-hidden{display:none}    /* the color swatches have no searchable text: hidden while searching */
 /* header */
@@ -302,7 +303,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-choice{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--r-sm);cursor:pointer}
 .fm-choice-info{display:flex;flex-direction:column;min-width:0;flex:1}
 .fm-choice-name{font-size:13px;font-weight:500;color:var(--fg)}
-.fm-choice-desc{font-size:11px;color:var(--muted);line-height:1.35}
+.fm-choice-desc{font-size:12px;color:var(--muted);line-height:1.35}
 /* hover comes from the shared .cmd-item:hover (10% accent tint, the one menu hover language).
    The current/selected choice wears the badge tint recipe (16% accent + accent ink); the filled
    radio/checkbox mark is the selection affordance, so no separate 35% border is added. */
@@ -1649,8 +1650,14 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
    no 680px cap. */
 #io-card.guide-open{width:min(760px,calc(100vw - 32px));margin-top:5vh;max-height:calc(100dvh - 10vh);padding:0;overflow:hidden}
 .guide-wrap{display:flex;flex-direction:column;height:calc(100dvh - 10vh)}
-.guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 .guide-title{font-size:13px;font-weight:600;flex-shrink:0}
+/* Tier indicator — compact text chip showing current verbosity. Accent whisper
+   tint so it registers as a colored object, not another piece of muted text.
+   Click to cycle through Guided/Standard/Lean. */
+.fm-tier-ind{font-size:11px;font-weight:600;color:var(--acc);cursor:pointer;flex-shrink:0;user-select:none;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 22%,transparent);transition:background .12s,border-color .12s;line-height:1.4}
+.fm-tier-ind:hover{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.fm-tier-ind:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-xs)}
 .guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
 .guide-search::placeholder{color:var(--muted)}
 .guide-search:focus{outline:2px solid var(--acc);outline-offset:-1px}
@@ -2194,6 +2201,9 @@ body.v-lean #sc-toggle{display:none}
 /* the "File ▾" cue beside the wordmark is a teaching affordance — it names the menu the logo
    opens. Guided only; Standard/Lean users know the logo is the menu (item, modes batch). */
 body:not(.v-guided) .logo-file-cue{display:none}
+/* File menu: hide action-row descriptions in Standard/Lean (teaching text, like .bm-desc).
+   The verbosity strip's own tier descriptions are never gated — always visible. */
+body:not(.v-guided) #file-menu .cmd-desc{display:none}
 /* ── variables overview panel ── */
 #var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
 #var-panel.on{transform:translateY(0);box-shadow:var(--sh-up)}
@@ -2467,6 +2477,7 @@ body:not(.v-guided) .logo-file-cue{display:none}
        so every handler wired elsewhere by id still fires; only their grouping/presentation changed. -->
   <div class="guide-header">
     <span class="guide-title">Menu</span>
+    <span class="fm-tier-ind" id="fm-tier-ind" title="Guidance level. Click to cycle." role="button" tabindex="0">Guided</span>
     <input class="guide-search" id="fm-search" type="search" placeholder="Search the menu…" aria-label="Search the menu" autocomplete="off">
   </div>
   <div class="guide-body fm-body">
@@ -31819,6 +31830,7 @@ const fmtKey = k => (typeof IS_MAC !== 'undefined' && IS_MAC) ? '⌘' + k : 'Ctr
 function openFileMenu() {
   armChromeReturn();
   syncVerbosityCard();       // modes batch item 4: highlight the current tier in the 3-choice card
+  syncVerbosityStrip();      // highlight the current tier in the header strip
   buildToolbarChooser();     // modes batch item 5: (re)build the toolbar-feature toggles, reflecting current prefs
   syncRollLogLabel();        // #918: reflect the roll-log on/off state
   // platform-correct shortcut chips (⌘K on Mac, Ctrl+K elsewhere)
@@ -31915,7 +31927,8 @@ fileMenu.addEventListener('keydown', e => {
   }
   if (e.key === 'Tab') {   // trap: cycle search → nav → rows → search
     e.preventDefault();
-    const order = [search, ...navBtns, ...rows].filter(Boolean);
+    const tierInd = document.getElementById('fm-tier-ind');
+    const order = [search, tierInd, ...navBtns, ...rows].filter(Boolean);
     const i = order.indexOf(active);
     const d = e.shiftKey ? -1 : 1;
     order[(i + d + order.length) % order.length]?.focus();
@@ -32019,11 +32032,16 @@ function syncVerbosityCard() {
     el.setAttribute('aria-checked', on ? 'true' : 'false');
   });
 }
+function syncVerbosityStrip() {
+  const ind = document.getElementById('fm-tier-ind');
+  if (ind) ind.textContent = verbosity.charAt(0).toUpperCase() + verbosity.slice(1);
+}
 function setVerbosity(tier) {
   if (!VERBOSITY_TIERS.includes(tier) || tier === verbosity) { syncVerbosityCard(); return; }
   verbosity = tier;
   syncVerbosityClass();
   syncVerbosityCard();
+  syncVerbosityStrip();
   scheduleAutosave();
   render();
   flashHint(VERBOSITY_FLASH[verbosity]);
@@ -32032,6 +32050,11 @@ document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
   // deliberately does not close the menu: the card sets state in place (item 4). mousedown+
   // preventDefault is not needed (no contenteditable is active while the menu is open).
   el.addEventListener('click', () => setVerbosity(el.dataset.tier));
+});
+// Header tier indicator — click to cycle verbosity (same contract: keep menu open)
+document.getElementById('fm-tier-ind')?.addEventListener('click', () => toggleVerbosity(1));
+document.getElementById('fm-tier-ind')?.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleVerbosity(1); }
 });
 
 // ── Toolbar-feature chooser (modes batch, item 5) ────────────────────────────
@@ -32517,6 +32540,7 @@ function toggleVerbosity(dir = 1) {
   verbosity = VERBOSITY_TIERS[(VERBOSITY_TIERS.indexOf(verbosity) + dir + n) % n];   // dir +1 forward (quieter), -1 reverse (more guidance)
   syncVerbosityClass();
   syncVerbosityCard();
+  syncVerbosityStrip();
   scheduleAutosave();
   render();
   flashHint(VERBOSITY_FLASH[verbosity]);
