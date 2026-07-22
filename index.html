@@ -19608,7 +19608,14 @@ function dialogHelp(head, guideId) {
   b.style.marginLeft = 'auto';
   b.setAttribute('aria-label', 'Open the guide for this'); b.title = 'Open the guide for this';
   b.textContent = '?';   // matches the app's existing #sc-toggle help affordance; subset-safe
-  const go = () => { closeIo(); openGuide(guideId); };
+  const go = () => {
+    if (_dialogRoot) {
+      const guideAfter = _dialogRoot.querySelector('.builder-guide-after');
+      if (guideAfter) guideAfter.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    } else {
+      closeIo(); openGuide(guideId);
+    }
+  };
   b.addEventListener('click', go);
   b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
   head.appendChild(b);
@@ -19620,6 +19627,8 @@ function dialogHelp(head, guideId) {
 let _dialogRoot = null;
 let _dialogCancel = null;      // custom cancel when nested (returns to GUIDE entry)
 let _dialogGuideCmd = null;    // command whose GUIDE entry is shown below the form
+let _restoreState = null;      // { text, node, content, offset, queryLen } for trigger text restore on cancel/switch
+let _dialogFormEl = null;      // reference to submit button in nested dialog
 
 function openInsertDialog(opts) {
   const root = _dialogRoot || ioCard;
@@ -19711,10 +19720,11 @@ function openInsertDialog(opts) {
     closeIo();
   }
   function cancel() {
-    if (isNested) { _dialogCancel?.(); _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; return; }
+    if (isNested) { _dialogCancel?.(); _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; _dialogFormEl = null; _restoreState = null; return; }
     closeIo();
   }
   if (isNested) {
+    _dialogFormEl = okBtn;
     // Nested in builder: builder manages its own scrim and focus; no global dialog state
   } else {
     ioCancel = cancel;
@@ -19740,6 +19750,8 @@ function closeBuilderWindow() {
   _dialogRoot = null;
   _dialogCancel = null;
   _dialogGuideCmd = null;
+  _dialogFormEl = null;
+  _restoreState = null;
   const ic = document.getElementById('io-card');
   if (ic) { ic.classList.remove('builder-open'); ic.innerHTML = ''; ic.removeAttribute('aria-label'); }
   closeIo();
@@ -34043,6 +34055,39 @@ function builderFormApply(cmd, pane) {
   commitActiveEdit();
   render();
 }
+// ─── builder nested dialog helpers ───────────────────────────────────────────
+
+function builderRestoreTrigger() {
+  if (!_restoreState) return;
+  const rs = _restoreState;
+  rs.node.text = rs.text;
+  rs.content.innerHTML = editModeHTML(rs.node);
+  try { setCaretByOffset(rs.content, rs.offset + rs.queryLen + 1); } catch (_) {}
+  markDirty();
+  _dialogRoot = null;
+  _dialogCancel = null;
+  _dialogGuideCmd = null;
+  _dialogFormEl = null;
+  _restoreState = null;
+}
+
+function showNestedDialog(cmd, pane) {
+  if (!builderState) return;
+  const st = builderState;
+  const node = nodeById(st.nodeId);
+  if (!node || !st.content) return;
+  const currentText = editableText(st.content);
+  const rawLen = 1 + st.query.length;
+  _restoreState = { text: currentText, node, content: st.content, offset: st.offset, queryLen: st.query.length };
+  node.text = currentText.slice(0, st.offset) + currentText.slice(st.offset + rawLen);
+  st.content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(st.content, st.offset); } catch (_) {}
+  markDirty();
+  _dialogRoot = pane;
+  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };
+  _dialogGuideCmd = cmd;
+  insertInlineArtifact(cmd.id, st.nodeId, st.content);
+}
 
 function openBuilder(trigger) {
   if (!builderState) return;
@@ -34113,7 +34158,17 @@ function openBuilder(trigger) {
     items.forEach((it, i) => { it.classList.toggle('active', i === activeIdx); it.setAttribute('aria-selected', String(i === activeIdx)); });
     const active = items[activeIdx];
     if (active) active.scrollIntoView({ block: 'nearest' });
-    if (activeIdx < vis.length) renderBuilderPane(vis[activeIdx]);
+    if (activeIdx < vis.length) {
+      const cmd = vis[activeIdx];
+      if (_restoreState) builderRestoreTrigger();
+      if (BUILDER_FORMS[cmd.id]) {
+        showBuilderForm(cmd, pane);
+      } else if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
+        showNestedDialog(cmd, pane);
+      } else {
+        renderBuilderPane(cmd);
+      }
+    }
   }
 
   function applyBuilder() {
@@ -34130,23 +34185,33 @@ function openBuilder(trigger) {
     const st = builderState;
     const node = nodeById(st.nodeId);
     if (!node || !st.content) { closeBuilder(); return; }
-    // Strip the trigger text from the node
-    const rawLen = 1 + st.query.length; // trigger char + query
+    // Commands that open the standard dialog harness: render the dialog form
+    // in the right pane via _dialogRoot so it stays embedded in the builder.
+    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
+      // If form is already showing from browse, just submit it
+      if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); return; }
+      // Otherwise strip trigger text and open the form
+      const rawLen = 1 + st.query.length;
+      const currentText = editableText(st.content);
+      _restoreState = { text: currentText, node, content: st.content, offset: st.offset, queryLen: st.query.length };
+      node.text = currentText.slice(0, st.offset) + currentText.slice(st.offset + rawLen);
+      st.content.innerHTML = editModeHTML(node);
+      try { setCaretByOffset(st.content, st.offset); } catch (_) {}
+      markDirty();
+      _dialogRoot = pane;
+      _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };
+      _dialogGuideCmd = cmd;
+      insertInlineArtifact(cmd.id, st.nodeId, st.content);
+      return;
+    }
+    // Strip the trigger text from the node (non-dialog commands)
+    const rawLen = 1 + st.query.length;
     const currentText = editableText(st.content);
     const newText = currentText.slice(0, st.offset) + currentText.slice(st.offset + rawLen);
     node.text = newText;
     st.content.innerHTML = editModeHTML(node);
     try { setCaretByOffset(st.content, st.offset); } catch (_) {}
     markDirty();
-    // Commands that open the standard dialog harness: render the dialog form
-    // in the right pane via _dialogRoot so it stays embedded in the builder.
-    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
-      _dialogRoot = pane;
-      _dialogCancel = () => { _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; renderBuilderPane(cmd); };
-      _dialogGuideCmd = cmd;
-      insertInlineArtifact(cmd.id, st.nodeId, st.content);
-      return;
-    }
     // Commands that fall through to the / block-command path (non-@{</>) or
     // brace-forms also close the builder before applying.
     closeBuilder();
