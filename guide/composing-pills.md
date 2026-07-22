@@ -48,7 +48,7 @@ variable freezes the random outcome so every reader agrees.
 {r := 1d20}
 {r == 20: Critical! | {= r + mod}}
 ```
-The first pill captures the roll. The second pill — a conditional — reads the captured
+The first pill captures the roll. The second pill, a conditional — reads the captured
 number. Click the capture pill to re-roll and the conditional follows.
 
 ```
