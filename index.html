@@ -1652,16 +1652,12 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .guide-wrap{display:flex;flex-direction:column;height:calc(100dvh - 10vh)}
 .guide-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 .guide-title{font-size:13px;font-weight:600;flex-shrink:0}
-/* 3-dot verbosity indicator — visible in Standard/Lean, hidden in Guided.
-   Filled dot = active tier. 28px wide, 0 vertical overhead. Click to cycle. */
-.fm-tier-dots{display:flex;gap:3px;align-items:center;cursor:pointer;flex-shrink:0;padding:3px 4px;border-radius:var(--r-sm)}
-.fm-tier-dot{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--bdr-ui);background:transparent;transition:background .12s,border-color .12s}
-.fm-tier-dot.active{background:var(--acc);border-color:var(--acc)}
-/* Inactive dots get a faint fill so they register against the header background.
-   Without this, a 1.5px hairline border on 7px at ≈3:1 contrast is invisible. */
-.fm-tier-dot:not(.active){background:color-mix(in srgb,var(--muted) 18%,transparent)}
-.fm-tier-dots:hover .fm-tier-dot{border-color:var(--fg)}
-.fm-tier-dots:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* Tier indicator — compact text chip showing current verbosity. Accent whisper
+   tint so it registers as a colored object, not another piece of muted text.
+   Click to cycle through Guided/Standard/Lean. */
+.fm-tier-ind{font-size:11px;font-weight:600;color:var(--acc);cursor:pointer;flex-shrink:0;user-select:none;padding:3px 8px;border-radius:999px;background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 22%,transparent);transition:background .12s,border-color .12s;line-height:1.4}
+.fm-tier-ind:hover{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
+.fm-tier-ind:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:var(--r-xs)}
 .guide-search{flex:1;border:1px solid var(--bdr);border-radius:var(--r-sm);padding:5px 8px;font-size:12.5px;background:var(--bg);color:var(--fg);min-width:0}
 .guide-search::placeholder{color:var(--muted)}
 .guide-search:focus{outline:2px solid var(--acc);outline-offset:-1px}
@@ -2481,11 +2477,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
        so every handler wired elsewhere by id still fires; only their grouping/presentation changed. -->
   <div class="guide-header">
     <span class="guide-title">Menu</span>
-    <span class="fm-tier-dots" id="fm-tier-ind" role="button" tabindex="0" title="Guidance level: Guided. Click to cycle." aria-label="Guidance level: Guided. Click to cycle.">
-      <span class="fm-tier-dot active" aria-hidden="true"></span>
-      <span class="fm-tier-dot" aria-hidden="true"></span>
-      <span class="fm-tier-dot" aria-hidden="true"></span>
-    </span>
+    <span class="fm-tier-ind" id="fm-tier-ind" title="Guidance level. Click to cycle." role="button" tabindex="0">Guided</span>
     <input class="guide-search" id="fm-search" type="search" placeholder="Search the menu…" aria-label="Search the menu" autocomplete="off">
   </div>
   <div class="guide-body fm-body">
@@ -31935,7 +31927,8 @@ fileMenu.addEventListener('keydown', e => {
   }
   if (e.key === 'Tab') {   // trap: cycle search → nav → rows → search
     e.preventDefault();
-    const order = [search, ...navBtns, ...rows].filter(Boolean);
+    const tierInd = document.getElementById('fm-tier-ind');
+    const order = [search, tierInd, ...navBtns, ...rows].filter(Boolean);
     const i = order.indexOf(active);
     const d = e.shiftKey ? -1 : 1;
     order[(i + d + order.length) % order.length]?.focus();
@@ -32041,12 +32034,7 @@ function syncVerbosityCard() {
 }
 function syncVerbosityStrip() {
   const ind = document.getElementById('fm-tier-ind');
-  if (!ind) return;
-  const dots = ind.querySelectorAll('.fm-tier-dot');
-  dots.forEach((d, i) => d.classList.toggle('active', VERBOSITY_TIERS[i] === verbosity));
-  const label = verbosity.charAt(0).toUpperCase() + verbosity.slice(1);
-  ind.title = `Guidance level: ${label}. Click to cycle.`;
-  ind.setAttribute('aria-label', ind.title);
+  if (ind) ind.textContent = verbosity.charAt(0).toUpperCase() + verbosity.slice(1);
 }
 function setVerbosity(tier) {
   if (!VERBOSITY_TIERS.includes(tier) || tier === verbosity) { syncVerbosityCard(); return; }
