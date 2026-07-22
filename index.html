@@ -19614,19 +19614,26 @@ function dialogHelp(head, guideId) {
   head.appendChild(b);
 }
 
+// ── container-agnostic dialog root ──────────────────────────────────────────
+// When _dialogRoot is set, openInsertDialog renders into it instead of ioCard
+// (used by the builder window to embed dialog forms in the right pane).
+let _dialogRoot = null;
+let _dialogCancel = null;      // custom cancel when nested (returns to GUIDE entry)
+let _dialogGuideCmd = null;    // command whose GUIDE entry is shown below the form
+
 function openInsertDialog(opts) {
-  ioCard.innerHTML = '';
+  const root = _dialogRoot || ioCard;
+  const isNested = _dialogRoot != null;
+  root.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, opts.icon);
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title;
-  head.append(ic, ttl); dialogHelp(head, opts.guideId); ioCard.appendChild(head);
+  head.append(ic, ttl); dialogHelp(head, opts.guideId); root.appendChild(head);
 
   const inputs = {};
   const _previewFns = [];
   opts.fields.forEach((f, i) => {
     const wrap = document.createElement('div'); wrap.className = 'io-field';
-    // Checkbox field: a single boolean toggle (box then label). Reusable across dialogs; vals()
-    // and the preview refresh read .checked for these (see the checkbox-aware reads below).
     if (f.type === 'checkbox') {
       wrap.classList.add('io-check');
       const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!f.value;
@@ -19641,7 +19648,7 @@ function openInsertDialog(opts) {
       });
       wrap.append(cb, clab);
       if (f.hint) { const h = document.createElement('div'); h.className = 'io-hint'; h.textContent = f.hint; wrap.appendChild(h); }
-      ioCard.appendChild(wrap);
+      root.appendChild(wrap);
       return;
     }
     const lab = document.createElement('label'); lab.textContent = f.label;
@@ -19651,25 +19658,17 @@ function openInsertDialog(opts) {
     if (area) { inp.rows = f.rows || 4; inp.className = 'io-mono'; }
     inp.placeholder = f.placeholder || ''; inp.value = f.value || '';
     inp.spellcheck = false; inp.autocomplete = 'off';
-    // Tie the visible label to its input (for + id) so it IS the accessible name — the label was
-    // previously orphaned, so a field read unlabelled unless the caller also passed aria-label.
-    // Every dialog on the harness gets a proper accessible name for free (absorption prerequisite).
     const _fid = 'io-fld-' + f.key;
     inp.id = _fid; lab.setAttribute('for', _fid);
     if (i === 0) inp.dataset.first = '1';
     inputs[f.key] = inp;
     inp.addEventListener('input', validate);
     inp.addEventListener('keydown', e => {
-      if (e.key !== 'Tab') e.stopPropagation(); // protect global shortcuts; Tab bubbles to the focus trap
+      if (e.key !== 'Tab') e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-      // textarea: Enter inserts a newline; Cmd/Ctrl+Enter submits
       else if (e.key === 'Enter' && (!area || e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
     });
     wrap.append(lab, inp);
-    // live preview — updates on every keystroke; also updated when chips insert text.
-    // The callback also receives ALL current field values (second arg) so a preview can
-    // depend on a sibling field (the query editor's sort validates against its columns);
-    // the ioCard-level input delegate below refreshes every preview on any field edit.
     if (f.preview) {
       const prev = document.createElement('div'); prev.className = 'io-preview';
       const updatePrev = () => {
@@ -19683,7 +19682,7 @@ function openInsertDialog(opts) {
     }
     if (f.chips) wrap.appendChild(buildChipRow(f.chips, inp, validate));
     if (f.hint) { const h = document.createElement('div'); h.className = 'io-hint'; h.textContent = f.hint; wrap.appendChild(h); }
-    ioCard.appendChild(wrap);
+    root.appendChild(wrap);
   });
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
@@ -19691,30 +19690,59 @@ function openInsertDialog(opts) {
   const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = opts.submitLabel || 'Insert';
   cancelBtn.addEventListener('click', cancel);
   okBtn.addEventListener('click', submit);
-  foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
+  foot.append(cancelBtn, okBtn); root.appendChild(foot);
 
-  // cross-field previews stay live: any field edit refreshes every preview
-  if (_previewFns.length > 1) ioCard.addEventListener('input', () => _previewFns.forEach(fn => fn()));
+  // GUIDE entry below the dialog form when nested in the builder
+  if (isNested && _dialogGuideCmd) {
+    const guideAfter = document.createElement('div'); guideAfter.className = 'builder-guide-after';
+    root.appendChild(guideAfter);
+    renderBuilderPaneInto(_dialogGuideCmd, guideAfter);
+  }
+
+  if (_previewFns.length > 1) root.addEventListener('input', () => _previewFns.forEach(fn => fn()));
 
   const vals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].type === 'checkbox' ? inputs[k].checked : inputs[k].value.trim(); return v; };
   const valid = () => opts.fields.every(f => !f.required || vals()[f.key]) && (!opts.validate || opts.validate(vals()));
   function validate() { okBtn.disabled = !valid(); }
-  function submit() { if (!valid()) return; closeIo(); opts.onSubmit(vals()); }
-  function cancel() { closeIo(); }
-  ioCancel = cancel;
-  validate();
-  ioReturnFocus = document.activeElement;
-  ioCard.setAttribute('aria-label', opts.title);
-  ioBack.classList.add('on');
-  requestAnimationFrame(() => { const f = ioCard.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
+  function submit() {
+    if (!valid()) return;
+    opts.onSubmit(vals());
+    if (isNested) { closeBuilderWindow(); return; }
+    closeIo();
+  }
+  function cancel() {
+    if (isNested) { _dialogCancel?.(); _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; return; }
+    closeIo();
+  }
+  if (isNested) {
+    // Nested in builder: builder manages its own scrim and focus; no global dialog state
+  } else {
+    ioCancel = cancel;
+    validate();
+    ioReturnFocus = document.activeElement;
+    root.setAttribute('aria-label', opts.title);
+    ioBack.classList.add('on');
+  }
+  requestAnimationFrame(() => { const f = root.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
 function closeIo() {
   ioBack.classList.remove('on');
   ioCard.classList.remove('guide-open');
   ioCard.innerHTML = ''; ioCancel = null;
-  ioCard.removeAttribute('aria-label');   // #560: don't let the next reuser inherit this dialog's stale accessible name
+  ioCard.removeAttribute('aria-label');
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (ret) try { ret.focus(); } catch (_) {}
+}
+// Close the builder window after a nested dialog submits. Clears builder state,
+// dialog globals, ioCard, and the overlay scrim.
+function closeBuilderWindow() {
+  builderState = null;
+  _dialogRoot = null;
+  _dialogCancel = null;
+  _dialogGuideCmd = null;
+  const ic = document.getElementById('io-card');
+  if (ic) { ic.classList.remove('builder-open'); ic.innerHTML = ''; ic.removeAttribute('aria-label'); }
+  closeIo();
 }
 ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) (ioCancel || closeIo)(); });
 // Focus trap: Tab cycles within the dialog, never escaping to background content.
@@ -33900,9 +33928,13 @@ function builderGuideEntry(cmd) {
 function renderBuilderPane(cmd) {
   const pane = document.querySelector('#io-card .builder-pane');
   if (!pane) return;
+  renderBuilderPaneInto(cmd, pane);
+}
+function renderBuilderPaneInto(cmd, container) {
+  if (!container) return;
   const ge = builderGuideEntry(cmd);
   if (!ge) {
-    pane.innerHTML = `<div class="guide-entry"><div class="guide-entry-title">${escHtml(cmd.label)}</div><div class="guide-entry-body">${escHtml(cmd.desc || '')}</div>${cmd.ex ? `<div class="guide-entry-body"><code>${escHtml(cmd.ex)}</code></div>` : ''}</div>`;
+    container.innerHTML = `<div class="guide-entry"><div class="guide-entry-title">${escHtml(cmd.label)}</div><div class="guide-entry-body">${escHtml(cmd.desc || '')}</div>${cmd.ex ? `<div class="guide-entry-body"><code>${escHtml(cmd.ex)}</code></div>` : ''}</div>`;
     return;
   }
   const catLabels = { 'shortcuts':'Shortcuts','getting-around':'Getting around','writing':'Writing & formatting','todos':'To-dos & organizing','dates':'Dates & agenda','generators':'Generators','compute':'Compute','links':'Links & knowledge','files':'Files & folders','recipes':'Put it together' };
@@ -33918,18 +33950,18 @@ function renderBuilderPane(cmd) {
         return t ? '<button type="button" class="guide-related-chip" data-id="' + id + '">' + escHtml(t.title || id) + '</button>' : '';
       }).join('') + '</div>'
     : '';
-  pane.innerHTML =
+  container.innerHTML =
     '<div class="guide-entry">' +
       '<div class="guide-cat-badge">' + escHtml(catLabels[ge.cat] || ge.cat || '') + '</div>' +
       '<div class="guide-entry-title">' + escHtml(ge.title || cmd.label) + '</div>' +
       '<div class="guide-entry-body">' + bodyHtml + '</div>' +
       exHtml + relHtml +
     '</div>';
-  pane.querySelectorAll('.guide-related-chip').forEach(chip => {
+  container.querySelectorAll('.guide-related-chip').forEach(chip => {
     chip.addEventListener('click', () => {
       const id = chip.dataset.id;
       const e = GUIDE.find(x => x.id === id);
-      if (e) renderBuilderPane({ ...cmd, id: e.id, label: e.title, desc: '' });
+      if (e) renderBuilderPaneInto({ ...cmd, id: e.id, label: e.title, desc: '' }, container);
     });
   });
 }
@@ -34106,17 +34138,13 @@ function openBuilder(trigger) {
     st.content.innerHTML = editModeHTML(node);
     try { setCaretByOffset(st.content, st.offset); } catch (_) {}
     markDirty();
-    // Commands that open the standard dialog harness: swap the builder content
-    // for the dialog without removing the scrim (no blink).
+    // Commands that open the standard dialog harness: render the dialog form
+    // in the right pane via _dialogRoot so it stays embedded in the builder.
     if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
-      const nid = st.nodeId;
-      const content = st.content;
-      builderState = null;
-      ioCard.classList.remove('builder-open');
-      ioCard.innerHTML = '';
-      ioCard.removeAttribute('aria-label');
-      ioCancel = null;
-      insertInlineArtifact(cmd.id, nid, content);
+      _dialogRoot = pane;
+      _dialogCancel = () => { _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; renderBuilderPane(cmd); };
+      _dialogGuideCmd = cmd;
+      insertInlineArtifact(cmd.id, st.nodeId, st.content);
       return;
     }
     // Commands that fall through to the / block-command path (non-@{</>) or
@@ -34184,8 +34212,11 @@ function openBuilder(trigger) {
       if (vis.length) { activeIdx = Math.min(activeIdx + 1, vis.length - 1); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (vis.length) { activeIdx = Math.max(activeIdx - 1, 0); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
-      else { searchEl.focus(); }
+      if (vis.length && activeIdx > 0) { activeIdx = Math.max(activeIdx - 1, 0); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
+      else { activeIdx = 0; searchEl.focus(); }
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      pane.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       applyBuilder();
@@ -34199,9 +34230,10 @@ function openBuilder(trigger) {
   });
   // Pane: Shift+Tab back to nav, Escape closes
   pane.addEventListener('keydown', e => {
-    if (e.key === 'Tab' && e.shiftKey) {
+    if (e.key === 'ArrowLeft' || (e.key === 'Tab' && e.shiftKey)) {
       e.preventDefault();
-      nav.querySelector('.builder-item.active')?.focus();
+      const active = nav.querySelector('.builder-item.active');
+      if (active) active.focus();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
       closeBuilder();
