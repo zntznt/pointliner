@@ -1722,7 +1722,6 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
 .builder-no-results{font-size:12px;color:var(--muted);padding:16px;text-align:center}
 .builder-pane .guide-entry{margin-bottom:16px;padding-bottom:14px}
 .builder-pane .guide-entry-title{font-size:12px}
-.builder-search-hint{font-size:10px;color:var(--muted);padding:2px 14px 0;letter-spacing:.02em}
 .builder-insert-btn{flex-shrink:0;padding:5px 12px;font-size:12px;font-weight:600;color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 22%,transparent);border-radius:var(--r-sm);cursor:pointer;transition:background .12s,border-color .12s}
 .builder-insert-btn:hover{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .builder-insert-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
@@ -19693,6 +19692,9 @@ function openInsertDialog(opts) {
     if (f.hint) { const h = document.createElement('div'); h.className = 'io-hint'; h.textContent = f.hint; wrap.appendChild(h); }
     root.appendChild(wrap);
   });
+  // Nested in builder: skip chip buttons in Tab order so the user tabs
+  // directly between text inputs and the Cancel/Insert buttons.
+  if (isNested) root.querySelectorAll('.io-field button').forEach(b => { if (!b.classList.contains('io-btn')) b.setAttribute('tabindex', '-1'); });
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
@@ -34022,10 +34024,6 @@ function showBuilderForm(cmd, pane) {
     // Return to GUIDE entry view
     renderBuilderPane(cmd);
   });
-  pane.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); builderFormApply(cmd, pane); }
-    if (e.key === 'Escape') { renderBuilderPane(cmd); }
-  });
   return true;
 }
 
@@ -34107,7 +34105,6 @@ function openBuilder(trigger) {
         '<input class="guide-search builder-search" type="search" placeholder="Search commands — Enter to insert" aria-label="Search commands" data-first>' +
         '<button class="builder-insert-btn" type="button" aria-label="Insert selected command">Insert</button>' +
       '</div>' +
-      '<div class="builder-search-hint">Type to filter or write what you want to insert, then Enter</div>' +
       '<div class="builder-body">' +
         '<div class="builder-nav" role="listbox" aria-label="Commands"></div>' +
         '<div class="builder-pane guide-pane" tabindex="-1" role="document" aria-label="Command detail"></div>' +
@@ -34158,17 +34155,7 @@ function openBuilder(trigger) {
     items.forEach((it, i) => { it.classList.toggle('active', i === activeIdx); it.setAttribute('aria-selected', String(i === activeIdx)); });
     const active = items[activeIdx];
     if (active) active.scrollIntoView({ block: 'nearest' });
-    if (activeIdx < vis.length) {
-      const cmd = vis[activeIdx];
-      if (_restoreState) builderRestoreTrigger();
-      if (BUILDER_FORMS[cmd.id]) {
-        showBuilderForm(cmd, pane);
-      } else if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
-        showNestedDialog(cmd, pane);
-      } else {
-        renderBuilderPane(cmd);
-      }
-    }
+    if (activeIdx < vis.length) renderBuilderPane(vis[activeIdx]);
   }
 
   function applyBuilder() {
@@ -34290,7 +34277,9 @@ function openBuilder(trigger) {
       pane.focus();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
-      closeBuilder();
+      if (_dialogCancel) { _dialogCancel(); }
+      else if (pane.querySelector('.builder-form-cancel')) { pane.querySelector('.builder-form-cancel').click(); }
+      else closeBuilder();
     }
   });
   // Pane: Shift+Tab back to nav, Escape closes
@@ -34299,10 +34288,33 @@ function openBuilder(trigger) {
       e.preventDefault();
       const active = nav.querySelector('.builder-item.active');
       if (active) active.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); }
+      else if (pane.querySelector('.builder-form-submit')) { builderFormApply(visibleCmds()[activeIdx], pane); }
+      else applyBuilder();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
-      closeBuilder();
+      if (_dialogCancel) { _dialogCancel(); }
+      else if (pane.querySelector('.builder-form-cancel')) { pane.querySelector('.builder-form-cancel').click(); }
+      else closeBuilder();
     }
+  });
+  // Load dialog form or GUIDE entry when pane receives focus (Tab/Right from search or nav)
+  function loadPaneForCmd(cmd) {
+    if (!cmd) return;
+    if (_restoreState) builderRestoreTrigger();
+    if (BUILDER_FORMS[cmd.id]) {
+      showBuilderForm(cmd, pane);
+    } else if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
+      showNestedDialog(cmd, pane);
+    } else {
+      renderBuilderPane(cmd);
+    }
+  }
+  pane.addEventListener('focus', () => {
+    const vis = visibleCmds();
+    if (vis.length) loadPaneForCmd(vis[activeIdx]);
   });
   // Search
   searchEl.addEventListener('input', () => {
@@ -34316,6 +34328,11 @@ function openBuilder(trigger) {
       e.preventDefault();
       const first = nav.querySelector('.builder-item');
       if (first) { activeIdx = 0; syncActive(); first.focus(); }
+    } else if (e.key === 'Tab' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      const v = visibleCmds();
+      if (v.length) loadPaneForCmd(v[activeIdx]);
+      pane.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       applyBuilder();
@@ -34390,7 +34407,7 @@ document.addEventListener('keydown', e => {
   if (e.altKey && !ctrl && !e.shiftKey && /^Digit[1-9]$/.test(e.code) && workspaceDir && openTabs.length) {
     e.preventDefault(); gotoDocTab(+e.code.slice(5)); return;
   }
-  if (ctrl && e.key==='f') { e.preventDefault(); const sb = document.getElementById('search-box'); sb.focus(); sb.select(); }
+  if (ctrl && e.key==='f') { e.preventDefault(); if (ioCard.classList.contains('builder-open')) { const bs = ioCard.querySelector('.builder-search'); if (bs) bs.focus(); } else { const sb = document.getElementById('search-box'); sb.focus(); sb.select(); } }
 
   // Point-level accelerators that also work from the ROW-CURSOR state (arrow-navigating
   // without editing), not just while a point's text is focused. The target point is the
