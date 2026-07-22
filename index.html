@@ -947,6 +947,10 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 #brace-preview{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);box-shadow:var(--sh-1);padding:3px 8px;font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none}
 #brace-preview.on{display:block}
 .bp-label{font-weight:500;color:var(--acc)}
+/* toolbar button tooltip — tier-gated: immediate (Guided), delayed (Standard), absent (Lean) */
+#tbtn-tooltip{position:fixed;display:none;z-index:710;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-md);box-shadow:var(--sh-1);padding:3px 8px;font-size:12px;color:var(--muted);white-space:nowrap;pointer-events:none;transition:opacity .08s}
+#tbtn-tooltip.on{display:block}
+#tbtn-tooltip .tt-hint{font-weight:500;color:var(--acc)}
 /* math expression pill */
 .math-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .math-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -1382,7 +1386,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .sf-desc{font-size:11px;color:var(--muted);line-height:1.4}
 .sf-ex{font-family:var(--mono);font-size:11px;color:var(--acc);background:var(--cbg);border-radius:var(--r-xs);padding:2px 6px;line-height:1.4;word-break:break-word}
 .sf-tip{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--muted);line-height:1.4;border-top:1px solid var(--bdr);padding-top:4px;margin-top:1px}
-.slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.07em}
+.slash-section{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;padding:6px 10px 2px;letter-spacing:.07em;border-bottom:1px solid var(--bdr);margin-bottom:2px}
 
 /* link graph overlay (#516): a near-full-viewport panel, same scrim token as the dialogs */
 #graph-back{position:fixed;inset:0;z-index:790;background:var(--scrim);display:none;align-items:center;justify-content:center}
@@ -1643,6 +1647,11 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #sc-toggle:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 #sc-toggle:hover{color:var(--fg);border-color:var(--acc)}
 #sc-toggle.on{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent);color:var(--acc)}
+/* Guided: the ? button gets the accent-whisper treatment so it registers as a
+   permanent doorway to the guide — same recipe as .fm-tier-ind. Static, no animation.
+   Standard keeps the muted circle; Lean hides it entirely. */
+body.v-guided #sc-toggle{color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);border-color:color-mix(in srgb,var(--acc) 22%,transparent)}
+body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 /* #656/#661: the guide inherited #io-card's margin-top:16vh and capped its height at min(88vh,680px).
    On a short window (~808px) 16vh + 88vh overflowed and clipped the bottom; on a large screen the hard
    680px cap wasted space. The backdrop is align-items:flex-start, so an EQUAL top+bottom gap needs a 5vh
@@ -1693,6 +1702,26 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .guide-related-chip{font-size:11.5px;padding:3px 9px;border-radius:var(--r-sm);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .1s,border-color .1s}
 .guide-related-chip:hover{background:color-mix(in srgb,var(--acc) 8%,transparent);border-color:var(--acc)}
 .guide-related-chip:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* Builder window — Guided-only unified command browser that absorbed the inline
+   /, @ and { menus. Same two-pane envelope as the concept guide. */
+#io-card.builder-open{width:min(720px,calc(100vw - 32px));margin-top:5vh;max-height:calc(100dvh - 10vh);padding:0;overflow:hidden}
+.builder-wrap{display:flex;flex-direction:column;height:calc(100dvh - 10vh)}
+.builder-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--bdr);flex-shrink:0}
+.builder-title{font-size:13px;font-weight:600;flex-shrink:0}
+.builder-body{display:flex;flex:1;overflow:hidden;min-height:0}
+.builder-nav{width:260px;flex-shrink:0;overflow-y:auto;border-right:1px solid var(--bdr);padding:6px 0}
+.builder-section-hdr{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:11px 12px 3px;user-select:none;border-bottom:1px solid var(--bdr);margin-bottom:2px}
+.builder-section-hdr:first-child{padding-top:3px}
+.builder-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:5px 12px 5px 18px;font-size:11.5px;line-height:1.3;color:var(--fg);border:none;background:none;cursor:pointer;transition:background .09s}
+.builder-item:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+.builder-item .cmd-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;color:var(--muted)}
+.builder-item .cmd-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.builder-item.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);font-weight:600;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--acc) 35%,transparent)}
+.builder-item.active .cmd-icon{color:var(--acc)}
+.builder-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.builder-no-results{font-size:12px;color:var(--muted);padding:16px;text-align:center}
+.builder-pane .guide-entry{margin-bottom:16px;padding-bottom:14px}
+.builder-pane .guide-entry-title{font-size:12px}
 .guide-no-results{color:var(--muted);font-size:12.5px;padding:16px 12px;text-align:center}
 /* Shortcuts page: five sections on one scrollable page, each under an eyebrow heading (the
    .guide-nav-group recipe) with the .sc-row grid beneath. .active is the section the clicked
@@ -2180,7 +2209,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* ── brace / callable-name picker ({ trigger) + tag picker (# trigger) ── */
 #brace-menu,#tag-menu,#emoji-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:240px;max-height:280px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #brace-menu.on,#tag-menu.on,#emoji-menu.on{display:block}
-.bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px}
+.bm-group{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:5px 8px 2px;border-bottom:1px solid var(--bdr);margin-bottom:2px}
 .bm-item{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;padding:6px 10px;border-radius:var(--r-md);cursor:pointer;font-size:13px}/* #396: the shared .cmd-item row metrics; wrap lets the Guided description sit on its own line */
 .bm-item:hover,.bm-item.hi{background:color-mix(in srgb,var(--acc) 10%,transparent)}/* #396: one highlight recipe */
 .bm-name{flex:none;font-family:var(--mono)}
@@ -2591,6 +2620,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 <div id="tag-menu" role="listbox" aria-label="Tags"></div>
 <div id="emoji-menu" role="listbox" aria-label="Emoji"></div>
 <div id="brace-preview" aria-hidden="true"></div>
+<div id="tbtn-tooltip" aria-hidden="true" role="tooltip"></div>
 <!-- inline-insert dialog (links / images) -->
 <div id="io-back"><div id="io-card" role="dialog" aria-modal="true"></div></div>
 <!-- link graph overlay (#516): a full-viewport browsable web of the document's internal links -->
@@ -18352,6 +18382,7 @@ function checkSlash(content, nodeId) {
   // work) but renders NOTHING — type the command blind, Enter fires it. In guided mode, render + place
   // the panel as usual. Either way slashState is live, so the blind path and the visible path share the
   // exact same apply logic.
+  if (isGuided()) { hideSlashMenu(); builderState = { nodeId, content, trigger, offset: slashOffset, query, rawArg }; openBuilder(trigger); return; }
   if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }
   else renderLeanSlashTip();   // lean: no menu, but a one-line status tip of the current match (+ AT announce)
 }
@@ -25519,6 +25550,7 @@ function checkBraceTrigger(content, nodeId) {
     if (bc.matches.length === 1 && bc.matches[0].insert === bc.prefix) { hideBraceMenu(); return; }
     const fragStart = braceStart + 1 + bc.fragStart;
     braceState = { nodeId, content, braceStart, mode: 'body', prefix: bc.prefix, fragStart, caret: pos, consume: bc.consume, activeIdx: 0, matches: bc.matches };
+    if (isGuided()) { hideBraceMenu(); builderState = { nodeId, content, trigger: '{', offset: braceStart, query: inner }; openBuilder('{'); return; }
     if (isLean()) { renderLeanBraceTip(); return; }   // lean: one-line tip, not the full menu (item 8)
     renderBraceMenu();
     // Anchor at the fragment, where the completion lands — clamped to the char before the
@@ -25537,6 +25569,7 @@ function checkBraceTrigger(content, nodeId) {
   const matches = [...filterBraceForms(prefix), ...filterBraceCandidates(collectCallables(), prefix)];
   if (!matches.length) { hideBraceMenu(); return; }
   braceState = { nodeId, content, braceStart, mode: 'forms', prefix, activeIdx: defaultBraceChoice(matches, prefix), matches };
+  if (isGuided()) { hideBraceMenu(); builderState = { nodeId, content, trigger: '{', offset: braceStart, query: inner }; openBuilder('{'); return; }
   if (isLean()) { renderLeanBraceTip(); return; }   // lean: one-line tip, not the full menu (item 8)
   renderBraceMenu();
   // Anchor at the `{` itself (always present), not braceStart+1 — when `{` is the
@@ -32574,6 +32607,57 @@ document.getElementById('capture-strip').addEventListener('keydown', e => {
 });
 document.getElementById('btn-journal').addEventListener('click', () => toggleJournalStrip());
 document.getElementById('btn-chronicle').addEventListener('click', () => toggleChronicleStrip());
+// Right-click a toolbar button to open its concept guide entry.
+// Buttons without a matching guide entry are silently ignored.
+const TB_GUIDE_MAP = {
+  'btn-capture': 'capture-inbox',
+  'btn-journal': 'journal',
+  'btn-chronicle': 'chronicle',
+  'btn-rolllog-tb': 'roll-log',
+  'btn-agenda': 'agenda',
+  'btn-graph': 'link-graph',
+  'btn-timeline': 'timeline',
+  'btn-done': 'appearance-controls',
+  'btn-notes': 'notes',
+};
+document.getElementById('tbtn-cluster').addEventListener('contextmenu', e => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const guideId = TB_GUIDE_MAP[btn.id];
+  if (!guideId) return;
+  e.preventDefault();
+  openGuide(guideId);
+});
+// Tier-gated toolbar tooltips: immediate (Guided), delayed (~500ms Standard), absent (Lean).
+// Content is the button's title attribute; Guided also shows the right-click-for-guide hint.
+const tbtnTooltip = document.getElementById('tbtn-tooltip');
+let _ttpTimer = null;
+function showTbtnTooltip(btn) {
+  if (isLean()) return;
+  clearTimeout(_ttpTimer);
+  const show = () => {
+    const title = btn.getAttribute('title') || '';
+    let html = escHtml(title);
+    if (isGuided() && TB_GUIDE_MAP[btn.id]) html += ' <span class="tt-hint">\u2014 right-click for guide</span>';
+    tbtnTooltip.innerHTML = html;
+    const r = btn.getBoundingClientRect();
+    tbtnTooltip.style.left = Math.max(4, r.left) + 'px';
+    tbtnTooltip.style.top = (r.bottom + 4) + 'px';
+    tbtnTooltip.classList.add('on');
+  };
+  if (isGuided()) { show(); }
+  else { _ttpTimer = setTimeout(show, 500); }
+}
+function hideTbtnTooltip() { clearTimeout(_ttpTimer); tbtnTooltip.classList.remove('on'); }
+document.getElementById('tbtn-cluster').addEventListener('mouseover', e => {
+  const btn = e.target.closest('#tbtn-cluster button');
+  if (btn) showTbtnTooltip(btn);
+});
+document.getElementById('tbtn-cluster').addEventListener('mouseout', e => {
+  const fromBtn = e.target.closest('#tbtn-cluster button');
+  const toBtn = e.relatedTarget?.closest('#tbtn-cluster button');
+  if (fromBtn && !toBtn) hideTbtnTooltip();
+});
 // ─── shortcuts / syntax reference ────────────────────────────────────────────
 // Grouped, data-driven so it stays in sync as features are added. IS_MAC/MOD are defined
 // above (moved up so the verbosity toasts can use MOD); the modifier renders ⌘ on Mac, Ctrl elsewhere.
@@ -33753,6 +33837,286 @@ function openGuide(initialId) {
   });
   requestAnimationFrame(() => { searchEl.focus(); });
 }
+// ─── builder window ───────────────────────────────────────────────────────────
+// Guided-only: a unified command browser that absorbs the /, @ and { inline menus.
+// Two-pane: commands on the left (three sections, reordered by trigger), the
+// selected command's guide entry on the right.
+let builderState = null; // { nodeId, content, trigger, offset, query, rawArg }
+
+function builderCmdPool(trigger) {
+  const cmds = [];
+  // / — point commands (BLOCK_CMDS + dynamic per-sequence states)
+  for (const c of blockCmdsPool()) {
+    cmds.push({ ...c, trigger: '/', type: 'block', _section: c.section || 'Format' });
+  }
+  // @ — insert commands
+  for (const c of INSERT_CMDS) {
+    cmds.push({ ...c, trigger: '@', type: 'insert', _section: c.section || 'Insert' });
+  }
+  // { — brace forms (constant set; dynamic names are excluded for now)
+  for (const f of BRACE_FORM_ROWS) {
+    cmds.push({ id: f.name, icon: '{', fa: '', label: f.name, desc: f.desc || '', ex: f.insert, trigger: '{', type: 'brace', _section: 'Grammar', _brace: f });
+  }
+  // Reorder sections so the summoning trigger's section appears first
+  const order = [
+    ...new Set(cmds.filter(c => c.trigger === trigger).map(c => c._section)),
+    ...new Set(cmds.filter(c => c.trigger !== trigger).map(c => c._section)),
+  ];
+  const secRank = Object.fromEntries(order.map((s, i) => [s, i]));
+  cmds.sort((a, b) => (secRank[a._section] ?? 99) - (secRank[b._section] ?? 99) || a._section.localeCompare(b._section));
+  return cmds;
+}
+
+// Find the GUIDE entry that covers a command. BLOCK_CMDS/INSERT_CMDS ids are
+// matched via the `covers` field; brace forms have an explicit `guide` field.
+function builderGuideEntry(cmd) {
+  if (cmd._brace && cmd._brace.guide) {
+    return GUIDE.find(e => e.id === cmd._brace.guide) || null;
+  }
+  return GUIDE.find(e => e.covers && e.covers.includes(cmd.id)) || null;
+}
+
+// Render the guide entry detail for a command into the right pane.
+// Mirrors renderPane() from openGuide — shows title, body, examples, related.
+function renderBuilderPane(cmd) {
+  const pane = document.querySelector('#io-card .builder-pane');
+  if (!pane) return;
+  const ge = builderGuideEntry(cmd);
+  if (!ge) {
+    pane.innerHTML = `<div class="guide-entry"><div class="guide-entry-title">${escHtml(cmd.label)}</div><div class="guide-entry-body">${escHtml(cmd.desc || '')}</div>${cmd.ex ? `<div class="guide-entry-body"><code>${escHtml(cmd.ex)}</code></div>` : ''}</div>`;
+    return;
+  }
+  const catLabels = { 'shortcuts':'Shortcuts','getting-around':'Getting around','writing':'Writing & formatting','todos':'To-dos & organizing','dates':'Dates & agenda','generators':'Generators','compute':'Compute','links':'Links & knowledge','files':'Files & folders','recipes':'Put it together' };
+  const exHtml = (ge.examples||[]).length
+    ? '<dl class="guide-ex">' + ge.examples.map(x =>
+        '<dt><code>' + escHtml(x.syn) + '</code></dt><dd>' + escHtml(x.desc) + '</dd>').join('') + '</dl>'
+    : '';
+  const bodyHtml = ge.bodyHtml ? ge.bodyHtml() : guideBodyHtml(ge.body || '');
+  const relHtml = (ge.related||[]).length
+    ? '<div class="guide-related"><span class="guide-related-lbl">See also</span>' +
+      ge.related.map(id => {
+        const t = GUIDE.find(x => x.id === id);
+        return t ? '<button type="button" class="guide-related-chip" data-id="' + id + '">' + escHtml(t.title || id) + '</button>' : '';
+      }).join('') + '</div>'
+    : '';
+  pane.innerHTML =
+    '<div class="guide-entry">' +
+      '<div class="guide-cat-badge">' + escHtml(catLabels[ge.cat] || ge.cat || '') + '</div>' +
+      '<div class="guide-entry-title">' + escHtml(ge.title || cmd.label) + '</div>' +
+      '<div class="guide-entry-body">' + bodyHtml + '</div>' +
+      exHtml + relHtml +
+    '</div>';
+  pane.querySelectorAll('.guide-related-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const id = chip.dataset.id;
+      const e = GUIDE.find(x => x.id === id);
+      if (e) renderBuilderPane({ ...cmd, id: e.id, label: e.title, desc: '' });
+    });
+  });
+}
+
+function openBuilder(trigger) {
+  if (!builderState) return;
+  // Hide inline menus — the builder replaces them
+  hideSlashMenu(); hideBraceMenu();
+  armChromeReturn();
+  ioCard.classList.add('builder-open');
+  ioCard.setAttribute('aria-label', 'Command builder');
+  const cmds = builderCmdPool(trigger);
+  let filterQ = '';
+  const title = trigger === '/' ? 'Point commands' : trigger === '@' ? 'Insert commands' : 'Brace picker';
+
+  ioCard.innerHTML =
+    '<div class="builder-wrap">' +
+      '<div class="builder-header" role="search">' +
+        '<span class="builder-title">' + escHtml(title) + '</span>' +
+        '<input class="guide-search" type="search" placeholder="Search commands…" aria-label="Search commands" data-first>' +
+      '</div>' +
+      '<div class="builder-body">' +
+        '<div class="builder-nav" role="listbox" aria-label="Commands"></div>' +
+        '<div class="builder-pane guide-pane" tabindex="-1" role="document" aria-label="Command detail"></div>' +
+      '</div>' +
+    '</div>';
+  ioBack.classList.add('on');
+  ioReturnFocus = builderState.content;
+
+  const searchEl = ioCard.querySelector('.guide-search');
+  const nav = ioCard.querySelector('.builder-nav');
+  const pane = ioCard.querySelector('.builder-pane');
+
+  let activeIdx = 0;
+
+  function visibleCmds() {
+    const q = filterQ.trim().toLowerCase();
+    if (!q) return cmds;
+    return cmds.filter(c => {
+      const hay = (c.label||'') + ' ' + (c.desc||'') + ' ' + (c._section||'') + ' ' + ((c.keys||[]).join(' '));
+      return hay.toLowerCase().includes(q);
+    });
+  }
+
+  function renderNav() {
+    const vis = visibleCmds();
+    let html = '';
+    let lastSection = null;
+    vis.forEach((cmd, i) => {
+      if (cmd._section !== lastSection) {
+        html += '<div class="builder-section-hdr">' + escHtml(cmd._section) + '</div>';
+        lastSection = cmd._section;
+      }
+      const icon = cmd.trigger === '/' ? '/' : cmd.trigger === '@' ? '@' : '{';
+      html += '<div class="builder-item' + (i === activeIdx ? ' active' : '') + '" data-i="' + i + '" role="option" aria-selected="' + (i === activeIdx ? 'true' : 'false') + '">' +
+        '<span class="cmd-icon">' + escHtml(icon) + '</span>' +
+        '<span class="cmd-label">' + escHtml(cmd.label) + '</span>' +
+      '</div>';
+    });
+    if (!html) html = '<div class="builder-no-results">No commands match your search.</div>';
+    nav.innerHTML = html;
+  }
+
+  function syncActive() {
+    const vis = visibleCmds();
+    if (activeIdx >= vis.length) activeIdx = Math.max(0, vis.length - 1);
+    const items = nav.querySelectorAll('.builder-item');
+    items.forEach((it, i) => { it.classList.toggle('active', i === activeIdx); it.setAttribute('aria-selected', String(i === activeIdx)); });
+    const active = items[activeIdx];
+    if (active) active.scrollIntoView({ block: 'nearest' });
+    if (activeIdx < vis.length) renderBuilderPane(vis[activeIdx]);
+  }
+
+  function applyBuilder() {
+    const vis = visibleCmds();
+    if (!vis.length) return;
+    const cmd = vis[activeIdx];
+    if (!cmd) return;
+    const st = builderState;
+    const node = nodeById(st.nodeId);
+    if (!node || !st.content) { closeBuilder(); return; }
+    // Strip the trigger text from the node
+    const rawLen = 1 + st.query.length; // trigger char + query
+    const currentText = editableText(st.content);
+    const newText = currentText.slice(0, st.offset) + currentText.slice(st.offset + rawLen);
+    node.text = newText;
+    st.content.innerHTML = editModeHTML(node);
+    try { setCaretByOffset(st.content, st.offset); } catch (_) {}
+    markDirty();
+    closeBuilder();
+    // Apply the selected command
+    if (cmd.trigger === '/' || cmd.trigger === '@') {
+      if (cmd.trigger === '/') {
+        applyBlockCmd(cmd.id, st.nodeId, node, st.content);
+      } else {
+        insertInlineArtifact(cmd.id, st.nodeId, st.content);
+      }
+    } else if (cmd.trigger === '{' && cmd._brace) {
+      // Insert the brace scaffold — fall through to blink in content
+      const insert = cmd._brace.insert;
+      const cur = nodeById(st.nodeId);
+      if (cur) {
+        cur.text = currentText.slice(0, st.offset) + insert + currentText.slice(st.offset + rawLen);
+        st.content.innerHTML = editModeHTML(cur);
+        try {
+          const caret = st.offset + cmd._brace.sel[0];
+          setCaretByOffset(st.content, caret);
+          // Select the placeholder range if there is one
+          if (cmd._brace.sel[1] > cmd._brace.sel[0]) {
+            const [s, e] = [st.offset + cmd._brace.sel[0], st.offset + cmd._brace.sel[1]];
+            const sel = domSelectionForChars(st.content, s, e);
+            if (sel) { const r = new Range(); r.setStart(sel.node, sel.off); r.setEnd(sel.enode, sel.eoff); document.getSelection().setBaseAndExtent(sel.node, sel.off, sel.enode, sel.eoff); }
+          }
+        } catch (_) {}
+        markDirty();
+        scheduleReconcile();
+      }
+    }
+  }
+
+  function closeBuilder() {
+    builderState = null;
+    ioCard.classList.remove('builder-open');
+    ioCard.innerHTML = '';
+    ioCard.removeAttribute('aria-label');
+    closeIo();
+  }
+  ioCancel = closeBuilder;
+
+  renderNav();
+  renderBuilderPane(cmds[0] || null);
+  syncActive();
+
+  // Click: select a command
+  nav.addEventListener('click', e => {
+    const item = e.target.closest('.builder-item');
+    if (!item) return;
+    activeIdx = parseInt(item.dataset.i, 10);
+    syncActive();
+    item.focus();
+  });
+  // Double-click or Ctrl+click: apply immediately
+  nav.addEventListener('dblclick', e => {
+    const item = e.target.closest('.builder-item');
+    if (item) applyBuilder();
+  });
+  // Keyboard nav
+  nav.addEventListener('keydown', e => {
+    const vis = visibleCmds();
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (vis.length) { activeIdx = Math.min(activeIdx + 1, vis.length - 1); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (vis.length) { activeIdx = Math.max(activeIdx - 1, 0); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
+      else { searchEl.focus(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      applyBuilder();
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      pane.focus();
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeBuilder();
+    }
+  });
+  // Pane: Shift+Tab back to nav, Escape closes
+  pane.addEventListener('keydown', e => {
+    if (e.key === 'Tab' && e.shiftKey) {
+      e.preventDefault();
+      nav.querySelector('.builder-item.active')?.focus();
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeBuilder();
+    }
+  });
+  // Search
+  searchEl.addEventListener('input', () => {
+    filterQ = searchEl.value;
+    activeIdx = 0;
+    renderNav();
+    syncActive();
+  });
+  searchEl.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const first = nav.querySelector('.builder-item');
+      if (first) { activeIdx = 0; syncActive(); first.focus(); }
+    } else if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeBuilder();
+    }
+  });
+  // Close on backdrop click
+  ioBack.addEventListener('click', e => { if (e.target === ioBack) closeBuilder(); }, { once: true });
+  requestAnimationFrame(() => { searchEl.focus(); });
+}
+
+function closeBuilder() {
+  builderState = null;
+  const ic = document.getElementById('io-card');
+  if (ic) { ic.classList.remove('builder-open'); ic.innerHTML = ''; ic.removeAttribute('aria-label'); }
+  closeIo();
+}
+
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); restoreChromeReturn(); closeFileMenu(); return; }
