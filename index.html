@@ -465,7 +465,7 @@ body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;
 .crumb-sep{color:var(--muted);user-select:none;font-size:11px}
 
 /* outline */
-#outline{max-width:720px;margin:0 auto;padding:28px 24px 120px}
+#outline{max-width:720px;margin:0 auto;padding:28px 24px 120px;transition:padding-bottom .22s cubic-bezier(.4,0,.2,1)}
 body.full-width #outline{max-width:none}
 /* zoomed INTO a base: the base table is full-width regardless of the narrow/full toggle;
    child nodes below the base follow the fullWidth setting (constrained by #vlist). */
@@ -1035,7 +1035,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
 .fn-ref:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
 #fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
-#fn-panel.on{transform:translateY(0);box-shadow:var(--sh-up)}
+#fn-panel.on{transform:translateY(0)}
 .fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 #fn-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 #fn-list::-webkit-scrollbar{width:4px}
@@ -2146,7 +2146,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .node-link-cross::after{content:"\2197";font-size:.78em;color:var(--muted);margin-left:1px;vertical-align:baseline}
 /* ── backlinks panel ── */
 #bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
-#bl-panel.on{transform:translateY(0);box-shadow:var(--sh-up)}
+#bl-panel.on{transform:translateY(0)}
 #bl-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 .bl-item{padding:3px 0;cursor:pointer;font-size:13px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 4d: the context line under a backlink row — what the source point says around the link */
@@ -2206,7 +2206,7 @@ body:not(.v-guided) .logo-file-cue{display:none}
 body:not(.v-guided) #file-menu .cmd-desc{display:none}
 /* ── variables overview panel ── */
 #var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
-#var-panel.on{transform:translateY(0);box-shadow:var(--sh-up)}
+#var-panel.on{transform:translateY(0)}
 #var-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 16px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;display:flex;align-items:center;gap:8px}
 #var-panel-list{overflow-y:auto;padding:8px 16px 12px;flex:1;display:flex;flex-wrap:wrap;gap:6px 20px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;align-content:flex-start}
 .vp-row{display:flex;align-items:baseline;gap:5px;font-size:13px}
@@ -2223,6 +2223,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 .vp-cycle{color:var(--bad);font-size:11px}
 #var-panel-close{margin-left:auto;font-size:14px;padding:0 4px;flex-shrink:0}
 @media(prefers-reduced-motion:reduce){#var-panel{transition:none}}
+@media(prefers-reduced-motion:reduce){#outline{transition:none}}
 
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
 @media(hover:none){
@@ -17393,6 +17394,7 @@ function updateQuickBar() {
   quickBar.setAttribute('aria-hidden', show ? 'false' : 'true');
   document.documentElement.style.setProperty('--qbar-h', quickBarHeight() + 'px');
   syncBlPanelBottom();
+  syncBodyPadBottom();
 }
 // The bar's + is the ghost row's twin ("New point" means the same thing everywhere, P1):
 // append a continuation-aware sibling after the view's last point via insertSiblingAfter
@@ -29950,6 +29952,7 @@ function showFnPanel(nodeId) {
   renderFnPanel(node, refs);
   document.getElementById('fn-panel').classList.add('on');
   syncFnPanelBottom(); // lift above the mobile keyboard if it's open
+  syncBodyPadBottom();
   syncBlPanelBottom(); // re-stack bl-panel above fn-panel if both are open
 }
 
@@ -29960,6 +29963,7 @@ function hideFnPanel() {
   document.getElementById('fn-panel').classList.remove('on');
   syncFnPanelBottom(); // reset bottom so the hidden panel can't peek above the keyboard
   syncBlPanelBottom(); // re-stack bl-panel if it's open
+  syncBodyPadBottom();
 }
 
 // UXP-55: reveal + lock the footnote panel and highlight the matching entry, scrolling it into
@@ -29996,6 +30000,23 @@ function scheduleBlHide() {
   }, 150);
 }
 
+// Adjust outline padding-bottom so the open footer panels push the outline upward
+// (mirrors the toolbar ResizeObserver's syncBodyPad pattern at the top).
+function syncBodyPadBottom() {
+  const on = id => document.getElementById(id)?.classList.contains('on')
+    ? document.getElementById(id).offsetHeight : 0;
+  const fnH = on('fn-panel'), blH = on('bl-panel'), varH = on('var-panel');
+  const qbH = quickBarHeight();
+  // var-panel (z-52) overlays fn+bl when open — take the max
+  const total = varH > 0 ? (varH + qbH + 8) : (fnH + qbH + blH + (fnH + blH > 0 ? 8 : 0));
+  const outline = document.getElementById('outline');
+  if (!outline) return;
+  // Guard: panels never consume more than (viewport - toolbar - 120px) so the
+  // outline keeps a minimum usable height.
+  const toolbarH = document.getElementById('toolbar')?.offsetHeight || 44;
+  const maxPad = Math.max(0, window.innerHeight - toolbarH - Math.max(120, window.innerHeight * 0.22));
+  outline.style.paddingBottom = total ? Math.min(total, maxPad) + 'px' : '';
+}
 function syncBlPanelBottom() {
   const bl = document.getElementById('bl-panel');
   if (!bl) return;
@@ -30038,6 +30059,7 @@ function blShowWith(nodeId, d) {
   renderBlPanel(d.sources, d.unlinked, d.cross, d.crossUnlinked);
   document.getElementById('bl-panel').classList.add('on');
   syncBlPanelBottom();
+  syncBodyPadBottom();
 }
 function showBlPanel(nodeId) {
   const d = blGather(nodeId);
@@ -30050,6 +30072,7 @@ function hideBlPanel() {
   blNodeId = null;
   document.getElementById('bl-panel').classList.remove('on');
   syncBlPanelBottom();
+  syncBodyPadBottom();
 }
 
 function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
@@ -30417,8 +30440,8 @@ blPanelEl.addEventListener('mousedown', e => e.preventDefault());
 
 const varPanelEl = document.getElementById('var-panel');
 function isVarPanelOpen() { return varPanelEl.classList.contains('on'); }
-function openVarPanel() { updateVarPanelContent(); varPanelEl.classList.add('on'); }
-function closeVarPanel() { varPanelEl.classList.remove('on'); }
+function openVarPanel() { updateVarPanelContent(); varPanelEl.classList.add('on'); syncBodyPadBottom(); }
+function closeVarPanel() { varPanelEl.classList.remove('on'); syncBodyPadBottom(); }
 function toggleVarPanel() { if (isVarPanelOpen()) closeVarPanel(); else openVarPanel(); }
 
 // Variable-base panel groups: a base's ~rows×cols projections collapse under one header so
