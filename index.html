@@ -3737,7 +3737,9 @@ function parseMeter(body) {
     if (t === '') return null;
     if (/^-?\d+(\.\d+)?$/.test(t)) return { kind: 'lit', v: Number(t) };
     if (/^[A-Za-z][\w-]*$/.test(t)) return { kind: 'prop', v: t };
-    return null;                                     // anything else is not a valid ref
+    const vm = t.match(/^\{([A-Za-z][\w.]*)\}$/);
+    if (vm) return { kind: 'var', v: vm[1] };
+    return null;
   };
   const slash = spec.indexOf('/');
   if (slash < 0) { const v = ref(spec); return v ? { value: v, max: { kind: 'lit', v: 100 }, style } : null; }
@@ -3756,7 +3758,12 @@ function meterPool(value, max, cap = METER_POOL_CAP) {
 // {value, max} numbers, or null if either side can't resolve to a finite number or max<=0.
 function resolveMeter(node, parsed) {
   if (!parsed) return null;
-  const val = (r) => r.kind === 'lit' ? r.v : childPropNumber(node, r.v);
+  const val = (r) => {
+    if (r.kind === 'lit') return r.v;
+    if (r.kind === 'prop') return childPropNumber(node, r.v);
+    if (r.kind === 'var') { const vrs = collectVars(); const v = vrs[r.v]; return Number(v?.value ?? v?.rolled ?? NaN); }
+    return null;
+  };
   const value = val(parsed.value), max = val(parsed.max);
   if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return null;
   return { value, max };
@@ -6720,7 +6727,7 @@ function mdInline(s) {
   // (like the cookie): resolved live against the render node (cookieNode), no sidecar, not a
   // control. An unresolvable meter (missing/non-numeric prop) shows a visible {meter?} marker
   // (P4), never a silently wrong bar. Text-is-truth: the {meter: …} recipe stays in node.text. #648
-  s = s.replace(/\{meter\s*:\s*[^{}]*\}/gi, (m) => {
+  s = s.replace(/\{meter\s*:\s*(?:[^{}]|\{[^{}]*\})*\}/gi, (m) => {
     const parsed = parseMeter(m.slice(1, -1));
     const r = parsed && resolveMeter(cookieNode, parsed);
     if (!r) {
@@ -29391,7 +29398,7 @@ function flattenArtifacts(text, node, varMap, proseExport = false) {
   });
   // meters freeze to their bar + count string ("██████░░ 8/12"), resolved against the node;
   // an unresolvable one freezes to the {meter?} marker like the render. #648
-  const metered = clocked.replace(/\{meter\s*:\s*[^{}]*\}/gi, (m) => {
+  const metered = clocked.replace(/\{meter\s*:\s*(?:[^{}]|\{[^{}]*\})*\}/gi, (m) => {
     const r = resolveMeter(node, parseMeter(m.slice(1, -1)));
     return r ? formatMeter(r.value, r.max) : '{meter?}';
   });
