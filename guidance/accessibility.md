@@ -50,6 +50,16 @@ as the work ships.
    doc, not the code, had drifted to an aspirational number nothing honored. If a future
    control genuinely needs a bigger target, deepen its overlay inset; the floor is
    "clears 24px, aim for the 36–38px strip idiom", not a hard 44.)*
+6. **A listbox picks ONE focus model and commits to it fully.** Either *roving focus*
+   (options get `tabindex="-1"`, and `.focus()` moves real focus onto the active option)
+   OR *aria-activedescendant* (focus stays on the caret/container, options get NO `tabindex`,
+   and `aria-activedescendant` tracks the active id — the slash menu's model, which preserves
+   the caret invariant for an inline picker). **Never ship half of one:** calling `.focus()`
+   on an option with no `tabindex` is a **no-op**, so the whole keydown handler (arrows/Home/
+   End) is dead code that still passes a source-pin. Prefer activedescendant for inline caret
+   pickers; roving focus is fine for a modal browser. Verify by driving the running app — press
+   the arrow key and confirm `activeElement` actually moved. *(The builder command list shipped
+   the roving path missing its `tabindex`; every arrow key was dead until #1021.)*
 
 ## Phase 0 — Accessible names (quick wins, zero risk)
 
