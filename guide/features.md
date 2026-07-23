@@ -95,9 +95,9 @@ A live calculator that can see your document. Math pills recompute on their own.
   ([show just the value](computing-numbers.md#show-just-the-value))
 - **Logic.** Combine comparisons with `and(…)` / `or(…)` / `not(x)`; one check can assert several
   rules at once. ([functions](computing-numbers.md#functions))
-- **Units and dates.** Convert units (`{= convert(10, km, mi)}` or `{= c2f(20)}`), and declare your
-  own units (a currency, a fictional measure) under File then Custom units. Do date math
-  (`{= daysuntil(due)}`).
+- **Units and dates.** Convert units with `@convert` or `{= convert(10, km, mi)}` (temperature via
+  `{= c2f(20)}`), and declare your own units (a currency, a fictional measure) with `/units` or File
+  then Custom units. Do date math (`{= daysuntil(due)}`).
   ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))
 - **Number formatting.** Results group thousands automatically (`840,000`); set decimal places, a
   prefix (`$`) or a suffix (`kg`) per pill for money or units. ([format](computing-numbers.md#format-the-number))

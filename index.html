@@ -8159,6 +8159,7 @@ const BLOCK_CMDS = [
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
   { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', section:'Organize' },
   { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'Command browser', desc:'Open the command browser: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', section:'Organize' },
+  { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, mass, volume and time units already work.', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -8227,7 +8228,7 @@ const INSERT_CMDS = [
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Generate' },
   // Compute — live numbers and values
-  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','convert','unit','units','words','formula','equation'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units, and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
+  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Compute' },
   { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess'], label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Compute' },
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
@@ -8243,6 +8244,7 @@ const INSERT_CMDS = [
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  keys:['state','status','workflow','kanban','stages'], label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
   { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  keys:['search','find','filter'], label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
   { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  keys:['howmany','number','total'], label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. Type {count: is:todo} to write one inline.', ex:'{count: is:todo}', section:'Organize' },
+  { id:'convert', icon:'⇄',  fa:'fa-solid fa-arrow-right-arrow-left', keys:['unit','units','measure','km','mi','kg','lb','ml','minutes'], label:'Convert units', desc:'Convert a value between units — length, mass, volume, time, or your own. Inserts a live {= convert()} pill. Define custom units with /units.', ex:'{= convert(10, km, mi)}', section:'Compute' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -18796,6 +18798,12 @@ function slashApply() {
     launchBuilder();
     return;
   }
+  // /units opens the custom-units dialog (also on the File menu as "Custom units"). An action verb —
+  // returns before the applyBlockCmd fallthrough, writing nothing.
+  if (trigger !== '@' && cmd.id === 'units') {
+    openUnitsDialog();
+    return;
+  }
   // /secret writes a ">! " prefix at the start of the caret's line (a spoiler is a
   // markdown line prefix like ">", not a node type — so it is a text write, not a turn).
   // The caret lands after the prefix so you type the hidden text straight away. #645.
@@ -19289,6 +19297,11 @@ function insertInlineArtifact(id, nodeId, content) {
     // "the default is undiscoverable / dead-on-arrival" finding). The prop form stays documented
     // in the menu desc for the character-sheet use. #648.
     applyInlineInsertion(nodeId, offset, '{meter: 8/12}');
+  } else if (id === 'convert') {
+    // a unit conversion is plain {= convert()} math (no sidecar), computed live. The builder shows a
+    // form (amount/from/to, BUILDER_FORMS['convert']); the inline @ menu drops a working example you
+    // edit in place — the same dual pattern as meter above. Built-in units work out of the box.
+    applyInlineInsertion(nodeId, offset, '{= convert(10, km, mi)}');
   } else if (id === 'footnote') {
     const key = nextFnKey(node);
     if (!node.footnotes) node.footnotes = [];
@@ -33407,6 +33420,16 @@ const GUIDE = [
       { syn:'{= 70000 * 12}',    desc:'big results group thousands: 840,000' },
       { syn:'{= pi * r ^ 2}',    desc:'constants: pi, e, tau, today' },
     ] },
+  { id:'units', cat:'compute', covers:['convert','units'],
+    title:'Units & conversion',
+    body:"Convert between units right in a pill. Write `{= convert(10, km, mi)}` and the result renders live, or use @convert to fill in the amount and units in a small form. Built-in units need no setup: length (m, km, cm, mm, mi, yd, ft, in), mass (kg, g, mg, lb, oz, stone), volume (l, ml, gal, qt, pt, cup) and time (s, min, hr, day, week).\n\nNeed your own units? Type /units (or File then Custom units) and define them one per line, like `gp = 100 cp`, then convert with them: `{= convert(2, gp, cp)}` is 200. Converting between mismatched dimensions (km to kg) shows #ERR rather than a wrong number.\n\nTemperature is different: it needs an offset, not a ratio, so it is not a convert() unit. Use the c2f() and f2c() functions instead, like `{= c2f(100)}`.",
+    related:['math','math-fns'],
+    examples:[
+      { syn:'{= convert(10, km, mi)}', desc:'10 kilometres in miles (6.21)' },
+      { syn:'@convert',                desc:'fill in amount and units in a form' },
+      { syn:'/units',                  desc:'define your own units (gp = 100 cp)' },
+      { syn:'{= c2f(100)}',            desc:'temperature: Celsius to Fahrenheit' },
+    ] },
   { id:'math-fns', cat:'compute',
     title:'Math functions',
     body:"Do the things arithmetic alone can't easily express: round a price to a whole number or to the nearest 5, clamp a score to a valid range (never below 0, never above 100), find the smallest, largest or average of a set of values, combine several comparisons into one test with and, or and not, compute a percentage change or run a scientific calculation. Call any function by name; they mix freely with variables, dice and other functions.",
@@ -34068,6 +34091,13 @@ const BUILDER_FORMS = {
     { name:'rows', label:'Rows', type:'number', min:1, max:8 },
     { name:'cols', label:'Columns', type:'number', min:1, max:8 },
   ], insert: vals => starterTableText(+(vals.rows||3), +(vals.cols||3)) },
+  // @convert: amount + from/to units → a live {= convert()} math pill (built-in units, or /units-defined).
+  // An unknown unit resolves to null → the existing #ERR pill (P4), so no client-side validation here.
+  'convert': { fields: [
+    { name:'amount', label:'Amount', type:'number', required:true },
+    { name:'from', label:'From unit', type:'text', required:true, placeholder:'km' },
+    { name:'to', label:'To unit', type:'text', required:true, placeholder:'mi' },
+  ], insert: vals => '{= convert(' + (vals.amount || '0') + ', ' + String(vals.from).trim() + ', ' + String(vals.to).trim() + ')}' },
 };
 
 function showBuilderForm(cmd, pane, cfgOverride) {
