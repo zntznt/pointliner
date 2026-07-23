@@ -17599,3 +17599,21 @@ test('builder DOM wiring — source-pins for the dispatch, the guards, and the s
   assert.ok(!_src.includes('currentText.slice(0, st.offset)'),
     'no builder site re-implements the trigger strip inline — all route through stripTriggerRun');
 });
+
+test('builder keyboard + form a11y — roving tabindex, label association, required announce', () => {
+  // The keyboard-nav fix: options carry tabindex="-1" so item.focus() in the nav/search
+  // handlers actually moves focus (without it the whole Arrow/Home/End handler is dead).
+  assert.ok(/class="builder-item'[^;]*tabindex="-1"/.test(_src) || _src.includes('tabindex="-1" data-i="'),
+    'builder-item options are programmatically focusable (tabindex=-1)');
+  // Form fields: <label for> <-> <input id> association + aria-required on required fields.
+  assert.ok(_src.includes("const fid = 'bf-' + f.name;"), 'form fields build a stable id');
+  assert.ok(_src.includes('<label class="builder-field-label" for="\' + fid + \'">'),
+    'the field label is associated with its input via for=');
+  assert.ok(_src.includes("id=\"' + fid + '\"") && _src.includes("f.required ? ' aria-required=\"true\" required'"),
+    'required fields carry aria-required + required');
+  // P4: an empty required submit announces the reason, never a silent refocus.
+  assert.ok(_src.includes("announce(f.label + ' is required')"), 'required-empty submit announces');
+  // placeholder uses escAttr (attribute-safe), matching the codebase convention.
+  assert.ok(_src.includes("placeholder=\"' + escAttr(f.placeholder || f.label)"),
+    'placeholder attribute is escaped with escAttr');
+});

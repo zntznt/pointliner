@@ -1741,6 +1741,7 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
 .builder-form-desc{font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:12px}
 .builder-field{margin-bottom:10px}
 .builder-field-label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px;letter-spacing:.02em}
+.builder-field-req{color:var(--acc)}
 .builder-field-input{width:100%;padding:5px 8px;font-size:12.5px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:var(--bg);color:var(--fg);box-sizing:border-box}
 .builder-field-input:focus{outline:2px solid var(--acc);outline-offset:-1px}
 .builder-field-input::placeholder{color:var(--muted)}
@@ -34054,9 +34055,10 @@ function showBuilderForm(cmd, pane, cfgOverride) {
       '<div class="builder-form-title">' + escHtml(cmd.label) + '</div>' +
       '<div class="builder-form-desc">' + escHtml(cmd.desc || '') + '</div>';
   for (const f of cfg.fields) {
+    const fid = 'bf-' + f.name;   // associate <label for> ↔ <input id> so the field is named (P3-1)
     html += '<div class="builder-field">' +
-      '<label class="builder-field-label">' + escHtml(f.label) + '</label>' +
-      '<input class="builder-field-input" type="' + (f.type || 'text') + '" placeholder="' + escHtml(f.placeholder || f.label) + '" data-bf="' + f.name + '">' +
+      '<label class="builder-field-label" for="' + fid + '">' + escHtml(f.label) + (f.required ? ' <span class="builder-field-req" aria-hidden="true">*</span>' : '') + '</label>' +
+      '<input class="builder-field-input" id="' + fid + '" type="' + (f.type || 'text') + '" placeholder="' + escAttr(f.placeholder || f.label) + '" data-bf="' + f.name + '"' + (f.required ? ' aria-required="true" required' : '') + '>' +
     '</div>';
   }
   html += '<div class="builder-form-actions">' +
@@ -34103,7 +34105,7 @@ function builderFormApply(cmd, pane) {
   for (const f of cfg.fields) {
     const el = pane.querySelector('[data-bf="' + f.name + '"]');
     const v = (el?.value || '').trim();
-    if (f.required && !v) { el?.focus(); return; }
+    if (f.required && !v) { announce(f.label + ' is required'); el?.focus(); return; }   // P4: no silent refocus
     vals[f.name] = v;
   }
   const st = builderState;
@@ -34215,7 +34217,10 @@ function openBuilder(trigger) {
         lastSection = cmd._section;
       }
       const icon = cmd.trigger === '/' ? '/' : cmd.trigger === '@' ? '@' : '{';
-      html += '<div class="builder-item' + (i === activeIdx ? ' active' : '') + '" data-i="' + i + '" role="option" aria-selected="' + (i === activeIdx ? 'true' : 'false') + '">' +
+      // tabindex="-1" makes the option programmatically focusable — without it every
+      // item.focus() in the nav/search handlers is a no-op, so arrow-nav never enters the
+      // list and the Arrow/Home/End/PageUp/PageDown handler below is unreachable.
+      html += '<div class="builder-item' + (i === activeIdx ? ' active' : '') + '" tabindex="-1" data-i="' + i + '" role="option" aria-selected="' + (i === activeIdx ? 'true' : 'false') + '">' +
         '<span class="cmd-icon">' + escHtml(icon) + '</span>' +
         '<span class="cmd-label">' + escHtml(cmd.label) + '</span>' +
       '</div>';
