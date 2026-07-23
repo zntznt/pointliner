@@ -1722,6 +1722,13 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
 .builder-no-results{font-size:12px;color:var(--muted);padding:16px;text-align:center}
 .builder-pane .guide-entry{margin-bottom:16px;padding-bottom:14px}
 .builder-pane .guide-entry-title{font-size:12px}
+/* live sample preview strip (generators): a tinted band above the guide entry; the result is a
+   click/keyboard re-samplable chip, styled from theme tokens (no hardcoded colors). */
+.builder-preview{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:8px 10px;border:1px solid var(--bdr);border-radius:var(--r-md);background:color-mix(in srgb,var(--acc) 5%,transparent)}
+.builder-preview-lbl{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);flex-shrink:0}
+.builder-preview-result{font-family:var(--mono);font-size:12px;color:var(--fg);cursor:pointer;border-radius:var(--r-sm);padding:1px 4px;overflow:hidden;text-overflow:ellipsis}
+.builder-preview-result:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
+.builder-preview-result:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* The builder right-pane intentionally reuses .guide-entry, .guide-ex, .guide-related,
    .guide-entry-title, .guide-entry-body, .guide-no-results classes from the concept
    guide — the two share the same help-text rendering surface. Changes to guide styling
@@ -34033,6 +34040,42 @@ function builderGuideEntry(cmd) {
   return GUIDE.find(e => e.covers && e.covers.includes(cmd.id)) || null;
 }
 
+// Curated, self-contained sample expressions for the builder pane's live preview — one runnable
+// one-liner per previewable generator (NOT cmd.ex, which is often a `·`-list or a non-runnable
+// illustration). Keyed by command id (both the @ command and its { brace form share the id).
+const PREVIEW_SAMPLES = {
+  dice:   { kind: 'pick', expr: '2d6+3' },              // rollPickSource sniffs dice
+  pick:   { kind: 'pick', expr: 'red | blue | green' },
+  deck:   { kind: 'pick', expr: 'shuffle: a | b | c' },
+  oracle: { kind: 'pick', expr: 'oracle: likely' },
+  math:   { kind: 'math', expr: 'sqrt(16) + 2' },
+  meter:  { kind: 'meter', expr: '8/12' },
+};
+// DOM-free: run a previewable command's sample through the same pure cores the pill uses and return a
+// one-line result STRING (or null for non-previewable commands / an unresolvable sample — never a
+// wrong or blank value, P4). Fresh random draw each call, so re-selecting or clicking re-samples.
+function builderPreviewSample(cmd) {
+  if (!cmd || typeof cmd.id !== 'string') return null;
+  const s = PREVIEW_SAMPLES[cmd.id];
+  if (!s) return null;
+  try {
+    if (s.kind === 'pick') {                            // dice, pick, deck, oracle — one resolver
+      const r = rollPickSource(s.expr, {}, {});
+      return (r == null || r === '') ? null : s.expr + ' → ' + r;
+    }
+    if (s.kind === 'math') {
+      const n = evalMath(s.expr, {});
+      return n == null ? null : s.expr + ' = ' + formatMathResult(n);
+    }
+    if (s.kind === 'meter') {
+      const parsed = parseMeter('meter: ' + s.expr);
+      const r = parsed && resolveMeter({}, parsed);
+      return r ? formatMeter(r.value, r.max) : null;
+    }
+  } catch (_) { return null; }
+  return null;
+}
+
 // Render the guide entry detail for a command into the right pane.
 // Mirrors renderPane() from openGuide — shows title, body, examples, related.
 function renderBuilderPane(cmd) {
@@ -34042,9 +34085,26 @@ function renderBuilderPane(cmd) {
 }
 function renderBuilderPaneInto(cmd, container) {
   if (!container) return;
+  // Live sample: for a generator, show a real one-line result above the guide entry (dice → a roll,
+  // oracle → Yes/No, meter → a bar). Prepended into whichever branch follows; wired to re-sample on
+  // click/Enter, mirroring click-a-pill-to-re-roll. Non-generative commands get no block.
+  const sample = builderPreviewSample(cmd);
+  const previewHtml = sample
+    ? '<div class="builder-preview"><span class="builder-preview-lbl">Sample</span>' +
+      '<span class="builder-preview-result" role="button" tabindex="0" title="Click to re-sample">' + escHtml(sample) + '</span></div>'
+    : '';
+  const wirePreview = () => {
+    if (!sample) return;
+    const res = container.querySelector('.builder-preview-result');
+    if (!res) return;
+    const resample = () => { const next = builderPreviewSample(cmd); if (next != null) res.textContent = next; };
+    res.addEventListener('click', resample);
+    res.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); resample(); } });
+  };
   const ge = builderGuideEntry(cmd);
   if (!ge) {
-    container.innerHTML = `<div class="guide-entry"><div class="guide-entry-title">${escHtml(cmd.label)}</div><div class="guide-entry-body">${escHtml(cmd.desc || '')}</div>${cmd.ex ? `<div class="guide-entry-body"><code>${escHtml(cmd.ex)}</code></div>` : ''}</div>`;
+    container.innerHTML = previewHtml + `<div class="guide-entry"><div class="guide-entry-title">${escHtml(cmd.label)}</div><div class="guide-entry-body">${escHtml(cmd.desc || '')}</div>${cmd.ex ? `<div class="guide-entry-body"><code>${escHtml(cmd.ex)}</code></div>` : ''}</div>`;
+    wirePreview();
     return;
   }
   const catLabels = { 'shortcuts':'Shortcuts','getting-around':'Getting around','writing':'Writing & formatting','todos':'To-dos & organizing','dates':'Dates & agenda','generators':'Generators','compute':'Compute','links':'Links & knowledge','files':'Files & folders','recipes':'Put it together' };
@@ -34060,13 +34120,14 @@ function renderBuilderPaneInto(cmd, container) {
         return t ? '<button type="button" class="guide-related-chip" data-id="' + id + '">' + escHtml(t.title || id) + '</button>' : '';
       }).join('') + '</div>'
     : '';
-  container.innerHTML =
+  container.innerHTML = previewHtml +
     '<div class="guide-entry">' +
       '<div class="guide-cat-badge">' + escHtml(catLabels[ge.cat] || ge.cat || '') + '</div>' +
       '<div class="guide-entry-title">' + escHtml(ge.title || cmd.label) + '</div>' +
       '<div class="guide-entry-body">' + bodyHtml + '</div>' +
       exHtml + relHtml +
     '</div>';
+  wirePreview();
   container.querySelectorAll('.guide-related-chip').forEach(chip => {
     chip.addEventListener('click', () => {
       const id = chip.dataset.id;
