@@ -17729,3 +17729,25 @@ test('builder pane live preview (P3) — builderPreviewSample + injection', () =
   assert.ok(/e\.key === 'Enter' \|\| e\.key === ' '[\s\S]{0,40}resample\(\)/.test(_src), 'Enter/Space re-samples');
   assert.ok(_src.includes('.builder-preview-result:focus-visible'), 'the preview chip has a focus ring');
 });
+
+test('builder "Your names" define doors (P3) — always present, route to the real dialogs', () => {
+  // The three create rows exist in the pool for every trigger, even with NO document callables
+  // (the sandbox has no root → collectCallables() is empty), so a fresh doc still shows how to
+  // define its first name.
+  const pool = c.builderCmdPool(null);
+  const creates = pool.filter(cmd => cmd._create && cmd._section === 'Your names');
+  assert.equal(creates.length, 3, 'three "Define a…" rows in Your names');
+  const byId = Object.fromEntries(creates.map(cmd => [cmd.id, cmd]));
+  assert.ok(byId.var && byId.grammar && byId.markov, 'one per {}-callable group: var, rule (grammar), chain (markov)');
+  for (const cmd of creates) {
+    assert.equal(cmd.trigger, '@', `${cmd.id} reuses the @ command so applyBuilder opens its dialog`);
+    assert.equal(cmd.type, 'insert', `${cmd.id} is an insert command`);
+    assert.ok(/^Define /.test(cmd.label), `${cmd.id} reads "Define a…" (got ${cmd.label})`);
+  }
+  // They resolve to the right guide entry (same covers as the canonical @ commands) and never preview.
+  assert.ok(c.builderGuideEntry(byId.var), 'Define a variable has a guide entry');
+  assert.equal(c.builderPreviewSample(byId.grammar), null, 'a declaration door never shows a sample');
+  // The reference-row loop still follows (source pin: create rows are pushed BEFORE collectCallables()).
+  assert.ok(/_create: true \}\);[\s\S]{0,120}for \(const c of collectCallables\(\)\)/.test(_src),
+    'the create rows precede the reference rows in Your names');
+});
