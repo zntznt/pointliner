@@ -97,7 +97,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 - **Branch off freshly-fetched `origin/main`** — not stale local `main`. Fetch, then cut your branch.
 - **Verification artifacts stay out of the repo.** Screenshots, Playwright installs, temp scripts, `package.json`/`node_modules` — produce them to verify, then delete before committing. Only `index.html`, `tests/`, and docs belong in git.
 - **Parallel reviews file GitHub Issues, not tree writes.** When multiple agents review in parallel, each finding goes to a GitHub Issue (`gh issue create`, label `agent-review`). Issues are the inbox; a serial fixer works the queue on normal branches.
-- **PR/commit hygiene:** No agent attribution or session links. PR descriptions follow the exact format — UX Conformance Statement or `UI: none`. After `gh pr create`, strip any auto-appended session link with `gh pr edit`.
+- **PR/commit hygiene:** No agent attribution or session links. PR descriptions follow the exact format — UX Conformance Statement or `UI: none`. After `gh pr create`, strip any auto-appended session link with `gh pr edit`, then **read the PR back (`gh pr view`) to confirm none remains**; if the link reappears after the edit, STOP and report it (a platform behavior you can't strip from this side), never silently ship it.
 - **Commit message format:** Past tense, lowercase, descriptive. Reference issues with `Fixes #N`.
 
 ## Context rule
