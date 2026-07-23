@@ -17779,3 +17779,20 @@ function GUIDE_IDS_FOR_TEST() {
   }
   return 'overview';
 }
+
+test('failure cues teach the fix path (beginner PR A) — bare-name copy + empty-scope cookie', () => {
+  // The bare-name cue names HOW to define the missing name, all three routes (fleet-A finding:
+  // "declare it" alone left users stranded).
+  const bare = c.braceAttemptReason('rumor', {}, {});
+  assert.match(bare, /"rumor: option \| option"/, 'names the rule-point form');
+  assert.match(bare, /\{rumor := 5\}/, 'names the variable form');
+  assert.match(bare, /backticks/, 'keeps the keep-as-text escape');
+  // The modifier-base cue names the rule-point fix too.
+  assert.match(c.braceAttemptReason('beast.cap', {}, {}), /"beast: option \| option"/);
+  assert.ok(!bare.includes('—'), 'no em dash in the new copy');
+  // The [0/0] progress cookie carries an in-place empty-scope hint (title + aria), not a mute zero.
+  assert.ok(/total === 0 \? 'No to-dos counted below this point yet/.test(_src),
+    'empty cookie explains itself in place');
+  assert.ok(/aria-label="\$\{done\} of \$\{total\} done\$\{emptyTip/.test(_src),
+    'the hint rides the aria label too');
+});

@@ -6737,7 +6737,11 @@ function mdInline(s) {
     const { done, total } = progressCount(cookieNode, allSequences(), depth);
     const txt = formatProgressCookie(k === '%' ? 'pct' : 'frac', done, total);
     const full = total > 0 && done === total ? ' cookie-full' : '';
-    return stash(`<span class="cookie${full}" aria-label="${done} of ${total} done">${txt}</span>`);
+    // Fleet-A scope hint: a [0/0] cookie looks broken to a beginner. Say in place that it counted
+    // nothing here yet and how to widen the reach, instead of leaving a mute zero (P4).
+    const emptyTip = total === 0 ? 'No to-dos counted below this point yet. Add tasks beneath it, or widen the scope, like [/subtree].' : '';
+    const tip = emptyTip ? ` title="${escQ(emptyTip)}"` : '';
+    return stash(`<span class="cookie${full}"${tip} aria-label="${done} of ${total} done${emptyTip ? '. ' + escQ(emptyTip) : ''}">${txt}</span>`);
   });
   // progress clock: two forms sharing the [o …/M] token. A MANUAL [o N/M] carries a literal
   // N (click to advance); a COMPUTED [o /M] tallies its done from the render node like the
@@ -16224,10 +16228,11 @@ function braceAttemptReason(body, rules, vars) {
   }
   const mp = modParts(body);                                           // {beast.cap} with no such rule/var
   if (mp && !/^\d+$/.test(mp.base)) {
-    return 'No rule or variable named "' + mp.base + '" to build this from.';
+    // Name the fix, not just the miss (fleet-A research: "declare it" alone left users stranded).
+    return 'No rule or variable named "' + mp.base + '" to build this from. Add a point like "' + mp.base + ': option | option" to define it as a rule.';
   }
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
-    return 'No rule or variable named "' + body + '" is defined. Declare it, or wrap it in backticks to keep it as text.';
+    return 'No rule or variable named "' + body + '" is defined. Add a point like "' + body + ': option | option" to make it a rule, write {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
   }
   if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {                      // {2d6x} — dice-looking
     return 'This looks like a dice roll but could not be read. Try a form like 2d6 or d20+3.';
