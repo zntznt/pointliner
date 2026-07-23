@@ -17704,3 +17704,28 @@ test('builder guide-pane mismaps fixed (P2) — state:* and word count', () => {
   assert.ok(!/label:'word count',[\s\S]{0,200}guide:'math'/.test(_src), 'word count no longer points at math');
   assert.ok(_src.includes("cmd.id.startsWith('state:')"), 'the state: branch exists in builderGuideEntry');
 });
+
+test('builder pane live preview (P3) — builderPreviewSample + injection', () => {
+  // The pure core: each previewable generator yields a runnable one-line result; everything else null.
+  const dice = c.builderPreviewSample({ id: 'dice' });
+  assert.ok(/^2d6\+3 → -?\d+$/.test(dice), `dice sample is "2d6+3 → N" (got ${dice})`);
+  const n = Number(dice.split('→')[1].trim());
+  assert.ok(n >= 5 && n <= 15, `2d6+3 in [5,15] (got ${n})`);
+  assert.equal(c.builderPreviewSample({ id: 'math' }), 'sqrt(16) + 2 = 6');   // deterministic
+  assert.ok(/█|░/.test(c.builderPreviewSample({ id: 'meter' })), 'meter sample is a bar');
+  for (const id of ['pick', 'deck', 'oracle']) {
+    const s = c.builderPreviewSample({ id });
+    assert.ok(typeof s === 'string' && s.includes(' → '), `${id} yields a "expr → result" sample (got ${s})`);
+  }
+  // Non-previewable commands and junk → null (no block, guide entry renders unchanged).
+  for (const cmd of [{ id: 'h1' }, { id: 'link' }, { id: 'todo' }, { id: 'sequence' }, { id: '__nope__' }, null, {}]) {
+    assert.equal(c.builderPreviewSample(cmd), null, `no preview for ${JSON.stringify(cmd)}`);
+  }
+  // Wiring: renderBuilderPaneInto computes the sample and prepends the re-samplable result span.
+  assert.ok(_src.includes('const sample = builderPreviewSample(cmd);'), 'the pane computes a sample');
+  assert.ok(_src.includes('class="builder-preview-result" role="button" tabindex="0"'),
+    'the result is a keyboard-operable re-sample control');
+  assert.ok(/container\.innerHTML = previewHtml \+/.test(_src), 'the preview is prepended above the guide entry');
+  assert.ok(/e\.key === 'Enter' \|\| e\.key === ' '[\s\S]{0,40}resample\(\)/.test(_src), 'Enter/Space re-samples');
+  assert.ok(_src.includes('.builder-preview-result:focus-visible'), 'the preview chip has a focus ring');
+});

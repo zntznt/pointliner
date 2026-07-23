@@ -224,7 +224,7 @@ export function loadCores() {
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates','filterBraceForms',
-    'stripTriggerRun','builderCmdPool','builderGuideEntry',   // builder window: shared trigger-strip math + command pool/guide-lookup (retro pins)
+    'stripTriggerRun','builderCmdPool','builderGuideEntry','builderPreviewSample',   // builder window: shared trigger-strip math + command pool/guide-lookup + pane live-sample (retro pins)
     'mathCompletions','mathFragmentAt','mathFnGroup',
     'searchTokenAt','searchCompletions','oracleCompletions','meterTokenAt','meterCompletions',
     'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','defaultBraceChoice','tokenLeftOfCaret',
