@@ -2515,6 +2515,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
     <div id="tbtn-cluster">
+    <button id="btn-builder" class="tbtn-toggle" title="Command browser: browse and insert any command" aria-label="Command browser" aria-pressed="false"><i class="fa-solid fa-list-check"></i></button>
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (dated log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
@@ -8157,6 +8158,7 @@ const BLOCK_CMDS = [
   { id:'refile',  icon:'⇄',    fa:'fa-solid fa-arrow-right-arrow-left', keys:['move'], label:'Refile', desc:'Move this point and its children under another point. Type /refile:title to move it there directly (or /refile:top to lift it out), or /refile to pick from a tree.', ex:'/refile:Inbox · /refile:top', section:'Organize' },
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
   { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', section:'Organize' },
+  { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'Command browser', desc:'Open the command browser: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -18787,6 +18789,13 @@ function slashApply() {
     openVarPanel();
     return;
   }
+  // /builder opens the command browser (the builder's typed door, esp. for Standard/Lean where
+  // typing `/` shows the inline menu instead). launchBuilder re-targets the caret at end-of-point,
+  // so it writes nothing here — return before the applyBlockCmd fallthrough.
+  if (trigger !== '@' && cmd.id === 'builder') {
+    launchBuilder();
+    return;
+  }
   // /secret writes a ">! " prefix at the start of the caret's line (a spoiler is a
   // markdown line prefix like ">", not a node type — so it is a text write, not a turn).
   // The caret lands after the prefix so you type the hidden text straight away. #645.
@@ -19796,6 +19805,7 @@ function closeBuilderWindow() {
   _builderFormCmd = null;
   const ic = document.getElementById('io-card');
   if (ic) { ic.classList.remove('builder-open'); ic.innerHTML = ''; ic.removeAttribute('aria-label'); }
+  syncBuilderBtn();
   closeIo();
 }
 ioBack.addEventListener('mousedown', e => { if (e.target === ioBack) (ioCancel || closeIo)(); });
@@ -32702,6 +32712,7 @@ function toggleVerbosity(dir = 1) {
   render();
   flashHint(VERBOSITY_FLASH[verbosity]);
 }
+document.getElementById('btn-builder').addEventListener('click', launchBuilder);
 document.getElementById('btn-capture').addEventListener('click', () => toggleCapture());
 document.getElementById('capture-strip').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeCapture(); }
@@ -32711,6 +32722,7 @@ document.getElementById('btn-chronicle').addEventListener('click', () => toggleC
 // Right-click a toolbar button to open its concept guide entry.
 // Buttons without a matching guide entry are silently ignored.
 const TB_GUIDE_MAP = {
+  'btn-builder': 'builder',
   'btn-capture': 'capture-inbox',
   'btn-journal': 'journal',
   'btn-chronicle': 'chronicle',
@@ -32781,6 +32793,7 @@ const GUIDE = [
   { id:'edit-break',   essential:true, essSection:'Edit', keys:['⇧+Enter'],               essLabel:'Line break' },
   { id:'edit-merge',   essential:true, essSection:'Edit', keys:['Bksp at start'],            essLabel:'Merge point up' },
   { id:'edit-indent',  essential:true, essSection:'Edit', keys:['Tab','⇧+Tab'],           essLabel:'Indent / outdent' },
+  { id:'ins-builder',  essential:true, essSection:'Insert', keys:[`${MOD}+K`],             essLabel:'Command browser' },
   { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','Alt+↓'],     essLabel:'Move point up / down' },
   { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
   // Touch GESTURES are intentionally NOT here: this panel is keys + syntax only. Gestures
@@ -33682,6 +33695,16 @@ const GUIDE = [
       { syn:'feature: a {monster} | {treasure}', desc:'each feature is its own rule' },
       { syn:'treasure: {2d6} silver | a {gem}',  desc:'a rule can roll dice or call another' },
     ] },
+  { id:'builder', cat:'getting-around',
+    title:'Command browser',
+    body:"Every command in one place. Open the command browser and search across every point type, generator, calculation and pill, then insert the one you want without memorizing its syntax. Open it from the toolbar (the checklist icon), by pressing Ctrl/Cmd+K, or by typing /builder. In Guided mode, typing /, @ or { opens it too.\n\nType to filter, arrow keys to browse, Enter to insert. The right pane shows what each command does as you move through the list, so browsing is also how you learn what the app can do.",
+    related:['overview','point-types','brace-picker'],
+    covers:['builder'],
+    examples:[
+      { syn:'Ctrl/Cmd+K',   desc:'open the command browser from anywhere' },
+      { syn:'toolbar button', desc:'the checklist icon opens it too' },
+      { syn:'/builder',      desc:'type it at the start of a point' },
+    ] },
 ];
 // GUIDE-END — stable boundary marker: tests slice the GUIDE array from `const GUIDE = [` to
 // here. Keep this line right after the array's closing `];`. (Replaces the old
@@ -34157,6 +34180,38 @@ function showNestedDialog(cmd, pane) {
   insertInlineArtifact(cmd.id, st.nodeId, st.content);
 }
 
+// Keep the toolbar Command-browser button's pressed state in sync with the modal.
+function syncBuilderBtn() {
+  const btn = document.getElementById('btn-builder');
+  if (!btn) return;
+  const on = ioCard.classList.contains('builder-open');
+  btn.setAttribute('aria-pressed', String(on));
+  btn.classList.toggle('active', on);
+}
+
+// The builder's visible front door (UXP-178): open it WITHOUT a typed /@{ trigger, from the
+// toolbar button, the /builder verb, or Ctrl/Cmd+K — in any verbosity tier (explicit intent is
+// honored regardless of the Guided-only typed-trigger gate). It resolves the point the user means,
+// enters edit with the caret at END of text, and sets builderState.offset there with query:''. That
+// caret-at-end position makes the existing apply/stripTriggerRun path a no-op strip (slice past the
+// end removes nothing), so no trigger char is fabricated or eaten — see openBuilder/applyBuilder.
+function launchBuilder() {
+  if (ioCard.classList.contains('builder-open')) { closeBuilderWindow(); return; }   // toggle off
+  let id = captureCurrentPointId();                              // active edit → row cursor → anchor
+  if (!id) id = root.children[0] && root.children[0].id;         // fallback: the first point
+  const node = id && nodeById(id);
+  if (!node) { flashHint('Add a point first, then open the command browser'); return; }
+  if (node.type === 'base') { flashHint('Open the command browser from a text point'); return; }
+  const el = document.querySelector(`.node-content[data-id="${id}"]`);
+  if (!el) return;
+  if (!el.dataset.editing) enterEdit(el, node);
+  el.focus();
+  const end = editableText(el).length;
+  try { setCaretByOffset(el, end); } catch (_) {}
+  builderState = { nodeId: id, content: el, trigger: null, offset: end, query: '', rawArg: '' };
+  openBuilder(null);
+}
+
 function openBuilder(trigger) {
   if (!builderState) return;
   // Re-entrancy guard: if the builder is already open (e.g., IME composition fires
@@ -34168,9 +34223,12 @@ function openBuilder(trigger) {
   ioCard.classList.add('builder-open');
   ioCard.setAttribute('aria-label', 'Command builder');
   ioCard.setAttribute('aria-labelledby', 'builder-title');   // UXP-181
+  syncBuilderBtn();
   const cmds = builderCmdPool(trigger);
   let filterQ = '';
-  const title = trigger === '/' ? 'Point commands' : trigger === '@' ? 'Insert commands' : 'Brace picker';
+  // trigger === null is the front-door launch (toolbar / verb / Ctrl+K): show every command.
+  const title = trigger === '/' ? 'Point commands' : trigger === '@' ? 'Insert commands'
+              : trigger === '{' ? 'Brace picker' : 'Commands';
 
   ioCard.innerHTML =
     '<div class="builder-wrap">' +
@@ -34529,6 +34587,7 @@ document.addEventListener('keydown', e => {
   }
   if (ctrl && e.key==='s') { e.preventDefault(); saveFile(); }
   if (ctrl && e.key==='o') { e.preventDefault(); openFile(); }
+  if (ctrl && (e.key==='k' || e.key==='K') && !e.shiftKey && !e.altKey) { e.preventDefault(); launchBuilder(); return; }   // command browser (UXP-178 front door)
   if (ctrl && e.shiftKey && (e.key==='.' || e.key==='>')) { e.preventDefault(); toggleVerbosity(1); return; }    // DIAL: forward, guided → standard → lean
   if (ctrl && e.shiftKey && (e.key===',' || e.key==='<')) { e.preventDefault(); toggleVerbosity(-1); return; }   // DIAL: reverse, toward MORE guidance (panel review: escape the one-way ratchet)
   if (ctrl && e.shiftKey && e.key==='V') { e.preventDefault(); toggleVarPanel(); return; }
