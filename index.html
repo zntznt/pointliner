@@ -1722,9 +1722,15 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
 .builder-no-results{font-size:12px;color:var(--muted);padding:16px;text-align:center}
 .builder-pane .guide-entry{margin-bottom:16px;padding-bottom:14px}
 .builder-pane .guide-entry-title{font-size:12px}
+/* The builder right-pane intentionally reuses .guide-entry, .guide-ex, .guide-related,
+   .guide-entry-title, .guide-entry-body, .guide-no-results classes from the concept
+   guide — the two share the same help-text rendering surface. Changes to guide styling
+   should verify builder appearance. Two builder-scoped overrides above adjust spacing. */
 .builder-insert-btn{flex-shrink:0;padding:5px 12px;font-size:12px;font-weight:600;color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--acc) 22%,transparent);border-radius:var(--r-sm);cursor:pointer;transition:background .12s,border-color .12s}
 .builder-insert-btn:hover{background:color-mix(in srgb,var(--acc) 16%,transparent);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
 .builder-insert-btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.builder-insert-btn:disabled{opacity:.45;cursor:default}
+.builder-insert-btn:disabled:hover{background:color-mix(in srgb,var(--acc) 8%,transparent);border-color:color-mix(in srgb,var(--acc) 22%,transparent)}
 /* ghost suggestion in search bar: shows the top matching command suffix in muted ink */
 .builder-search-wrap{position:relative;flex:1;min-width:0}
 .builder-search-wrap .guide-search{width:100%;box-sizing:border-box}
@@ -2166,6 +2172,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   #io-card{margin-top:8px;width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
   #io-card.guide-open{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
   .guide-wrap{height:calc(100dvh - 16px)}
+  #io-card.builder-open{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  .builder-wrap{height:calc(100dvh - 16px)}
+  .builder-nav{width:150px}
   /* Agenda on phones: the desktop side-by-side (controls | rows) leaves the Due/Running
      rows only ~250px, so dated chips overflow into a hidden horizontal scroll. Stack the
      controls ABOVE the rows so the chips get the full width; the divider becomes a bottom
@@ -19639,6 +19648,8 @@ let _dialogCancel = null;      // custom cancel when nested (returns to GUIDE en
 let _dialogGuideCmd = null;    // command whose GUIDE entry is shown below the form
 let _restoreState = null;      // { text, node, content, offset, queryLen } for trigger text restore on cancel/switch
 let _dialogFormEl = null;      // reference to submit button in nested dialog
+let _builderFormDrafts = {};   // UXP-180: { cmdId: { fieldName: value, ... } }
+let _builderFormCmd = null;    // UXP-180: cmd obj of the currently shown embedded form
 
 function openInsertDialog(opts) {
   const root = _dialogRoot || ioCard;
@@ -19749,10 +19760,12 @@ function openInsertDialog(opts) {
   requestAnimationFrame(() => { const f = root.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
 function closeIo() {
+  if (ioCard.classList.contains('builder-open')) { closeBuilderWindow(); return; }
   ioBack.classList.remove('on');
   ioCard.classList.remove('guide-open');
   ioCard.innerHTML = ''; ioCancel = null;
   ioCard.removeAttribute('aria-label');
+  ioCard.removeAttribute('aria-labelledby');   // UXP-181: prevent leak across dialogs
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }
@@ -19765,6 +19778,8 @@ function closeBuilderWindow() {
   _dialogGuideCmd = null;
   _dialogFormEl = null;
   _restoreState = null;
+  _builderFormDrafts = {};
+  _builderFormCmd = null;
   const ic = document.getElementById('io-card');
   if (ic) { ic.classList.remove('builder-open'); ic.innerHTML = ''; ic.removeAttribute('aria-label'); }
   closeIo();
@@ -34011,10 +34026,15 @@ const BUILDER_FORMS = {
     { name:'url', label:'Image URL', type:'text', required:true },
     { name:'alt', label:'Alt text', type:'text' },
   ], insert: vals => '![' + (vals.alt || '') + '](' + vals.url + ')' },
+  // @table: rows × cols number inputs (insert path only; /table uses slash-menu size picker)
+  '@table': { fields: [
+    { name:'rows', label:'Rows', type:'number', min:1, max:8 },
+    { name:'cols', label:'Columns', type:'number', min:1, max:8 },
+  ], insert: vals => starterTableText(+(vals.rows||3), +(vals.cols||3)) },
 };
 
-function showBuilderForm(cmd, pane) {
-  const cfg = BUILDER_FORMS[cmd.id];
+function showBuilderForm(cmd, pane, cfgOverride) {
+  const cfg = cfgOverride || BUILDER_FORMS[cmd.id];
   if (!cfg) return false;
   let html =
     '<div class="builder-form">' +
@@ -34034,17 +34054,37 @@ function showBuilderForm(cmd, pane) {
   // Focus first input
   const first = pane.querySelector('.builder-field-input');
   if (first) first.focus();
+  _builderFormCmd = cmd;
+  // UXP-180: pre-populate fields from saved drafts
+  const drafts = _builderFormDrafts[cmd.id];
+  if (drafts) {
+    for (const f of cfg.fields) {
+      if (drafts[f.name] !== undefined) {
+        const input = pane.querySelector('[data-bf="' + f.name + '"]');
+        if (input) input.value = drafts[f.name];
+      }
+    }
+  }
   // Submit handler
   pane.querySelector('.builder-form-submit').addEventListener('click', () => builderFormApply(cmd, pane));
   pane.querySelector('.builder-form-cancel').addEventListener('click', () => {
-    // Return to GUIDE entry view
+    // UXP-180: save non-empty field values as drafts before dismissing
+    const vals = {};
+    let hasAny = false;
+    for (const f of cfg.fields) {
+      const input = pane.querySelector('[data-bf="' + f.name + '"]');
+      if (input && input.value.trim()) { vals[f.name] = input.value.trim(); hasAny = true; }
+    }
+    if (hasAny) _builderFormDrafts[cmd.id] = vals;
+    else delete _builderFormDrafts[cmd.id];
+    _builderFormCmd = null;
     renderBuilderPane(cmd);
   });
   return true;
 }
 
 function builderFormApply(cmd, pane) {
-  const cfg = BUILDER_FORMS[cmd.id];
+  const cfg = BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id];
   if (!cfg) return;
   const vals = {};
   for (const f of cfg.fields) {
@@ -34113,6 +34153,7 @@ function openBuilder(trigger) {
   armChromeReturn();
   ioCard.classList.add('builder-open');
   ioCard.setAttribute('aria-label', 'Command builder');
+  ioCard.setAttribute('aria-labelledby', 'builder-title');   // UXP-181
   const cmds = builderCmdPool(trigger);
   let filterQ = '';
   const title = trigger === '/' ? 'Point commands' : trigger === '@' ? 'Insert commands' : 'Brace picker';
@@ -34120,7 +34161,7 @@ function openBuilder(trigger) {
   ioCard.innerHTML =
     '<div class="builder-wrap">' +
       '<div class="builder-header" role="search">' +
-        '<span class="builder-title">' + escHtml(title) + '</span>' +
+        '<span class="builder-title" id="builder-title">' + escHtml(title) + '</span>' +
         '<span class="builder-search-wrap">' +
           '<input class="guide-search builder-search" type="search" placeholder="Search commands — Enter to insert" aria-label="Search commands" data-first>' +
           '<span class="builder-search-ghost" aria-hidden="true"></span>' +
@@ -34141,6 +34182,7 @@ function openBuilder(trigger) {
   const insertBtn = ioCard.querySelector('.builder-insert-btn');
 
   let activeIdx = 0;
+  let liveSuppress = true;   // UXP-173: suppress aria-live announcement on initial render
 
   function visibleCmds() {
     const q = filterQ.trim().toLowerCase();
@@ -34172,6 +34214,7 @@ function openBuilder(trigger) {
 
   function syncActive() {
     const vis = visibleCmds();
+    insertBtn.disabled = !vis.length;
     if (activeIdx >= vis.length) activeIdx = Math.max(0, vis.length - 1);
     const items = nav.querySelectorAll('.builder-item');
     items.forEach((it, i) => { it.classList.toggle('active', i === activeIdx); it.setAttribute('aria-selected', String(i === activeIdx)); });
@@ -34184,6 +34227,14 @@ function openBuilder(trigger) {
         renderBuilderPane(vis[activeIdx]);
       }
     }
+    // UXP-173: announce selected command via aria-live (suppressed on initial render)
+    if (!liveSuppress) {
+      const cmd = vis[activeIdx];
+      if (cmd) {
+        announce(cmd.desc ? cmd.label + ': ' + cmd.desc : cmd.label);
+      }
+    }
+    liveSuppress = false;
   }
 
   function applyBuilder() {
@@ -34193,8 +34244,9 @@ function openBuilder(trigger) {
     if (!cmd) return;
     // Commands with embedded forms: show the form in the right pane instead
     // of applying immediately. The form's submit handler does the insert + close.
-    if (BUILDER_FORMS[cmd.id]) {
-      showBuilderForm(cmd, pane);
+    const formCfg = BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id];
+    if (formCfg) {
+      showBuilderForm(cmd, pane, formCfg);
       return;
     }
     const st = builderState;
@@ -34202,7 +34254,7 @@ function openBuilder(trigger) {
     if (!node || !st.content) { closeBuilder(); return; }
     // Commands that open the standard dialog harness: render the dialog form
     // in the right pane via _dialogRoot so it stays embedded in the builder.
-    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
+    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id] && !BUILDER_FORMS['@' + cmd.id]) {
       // If form is already showing from browse, just submit it
       if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); return; }
       // Otherwise strip trigger text and open the form
@@ -34217,19 +34269,6 @@ function openBuilder(trigger) {
       _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };
       _dialogGuideCmd = cmd;
       insertInlineArtifact(cmd.id, st.nodeId, st.content);
-      return;
-    }
-    // @table: insert a default 3×3 table scaffold (the size picker uses slashMenu
-    // which is unavailable from the builder). Inline size picker is tracked as follow-up.
-    if (cmd.id === 'table' && cmd.type === 'insert') {
-      const rawLen = 1 + st.query.length;
-      const currentText = editableText(st.content);
-      _restoreState = { text: currentText, node, content: st.content, offset: st.offset, queryLen: st.query.length };
-      node.text = currentText.slice(0, st.offset) + starterTableText(3, 3) + currentText.slice(st.offset + rawLen);
-      st.content.innerHTML = editModeHTML(node);
-      try { setCaretByOffset(st.content, st.offset + 1); } catch (_) {}
-      markDirty();
-      closeBuilder();
       return;
     }
     // Commands that fall through to the / block-command path (non-@{</>) or
@@ -34315,6 +34354,18 @@ function openBuilder(trigger) {
       e.preventDefault();
       if (vis.length && activeIdx > 0) { activeIdx = Math.max(activeIdx - 1, 0); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
       else { activeIdx = 0; searchEl.focus(); }
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      if (vis.length) { activeIdx = 0; syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      if (vis.length) { activeIdx = vis.length - 1; syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
+    } else if (e.key === 'PageUp') {
+      e.preventDefault();
+      if (vis.length) { activeIdx = Math.max(0, activeIdx - 8); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
+    } else if (e.key === 'PageDown') {
+      e.preventDefault();
+      if (vis.length) { activeIdx = Math.min(vis.length - 1, activeIdx + 8); syncActive(); nav.querySelector('.builder-item.active')?.focus(); }
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       pane.focus();
@@ -34337,6 +34388,9 @@ function openBuilder(trigger) {
       e.preventDefault();
       const active = nav.querySelector('.builder-item.active');
       if (active) active.focus();
+    } else if (e.key === 'Tab' && !e.shiftKey && e.target === pane) {
+      e.preventDefault();
+      searchEl.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); }
@@ -34351,9 +34405,24 @@ function openBuilder(trigger) {
   });
   // Load dialog form or GUIDE entry when pane receives focus (Tab/Right from search or nav)
   function loadPaneForCmd(cmd) {
+    // UXP-180: save active form drafts before switching to a new command
+    if (_builderFormCmd && pane.querySelector('.builder-form')) {
+      const cfg = BUILDER_FORMS[_builderFormCmd.id] || BUILDER_FORMS['@' + _builderFormCmd.id];
+      if (cfg) {
+        const vals = {};
+        let hasAny = false;
+        for (const f of cfg.fields) {
+          const el = pane.querySelector('[data-bf="' + f.name + '"]');
+          if (el && el.value.trim()) { vals[f.name] = el.value.trim(); hasAny = true; }
+        }
+        if (hasAny) _builderFormDrafts[_builderFormCmd.id] = vals;
+        else delete _builderFormDrafts[_builderFormCmd.id];
+      }
+      _builderFormCmd = null;
+    }
     if (!cmd) return;
     if (_restoreState) builderRestoreTrigger();
-    if (BUILDER_FORMS[cmd.id]) {
+    if (BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id]) {
       showBuilderForm(cmd, pane);
     } else if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
       showNestedDialog(cmd, pane);
@@ -34391,13 +34460,27 @@ function openBuilder(trigger) {
       e.preventDefault();
       const first = nav.querySelector('.builder-item');
       if (first) { activeIdx = 0; syncActive(); first.focus(); }
-    } else if (e.key === 'Tab' || e.key === 'ArrowRight') {
+    } else if (e.key === 'ArrowRight') {
       e.preventDefault();
       // Let the pane focus event handle content loading — avoids double-load.
       pane.focus();
+    } else if (e.key === 'Tab' && !e.shiftKey) {
+      e.preventDefault();
+      // Commit ghost-text autocomplete if a suggestion is visible
+      const ghost = ioCard.querySelector('.builder-search-ghost');
+      if (ghost && ghost.textContent) {
+        searchEl.value = ghost.textContent;
+        searchEl.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      pane.focus();
+    } else if (e.key === 'Tab' && e.shiftKey) {
+      e.preventDefault();
+      const active = nav.querySelector('.builder-item.active');
+      if (active) active.focus();
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      applyBuilder();
+      if (visibleCmds().length) applyBuilder();
+      else announce('No matching commands');
     } else if (e.key === 'Escape') {
       e.stopPropagation();
       closeBuilder();
@@ -34407,7 +34490,7 @@ function openBuilder(trigger) {
   insertBtn.addEventListener('click', () => applyBuilder());
   // Close on backdrop click
   ioBack.addEventListener('click', e => { if (e.target === ioBack) closeBuilder(); }, { once: true });
-  requestAnimationFrame(() => { searchEl.focus(); });
+  searchEl.focus();
 }
 
 function closeBuilder() {
