@@ -2232,7 +2232,7 @@ test('agent-review: no menu alias hijacks a later command’s own id (collision 
   const ins = parseCmdPool(_src, 'const INSERT_CMDS = [');
   const blk = parseCmdPool(_src, 'const BLOCK_CMDS = [');
   const has = (pool, id, key) => pool.find(c => c.id === id)?.keys.includes(key);
-  assert.ok(has(ins, 'math', 'sum') && has(ins, 'math', 'convert') && !has(ins, 'math', 'count'), 'math: sum/convert, no count');
+  assert.ok(has(ins, 'math', 'sum') && !has(ins, 'math', 'convert') && !has(ins, 'math', 'count'), 'math: sum; convert + count are their own commands now (@convert, @count)');
   assert.ok(has(ins, 'meter', 'hp'), 'meter: hp');
   assert.ok(has(ins, 'grammar', 'npc') && has(ins, 'est', 'range') && has(ins, 'oracle', 'yesno'), '@ generate/compute aliases');
   assert.ok(has(blk, 'base', 'kanban') && has(blk, 'due', 'date') && has(blk, 'divider', 'hr'), '/ block aliases');
@@ -17648,4 +17648,25 @@ test('builder front door (UXP-178) — launcher wiring + all-commands pool', () 
   assert.ok(/ctrl && \(e\.key==='k' \|\| e\.key==='K'\)[\s\S]{0,90}launchBuilder\(\)/.test(_src),
     'Ctrl/Cmd+K launches the builder');
   assert.ok(/essSection:'Insert', keys:\[`\$\{MOD\}\+K`\]/.test(_src), 'the shortcut is on the shortcuts page');
+});
+
+test('unit-conversion door (P1) — @convert form + /units verb wiring', () => {
+  // @convert: an INSERT_CMDS command + a BUILDER_FORMS entry whose insert returns a live {= convert()}
+  // pill (the @link/@image pattern). The inline @ menu drops a working example (the meter pattern).
+  assert.ok(/id:'convert',[^}]*label:'Convert units'/.test(_src), 'INSERT_CMDS has a convert command');
+  assert.ok(/'convert': \{ fields: \[[\s\S]{0,400}insert: vals => '\{= convert\('/.test(_src),
+    "BUILDER_FORMS['convert'] inserts a {= convert(...)} pill");
+  assert.ok(_src.includes("applyInlineInsertion(nodeId, offset, '{= convert(10, km, mi)}')"),
+    'inline @convert drops a working example');
+  // /units: an action verb (no turn) that opens the custom-units dialog — beyond the file-menu button.
+  assert.ok(/id:'units',[^}]*label:'Custom units'/.test(_src), 'BLOCK_CMDS has a units command');
+  assert.ok(!/id:'units',[^}]*turn:true/.test(_src), 'the units verb is an action, not a type-transform');
+  assert.ok(/cmd\.id === 'units'\) \{\s*openUnitsDialog\(\);\s*return;/.test(_src),
+    'slashApply routes /units to openUnitsDialog');
+  // Concept-guide home (fixes the "buried under Math" gap): covers both new command ids.
+  assert.ok(/id:'units', cat:'compute', covers:\['convert','units'\]/.test(_src),
+    'GUIDE has a Units & conversion entry covering both command ids');
+  // math no longer aliases convert/unit/units — they route to the dedicated commands (collision guard).
+  assert.ok(/id:'math',[^}]*keys:\[[^\]]*\]/.test(_src) && !/id:'math',[^}]*keys:\[[^\]]*'convert'/.test(_src),
+    "math dropped its convert/unit/units aliases now that @convert and /units exist");
 });
