@@ -17617,3 +17617,35 @@ test('builder keyboard + form a11y — roving tabindex, label association, requi
   assert.ok(_src.includes("placeholder=\"' + escAttr(f.placeholder || f.label)"),
     'placeholder attribute is escaped with escAttr');
 });
+
+test('builder front door (UXP-178) — launcher wiring + all-commands pool', () => {
+  // launchBuilder exists, is the toolbar button's handler, and re-targets the caret at end
+  // (the caret-at-end trick that makes the existing strip a no-op — no synthetic flag needed).
+  assert.ok(_src.includes('function launchBuilder()'), 'launchBuilder defined');
+  assert.ok(_src.includes("getElementById('btn-builder').addEventListener('click', launchBuilder)"),
+    'toolbar button opens the builder');
+  assert.ok(/const end = editableText\(el\)\.length;[\s\S]{0,120}offset: end, query: ''/.test(_src),
+    'launchBuilder sets the caret at end-of-point and query to empty (no trigger to strip)');
+  // openBuilder(null) → the all-commands "Commands" title; builderCmdPool(null) leads with point cmds.
+  assert.ok(_src.includes("trigger === '{' ? 'Brace picker' : 'Commands'"),
+    'openBuilder titles the no-trigger launch "Commands"');
+  const pool = c.builderCmdPool(null);
+  assert.ok(pool.length > 0, 'builderCmdPool(null) returns the full pool');
+  const trigs = new Set(pool.map(cmd => cmd.trigger));
+  assert.ok(trigs.has('/') && trigs.has('@') && trigs.has('{'), 'all three trigger families present');
+  assert.equal(pool[0].trigger, '/', 'point (/) commands lead when no trigger summoned it');
+  // Door B: /builder verb — a BLOCK_CMDS action entry (no `turn`) + a slashApply branch that
+  // launches and returns before the applyBlockCmd fallthrough (writes nothing).
+  assert.ok(/id:'builder',[^}]*label:'Command browser'/.test(_src), 'BLOCK_CMDS has a builder entry');
+  assert.ok(!/id:'builder',[^}]*turn:true/.test(_src), "the builder verb is an action, not a type-transform (no turn)");
+  assert.ok(/cmd\.id === 'builder'\) \{\s*launchBuilder\(\);\s*return;/.test(_src),
+    'slashApply routes /builder to launchBuilder');
+  // Door C: concept-guide entry (covers the verb id) + right-click map.
+  assert.ok(/id:'builder', cat:'getting-around'[\s\S]{0,1500}covers:\['builder'\]/.test(_src),
+    'GUIDE has a builder entry covering the verb id');
+  assert.ok(_src.includes("'btn-builder': 'builder'"), 'right-click the button opens its guide');
+  // Door D: Ctrl/Cmd+K + its shortcuts-page row.
+  assert.ok(/ctrl && \(e\.key==='k' \|\| e\.key==='K'\)[\s\S]{0,90}launchBuilder\(\)/.test(_src),
+    'Ctrl/Cmd+K launches the builder');
+  assert.ok(/essSection:'Insert', keys:\[`\$\{MOD\}\+K`\]/.test(_src), 'the shortcut is on the shortcuts page');
+});

@@ -17,10 +17,9 @@ acting (controls drift).
 > **Current state (2026-07-23):** the remediation program is essentially complete — every UXP/LF/QP/QX
 > defect from Tiers 1–3, the correctness batch, and the many audit waves (UXP-3…199, the Lean-floor
 > LF-* set, and the adversarial-robustness waves) is closed and archived in
-> `ux-remediation-archive.md`. **Three items remain open below:** UXP-20 (standing guard, never closes),
-> UXP-170 (deferred — an egress-blocked FA-subset glyph rebuild; the fallbacks keep it legible),
-> and UXP-178 (deferred — toolbar button needs browse-all trigger mode in openBuilder).
-> UXP-171–177, UXP-179–183 closed in Phases 2–7.
+> `ux-remediation-archive.md`. **Two items remain open below:** UXP-20 (standing guard, never closes)
+> and UXP-170 (deferred — an egress-blocked FA-subset glyph rebuild; the fallbacks keep it legible).
+> UXP-171–183 closed in Phases 2–7 (UXP-178, the builder's front door, shipped last).
 
 ---
 
@@ -127,7 +126,8 @@ acting (controls drift).
 - **Rule:** P1 (Predictable — state must not leak across sessions).
 - **Target:** At the top of `closeIo()`, before any cleanup logic, check `if (ioCard.classList.contains('builder-open')) { closeBuilderWindow(); return; }`. `closeBuilderWindow()` removes the `builder-open` class first, then calls `closeIo()` — so the recursive call detects no `builder-open` and proceeds with normal cleanup. The `return` after delegation is essential to prevent double-cleanup. This is a safety net: normal paths already route through `closeBuilder` → `closeBuilderWindow()` via `ioCancel`; this guard covers the uncommon case where `closeIo()` is called directly from a non-builder-aware code path.
 
-### UXP-178 ☐ Builder has no visible entry points beyond typed triggers 🟡 [Builder Window] [Batch 6] (DEFERRED — the toolbar button requires a browse-all trigger mode in openBuilder, synthetic slashState for slashApply, text-stripping bypass, and verbosity auto-switch. Imminent but tracked separately.)
+### UXP-178 ✓ Builder has no visible entry points beyond typed triggers 🟡 [Builder Window] [Batch 6] (SHIPPED 2026-07-23)
+- **Shipped as:** `launchBuilder()` opens the builder with no typed trigger, from three doors — a toolbar button (`btn-builder`, the checklist icon), the `/builder` action verb, and `Ctrl/Cmd+K` — plus a `getting-around` concept-guide entry and right-click-to-guide. The deferred design's hard part (the "browse-all trigger mode" / "text-stripping bypass") dissolved: `launchBuilder` re-targets the caret at END of the point, where the existing `stripTriggerRun` path already removes nothing (slice past the end is empty), so no synthetic flag or strip bypass was needed. And rather than auto-switching verbosity (the deferred note's plan, with its restore edge cases), explicit invocation is simply **decoupled** from the Guided-only typed-trigger gate — the doors open the builder in any tier without mutating the user's verbosity. Verified in headless Chromium (all doors, no character eaten, Standard-tier decouple).
 - **Problem:** The builder only activates by typing `/`, `@`, or `{` in an editing point while in Guided mode. There is no toolbar button, menu entry, or other visible affordance that opens the builder. A user who does not know to type these trigger characters has no way to discover the command browser. P2-1 requires three doors: visible affordance, typed path, and menu path. The builder currently has only the typed path.
 - **Rule:** P2-1 (all three doors required — visible affordance + typed path + menu path). P1-2 (any new shortcut must fit §3).
 - **Target:** (1) Add a toolbar button (using a command-palette-style icon) that opens the builder on the currently focused or actively-editing point. When no point is being edited, the button enters edit mode on the focused point (or root if none focused), auto-switches to Guided mode, then opens the builder with no trigger filter (showing all commands). Store the pre-builder verbosity level and restore it when the builder closes. The button satisfies both the visible-affordance door and the menu-path door. (2) Add the toolbar button's function to the `?` help panel under a "Command browser" entry. (3) Add `/builder` as a slash-verb alias (writes nothing; just opens the builder with all commands shown), satisfying a discoverable typed path for the builder itself.

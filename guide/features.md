@@ -258,6 +258,10 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   trip planner with a calendar view, a decision helper, a study and flashcards page, a home
   inventory, and a worldbuilding and writing kit). Click any pill inside to play, then delete it when
   you are done. More worked examples live in the [solo RPG guides](solo-rpg/README.md).
+- **Command browser.** One searchable window over every point command, generator, calculation and
+  pill. Open it from the toolbar (the checklist button), with `Ctrl/Cmd+K`, or by typing `/builder`
+  (in Guided mode, `/`, `@` or `{` open it too). Type to filter, arrow to browse, Enter to insert; the
+  side pane explains each command as you go.
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.
 - **Verbosity dial.** `Ctrl/Cmd+Shift+.` cycles Guided (all hints shown), Standard (beginner hints and
   tooltips off, menus and pencils kept), and Lean (the keyboard canvas: menus and pencils hidden, still
