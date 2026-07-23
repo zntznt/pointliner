@@ -17517,3 +17517,85 @@ test('#845 item 2 — scanWorkspace counts the skips and the broken-links report
   assert.match(_fSync, /const idx = buildWorkspaceIndex\(docs\);\s*\n\s*idx\.unmarked = unmarked;\s*\n\s*return idx;/, 'the count must ride the returned index');
   assert.match(_fSync, /const unmarkedMsg = unmarkedFilesNote\(workspaceIndex \? workspaceIndex\.unmarked : 0\);/, 'the broken-links report must consume the count');
 });
+
+// ─── Builder window: retroactive pins (measure/pin/wire, applied after the fact) ───────
+// The builder window (Guided-only unified command browser, PR #1011 + the #1014–#1019
+// remediation batch) shipped ~850 lines with ZERO coverage — the discipline was skipped
+// because the CLAUDE.md rewrite (ae3b5b1) narrowed the pin trigger to "parser / eval core"
+// and the DOM-wiring arm lived only in a load-cores comment. These pins close that gap:
+// the shared trigger-strip math (the double-strip / form-overwrite bug locus) and the two
+// pure pool/lookup cores get behavior pins; the DOM dispatch/guards get source-pins.
+
+test('stripTriggerRun — removes the trigger run (trigger char + query) and reports the caret', () => {
+  // "abc" + "/due" (trigger "/" + query "due") → strip the 4-char run at offset 3.
+  assert.deepEqual(host(c.stripTriggerRun('abc/due', 3, 3)), { text: 'abc', caret: 3 });
+  // bare trigger (queryLen 0) removes just the one trigger char.
+  assert.deepEqual(host(c.stripTriggerRun('abc/', 3, 0)), { text: 'abc', caret: 3 });
+  // trigger at the very start.
+  assert.deepEqual(host(c.stripTriggerRun('/todo', 0, 4)), { text: '', caret: 0 });
+  // surrounding text on both sides is preserved (the strip is a splice, not a truncate).
+  assert.deepEqual(host(c.stripTriggerRun('hi /due there', 3, 3)), { text: 'hi  there', caret: 3 });
+});
+
+test('stripTriggerRun — with an insert, splices it in and lands the caret AFTER it', () => {
+  // "hi {2d" (trigger "{" + query "2d") → replace the 3-char run with the "{2d6}" scaffold.
+  assert.deepEqual(host(c.stripTriggerRun('hi {2d', 3, 2, '{2d6}')), { text: 'hi {2d6}', caret: 8 });
+  // dialog-result insert: caret sits at offset + result.length.
+  const r = c.stripTriggerRun('x@link', 1, 4, '[[url|text]]');
+  assert.equal(r.text, 'x[[url|text]]');
+  assert.equal(r.caret, 1 + '[[url|text]]'.length);
+});
+
+test('stripTriggerRun — one call removes exactly rawLen chars (the double-strip guard)', () => {
+  // The shipped double-strip bug ran this math twice. A SINGLE call must remove exactly
+  // 1 + queryLen characters; a second application on the already-stripped text would eat
+  // real content — so we pin that one pass is lossless for the surrounding text.
+  const once = c.stripTriggerRun('keep /verb keep', 5, 4);   // strip "/verb"
+  assert.equal(once.text, 'keep  keep');                     // both "keep"s survive
+  assert.equal(once.text.length, 'keep /verb keep'.length - 5);
+});
+
+test('builderCmdPool — the summoning trigger’s section leads, all three triggers present', () => {
+  for (const [trig, want] of [['/', '/'], ['@', '@'], ['{', '{']]) {
+    const pool = c.builderCmdPool(trig);
+    assert.ok(pool.length > 0, `pool for ${trig} is non-empty`);
+    // every command is fully shaped (a section + a trigger + a label).
+    assert.ok(pool.every(cmd => cmd._section && cmd.trigger && cmd.label != null), `${trig} cmds are shaped`);
+    // the FIRST command belongs to the summoning trigger (its section was hoisted first).
+    assert.equal(pool[0].trigger, want, `${trig}: first command is a ${want} command`);
+    // all three trigger families are represented in one pool (the builder absorbs /, @, {).
+    const trigs = new Set(pool.map(cmd => cmd.trigger));
+    assert.ok(trigs.has('/') && trigs.has('@') && trigs.has('{'), `${trig}: all trigger families present`);
+  }
+});
+
+test('builderGuideEntry — null/unknown guard; a covered command resolves to its GUIDE entry', () => {
+  // the null-cmd guard (a shipped bug, added in the remediation batch) and the unknown-id path.
+  assert.equal(c.builderGuideEntry(null), null);
+  assert.equal(c.builderGuideEntry({ id: '__no_such_command__' }), null);
+  // at least one real pool command maps to a GUIDE entry via the `covers` lookup, and when it
+  // does the entry genuinely covers that command id (the wiring, not just a truthy result).
+  const pool = c.builderCmdPool('/');
+  const covered = pool.find(cmd => c.builderGuideEntry(cmd));
+  assert.ok(covered, 'some builder command is covered by a GUIDE entry');
+  const entry = c.builderGuideEntry(covered);
+  assert.ok(entry.covers.includes(covered.id) || (covered._brace && covered._brace.guide === entry.id),
+    'the resolved entry actually covers the command');
+});
+
+test('builder DOM wiring — source-pins for the dispatch, the guards, and the shared strip', () => {
+  // Guided routes the inline /, @, { triggers into the builder instead of the inline menus.
+  assert.ok(_src.includes("if (isGuided()) { hideSlashMenu(); builderState = { nodeId, content, trigger, offset: slashOffset, query, rawArg }; openBuilder(trigger); return; }"),
+    'checkSlash dispatches to openBuilder in Guided mode');
+  assert.equal((_src.match(/if \(isGuided\(\)\) \{ hideBraceMenu\(\); builderState = \{ nodeId, content, trigger: '\{', offset: braceStart, query: inner, rawArg: '' \}; openBuilder\('\{'\); return; \}/g) || []).length, 2,
+    'checkBraceTrigger dispatches to openBuilder in both brace modes (forms + body)');
+  // openBuilder re-entrancy guard (an input event while the builder is open must not rebuild it).
+  assert.ok(_src.includes("if (ioCard.classList.contains('builder-open')) return;"),
+    'openBuilder has the re-entrancy guard');
+  // UXP-177: closeIo() delegates to closeBuilderWindow so builder state never leaks across sessions.
+  assert.ok(_src.includes("if (ioCard.classList.contains('builder-open')) { closeBuilderWindow(); return; }"),
+    'closeIo delegates to closeBuilderWindow (UXP-177)');
+  // the strip math is centralized: the old inline `currentText.slice(0, st.offset)` pattern is gone.
+  assert.ok(!_src.includes('currentText.slice(0, st.offset)'),
+    'no builder site re-implements the trigger strip inline — all route through stripTriggerRun');
+});
