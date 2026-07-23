@@ -17685,3 +17685,22 @@ test('meter build form (P1) — form fields + select support', () => {
   assert.ok(/\(f\.options \|\| \[\]\)\.map\(o => '<option value="' \+ escAttr\(o\)/.test(_src),
     'select options are escaped');
 });
+
+test('builder guide-pane mismaps fixed (P2) — state:* and word count', () => {
+  // Dynamic to-do state commands now resolve to the to-do guide (the same entry /todo uses),
+  // instead of falling through to null (a bare label in the pane).
+  for (const id of ['state:TODO', 'state:NEXT', 'state:WAITING', 'state:DONE', 'state:BLOCKED']) {
+    const e = c.builderGuideEntry({ id });
+    assert.ok(e && e.id === 'todo-syntax', `${id} -> todo-syntax (got ${e && e.id})`);
+  }
+  // The null/unknown guards and a real covers-match still hold (no regression from the new branch).
+  assert.equal(c.builderGuideEntry(null), null);
+  assert.equal(c.builderGuideEntry({ id: '__nope__' }), null);
+  assert.ok(c.builderGuideEntry({ id: 'todo' })?.id === 'todo-syntax', 'a covers-matched command still resolves');
+  // word count now points at the roll-ups guide (which documents words(subtree)), not Calculations.
+  const wc = c.builderGuideEntry({ _brace: { guide: 'rollups' } });
+  assert.ok(wc && wc.id === 'rollups', 'a rollups-guided brace form resolves to the roll-ups entry');
+  assert.ok(/label:'word count',[\s\S]{0,200}guide:'rollups'/.test(_src), "the word count brace row reads guide:'rollups'");
+  assert.ok(!/label:'word count',[\s\S]{0,200}guide:'math'/.test(_src), 'word count no longer points at math');
+  assert.ok(_src.includes("cmd.id.startsWith('state:')"), 'the state: branch exists in builderGuideEntry');
+});
