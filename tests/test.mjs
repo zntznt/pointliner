@@ -17670,3 +17670,18 @@ test('unit-conversion door (P1) — @convert form + /units verb wiring', () => {
   assert.ok(/id:'math',[^}]*keys:\[[^\]]*\]/.test(_src) && !/id:'math',[^}]*keys:\[[^\]]*'convert'/.test(_src),
     "math dropped its convert/unit/units aliases now that @convert and /units exist");
 });
+
+test('meter build form (P1) — form fields + select support', () => {
+  // BUILDER_FORMS['meter']: value/max/style fields; insert composes {meter: value[/max][ style]}.
+  assert.ok(/'meter': \{ fields: \[[\s\S]{0,400}name:'value'[\s\S]{0,200}name:'max'[\s\S]{0,200}name:'style'/.test(_src),
+    "BUILDER_FORMS['meter'] has value, max, and style fields");
+  assert.ok(/type:'select', options:\['bar','dots','boxes','hearts','skulls','stars','shields','droplets'\]/.test(_src),
+    'style is a constrained select over bar + the seven icon styles');
+  assert.ok(/return '\{meter: ' \+ v \+ \(m \? '\/' \+ m : ''\) \+ s \+ '\}';/.test(_src),
+    'insert composes {meter: value[/max][ style]} (blank max omitted)');
+  // showBuilderForm learned type:'select' — renders a <select> with <option>s, same data-bf read path.
+  assert.ok(/f\.type === 'select'[\s\S]{0,200}<select class="builder-field-input" id="' \+ fid \+ '" data-bf=/.test(_src),
+    'showBuilderForm renders a labeled <select> for select fields');
+  assert.ok(/\(f\.options \|\| \[\]\)\.map\(o => '<option value="' \+ escAttr\(o\)/.test(_src),
+    'select options are escaped');
+});
