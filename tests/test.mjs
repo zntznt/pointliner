@@ -17751,3 +17751,31 @@ test('builder "Your names" define doors (P3) — always present, route to the re
   assert.ok(/_create: true \}\);[\s\S]{0,120}for \(const c of collectCallables\(\)\)/.test(_src),
     'the create rows precede the reference rows in Your names');
 });
+
+test('builder cleanups (#1023/#1024/#1025) — dead code removed, related-chip fixed', () => {
+  // #1023: the redundant, self-disabling backdrop click listener in openBuilder is gone (dismiss
+  // rides the global ioBack mousedown -> ioCancel).
+  assert.ok(!/ioBack\.addEventListener\('click'[^\n]*\{ once: true \}\)/.test(_src),
+    'no redundant {once:true} backdrop click listener');
+  assert.ok(_src.includes("ioBack.addEventListener('mousedown', e =>"), 'global mousedown dismiss still present');
+  // #1024: exactly one closeBuilder definition (the nested duplicate removed).
+  assert.equal((_src.match(/function closeBuilder\b/g) || []).length, 1, 'a single closeBuilder definition');
+  assert.ok(_src.includes('ioCancel = closeBuilder;'), 'openBuilder still binds ioCancel to it');
+  // #1025: the See-also chip renders the CLICKED entry via the guide-id path, not a stale {...cmd}.
+  assert.ok(_src.includes("renderBuilderPaneInto({ _brace: { guide: e.id }, label: e.title, desc: '' }, container)"),
+    'related-chip forces the clicked entry by id');
+  assert.ok(!/renderBuilderPaneInto\(\{ \.\.\.cmd, id: e\.id/.test(_src), 'no stale spread that kept _brace');
+  // Confirm the fix resolves correctly through the pinned pure core: a synthetic {_brace:{guide:ID}}
+  // returns exactly that entry — for a pure guide entry whose id is NOT a command id.
+  const anyEntry = GUIDE_IDS_FOR_TEST();
+  const e = c.builderGuideEntry({ _brace: { guide: anyEntry } });
+  assert.ok(e && e.id === anyEntry, `a _brace.guide chip resolves to the clicked entry (${anyEntry})`);
+});
+// helper: a guide-entry id that is NOT a command id (so the old covers path would have failed)
+function GUIDE_IDS_FOR_TEST() {
+  // 'overview' / 'point-types' are pure guide entries; pick one present in the source.
+  for (const id of ['overview', 'point-types', 'brace-picker']) {
+    if (_src.includes("id:'" + id + "'")) return id;
+  }
+  return 'overview';
+}

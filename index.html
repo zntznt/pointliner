@@ -34140,7 +34140,11 @@ function renderBuilderPaneInto(cmd, container) {
     chip.addEventListener('click', () => {
       const id = chip.dataset.id;
       const e = GUIDE.find(x => x.id === id);
-      if (e) renderBuilderPaneInto({ ...cmd, id: e.id, label: e.title, desc: '' }, container);
+      // Render the CLICKED entry directly via the guide-id lookup (builderGuideEntry's _brace.guide
+      // branch). Not `{ ...cmd, id: e.id }`: that kept the original cmd's _brace (whose guide wins the
+      // lookup, so a brace command's chip showed the wrong entry) and, for a related entry whose id is
+      // not a command id, resolved to null (a bare title). #1025.
+      if (e) renderBuilderPaneInto({ _brace: { guide: e.id }, label: e.title, desc: '' }, container);
     });
   });
 }
@@ -34517,11 +34521,7 @@ function openBuilder(trigger) {
     }
   }
 
-  function closeBuilder() {
-    if (_restoreState) builderRestoreTrigger();
-    closeBuilderWindow();
-  }
-  ioCancel = closeBuilder;
+  ioCancel = closeBuilder;   // the top-level closeBuilder (shared with builderFormApply); #1024
 
   renderNav();
   renderBuilderPane(cmds[0] || null);
@@ -34686,11 +34686,13 @@ function openBuilder(trigger) {
   });
   // Insert button
   insertBtn.addEventListener('click', () => applyBuilder());
-  // Close on backdrop click
-  ioBack.addEventListener('click', e => { if (e.target === ioBack) closeBuilder(); }, { once: true });
+  // Backdrop-dismiss is handled globally (ioBack mousedown → ioCancel, set to closeBuilder above); a
+  // separate click listener here was redundant and self-disabled on the first in-card click. #1023
   searchEl.focus();
 }
 
+// The one closeBuilder — shared by openBuilder (via ioCancel + its handlers) and the top-level
+// builderFormApply. Restores a stripped trigger if a nested dialog was mid-flight, then tears down. #1024
 function closeBuilder() {
   if (_restoreState) builderRestoreTrigger();
   closeBuilderWindow();
