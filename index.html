@@ -6238,6 +6238,20 @@ function editableText(el) {
   return out;
 }
 
+// Pure caret math for a trigger-menu apply: remove the trigger run (the trigger char
+// plus the `queryLen` characters the picker matched) from `text` starting at `offset`,
+// optionally splicing `insert` in its place. Returns the new text and the caret offset
+// that lands just after whatever was inserted (or at `offset` when `insert` is empty).
+// The slash blind-apply and every builder apply path share this so the strip math lives
+// in ONE testable place — an inline copy per site is exactly what produced the shipped
+// double-strip / form-overwrite bugs (the builder remediation batch). DOM-free by design.
+function stripTriggerRun(text, offset, queryLen, insert = '') {
+  const rawLen = 1 + queryLen;                       // trigger char + matched query
+  const before = text.slice(0, offset);
+  const after = text.slice(offset + rawLen);
+  return { text: before + insert + after, caret: offset + insert.length };
+}
+
 // Block-aware serialization for the table "✏ markdown" editor. That editor is a plain
 // multi-line contenteditable (no pills/tokens), and pressing Enter makes the browser wrap
 // the new line in a <div>/<p> block. editableText (tuned for the pill/caret editor, which
@@ -18580,8 +18594,7 @@ function slashApply() {
   // the ":value" suffix (e.g. "due:tomorrow"); for other verbs a trailing ":x" was
   // already excluded from the query, so it stays in the node text.
   const currentText = editableText(content);
-  const rawLen = 1 + query.length;
-  const newText = currentText.slice(0, slashOffset) + currentText.slice(slashOffset + rawLen);
+  const { text: newText } = stripTriggerRun(currentText, slashOffset, query.length);
   const node = nodeById(nodeId);
   if (node) {
     node.text = newText;
@@ -34097,12 +34110,12 @@ function builderFormApply(cmd, pane) {
   const node = nodeById(st.nodeId);
   if (!node || !st.content) { closeBuilder(); return; }
   const result = cfg.insert(vals);
-  // Strip trigger text and insert the result
-  const rawLen = 1 + st.query.length;
+  // Strip trigger text and insert the result (shared strip math — stripTriggerRun)
   const currentText = editableText(st.content);
-  node.text = currentText.slice(0, st.offset) + result + currentText.slice(st.offset + rawLen);
+  const strip = stripTriggerRun(currentText, st.offset, st.query.length, result);
+  node.text = strip.text;
   st.content.innerHTML = editModeHTML(node);
-  try { setCaretByOffset(st.content, st.offset + result.length); } catch (_) {}
+  try { setCaretByOffset(st.content, strip.caret); } catch (_) {}
   markDirty();
   scheduleReconcile();
   closeBuilder();
@@ -34131,9 +34144,8 @@ function showNestedDialog(cmd, pane) {
   const node = nodeById(st.nodeId);
   if (!node || !st.content) return;
   const currentText = editableText(st.content);
-  const rawLen = 1 + st.query.length;
   _restoreState = { text: currentText, node, content: st.content, offset: st.offset, queryLen: st.query.length };
-  node.text = currentText.slice(0, st.offset) + currentText.slice(st.offset + rawLen);
+  node.text = stripTriggerRun(currentText, st.offset, st.query.length).text;
   st.content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(st.content, st.offset); } catch (_) {}
   markDirty();
@@ -34258,10 +34270,9 @@ function openBuilder(trigger) {
       // If form is already showing from browse, just submit it
       if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); return; }
       // Otherwise strip trigger text and open the form
-      const rawLen = 1 + st.query.length;
       const currentText = editableText(st.content);
       _restoreState = { text: currentText, node, content: st.content, offset: st.offset, queryLen: st.query.length };
-      node.text = currentText.slice(0, st.offset) + currentText.slice(st.offset + rawLen);
+      node.text = stripTriggerRun(currentText, st.offset, st.query.length).text;
       st.content.innerHTML = editModeHTML(node);
       try { setCaretByOffset(st.content, st.offset); } catch (_) {}
       markDirty();
@@ -34273,11 +34284,9 @@ function openBuilder(trigger) {
     }
     // Commands that fall through to the / block-command path (non-@{</>) or
     // brace-forms also close the builder before applying.
-    // Strip the trigger text from the node (non-dialog commands)
-    const rawLen = 1 + st.query.length;
+    // Strip the trigger text from the node (non-dialog commands) — shared strip math
     const currentText = editableText(st.content);
-    const newText = currentText.slice(0, st.offset) + currentText.slice(st.offset + rawLen);
-    node.text = newText;
+    node.text = stripTriggerRun(currentText, st.offset, st.query.length).text;
     st.content.innerHTML = editModeHTML(node);
     try { setCaretByOffset(st.content, st.offset); } catch (_) {}
     markDirty();
@@ -34302,7 +34311,7 @@ function openBuilder(trigger) {
       // Insert the brace scaffold — fall through to blink in content
       const cur = nodeById(st.nodeId);
       if (cur) {
-        cur.text = currentText.slice(0, st.offset) + cmd._brace.insert + currentText.slice(st.offset + rawLen);
+        cur.text = stripTriggerRun(currentText, st.offset, st.query.length, cmd._brace.insert).text;
         st.content.innerHTML = editModeHTML(cur);
         try {
           const caret = st.offset + cmd._brace.sel[0];
