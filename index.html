@@ -34098,6 +34098,20 @@ const BUILDER_FORMS = {
     { name:'from', label:'From unit', type:'text', required:true, placeholder:'km' },
     { name:'to', label:'To unit', type:'text', required:true, placeholder:'mi' },
   ], insert: vals => '{= convert(' + (vals.amount || '0') + ', ' + String(vals.from).trim() + ', ' + String(vals.to).trim() + ')}' },
+  // @meter: value/max (each a literal, a child-property name, or a {var} ref) + a style. max blank →
+  // out of 100. Style is a SELECT, not free text: an unknown trailing word invalidates the whole
+  // meter (parseMeter → null → {meter?}), so it must be constrained. Surfaces the prop/var-backed
+  // forms and the seven icon styles that were syntax-only.
+  'meter': { fields: [
+    { name:'value', label:'Value', type:'text', required:true, placeholder:'8 or hp' },
+    { name:'max', label:'Max (blank = out of 100)', type:'text', placeholder:'12 or hpmax' },
+    { name:'style', label:'Style', type:'select', options:['bar','dots','boxes','hearts','skulls','stars','shields','droplets'] },
+  ], insert: vals => {
+    const v = String(vals.value).trim();
+    const m = String(vals.max || '').trim();
+    const s = (vals.style && vals.style !== 'bar') ? ' ' + vals.style : '';
+    return '{meter: ' + v + (m ? '/' + m : '') + s + '}';
+  } },
 };
 
 function showBuilderForm(cmd, pane, cfgOverride) {
@@ -34109,9 +34123,17 @@ function showBuilderForm(cmd, pane, cfgOverride) {
       '<div class="builder-form-desc">' + escHtml(cmd.desc || '') + '</div>';
   for (const f of cfg.fields) {
     const fid = 'bf-' + f.name;   // associate <label for> ↔ <input id> so the field is named (P3-1)
+    // A `select` field constrains the value to a fixed option set (e.g. meter style, where a free-text
+    // typo would invalidate the whole pill). Reads back through the same [data-bf]/.value path as an
+    // input, so builderFormApply and the UXP-180 draft-save need no change.
+    const control = f.type === 'select'
+      ? '<select class="builder-field-input" id="' + fid + '" data-bf="' + f.name + '"' + (f.required ? ' aria-required="true"' : '') + '>' +
+          (f.options || []).map(o => '<option value="' + escAttr(o) + '">' + escHtml(o) + '</option>').join('') +
+        '</select>'
+      : '<input class="builder-field-input" id="' + fid + '" type="' + (f.type || 'text') + '" placeholder="' + escAttr(f.placeholder || f.label) + '" data-bf="' + f.name + '"' + (f.required ? ' aria-required="true" required' : '') + '>';
     html += '<div class="builder-field">' +
       '<label class="builder-field-label" for="' + fid + '">' + escHtml(f.label) + (f.required ? ' <span class="builder-field-req" aria-hidden="true">*</span>' : '') + '</label>' +
-      '<input class="builder-field-input" id="' + fid + '" type="' + (f.type || 'text') + '" placeholder="' + escAttr(f.placeholder || f.label) + '" data-bf="' + f.name + '"' + (f.required ? ' aria-required="true" required' : '') + '>' +
+      control +
     '</div>';
   }
   html += '<div class="builder-form-actions">' +
