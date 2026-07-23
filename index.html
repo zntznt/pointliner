@@ -34011,6 +34011,14 @@ function builderCmdPool(trigger) {
   for (const f of BRACE_FORM_ROWS) {
     cmds.push({ id: f.name, icon: '{', fa: '', label: f.name, desc: f.desc || '', ex: f.insert, trigger: '{', type: 'brace', _section: 'Grammar', _brace: f });
   }
+  // Create doors — ALWAYS present, so a fresh document shows how to define its first name (the
+  // reference rows below only exist once names do). Each reuses a real @-command's id, so
+  // applyBuilder's @-insert path opens its define-dialog with no special dispatch. One per {}-callable
+  // group Your names lists (var / rule / chain) — sequences are named via /state, not {name}, so they
+  // stay out of this { section.
+  cmds.push({ id: 'var',     icon: '$', fa: '', label: 'Define a variable',     desc: 'A named value or pick you can reuse with {name}.', trigger: '@', type: 'insert', _section: 'Your names', _create: true });
+  cmds.push({ id: 'grammar', icon: '❖', fa: '', label: 'Define a rule',         desc: 'A named list the generators can call with {name}.', trigger: '@', type: 'insert', _section: 'Your names', _create: true });
+  cmds.push({ id: 'markov',  icon: '⛓', fa: '', label: 'Define a Markov chain', desc: 'A named chain you can walk with {name}.',            trigger: '@', type: 'insert', _section: 'Your names', _create: true });
   for (const c of collectCallables()) {
     const icon = c.group === 'var' ? '$' : c.group === 'rule' ? '❖' : '⛓';
     cmds.push({ id: c.name, icon, fa: '', label: c.name, desc: c.hint || c.val || '', trigger: '{', type: 'callable', _section: 'Your names', _brace: { name: c.name, group: c.group, insert: '{' + c.name + '}', sel: [c.name.length + 1, c.name.length + 1] } });
