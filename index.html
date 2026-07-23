@@ -21130,7 +21130,7 @@ function filterBraceCandidates(callables, prefix) {
 const BRACE_FORMS = [
   { label:'math',        keys:['math','calc'],                                        insert:'{= }',                 ph:null,  guide:'math',          desc:'calculate a value live' },
   { label:'roll-up',     keys:['rollup','sum','avg','min','max','count','total'],      insert:'{= sum(prop)}',        ph:'prop', guide:'rollups',       desc:"total a property over this point's children" },
-  { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   ph:'subtree', guide:'math',          desc:'count words in this point and below' },
+  { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   ph:'subtree', guide:'rollups',       desc:'count words in this point and below' },
   { label:'dice',        keys:['dice','roll'],                                         insert:'{2d6}',                ph:'2d6',  guide:'dice',          desc:'roll dice, click to re-roll' },
   { label:'pick',        keys:['pick','alt','choice','weighted'],                      insert:'{a | b | c}',          ph:'a',  guide:'grammar',       desc:'pick one at random from a list' },
   { label:'conditional', keys:['cond','conditional','if'],                             insert:'{cond: then | else}',  ph:'cond',  guide:'gen-conditions',desc:'show one text or another by a test' },
@@ -34024,6 +34024,11 @@ function builderGuideEntry(cmd) {
   if (!cmd) return null;
   if (cmd._brace && cmd._brace.guide) {
     return GUIDE.find(e => e.id === cmd._brace.guide) || null;
+  }
+  // Dynamic per-sequence state commands (state:TODO, state:NEXT, …) carry ids that can't live in a
+  // static covers[]; route them to the to-do guide, the same entry the /todo block command uses.
+  if (typeof cmd.id === 'string' && cmd.id.startsWith('state:')) {
+    return GUIDE.find(e => e.id === 'todo-syntax') || null;
   }
   return GUIDE.find(e => e.covers && e.covers.includes(cmd.id)) || null;
 }
