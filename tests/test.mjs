@@ -17796,3 +17796,27 @@ test('failure cues teach the fix path (beginner PR A) — bare-name copy + empty
   assert.ok(/aria-label="\$\{done\} of \$\{total\} done\$\{emptyTip/.test(_src),
     'the hint rides the aria label too');
 });
+
+test('blank-canvas door (beginner PR B) — decision gates + wiring', () => {
+  // The pure show-decision: blank + teaching tier + free surface + not first-run + not dismissed.
+  const d = c.blankInviteDecision;
+  assert.equal(d(true, 'guided', false, false, false), true, 'guided blank doc shows the invite');
+  assert.equal(d(true, 'standard', false, false, false), true, 'standard shows it too');
+  assert.equal(d(true, 'lean', false, false, false), false, 'Lean never (expert opt-in keeps a clean canvas)');
+  assert.equal(d(false, 'guided', false, false, false), false, 'a non-blank doc never invites');
+  assert.equal(d(true, 'guided', true, false, false), false, 'a busy banner surface wins');
+  assert.equal(d(true, 'guided', false, true, false), false, 'the pristine first-run tour suppresses it');
+  assert.equal(d(true, 'guided', false, false, true), false, 'a session dismissal sticks');
+  // Wiring: render syncs it; the primary action opens the tour; explicit "Start a blank outline"
+  // waives the invite; the banner close waives it; the second door hides ours before the gallery.
+  assert.ok(/syncBlankInvite\(\);\s*\/\/ the blank-canvas door/.test(_src), 'render tail syncs the invite');
+  assert.ok(/if \(_blankInviteReady && _warnAction === 'welcometour'\) syncBlankInvite\(\);/.test(_src),
+    'markDirty hides it mid-edit (a full render may not run while typing)');
+  assert.ok(/_warnAction === 'welcometour'\) openExamples\(\)/.test(_src), 'primary action inserts the Welcome tour');
+  assert.ok(/'startblank'\) \{ _blankInviteDismissed = true; startBlankOutline\(\); \}/.test(_src),
+    'choosing a blank outline waives the invite');
+  assert.ok(/if \(_warnAction === 'welcometour'\) _blankInviteDismissed = true;/.test(_src),
+    'the close button waives it');
+  assert.ok(_src.includes('hideExamplesBanner(); hideBlankInviteBanner(); openStarterGallery()'),
+    'the examples door hides the invite before opening the gallery');
+});

@@ -8784,6 +8784,7 @@ function render() {
   // backlink panel, so skip them.
   if (_focusChanged && focusedId && vp.type !== 'base') updateBlPanel(focusedId);
   else if (_focusChanged && !focusedId) { hideBlPanel(); hideFnPanel(); }
+  syncBlankInvite();   // the blank-canvas door tracks every repaint: shows when the doc goes blank, gone the moment it isn't
 }
 let _lastRenderFocusedId = null; // #488: detect a zoom (focusedId change) to skip scroll-restore
 
@@ -27460,6 +27461,10 @@ function markDirty() {
   // stop suppressing autosave and drop the "these are examples" banner. (Guarded so it's a no-op
   // in normal use; the flag only exists during a fresh first-run.)
   if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
+  // Beginner PR B: hide the blank-canvas invite the moment typing makes the doc non-blank (a full
+  // render may not run mid-edit; markDirty does, via the reconcile). No-op unless the invite is up,
+  // and the doc is tiny whenever it is, so the docIsBlank walk inside is cheap.
+  if (_blankInviteReady && _warnAction === 'welcometour') syncBlankInvite();
   _varsVer++; // invalidate collectVars() cache
   updateDirtyDot();
   scheduleAutosave();
@@ -35096,7 +35101,8 @@ storageWarnBtn.addEventListener('click', () => {
   hideStorageWarn();
   if (_warnAction === 'reconnect') reconnectWorkspace();
   else if (_warnAction === 'reopenfile') reopenPendingFile();   // UXP-127
-  else if (_warnAction === 'startblank') startBlankOutline();   // UXP-126
+  else if (_warnAction === 'startblank') { _blankInviteDismissed = true; startBlankOutline(); }   // UXP-126; an explicit blank choice also waives the blank-canvas invite
+  else if (_warnAction === 'welcometour') openExamples();       // the blank-canvas door's primary action
   else saveFile();
 });
 document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
@@ -35104,7 +35110,7 @@ document.getElementById('storage-warn-close').addEventListener('click', hideStor
 // It has its own handler (not routed through _warnAction) and is hidden by default + on every other
 // banner state, so it never leaks into the save/reconnect/snapshot banners that share this element.
 const storageWarnExamples = document.getElementById('storage-warn-examples');
-storageWarnExamples.addEventListener('click', () => { hideExamplesBanner(); openStarterGallery(); });
+storageWarnExamples.addEventListener('click', () => { hideExamplesBanner(); hideBlankInviteBanner(); openStarterGallery(); });
 
 // A folder was connected in a previous session and its handle is still stored, but the
 // browser dropped the permission on relaunch (File System Access re-gates persisted
@@ -35155,6 +35161,48 @@ function showExamplesBanner() {
 function hideExamplesBanner() {
   if (_warnAction === 'startblank') hideStorageWarn();
 }
+// The blank-canvas door (beginner program, PR B): past first-run, an empty document was a dead end,
+// the only path back to the tour or examples being the File menu (fleet-B: features "only found via
+// the guide"). When the CURRENT doc is blank, offer both doors on the same invite surface as the
+// first-run banner. Session-dismissible; never in Lean (the expert opt-in keeps its clean canvas,
+// LF-2); never over a real warn/save banner; never during the pristine first-run tour; and never
+// after the user explicitly chose "Start a blank outline" (that click waives it).
+let _blankInviteDismissed = false;
+var _blankInviteReady;   // var (hoisted): set true only after _showingExamples exists, so early renders no-op
+// Pure show-decision (DOM-free, pinned): every gate in one testable place.
+function blankInviteDecision(blank, tier, bannerBusy, firstRun, dismissed) {
+  return !!blank && tier !== 'lean' && !bannerBusy && !firstRun && !dismissed;
+}
+function showBlankInviteBanner() {
+  _warnAction = 'welcometour';
+  storageWarnBtn.textContent = 'Add the Welcome tour';
+  storageWarnMsg.textContent = 'Starting fresh? Take the Welcome tour, or drop in a live example.';
+  // the invite greeting lane, polite announce (#404), same as the first-run banner
+  storageWarn.classList.remove('soft');
+  storageWarn.classList.add('invite');
+  storageWarn.setAttribute('role', 'status');
+  storageWarnExamples.style.display = '';   // the second door, the examples gallery
+  storageWarn.classList.add('on');
+  storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
+}
+function hideBlankInviteBanner() {
+  if (_warnAction === 'welcometour') hideStorageWarn();
+}
+// Re-evaluated on every render (the single repaint point), so the banner appears when a doc goes
+// blank and vanishes the moment it isn't. _blankInviteReady is a hoisted var set only after ALL the
+// state this reads exists (past _showingExamples), so a boot-path render can never hit a TDZ.
+function syncBlankInvite() {
+  if (!_blankInviteReady) return;
+  const ours = storageWarn.classList.contains('on') && _warnAction === 'welcometour';
+  const busy = storageWarn.classList.contains('on') && !ours;
+  const show = blankInviteDecision(docIsBlank(root), verbosity, busy, _showingExamples, _blankInviteDismissed);
+  if (show && !ours) showBlankInviteBanner();
+  else if (!show && ours) hideBlankInviteBanner();
+}
+// Dismissing the blank-canvas invite with the banner's own close button waives it for the session.
+document.getElementById('storage-warn-close').addEventListener('click', () => {
+  if (_warnAction === 'welcometour') _blankInviteDismissed = true;
+});
 async function reopenPendingFile() {
   if (!pendingFile) return;
   try {
@@ -35510,6 +35558,7 @@ async function restoreEarlierVersion() {
 // as the Examples doc (#854). The examples logic itself (startBlankOutline / maybeShowFirstRun)
 // stays below with FIRST_RUN_EXAMPLES; only the flag declarations are hoisted.
 let _showingExamples = false;
+_blankInviteReady = true;   // ALL state syncBlankInvite reads now exists; boot renders before this line no-op
 let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
 let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from localStorage?
 (function restoreAutosave() {
