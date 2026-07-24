@@ -8504,7 +8504,7 @@ function maybeShowTouchHint() {
   // the cssText (so it could inherit a prior error's red tint). flashHint consults the gate, resets
   // neutral styling, and scales the dwell with the message length (hintDwell caps at 6s, ample for
   // this instructional tip).
-  flashHint('Tip: swipe a point right to indent, left to outdent. Press and hold a bullet for more actions.');
+  flashHint('Tip: swipe a point right to indent, left to outdent. Press and hold a bullet for its menu, or drag it to move the point.');
 }
 // Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
 // announces what it touched via flashHint — counts include descendants, since a
@@ -29943,6 +29943,9 @@ document.getElementById('outline').addEventListener('click', e => {
   // a long-press already stepped this clock back (touch), so the trailing click must not
   // also advance it — the same trailing-click suppression the bullet long-press uses.
   if (clk && !_clockLongPressed) advanceClockAt(clk, e.shiftKey ? -1 : 1);   // Shift-click steps back (desktop)
+  // On touch there is no Shift, so step-back is a hidden long-press; teach it in the moment the
+  // first time a Guided touch user taps a clock (once ever, via the fireNudge registry).
+  if (clk && !_clockLongPressed && IS_TOUCH) fireNudge('clock-touch', 'Tip: tap a clock to advance it, press and hold to step it back.');
   _clockLongPressed = false;
   const chip = e.target.closest('.prop-chip');
   if (chip) openPropChip(chip);

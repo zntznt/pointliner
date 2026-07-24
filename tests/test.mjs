@@ -15187,6 +15187,7 @@ test('#658/#659/#660 toast + banner positioning (src pins)', () => {
   // hand-writing the shared element (which clobbered an active error toast and inherited its tint).
   const th = fnBody(_src, 'maybeShowTouchHint');
   assert.match(th, /flashHint\('Tip: swipe a point right/, 'the touch hint must go through flashHint');
+  assert.ok(th.includes('drag it to move the point'), 'the touch hint must also teach drag-to-move (not just swipe + menu)');
   assert.ok(!th.includes("_hintTimer = setTimeout"), 'the touch hint must not hand-roll its own timer/paint anymore');
   // #659: flashBottom counts the edit bar, so a mid-edit touch toast clears it instead of sitting under it.
   const fb = fnBody(_src, 'flashBottom');
@@ -16456,6 +16457,10 @@ test('clock (#702) — SOURCE PIN: touch step-back is an IS_TOUCH long-press tha
     'the click handler advances only when no hold fired, and Shift+click stays the desktop step-back');
   assert.match(src, /if \(_clockLongPressed\) setTimeout\(\(\) => \{ _clockLongPressed = false; \}, 350\)/,
     'the flag self-clears after release, so a browser-suppressed trailing click cannot swallow the next tap');
+  // The touch step-back is invisible, so the first tap of a clock on touch teaches it in the moment
+  // via the fireNudge registry (Guided-only, once-ever). Pin the call so the hint cannot silently drop.
+  assert.match(src, /if \(clk && !_clockLongPressed && IS_TOUCH\) fireNudge\('clock-touch',/,
+    'a touch clock tap fires the one-time clock-touch nudge teaching the press-and-hold step-back');
 });
 
 // ── meter pills {meter: value/max} (#648) ──────────────────────────────────
