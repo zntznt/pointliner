@@ -11838,6 +11838,7 @@ function buildNoteEl(node, opts = {}) {
   if (!opts.searchCtx) {
     noteEl.contentEditable = 'plaintext-only';
     if (noteEl.contentEditable !== 'plaintext-only') noteEl.contentEditable = 'true'; // non-Chromium fallback
+    noteEl.spellcheck = true;   // a per-point note is prose (policy: prose on); make it explicit, not the inherited default
     noteEl.addEventListener('focus', () => {
       noteEl.dataset.editing = '1'; noteEditId = node.id;
       forceIncludeId = node.id; // keep this row's live DOM across window re-renders (the base-cell pattern)
@@ -30526,7 +30527,9 @@ function renderFnPanel(node, refs) {
     const contentEl = document.createElement('div');
     contentEl.className = 'fn-content';
     contentEl.contentEditable = 'true';
-    contentEl.spellcheck = false;
+    // A footnote is prose, so it spellchecks like a point (the policy: prose surfaces underline,
+    // syntax/query/data fields do not). It used to be off, the odd one out among prose editors.
+    contentEl.spellcheck = true;
     contentEl.innerText = entry.text;
     contentEl.addEventListener('focus', () => { clearTimeout(fnHideTimer); fnLocked = true; });
     contentEl.addEventListener('blur', () => { fnLocked = false; scheduleFnHide(); });
