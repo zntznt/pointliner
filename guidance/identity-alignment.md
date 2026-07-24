@@ -302,3 +302,13 @@ deterministic / plain-text tenets. Build on demand, not on spec — these are pr
   opens byte-identical. The **dated-log collector unification** (IA-4's `collectJournalDates` +
   `collectChronicleDates` extraction) and the cursor generalization remain **deferred** — a copy
   change doesn't touch those collectors, so IA-4's build-on-demand trigger has not fired.
+- **Beginner-arc plain-language passes — feature names kept as taught vocabulary (recorded rule).**
+  The onboarding/discoverability arc's plain-language work (PR K starter copy, PR N chrome labels)
+  deliberately fixed only **pure jargon** and left the app's **taught feature vocabulary** intact,
+  the same distinction SR-9 drew for "chronicle": **Base** (deliberately not the markdown "Table"),
+  **Chronicle, Oracle, Grammar, Deck, Markov** keep their names — they are the concept-guide's taught
+  terms and carry meaning a rename would lose. Only **non-identity chrome jargon** was plainened:
+  "Command browser" → **All commands** (which also fixed a three-way naming split) and "Data packs" →
+  **Reusable packs**, both label-only (ids `builder`/`datapacks` and the data model unchanged, so the
+  drift guards are undisturbed). The full arc ledger lives in `roadmap.md` § "Beginner-experience arc
+  — complete (2026-07-24)".

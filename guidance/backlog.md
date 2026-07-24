@@ -35,11 +35,11 @@ effort/risk** (V/E/R = High/Medium/Low):
    opens/creates a `YYYY-MM-DD.opml` per day in the folder. Config persists as `<_journal>` OPML
    head element. Pure cores: `todayISO`, `journalFileName`, `findOrCreateDatedEntry` (all
    Node-testable). Cornerstone journaling/log pattern; pairs with capture.
-2. **Lean ↔ guided verbosity modes** — V:**H (highest ceiling)** · E:**H** · R:M. Addresses the app's
-   *actual* weakness — powerful but hard to discover (the reason `ux-discipline.md`/`ux.md` exist).
-   A lean default + guided overlays (hints, menu descriptions, the verbosity dial) serves new *and*
-   power users, and makes self-contained-HTML exports usable by people you hand them to. **Highest
-   raw value, worst ratio** — a deliberate cross-cutting investment, not a quick win.
+2. ✓ **Lean ↔ guided verbosity modes** — **SHIPPED** (the 3-position dial: Guided → Standard → Lean,
+   `ux.md` LF-2/LF-2c/LF-2d). Addressed the app's *actual* weakness — powerful but hard to discover.
+   Guided is the default with hints, menu descriptions and pill tooltips; Standard drops the teaching
+   text; Lean recedes the chrome (and doubles as the reading mode, PR M). The dial + its guided
+   overlays served the whole beginner arc; do not re-litigate this as "the big open investment."
 
 **🟡 Situational**
 3. ✓ **Cross-document unlinked references (view-only)** — V:M · E:L-M · R:M. **Delivered 2026-07-03.**
@@ -243,6 +243,11 @@ from the fleet-B research (`user-research-2026-07-b.md`). **A 2026-07-24 explora
 the queue: two items were already delivered (struck below); two shipped in phase 2. The queue is
 now closed.**
 
+> **The whole beginner-experience arc is closed (2026-07-24).** The full ledger — onboarding,
+> failure cues, discoverability, touch teaching, features, the locked decisions, and the remaining
+> frontier — lives in `roadmap.md` § "Beginner-experience arc — complete (2026-07-24)". The two
+> genuine remainders are logged as `☐` entries at the end of this block.
+
 #### ✓ Dedicated GUIDE entries: tag browser, per-pill format — shipped (phase 2, 2026-07-24)
 V:L-M · E:L · R:L. Both used to map to the nearest entry in the chrome drift guard's
 `CHROME_GUIDE` (tag browser → `hashtags`, per-pill format → `math`). Now each has its own
@@ -272,6 +277,17 @@ with live field previews, preset chips (`CAL_PRESETS`), a File-menu door (`#btn-
 `custom-calendars` guide entry, an audit-and-confirm commit path (`applyCalendarChange`) and a
 "Set as chronicle" bullet-menu binding. The only remaining gap is no `@`/`/` command door, arguably
 correct by design for a document-level setting; revisit only if users ask for a typed path.
+
+#### ☐ Global number-format default — power/niche (the beginner arc's remaining small item)
+V:L-M · E:L-M · R:L. Per-pill number format shipped (Decimal places / Prefix / Suffix in the math
+dialog) and thousands grouping is always-on, so a document-level default (grouping, default decimals)
+is a power-user consistency knob with little beginner-visible gain. **Revisit** if a non-power user
+asks for it or number pills become a common beginner surface.
+
+#### ☐ Mobile-first views + the sync ceiling — the larger frontier (a project, not a PR)
+V:M · E:M-H · R:M. Fullscreen agenda/zoom and a real mobile layout (touch teaching already shipped),
+plus the platform ceiling: folder mode is Chromium-desktop-only. This is the genuine remaining
+frontier per the research (Alex's #1), but it is architectural, not session-sized.
 
 ---
 

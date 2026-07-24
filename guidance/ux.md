@@ -128,8 +128,18 @@ tag-roster-crosses-threshold (a tag-adding edit). The set is extensible — add 
 `fireNudge` call at the relevant commit seam; the guards are centralized so trigger sites stay dumb.
 
 ## Open questions
-- **Where the dial lives** — appearance menu? A persistent corner control? And how discoverable
-  the "go Lean" path is without nagging.
+- **Where the dial lives** — ~~appearance menu? A persistent corner control?~~ RESOLVED by decision
+  (2026-07-24): the dial's affordances are **capped at three** — the Settings "Guidance" card, the
+  File-menu tier strip (`#fm-tier-ind`, click-to-cycle), and `Ctrl/⌘+Shift+.`. No persistent corner
+  control and no fourth surface; the beginner arc added no new verbosity affordance. Discoverability
+  of "go Lean" is served by the tier strip + the flash on each step, not a nag.
+- **Reading mode** — RESOLVED by decision (2026-07-24): **Lean IS the reading mode.** No separate
+  reading/distraction-free mode was built — a prose-flow view that dissolves the outline is the
+  WYSIWYG rich text the identity excludes (`product-identity.md` §2/§5). In Lean the toolbar recedes
+  (`translateY`, returning on hover/search-focus) and the help pill, hints, tooltips and edit pencils
+  hide, so Lean + not-editing reads like a clean page. Documented in the guide's verbosity section and
+  the Lean card (PR M). This answers the fleet-B "reading mode" request (Leila) as a recorded no-new-
+  mode, not a gap. *Revisit* only if the identity's WYSIWYG stance changes.
 - **Demos** — examples-doc vs. a dismissable "take a tour" card, or both.
 - **Noise vs. guardrail** — ~~the key data that should define the future Standard tier~~
   RESOLVED by decision, not data: Standard shipped (LF-2d) with the "stop explaining, keep the
