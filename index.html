@@ -24458,7 +24458,12 @@ function renderMathPill(key, m) {
   // the computed value is unchanged; count() (honest 0) and min/max (±∞) are excluded by the core.
   const emptyProp = firstEmptyRollup(m.expr, cookieNode);
   if (emptyProp) {
-    const tip = `No ${emptyProp} below this point. Move the pill onto the parent, or check the property name.`;
+    // If the rollup uses the DEFAULT (direct-children) scope, the props may simply sit deeper; a bare
+    // rollup widens by depth (sum(cost, subtree)), NOT the query-only , document/, folder. Only suggest
+    // it for the no-scope-word form, so a sum(cost, subtree) that is genuinely empty gets no redundant tip.
+    const bareScoped = new RegExp('\\b(?:sum|avg)\\s*\\(\\s*' + emptyProp + '\\s*\\)').test(m.expr);
+    const widen = bareScoped ? ` Add ", subtree" to include every level below (like sum(${emptyProp}, subtree)).` : '';
+    const tip = `No ${emptyProp} below this point. Move the pill onto the parent, or check the property name.${widen}`;
     return `<span class="math-roll math-empty" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
       + ` aria-label="Math ${escQ(m.expr)}: nothing matched. ${escQ(tip)}">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
