@@ -235,6 +235,33 @@ Move completed items to an archive (vs. just hide-done).
   that filters use; the at-scale version (archive to another document) waits on the
   multi-doc workspace.
 
+### Chrome discoverability follow-ups (phase 2 — deferred from the July 2026 phase 1)
+
+Phase 1 (value-first agenda copy + the chrome drift guard locking `TB_GUIDE_MAP` and the
+curated `CHROME_GUIDE` list) deliberately left these out; they are the phase-2 queue, all
+from the fleet-B research (`user-research-2026-07-b.md`).
+
+#### ☐ File-menu "junk drawer" reorganization
+V:M · E:M · R:M. The File menu mixes files, views, tools and settings in one long list; the
+tag browser, templates and other chrome features hide inside it. Group by intent (files /
+views / tools / appearance) without breaking muscle memory (P1). Needs a before/after
+click-path audit, not just a resort.
+
+#### ☐ Calendar setup / binding UX
+V:M · E:M · R:L. Custom calendars exist (`custom-calendars` guide entry) but creating one
+and binding a document to it is syntax-first. A guided door (builder form or dialog) per
+the P2 three-doors rule.
+
+#### ☐ Mobile gesture discoverability
+V:M · E:M-H · R:M. Long-press and swipe affordances exist but nothing teaches them on
+first touch. A one-time Guided-tier hint (reuse the banner/tooltip patterns, never a
+bespoke overlay).
+
+#### ☐ Dedicated GUIDE entries: tag browser, per-pill format
+V:L-M · E:L · R:L. Both currently map to the nearest entry in the chrome drift guard's
+`CHROME_GUIDE` (tag browser → `hashtags`, per-pill format → `math`). Writing each its own
+entry makes the door exact; update `CHROME_GUIDE` ids in the same change.
+
 ---
 
 ## Tier 3 — lower / niche

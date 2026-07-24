@@ -16666,6 +16666,70 @@ test('#596 — GUIDE drift guard: every INSERT_CMDS (@ insert) id is covered', (
     `(add each id to some GUIDE entry's covers:[…], or write a new entry)`);
 });
 
+// ── Chrome drift guard: toolbar buttons + chrome features keep a guide door ───
+// The #596 guards only reach features with a / or @ command id, so chrome-only features
+// (toolbar buttons, File-menu doors) could ship guide-less with no test failing — exactly the
+// hole guidance/concept-guide.md admitted. Two locks: (a) every #tbtn-cluster button has a
+// TB_GUIDE_MAP entry and every mapped value names a real GUIDE entry id, so the
+// right-click-for-guide door can never silently rot; (b) a curated list of chrome features
+// that have no command id each name an existing GUIDE entry. Adding a toolbar button or a
+// chrome feature means giving it a guide door, or these tests name what shipped guide-less.
+
+// Every `id:'…'` of a GUIDE entry (sliced to the same GUIDE-END boundary as guideCoveredIds).
+function guideEntryIds(src) {
+  const start = src.indexOf('const GUIDE = [');
+  const end = src.indexOf('// GUIDE-END', start);
+  const guide = end > start ? src.slice(start, end) : '';
+  return new Set([...guide.matchAll(/\bid:'([^']+)'/g)].map(m => m[1]));
+}
+
+test('chrome drift guard: every toolbar-cluster button has a live TB_GUIDE_MAP guide door', () => {
+  const cStart = GUIDE_SRC.indexOf('<div id="tbtn-cluster">');
+  const cEnd = GUIDE_SRC.indexOf('</div>', cStart);
+  assert.ok(cStart > -1 && cEnd > cStart, 'the #tbtn-cluster markup is findable — did it move/rename?');
+  const btnIds = [...GUIDE_SRC.slice(cStart, cEnd).matchAll(/<button id="([^"]+)"/g)].map(m => m[1]);
+  assert.ok(btnIds.length >= 10, `cluster buttons found (got ${btnIds.length}) — did the cluster move?`);
+
+  const mStart = GUIDE_SRC.indexOf('const TB_GUIDE_MAP = {');
+  const mEnd = GUIDE_SRC.indexOf('};', mStart);
+  assert.ok(mStart > -1 && mEnd > mStart, 'the TB_GUIDE_MAP const is findable — did it move/rename?');
+  const map = Object.fromEntries(
+    [...GUIDE_SRC.slice(mStart, mEnd).matchAll(/'(btn-[^']+)':\s*'([^']+)'/g)].map(m => [m[1], m[2]]));
+  assert.ok(Object.keys(map).length >= 10, `TB_GUIDE_MAP entries found (got ${Object.keys(map).length}) — did the const move?`);
+
+  const unmapped = btnIds.filter(id => !map[id]);
+  assert.deepEqual(unmapped, [],
+    `these toolbar buttons have no TB_GUIDE_MAP entry (right-click-for-guide is dead for them): ${unmapped.join(', ')}`);
+
+  const entryIds = guideEntryIds(GUIDE_SRC);
+  assert.ok(entryIds.size > 30, `GUIDE entry ids found (got ${entryIds.size}) — did the GUIDE block move?`);
+  const broken = Object.entries(map).filter(([, gid]) => !entryIds.has(gid));
+  assert.deepEqual(broken, [],
+    `these TB_GUIDE_MAP values point at no GUIDE entry: ${broken.map(([b, g]) => b + ' -> ' + g).join(', ')}`);
+});
+
+test('chrome drift guard: curated chrome features each name a real GUIDE entry', () => {
+  // The fleet-B "only found via the guide" set: chrome features with no / or @ command id, so
+  // the #596 covers guard can never see them. Each names the GUIDE entry that documents it
+  // (tag browser and per-pill format have no dedicated entry yet; they map to the nearest one).
+  // A new chrome feature belongs in this list with a real entry id.
+  const CHROME_GUIDE = {
+    'tag browser': 'hashtags',
+    'journal': 'journal',
+    'templates': 'templates',
+    'custom calendar': 'custom-calendars',
+    'custom units': 'custom-units',
+    'chronicle': 'chronicle',
+    'per-pill format': 'math',
+    'agenda': 'agenda',
+  };
+  const entryIds = guideEntryIds(GUIDE_SRC);
+  assert.ok(entryIds.size > 30, `GUIDE entry ids found (got ${entryIds.size}) — did the GUIDE block move?`);
+  const dead = Object.entries(CHROME_GUIDE).filter(([, gid]) => !entryIds.has(gid));
+  assert.deepEqual(dead, [],
+    `these chrome features name a GUIDE id that does not exist: ${dead.map(([f, g]) => f + ' -> ' + g).join(', ')}`);
+});
+
 // #612 — dialog helper-chip parity + a shared chip renderer. Src-pins over GUIDE_SRC (the whole
 // index.html source read for #596). These lock the invariants a future edit could silently break:
 // the two chip loops route through one helper, the query dialogs keep their operator chips, the

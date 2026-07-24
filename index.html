@@ -2527,7 +2527,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (dated log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
     <button id="btn-rolllog-tb" class="tbtn-toggle" title="Log rolls: record every dice roll, generator, oracle and pick to a dated Rolls log" aria-label="Log rolls" aria-pressed="false"><i class="fa-solid fa-scroll"></i></button>
-    <button id="btn-agenda" class="tbtn-toggle" title="Agenda: deadlines and schedule" aria-label="Agenda: deadlines and schedule" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
+    <button id="btn-agenda" class="tbtn-toggle" title="Agenda: every dated point and deadline, in one list" aria-label="Agenda: every dated point and deadline, in one list" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
     <button id="btn-done" class="tbtn-toggle active" title="Done points" aria-label="Done points" aria-pressed="true"><i class="fa-solid fa-check"></i><span id="btn-done-badge" class="tbtn-badge" aria-hidden="true"></span></button>
@@ -32781,7 +32781,7 @@ function showTbtnTooltip(btn) {
   const show = () => {
     const title = btn.getAttribute('title') || '';
     let html = escHtml(title);
-    if (isGuided() && TB_GUIDE_MAP[btn.id]) html += ' <span class="tt-hint">\u2014 right-click for guide</span>';
+    if (isGuided() && TB_GUIDE_MAP[btn.id]) html += ' <span class="tt-hint">(right-click for guide)</span>';
     tbtnTooltip.innerHTML = html;
     const r = btn.getBoundingClientRect();
     tbtnTooltip.style.left = Math.max(4, r.left) + 'px';
