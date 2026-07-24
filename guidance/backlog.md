@@ -238,29 +238,36 @@ Move completed items to an archive (vs. just hide-done).
 ### Chrome discoverability follow-ups (phase 2 — deferred from the July 2026 phase 1)
 
 Phase 1 (value-first agenda copy + the chrome drift guard locking `TB_GUIDE_MAP` and the
-curated `CHROME_GUIDE` list) deliberately left these out; they are the phase-2 queue, all
-from the fleet-B research (`user-research-2026-07-b.md`).
+curated `CHROME_GUIDE` list) deliberately left these out; they were the phase-2 queue, all
+from the fleet-B research (`user-research-2026-07-b.md`). **A 2026-07-24 exploration corrected
+the queue: two items were already delivered and are struck below; one shipped in phase 2; one
+remains open.**
 
-#### ☐ File-menu "junk drawer" reorganization
-V:M · E:M · R:M. The File menu mixes files, views, tools and settings in one long list; the
-tag browser, templates and other chrome features hide inside it. Group by intent (files /
-views / tools / appearance) without breaking muscle memory (P1). Needs a before/after
-click-path audit, not just a resort.
+#### ✓ Dedicated GUIDE entries: tag browser, per-pill format — shipped (phase 2, 2026-07-24)
+V:L-M · E:L · R:L. Both used to map to the nearest entry in the chrome drift guard's
+`CHROME_GUIDE` (tag browser → `hashtags`, per-pill format → `math`). Now each has its own
+entry (`id:'tags'` under getting-around, `id:'number-format'` under compute); `CHROME_GUIDE`
+repointed and the two entries source-pinned. Also fixed the `#btn-tags` label ("Browse tags &
+properties" → "Browse tags"; `openTagBrowser` browses tags only, no property tree).
 
-#### ☐ Calendar setup / binding UX
-V:M · E:M · R:L. Custom calendars exist (`custom-calendars` guide entry) but creating one
-and binding a document to it is syntax-first. A guided door (builder form or dialog) per
-the P2 three-doors rule.
+#### ☐ Mobile gesture discoverability — OPEN (the one remaining phase-2 item)
+V:M · E:M-H · R:M. A first-touch hint exists (`maybeShowTouchHint` → one-time toast) but it is
+partial: it teaches only swipe-to-indent and press-and-hold-the-bullet, omitting drag-to-reorder,
+the manual-clock long-press step-back and the touch roll palette. Complete the teaching (extend
+the toast or add a companion, `localStorage` seen-once flag like `TOUCH_HINT_KEY`); swipe is
+already self-teaching via its `.swipe-cue`. Reuse `flashHint`/`#a11y-live`, never a bespoke overlay.
 
-#### ☐ Mobile gesture discoverability
-V:M · E:M-H · R:M. Long-press and swipe affordances exist but nothing teaches them on
-first touch. A one-time Guided-tier hint (reuse the banner/tooltip patterns, never a
-bespoke overlay).
+#### ⊘ File-menu "junk drawer" reorganization — already delivered (#603)
+V:M · E:M · R:M. Premise was stale: the File menu is not a flat junk drawer. #603 restructured it
+into a categorized two-pane overlay (nav rail: Document / Export / Settings / Learn & help / Tools,
+plus search and roving keyboard nav). No reorg needed.
 
-#### ☐ Dedicated GUIDE entries: tag browser, per-pill format
-V:L-M · E:L · R:L. Both currently map to the nearest entry in the chrome drift guard's
-`CHROME_GUIDE` (tag browser → `hashtags`, per-pill format → `math`). Writing each its own
-entry makes the door exact; update `CHROME_GUIDE` ids in the same change.
+#### ⊘ Calendar setup / binding UX — already a guided dialog
+V:M · E:M · R:L. Premise ("syntax-first") was wrong. `openCalendarDialog()` is a full guided dialog
+with live field previews, preset chips (`CAL_PRESETS`), a File-menu door (`#btn-calendar`), the
+`custom-calendars` guide entry, an audit-and-confirm commit path (`applyCalendarChange`) and a
+"Set as chronicle" bullet-menu binding. The only remaining gap is no `@`/`/` command door, arguably
+correct by design for a document-level setting; revisit only if users ask for a typed path.
 
 ---
 

@@ -16710,17 +16710,16 @@ test('chrome drift guard: every toolbar-cluster button has a live TB_GUIDE_MAP g
 
 test('chrome drift guard: curated chrome features each name a real GUIDE entry', () => {
   // The fleet-B "only found via the guide" set: chrome features with no / or @ command id, so
-  // the #596 covers guard can never see them. Each names the GUIDE entry that documents it
-  // (tag browser and per-pill format have no dedicated entry yet; they map to the nearest one).
+  // the #596 covers guard can never see them. Each names the GUIDE entry that documents it.
   // A new chrome feature belongs in this list with a real entry id.
   const CHROME_GUIDE = {
-    'tag browser': 'hashtags',
+    'tag browser': 'tags',
     'journal': 'journal',
     'templates': 'templates',
     'custom calendar': 'custom-calendars',
     'custom units': 'custom-units',
     'chronicle': 'chronicle',
-    'per-pill format': 'math',
+    'per-pill format': 'number-format',
     'agenda': 'agenda',
   };
   const entryIds = guideEntryIds(GUIDE_SRC);
@@ -16728,6 +16727,19 @@ test('chrome drift guard: curated chrome features each name a real GUIDE entry',
   const dead = Object.entries(CHROME_GUIDE).filter(([, gid]) => !entryIds.has(gid));
   assert.deepEqual(dead, [],
     `these chrome features name a GUIDE id that does not exist: ${dead.map(([f, g]) => f + ' -> ' + g).join(', ')}`);
+});
+
+test('dedicated GUIDE entries: the tag browser and per-pill format each have their own entry', () => {
+  // PR E gave the tag browser and per-pill format dedicated concept-guide entries (they had been
+  // mapped to hashtags/math as stand-ins). Pin the id+cat so a rename/move that would re-orphan
+  // the CHROME_GUIDE mappings fails here with a clear message, not just deep in the chrome guard.
+  assert.ok(/id:'tags', cat:'getting-around'/.test(GUIDE_SRC),
+    "the dedicated 'tags' (tag browser) guide entry is present under getting-around");
+  assert.ok(/id:'number-format', cat:'compute'/.test(GUIDE_SRC),
+    "the dedicated 'number-format' (per-pill format) guide entry is present under compute");
+  // The tag browser is chrome-only, so its entry must NOT claim a command via covers (drift contract).
+  assert.ok(!/id:'tags',[\s\S]{0,400}covers:/.test(GUIDE_SRC),
+    "the 'tags' entry stays covers-less (it documents no / or @ command)");
 });
 
 // #612 — dialog helper-chip parity + a shared chip renderer. Src-pins over GUIDE_SRC (the whole

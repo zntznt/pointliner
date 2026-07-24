@@ -103,9 +103,11 @@ landed (`tests/test.mjs`, "chrome drift guard: …" pair), two subsets are now e
 every `#tbtn-cluster` toolbar button must keep a `TB_GUIDE_MAP` entry resolving to a real
 GUIDE id (the right-click-for-guide door), and the curated `CHROME_GUIDE` list in the test
 (tag browser, journal, templates, custom calendars, custom units, chronicle, per-pill
-format, agenda) must each name an existing entry. Chrome features outside those two nets
-remain a manual discipline, the same P2-discoverable obligation as any feature — when one
-ships, add it to `CHROME_GUIDE` with a real entry. (Refile, properties and per-point notes
+format, agenda) must each name an existing entry. The tag browser and per-pill format now
+have their own dedicated entries (`id:'tags'` and `id:'number-format'`); they briefly mapped
+to `hashtags`/`math` as stand-ins before those entries existed. Chrome features outside those
+two nets remain a manual discipline, the same P2-discoverable obligation as any feature — when
+one ships, add it to `CHROME_GUIDE` with a real entry. (Refile, properties and per-point notes
 used to sit on this list; today they are the `/refile`, `/prop` and `/note` commands, so
 the command guard covers them.)
 
