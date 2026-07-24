@@ -2701,6 +2701,8 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
   <span class="eb-sep"></span>
   <button class="eb-btn" id="eb-up"   title="Move up"   aria-label="Move point up">↑</button>
   <button class="eb-btn" id="eb-down" title="Move down" aria-label="Move point down">↓</button>
+  <span class="eb-sep"></span>
+  <button class="eb-btn" id="eb-undo" title="Undo" aria-label="Undo">↺</button><!-- ζ: the Ctrl/Cmd+Z twin for touch (dead on a phone otherwise); a literal ↺ since bar buttons bypass paintIcon -->
   <span class="eb-spacer"></span>
   <button class="eb-btn" id="eb-done" title="Done editing" aria-label="Done editing">Done</button>
 </div>
@@ -2713,6 +2715,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
   <button class="eb-btn" id="qb-new" title="New point" aria-label="New point at the end">+</button>
   <button class="eb-btn" id="qb-insert" title="New point with the insert menu" aria-label="New point with the insert menu">@</button>
   <button class="eb-btn" id="qb-roll" title="Roll templates" aria-label="Insert a roll template" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-dice-d20" aria-hidden="true"></i></button><!-- #812: fa-dice is NOT in the FA subset (painted blank); fa-dice-d20 is -->
+  <button class="eb-btn" id="qb-undo" title="Undo" aria-label="Undo">↺</button><!-- ζ: the Ctrl/Cmd+Z twin for touch; makes the "one undo takes it back" toasts true on a phone -->
   <span class="eb-spacer"></span>
   <button class="eb-btn" id="qb-help" title="Help &amp; guide" aria-label="Help and concept guide">?</button>
 </div>
@@ -17527,6 +17530,10 @@ ebBtn('eb-outdent', () => editBarMove(outdentNode));
 ebBtn('eb-indent',  () => editBarMove(indentNode));
 ebBtn('eb-up',   () => editBarMove(id => moveNode(id, -1)));
 ebBtn('eb-down', () => editBarMove(id => moveNode(id,  1)));
+// ζ: mid-edit undo for touch. Through ebBtn (mousedown+preventDefault) so the tap does not
+// blur-then-exit before undo() runs; undo() flushes the active text edit and applyEntry does a
+// full render/refocus (the same teardown the Ctrl/Cmd+Z path triggers), so this is caret-safe.
+ebBtn('eb-undo', () => undo());
 ebBtn('eb-done', () => {
   const id = editBarTargetId();
   document.querySelector(`.node-content[data-id="${id}"][data-editing]`)?.blur();
@@ -17595,6 +17602,7 @@ function quickNewPoint(insertText) {
 document.getElementById('qb-capture').addEventListener('click', () => toggleCapture());
 document.getElementById('qb-new').addEventListener('click', () => quickNewPoint());
 document.getElementById('qb-insert').addEventListener('click', () => quickNewPoint('@'));
+document.getElementById('qb-undo').addEventListener('click', () => undo());   // ζ: the bar acts from display mode, no caret to protect (like qb-capture/qb-new)
 document.getElementById('qb-help').addEventListener('click', e => { e.stopPropagation(); toggleGuide('shortcuts'); });
 
 // #520: the roll-template palette. A tap on a chip creates a new point, types the {…} template
