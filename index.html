@@ -7962,6 +7962,7 @@ function toOpml(r) {
       n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '',
     n.varbase          ? `_varbase="${ex(JSON.stringify(n.varbase))}"` : '', // query-base config (QP-2)
       n.colRole?.some(x => x != null) ? `_colrole="${ex(JSON.stringify(n.colRole))}"` : '', // column display roles (FR-1)
+      n.colFmt?.some(x => x != null) ? `_colfmt="${ex(JSON.stringify(n.colFmt))}"` : '', // per-column number formats (ε)
       n.view             ? `_view="${ex(JSON.stringify(n.view))}"` : '', // base view config (BV-1)
       (Number.isFinite(n.baseRows) && n.baseRows > 0) ? `_baserows="${n.baseRows}"` : '', // inline row cap
       `_id="${ex(n.id)}"`,
@@ -8092,6 +8093,9 @@ function fromOpml(xml) {
     if (vwAttr) { try { const o = JSON.parse(vwAttr); if (o && ((o.kind === 'board' && Number.isInteger(o.groupBy)) || o.kind === 'cards' || (o.kind === 'calendar' && Number.isInteger(o.dateBy)))) n.view = o; } catch(_) {} }
     const crAttr = el.getAttribute('_colrole');
     if (crAttr) { try { const a = JSON.parse(crAttr); if (Array.isArray(a)) n.colRole = a; } catch(_) {} }
+    // Per-column number formats (ε): {decimals?,prefix?,suffix?}|null per column. Attach only when present.
+    const cfAttr = el.getAttribute('_colfmt');
+    if (cfAttr) { try { const a = JSON.parse(cfAttr); if (Array.isArray(a)) n.colFmt = a; } catch(_) {} }
     const qbAttr = el.getAttribute('_qbase');
     if (qbAttr) { try { const o = JSON.parse(qbAttr); if (o && typeof o.expr === 'string' && Array.isArray(o.cols)) n.qbase = o; } catch(_) {} }
     const vbAttr = el.getAttribute('_varbase');
@@ -9332,7 +9336,7 @@ function mtCellHtml(node, raw, c, _colRoles = null) {
       }
     } else if (role === 'number') {
       const n = Number(s);
-      if (Number.isFinite(n)) return escHtml(formatNumDisplay(n));   // #946: group thousands (display only; cell text unchanged)
+      if (Number.isFinite(n)) return escHtml(formatNumDisplay(n, node.colFmt?.[c]));   // #946: group thousands; ε: per-column money/measure/percent format (display only; cell text unchanged)
     }
   }
   return mtInline(node, raw);
@@ -9842,6 +9846,7 @@ function mtInsertCol(node, colIdx, side) {
   m.rows.forEach(r => r.splice(at, 0, ''));
   if (node.colW) node.colW.splice(at, 0, null); // keep widths aligned to columns
   if (node.colRole) node.colRole.splice(at, 0, null); // roles stay aligned too (FR-1)
+  if (node.colFmt) node.colFmt.splice(at, 0, null); // number formats stay aligned too (ε)
   remapNodeColumns(node, { kind: 'insert', at }); // view.groupBy/dateBy + #+TBLFM refs follow the shift
   mtCommit(node, m); refreshTable(node);
 }
@@ -9879,6 +9884,7 @@ function mtMoveCol(node, colIdx, dir) {
   m.rows.forEach(r => mtMoveItem(r, colIdx, to));
   if (node.colW) mtMoveItem(node.colW, colIdx, to);
   if (node.colRole) mtMoveItem(node.colRole, colIdx, to);
+  if (node.colFmt) mtMoveItem(node.colFmt, colIdx, to); // number formats follow the move (ε)
   remapNodeColumns(node, { kind: 'move', from: colIdx, to }); // view + #+TBLFM refs follow the move
   mtCommit(node, m); refreshTable(node);
 }
@@ -9889,6 +9895,7 @@ function mtDeleteCol(node, colIdx) {
   m.rows.forEach(r => r.splice(colIdx, 1));
   if (node.colW) node.colW.splice(colIdx, 1);
   if (node.colRole) { node.colRole.splice(colIdx, 1); if (node.colRole.every(x => x == null)) node.colRole = undefined; }
+  if (node.colFmt) { node.colFmt.splice(colIdx, 1); if (node.colFmt.every(x => x == null)) node.colFmt = undefined; } // number formats follow delete (ε)
   remapNodeColumns(node, { kind: 'delete', at: colIdx }); // drop view/#+TBLFM refs to the removed column
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
@@ -9898,6 +9905,18 @@ function mtSetColWidth(node, colIdx, w) {
   if (!node.colW) { if (cw == null) return; node.colW = []; }
   node.colW[colIdx] = cw;
   if (node.colW.every(x => x == null)) node.colW = undefined; // all auto → drop it
+  markDirty(); refreshTable(node);
+}
+// Set (or clear, with f=null) a column's number format (ε). A parseNumFmt record
+// {decimals?,prefix?,suffix?} formats a Number column's cells (and its footer total)
+// as money/measure/percent — the same format the {= } math pill offers. Lazily sized
+// like colW/colRole; an all-null array drops back to undefined so untouched bases
+// serialize clean. Display-only: the cell TEXT is never rewritten (the §3a text-is-truth
+// law), so a non-number cell falls through to its plain render untouched.
+function mtSetColFmt(node, colIdx, f) {
+  if (!node.colFmt) { if (f == null) return; node.colFmt = []; }
+  node.colFmt[colIdx] = f || null;
+  if (node.colFmt.every(x => x == null)) node.colFmt = undefined; // all default → drop it
   markDirty(); refreshTable(node);
 }
 // Live width during a drag: paint every cell in the column without a rebuild
@@ -10114,6 +10133,12 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   const curRole = (mtColRoles(node) || [])[colIdx] || null;   // #922: reflect the EFFECTIVE role (inferred or hand-set)
   [[null, 'Plain text'], ['status', 'Status'], ['date', 'Date'], ['number', 'Number']]
     .forEach(([role, label]) => addItem(label, { active: curRole === role, onApply: () => mtSetColRole(node, colIdx, role) }));
+  // ε: a Number column can format as money/measure/percent (the {= } pill's format, per column).
+  // Shown under Number since that role is what makes the format render. Opened a frame late like
+  // Column formula… so hideColPanel's focus-restore runs first and the dialog captures the cell.
+  if (curRole === 'number')
+    addItem('Number format…', { active: node.colFmt?.[colIdx] != null,
+      onApply: () => requestAnimationFrame(() => openColFmtDialog(node, colIdx)) });
 
   // SV-1: the one-shot sort (a data operation — writes the order, undoable). Role-aware:
   // the Show as section above it decides how this column compares.
@@ -11098,7 +11123,14 @@ function buildTableWidget(node, readOnly) {
       // normal (blank) cell. Read-only is unchanged (it's still .mt-computed).
       const label = isTotal ? aggKindLabel(mtColAggKind(tblfmStr, c+1)) : '';
       if (label) {
-        h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true" data-agg="${label}">${mtInline(node, model.rows[r][c]||'')}</td>`;
+        // ε: a formatted Number column formats its footer total too (money/measure/percent), so the
+        // total reads like the cells above it. Display-only — the canonical aggregate lives in the
+        // model/recompute and is never re-read from this HTML, so a formatted total is never persisted.
+        const totRaw = model.rows[r][c] || '';
+        const totFmt = node.colFmt?.[c];
+        const totVal = totFmt != null && Number.isFinite(Number(String(totRaw).trim())) && String(totRaw).trim() !== ''
+          ? escHtml(formatNumDisplay(Number(totRaw), totFmt)) : mtInline(node, totRaw);
+        h += `<td class="mt-cell mt-computed mt-total-cell${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true" data-agg="${label}">${totVal}</td>`;
       } else if (isTotal) {
         // Footer row, non-aggregated column: data-only, never editable. Read-only like a
         // computed cell (so all the edit guards skip it) but blank and Σ-less.
@@ -11266,7 +11298,7 @@ function buildTableWidget(node, readOnly) {
     const m = mtModel(node);
     if (mtReorder.kind==='col') {
       const ch = e.target.closest('.mt-colhead');
-      if (ch) { const to=+ch.dataset.c, from=mtReorder.from; mtMoveItem(m.aligns, from, to); m.rows.forEach(r => mtMoveItem(r, from, to)); if (node.colW) mtMoveItem(node.colW, from, to); if (node.colRole) mtMoveItem(node.colRole, from, to); remapNodeColumns(node, { kind:'move', from, to }); mtCommit(node,m); }
+      if (ch) { const to=+ch.dataset.c, from=mtReorder.from; mtMoveItem(m.aligns, from, to); m.rows.forEach(r => mtMoveItem(r, from, to)); if (node.colW) mtMoveItem(node.colW, from, to); if (node.colRole) mtMoveItem(node.colRole, from, to); if (node.colFmt) mtMoveItem(node.colFmt, from, to); remapNodeColumns(node, { kind:'move', from, to }); mtCommit(node,m); }
     } else {
       const rh = e.target.closest('.mt-rowh');
       if (rh && rh.dataset.r) { mtMoveItem(m.rows, mtReorder.from, +rh.dataset.r); mtCommit(node,m); }
@@ -17212,6 +17244,7 @@ function deepCloneNodeNewIds(node) {
     // them when present. qbase.cols is a nested array, so it needs its own copy.
     ...(node.colW    ? { colW:    [...node.colW] }    : {}),
     ...(node.colRole ? { colRole: [...node.colRole] } : {}),
+    ...(node.colFmt  ? { colFmt:  node.colFmt.map(f => f ? { ...f } : f) } : {}), // ε: deep-copy per-column format records too
     ...(node.view    ? { view:    { ...node.view } }  : {}),
     ...(node.qbase   ? { qbase:   { ...node.qbase, ...(node.qbase.cols ? { cols: node.qbase.cols.map(c => ({ ...c })) } : {}) } } : {}),
     children: (node.children   || []).map(c => deepCloneNodeNewIds(c)),
@@ -19093,7 +19126,7 @@ function convertBaseToText(nodeId) {
   // normal point now. Sidecars (dice/grammar/…) stay — they back the frozen pills in the
   // static table; pruneArtifacts sheds any with no surviving token.
   delete node.qbase; delete node.varbase; delete node.view;
-  delete node.colRole; delete node.colW; delete node.baseRows;
+  delete node.colRole; delete node.colW; delete node.colFmt; delete node.baseRows;
   node.collapsed = false;
   node.checked = todoDoneFromText(node.text);   // re-derive the cache (a text table is never done)
   pruneArtifacts(node);
@@ -25085,6 +25118,37 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
       if (f) roll.fmt = f;            // absent unless the user set a format
       onResult(roll);
     },
+  });
+}
+
+// ε: the base-column twin of the math pill's number format. The same three fields
+// (Decimal places / Prefix / Suffix, copied from openMathDialog) set node.colFmt for a
+// column, so a Number column can read as money/measure/percent. onSubmit routes through
+// parseNumFmt → mtSetColFmt (drop-when-all-null); a live preview shows a sample number.
+function openColFmtDialog(node, colIdx) {
+  const cur = node.colFmt?.[colIdx] || null;
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-hashtag', fb:'#' },
+    title: 'Number format',
+    guideId: 'number-format',   // #466: deep-link the ? to the Formatting numbers guide
+    submitLabel: 'Apply',
+    fields: [
+      {
+        key: 'decimals',
+        label: 'Decimal places',
+        value: (cur && Number.isInteger(cur.decimals)) ? String(cur.decimals) : '',
+        placeholder: 'auto (e.g. 2 for money)',
+        hint: 'How many digits after the point. Blank rounds automatically; numbers always group thousands.',
+        // live sample so the format is visible before Apply (reads all three fields via `all`).
+        preview: (v, all) => {
+          const f = parseNumFmt(all.decimals, all.prefix, all.suffix);
+          return `<span class="io-preview">1200 reads <strong>${escHtml(formatNumDisplay(1200, f))}</strong></span>`;
+        },
+      },
+      { key: 'prefix', label: 'Prefix', value: (cur && cur.prefix) || '', placeholder: 'e.g. $' },
+      { key: 'suffix', label: 'Suffix', value: (cur && cur.suffix) || '', placeholder: 'e.g. kg or %' },
+    ],
+    onSubmit: v => mtSetColFmt(node, colIdx, parseNumFmt(v.decimals, v.prefix, v.suffix)),
   });
 }
 
@@ -33556,7 +33620,7 @@ const GUIDE = [
     ] },
   { id:'number-format', cat:'compute',
     title:'Formatting numbers',
-    body:"Show a calculation as money, a measurement or a percentage instead of a bare number: render a budget line as `$1,200.00`, a weight as `12 kg` or a rate as `8%`. Open the pill and set a format below the expression: Decimal places (2 for money), a Prefix like `$` and a Suffix like ` kg` or `%`. A live preview shows the result as you type.\n\nBig numbers group their thousands on their own, so a total reads `840,000` with no setup. The format is display only, so the pill still computes at full precision and the value in your text stays plain; the formatting comes back the next time the pill renders. To hide the formula and show just the value, check Show value only in the same dialog.",
+    body:"Show a calculation as money, a measurement or a percentage instead of a bare number: render a budget line as `$1,200.00`, a weight as `12 kg` or a rate as `8%`. Open the pill and set a format below the expression: Decimal places (2 for money), a Prefix like `$` and a Suffix like ` kg` or `%`. A live preview shows the result as you type.\n\nIn a base, a whole column can carry the same format. Mark the column as a Number (its menu, Show as, Number), then open the menu again and choose Number format to set decimals, a prefix and a suffix. Every cell in the column, and its Calculate total, reads in that format.\n\nBig numbers group their thousands on their own, so a total reads `840,000` with no setup. The format is display only, so the pill still computes at full precision and the value in your text stays plain; the formatting comes back the next time the pill renders. To hide the formula and show just the value, check Show value only in the same dialog.",
     related:['math','units'],
     examples:[
       { syn:'Decimal places: 2, Prefix: $', desc:'money reads $1,200.00' },

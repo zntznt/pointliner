@@ -2357,6 +2357,25 @@ test('toOpml — base column widths serialize to _colw; absent when all auto', (
   assert.ok(!c.toOpml(plain).includes('_colw='), 'all-auto widths should NOT serialize');
 });
 
+// ε: per-column number formats round-trip through OPML like _colw/_colrole. Serialize is runnable
+// here; the parse side (fromOpml) needs a DOM, so it's source-pinned alongside _varbase below.
+test('toOpml — base column number formats serialize to _colfmt; absent when all default', () => {
+  const root = c.mkRoot();
+  const base = c.mkNode('| Item | Value |\n| --- | --- |\n| Laptop | 1200 |');
+  base.type = 'base';
+  base.colRole = [null, 'number'];
+  base.colFmt = [null, { prefix: '$', decimals: 2 }];
+  root.children.push(base);
+  const xml = c.toOpml(root);
+  assert.ok(xml.includes('_colfmt='), 'a formatted column should serialize _colfmt');
+  assert.ok(/_colfmt="\[null,\{&quot;prefix&quot;:&quot;\$&quot;,&quot;decimals&quot;:2\}\]"/.test(xml), 'the format array round-trips as escaped JSON');
+
+  const plain = c.mkRoot();
+  const n2 = c.mkNode('no formats'); n2.type = 'base'; n2.colFmt = [null, null];
+  plain.children.push(n2);
+  assert.ok(!c.toOpml(plain).includes('_colfmt='), 'all-default formats should NOT serialize');
+});
+
 // ── C1: self-contained HTML export (embed/extract data-island round-trip) ────
 const SHELL = '<!DOCTYPE html>\n<html><head><style>.x{}</style></head><body>\n'
   + '<script type="application/xml" id="pl-embedded-doc"></script>\n'
@@ -2774,6 +2793,9 @@ test('variable-base UI wiring (source pins)', () => {
 test('toOpml/fromOpml — _varbase emit + parse sites exist (source pins; DOM parse is browser-verified)', () => {
   assert.ok(/_varbase="\$\{ex\(JSON\.stringify\(n\.varbase\)\)\}"/.test(_src), 'toOpml emits _varbase');
   assert.ok(/getAttribute\('_varbase'\)/.test(_src), 'fromOpml reads _varbase');
+  // ε: _colfmt has the same emit + parse pair (parse needs a DOM, so pin the read site)
+  assert.ok(/getAttribute\('_colfmt'\)/.test(_src), 'fromOpml reads _colfmt');
+  assert.ok(/if \(cfAttr\) \{ try \{ const a = JSON\.parse\(cfAttr\); if \(Array\.isArray\(a\)\) n\.colFmt = a;/.test(_src), 'fromOpml attaches _colfmt guarded (Array.isArray)');
   // and the emitted OPML actually carries it
   const root = c.mkRoot();
   root.children.push(mkVarBase('| Name | HP |\n| --- | --- |\n| Orc | 12 |', 'Monsters'));
@@ -3076,19 +3098,24 @@ test('#583 deepCloneNodeNewIds — est and query sidecars are deep-copied, not s
 test('#518 Piece 2 deepCloneNodeNewIds — interactive-base config (colW/colRole/view/qbase) is deep-copied', () => {
   const src = c.mkNode('base'); src.type = 'base';
   src.colW = [80, 120]; src.colRole = ['status', 'number'];
+  src.colFmt = [null, { prefix: '$', decimals: 2 }];   // ε
   src.view = { kind: 'board', groupBy: 'status' };
   src.qbase = { expr: 'is:todo', cols: [{ name: 'Title', field: 'title' }] };
   const clone = c.deepCloneNodeNewIds(src);
   assert.notEqual(clone.colW, src.colW, 'colW is a distinct array');
   assert.notEqual(clone.colRole, src.colRole, 'colRole is a distinct array');
+  assert.notEqual(clone.colFmt, src.colFmt, 'colFmt is a distinct array');
+  assert.notEqual(clone.colFmt[1], src.colFmt[1], 'each colFmt record is a distinct object');
   assert.notEqual(clone.view, src.view, 'view is a distinct object');
   assert.notEqual(clone.qbase, src.qbase, 'qbase is a distinct object');
   assert.notEqual(clone.qbase.cols, src.qbase.cols, 'qbase.cols (nested array) is a distinct copy');
   // editing the stamped base must never mutate the source (template / pack corruption guard)
   clone.view.groupBy = 'CHANGED'; clone.qbase.cols[0].field = 'EDITED'; clone.colW[0] = 999;
+  clone.colFmt[1].prefix = '€';
   assert.equal(src.view.groupBy, 'status', 'source view untouched by a stamped-base edit');
   assert.equal(src.qbase.cols[0].field, 'title', 'source qbase cols untouched');
   assert.equal(src.colW[0], 80, 'source colW untouched');
+  assert.equal(src.colFmt[1].prefix, '$', 'source colFmt untouched');
 });
 
 // ── #518 Piece 0: pin the pack template + deck round-trip (the vision leans on it) ──
@@ -14058,6 +14085,58 @@ test('mtCellHtml — status/date/number roles shape the paint; non-conforming va
   assert.doesNotMatch(c.mtCellHtml(bare, 'TODO', 0), /todo-state/);
 });
 
+// ε: a per-column number format (node.colFmt) makes a Number column read as money/measure/percent —
+// the same {decimals,prefix,suffix} record the {= } math pill carries, applied per column by index.
+test('mtCellHtml — a Number column honors its per-column colFmt (money/percent); other columns unaffected', () => {
+  const node = { colRole: ['number', 'number', null],
+    colFmt: [{ prefix: '$', decimals: 2 }, { suffix: '%' }, null],
+    dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
+  // column 0: $ + 2 decimals + thousands grouping
+  assert.equal(c.mtCellHtml(node, '1200', 0), '$1,200.00', 'prefix + decimals + grouping compose');
+  // column 1: a percent suffix, no forced decimals
+  assert.equal(c.mtCellHtml(node, '8', 1), '8%', 'suffix formats without decimals');
+  // a non-numeric value in a formatted column still falls through to the plain render (never #ERR)
+  assert.doesNotMatch(c.mtCellHtml(node, 'n/a', 0), /\$/, 'a non-number cell is not formatted');
+  // a Number column with no colFmt slot groups but adds no prefix/suffix (baseline #946 behavior)
+  const plain = { colRole: ['number'], dice: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [] };
+  assert.equal(c.mtCellHtml(plain, '1200', 0), '1,200', 'no colFmt → group only, no affix');
+});
+
+// ε: the per-column format setter creates lazily, aligns by index, and drops the whole array when
+// every column is back to default — so an untouched base serializes clean (mirrors mtSetColWidth).
+test('mtSetColFmt — lazy create, per-index set, drop-to-undefined when all null', () => {
+  const node = { text: '| A | B |\n| --- | --- |\n| 1 | 2 |' };
+  c.mtSetColFmt(node, 1, { suffix: '%' });
+  assert.deepEqual(host(node.colFmt), [null, { suffix: '%' }], 'lazily created and set at the column index');
+  c.mtSetColFmt(node, 1, null);
+  assert.equal(node.colFmt, undefined, 'clearing the only format drops the array back to undefined');
+  // clearing a never-set format is a no-op (no array springs into existence)
+  c.mtSetColFmt(node, 0, null);
+  assert.equal(node.colFmt, undefined, 'clearing when there is nothing to clear stays undefined');
+});
+
+// ε: the DOM wiring that can't run headless — the column menu item, its dialog, the footer format,
+// and colFmt parity at every column-array splice site (a missed splice drops data on a column op).
+test('per-column number format — menu/dialog/footer/parity wiring (src pins)', () => {
+  // the Column menu offers Number format… on a Number column, opened a frame late like Column formula…
+  assert.ok(/curRole === 'number'\)?\s*\n\s*addItem\('Number format…'/.test(_src), 'the Show as section adds Number format… for a Number column');
+  assert.ok(/requestAnimationFrame\(\(\) => openColFmtDialog\(node, colIdx\)\)/.test(_src), 'the item opens the dialog a frame late (focus-restore first)');
+  // the dialog reuses parseNumFmt → mtSetColFmt and deep-links the number-format guide
+  const d = fnBody(_src, 'openColFmtDialog');
+  assert.ok(d.includes("guideId: 'number-format'") && d.includes('mtSetColFmt(node, colIdx, parseNumFmt('),
+    'openColFmtDialog reuses parseNumFmt → mtSetColFmt and deep-links the guide');
+  // the footer total of a formatted column formats too (display-only)
+  assert.ok(/const totFmt = node\.colFmt\?\.\[c\];/.test(_src) && /formatNumDisplay\(Number\(totRaw\), totFmt\)/.test(_src),
+    'the aggregate footer cell honors the column format');
+  // colFmt is spliced/moved beside colW/colRole at every column op, and torn down / persisted with them
+  assert.ok(/if \(node\.colFmt\) node\.colFmt\.splice\(at, 0, null\)/.test(_src), 'insert keeps colFmt aligned');
+  assert.ok(/if \(node\.colFmt\) mtMoveItem\(node\.colFmt, colIdx, to\)/.test(_src), 'move keeps colFmt aligned');
+  assert.ok(/if \(node\.colFmt\) mtMoveItem\(node\.colFmt, from, to\)/.test(_src), 'the header-drag drop handler keeps colFmt aligned too (the inline mtMoveCol twin)');
+  assert.ok(/if \(node\.colFmt\) \{ node\.colFmt\.splice\(colIdx, 1\);/.test(_src), 'delete keeps colFmt aligned + drops when empty');
+  assert.ok(/delete node\.colFmt;/.test(_src), 'base→text teardown drops colFmt');
+  assert.ok(/n\.colFmt\?\.some\(x => x != null\) \? `_colfmt=/.test(_src), 'toOpml serializes _colfmt when set');
+});
+
 // ── Bases round 1 (B1–B4): correctness fixes ─────────────────────────────────
 test('qbaseColRoles — roles inferred from the projection, aligned to the rendered columns (B4)', () => {
   const roles = host(c.qbaseColRoles([
@@ -14481,7 +14560,7 @@ test('baseToStaticText — authored base round-trips as a static table; wiring (
   const cbt = fnBody(_src, 'convertBaseToText');
   assert.ok(/pushUndo\(\)/.test(cbt), 'undoable — one Ctrl/Cmd+Z restores the base');
   assert.ok(/delete node\.qbase; delete node\.varbase; delete node\.view;/.test(cbt)
-    && /delete node\.colRole; delete node\.colW; delete node\.baseRows;/.test(cbt),
+    && /delete node\.colRole; delete node\.colW; delete node\.colFmt; delete node\.baseRows;/.test(cbt),
     'every base view-state field is dropped');
   assert.ok(/node\.type = deriveTypeFromText\(node\.text\) \|\| 'ul'/.test(cbt), 'the node becomes a normal point');
   assert.ok(/pruneArtifacts\(node\)/.test(cbt), 'orphaned sidecar records are shed; frozen pill records stay');
@@ -17552,7 +17631,7 @@ test('#946 parseNumFmt — a lean fmt or null; decimals bounded 0-20', () => {
   assert.equal(c.formatMathResult(840000), '840000', 'the canonical value formatter stays separator-free');
   // the display sinks use the display formatter: renderMathPill + the number cell + formatVarValue
   assert.ok(/const display = formatMathDisplay\(fresh, m\.expr, m\.fmt\)/.test(_src), 'renderMathPill groups + honors the per-pill format');
-  assert.ok(/return escHtml\(formatNumDisplay\(n\)\)/.test(_src), 'a base number cell groups (display only)');
+  assert.ok(/return escHtml\(formatNumDisplay\(n, node\.colFmt\?\.\[c\]\)\)/.test(_src), 'a base number cell groups + honors the per-column format (ε, display only)');
   assert.ok(/function formatVarValue\(v\) \{ return typeof v === 'string' \? v : formatNumDisplay\(v\); \}/.test(_src), 'variable values group too');
 });
 
