@@ -349,6 +349,18 @@ test('braceAttemptReason — explains why an INVALID {…} did not become a pill
   // dice-looking but unparseable ({2d6x})
   assert.equal(c.classifyBraceBody('2d6x', {}, {}), 'invalid');
   assert.match(c.braceAttemptReason('2d6x', {}, {}), /dice roll/i);
+  // a die STARTED but with no sides ({2d}, {3d}, {10d}, {2d+3}) used to fall through to plain text
+  // (the one true silent no-op); now it is an ATTEMPT that names the missing sides.
+  for (const b of ['2d', '3d', '10d', '2d+3']) {
+    assert.equal(c.classifyBraceBody(b, {}, {}), 'invalid', b + ' is a dice attempt, not literal text');
+    assert.match(c.braceAttemptReason(b, {}, {}), /missing its number of sides/i, b + ' names the missing sides');
+  }
+  // prose that merely starts like a die stays literal (no false positive): {2days}, {2dogs}
+  for (const b of ['2days', '2dogs']) assert.equal(c.classifyBraceBody(b, {}, {}), 'literal', b + ' is prose, not a dice attempt');
+  // a real die still promotes ({2d6}); a bare {d} stays the bare-name path (undefined variable)
+  assert.equal(c.classifyBraceBody('2d6', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('d', {}, {}), 'invalid');
+  assert.match(c.braceAttemptReason('d', {}, {}), /No rule or variable named "d"/);
   // a broken calculation ({= badname + 1}) borrows mathReasonPhrase (bad ref)
   assert.equal(c.classifyBraceBody('= badname + 1', {}, {}), 'invalid');
   assert.match(c.braceAttemptReason('= badname + 1', {}, {}), /calculation uses .*no value here/i);
@@ -358,7 +370,7 @@ test('braceAttemptReason — explains why an INVALID {…} did not become a pill
   assert.equal(c.classifyBraceBody('beast.cap', {}, {}), 'invalid');
   assert.match(c.braceAttemptReason('beast.cap', {}, {}), /No rule or variable named "beast"/);
   // AP-style copy: no em dashes in any of the user-facing reasons
-  for (const b of ['rumor', '2d6x', '= badname + 1', 'beast.cap']) {
+  for (const b of ['rumor', '2d6x', '2d', '= badname + 1', 'beast.cap']) {
     assert.ok(!c.braceAttemptReason(b, {}, {}).includes('—'), 'no em dash in ' + b);
   }
   // a KNOWN name is a valid artifact, never flagged (the cue only fires on 'invalid')
@@ -720,6 +732,22 @@ test('renderGrammarPill — stale inputs add .gr-stale and the title/aria suffix
   assert.ok(!fresh.includes('gr-stale'));
   assert.ok(!fresh.includes('Inputs changed'));
   assert.ok(fresh.includes('Click to re-generate'));
+});
+
+test('renderGrammarPill — an empty {roll:?} marker shows a muted "no match yet" + a teaching tip, not raw jargon', () => {
+  // A {roll: #idea} with no matching points freezes resolveBrace's P4 marker as g.result; the pill
+  // used to print that literal `{roll: #idea?}`. Now the whole-result marker renders human.
+  const empty = c.renderGrammarPill('g', { key: 'g', def: 'origin: {roll: #idea}', origin: 'origin', result: '{roll: #idea?}', anon: true });
+  assert.ok(empty.includes('gr-empty'), 'the empty marker gets the muted .gr-empty class');
+  assert.ok(empty.includes('>no match yet<'), 'the cryptic {roll: #idea?} is replaced by "no match yet"');
+  assert.ok(!empty.includes('{roll: #idea?}'), 'the raw marker text is not shown to the user');
+  assert.ok(empty.includes('Nothing matched yet. Click to try again'), 'the title/aria explains why and how to fix');
+  assert.ok(!empty.includes('—'), 'no em dash in the empty-marker copy');
+  // a cond/mod marker that is the whole result is treated the same
+  assert.ok(c.renderGrammarPill('g', { key: 'g', def: 'origin: {x?}', origin: 'origin', result: '{x?}', anon: true }).includes('gr-empty'));
+  // a NORMAL result is untouched (no false positive)
+  const ok = c.renderGrammarPill('g', { key: 'g', def: 'origin: A wind rises', origin: 'origin', result: 'A wind rises' });
+  assert.ok(!ok.includes('gr-empty') && ok.includes('A wind rises'));
 });
 
 // ── text modifiers (A1): {ref.mod} — cap/title/upper/lower/a/s ───────────────
