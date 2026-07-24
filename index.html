@@ -16248,7 +16248,12 @@ function classifyBraceBody(body, rules, vars) {
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
-  if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
+  // {seq Flow: A B | C} — KEYWORD-COMMIT, like oracle/meter/rule. Once a body opens with `seq `, a
+  // tail that will not parse is INVALID. This closes two different failures at once: a broken tail
+  // WITH a pipe used to reach the alternation branch and become a nonsense pill (`seq Growth: Seed,
+  // Sprout | Bloom` promoted to a coin flip between the literal strings "seq Growth: Seed, Sprout"
+  // and "Bloom"), while one WITHOUT a pipe classified 'literal' and said nothing at all.
+  if (/^seq\s/i.test(body)) return seqDeclParts(body) ? 'artifact' : 'invalid';
   // {rule tavern: The {adj} {noun}} — a typed named grammar declaration. KEYWORD-COMMIT (the
   // oracle/meter shape): once the body opens with `rule `, a tail that will not parse is INVALID,
   // never prose. That verdict is what earns it the .brace-attempt cue and, more importantly, what
@@ -16400,6 +16405,22 @@ function braceAttemptReason(body, rules, vars) {
     if (!rm || !rm[1].trim()) return 'A rule needs a name before the colon: try {rule tavern: The Rusty Flagon}.';
     if (!rm[2].trim()) return 'A rule named "' + rm[1].trim() + '" needs something after the colon: try {rule ' + rm[1].trim() + ': option | option}.';
     return 'This rule could not be read. A name, a colon, then the options: try {rule ' + rm[1].trim() + ': option | option}.';
+  }
+  // A {seq …} that classified invalid. The separators are the whole difficulty here, so lead with
+  // them, and where the fix is mechanical (commas) hand back the corrected line rather than
+  // describing it. States are separated by SPACES; `|` marks where done begins.
+  if (/^seq\s/i.test(body)) {
+    const sm = /^seq\s+([^:]*?)\s*:(.*)$/i.exec(body);
+    if (!sm || !sm[1].trim()) return 'A sequence needs a name before the colon: try {seq Flow: TODO | DONE}.';
+    const name = sm[1].trim(), tail = (sm[2] || '').trim();
+    if (/\s/.test(name)) return 'A sequence name has to be one word: try {seq ' + name.replace(/\s+/g, '') + ': ' + (tail || 'TODO | DONE') + '}.';
+    if (!tail) return 'A sequence named "' + name + '" needs its states: try {seq ' + name + ': TODO | DONE}.';
+    if (tail.indexOf(',') >= 0) {
+      const fixed = tail.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      return 'States are separated by spaces, not commas: try {seq ' + name + ': ' + fixed + '}.';
+    }
+    if (tail.indexOf('|') < 0) return 'A sequence needs a | to mark where done begins: try {seq ' + name + ': ' + tail.replace(/\s+(\S+)$/, ' | $1') + '}.';
+    return 'This sequence could not be read. States are separated by spaces and a | marks where done begins: try {seq ' + name + ': TODO | DONE}.';
   }
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
     return 'No rule or variable named "' + body + '" is defined. Type {rule ' + body + ': option | option} to make it a rule, {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
@@ -22957,6 +22978,10 @@ function promoteBraceBodyIn(node, body) {
     (node.seq ||= []).push(rec);
     return `[[seq:${rec.key}]]`;
   }
+  // Keyword committed but the tail did not parse: stay literal so the cue can explain it. Without
+  // this the body falls through to the alternation branch far below, which happily reads
+  // `seq Growth: Seed, Sprout | Bloom` as two alternatives and freezes a nonsense pill.
+  if (/^seq\s/i.test(body)) return null;
   // typed NAMED grammar declaration: {rule tavern: The {adj} {noun}} → a registered [[grammar:KEY]]
   // pill callable as {tavern} anywhere in the document. The typed twin of the @/Grammar dialog, and
   // the last of the three declaration forms to get one ({name := expr} and {seq Name: …} already

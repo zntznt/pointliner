@@ -5796,6 +5796,53 @@ test('classifyBraceBody / braceTypeLabel — a typed seq decl is a valid seq art
   assert.equal(c.classifyBraceBody('seq Flow: BACKLOG DOING | SHIPPED', {}, {}), 'artifact');
   assert.deepEqual(host(c.braceTypeLabel('seq Flow: BACKLOG DOING | SHIPPED', {}, {})), ['seq', null]);
 });
+
+// The separators are the whole difficulty with a sequence: states split on SPACES, bands on `|`.
+// Get either wrong and the old behavior was one of two silent failures, depending on whether the
+// tail happened to contain a pipe.
+const SEQ_BAD = [
+  ['seq Growth: Seed, Sprout | Bloom', /spaces, not commas/],        // the reported case
+  ['seq Growth: Seed, Sprout, Bud | Bloom', /spaces, not commas/],
+  ['seq Flow: TODO DONE', /\| to mark where done begins/],
+  ['seq : A | B', /needs a name before the colon/],
+  ['seq A B: X | Y', /name has to be one word/],
+  ['seq Flow:', /needs its states/],
+];
+
+test('a malformed {seq …} is INVALID, not a nonsense pill and not silence', () => {
+  for (const [body] of SEQ_BAD) {
+    // Before: a tail WITH a pipe reached the alternation branch and promoted to a grammar pill whose
+    // two alternatives were the literal strings "seq Growth: Seed, Sprout" and "Bloom" (a coin flip
+    // that re-rolled on click). A tail WITHOUT a pipe classified 'literal' and said nothing at all.
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'invalid', `${body} must classify invalid`);
+    const n = { id: 'n', text: '', grammar: [], seq: [], dice: [], math: [], vars: [], est: [], markov: [], children: [] };
+    assert.equal(c.promoteBraceBody(n, body), null, `${body} must not promote`);
+    assert.equal((n.grammar || []).length, 0, `${body} must not leave a grammar pill`);
+    assert.equal((n.seq || []).length, 0, `${body} must not leave a seq record`);
+  }
+  // the keyword-commit must not over-reach past its own keyword
+  assert.equal(c.classifyBraceBody('shuffle: a | b', {}, {}), 'artifact', 'a deck is untouched');
+  assert.equal(c.classifyBraceBody('sequence of events', {}, {}), 'literal', 'prose that merely starts with seq- is prose');
+  assert.equal(c.classifyBraceBody('seq Flow: A B | C', {}, {}), 'artifact', 'a valid declaration still promotes');
+});
+
+test('the {seq …} cue names the separator, and every form it suggests really parses', () => {
+  for (const [body, shape] of SEQ_BAD) {
+    const why = c.braceAttemptReason(body, {}, {});
+    assert.match(why, shape, `${body}: the cue names the actual fault`);
+    assert.ok(!why.includes('—'), `no em dash in the cue for ${body}`);
+    // The PR-3 lesson: advice pinned by string match alone is how false copy survives. Feed the
+    // suggested form back through the real parser instead.
+    const sug = (why.match(/\{seq ([^}]+)\}/) || [])[1];
+    assert.ok(sug, `${body}: the cue hands back a concrete form`);
+    assert.ok(c.seqDeclParts('seq ' + sug), `${body}: the suggested {seq ${sug}} must actually parse`);
+  }
+  // the comma fix is mechanical, so the suggestion should be the user's own line, corrected
+  assert.match(c.braceAttemptReason('seq Growth: Seed, Sprout | Bloom', {}, {}), /\{seq Growth: Seed Sprout \| Bloom\}/);
+  const fixed = c.seqDeclParts('seq Growth: Seed Sprout | Bloom');
+  assert.deepEqual(host(fixed.states), ['SEED', 'SPROUT', 'BLOOM'], 'and applying it gives the states the user meant');
+  assert.equal(fixed.doneFrom, 2, 'with the band split where they put the bar');
+});
 test('promoteBraceBody — {seq Name: …} builds a named [[seq:KEY]] record, registered doc-wide', () => {
   const node = { id: 'n1', text: '', seq: [], children: [] };
   const tok = c.promoteBraceBody(node, 'seq Flow: BACKLOG DOING | SHIPPED');
