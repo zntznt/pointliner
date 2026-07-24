@@ -14731,6 +14731,20 @@ test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill 
   assert.ok(_src.includes('body.v-lean #sc-toggle{display:none}'), 'the floating help pill must hide in Lean, like .bm-help');
 });
 
+test('spellcheck policy: prose surfaces underline, syntax/query/data fields do not (src pins)', () => {
+  // PROSE editors spellcheck ON: the point editor (off only for a base/table point, which holds
+  // data), the footnote editor, the per-point note, and the capture/journal/chronicle quick-adds.
+  assert.ok(_src.includes('content.spellcheck = !isTable'), 'the point editor spellchecks prose, not a base/table point (data)');
+  assert.ok(_src.includes('contentEl.spellcheck = true'), 'the footnote editor (prose) must spellcheck');
+  assert.ok(_src.includes('noteEl.spellcheck = true'), 'the per-point note (prose) must spellcheck explicitly, not by inherited default');
+  assert.ok((_src.match(/input\.spellcheck = true/g) || []).length >= 3, 'the capture / journal / chronicle prose inputs spellcheck');
+  // SYNTAX / QUERY / NAME fields stay OFF (a red underline on hp, gp, {= …} or is:todo is noise).
+  assert.ok(/id="search-box"[^>]*spellcheck="false"/.test(_src), 'the search box (a query) does not spellcheck');
+  assert.ok(/id="file-name"[^>]*spellcheck="false"/.test(_src), 'the file name does not spellcheck');
+  assert.ok(_src.includes('exprInp.spellcheck = false'), 'a math/expression field does not spellcheck');
+  assert.ok(_src.includes('rulesIn.spellcheck = false') && _src.includes('varsIn.spellcheck = false'), 'grammar/variable syntax fields do not spellcheck');
+});
+
 // item 3 (modes batch): the search-hint card opens only with content (never an empty rectangle),
 // is gone entirely in Lean, and its example chips are clickable in Guided.
 test('modes batch — search-hint tiered display + clickable examples', () => {
