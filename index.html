@@ -3758,6 +3758,11 @@ function parseMeter(body) {
     if (/^[A-Za-z][\w-]*$/.test(t)) return { kind: 'prop', v: t };
     const vm = t.match(/^\{([A-Za-z][\w.]*)\}$/);
     if (vm) return { kind: 'var', v: vm[1] };
+    // #H: a math expression (a function-call shape) is a live value — a writing goal
+    // {meter: words(subtree)/1000}, a burn-down {meter: count(is:todo -is:done)/count(…)}, etc.
+    // Resolved via evalMath + the aggregate engine in resolveMeter (reuse, no new syntax). The
+    // function-call gate keeps hp/{goal}/1000 in their own kinds and leaves prose (no parens) null.
+    if (/[A-Za-z_]\w*\s*\(/.test(t)) return { kind: 'expr', v: t };
     return null;
   };
   const slash = spec.indexOf('/');
@@ -3781,6 +3786,16 @@ function resolveMeter(node, parsed) {
     if (r.kind === 'lit') return r.v;
     if (r.kind === 'prop') return childPropNumber(node, r.v);
     if (r.kind === 'var') { const vrs = collectVars(); const v = vrs[r.v]; return Number(v?.value ?? v?.rolled ?? NaN); }
+    if (r.kind === 'expr') {
+      // A live math expression against THIS point's scope: the same aggregate path a {= words(subtree)}
+      // pill uses. Guarded so a bad expr or a bare preview node degrades to NaN (→ the {meter?} marker),
+      // never a throw.
+      try {
+        const vrs = collectVars();
+        const n = evalMath(expandAggExpr(r.v, node, vrs), resolveNodeScope(node, ancestorsOf(node), vrs));
+        return n == null ? NaN : n;
+      } catch (_) { return NaN; }
+    }
     return null;
   };
   const value = val(parsed.value), max = val(parsed.max);
@@ -6777,6 +6792,7 @@ function mdInline(s) {
           .filter(x => x.kind === 'prop' && !Number.isFinite(childPropNumber(cookieNode, x.v)))
           .map(x => x.v);
         if (missing.length) tip = `Add a numeric ${missing.join(' and ')} property to this point (bullet menu, Add property).`;
+        else if ([parsed.value, parsed.max].some(x => x.kind === 'expr')) tip = 'Check the expression, like {meter: words(subtree)/1000}.';
       }
       return stash(`<span class="meter meter-bad" tabindex="-1" title="${escQ(tip)}" aria-label="Meter unresolved. ${escQ(tip)}">{meter?}</span>`);
     }
@@ -8246,7 +8262,7 @@ const INSERT_CMDS = [
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
   { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', keys:['tension','segment','pie','timer'], label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
-  { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: 5/5 hearts}', section:'Trackers' },
+  { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health','goal','words','target'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Either side can be a live calculation, so {meter: words(subtree)/1000} is a writing goal that fills as you write. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: words(subtree)/1000}  ·  {meter: 5/5 hearts}', section:'Trackers' },
   // Insert — basic inline elements
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  keys:['fn'], label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      keys:['img','picture','photo'], label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
@@ -33203,11 +33219,12 @@ const GUIDE = [
     ] },
   { id:'meter', cat:'todos', covers:['meter'],
     title:'Meters',
-    body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change.\n\nYou can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row.\n\nIf a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
+    body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change.\n\nYou can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row.\n\nEither side can also be a live calculation, so a meter doubles as a goal that fills as you work. Write {meter: words(subtree)/1000} under a point and the bar tracks your word count toward a 1,000 word target, growing as you write beneath it; {meter: sum(cost)/budget} watches spending against a budget. Any math the point can compute works here.\n\nIf a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
     related:['progress','clock','math','variables','rollups'],
     examples:[
       { syn:'{meter: hp/hpmax}', desc:'a bar of one property over another' },
       { syn:'{meter: hp/20}',    desc:'a fixed maximum' },
+      { syn:'{meter: words(subtree)/1000}', desc:'a writing goal: the bar fills as you write beneath the point' },
       { syn:'{meter: hp/5 hearts}', desc:'a row of icons (dots, boxes, hearts, skulls, stars, shields, droplets)' },
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
@@ -34231,13 +34248,14 @@ const BUILDER_FORMS = {
     { name:'from', label:'From unit', type:'text', required:true, placeholder:'km' },
     { name:'to', label:'To unit', type:'text', required:true, placeholder:'mi' },
   ], insert: vals => '{= convert(' + (vals.amount || '0') + ', ' + String(vals.from).trim() + ', ' + String(vals.to).trim() + ')}' },
-  // @meter: value/max (each a literal, a child-property name, or a {var} ref) + a style. max blank →
-  // out of 100. Style is a SELECT, not free text: an unknown trailing word invalidates the whole
-  // meter (parseMeter → null → {meter?}), so it must be constrained. Surfaces the prop/var-backed
-  // forms and the seven icon styles that were syntax-only.
+  // @meter: value/max (each a literal, a child-property name, a {var} ref, or a live expression like
+  // words(subtree)) + a style. max blank → out of 100. Style is a SELECT, not free text: an unknown
+  // trailing word invalidates the whole meter (parseMeter → null → {meter?}), so it must be
+  // constrained. Surfaces the prop/var-backed forms, the writing-goal expression form, and the seven
+  // icon styles that were syntax-only.
   'meter': { fields: [
-    { name:'value', label:'Value', type:'text', required:true, placeholder:'8 or hp' },
-    { name:'max', label:'Max (blank = out of 100)', type:'text', placeholder:'12 or hpmax' },
+    { name:'value', label:'Value', type:'text', required:true, placeholder:'8, hp, or words(subtree)' },
+    { name:'max', label:'Max (blank = out of 100)', type:'text', placeholder:'12, hpmax, or a goal like 1000' },
     { name:'style', label:'Style', type:'select', options:['bar','dots','boxes','hearts','skulls','stars','shields','droplets'] },
   ], insert: vals => {
     const v = String(vals.value).trim();
