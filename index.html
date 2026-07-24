@@ -16553,6 +16553,7 @@ function exitEdit(content, node) {
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   maybeNudgeFirstPill(); // #H: greet the user's first self-authored pill once (reads _promotedLit from the promote above)
+  maybeNudgeField(node); // a bare "cost: 120" tail is a beginner reaching for a field; teach /prop once (never rewrites text)
   warnVarDeclRipple(node, declsBefore, prevText); // announce value changes / confirm orphaning renames
   // A paragraph never re-derives: `# `/`> `/`- [ ]` on ANY line (the first included) is
   // markdown rendered inside the prose, not a change of what the point IS (see
@@ -35444,6 +35445,19 @@ function maybeNudgeRoll() {
 function maybeNudgeFirstPill() {
   if (_promotedLit.size === 0) return;   // no real pill token created this exit
   fireNudge('firstpill', 'Nice, that is a live pill. Click it and it answers again, or click the text beside it to edit.');
+}
+// Trigger 4: a point whose text ENDS in a bare `word: number` (e.g. "Design mockups cost: 120") is a
+// beginner reaching for a trackable field, but a colon in prose is not a property today, so nothing
+// happens. Teach the door once. Pure `fieldNudgeKey` (Node-testable): the key must start with a letter
+// and the value be a bare number at end, so prose ("Note: buy milk") and times ("12:30") never fire.
+function fieldNudgeKey(text) {
+  const m = /(?:^|\s)([a-z][\w-]*)\s*:\s*(-?\d+(?:\.\d+)?)\s*$/i.exec(String(text || ''));
+  return m ? { key: m[1], val: m[2] } : null;
+}
+function maybeNudgeField(node) {
+  if (!isGuided() || nudgeSeen('field')) return;
+  const f = fieldNudgeKey(node.text);
+  if (f) fireNudge('field', `Tip: to total or check ${f.key} later, add it as a number: type /prop:${f.key}=${f.val}, or use the point menu, Add property.`);
 }
 let _autosaveDeferred = false;   // an autosave was requested before reconcile finished
 // The localStorage crash-buffer write. With OPFS as the durable store, hitting the
