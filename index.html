@@ -28086,13 +28086,23 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
 
 async function newFile() {
   if (workspaceDir) { await newWorkspaceDoc(); return; }   // folder connected → the new doc lands in the notebook (brief #5b)
-  // UXP-103: only confirm on a genuine loss risk. In pure default mode autosave keeps the doc
-  // safe, so a "discard permanently" prompt is a lie; with a file handle the in-memory edits to
-  // the old file really would be abandoned, so keep the confirm (worded to match the real risk).
-  if (unsavedToDisk() && !await openConfirmDialog({
-    title: 'Discard unsaved changes?',
-    message: 'Your current document has changes not saved to its file. Starting a new one will discard them permanently.',
-    confirmLabel: 'Discard', cancelLabel: 'Keep editing',
+  // Confirm whenever there is a document to lose, not only when a FILE would lose edits.
+  //
+  // This used to gate on unsavedToDisk(), whose UXP-103 premise was "in pure default mode autosave
+  // keeps the doc safe, so a discard prompt is a lie". New is precisely what falsifies that premise:
+  // adoptDoc mints a fresh root.docId, the next autosave overwrites AUTOSAVE_KEY in place, and the
+  // prev snapshot is keyed by the OUTGOING docId so earlierVersionForCurrentDoc can never find it
+  // again. Default mode was the case that needed the prompt most, and it was the one case skipping it.
+  //
+  // The gate is docIsBlank, not `dirty`: a document restored from autosave and not yet touched is
+  // clean, and New destroys it just the same. A genuinely blank canvas still gets no prompt, so a
+  // first-run New stays frictionless.
+  if (!docIsBlank(root) && !await openConfirmDialog({
+    title: 'Start a new document?',
+    message: diskTargetOpen()
+      ? 'Your current document has changes not saved to its file. Starting a new one will discard them permanently.'
+      : 'Your current document will be replaced. You can bring it back with File, then Restore earlier version.',
+    confirmLabel: 'New document', cancelLabel: 'Keep editing',
   })) return;
   // Prompt for a name up front, so a new outline has an identity from the start.
   openInsertDialog({
@@ -28104,9 +28114,24 @@ async function newFile() {
         hint: 'You can rename it later from the menu header.' },
     ],
     validate: () => true,   // blank is fine → falls back to a default name
-    onSubmit: v => {
+    onSubmit: async v => {
       const fname = v.name && v.name.trim() ? toFileName(v.name) : 'unsaved';
+      // Leave the outgoing document a restore point. Order matters twice over:
+      //   · flush first, so the captured payload is the CURRENT document and not one up to
+      //     800ms stale (scheduleAutosave's debounce);
+      //   · capture BEFORE adoptDoc, whose own scheduleAutosave overwrites AUTOSAVE_KEY in place;
+      //   · stash AFTER adoptDoc, so root.docId is the new identity, and REKEY the payload to it.
+      // Without the rekey, earlierVersionForCurrentDoc's mis-keyed-entry guard rejects the entry
+      // (it re-checks the embedded docId against the store key). This is the reopenWorkspaceDoc
+      // unknownIdentity precedent: the discarded document becomes THIS document's earlier version.
+      flushPendingAutosave();
+      let outgoing = null;
+      try { outgoing = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
       adoptDoc(mkRoot(), { fileName: fname });
+      if (outgoing) {
+        const rekeyed = rekeyPayloadDocId(outgoing, root.docId);
+        if (rekeyed) await stashPayloadAsPrev(rekeyed, root.docId);
+      }
     },
   });
 }

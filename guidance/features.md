@@ -57,6 +57,17 @@ Implemented:
   cannot match a body containing braces — the cue was unreachable, not merely unset (this also
   closes the same gap for `{= junk {2d6} +}`, which the anti-shred comment already assumed was
   flagged). The flagged span is stashed so the innermost pass cannot double-mark its parts.
+- **File → New keeps a restore point** (`newFile`): New replaces the document on screen, and in
+  pure default mode that used to be unrecoverable — the confirm was gated on `unsavedToDisk()`
+  (false in default mode, on the premise "autosave keeps the doc safe"), `adoptDoc` mints a fresh
+  `root.docId`, and the prev snapshot is keyed by the OUTGOING docId, so
+  `earlierVersionForCurrentDoc` could never find it. Now: the confirm gates on `docIsBlank(root)`
+  (a doc restored from autosave and untouched is `dirty === false` yet just as destroyable; a truly
+  blank canvas still prompts for nothing), and the outgoing payload is flushed, captured before
+  `adoptDoc`, then stashed after it via
+  `stashPayloadAsPrev(rekeyPayloadDocId(payload, root.docId), root.docId)` — the
+  `reopenWorkspaceDoc` unknownIdentity precedent. The rekey is load-bearing: without it the
+  mis-keyed-entry guard rejects the entry.
 - **Typed named rule** — `{rule Name: a | b}` (`ruleDeclParts`): the typed twin of the
   `@grammar` dialog and the last declaration form to get one (`{name := expr}` and
   `{seq Name: …}` already had theirs). Promotes to the dialog's own record with

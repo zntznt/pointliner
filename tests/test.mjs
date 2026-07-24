@@ -13055,6 +13055,66 @@ test('Restore earlier version is doc-scoped: only the current document\'s snapsh
   assert.ok(rest.includes('earlierVersionForCurrentDoc()'), 'restore must apply only the current doc\'s snapshot');
 });
 
+// File → New used to be unrecoverable data loss. Three facts made it so: the confirm was gated on
+// unsavedToDisk(), which is FALSE in pure default mode on the premise "autosave keeps the doc safe";
+// adoptDoc mints a fresh root.docId; and the prev snapshot is keyed by the OUTGOING docId, so
+// earlierVersionForCurrentDoc could never find it again. Measured before the fix: autosave
+// overwritten in place 5665 → 1002 bytes, one localStorage key, IndexedDB kv empty, and Restore
+// hidden in every state, answering "No earlier version to restore".
+test('File → New leaves the outgoing document a restore point (data-loss regression)', () => {
+  const nf = fnBody(_src, 'newFile');
+  // (a) the confirm fires on any document worth losing, not only a file-bound one. docIsBlank, not
+  // `dirty`: a doc restored from autosave and untouched is clean, and New destroys it just the same.
+  assert.ok(/if \(!docIsBlank\(root\) && !await openConfirmDialog\(/.test(nf),
+    'New must confirm whenever the current document is not blank');
+  assert.ok(!/if \(unsavedToDisk\(\) && !await openConfirmDialog/.test(nf),
+    'the old unsavedToDisk() gate (false in default mode) must be gone');
+  assert.ok(/Restore earlier version/.test(nf), 'the default-mode message names the recovery door');
+  // (b) the stash, in the one order that works.
+  const iFlush = nf.indexOf('flushPendingAutosave()');
+  const iGet   = nf.indexOf('localStorage.getItem(AUTOSAVE_KEY)');
+  const iAdopt = nf.indexOf('adoptDoc(mkRoot()');
+  const iStash = nf.indexOf('stashPayloadAsPrev(');
+  assert.ok(iFlush > -1 && iGet > -1 && iAdopt > -1 && iStash > -1, 'all four steps present');
+  assert.ok(iFlush < iGet, 'flush BEFORE capture, or the payload is up to 800ms stale');
+  assert.ok(iGet < iAdopt, 'capture BEFORE adoptDoc, whose scheduleAutosave overwrites AUTOSAVE_KEY');
+  assert.ok(iAdopt < iStash, 'stash AFTER adoptDoc, so root.docId is the new identity');
+  assert.ok(/rekeyPayloadDocId\(outgoing, root\.docId\)/.test(nf),
+    'the payload must be rekeyed to the new docId, or the mis-keyed-entry guard rejects it');
+});
+
+test('rekeyPayloadDocId + the prev store make an adopted document restorable', () => {
+  // The pure half of the fix, end to end: a payload from the OLD document, rekeyed to the NEW id,
+  // is what earlierVersionForCurrentDoc's guard will accept.
+  const oldPayload = JSON.stringify({ root: { docId: 'oldid', children: [{ text: 'Hippocampus' }] }, fileName: 'notes' });
+  const rekeyed = c.rekeyPayloadDocId(oldPayload, 'newid');
+  assert.ok(rekeyed, 'a well-formed payload rekeys');
+  const parsed = JSON.parse(rekeyed);
+  assert.equal(parsed.root.docId, 'newid', 'the embedded id becomes the new identity');
+  assert.equal(parsed.root.children[0].text, 'Hippocampus', 'the content is preserved verbatim');
+  // the guard earlierVersionForCurrentDoc applies: store key must equal the embedded id
+  const store = { newid: { prev: rekeyed, at: 1 } };
+  assert.equal(JSON.parse(store.newid.prev).root.docId, 'newid', 'entry key and embedded id agree');
+  // and without the rekey it would be rejected
+  const unkeyed = JSON.parse(oldPayload).root.docId;
+  assert.notEqual(unkeyed, 'newid', 'an unrekeyed payload carries the OLD id, which the guard rejects');
+  // malformed input fails closed rather than corrupting the store
+  assert.equal(c.rekeyPayloadDocId('not json', 'newid'), null);
+  assert.equal(c.rekeyPayloadDocId(oldPayload, ''), null);
+});
+
+test('docIsBlank decides whether New needs to confirm', () => {
+  // a genuinely blank canvas must NOT prompt, so a first-run New stays frictionless
+  assert.equal(c.docIsBlank({ children: [{ text: '', children: [] }] }), true);
+  assert.equal(c.docIsBlank({ children: [] }), true);
+  // anything worth losing must prompt
+  assert.equal(c.docIsBlank({ children: [{ text: 'Hippocampus', children: [] }] }), false);
+  assert.equal(c.docIsBlank({ children: [{ text: '', note: 'a note', children: [] }] }), false);
+  assert.equal(c.docIsBlank({ children: [{ text: '', props: [{ key: 'cost', val: '5' }], children: [] }] }), false);
+  assert.equal(c.docIsBlank({ children: [{ text: '', children: [{ text: 'nested', children: [] }] }] }), false,
+    'content nested anywhere counts');
+});
+
 // The prev-version store is now PER-DOC (a { [docId]: {prev, at} } map), so switching documents no
 // longer discards a doc's restore point. evictPrevVersions bounds it: keep the newest N by `at`, then
 // drop oldest until under a byte cap, always keeping at least the newest one.
