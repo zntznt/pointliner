@@ -9304,6 +9304,13 @@ test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger
   assert.ok(_src.includes('maybeNudgeSum(node, p.key)'), 'props-dialog save must offer the sum nudge');
   assert.ok(_src.includes('maybeNudgeSum(cur, ps.key)'), 'the /prop slash must offer the sum nudge');
   assert.ok(_src.includes('maybeNudgeRoll()'), 'a tag edit must offer the roll nudge');
+  // Trigger 3 (#H): the first self-authored pill is greeted once. Guarded on a real pill token
+  // produced this exit (_promotedLit), and wired into exitEdit right after the promote pass.
+  const mfp = fnBody(_src, 'maybeNudgeFirstPill');
+  assert.ok(mfp.includes('_promotedLit.size === 0') && mfp.includes("fireNudge('firstpill', 'Nice, that is a live pill."),
+    'maybeNudgeFirstPill must guard on a produced pill token, then fire the firstpill nudge');
+  assert.match(_src, /promoteInlineShorthand\(node\);[\s\S]{0,120}?maybeNudgeFirstPill\(\);/,
+    'the first-pill nudge must run in exitEdit right after the promote pass (so _promotedLit is fresh)');
 });
 
 test('#585 pack pick vars: editor wiring (parse classifies, save rolls, seeds pickVals) (src pins)', () => {

@@ -16517,6 +16517,7 @@ function exitEdit(content, node) {
   const declsBefore = typedVarDeclSnapshot(node); // for the ripple warning (O1a)
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
+  maybeNudgeFirstPill(); // #H: greet the user's first self-authored pill once (reads _promotedLit from the promote above)
   warnVarDeclRipple(node, declsBefore, prevText); // announce value changes / confirm orphaning renames
   // A paragraph never re-derives: `# `/`> `/`- [ ]` on ANY line (the first included) is
   // markdown rendered inside the prose, not a change of what the point IS (see
@@ -35379,6 +35380,14 @@ function maybeNudgeRoll() {
   if (!isGuided() || nudgeSeen('roll')) return;
   const tag = nudgeRollTag(collectTags());
   if (tag) fireNudge('roll', `Tip: {roll: #${tag}} draws a random one of your #${tag} points, a live oracle from your own notes. See the Roll on your own outline guide.`);
+}
+// Trigger 3: the first time a user's OWN typing turns {…} into a live pill, welcome it once.
+// Called from exitEdit right after the promote pass, gated on a real pill token being produced
+// this exit (_promotedLit is empty for a chip-only or no-op pass). Loads/examples never reach
+// exitEdit, so this greets genuine authoring, not the first-run tour or an inserted starter.
+function maybeNudgeFirstPill() {
+  if (_promotedLit.size === 0) return;   // no real pill token created this exit
+  fireNudge('firstpill', 'Nice, that is a live pill. Click it and it answers again, or click the text beside it to edit.');
 }
 let _autosaveDeferred = false;   // an autosave was requested before reconcile finished
 // The localStorage crash-buffer write. With OPFS as the durable store, hitting the
