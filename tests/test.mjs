@@ -9652,6 +9652,11 @@ test('#648 parseMeter — the four forms, the trailing style word, and the non-m
   assert.deepEqual(host(c.parseMeter('meter: hp/5 hearts')), { value: { kind: 'prop', v: 'hp' }, max: { kind: 'lit', v: 5 }, style: 'hearts' });
   assert.equal(c.parseMeter('foo: bar'), null, 'not a meter body');
   assert.equal(c.parseMeter('meter: '), null, 'empty spec');
+  // #H: a math expression (a function-call shape) is a live value — a writing goal or a burn-down.
+  assert.deepEqual(host(c.parseMeter('meter: words(subtree)/1000')), { value: { kind: 'expr', v: 'words(subtree)' }, max: { kind: 'lit', v: 1000 }, style: 'bar' });
+  assert.deepEqual(host(c.parseMeter('meter: sum(cost)/{budget}')), { value: { kind: 'expr', v: 'sum(cost)' }, max: { kind: 'var', v: 'budget' }, style: 'bar' }, 'expr value over a {var} max');
+  assert.equal(c.parseMeter('meter: hello world/5'), null, 'prose (no function-call shape) is still not a meter');
+  assert.equal(c.parseMeter('meter: hp/hpmax').value.kind, 'prop', 'a bare name stays a prop, never an expr');
 });
 
 test('agent-review: an unresolved meter names the missing property in its tooltip/aria (src pin)', () => {
@@ -9674,6 +9679,16 @@ test('#648 resolveMeter — reads props off the node; null when a side cannot re
   assert.deepEqual(host(c.resolveMeter(n, c.parseMeter('meter: hp/30'))), { value: 12, max: 30 });
   assert.equal(c.resolveMeter(n, c.parseMeter('meter: missing/hpmax')), null, 'unknown prop → null');
   assert.equal(c.resolveMeter(n, c.parseMeter('meter: hp/0')), null, 'max <= 0 → null');
+});
+test('#H resolveMeter — a words() goal resolves to a live count that grows as points are added', () => {
+  const goal = c.mkNode('Novel');
+  goal.children.push(c.mkNode('one two three'), c.mkNode('four five'));
+  const r = host(c.resolveMeter(goal, c.parseMeter('meter: words(subtree)/20')));
+  assert.ok(r && r.max === 20 && Number.isFinite(r.value) && r.value > 0, 'the words goal resolves to a live count');
+  const before = r.value;
+  goal.children.push(c.mkNode('six seven eight nine'));
+  assert.ok(c.resolveMeter(goal, c.parseMeter('meter: words(subtree)/20')).value > before, 'the value grows as words are added beneath the point');
+  assert.equal(c.resolveMeter(goal, c.parseMeter('meter: nope(x)/5')), null, 'a non-evaluable expression → null (the {meter?} marker path)');
 });
 test('#648 meterBar / formatMeter — filled = round(value/max*cells), clamped', () => {
   assert.equal(c.meterBar(8, 12), '███████░░░', '8/12 → 7 of 10 cells');

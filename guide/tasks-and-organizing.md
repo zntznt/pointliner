@@ -97,6 +97,11 @@ The bar updates live as the properties change. You can fix the maximum with a nu
 can be a plain number, so `{meter: 8/12}` draws a fixed bar. If a property is missing or is not a
 number, the meter shows a small `{meter?}` marker instead of a wrong bar.
 
+Either side can also be a live calculation, so a meter doubles as a goal. Write
+`{meter: words(subtree)/1000}` under a point and the bar tracks your word count toward a 1,000 word
+target, filling as you write beneath it; `{meter: sum(cost)/budget}` watches spending against a
+budget. Any math the point can compute works as a value or a max.
+
 Add a style word at the end for a row of icons instead of a bar:
 
 ```
