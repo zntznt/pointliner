@@ -172,7 +172,7 @@ export function loadCores() {
     'promoteCellShorthand', 'promoteLoadedShorthand',   // per-cell base promotion (PR C)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
-    'templateParts',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
+    'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
     'rollLogEntry', 'grammarLogSource',   // #918 roll-log line + grammar source label (pure)
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'renderPosVarMaps',   // #767 positional per-pill var maps
