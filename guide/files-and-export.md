@@ -13,6 +13,11 @@ type.
 To keep a file on disk that you own and can back up, press **`Ctrl/Cmd+S`**. Or connect a folder
 (see below) and the file updates on disk every time you make a change, with no manual step.
 
+**Starting a new document replaces the one on screen.** If the current document has anything in it,
+Pointliner asks first. The one it replaces is kept as a restore point: **File** then **Restore earlier
+version** brings it back. That is one snapshot, not a history, so save anything you want to keep
+properly (`Ctrl/Cmd+S`, or a connected folder).
+
 ## Working with a folder of documents
 
 Keep a whole library of documents in one folder on your computer and move between them the way you would
