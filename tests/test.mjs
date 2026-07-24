@@ -16457,10 +16457,13 @@ test('clock (#702) — SOURCE PIN: touch step-back is an IS_TOUCH long-press tha
     'the click handler advances only when no hold fired, and Shift+click stays the desktop step-back');
   assert.match(src, /if \(_clockLongPressed\) setTimeout\(\(\) => \{ _clockLongPressed = false; \}, 350\)/,
     'the flag self-clears after release, so a browser-suppressed trailing click cannot swallow the next tap');
-  // The touch step-back is invisible, so the first tap of a clock on touch teaches it in the moment
-  // via the fireNudge registry (Guided-only, once-ever). Pin the call so the hint cannot silently drop.
-  assert.match(src, /if \(clk && !_clockLongPressed && IS_TOUCH\) fireNudge\('clock-touch',/,
-    'a touch clock tap fires the one-time clock-touch nudge teaching the press-and-hold step-back');
+  // The touch step-back is invisible, so the first tap of a clock on touch teaches it in the moment.
+  // It fires on ANY touch device (a reachability gap, not a Guided-only teaching aid), once ever via
+  // the shared nudge-seen registry. Pin the wiring so neither the gate nor the hint can silently drop.
+  assert.match(src, /if \(clk && !_clockLongPressed && IS_TOUCH && !nudgeSeen\('clock-touch'\)\) \{[\s\S]{0,220}?markNudgeSeen\('clock-touch'\);[\s\S]{0,220}?flashHint\('Tip: tap a clock to advance it/,
+    'a touch clock tap fires the once-ever clock hint on any touch device, marking it seen and flashing the tip');
+  assert.ok(!/fireNudge\('clock-touch'/.test(src),
+    'the clock hint must NOT route through fireNudge, which would re-gate it to Guided only');
 });
 
 // ── meter pills {meter: value/max} (#648) ──────────────────────────────────
