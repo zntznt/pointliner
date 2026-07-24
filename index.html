@@ -2622,7 +2622,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
       <div class="fm-cat" data-cat="tools">
         <div class="fm-cat-head">Tools</div>
         <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
-        <div class="cmd-item" id="btn-tags"><div class="cmd-icon" data-fa="fa-solid fa-tag" data-fb="#">#</div><div class="cmd-info"><span class="cmd-label">Browse tags &amp; properties</span><span class="cmd-desc">See every hashtag as a tree; pick one to filter the document</span></div></div>
+        <div class="cmd-item" id="btn-tags"><div class="cmd-icon" data-fa="fa-solid fa-tag" data-fb="#">#</div><div class="cmd-info"><span class="cmd-label">Browse tags</span><span class="cmd-desc">See every hashtag as a tree; pick one to filter the document</span></div></div>
         <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
              version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels-row). -->
         <div class="cmd-item" id="fm-levels-row">
@@ -32954,13 +32954,22 @@ const GUIDE = [
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
     body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.\n\nTo see all your tags at once, open File then Browse tags: it shows the whole tag hierarchy as a tree with a count on each, so nested tags sit under their parent. Type to filter, arrow to browse, and press Enter (or click) to filter the document to that tag.",
-    related:['search-ops','properties'],
+    related:['search-ops','properties','tags'],
     examples:[
       { syn:'#tag',         desc:'label a point by topic, status or project' },
       { syn:'#tag/subtag',  desc:'nest a tag; searching #tag also finds #tag/subtag' },
       { syn:'#',            desc:"opens a menu of tags you've used, with counts" },
       { syn:'click a tag',  desc:'filter to every point that shares it' },
       { syn:'File, Browse tags', desc:'see every tag as a tree; pick one to filter' },
+    ] },
+  { id:'tags', cat:'getting-around',
+    title:'Browse your tags',
+    body:"See every tag you have used in one place: round up all the points on a topic, jump to a project's open threads or spot when you have drifted into near-duplicate tags like `#todo` and `#todos`. Open File then Browse tags and the whole tag hierarchy appears as a tree with a count on each, so nested tags sit under their parent and you can see at a glance which topics carry the most points.\n\nType to filter the tree to matching tags, arrow to browse, and press Enter (or click) to filter the document to that tag. It applies the same filter a tag click does, reached from one place instead of hunting for the tag in your text.",
+    related:['hashtags','search-ops'],
+    examples:[
+      { syn:'File, Browse tags', desc:'open the tag tree with a count on each' },
+      { syn:'type to filter',    desc:'narrow the tree to matching tags' },
+      { syn:'Enter',             desc:'filter the document to the selected tag' },
     ] },
   { id:'refile', cat:'getting-around', covers:['refile'],
     title:'Refile a point',
@@ -33426,8 +33435,8 @@ const GUIDE = [
   // ── Compute (guide) ───────────────────────────────────────────────────────
   { id:'math', cat:'compute', covers:['math'],
     title:'Calculations',
-    body:"Build a budget where every line adds to a running sum, or track a project cost that recomputes when you change a rate, all live in the document. Write `{= expression}` and the result appears inline as a pill; change a variable the expression uses and it updates the moment you do.\n\nThe expression handles arithmetic and parentheses, powers with `^`, remainder with `%`, and percentages. Comparisons (`>`, `<`, `==`) return 1 or 0, and a ternary `a > b ? x : y` (or `if(a>b, x, y)`) picks between two results, so a pill can decide as well as compute. Constants `pi`, `e`, `tau` and `today` are built in, and any variable you have set is a name you can use.\n\nThis is the base calculator; three companions build on it. Named functions like `sqrt`, `round` and the unit conversions are on the functions page, dates are their own arithmetic (see calculating with dates), and a parent point can roll up its children with `sum`, `avg` or `count` (see roll up children). Every result stays a number, so pills, variables and rollups all compose.\n\nIf a pill's formula reads as clutter in your prose (a word count inside a heading, say), open it and check Show value only to render just the result; the formula comes back when you edit the pill.\n\nBig numbers group their thousands automatically, so a total reads `840,000`, not `840000`. For money or units, open the pill and set a format: Decimal places (2 for money), a Prefix (`$`) and a Suffix (` kg` or `%`), and it renders `$1,200.00` or `12 kg`. The format is display only, so the value still computes at full precision.",
-    related:['math-fns','math-dates','variables'],
+    body:"Build a budget where every line adds to a running sum, or track a project cost that recomputes when you change a rate, all live in the document. Write `{= expression}` and the result appears inline as a pill; change a variable the expression uses and it updates the moment you do.\n\nThe expression handles arithmetic and parentheses, powers with `^`, remainder with `%`, and percentages. Comparisons (`>`, `<`, `==`) return 1 or 0, and a ternary `a > b ? x : y` (or `if(a>b, x, y)`) picks between two results, so a pill can decide as well as compute. Constants `pi`, `e`, `tau` and `today` are built in, and any variable you have set is a name you can use.\n\nThis is the base calculator; three companions build on it. Named functions like `sqrt`, `round` and the unit conversions are on the functions page, dates are their own arithmetic (see calculating with dates), and a parent point can roll up its children with `sum`, `avg` or `count` (see roll up children). Every result stays a number, so pills, variables and rollups all compose.\n\nIf a pill's formula reads as clutter in your prose (a word count inside a heading, say), open it and check Show value only to render just the result; the formula comes back when you edit the pill.\n\nBig numbers group their thousands automatically, so a total reads `840,000`, not `840000`. To show a result as money, a measurement or a percentage, open the pill and set a prefix, a suffix or fixed decimals (see formatting numbers).",
+    related:['math-fns','math-dates','variables','number-format'],
     examples:[
       { syn:'{= 2 * (3 + 4)}',   desc:'arithmetic with parentheses' },
       { syn:'{= 2 ^ 10}',        desc:'powers (^) and remainder (%)' },
@@ -33436,6 +33445,15 @@ const GUIDE = [
       { syn:'{= if(stock>0, price, 0)}', desc:'another way to choose' },
       { syn:'{= 70000 * 12}',    desc:'big results group thousands: 840,000' },
       { syn:'{= pi * r ^ 2}',    desc:'constants: pi, e, tau, today' },
+    ] },
+  { id:'number-format', cat:'compute',
+    title:'Formatting numbers',
+    body:"Show a calculation as money, a measurement or a percentage instead of a bare number: render a budget line as `$1,200.00`, a weight as `12 kg` or a rate as `8%`. Open the pill and set a format below the expression: Decimal places (2 for money), a Prefix like `$` and a Suffix like ` kg` or `%`. A live preview shows the result as you type.\n\nBig numbers group their thousands on their own, so a total reads `840,000` with no setup. The format is display only, so the pill still computes at full precision and the value in your text stays plain; the formatting comes back the next time the pill renders. To hide the formula and show just the value, check Show value only in the same dialog.",
+    related:['math','units'],
+    examples:[
+      { syn:'Decimal places: 2, Prefix: $', desc:'money reads $1,200.00' },
+      { syn:'Suffix: kg',                   desc:'a measurement reads 12 kg' },
+      { syn:'Suffix: %',                    desc:'a rate reads 8%' },
     ] },
   { id:'units', cat:'compute', covers:['convert','units'],
     title:'Units & conversion',
