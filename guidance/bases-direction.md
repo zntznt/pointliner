@@ -106,6 +106,17 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   cell (no context menu — its column ops are authored-only) enters the grid on the same
   Shift+F10 key. **Still below the line:** image/title roles and any validation.
 
+  **Per-column number format shipped (ε, 2026-07-24).** A Number column can format as
+  money/measure/percent, not only group thousands: `node.colFmt` (OPML `_colfmt`) holds a
+  `parseNumFmt` record `{decimals?,prefix?,suffix?}|null` per column, index-aligned beside
+  `colW`/`colRole` (spliced at every column op, dropped-when-all-null, deep-cloned, torn down on
+  Convert to text). It reuses the `{= }` math pill's own `parseNumFmt`/`formatNumDisplay` cores —
+  no new format engine — via `mtSetColFmt` and a "Number format…" item in the Column menu's Show as
+  section (shown for a Number column, `openColFmtDialog` with the three math-pill fields). Applies to
+  the cells AND the Calculate footer total; display-only over the untouched cell string (§3a). This
+  is the FR-1 `number` role's "formatted" made per-column-configurable, not a typed field — no
+  constraint, editor gate, or validation, so the §0.5 fence is untouched.
+
   **Authored-base role inference (#922, 2026-07-19; agent-review productivity persona).** An
   authored base with no hand-set roles now INFERS status/date columns from its data, so Board and
   Calendar light up without the manual Column-menu trip a database/planner user expects to skip.

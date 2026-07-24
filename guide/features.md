@@ -181,6 +181,10 @@ Turn the document into a lightweight planner.
   state keywords become colored chips (your own sequences included), dates become urgency chips,
   numbers align and format. Status and Date are also **auto-detected** from the data, so Board and
   Calendar light up with nothing to set. ([tables](writing-and-formatting.md#tables))
+- **Column number format.** A Number column can read as money, a measurement or a percentage: choose
+  Number format in its menu and set decimal places, a prefix like `$` and a suffix like ` kg` or `%`.
+  Every cell and the Calculate total format alike; the stored value stays plain.
+  ([formatting numbers](writing-and-formatting.md#tables))
 - **Board view.** Show any base with a Status column as a kanban board: your sequence's states
   become the lanes, rows become cards, and moving a card writes the state back into the table.
   ([tables](writing-and-formatting.md#tables))
