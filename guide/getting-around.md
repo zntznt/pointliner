@@ -242,13 +242,18 @@ verbosity row, which shows the current level as a dot track). Three levels cycle
 - **Standard:** the beginner teaching text is off (no empty-point hints, no search cheatsheet, no pill
   tooltips), but the menus still open and the edit pencils still appear on hover. This is the "I know the
   commands, stop explaining, keep the conveniences" level.
-- **Lean:** the keyboard canvas. The `/` and `@` menus stop popping up; instead a small one-line tip shows
-  the command your typing has matched, so you press `Enter` to insert it without a full menu. The edit
-  pencils are hidden until you focus a pill. Everything is still clickable and fully keyboard-operable, and
-  the top toolbar never changes.
+- **Lean:** the keyboard canvas, and a quiet reading surface. The `/` and `@` menus stop popping up;
+  instead a small one-line tip shows the command your typing has matched, so you press `Enter` to insert
+  it without a full menu. The edit pencils are hidden until you focus a pill, and the top toolbar slides
+  up out of the way, sliding back the moment you move your pointer to it or focus search (on a touch
+  screen it stays put). Everything is still clickable and fully keyboard-operable.
 
 Nothing is ever removed, only quieted, so you can move down as you get comfortable and back up any time.
 Your choice is remembered with the document.
+
+Because Lean pulls the chrome back to almost nothing, it doubles as a distraction-free reading mode:
+switch to Lean and, as long as you are not editing, the document reads like a clean page. There is no
+separate reading mode to find; this is it.
 
 ---
 

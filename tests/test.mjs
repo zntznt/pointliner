@@ -14729,6 +14729,12 @@ test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill 
   assert.ok(_src.includes("isDivider ? 'Section label…' : node.type === 'para' ? paraHint"), 'the Section label placeholder must survive (it names the field, not a helper)');
   // 5. agent-review: the floating help pill (#sc-toggle) follows .bm-help's own Lean-only-hides rule
   assert.ok(_src.includes('body.v-lean #sc-toggle{display:none}'), 'the floating help pill must hide in Lean, like .bm-help');
+  // 6. Lean is framed as the reading mode: its Settings-card desc names the reading surface (the toolbar
+  // recede + hidden chrome IS the distraction-free read; no separate reading mode, no new affordance).
+  assert.ok(/data-tier="lean"[\s\S]{0,200}?fm-choice-desc">A quiet reading surface:/.test(_src),
+    "the Lean tier's Settings-card description frames it as a reading surface");
+  assert.ok(/body\.v-lean #toolbar\{\s*transform:translateY/.test(_src),
+    'the Lean toolbar-recede that makes it a reading surface is present (the copy describes real behavior)');
 });
 
 test('spellcheck policy: prose surfaces underline, syntax/query/data fields do not (src pins)', () => {
