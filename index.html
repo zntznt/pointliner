@@ -916,6 +916,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .gr-result.gr-yes{background:color-mix(in srgb,var(--ok) 16%,transparent);border-radius:var(--r-xs);padding:0 4px}/* UXP-140: oracle Yes, a faint positive plate; ink stays --fg */
 .gr-result.gr-no{background:color-mix(in srgb,var(--muted) 16%,transparent);border-radius:var(--r-xs);padding:0 4px}/* UXP-140: oracle No, a muted plate (a No is not an error, so not --warn) */
 .gr-seq-end .gr-result{color:var(--muted);font-weight:400}
+.gr-result.gr-empty{color:var(--muted);font-weight:400;font-style:italic}/* a roll/cond that matched nothing: a muted "no match yet" instead of the raw {…?} marker */
 .gr-seq-last .gr-ico{color:var(--acc)}/* UXP-184: a shuffle deck's last card before it recycles — a whisper on the deck icon; the result ink is unchanged */
 .gr-edit{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;color:var(--muted);font-size:.72em;opacity:0;transition:opacity .12s,background .12s,color .12s;flex-shrink:0}
 .gr-roll:hover .gr-edit{opacity:.6}
@@ -16165,7 +16166,8 @@ function classifyBraceBody(body, rules, vars) {
   // map (mirrors resolveDottedVar). An unresolvable body does NOT claim — fall through to the
   // later sniffs, exactly like the resolveBrace branch, so it ends 'literal' the same way.
   if (dvp0 && resolveDottedVar(dvp0.segs, vars) != null) return 'artifact';
-  const diceish = DICE_SNIFF.test(body.replace(/\s/g, ''));             // {2d6}
+  const diceClean = body.replace(/\s/g, '');
+  const diceish = DICE_SNIFF.test(diceClean) || DICE_ATTEMPT.test(diceClean);   // {2d6}, or a faceless {2d}
   if (diceish && parseDice(body, vars)) return 'artifact';
   if (estParts(body, vars)) return 'artifact';                         // {5 to 10} / {lo to hi}
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
@@ -16235,7 +16237,11 @@ function braceAttemptReason(body, rules, vars) {
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
     return 'No rule or variable named "' + body + '" is defined. Add a point like "' + body + ': option | option" to make it a rule, write {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
   }
-  if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {                      // {2d6x} — dice-looking
+  const diceClean = body.replace(/\s/g, '');
+  if (DICE_ATTEMPT.test(diceClean)) {                                  // {2d} — a die with no sides
+    return 'This looks like a dice roll but is missing its number of sides. Try a form like 2d6 or d20.';
+  }
+  if (DICE_SNIFF.test(diceClean)) {                                    // {2d6x} — dice-looking
     return 'This looks like a dice roll but could not be read. Try a form like 2d6 or d20+3.';
   }
   return 'This looks like a pill but could not be created. Check the syntax, or wrap it in backticks to keep it as text.';
@@ -20073,6 +20079,11 @@ function migrateRolltables(n) {
 // Pure: no DOM. Tested standalone in Node (see working notes).
 
 const DICE_SNIFF = /^[+-]?\d*d[0-9Ff]/i;
+// A die STARTED but missing its number of sides: {2d}, {2d+3}, {10d}. The `d` must be followed by
+// end-of-body or a +/- modifier, so prose like {2days}/{2dogs} (a letter after d) stays literal and
+// a valid/other-broken die ({2d6}, {2d6x}) is left to DICE_SNIFF. Used to flag the faceless attempt
+// as an ATTEMPT (a .brace-attempt cue) instead of the old silent plain-text fall-through.
+const DICE_ATTEMPT = /^[+-]?\d+d(?=$|[+\-])/i;
 
 // Split `str` on top-level `sep`, ignoring separators nested inside {...}.
 function splitTopLevel(str, sep) {
@@ -22257,12 +22268,19 @@ function renderGrammarPill(key, g) {
   // pill rules) plus the title/aria suffix, so AT hears what sighted users see (P3).
   // The frozen result itself is untouched — display-layer only.
   const stale = depsChanged(g.deps, collectVars());
-  const cta = stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate';
+  // resolveBrace returns a `{…?}` marker when a roll/cond/mod resolves to nothing (its P4 "visible
+  // empty" convention). Shown raw it reads as cryptic jargon to a beginner ({roll: #idea?}); when the
+  // WHOLE result is that marker, show a muted human placeholder + an explanatory tip instead. Display
+  // only: g.result and the unfold-to-source path are untouched, so a re-roll once points exist works.
+  const emptyMark = /^\{[^{}]*\?\}$/.test(g.result);
+  const cta = emptyMark ? 'Nothing matched yet. Click to try again, or add points that fit'
+            : stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate';
+  const shownResult = emptyMark ? 'no match yet' : g.result;
   return `<span class="gr-roll${stale ? ' gr-stale' : ''}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${cta}` : cta}"`
-    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(g.result)}. ${cta}">`
+    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(shownResult)}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
-    + `<span class="gr-result${valence}">${escHtml(g.result)}</span>`
+    + `<span class="gr-result${valence}${emptyMark ? ' gr-empty' : ''}">${escHtml(shownResult)}</span>`
     + `<span class="gr-edit" role="button" tabindex="-1" aria-label="Edit grammar" title="Edit grammar"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
