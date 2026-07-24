@@ -14694,7 +14694,7 @@ test('DIAL: LEAN is the keyboard canvas — blind menu shows a one-line match ti
 test('first-run atom: the entry hint and the tour intro lead with a live pill (IA-2)', () => {
   // item 2 (modes batch): the Guided entry cue is the owner's simpler four-move wording; it still
   // cues the { pill atom (no longer spelled out as {2d6}; the tour intro below still hands that over).
-  assert.ok(_src.includes("isGuided() ? 'Write, format with /, insert with @, or compute with {'"),
+  assert.ok(_src.includes("isGuided() ? 'Write, format with /, insert with @, or make a live pill with {'"),
     'the Guided entry cue is the simpler four-move wording that still cues {');
   // the Welcome tour's intro paragraph carries a real, clickable {2d6} pill (not only the
   // illustrative "{curly-brace}"), so the first paragraph delivers the atom hands-on
@@ -14705,7 +14705,7 @@ test('first-run atom: the entry hint and the tour intro lead with a live pill (I
 test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {
   // 1. empty-state hints track the dial (agent-review: Standard dropped its short whisper too, so
   // this is now a two-way Guided-only split — Standard and Lean both show nothing).
-  assert.ok(_src.includes("const entryHint = isGuided() ? 'Write, format with /, insert with @, or compute with {' : '';"),
+  assert.ok(_src.includes("const entryHint = isGuided() ? 'Write, format with /, insert with @, or make a live pill with {' : '';"),
     'the entry hint must be Guided-only (Standard/Lean show nothing)');
   assert.ok(/const paraHint\s+= isGuided\(\) \? 'Prose block\. Enter = line break/.test(_src),
     'the para hint must be Guided-only (Standard/Lean show nothing)');

@@ -11679,7 +11679,7 @@ function renderRow(r) {
   // Guided names the four moves in one plain line (write, then / @ { for format/insert/compute — the
   // owner's simpler wording). Standard/Lean show nothing — a returning user sees a blank canvas,
   // not a whisper.
-  const entryHint = isGuided() ? 'Write, format with /, insert with @, or compute with {' : '';
+  const entryHint = isGuided() ? 'Write, format with /, insert with @, or make a live pill with {' : '';
   content.dataset.ph = isDivider ? 'Section label…' : node.type === 'para' ? paraHint : (isEntryPoint ? entryHint : '');
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
@@ -35741,7 +35741,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Check a task off and the progress bar on the section title moves. The due dates surface in the agenda and read as urgent when they slip. Search is:failing to find every check that is currently red."/>
-    <outline text="Nothing here is new syntax: the progress bar is a cookie counting the tasks beneath it, the total is a child rollup, the budget rule is a check, and the estimates are sampled ranges."/>
+    <outline text="Nothing here is new syntax: the progress bar counts the tasks beneath it, the total adds up the costs, the budget rule flags an overspend, and the estimates are ranges you re-sample with a click."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -35805,7 +35805,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Finish a book? Move it under Finished (drag its bullet, or Refile from the bullet menu), check it off, and give it pages and a rating: the totals recompute on their own. Add any book to the shelf with the toread tag and the next roll can land on it."/>
-    <outline text="Nothing here is new syntax: the picker is a roll on a tag, the shelf counter is a search, and the totals are child rollups over ordinary properties."/>
+    <outline text="Nothing here is new syntax: the picker is a roll on a tag, the shelf counter is a search, and the totals add themselves up from ordinary properties."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -35869,7 +35869,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="The agenda (the toolbar calendar button) lays every dated point on a timeline. The counters are ordinary searches, so they see the whole document, including everything you add after this example."/>
-    <outline text="Nothing here is new syntax: the counters are searches in a pill, the today list is an embedded query, the nudge is a roll on a tag, and the weekly bar is a cookie counting its checkboxes."/>
+    <outline text="Nothing here is new syntax: the counters are live searches, the today list is a live search too, the nudge is a roll on a tag, and the weekly bar counts its checkboxes."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -35914,7 +35914,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Change a stat and the sheet moves: set Level to 5 and the hit points row ({= level * 8}) jumps to forty on its own. Search is:failing to find every check that is currently red."/>
-    <outline text="Nothing here is new syntax: stats are variables, derived rows are math that reads them, the pack total is a child rollup, and the encumbrance rule is a check on the Carried load point."/>
+    <outline text="Nothing here is new syntax: stats are variables, derived rows are math that reads them, the pack total adds up the weights, and the encumbrance rule is a check on the Carried load point."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -35946,7 +35946,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Replace the question and the pros and cons with your own. The oracle is just a weighted list, so edit the odds to match your gut. The estimates are ranges sampled behind the scenes, shown as a middle value with a low-to-high spread and a little sparkline."/>
-    <outline text="Nothing here is new syntax: the oracle is a weighted pick, the tally counts two properties, and the estimates are sampled ranges."/>
+    <outline text="Nothing here is new syntax: the oracle picks with the odds you set, the tally counts two properties, and the estimates are ranges you re-sample."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -36012,8 +36012,8 @@ const STARTERS = [
     </outline>
   </outline>
   <outline text="## How it works">
-    <outline text="The idea generator is three lists of choices; the app picks one from each and joins them. The weekly plan uses shuffle decks, which draw without repeating until the list is used up. The shopping total is a rollup of the cost on each line below it."/>
-    <outline text="Nothing here is new syntax: the generator is weighted alternation, the nights are shuffle decks, and the total is a child rollup over a cost property."/>
+    <outline text="The idea generator is three lists of choices; the app picks one from each and joins them. The weekly plan uses shuffle decks, which draw without repeating until the list is used up. The shopping total adds up the cost on each line below it."/>
+    <outline text="Nothing here is new syntax: the generator is a weighted random pick, the nights are shuffle decks, and the total adds up a cost property."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -36042,7 +36042,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Two shapes for the same idea. The base is a spreadsheet-style grid you can flip between views. The itemized list gives each thing its own point with a category and a value property, so the total rolls up, the cap check flips red when you cross it, and a search like category:electronics can count a slice. Pick whichever fits how you think."/>
-    <outline text="Nothing here is new syntax: the grid is an interactive base, the total is a child rollup with a check for the insurance cap, and the category tally is a property search."/>
+    <outline text="Nothing here is new syntax: the grid is an interactive base, the total adds up the values with a check for the insurance cap, and the category tally is a live search."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -36074,7 +36074,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="A table like the itinerary is a base: type /base on a blank point to make your own, mark a column as Date or Number from its column menu, then flip to the calendar view. The dates read today+N, so they always land a couple of weeks out from whenever you open this."/>
-    <outline text="Nothing here is new syntax: the itinerary is an interactive base with a calendar view, the budget is a child rollup plus a check, and the packing bar is a cookie counting its checkboxes."/>
+    <outline text="Nothing here is new syntax: the itinerary is an interactive base with a calendar view, the budget adds up the costs with a check, and the packing bar counts its checkboxes."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -36103,7 +36103,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Tag each syllabus line #topic and the roll and the counter learn it. Check a topic off (or mark it DONE) and the progress bar on the Syllabus heading moves; the topics-left counter drops. The flashcard deck is one point you can grow to as many cards as you like."/>
-    <outline text="Nothing here is new syntax: the card dealer is a shuffle deck, the review picker is a roll on a tag, the counter is a search, and the syllabus bar is a cookie."/>
+    <outline text="Nothing here is new syntax: the card dealer is a shuffle deck, the review picker is a roll on a tag, the counter is a search, and the syllabus bar counts its checkboxes."/>
   </outline>
 </outline>
 </body></opml>`,
