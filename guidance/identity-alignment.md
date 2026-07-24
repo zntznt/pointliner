@@ -218,29 +218,36 @@ freeform+atom. The findings are almost entirely **copy/framing** (steer, don't r
 **forward-looking substrate opportunities** (grow the tool-for-thought identity). Items tagged
 `SR-` (steering review). Filed as issues per the review-fleet convention.
 
-### Group A — copy steering (de-theme RPG, de-bolt-on the engine) · issue #874
+### Group A — copy steering (de-theme RPG, de-bolt-on the engine) · issue #874 · **SHIPPED (closed 2026-07-24)**
 Small copy/ordering fixes, one PR. Behavior unchanged.
 
-- **SR-1 (RC-1, clearest §2 violation).** The first-run tour (`FIRST_RUN_EXAMPLES`, index.html)
-  says *"Playing a solo RPG? That is the game Pointliner is built around."* "Built around" states
-  provenance AS positioning — the exact §2 line. Steer: "Pointliner started at the solo-RPG table"
-  + point at the starters. Provenance, not center.
-- **SR-2 (OM-1, the §10.1 perception risk).** `guide/features.md:7-9` frames the engine as
-  "an **outliner** … with two extra powers built in." That makes the `{…}` engine — the product
-  (§1's 90%-core) — a bolt-on to the outliner identity, the exact "engine seen as an add-on to a
-  nice outliner" failure §10.1 names. Steer: the living/computing document is the noun; the
-  outliner is the surface it rides.
-- **SR-3 (OM-2).** The tour's teaching spine files the engine under `## Advanced`, atop
-  `## Basics` (the plain outliner). Steer: lift one generative/compute moment into the first tier
-  so the substrate reads as the point, not the graduation. (Mitigated by the IA-2 atom-first intro,
-  but the spine still says outliner=basics, engine=advanced.)
-- **SR-4 (RC-3).** The `STARTERS` gallery leads with two RPG starters (Campaign oracle,
-  Oracle-driven scene play). The mix is fine (IA-8); the first *impression* leans RPG. Steer:
-  interleave so a general starter shows first.
-- **SR-5 (RC-4).** A few generative GUIDE bodies lead with an RPG example ("encounter table,"
-  "useful in solo tabletop") where a general-first example would serve. Steer: general example
-  first, RPG second, in each generative concept-guide body. (The command NAMES — oracle, roll
-  table — stay: they are the clearest general names for those mechanics, provenance-fine.)
+> **Register catch-up (2026-07-24):** verification against the shipped app found SR-1 through SR-4
+> already delivered by the IA-2 tour rewrite (#859) and later copy passes — the register (and issue
+> #874) had simply never been closed. The one surviving residue (SR-5's dice body) shipped with this
+> catch-up. Per-item notes below record where each landed.
+
+- **SR-1 (RC-1, clearest §2 violation). ✓ SHIPPED (by #859).** The first-run tour
+  (`FIRST_RUN_EXAMPLES`, index.html) said *"Playing a solo RPG? That is the game Pointliner is
+  built around."* — provenance stated AS positioning. The rewritten tour now says "…from the game
+  table Pointliner was born at, oracles and character sheets that play along" while pointing at the
+  starters: the prescribed provenance-not-center framing, verbatim.
+- **SR-2 (OM-1, the §10.1 perception risk). ✓ SHIPPED.** `guide/features.md` framed the engine as
+  "an **outliner** … with two extra powers built in." Its opener now reads "Pointliner is a
+  document that **generates** … and **computes** … the generating and computing are the point. The
+  surface is an **outline** …" — the engine is the noun, the outline the surface it rides.
+- **SR-3 (OM-2). ✓ MOOT (structure removed by #859).** The old tour spine filed the engine under
+  `## Advanced` atop `## Basics`. That spine no longer exists: the rewritten tour leads WITH the
+  atom (a `{2d6}` click is the first moment), so there is no basics/advanced graduation to fix.
+- **SR-4 (RC-3). ✓ SHIPPED.** The `STARTERS` gallery led with two RPG starters. It is now
+  interleaved: Project tracker (general) leads, then Campaign oracle, Reading log, Oracle-driven
+  scene play.
+- **SR-5 (RC-4). ✓ SHIPPED (residue closed 2026-07-24).** Generative GUIDE bodies now lead with a
+  general example (grammar: lunch spot/loot/story prompts; markov: invented names; deck:
+  flashcards/chores; roll-query and oracle: general leads, tabletop last). The one holdout — the
+  dice body opening "Roll dice for tabletop RPGs, …" — was reordered general-first ("random
+  generation, decision-making, tabletop RPGs or any time you need a number from a range"). The
+  command NAMES (oracle, roll table) stay, as prescribed: the clearest general names for those
+  mechanics, provenance-fine.
 
 ### Group B — substrate opportunities (grow the identity) · one issue each
 Each points an already-proven pattern at a new surface, inside the one-language / no-new-syntax /
