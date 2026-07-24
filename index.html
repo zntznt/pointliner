@@ -6852,6 +6852,28 @@ function mdInline(s) {
   if (s.indexOf('{') >= 0) {
     const braceRules = globalRuleMap || collectRules();
     const braceVars = globalVarMap || collectVars();
+    // NESTED pass, first. The innermost-only regex below is `[^{}]+`, which physically cannot match
+    // a body containing braces — so an attempted glue template or a broken {= a {2d6} b} could never
+    // be flagged, however it classified. (promoteInlineShorthand's anti-shred comment already
+    // assumed this cue fired; it never did.) Walk the top-level groups with matchBrace instead, and
+    // stash the whole span so the innermost pass cannot then also flag its parts and double-mark it.
+    // Guarded on an actually-nested brace, so ordinary text pays one cheap regex test.
+    if (/\{[^{}]*\{/.test(s)) {
+      let out = '', k = 0;
+      while (k < s.length) {
+        if (s[k] !== '{') { out += s[k++]; continue; }
+        const end = matchBrace(s, k);
+        if (end < 0) { out += s[k++]; continue; }              // unbalanced: leave it to the pass below
+        const span = s.slice(k, end + 1), inner = s.slice(k + 1, end);
+        if (inner.indexOf('{') >= 0 && classifyBraceBody(inner, braceRules, braceVars) === 'invalid') {
+          const why = braceAttemptReason(inner, braceRules, braceVars);
+          out += stash(`<span class="brace-attempt" title="${escQ(why)}" aria-label="${escQ('Did not become a pill. ' + why)}">${span}</span>`);
+          k = end + 1; continue;
+        }
+        out += s[k++];   // not an attempt: step over the brace so inner groups still get their pass
+      }
+      s = out;
+    }
     s = s.replace(/\{([^{}]+)\}/g, (m, body) => {
       if (classifyBraceBody(body, braceRules, braceVars) !== 'invalid') return m;   // 'literal'/'artifact' untouched
       const why = braceAttemptReason(body, braceRules, braceVars);
@@ -16284,6 +16306,13 @@ function classifyBraceBody(body, rules, vars) {
     return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
   }
   if (templateParts(body, rules, vars)) return 'artifact';              // {…}glue{…} template (#916)
+  // A body that is template-SHAPED but whose parts don't all resolve is an ATTEMPT, not prose:
+  // {{The} {Rusty|Gilded} {Flagon|Crown}} is one word away from working, and calling it 'literal'
+  // let promoteInlineShorthand descend and shred it into two orphan pills plus dead braces. Saying
+  // 'invalid' both earns the cue and engages the anti-shred guard, so it stays whole and explains
+  // itself. Prose braces are unaffected: a bare-word chunk ({see {color} sample}) fails
+  // templateAttempt's chunk gate, stays 'literal', and its inner braces still promote as before.
+  if (templateAttempt(body)) return 'invalid';                          // an attempted template (#916)
   return diceish ? 'invalid' : 'literal'; // dice-looking but unparseable → attempted roll
 }
 
@@ -16303,12 +16332,17 @@ function classifyBraceBody(body, rules, vars) {
 //   · the body must not end in a whitespace-separated {= …} group (parseAlt reads that as a
 //     dynamic WEIGHT, which would silently truncate the template).
 // Returns { bodies } (the nested brace bodies) or null. Pure — rules/vars are explicit.
-function templateParts(body, rules, vars) {
+// templateAttempt(body) — the STRUCTURAL half of templateParts, split out so the "is this shaped
+// like a glue template?" question can be asked without also asking "do its parts resolve?".
+// That distinction is the whole point: a body that is template-SHAPED but whose parts don't all
+// resolve is an ATTEMPT (say why), while a body carrying bare-word chunks is prose (stay silent
+// and let the inner braces promote on their own). Returns { bodies } or null. Pure — no rules/vars.
+function templateAttempt(body) {
   body = (body || '').trim();
   if (!body || body.indexOf('{') < 0 || body.indexOf('\n') >= 0) return null;
   if (/\S\s+\{=\s*[\s\S]*\}\s*$/.test(body)) return null;   // trailing {= …} = parseAlt's weight form
   const bodies = [];
-  let i = 0, depth = 0;
+  let i = 0;
   while (i < body.length) {
     const ch = body[i];
     if (ch === '}') return null;                            // stray close at top level
@@ -16322,8 +16356,13 @@ function templateParts(body, rules, vars) {
   }
   if (!bodies.length) return null;
   for (const chunk of body.split(/\s+/)) if (chunk && chunk.indexOf('{') < 0) return null;  // a bare-word chunk = prose
-  for (const b of bodies) if (classifyBraceBody(b, rules, vars) !== 'artifact') return null;
   return { bodies };
+}
+function templateParts(body, rules, vars) {
+  const t = templateAttempt(body);
+  if (!t) return null;
+  for (const b of t.bodies) if (classifyBraceBody(b, rules, vars) !== 'artifact') return null;
+  return t;
 }
 
 // A short, human reason a {body} that CLASSIFIES 'invalid' will not become a pill — the tooltip
@@ -16364,6 +16403,20 @@ function braceAttemptReason(body, rules, vars) {
   }
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
     return 'No rule or variable named "' + body + '" is defined. Type {rule ' + body + ': option | option} to make it a rule, {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
+  }
+  // An attempted glue template ({{The} {Rusty|Gilded} {Flagon|Crown}}): the shape is right, so the
+  // fault is one of its parts. Name the first part that does not resolve, since "this template is
+  // invalid" would leave the user rereading three groups looking for the bad one.
+  const ta = templateAttempt(body);
+  if (ta) {
+    const bad = ta.bodies.find(b => classifyBraceBody(b, rules, vars) !== 'artifact');
+    if (bad != null) {
+      const one = bad.trim();
+      const named = /^[a-z_][\w]*$/i.test(one)
+        ? ' Type {rule ' + one.toLowerCase() + ': option | option} to make it one, or take the braces off it to keep it as plain words.'
+        : ' Give it options like {a | b}, or take the braces off it to keep it as plain words.';
+      return 'Every part of a template has to be a picker or a defined rule. "{' + one + '}" is neither.' + named;
+    }
   }
   const diceClean = body.replace(/\s/g, '');
   if (DICE_ATTEMPT.test(diceClean)) {                                  // {2d} — a die with no sides

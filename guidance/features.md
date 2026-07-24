@@ -40,6 +40,16 @@ Implemented:
   entries compose through the grammar engine, the name is callable anywhere as
   `{name}`, click re-rolls. Legacy `[[rolltable:]]` records migrate on load
   (`migrateRolltables`; frozen result preserved — a migration never re-rolls).
+- **Attempted glue template narration** (`templateAttempt`): a body that is template-SHAPED
+  (every whitespace chunk carries a brace group) but whose parts do not all resolve now classifies
+  `invalid` rather than `literal`. That earns the `.brace-attempt` cue AND engages the anti-shred
+  guard, so `{{The} {Rusty|Gilded} {Flagon|Crown}}` stays whole and names `{The}` as the offending
+  part instead of silently becoming two orphan pills plus dead braces. Prose is untouched: one
+  bare-word chunk (`{see {color} sample}`) still reads as prose and its inner braces still promote.
+  Required a **brace-aware pre-pass** at the cue site, since the innermost `/\{([^{}]+)\}/g` regex
+  cannot match a body containing braces — the cue was unreachable, not merely unset (this also
+  closes the same gap for `{= junk {2d6} +}`, which the anti-shred comment already assumed was
+  flagged). The flagged span is stashed so the innermost pass cannot double-mark its parts.
 - **Typed named rule** — `{rule Name: a | b}` (`ruleDeclParts`): the typed twin of the
   `@grammar` dialog and the last declaration form to get one (`{name := expr}` and
   `{seq Name: …}` already had theirs). Promotes to the dialog's own record with

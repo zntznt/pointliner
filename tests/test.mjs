@@ -1361,8 +1361,68 @@ test('#916 — classify and promote agree on templates (lockstep)', () => {
   const R = {}, V = {};
   assert.equal(c.classifyBraceBody('{Grey|Salt|Storm}haven', R, V), 'artifact');
   assert.equal(c.classifyBraceBody('{Ael|Bor}{ric|wyn}', R, V), 'artifact');
+  // The prose line is the one that matters, and it is unchanged: a BARE-WORD chunk means the user
+  // is writing a sentence that happens to contain a pill, so it stays prose and its inner braces
+  // still promote on their own.
   assert.equal(c.classifyBraceBody('see {a|b} sample', R, V), 'literal', 'prose around a brace stays prose');
-  assert.equal(c.classifyBraceBody('{foo}haven', R, V), 'literal', 'unresolvable template reads as prose, not an attempt');
+  assert.equal(c.classifyBraceBody('The {a|b} {c|d}', R, V), 'literal', 'one bare word is enough to read as prose');
+  // CHANGED (deliberately): a body where EVERY chunk is braced has no prose reading. {foo}haven is
+  // an attempted glue template with an undefined rule, not a sentence. It used to classify 'literal'
+  // and say nothing; now it classifies 'invalid', which both earns the cue and stops the shred.
+  assert.equal(c.classifyBraceBody('{foo}haven', R, V), 'invalid', 'an all-braced body is an attempt, not prose');
+  assert.equal(c.classifyBraceBody('{The} {a|b} {c|d}', R, V), 'invalid', 'one unresolvable part makes it an attempt');
+});
+
+test('#916 — an attempted glue template stays WHOLE and names the part that failed', () => {
+  const R = {}, V = {};
+  // the shred this replaces: promoting descended and left 2 pills plus dead braces around them
+  const n = c.mkNode('a {{The} {Rusty|Gilded} {Flagon|Crown}}');
+  assert.equal(c.promoteInlineShorthand(n), false, 'nothing promotes out of an attempted template');
+  assert.equal(n.text, 'a {{The} {Rusty|Gilded} {Flagon|Crown}}', 'the form the user was building survives intact');
+  assert.equal((n.grammar || []).length, 0, 'no orphan fragment pills');
+  // and the cue names the offending part, not just "invalid"
+  const why = c.braceAttemptReason('{The} {Rusty|Gilded} {Flagon|Crown}', R, V);
+  assert.match(why, /"\{The\}" is neither/, 'names WHICH part failed');
+  assert.match(why, /\{rule the: option \| option\}/, 'offers the route that now exists');
+  assert.match(why, /take the braces off/, 'and the simpler fix');
+  assert.ok(!why.includes('—'), 'no em dash');
+  // a non-name part gets the other branch
+  assert.match(c.braceAttemptReason('{a b}{c}', R, V), /Give it options like/);
+  // adding the missing rule resolves it, so the advice is real
+  const R2 = { the: [{ template: 'The', weight: 1 }] };
+  assert.equal(c.classifyBraceBody('{The} {Rusty|Gilded} {Flagon|Crown}', R2, V), 'artifact');
+});
+
+test('#916 — the render pass can SEE a nested-brace body (the cue site blocker)', () => {
+  // The cue site is `s.replace(/\{([^{}]+)\}/g, …)`, and [^{}]+ physically cannot match a body that
+  // contains braces. So no classify change alone could ever have flagged a glue template or a
+  // {= a {2d6} b} — the cue was unreachable, not merely unset. Pin the brace-aware pre-pass that
+  // fixes it, and the stash that stops the innermost pass from double-marking the same span.
+  const inline = fnBody(_src, 'mdInline');
+  assert.ok(/\/\\\{\[\^\{\}\]\*\\\{\/\.test\(s\)/.test(inline) || /\{\[\^\{\}\]\*\\\{/.test(inline),
+    'the pre-pass is guarded on an actually-nested brace, so plain text pays one regex test');
+  assert.ok(/const end = matchBrace\(s, k\)/.test(inline), 'it walks top-level groups with matchBrace, not a regex');
+  assert.ok(/inner\.indexOf\('\{'\) >= 0 && classifyBraceBody\(inner, braceRules, braceVars\) === 'invalid'/.test(inline),
+    'it only claims NESTED bodies that classify invalid; everything else falls through unchanged');
+  assert.ok(/out \+= stash\(`<span class="brace-attempt"/.test(inline),
+    'the flagged span is stashed, so the innermost pass cannot mark its parts too');
+  // the innermost pass survives for the ordinary single-level case
+  assert.ok(/s\.replace\(\/\\\{\(\[\^\{\}\]\+\)\\\}\/g/.test(inline), 'the original innermost pass is still there');
+});
+
+test('templateAttempt — the structural half, split from the resolvability half', () => {
+  // templateParts must stay exactly templateAttempt + the resolve gate, or classify and promote
+  // drift apart again.
+  assert.deepEqual(host(c.templateAttempt('{a|b} {c|d}').bodies), ['a|b', 'c|d']);
+  assert.deepEqual(host(c.templateAttempt('{foo}haven').bodies), ['foo']);
+  assert.equal(c.templateAttempt('see {a|b} sample'), null, 'a bare-word chunk is prose, not a template');
+  assert.equal(c.templateAttempt('no braces here'), null);
+  assert.equal(c.templateAttempt('{unclosed'), null);
+  assert.equal(c.templateAttempt('stray} {a|b}'), null);
+  assert.equal(c.templateAttempt('{a|b}\n{c|d}'), null, 'single line only');
+  // structural yes, resolvable no → the exact gap this PR narrates
+  assert.ok(c.templateAttempt('{foo}haven'));
+  assert.equal(c.templateParts('{foo}haven', {}, {}), null);
 });
 
 test('#916 anti-shred — a failed outer form is never promoted piecemeal', () => {
