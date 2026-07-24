@@ -7972,6 +7972,33 @@ test('4c wiring: the query dialog folder checkbox, the pill folder branch, and t
   assert.ok(rmp.includes('Folder totals count other documents as saved'), 'folder-scoped math pills carry the as-saved tip');
 });
 
+test('the math pill signposts the number-format door it opens (P2)', () => {
+  // A math pill can do money, units and percent (openMathDialog's Decimal places / Prefix / Suffix),
+  // but the pill said only "Click to edit" — the word "format" appeared nowhere on the path to it,
+  // so the capability was reachable only by already knowing it was there.
+  const rmp = fnBody(_src, 'renderMathPill');
+  const titles = [...rmp.matchAll(/title="Click to edit([^"]*)"/g)].map(m => m[1]);
+  assert.ok(titles.length >= 2, `both the chrome and bare branches carry a tip, got ${titles.length}`);
+  for (const t of titles) assert.match(t, /number format/, 'every math-pill tip names the format door');
+  // the two branches are separate string literals and have drifted before: assert they still agree
+  const arias = [...rmp.matchAll(/aria-label="Math [^"]*Click to edit([^"]*)"/g)].map(m => m[1]);
+  assert.equal(arias.length, 2, 'the chrome and bare branches both label their pill');
+  assert.equal(arias[0], arias[1], 'the two branches must say the same thing');
+  for (const a of arias) assert.match(a, /number format/, 'the label names the format door too, not just the tooltip');
+  // the pencil opens the same dialog from every branch, so it carries the same name everywhere
+  const pencils = [..._src.matchAll(/class="math-edit"[^`]*?aria-label="([^"]*)" title="([^"]*)"/g)];
+  assert.ok(pencils.length >= 3, `found ${pencils.length} math pencils`);
+  for (const [, aria, title] of pencils) {
+    assert.equal(aria, title, 'the pencil label and tooltip agree');
+    assert.match(aria, /number format/, 'the pencil names what the dialog actually offers');
+  }
+  // and the copy is not a promise the dialog fails to keep: it really has those three fields
+  const omd = fnBody(_src, 'openMathDialog');
+  for (const field of ["key: 'decimals'", "key: 'prefix'", "key: 'suffix'"])
+    assert.ok(omd.includes(field), `openMathDialog must actually offer ${field}`);
+  assert.ok(!/—/.test(titles.join('') + arias.join('')), 'no em dash in the new copy');
+});
+
 test('renderCrossLinkPill: unknown doc or node → broken pill, never silent (P4)', () => {
   cfSetGlobals('da', [cfDocFor('db', 'b.opml', [['m1', 'Gamma']])]);
   const unknownNode = c.renderCrossLinkPill('db', 'zzz', '');    // doc known, node missing

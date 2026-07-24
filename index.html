@@ -24767,7 +24767,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing matched</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
   // #914: a quoted query reducer on a LEAF point (no descendants) can only return the identity —
@@ -24782,7 +24782,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">0 in scope</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
   // #950: a words(subtree)/words(children) count on a childless point can only ever count its own
@@ -24797,7 +24797,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing below</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
   // Value-only display (opt-in per pill, m.bare): render JUST the computed value, chrome-free, so
@@ -24807,22 +24807,22 @@ function renderMathPill(key, m) {
   // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
   // (which still names the full expr for assistive tech), and click-to-edit.
   if (m.bare) {
-    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit.${escQ(folderTip)}"`
-      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit">`
+    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit the formula or number format">`
       + `<span class="math-result">${escHtml(display)}</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit.${escQ(folderTip)}"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit">`
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit the formula or number format">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
-    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 
