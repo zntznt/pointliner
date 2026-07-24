@@ -16251,6 +16251,18 @@ function braceAttemptReason(body, rules, vars) {
     // Name the fix, not just the miss (fleet-A research: "declare it" alone left users stranded).
     return 'No rule or variable named "' + mp.base + '" to build this from. Add a point like "' + mp.base + ': option | option" to define it as a rule.';
   }
+  // A generator keyword typed with no argument ({oracle}, {roll}, {shuffle}, {deck}) reads as a
+  // bare undefined name today; point at the form it actually needs. Before the bare-name branch,
+  // since that branch would otherwise swallow these. Only reached when no rule/var owns the name.
+  const NEAR_MISS = {
+    oracle:  'An oracle needs an odds word: try {oracle: likely} (or fifty-fifty, unlikely).',
+    roll:    'A roll needs something to roll on: try {roll: #tag} to pick a random point with that tag.',
+    shuffle: 'A shuffle needs a list to deal from: try {shuffle: a | b | c}.',
+    deck:    'A deck needs a list to deal from: try {shuffle: a | b | c}.',
+    clock:   'A clock is not a brace pill. Type a bracket clock like [o 0/6], then click it to advance.',
+  };
+  const nm = NEAR_MISS[body.toLowerCase()];
+  if (nm) return nm;
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
     return 'No rule or variable named "' + body + '" is defined. Add a point like "' + body + ': option | option" to make it a rule, write {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
   }
