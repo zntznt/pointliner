@@ -277,6 +277,7 @@ export function loadCores() {
     'flatRowStep',
     'splitTopLevel', 'olNum',   // #452 boundary coverage
     'duplicateTitleIds',        // #468 is:duplicate-title
+    'resolveTypedLinks',        // PR-δ: hand-typed [[Name]] → [[#id]] on unambiguous match
   ];
   // Two-pass lookup. `function foo(){}` declarations land on the context global, so
   // pass 1 reads them directly. Top-level `const`/`let` arrows (escHtml, escAttr, …) are

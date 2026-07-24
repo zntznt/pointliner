@@ -16554,6 +16554,12 @@ function exitEdit(content, node) {
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   maybeNudgeFirstPill(); // #H: greet the user's first self-authored pill once (reads _promotedLit from the promote above)
   maybeNudgeField(node); // a bare "cost: 120" tail is a beginner reaching for a field; teach /prop once (never rewrites text)
+  // A hand-typed `[[Name]]` (no #) is a beginner reaching for a link the picker would write as
+  // `[[#id]]`. Resolve the unambiguous case to that exact token on commit; on zero/many matches
+  // leave it literal and point once at the picker. Text is only rewritten for a single exact match.
+  { const lr = resolveTypedLinks(node.text, root, node.id);
+    if (lr.text !== node.text) node.text = lr.text;
+    if (lr.unresolved.length) maybeNudgeTypedLink(lr.unresolved[0]); }
   warnVarDeclRipple(node, declsBefore, prevText); // announce value changes / confirm orphaning renames
   // A paragraph never re-derives: `# `/`> `/`- [ ]` on ANY line (the first included) is
   // markdown rendered inside the prose, not a change of what the point IS (see
@@ -21325,6 +21331,43 @@ function duplicateTitleIds(rootNode) {
   for (const ids of byTitle.values()) if (ids.length > 1) for (const id of ids) dup.add(id);
   if (useCache) { _dupTitleCacheVer = _varsVer; _dupTitleCached = dup; }
   return dup;
+}
+
+// Resolve bare typed `[[Title]]` spans (no `#`) against the live document. The `[[` picker
+// writes a canonical `[[#id]]` token; a user who types the target's name by hand instead is
+// left with dead literal text (LINK_RE only matches `#id` tokens). This turns the unambiguous
+// case into the same token the picker would have inserted, at commit time.
+//   - `[[#id]]` tokens are NEVER touched (the inner regex requires the first char to be non-`#`).
+//   - Exactly one point (title OR alias, case-insensitive, excluding `selfId`) answers to the
+//     name → rewrite that span to `[[#id]]` (round-trips through OPML like any link).
+//   - Zero or many candidates → leave the text literal, report the title in `unresolved` so the
+//     caller can point at the `[[` picker. A title/alias collision across two points is ambiguous
+//     too (stricter than duplicateTitleIds, which is title-only) — better literal than wrong.
+// Pure: no DOM, no cache. Early-returns before the tree walk when there is no `[[` to resolve.
+function resolveTypedLinks(text, rootNode, selfId) {
+  const src = String(text || '');
+  if (!src.includes('[[')) return { text: src, unresolved: [] };
+  const byName = new Map();   // lowercased name -> Set(ids)
+  function walk(n) {
+    if (n.id !== selfId) {
+      for (const name of nodeNames(n)) {
+        const k = name.trim().toLowerCase();
+        if (k) { let s = byName.get(k); if (!s) byName.set(k, s = new Set()); s.add(n.id); }
+      }
+    }
+    for (const c of n.children || []) walk(c);
+  }
+  // walk CHILDREN, not the container root (which has no title) — mirrors duplicateTitleIds.
+  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  const unresolved = [];
+  const out = src.replace(/\[\[([^#\]\n][^\]\n]*)\]\]/g, (whole, inner) => {
+    const title = inner.trim();
+    const ids = byName.get(title.toLowerCase());
+    if (ids && ids.size === 1) return `[[#${[...ids][0]}]]`;
+    unresolved.push(title);
+    return whole;
+  });
+  return { text: out, unresolved };
 }
 
 // Filter a collectTags() list by prefix (case-insensitive, anchored at start).
@@ -35458,6 +35501,14 @@ function maybeNudgeField(node) {
   if (!isGuided() || nudgeSeen('field')) return;
   const f = fieldNudgeKey(node.text);
   if (f) fireNudge('field', `Tip: to total or check ${f.key} later, add it as a number: type /prop:${f.key}=${f.val}, or use the point menu, Add property.`);
+}
+// A hand-typed `[[Name]]` that resolveTypedLinks could NOT turn into a link (no point by that
+// name, or two points share it) leaves the text literal. Point once at the `[[` picker, which
+// disambiguates by id. Guided-only, once-ever, like the other nudges — the guard lives here so
+// the exitEdit call site stays dumb (mirrors maybeNudgeField).
+function maybeNudgeTypedLink(title) {
+  if (!isGuided() || nudgeSeen('typedlink')) return;
+  fireNudge('typedlink', `Tip: to link to "${title}", type [[ and pick the point from the menu.`);
 }
 let _autosaveDeferred = false;   // an autosave was requested before reconcile finished
 // The localStorage crash-buffer write. With OPFS as the durable store, hitting the
