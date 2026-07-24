@@ -115,7 +115,7 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Interaction driven in the running app**, not just source-pinned, for any focus/keyboard/caret/drag change: reproduce it in a headless browser and watch the primitive (`activeElement`, the handler firing, the caret offset). A source-pin proves presence, not behavior — a keydown handler on an unfocusable element is dead code that still passes its pin. *(builder keyboard-nav regression, #1021)*
 - [ ] **OPML round-trip** preserved for any new persisted data (serialize + parse in the same change). *(`CLAUDE.md`)*
 - [ ] **Design-language conformance** for any visual change (`guidance/design-language.md`): colors via tokens (semantic `--ok/--warn/--bad/--info`, `--acc-fg` on accent backgrounds, radii/shadows from the token sets), new color pairs ship their contrast ratio, the palette change lands in **both** homes (CSS *and* the `applyTheme`/`applyAccentCSS` strings), and both-mode + forced-theme screenshots were checked. *(design-language §3/§6)*
-- [ ] **Drift guards stay green**: `node --test tests/test.mjs` carries the design pins (dual-home token parity, radius/weight/size floors, the em-dash ban) and CI runs them on every PR. *(tests/test.mjs)*
+- [ ] **Drift guards stay green**: `node --test tests/test.mjs` carries the design pins (dual-home token parity, radius/weight/size floors, and the em-dash ban — now enforced across **all** user-facing copy: `README.md`, the whole `guide/` tree, every GUIDE body/example, and every command `desc`, not the three narrow spots it used to spot-check) and CI runs them on every PR. *(tests/test.mjs)*
 - [ ] **Acceptance tests met** — the five self-checks below.
 
 ---
