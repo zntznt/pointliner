@@ -5796,6 +5796,53 @@ test('classifyBraceBody / braceTypeLabel — a typed seq decl is a valid seq art
   assert.equal(c.classifyBraceBody('seq Flow: BACKLOG DOING | SHIPPED', {}, {}), 'artifact');
   assert.deepEqual(host(c.braceTypeLabel('seq Flow: BACKLOG DOING | SHIPPED', {}, {})), ['seq', null]);
 });
+
+// The separators are the whole difficulty with a sequence: states split on SPACES, bands on `|`.
+// Get either wrong and the old behavior was one of two silent failures, depending on whether the
+// tail happened to contain a pipe.
+const SEQ_BAD = [
+  ['seq Growth: Seed, Sprout | Bloom', /spaces, not commas/],        // the reported case
+  ['seq Growth: Seed, Sprout, Bud | Bloom', /spaces, not commas/],
+  ['seq Flow: TODO DONE', /\| to mark where done begins/],
+  ['seq : A | B', /needs a name before the colon/],
+  ['seq A B: X | Y', /name has to be one word/],
+  ['seq Flow:', /needs its states/],
+];
+
+test('a malformed {seq …} is INVALID, not a nonsense pill and not silence', () => {
+  for (const [body] of SEQ_BAD) {
+    // Before: a tail WITH a pipe reached the alternation branch and promoted to a grammar pill whose
+    // two alternatives were the literal strings "seq Growth: Seed, Sprout" and "Bloom" (a coin flip
+    // that re-rolled on click). A tail WITHOUT a pipe classified 'literal' and said nothing at all.
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'invalid', `${body} must classify invalid`);
+    const n = { id: 'n', text: '', grammar: [], seq: [], dice: [], math: [], vars: [], est: [], markov: [], children: [] };
+    assert.equal(c.promoteBraceBody(n, body), null, `${body} must not promote`);
+    assert.equal((n.grammar || []).length, 0, `${body} must not leave a grammar pill`);
+    assert.equal((n.seq || []).length, 0, `${body} must not leave a seq record`);
+  }
+  // the keyword-commit must not over-reach past its own keyword
+  assert.equal(c.classifyBraceBody('shuffle: a | b', {}, {}), 'artifact', 'a deck is untouched');
+  assert.equal(c.classifyBraceBody('sequence of events', {}, {}), 'literal', 'prose that merely starts with seq- is prose');
+  assert.equal(c.classifyBraceBody('seq Flow: A B | C', {}, {}), 'artifact', 'a valid declaration still promotes');
+});
+
+test('the {seq …} cue names the separator, and every form it suggests really parses', () => {
+  for (const [body, shape] of SEQ_BAD) {
+    const why = c.braceAttemptReason(body, {}, {});
+    assert.match(why, shape, `${body}: the cue names the actual fault`);
+    assert.ok(!why.includes('—'), `no em dash in the cue for ${body}`);
+    // The PR-3 lesson: advice pinned by string match alone is how false copy survives. Feed the
+    // suggested form back through the real parser instead.
+    const sug = (why.match(/\{seq ([^}]+)\}/) || [])[1];
+    assert.ok(sug, `${body}: the cue hands back a concrete form`);
+    assert.ok(c.seqDeclParts('seq ' + sug), `${body}: the suggested {seq ${sug}} must actually parse`);
+  }
+  // the comma fix is mechanical, so the suggestion should be the user's own line, corrected
+  assert.match(c.braceAttemptReason('seq Growth: Seed, Sprout | Bloom', {}, {}), /\{seq Growth: Seed Sprout \| Bloom\}/);
+  const fixed = c.seqDeclParts('seq Growth: Seed Sprout | Bloom');
+  assert.deepEqual(host(fixed.states), ['SEED', 'SPROUT', 'BLOOM'], 'and applying it gives the states the user meant');
+  assert.equal(fixed.doneFrom, 2, 'with the band split where they put the bar');
+});
 test('promoteBraceBody — {seq Name: …} builds a named [[seq:KEY]] record, registered doc-wide', () => {
   const node = { id: 'n1', text: '', seq: [], children: [] };
   const tok = c.promoteBraceBody(node, 'seq Flow: BACKLOG DOING | SHIPPED');
@@ -7923,6 +7970,33 @@ test('4c wiring: the query dialog folder checkbox, the pill folder branch, and t
   // the math pill names the folder staleness in its tip
   const rmp = fnBody(_src, 'renderMathPill');
   assert.ok(rmp.includes('Folder totals count other documents as saved'), 'folder-scoped math pills carry the as-saved tip');
+});
+
+test('the math pill signposts the number-format door it opens (P2)', () => {
+  // A math pill can do money, units and percent (openMathDialog's Decimal places / Prefix / Suffix),
+  // but the pill said only "Click to edit" — the word "format" appeared nowhere on the path to it,
+  // so the capability was reachable only by already knowing it was there.
+  const rmp = fnBody(_src, 'renderMathPill');
+  const titles = [...rmp.matchAll(/title="Click to edit([^"]*)"/g)].map(m => m[1]);
+  assert.ok(titles.length >= 2, `both the chrome and bare branches carry a tip, got ${titles.length}`);
+  for (const t of titles) assert.match(t, /number format/, 'every math-pill tip names the format door');
+  // the two branches are separate string literals and have drifted before: assert they still agree
+  const arias = [...rmp.matchAll(/aria-label="Math [^"]*Click to edit([^"]*)"/g)].map(m => m[1]);
+  assert.equal(arias.length, 2, 'the chrome and bare branches both label their pill');
+  assert.equal(arias[0], arias[1], 'the two branches must say the same thing');
+  for (const a of arias) assert.match(a, /number format/, 'the label names the format door too, not just the tooltip');
+  // the pencil opens the same dialog from every branch, so it carries the same name everywhere
+  const pencils = [..._src.matchAll(/class="math-edit"[^`]*?aria-label="([^"]*)" title="([^"]*)"/g)];
+  assert.ok(pencils.length >= 3, `found ${pencils.length} math pencils`);
+  for (const [, aria, title] of pencils) {
+    assert.equal(aria, title, 'the pencil label and tooltip agree');
+    assert.match(aria, /number format/, 'the pencil names what the dialog actually offers');
+  }
+  // and the copy is not a promise the dialog fails to keep: it really has those three fields
+  const omd = fnBody(_src, 'openMathDialog');
+  for (const field of ["key: 'decimals'", "key: 'prefix'", "key: 'suffix'"])
+    assert.ok(omd.includes(field), `openMathDialog must actually offer ${field}`);
+  assert.ok(!/—/.test(titles.join('') + arias.join('')), 'no em dash in the new copy');
 });
 
 test('renderCrossLinkPill: unknown doc or node → broken pill, never silent (P4)', () => {

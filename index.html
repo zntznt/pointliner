@@ -16248,7 +16248,12 @@ function classifyBraceBody(body, rules, vars) {
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
-  if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
+  // {seq Flow: A B | C} — KEYWORD-COMMIT, like oracle/meter/rule. Once a body opens with `seq `, a
+  // tail that will not parse is INVALID. This closes two different failures at once: a broken tail
+  // WITH a pipe used to reach the alternation branch and become a nonsense pill (`seq Growth: Seed,
+  // Sprout | Bloom` promoted to a coin flip between the literal strings "seq Growth: Seed, Sprout"
+  // and "Bloom"), while one WITHOUT a pipe classified 'literal' and said nothing at all.
+  if (/^seq\s/i.test(body)) return seqDeclParts(body) ? 'artifact' : 'invalid';
   // {rule tavern: The {adj} {noun}} — a typed named grammar declaration. KEYWORD-COMMIT (the
   // oracle/meter shape): once the body opens with `rule `, a tail that will not parse is INVALID,
   // never prose. That verdict is what earns it the .brace-attempt cue and, more importantly, what
@@ -16400,6 +16405,22 @@ function braceAttemptReason(body, rules, vars) {
     if (!rm || !rm[1].trim()) return 'A rule needs a name before the colon: try {rule tavern: The Rusty Flagon}.';
     if (!rm[2].trim()) return 'A rule named "' + rm[1].trim() + '" needs something after the colon: try {rule ' + rm[1].trim() + ': option | option}.';
     return 'This rule could not be read. A name, a colon, then the options: try {rule ' + rm[1].trim() + ': option | option}.';
+  }
+  // A {seq …} that classified invalid. The separators are the whole difficulty here, so lead with
+  // them, and where the fix is mechanical (commas) hand back the corrected line rather than
+  // describing it. States are separated by SPACES; `|` marks where done begins.
+  if (/^seq\s/i.test(body)) {
+    const sm = /^seq\s+([^:]*?)\s*:(.*)$/i.exec(body);
+    if (!sm || !sm[1].trim()) return 'A sequence needs a name before the colon: try {seq Flow: TODO | DONE}.';
+    const name = sm[1].trim(), tail = (sm[2] || '').trim();
+    if (/\s/.test(name)) return 'A sequence name has to be one word: try {seq ' + name.replace(/\s+/g, '') + ': ' + (tail || 'TODO | DONE') + '}.';
+    if (!tail) return 'A sequence named "' + name + '" needs its states: try {seq ' + name + ': TODO | DONE}.';
+    if (tail.indexOf(',') >= 0) {
+      const fixed = tail.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+      return 'States are separated by spaces, not commas: try {seq ' + name + ': ' + fixed + '}.';
+    }
+    if (tail.indexOf('|') < 0) return 'A sequence needs a | to mark where done begins: try {seq ' + name + ': ' + tail.replace(/\s+(\S+)$/, ' | $1') + '}.';
+    return 'This sequence could not be read. States are separated by spaces and a | marks where done begins: try {seq ' + name + ': TODO | DONE}.';
   }
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
     return 'No rule or variable named "' + body + '" is defined. Type {rule ' + body + ': option | option} to make it a rule, {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
@@ -22957,6 +22978,10 @@ function promoteBraceBodyIn(node, body) {
     (node.seq ||= []).push(rec);
     return `[[seq:${rec.key}]]`;
   }
+  // Keyword committed but the tail did not parse: stay literal so the cue can explain it. Without
+  // this the body falls through to the alternation branch far below, which happily reads
+  // `seq Growth: Seed, Sprout | Bloom` as two alternatives and freezes a nonsense pill.
+  if (/^seq\s/i.test(body)) return null;
   // typed NAMED grammar declaration: {rule tavern: The {adj} {noun}} → a registered [[grammar:KEY]]
   // pill callable as {tavern} anywhere in the document. The typed twin of the @/Grammar dialog, and
   // the last of the three declaration forms to get one ({name := expr} and {seq Name: …} already
@@ -24742,7 +24767,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing matched</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
   // #914: a quoted query reducer on a LEAF point (no descendants) can only return the identity —
@@ -24757,7 +24782,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">0 in scope</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
   // #950: a words(subtree)/words(children) count on a childless point can only ever count its own
@@ -24772,7 +24797,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing below</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
       + `</span>`;
   }
   // Value-only display (opt-in per pill, m.bare): render JUST the computed value, chrome-free, so
@@ -24782,22 +24807,22 @@ function renderMathPill(key, m) {
   // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
   // (which still names the full expr for assistive tech), and click-to-edit.
   if (m.bare) {
-    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit.${escQ(folderTip)}"`
-      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit">`
+    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit the formula or number format">`
       + `<span class="math-result">${escHtml(display)}</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit.${escQ(folderTip)}"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit">`
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit the formula or number format">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
-    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit expression" title="Edit expression"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
     + `</span>`;
 }
 

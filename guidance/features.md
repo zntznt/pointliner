@@ -40,6 +40,13 @@ Implemented:
   entries compose through the grammar engine, the name is callable anywhere as
   `{name}`, click re-rolls. Legacy `[[rolltable:]]` records migrate on load
   (`migrateRolltables`; frozen result preserved — a migration never re-rolls).
+- **Malformed `{seq …}` narration** (keyword-commit): once a body opens with `seq `, a tail that
+  will not parse classifies `invalid` instead of falling through. This closed TWO failures with one
+  branch: a bad tail WITH a pipe reached the alternation branch and froze a nonsense pill
+  (`{seq Growth: Seed, Sprout | Bloom}` became a coin flip between the literal strings
+  `seq Growth: Seed, Sprout` and `Bloom`), while one WITHOUT a pipe classified `literal` and said
+  nothing. `braceAttemptReason` separates the faults (comma, missing `|`, missing/multi-word name,
+  empty states) and hands back the corrected line where the fix is mechanical.
 - **Attempted glue template narration** (`templateAttempt`): a body that is template-SHAPED
   (every whitespace chunk carries a brace group) but whose parts do not all resolve now classifies
   `invalid` rather than `literal`. That earns the `.brace-attempt` cue AND engages the anti-shred

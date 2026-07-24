@@ -30,8 +30,10 @@ Define a workflow that matches the way you actually work: move articles through
 process with distinct stages.
 
 Give the workflow a name and its states. Type `{seq Flow: BACKLOG DOING | SHIPPED}` to declare one
-inline, or use the `@` → **Sequence** dialog. States to the right of the `|` count as **done**, so they
-feed the progress bar and the `is:done` filter automatically. Once declared, apply any state with `/`
+inline, or use the `@` → **Sequence** dialog. **States are separated by spaces, and the `|` marks where
+done begins** (a comma between states is the common slip, and the pill will say so). States to the
+right of the `|` count as **done**, so they feed the progress bar and the `is:done` filter
+automatically. Once declared, apply any state with `/`
 (for example `/BACKLOG`), the same way you set `#TODO`.
 
 Need a **blocked** stage? Add a second `|` for a held band, like `{seq Flow: DOING | BLOCKED | SHIPPED}`.
