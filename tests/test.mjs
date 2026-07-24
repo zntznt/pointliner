@@ -5741,6 +5741,118 @@ test('promoteBraceBody — {seq Name: …} builds a named [[seq:KEY]] record, re
   assert.equal(c.keywordIsDone('SHIPPED', all), true);
   assert.equal(c.keywordIsDone('BACKLOG', all), false);
 });
+// ── {rule Name: a | b} — the typed NAMED grammar declaration ──
+test('ruleDeclParts — the reserved rule keyword, a name, then a real rule tail', () => {
+  assert.deepEqual(host(c.ruleDeclParts('rule rumor: a stranger | a fire')), { name: 'rumor', rhs: 'a stranger | a fire' });
+  // nested braces in the tail are the whole point (this body matched NO branch before, and was shredded)
+  assert.deepEqual(host(c.ruleDeclParts('rule tavern: The {adj} {noun}')), { name: 'tavern', rhs: 'The {adj} {noun}' });
+  // parseRules owns the name charset, so dotted sub-rule fields work for free (A6)
+  assert.deepEqual(host(c.ruleDeclParts('rule sword.damage: 1d8')), { name: 'sword.damage', rhs: '1d8' });
+  // the name is lowercased to match parseRules' own key normalisation, so {Rumor} and {rumor} agree
+  assert.equal(c.ruleDeclParts('rule Rumor: a | b').name, 'rumor');
+  // no false positives
+  assert.equal(c.ruleDeclParts('rule : a | b'), null, 'a missing name is not a rule');
+  assert.equal(c.ruleDeclParts('rule loot:'), null, 'an empty tail is not a rule');
+  assert.equal(c.ruleDeclParts('rule 9lives: a | b'), null, 'parseRules rejects a name starting with a digit');
+  assert.equal(c.ruleDeclParts('loot: sword | shield 2'), null, 'the keyword is required — a bare rule line is not claimed');
+  assert.equal(c.ruleDeclParts('ruler: a | b'), null, 'the keyword needs its space (ruler is a name, not `rule r`)');
+  assert.equal(c.ruleDeclParts('rule a: x\nrule b: y'), null, 'multi-rule stays a dialog job (one rule per brace)');
+});
+
+test('{rule …} classifies keyword-commit: a broken tail is INVALID, never prose', () => {
+  assert.equal(c.classifyBraceBody('rule rumor: a | b', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('rule tavern: The {adj} {noun}', {}, {}), 'artifact');
+  // committing on the keyword is what stops the shred: 'literal' would let promoteInlineShorthand
+  // descend and promote {adj}/{noun} as orphan pills out of a rule the user meant as one unit.
+  assert.equal(c.classifyBraceBody('rule : a', {}, {}), 'invalid');
+  assert.equal(c.classifyBraceBody('rule loot:', {}, {}), 'invalid');
+  assert.equal(c.classifyBraceBody('rule 9x: a', {}, {}), 'invalid');
+  // and the cue explains each failure distinctly, in AP style
+  assert.match(c.braceAttemptReason('rule : a', {}, {}), /needs a name before the colon/);
+  assert.match(c.braceAttemptReason('rule loot:', {}, {}), /needs something after the colon/);
+  assert.match(c.braceAttemptReason('rule loot:', {}, {}), /\{rule loot: option \| option\}/);
+  for (const b of ['rule : a', 'rule loot:', 'rule 9x: a'])
+    assert.ok(!c.braceAttemptReason(b, {}, {}).includes('—'), 'no em dash in ' + b);
+  // braceTypeLabel stays in lockstep with classify and names the rule
+  assert.deepEqual(host(c.braceTypeLabel('rule rumor: a | b', {}, {})), ['grammar', 'rumor']);
+});
+
+test('promoteBraceBody — {rule Name: …} registers a DOCUMENT-WIDE callable rule (the seam)', () => {
+  const node = { id: 'n1', text: '', grammar: [], children: [] };
+  const tok = c.promoteBraceBody(node, 'rule rumor: a stranger | a fire');
+  assert.match(tok, /^\[\[grammar:[a-z0-9]+\]\]$/);
+  const rec = node.grammar[0];
+  assert.equal(rec.origin, 'rumor');
+  assert.equal(rec.typed, true, 'typed marks a text-authored declaration, so it can unfold');
+  assert.ok(!rec.anon, 'NOT anon — anon is exactly what keeps a name out of the document namespace');
+  // the payoff: another point can call it
+  node.text = 'rumors ' + tok;
+  const rootNode = { id: 'r', text: '', children: [node] };
+  const rules = c.collectRules(rootNode);
+  assert.ok(rules.rumor, 'the declared name is registered document-wide');
+  const out = c.runGrammar('origin: {rumor}', 'origin', rules, {});
+  assert.ok(['a stranger', 'a fire'].includes(out), `{rumor} expands from anywhere, got ${out}`);
+  // an anonymous alternation still must NOT leak its synthetic origin (UXP-33 unchanged)
+  const anonNode = { id: 'n2', text: '', grammar: [], children: [] };
+  const anonTok = c.promoteBraceBody(anonNode, 'a | b');
+  anonNode.text = anonTok;
+  assert.ok(!('origin' in c.collectRules({ id: 'r2', text: '', children: [anonNode] })),
+    'UXP-33 holds: the flag, not the name, is what gates registration');
+});
+
+test('{rule …} with nested braces promotes as ONE pill, never shredded into orphans', () => {
+  // the pre-fix behavior for this exact body: no branch claimed it, it classified prose, and the
+  // walk descended to leave `{tavern: [[grammar:..]] [[grammar:..]]}` — 2 pills + dead braces.
+  const node = { id: 'n', text: 'a {rule tavern: The {Rusty|Gilded} {Flagon|Crown}}', grammar: [], dice: [], math: [], vars: [], est: [], markov: [], seq: [], children: [] };
+  c.promoteInlineShorthand(node);
+  assert.match(node.text, /^a \[\[grammar:[a-z0-9]+\]\]$/, 'exactly one pill, no orphaned braces');
+  assert.equal(node.grammar.length, 1);
+  assert.equal(node.grammar[0].origin, 'tavern');
+  assert.match(node.grammar[0].result, /^The (Rusty|Gilded) (Flagon|Crown)$/);
+});
+
+test('the { picker offers the rule form (P2: a visible front door, not syntax-only)', () => {
+  const hit = c.filterBraceForms('rule').find(r => r.name === 'rule');
+  assert.ok(hit, 'typing {rule offers the rule row');
+  assert.equal(hit.insert, '{rule name: a | b | c}');
+  assert.equal(hit.guide, 'gen-rules', 'the row deep-links to the entry that documents the form');
+  assert.ok(hit.desc && !hit.desc.includes('—'), 'a description, AP-punctuated');
+  // the type-to-replace span must cover the NAME, so the first thing you type replaces it
+  assert.deepEqual(host(hit.sel), [6, 10]);
+  assert.equal(hit.insert.slice(6, 10), 'name', 'the selected span is the placeholder name');
+  // reachable by the words a user would actually try
+  for (const q of ['rule', 'named', 'table', 'grammar'])
+    assert.ok(c.filterBraceForms(q).some(r => r.name === 'rule'), `"${q}" finds the rule form`);
+});
+
+test('artifactToShorthand — a TYPED rule pill unfolds; a dialog-named one stays atomic', () => {
+  const typed = { key: 'k', def: 'rumor: a | b', origin: 'rumor', result: 'a', typed: true };
+  assert.equal(c.artifactToShorthand('grammar', typed), '{rule rumor: a | b}');
+  // dotted sub-rule names survive the round trip
+  assert.equal(c.artifactToShorthand('grammar', { key: 'k', def: 'sword.damage: 1d8', origin: 'sword.damage', result: '4', typed: true }), '{rule sword.damage: 1d8}');
+  // a DIALOG-declared grammar has no `typed` flag: its name lives only on the record, so unfolding
+  // would lose it on re-promotion. Unchanged behavior.
+  assert.equal(c.artifactToShorthand('grammar', { key: 'k', def: 'rumor: a | b', origin: 'rumor', result: 'a' }), null);
+  // multi-rule cannot round-trip through one brace
+  assert.equal(c.artifactToShorthand('grammar', { key: 'k', def: 'a: x\nb: y', origin: 'a', result: 'x', typed: true }), null);
+  // an anonymous pill still unfolds to its bare source, not to a {rule …}
+  assert.equal(c.artifactToShorthand('grammar', { key: 'k', def: 'origin: a | b', origin: 'origin', result: 'a', anon: true }), '{a | b}');
+});
+
+test('a typed rule round-trips through unfold and re-promote without losing its name', () => {
+  const node = { id: 'n', text: '', grammar: [], dice: [], math: [], vars: [], est: [], markov: [], seq: [], children: [] };
+  const tok = c.promoteBraceBody(node, 'rule rumor: a stranger | a fire');
+  node.text = 'rumors ' + tok;
+  c.unfoldArtifacts(node);
+  assert.equal(node.text, 'rumors {rule rumor: a stranger | a fire}', 'unfolds to editable source');
+  c.refoldArtifacts(node);
+  assert.equal(node.text, 'rumors ' + tok, 'an untouched rule refolds to its original token');
+  // and re-promoting the unfolded text still registers the SAME name (the reason unfold is safe)
+  const n2 = { id: 'n2', text: '', grammar: [], children: [] };
+  c.promoteBraceBody(n2, 'rule rumor: a stranger | a fire');
+  assert.equal(n2.grammar[0].origin, 'rumor');
+});
+
 test('artifactToShorthand — a seq pill unfolds to its {seq Name: …} source (LEAN FLOOR: edit inline)', () => {
   // a sequence now unfolds so it can be edited keyboard-only. It round-trips LOSSLESSLY: seqDefString
   // re-emits the states/bands, the name comes back via seqDeclParts. No draw state to lose.
@@ -8477,6 +8589,7 @@ test('shipped-syntax guard: every promotable {…} form is documented in a canon
     [':=',      ':='],       // typed declaration {name := expr}
     ['x:',      'x:'],       // repeat {3x: template}  — the "Nx:" operator
     [' to ',    ' to '],     // estimate {5 to 10}
+    ['rule ',   '{rule '],   // typed named grammar declaration {rule name: a | b}
   ];
   const missing = [];
   for (const [needleInForm, sig] of SIGNATURES) {
@@ -15565,6 +15678,7 @@ test('inventory drift guard: every brace sniff in code has its token in the sect
     repeatParts: '{Nx:', propDeclParts: '{prop ', dateDeclParts: '{date due:',
     queryParts: '{query:', rollParts: '{roll:', parseVarDecl: ':=', estParts: 'lo to hi',
     countParts: '{count:', oracleParts: '{oracle:', parseMeter: '{meter:',   // #707: closed the map's blind spot
+    ruleDeclParts: '{rule ',   // typed named grammar declaration
   };
   for (const [fn, token] of Object.entries(SNIFFS)) {
     assert.ok(_src.includes(`function ${fn}`), `sniff ${fn} vanished from index.html — update this guard with the rename`);

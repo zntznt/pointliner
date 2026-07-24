@@ -40,6 +40,18 @@ Implemented:
   entries compose through the grammar engine, the name is callable anywhere as
   `{name}`, click re-rolls. Legacy `[[rolltable:]]` records migrate on load
   (`migrateRolltables`; frozen result preserved — a migration never re-rolls).
+- **Typed named rule** — `{rule Name: a | b}` (`ruleDeclParts`): the typed twin of the
+  `@grammar` dialog and the last declaration form to get one (`{name := expr}` and
+  `{seq Name: …}` already had theirs). Promotes to the dialog's own record with
+  **`typed: true` instead of `anon: true`** — that single flag is the mechanism, since
+  `collectRules`/`collectCallables` skip `anon` to keep a synthetic `origin` out of the
+  document namespace (UXP-33), and a declared name is exactly what must register. The
+  keyword is mandatory: a bare `loot: sword | shield 2` was claimed by the alternation
+  branch (two literal alternatives, `loot: sword` and `shield`), and a bare
+  `tavern: The {a} {b}` matched nothing and had its inner braces shredded into orphan
+  pills. Keyword-commit classification, so a broken tail is `invalid` (cue + anti-shred),
+  never prose. Unfolds back to `{rule Name: …}` because the name lives in the text; a
+  dialog-declared grammar has no `typed` flag and stays atomic. Single-line only.
 - **Grammar** — `@grammar`: recursive-substitution generator (`runGrammar`).
   Named rules `name: a | b 2 | c`, one per line; one brace syntax `{...}` for rule
   refs `{color}`, named tables `{loot}`, named markov chains `{weather}`, variables

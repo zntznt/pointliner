@@ -64,8 +64,27 @@ accident.
 
 ## Name things you'll reuse (rules)
 
-A **rule** is a named generator you can call from anywhere by its name in braces. You build rules
-in the **`@` → Grammar** dialog, one per line, `name: choices`:
+A **rule** is a named generator you can call from anywhere by its name in braces.
+
+**Type one directly** with the `rule` keyword:
+
+```
+{rule color: red | blue | green | gold}
+```
+
+That point becomes a rule pill, and from then on `{color}` picks a color in *any* point in the
+document. The keyword is what names it: a bare `color: red | blue` stays ordinary text, because
+Pointliner cannot tell a rule you meant from a sentence that happens to contain a colon.
+
+A typed rule can be edited straight back into text (click into the point and the pill becomes
+`{rule color: ...}` again), and its choices can include anything on this page:
+
+```
+{rule treasure: {2d6} gold | a {color} gem | nothing}
+```
+
+**For several rules at once**, use the **`@` → Grammar** dialog, one per line, `name: choices`,
+without the keyword. It gives you a live preview as you type:
 
 ```
 origin: a {color} {animal}

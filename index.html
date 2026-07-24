@@ -3075,6 +3075,32 @@ function seqDeclParts(body) {
   return p ? { name, states: p.states, doneFrom: p.doneFrom, heldFrom: p.heldFrom } : null;   // UXP-158: carry the held band
 }
 
+// ruleDeclParts(body) — sniff a typed NAMED grammar declaration: {rule tavern: The {adj} {noun}}.
+// The typed twin of the @/Grammar dialog, and the sibling of {seq Name: …} / {name := expr}: a
+// reserved `rule` keyword, a name, a top-level `:`, then an ordinary rule right-hand side.
+//
+// Why a keyword is mandatory: a bare `loot: sword | shield 2` cannot be the form. promoteBraceBody's
+// alternation branch claims any body with a top-level `|`, so a bare rule line promoted to an
+// anonymous grammar whose two alternatives were the literal strings `loot: sword` and `shield` — a
+// pill that displayed "loot: sword" half the time. And `tavern: The {a} {b}` (pipes only inside the
+// nested braces) matched nothing at all, classified as prose, and had its inner braces shredded
+// into orphan pills. The keyword is what makes the intent unambiguous before either happens.
+//
+// parseRules is the truth for the tail (exactly as seqDeclParts defers to parseSequence): it owns
+// the name charset — including dotted sub-rule fields, so {rule sword.damage: 1d8} works — and the
+// alternation grammar. A body that fails it stays literal (the escape hatch). Single-line only: a
+// multi-rule definition is a dialog job, and it could not round-trip back through one brace.
+// Returns { name, rhs } or null. Pure, Node-testable.
+function ruleDeclParts(body) {
+  body = (body || '').trim();
+  if (body.indexOf('\n') >= 0) return null;              // one rule per brace
+  const m = /^rule\s+([^:]+?)\s*:(.*)$/i.exec(body);     // "rule <name>: <alternatives>"
+  if (!m) return null;
+  const name = m[1].trim(), rhs = m[2].trim();
+  if (!name || !rhs) return null;
+  return parseRules(`${name}: ${rhs}`) ? { name: name.toLowerCase(), rhs } : null;
+}
+
 // queryParts(body) — sniff a typed query pill: {query: is:todo | due:week}. The reserved
 // `query:` keyword (like seqParts' modes) before the FIRST colon, then the search string
 // verbatim (which itself may contain colons and pipes, so we split on the first colon only).
@@ -8273,9 +8299,9 @@ const INSERT_CMDS = [
   // Generate — the generative pills
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     keys:['roll','d20','d100','d6','fudge','pool'], label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Generate' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', keys:['chain'], label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Generate' },
-  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  keys:['loot','treasure','encounter'], label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll.',  ex:'loot: sword | shield 2',  section:'Generate' },
+  { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  keys:['loot','treasure','encounter'], label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll. Type {rule loot: sword | shield 2} to make one inline, then call it as {loot}.',  ex:'{rule loot: sword | shield 2}',  section:'Generate' },
   { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
-  { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     keys:['generate','name','npc','tracery','generator'], label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math.', ex:'origin: a {color} {animal}', section:'Generate' },
+  { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     keys:['generate','name','npc','tracery','generator','rule'], label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math. Type {rule name: a | b} to declare one inline, or use the dialog for several rules at once.', ex:'{rule origin: a {color} {animal}}', section:'Generate' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Generate' },
   // Compute — live numbers and values
@@ -16201,6 +16227,12 @@ function classifyBraceBody(body, rules, vars) {
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
   if (seqDeclParts(body)) return 'artifact';                           // {seq Flow: A B | C}
+  // {rule tavern: The {adj} {noun}} — a typed named grammar declaration. KEYWORD-COMMIT (the
+  // oracle/meter shape): once the body opens with `rule `, a tail that will not parse is INVALID,
+  // never prose. That verdict is what earns it the .brace-attempt cue and, more importantly, what
+  // engages promoteInlineShorthand's anti-shred guard — without it a broken {rule x: The {a} {b}}
+  // classifies 'literal' and the walk descends to promote its inner braces as orphan pills.
+  if (/^rule\s/i.test(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';
   if (propDeclParts(body)) return 'artifact';                          // {prop owner: zeo} (LEAN FLOOR)
   const dd0 = dateDeclParts(body);                                     // {date due: friday} (LEAN FLOOR)
   // lockstep with promoteBraceBody (#407): an unparseable value stays literal on exit,
@@ -16322,6 +16354,14 @@ function braceAttemptReason(body, rules, vars) {
   };
   const nm = NEAR_MISS[body.toLowerCase()];
   if (nm) return nm;
+  // A {rule …} that classified invalid: the keyword committed, so the tail is what went wrong.
+  // Name the shape rather than the parser, and separate the two ways it fails.
+  if (/^rule\s/i.test(body)) {
+    const rm = /^rule\s+([^:]+?)\s*:(.*)$/i.exec(body);
+    if (!rm || !rm[1].trim()) return 'A rule needs a name before the colon: try {rule tavern: The Rusty Flagon}.';
+    if (!rm[2].trim()) return 'A rule named "' + rm[1].trim() + '" needs something after the colon: try {rule ' + rm[1].trim() + ': option | option}.';
+    return 'This rule could not be read. A name, a colon, then the options: try {rule ' + rm[1].trim() + ': option | option}.';
+  }
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
     return 'No rule or variable named "' + body + '" is defined. Add a point like "' + body + ': option | option" to make it a rule, write {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
   }
@@ -16354,6 +16394,8 @@ function braceTypeLabel(body, rules, vars) {
   if (seqParts(body)) return ['grammar', null];                        // {shuffle: a|b|c}
   if (markovParts(body)) return ['markov', null];                      // {markov: a→b, b→c}
   if (seqDeclParts(body)) return ['seq', null];                        // {seq Flow: A B | C}
+  const rdl = ruleDeclParts(body);                                     // {rule tavern: The {adj} {noun}}
+  if (rdl) return ['grammar', rdl.name];
   if (queryParts(body)) return ['query', null];                        // {query: is:todo}
   if (countParts(body)) return ['query', 'count'];                     // {count: is:todo} (#541)
   if (oracleParts(body)) return ['grammar', 'oracle'];                 // {oracle: likely} (#543)
@@ -21284,6 +21326,7 @@ const BRACE_FORMS = [
   { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   ph:'a→b, b→c', guide:'markov',        desc:'generate text in a style you seed' },
   { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     ph:'likely', guide:'oracle',        desc:'a weighted yes/no answer' },
   { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', ph:'Flow', guide:'sequences', desc:'define a custom to-do workflow' },
+  { label:'rule',        keys:['rule','name','named','table','grammar','define'],      insert:'{rule name: a | b | c}', ph:'name', guide:'gen-rules',   desc:'name a picker so you can reuse it anywhere' },
 ];
 // Filter BRACE_FORMS by prefix (label or any key, anchored). Empty prefix = all.
 // Returns fresh {group:'form', …} objects for the merged menu. The type-to-replace span
@@ -22861,6 +22904,27 @@ function promoteBraceBodyIn(node, body) {
     (node.seq ||= []).push(rec);
     return `[[seq:${rec.key}]]`;
   }
+  // typed NAMED grammar declaration: {rule tavern: The {adj} {noun}} → a registered [[grammar:KEY]]
+  // pill callable as {tavern} anywhere in the document. The typed twin of the @/Grammar dialog, and
+  // the last of the three declaration forms to get one ({name := expr} and {seq Name: …} already
+  // had theirs). Sniffed here, in the keyword-declaration cluster and well BEFORE the alternation
+  // branch, which would otherwise swallow `rule loot: sword | shield 2` into a two-alternative
+  // anonymous grammar. `typed: true` (not `anon`) is the whole difference from every other grammar
+  // branch below: an anon record's synthetic `origin` is deliberately kept out of the document
+  // namespace (UXP-33), while a DECLARED name is the entire point of this form, so collectRules
+  // and collectCallables must both see it. resetDocCaches() copies the var-decl arm so a later
+  // brace in this same promotion pass can already call the fresh rule.
+  const rd = ruleDeclParts(body);
+  if (rd) {
+    const roll = makeGrammarRoll(`${rd.name}: ${rd.rhs}`, rd.name);
+    if (roll) {
+      roll.typed = true;
+      (node.grammar ||= []).push(roll);
+      resetDocCaches();
+      return `[[grammar:${roll.key}]]`;
+    }
+    return null;   // a well-formed keyword with an unrollable tail stays literal (escape hatch)
+  }
   // LEAN FLOOR: {prop KEY: VALUE} writes an arbitrary property to the sidecar and CONSUMES the brace
   // (returns '' — the property shows as a chip below the point, so it leaves no inline token). This is
   // the keyboard-inline path for properties: /prop writes the `{prop ▮: }` stub, you fill it, exit
@@ -23226,6 +23290,17 @@ function artifactToShorthand(type, rec) {
     // declaration — its rule name is doc-wide callable config richer than the
     // text (same principle as declaring variables), and unfolding would lose
     // the name on edit (re-promotion is anonymous). It stays an atomic pill.
+    // A TYPED named rule ({rule tavern: …}) unfolds back to its source, unlike a dialog-named one.
+    // Safe for the same reason the typed var declaration is: the NAME lives in the text, so
+    // re-promotion reads it straight back. A dialog-declared grammar carries no `typed` flag and
+    // stays atomic, because its name exists only on the record.
+    if (rec.typed && !rec.anon && rec.origin) {
+      const d = (rec.def || '').trim();
+      if (d.includes('\n')) return null;                                  // multi-rule → stays a pill
+      const rm = d.match(/^([a-z_][\w]*(?:\.[a-z_][\w]*)*)\s*:\s*(.+)$/i);
+      if (!rm || rm[1].toLowerCase() !== rec.origin.toLowerCase()) return null;
+      return `{rule ${rm[1]}: ${rm[2].trim()}}`;
+    }
     if (!rec.anon) return null;
     const def = (rec.def || '').trim();
     if (def.includes('\n')) return null; // multi-rule grammar → stays a pill
@@ -33595,15 +33670,16 @@ const GUIDE = [
     ] },
   { id:'gen-rules', cat:'generators',
     title:'Building generators',
-    body:"Build a name generator, a themed random list, a full story prompt or a procedural description (of a place, a person, an item, anything). The building block is a named list, a rule: write `color: red | blue | green` and then `{color}` picks one at random wherever you use it.\n\nRules call each other, which is what makes them powerful. A sentence rule can pull from `{subject}`, `{verb}` and `{object}`, each its own list, so a small set of short rules produces enormous variety. A rule can also roll dice (`reward: {2d6} gold`) or calculate (`price: {= base * 2}`), so the pieces that vary and the pieces that compute live side by side and the whole thing stays short to read.\n\nTo build one name from parts, wrap the parts in one more brace: `{{Ael|Bor}{ric|wyn}}` is a single pill that re-rolls the whole syllable name as a unit, and plain letters glue straight onto a group (`{{Grey|Salt}haven}`). Weight a choice by writing a number after it (`orc | dragon 2` makes the dragon twice as likely), or let a variable decide the odds live with `{= ...}`. Rule names are known across the whole document, not just the point they sit in, so a rule you define once is callable from anywhere. Cover finer control of the output with text modifiers and conditions, the next two entries.",
+    body:"Build a name generator, a themed random list, a full story prompt or a procedural description (of a place, a person, an item, anything). The building block is a named list, a rule. Type `{rule color: red | blue | green}` in any point and it becomes a rule pill; from then on `{color}` picks one at random wherever you use it, anywhere in the document. The `rule` keyword is what names it: a bare `color: red | blue` is ordinary text, since Pointliner cannot tell a rule you meant from a sentence with a colon in it.\n\nRules call each other, which is what makes them powerful. A sentence rule can pull from `{subject}`, `{verb}` and `{object}`, each its own list, so a small set of short rules produces enormous variety. A rule can also roll dice (`{rule reward: {2d6} gold}`) or calculate (`{rule price: {= base * 2}}`), so the pieces that vary and the pieces that compute live side by side and the whole thing stays short to read.\n\nFor several rules at once, type @ and choose Grammar: that dialog takes one rule per line, without the keyword, and gives you a live preview. Either way you get the same kind of pill, and a rule pill you typed can be edited straight back into text.\n\nTo build one name from parts, wrap the parts in one more brace: `{{Ael|Bor}{ric|wyn}}` is a single pill that re-rolls the whole syllable name as a unit, and plain letters glue straight onto a group (`{{Grey|Salt}haven}`). Weight a choice by writing a number after it (`orc | dragon 2` makes the dragon twice as likely), or let a variable decide the odds live with `{= ...}`. Cover finer control of the output with text modifiers and conditions, the next two entries.",
     related:['gen-modifiers','gen-conditions','grammar'],
     examples:[
-      { syn:'color: red | blue | green', desc:'define a named list (a rule)' },
-      { syn:'{color}',                desc:'use it anywhere' },
-      { syn:'origin: a {color} {animal}', desc:'one rule built from others' },
+      { syn:'{rule color: red | blue | green}', desc:'define a named list (a rule)' },
+      { syn:'{color}',                desc:'use it anywhere in the document' },
+      { syn:'{rule origin: a {color} {animal}}', desc:'one rule built from others' },
+      { syn:'{rule reward: {2d6} gold}', desc:'a rule that rolls dice' },
+      { syn:'{rule price: {= base * 2}}', desc:'a rule that calculates' },
+      { syn:'{rule sword.damage: 1d8}', desc:'a field on a picked item' },
       { syn:'{{Ael|Bor}{ric|wyn}}',   desc:'glue syllables into one name, one pill' },
-      { syn:'reward: {2d6} gold',     desc:'a rule that rolls dice' },
-      { syn:'price: {= base * 2}',    desc:'a rule that calculates' },
       { syn:'{common | rare {= luck}}', desc:'a choice weighted by a variable' },
     ] },
   { id:'gen-modifiers', cat:'generators',
