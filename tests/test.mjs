@@ -9348,6 +9348,12 @@ test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger
     'maybeNudgeFirstPill must guard on a produced pill token, then fire the firstpill nudge');
   assert.match(_src, /promoteInlineShorthand\(node\);[\s\S]{0,120}?maybeNudgeFirstPill\(\);/,
     'the first-pill nudge must run in exitEdit right after the promote pass (so _promotedLit is fresh)');
+  // Trigger 4 (γ): a bare "cost: 120" tail teaches the /prop door once, Guided-only, never rewriting text.
+  const mnf = fnBody(_src, 'maybeNudgeField');
+  assert.ok(mnf.includes("!isGuided() || nudgeSeen('field')") && mnf.includes('fieldNudgeKey(node.text)') && mnf.includes("fireNudge('field'"),
+    'maybeNudgeField must guard (Guided/once-ever), read the pure predicate, and fire the field nudge');
+  assert.ok(/\/prop:\$\{f\.key\}=\$\{f\.val\}/.test(_src), 'the field nudge names the /prop door with the typed key and value');
+  assert.match(_src, /maybeNudgeFirstPill\(\);[\s\S]{0,120}?maybeNudgeField\(node\);/, 'the field nudge runs in exitEdit beside the other post-commit nudges');
 });
 
 test('#585 pack pick vars: editor wiring (parse classifies, save rolls, seeds pickVals) (src pins)', () => {
@@ -12054,6 +12060,17 @@ test('#948 parsePropLines — a multi-line key:value block → props; skips sepa
   // the dialog wires the batch paste + tip
   assert.ok(/const parsed = parsePropLines\(txt\);/.test(_src), 'the Properties dialog parses a pasted block');
   assert.ok(_src.includes('paste a list of "key: value" lines'), 'the batch-paste tip is shown');
+});
+
+test('fieldNudgeKey — a bare word:number tail is a field cue; prose / times / non-numeric are not', () => {
+  assert.deepEqual(host(c.fieldNudgeKey('cost: 120')), { key: 'cost', val: '120' });
+  assert.deepEqual(host(c.fieldNudgeKey('Design mockups cost: 120')), { key: 'cost', val: '120' }, 'keys off the trailing token, not the whole line');
+  assert.deepEqual(host(c.fieldNudgeKey('HP: 12')), { key: 'HP', val: '12' }, 'key case is preserved (echoed in the toast)');
+  assert.deepEqual(host(c.fieldNudgeKey('budget: 500.50')), { key: 'budget', val: '500.50' }, 'decimals count');
+  assert.equal(c.fieldNudgeKey('Note: buy milk'), null, 'a non-numeric tail is prose, not a field');
+  assert.equal(c.fieldNudgeKey('12:30'), null, 'a digit key is a time, not a field');
+  assert.equal(c.fieldNudgeKey('just some prose'), null, 'no colon, no cue');
+  assert.equal(c.fieldNudgeKey('cost: 120 and more text'), null, 'the number must be the tail');
 });
 
 test('#954 exclude-from-export — noexport skips the point + subtree; round-trips; bullet toggle', () => {
