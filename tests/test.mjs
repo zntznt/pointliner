@@ -9354,6 +9354,17 @@ test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger
     'maybeNudgeField must guard (Guided/once-ever), read the pure predicate, and fire the field nudge');
   assert.ok(/\/prop:\$\{f\.key\}=\$\{f\.val\}/.test(_src), 'the field nudge names the /prop door with the typed key and value');
   assert.match(_src, /maybeNudgeFirstPill\(\);[\s\S]{0,120}?maybeNudgeField\(node\);/, 'the field nudge runs in exitEdit beside the other post-commit nudges');
+  // Trigger 5 (δ): a hand-typed [[Name]] resolves to a [[#id]] token on an unambiguous match; on
+  // zero/many it stays literal and points once at the [[ picker (Guided, once-ever).
+  const mtl = fnBody(_src, 'maybeNudgeTypedLink');
+  assert.ok(mtl.includes("!isGuided() || nudgeSeen('typedlink')") && mtl.includes("fireNudge('typedlink'"),
+    'maybeNudgeTypedLink must guard (Guided/once-ever) and fire the typedlink nudge');
+  assert.ok(/type \[\[ and pick the point from the menu/.test(_src), 'the typedlink nudge points at the [[ picker');
+  // wired in exitEdit right after the field nudge: rewrite only on an actual change, nudge on unresolved
+  assert.match(_src, /maybeNudgeField\(node\);[\s\S]{0,600}?resolveTypedLinks\(node\.text, root, node\.id\)/,
+    'the typed-link resolve runs in exitEdit right after the field nudge');
+  assert.ok(/if \(lr\.text !== node\.text\) node\.text = lr\.text;/.test(_src), 'text is rewritten only when the resolve actually changed it');
+  assert.ok(/if \(lr\.unresolved\.length\) maybeNudgeTypedLink\(lr\.unresolved\[0\]\)/.test(_src), 'an unresolved typed link fires the nudge');
 });
 
 test('#585 pack pick vars: editor wiring (parse classifies, save rolls, seeds pickVals) (src pins)', () => {
@@ -15901,6 +15912,59 @@ test('duplicateTitleIds: flags every colliding-title id, case-insensitive, empty
   const dup = c.duplicateTitleIds(root);
   const ids = [...dup].sort();
   assert.deepEqual(ids, ['a', 'b', 'c'], 'the three "Draft" variants collide; unique + empties do not');
+});
+
+// PR-δ: a hand-typed `[[Name]]` (no #) should become the same `[[#id]]` token the picker writes
+// when exactly one OTHER point answers to the name — and stay literal (with a title reported for
+// the nudge) when nothing or more than one matches. `[[#id]]` tokens are never disturbed.
+test('resolveTypedLinks: unambiguous [[Name]] → [[#id]]; zero/many/self → literal + unresolved', () => {
+  const mk = (id, text, aliases) => {
+    const n = c.mkNode(text); n.id = id;
+    if (aliases) n.props = [{ key: 'aliases', val: aliases }];
+    return n;
+  };
+  const root = { id: 'r', children: [
+    mk('mito', 'Mitochondria'),
+    mk('term1', 'Term'), mk('term2', 'Term'),   // collide → ambiguous
+    mk('cell', 'Cell', 'Cytoplasm'),            // answers to its alias too
+    mk('self', 'See [[Mitochondria]] and [[Nope]] and [[Term]]'), // the authoring point
+    mk('kept', 'already [[#mito]] linked'),      // a real token must be left alone
+  ] };
+
+  // one exact match on another point → rewrite to that id
+  let r = c.resolveTypedLinks('See [[Mitochondria]]', root, 'self');
+  assert.equal(r.text, 'See [[#mito]]', 'the single exact title match becomes a [[#id]] token');
+  assert.deepEqual(host(r.unresolved), [], 'nothing left unresolved');
+
+  // alias also resolves (nodeNames includes aliases)
+  assert.equal(c.resolveTypedLinks('[[Cytoplasm]]', root, 'self').text, '[[#cell]]', 'an alias resolves like a title');
+
+  // ambiguous (two points named Term) → literal + reported
+  r = c.resolveTypedLinks('[[Term]]', root, 'self');
+  assert.equal(r.text, '[[Term]]', 'a title shared by two points stays literal');
+  assert.deepEqual(host(r.unresolved), ['Term']);
+
+  // unknown → literal + reported
+  r = c.resolveTypedLinks('[[Nope]]', root, 'self');
+  assert.equal(r.text, '[[Nope]]', 'no such point stays literal');
+  assert.deepEqual(host(r.unresolved), ['Nope']);
+
+  // self-only: the point titled Mitochondria typing [[Mitochondria]] must not self-link
+  r = c.resolveTypedLinks('[[Mitochondria]]', root, 'mito');
+  assert.equal(r.text, '[[Mitochondria]]', 'a point cannot resolve a typed link to itself');
+  assert.deepEqual(host(r.unresolved), ['Mitochondria']);
+
+  // an existing [[#id]] token is never touched, even beside a bare one
+  assert.equal(c.resolveTypedLinks('[[#mito]] and [[Mitochondria]]', root, 'self').text,
+    '[[#mito]] and [[#mito]]', 'the # token is untouched; only the bare name resolves');
+
+  // no `[[` at all → cheap identity return
+  r = c.resolveTypedLinks('plain prose, no link', root, 'self');
+  assert.equal(r.text, 'plain prose, no link');
+  assert.deepEqual(host(r.unresolved), []);
+
+  // trailing-whitespace inside the brackets still matches the trimmed name
+  assert.equal(c.resolveTypedLinks('[[ Mitochondria ]]', root, 'self').text, '[[#mito]]', 'inner whitespace is trimmed for the lookup');
 });
 
 // #466: every dialog ? help icon must deep-link to a REAL Concept-guide entry, else it dead-
