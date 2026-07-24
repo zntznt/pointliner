@@ -16048,6 +16048,22 @@ test('resolveTypedLinks: unambiguous [[Name]] → [[#id]]; zero/many/self → li
 
   // trailing-whitespace inside the brackets still matches the trimmed name
   assert.equal(c.resolveTypedLinks('[[ Mitochondria ]]', root, 'self').text, '[[#mito]]', 'inner whitespace is trimmed for the lookup');
+
+  // REGRESSION (persona demo): a promoted pill's artifact token [[type:key]] must NEVER be treated
+  // as a hand-typed link — it left the text alone but fired a nonsensical "link to grammar:…" nudge
+  // that leaked the internal sidecar id. It must stay literal AND not be reported as unresolved.
+  for (const tok of ['[[grammar:gszo7102]]', '[[query:qy1axoqvd]]', '[[dice:abc123]]', '[[est:x9]]']) {
+    const rr = c.resolveTypedLinks(`Ask the game ${tok} now`, root, 'self');
+    assert.equal(rr.text, `Ask the game ${tok} now`, `${tok} stays literal`);
+    assert.deepEqual(host(rr.unresolved), [], `${tok} is not reported as an unresolved link (no leaky nudge)`);
+  }
+  // a cross-doc link token [[docId#id]] (a # anywhere in the inner) is likewise left alone
+  const xd = c.resolveTypedLinks('see [[work123#n5]]', root, 'self');
+  assert.equal(xd.text, 'see [[work123#n5]]', 'a cross-doc token is untouched');
+  assert.deepEqual(host(xd.unresolved), [], 'a cross-doc token is not an unresolved link');
+  // but a real title that merely CONTAINS a colon (with a space) still resolves / reports normally
+  const colon = c.resolveTypedLinks('[[Act 1: Rising]]', root, 'self');
+  assert.deepEqual(host(colon.unresolved), ['Act 1: Rising'], 'a spaced colon title is a real (here unresolved) link, not a token');
 });
 
 // #466: every dialog ? help icon must deep-link to a REAL Concept-guide entry, else it dead-
