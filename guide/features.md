@@ -245,12 +245,12 @@ Build a connected notebook (Zettelkasten style), not just a single document.
 - **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))
-- **Data packs.** Bundle the pieces of a whole game system into one shareable file: grammar rules,
+- **Reusable packs.** Bundle the pieces of a whole game system into one shareable file: grammar rules,
   variables (formulas, or random picks like `strength: 3d6` rolled once and frozen), and captured
   subtrees. Capture a subtree, do not type it: build a sheet, an oracle or a shuffle deck as points,
-  then **Add to data pack** from the point's bullet menu, and the whole subtree with its pills rides
+  then **Add to a pack** from the point's bullet menu, and the whole subtree with its pills rides
   the pack (a captured deck keeps drawing without repeats when someone stamps it). Manage packs in
-  File then Data packs: every rule and variable becomes callable across the document, captured
+  File then Reusable packs: every rule and variable becomes callable across the document, captured
   templates appear in the `/template` picker, and you can enable, disable, edit, import or export
   packs. Pure data, no code, so opening any file stays safe.
 - **Start from an example.** File then **Start from an example** drops a ready-made, fully live
@@ -260,7 +260,7 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   trip planner with a calendar view, a decision helper, a study and flashcards page, a home
   inventory, and a worldbuilding and writing kit). Click any pill inside to play, then delete it when
   you are done. More worked examples live in the [solo RPG guides](solo-rpg/README.md).
-- **Command browser.** One searchable window over every point command, generator, calculation and
+- **All commands.** One searchable window over every point command, generator, calculation and
   pill. Open it from the toolbar (the checklist button), with `Ctrl/Cmd+K`, or by typing `/builder`
   (in Guided mode, `/`, `@` or `{` open it too). Type to filter, arrow to browse, Enter to insert; the
   side pane explains each command as you go.
