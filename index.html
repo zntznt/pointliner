@@ -21403,6 +21403,14 @@ function resolveTypedLinks(text, rootNode, selfId) {
   const unresolved = [];
   const out = src.replace(/\[\[([^#\]\n][^\]\n]*)\]\]/g, (whole, inner) => {
     const title = inner.trim();
+    // Never treat a NON-title token as a hand-typed link. Two forms slip through the "first char
+    // is not #" guard and must be left alone: a promoted pill's artifact token `[[type:key]]`
+    // (e.g. `[[grammar:gszo7102]]`, `[[query:qy1axoqvd]]` — a lowercase type, a colon, an
+    // alphanumeric key, no spaces) and a cross-doc link token `[[docId#id]]` (a `#` anywhere in
+    // the inner). Without this, authoring an ordinary oracle/query pill fired a nonsensical
+    // "link to grammar:…" nudge that leaked the internal sidecar id (surfaced in the persona demo).
+    // A real title with a colon ("Act 1: Rising") has a space and never matches the token shape.
+    if (title.includes('#') || /^[a-z][a-z0-9]*:[a-z0-9]+$/i.test(title)) return whole;
     const ids = byName.get(title.toLowerCase());
     if (ids && ids.size === 1) return `[[#${[...ids][0]}]]`;
     unresolved.push(title);
