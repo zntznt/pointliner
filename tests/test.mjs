@@ -533,17 +533,118 @@ test('pickFromQuery — picks one matching point title from the tree, uncapped +
 });
 
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
-  // resolveBrace's roll branch reads the module cookieNode/root globals to scope the pick — those
-  // are lexical `let`s not reachable from the vm sandbox (same as the {= sum(subtree)} aggregation
-  // branch, which is likewise core-tested via aggregateChildren, not through resolveBrace). So the
-  // PICK logic is proven by the pickFromQuery pins above; here we pin only what IS reachable: the
-  // branch is dispatched (not swallowed by condParts) and fails to a visible P4 marker on no match,
-  // never a throw or silent blank. In production cookieNode is the live render node (set by
-  // renderContentHTML), so this resolves to a picked title; the empty-doc sandbox has no match.
+  // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
+  // production cookieNode is the live render node." BOTH were false, and the second one is why the
+  // document-wide-leak bug survived: {roll:} never resolves during a render. It resolves at
+  // PROMOTION and at REROLL, where cookieNode was null and the scope fell back to `root`. The
+  // globals ARE settable (vm.runInContext, exactly as the renderPosVarMaps tests already do), so
+  // the real scope behavior is pinned in the next test rather than assumed here.
+  // What this test still owns: the branch is dispatched (not swallowed by condParts) and fails to a
+  // visible P4 marker on no match, never a throw or a silent blank.
   const marker = c.resolveBrace('roll: is:todo', { rules: {}, vars: {}, depth: 0, stack: [] });
   assert.equal(marker, '{roll: is:todo?}');   // dispatched to the roll branch, P4 marker on empty
   // a query's `:` must not mis-dispatch to the conditional branch (which would give a {cond?} marker)
   assert.ok(!marker.includes('cond'), 'roll: must be sniffed before condParts');
+});
+
+// The regression test for the document-wide leak. A {roll: #tag} written inside one subtree drew
+// from the WHOLE document, because it resolves at promotion/reroll (never during a render) and
+// cookieNode was null there, so resolveBrace's `cookieNode || root` fell back to root. Verified
+// before the fix: 200 promotions onto subtree A produced roughly 50/50 A-vs-B results.
+function rollScopeTree() {
+  const kid = (id, text) => ({ id, text, children: [], props: [], seq: [] });
+  const A = { id: 'A', text: 'Brainstorm A', children: [kid('a1', 'alpha #openq'), kid('a2', 'beta #openq')], props: [], seq: [], grammar: [] };
+  const B = { id: 'B', text: 'Brainstorm B', children: [kid('b1', 'gamma #openq'), kid('b2', 'delta #openq')], props: [], seq: [] };
+  return { id: 'r', text: '', children: [A, B], props: [], seq: [] };
+}
+function withRollScopeRoot(fn) {
+  const r = rollScopeTree();
+  c._context.__rollRoot = r;
+  vm.runInContext('root = __rollRoot; resetDocCaches();', c._context);
+  try { return fn(r); }
+  finally { vm.runInContext('root = mkRoot(); cookieNode = null; resetDocCaches();', c._context); }
+}
+
+test('{roll:} scopes to the host point subtree, not the whole document (the leak regression)', () => {
+  // 60 promotions onto subtree A. Every result must come from A. Before the fix this leaked into B
+  // about half the time, so a single sample would have passed by luck — hence the repeat count.
+  const fromA = new Set(['alpha', 'beta']), fromB = new Set(['gamma', 'delta']);
+  const seen = new Set();
+  for (let i = 0; i < 60; i++) {
+    withRollScopeRoot(r => {
+      const A = r.children[0];
+      A.grammar = [];
+      c.promoteBraceBody(A, 'roll: #openq');
+      seen.add(A.grammar[0].result);
+    });
+  }
+  assert.ok([...seen].every(v => fromA.has(v)), `every draw comes from the host subtree, got ${[...seen]}`);
+  assert.ok([...seen].some(v => fromB.has(v)) === false, 'no draw leaks into a sibling subtree');
+  assert.ok(seen.size === 2, `both of the host subtree points are reachable, got ${[...seen]}`);
+
+  // …and pinned from the other side: with no host scope it IS document-wide, so the test would
+  // fail loudly if the wrapper were ever removed rather than silently passing on a narrower tree.
+  const wide = new Set();
+  withRollScopeRoot(() => {
+    for (let i = 0; i < 60; i++) wide.add(c.resolveBrace('roll: #openq', { rules: {}, vars: {}, depth: 0, stack: [] }));
+  });
+  assert.ok([...wide].some(v => fromB.has(v)), 'with cookieNode null the pick is document-wide (the old behavior)');
+});
+
+test('{roll:} scoping keeps its is: context document-wide (pickFromQuery ctxRoot)', () => {
+  // Narrowing the WALK must not narrow the sequence/variable context, or a subtree-scoped
+  // {roll: is:todo} would stop matching the moment its custom sequence was declared elsewhere.
+  // This is queryCountIn's convention: scope the walk, keep the context document-wide.
+  const kid = (id, text) => ({ id, text, children: [], props: [], seq: [] });
+  const decl = { id: 'd', text: 'states [[seq:s1]]', children: [], props: [], seq: [{ key: 's1', name: 'Flow', states: ['BACKLOG', 'SHIPPED'], doneFrom: 1 }] };
+  const host = { id: 'h', text: 'host', children: [kid('h1', '#BACKLOG draft the intro')], props: [], seq: [] };
+  const rootNode = { id: 'r', text: '', children: [decl, host], props: [], seq: [] };
+  // scope = host subtree, context = the document (where the sequence is declared).
+  // (The #BACKLOG tag survives in the result: stripQueryTags only strips tags NAMED in the query,
+  // and this query is `is:todo`. The point of the assertion is that it matched at all.)
+  assert.equal(c.pickFromQuery('is:todo', host, null, rootNode), '#BACKLOG draft the intro',
+    'a custom state declared outside the scope still resolves an is: term');
+  // The negative that proves ctxRoot is load-bearing: read the context from the SCOPE instead and
+  // the sequence is invisible, so #BACKLOG is not a known open state and nothing matches.
+  assert.equal(c.pickFromQuery('is:todo', host, null, host), '',
+    'reading is: context from the narrowed scope loses the sequence (what ctxRoot exists to prevent)');
+  // the default (ctxRoot = the scope) is unchanged for every existing caller
+  assert.equal(c.pickFromQuery('is:todo', host, null), '', 'default ctxRoot still equals the scope');
+});
+
+test('nested {query:} / {count:} stay DOCUMENT-wide even under a host scope (P1)', () => {
+  // Their top-level pill twins always search the whole document, so the same token must not mean
+  // a different scope just because it sits inside a rule. Only {roll:} takes the host scope.
+  withRollScopeRoot(r => {
+    c._context.__rollHost = r.children[0];
+    vm.runInContext('cookieNode = __rollHost;', c._context);
+    assert.equal(c.resolveBrace('count: #openq', { rules: {}, vars: {}, depth: 0, stack: [] }), '4',
+      'a nested count sees all four tagged points, not the host subtree two');
+  });
+  // and the source says so, so the two branches cannot quietly drift back to `cookieNode || root`
+  assert.ok(/if \(qp\) \{ const picked = pickFromQuery\(qp\.expr, root,/.test(_src), 'nested query reads root');
+  assert.ok(/if \(cnp\) return String\(queryRows\(cnp\.expr, root,/.test(_src), 'nested count reads root');
+});
+
+test('the two {roll:} resolution chokepoints are wrapped in withHostScope', () => {
+  // withHostScope is DOM-adjacent (it mutates a module global), so the wiring is source-pinned.
+  const w = fnBody(_src, 'withHostScope');
+  assert.ok(/const save = cookieNode;/.test(w) && /finally \{ cookieNode = save; \}/.test(w),
+    'withHostScope saves and restores, never strands a mutated global');
+  assert.ok(/return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body\)\)/.test(_src),
+    'promotion (blur, base cell, OPML load, starter insert) resolves under the host scope');
+  const rg = fnBody(_src, 'rerollGrammar');
+  assert.ok(/withHostScope\(node, \(\) => runGrammar\(g\.def, g\.origin, null, null, deps\)\)/.test(rg),
+    'a grammar re-roll resolves its nested {roll:} under the host scope');
+  assert.ok(/withHostScope\(node, \(\) => advanceSeq\(g\)\)/.test(rg),
+    'a deck draw expands its items under the host scope (items are raw source, expanded at draw time)');
+  // The @/`/` "Roll on your document" doors build their record in a dialog callback, which is not a
+  // render either — BOTH of them (the outline path and the base-cell path) need the same scope, or
+  // the most discoverable front door keeps leaking while the typed one is fixed.
+  const doors = [..._src.matchAll(/withHostScope\((n|node), \(\) => makeGrammarRoll\(`origin: \{roll: \$\{expr\}\}`, 'origin'\)\)/g)];
+  assert.equal(doors.length, 2, 'both rollpick dialog doors resolve under the host scope');
+  // and no rollpick door builds the record unscoped
+  assert.ok(!/[^>] makeGrammarRoll\(`origin: \{roll: \$\{expr\}\}`/.test(_src), 'no unscoped rollpick door remains');
 });
 
 test('{roll:} promotes to an anonymous grammar pill (rides the grammar machinery)', () => {
@@ -10247,7 +10348,12 @@ test('ancestor inheritance is wired at the math pill + check chip, own-node at t
   assert.ok(/while \(p && p !== root\)/.test(anc), 'ancestorsOf walks up, excluding the root config node');
   // PROMOTION parity (#461): a {= } shorthand must validate against the inherited scope, or a
   // pill resolving only via an own/ancestor prop stays raw text instead of promoting.
-  const pb = fnBody(_src, 'promoteBraceBody');
+  // promoteBraceBody is now a thin host-scope wrapper (see the {roll:} subtree-scope fix); the
+  // branch chain lives in promoteBraceBodyIn. Pin the delegation too, so the wrapper can never be
+  // left pointing at nothing.
+  assert.ok(/function promoteBraceBody\(node, body\) \{\s*return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body\)\);\s*\}/.test(_src),
+    'promoteBraceBody delegates to promoteBraceBodyIn inside withHostScope');
+  const pb = fnBody(_src, 'promoteBraceBodyIn');
   assert.ok(/makeMathResult\(body\.slice\(1\)\.trim\(\), resolveNodeScope\(node, ancestorsOf\(node\), collectVars\(\)\)\)/.test(pb),
     'promoteBraceBody validates {= } against the node inherited scope, so an ancestor-prop pill promotes');
   // makeMathResult accepts a scope to validate against (default = doc vars for pure/test callers)

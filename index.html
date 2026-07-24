@@ -6872,6 +6872,22 @@ let grammarRenderList = null;
 // progress cookie against its tasks. Null outside a node render → cookies stay
 // literal text in any other mdInline caller (breadcrumbs, search, etc.).
 let cookieNode = null;
+// withHostScope(node, fn) — run fn with cookieNode set to the host point, restoring whatever was
+// there before (the save/restore idiom the math/estimate dialog previews already use).
+//
+// cookieNode is ALSO how a {roll:} finds the subtree it is documented to draw from: resolveBrace's
+// roll branch reads `cookieNode || root` as its scope. But cookieNode was set only inside render
+// entry points, and {roll:} never resolves during a render — it freezes at PROMOTION (a blur
+// handler) and re-resolves at REROLL (post-render). Both ran with cookieNode null, so the scope
+// silently fell back to `root` and a {roll: #tag} placed inside one subtree drew from the whole
+// document. Wrap those two chokepoints in this instead of the roll branch alone: a {roll:} also
+// reaches the expander nested inside an alternation, a conditional, a glue template, a {ref.mod},
+// a {base.field}, a deck's items (expanded at draw time) and a pick var.
+function withHostScope(node, fn) {
+  const save = cookieNode;
+  cookieNode = node || null;
+  try { return fn(); } finally { cookieNode = save; }
+}
 // Collected variable map {name: value} for the current render; updated by
 // collectVars(), used by renderMathPill and renderVarPill at display time.
 let globalVarMap = {};
@@ -15436,14 +15452,22 @@ function stripQueryTags(text, terms) {
   return out.replace(/\s{2,}/g, ' ').replace(/\s+([.,;:!?])/g, '$1').trim();
 }
 
-function pickFromQuery(expr, rootNode, hostId) {
+// pickFromQuery(expr, rootNode, hostId, ctxRoot) — pick one matching point title.
+// `rootNode` is the SCOPE (the walk visits its descendants, never itself); `hostId` excludes a
+// single node so a pill can't pick itself. `ctxRoot` is where the sequences/variables/links that
+// resolve `is:` terms are read from, and it defaults to the scope so every existing caller is
+// unchanged. A SCOPED caller passes the document root, matching queryCountIn's convention
+// (`queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars())`): scope the walk, keep
+// the context document-wide. Without it a subtree-scoped {roll: is:todo} would stop matching the
+// moment its custom sequence or variable was declared outside that subtree.
+function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
   const terms = parseSearchQuery(expr || '');
   if (!terms.length) return '';
-  const seqs = allSequences(rootNode);
+  const seqs = allSequences(ctxRoot);
   const needsCtx = terms.some(t => t.kind === 'is');
-  const vars = needsCtx ? collectVars(rootNode) : undefined;
+  const vars = needsCtx ? collectVars(ctxRoot) : undefined;
   const needsLinks = terms.some(t => (t.kind === 'is' && (t.value === 'broken' || t.value === 'orphan')) || (t.kind === 'has' && t.value === 'backlink'));
-  const links = needsLinks ? collectLinks(rootNode) : undefined;
+  const links = needsLinks ? collectLinks(ctxRoot) : undefined;
   const hits = [];
   (function walk(n) {
     for (const c of (n.children || [])) {
@@ -19281,7 +19305,8 @@ function insertInlineArtifact(id, nodeId, content) {
       folderOption: false,   // a {roll:} grammar reads the live document; folder rolls are not a thing (yet)
       onResult: expr => {
         const n = nodeById(nodeId); if (!n) return;
-        const roll = makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin');
+        // Scoped to the host point, like the typed path — a dialog submit is not a render either.
+        const roll = withHostScope(n, () => makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin'));
         if (!roll) return;
         roll.anon = true;
         (n.grammar ||= []).push(roll);
@@ -19504,9 +19529,10 @@ function insertCellArtifact(id, node, r, c, offset) {
     openQueryDialog({
       title: 'Roll on your document',
       submitLabel: 'Roll',
-      folderOption: false,   // 4c: grammar rolls stay document-scoped
+      folderOption: false,   // a {roll:} grammar reads the live document; folder rolls are not a thing (yet)
       onResult: expr => {
-        const roll = makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin');
+        // Scoped to the host point, like the typed path — a dialog submit is not a render either.
+        const roll = withHostScope(node, () => makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin'));
         if (!roll) return;
         roll.anon = true;
         (node.grammar ||= []).push(roll); splice(`[[grammar:${roll.key}]]`);
@@ -20737,9 +20763,13 @@ function resolveBrace(body, ctx) {
   // the LIVE outline: it rolls on your actual points, not literal typed text. Keyword-sniffed first
   // (before condParts) so a query's `:` never mis-parses as a conditional. No match → visible empty
   // marker (P4). Consistency across repeated references rides a pick var, like {shuffle:} in a rule.
+  // The subtree scope is only real because promoteBraceBody and rerollGrammar set cookieNode to the
+  // host point around their whole body — this branch never runs during a render, so before that it
+  // silently fell back to `root` and drew document-wide. `root` stays the CONTEXT root so a custom
+  // sequence or variable declared outside the subtree still resolves an `is:` term.
   const rlp = rollParts(body);
   if (rlp) {
-    const picked = pickFromQuery(rlp.expr, cookieNode || root, cookieNode ? cookieNode.id : null);
+    const picked = pickFromQuery(rlp.expr, cookieNode || root, cookieNode ? cookieNode.id : null, root);
     return picked || `{roll: ${rlp.expr}?}`;
   }
   const cp = condParts(body);
@@ -20833,10 +20863,16 @@ function resolveBrace(body, ctx) {
   // they stay top-level-only, and classifyBraceBody no longer calls them a nested artifact.)
   const mkp = markovParts(body);
   if (mkp) { const roll = makeTypedMarkovRoll(mkp.def); return roll ? roll.path.join(' → ') : `{markov?}`; }
+  // P1: a query/count is DOCUMENT-wide, nested or not. Their top-level pill twins always search the
+  // whole document (renderQueryPill → queryRowsMemo → queryRows(expr, root, hostId), with an opt-in
+  // folder widening), so these read `root` explicitly rather than `cookieNode || root`. Otherwise
+  // the same token would mean two different scopes depending on whether it sat inside a rule — the
+  // context inversion P1 forbids. cookieNode stays the self-exclusion. Only {roll:} takes the host
+  // scope, because only {roll:} is documented as subtree-scoped.
   const qp = queryParts(body);
-  if (qp) { const picked = pickFromQuery(qp.expr, cookieNode || root, cookieNode ? cookieNode.id : null); return picked || `{query: ${qp.expr}?}`; }
+  if (qp) { const picked = pickFromQuery(qp.expr, root, cookieNode ? cookieNode.id : null); return picked || `{query: ${qp.expr}?}`; }
   const cnp = countParts(body);
-  if (cnp) return String(queryRows(cnp.expr, cookieNode || root, cookieNode ? cookieNode.id : null, 1).total);   // #541: live count; 0 is a valid answer
+  if (cnp) return String(queryRows(cnp.expr, root, cookieNode ? cookieNode.id : null, 1).total);   // #541: live count; 0 is a valid answer
   const orp = oracleParts(body);
   if (orp) return expandTemplate(`{${orp.body}}`, ctx);   // #543: a Yes/No pick at the band's odds
 
@@ -22603,7 +22639,9 @@ function rerollGrammar(node, key) {
     // cue, so "non-repeating" doesn't quietly recycle without notice. Read-only on g here (no
     // junk flag persisted to _grammar); advanceSeq refills the bag as usual.
     const willReshuffle = g.mode === 'shuffle' && g.last != null && (!Array.isArray(g.bag) || g.bag.length === 0);
-    g.result = advanceSeq(g);
+    // A deck's items are stored as raw source and expanded HERE, at draw time, so a
+    // {shuffle: {roll: #tag} | fixed} resolves its roll on this click — scope it to the host.
+    g.result = withHostScope(node, () => advanceSeq(g));
     markDirty();
     announce(`Deck (${g.mode}): ${g.result || '(end)'}`);
     logRoll(node, `deck (${g.mode})`, g.result);   // #918 (a spent deck → '' → logRoll no-ops)
@@ -22615,7 +22653,9 @@ function rerollGrammar(node, key) {
   // #827 item 5: a re-roll refreshes the input snapshot too, so the "Inputs
   // changed" whisper clears (or re-arms) on the same click that re-generates.
   const deps = Object.create(null);
-  const result = runGrammar(g.def, g.origin, null, null, deps);
+  // Scoped to the host point: a nested {roll:} re-resolves here, and this is not a render, so
+  // without the wrapper it would draw document-wide (see withHostScope).
+  const result = withHostScope(node, () => runGrammar(g.def, g.origin, null, null, deps));
   if (result === null) return;
   if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
   g.result = result;
@@ -22718,7 +22758,17 @@ function varDeclIsPick(expr) {
 }
 const _VAR_PROBE = new Proxy({}, { has: () => true, get: () => 1 });
 
+// Promotion is one of the two places a {roll:} resolves (the other is rerollGrammar), and it is
+// not a render — so cookieNode is null here unless we set it. Scope the WHOLE body to the host
+// point rather than the roll branch alone: a {roll:} nests inside an alternation, a conditional,
+// a glue template, a {ref.mod}, a {base.field}, a deck's items and a pick var's RHS, and every
+// one of those routes reaches the expander through a different branch below. This is the single
+// chokepoint for every promotion path (blur, base-cell commit, OPML/HTML load, starter insert),
+// so one wrapper fixes them all. See withHostScope.
 function promoteBraceBody(node, body) {
+  return withHostScope(node, () => promoteBraceBodyIn(node, body));
+}
+function promoteBraceBodyIn(node, body) {
   body = body.trim();
   if (!body) return null;
   // String literal: {"text"} / {'text'} is fixed prose, not a pill — stays literal (#521). Checked

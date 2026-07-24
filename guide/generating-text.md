@@ -398,10 +398,13 @@ Open threads
 Advance one: {roll: is:todo}
 ```
 
-The search is a normal search string (words, `#tag`, `is:todo`, `key:value`). By default `{roll:}`
-picks from the points **under the one you write it in**, so place it under the list it should choose
-from. A `#tag` search reaches wherever that tag lives, not just the subtree. It rolls fresh each time
-the page draws.
+The search is a normal search string (words, `#tag`, `is:todo`, `key:value`). `{roll:}` picks from
+the points **under the one you write it in**, so place it above the list it should choose from. A
+point with nothing under it has nothing to draw from, and the pill says so ("no match yet") rather
+than quietly reaching across your whole document.
+
+The result is rolled once and kept, like a dice pill: click it to roll again. If you want the same
+value in several places, name it with `:=` (below).
 
 To keep one result steady (and re-roll it on click, like a dice pill), name it with `:=`:
 
