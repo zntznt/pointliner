@@ -3186,7 +3186,7 @@ test('#518 removePackTemplate — removes by name, pure, leaves other packs + te
 
 test('#518 Piece 1 wiring: the Add-to-pack door + Templates section are present (src pins)', () => {
   // the bullet-menu door beside "Save as template", the dialog, and the pack-editor Templates list
-  assert.ok(_src.includes('Add to data pack'), 'the bullet-menu / dialog door is missing');
+  assert.ok(_src.includes('Add to a pack'), 'the bullet-menu / dialog door is missing');
   assert.ok(_src.includes('upsertPackTemplate(') && _src.includes('removePackTemplate('), 'the cores are not wired into the UI');
   // the capture reuses deepCloneNodeNewIds (fresh ids), not a raw node reference
   assert.match(_src, /upsertPackTemplate\([^)]*deepCloneNodeNewIds\(/, 'the captured subtree must be deep-cloned with fresh ids');
@@ -3458,7 +3458,7 @@ test('parsePackVarLines — name = expr per line; blank skipped, malformed surfa
   const imp = fnBody(_src, 'importDataPacks');
   assert.ok(/seen\.add\(id\)/.test(imp) && /if \(seen\.has\(id\)\) id = uid\(\)/.test(imp), 'import dedupes ids within the file, not just against existing');
   // UX-2 — remove routes through openConfirmDialog (consistent with other destructive ops)
-  assert.ok(/await openConfirmDialog\(\{[\s\S]*?Remove data pack/.test(nb), 'remove confirms like every other destructive op');
+  assert.ok(/await openConfirmDialog\(\{[\s\S]*?Remove pack/.test(nb), 'remove confirms like every other destructive op');
 });
 
 test('collectCallables — an anonymous pill does not advertise `origin` as a callable (UXP-33)', () => {
@@ -17780,9 +17780,9 @@ test('builder front door (UXP-178) — launcher wiring + all-commands pool', () 
     'toolbar button opens the builder');
   assert.ok(/const end = editableText\(el\)\.length;[\s\S]{0,120}offset: end, query: ''/.test(_src),
     'launchBuilder sets the caret at end-of-point and query to empty (no trigger to strip)');
-  // openBuilder(null) → the all-commands "Commands" title; builderCmdPool(null) leads with point cmds.
-  assert.ok(_src.includes("trigger === '{' ? 'Brace picker' : 'Commands'"),
-    'openBuilder titles the no-trigger launch "Commands"');
+  // openBuilder(null) → the "All commands" title; builderCmdPool(null) leads with point cmds.
+  assert.ok(_src.includes("trigger === '{' ? 'Pill picker' : 'All commands'"),
+    'openBuilder titles the no-trigger launch "All commands"');
   const pool = c.builderCmdPool(null);
   assert.ok(pool.length > 0, 'builderCmdPool(null) returns the full pool');
   const trigs = new Set(pool.map(cmd => cmd.trigger));
@@ -17790,7 +17790,13 @@ test('builder front door (UXP-178) — launcher wiring + all-commands pool', () 
   assert.equal(pool[0].trigger, '/', 'point (/) commands lead when no trigger summoned it');
   // Door B: /builder verb — a BLOCK_CMDS action entry (no `turn`) + a slashApply branch that
   // launches and returns before the applyBlockCmd fallthrough (writes nothing).
-  assert.ok(/id:'builder',[^}]*label:'Command browser'/.test(_src), 'BLOCK_CMDS has a builder entry');
+  assert.ok(/id:'builder',[^}]*label:'All commands'/.test(_src), 'BLOCK_CMDS has a builder entry');
+  // The command surface names one thing consistently (was a 3-way split: button "Command browser",
+  // window aria "Command builder", header "Commands"). All three now say "All commands".
+  assert.ok(/id="btn-builder"[^>]*aria-label="All commands"/.test(_src), 'the toolbar button says All commands');
+  assert.ok(_src.includes("ioCard.setAttribute('aria-label', 'All commands')"), 'the builder window aria says All commands');
+  assert.ok(/title:'All commands'/.test(_src), 'the concept-guide entry title says All commands');
+  assert.ok(!_src.includes('Command browser') && !_src.includes('Command builder'), 'no stray Command browser/builder name remains');
   assert.ok(!/id:'builder',[^}]*turn:true/.test(_src), "the builder verb is an action, not a type-transform (no turn)");
   assert.ok(/cmd\.id === 'builder'\) \{\s*launchBuilder\(\);\s*return;/.test(_src),
     'slashApply routes /builder to launchBuilder');

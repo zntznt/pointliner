@@ -2523,7 +2523,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
     <div id="tbtn-cluster">
-    <button id="btn-builder" class="tbtn-toggle" title="Command browser: browse and insert any command" aria-label="Command browser" aria-pressed="false"><i class="fa-solid fa-list-check"></i></button>
+    <button id="btn-builder" class="tbtn-toggle" title="All commands: browse and insert anything" aria-label="All commands" aria-pressed="false"><i class="fa-solid fa-list-check"></i></button>
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (dated log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
@@ -2604,7 +2604,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
           <div id="fm-toolbar-opts"></div>
         </div>
         <div class="cmd-item" id="btn-appearance"><div class="cmd-icon" data-fa="fa-solid fa-image" data-fb="🎨">🎨</div><div class="cmd-info"><span class="cmd-label">Tag &amp; property styling</span><span class="cmd-desc">Color your tags and give properties an icon</span></div></div>
-        <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Data packs</span><span class="cmd-desc">Reusable bundles of grammar rules and formula variables</span></div></div>
+        <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Reusable packs</span><span class="cmd-desc">Your text generators and variables, bundled to reuse or share across documents</span></div></div>
         <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
         <div class="cmd-item" id="btn-units"><div class="cmd-icon" data-fa="fa-solid fa-arrow-right-arrow-left" data-fb="⇄">⇄</div><div class="cmd-info"><span class="cmd-label">Custom units</span><span class="cmd-desc">Define your own units, then convert with {= convert(x, from, to)}</span></div></div>
         <div class="cmd-item" id="btn-rolllog" role="button" aria-pressed="false"><div class="cmd-icon" data-fa="" data-fb="⚄">⚄</div><div class="cmd-info"><span class="cmd-label" id="rolllog-label">Log rolls: Off</span><span class="cmd-desc">Record every dice roll, generator, oracle and pick to a dated Rolls log. Set a home with the bullet menu.</span></div></div>
@@ -8186,7 +8186,7 @@ const BLOCK_CMDS = [
   { id:'refile',  icon:'⇄',    fa:'fa-solid fa-arrow-right-arrow-left', keys:['move'], label:'Refile', desc:'Move this point and its children under another point. Type /refile:title to move it there directly (or /refile:top to lift it out), or /refile to pick from a tree.', ex:'/refile:Inbox · /refile:top', section:'Organize' },
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
   { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', section:'Organize' },
-  { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'Command browser', desc:'Open the command browser: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', section:'Organize' },
+  { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'All commands', desc:'Open All commands: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', section:'Organize' },
   { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, mass, volume and time units already work.', section:'Organize' },
 ];
 
@@ -12884,10 +12884,10 @@ function openAddToPackDialog(nodeId) {
   const packNames = (root.plugins || []).map(packLabel).filter(n => n && n !== '(unnamed)');
   const packHint = packNames.length
     ? `Existing packs: ${packNames.join(', ')}. A new name starts a new pack.`
-    : 'This starts your first data pack. Export it from File then Data packs to share.';
+    : 'This starts your first pack. Export it from File then Reusable packs to share.';
   openInsertDialog({
     icon: TEMPLATE_ICON,
-    title: 'Add to data pack',
+    title: 'Add to a pack',
     submitLabel: 'Add',
     fields: [
       { key: 'tpl',  label: 'Template name', placeholder: 'e.g. Character sheet', value: dfltTpl,
@@ -12998,14 +12998,14 @@ function openDataPackManager() {
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, PACK_ICON);
   const ttl = document.createElement('div'); ttl.className = 'io-title';
-  ttl.textContent = _packEditId ? 'Edit data pack' : 'Data packs';
+  ttl.textContent = _packEditId ? 'Edit pack' : 'Reusable packs';
   head.append(ic, ttl); dialogHelp(head, 'datapacks'); ioCard.appendChild(head);
 
   if (_packEditId) buildPackEditView(); else buildPackListView();
 
   if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target (UXP-81)
   ioCancel = () => { _packEditId = null; _packDraft = null; closeIo(); }; // drop any unsaved draft on close
-  ioCard.setAttribute('aria-label', _packEditId ? 'Edit data pack' : 'Data packs');
+  ioCard.setAttribute('aria-label', _packEditId ? 'Edit pack' : 'Reusable packs');
   ioBack.classList.add('on');
 }
 
@@ -13014,7 +13014,7 @@ function buildPackListView() {
   if (!list.length) {
     const empty = document.createElement('p');
     empty.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 14px;line-height:1.55';
-    empty.textContent = 'No data packs yet. A pack bundles grammar rules and formula variables you can reuse across the document. Create one, or import a pack file.';
+    empty.textContent = 'No packs yet. A pack bundles your text generators and variables to reuse across the document. Create one, or import a pack file.';
     ioCard.appendChild(empty);
   } else {
     const plist = document.createElement('div'); plist.className = 'tpl-list';
@@ -13049,7 +13049,7 @@ function buildPackListView() {
         const idx = (root.plugins || []).findIndex(x => x.id === p.id);
         const neighbor = (root.plugins || [])[idx + 1] || (root.plugins || [])[idx - 1]; // UX-1: focus a surviving row
         const ok = await openConfirmDialog({
-          title: 'Remove data pack',
+          title: 'Remove pack',
           message: `Remove “${packLabel(p)}”? Its rules and variables stop applying. You can undo this.`,
           confirmLabel: 'Remove',
         });
@@ -13136,7 +13136,7 @@ function buildPackEditView() {
     // to a stateless pick with no memory. Name that here instead of surprising the author (P4), and
     // point at the path that DOES ship a stateful deck: capture it as a template via "Add to data pack".
     const deckNote = /\{\s*(shuffle|cycle|once|stopping)\b[^}]*:/.test(v)
-      ? ' A deck in a rule draws at random (no memory). To ship a stateful deck, build it as a point and use “Add to data pack”.' : '';
+      ? ' A deck in a rule draws at random (no memory). To ship a stateful deck, build it as a point and use “Add to a pack”.' : '';
     setPrev(rulesPrev, `${n} rule${n === 1 ? '' : 's'}: ${parsed.order.join(', ')}${dropNote}${deckNote}`, parsed.dropped.length > 0);
   };
   rulesIn.addEventListener('input', updRules); updRules();
@@ -13175,7 +13175,7 @@ function buildPackEditView() {
     tplList.innerHTML = '';
     if (!tpls.length) {
       const empty = document.createElement('div'); empty.className = 'pack-tpl-empty';
-      empty.textContent = 'None yet. Add one from a point’s bullet menu: “Add to data pack”.';
+      empty.textContent = 'None yet. Add one from a point’s bullet menu: “Add to a pack”.';
       tplList.appendChild(empty); return;
     }
     for (const t of tpls) {
@@ -13279,13 +13279,13 @@ function rollPackPickVars(parsedVars) {
 // Export root.plugins as a downloaded JSON file (the { plugins:[…] } wrapper parsePackImport reads).
 function exportDataPacks() {
   const packs = root.plugins || [];
-  if (!packs.length) { flashHint('No data packs to export'); return; }
+  if (!packs.length) { flashHint('No packs to export'); return; }
   const blob = new Blob([JSON.stringify({ plugins: packs }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'pointliner-data-packs.json';
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-  flashHint(`Exported ${packs.length} data pack${packs.length === 1 ? '' : 's'}`);
+  flashHint(`Exported ${packs.length} pack${packs.length === 1 ? '' : 's'}`);
 }
 
 // Import data packs from a chosen JSON file. parsePackImport is the trust boundary (valid packs
@@ -13298,7 +13298,7 @@ function importDataPacks() {
     const reader = new FileReader();
     reader.onload = () => {
       const incoming = parsePackImport(String(reader.result || ''));
-      if (!incoming.length) { flashHint('No valid data packs found in that file'); return; }
+      if (!incoming.length) { flashHint('No valid packs found in that file'); return; }
       // BUG-2: dedupe against a RUNNING set (existing ids + ids seen earlier in this import),
       // so two packs sharing an id inside the file don't both land with the same key.
       const seen = new Set((root.plugins || []).map(p => p.id));
@@ -13311,7 +13311,7 @@ function importDataPacks() {
       pushUndo();
       root.plugins = [...(root.plugins || []), ...added];
       markDirty(); render();
-      flashHint(`Imported ${added.length} data pack${added.length === 1 ? '' : 's'}`);
+      flashHint(`Imported ${added.length} pack${added.length === 1 ? '' : 's'}`);
       openDataPackManager();
     };
     reader.readAsText(file);
@@ -18054,7 +18054,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { sec:'Organize', prim:true, icon:{ fa:'fa-solid fa-arrow-down', fb:'↓' }, label:'Move down', fn: () => { moveNode(nodeId, 1); hideBpop(); } },
     { sec:'More', icon: TEMPLATE_ICON, label:'Save as template',
       fn: () => { hideBpop(); openSaveTemplateDialog(nodeId); } },
-    { sec:'More', icon:{ fa:'fa-solid fa-circle-nodes', fb:'📦' }, label:'Add to data pack…',
+    { sec:'More', icon:{ fa:'fa-solid fa-circle-nodes', fb:'📦' }, label:'Add to a pack…',
       fn: () => { hideBpop(); openAddToPackDialog(nodeId); } },
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
       fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
@@ -32869,7 +32869,7 @@ const GUIDE = [
   { id:'edit-break',   essential:true, essSection:'Edit', keys:['⇧+Enter'],               essLabel:'Line break' },
   { id:'edit-merge',   essential:true, essSection:'Edit', keys:['Bksp at start'],            essLabel:'Merge point up' },
   { id:'edit-indent',  essential:true, essSection:'Edit', keys:['Tab','⇧+Tab'],           essLabel:'Indent / outdent' },
-  { id:'ins-builder',  essential:true, essSection:'Insert', keys:[`${MOD}+K`],             essLabel:'Command browser' },
+  { id:'ins-builder',  essential:true, essSection:'Insert', keys:[`${MOD}+K`],             essLabel:'All commands' },
   { id:'edit-move',    essential:true, essSection:'Edit', keys:['Alt+↑','Alt+↓'],     essLabel:'Move point up / down' },
   { id:'edit-menu',    essential:true, essSection:'Edit', keys:['⇧+F10'],               essLabel:'Point menu' },
   // Touch GESTURES are intentionally NOT here: this panel is keys + syntax only. Gestures
@@ -33251,7 +33251,7 @@ const GUIDE = [
     ] },
   { id:'templates', cat:'todos', covers:['template','savetemplate'],
     title:'Templates',
-    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /savetemplate:name to save this point and its children as a template, then /template:name to stamp a copy directly, or /template on its own to pick from a list. You can also save from any point's menu. A data pack can carry templates too (a pre-made character sheet or oracle layout, for example); those show up in the same picker with a pack badge and stamp exactly like your own, so importing one pack can hand you a whole set of ready structures.",
+    body:"Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly review layout, a bug-report checklist or any subtree you use repeatedly, then stamp a fresh copy in one step. Type /savetemplate:name to save this point and its children as a template, then /template:name to stamp a copy directly, or /template on its own to pick from a list. You can also save from any point's menu. A pack can carry templates too (a pre-made character sheet or oracle layout, for example); those show up in the same picker with a pack badge and stamp exactly like your own, so importing one pack can hand you a whole set of ready structures.",
     related:['capture-inbox','datapacks'],
     examples:[
       { syn:'/savetemplate:weekly review',       desc:'save this subtree as a template inline' },
@@ -33622,12 +33622,12 @@ const GUIDE = [
       { syn:'is:failing',          desc:'find everything that fails' },
     ] },
   { id:'datapacks', cat:'compute',
-    title:'Data packs',
-    body:"Bundle the pieces of a whole game system, setting or adventure into one file you can share: grammar rules, variables and captured pieces of your document like a character sheet, an oracle or a thread deck. A pack is pure data, stored with the document, and never runs code; it only adds the same rules, variables and pills the engine already understands.\n\nTo ship a working piece of a system, you capture it, you do not type it as a rule. Build a character sheet, a stat block or a shuffle deck as ordinary points, then choose `Add to data pack` from the point's bullet menu. The whole subtree, with its pills intact, becomes a template in the pack; a deck you add this way keeps drawing without repeats when someone stamps it. A deck typed into a pack's rules instead just draws at random, because a rule has no memory, so capture decks as templates.\n\nOpen File then Data packs to manage them. Type grammar rules (one per line, `name: choices`) and variables, and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. The pack's captured templates are listed there too, ready to stamp from the `/template` picker. A pack variable is either a formula (`name = expression`, like `tax = 0.2`, which recomputes live) or a random pick (`name: choices`, like `strength: 3d6`, rolled once when you save and then fixed, so a pack can ship a rolled stat block).\n\nExport a pack to a file to share it, and import one back; a shared pick keeps the value it was rolled to, so everyone sees the same one, and a captured deck arrives mid-shuffle exactly as you left it. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. Toggle a pack off to remove its contents without deleting it. Start a rules line with `#` for a section header comment (skipped), and if you leave the colon off a rule the editor skips just that line and tells you how many it skipped.",
+    title:'Reusable packs',
+    body:"Bundle the pieces of a whole game system, setting or adventure into one file you can share: grammar rules, variables and captured pieces of your document like a character sheet, an oracle or a thread deck. A pack is pure data, stored with the document, and never runs code; it only adds the same rules, variables and pills the engine already understands.\n\nTo ship a working piece of a system, you capture it, you do not type it as a rule. Build a character sheet, a stat block or a shuffle deck as ordinary points, then choose `Add to a pack` from the point's bullet menu. The whole subtree, with its pills intact, becomes a template in the pack; a deck you add this way keeps drawing without repeats when someone stamps it. A deck typed into a pack's rules instead just draws at random, because a rule has no memory, so capture decks as templates.\n\nOpen File then Reusable packs to manage them. Type grammar rules (one per line, `name: choices`) and variables, and every rule and variable becomes callable across the whole document, exactly as if you had declared it in a pill. The pack's captured templates are listed there too, ready to stamp from the `/template` picker. A pack variable is either a formula (`name = expression`, like `tax = 0.2`, which recomputes live) or a random pick (`name: choices`, like `strength: 3d6`, rolled once when you save and then fixed, so a pack can ship a rolled stat block).\n\nExport a pack to a file to share it, and import one back; a shared pick keeps the value it was rolled to, so everyone sees the same one, and a captured deck arrives mid-shuffle exactly as you left it. A document rule or variable of the same name always wins over a pack, so a pack sets defaults you can override locally. Toggle a pack off to remove its contents without deleting it. Start a rules line with `#` for a section header comment (skipped), and if you leave the colon off a rule the editor skips just that line and tells you how many it skipped.",
     related:['grammar','variables','templates'],
     examples:[
-      { syn:'Bullet menu → Add to data pack', desc:'capture a subtree (sheet, oracle, deck) into a pack' },
-      { syn:'File → Data packs',      desc:'create, enable, edit, import or export packs' },
+      { syn:'Bullet menu → Add to a pack', desc:'capture a subtree (sheet, oracle, deck) into a pack' },
+      { syn:'File → Reusable packs',      desc:'create, enable, edit, import or export packs' },
       { syn:'npc: knight | rogue | mage', desc:'a pack grammar rule, callable as {npc} anywhere' },
       { syn:'tax = 0.2',              desc:'a pack formula variable, usable in any {= …}' },
       { syn:'strength: 3d6',          desc:'a random pick variable, rolled once on save then fixed' },
@@ -33801,8 +33801,8 @@ const GUIDE = [
       { syn:'treasure: {2d6} silver | a {gem}',  desc:'a rule can roll dice or call another' },
     ] },
   { id:'builder', cat:'getting-around',
-    title:'Command browser',
-    body:"Every command in one place. Open the command browser and search across every point type, generator, calculation and pill, then insert the one you want without memorizing its syntax. Open it from the toolbar (the checklist icon), by pressing Ctrl/Cmd+K, or by typing /builder. In Guided mode, typing /, @ or { opens it too.\n\nType to filter, arrow keys to browse, Enter to insert. The right pane shows what each command does as you move through the list, so browsing is also how you learn what the app can do.",
+    title:'All commands',
+    body:"Every command in one place. Open All commands and search across every point type, generator, calculation and pill, then insert the one you want without memorizing its syntax. Open it from the toolbar (the checklist icon), by pressing Ctrl/Cmd+K, or by typing /builder. In Guided mode, typing /, @ or { opens it too.\n\nType to filter, arrow keys to browse, Enter to insert. The right pane shows what each command does as you move through the list, so browsing is also how you learn what the app can do.",
     related:['overview','point-types','brace-picker'],
     covers:['builder'],
     examples:[
@@ -34407,7 +34407,7 @@ function launchBuilder() {
   if (!id) id = root.children[0] && root.children[0].id;         // fallback: the first point
   const node = id && nodeById(id);
   if (!node) { flashHint('Add a point first, then open the command browser'); return; }
-  if (node.type === 'base') { flashHint('Open the command browser from a text point'); return; }
+  if (node.type === 'base') { flashHint('Open All commands from a text point'); return; }
   const el = document.querySelector(`.node-content[data-id="${id}"]`);
   if (!el) return;
   if (!el.dataset.editing) enterEdit(el, node);
@@ -34427,21 +34427,21 @@ function openBuilder(trigger) {
   hideSlashMenu(); hideBraceMenu();
   armChromeReturn();
   ioCard.classList.add('builder-open');
-  ioCard.setAttribute('aria-label', 'Command builder');
+  ioCard.setAttribute('aria-label', 'All commands');
   ioCard.setAttribute('aria-labelledby', 'builder-title');   // UXP-181
   syncBuilderBtn();
   const cmds = builderCmdPool(trigger);
   let filterQ = '';
   // trigger === null is the front-door launch (toolbar / verb / Ctrl+K): show every command.
   const title = trigger === '/' ? 'Point commands' : trigger === '@' ? 'Insert commands'
-              : trigger === '{' ? 'Brace picker' : 'Commands';
+              : trigger === '{' ? 'Pill picker' : 'All commands';
 
   ioCard.innerHTML =
     '<div class="builder-wrap">' +
       '<div class="builder-header" role="search">' +
         '<span class="builder-title" id="builder-title">' + escHtml(title) + '</span>' +
         '<span class="builder-search-wrap">' +
-          '<input class="guide-search builder-search" type="search" placeholder="Search commands — Enter to insert" aria-label="Search commands" data-first>' +
+          '<input class="guide-search builder-search" type="search" placeholder="Search commands. Enter to insert" aria-label="Search commands" data-first>' +
           '<span class="builder-search-ghost" aria-hidden="true"></span>' +
         '</span>' +
         '<button class="builder-insert-btn" type="button" aria-label="Insert selected command">Insert</button>' +
