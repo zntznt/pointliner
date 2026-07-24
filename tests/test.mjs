@@ -9231,8 +9231,12 @@ test('capture: UI wiring + front doors present (src pins)', () => {
 test('#566 touch quick bar: wiring, swap discipline, and the bottom-stack integration (src pins)', () => {
   // the bar exists with its four actions and swaps with the edit bar (one bottom bar at a time)
   assert.ok(_src.includes('id="quick-bar"'), 'quick bar region missing');
-  for (const id of ['qb-capture', 'qb-new', 'qb-insert', 'qb-help'])
+  for (const id of ['qb-capture', 'qb-new', 'qb-insert', 'qb-undo', 'qb-help'])
     assert.ok(_src.includes(`id="${id}"`), `${id} button missing`);
+  // ζ: the touch Undo button makes the "one undo takes it back" toasts true on a phone (Ctrl/Cmd+Z is
+  // keyboard-only). Wired with a plain click (display mode, no caret to protect) through undo().
+  assert.match(_src, /id="qb-undo"[^>]*aria-label="Undo"[^>]*>↺</, 'qb-undo carries the ↺ glyph + accessible name');
+  assert.match(_src, /getElementById\('qb-undo'\)\.addEventListener\('click', \(\) => undo\(\)\)/, 'qb-undo is wired to undo()');
   assert.ok(_src.includes('function updateQuickBar'), 'updateQuickBar missing');
   assert.match(_src, /IS_TOUCH && !editBar\.classList\.contains\('on'\)/, 'bar must show on touch only, hidden while the edit bar is up');
   assert.match(_src, /updateQuickBar\(\);\s*\/\/ #566/, 'updateEditBar must drive the swap');
@@ -17296,11 +17300,22 @@ test('#437 — toggleTaskLine adds/removes the to-do marker on the caret line', 
 
 test('#437 — the touch edit-bar carries a wired to-do button', () => {
   const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
-  const bar = src.slice(src.indexOf('id="edit-bar"'), src.indexOf('id="edit-bar"') + 900);
+  // slice to the bar's own closing tag (the button set grew with ζ's undo button, past the old 900 window)
+  const start = src.indexOf('id="edit-bar"');
+  const bar = src.slice(start, src.indexOf('</div>', start));
   assert.ok(bar.includes('id="eb-todo"'), 'the edit-bar is missing the to-do button');
   assert.ok(/aria-label="Toggle to-do"/.test(bar), 'the to-do button needs an accessible name');
   assert.ok(src.includes("ebBtn('eb-todo'"), 'the to-do button must be wired through ebBtn (the pointerup-gated touch path)');
   assert.ok(src.includes('toggleTaskLine(text, off)'), 'the button must use the toggleTaskLine core');
+});
+
+test('ζ — the touch edit-bar carries a caret-safe undo button', () => {
+  const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const start = src.indexOf('id="edit-bar"');
+  const bar = src.slice(start, src.indexOf('</div>', start));
+  assert.ok(/id="eb-undo"[^>]*aria-label="Undo"[^>]*>↺</.test(bar), 'the edit-bar undo button carries the ↺ glyph + accessible name');
+  // wired through ebBtn (mousedown+preventDefault) so a mid-edit tap does not blur-then-exit before undo() runs
+  assert.ok(src.includes("ebBtn('eb-undo', () => undo())"), 'eb-undo must be wired through ebBtn to undo() (caret-safe)');
 });
 
 // #647 — the timeline draws from three date-sources: tasks (start/due), journal (dated by tree
