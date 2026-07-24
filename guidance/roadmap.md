@@ -325,3 +325,43 @@ two recorded structural noes in `bases-direction.md` §7c), then the below-the-l
 `bases-direction.md` §4's deferred list is now shipped or a recorded, deliberate no; the only
 revisit triggers are written beside their decisions (§7c, `saved-views-proposal.md`). Ledgers:
 `bases-direction.md` §4 + §7b/§7c (records), `performance.md` §Bases (the measured envelope).
+
+## Beginner-experience arc — complete (2026-07-24)
+
+The onboarding/discoverability arc ran its full course under owner direction: the guided command
+surface ("All commands" — search-and-insert any command/pill/generator, keyboard-navigable and
+a11y-clean, with `@convert`, `/units`, a meter form and pill previews), then a ~14-PR sweep. What
+shipped, grouped: **onboarding** (atom-first first run, the blank-canvas door, a one-time first-pill
+nudge, plain-language placeholder + starter copy); **failure cues** (`braceAttemptReason` now names
+the fix, not just the miss, and the last silent no-ops are closed — a faceless `{2d}` and an empty
+`{roll: #tag}` now explain themselves); **discoverability** (dedicated concept-guide entries for the
+tag browser and per-pill format, a chrome drift guard locking `TB_GUIDE_MAP`/`CHROME_GUIDE` so no
+toolbar button or listed chrome feature can ship guide-less, and a plain-language chrome-label pass —
+"Command browser" → "All commands", "Data packs" → "Reusable packs"); **touch teaching** (first-run
+gesture hints extended to drag, and the previously-undiscoverable clock step-back taught in the moment
+on any touch device); **features** (a word-count goal meter — `{meter: words(subtree)/1000}` reuses
+`evalMath`, zero new syntax — and consistent spellcheck across prose surfaces); and the comprehensive
+em-dash guard over every user-facing surface.
+
+**Decisions locked (revisit triggers beside each):** (i) **Reading mode = Lean** — no separate reading
+mode was built; a prose-flow view that dissolves the outline is the WYSIWYG rich text the identity
+excludes (§2/§5). Lean (toolbar recedes, chrome hides) plus not-editing is the reading surface,
+documented in the guide + the Lean card (recorded in `ux.md`). *Revisit:* only if the identity's
+WYSIWYG stance changes. (ii) **Feature names stay as taught vocabulary** — Base (deliberately not
+"Table"), Chronicle, Oracle, Grammar, Deck, Markov keep their names; only non-identity chrome jargon
+was plainened. *Revisit:* per-name, if usage shows a name actively misleads. (iii) **Arithmetic `#ERR`
+is out of the "silent failures" set** — `1/0` renders a valid Infinity and `sqrt(-1)` is a loud
+`#ERR`, so neither is silent; naming the reason is a separate, low-value follow-up. (iv) **The
+verbosity dial's affordance count is capped at three** (Settings card, File-menu tier strip,
+`Ctrl/Cmd+Shift+.`); the reading-mode framing rode existing copy, not a new control.
+
+**Verified already-shipped during the arc** (research-doc items that a fresh read found already done,
+so they were not re-proposed): multi-line paste → points, outline sort-children, individual die faces,
+link-caption `#tag` stripping, query-row resolved titles, the save-template door, the empty-scope cues
+on progress cookies / `words()`, the value-only pill, and the guided calendar dialog.
+
+**Remaining frontier (not session-sized; triggers written here):** a **global number-format default**
+(per-pill format shipped; a document-level grouping/decimals toggle is power/niche since grouping is
+already always-on — *revisit* if a non-power user asks or number pills become a common beginner
+surface); and **mobile-first views + the sync/platform ceiling** (folder mode is Chromium-desktop-only;
+this is the genuine larger frontier, a project rather than a PR). Both are logged in `backlog.md`.
