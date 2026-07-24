@@ -12,24 +12,24 @@ independently, and the result reads as a single sentence.
 ```
 Spent {= sum(cost)} of {= budget}
 ```
-Renders as: **"Spent 320 of 500"** — a live budget statement with two math pills and the
+Renders as: **"Spent 320 of 500"**, a live budget statement with two math pills and the
 word "of" between them.
 
 ```
 {= min(cost)}–{= max(cost)}
 ```
-Renders as: **"12–89"** — the range of a property across children, with just a dash.
+Renders as: **"12–89"**, the range of a property across children, with just a dash.
 
 ```
 {= words(subtree)} / 5,000
 ```
-Renders as: **"3,420 / 5,000"** — progress toward a word-count goal, with the pill and
+Renders as: **"3,420 / 5,000"**, progress toward a word-count goal, with the pill and
 the target side by side.
 
 ```
 Condensed: {= sum(hours)}hrs · {= avg(score)}/100
 ```
-Renders as: **"42hrs · 87/100"** — a compact status line using middots as separators.
+Renders as: **"42hrs · 87/100"**, a compact status line using middots as separators.
 
 A directional indicator is a conditional pill and a variable:
 
@@ -48,7 +48,7 @@ variable freezes the random outcome so every reader agrees.
 {r := 1d20}
 {r == 20: Critical! | {= r + mod}}
 ```
-The first pill captures the roll. The second pill, a conditional — reads the captured
+The first pill captures the roll. The second pill, a conditional, reads the captured
 number. Click the capture pill to re-roll and the conditional follows.
 
 ```
@@ -81,7 +81,7 @@ Plan (parent)
 ```
 
 The parent declares `budget: 500`. Children carry `cost` properties. The parent's math
-pill reads `{= sum(cost)}` — the total of all children's costs — and displays it side by
+pill reads `{= sum(cost)}`, the total of all children's costs, and displays it side by
 side with the budget. The check watches the same sum. The child points need no declarations.
 
 The nearest value wins: a point's own property beats an ancestor's, and a nearer ancestor
@@ -93,7 +93,7 @@ Estimates and math are separate engines. An estimate inside a `{= …}` math pil
 visibly with an `#ERR` marker:
 
 ```
-{= (5 to 10) * 2}    ✗ #ERR — estimate inside math
+{= (5 to 10) * 2}    ✗ #ERR: estimate inside math
 ```
 
 Compose them side by side instead:

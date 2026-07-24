@@ -23,7 +23,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -17819,4 +17819,43 @@ test('blank-canvas door (beginner PR B) — decision gates + wiring', () => {
     'the close button waives it');
   assert.ok(_src.includes('hideExamplesBanner(); hideBlankInviteBanner(); openStarterGallery()'),
     'the examples door hides the invite before opening the gallery');
+});
+
+test('em-dash ban is ENFORCED across all user-facing copy (README, guide/, GUIDE bodies, command descs)', () => {
+  // The strict rule (CLAUDE.md: "No em dashes in user strings") was guarded in only three narrow
+  // spots, so violations shipped in the README (unguarded entirely) and one command desc. This
+  // scans every user-facing surface. guidance/ and code comments are EXEMPT (internal; CLAUDE.md
+  // itself uses em dashes in prose) — the rule is about copy a user reads.
+  const EM = '—';
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+  // 1) Every markdown doc a user reads: README + the whole guide/ tree.
+  const mdFiles = [resolve(root, 'README.md')];
+  (function walk(dir) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = resolve(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith('.md')) mdFiles.push(p);
+    }
+  })(resolve(root, 'guide'));
+  for (const f of mdFiles) {
+    const txt = readFileSync(f, 'utf8');
+    const i = txt.indexOf(EM);
+    assert.equal(i, -1, `${f.slice(root.length + 1)} has an em dash near: "${txt.slice(Math.max(0, i - 40), i + 40).replace(/\n/g, ' ')}"`);
+  }
+
+  // 2) In-app command descriptions (shown in the / @ { menus) — every one, not just brace forms.
+  for (const cmd of c.builderCmdPool(null)) {
+    assert.ok(!(cmd.desc || '').includes(EM), `command "${cmd.label}" desc has an em dash`);
+  }
+
+  // 3) GUIDE entry bodies + examples (the concept guide's teaching prose). Scan the string VALUES,
+  // not the surrounding // comments (those are internal and legitimately use em dashes).
+  const g = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  for (const m of g.matchAll(/\bbody:\s*"((?:[^"\\]|\\.)*)"/g)) {
+    assert.ok(!m[1].includes(EM), `a GUIDE body has an em dash near: "${m[1].slice(0, 60)}"`);
+  }
+  for (const m of g.matchAll(/\bdesc:\s*'((?:[^'\\]|\\.)*)'/g)) {
+    assert.ok(!m[1].includes(EM), `a GUIDE example desc has an em dash: "${m[1].slice(0, 60)}"`);
+  }
 });
