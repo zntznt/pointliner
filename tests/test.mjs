@@ -9882,6 +9882,10 @@ test('#557 renderMathPill wires the empty-rollup "nothing matched" state (src pi
   assert.ok(_src.includes('firstEmptyRollup(m.expr, cookieNode)'), 'renderMathPill must check for an empty rollup');
   assert.ok(_src.includes('math-empty'), 'the muted nothing-matched pill class is missing');
   assert.ok(_src.includes('No ${emptyProp} below this point'), 'the empty-rollup hint (naming the prop) is missing');
+  // a BARE rollup (no scope word) suggests widening by depth (, subtree), not the query-only , document;
+  // gated so a sum(cost, subtree) that is genuinely empty gets no redundant hint.
+  assert.ok(_src.includes('Add ", subtree" to include every level below'), 'the empty bare-rollup must suggest widening to the subtree');
+  assert.ok(/const bareScoped = new RegExp/.test(_src), 'the widen hint must be gated on the default (no-scope-word) form');
 });
 
 test('#914 expandAggExpr — a ", document" / ", doc" widener reaches the whole doc (root), not the node subtree', () => {
