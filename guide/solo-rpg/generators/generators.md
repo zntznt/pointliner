@@ -52,16 +52,16 @@ whole namespace lives in two lists you can read at a glance.
 
 ## The place generator: named rules and modifiers
 
-Taverns, temples and towns are where **named rules** earn their keep. A named rule is just a
-point whose text reads `rulename: option | option | option` at the line start. Once it exists,
-`{rulename}` picks one of its options anywhere in the document. Rules can reference each other,
-so you build a place out of layers:
+Taverns, temples and towns are where **named rules** earn their keep. A named rule is a point that reads
+`{rule rulename: option | option | option}`. Once it exists, `{rulename}` picks one of its options
+anywhere in the document. The `rule` keyword is what names it, and a bare `rulename: a | b` stays
+ordinary text. Rules can reference each other, so you build a place out of layers:
 
 ```
-tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}
-adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned
-animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven
-noun: Anchor | Lantern | Crown | Coin | Barrel | Compass
+{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}
+{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned}
+{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven}
+{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}
 ```
 
 Now `{tavern}` reaches down through the layers and returns The Salted Kraken, The Raven and
@@ -97,7 +97,7 @@ damage, a potion's effect). Both are one pill each.
 leave it blank and the weight is 1:
 
 ```
-loot: a handful of copper 6 | a silver ring 3 | a jeweled dagger 2 | a humming wand | an old map
+{rule loot: a handful of copper 6 | a silver ring 3 | a jeweled dagger 2 | a humming wand | an old map}
 ```
 
 Copper comes up six times as often as the wand. Click `{loot}` and it rolls against those
@@ -108,11 +108,11 @@ without you thinking about probabilities. Tune the whole economy by editing the 
 sub-rule, and you read the field back with `{item.field}`:
 
 ```
-weapon: sword | axe | mace | spear
-sword.damage: 1d8
-axe.damage: 1d10
-mace.damage: 1d6
-spear.damage: 1d8
+{rule weapon: sword | axe | mace | spear}
+{rule sword.damage: 1d8}
+{rule axe.damage: 1d10}
+{rule mace.damage: 1d6}
+{rule spear.damage: 1d8}
 ```
 
 Now "you loot a `{weapon}`, it hits for `{weapon.damage}`" pulls a weapon and its damage. The
