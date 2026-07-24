@@ -8,37 +8,37 @@
         <outline text="A Markov chain learns which sound follows which and walks the transitions. Click to grow a fresh name: {markov: ka→la, la→sh, sh→ka, ka→ra, ra→n, n→dor, dor→a, a→ka, sh→ael, ael→wyn, wyn→dros, dros→a}" _id="gen00011"/>
         <outline text="The syntax is a list of syllable transitions, source→next, separated by commas. The chain starts on the first syllable and hops to a random next each step, so ka can lead to la, ra, or nowhere (an end)." _id="gen00012"/>
         <outline text="Prefer a rule-based builder? Snap a prefix onto a suffix: {prefix}{suffix}. The two pills roll independently, so you get Kadros, Vorwyn, Malthas, and so on." _id="gen00013">
-          <outline text="prefix: Ka | Vor | Mal | Ael | Ser | Thal | Bryn" _id="gen00014"/>
-          <outline text="suffix: dros | wyn | thas | ric | ael | mir | oth" _id="gen00015"/>
+          <outline text="{rule prefix: Ka | Vor | Mal | Ael | Ser | Thal | Bryn}" _id="gen00014"/>
+          <outline text="{rule suffix: dros | wyn | thas | ric | ael | mir | oth}" _id="gen00015"/>
         </outline>
       </outline>
       <outline text="## Places (named rules and modifiers)" _id="gen00020">
-        <outline text="Name a tavern by referencing a rule that references two more: {tavern}. Rules are defined below by points whose text reads rulename: option | option at the line start." _id="gen00021">
-          <outline text="tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}" _id="gen00022"/>
-          <outline text="adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken" _id="gen00023"/>
-          <outline text="animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad" _id="gen00024"/>
-          <outline text="noun: Anchor | Lantern | Crown | Coin | Barrel | Compass" _id="gen00025"/>
+        <outline text="Name a tavern by referencing a rule that references two more: {tavern}. Rules are defined below by points that read `{rule rulename: option | option}`." _id="gen00021">
+          <outline text="{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}" _id="gen00022"/>
+          <outline text="{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}" _id="gen00023"/>
+          <outline text="{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}" _id="gen00024"/>
+          <outline text="{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}" _id="gen00025"/>
         </outline>
         <outline text="Modifiers reshape a reference with a dotted suffix. Capitalize the sign that hangs outside: {animal.cap}. Add the right article so it reads naturally: you push open the door to {animal.a}. Shout the name to the room: {noun.upper}!" _id="gen00030"/>
         <outline text="Chain modifiers left to right. A weathered sign, painted long ago, still reads: {adjective.title}. Pluralize a beast for the tavern's cellar of pickled {animal.lower.s}." _id="gen00031"/>
       </outline>
       <outline text="## Loot (weighted table, hierarchical items)" _id="gen00040">
         <outline text="A weighted table picks common things often and rare things rarely. The number after an option is its weight (blank means 1): you find {loot}." _id="gen00041">
-          <outline text="loot: a handful of copper 6 | a silver ring 3 | a jeweled dagger 2 | a humming wand | an old map" _id="gen00042"/>
+          <outline text="{rule loot: a handful of copper 6 | a silver ring 3 | a jeweled dagger 2 | a humming wand | an old map}" _id="gen00042"/>
         </outline>
-        <outline text="A hierarchical item carries fields. Draw a weapon and read its damage off the same draw: you loot a {weapon}, it hits for {weapon.damage}. The item.field pill only resolves when the picked item has a matching sub-rule (sword.damage, axe.damage) defined at a line start below." _id="gen00050">
-          <outline text="weapon: sword | axe | mace | spear" _id="gen00051"/>
-          <outline text="sword.damage: 1d8" _id="gen00052"/>
-          <outline text="axe.damage: 1d10" _id="gen00053"/>
-          <outline text="mace.damage: 1d6" _id="gen00054"/>
-          <outline text="spear.damage: 1d8" _id="gen00055"/>
+        <outline text="A hierarchical item carries fields. Draw a weapon and read its damage off the same draw: you loot a {weapon}, it hits for {weapon.damage}. The item.field pill only resolves when the picked item has a matching sub-rule (`{rule sword.damage: ...}`, `{rule axe.damage: ...}`) defined below." _id="gen00050">
+          <outline text="{rule weapon: sword | axe | mace | spear}" _id="gen00051"/>
+          <outline text="{rule sword.damage: 1d8}" _id="gen00052"/>
+          <outline text="{rule axe.damage: 1d10}" _id="gen00053"/>
+          <outline text="{rule mace.damage: 1d6}" _id="gen00054"/>
+          <outline text="{rule spear.damage: 1d8}" _id="gen00055"/>
         </outline>
         <outline text="To keep the weapon and its damage in agreement across two pills, bind the pick to a variable first: {w := weapon}. Then both {w} and {w.damage} read the same draw. (Without the bind, each {weapon} pill rolls on its own.)" _id="gen00060"/>
       </outline>
       <outline text="## Run it yourself" _id="gen00070">
         <outline text="Click any pill to reroll it. The Markov name grows a new path each click, the tavern picks a fresh sign, the loot table rolls against its weights, and the weapon draws with its matching damage." _id="gen00071"/>
-        <outline text="Edit the lists to make them yours. Click the text next to a pill (say animal: Kraken | Wyrm | ...) and add, remove, or reweight options. Every {animal} pill in the file reads the same rule, so one edit changes the whole document, names and places alike." _id="gen00072"/>
-        <outline text="Add a new generator the same way: write a point (rulename: a | b | c) at a line start, then reference the rule by name in braces anywhere. Give an item a field by defining a sub-rule (itemname.field: value) and read it with the item-dot-field form. Nothing here is a new notation, it is the same {…} grammar as the rest of the guide, aimed at drawing names, places, and loot on demand." _id="gen00073"/>
+        <outline text="Edit the lists to make them yours. Click a rule pill's point to edit it back into text (say `{rule animal: Kraken | Wyrm | ...}`) and add, remove, or reweight options. Every {animal} pill in the file reads the same rule, so one edit changes the whole document, names and places alike." _id="gen00072"/>
+        <outline text="Add a new generator the same way: type `{rule rulename: a | b | c}` in a point, then reference the rule by name in braces anywhere. Give an item a field by defining a sub-rule, `{rule itemname.field: value}`, and read it with the item-dot-field form. Nothing here is a new notation, it is the same {…} grammar as the rest of the guide, aimed at drawing names, places, and loot on demand." _id="gen00073"/>
       </outline>
     </outline>
   </body>

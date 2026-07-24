@@ -183,22 +183,25 @@ A math result that's a date renders as an **ISO date** automatically when you wr
 
 ## Variables in math
 
-Declare a variable once (**`@` → Variable**, e.g. `r = 5`) and reference it bare inside an
-expression:
+Declare a variable once and reference it bare inside an expression. The operator is `:=`:
 
 ```
-r = 5
+{r := 5}
 {= 2 * pi * r}     → 31.4   (circumference)
 {= pi * r^2}       → 78.5   (area)
 ```
 
-Variables can reference other variables (`area = pi*r^2`). Change `r` and every dependent pill
+(A single `=` is not a declaration. `{r = 5}` stays plain text, and `{beast = dragon|wyrm}` is worse:
+it becomes a random pick between the two literal strings `beast = dragon` and `wyrm`. Use `:=`.)
+
+There is a dialog too, **`@` → Variable**, which asks for the name and the value in separate fields.
+
+Variables can reference other variables (`{area := pi*r^2}`). Change `r` and every dependent pill
 updates live. To see every variable in the document with its current value, open the **Variables
 panel**: type `/variables`, press `Ctrl/Cmd+Shift+V`, or use the toolbar. A variable that holds *text* (a quoted string or a random pick, both below) can't be
 used as a number; it fails visibly rather than guessing.
 
-**Declare one by typing.** Besides the `@` → Variable dialog, you can write a declaration inline
-with `:=`, the same way you type any other pill:
+**Where a declaration applies.**
 
 ```
 {rate := 0.2}      declares `rate` = 0.2, right where you type it

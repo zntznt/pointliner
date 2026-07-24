@@ -2350,6 +2350,20 @@ function parseCmdPool(src, marker) {
   return cmds;
 }
 
+// parseCmdPool's twin for the copy fields. Same one-command-per-line assumption; it exists because
+// desc/ex were never scraped, which is why a card could teach a non-working form indefinitely.
+function cmdCards(src, name) {
+  const start = src.indexOf('const ' + name + ' = [');
+  const body = src.slice(start, src.indexOf('\n];', start));
+  const out = [];
+  for (const line of body.split('\n')) {
+    const idm = line.match(/\{\s*id:'([^']+)'/); if (!idm) continue;
+    const pick = (k) => { const m = line.match(new RegExp(k + ":'((?:[^'\\\\]|\\\\.)*)'")); return m ? m[1].replace(/\\'/g, "'") : ''; };
+    out.push({ id: idm[1], desc: pick('desc'), ex: pick('ex') });
+  }
+  return out;
+}
+
 test('agent-review: no menu alias hijacks a later command’s own id (collision guard for @ and /)', () => {
   // The menu selects the FIRST command (in pool order) matching the query. An alias `keys` entry on
   // an EARLIER command that is a prefix of a LATER command's id steals that command's own /id or @id
@@ -18367,18 +18381,106 @@ function GUIDE_IDS_FOR_TEST() {
 test('failure cues teach the fix path (beginner PR A) — bare-name copy + empty-scope cookie', () => {
   // The bare-name cue names HOW to define the missing name, all three routes (fleet-A finding:
   // "declare it" alone left users stranded).
+  //
+  // This pin used to assert the copy said `"rumor: option | option"` — a point you could type that
+  // registered NOTHING (collectRules reads grammar PILL records, never plain text). The string
+  // matched, so the test passed for as long as the advice was wrong. Every route named here is now
+  // EXECUTED below, so the cue cannot drift back into advertising something that does not work.
   const bare = c.braceAttemptReason('rumor', {}, {});
-  assert.match(bare, /"rumor: option \| option"/, 'names the rule-point form');
+  assert.match(bare, /\{rule rumor: option \| option\}/, 'names the rule form');
   assert.match(bare, /\{rumor := 5\}/, 'names the variable form');
   assert.match(bare, /backticks/, 'keeps the keep-as-text escape');
-  // The modifier-base cue names the rule-point fix too.
-  assert.match(c.braceAttemptReason('beast.cap', {}, {}), /"beast: option \| option"/);
+  // The modifier-base cue names the rule fix too.
+  assert.match(c.braceAttemptReason('beast.cap', {}, {}), /\{rule beast: option \| option\}/);
   assert.ok(!bare.includes('—'), 'no em dash in the new copy');
+
+  // Prove each named route actually resolves the missing name.
+  const ruleNode = { id: 'r1', text: '', grammar: [], children: [] };
+  ruleNode.text = c.promoteBraceBody(ruleNode, 'rule rumor: option | option');
+  assert.match(ruleNode.text, /^\[\[grammar:/, 'the rule form the cue names really promotes');
+  assert.ok(c.collectRules({ id: 'root1', text: '', children: [ruleNode] }).rumor,
+    'and really registers `rumor`, so {rumor} resolves after following the advice');
+  const varNode = { id: 'v1', text: '', vars: [], children: [] };
+  assert.match(String(c.promoteBraceBody(varNode, 'rumor := 5')), /^\[\[var:/, 'the variable form the cue names really promotes');
   // The [0/0] progress cookie carries an in-place empty-scope hint (title + aria), not a mute zero.
   assert.ok(/total === 0 \? 'No to-dos counted below this point yet/.test(_src),
     'empty cookie explains itself in place');
   assert.ok(/aria-label="\$\{done\} of \$\{total\} done\$\{emptyTip/.test(_src),
     'the hint rides the aria label too');
+});
+
+test('menu card examples are EXECUTABLE, not just plausible-looking', () => {
+  // Every one of these cards taught a form that does not do what the card implies. The pins below
+  // run the example rather than matching its text, which is the only kind of pin that would have
+  // caught them: the old strings were all well-formed, just false.
+  const cards = cmdCards(_src, 'INSERT_CMDS');
+  const card = (id) => cards.find(x => x.id === id) || assert.fail(`no @${id} card`);
+  const bodies = (ex) => [...ex.matchAll(/\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g)].map(m => m[1]);
+
+  // @var: `=` is not the declaration operator. {r = 5} stays text and {beast = dragon|wyrm}
+  // promoted to a pick between the literal strings "beast = dragon" and "wyrm".
+  const varEx = card('var').ex;
+  assert.ok(!/[^:]=\s/.test(varEx.replace(/:=/g, '')), '@var must not teach a bare = declaration');
+  for (const b of bodies(varEx))
+    assert.equal(c.classifyBraceBody(b, {}, {}), 'artifact', `@var example {${b}} must promote`);
+  assert.match(varEx, /:=/, 'and it names the real operator');
+
+  // @oracle: the card showed a sample OUTPUT ("Likely → Yes"), never the typeable form.
+  for (const b of bodies(card('oracle').ex))
+    assert.ok(c.oracleParts(b), `@oracle example {${b}} must be a real band`);
+
+  // @est: sum(cost) is dialog-only (estParts rejects it), so it must not sit among typed examples.
+  for (const b of bodies(card('est').ex))
+    assert.ok(c.estParts(b, {}), `@est example {${b}} must be typeable`);
+  assert.ok(!/sum\(|avg\(/.test(card('est').ex), '@est examples must not offer the dialog-only roll-ups as typed');
+
+  // @meter: every example parses, including the variable form the card now documents.
+  for (const b of bodies(card('meter').ex))
+    assert.ok(c.parseMeter(b), `@meter example {${b}} must parse`);
+  assert.ok(/\{meter: \{[a-z]+\}/.test(card('meter').desc + card('meter').ex),
+    'the {var} meter form ships and must be documented somewhere on the card');
+
+  // @rolltable / @grammar: the rule examples must actually declare a rule.
+  for (const id of ['rolltable', 'grammar'])
+    for (const b of bodies(card(id).ex))
+      assert.ok(c.ruleDeclParts(b), `@${id} example {${b}} must declare a real rule`);
+});
+
+test('the shipped generators demo actually generates (its rules register on load)', () => {
+  // The demo stored its rules as PLAIN outline text ("tavern: The {adjective} {animal} | ...") with
+  // no _grammar attribute, so collectRules found nothing and every {tavern} in it rendered as the
+  // broken marker {tavern?}. A user opened a file advertising "three generators" and saw only
+  // error markers. This pin loads the real shipped file and runs it.
+  const opml = readFileSync(new URL('../guide/solo-rpg/generators/generators-demo.opml', import.meta.url), 'utf8');
+  // every {rule …} the file declares must be well-formed
+  const declared = [...opml.matchAll(/text="\{rule ([^"]+)\}"/g)].map(m => m[1]);
+  assert.ok(declared.length >= 10, `the demo declares its rules with the typed form, got ${declared.length}`);
+  for (const d of declared) assert.ok(c.ruleDeclParts('rule ' + d), `demo rule "{rule ${d}}" must parse`);
+  // and the references in its prose must all resolve against them
+  const rules = Object.create(null);
+  for (const d of declared) Object.assign(rules, c.parseRules(d).rules);
+  for (const name of ['tavern', 'adjective', 'animal', 'noun', 'loot', 'weapon', 'prefix', 'suffix'])
+    assert.ok(rules[name], `the demo must register "${name}"`);
+  assert.ok(rules['sword.damage'], 'dotted sub-rule fields register too');
+  const out = c.runGrammar('origin: {tavern}', 'origin', rules, {});
+  assert.ok(out && !/\?\}/.test(out), `{tavern} must generate, got ${out}`);
+  // prose EXAMPLES must stay escaped, or they promote into junk rules that pollute the namespace
+  // ({rule rulename: a | b | c} written as an illustration really did register `rulename`).
+  for (const junk of ['rulename', 'itemname.field'])
+    assert.ok(!rules[junk], `"${junk}" is an illustration and must be backtick-escaped, not declared`);
+});
+
+test('the oracle near-miss cue names bands that exist', () => {
+  // It advertised "fifty-fifty", which oracleParts rejects (hyphen, and no such band). The pin runs
+  // every word the cue offers through the parser instead of trusting the sentence.
+  const why = c.braceAttemptReason('oracle', {}, {});
+  assert.match(why, /\{oracle: likely\}/, 'keeps naming the canonical form');
+  const offered = (why.match(/\(or ([^)]+)\)/) || [, ''])[1].split(/,\s*/).map(s => s.trim()).filter(Boolean);
+  assert.ok(offered.length >= 3, `the cue offers alternatives, got ${JSON.stringify(offered)}`);
+  for (const band of offered)
+    assert.ok(c.oracleParts('oracle: ' + band), `the cue offers "${band}" but oracleParts rejects it`);
+  assert.ok(!/fifty/i.test(why), 'no fifty-fifty: it is not a band');
+  assert.ok(!why.includes('—'), 'no em dash');
 });
 
 test('blank-canvas door (beginner PR B) — decision gates + wiring', () => {

@@ -8303,15 +8303,15 @@ const INSERT_CMDS = [
   { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     keys:['generate','name','npc','tracery','generator','rule'], label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math. Type {rule name: a | b} to declare one inline, or use the dialog for several rules at once.', ex:'{rule origin: a {color} {animal}}', section:'Generate' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
-  { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again.', ex:'Likely → Yes', section:'Generate' },
+  { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
   // Compute — live numbers and values
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. Reference it {name} anywhere.', ex:'r = 5 · beast = dragon|wyrm', section:'Compute' },
-  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess'], label:'Estimate / uncertain', desc:'An uncertain value, such as a 90% range, normal/uniform or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample.', ex:'5 to 10 · normal(8,2) · sum(cost)', section:'Compute' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. The operator is :=, so type {r := 5}. Reference it {name} anywhere.', ex:'{r := 5} · {beast := dragon | wyrm}', section:'Compute' },
+  { id:'est',      icon:'≈',  fa:'fa-solid fa-left-right',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess'], label:'Estimate / uncertain', desc:'An uncertain value: a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample. Type the range forms directly; the sum and avg roll-ups are built here in the dialog.', ex:'{5 to 10} · {normal(8,2)} · {uniform(1,6)}', section:'Compute' },
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
   { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', keys:['tension','segment','pie','timer'], label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
-  { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health','goal','words','target'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Either side can be a live calculation, so {meter: words(subtree)/1000} is a writing goal that fills as you write. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: words(subtree)/1000}  ·  {meter: 5/5 hearts}', section:'Trackers' },
+  { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health','goal','words','target'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Wrap a name in braces to read a declared variable instead, like {meter: {done}/{goal}}. Either side can be a live calculation, so {meter: words(subtree)/1000} is a writing goal that fills as you write. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: words(subtree)/1000}  ·  {meter: 5/5 hearts}', section:'Trackers' },
   // Insert — basic inline elements
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  keys:['fn'], label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      keys:['img','picture','photo'], label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
@@ -16340,13 +16340,13 @@ function braceAttemptReason(body, rules, vars) {
   const mp = modParts(body);                                           // {beast.cap} with no such rule/var
   if (mp && !/^\d+$/.test(mp.base)) {
     // Name the fix, not just the miss (fleet-A research: "declare it" alone left users stranded).
-    return 'No rule or variable named "' + mp.base + '" to build this from. Add a point like "' + mp.base + ': option | option" to define it as a rule.';
+    return 'No rule or variable named "' + mp.base + '" to build this from. Type {rule ' + mp.base + ': option | option} to define it as a rule.';
   }
   // A generator keyword typed with no argument ({oracle}, {roll}, {shuffle}, {deck}) reads as a
   // bare undefined name today; point at the form it actually needs. Before the bare-name branch,
   // since that branch would otherwise swallow these. Only reached when no rule/var owns the name.
   const NEAR_MISS = {
-    oracle:  'An oracle needs an odds word: try {oracle: likely} (or fifty-fifty, unlikely).',
+    oracle:  'An oracle needs an odds word: try {oracle: likely} (or certain, even, unlikely, impossible).',
     roll:    'A roll needs something to roll on: try {roll: #tag} to pick a random point with that tag.',
     shuffle: 'A shuffle needs a list to deal from: try {shuffle: a | b | c}.',
     deck:    'A deck needs a list to deal from: try {shuffle: a | b | c}.',
@@ -16363,7 +16363,7 @@ function braceAttemptReason(body, rules, vars) {
     return 'This rule could not be read. A name, a colon, then the options: try {rule ' + rm[1].trim() + ': option | option}.';
   }
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
-    return 'No rule or variable named "' + body + '" is defined. Add a point like "' + body + ': option | option" to make it a rule, write {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
+    return 'No rule or variable named "' + body + '" is defined. Type {rule ' + body + ': option | option} to make it a rule, {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
   }
   const diceClean = body.replace(/\s/g, '');
   if (DICE_ATTEMPT.test(diceClean)) {                                  // {2d} — a die with no sides
@@ -24573,7 +24573,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
     title: title || 'Estimate (uncertain value)',
     submitLabel: submitLabel || 'Add',
     fields: [
-      { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,
+      { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,   // sum/avg are dialog-only (estParts rejects them), which is why they are shown HERE and not on the @ card
         hint:'An uncertain value: a 90% range lo to hi, normal(mean, sd) or uniform(lo, hi). Reference declared variables and combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
         preview: v => {
           const ex = (v.expr || '').trim();
@@ -33488,12 +33488,13 @@ const GUIDE = [
     ] },
   { id:'meter', cat:'todos', covers:['meter'],
     title:'Meters',
-    body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change.\n\nYou can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row.\n\nEither side can also be a live calculation, so a meter doubles as a goal that fills as you work. Write {meter: words(subtree)/1000} under a point and the bar tracks your word count toward a 1,000 word target, growing as you write beneath it; {meter: sum(cost)/budget} watches spending against a budget. Any math the point can compute works here.\n\nIf a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
+    body:"Show a number against its maximum as a bar, for hit points, spell slots, stress or any gauge on a character or an item. A meter reads the point's own properties, so give the point the numbers as properties (say hp: 8 and hpmax: 12) and write {meter: hp/hpmax}. It renders as a segmented bar with the exact count beside it, and it updates live as the properties change.\n\nYou can also fix the maximum with a number, {meter: hp/20}, or leave the maximum off, {meter: hp}, to read it as a percentage out of 100. Either side can be a plain number too, so {meter: 8/12} draws a fixed bar. To read a declared variable rather than a property, wrap its name in braces: {meter: {done}/{goal}} tracks two variables you declared with :=, which is the way to gauge something that belongs to the document as a whole rather than to one point. Add a style word at the end for a row of icons instead of a bar: {meter: hp/5 hearts} draws five hearts, filled for the current value and dimmed for the rest. The styles are dots, boxes, hearts, skulls, stars, shields and droplets. An icon row is capped at 10, so a larger maximum falls back to the bar rather than drawing a runaway row.\n\nEither side can also be a live calculation, so a meter doubles as a goal that fills as you work. Write {meter: words(subtree)/1000} under a point and the bar tracks your word count toward a 1,000 word target, growing as you write beneath it; {meter: sum(cost)/budget} watches spending against a budget. Any math the point can compute works here.\n\nIf a property is missing or is not a number the meter shows a small {meter?} marker instead of a wrong bar. A meter is a display only, so it is not clickable. It exports as its bar and count.",
     related:['progress','clock','math','variables','rollups'],
     examples:[
       { syn:'{meter: hp/hpmax}', desc:'a bar of one property over another' },
       { syn:'{meter: hp/20}',    desc:'a fixed maximum' },
       { syn:'{meter: words(subtree)/1000}', desc:'a writing goal: the bar fills as you write beneath the point' },
+      { syn:'{meter: {done}/{goal}}', desc:'read declared variables instead of properties' },
       { syn:'{meter: hp/5 hearts}', desc:'a row of icons (dots, boxes, hearts, skulls, stars, shields, droplets)' },
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
