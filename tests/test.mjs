@@ -369,8 +369,17 @@ test('braceAttemptReason — explains why an INVALID {…} did not become a pill
   // a modifier on an unknown base ({beast.cap}) names the missing base
   assert.equal(c.classifyBraceBody('beast.cap', {}, {}), 'invalid');
   assert.match(c.braceAttemptReason('beast.cap', {}, {}), /No rule or variable named "beast"/);
+  // a generator keyword typed with no argument ({oracle}/{roll}/{shuffle}/{deck}/{clock}) points at
+  // the form it needs, instead of the generic "no rule named oracle" bare-name message.
+  assert.match(c.braceAttemptReason('oracle', {}, {}), /\{oracle: likely\}/, '{oracle} names the odds form');
+  assert.match(c.braceAttemptReason('roll', {}, {}), /\{roll: #tag\}/, '{roll} names the tag form');
+  assert.match(c.braceAttemptReason('shuffle', {}, {}), /\{shuffle: a \| b \| c\}/, '{shuffle} names the list form');
+  assert.match(c.braceAttemptReason('deck', {}, {}), /\{shuffle: a \| b \| c\}/, '{deck} points at shuffle');
+  assert.match(c.braceAttemptReason('clock', {}, {}), /\[o 0\/6\]/, '{clock} points at the bracket clock');
+  // the near-miss branch only fires when no rule/var owns the name (it runs on invalid bodies)
+  assert.equal(c.classifyBraceBody('oracle', { oracle: ['x'] }, {}), 'artifact', 'a real rule named oracle still promotes');
   // AP-style copy: no em dashes in any of the user-facing reasons
-  for (const b of ['rumor', '2d6x', '2d', '= badname + 1', 'beast.cap']) {
+  for (const b of ['rumor', '2d6x', '2d', 'oracle', 'roll', 'clock', '= badname + 1', 'beast.cap']) {
     assert.ok(!c.braceAttemptReason(b, {}, {}).includes('—'), 'no em dash in ' + b);
   }
   // a KNOWN name is a valid artifact, never flagged (the cue only fires on 'invalid')
