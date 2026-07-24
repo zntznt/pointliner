@@ -29944,8 +29944,13 @@ document.getElementById('outline').addEventListener('click', e => {
   // also advance it — the same trailing-click suppression the bullet long-press uses.
   if (clk && !_clockLongPressed) advanceClockAt(clk, e.shiftKey ? -1 : 1);   // Shift-click steps back (desktop)
   // On touch there is no Shift, so step-back is a hidden long-press; teach it in the moment the
-  // first time a Guided touch user taps a clock (once ever, via the fireNudge registry).
-  if (clk && !_clockLongPressed && IS_TOUCH) fireNudge('clock-touch', 'Tip: tap a clock to advance it, press and hold to step it back.');
+  // first time a touch user taps a clock. Fires on ANY touch device (not Guided-only) because
+  // step-back is otherwise unreachable on touch: a genuine reachability gap, not a teaching aid.
+  // Once ever, via the shared nudge-seen registry (so it never re-nags, verbosity aside).
+  if (clk && !_clockLongPressed && IS_TOUCH && !nudgeSeen('clock-touch')) {
+    markNudgeSeen('clock-touch');
+    flashHint('Tip: tap a clock to advance it, press and hold to step it back.');
+  }
   _clockLongPressed = false;
   const chip = e.target.closest('.prop-chip');
   if (chip) openPropChip(chip);
