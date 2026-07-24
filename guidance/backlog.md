@@ -240,8 +240,8 @@ Move completed items to an archive (vs. just hide-done).
 Phase 1 (value-first agenda copy + the chrome drift guard locking `TB_GUIDE_MAP` and the
 curated `CHROME_GUIDE` list) deliberately left these out; they were the phase-2 queue, all
 from the fleet-B research (`user-research-2026-07-b.md`). **A 2026-07-24 exploration corrected
-the queue: two items were already delivered and are struck below; one shipped in phase 2; one
-remains open.**
+the queue: two items were already delivered (struck below); two shipped in phase 2. The queue is
+now closed.**
 
 #### ✓ Dedicated GUIDE entries: tag browser, per-pill format — shipped (phase 2, 2026-07-24)
 V:L-M · E:L · R:L. Both used to map to the nearest entry in the chrome drift guard's
@@ -250,12 +250,16 @@ entry (`id:'tags'` under getting-around, `id:'number-format'` under compute); `C
 repointed and the two entries source-pinned. Also fixed the `#btn-tags` label ("Browse tags &
 properties" → "Browse tags"; `openTagBrowser` browses tags only, no property tree).
 
-#### ☐ Mobile gesture discoverability — OPEN (the one remaining phase-2 item)
-V:M · E:M-H · R:M. A first-touch hint exists (`maybeShowTouchHint` → one-time toast) but it is
-partial: it teaches only swipe-to-indent and press-and-hold-the-bullet, omitting drag-to-reorder,
-the manual-clock long-press step-back and the touch roll palette. Complete the teaching (extend
-the toast or add a companion, `localStorage` seen-once flag like `TOUCH_HINT_KEY`); swipe is
-already self-teaching via its `.swipe-cue`. Reuse `flashHint`/`#a11y-live`, never a bespoke overlay.
+#### ✓ Mobile gesture discoverability — shipped (phase 2, 2026-07-24)
+V:M · E:M-H · R:M. The first-touch onboarding toast (`maybeShowTouchHint`) now also teaches
+drag-to-move (it previously covered only swipe-to-indent and the press-hold bullet menu). The
+genuinely undiscoverable gesture, stepping a manual clock back (a touch long-press, invisible in
+the moment though documented in the `id:'clock'` guide entry), now gets an in-the-moment nudge:
+the first time a Guided touch user taps a clock, `fireNudge('clock-touch', …)` teaches
+tap-to-advance / hold-to-step-back, once ever. Correction: the "touch roll palette" listed here
+was never a hidden gesture, it is the visible `#qb-roll` edit-bar button (title + aria-label), so
+nothing to teach. Swipe stays self-teaching via its `.swipe-cue`. All via `flashHint`/`#a11y-live`,
+no bespoke overlay.
 
 #### ⊘ File-menu "junk drawer" reorganization — already delivered (#603)
 V:M · E:M · R:M. Premise was stale: the File menu is not a flat junk drawer. #603 restructured it

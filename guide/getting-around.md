@@ -26,8 +26,9 @@ Reshape the document as your thinking changes: reorder points and change how dee
   level). A small direction chip appears as you swipe, and the move commits when you release past it.
   While you are editing a point, a **bar above the keyboard** gives one-tap **insert a pill, a to-do
   toggle (make the line tickable, or plain again), outdent, indent, move up and move down**, the
-  easiest way to reshape on a phone. To reorder by dragging, press and hold
-  the bullet and drag up or down, or use **Move up** / **Move down** in the bullet's menu. Swiping
+  easiest way to reshape on a phone. To move a point by dragging, drag its bullet: release between
+  two rows to reorder it, or release to the right of a row to nest it under that row. You can also
+  use **Move up** / **Move down** in the bullet's menu. Swiping
   straight up or down just scrolls the page as usual.
 
 ## Zoom into a point
