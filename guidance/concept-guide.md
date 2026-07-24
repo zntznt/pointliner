@@ -98,10 +98,16 @@ Beyond commands, several shipped features are **chrome-only** — a toolbar butt
 bullet-menu row or a keyboard chord, with no `/` or `@` command id: capture/inbox, saved
 searches, hashtags, multi-select, zoom, sort children, the agenda and timeline, document
 tabs, the base view and rows controls, the folder-of-documents workspace, appearance
-controls. These are NOT caught by the drift guard at all — keeping them documented is a
-manual discipline, the same P2-discoverable obligation as any feature. (Refile,
-properties and per-point notes used to sit on this list; today they are the `/refile`,
-`/prop` and `/note` commands, so the guard covers them.)
+controls. These used to escape the drift guard entirely; since the chrome drift guard
+landed (`tests/test.mjs`, "chrome drift guard: …" pair), two subsets are now enforced:
+every `#tbtn-cluster` toolbar button must keep a `TB_GUIDE_MAP` entry resolving to a real
+GUIDE id (the right-click-for-guide door), and the curated `CHROME_GUIDE` list in the test
+(tag browser, journal, templates, custom calendars, custom units, chronicle, per-pill
+format, agenda) must each name an existing entry. Chrome features outside those two nets
+remain a manual discipline, the same P2-discoverable obligation as any feature — when one
+ships, add it to `CHROME_GUIDE` with a real entry. (Refile, properties and per-point notes
+used to sit on this list; today they are the `/refile`, `/prop` and `/note` commands, so
+the command guard covers them.)
 
 ---
 
