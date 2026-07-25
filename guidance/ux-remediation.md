@@ -14,11 +14,12 @@ acting (controls drift).
 **Status:** ☐ open · ◐ in progress · ✓ closed (move to the archive on close)
 **Severity:** 🔴 breaks the unified language · 🟡 partial / inconsistent · 🟢 cosmetic-but-tracked
 
-> **Current state (2026-07-23):** the remediation program is essentially complete — every UXP/LF/QP/QX
-> defect from Tiers 1–3, the correctness batch, and the many audit waves (UXP-3…199, the Lean-floor
-> LF-* set, and the adversarial-robustness waves) is closed and archived in
-> `ux-remediation-archive.md`. **Two items remain open below:** UXP-20 (standing guard, never closes)
-> and UXP-170 (deferred — an egress-blocked FA-subset glyph rebuild; the fallbacks keep it legible).
+> **Current state (2026-07-25):** the remediation program is complete — every UXP/LF/QP/QX defect
+> from Tiers 1–3, the correctness batch, the audit waves, and the 2026-07 five-persona spree
+> (UXP-232…236) is closed and archived in `ux-remediation-archive.md`. **UXP-20 is the only item
+> left open, and it is meant to stay that way:** it is the standing P5 guard, not a defect, and
+> closing it would remove the gate rather than satisfy it. UXP-170's blocker turned out to be
+> environmental and was resolved 2026-07-25 once the egress was tested rather than assumed.
 > UXP-171–183 closed in Phases 2–7 (UXP-178, the builder's front door, shipped last).
 
 ---
@@ -56,6 +57,25 @@ acting (controls drift).
   and must not be foreclosed by the parser. Malformed tokens (unknown `is:` value, lone
   `-`, `#non-word`) stay **literal text terms** — the `{…}` invalid-body escape-hatch rule,
   so a query never silently matches everything. §2 inventory row added in the same change.
+  - **REVERSED in part, 2026-07-24/25 (S3-PR4, #1068).** Three clauses above no longer describe the
+    code, and the record is corrected here rather than left to be trusted:
+    - **`state:` shipped** (`kind:'state'`, a legend row), against "No `state:` operator." A
+      hashtag filters by the *keyword*; `state:` filters by a **declared sequence's** state, which
+      `#waiting` cannot express once a document declares its own sequences.
+    - **OR shipped** (QX-5, `a | b`), against "OR is deferred." Real queries did demand it; `|`
+      reuses the app's own alternation glyph rather than minting a sigil, so the deferral's actual
+      concern (a new precedence syntax) never materialised.
+    - **Malformed `is:` and `due:`/`start:` tokens no longer stay literal text.** They parse
+      `{kind:'invalid'}` and match nothing while explaining why. The escape-hatch rule was doing
+      the opposite of its stated purpose for a RESERVED field: `is:blocked` became a literal search
+      for the string "is:blocked", which `searchHighlightNeedles` then highlighted, so a typo
+      produced a confidently wrong answer rather than a safe empty one. The hatch still holds for
+      lone `-`, `#non-word`, and a glued `a|b`, which genuinely have a prose reading.
+    - **Worth naming plainly:** the third reversal was made by this project's own AI PRs, twice,
+      without updating this record — which is the exact failure this guard exists to catch, turned
+      on itself. A decision log that has quietly stopped describing the code is worse than none,
+      because it is trusted. Any future reversal of a recorded decision edits this row in the same
+      PR that makes it.
 - **Decision recorded (owner, 2026-06-13) — progress cookies ship as the Org `[/]`/`[%]` token.**
   The watch-list item below is resolved. The `{…}`-aggregation route was **weighed and not taken
   for v1**: a cookie is not inline-composed generative content the user nests — it is a fixed
@@ -83,12 +103,6 @@ acting (controls drift).
   - **Oracle / decks / bags** (roadmap generative ideas) — conformant by construction *if* they register as grammar-engine callables the way markov does (`{name}` resolution via a typed descriptor in `collectRules`); flag any version that wants its own inline notation.
 - **Audit recorded (owner, 2026-06-16) — inventory↔parser reconciliation.** A full sweep of the authoring entry points (inline `mdInline`, block `mdToHtml`, the `/` + `@` menus, the `{…}` grammar forms) found the closed §2 inventory under-documented the **Markdown family**: inline links/images/autolinks, GFM pipe tables, and definition lists shipped but were absent from the inventory and (most) from the `?` panel; `[text](url)` was in the `?` panel but not the inventory, and `++` underline the reverse. **Resolved (documentation only):** the §2 Markdown row + the `?` panel **Format (markdown)** section now list the full CommonMark/GFM surface the renderer ships — standard markdown, no app-specific syntax, no sign-off needed. **No new sprawl and no subsumption to execute** were found elsewhere (every other typeable form maps to a row; the roll-tables→grammar collapse already did the one available subsumption). A P5-4 completeness fix, not a P5-1 growth — the guard holds.
 - **Target / standing rule:** every new generative or computed feature plugs into the `{…}` grammar engine or extends `evalMath`; no new top-level delimiter ships without sign-off **and** the retirement of what it overlaps. The §2/P5 inventory is the closed set; growing it is an explicit, recorded decision, never a side effect of a feature. This row stays open permanently as the gate the AI checks against — it is the antidote to "new ways of doing syntax pulled out of thin air."
-
-
-### UXP-170 ☐ The estimate pill shares the width-resize glyph fa-left-right (design-language §1) 🟢  [Batch 5] (DEFERRED — github-egress-blocked glyph rebuild)
-- **Problem:** §1 records that `fa-left-right` was narrowed to "the horizontal-span concept only" when refile moved to `fa-arrow-right-arrow-left`, but estimate never got the same treatment — the width control and the uncertainty pill still share one glyph (5 est sites). A live contradiction of a locked Decision-corollary. Harm minimal (icon aria-hidden, labels correct), P5-drift.
-- **Rule:** design-language §1 (one glyph per concept).
-- **Target:** give estimate its own identity glyph (a wave/tilde/distribution mark matching the ∿/≈ fallbacks) and retire `fa-left-right` from all five est sites, the move refile got. Needs the FA subset rebuild (`tools/build-fa-subset.py`) — **github-egress-blocked in this sandbox**, so DEFER the glyph swap to a networked machine; the fallbacks keep it legible meanwhile.
 
 
 ### UXP-171 ✓ Builder has no responsive layout 🟡 [Builder Window] [Batch 6] (SHIPPED 2026-07-23)

@@ -16609,6 +16609,34 @@ test('glyph identities: template/progress/check wear their own glyphs; deck and 
   }
 });
 
+// ── UXP-170: estimate joins the same corollary, the last glyph carrying two meanings ──
+test('glyph identities: estimate is fa-wave-square; fa-left-right is the width control only', () => {
+  // fa-left-right meant width AND estimate, the live contradiction §1 names. Refile already left
+  // (UXP-134); estimate is the last one out, so the glyph finally means one thing.
+  assert.ok(/id:'est',[^}]*fa-wave-square/.test(_src), 'the est door wears its own glyph');
+  assert.ok(!/id:'est',[^}]*fa-left-right/.test(_src), 'and not the width glyph');
+  // every est site, not just the door: §1 says the door, the pill and the keyboard row must agree,
+  // and a half-done rename would leave the contradiction standing where nobody looks.
+  assert.equal((_src.match(/est-ico" aria-hidden="true"><i class="fa-solid fa-wave-square"/g) || []).length, 2,
+    'both est-ico render sites');
+  assert.match(_src, /fa:'fa-solid fa-wave-square', fb:'≈' \}, label:'Re-sample estimate'/,
+    'the bullet-menu re-sample row too');
+  assert.ok(!/fa-left-right'[^}]*Re-sample estimate/.test(_src), 'the keyboard row is not left behind');
+  // the fallback layer obeys the same rule. This site used ∿ while the other three used ≈ — the
+  // same one-mark-per-concept defect one layer down, which UXP-170 never noticed.
+  assert.ok(!_src.includes("fb:'∿'"), 'the est fallback is unified on ≈, not split between ≈ and ∿');
+  // width KEEPS it: fa-left-right was narrowed to the horizontal-span concept, not retired
+  // NB the glyph lives on the child #width-icon, not on #btn-width itself
+  assert.match(_src, /id="width-icon" data-fa="fa-solid fa-left-right"/, 'the width control keeps the glyph it owns');
+  assert.ok(new RegExp("FA_GLYPHS = new Set\\(\\[[^\\]]*'fa-left-right'").test(_src), 'so it stays in the allow-list');
+  // and the subset actually carries the newcomer, or it paints a blank box
+  assert.ok(new RegExp("FA_GLYPHS = new Set\\(\\[[^\\]]*'fa-wave-square'").test(_src), 'fa-wave-square in the allow-list');
+  assert.match(_src, /\.fa-wave-square::before\{content:"\\f83e"\}/, 'and its ::before rule, at the FA 6.5.2 codepoint');
+  // the tool's own ICON list must agree, or the NEXT rebuild silently drops the glyph again
+  const tool = readFileSync(new URL('../tools/build-fa-subset.py', import.meta.url), 'utf8');
+  assert.ok(tool.includes('"wave-square"'), 'tools/build-fa-subset.py must list it, or a rebuild drops it');
+});
+
 // ── Numeric pick vars compose with math (the {r := 1d20} crit-check pattern) ──
 // A pick var freezes its roll as a string; when that string IS a number, collectVars
 // resolves it as one so conditionals and {= …} can test a captured die. Any other
