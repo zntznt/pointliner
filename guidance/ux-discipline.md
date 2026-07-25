@@ -190,6 +190,34 @@ The project already has the **reference pattern**: the storage-quota warning (pr
 
 **Note — typed markov chains reuse the Grammar-engine row.** Recorded decision (2026-06-30): `{markov: a→b, b→c}` — a **typed inline markov chain** — is a new **content-sniffed sub-form of the existing `{…}` brace grammar**, the same class as the sequence / conditional forms above, not a new top-level delimiter. It closes a typeability gap: a markov chain could only be made from the `@`/Markov dialog, with no inline form (unlike dice/grammar/decks, which all promote when typed). Detection (`markovParts`) is the reserved keyword `markov` before a top-level `:` — exactly the `seqParts` shape — so it never collides with a conditional (needs a comparison before the `:`), a sequence (a `shuffle/cycle/once/stopping` mode), a repeat (`Nx:`), or a plain `{name: rhs}` rule line. It mints no new sigil at the floor: inside the brace it is the **existing `parseMarkov` grammar** (`from→to weight`, arrow `→` or `->`), just comma-separated instead of one-per-line (the inline shape; `markovParts` re-joins commas to the newline `def` the parser already reads, and a comma fragment with no arrow extends the previous transition's target list). The typed pill is **anonymous** (no name), so it **unfolds** to its `{markov: …}` source in edit mode (`artifactToShorthand('markov', …)` for `typed && !name`), the dice/anonymous-grammar/typed-var model. **Naming stays a dialog feature** and a NAMED chain stays an **atomic** pill: a chain name is doc-wide callable config (`collectRules` registers it as `{kind:'markov'}` so `{name}` resolves it) that the unfolded text can't carry — the same CLAUDE.md "atomic in edit mode" rule that governs named grammars. Record shape is identical to the dialog's (`makeTypedMarkovRoll` reuses `makeMarkovRoll` → `{key, def, start, steps, path}` + `typed:true`), so it round-trips through `_markov`, prunes, and re-walks on click like any markov pill. Front doors (P2/P5-4): the `@` **Markov chain** menu desc + example now show the `{markov: …}` form, the **Markov chains** concept-guide entry gains the typed examples, and `guide/generating-text.md` leads with the inline form. The inventory row gains a form; no new family.
 
+**Note — the Guided tier types pills inline; the picker is a door, not an ambush.** Recorded decision
+(2026-07-25): in Guided (the DEFAULT tier), typing `{` handed the point to the full-screen builder.
+That panel takes focus, so the point left edit mode and every keystroke after the brace was eaten:
+`{2d6}` left `"{"` and nothing else, on a blank point and mid-line alike. The app's own placeholder
+says *"make a live pill with `{`"* and the welcome tour says *"put `{2d6}` in any point"* — both were
+false in the tier the tour ships in. Four independent persona sessions hit it; Standard and Lean were
+always fine, so it was invisible to anyone past onboarding.
+
+**`{` now uses the same inline `#brace-menu` in every tier** (Lean keeps its own one-line tip). The
+inline menu already does everything correctly: the caret stays in the point, it filters as you type,
+Enter applies the highlighted form, arrows navigate. The full picker remains reachable — unchanged on
+`@`, the toolbar and `Ctrl+K`, and newly as an explicit **Browse all pills** row offered on a bare
+`{`, appended at the call site so `filterBraceForms` stays a straight map over `BRACE_FORMS`.
+
+Two approaches were considered and rejected, both recorded because the reasoning is the useful part.
+An **empty-point rule** (picker only when the point is otherwise blank) was rejected on measurement:
+a bare `{2d6}` on a blank point is the single most common way to write a pill, and that is exactly
+the case the rule preserves the picker for, so it fixed mid-line typing and left the common case
+broken. A **non-focus-stealing picker** was rejected on P3: the builder's entire keyboard (Enter to
+insert, arrow navigation, pane focus) is bound to elements inside the panel, so a picker that never
+takes focus is mouse-only unless a keyboard bridge is also built from the point's keydown handler.
+Trading a typing bug for an accessibility regression is not a trade this project makes.
+
+Dismissing the picker now restores the caret (`restoreChromeReturn`, which `openBuilder` already
+armed and nothing consumed) **instead of** `closeIo`'s plain focus, not in addition to it: `closeIo`
+is synchronous and the restore defers to a frame, so running both lands the caret at 0 and corrects
+it a frame later. The inventory is unchanged; no syntax was added or retired.
+
 **Note — typed NAMED grammar rules reuse the Grammar-engine row.** Recorded decision (2026-07-24): `{rule Name: a | b}` — a **typed named grammar declaration** — is a new content-sniffed sub-form of the existing `{…}` brace grammar, the same class as `{seq Name: …}` and `{name := expr}`, not a new top-level delimiter. It closes the last typeability gap in the declaration cluster: a variable and a sequence could both be declared by typing, but a **named, re-rollable generator could only be made from the `@`/Grammar dialog**. Everything typeable was either anonymous (`{a | b}`, frozen to one pill, not callable elsewhere) or frozen (`{x := a | b}`, a pick var rolled once), so "declare a generator once and call it from anywhere" had no keyboard path at all.
 
 **Why the `rule ` keyword is mandatory (the P1 driver).** A bare `name: a | b` cannot be the form, and the failure was not theoretical: `promoteBraceBody`'s alternation branch claims any body with a top-level `|`, so a typed `{loot: sword | shield 2}` promoted to an anonymous grammar whose two alternatives were the literal strings `loot: sword` and `shield` — a pill that displayed "loot: sword" half the time, with no error. Worse, `{tavern: The {adj} {noun}}` (pipes only inside nested braces) matched no branch at all, classified as prose, and had its inner braces shredded into orphan pills. The keyword makes the intent unambiguous before either path is reached, and it is the word the app already uses for the concept in its own failure copy.
