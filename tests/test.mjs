@@ -12708,6 +12708,152 @@ test('#954 exclude-from-export — noexport skips the point + subtree; round-tri
   assert.ok(_src.includes("noexport: el.getAttribute('_noexport') === 'true'"), 'OPML parse reads the flag');
 });
 
+// ── the shareable file honors the flag too ───────────────────────────────────
+// #954 gave noexport to the two prose exports, which skip inside their own emit walks. The
+// self-contained HTML export embeds raw OPML instead, so it leaked every excluded point into the
+// file labelled "Shareable file". It prunes the tree before toOpml now.
+
+test('pruneNoexport — drops the flagged subtree, keeps everything else, mutates nothing', () => {
+  const root = c.mkRoot();
+  root.savedSearches = ['is:todo'];
+  root.docId = 'abc123';
+  const keep = c.mkNode('The captain watched the harbor.');
+  const kid = c.mkNode('a kept child'); keep.children.push(kid);
+  const scaffold = c.mkNode('Scaffolding'); scaffold.noexport = true;
+  scaffold.children.push(c.mkNode('a planning note'));
+  const after = c.mkNode('later prose');
+  root.children.push(keep, scaffold, after);
+
+  const p = c.pruneNoexport(root);
+  assert.equal(p.children.length, 2, 'the flagged sibling is gone');
+  assert.deepEqual(host(p.children.map(n => n.text)), ['The captain watched the harbor.', 'later prose']);
+  assert.equal(p.children[0].children.length, 1, 'a kept subtree survives intact');
+  // root-level config must ride along or the copy loses saved searches, the docId, the calendar…
+  assert.deepEqual(p.savedSearches, ['is:todo']);
+  assert.equal(p.docId, 'abc123');
+  // the live tree is untouched: ten other toOpml callers are SAVES running on this same object
+  assert.equal(root.children.length, 3, 'the input tree is not mutated');
+  assert.equal(root.children[1].text, 'Scaffolding');
+  // shallow per node — sidecar arrays are shared, since toOpml only reads them
+  assert.equal(p.children[0].dice, keep.dice, 'sidecar arrays are shared by reference, not copied');
+});
+
+test('pruneNoexport — a nested flag drops only its own subtree', () => {
+  const root = c.mkRoot();
+  const parent = c.mkNode('Chapter one');
+  const secret = c.mkNode('my notes'); secret.noexport = true;
+  secret.children.push(c.mkNode('deep secret'));
+  parent.children.push(c.mkNode('kept scene'), secret, c.mkNode('another kept scene'));
+  root.children.push(parent);
+  const p = c.pruneNoexport(root);
+  assert.deepEqual(host(p.children[0].children.map(n => n.text)), ['kept scene', 'another kept scene']);
+  assert.ok(!JSON.stringify(p).includes('deep secret'), 'the whole subtree goes, not just the flagged point');
+});
+
+test('the HTML export prunes while the OPML save keeps everything', () => {
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('public prose'));
+  const secret = c.mkNode('PRIVATE SCAFFOLDING'); secret.noexport = true;
+  secret.children.push(c.mkNode('a private note'));
+  root.children.push(secret);
+
+  const saved = c.toOpml(root);                      // the backup: keeps the point AND the flag
+  assert.ok(saved.includes('PRIVATE SCAFFOLDING'), 'the OPML save still contains it');
+  assert.ok(saved.includes('_noexport="true"'), 'the OPML save still carries the flag, so it survives a reload');
+
+  const shared = c.toOpml(c.pruneNoexport(root));    // the shareable file: contains neither
+  assert.ok(shared.includes('public prose'), 'kept prose travels');
+  assert.ok(!shared.includes('PRIVATE SCAFFOLDING'), 'the excluded point does NOT travel');
+  assert.ok(!shared.includes('a private note'), 'nor does its subtree');
+  assert.ok(!shared.includes('_noexport'), 'no flag can appear: a flagged node is never serialized');
+});
+
+test('exportExclusionImpact — what a shared copy loses, so the exporter learns it first', () => {
+  // A declaration is a [[var:key]] token plus its sidecar record, the shape promotion produces.
+  const decl = (key, name, expr) => {
+    const n = c.mkNode(`[[var:${key}]]`);
+    n.vars = [{ key, name, expr }];
+    return n;
+  };
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('You have some coins.'));
+  const scaffold = c.mkNode('Setup'); scaffold.noexport = true;
+  scaffold.children.push(decl('g1', 'gold', '100'), c.mkNode('a planning note'));
+  root.children.push(scaffold);
+
+  const impact = c.exportExclusionImpact(root, c.pruneNoexport(root));
+  assert.equal(impact.excluded, 3, 'the flagged point plus both of its children');
+  assert.ok(host(impact.lostVars).includes('gold'), 'a declaration that lived only in the excluded subtree');
+
+  // nothing flagged → all zeros, so the ordinary export's toast is unchanged
+  const plain = c.mkRoot();
+  plain.children.push(c.mkNode('just prose'), decl('g1', 'gold', '100'));
+  assert.deepEqual(host(c.exportExclusionImpact(plain, c.pruneNoexport(plain))),
+    { excluded: 0, lostVars: [], lostRules: [], newBroken: 0 });
+
+  // a named rule declared only in the excluded subtree is named too: like a variable, it fails
+  // LOUDLY in the copy (the .brace-attempt cue), so the exporter should hear about it.
+  const ruled = c.mkRoot();
+  const rule = c.mkNode('[[grammar:r1]]');
+  rule.grammar = [{ key: 'r1', def: 'tavern: The Rusty Flagon | The Gilded Crown', origin: 'tavern', result: 'The Rusty Flagon' }];
+  const rsc = c.mkNode('Setup'); rsc.noexport = true; rsc.children.push(rule);
+  ruled.children.push(c.mkNode('You reach the tavern.'), rsc);
+  const rImpact = c.exportExclusionImpact(ruled, c.pruneNoexport(ruled));
+  assert.ok(host(rImpact.lostRules).includes('tavern'), 'a rule declared only in the excluded subtree');
+
+  // a name ALSO declared outside the excluded subtree is not reported lost — the copy can still
+  // resolve it, so warning about it would be crying wolf.
+  const dup = c.mkRoot();
+  const sc = c.mkNode('Setup'); sc.noexport = true; sc.children.push(decl('g2', 'gold', '100'));
+  dup.children.push(decl('g1', 'gold', '5'), sc);
+  assert.deepEqual(host(c.exportExclusionImpact(dup, c.pruneNoexport(dup)).lostVars), [],
+    'still declared somewhere kept, so nothing is lost');
+
+  // a link INTO the excluded subtree newly breaks; one entirely within it does not, because the
+  // source went too. That distinction is the difference between a real warning and noise.
+  const linked = c.mkRoot();
+  const target = c.mkNode('the target');
+  const sc2 = c.mkNode('Setup'); sc2.noexport = true;
+  sc2.children.push(c.mkNode('inside, pointing inward'));
+  linked.children.push(c.mkNode(`see [[#${target.id}]]`), sc2);
+  sc2.children.push(target);                                  // the target is INSIDE the exclusion
+  assert.equal(c.exportExclusionImpact(linked, c.pruneNoexport(linked)).newBroken, 1,
+    'a kept point linking into the excluded subtree is newly broken');
+
+  const inner = c.mkRoot();
+  const t2 = c.mkNode('inner target');
+  const sc3 = c.mkNode('Setup'); sc3.noexport = true;
+  sc3.children.push(t2, c.mkNode(`see [[#${t2.id}]]`));        // both ends excluded together
+  inner.children.push(c.mkNode('unrelated prose'), sc3);
+  assert.equal(c.exportExclusionImpact(inner, c.pruneNoexport(inner)).newBroken, 0,
+    'a link wholly inside the exclusion is not a new break: its source left too');
+});
+
+test('the HTML export wiring: pruned inside one folded pass, and no save path gained a prune', () => {
+  const fn = fnBody(_src, 'exportSelfContainedHtml');
+  assert.ok(fn.includes('pruneNoexport(root)'), 'the export prunes');
+  assert.ok(fn.includes('toOpml(pruned)'), 'and serializes the pruned copy, never the live root');
+  assert.ok(!/toOpml\(root\)/.test(fn), 'the unpruned root must not reach toOpml here');
+  // ONE withFoldedActive pass around both reads: the diff must compare like with like, or the
+  // point being edited reports a spurious lost variable.
+  assert.equal((fn.match(/withFoldedActive\(/g) || []).length, 1, 'exactly one folded pass');
+  assert.ok(/withFoldedActive\(\(\) => \{[\s\S]*exportExclusionImpact\(root, p\)/.test(fn),
+    'the impact diff is computed inside that same pass');
+  // every OTHER toOpml call site is a save and must keep everything
+  const others = _src.split('function exportSelfContainedHtml')[0];
+  assert.ok(!others.includes('toOpml(pruneNoexport'), 'no save path may prune');
+  assert.ok(others.includes('toOpml(root)'), 'the save paths still serialize the live root');
+});
+
+test('the exclusion copy no longer claims the web page export keeps it', () => {
+  // Five sites said "Markdown / text" or "the web-page export keeps it". All of them were made
+  // false by this change, and a stale one is worse than no copy at all.
+  assert.ok(!_src.includes('Excluded from Markdown / text export'), 'the bullet-menu toast is updated');
+  assert.ok(_src.includes('Excluded from every export'), 'and says what is actually true');
+  assert.ok(!_src.includes('while your OPML save and the web-page export keep it'),
+    'the GUIDE no longer promises the web page export keeps excluded points');
+});
+
 test('LEAN-FLOOR: {prop …} promotes to node.props via promoteBraceBody, leaving no inline token', () => {
   // the whole point of the sidecar stub: it writes the chip and CONSUMES the brace (no [[…]] token).
   const node = { text: '', props: [] };

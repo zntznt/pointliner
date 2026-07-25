@@ -246,8 +246,11 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   the sync. ([saving](files-and-export.md#saving-your-work))
 - **Open formats.** The native save format is a plain, open document file (OPML); export to Markdown or plain text for sharing.
   ([exporting](files-and-export.md#exporting-and-sharing))
-- **Exclude from export.** Flag a point (and its subtree) to skip the Markdown/plain-text export, so
-  scaffolding and planning notes stay out of a shared copy. ([exporting](files-and-export.md#exporting-and-sharing))
+- **Exclude from export.** Flag a point (and its subtree) to skip every export format, Markdown,
+  plain text and Web page alike, so scaffolding and planning notes stay out of a shared copy. Only
+  the OPML save keeps it. Excluding a variable declaration is called out after a Web page export,
+  since that format stays live and recomputes.
+  ([exporting](files-and-export.md#exporting-and-sharing))
 - **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))

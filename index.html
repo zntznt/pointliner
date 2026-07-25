@@ -8070,6 +8070,55 @@ ${r.children.map(c=>nx(c,2)).join('\n')}
   </body>
 </opml>`;
 }
+
+// A root-shaped COPY with every `noexport` subtree removed, for the one serializer whose output
+// is a shared artifact rather than a save: exportSelfContainedHtml. #954 gave the flag to the
+// markdown/text exports, which skip inside their own emit walks; the HTML export embeds raw OPML,
+// so it needs the tree pruned before toOpml ever sees it.
+//
+// A COPY, and pruning rather than an option on toOpml, both deliberately. toOpml has eleven
+// callers and ten of them are SAVES (safeWriteOpml, the file-handle write, the workspace copy,
+// the crash buffer) that must keep every point; a `skipNoexport` flag would put silent data loss
+// one wrong argument away from all of them. The input tree is never mutated, because the save
+// paths run on that same live object.
+//
+// Shallow per node ({...n}) so the sidecar arrays are shared by reference: toOpml only reads them
+// (JSON.stringify), so a deep copy would buy nothing and cost a full traversal of every artifact.
+function pruneNoexport(r) {
+  const keep = n => n.noexport ? null : { ...n, children: (n.children || []).map(keep).filter(Boolean) };
+  return { ...r, children: (r.children || []).map(keep).filter(Boolean) };
+}
+
+// What a shared copy loses to those exclusions, so the person exporting learns it BEFORE they hand
+// the file over. Diffs the two trees through the collectors that already exist — collectVars and
+// collectLinks each take an explicit rootNode and bypass their _varsVer cache when given one — so
+// no new traversal is written and no cache is polluted with a pruned-tree answer.
+//
+// Why this is needed at all: the GUIDE's own first example of what to exclude is "variable
+// declarations". Markdown and text get away with that because they resolve pills to VALUES before
+// writing, so a frozen 100 survives. The HTML export ships the live tree and re-resolves on open,
+// so pruning a declaration changes what a KEPT point computes. Honoring the flag without saying so
+// would trade a privacy leak for a correctness break, on the flag's own documented main use.
+//
+// The copy is phrased "any point using them", true whether or not such a point exists, which is
+// what lets this stay a two-collector diff instead of a reference scan.
+function exportExclusionImpact(full, pruned) {
+  let excluded = 0;
+  const size = n => 1 + (n.children || []).reduce((s, c) => s + size(c), 0);
+  (function walk(n) {
+    for (const c of (n.children || [])) { if (c.noexport) excluded += size(c); else walk(c); }
+  })(full);
+  if (!excluded) return { excluded: 0, lostVars: [], lostRules: [], newBroken: 0 };
+  const gone = (a, b) => Object.keys(a).filter(k => !(k in b));
+  // Variables and rules both fail LOUDLY when their declaration is missing (the .brace-attempt
+  // cue), which is why both are worth naming. Sequences are not here: a keyword whose {seq} is
+  // gone renders as ordinary text rather than an error, so it degrades quietly. Filed as UXP-234.
+  const lostVars  = gone(collectVars(full),  collectVars(pruned));
+  const lostRules = gone(collectRules(full), collectRules(pruned));
+  const brokenCount = t => (collectLinks(t).broken || []).length;   // broken is an ARRAY of target ids
+  return { excluded, lostVars, lostRules, newBroken: Math.max(0, brokenCount(pruned) - brokenCount(full)) };
+}
+
 // Encode newlines/tabs/CRs as numeric character references — XML attribute-value
 // normalization collapses literal whitespace (incl. \t and \r) to spaces on re-parse,
 // but numeric character references survive intact. Also strip the characters XML 1.0
@@ -18342,15 +18391,18 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openAddToPackDialog(nodeId); } },
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
       fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
-    // #954: keep scaffolding (variable declarations, planning notes) out of the lossy Markdown / text
-    // export. The flag skips this point AND its subtree; the OPML save and the in-app view are untouched.
+    // #954: keep scaffolding (variable declarations, planning notes) out of a SHARED copy. The flag
+    // skips this point AND its subtree in all three lossy exports — Markdown and text skip inside
+    // their own emit walks, the self-contained HTML export prunes the tree before toOpml sees it.
+    // Only the OPML save (the canonical backup) and the in-app view keep everything, which is what
+    // makes the flat label "Exclude from export" true as written.
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' },
       label: node.noexport ? 'Include in export' : 'Exclude from export',
       fn: () => {
         hideBpop(); const n = nodeById(nodeId); if (!n) return;
         if (n.noexport) delete n.noexport; else n.noexport = true;
         markDirty(); render();
-        flashHint(n.noexport ? 'Excluded from Markdown / text export' : 'Included in export');
+        flashHint(n.noexport ? 'Excluded from every export. Your OPML save still keeps it.' : 'Included in export');
       } },
     { sec:'More', icon:{ fa:'fa-solid fa-inbox', fb:'⤓' },
       label: (() => { const s = inboxSlotOf(nodeId); const next = (root.inboxes || []).length + 1;
@@ -30193,7 +30245,19 @@ function extractEmbeddedOpml(html) {
   return m ? m[1].trim() : '';
 }
 function exportSelfContainedHtml() {
-  const opml = withFoldedActive(() => toOpml(root));
+  // #954 follow-through: this file is labelled "Shareable file", so it honors Exclude from export
+  // like the markdown and text exports do. Only the OPML SAVE keeps everything now, which is what
+  // makes the menu label accurate as written. Pruned INSIDE withFoldedActive so it reads the same
+  // folded state every other toOpml caller does.
+  // Both trees are read inside ONE withFoldedActive pass, so the diff compares like with like: it
+  // temporarily rewrites the active node's text, and reading the full tree outside the pass while
+  // the pruned copy was taken inside it would report a spurious lost variable on the point being
+  // edited. The copy captures the folded text, so toOpml runs correctly outside.
+  const { pruned, impact } = withFoldedActive(() => {
+    const p = pruneNoexport(root);
+    return { pruned: p, impact: exportExclusionImpact(root, p) };
+  });
+  const opml = toOpml(pruned);
   const clone = document.documentElement.cloneNode(true);
   // Lean + boot-fresh: drop rendered/dynamic DOM (regenerated on load) and empty the
   // island in the clone so the serialized shell has a clean placeholder to inject into.
@@ -30202,7 +30266,21 @@ function exportSelfContainedHtml() {
   const island = clone.querySelector('#pl-embedded-doc'); if (island) island.textContent = '';
   const shell = '<!DOCTYPE html>\n' + clone.outerHTML;
   downloadText(embedOpmlIntoHtml(shell, opml), '.html', 'text/html');
-  flashHint('Saved a self-contained copy. It opens as this app with your document inside.');
+  // P4: name what the copy does NOT contain. A leak used to be the silent failure here; after the
+  // prune the silent failure would be the opposite one, a copy quietly missing a declaration the
+  // prose still reads. Both halves get said, in one toast, and only when there is something to say.
+  const left = impact.excluded
+    ? ` It leaves out ${impact.excluded} point${impact.excluded === 1 ? '' : 's'} marked Exclude from export.`
+    : '';
+  // One list, each name carrying its own word, so the sentence reads the same for one or for six.
+  const names = [...impact.lostVars.map(v => 'variable ' + v), ...impact.lostRules.map(r => 'rule ' + r)];
+  const lost = names.length
+    ? ` Declared only in those: ${names.join(', ')}. Any point using ${names.length === 1 ? 'it' : 'them'} will not resolve in the copy.`
+    : '';
+  const links = impact.newBroken
+    ? ` ${impact.newBroken} link${impact.newBroken === 1 ? '' : 's'} now point${impact.newBroken === 1 ? 's' : ''} at something the copy does not contain.`
+    : '';
+  flashHint('Saved a self-contained copy. It opens as this app with your document inside.' + left + lost + links);
 }
 
 // ─── search wiring ────────────────────────────────────────────────────────────
@@ -34283,7 +34361,7 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: the Markdown and plain-text exports skip that point and everything under it, while your OPML save and the web-page export keep it. An excluded point shows a faint ring on its bullet so you can see what will be left out.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the three Export a copy formats skips that point and everything under it, Markdown, plain text and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
     related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },
