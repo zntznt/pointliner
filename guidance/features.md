@@ -57,6 +57,20 @@ Implemented:
   cannot match a body containing braces — the cue was unreachable, not merely unset (this also
   closes the same gap for `{= junk {2d6} +}`, which the anti-shred comment already assumed was
   flagged). The flagged span is stashed so the innermost pass cannot double-mark its parts.
+- **Display-mode mutations are undoable** (`toggleTaskInNode`, `advanceClockOrdinal`,
+  `showTodoPicker`'s `writeAll`): ticking a box, advancing a clock and picking a state/priority all
+  mutated `node.text` and persisted without calling `pushUndo`, so `undo()` popped the PREVIOUS
+  action and reverted that instead — an unrelated point lost its checkbox while the ticked one
+  stayed ticked, and the tick was discarded rather than restored (measured: 0 pushes on check-off,
+  1 on indent). The snapshot lives inside `toggleTaskInNode` because it has two callers (the
+  mousedown branch and the `change` listener) and only the bulk path ever had one; the bulk site's
+  own `pushUndo()` was removed to avoid a double. Two ordering rules are load-bearing:
+  `advanceClockOrdinal` pushes AFTER its clamp early-return (`pushUndo` clears `redoStack`, so a
+  no-op click would otherwise destroy redo), and `writeAll` pushes BEFORE mutating `applyList` so a
+  bulk state change stays one undo unit. Pushes are **unconditional**, not the
+  `if (activeContentId == null)` reroll guard: `pushUndo` already calls `flushActiveTextEdit()`,
+  which no-ops when idle and commits in-flight typing as its own entry when another point is being
+  edited.
 - **File → New keeps a restore point** (`newFile`): New replaces the document on screen, and in
   pure default mode that used to be unrecoverable — the confirm was gated on `unsavedToDisk()`
   (false in default mode, on the premise "autosave keeps the doc safe"), `adoptDoc` mints a fresh
