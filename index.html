@@ -8123,15 +8123,22 @@ function exportExclusionImpact(full, pruned) {
   (function walk(n) {
     for (const c of (n.children || [])) { if (c.noexport) excluded += size(c); else walk(c); }
   })(full);
-  if (!excluded) return { excluded: 0, lostVars: [], lostRules: [], newBroken: 0 };
+  if (!excluded) return { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], newBroken: 0 };
   const gone = (a, b) => Object.keys(a).filter(k => !(k in b));
-  // Variables and rules both fail LOUDLY when their declaration is missing (the .brace-attempt
-  // cue), which is why both are worth naming. Sequences are not here: a keyword whose {seq} is
-  // gone renders as ordinary text rather than an error, so it degrades quietly. Filed as UXP-234.
+  // Variables and rules fail LOUDLY in the copy (the .brace-attempt cue). A sequence degrades
+  // QUIETLY instead: a kept point whose leading #BLOCKED keyword no longer belongs to any
+  // sequence just renders as ordinary text, with no badge and no cue. UXP-234 deferred it on the
+  // grounds that a third clause would overload the toast — but the toast builds one merged LIST
+  // carrying a kind word per item, so this is a third item type, not a third clause. The quiet
+  // degradation is the reason it belongs there most: it is the one you would never notice.
   const lostVars  = gone(collectVars(full),  collectVars(pruned));
   const lostRules = gone(collectRules(full), collectRules(pruned));
+  // collectSequences returns an ARRAY of records, not a name-keyed map, so this diffs on name.
+  const seqNames = t => new Set(collectSequences(t).map(s => String(s.name || '').toLowerCase()).filter(Boolean));
+  const afterSeq = seqNames(pruned);
+  const lostSeqs = [...seqNames(full)].filter(n => !afterSeq.has(n));
   const brokenCount = t => (collectLinks(t).broken || []).length;   // broken is an ARRAY of target ids
-  return { excluded, lostVars, lostRules, newBroken: Math.max(0, brokenCount(pruned) - brokenCount(full)) };
+  return { excluded, lostVars, lostRules, lostSeqs, newBroken: Math.max(0, brokenCount(pruned) - brokenCount(full)) };
 }
 
 // Encode newlines/tabs/CRs as numeric character references — XML attribute-value
@@ -30247,7 +30254,23 @@ function toMarkdown(rootNode) {
     // a plain sentence. What you see was not what shipped, silently.
     const isQuote = node.type === 'quote' || deriveTypeFromText(node.text) === 'quote';
     const hLvlPre = { h1:1, h2:2, h3:3, h4:4, h5:5, h6:6 }[node.type];
-    const isBlock = !!hLvlPre || node.type === 'para' || node.type === 'base' || isQuote;
+    // UXP-235: a bare block emits no list marker, so its children have no list item to nest inside
+    // and flatten up one level (verified against a real CommonMark implementation: a paragraph with
+    // a bullet child renders <p> then a TOP-LEVEL <ul>, a sibling rather than a descendant).
+    // Markdown's only native container is a list item, so a para or quote WITH children takes a
+    // marker and becomes one. Childless prose stays bare, which is the common case and the whole
+    // reason the bare branch exists.
+    //
+    // HEADINGS ARE DELIBERATELY EXCLUDED, and this is a decision rather than an oversight:
+    // `## Section` followed by a list IS the idiomatic Markdown for a section containing a list,
+    // the heading level already encodes the hierarchy, and `- ## Section` would look broken in
+    // every renderer. A pin holds this so nobody re-opens it as a gap.
+    const hasKids = !!(node.children || []).length;
+    const bareBlock = !!hLvlPre || ((node.type === 'para' || isQuote) && !hasKids);
+    // A para-with-children is a LIST ITEM now, so it must not count as a block for the blank-line
+    // policy — separating it from its own children would make the list loose and wrap every
+    // sibling item in <p>.
+    const isBlock = bareBlock || node.type === 'base';
     if (isBlock || lastWasBlock) sep();
     if (node.type === 'base') {
       // a table node's text is already a markdown table — emit it as its own block
@@ -30271,11 +30294,13 @@ function toMarkdown(rootNode) {
       if (isQuote) body = body.split('\n').map(l => `> ${l}`).join('\n');
       else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
       const lines = body.split('\n');
-      if (hLvl || node.type === 'para' || isQuote) {
-        // headings, paragraphs and quotes export without a list marker; headings get their #'s.
-        // A quote used to emit as `- > text`, a list item wrapping a blockquote. Bare is correct at
-        // every depth for the same reason para is: inside a list the `>` lands on the parent item's
-        // content column, which reads as a blockquote nested in that item.
+      if (bareBlock) {
+        // headings, and CHILDLESS paragraphs and quotes, export without a list marker; headings get
+        // their #'s. Bare is correct at every depth for a quote the same way it is for a para:
+        // inside a list the `>` lands on the parent item's content column, which reads as a
+        // blockquote nested in that item. A quote WITH children falls to the branch below and emits
+        // `- > text` — a list item wrapping a blockquote, which is the only way Markdown can hold a
+        // subtree under a quotation.
         const prefix = hLvl ? '#'.repeat(hLvl) + ' ' : '';
         out.push(`${indent}${prefix}${lines[0]}`);
         for (let i = 1; i < lines.length; i++) out.push(`${indent}${lines[i]}`);
@@ -30432,7 +30457,8 @@ function exportSelfContainedHtml() {
     ? ` It leaves out ${impact.excluded} point${impact.excluded === 1 ? '' : 's'} marked Exclude from export.`
     : '';
   // One list, each name carrying its own word, so the sentence reads the same for one or for six.
-  const names = [...impact.lostVars.map(v => 'variable ' + v), ...impact.lostRules.map(r => 'rule ' + r)];
+  const names = [...impact.lostVars.map(v => 'variable ' + v), ...impact.lostRules.map(r => 'rule ' + r),
+                 ...impact.lostSeqs.map(s => 'sequence ' + s)];
   const lost = names.length
     ? ` Declared only in those: ${names.join(', ')}. Any point using ${names.length === 1 ? 'it' : 'them'} will not resolve in the copy.`
     : '';

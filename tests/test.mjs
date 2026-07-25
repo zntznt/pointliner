@@ -12870,7 +12870,7 @@ test('exportExclusionImpact — what a shared copy loses, so the exporter learns
   const plain = c.mkRoot();
   plain.children.push(c.mkNode('just prose'), decl('g1', 'gold', '100'));
   assert.deepEqual(host(c.exportExclusionImpact(plain, c.pruneNoexport(plain))),
-    { excluded: 0, lostVars: [], lostRules: [], newBroken: 0 });
+    { excluded: 0, lostVars: [], lostRules: [], lostSeqs: [], newBroken: 0 });
 
   // a named rule declared only in the excluded subtree is named too: like a variable, it fails
   // LOUDLY in the copy (the .brace-attempt cue), so the exporter should hear about it.
@@ -12881,6 +12881,24 @@ test('exportExclusionImpact — what a shared copy loses, so the exporter learns
   ruled.children.push(c.mkNode('You reach the tavern.'), rsc);
   const rImpact = c.exportExclusionImpact(ruled, c.pruneNoexport(ruled));
   assert.ok(host(rImpact.lostRules).includes('tavern'), 'a rule declared only in the excluded subtree');
+
+  // UXP-234: a sequence too. This is the one that degrades QUIETLY — a kept point whose leading
+  // #BLOCKED keyword no longer belongs to any sequence renders as ordinary text, no badge, no cue.
+  // Which is exactly why it belongs in the list: it is the loss you would never spot yourself.
+  const seqd = c.mkRoot();
+  const sq = c.mkNode('[[seq:s1]]');
+  sq.seq = [{ key: 's1', name: 'Flow', states: ['TODO', 'BLOCKED', 'SHIPPED'], heldFrom: 1, doneFrom: 2 }];
+  const ssc = c.mkNode('Setup'); ssc.noexport = true; ssc.children.push(sq);
+  seqd.children.push(c.mkNode('#BLOCKED waiting on legal'), ssc);
+  const sImpact = c.exportExclusionImpact(seqd, c.pruneNoexport(seqd));
+  assert.ok(host(sImpact.lostSeqs).includes('flow'), 'a sequence declared only in the excluded subtree');
+  // and one that survives the prune is not reported
+  const kept = c.mkRoot();
+  const sq2 = c.mkNode('[[seq:s2]]');
+  sq2.seq = [{ key: 's2', name: 'Flow', states: ['TODO', 'DONE'], heldFrom: 1, doneFrom: 1 }];
+  kept.children.push(sq2, Object.assign(c.mkNode('Setup'), { noexport: true }));
+  assert.deepEqual(host(c.exportExclusionImpact(kept, c.pruneNoexport(kept)).lostSeqs), [],
+    'a sequence that survives the prune is not a loss');
 
   // a name ALSO declared outside the excluded subtree is not reported lost — the copy can still
   // resolve it, so warning about it would be crying wolf.
@@ -13947,6 +13965,33 @@ test('toMarkdown — a blockquote keeps its > even when the point is not typed a
   // stay one blockquote, which the blank-line policy is specifically breaking
   const multi = _mdOf(_mdN('> line one\nline two', 'quote'));
   assert.match(multi, /> line one\n> line two/, 'the > is on every line');
+});
+
+test('UXP-235: a bare block takes a marker only when it has children to hold', () => {
+  const kid = p => { const n = _mdN('parent', 'para'); n.text = p; n.children.push(_mdN('the child')); return n; };
+  // A para with children becomes a list item, because a list item is Markdown's ONLY native
+  // container. Verified against markdown-it: this renders the child list INSIDE the item, where
+  // before it was a top-level <ul> sibling and the outline lost a level.
+  assert.match(_mdOf(kid('Intro paragraph.')), /- Intro paragraph\.\n {2}- the child/);
+  // ...and the common case is untouched: childless prose stays bare, with no bullet.
+  assert.match(_mdOf(_mdN('Just prose.', 'para')), /^Just prose\.\n$/);
+  assert.ok(!_mdOf(_mdN('Just prose.', 'para')).includes('- '), 'childless prose gains no marker');
+  // a quote follows the same rule, and `- > text` is the only way Markdown holds a subtree under a
+  // quotation, so it comes BACK here on purpose where S3-PR5b removed it for the childless case
+  const q = _mdN('> A quotation.', 'quote'); q.children.push(_mdN('a note'));
+  assert.match(_mdOf(q), /- > A quotation\.\n {2}- a note/);
+  assert.match(_mdOf(_mdN('> A quotation.', 'quote')), /^> A quotation\.\n$/, 'a childless quote is still bare');
+});
+
+test('UXP-235: a HEADING with children is deliberately left alone', () => {
+  // Not an oversight, a decision: `## Section` followed by a list IS the idiomatic Markdown for a
+  // section containing a list, the heading level already encodes the hierarchy, and `- ## Section`
+  // would look broken in every renderer. Pinned so it is not re-opened as a gap.
+  const h = _mdN('# The Report', 'h1'); h.children.push(_mdN('a bullet'));
+  const md = _mdOf(h);
+  assert.match(md, /^# The Report\n/, 'the heading keeps its own line and its #');
+  assert.ok(!md.includes('- # '), 'no list marker is ever put on a heading');
+  assert.match(md, /# The Report\n\n {2}- a bullet/, 'the child list follows it, separated');
 });
 
 test('toMarkdown — quote is a bare block; divider and code stay list items', () => {
