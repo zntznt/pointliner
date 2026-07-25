@@ -30095,12 +30095,41 @@ function stripInlineMd(s) {
 }
 
 // Markdown export: a nested bullet list mirroring the outline, 2 spaces per level.
+//
+// BLANK LINES ARE LOAD-BEARING. This walk emitted one array entry per line and joined with '\n',
+// so it never produced a `\n\n` at all — designed as a single nested bullet list, never revisited
+// when paragraphs, headings, quotes, tables and footnote definitions arrived. Under CommonMark that
+// silently merges blocks that were separate on screen: para+para became one <p>, a footnote
+// definition after a paragraph became a lazy continuation (so `[^1]: …` printed literally AND the
+// reference was left undefined), a para after a quote was swallowed into the <blockquote>, and a
+// table cannot start on a continuation line at all.
+//
+// The rule cannot be a uniform "blank line between blocks", because A BLANK LINE BETWEEN TWO LIST
+// ITEMS MAKES THE LIST LOOSE — every <li> then gets wrapped in <p>, which changes the render of an
+// ordinary outline. So the types split in two:
+//   block-level (blank line before): headings, para, quote, base, and a footnote-definition run
+//   list items  (never separated from each other): ul, ol, todo, code, divider
+// Separating a FOLLOWING list item from a block is what `lastWasBlock` buys; testing only `isBlock`
+// would leave `- item` glued to the paragraph above it.
 function toMarkdown(rootNode) {
   const varMap = collectVars();
   const out = [];
+  let lastWasBlock = false;
+  // never a leading blank line, and never two in a row
+  const sep = () => { if (out.length && out[out.length - 1] !== '') out.push(''); };
   function emit(node, depth, ordinal) {
     if (node.noexport) return;   // #954: a point flagged exclude-from-export drops it AND its subtree (scaffolding stays out of the prose snapshot)
     const indent = '  '.repeat(depth);
+    // Derived, not declared: textForDisplay strips a `> ` prefix via its own deriveTypeFromText
+    // fallback REGARDLESS of node.type (the #420 guard, so foreign OPML with no _type still labels
+    // correctly), and mdToHtml's blockquote branch tests BQ_RE against the raw line and never reads
+    // node.type either. Re-adding it only for node.type === 'quote' therefore dropped the `>` from
+    // every para holding a blockquote — the app drew <blockquote class="md-bq">, the export shipped
+    // a plain sentence. What you see was not what shipped, silently.
+    const isQuote = node.type === 'quote' || deriveTypeFromText(node.text) === 'quote';
+    const hLvlPre = { h1:1, h2:2, h3:3, h4:4, h5:5, h6:6 }[node.type];
+    const isBlock = !!hLvlPre || node.type === 'para' || node.type === 'base' || isQuote;
+    if (isBlock || lastWasBlock) sep();
     if (node.type === 'base') {
       // a table node's text is already a markdown table — emit it as its own block
       // #806 (agent-review, UXP-201): exports resolve node links to legible text — the same
@@ -30117,12 +30146,17 @@ function toMarkdown(rootNode) {
       // export it verbatim instead of synthesizing a marker from type+checked.
       const isTodo = node.type === 'todo';
       let body = linkText(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)); // #806: links → titles; #925f: para pills → result-only
-      const hLvl = { h1:1, h2:2, h3:3, h4:4, h5:5, h6:6 }[node.type];
-      if (node.type === 'quote') body = `> ${body}`;
+      const hLvl = hLvlPre;
+      // EVERY line, not just the first: a multi-line quote otherwise relies on lazy continuation to
+      // stay one <blockquote>, which the blank-line policy above is specifically breaking.
+      if (isQuote) body = body.split('\n').map(l => `> ${l}`).join('\n');
       else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
       const lines = body.split('\n');
-      if (hLvl || node.type === 'para') {
-        // headings and paragraphs export without a list marker; headings get their #'s
+      if (hLvl || node.type === 'para' || isQuote) {
+        // headings, paragraphs and quotes export without a list marker; headings get their #'s.
+        // A quote used to emit as `- > text`, a list item wrapping a blockquote. Bare is correct at
+        // every depth for the same reason para is: inside a list the `>` lands on the parent item's
+        // content column, which reads as a blockquote nested in that item.
         const prefix = hLvl ? '#'.repeat(hLvl) + ' ' : '';
         out.push(`${indent}${prefix}${lines[0]}`);
         for (let i = 1; i < lines.length; i++) out.push(`${indent}${lines[i]}`);
@@ -30140,11 +30174,17 @@ function toMarkdown(rootNode) {
     // four of seven review personas flagged the [created/edited] noise; OPML keeps them.
     const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase()));
     if (exProps.length) out.push(`${indent}  [${exProps.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
-    // footnote definitions in reference order, indented under the node
+    lastWasBlock = isBlock;
+    // Footnote definitions in reference order, indented under the node. The run is its OWN block:
+    // without the blank line it is a lazy continuation of the paragraph above, so `[^1]: …` prints
+    // as literal text and the reference it defines is left undefined. This is the transition that
+    // broke the loudest, because the reader sees a dangling [^1] with no footnote.
+    const fnLines = [];
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
-      if (fn && fn.text.trim()) out.push(`${indent}  [^${key}]: ${fn.text.replace(/\n+/g, ' ').trim()}`);
+      if (fn && fn.text.trim()) fnLines.push(`${indent}  [^${key}]: ${fn.text.replace(/\n+/g, ' ').trim()}`);
     });
+    if (fnLines.length) { sep(); out.push(...fnLines); lastWasBlock = true; }
     let olN = 0;
     for (const c of node.children) emit(c, depth + 1, c.type === 'ol' ? ++olN : 0);
   }
