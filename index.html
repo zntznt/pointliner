@@ -25941,6 +25941,25 @@ function announce(msg) {
   requestAnimationFrame(() => { el.textContent = msg; });
 }
 
+// UXP-241: which of an overlay's two rendered strings is the honest thing to announce. The graph
+// and the timeline both headline a live count in .graph-count, and both rewrite it on a toggle
+// without moving focus — so the number the toggle exists to change goes unspoken. The count line
+// wins; when a filter empties the panel that line is blank and the empty state's title is the
+// truthful answer ("No dated points here yet"), not silence.
+function overlayCountMessage(countText, emptyTitle) {
+  const t = (countText || '').trim() || (emptyTitle || '').trim();
+  return t || null;
+}
+
+// Read the RENDERED strings back rather than recomputing the count, so the announcement can never
+// drift from what is on screen. Both overlays share .graph-count / .graph-empty-title, so one
+// helper serves both; both renders are synchronous, so the nodes exist by the time we read them.
+function announceOverlayCount(panel) {
+  const msg = overlayCountMessage(panel.querySelector('.graph-count')?.textContent,
+                                  panel.querySelector('.graph-empty-title')?.textContent);
+  if (msg) announce(msg);
+}
+
 function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); leanSlashTip?.classList.remove('on'); slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
@@ -32575,7 +32594,7 @@ function renderGraph(panel) {
       b.textContent = lbl;
       b.setAttribute('aria-pressed', graphScope === key ? 'true' : 'false');
       b.setAttribute('aria-label', key === 'doc' ? 'Show links within this document' : 'Show links between the folder’s documents');
-      b.addEventListener('click', () => { if (graphScope !== key) { graphScope = key; renderGraph(panel); panel.querySelector('.graph-scope .on')?.focus(); } });
+      b.addEventListener('click', () => { if (graphScope !== key) { graphScope = key; renderGraph(panel); panel.querySelector('.graph-scope .on')?.focus(); announceOverlayCount(panel); } });
       scope.appendChild(b);
     }
     head.appendChild(scope);
@@ -32601,7 +32620,7 @@ function renderGraph(panel) {
     ut.textContent = 'Unlinked';
     ut.setAttribute('aria-pressed', graphShowUnlinked ? 'true' : 'false');
     ut.setAttribute('aria-label', graphShowUnlinked ? 'Hide unlinked references' : 'Show unlinked references');
-    ut.addEventListener('click', () => { graphShowUnlinked = !graphShowUnlinked; renderGraph(panel); panel.querySelector('.graph-unlinked-toggle')?.focus(); });
+    ut.addEventListener('click', () => { graphShowUnlinked = !graphShowUnlinked; renderGraph(panel); panel.querySelector('.graph-unlinked-toggle')?.focus(); announceOverlayCount(panel); });
     head.appendChild(ut);
   }
   const cnt = document.createElement('div'); cnt.className = 'graph-count';
@@ -32797,7 +32816,19 @@ function renderTimeline(panel) {
     chip.className = 'tl-toggle tl-src-' + key + (timelineSources[key] ? ' on' : '');
     chip.textContent = TL_SRC_LABELS[key];
     chip.setAttribute('aria-pressed', String(timelineSources[key]));
-    chip.addEventListener('click', () => { timelineSources[key] = !timelineSources[key]; renderTimeline(panel); });
+    // UXP-239: renderTimeline opens with `panel.innerHTML = ''`, so the re-render DESTROYS the chip
+    // that was just pressed and focus falls to <body> — which puts it outside #timeline-back, where
+    // both the Tab trap and Escape are bound, so Escape silently stops working until the user
+    // presses Tab. Refocus the equivalent chip, exactly as the graph's own two toggles do below.
+    // The selector must be `.tl-toggle.tl-src-KEY`, not the bare `.tl-src-KEY`: rows reuse that
+    // class ('tl-item tl-src-' + it.source), and the bare form only works today because the chip
+    // bar is appended before the body.
+    chip.addEventListener('click', () => {
+      timelineSources[key] = !timelineSources[key];
+      renderTimeline(panel);
+      panel.querySelector('.tl-toggle.tl-src-' + key)?.focus();
+      announceOverlayCount(panel);
+    });
     bar.appendChild(chip);
   }
   panel.appendChild(bar);

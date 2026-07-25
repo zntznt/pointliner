@@ -10064,6 +10064,45 @@ test('#516 timeline: UI wiring + front doors + a11y (src pins)', () => {
   assert.ok(ct.includes("btn.setAttribute('aria-pressed', 'false')") && ct.includes('.focus()'), 'close must release pressed state + restore focus');
 });
 
+// UXP-241 pure core: a toggle re-renders the panel, then asks what to say. The count line is the
+// answer whenever it has one; an emptied panel falls back to its empty-state title rather than
+// going silent. null means "nothing to announce" (the repo's pure-core convention).
+test('UXP-241 overlayCountMessage: count wins, empty-state title is the fallback', () => {
+  assert.equal(c.overlayCountMessage('8 dated points', 'No dated points here yet'), '8 dated points');
+  assert.equal(c.overlayCountMessage('15 points, 1 links, 20 unlinked references', ''), '15 points, 1 links, 20 unlinked references');
+  // the panel emptied: .graph-count renders '' and the empty state carries the honest sentence
+  assert.equal(c.overlayCountMessage('', 'No dated points here yet'), 'No dated points here yet');
+  assert.equal(c.overlayCountMessage('   ', 'No links yet'), 'No links yet');
+  // nothing to say → null, never an empty announce() that clears the region for no reason
+  assert.equal(c.overlayCountMessage('', ''), null);
+  assert.equal(c.overlayCountMessage(undefined, undefined), null);
+  assert.equal(c.overlayCountMessage('  ', '  '), null);
+});
+
+// UXP-239 + UXP-241 wiring. Source pins only — they prove the lines are PRESENT; that focus actually
+// survives the re-render and that Escape still closes was verified by driving the running app.
+test('UXP-239/241 overlay toggles: refocus after re-render + announce the new count (src pins)', () => {
+  const aoc = fnBody(_src, 'announceOverlayCount');
+  assert.ok(aoc.includes('overlayCountMessage('), 'the wrapper must go through the pure core');
+  assert.ok(aoc.includes('.graph-count') && aoc.includes('.graph-empty-title'), 'must read BOTH rendered strings (shared by graph + timeline)');
+  assert.ok(aoc.includes('announce('), 'must reach #a11y-live through the existing announce() helper');
+
+  // UXP-239: the timeline source chip is destroyed by `panel.innerHTML = ''`, so it must be
+  // refocused — otherwise focus lands on <body>, outside #timeline-back, and Escape goes dead.
+  const rt = fnBody(_src, 'renderTimeline');
+  assert.ok(rt.includes(".tl-toggle.tl-src-' + key)?.focus()"),
+    'the source chip must refocus itself after the re-render, and via .tl-toggle.tl-src-KEY — rows reuse the bare tl-src-KEY class');
+  assert.ok(rt.includes('announceOverlayCount(panel)'), 'the source chip must announce the new count (P3-5)');
+
+  // all three count-changing toggles announce: one header must not have one toggle that speaks and
+  // one that does not (P1).
+  const rg = fnBody(_src, 'renderGraph');
+  const scopeLine = rg.split('\n').find(l => l.includes(".graph-scope .on')?.focus()"));
+  assert.ok(scopeLine && scopeLine.includes('announceOverlayCount(panel)'), 'the graph scope toggle must announce its new count');
+  const unlinkedLine = rg.split('\n').find(l => l.includes(".graph-unlinked-toggle')?.focus()"));
+  assert.ok(unlinkedLine && unlinkedLine.includes('announceOverlayCount(panel)'), 'the graph unlinked toggle must announce its new count');
+});
+
 test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger points (src pins)', () => {
   // the firing door enforces ALL three constraints in one place
   const fn = fnBody(_src, 'fireNudge');

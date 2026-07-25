@@ -22,7 +22,13 @@ acting (controls drift).
 > environmental and was resolved 2026-07-25 once the egress was tested rather than assumed.
 > UXP-171–183 closed in Phases 2–7 (UXP-178, the builder's front door, shipped last).
 > Later persona passes on the uncovered surfaces added **UXP-237** (open: an export decision about
-> someone else's file) and **UXP-238** (closed: the search legend's 48 tab stops).
+> someone else's file) and **UXP-238** (closed: the search legend's 48 tab stops). The
+> 2026-07-25 graph/timeline pass — the first aimed at surfaces the register had **never reached** —
+> opened **UXP-239…243**, all five driven in a browser. **UXP-239** (focus lost on a timeline source
+> toggle, taking Escape with it) and **UXP-241** (neither overlay announced its count change) are
+> closed and archived; **UXP-240, 242 and 243 remain open**, each waiting on a decision rather than
+> on effort — a navigation model for the two overlays, what a broken graph node should do, and how to
+> reach the 24px floor without making force-positioned neighbours overlap.
 
 ---
 
@@ -192,3 +198,62 @@ acting (controls drift).
 - **Not** that the chips are focusable: they insert a token on click, so P3 requires keyboard operation. The defect is putting a 48-member group in the *sequential* order instead of giving it one stop.
 - **Rule:** P3-2 (keyboard operability) headline, P1-3 (Esc resolves outward) secondary.
 - **Fixed:** roving tabindex in `wireSearchExamples`, the pattern this file already uses four times (agenda calendar grid, table grid #443, the `role="grid"` helper, the tablist). Chip 0 seeds `tabindex="0"` and the other 47 `-1`; Left/Right walk the flat document order (the rows are ragged, one to three chips each, so there is no column count to assume), Up/Down jump to the first chip of the adjacent `.sh-row`, Home/End reach the ends of the group, and each move swaps `-1`/`0` and focuses. Ends **clamp** rather than wrap, matching the calendar grid. Escape returns focus to `#search-box` **without clearing**, so a second Escape hits the box's own handler and does the clear plus `restoreChromeReturn()` — two levels, in the documented order. No tier gate needed; `display:none` already handles Standard and Lean.
+
+---
+
+## Graph + Timeline persona pass (2026-07-25) — UXP-239…243
+
+The first pass aimed at surfaces the register had **never reached**. A keyword sweep of the register
+plus archive (304 entries) found the rolls log and data packs at **zero** mentions, the timeline at
+5 and the graph at 14 (mostly incidental), against dozens each for agenda, bases, search and the
+builder. Of the seven toolbar panels, builder / capture / agenda are covered and **graph and
+timeline never were.**
+
+**Closed since:** UXP-239 and UXP-241, both moved to `ux-remediation-archive.md`.
+
+The pair is self-checking: the timeline is commented in-source as "the graph's chronological twin",
+they share the `.graph-head` / `.graph-title` / `.graph-count` / `.graph-empty` CSS, and their
+open / close / Tab-trap code is near-identical. So every divergence has a **built-in control** — one
+of the two already does it right, 200 lines away. That is exactly how UXP-239 was confirmed.
+
+All five were driven in a real browser with real keypresses against seeded documents (128 dated
+points for the timeline, 40 linked points plus a deliberately broken link for the graph).
+
+### UXP-240 ☐ Both overlays put every item in the tab order with no arrow alternative 🟡 [graph] [timeline]
+- **Problem:** the same shape as UXP-238, in the two surfaces that were never audited. Measured:
+  ```
+  timeline, 128 dated points : 132 focusables (128 rows + 3 source chips + close)
+                               ArrowDown NO-OP, End NO-OP
+  graph, 40 linked points    :  42 focusables (41 nodes + close)
+                               ArrowRight NO-OP, Home NO-OP
+  ```
+  Neither count is capped: `graphModel` caps nothing (only *unlinked* edges cap, at `GRAPH_UNLINKED_CAP = 150`), and `collectTimelineItems` caps nothing. A year of journal entries is a year of tab stops. The timeline's `.tl-month` headers are not focusable, so there is no month-to-month jump either.
+- **Milder than UXP-238, and the entry should say so:** both overlays are modal Tab traps, so cycling is the intended model and Escape does work (until UXP-239 fires). Shift+Tab from the first row reaches Close in one press. The harm is reaching Close from deep in a long list, and having no in-group navigation at all.
+- **WITHDRAWN sub-claim:** the recon predicted the graph's Tab order would be "effectively random" because nodes are force-directed. **Measured and false** — mean 86px between consecutive tab stops with only 3 jumps over 200px across 41 nodes. Document order and the layout largely agree. The finding stands on the stop count alone.
+- **Rule:** P3-2 (keyboard operability).
+- **Target:** the repo's own roving-tabindex pattern, applied a fifth and sixth time. The timeline is a plain list (Up/Down + Home/End, and PgUp/PgDn to the adjacent `.tl-month` is the natural month jump). The graph needs a decision first: document order or spatial nearest-neighbour. Do not assume spatial — the measurement above says document order is already close to spatial, so the cheap answer may be the right one.
+
+### UXP-242 ☐ A broken graph node is a focusable `role="button"` that does nothing 🟢 [graph]
+- **Problem:** every node gets `tabindex="0"` and `role="button"` unconditionally; the `if (!n.broken)` branch then skips **both** the click and the Enter/Space handlers, leaving only `cursor:default`. Driven against a link to a deleted point:
+  ```
+  broken node: tabindex="0"  role="button"  cursor:"default"
+               aria-label "Broken link target, 2 links."
+  Enter -> nothing happened (graph state unchanged, focus unchanged)
+  ```
+- **Partly mitigated already, which caps the severity:** the `aria-label` omits the "Activate to open." suffix every healthy node carries, so a screen-reader user is told the target is broken. But the element still announces as a **button** and still consumes a tab stop, and pressing Enter on it is a silent no-op.
+- **Rule:** P4-1 (silent no-op) with a P3 edge (a control that is reachable but inert).
+- **Target:** decide between dropping it out of the tab order (`tabindex="-1"`, drop `role="button"`) and giving it something to do (a flash naming the missing target, which is more useful — a broken node is exactly the thing you want to investigate). Not decided here; the second is more work and is a product call.
+
+### UXP-243 ☐ Graph node hit areas sit under the 24px floor on touch 🟢 [graph]
+- **Problem:** `const r = 4 + Math.round((n.deg / maxDeg) * 7)` gives node radii of 4–11px. Measured on a real 390×844 touch viewport with `matchMedia('(hover:none)').matches === true`, taking the **`<g>` group box** (circle plus label, which is what carries the handler) rather than the circle alone:
+  ```
+  15 of 15 nodes under 24px tall   heights 15–23px   widths 49–176px
+  ```
+- **Measured against the right standard:** `ux-definition-of-done.md` §3 reconciles the floor to **WCAG 2.2's 24px**, aiming for the 36–38px strip idiom — not the 44px the first recon assumed. Width passes comfortably; **height fails on every node.**
+- **Genuine tension to resolve, not just a number to raise:** nodes are force-positioned and can sit under 40px apart, so a naive 24px-tall hit box would overlap neighbours and make the wrong node activate. The honest options are increasing `graphLayout`'s minimum separation, or an explicit hit-rect sized to the gap.
+- **Rule:** P3 (tap-target floor, `ux-definition-of-done.md` §3).
+
+### Checked and deliberately NOT filed
+- **The unlinked count is honest.** The graph reports `"N of M unlinked references"` when `GRAPH_UNLINKED_CAP` truncates, and the plain total when it does not. That is UXP-146's lesson already applied correctly. Confirmed at 20 uncapped references; no finding.
+- **Both overlays trap Tab and restore focus on close** (`graphReturnFocus` / `timelineReturnFocus`), and open with focus on the close button rather than stranding it on the hidden toolbar. Working as documented.
+- **Empty states were read in source only** and cite the fix path well; they were **not driven** in this pass, so nothing is claimed about them.
