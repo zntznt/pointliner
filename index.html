@@ -15851,10 +15851,11 @@ function attachContentEvents(content, node) {
       e.preventDefault(); e.stopPropagation();
       // Bulk: if this OPENING checkbox is on a point that's in a multi-point selection,
       // the toggle propagates to every other task-first selected point (check one → check
-      // the rest; a mixed selection resolves to all matching the clicked box). Snapshot
-      // undo BEFORE toggling so one undo reverts the whole bulk change as a unit.
+      // the rest; a mixed selection resolves to all matching the clicked box). The undo
+      // snapshot now lives inside toggleTaskInNode (every tick is undoable, not just a bulk
+      // one); it is taken before the toggle and so still precedes the propagation below,
+      // keeping the whole bulk change one undo unit.
       const bulk = +e.target.dataset.task === 0 && selectedIds.size >= 2 && selectedIds.has(node.id) && isTaskFirst(node.text);
-      if (bulk) pushUndo();
       toggleTaskInNode(node, +e.target.dataset.task);
       if (bulk && propagateCheckboxToSelection(node.id)) { markDirty(); render(); }
       return;
@@ -18537,7 +18538,12 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
 
   // The chips mutate the anchor's text; for a bulk selection mirror the same write
   // onto every selected point so they all take the chosen state/priority.
-  const writeAll = mutate => { for (const t of applyList) t.text = mutate(t.text); };
+  // Snapshot BEFORE the writes, and inside writeAll so both chip groups (state and priority) are
+  // covered by the one line: a chip click mutates every point in applyList, so a single whole-tree
+  // snapshot taken here keeps a bulk state change one undo unit. Unconditional, like every other
+  // display-mode mutation: pushUndo's own flushActiveTextEdit() no-ops when nothing is being edited,
+  // and commits the in-flight typing as its own entry when another point IS being edited.
+  const writeAll = mutate => { pushUndo(); for (const t of applyList) t.text = mutate(t.text); };
 
   const apply = () => {
     // type + checked are derived hints — re-derive from the text the picker wrote
@@ -26754,6 +26760,15 @@ function selectLogicalRange(el, start, end) {
 // a full render (strikethrough class on the row, hide-done filter).
 function toggleTaskInNode(node, taskIndex) {
   if (!node) return;
+  // Ticking a box is a document edit and belongs in history. It did not record one, so undo popped
+  // whatever came BEFORE the tick and reverted that instead: an unrelated point lost its checkbox
+  // while the ticked one stayed ticked, and the tick itself was discarded rather than restored.
+  // Snapshot here rather than at the call sites, because there are two (the display-mode mousedown
+  // branch and the `change` listener for Space on a focused box) and only one of them had any
+  // snapshot at all. Both are display-mode only, and there is no load/migration caller, so this is
+  // safe. It also still precedes propagateCheckboxToSelection, which runs after the toggle, so a
+  // bulk tick stays a single undo unit exactly as that call site's comment promises.
+  pushUndo();
   let n = 0;
   const lines = node.text.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -30430,6 +30445,11 @@ function advanceClockOrdinal(node, ordinal, dir) {
     if (cur) flashHint(cur.done >= cur.total ? 'The clock is already full.' : 'The clock is already empty.');
     return;
   }
+  // AFTER the clamp return above, never before: pushUndo clears redoStack, so snapshotting a click
+  // that changes nothing would silently destroy the redo stack. Advancing a clock is a document
+  // edit like any other, so it belongs in history — the re-roll family this comment already claims
+  // kinship with has recorded undo all along.
+  pushUndo();
   node.text = next;
   markDirty();
   repaintNodeContent(node);            // display-mode repaint, like a dice re-roll — no edit-mode entry

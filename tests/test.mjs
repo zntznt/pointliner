@@ -1931,6 +1931,76 @@ test('picker exclusion + lifecycle wiring pinned in source (one caret menu at a 
     'onKeyDown must close the caret pickers on caret-move keys');
 });
 
+// Ticking a to-do box mutated node.text and persisted, but recorded NO undo entry — so undo popped
+// whatever came before the tick and reverted THAT instead: an unrelated point lost its checkbox
+// while the ticked one stayed ticked, and the tick was discarded rather than restored. Measured:
+// pushUndo fired 0x on check-off, 1x on indent. Two siblings had the same display-mode gap.
+//
+// These are source pins because the three mutators are DOM-bound (they call markDirty/render/
+// repaintNodeContent and cannot run in the Node harness — `vlist.children is not iterable`). A pin
+// proves the call is PRESENT, not that undo works, so the behaviour is driven in a real browser and
+// the results are recorded in the PR. What the pins DO own is the ordering, which is where the
+// subtle failures live.
+test('every display-mode mutation records an undo entry (corruption regression)', () => {
+  // 1. the checkbox. The snapshot lives INSIDE toggleTaskInNode because there are two callers (the
+  // mousedown branch and the `change` listener for Space) and only one ever had a snapshot.
+  const tt = fnBody(_src, 'toggleTaskInNode');
+  assert.ok(/^\s*(\/\/[^\n]*\n\s*)*if \(!node\) return;\s*(\n\s*\/\/[^\n]*)*\n\s*pushUndo\(\);/m.test(tt),
+    'toggleTaskInNode must snapshot before it rewrites the line');
+  assert.ok(tt.indexOf('pushUndo()') < tt.indexOf('node.text = lines.join'),
+    'the snapshot must precede the mutation, or undo restores the post-state');
+
+  // 2. the bulk call site must NOT push again, or one bulk tick costs two undos.
+  assert.ok(!/if \(bulk\) pushUndo\(\);/.test(_src),
+    'the bulk site pushed its own snapshot; with the push inside toggleTaskInNode that is a double');
+  assert.equal((_src.match(/toggleTaskInNode\(node, \+e\.target\.dataset\.task\)/g) || []).length, 2,
+    'both call sites (mousedown + change) still route through the one snapshotting function');
+
+  // 3. the clock. Ordering is load-bearing: pushUndo clears redoStack, so snapshotting a click that
+  // changes nothing would silently destroy redo. It must sit AFTER the clamp early-return.
+  const ac = fnBody(_src, 'advanceClockOrdinal');
+  const iClamp = ac.indexOf('if (next === node.text)');
+  const iPush  = ac.indexOf('pushUndo()');
+  const iWrite = ac.indexOf('node.text = next');
+  assert.ok(iClamp > -1 && iPush > -1 && iWrite > -1, 'clamp, push and write all present');
+  assert.ok(iClamp < iPush, 'push AFTER the clamp return, so a no-op click keeps the redo stack');
+  assert.ok(iPush < iWrite, 'push BEFORE the write, or undo restores the post-state');
+
+  // 4. the state/priority picker. One snapshot inside writeAll covers both chip groups and precedes
+  // the whole applyList, so a bulk state change stays one undo unit.
+  assert.ok(/const writeAll = mutate => \{ pushUndo\(\); for \(const t of applyList\)/.test(_src),
+    'writeAll must snapshot before mutating every selected point');
+  assert.equal((_src.match(/writeAll\(t => set/g) || []).length, 2,
+    'both the state and the priority chip go through writeAll');
+});
+
+test('undo pushes are unconditional here, not guarded on activeContentId', () => {
+  // rerollDice guards with `if (activeContentId == null)` because rerolling a pill INSIDE the point
+  // being edited would double-record against the text-edit machinery. These three are different:
+  // they are display-mode on their own node but can fire while ANOTHER point is being edited, and
+  // there the snapshot is wanted. pushUndo already calls flushActiveTextEdit(), which no-ops when
+  // idle and otherwise commits the in-flight typing as its own entry first.
+  assert.ok(/function pushUndo\(\) \{\s*flushActiveTextEdit\(\);/.test(_src),
+    'pushUndo flushes any in-progress text edit, which is what makes an unconditional call safe');
+  const fate = fnBody(_src, 'flushActiveTextEdit');
+  assert.ok(/if \(activeContentId == null\) return;/.test(fate), 'and that flush no-ops when nothing is being edited');
+  for (const fn of ['toggleTaskInNode', 'advanceClockOrdinal']) {
+    assert.ok(!/if \(activeContentId == null\) pushUndo\(\)/.test(fnBody(_src, fn)),
+      `${fn} must push unconditionally, not with the reroll guard`);
+  }
+  // the reroll family keeps its guard — this change must not have flattened it
+  assert.ok(/if \(activeContentId == null\) pushUndo\(\);/.test(fnBody(_src, 'rerollDice')),
+    'rerollDice keeps its guard: an in-edit reroll is owned by the text-edit machinery');
+});
+
+test('the keyboard and mouse routes to a checkbox now agree', () => {
+  // Ctrl+Shift+X always recorded undo; clicking the box never did. Same user intent, two answers.
+  assert.ok(/pushUndo\(\); setFirstTaskChecked\(n, !firstTaskChecked\(n\)\)/.test(_src),
+    'the keyboard twin still snapshots');
+  assert.ok(/pushUndo\(\);/.test(fnBody(_src, 'toggleTaskInNode')),
+    'and the click path now does too');
+});
+
 test('undo/redo closes the inline pickers before render (no apply against a detached element)', () => {
   // applyEntry's render() detaches every content element while focusNode re-arms keydown
   // on the new one; a surviving braceState would make the next Enter apply against the
