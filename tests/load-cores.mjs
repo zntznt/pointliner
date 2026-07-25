@@ -205,6 +205,7 @@ export function loadCores() {
     'pluginPackActive', 'packLabel', 'newPluginPack', 'updatePluginPack', 'removePluginPack', 'togglePluginPack', 'parsePackImport', 'parsePackVarLines', 'rollPackPickVars',
     'upsertPackTemplate', 'removePackTemplate',   // #518: capture-a-subtree-into-a-pack cores
     'packVarsText', 'packDraftFrom', 'packFieldsFor',   // UXP-244: pack-editor draft survival
+    'insertDraftFrom', 'insertDraftMatches',   // UXP-246: the same rule across all 10 insert dialogs
     'tagColorOf', 'propIconOf', 'setTagColor', 'setPropIcon', 'normalizeAppearance', 'isValidTagName',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',

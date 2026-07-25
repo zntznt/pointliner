@@ -20042,3 +20042,100 @@ test('UXP-245 the log has a door, and painting it cannot create the log', () => 
   assert.ok(_src.includes('if (root.rollLog.on) _rollLogAnnounced = false;'), 'each switch-on re-arms the confirmation');
   assert.ok(_src.includes('flashHint(rollLogToggleMessage('), 'the toggle must speak through the pure core');
 });
+
+// ─── UXP-246: drafts survive dismissal in the insert dialogs too ─────────────
+// Found by auditing the RULE rather than a surface. `ux-definition-of-done.md` §4's
+// drafts-survive-dismissal rule governs 10 more surfaces through the shared openInsertDialog, and
+// honoured none of them: 335 characters of typed grammar, chains, decks and queries were destroyed
+// in a single driven pass. The pack editor (UXP-244) was the control that proved the driver could
+// see a surviving draft, so 0-of-10 is a fact about the app and not about the instrument.
+
+test('UXP-246 insertDraftFrom: keeps a change, keeps nothing from an untouched dialog', () => {
+  const json = v => JSON.stringify(v);
+  // untouched blank insert -> nothing stored
+  assert.equal(c.insertDraftFrom({ def: '' }, { def: '' }), null);
+  // a dialog that opens with a DEFAULT body (the deck's) and is dismissed untouched stores nothing,
+  // which is why the rule compares against seeds rather than testing for non-empty text
+  assert.equal(c.insertDraftFrom({ body: 'shuffle: a | b | c' }, { body: 'shuffle: a | b | c' }), null);
+  // typed content -> stored, along with the seeds it was typed over
+  const d = c.insertDraftFrom({ def: 'npc: a {mood} knight' }, { def: '' });
+  assert.equal(json(d), json({ values: { def: 'npc: a {mood} knight' }, seeds: { def: '' } }));
+  // an edit of an existing pill is a change too
+  const e = c.insertDraftFrom({ def: '2d6 + 3' }, { def: '2d6' });
+  assert.equal(e.values.def, '2d6 + 3');
+  assert.equal(e.seeds.def, '2d6');
+  // checkboxes ride along as strings, and a flipped one counts as a change
+  assert.equal(c.insertDraftFrom({ a: 'x', keep: 'true' }, { a: 'x', keep: 'false' })?.values.keep, 'true');
+});
+
+test('UXP-246 insertDraftMatches: a draft never shadows a different pill', () => {
+  const draft = c.insertDraftFrom({ def: 'npc: a {mood} knight' }, { def: '' });
+  // reopening the same BLANK insert -> the work comes back
+  assert.equal(c.insertDraftMatches(draft, { def: '' }), true);
+  // THE SAFETY CASE: opening the dialog to EDIT an existing pill seeds it from that pill's own
+  // definition, which no draft taken over a blank insert can match. This is what makes restoring
+  // safe here where the pack editor's simpler "differs from stored" rule would not have been.
+  assert.equal(c.insertDraftMatches(draft, { def: 'weather: sun | rain' }), false);
+  // reopening the SAME pill you were editing does match, so an interrupted edit is not lost
+  const edit = c.insertDraftFrom({ def: '2d6 + 3' }, { def: '2d6' });
+  assert.equal(c.insertDraftMatches(edit, { def: '2d6' }), true);
+  assert.equal(c.insertDraftMatches(edit, { def: '3d6' }), false);
+  // a seed key the draft never saw is a mismatch, not a partial restore
+  assert.equal(c.insertDraftMatches(draft, { def: '', name: 'x' }), false);
+  assert.equal(c.insertDraftMatches(null, { def: '' }), false);
+  assert.equal(c.insertDraftMatches({}, { def: '' }), false);
+});
+
+test('UXP-246 openInsertDialog stashes on cancel and clears on submit', () => {
+  // Source pins: this is DOM wiring. The stash must happen inside cancel() BEFORE the nested/plain
+  // teardown branches, or the card is already emptied when the values are read.
+  assert.ok(_src.includes('let _insertDrafts = {};'), 'the shared draft store must exist');
+  assert.ok(/function cancel\(\) \{\s*\n\s*stashInsertDraft\(\);/.test(_src),
+    'cancel must stash before either teardown branch runs');
+  assert.ok(_src.includes('delete _insertDrafts[_draftKey];   // UXP-246'), 'submit must clear the draft');
+  assert.ok(/const _draftKey = opts\.draftKey \|\| opts\.guideId \|\| opts\.title \|\| 'insert';/.test(_src),
+    'the slot is per dialog KIND, so each dialog keeps its own work');
+  assert.ok(/const _useDraft = insertDraftMatches\(_draft, _seeds\);/.test(_src),
+    'restoration must be gated by the seed comparison, not applied blindly');
+  // the raw (untrimmed) reader: comparing a trimmed value against an untrimmed seed would read
+  // trailing whitespace as an edit worth keeping
+  assert.ok(_src.includes('const rawVals = ()'), 'the draft comparison needs untrimmed values');
+  assert.ok(/insertDraftFrom\(rawVals\(\), _seeds\)/.test(_src), 'the stash must compare raw values against seeds');
+});
+
+test('UXP-246 the four hand-rolled dialogs share the rule, not a fifth mechanism', () => {
+  // openVarDialog, openPropsDialog, openDueDateDialog and openAppearanceDialog build their own DOM
+  // (openInsertDialog cannot express a picker grid, a segmented control or a date row), so they
+  // silently missed the shared fix. They now route through wireDialogDraft, which delegates to the
+  // SAME two pure cores — one definition of what a draft is across all 20 surfaces. The structural
+  // problem, that opting out of the builder forfeits every later improvement, is UXP-247.
+  assert.ok(_src.includes('function wireDialogDraft(key, seeds, readFields, applyFields)'),
+    'the shared helper must exist so the hand-rolled dialogs do not grow their own rules');
+  assert.ok(/insertDraftMatches\(draft, seeds\)\) applyFields\(draft\.values\)/.test(_src),
+    'wireDialogDraft must gate restoration on the shared seed comparison');
+  for (const [dialog, key] of [
+    ['openVarDialog', "'var-dialog'"],
+    ['openDueDateDialog', "'due-dialog:' + nodeId"],
+    ['openAppearanceDialog', "'appearance-dialog'"],
+  ]) {
+    assert.ok(_src.includes(`wireDialogDraft(${key}`), `${dialog} must wire its draft slot`);
+  }
+  assert.ok(_src.includes('wireDialogDraft(_pKey'), 'openPropsDialog must wire its draft slot');
+  // Per-subject keys: a half-typed schedule or property set must come back to the SAME point and
+  // never leak onto the next one opened.
+  assert.ok(/const _pKey = 'props-dialog:' \+ \(targets \?/.test(_src), 'the props draft is keyed by its target point(s)');
+  assert.ok(_src.includes("'due-dialog:' + nodeId"), 'the schedule draft is keyed by its point');
+  // Every dismissal path stashes, and every commit clears.
+  assert.ok(_src.includes('ioCancel = _cancelVar;'), 'var: the backdrop/global Escape must stash');
+  assert.ok(_src.includes('ioCancel = _cancelDue;'), 'schedule: the backdrop/global Escape must stash');
+  assert.ok(_src.includes('ioCancel = _cancelProps;'), 'props: the backdrop/global Escape must stash');
+  assert.ok(_src.includes('ioCancel = _cancelAppr;'), 'appearance: the backdrop/global Escape must stash');
+  for (const del of ["delete _insertDrafts['var-dialog']", "delete _insertDrafts['due-dialog:' + nodeId]", 'delete _insertDrafts[_pKey]']) {
+    assert.ok(_src.includes(del), `a commit must clear its draft: ${del}`);
+  }
+  // The appearance dialog re-renders IN PLACE after every swatch commit; restoring mid-rebuild
+  // would push a stale name over the input the user is typing into.
+  assert.ok(_src.includes('const _apprFresh = !ioBack.classList.contains(\'on\');'),
+    'appearance must capture the fresh-open signal before anything sets it');
+  assert.ok(/v => \{ if \(_apprFresh\)/.test(_src), 'appearance may only restore on a fresh open');
+});

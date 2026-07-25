@@ -12331,6 +12331,17 @@ function openPropsDialog(nodeId, targets = null) {
   const list = document.createElement('div'); list.className = 'props-list';
   ioCard.appendChild(list);
 
+  // UXP-246: this editor's content is a ROW LIST, not fixed fields, so the draft carries the rows
+  // serialized. Wired before the first renderRows() so a restored list is what gets painted.
+  // Keyed by the point (or the bulk target set) so half-entered properties come back to the same
+  // subject and never leak onto the next point you open.
+  const _pSeeds = { rows: JSON.stringify(props) };
+  const _pKey = 'props-dialog:' + (targets ? applyList.map(t => t.id).join(',') : nodeId);
+  const _stashProps = wireDialogDraft(_pKey, _pSeeds,
+    () => ({ rows: JSON.stringify(props) }),
+    v => { try { const r = JSON.parse(v.rows); if (Array.isArray(r) && r.length) props = r; } catch (_) {} });
+  const _cancelProps = () => { _stashProps(); closeIo(); };
+
   function renderRows(focusLast = false) {
     list.innerHTML = '';
     props.forEach((p, i) => {
@@ -12434,15 +12445,16 @@ function openPropsDialog(nodeId, targets = null) {
         t.props = [...kept, ...cleaned.filter(p => p.val !== '')];
       }
     }
+    delete _insertDrafts[_pKey];   // UXP-246: committed
     markDirty(); render(); closeIo();
     // #519: after the render, if a numeric property just became rollup-able (a sibling or
     // child shares it), nudge once that {= sum(key)} can total it. Single-point edits only
     // (a bulk edit is a different intent); Guided-only + once-ever enforced inside.
     if (applyList.length === 1) for (const p of cleaned) maybeNudgeSum(node, p.key);
   }
-  cancelBtn.addEventListener('click', closeIo);
+  cancelBtn.addEventListener('click', _cancelProps);
   saveBtn.addEventListener('click', save);
-  ioCancel = closeIo;
+  ioCancel = _cancelProps;
 
   ioReturnFocus = document.activeElement;
   ioCard.setAttribute('aria-label', 'Properties');
@@ -12949,6 +12961,15 @@ function openDueDateDialog(nodeId, targets = null) {
   wrap.append(repeatF.f);
   ioCard.appendChild(wrap);
 
+  // UXP-246: draft survival for this hand-rolled dialog, through the shared cores. The slot is keyed
+  // by the point being scheduled, so a half-typed repeat phrase comes back to THAT task and cannot
+  // reappear on the next one you open.
+  const _dSeeds = { start: String(startInit || ''), due: String(dueInit || ''), repeat: String(repeatInit || '') };
+  const _stashDueDraft = wireDialogDraft('due-dialog:' + nodeId, _dSeeds,
+    () => ({ start: startF.inp.value, due: dueF.inp.value, repeat: repeatF.inp.value }),
+    v => { startF.inp.value = v.start ?? ''; dueF.inp.value = v.due ?? ''; repeatF.inp.value = v.repeat ?? ''; });
+  const _cancelDue = () => { _stashDueDraft(); closeIo(); };
+
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
   const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
@@ -12967,15 +12988,16 @@ function openDueDateDialog(nodeId, targets = null) {
     }
     markDirty(); render();
     if (agendaOpen) renderAgenda();
+    delete _insertDrafts['due-dialog:' + nodeId];   // UXP-246: committed
     closeIo();
   }
-  cancelBtn.addEventListener('click', closeIo);
+  cancelBtn.addEventListener('click', _cancelDue);
   saveBtn.addEventListener('click', save);
   [startF.inp, dueF.inp, repeatF.inp].forEach(inp => inp.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); save(); }
-    if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+    if (e.key === 'Escape') { e.preventDefault(); _cancelDue(); }   // UXP-246: keep the draft
   }));
-  ioCancel = closeIo;
+  ioCancel = _cancelDue;
   ioReturnFocus = document.activeElement;
   ioCard.setAttribute('aria-label', 'Schedule');
   ioBack.classList.add('on');
@@ -13645,6 +13667,11 @@ let _apprFocus = 'tag'; // #464 review #1: which section's input to focus after 
 function openAppearanceDialog() {
   root.appearance = root.appearance || { tags: {}, props: {} };
   const ap = root.appearance;
+  // UXP-246: this dialog also re-renders IN PLACE after every swatch/icon commit. A draft may only
+  // be restored on a FRESH open — restoring during a rebuild would push a stale name over the input
+  // the user is mid-way through. `ioBack` already carrying `.on` is the existing in-place signal
+  // (the ioReturnFocus line below reads it the same way); read it before anything sets it.
+  const _apprFresh = !ioBack.classList.contains('on');
   ioCard.innerHTML = '';
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, APPEARANCE_ICON);
@@ -13731,10 +13758,18 @@ function openAppearanceDialog() {
   }
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
+  // UXP-246: the two lookup inputs are typed input like any other, and dismissing threw them away.
+  // Seeds are always blank here (the fields are lookups, not seeded from stored state), so the
+  // match test reduces to "was anything typed".
+  const _aStash = wireDialogDraft('appearance-dialog', { tag: '', prop: '' },
+    () => ({ tag: tagIn.value, prop: propIn.value }),
+    v => { if (_apprFresh) { tagIn.value = v.tag ?? ''; propIn.value = v.prop ?? ''; } });
+  const _cancelAppr = () => { _aStash(); closeIo(); };
+
   const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn primary'; closeBtn.textContent = 'Close';
-  closeBtn.addEventListener('click', closeIo);
+  closeBtn.addEventListener('click', _cancelAppr);
   foot.append(closeBtn); ioCard.appendChild(foot);
-  ioCancel = closeIo;
+  ioCancel = _cancelAppr;
   if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target
   ioCard.setAttribute('aria-label', 'Tag and property styling');
   ioBack.classList.add('on');
@@ -20323,10 +20358,77 @@ let _dialogFormEl = null;      // reference to submit button in nested dialog
 let _builderFormDrafts = {};   // UXP-180: { cmdId: { fieldName: value, ... } }
 let _builderFormCmd = null;    // UXP-180: cmd obj of the currently shown embedded form
 
+// UXP-246: unsaved insert-dialog input, keyed by dialog kind. The rule the pack editor, the capture
+// strip, the journal, the chronicle and the builder's own forms all keep (`ux-definition-of-done.md`
+// §4, "Drafts survive dismissal") reaches TEN more surfaces through this one shared builder, and
+// honoured none of them: `cancel()` went straight to closeIo(), which empties the card.
+let _insertDrafts = {};
+
+// UXP-246: should a dismissed insert dialog leave a draft, and what is in it? Pure.
+//
+// It stores the typed values AND the values the dialog was SEEDED with. The seeds are what make
+// restoration safe later; see insertDraftMatches. Returns null when nothing was changed, so
+// dismissing an untouched dialog stores nothing — and a dialog that opens with a default body (the
+// deck's `shuffle: a | b | c`) is not mistaken for content the user typed.
+function insertDraftFrom(values, seeds) {
+  const v = {}, s = {};
+  let changed = false;
+  for (const k of Object.keys(values || {})) {
+    v[k] = String(values[k] ?? '');
+    s[k] = String((seeds || {})[k] ?? '');
+    if (v[k] !== s[k]) changed = true;
+  }
+  return changed ? { values: v, seeds: s } : null;
+}
+
+// UXP-246: may this draft be offered back to a dialog opening with these seeds? Pure.
+//
+// Only when the dialog is opening in the SAME state the draft was abandoned from. That one
+// comparison is what makes this safe where the pack editor's simpler rule would not be: an insert
+// dialog reopens at a different caret for a different insertion, and EDITING a pill seeds the
+// dialog from that pill's own definition. A draft taken while editing pill A can never match the
+// seeds of pill B, so it can never shadow a real definition — while a blank insert reopening blank,
+// or the same pill reopened, both match and get their work back.
+function insertDraftMatches(draft, seeds) {
+  if (!draft || !draft.seeds) return false;
+  const a = draft.seeds, b = seeds || {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (String(a[k] ?? '') !== String(b[k] ?? '')) return false;
+  }
+  return true;
+}
+
+// UXP-246: give a HAND-ROLLED dialog the same draft survival the shared builder now has, without
+// rewriting it onto openInsertDialog. Four dialogs (var, props, due-date, appearance) build their
+// own DOM because openInsertDialog cannot express what they need — a picker grid, a segmented
+// control, a date row — and every one of them silently missed this fix as a result. That structural
+// problem (the builder's field vocabulary is too small, so dialogs opt out and forfeit every later
+// improvement) is filed separately as UXP-247; this makes them conform meanwhile.
+//
+// The dialog supplies its slot, its seeds, and a read/apply pair for its own fields. The rules of
+// what a draft IS stay in the two pure cores above, so all 19 surfaces share one definition rather
+// than growing four more. Returns the stash function to call from every dismissal path.
+function wireDialogDraft(key, seeds, readFields, applyFields) {
+  const draft = _insertDrafts[key];
+  if (insertDraftMatches(draft, seeds)) applyFields(draft.values);
+  return () => {
+    const d = insertDraftFrom(readFields(), seeds);
+    if (d) _insertDrafts[key] = d; else delete _insertDrafts[key];
+  };
+}
+
 function openInsertDialog(opts) {
   const root = _dialogRoot || ioCard;
   const isNested = _dialogRoot != null;
   root.innerHTML = '';
+  // UXP-246: the draft slot for this KIND of dialog, and whether the kept draft may be restored
+  // into it. Seeds are captured before any field is built so the comparison sees the dialog as the
+  // caller specified it, not as the user has since edited it.
+  const _draftKey = opts.draftKey || opts.guideId || opts.title || 'insert';
+  const _seeds = {};
+  (opts.fields || []).forEach(f => { _seeds[f.key] = f.type === 'checkbox' ? String(!!f.value) : String(f.value ?? ''); });
+  const _draft = _insertDrafts[_draftKey];
+  const _useDraft = insertDraftMatches(_draft, _seeds);
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, opts.icon);
   const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title;
@@ -20336,9 +20438,12 @@ function openInsertDialog(opts) {
   const _previewFns = [];
   opts.fields.forEach((f, i) => {
     const wrap = document.createElement('div'); wrap.className = 'io-field';
+    // UXP-246: a restorable draft supplies this field's opening value; otherwise the caller's seed.
+    const _seedVal = _useDraft && _draft.values[f.key] !== undefined ? _draft.values[f.key] : null;
     if (f.type === 'checkbox') {
       wrap.classList.add('io-check');
-      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!f.value;
+      const cb = document.createElement('input'); cb.type = 'checkbox';
+      cb.checked = _seedVal !== null ? _seedVal === 'true' : !!f.value;
       const _cid = 'io-fld-' + f.key; cb.id = _cid;
       const clab = document.createElement('label'); clab.textContent = f.label; clab.setAttribute('for', _cid);
       inputs[f.key] = cb;
@@ -20358,7 +20463,7 @@ function openInsertDialog(opts) {
     const inp = document.createElement(area ? 'textarea' : 'input');
     if (!area) inp.type = 'text';
     if (area) { inp.rows = f.rows || 4; inp.className = 'io-mono'; }
-    inp.placeholder = f.placeholder || ''; inp.value = f.value || '';
+    inp.placeholder = f.placeholder || ''; inp.value = _seedVal !== null ? _seedVal : (f.value || '');
     inp.spellcheck = false; inp.autocomplete = 'off';
     const _fid = 'io-fld-' + f.key;
     inp.id = _fid; lab.setAttribute('for', _fid);
@@ -20407,15 +20512,25 @@ function openInsertDialog(opts) {
   if (_previewFns.length > 1) root.addEventListener('input', () => _previewFns.forEach(fn => fn()));
 
   const vals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].type === 'checkbox' ? inputs[k].checked : inputs[k].value.trim(); return v; };
+  // UXP-246: untrimmed, stringified, for the draft comparison — `vals()` trims, and comparing a
+  // trimmed value against an untrimmed seed would read trailing whitespace as an edit worth keeping.
+  const rawVals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].type === 'checkbox' ? String(inputs[k].checked) : inputs[k].value; return v; };
+  // UXP-246: both exits stash. Called before any teardown, so it never reads an emptied card.
+  const stashInsertDraft = () => {
+    const d = insertDraftFrom(rawVals(), _seeds);
+    if (d) _insertDrafts[_draftKey] = d; else delete _insertDrafts[_draftKey];
+  };
   const valid = () => opts.fields.every(f => !f.required || vals()[f.key]) && (!opts.validate || opts.validate(vals()));
   function validate() { okBtn.disabled = !valid(); }
   function submit() {
     if (!valid()) return;
+    delete _insertDrafts[_draftKey];   // UXP-246: committed, so the kept draft has served its purpose
     opts.onSubmit(vals());
     if (isNested) { closeBuilderWindow(); return; }
     closeIo();
   }
   function cancel() {
+    stashInsertDraft();   // UXP-246: keep what was typed before the card is torn down
     if (isNested) { _dialogCancel?.(); _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; _dialogFormEl = null; _restoreState = null; return; }
     closeIo();
   }
@@ -26076,11 +26191,20 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     updatePrev(); validate();
   }
 
+  // UXP-246: draft survival, through the same cores the shared builder uses. The mode is part of
+  // the draft: restoring the text without the formula/pick toggle it was typed under would hand
+  // back a value the dialog then validates by the wrong rule.
+  const _vSeeds = { name: String(name || ''), expr: String(expr || ''), mode: String(kind === 'pick' ? 'pick' : 'formula') };
+  const _stashVarDraft = wireDialogDraft('var-dialog', _vSeeds,
+    () => ({ name: nameInp.value, expr: exprInp.value, mode }),
+    v => { nameInp.value = v.name ?? ''; exprInp.value = v.expr ?? ''; if (v.mode === 'pick' || v.mode === 'formula') mode = v.mode; });
+  const _cancelVar = () => { _stashVarDraft(); closeIo(); };
+
   // Footer
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
   const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = submitLabel || 'Insert';
-  cancelBtn.addEventListener('click', () => closeIo());
+  cancelBtn.addEventListener('click', _cancelVar);
   okBtn.addEventListener('click', submit);
   foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
 
@@ -26093,6 +26217,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   function validate() { okBtn.disabled = !valid(); }
   function submit() {
     if (!valid()) return;
+    delete _insertDrafts['var-dialog'];   // UXP-246: committed, so the kept draft has served its purpose
     const nm = nameInp.value.trim(), ex = exprInp.value.trim();
     if (mode === 'pick') {
       const rolled = rollPickSource(ex);                    // THE roll — once, here
@@ -26110,7 +26235,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     inp.addEventListener('input', () => { if (inp === exprInp) updatePrev(); validate(); });
     inp.addEventListener('keydown', e => {
       if (e.key !== 'Tab') e.stopPropagation(); // protect global shortcuts; Tab bubbles to the focus trap
-      if (e.key === 'Escape') { e.preventDefault(); closeIo(); }
+      if (e.key === 'Escape') { e.preventDefault(); _cancelVar(); }   // UXP-246: keep the draft
       else if (e.key === 'Enter') { e.preventDefault(); submit(); }
     });
   });
@@ -26121,7 +26246,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     match?.classList.add('selected');
   }
 
-  ioCancel = () => closeIo();
+  ioCancel = _cancelVar;   // UXP-246: the backdrop and the global Escape stash too
   setMode(mode); // applies label/placeholder/hint/button text, then validates + previews
   ioReturnFocus = document.activeElement;
   ioCard.setAttribute('aria-label', 'Variable');
