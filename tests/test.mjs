@@ -13820,6 +13820,65 @@ test('tmpWriteName — the temp name is NOT listed as a document', () => {
   assert.deepEqual(listed, ['notes.opml']);
 });
 
+// ── the Markdown export survives a renderer ──────────────────────────────────
+// toMarkdown pushed one array entry per line and joined with '\n', so it never emitted a `\n\n`
+// at all. Under CommonMark that merges blocks that were separate on screen. Verified against a
+// real CommonMark implementation (markdown-it) outside the repo; these pin the shape it produces.
+const _mdN = (text, type = 'ul', extra = {}) => Object.assign(c.mkNode(text, type), extra);
+const _mdOf = (...kids) => { const r = c.mkRoot(); r.children.push(...kids); return c.toMarkdown(r); };
+
+test('toMarkdown — a blank line separates blocks, and NEVER two list items', () => {
+  // para -> para was one <p>. This is the transition the whole policy exists for.
+  assert.match(_mdOf(_mdN('One.', 'para'), _mdN('Two.', 'para')), /One\.\n\nTwo\./);
+  // ...but bullets must stay TIGHT. A blank line between list items makes the list loose, which
+  // wraps every <li> in <p> and changes the render of an ordinary outline. The likeliest
+  // regression in this change, so it is asserted directly.
+  assert.match(_mdOf(_mdN('a'), _mdN('b'), _mdN('c')), /- a\n- b\n- c/);
+  assert.ok(!/- a\n\n- b/.test(_mdOf(_mdN('a'), _mdN('b'))), 'no blank line between two bullets');
+  // a block on either side of a list run is separated from it in both directions
+  assert.match(_mdOf(_mdN('a'), _mdN('After.', 'para')), /- a\n\nAfter\./);
+  assert.match(_mdOf(_mdN('Before.', 'para'), _mdN('a')), /Before\.\n\n- a/);
+  // headings, quotes and tables are blocks too
+  assert.match(_mdOf(_mdN('# H', 'h1'), _mdN('Body.', 'para')), /# H\n\nBody\./);
+  assert.match(_mdOf(_mdN('> Q', 'quote'), _mdN('After.', 'para')), /> Q\n\nAfter\./);
+  assert.match(_mdOf(_mdN('| a |\n|---|', 'base'), _mdN('After.', 'para')), /\|---\|\n\nAfter\./);
+  // no leading blank line, and the file still ends in exactly one newline
+  const md = _mdOf(_mdN('One.', 'para'), _mdN('Two.', 'para'));
+  assert.ok(!md.startsWith('\n'), 'no leading blank line');
+  assert.ok(md.endsWith('\n') && !md.endsWith('\n\n'), 'exactly one trailing newline');
+});
+
+test('toMarkdown — the footnote definition run is its own block', () => {
+  const md = _mdOf(_mdN('Prose with a ref[^a]', 'para', { footnotes: [{ key: 'a', text: 'the body' }] }),
+                   _mdN('after'));
+  assert.match(md, /Prose with a ref\[\^a\]\n\n {2}\[\^a\]: the body/, 'a blank line before the definition');
+  assert.match(md, /\[\^a\]: the body\n\n- after/, 'and the next point is separated from it');
+});
+
+test('toMarkdown — a blockquote keeps its > even when the point is not typed as a quote', () => {
+  // textForDisplay strips a `> ` prefix via its deriveTypeFromText fallback REGARDLESS of declared
+  // type (#420), but toMarkdown re-added it only for node.type === 'quote'. So every blockquote
+  // written on a para lost its `>` and shipped as a plain sentence, while mdToHtml drew a real
+  // <blockquote> on screen. What you saw was not what shipped.
+  assert.match(_mdOf(_mdN('> A quotation', 'para')), /^> A quotation/m, 'a quote on a PARA keeps its >');
+  assert.match(_mdOf(_mdN('> A quotation', 'quote')), /^> A quotation/m, 'a declared quote still does');
+  // every line, not just the first: a multi-line quote must not depend on lazy continuation to
+  // stay one blockquote, which the blank-line policy is specifically breaking
+  const multi = _mdOf(_mdN('> line one\nline two', 'quote'));
+  assert.match(multi, /> line one\n> line two/, 'the > is on every line');
+});
+
+test('toMarkdown — quote is a bare block; divider and code stay list items', () => {
+  // `- > text` was a list item wrapping a blockquote. Bare is correct at every depth for the same
+  // reason para is: inside a list the `>` lands on the parent item's content column.
+  assert.ok(!/- >/.test(_mdOf(_mdN('> Q', 'quote'))), 'a quote emits no list marker');
+  // The divider deliberately KEEPS its marker: `- ---` is a list item, so it nests with its
+  // siblings and its own children stay under it. A bare `---` would drop out of the list
+  // structure. Pinned so the decision is not silently re-opened.
+  assert.match(_mdOf(_mdN('---\nSection', 'divider')), /- ---/, 'a divider is still a list item');
+  assert.match(_mdOf(_mdN('```\ncode here', 'code')), /- `/, 'so is a code point');
+});
+
 // ── point/selection export (toMarkdown on a synthetic {children:[…]} root) ────
 // Export-a-point wraps the selected node(s) in a throwaway root so toMarkdown emits
 // the node ITSELF (at depth 0) plus its subtree — the point is included, not just its
