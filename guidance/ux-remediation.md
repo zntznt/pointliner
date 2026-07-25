@@ -24,13 +24,18 @@ acting (controls drift).
 > Later persona passes on the uncovered surfaces added **UXP-237** (open: an export decision about
 > someone else's file) and **UXP-238** (closed: the search legend's 48 tab stops). The
 > 2026-07-25 graph/timeline pass — the first aimed at surfaces the register had **never reached** —
-> opened **UXP-239…243**, all five driven in a browser. **UXP-239** (focus lost on a timeline source
-> toggle, taking Escape with it), **UXP-241** (neither overlay announced its count change) and
-> **UXP-240** (both overlays put every item in the tab order; closed with roving tabindex, the graph
-> navigating in **document order** per the owner's decision) and **UXP-242** (a broken graph node was
-> an inert `role="button"`; it now flashes the missing target's name and where it is linked from) are
-> closed and archived. **UXP-243 is the last one open**, and it waits on a decision rather than on
-> effort: how to reach the 24px tap floor without making force-positioned neighbours overlap.
+> opened **UXP-239…243**, all five driven in a browser. **All five are now closed and archived:**
+> UXP-239 (focus lost on a timeline source toggle, taking Escape with it), UXP-241 (neither overlay
+> announced its count change), UXP-240 (every item in the tab order; roving tabindex, the graph
+> navigating in **document order** per the owner's decision), UXP-242 (a broken graph node was an
+> inert `role="button"`; it now names the missing target and where it is linked from) and UXP-243
+> (graph tap targets under the 24px floor; layout separation plus a clamped hit circle).
+> **Two of the five entries had measured something wrong**, and both corrections are recorded on the
+> archived entries: UXP-240's "the graph's Tab order is effectively random" was withdrawn on
+> measurement, and UXP-243 had taken a bounding box where a **tap** was the question, which
+> overstated the defect in one direction (13 of 15 nodes already cleared the floor) and hid it in the
+> other (the label it counted as target width is `pointer-events:none` and never was tappable).
+> Only **UXP-237** remains open besides the standing UXP-20 guard.
 
 ---
 
@@ -220,15 +225,6 @@ of the two already does it right, 200 lines away. That is exactly how UXP-239 wa
 
 All five were driven in a real browser with real keypresses against seeded documents (128 dated
 points for the timeline, 40 linked points plus a deliberately broken link for the graph).
-
-### UXP-243 ☐ Graph node hit areas sit under the 24px floor on touch 🟢 [graph]
-- **Problem:** `const r = 4 + Math.round((n.deg / maxDeg) * 7)` gives node radii of 4–11px. Measured on a real 390×844 touch viewport with `matchMedia('(hover:none)').matches === true`, taking the **`<g>` group box** (circle plus label, which is what carries the handler) rather than the circle alone:
-  ```
-  15 of 15 nodes under 24px tall   heights 15–23px   widths 49–176px
-  ```
-- **Measured against the right standard:** `ux-definition-of-done.md` §3 reconciles the floor to **WCAG 2.2's 24px**, aiming for the 36–38px strip idiom — not the 44px the first recon assumed. Width passes comfortably; **height fails on every node.**
-- **Genuine tension to resolve, not just a number to raise:** nodes are force-positioned and can sit under 40px apart, so a naive 24px-tall hit box would overlap neighbours and make the wrong node activate. The honest options are increasing `graphLayout`'s minimum separation, or an explicit hit-rect sized to the gap.
-- **Rule:** P3 (tap-target floor, `ux-definition-of-done.md` §3).
 
 ### Checked and deliberately NOT filed
 - **The unlinked count is honest.** The graph reports `"N of M unlinked references"` when `GRAPH_UNLINKED_CAP` truncates, and the plain total when it does not. That is UXP-146's lesson already applied correctly. Confirmed at 20 uncapped references; no finding.

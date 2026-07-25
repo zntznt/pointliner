@@ -1449,6 +1449,12 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .graph-node.graph-node-current circle{stroke-width:2.6;fill:color-mix(in srgb,var(--acc) 34%,var(--bg))}
 .graph-node.graph-node-current text{font-weight:600}
 .graph-node text{fill:var(--fg);font-size:11px;font-family:var(--font);pointer-events:none;dominant-baseline:middle}
+/* UXP-243: the invisible tap target. `fill:transparent`, NOT `fill:none` — none is not hit-tested
+   at all, so the element would receive nothing. Gated to touch: ux-definition-of-done.md §3 scopes
+   the 24px floor to @media(hover:none), and an always-on 24px target would light the hover paint
+   from 12px away from a 4px dot, which reads as imprecise on a pointer that does not need help. */
+.graph-hit{fill:transparent;stroke:none;pointer-events:none}
+@media(hover:none){.graph-hit{pointer-events:all}}
 .graph-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--muted);text-align:center;padding:24px}
 .graph-empty-title{font-size:14px;font-weight:600;color:var(--fg)}
 .graph-empty-hint{font-size:12.5px;line-height:1.55;max-width:380px}
@@ -22202,7 +22208,82 @@ function graphLayout(model, opts = {}) {
     }
     temp = Math.max(temp - cool, 1);
   }
-  return clampPositions(pos, width, height, margin);
+  // UXP-243: separation AFTER the fit, not before. clampPositions rescales every point to fill the
+  // box, so any separation won before it would be squeezed straight back out by the rescale.
+  return relaxSeparation(clampPositions(pos, width, height, margin), GRAPH_MIN_SEP, width, height, margin);
+}
+
+// UXP-243: the tap floor, and the separation the layout aims for so the floor actually fits.
+// A node's hit area can only grow as far as its nearest neighbour allows, so the two are one fix:
+// measured on a 390x844 touch viewport before this, 40 nodes had a minimum separation of 14px and
+// a smallest EFFECTIVE tap diameter of 8px, because neighbours were overlapping each other's dots.
+const GRAPH_TAP_MIN = 24;                   // WCAG 2.2, ux-definition-of-done.md §3
+const GRAPH_MIN_SEP = GRAPH_TAP_MIN + 2;    // +2 so two 24px targets clear with a gutter between
+
+// id -> distance to the closest OTHER node. O(n²), the same order as the layout's own repulsion
+// pass, and only ever run once per render.
+function nearestDistances(pos) {
+  const ids = [...pos.keys()];
+  const out = new Map();
+  for (let i = 0; i < ids.length; i++) {
+    const p = pos.get(ids[i]);
+    let best = Infinity;
+    for (let j = 0; j < ids.length; j++) {
+      if (i === j) continue;
+      const q = pos.get(ids[j]);
+      const d = Math.hypot(p.x - q.x, p.y - q.y);
+      if (d < best) best = d;
+    }
+    out.set(ids[i], best);
+  }
+  return out;
+}
+
+// Push apart any pair closer than minDist, a few bounded rounds, re-clamped into the box each time.
+// Deterministic (no randomness — coincident points split on a fixed parity), so graphLayout stays
+// seeded and its determinism pin keeps holding.
+//
+// BEST EFFORT by construction: a crowded canvas cannot separate every pair, and staying on screen
+// matters more than winning the last pixel, so the box clamp is applied last and is allowed to undo
+// a push. tapRadius is what keeps that honest — it clamps the hit area to the gap that ACTUALLY
+// exists rather than the one this pass hoped for.
+function relaxSeparation(pos, minDist, width, height, margin, rounds = 12) {
+  const ids = [...pos.keys()];
+  if (ids.length < 2 || !(minDist > 0)) return pos;
+  const loX = margin, hiX = Math.max(margin, width - margin);
+  const loY = margin, hiY = Math.max(margin, height - margin);
+  for (let r = 0; r < rounds; r++) {
+    let moved = false;
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = pos.get(ids[i]), b = pos.get(ids[j]);
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= minDist) continue;
+        if (d < 1e-6) { dx = (i + j) % 2 ? 1 : 0; dy = (i + j) % 2 ? 0 : 1; d = 1; }
+        const push = (minDist - d) / 2, ux = dx / d, uy = dy / d;
+        a.x -= ux * push; a.y -= uy * push;
+        b.x += ux * push; b.y += uy * push;
+        moved = true;
+      }
+    }
+    for (const id of ids) {
+      const p = pos.get(id);
+      p.x = Math.min(hiX, Math.max(loX, p.x));
+      p.y = Math.min(hiY, Math.max(loY, p.y));
+    }
+    if (!moved) break;
+  }
+  return pos;
+}
+
+// The radius a node's invisible hit circle can take without stealing its neighbour's tap: the floor,
+// clamped by half the real gap (less a 1px gutter), and never SMALLER than the dot you can already
+// see — a crowded pair keeps the target it has rather than being made worse by the clamp.
+function tapRadius(visualR, nearestDist, floor = GRAPH_TAP_MIN / 2) {
+  const v = Number.isFinite(visualR) && visualR > 0 ? visualR : 0;
+  if (!Number.isFinite(nearestDist)) return Math.max(v, floor);   // a lone node has no neighbour
+  return Math.max(v, Math.min(floor, nearestDist / 2 - 1));
 }
 
 // Rescale a position map to fit [margin, dim-margin] on each axis, preserving the
@@ -32764,6 +32845,7 @@ function renderGraph(panel) {
   // Folder mode: a node is a DOCUMENT — activating it opens that document (dirty-guarded
   // switch); the current document wears an accent ring so "you are here" is visible.
   const maxDeg = Math.max(...model.nodes.map(n => n.deg), 1);
+  const near = nearestDistances(pos);   // UXP-243: how far each node's tap area may grow
   let nodeIdx = 0;   // UXP-240: roving tab stop, seeded over model.nodes = <g> document order
   const go = folder
     ? (id) => { const name = workspaceIndex?.nameByDocId?.get(id); if (!name) return; closeGraph(); switchWorkspaceDoc(name); }
@@ -32791,6 +32873,14 @@ function renderGraph(panel) {
       // announcing as a button with nothing behind it.
       + (n.broken ? ' Activate to see what links here.' : folder ? ' Activate to open the document.' : ' Activate to open.'));
     const r = 4 + Math.round((n.deg / maxDeg) * 7);
+    // UXP-243: an invisible tap target, FIRST so the visible dot keeps its own hover/focus paint.
+    // The label is not part of the target and never was (`.graph-node text{pointer-events:none}`),
+    // so the circle is the whole of it: 8-22px, under the 24px floor. Sized to the real gap, so a
+    // crowded pair cannot end up with one dot swallowing its neighbour's tap.
+    const hit = document.createElementNS(SVG_NS, 'circle');
+    hit.setAttribute('class', 'graph-hit');
+    hit.setAttribute('r', tapRadius(r, near.get(n.id) ?? Infinity));
+    g.appendChild(hit);
     const c = document.createElementNS(SVG_NS, 'circle');
     c.setAttribute('r', r);
     g.appendChild(c);
