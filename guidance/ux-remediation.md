@@ -27,10 +27,10 @@ acting (controls drift).
 > opened **UXP-239…243**, all five driven in a browser. **UXP-239** (focus lost on a timeline source
 > toggle, taking Escape with it), **UXP-241** (neither overlay announced its count change) and
 > **UXP-240** (both overlays put every item in the tab order; closed with roving tabindex, the graph
-> navigating in **document order** per the owner's decision) are closed and archived.
-> **UXP-242 and 243 remain open**, each waiting on a decision rather than on effort: what a broken
-> graph node should *do*, and how to reach the 24px tap floor without making force-positioned
-> neighbours overlap.
+> navigating in **document order** per the owner's decision) and **UXP-242** (a broken graph node was
+> an inert `role="button"`; it now flashes the missing target's name and where it is linked from) are
+> closed and archived. **UXP-243 is the last one open**, and it waits on a decision rather than on
+> effort: how to reach the 24px tap floor without making force-positioned neighbours overlap.
 
 ---
 
@@ -220,17 +220,6 @@ of the two already does it right, 200 lines away. That is exactly how UXP-239 wa
 
 All five were driven in a real browser with real keypresses against seeded documents (128 dated
 points for the timeline, 40 linked points plus a deliberately broken link for the graph).
-
-### UXP-242 ☐ A broken graph node is a focusable `role="button"` that does nothing 🟢 [graph]
-- **Problem:** every node gets `tabindex="0"` and `role="button"` unconditionally; the `if (!n.broken)` branch then skips **both** the click and the Enter/Space handlers, leaving only `cursor:default`. Driven against a link to a deleted point:
-  ```
-  broken node: tabindex="0"  role="button"  cursor:"default"
-               aria-label "Broken link target, 2 links."
-  Enter -> nothing happened (graph state unchanged, focus unchanged)
-  ```
-- **Partly mitigated already, which caps the severity:** the `aria-label` omits the "Activate to open." suffix every healthy node carries, so a screen-reader user is told the target is broken. But the element still announces as a **button** and still consumes a tab stop, and pressing Enter on it is a silent no-op.
-- **Rule:** P4-1 (silent no-op) with a P3 edge (a control that is reachable but inert).
-- **Target:** decide between dropping it out of the tab order (`tabindex="-1"`, drop `role="button"`) and giving it something to do (a flash naming the missing target, which is more useful — a broken node is exactly the thing you want to investigate). Not decided here; the second is more work and is a product call.
 
 ### UXP-243 ☐ Graph node hit areas sit under the 24px floor on touch 🟢 [graph]
 - **Problem:** `const r = 4 + Math.round((n.deg / maxDeg) * 7)` gives node radii of 4–11px. Measured on a real 390×844 touch viewport with `matchMedia('(hover:none)').matches === true`, taking the **`<g>` group box** (circle plus label, which is what carries the handler) rather than the circle alone:

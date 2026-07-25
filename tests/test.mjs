@@ -10146,6 +10146,51 @@ test('UXP-239/241 overlay toggles: refocus after re-render + announce the new co
   assert.ok(unlinkedLine && unlinkedLine.includes('announceOverlayCount(panel)'), 'the graph unlinked toggle must announce its new count');
 });
 
+// UXP-242 pure core: the sentence a broken graph node says when activated. The author's own link
+// caption is the only human-readable name a deleted target ever had, so it leads when present.
+test('UXP-242 brokenNodeMessage: names the target and where it is linked from', () => {
+  assert.equal(c.brokenNodeMessage('Chapter 3', ['Outline']), '“Chapter 3” is missing. Linked from “Outline”.');
+  // no caption ([[#id]] rather than [[#id|text]]) — the id is opaque, so name the noun instead
+  assert.equal(c.brokenNodeMessage('', ['Outline']), 'That target is missing. Linked from “Outline”.');
+  // several sources collapse rather than listing every one into a toast
+  assert.equal(c.brokenNodeMessage('Chapter 3', ['Outline', 'Notes', 'Draft']), '“Chapter 3” is missing. Linked from “Outline” and 2 others.');
+  assert.equal(c.brokenNodeMessage('', ['A', 'B']), 'That target is missing. Linked from “A” and 1 other.');
+  // duplicate sources (two links from the same point) count once
+  assert.equal(c.brokenNodeMessage('X', ['Outline', 'Outline']), '“X” is missing. Linked from “Outline”.');
+  // folder scope names the other noun
+  assert.equal(c.brokenNodeMessage('', ['notes'], 'document'), 'That document is missing. Linked from “notes”.');
+  // no sources at all still says the useful half rather than nothing
+  assert.equal(c.brokenNodeMessage('Chapter 3', []), '“Chapter 3” is missing.');
+  assert.equal(c.brokenNodeMessage('', null), 'That target is missing.');
+  // blank/whitespace entries are not quoted as if they were names
+  assert.equal(c.brokenNodeMessage('  ', ['  ', 'Real']), 'That target is missing. Linked from “Real”.');
+  // A source "title" is the point's whole first line with link tokens stripped, which in real prose
+  // is a sentence. Driving produced `Linked from “Outline links Chapter 3 and”` — the dangling "and"
+  // is the hole the removed token left. Names are capped at the graph's own 28-char node-label limit.
+  const long = c.brokenNodeMessage('', ['Outline links Chapter 3 and some more text here']);
+  assert.ok(long.includes('…'), 'a long source name must be truncated');
+  assert.ok(long.length < 70, 'the whole message stays toast-sized: ' + long);
+  // the cap is 28 INCLUDING the ellipsis, byte-identical to the graph's own node-label truncation
+  assert.equal(c.brokenNodeMessage('', ['A point title that runs well past the cap']), 'That target is missing. Linked from “A point title that runs wel…”.');
+  // truncation applies to the caption too, not just the sources
+  assert.ok(c.brokenNodeMessage('A caption that is far too long to sit in a toast', ['X']).includes('…'));
+  // a name exactly at the cap is left alone (no gratuitous ellipsis)
+  const exact = 'x'.repeat(28);
+  assert.equal(c.brokenNodeMessage('', [exact]), `That target is missing. Linked from “${exact}”.`);
+});
+
+test('UXP-242 broken graph node: activation is wired and named (src pins)', () => {
+  const rg = fnBody(_src, 'renderGraph');
+  // the broken branch used to be `{ g.style.cursor = 'default'; }` and nothing else
+  assert.ok(rg.includes('brokenNodeMessage(') && rg.includes('flashHint('), 'a broken node must flash a message when activated');
+  assert.ok(rg.includes("g.addEventListener('click', say)"), 'a broken node must respond to click');
+  assert.ok(rg.includes("ev.key === 'Enter' || ev.key === ' '") && rg.includes('say()'), 'a broken node must respond to Enter/Space (keyboard twin)');
+  // the name now tells you what activating it does — it used to end after the link count
+  assert.ok(rg.includes("' Activate to see what links here.'"), 'a broken node aria-label must say what activation does');
+  // it reuses the existing report's collector rather than re-deriving broken links
+  assert.ok(rg.includes('collectBrokenLinks('), 'the flash must reuse collectBrokenLinks, not a second derivation');
+});
+
 // UXP-240 wiring. Source pins; that the arrows actually move focus was verified by driving.
 test('UXP-240 overlay roving tabindex: seeds, key claims, and the trap selector (src pins)', () => {
   // exactly one tab stop seeded per group, over document order

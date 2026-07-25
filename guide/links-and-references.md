@@ -69,7 +69,9 @@ are on, and `Esc` closes. The order the arrows follow is the document's own, so 
 graph walks your points in the order you wrote them.
 
 A point that links to a **deleted** target shows as a red dot, so a dangling reference is visible
-rather than silently missing. Points with no links (and no unlinked mentions, below) do not appear,
+rather than silently missing. Open one and it tells you what is gone and which points still link to
+it, using the caption you gave the link, so you know where to go and fix it. The **Broken links**
+report in the command menu lists every one of them at once. Points with no links (and no unlinked mentions, below) do not appear,
 keeping the graph a web rather than a scatter of unconnected dots. The graph is a live rendering of
 your links, so it is always current: link two points and they join the next time you open it.
 

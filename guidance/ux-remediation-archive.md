@@ -3156,3 +3156,25 @@ When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and d
 - **A latent trap regression this fix would otherwise have introduced, caught before it shipped.** Both overlay traps collected focusables as `[tabindex="0"],button:not(:disabled)`. Timeline rows are real `<button>`s, so they kept matching at `tabindex="-1"` while native Tab skipped them — `last` became an element Tab could never reach, the wrap never fired, and **Tab walked out of the modal**. Proven load-bearing rather than asserted: a build with the roving seeds but the old selector was driven, and Tab escaped the timeline (`inPanel: false`) while the graph, whose nodes are `<g>` and never matched the button clause, was unaffected. Both selectors now carry `:not([tabindex="-1"])`.
 - **Broken graph nodes stay in the roving order** — whether they should be focusable at all is UXP-242, still open, and this change deliberately does not prejudge it.
 - **Also corrected:** §3's UXP-65 "sanctioned transient Tab-group" note still claimed the search legend's chips were full `tabindex="0"` stops, which UXP-238 had made false the same day. The rule was narrowed to what actually survives: a transient panel may host a Tab-group only while the group stays small, and size must be **measured**, not assumed.
+
+### UXP-242 ✓ A broken graph node is a focusable `role="button"` that does nothing 🟢 [graph] (RESOLVED 2026-07-25)
+- **Problem:** every node gets `tabindex="0"` and `role="button"` unconditionally; the `if (!n.broken)` branch then skips **both** the click and the Enter/Space handlers, leaving only `cursor:default`. Driven against a link to a deleted point:
+  ```
+  broken node: tabindex="0"  role="button"  cursor:"default"
+               aria-label "Broken link target, 2 links."
+  Enter -> nothing happened (graph state unchanged, focus unchanged)
+  ```
+- **Partly mitigated already, which caps the severity:** the `aria-label` omits the "Activate to open." suffix every healthy node carries, so a screen-reader user is told the target is broken. But the element still announces as a **button** and still consumes a tab stop, and pressing Enter on it is a silent no-op.
+- **Rule:** P4-1 (silent no-op) with a P3 edge (a control that is reachable but inert).
+- **Target:** decide between dropping it out of the tab order (`tabindex="-1"`, drop `role="button"`) and giving it something to do (a flash naming the missing target, which is more useful — a broken node is exactly the thing you want to investigate). Not decided here; the second is more work and is a product call.
+- **Resolved, taking the second option (owner's call):** a broken node now flashes the missing target's name and where it is linked from, rather than being dropped out of the tab order. `role="button"` and the tab stop are now honest, because there is something behind them.
+- **The name is the author's own link CAPTION.** `[[#gone|Chapter 3]]` flashes *“Chapter 3” is missing.* Once the target is deleted that caption is the only human-readable name the missing point ever had: the id is opaque, and `graphModel` deliberately refuses to use it as a title. A bare `[[#gone]]` falls back to *That target is missing.* rather than showing an id no one will recognise.
+- **It names the SOURCES, because that is where the fix has to happen** — the same choice the Broken links report already makes by jumping to the source rather than the missing target. It reuses that report's `collectBrokenLinks` collector rather than re-deriving broken links, so the two can't disagree.
+- **A real copy defect the driving caught, which reading could not have.** A source "title" is the point's whole first line with the link tokens stripped, so with realistic prose the first driven output was:
+  ```
+  Linked from “Outline links Chapter 3 and”
+  ```
+  The dangling "and" is the hole the removed token left. Names are now capped at **28 characters including the ellipsis, byte-identical to the graph's own node-label truncation**, so the toast carries a name and not a paragraph. Pinned at the exact boundary, since an off-by-one here is invisible until it is ugly.
+- **Folder scope is covered too.** A missing *document* has no caption, so it names the documents that link to it (`That document is missing. Linked from “notes”.`). Leaving it silent would have been the same defect one scope over.
+- **Verified by driving, against the pre-fix build as a control:** 13/13 after, 5/13 before. Enter, Space and click all speak, the message reaches `#a11y-live` through `flashHint`'s existing channel, a healthy node still navigates, and no opaque id leaks into the copy.
+- **Still true, and deliberately unchanged:** the node stays in the roving order UXP-240 gave it. This entry's alternative — dropping it to `tabindex="-1"` — would have hidden the one dot you opened the graph to investigate.
