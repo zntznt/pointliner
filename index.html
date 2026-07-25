@@ -15216,7 +15216,14 @@ function parseSearchQuery(q) {
       // date from today through today+N inclusive. A recorded value-vocabulary growth of
       // the date arm (no new sigil), reusing the epoch-day machinery. `< / >` don't apply.
       else if ((lc === 'week' || lc === 'month') && op === '=') { const cal = activeCalendar(), tod = dueDateToday(cal); terms.push({ neg, kind, op: 'window', epochDay: tod + dueWindowDays(lc, cal, tod) }); }
-      else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'text', value: tok.toLowerCase() }); }
+      // UXP-233: a value parseDueDate rejects used to fall to a text term, i.e. a LITERAL search
+      // for the string "due:nonsense" — the same laundering `is:` did before S3-PR4, on a field
+      // that is just as reserved. It parses invalid now, so queryMatchesNode's hard-false guard
+      // (negation included) makes it match nothing honestly, and searchTermProblems says why.
+      // The value keeps its < / > bound. dateStillTyping needs it (a bound rules out the window
+      // words, so `<week` is final and wrong where a bare `week` is still in flight), and the
+      // message should echo back what the user actually typed.
+      else { const ep = parseDueDate(dval); if (ep !== null) terms.push({ neg, kind, op, epochDay: ep }); else terms.push({ neg, kind: 'invalid', field: kind, value: (op === '=' ? '' : op) + dval.toLowerCase(), raw: tok.toLowerCase() }); }
     }
     else if ((t = tok.match(/^state:([\w][\w-]*)$/i))) terms.push({ neg, kind: 'state', value: t[1].toLowerCase() });
     // UXP-109: priority:A filters org priorities (a settable-but-unqueryable dimension). A single
@@ -15256,6 +15263,30 @@ const SEARCH_IS_NEAR = {
   late:'overdue',
 };
 
+// dateStillTyping(value) — is this date value a PREFIX of something valid, i.e. is the user still
+// on their way there? The `is:` half of this (UXP-232's sibling) gets the same question answered by
+// a plain startsWith over a closed list; a date needs its own predicate only because its valid
+// forms are shaped rather than enumerated.
+//
+// UXP-233 recorded that the date grammar was "genuinely open," so deciding this "needs its own
+// design." Reading parseDueDate, it is not open: the whole vocabulary is the five words, today±N,
+// and a Y-M-D date, each optionally behind < or >. So the S3-PR4 rule extends directly, and this is
+// the shape half of it. Pure.
+const SEARCH_DATE_WORDS = ['today', 'tomorrow', 'overdue', 'week', 'month'];
+function dateStillTyping(value) {
+  let v = String(value || '').toLowerCase();
+  const bound = v[0] === '<' || v[0] === '>';
+  if (bound) v = v.slice(1);
+  if (!v) return true;                                          // `due:` or `due:<` — nothing typed yet
+  // A bound narrows what can still be reached: week and month are WINDOWS, and the parser takes
+  // them only at op '=', so `due:<week` can never become valid however much more you type.
+  const words = bound ? SEARCH_DATE_WORDS.filter(w => w !== 'week' && w !== 'month') : SEARCH_DATE_WORDS;
+  if (words.some(w => w.startsWith(v))) return true;             // t, to, tod, toda…
+  if (/^today[+-]?\d*$/.test(v)) return true;                   // today+ on its way to today+2
+  if (/^\d{0,4}(-\d{0,2}(-\d{0,2})?)?$/.test(v)) return true;   // 2026, 2026-0, 2026-07-
+  return false;                                                  // can never become a date
+}
+
 // searchTermProblems(terms, opts) — why an unreadable filter matches nothing, one entry per
 // distinct offending token. This is the MESSAGE half, split from the parse half on purpose:
 // parsing is honest IMMEDIATELY (an unreadable filter matches nothing, always), while the message
@@ -15270,8 +15301,22 @@ function searchTermProblems(terms, opts) {
   const states = (opts.states || []).map(s => String(s).toLowerCase());
   const out = [], seen = new Set();
   for (const t of terms || []) {
-    if (t.kind !== 'invalid' || t.field !== 'is') continue;
+    if (t.kind !== 'invalid') continue;
     const v = t.value || '';
+    // UXP-233: the date fields answer the same two questions with their own vocabulary. Same
+    // typing rule, same shape of sentence, so a user who has met one has met both.
+    if (t.field === 'due' || t.field === 'start') {
+      if (seen.has(t.field + ':' + v)) continue;
+      if (opts.typing && dateStillTyping(v)) continue;
+      seen.add(t.field + ':' + v);
+      out.push({ raw: t.raw || (t.field + ':' + v), value: v, field: t.field,
+        message: t.field + ':' + v + ' is not a date this app can read, so it matches nothing. '
+          + 'Try ' + t.field + ':today, tomorrow, overdue, week or month, a date like '
+          + t.field + ':2026-07-25, or a shift like ' + t.field + ':today+7. '
+          + 'Put < or > in front to mean before or after.' });
+      continue;
+    }
+    if (t.field !== 'is') continue;
     if (seen.has(v)) continue;
     const prefixOf = SEARCH_IS_VALUES.find(x => x.startsWith(v));
     if (opts.typing && prefixOf) continue;                 // still growing toward a real value
@@ -21086,6 +21131,8 @@ function resolveBrace(body, ctx) {
   const rlp = rollParts(body);
   if (rlp) {
     const picked = pickFromQuery(rlp.expr, cookieNode || root, cookieNode ? cookieNode.id : null, root);
+    // The marker keeps its shape: it is inline TEXT inside the point, so a full sentence does not
+    // belong here. renderGrammarPill turns it into the pill's tooltip instead (UXP-232).
     return picked || `{roll: ${rlp.expr}?}`;
   }
   const cp = condParts(body);
@@ -22748,7 +22795,20 @@ function renderGrammarPill(key, g) {
   // WHOLE result is that marker, show a muted human placeholder + an explanatory tip instead. Display
   // only: g.result and the unfold-to-source path are untouched, so a re-roll once points exist works.
   const emptyMark = /^\{[^{}]*\?\}$/.test(g.result);
-  const cta = emptyMark ? 'Nothing matched yet. Click to try again, or add points that fit'
+  // UXP-232: "Nothing matched yet" is itself a confidently wrong answer when the query could not be
+  // READ. A {roll:} rides an anonymous grammar, so its query lives in g.def — ask the same
+  // searchTermProblems the search box and the query pill ask, and let the reason replace the cta.
+  // No `typing` flag: a pill is committed text with no half-typed state.
+  let badFilter = '';
+  if (emptyMark) {
+    const rm = /\{\s*roll\s*:([^{}]*)\}/i.exec(g.def || '');
+    if (rm) {
+      const probs = searchTermProblems(parseSearchQuery(rm[1].trim()), { states: [...knownStates()] });
+      if (probs.length) badFilter = probs[0].message;
+    }
+  }
+  const cta = badFilter ? badFilter + ' Click to edit'
+            : emptyMark ? 'Nothing matched yet. Click to try again, or add points that fit'
             : stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate';
   const shownResult = emptyMark ? 'no match yet' : g.result;
   return `<span class="gr-roll${stale ? ' gr-stale' : ''}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${cta}` : cta}"`
@@ -24948,6 +25008,14 @@ function renderMathPill(key, m) {
   // other documents AS SAVED — say so in the tooltip/aria so the staleness is visible (P4).
   const folderTip = /"[^"]*"\s*,[^)]*\bfolder\s*\)/.test(m.expr)
     ? ' Folder totals count other documents as saved.' : '';
+  // UXP-232: count("is:blocked") returns 0, not null, so the math-err branch never fires and this
+  // renders as a confident success. A number sitting in a document reads as computed truth, which
+  // makes this the surface where a wrong answer persists longest. The reason belongs on the PILL,
+  // not in the number: a reducer can sit mid-expression, so there is no number to replace.
+  // Every quoted argument is a search, so ask searchTermProblems about each one.
+  const queryTip = [...m.expr.matchAll(/"([^"]*)"/g)]
+    .flatMap(q => searchTermProblems(parseSearchQuery(q[1]), { states: [...knownStates()] }))
+    .map(p => ' ' + p.message).join('');
   // #557: a sum/avg that matched no property renders 0, indistinguishable from a real computed 0
   // (a pill placed as a sibling instead of a parent, or a typo'd prop). Surface it as a muted
   // "nothing matched" state with the prop name, instead of a confident wrong number. Display-only:
@@ -24974,7 +25042,11 @@ function renderMathPill(key, m) {
   // almost always a dashboard pill dropped on a leaf. Name it (P4, reusing the math-empty chrome)
   // and point at the two fixes, instead of a silent number that reads as broken.
   if (queryReducerLeaf(m.expr, cookieNode)) {
-    const tip = 'No points below this one to search. Move the pill onto a parent, or add ", document" to search the whole document (", folder" for the notebook).';
+    // UXP-232: an unreadable filter LEADS, because "no points below this one" is itself the wrong
+    // explanation when the query could not be read — the scope is not what went wrong. Same
+    // precedence the roll pill applies to its "nothing matched yet".
+    const tip = (queryTip ? queryTip.trim() + ' ' : '')
+      + 'No points below this one to search. Move the pill onto a parent, or add ", document" to search the whole document (", folder" for the notebook).';
     return `<span class="math-roll math-empty" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
       + ` aria-label="Math ${escQ(m.expr)}: nothing in scope. ${escQ(tip)}">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
@@ -25007,8 +25079,8 @@ function renderMathPill(key, m) {
   // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
   // (which still names the full expr for assistive tech), and click-to-edit.
   if (m.bare) {
-    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}"`
-      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit the formula or number format">`
+    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}${escQ(queryTip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)} Click to edit the formula or number format">`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
@@ -25016,8 +25088,8 @@ function renderMathPill(key, m) {
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)} Click to edit the formula or number format">`
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}${escQ(queryTip)}"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)} Click to edit the formula or number format">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`

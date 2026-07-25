@@ -9272,6 +9272,87 @@ test('searchTermProblems — the four suggestion ranks, best answer first', () =
     assert.ok(!msg(qy, withState).includes('—'), `no em dash in user copy: ${qy}`);
 });
 
+test('UXP-233: an unreadable due:/start: date is invalid, not a literal text search', () => {
+  const p = s => host(c.parseSearchQuery(s))[0];
+  // valid forms are untouched
+  assert.equal(p('due:today').kind, 'due');
+  assert.equal(p('due:2026-07-25').kind, 'due');
+  assert.equal(p('start:today+7').kind, 'start');
+  assert.equal(p('due:overdue').op, 'overdue');
+  // and an unreadable one no longer launders into a literal search for its own string
+  assert.equal(p('due:nonsense').kind, 'invalid');
+  assert.equal(p('due:nonsense').field, 'due');
+  assert.equal(p('start:garbage').field, 'start');
+  // the negation trap, same as is:. queryMatchesNode kills the clause regardless of neg, so a
+  // typo can never WIDEN a date query into matching everything.
+  const n = c.mkNode('#urgent ship it');
+  assert.equal(c.queryMatchesNode(c.parseSearchQuery('-due:nonsense'), n), false, 'a negated bad date matches NOTHING');
+  assert.equal(c.queryMatchesNode(c.parseSearchQuery('due:nonsense #urgent'), n), false, 'and kills its clause');
+  assert.equal(c.queryMatchesNode(c.parseSearchQuery('due:nonsense | #urgent'), n), true, 'the OR side still answers');
+});
+
+test('dateStillTyping — a partial date is a prefix, so typing toward one stays quiet', () => {
+  // UXP-233 claimed the date grammar was too open to decide this. It is not: the whole vocabulary
+  // is five words, today±N, and Y-M-D, so "still on the way there" is a prefix test like is:.
+  for (const v of ['', 't', 'to', 'toda', 'tom', 'over', 'w', 'mont',
+                   'today+', 'today-', 'today+1', '2', '2026', '2026-', '2026-0', '2026-07', '2026-07-2',
+                   '<', '<t', '<2026-07', '>today+'])
+    assert.equal(c.dateStillTyping(v), true, `"${v}" is still on its way to a real date`);
+  // ...and these can never become one, so they report immediately
+  for (const v of ['nonsense', 'yesterday', '2026-13-99x', 'today+x', 'todayy', '2026-07-25-'])
+    assert.equal(c.dateStillTyping(v), false, `"${v}" can never become a date`);
+  // a bound narrows what is reachable: week and month are WINDOWS, taken only at op '=', so
+  // `<week` is final and wrong even though `week` alone would still be in flight.
+  assert.equal(c.dateStillTyping('week'), true);
+  assert.equal(c.dateStillTyping('<week'), false, 'a bound rules windows out, so <week can never resolve');
+  assert.equal(c.dateStillTyping('<month'), false);
+});
+
+test('searchTermProblems — a bad date says so, in its own vocabulary', () => {
+  const msg = (q, o) => c.searchTermProblems(c.parseSearchQuery(q), o)[0]?.message || '';
+  assert.match(msg('due:nonsense', {}), /^due:nonsense is not a date this app can read/);
+  assert.match(msg('due:nonsense', {}), /due:today/);
+  assert.match(msg('due:nonsense', {}), /due:2026-07-25/);
+  assert.match(msg('due:nonsense', {}), /due:today\+7/);
+  assert.match(msg('due:nonsense', {}), /before or after/);
+  assert.match(msg('start:garbage', {}), /^start:garbage/, 'the message names the field the user typed');
+  // the typing rule is shared with is:, so a half-typed date never accuses anyone
+  assert.equal(c.searchTermProblems(c.parseSearchQuery('due:2026-0'), { typing: true }).length, 0);
+  assert.equal(c.searchTermProblems(c.parseSearchQuery('due:nonsense'), { typing: true }).length, 1);
+  // a date message and an is: message are distinct, so neither is a template of the other
+  assert.ok(!msg('due:nonsense', {}).includes('is not a filter this app knows'));
+  assert.ok(!msg('is:blocked', {}).includes('is not a date this app can read'));
+  // no em dashes in user copy, same house rule as everywhere else
+  for (const q of ['due:nonsense', 'start:garbage']) assert.ok(!msg(q, {}).includes('—'));
+});
+
+test('UXP-232: the roll pill and the math pill carry the reason too', () => {
+  // The two surfaces that inherited honest matching from S3-PR4 but showed no reason.
+  // {roll:} rides an anonymous grammar, so its cue is the PILL's tooltip, not the inline marker
+  // (the marker is text inside the point, where a sentence does not belong).
+  const gp = fnBody(_src, 'renderGrammarPill');
+  assert.ok(gp.includes('searchTermProblems('), 'the roll pill must ask why it found nothing');
+  assert.ok(/roll\\s\*:/.test(gp) || gp.includes('roll'), 'it reads the query back out of g.def');
+  // Assert the ternary's SHAPE, not string positions: the comment above it quotes the old copy,
+  // so indexOf would measure the comment rather than the code (the same trap the announce() count
+  // hit in S3-PR4 — comments in this file are read by the tests).
+  assert.match(gp, /const cta = badFilter \?/,
+    'the reason must win over the "nothing matched" copy, which is itself the wrong answer here');
+
+  // The math pill is the subtle one: count() returns 0, not null, so math-err never fires and the
+  // pill renders as a confident success. The slot is the success tooltip, beside folderTip.
+  const mp = fnBody(_src, 'renderMathPill');
+  assert.ok(mp.includes('const queryTip'), 'the math pill must compute a query tip');
+  assert.ok(/matchAll\(\/"\(\[\^"\]\*\)"\/g\)/.test(mp), 'every quoted argument is a search, so each is asked about');
+  assert.equal((mp.match(/\$\{escQ\(queryTip\)\}/g) || []).length, 4,
+    'both the bare and the ordinary success renders carry it, in title AND aria-label');
+  // ...and the empty-SCOPE branch returns before those, so it needs the reason too, LEADING:
+  // "no points below this one" is the wrong explanation when the query could not be read, and
+  // that branch is the one a bare count("…") actually lands on. Found by driving, not by reading.
+  assert.match(mp, /const tip = \(queryTip \? queryTip\.trim\(\) \+ ' ' : ''\)\s*\n\s*\+ 'No points below this one to search/,
+    'the unreadable-filter reason must lead the empty-scope tip, not be unreachable behind it');
+});
+
 test('searchTermProblems — opts.typing separates "still typing" from "wrong"', () => {
   const probs = (query, opts) => c.searchTermProblems(c.parseSearchQuery(query), opts);
   // A live input suppresses a value that is still GROWING toward a real one, so typing i-s-:-t-o-d
@@ -14560,8 +14641,14 @@ test('QX-2 parseSearchQuery — due:week/month become op:window; < / > and bad v
   assert.equal(wk.kind, 'due'); assert.equal(wk.op, 'window'); assert.equal(wk.epochDay, today + 7);
   const mo = host(c.parseSearchQuery('start:month'))[0];
   assert.equal(mo.kind, 'start'); assert.equal(mo.op, 'window'); assert.equal(mo.epochDay, today + 30);
-  // an explicit bound is NOT a window (< / > keep their compare meaning)
-  assert.equal(host(c.parseSearchQuery('due:<week'))[0].kind, 'text');  // 'week' is not a date, so <week falls to text
+  // an explicit bound is NOT a window (< / > keep their compare meaning). `<week` therefore names
+  // nothing the parser can read, and UXP-233 stopped that laundering into a literal text search:
+  // it is an invalid term now, so it matches nothing honestly and explains itself.
+  assert.equal(host(c.parseSearchQuery('due:<week'))[0].kind, 'invalid');
+  assert.equal(host(c.parseSearchQuery('due:<week'))[0].field, 'due');
+  // the value KEEPS the bound: dateStillTyping needs it to know `<week` is final, and the message
+  // should echo what was typed rather than a version with the bound quietly removed
+  assert.equal(host(c.parseSearchQuery('due:<week'))[0].value, '<week');
   // overdue still wins
   assert.equal(host(c.parseSearchQuery('due:overdue'))[0].op, 'overdue');
 });

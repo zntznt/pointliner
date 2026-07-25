@@ -158,16 +158,6 @@ acting (controls drift).
 - **Rule:** P1 (Predictable — the same command should produce the same behavior regardless of how it's invoked).
 - **Target:** Add row and column number inputs to `BUILDER_FORMS` under a key that distinguishes the insert (`@`) path from the block (`/`) path (e.g., `'@table'`). In the form dispatch in `applyBuilder`, gate on both `BUILDER_FORMS[cmd.id]` AND `cmd.trigger === '@'` to avoid intercepting the `/table` block command, which already has its own size picker via the slash menu path. The existing `@table` hardcoded branch then becomes dead code and must be removed.
 
-### UXP-232 ☐ An unreadable filter is silent inside `{roll:}` and inside `count("…")` 🟡  [S3-PR4 follow-on]
-- **Problem:** `parseSearchQuery` now emits `{kind:'invalid'}` for a rejected `is:` value, and every one of the seven consumers matches nothing honestly. But only two of them RENDER the reason: the search box (`#sh-invalid`) and `renderQueryPill` (`{query:}` / `{count:}`). `pickFromQuery` returns `''` into its existing empty-roll marker, which says the roll found nothing rather than that the filter was unreadable; and `queryReduce` / `queryCountIn` return a bare `0` into a `{= …}` math pill or a `check` constraint. A number sitting in a document reads as computed truth, so this is the surface where a wrong answer persists longest.
-- **Rule:** P4-1 (no silent failure — every rejected input signals why).
-- **Target:** a cue slot on both. `searchTermProblems(terms, opts)` already returns the message and needs no change; the work is entirely in finding somewhere honest to put it. For `{roll:}` that is plausibly the empty-roll marker's existing copy. For a math pill it is harder and worth designing rather than bolting on: `count("is:blocked")` can appear mid-expression, so the reason belongs on the pill, not in the number.
-
-### UXP-233 ☐ An unreadable `due:` / `start:` date is still a literal text term 🟡  [S3-PR4 follow-on]
-- **Problem:** `due:nonsense` falls through `parseDueDate` to `{kind:'text'}` and silently searches for its own string, exactly as `is:` used to before S3-PR4. Same defect, same funnel, different field family.
-- **Rule:** P4-1.
-- **Target:** the same invalid-term treatment. The reason it was scoped OUT of S3-PR4 rather than overlooked: `is:` is a CLOSED set, so "unreadable" is a set-membership test, while the date arm's grammar is genuinely open (ISO dates, `today±N`, `<` / `>` prefixes). Deciding when a half-typed `due:2026-0` has stopped being in-flight is a real judgment call and needs its own design, not a heuristic guessed at inside another change.
-
 ### UXP-234 ☐ A sequence declared only inside an excluded subtree is lost quietly 🟢  [S3-PR5a follow-on]
 - **Problem:** `exportExclusionImpact` names the **variables** and **rules** a shared HTML copy loses to `Exclude from export`, because both fail loudly in the copy (the `.brace-attempt` cue). A `{seq Flow: TODO | BLOCKED | SHIPPED}` declaration lost the same way is not named: a kept point whose leading `#BLOCKED` keyword no longer belongs to any sequence simply renders as ordinary text, with no badge and no cue. The copy is quietly less informative rather than visibly broken, which is exactly the failure that is hardest to notice.
 - **Rule:** P4-1 (no silent failure).
