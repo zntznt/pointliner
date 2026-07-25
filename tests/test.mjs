@@ -17163,6 +17163,46 @@ test('column header carries the visible menu door; agenda groups carry kind labe
 });
 
 // ── Mobile neophyte batch: first-run tap targets + duplicate-inbox guard ──
+test('UXP-248 the 24px tap floor holds for the shared controls the enlargement pass missed', () => {
+  // Found by auditing guardrail 5 across every surface instead of one screen: nine SHARED control
+  // classes measured under the WCAG 2.2 floor on touch, fanning out to 100+ instances. Measured by
+  // HIT-TESTING, not by rect: the guardrail explicitly allows an invisible ::after to extend a
+  // target past its visual box, so a raw-rect audit would have called the conformant `.bullet` and
+  // `.cap-go` failures too.
+  const hoverNone = _src.slice(_src.indexOf('@media(hover:none){\n  #storage-warn button'));
+  assert.ok(hoverNone.length > 0, 'the touch block must exist to carry these rules');
+  // Every fix uses the overlay path, which lifts the HIT area and leaves the visual box alone.
+  // For .ag-toggle that is not a preference: its 22px height is pinned by the canon-chip test
+  // below, so growing the box would trade an accessibility fix for a design regression.
+  assert.ok(/\.close-btn,\.collapse-btn,\.io-chip,\.tl-toggle,\.prop-chip,\.fm-title,\.guide-nav-btn,\.ag-toggle\{position:relative\}/.test(hoverNone),
+    'the enlarged controls need a containing block for their overlay');
+  assert.ok(/\.close-btn::after\{content:'';position:absolute;inset:-10px\}/.test(hoverNone),
+    'the shared dismiss button was the worst at 19x16, and design-language makes it the ONE close affordance');
+  assert.ok(/\.io-chip::after,\.ag-toggle::after,\.tl-toggle::after\{content:'';position:absolute;inset:-4px 0\}/.test(hoverNone),
+    'chip/toggle rows grow vertically only, so a wider target never steals its neighbour in the row');
+  assert.ok(/\.prop-chip::after\{content:'';position:absolute;inset:-4px 0\}/.test(hoverNone),
+    'prop chips sit inline in a point text, so they may only grow vertically');
+  // The chevron measured 23 despite being 24 wide: the bullet's own -5px overlay reached back over
+  // it. The bullet is the app's most important touch target, so the chevron grows LEFT and yields.
+  assert.ok(/\.collapse-btn::after\{content:'';position:absolute;inset:0 0 0 -6px\}/.test(hoverNone),
+    'the chevron must grow away from the bullet, not contest the same pixel');
+  assert.ok(/\.bullet::after\{content:'';position:absolute;inset:-7px -5px\}/.test(hoverNone),
+    'the bullet overlay it yields to must still be the documented one');
+  // The guide nav and document title live in scrollable panes (overflow:auto), which clip any
+  // overlay — for those two only, the visual box itself has to grow, and by padding not height.
+  assert.ok(/\.guide-nav-btn\{padding-top:8px;padding-bottom:8px\}/.test(hoverNone),
+    'a control inside a scrollable pane cannot use the overlay path');
+  assert.ok(/\.fm-title\{padding-top:5px;padding-bottom:5px;margin-top:-5px;margin-bottom:-5px\}/.test(hoverNone),
+    'the title grows by padding, with matching negative margin so the head row does not move');
+  // The capture destination button already DECLARED the -8px overlay and was clipped twice: by its
+  // parent (corner rounding) and by itself (name ellipsis). The recipe was applied then defeated.
+  assert.ok(/\.cap-dest-btn\{overflow:visible\}/.test(hoverNone), 'the parent must stop clipping its child overlay');
+  assert.ok(/\.cap-dest-name-btn\{overflow:clip;overflow-clip-margin:8px\}/.test(hoverNone),
+    'the button still must clip (the name ellipsis) — with an 8px margin so the overlay survives');
+  assert.ok(/\.cap-chip\{overflow:visible\}/.test(hoverNone),
+    'the sibling fix this one was modelled on must still be present');
+});
+
 test('first-run banner controls reach the touch tap floor (mobile-neophyte review)', () => {
   // the Save/"Start a blank outline" button and the ✕ were the only first-screen controls
   // the @media(hover:none) enlargement pass never reached (guardrail 5). Both now do.

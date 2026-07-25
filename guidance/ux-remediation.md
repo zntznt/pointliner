@@ -54,7 +54,13 @@ acting (controls drift).
 > keeping: UXP-244 looked like one careless surface, and was actually the visible edge of a rule
 > applied 5 times out of 20.
 >
-> **As of 2026-07-25 the register holds one open defect (UXP-247, structural).**
+> A fourth pass continued by defect CLASS. Two rules were triaged by measurement before picking one:
+> **P3-1 accessible name** came back **0 unnamed across 25 surfaces** (the accessibility work held,
+> so there was nothing to fix), while the **24px tap floor** came back with **nine shared control
+> classes under it**. That became **UXP-248**, closed and archived. The floor's lack of an automated
+> guard is **UXP-249**, open.
+>
+> **As of 2026-07-25 the register holds three open defects (UXP-247, UXP-249 structural; UXP-20 standing guard).**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
@@ -62,6 +68,20 @@ acting (controls drift).
 ---
 
 ## Open items
+
+### UXP-249 ☐ Nothing enforces the tap floor for a NEW control 🟢 [touch] [structural]
+- **Problem:** UXP-248 fixed nine shared classes that sat under the 24px floor, and pinned those nine
+  by name. Nothing stops the tenth. The floor is checkable only by measuring the running app under
+  `@media(hover:none)`, and no test does that — the design pins are all `_src.includes(…)` string
+  matches, which can only ever assert the rules someone already thought to write.
+- **Why it recurs:** the guardrail's own escape hatch makes static checking hard. A control may be
+  20px and conformant (an `::after` extends it) or 24px and NOT conformant (a neighbour's overlay
+  shaves it, which is exactly what happened to `.collapse-btn`). Only a hit-test knows.
+- **Target:** promote the audit driver into the repo as a headless check over the surface list, so a
+  new control that misses the floor fails rather than waits for the next audit. Wants deciding
+  first: the project keeps verification artifacts OUT of git (`CLAUDE.md` working notes), so this
+  needs an owner call on whether a Playwright-dependent check earns an exception, or whether it
+  stays an external audit re-run on a cadence.
 
 ### UXP-247 ☐ Dialogs opt out of the shared builder, and forfeit every later fix 🟡 [dialogs] [structural]
 - **Problem:** `openInsertDialog` is the shared dialog builder, and its field vocabulary is
