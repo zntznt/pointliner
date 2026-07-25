@@ -10146,6 +10146,77 @@ test('UXP-239/241 overlay toggles: refocus after re-render + announce the new co
   assert.ok(unlinkedLine && unlinkedLine.includes('announceOverlayCount(panel)'), 'the graph unlinked toggle must announce its new count');
 });
 
+// UXP-237: an unwritten footnote's marker must not survive into an exported file. Both text exports
+// already skipped the DEFINITION line for a note with no text, which is exactly what left the
+// marker dangling; a real CommonMark renderer then prints `[^ghost]` as raw brackets mid-sentence.
+test('UXP-237 fnIsWritten: blank text and a missing record both mean unwritten', () => {
+  assert.equal(c.fnIsWritten([{ key: 'a', text: 'the note' }], 'a'), true);
+  assert.equal(c.fnIsWritten([{ key: 'a', text: '' }], 'a'), false);      // the editor-opened case
+  assert.equal(c.fnIsWritten([{ key: 'a', text: '  \n ' }], 'a'), false);
+  assert.equal(c.fnIsWritten([], 'a'), false);                            // no record at all
+  assert.equal(c.fnIsWritten(null, 'a'), false);
+  assert.equal(c.fnIsWritten([{ key: 'b', text: 'other' }], 'a'), false);
+});
+
+test('UXP-237 stripUnwrittenFnRefs: drops the marker, keeps the written one, leaves no double space', () => {
+  const written = [{ key: 'ok', text: 'the actual note' }];
+  // a written marker is untouched
+  assert.equal(c.stripUnwrittenFnRefs('A real one[^ok].', written), 'A real one[^ok].');
+  // an unwritten one goes, and the sentence still reads
+  assert.equal(c.stripUnwrittenFnRefs('A dangling one[^ghost] and a real one[^ok].', written),
+    'A dangling one and a real one[^ok].');
+  // THE SPACING CASE: a marker preceded by a space must not leave two behind
+  assert.equal(c.stripUnwrittenFnRefs('one [^ghost] and', []), 'one and');
+  assert.equal(c.stripUnwrittenFnRefs('one[^ghost] and', []), 'one and');
+  // end of sentence keeps its full stop
+  assert.equal(c.stripUnwrittenFnRefs('the end[^ghost].', []), 'the end.');
+  // two in a row
+  assert.equal(c.stripUnwrittenFnRefs('both[^a][^b] gone', []), 'both gone');
+  // the editor-opened empty record drops too (the subtle one the render cue also pins)
+  assert.equal(c.stripUnwrittenFnRefs('See[^a]', [{ key: 'a', text: '' }]), 'See');
+  // untouched when there is nothing to do
+  assert.equal(c.stripUnwrittenFnRefs('no markers here', []), 'no markers here');
+  assert.equal(c.stripUnwrittenFnRefs('', []), '');
+  assert.equal(c.stripUnwrittenFnRefs(null, []), '');
+});
+
+test('UXP-237 countUnwrittenFnRefs: counts markers, and skips excluded subtrees', () => {
+  const mk = (text, footnotes = [], extra = {}) => Object.assign(c.mkNode(text), { footnotes }, extra);
+  const root = c.mkRoot();
+  root.children.push(mk('One[^a] two[^b]', [{ key: 'a', text: 'written' }]));   // b unwritten -> 1
+  root.children.push(mk('Three[^c]', []));                                       // -> 2
+  assert.equal(c.countUnwrittenFnRefs(root), 2);
+  // a marker inside an excluded subtree was never going to be exported, so it is not "dropped"
+  const scaffold = mk('Scaffolding[^d]', [], { noexport: true });
+  scaffold.children.push(mk('Nested[^e]', []));
+  root.children.push(scaffold);
+  assert.equal(c.countUnwrittenFnRefs(root), 2, 'a noexport subtree must not inflate the count');
+  // nested markers under a KEPT point do count
+  root.children[0].children.push(mk('Child[^f]', []));
+  assert.equal(c.countUnwrittenFnRefs(root), 3);
+  // a clean tree reports nothing, so the toast keeps its original wording
+  const clean = c.mkRoot();
+  clean.children.push(mk('All good[^a]', [{ key: 'a', text: 'here' }]));
+  assert.equal(c.countUnwrittenFnRefs(clean), 0);
+  assert.equal(c.countUnwrittenFnRefs(null), 0);
+});
+
+test('UXP-237 both text exports drop the marker; the definition line still appears', () => {
+  const n = Object.assign(c.mkNode('A dangling one[^ghost] and a real one[^ok].'), {
+    footnotes: [{ key: 'ok', text: 'the actual note' }, { key: 'ghost', text: '' }],
+  });
+  const root = c.mkRoot(); root.children.push(n);
+  const md = c.toMarkdown(root);
+  assert.ok(!md.includes('[^ghost]'), 'the unwritten marker must not reach the .md file: ' + md);
+  assert.ok(md.includes('[^ok]'), 'the written marker survives');
+  assert.ok(md.includes('[^ok]: the actual note'), 'and its definition line is still emitted');
+  assert.ok(md.includes('A dangling one and a real one[^ok].'), 'the sentence reads cleanly: ' + md);
+  // the plain-text export has TWO body branches and both must strip
+  const txt = c.toPlainText(root);
+  assert.ok(!txt.includes('[^ghost]'), 'the unwritten marker must not reach the .txt file: ' + txt);
+  assert.ok(txt.includes('[^ok]'), 'the written marker survives in plain text too');
+});
+
 // UXP-243 pure cores: the graph's tap-target floor. A node's hit area can only grow as far as its
 // nearest neighbour allows, so the separation pass and the radius clamp are one fix in two halves.
 test('UXP-243 tapRadius: takes the floor, clamps to the gap, never shrinks the dot', () => {

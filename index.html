@@ -30495,7 +30495,9 @@ function toMarkdown(rootNode) {
       // To-dos carry their own markdown (`- [ ]` marker / Org keyword) in node.text —
       // export it verbatim instead of synthesizing a marker from type+checked.
       const isTodo = node.type === 'todo';
-      let body = linkText(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)); // #806: links → titles; #925f: para pills → result-only
+      // UXP-237: strip markers for notes that were never written, AFTER the flatten/link chain
+      // (markers are plain text and pass through it untouched, so this is the one uniform point).
+      let body = stripUnwrittenFnRefs(linkText(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)), node.footnotes); // #806: links → titles; #925f: para pills → result-only
       const hLvl = hLvlPre;
       // EVERY line, not just the first: a multi-line quote otherwise relies on lazy continuation to
       // stay one <blockquote>, which the blank-line policy above is specifically breaking.
@@ -30553,7 +30555,7 @@ function toPlainText(rootNode) {
     if (node.noexport) return;   // #954: exclude-from-export skips the point and its subtree
     const indent = '\t'.repeat(depth);
     if (node.type === 'base') {
-      stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))).split('\n').forEach(l => out.push(indent + l)); // #806
+      stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))), node.footnotes).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
       const dlabel = stripInlineMd(textForDisplay(node));
@@ -30561,7 +30563,9 @@ function toPlainText(rootNode) {
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
-      let body = stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))); // #806: links → titles; #925f: para pills → result-only
+      // UXP-237: both toPlainText branches strip unwritten markers, or the plain-text export is
+      // only half fixed (a base point takes the branch above).
+      let body = stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))), node.footnotes); // #806: links → titles; #925f: para pills → result-only
       if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
@@ -30598,8 +30602,18 @@ function downloadText(content, ext, mime, nameOverride) {
 }
 // P4: every export reports success, like the self-contained HTML export already does.
 // "Exported a copy" (not "Saved") because these are one-way snapshots, not the live file.
-function exportMarkdown() { const n = downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); flashHint('Exported a copy: “' + n + '”'); }
-function exportPlainText() { const n = downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); flashHint('Exported a copy: “' + n + '”'); }
+// UXP-237: the export DROPS markers for footnotes that were never written, so it says how many.
+// Removing them silently would trade one P4 failure (bracket junk in the file) for another (a
+// change to your prose you were never told about). Empty string when nothing was dropped, so the
+// common export flashes exactly the message it always did.
+function exportedNote(rootNode) {
+  const n = countUnwrittenFnRefs(rootNode);
+  // the leading period closes the file name: without it the toast runs on as
+  // `Exported a copy: “notes.md” 2 unwritten footnotes dropped.`
+  return n ? `. ${n} unwritten footnote${n === 1 ? '' : 's'} dropped.` : '';
+}
+function exportMarkdown() { const n = downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); flashHint('Exported a copy: “' + n + '”' + exportedNote(root)); }
+function exportPlainText() { const n = downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); flashHint('Exported a copy: “' + n + '”' + exportedNote(root)); }
 
 // Export a point (or a set of selected points) to Markdown. Reuses toMarkdown by wrapping
 // the nodes in a throwaway root, so a point exports as itself + its subtree, and pills
@@ -30616,7 +30630,8 @@ function exportNodesToMarkdown(nodes) {
     .replace(/^\s*(#{1,6}\s+|>\s+|-\s+\[[ xX]\]\s+|[-*]\s+|\d+\.\s+)/, '').trim();
   const base = first ? toFileName(first).replace(/\.opml$/i, '') : 'points';
   const n = downloadText(md, '.md', 'text/markdown', base);
-  flashHint('Exported a copy: “' + n + '”');
+  // UXP-237: scoped to the exported subtree, not the whole document — this door exports a selection
+  flashHint('Exported a copy: “' + n + '”' + exportedNote({ children: nodes }));
 }
 
 // ─── self-contained HTML export (C1) ─────────────────────────────────────────
@@ -31152,6 +31167,48 @@ function getFnRefs(text) {
     if (!seen.has(m[1])) { seen.add(m[1]); refs.push(m[1]); }
   }
   return refs;
+}
+
+// UXP-237: is this footnote actually written? The ONE definition, shared by the render cue
+// (.fn-ref-empty), the export definition lines, and the marker strip below. Opening the footnote
+// editor creates {key, text:''} before anything is typed, so a record-existence test is not enough —
+// a missing record and a blank one both mean "never written".
+function fnIsWritten(footnotes, key) {
+  const fn = (footnotes || []).find(f => f.key === key);
+  return !!(fn && String(fn.text || '').trim());
+}
+
+// UXP-237: an unwritten footnote's MARKER must not survive into an exported file. Both text exports
+// already skip the definition line for a note with no text, which is exactly what leaves `[^ghost]`
+// dangling in the prose — a real CommonMark renderer then prints it as raw bracket syntax
+// mid-sentence, visible junk to whoever receives the file.
+//
+// Dropping it rather than inventing a placeholder is the rule this file already applies to links:
+// linkText resolves an unresolvable one to a bare id, "better than the raw token". A link keeps
+// that id because it occupies a slot in the sentence; a footnote marker is an annotation attached
+// to a word, so removing it leaves the prose intact.
+//
+// The leading `\s*` matters: "one [^ghost] and" would otherwise export as "one  and" with a
+// doubled space where the marker used to be.
+function stripUnwrittenFnRefs(text, footnotes) {
+  const s = String(text ?? '');
+  if (!s || s.indexOf('[^') === -1) return s;
+  return s.replace(/\s*\[\^([^\]]+)\]/g, (whole, key) => (fnIsWritten(footnotes, key) ? whole : ''));
+}
+
+// How many markers an export will drop, so the toast can say so rather than removing them silently.
+// Mirrors both emit()s' `if (node.noexport) return` — a marker inside an excluded subtree was never
+// going to be exported, so counting it would over-report what actually changed.
+function countUnwrittenFnRefs(rootNode) {
+  let n = 0;
+  (function walk(node) {
+    for (const c of (node?.children || [])) {
+      if (c.noexport) continue;
+      for (const key of getFnRefs(c.text)) if (!fnIsWritten(c.footnotes, key)) n++;
+      walk(c);
+    }
+  })(rootNode || { children: [] });
+  return n;
 }
 
 function syncFnEntries(node) {

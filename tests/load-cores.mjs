@@ -185,6 +185,7 @@ export function loadCores() {
     'roveIndex',   // UXP-240: shared roving-tabindex index math (clamping + group paging)
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
+    'fnIsWritten', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
     'parseRulesLoose',   // #582 pack-tolerant rule parser
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',

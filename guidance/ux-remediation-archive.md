@@ -3210,3 +3210,29 @@ When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and d
 - **`fill:transparent`, not `fill:none`.** `none` is not hit-tested at all, so the target would have received nothing. This is the kind of thing a source pin cannot catch, and it is pinned by name for that reason.
 - **What this does NOT achieve, stated plainly:** §3's aspirational 36–38px strip idiom. Reaching it would need radius 18–19 on dots that sit 26px apart, which cannot be done without changing the graph's visual density. **24px is the target taken**; the strip idiom does not fit a force-directed web.
 - **The separation is best effort by construction.** A crowded enough canvas cannot separate every pair, and staying on screen matters more, so the box clamp is applied last and may undo a push. `tapRadius` is what keeps that honest: it clamps to the gap that actually exists, never to the one the pass hoped for.
+
+### UXP-237 ✓ An unwritten footnote exports as literal bracket junk 🟢  [footnote-cue follow-on] (RESOLVED 2026-07-25)
+- **Problem:** the render now marks a footnote marker whose note was never written (`.fn-ref-empty`), but `toMarkdown` still emits the `[^key]` marker with no definition line, because it skips empty footnotes via `fn.text.trim()`. Measured against a real CommonMark implementation (markdown-it + markdown-it-footnote):
+  - export: `- A dangling one[^ghost] and a real one[^ok].` + `[^ok]: the actual note`
+  - render: `A dangling one[^ghost] and a real one<sup class="footnote-ref">[1]</sup>.`
+  So the written one becomes a proper numbered footnote and the unwritten one prints as **raw `[^ghost]` bracket syntax in the middle of the sentence** — visible junk to whoever receives the file.
+- **Rule:** P4-1 (no silent failure) at the export surface, and the fidelity rule the S3-PR5b work was about: what ships should not misrepresent what you wrote.
+- **Target:** decide what an unwritten footnote should DO on export rather than defaulting to leaking the syntax. The obvious candidates are dropping the marker (the reference was never real) or emitting a placeholder definition. Not decided here on purpose: it is a content decision about someone else's file, and the render fix does not force it.
+- **Not bundled with the render cue deliberately:** that PR is about the marker on screen, this is about bytes in an exported file. Two surfaces, two changes, per the split that kept S3-PR5a and S3-PR5b honest.
+- **Decided (owner, 2026-07-25): drop the marker, and say so.** This entry deliberately left the choice open as "a content decision about someone else's file", between dropping the marker and emitting a placeholder definition.
+- **The decision was not invented; this file already answers the same question for links.** `linkText` resolves an unresolvable link and its comment states the rule outright:
+  ```js
+  return id;   // unresolvable → bare id (better than the raw token)
+  ```
+  An unresolvable reference never leaks raw syntax into an exported file. A link keeps its id because it occupies a slot in the sentence; a footnote marker is an annotation *attached* to a word, so removing it leaves the prose intact. Same principle, different mechanics — which is why "drop it" and not "keep something".
+- **Not silent, which is the other half of the decision.** Removing something from an exported file without saying so would trade one P4 failure for another, so the export toast reports the count: *Exported a copy: "notes.md". 2 unwritten footnotes dropped.* A clean export flashes the byte-identical message it always did. The count mirrors both `emit()`s' `noexport` guard, since a marker in an excluded subtree was never going to be exported and counting it would over-report what changed.
+- **Three sites, one definition of "written".** `fnIsWritten` is now the shared test used by the render cue, the definition lines, and the marker strip: a blank `text` **and** a missing record both mean unwritten. `{key, text:''}` exists the moment the editor is opened, so a record-existence test would have kept markers for notes nobody ever wrote.
+- **`toPlainText` has TWO body branches** (a base point takes the first), and stripping only the main one would have left the plain-text export half fixed. Both are covered and pinned.
+- **Verified against a real CommonMark implementation**, the same instrument that produced this entry (markdown-it + markdown-it-footnote, installed in the scratchpad and deleted):
+  ```
+  before  A dangling one[^ghost] and a real one[1].     <- raw brackets reach the reader
+  after   A dangling one and a real one[1].             <- 5/5, before was 3/5
+  ```
+  The written footnote still renders as a numbered `footnote-ref` with its text in the list, and no doubled space is left where the marker used to be.
+- **Driven at the door too** (9/9): both export doors report the count, singular and plural conjugate, an excluded subtree does not inflate it, a clean document flashes the unchanged message, and the on-screen `.fn-ref-empty` cue from PR #1071 still renders — this changed export, not render.
+- **Not touched: the HTML export.** "Web page (HTML)" is the shareable file that reopens as the live app, so the footnote records round-trip intact and there is no junk to drop. Only the two lossy text exports were in scope.
