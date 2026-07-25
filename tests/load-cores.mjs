@@ -183,6 +183,7 @@ export function loadCores() {
     'timelineModel',   // #516 timeline pure core
     'overlayCountMessage',   // UXP-241: what a graph/timeline toggle announces after a re-render
     'roveIndex',   // UXP-240: shared roving-tabindex index math (clamping + group paging)
+    'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
     'parseRulesLoose',   // #582 pack-tolerant rule parser
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',

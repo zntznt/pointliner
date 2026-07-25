@@ -22260,6 +22260,40 @@ function timelineModel(items, monthOf) {
 //   titleOf    = (nodeId) => title string  (same-doc titles)
 //   wsIndex    = workspaceIndex or null    ({ titles: Map(docId->Map(nodeId->title)), nameByDocId })
 //   ownDocId   = the current doc's docId (skip its own entries in the cross-doc pass — same-doc covers them)
+// UXP-242: what a BROKEN graph node says when you activate it. Every node is a role="button" and a
+// tab stop, but the broken branch skipped both handlers, so pressing Enter on the one dot you most
+// want to investigate did nothing at all (P4-1).
+//
+// The name is the LABEL the author typed (`[[#id|Chapter 3]]`), because once the target is deleted
+// that caption is the only human-readable name the missing point ever had — the id is opaque and
+// graphModel deliberately does not use it as a title. `sources` are the points (or, in folder scope,
+// the documents) that link here, which is where the fix has to happen; the Broken links report makes
+// the same choice, jumping to the SOURCE rather than the missing target.
+//
+// `what` is the noun ('target' / 'document').
+//
+// Names are TRUNCATED at the same 28 characters the graph already caps its node labels to. A point's
+// title here is its whole first line with the link tokens stripped, which in real prose is a
+// sentence, not a word — driving this produced `Linked from “Outline links Chapter 3 and”`, where
+// the dangling "and" is the hole the removed token left. A toast carries a name, not a paragraph.
+const BROKEN_NAME_MAX = 28;
+function brokenNodeMessage(label, sources, what = 'target') {
+  const trim = s => {
+    const t = String(s).trim();
+    return t.length > BROKEN_NAME_MAX ? t.slice(0, BROKEN_NAME_MAX - 1).trimEnd() + '…' : t;
+  };
+  const names = (sources || []).filter(s => s && String(s).trim()).map(trim);
+  const uniq = [...new Set(names)];
+  const head = label && String(label).trim()
+    ? `“${trim(label)}” is missing.`
+    : `That ${what} is missing.`;
+  if (!uniq.length) return head;
+  const from = uniq.length === 1
+    ? `“${uniq[0]}”`
+    : `“${uniq[0]}” and ${uniq.length - 1} other${uniq.length - 1 === 1 ? '' : 's'}`;
+  return `${head} Linked from ${from}.`;
+}
+
 function collectBrokenLinks(links, titleOf, wsIndex, ownDocId) {
   const out = [];
   const brokenSet = new Set((links && links.broken) || []);
@@ -32753,7 +32787,9 @@ function renderGraph(panel) {
       + (n.current ? ' (current document)' : '')
       + `, ${n.deg} link${n.deg === 1 ? '' : 's'}.`
       + (n.unlinkedDeg ? ` ${n.unlinkedDeg} unlinked reference${n.unlinkedDeg === 1 ? '' : 's'}.` : '')
-      + (n.broken ? '' : folder ? ' Activate to open the document.' : ' Activate to open.'));
+      // UXP-242: a broken node now DOES something, so its name says what — it used to end here,
+      // announcing as a button with nothing behind it.
+      + (n.broken ? ' Activate to see what links here.' : folder ? ' Activate to open the document.' : ' Activate to open.'));
     const r = 4 + Math.round((n.deg / maxDeg) * 7);
     const c = document.createElementNS(SVG_NS, 'circle');
     c.setAttribute('r', r);
@@ -32771,7 +32807,30 @@ function renderGraph(panel) {
       g.addEventListener('click', () => go(n.id));
       g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(n.id); } });
     } else {
+      // UXP-242: a broken node is exactly the thing you opened the graph to investigate, so it
+      // names the missing target and where it is linked from instead of being an inert button.
+      // Computed on activation, not per render: broken nodes are rare and this keeps the render
+      // path unchanged. flashHint is the one feedback channel and also reaches #a11y-live (P3/P4).
       g.style.cursor = 'default';
+      const say = () => {
+        let label = '', sources = [];
+        if (folder) {
+          // folder scope: the missing thing is a DOCUMENT, and its neighbours in the model are the
+          // documents that link to it. It has no author-written caption, so there is no label.
+          sources = model.edges
+            .filter(e => e.a === n.id || e.b === n.id)
+            .map(e => workspaceIndex?.nameByDocId?.get(e.a === n.id ? e.b : e.a))
+            .filter(Boolean)
+            .map(displayName);
+        } else {
+          const rows = collectBrokenLinks(linked, titleOf, null, root.docId).filter(r => r.target === n.id);
+          label = rows.find(r => r.label)?.label || '';
+          sources = rows.map(r => r.srcTitle);
+        }
+        flashHint(brokenNodeMessage(label, sources, folder ? 'document' : 'target'));
+      };
+      g.addEventListener('click', say);
+      g.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); say(); } });
     }
     svg.appendChild(g);
   }
