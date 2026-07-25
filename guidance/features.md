@@ -57,6 +57,14 @@ Implemented:
   cannot match a body containing braces — the cue was unreachable, not merely unset (this also
   closes the same gap for `{= junk {2d6} +}`, which the anti-shred comment already assumed was
   flagged). The flagged span is stashed so the innermost pass cannot double-mark its parts.
+- **Guided types pills inline** (`checkBraceTrigger`): `{` no longer hands the point to the
+  focus-stealing builder in either brace mode. Every tier gets the inline `#brace-menu` (Lean keeps
+  `renderLeanBraceTip`), so the caret stays in the point and `{2d6}` types through on a blank point
+  and mid-line alike. A **Browse all pills** row (`BRACE_BROWSE_ROW`, appended at the call site on a
+  bare `{` only) keeps the full picker one keystroke away; `braceApply` branches on its `browse`
+  group to open the builder instead of inserting. Dismissing the builder now restores the caret via
+  `restoreChromeReturn()` and suppresses `closeIo`'s plain `ioReturnFocus` focus, which used to
+  re-enter edit at offset 0 and make continued typing prepend.
 - **Display-mode mutations are undoable** (`toggleTaskInNode`, `advanceClockOrdinal`,
   `showTodoPicker`'s `writeAll`): ticking a box, advancing a clock and picking a state/priority all
   mutated `node.text` and persisted without calling `pushUndo`, so `undo()` popped the PREVIOUS

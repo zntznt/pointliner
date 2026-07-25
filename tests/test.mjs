@@ -18440,11 +18440,16 @@ test('builderGuideEntry — null/unknown guard; a covered command resolves to it
 });
 
 test('builder DOM wiring — source-pins for the dispatch, the guards, and the shared strip', () => {
-  // Guided routes the inline /, @, { triggers into the builder instead of the inline menus.
+  // Guided still routes / and @ into the builder.
   assert.ok(_src.includes("if (isGuided()) { hideSlashMenu(); builderState = { nodeId, content, trigger, offset: slashOffset, query, rawArg }; openBuilder(trigger); return; }"),
     'checkSlash dispatches to openBuilder in Guided mode');
-  assert.equal((_src.match(/if \(isGuided\(\)\) \{ hideBraceMenu\(\); builderState = \{ nodeId, content, trigger: '\{', offset: braceStart, query: inner, rawArg: '' \}; openBuilder\('\{'\); return; \}/g) || []).length, 2,
-    'checkBraceTrigger dispatches to openBuilder in both brace modes (forms + body)');
+  // `{` NO LONGER does. The builder takes focus, so the point left edit mode and every keystroke
+  // after the brace was eaten — typing {2d6}, the app's own placeholder example, left "{" alone on
+  // a blank point and mid-line alike. Guided now gets the same inline menu as Standard, and reaches
+  // the picker through the explicit Browse row. This assertion is inverted deliberately: it must
+  // stay ZERO, or the keystroke-eating bug is back.
+  assert.equal((_src.match(/if \(isGuided\(\)\) \{ hideBraceMenu\(\); builderState = /g) || []).length, 0,
+    'checkBraceTrigger must NOT hand `{` to the focus-stealing builder in any brace mode');
   // openBuilder re-entrancy guard (an input event while the builder is open must not rebuild it).
   assert.ok(_src.includes("if (ioCard.classList.contains('builder-open')) return;"),
     'openBuilder has the re-entrancy guard');
@@ -18454,6 +18459,46 @@ test('builder DOM wiring — source-pins for the dispatch, the guards, and the s
   // the strip math is centralized: the old inline `currentText.slice(0, st.offset)` pattern is gone.
   assert.ok(!_src.includes('currentText.slice(0, st.offset)'),
     'no builder site re-implements the trigger strip inline — all route through stripTriggerRun');
+});
+
+// The default tier made the app's own headline syntax untypeable. `{` handed the point to the
+// full-screen picker, which takes focus, so the point left edit mode and every keystroke after the
+// brace was eaten: `{2d6}` left `"{"` on a blank point AND mid-line. Four personas hit it
+// independently. Standard and Lean were always fine, so it was invisible to anyone past onboarding.
+test('Guided types pills inline; the picker is a door, not an ambush', () => {
+  // The inline menu is now the path for every tier. Lean keeps its own one-liner, reached in BOTH
+  // brace modes (forms + body), so narrowing the guided branch cannot have swallowed it.
+  assert.equal((_src.match(/if \(isLean\(\)\) \{ renderLeanBraceTip\(\); return; \}/g) || []).length, 2,
+    'both brace modes still reach the Lean tip');
+  assert.ok(_src.includes('renderBraceMenu()'), 'and every other tier reaches the inline menu');
+  // The Browse row is the replacement door: offered only on a bare `{`, appended at the call site so
+  // filterBraceForms stays a straight map over BRACE_FORMS (its own tests pin exactly that).
+  assert.ok(/if \(!prefix\) matches\.push\(BRACE_BROWSE_ROW\);/.test(_src),
+    'a bare { offers the full picker as an explicit last row');
+  assert.ok(/const BRACE_BROWSE_ROW = \{ group: 'browse'/.test(_src), 'the row exists');
+  assert.ok(/BM_GROUP_LABELS = \{ browse:/.test(_src), 'and renders under its own header');
+  // braceApply routes it to the picker instead of inserting text
+  const ba = fnBody(_src, 'braceApply');
+  assert.ok(/if \(chosen\.group === 'browse'\) \{[\s\S]*openBuilder\('\{'\);[\s\S]*return;/.test(ba),
+    'choosing Browse opens the picker rather than inserting a scaffold');
+});
+
+test('dismissing the picker returns the caret where it was, and only once', () => {
+  // Escape used to land focus on the point via closeIo's plain ioReturnFocus.focus(), which
+  // re-enters edit with the caret at offset 0 — so typing PREPENDED: "Roll {" + Esc + "2d6}" gave
+  // "2d6}Roll {". armChromeReturn() already captured the live offset; nothing consumed it.
+  const cbw = fnBody(_src, 'closeBuilderWindow');
+  assert.ok(/if \(restoreChromeReturn\(\)\) ioReturnFocus = null;/.test(cbw),
+    'the chrome-return restores the caret AND suppresses the plain focus');
+  assert.ok(cbw.indexOf('restoreChromeReturn()') < cbw.indexOf('closeIo()'),
+    'suppression must happen before closeIo reads ioReturnFocus');
+  // Why suppression rather than both: closeIo is synchronous, restoreChromeReturn defers to a rAF,
+  // so running both lands the caret at 0 first and corrects it a frame later.
+  assert.ok(/requestAnimationFrame/.test(fnBody(_src, 'restoreChromeReturn')), 'restore is deferred to a frame');
+  assert.ok(/const ret = ioReturnFocus; ioReturnFocus = null;/.test(fnBody(_src, 'closeIo')), 'closeIo focuses synchronously');
+  // The nested-dialog path sets its own caret, so it must disarm rather than be overwritten.
+  assert.ok(_src.includes('if (_restoreState) { builderRestoreTrigger(); chromeReturn = null; }'),
+    'builderRestoreTrigger owns the caret on its path and disarms the chrome-return');
 });
 
 test('builder keyboard + form a11y — roving tabindex, label association, required announce', () => {
