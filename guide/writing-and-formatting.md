@@ -170,6 +170,11 @@ stays out of the way.
 Type **`@`** and choose **Footnote**, **Link** or **Image**. (For links *between points* in your
 own document, see [Links and references](links-and-references.md#linking-points) instead.)
 
+A footnote mark you added but never wrote is shown in muted ink with a dotted underline, so you can
+see at a glance which ones are still waiting. Those unfinished marks are **left out of an exported
+copy** rather than printed as stray brackets in the middle of your sentence, and the export tells you
+how many it left out.
+
 ## Per-point notes
 
 Tuck a bit of context under any point without cluttering the line: a source, a reminder, a caption

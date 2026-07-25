@@ -21,8 +21,10 @@ acting (controls drift).
 > closing it would remove the gate rather than satisfy it. UXP-170's blocker turned out to be
 > environmental and was resolved 2026-07-25 once the egress was tested rather than assumed.
 > UXP-171–183 closed in Phases 2–7 (UXP-178, the builder's front door, shipped last).
-> Later persona passes on the uncovered surfaces added **UXP-237** (open: an export decision about
-> someone else's file) and **UXP-238** (closed: the search legend's 48 tab stops). The
+> Later persona passes on the uncovered surfaces added **UXP-237** (closed 2026-07-25: an unwritten
+> footnote's marker used to export as raw `[^ghost]` brackets; the owner's call was to drop it and
+> report the count, following `linkText`'s existing "unresolvable never leaks raw syntax" rule) and
+> **UXP-238** (closed: the search legend's 48 tab stops). The
 > 2026-07-25 graph/timeline pass — the first aimed at surfaces the register had **never reached** —
 > opened **UXP-239…243**, all five driven in a browser. **All five are now closed and archived:**
 > UXP-239 (focus lost on a timeline source toggle, taking Escape with it), UXP-241 (neither overlay
@@ -35,7 +37,11 @@ acting (controls drift).
 > measurement, and UXP-243 had taken a bounding box where a **tap** was the question, which
 > overstated the defect in one direction (13 of 15 nodes already cleared the floor) and hid it in the
 > other (the label it counted as target width is `pointer-events:none` and never was tappable).
-> Only **UXP-237** remains open besides the standing UXP-20 guard.
+>
+> **As of 2026-07-25 the register holds no open defects.** The only item under "Open items" is
+> **UXP-20**, the standing P5 syntax-sprawl guard, which is a gate rather than a bug and is meant to
+> stay open. (The `✓` entries still sitting in this file below are closed work that predates the
+> move-to-archive convention being applied consistently; they are not open items.)
 
 ---
 
@@ -186,15 +192,6 @@ acting (controls drift).
 - **Problem:** When `@table` is selected in the builder, the `applyBuilder` function's `@table` branch calls `starterTableText(3, 3)` — a hardcoded 3 rows × 3 columns. The standard `/table` slash command shows a size picker dialog that lets the user choose dimensions. The code comment in the `@table` branch acknowledges: "the size picker uses slashMenu which is unavailable from the builder. Inline size picker is tracked as follow-up."
 - **Rule:** P1 (Predictable — the same command should produce the same behavior regardless of how it's invoked).
 - **Target:** Add row and column number inputs to `BUILDER_FORMS` under a key that distinguishes the insert (`@`) path from the block (`/`) path (e.g., `'@table'`). In the form dispatch in `applyBuilder`, gate on both `BUILDER_FORMS[cmd.id]` AND `cmd.trigger === '@'` to avoid intercepting the `/table` block command, which already has its own size picker via the slash menu path. The existing `@table` hardcoded branch then becomes dead code and must be removed.
-
-### UXP-237 ☐ An unwritten footnote exports as literal bracket junk 🟢  [footnote-cue follow-on]
-- **Problem:** the render now marks a footnote marker whose note was never written (`.fn-ref-empty`), but `toMarkdown` still emits the `[^key]` marker with no definition line, because it skips empty footnotes via `fn.text.trim()`. Measured against a real CommonMark implementation (markdown-it + markdown-it-footnote):
-  - export: `- A dangling one[^ghost] and a real one[^ok].` + `[^ok]: the actual note`
-  - render: `A dangling one[^ghost] and a real one<sup class="footnote-ref">[1]</sup>.`
-  So the written one becomes a proper numbered footnote and the unwritten one prints as **raw `[^ghost]` bracket syntax in the middle of the sentence** — visible junk to whoever receives the file.
-- **Rule:** P4-1 (no silent failure) at the export surface, and the fidelity rule the S3-PR5b work was about: what ships should not misrepresent what you wrote.
-- **Target:** decide what an unwritten footnote should DO on export rather than defaulting to leaking the syntax. The obvious candidates are dropping the marker (the reference was never real) or emitting a placeholder definition. Not decided here on purpose: it is a content decision about someone else's file, and the render fix does not force it.
-- **Not bundled with the render cue deliberately:** that PR is about the marker on screen, this is about bytes in an exported file. Two surfaces, two changes, per the split that kept S3-PR5a and S3-PR5b honest.
 
 ### UXP-238 ✓ The search legend is 48 tab stops 🟡 [search] (SHIPPED 2026-07-25)
 - **Problem:** every one of the 48 cheatsheet chips in `#search-hint` carried `tabindex="0"`, so a keyboard user who Tabbed off the search box walked **48 stops** to reach the next real control. Driven with real keypresses:
