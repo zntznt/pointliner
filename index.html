@@ -674,7 +674,12 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-scroll{overflow-x:auto;max-width:100%;padding-bottom:2px}
 /* query base strip: the read-only grid's one affordance (edit query + columns).
    Same --pill hue as the query pill so the two query surfaces read as one family. */
-#mt-cellpop{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;max-width:340px;box-shadow:var(--sh-1)}
+/* z-index 660, the tier this file already uses for a transient surface that opens over a
+   persistent bar (#bpop, #roll-palette). At 600 these two sat BELOW both touch bars
+   (quick 640, edit 650): parked in the bar's strip, elementFromPoint returned the BAR, so a
+   visible menu row could not be tapped. They are the only two popups that were below the
+   bars; every other menu here is already 700 and was never stealable (UXP-236). */
+#mt-cellpop{position:fixed;display:none;z-index:660;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:6px;max-width:340px;box-shadow:var(--sh-1)}
 #mt-cellpop.on{display:block}
 #mt-cellpop .cal{display:block;margin-top:0;background:transparent;border:none;padding:0;width:296px}
 .mt-cellpop-states{display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:320px}
@@ -810,7 +815,12 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    menu's Width presets (always-visible on touch) instead of keeping a dead zone. */
 @media(hover:none){.mt-col-resize{display:none}}
 /* column operations panel (the consolidated home for all column ops) */
-#mt-colpanel{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:var(--sh-1);outline:none}
+/* z-index 660, the tier this file already uses for a transient surface that opens over a
+   persistent bar (#bpop, #roll-palette). At 600 these two sat BELOW both touch bars
+   (quick 640, edit 650): parked in the bar's strip, elementFromPoint returned the BAR, so a
+   visible menu row could not be tapped. They are the only two popups that were below the
+   bars; every other menu here is already 700 and was never stealable (UXP-236). */
+#mt-colpanel{position:fixed;display:none;z-index:660;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:4px;min-width:168px;max-height:72vh;overflow-y:auto;box-shadow:var(--sh-1);outline:none}
 #mt-colpanel.on{display:block}
 /* base header bar: a strip atop the base for whole-base controls. It now carries the BV-1 view
    switcher (Table/Board/Cards/Calendar) in .mt-base-views; other whole-base ops live on the base
@@ -8584,6 +8594,19 @@ function bottomStackHeight() {
   const on = id => { const el = document.getElementById(id); return el?.classList.contains('on') ? el.offsetHeight : 0; };
   return on('fn-panel') + on('bl-panel') + on('var-panel') + quickBarHeight() + on('edit-bar');   // 0 when none open (#566: the bar is part of the stack)
 }
+// The y a popup must not cross: the viewport bottom, less the 8px margin, less whatever the docked
+// panels and touch bars already own. Every popup positioner asks this ONE question (UXP-236), which
+// is the half that had drifted: `window.innerHeight - 8` was hand-copied at ten sites, so each one
+// independently believed the bar's strip was free space.
+//
+// Deliberately NOT a shared positioner, which is what UXP-236 first proposed. The sites use three
+// genuinely different strategies — flip above the anchor, park at the bottom, and mtOpenMenu's
+// flip-to-the-roomier-side with a maxHeight clamp (#415) — and forcing one over all three is a
+// bigger change with a bigger regression surface than the bug justifies. What they truly share is
+// where the usable area ends, so that is what gets shared.
+//
+// 0 stack on desktop, so this is exactly the old expression there and nothing moves.
+function usableBottom() { return window.innerHeight - 8 - bottomStackHeight(); }
 function flashBottom() {
   const stack = bottomStackHeight();
   const safe = 'env(safe-area-inset-bottom)';
@@ -10151,13 +10174,13 @@ function mtOpenMenu(panel, anchorEl) {
   requestAnimationFrame(() => {
     const pr = panel.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) panel.style.left = (window.innerWidth  - pr.width  - 8) + 'px';
-    if (pr.bottom > window.innerHeight - 8) {
+    if (pr.bottom > usableBottom()) {
       // The panel overflows below. Flip to whichever side has more room and CLAMP it on-screen,
       // handing the overflow to the panel's own scrollbar. The old flip (top = anchor.top - height)
       // had no top clamp, so a tall menu from a mid-screen anchor rendered its head at negative y:
       // the Calculate/Formula sections were unreachable by mouse and focus-invisible (issue #415).
       const spaceAbove = rect.top - 10;                              // 8px viewport margin + 2px gap
-      const spaceBelow = window.innerHeight - rect.bottom - 10;
+      const spaceBelow = usableBottom() - rect.bottom - 2;   // UXP-236: the bar's strip is not room
       if (spaceAbove > spaceBelow) {
         const h = Math.min(pr.height, spaceAbove);
         panel.style.maxHeight = h + 'px';
@@ -10751,7 +10774,7 @@ function showCellEditorPop(node, cell) {
   requestAnimationFrame(() => {
     const pr = pop.getBoundingClientRect();
     if (pr.right > window.innerWidth - 8) pop.style.left = (window.innerWidth - pr.width - 8) + 'px';
-    if (pr.bottom > window.innerHeight - 8) pop.style.top = (r.top - pr.height - 2) + 'px';
+    if (pr.bottom > usableBottom()) pop.style.top = (r.top - pr.height - 2) + 'px';
   });
 }
 // The deferred hide shared by both cell focusout paths: only a genuine focus-leave
@@ -18052,8 +18075,8 @@ function showSelTypeMenu(anchorEl) {
     // #bpop was z-index 500 against the bar's 640, elementFromPoint at those rows returned the
     // BAR. Delete is the last row, and there is no other touch route to delete a point, so the
     // one destructive action in the menu was the one you could not reach. This is #659 again,
-    // which fixed the identical collision for toasts; bottomStackHeight() is that fix's own sum.
-    const maxTop = window.innerHeight - 8 - bottomStackHeight() - pr.height;
+    // which fixed the identical collision for toasts; usableBottom() is where that sum is asked.
+    const maxTop = usableBottom() - pr.height;
     if (top > maxTop) top = Math.max(8, maxTop);
     bpop.style.top = top + 'px';
     bpop.querySelector('.bpop-type')?.focus();
@@ -18667,10 +18690,10 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     // the edit bar) owns the last ~53px, so clamping to window.innerHeight - 8 parked the menu's
     // final rows underneath it. Delete is the last row and the only touch route to deleting a point:
     // measured on a Pixel 5 with the menu scrolled down, Delete sat at 1262-1277 against a bar
-    // starting at 1253, and elementFromPoint returned `qb-roll`. bottomStackHeight() is #659's own
-    // sum, so the toast and this menu ask one question and cannot drift.
-    const usableBottom = window.innerHeight - 8 - bottomStackHeight();
-    if (pr.bottom > usableBottom) bpop.style.top = Math.max(8, usableBottom - pr.height) + 'px';
+    // starting at 1253, and elementFromPoint returned `qb-roll`. usableBottom() is where #659's
+    // sum is asked, so every popup and the toast ask one question and cannot drift.
+    const ub = usableBottom();
+    if (pr.bottom > ub) bpop.style.top = Math.max(8, ub - pr.height) + 'px';
     // Keyboard open: move focus into the menu (first item). Hover open never steals focus.
     if (opts.keyboard) bpop.querySelector('.bpop-type, .cmd-item')?.focus();
   });
@@ -18774,7 +18797,7 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
   requestAnimationFrame(() => {
     const pr = bpop.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) bpop.style.left = (window.innerWidth - pr.width - 8) + 'px';
-    if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (rect.top - pr.height - 4) + 'px';
+    if (pr.bottom > usableBottom()) bpop.style.top  = (rect.top - pr.height - 4) + 'px';
   });
   // UXP-56: make the picker a real keyboard menu — move focus to the current (or first) chip and
   // arm Esc-restore (the shared #bpop keydown handler now navigates .tp-chip too).
@@ -18931,7 +18954,7 @@ function positionSlashMenu(content, slashOffset) {
   requestAnimationFrame(() => {
     const mr = slashMenu.getBoundingClientRect();
     if (mr.right  > window.innerWidth - 8) slashMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
-    if (mr.bottom > window.innerHeight - 8) slashMenu.style.top = (rect.top - mr.height - 4) + 'px';
+    if (mr.bottom > usableBottom()) slashMenu.style.top = (rect.top - mr.height - 4) + 'px';
   });
 }
 
@@ -18979,7 +19002,7 @@ function placeAtCaret(el, content, slashOffset) {
   requestAnimationFrame(() => {
     const mr = el.getBoundingClientRect();
     if (mr.right > window.innerWidth - 8) el.style.left = (window.innerWidth - mr.width - 8) + 'px';
-    if (mr.bottom > window.innerHeight - 8) el.style.top = (rect.top - mr.height - 4) + 'px';
+    if (mr.bottom > usableBottom()) el.style.top = (rect.top - mr.height - 4) + 'px';
   });
 }
 
@@ -19262,7 +19285,7 @@ function openSizePicker(content, slashOffset, onConfirm) {
   requestAnimationFrame(() => {
     const mr = slashMenu.getBoundingClientRect();
     if (mr.right  > window.innerWidth  - 8) slashMenu.style.left = (window.innerWidth  - mr.width  - 8) + 'px';
-    if (mr.bottom > window.innerHeight - 8) slashMenu.style.top  = (window.innerHeight - mr.height - 8) + 'px';
+    if (mr.bottom > usableBottom()) slashMenu.style.top  = Math.max(8, usableBottom() - mr.height) + 'px';
   });
 }
 
@@ -26079,7 +26102,7 @@ function positionLinkMenu(content, offset) {
   requestAnimationFrame(() => {
     const mr = lpMenu.getBoundingClientRect();
     if (mr.right  > window.innerWidth - 8) lpMenu.style.left = (window.innerWidth - mr.width - 8) + 'px';
-    if (mr.bottom > window.innerHeight - 8) lpMenu.style.top  = (rect.top - mr.height - 4) + 'px';
+    if (mr.bottom > usableBottom()) lpMenu.style.top  = (rect.top - mr.height - 4) + 'px';
   });
 }
 
@@ -26402,7 +26425,7 @@ function positionCaretMenu(menu, content, offset) {
   requestAnimationFrame(() => {
     const mr = menu.getBoundingClientRect();
     if (mr.right  > window.innerWidth - 8) menu.style.left = (window.innerWidth - mr.width - 8) + 'px';
-    if (mr.bottom > window.innerHeight - 8) menu.style.top  = (rect.top - mr.height - 4) + 'px';
+    if (mr.bottom > usableBottom()) menu.style.top  = (rect.top - mr.height - 4) + 'px';
   });
 }
 

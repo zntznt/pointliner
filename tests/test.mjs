@@ -16260,11 +16260,11 @@ test('#bpop clears the touch bars: z-index, height cap, and the shared bottom-st
     'the #bpop height cap must subtract the bar height, not just 85vh');
   // and the position clamp asks the SAME question the toast asks, so the two cannot drift
   // BOTH surfaces that position #bpop: the bullet menu (long-press) and the selection type menu.
-  // The bullet menu is the one with the measured failure; the type menu shares the element, so
-  // leaving it clamped to the raw viewport bottom would reintroduce the same overlap next to it.
+  // They ask through usableBottom(), the shared "where does the usable area end" helper that every
+  // popup positioner now uses (UXP-236) — see the drift guard below for the full list.
   for (const fn of ['showBulletPopup', 'showSelTypeMenu']) {
-    assert.ok(fnBody(_src, fn).includes('bottomStackHeight()'),
-      `${fn} must clamp against the bottom stack, not the raw viewport bottom`);
+    assert.ok(fnBody(_src, fn).includes('usableBottom()'),
+      `${fn} must clamp against the usable bottom, not the raw viewport bottom`);
   }
 });
 
@@ -16283,6 +16283,57 @@ test('the two touch bars cannot co-occupy the strip (the guarantee that makes a 
   const uq = fnBody(_src, 'updateQuickBar');
   assert.ok(uq.includes("editBar.classList.contains('on')"),
     'updateQuickBar derives from the edit bar synchronously, so the two can never both be on');
+});
+
+// ── UXP-236: every popup positioner asks ONE question about the usable bottom ────
+// `window.innerHeight - 8` was hand-copied at ten sites, so each independently believed the touch
+// bar's strip was free space. The literal is the bug; the guard below is what stops it returning.
+
+test('UXP-236 drift guard: no positioner may clamp to the raw viewport bottom again', () => {
+  // Only the helper itself may name the raw expression. Every other occurrence in the file is a
+  // COMMENT explaining the history — those carry no `if`/assignment, so they are excluded by shape
+  // rather than by an allowlist that would rot.
+  const lines = _src.split('\n')
+    .filter(l => l.includes('window.innerHeight - 8'))
+    .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l.trim()))          // drop comment lines
+    .filter(l => !l.includes('function usableBottom'));          // the one legitimate definition
+  assert.deepEqual(lines, [],
+    'a popup is clamping to the raw viewport bottom again; use usableBottom():\n  ' + lines.join('\n  '));
+});
+
+test('UXP-236: all ten popup positioners route through usableBottom()', () => {
+  // Named individually so a site cannot be quietly dropped from the sweep. Three different
+  // placement strategies live here (flip above the anchor, park at the bottom, and mtOpenMenu's
+  // flip-to-the-roomier-side); they share the usable-bottom question, not a positioner.
+  for (const fn of ['mtOpenMenu', 'showCellEditorPop', 'showTodoPicker', 'positionSlashMenu',
+                    'placeAtCaret', 'openSizePicker', 'positionLinkMenu', 'positionCaretMenu',
+                    'showBulletPopup', 'showSelTypeMenu']) {
+    assert.ok(fnBody(_src, fn).includes('usableBottom()'), `${fn} must ask usableBottom()`);
+  }
+  // mtOpenMenu needs it TWICE: fixing only the threshold would look right and still choose "below"
+  // on the strength of room that belongs to the bar.
+  const mt = fnBody(_src, 'mtOpenMenu');
+  assert.ok(/const spaceBelow = usableBottom\(\)/.test(mt),
+    "mtOpenMenu's spaceBelow must exclude the bar strip, or it flips the wrong way");
+  // and the helper is defined in terms of the shared stack, not its own copy of the sum
+  assert.match(_src, /function usableBottom\(\)\s*\{\s*return window\.innerHeight - 8 - bottomStackHeight\(\);/);
+});
+
+test('UXP-236: the two table popups were the only ones a bar could steal from', () => {
+  const z = re => { const m = _src.match(re); return m ? +m[1] : null; };
+  const quick = z(/#quick-bar\{[^}]*z-index:(\d+)/), edit = z(/#edit-bar\{[^}]*z-index:(\d+)/);
+  const bars = Math.max(quick, edit);
+  // FIXED here: at 600 these sat below both bars, so a row parked in the bar's strip lost the hit
+  // test to the bar (measured: #mt-colpanel -> qb-insert).
+  for (const sel of [/#mt-colpanel\{[^}]*z-index:(\d+)/, /#mt-cellpop\{[^}]*z-index:(\d+)/]) {
+    assert.ok(z(sel) > bars, `a table popup is back below the bars (${z(sel)} vs ${bars})`);
+  }
+  // CHARACTERIZATION: these were already above the bars, which is the measured reason they needed
+  // no z-index change. If someone lowers one, that reasoning silently stops holding — so pin it.
+  for (const sel of [/#slash-menu[^{]*\{[^}]*z-index:(\d+)/, /#lp-menu[^{]*\{[^}]*z-index:(\d+)/,
+                     /#brace-menu[^{]*\{[^}]*z-index:(\d+)/, /#bpop\{[^}]*z-index:(\d+)/]) {
+    assert.ok(z(sel) > bars, `a menu that used to outrank the bars no longer does (${z(sel)} vs ${bars})`);
+  }
 });
 
 // ── Docked-stack viewport ceiling (#389): the toolbar can never exceed the screen ──
