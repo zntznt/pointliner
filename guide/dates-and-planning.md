@@ -93,6 +93,11 @@ a small `▸`; journal and lore entries carry a small source tag. Click any entr
 press `Esc` to close. It opens scrolled near today, so a long history starts at "now" rather than at
 year one.
 
+From the keyboard the whole list is a single stop, however long it is. `Tab` lands you on the first
+entry, then the arrow keys move between entries, `Home` and `End` jump to the very first and very
+last, and `PageUp` / `PageDown` jump a whole **month** at a time, the same way they page a month in
+the agenda calendar. `Enter` opens the entry you are on, and `Esc` closes.
+
 When a [custom calendar](#custom-calendars) is active, the month headers and dates are that calendar's
 own (Firstfrost, Longnight, the era year), so the history reads in its own time. This is distinct from
 the agenda's own **Timeline** view, which is a Gantt of the near-term schedule; this one spans the

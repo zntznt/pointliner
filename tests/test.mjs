@@ -10003,7 +10003,10 @@ test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
   // a11y (P3): the panel is a labelled modal dialog; nodes are focusable buttons with names +
   // Enter/Space activation; mousedown is preventDefault'd (caret invariant), navigation on click
   assert.ok(_src.includes('aria-label="Link graph"'), 'the overlay must be a named dialog');
-  assert.ok(rg.includes("g.setAttribute('tabindex', '0')") && rg.includes("g.setAttribute('role', 'button')"), 'graph nodes must be focusable buttons');
+  // UXP-240 narrowed this: nodes are still focusable named buttons, but the group carries ONE tab
+  // stop rather than one per node, so the seed is now conditional. The roving pins live in the
+  // UXP-240 test; this keeps asserting that a node is reachable and role-correct at all.
+  assert.ok(rg.includes("g.setAttribute('tabindex', nodeIdx === 0 ? '0' : '-1')") && rg.includes("g.setAttribute('role', 'button')"), 'graph nodes must be focusable buttons');
   assert.ok(rg.includes("ev.key === 'Enter' || ev.key === ' '"), 'nodes must activate on Enter/Space (P3)');
   assert.ok(rg.includes("g.addEventListener('mousedown', ev => ev.preventDefault())"), 'mousedown must be prevented (caret invariant)');
   assert.ok(rg.includes('zoomInto('), 'clicking a node must navigate (zoomInto)');
@@ -10079,6 +10082,46 @@ test('UXP-241 overlayCountMessage: count wins, empty-state title is the fallback
   assert.equal(c.overlayCountMessage('  ', '  '), null);
 });
 
+// UXP-240 pure core: the index math behind every roving-tabindex group. Ends CLAMP (the calendar
+// grid's rule) and null means "no move", so a caller never focuses the element it started on.
+test('UXP-240 roveIndex: step, clamp, ends', () => {
+  assert.equal(c.roveIndex('ArrowDown', 0, 5), 1);
+  assert.equal(c.roveIndex('ArrowRight', 0, 5), 1);
+  assert.equal(c.roveIndex('ArrowUp', 3, 5), 2);
+  assert.equal(c.roveIndex('ArrowLeft', 3, 5), 2);
+  assert.equal(c.roveIndex('Home', 3, 5), 0);
+  assert.equal(c.roveIndex('End', 1, 5), 4);
+  // clamping, NOT wrapping — an ArrowUp at the top must not jump to the bottom
+  assert.equal(c.roveIndex('ArrowUp', 0, 5), null);
+  assert.equal(c.roveIndex('ArrowDown', 4, 5), null);
+  assert.equal(c.roveIndex('Home', 0, 5), null);
+  assert.equal(c.roveIndex('End', 4, 5), null);
+  // an unhandled key declines, so the caller leaves the event alone
+  assert.equal(c.roveIndex('Enter', 1, 5), null);
+  assert.equal(c.roveIndex('Tab', 1, 5), null);
+  // degenerate inputs
+  assert.equal(c.roveIndex('ArrowDown', 0, 0), null);
+  assert.equal(c.roveIndex('ArrowDown', 5, 5), null);
+  assert.equal(c.roveIndex('ArrowDown', -1, 5), null);
+  assert.equal(c.roveIndex('ArrowDown', 0, 1), null);   // a single item has nowhere to go
+});
+
+test('UXP-240 roveIndex: PageUp/PageDown page a group, and decline without groups', () => {
+  // three months: rows 0-2, 3-4, 5-8
+  const starts = [0, 3, 5];
+  assert.equal(c.roveIndex('PageDown', 0, 9, starts), 3);
+  assert.equal(c.roveIndex('PageDown', 1, 9, starts), 3);   // from INSIDE a group, not just its start
+  assert.equal(c.roveIndex('PageDown', 3, 9, starts), 5);
+  assert.equal(c.roveIndex('PageUp', 6, 9, starts), 3);
+  assert.equal(c.roveIndex('PageUp', 4, 9, starts), 0);
+  // clamps at the first/last group rather than wrapping
+  assert.equal(c.roveIndex('PageUp', 1, 9, starts), null);
+  assert.equal(c.roveIndex('PageDown', 7, 9, starts), null);
+  // the graph passes no groups, so paging declines and the panel scrolls natively instead
+  assert.equal(c.roveIndex('PageDown', 1, 9), null);
+  assert.equal(c.roveIndex('PageUp', 1, 9, []), null);
+});
+
 // UXP-239 + UXP-241 wiring. Source pins only — they prove the lines are PRESENT; that focus actually
 // survives the re-render and that Escape still closes was verified by driving the running app.
 test('UXP-239/241 overlay toggles: refocus after re-render + announce the new count (src pins)', () => {
@@ -10101,6 +10144,39 @@ test('UXP-239/241 overlay toggles: refocus after re-render + announce the new co
   assert.ok(scopeLine && scopeLine.includes('announceOverlayCount(panel)'), 'the graph scope toggle must announce its new count');
   const unlinkedLine = rg.split('\n').find(l => l.includes(".graph-unlinked-toggle')?.focus()"));
   assert.ok(unlinkedLine && unlinkedLine.includes('announceOverlayCount(panel)'), 'the graph unlinked toggle must announce its new count');
+});
+
+// UXP-240 wiring. Source pins; that the arrows actually move focus was verified by driving.
+test('UXP-240 overlay roving tabindex: seeds, key claims, and the trap selector (src pins)', () => {
+  // exactly one tab stop seeded per group, over document order
+  const rt = fnBody(_src, 'renderTimeline');
+  assert.ok(rt.includes("row.setAttribute('tabindex', rowIdx === 0 ? '0' : '-1')"), 'timeline rows must seed a single roving tab stop');
+  const rg = fnBody(_src, 'renderGraph');
+  assert.ok(rg.includes("g.setAttribute('tabindex', nodeIdx === 0 ? '0' : '-1')"), 'graph nodes must seed a single roving tab stop');
+  // and NOT the old unconditional form, at either site
+  assert.ok(!rt.includes("row.setAttribute('tabindex', '0')") && !rg.includes("g.setAttribute('tabindex', '0')"),
+    'no item may take an unconditional tabindex 0 — that is the defect UXP-240 filed');
+
+  // the claimed key sets. The timeline is a vertical list and pages by month; the graph walks one
+  // document order with all four arrows and leaves paging to the panel's own scroll.
+  assert.ok(_src.includes("['ArrowUp','ArrowDown','Home','End','PageUp','PageDown']"), 'the timeline must claim Up/Down + Home/End + PageUp/PageDown');
+  assert.ok(_src.includes("['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End']"), 'the graph must claim all four arrows + Home/End');
+  assert.ok(_src.includes("panel.querySelectorAll('.tl-item')") && _src.includes("panel.querySelectorAll('.graph-node')"),
+    'both handlers must read their group live, so a re-render cannot leave a stale list');
+  assert.ok(_src.includes('roveIndex(e.key, i, rows.length, starts)'), 'the timeline must pass month starts so paging works');
+  assert.ok(_src.includes('roveIndex(e.key, i, nodes.length)'), 'the graph must pass no groups, so paging declines');
+
+  // roveTo swaps BOTH attributes — leaving the old stop at 0 would grow the tab order again
+  const rto = fnBody(_src, 'roveTo');
+  assert.ok(rto.includes("setAttribute('tabindex', '-1')") && rto.includes("setAttribute('tabindex', '0')") && rto.includes('.focus()'),
+    'roveTo must clear the old stop, set the new one, and move focus');
+
+  // THE REGRESSION GUARD. A roved-out item is skipped by native Tab, so a trap that still counts it
+  // computes a `last` that Tab can never reach — the wrap never fires and Tab escapes the modal.
+  // Timeline rows are <button>s, so this bites without the :not() clause.
+  const traps = _src.split('\n').filter(l => l.includes("[tabindex=\"0\"],button:not(:disabled)"));
+  assert.equal(traps.length, 2, 'expected exactly the two overlay Tab traps');
+  for (const t of traps) assert.ok(t.includes(':not([tabindex="-1"])'), 'an overlay Tab trap must exclude roved-out items or Tab walks out of the modal');
 });
 
 test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger points (src pins)', () => {

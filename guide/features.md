@@ -142,7 +142,9 @@ Turn the document into a lightweight planner.
   ([agenda](dates-and-planning.md#agenda-and-calendar))
 - **Timeline.** Browse every dated point in chronological order, grouped by month, as the history of
   your document: scheduled tasks, daily journal entries, lore events (a `when` or `date` property) and
-  chronicle entries, each toggleable; calendar-aware. ([timeline](dates-and-planning.md#timeline))
+  chronicle entries, each toggleable; calendar-aware. However long the list, it is one keyboard stop:
+  arrows move between entries and `PageUp`/`PageDown` jump a month.
+  ([timeline](dates-and-planning.md#timeline))
 - **Daily journal.** Open or create today's entry from one button, in the doc or as a file per day.
   ([journal](dates-and-planning.md#daily-journal))
 - **Chronicle.** A log dated on a day you choose: a journal twin whose date is a movable cursor
@@ -216,7 +218,8 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   any point by recognizing it. It also draws a dashed line between points that mention each other by
   name without linking, so relationships you never got around to linking still show up. With a folder
   connected, a **Folder** view maps the documents themselves: one dot per document, thicker lines
-  where more links run between them, click to open.
+  where more links run between them, click to open. The web is one keyboard stop, with the arrows
+  moving from point to point in document order.
   ([link graph](links-and-references.md#link-graph))
 - **Multi-document folders.** Connect a folder of documents on disk; switch between them, link
   across them and search the whole folder at once.
