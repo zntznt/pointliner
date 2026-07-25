@@ -171,3 +171,12 @@ acting (controls drift).
 - **Problem:** When `@table` is selected in the builder, the `applyBuilder` function's `@table` branch calls `starterTableText(3, 3)` — a hardcoded 3 rows × 3 columns. The standard `/table` slash command shows a size picker dialog that lets the user choose dimensions. The code comment in the `@table` branch acknowledges: "the size picker uses slashMenu which is unavailable from the builder. Inline size picker is tracked as follow-up."
 - **Rule:** P1 (Predictable — the same command should produce the same behavior regardless of how it's invoked).
 - **Target:** Add row and column number inputs to `BUILDER_FORMS` under a key that distinguishes the insert (`@`) path from the block (`/`) path (e.g., `'@table'`). In the form dispatch in `applyBuilder`, gate on both `BUILDER_FORMS[cmd.id]` AND `cmd.trigger === '@'` to avoid intercepting the `/table` block command, which already has its own size picker via the slash menu path. The existing `@table` hardcoded branch then becomes dead code and must be removed.
+
+### UXP-237 ☐ An unwritten footnote exports as literal bracket junk 🟢  [footnote-cue follow-on]
+- **Problem:** the render now marks a footnote marker whose note was never written (`.fn-ref-empty`), but `toMarkdown` still emits the `[^key]` marker with no definition line, because it skips empty footnotes via `fn.text.trim()`. Measured against a real CommonMark implementation (markdown-it + markdown-it-footnote):
+  - export: `- A dangling one[^ghost] and a real one[^ok].` + `[^ok]: the actual note`
+  - render: `A dangling one[^ghost] and a real one<sup class="footnote-ref">[1]</sup>.`
+  So the written one becomes a proper numbered footnote and the unwritten one prints as **raw `[^ghost]` bracket syntax in the middle of the sentence** — visible junk to whoever receives the file.
+- **Rule:** P4-1 (no silent failure) at the export surface, and the fidelity rule the S3-PR5b work was about: what ships should not misrepresent what you wrote.
+- **Target:** decide what an unwritten footnote should DO on export rather than defaulting to leaking the syntax. The obvious candidates are dropping the marker (the reference was never real) or emitting a placeholder definition. Not decided here on purpose: it is a content decision about someone else's file, and the render fix does not force it.
+- **Not bundled with the render cue deliberately:** that PR is about the marker on screen, this is about bytes in an exported file. Two surfaces, two changes, per the split that kept S3-PR5a and S3-PR5b honest.

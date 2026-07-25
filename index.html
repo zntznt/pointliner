@@ -1059,6 +1059,15 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
 .fn-ref:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
+/* A marker whose note was never written. MUTED, not --bad/--del: an unwritten footnote is
+   UNFINISHED, not an error — the same distinction UXP-175 recorded for the oracle ("a No is not
+   an error, so it uses --muted, never --warn"). Two precedents point the same way: .brace-attempt
+   is muted ink + a dotted underline for an attempt rather than a failure, and .note-ind's own
+   comment is "the .fn-ref metrics, but muted ink — accent would read as a link-jump". A .fn-ref is
+   --acc precisely BECAUSE it is a live jump; one with nothing to jump to should stop claiming so.
+   No new token, so the dual-home palette invariant is untouched. */
+.fn-ref-empty{color:var(--muted);text-decoration:underline dotted;text-underline-offset:2px;cursor:help}
+.fn-ref-empty:hover,.fn-ref-empty.hi{color:var(--fg)}
 #fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
 #fn-panel.on{transform:translateY(0)}
 .fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
@@ -6753,8 +6762,26 @@ function mdInline(s) {
     const u = safeUrl(url); if (!u) return txt;
     return stash(`<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${mdEmph(txt)}</a>`);
   });
-  // footnote refs
-  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(k)}" aria-label="Footnote ${escQ(k)}">[${k}]</sup>`));
+  // footnote refs. A marker whose note was never written used to render IDENTICALLY to one that
+  // has a note — same class, same accent ink, no tooltip — so the only way to tell was to click
+  // it. It was the one dangling reference in the app with no cue, while a broken link gets
+  // node-link-broken, a propless meter gets meter-bad, and an undefined name gets brace-attempt.
+  //
+  // Written-ness is `text.trim()`, NOT record existence: opening the footnote editor creates
+  // {key, text:''} before anything is typed, so a record-existence test would drop the cue the
+  // moment a user clicked the marker and closed without writing — when nothing had changed.
+  // toMarkdown's export already tests fn.text.trim() for the same reason.
+  //
+  // cookieNode null (breadcrumbs, search snippets, the guide — every mdInline caller outside a
+  // node render) means we do not KNOW the footnotes, so it renders exactly as before. An unknown
+  // state must never paint as broken, or every footnote in a search result would be accused.
+  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => {
+    const known = !!cookieNode;
+    const written = !known || (cookieNode.footnotes || []).some(f => f.key === k && (f.text || '').trim());
+    if (written) return stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(k)}" aria-label="Footnote ${escQ(k)}">[${k}]</sup>`);
+    const tip = 'Nothing written here yet. Click to write this footnote.';
+    return stash(`<sup class="fn-ref fn-ref-empty" role="button" tabindex="-1" data-key="${escQ(k)}" title="${escQ(tip)}" aria-label="Footnote ${escQ(k)}, not written yet. Click to write it.">[${k}]</sup>`);
+  });
   // dice rolls — [[dice:KEY]] resolves against the node's stored roll data
   s = s.replace(/\[\[dice:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderDicePill(k, diceRenderList?.find(d => d.key === k))));

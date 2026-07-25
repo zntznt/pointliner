@@ -2244,6 +2244,67 @@ test('mdToHtml — ATX heading becomes a real <h1>', () => {
   assert.equal(c.mdToHtml('# Title'), '<h1 class="md-h">Title</h1>');
 });
 
+// ── a footnote marker with nothing behind it says so ─────────────────────────
+// Found by the 2026-07-25 persona pass: a written and an unwritten marker rendered IDENTICALLY
+// (same class, same accent ink, no tooltip), so the only way to tell was to click. It was the one
+// dangling reference in the app with no cue, while a broken link, a propless meter and an
+// undefined name all announce themselves.
+function withCookieNode(node, fn) {
+  c._context.__fnNode = node;
+  vm.runInContext('cookieNode = __fnNode;', c._context);
+  try { return fn(); } finally { vm.runInContext('cookieNode = null;', c._context); }
+}
+const fnNode = footnotes => ({ id: 'n1', text: '', children: [], props: [], seq: [], footnotes });
+
+test('a footnote marker whose note was never written is marked; a written one is untouched', () => {
+  // WRITTEN: byte-identical to before. The common case must never acquire a warning — that is the
+  // regression this pair exists to catch.
+  const ok = withCookieNode(fnNode([{ key: 'a', text: 'the actual note' }]), () => c.mdToHtml('See[^a]'));
+  assert.ok(ok.includes('class="fn-ref"'), 'a written footnote keeps the plain class');
+  assert.ok(!ok.includes('fn-ref-empty'), 'and gains no modifier');
+  assert.ok(!ok.includes('title='), 'and no tooltip');
+
+  // UNWRITTEN: the cue, plus a tooltip that names the ACTION rather than the failure.
+  const bad = withCookieNode(fnNode([]), () => c.mdToHtml('See[^a]'));
+  assert.ok(bad.includes('fn-ref fn-ref-empty'), 'an unwritten footnote is marked');
+  assert.match(bad, /title="Nothing written here yet\. Click to write this footnote\."/);
+  assert.match(bad, /aria-label="Footnote a, not written yet\. Click to write it\."/);
+});
+
+test('footnote written-ness is text.trim(), not whether a record exists', () => {
+  // THE SUBTLE ONE. Opening the footnote editor creates {key, text:''} BEFORE anything is typed,
+  // so a record-existence test would drop the cue the moment a user clicked the marker and closed
+  // without writing — exactly when nothing had changed. toMarkdown already tests fn.text.trim().
+  const empty = withCookieNode(fnNode([{ key: 'a', text: '' }]), () => c.mdToHtml('See[^a]'));
+  assert.ok(empty.includes('fn-ref-empty'), 'an empty record still counts as unwritten');
+  const blank = withCookieNode(fnNode([{ key: 'a', text: '   \n ' }]), () => c.mdToHtml('See[^a]'));
+  assert.ok(blank.includes('fn-ref-empty'), 'whitespace-only counts as unwritten too, like the export');
+  // one key written, a second not: only the second is marked
+  const mixed = withCookieNode(fnNode([{ key: 'a', text: 'here' }]), () => c.mdToHtml('One[^a] two[^b]'));
+  assert.equal((mixed.match(/fn-ref-empty/g) || []).length, 1, 'exactly the unwritten one is marked');
+  assert.match(mixed, /data-key="b"[^>]*title=/, 'and it is the one with no note');
+});
+
+test('with no node in scope a footnote marker is never accused (cookieNode null)', () => {
+  // mdInline also runs for breadcrumbs, search snippets and the guide, where there is no node and
+  // therefore no way to know the footnotes. An UNKNOWN state must not paint as broken, or every
+  // footnote in a search result would be marked dangling.
+  const out = c.mdToHtml('See[^a]');   // cookieNode is null outside withCookieNode
+  assert.ok(out.includes('class="fn-ref"'), 'renders exactly as before');
+  assert.ok(!out.includes('fn-ref-empty'), 'and is NOT marked, because we do not know');
+});
+
+test('the unwritten-footnote cue is muted, not an error colour', () => {
+  // Locked as a decision, not left to drift: an unwritten footnote is UNFINISHED, not broken —
+  // the distinction UXP-175 recorded for the oracle ("a No is not an error, so it uses --muted").
+  const rule = _src.match(/\.fn-ref-empty\{[^}]*\}/)?.[0] || '';
+  assert.ok(rule, '.fn-ref-empty must have its own rule');
+  assert.ok(/color:var\(--muted\)/.test(rule), 'muted ink, the .brace-attempt / .note-ind register');
+  assert.ok(!/var\(--bad\)|var\(--del\)|var\(--warn\)/.test(rule),
+    'never an error colour: the marker is unfinished, not wrong');
+  assert.ok(/text-decoration:underline dotted/.test(rule), 'a dotted underline, like .brace-attempt');
+});
+
 test('mdInline — a URL/link char class never swallows an adjacent stashed placeholder (#761)', () => {
   // A footnote ref glued to a URL: both must render, and no raw NUL sentinel may leak.
   const h = c.mdToHtml('See http://example.com[^1]');
