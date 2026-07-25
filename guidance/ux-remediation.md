@@ -54,6 +54,21 @@ acting (controls drift).
 > keeping: UXP-244 looked like one careless surface, and was actually the visible edge of a rule
 > applied 5 times out of 20.
 >
+> **P3-3 (focus-visible on every focus stop) was audited 2026-07-25 and is CLEAN**: 21 surfaces
+> walked with real Tab keypresses, **302 focus stops, 0 without a focus indicator**. Driven rather
+> than grepped because the ring is applied through a hand-maintained list of 112 `:focus-visible`
+> selectors, and the interesting question was which stops are missing from it. **The first run of
+> that driver was wrong and is worth remembering:** it reported six inputs as having no indicator,
+> because their focus styles are TRANSITIONED (`border-color`/`box-shadow`, .12s) and the computed
+> style was read immediately after Tab, mid-transition, still at the unfocused value. With a settle
+> delay the count went to zero. Nothing was filed, because there was nothing wrong.
+>
+> **P2-2 (the menu teaches label + description + typed form) is NOT yet audited.** The driver could
+> not open the `/` or `@` menus headless (they render into a lazily-created `#slash-menu` on real
+> keystrokes at a real caret) and returned "0 items", which is the driver being blind rather than a
+> measurement — the same failure mode the UXP-246 pass caught with a control. No count from that run
+> should be quoted. It needs a driver that opens the menus through the app's own trigger path.
+>
 > A fourth pass continued by defect CLASS. Two rules were triaged by measurement before picking one:
 > **P3-1 accessible name** came back **0 unnamed across 25 surfaces** (the accessibility work held,
 > so there was nothing to fix), while the **24px tap floor** came back with **nine shared control
