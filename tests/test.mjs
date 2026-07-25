@@ -19902,3 +19902,143 @@ test('em-dash ban is ENFORCED across all user-facing copy (README, guide/, GUIDE
     assert.ok(!m[1].includes(EM), `a GUIDE example desc has an em dash: "${m[1].slice(0, 60)}"`);
   }
 });
+
+// ─── UXP-244: the pack editor keeps what you typed ───────────────────────────
+// Driven finding: 63 characters typed across name + rules + vars died on Escape, on Back, and an
+// unsaved edit of a SAVED pack reverted, each with no message at all. The app already keeps drafts
+// four times over (captureDraft / journalDraft / chronicleDraft / _builderFormDrafts, the last
+// added by UXP-180 for this exact defect in the builder); this is the fifth application.
+
+test('UXP-244 packVarsText: renders var records back to their authoring lines', () => {
+  assert.equal(c.packVarsText([{ name: 'hp', expr: '30' }]), 'hp = 30');
+  // a pick var re-displays in its `name: source` form (#585), not as its frozen value
+  assert.equal(c.packVarsText([{ name: 'str', kind: 'pick', expr: '3d6', rolled: '11' }]), 'str: 3d6');
+  assert.equal(c.packVarsText([{ name: 'a', expr: '1' }, { name: 'b', kind: 'pick', expr: 'x|y' }]), 'a = 1\nb: x|y');
+  assert.equal(c.packVarsText([]), '');
+  assert.equal(c.packVarsText(null), '');
+  // round-trips through the parser: what the box shows, parsePackVarLines reads back.
+  // Spread into host arrays first - values built inside the vm carry that realm's Array
+  // prototype, and deepEqual compares prototypes, so a structurally identical array fails.
+  const parsed = c.parsePackVarLines(c.packVarsText([{ name: 'hp', expr: '30' }, { name: 'str', kind: 'pick', expr: '3d6' }]));
+  assert.equal(parsed.bad.length, 0);
+  assert.deepEqual([...parsed.vars].map(v => v.name), ['hp', 'str']);
+});
+
+test('UXP-244 packDraftFrom: keeps a change, keeps nothing when the form matches the pack', () => {
+  const saved = { id: 'p1', name: 'Bestiary', rules: 'beast: owlbear', vars: [{ name: 'hp', expr: '30' }] };
+  // untouched form -> nothing to keep (this preserves BUG-1: an abandoned New pack leaves no junk)
+  assert.equal(c.packDraftFrom({ name: 'Bestiary', rules: 'beast: owlbear', vars: 'hp = 30' }, saved), null);
+  // a fresh pack opened and abandoned without typing reads identical to its own record
+  const fresh = c.newPluginPack('New pack');
+  assert.equal(c.packDraftFrom({ name: 'New pack', rules: '', vars: '' }, fresh), null);
+  // typed rules on a fresh pack -> kept. Compared as JSON: the record is built inside the vm, so
+  // it carries that realm's Object prototype and deepEqual would reject an identical structure.
+  const json = v => JSON.stringify(v);
+  const d1 = c.packDraftFrom({ name: 'Bestiary', rules: 'beast: owlbear | gnoll', vars: '' }, fresh);
+  assert.equal(json(d1), json({ name: 'Bestiary', rules: 'beast: owlbear | gnoll', vars: '' }));
+  // an EDIT of a saved pack -> kept (the third driven row, the one that reverted document data)
+  const d2 = c.packDraftFrom({ name: 'Bestiary', rules: 'beast: owlbear | dragon', vars: 'hp = 30' }, saved);
+  assert.equal(d2.rules, 'beast: owlbear | dragon');
+  // a deliberate CLEARING is a change too, and must survive. A "keep it only when non-empty"
+  // test would have thrown this away as though the form were untouched.
+  const d3 = c.packDraftFrom({ name: 'Bestiary', rules: '', vars: 'hp = 30' }, saved);
+  assert.equal(json(d3), json({ name: 'Bestiary', rules: '', vars: 'hp = 30' }));
+  // trailing whitespace alone is not a change worth remembering
+  assert.equal(c.packDraftFrom({ name: 'Bestiary  ', rules: 'beast: owlbear\n', vars: ' hp = 30 ' }, saved), null);
+});
+
+test('UXP-244 packFieldsFor: shows the kept draft, else the saved pack', () => {
+  const json = v => JSON.stringify(v);   // cross-realm: compare shape, not prototype
+  const pack = { id: 'p1', name: 'Bestiary', rules: 'beast: owlbear', vars: [{ name: 'hp', expr: '30' }] };
+  assert.equal(json(c.packFieldsFor(pack, null)), json({ name: 'Bestiary', rules: 'beast: owlbear', vars: 'hp = 30' }));
+  const draft = { name: 'Bestiary', rules: 'beast: owlbear | dragon', vars: '' };
+  assert.equal(json(c.packFieldsFor(pack, draft)), json(draft));
+  assert.equal(pack.rules, 'beast: owlbear');   // the pack itself is never mutated by a draft
+  assert.equal(json(c.packFieldsFor(null, null)), json({ name: '', rules: '', vars: '' }));
+});
+
+test('UXP-244 every pack-editor exit stashes the draft first', () => {
+  // A source pin, because these are DOM handlers. Both exits must go through stashPackDraft, and
+  // it must run BEFORE _packDraft is dropped: reversing the order would read a cleared pack.
+  assert.ok(/ioCancel = \(\) => \{ stashPackDraft\(\); _packEditId = null; _packDraft = null; closeIo\(\); \}/.test(_src),
+    'ioCancel (Escape/backdrop) must stash the typed draft before dropping the pack shell');
+  assert.ok(/backBtn\.addEventListener\('click', \(\) => \{ stashPackDraft\(\); _packEditId = null; _packDraft = null;/.test(_src),
+    'the Back button must stash the typed draft before dropping the pack shell');
+  assert.ok(_src.includes('delete _packDrafts[draftKey];'), 'a successful Save must clear that pack draft');
+  assert.ok(_src.includes('_packReadFields = null;'), 'the list view must clear the field reader');
+  assert.ok(/const shown = packFieldsFor\(p, _packDrafts\[packDraftKey\(p\)\]\);/.test(_src),
+    'the edit view must populate through packFieldsFor so a kept draft is restored');
+});
+
+test('UXP-244 a new pack draft keys by a constant, not its throwaway id', () => {
+  // The bug the source pins could NOT catch, and driving did: "+ New pack" mints a fresh id every
+  // click, so keying the draft by pack.id filed it under an identifier that never came back. The
+  // store kept every draft faithfully and restored none. Every draft-slot read must go through
+  // packDraftKey, never a bare .id.
+  assert.ok(_src.includes("const PACK_NEW_DRAFT_KEY = '(new)';"), 'the constant slot must exist');
+  assert.ok(/return \(_packDraft && pack\.id === _packDraft\.id\) \? PACK_NEW_DRAFT_KEY : pack\.id;/.test(_src),
+    'packDraftKey must route the uncommitted pack to the constant slot and saved packs to their id');
+  assert.ok(!/_packDrafts\[p\.id\]/.test(_src), 'no site may index the draft store by a bare pack id');
+  assert.ok(/const key = packDraftKey\(p\);/.test(_src), 'stashPackDraft must resolve the slot through packDraftKey');
+  // Save must snapshot the slot BEFORE clearing _packDraft: once it is null, a new pack keys as a
+  // saved one and its committed draft survives to shadow the next New pack.
+  const save = _src.slice(_src.indexOf('const draftKey = packDraftKey(p);'), _src.indexOf('delete _packDrafts[draftKey];'));
+  assert.ok(save.includes('_packDraft = null;'), 'the key must be taken before _packDraft is cleared');
+});
+
+// ─── UXP-245: a logged roll lands where you can find it ──────────────────────
+// Driven finding: in a 122-point document the Rolls home was created as point 121 of 122, was not
+// in the DOM, was below the fold, the roll flashed nothing, and no code path navigated to it.
+
+test('UXP-245 rollLogHome: finds an existing home, and never creates one', () => {
+  const mkRootWith = (kids, rollLog) => Object.assign(c.mkRoot(), { children: kids, rollLog });
+  const rolls = c.mkNode('Rolls');
+  const other = c.mkNode('Session notes');
+  assert.equal(c.rollLogHome(mkRootWith([other, rolls], { on: true, targetId: null })), rolls);   // by title
+  // an explicit target wins, even nested and even when it is not called "Rolls"
+  const custom = c.mkNode('Combat log');
+  const parent = Object.assign(c.mkNode('Campaign'), { children: [custom] });
+  assert.equal(c.rollLogHome(mkRootWith([parent, rolls], { on: true, targetId: custom.id })), custom);
+  // a DANGLING target falls back to the by-title home rather than reporting none
+  assert.equal(c.rollLogHome(mkRootWith([rolls], { on: true, targetId: 'gone' })), rolls);
+  // no home -> null, and the tree is UNCHANGED. That is what lets a menu render ask the question.
+  const bare = mkRootWith([other], { on: true, targetId: null });
+  assert.equal(c.rollLogHome(bare), null);
+  assert.equal(bare.children.length, 1);
+  assert.equal(c.rollLogHome(c.mkRoot()), null);
+});
+
+test('UXP-245 rollLogToggleMessage: names the real home, or says the first roll starts one', () => {
+  assert.equal(c.rollLogToggleMessage(true, 'Rolls'), 'Logging rolls to “Rolls”');
+  assert.equal(c.rollLogToggleMessage(true, 'Combat log'), 'Logging rolls to “Combat log”');
+  // the pre-first-roll case: no home exists, so promising one the user could open would be a lie
+  assert.equal(c.rollLogToggleMessage(true, null), 'Logging rolls. Your first roll starts a Rolls log.');
+  assert.equal(c.rollLogToggleMessage(false, 'Rolls'), 'Roll logging off');
+  for (const m of [c.rollLogToggleMessage(true, 'Rolls'), c.rollLogToggleMessage(true, null), c.rollLogToggleMessage(false, null)]) {
+    assert.ok(!m.includes('—'), `toggle message has an em dash: ${m}`);   // AP punctuation only
+  }
+});
+
+test('UXP-245 rollLogFirstEntryMessage: names the destination and the door', () => {
+  const m = c.rollLogFirstEntryMessage('Rolls');
+  assert.ok(m.includes('“Rolls”'), 'the confirmation names where the roll landed');
+  assert.ok(/File menu/.test(m), 'it names the door that reaches the log');
+  assert.ok(!m.includes('—'), 'no em dash');
+  // it must fit one toast: hintDwell caps at 6s, and a message needing longer is too long to read
+  assert.ok(c.hintDwell(m) < 6000, `the confirmation is too long for one toast (${m.length} chars)`);
+});
+
+test('UXP-245 the log has a door, and painting it cannot create the log', () => {
+  assert.ok(_src.includes('id="btn-rolllog-goto"'), 'the File menu needs a Go-to-your-Rolls-log row');
+  assert.ok(_src.includes('Go to your Rolls log'), 'the row needs its label');
+  // The row is gated on an EXISTING home, via the non-creating lookup. resolveRollLogHome here
+  // would conjure a "Rolls" point every time the File menu rendered.
+  assert.ok(/go\.style\.display = rollLogHome\(\) \? '' : 'none'/.test(_src),
+    'the door must be gated on rollLogHome (which never creates), not resolveRollLogHome');
+  assert.ok(/btn-rolllog-goto'\)\?\.addEventListener\('click'/.test(_src), 'the door needs a handler');
+  assert.ok(/zoomInto\(home\.id\)/.test(_src), 'it navigates with zoomInto, the capture strip own jump');
+  // the one-shot landing confirmation, and its re-arm on each switch-on
+  assert.ok(_src.includes('if (!_rollLogAnnounced) {'), 'logRoll must confirm the first landing');
+  assert.ok(_src.includes('if (root.rollLog.on) _rollLogAnnounced = false;'), 'each switch-on re-arms the confirmation');
+  assert.ok(_src.includes('flashHint(rollLogToggleMessage('), 'the toggle must speak through the pure core');
+});

@@ -3236,3 +3236,36 @@ When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and d
   The written footnote still renders as a numbered `footnote-ref` with its text in the list, and no doubled space is left where the marker used to be.
 - **Driven at the door too** (9/9): both export doors report the count, singular and plural conjugate, an excluded subtree does not inflate it, a clean document flashes the unchanged message, and the on-screen `.fn-ref-empty` cue from PR #1071 still renders — this changed export, not render.
 - **Not touched: the HTML export.** "Web page (HTML)" is the shareable file that reopens as the live app, so the footnote records round-trip intact and there is no junk to drop. Only the two lossy text exports were in scope.
+
+### UXP-244 ✓ The pack editor silently discarded everything you typed 🟡 [packs] (RESOLVED 2026-07-25)
+- **Problem:** the pack editor is a full authoring surface (name + a multi-line **Grammar rules** textarea + a multi-line **Variables** textarea), and every way out of it destroyed unsaved input with **no message at all**. Driven with 63 characters typed across the three fields:
+
+  | gesture | typed input | packs saved | toast |
+  |---|---|---|---|
+  | `Escape` | 63 chars | 0 | **none emitted** (`#flash-hint` never created) |
+  | `Back` button | 63 chars | 0 | **none emitted** |
+  | `Escape` over an unsaved **edit of a saved pack** | rules grown from 2 choices to 6 | reverts to the 2-choice version | **none emitted** |
+
+  Re-opening did not offer the draft back: `New pack` gave a blank form. The third row was the worst of the three, silently reverting data already **in the document**, and because the discard said nothing, the last toast still on screen read *"Saved pack "Bestiary""*.
+- **Rule:** P4 — `ux-definition-of-done.md` §4, "**Drafts survive dismissal**: a transient input surface never silently discards non-empty typed input." Secondarily P1: the same file implements draft-survival **four** times (`captureDraft` "survives close/reopen", §6/UXP-84; `journalDraft`; `chronicleDraft`; and `_builderFormDrafts`, which **UXP-180 added for exactly this defect in the builder**) and the pack editor had none.
+- **The intent behind the old code was right and is preserved.** `_packDraft`'s comment ("BUG-1: … never persisted on root.plugins until the user commits, so 'New pack → Back' leaves no junk") is a deliberate fix. Keeping the typed *text* is a different question from persisting an empty *pack*, and the fix does not undo BUG-1.
+- **Fixed (owner's call: keep the draft, like capture).** A `_packDrafts` store keyed per pack, read back through the pure `packFieldsFor` when the editor opens and written by `stashPackDraft` on **both** exits (the Back button and `ioCancel`, which Escape and the backdrop route through); cleared only by a successful Save. `packDraftFrom` decides what is worth keeping with **one rule** — the fields differ from the pack as stored. That single comparison does both jobs: an untouched New pack reads identical to its own fresh `newPluginPack` record, so nothing is kept and BUG-1 holds; and a deliberate **clearing** of a saved pack's rules survives, where a "keep it only when non-empty" test would have thrown it away as though the form were untouched.
+- **The bug that only DRIVING caught, and the lesson.** The first implementation keyed the draft by `pack.id`. For a new pack that id is minted fresh on every `+ New pack` click, so the store kept every draft faithfully and restored **none of them** — while **every source pin passed**, because the code was all present and read correctly. `packDraftKey` routes the uncommitted pack to a constant slot (`(new)`), and Save snapshots that slot *before* `_packDraft` is cleared, since once it is null a new pack keys as a saved one and its committed draft would survive to shadow the next New pack. Both are pinned by name. This is the builder-keyboard-nav lesson (#1021) in a new costume: **a source pin proves the code is present, not that it works.**
+- **Verified by driving, 9/9** on the fixed build: the draft returns after Escape and after Back; Save commits and clears it; an abandoned edit of a saved pack is offered back while the saved pack itself is **unchanged** until Save; and an untouched New pack still leaves neither a draft nor a junk pack.
+
+### UXP-245 ✓ A logged roll landed where you could not find it 🟢 [rolls log] (RESOLVED 2026-07-25)
+- **Problem:** turning the log on flashed *"Logging rolls to your Rolls log"*, naming a place the user then had no way to reach. Driven in a **122-point** document with the dice pill near the top:
+
+  | measured | value |
+  |---|---|
+  | index of the created `Rolls` home | **121 of 122** (appended last) |
+  | in the DOM after the roll | **no** (virtualized, below the fold) |
+  | in the viewport | **no** |
+  | toast on the roll itself | **none** |
+  | any code path that jumps to the log | **none** |
+
+- **Scope, stated honestly:** the log itself was **correct**. Entries nest under `Rolls → 2026 → 07 → 25` reading `21:13 · 2d6 → 8`, repeat rolls append under the same date, and with logging off `logRoll` is a clean no-op. The defect was discoverability of the destination, not the recording.
+- **Rule:** P2 (a capability whose output has no visible front door) and P4-1 in its "no silent success" reading.
+- **Fixed (owner's call: the first roll names it, and there is a jump).** Three parts, each behind a pure core: `rollLogToggleMessage` names the real home, or says plainly that the first roll will start one, instead of promising a place that does not exist yet; `rollLogFirstEntryMessage` fires **once per switch-on** from `logRoll` and names both the destination and the door (every roll would be noise, none at all was the defect); and a **Go to your Rolls log** row in the File menu navigates with `zoomInto`, the capture strip's own answer to "where does this land" (`cap-dest-jump` uses it for the inbox). The row inherits keyboard operability from the File menu's existing roving tabindex and Enter handler, so **no new gesture or keybinding was minted**.
+- **One trap worth naming:** the row's visibility is gated on `rollLogHome`, a **non-creating** lookup added for this. `resolveRollLogHome` creates the home as a side effect, so gating on it would have conjured a "Rolls" point into every document each time the File menu was painted. Pinned, including the "tree is unchanged" assertion.
+- **Verified by driving, 10/10:** the pre-log message says the first roll starts one and the door is hidden; the first roll names where it landed; a second roll does **not** repeat it; the door then appears, is focusable, activates on Enter, navigates to the log and closes the menu behind it; toggling on again names the real home; and both rolls are still recorded, one line each.

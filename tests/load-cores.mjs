@@ -174,6 +174,7 @@ export function loadCores() {
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
     'rollLogEntry', 'grammarLogSource',   // #918 roll-log line + grammar source label (pure)
+    'rollLogHome', 'rollLogToggleMessage', 'rollLogFirstEntryMessage',   // UXP-245: the log's door + what it says
     'collectVars', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'renderPosVarMaps',   // #767 positional per-pill var maps
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
@@ -203,6 +204,7 @@ export function loadCores() {
     'validPluginPack', 'mergePackRules', 'packVarDefs', 'packTemplateDefs', 'mergedTemplates',   // packTemplateDefs/mergedTemplates: #583
     'pluginPackActive', 'packLabel', 'newPluginPack', 'updatePluginPack', 'removePluginPack', 'togglePluginPack', 'parsePackImport', 'parsePackVarLines', 'rollPackPickVars',
     'upsertPackTemplate', 'removePackTemplate',   // #518: capture-a-subtree-into-a-pack cores
+    'packVarsText', 'packDraftFrom', 'packFieldsFor',   // UXP-244: pack-editor draft survival
     'tagColorOf', 'propIconOf', 'setTagColor', 'setPropIcon', 'normalizeAppearance', 'isValidTagName',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
     'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',

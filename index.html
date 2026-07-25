@@ -2649,6 +2649,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
         <div class="cmd-item" id="btn-units"><div class="cmd-icon" data-fa="fa-solid fa-arrow-right-arrow-left" data-fb="⇄">⇄</div><div class="cmd-info"><span class="cmd-label">Custom units</span><span class="cmd-desc">Define your own units, then convert with {= convert(x, from, to)}</span></div></div>
         <div class="cmd-item" id="btn-rolllog" role="button" aria-pressed="false"><div class="cmd-icon" data-fa="" data-fb="⚄">⚄</div><div class="cmd-info"><span class="cmd-label" id="rolllog-label">Log rolls: Off</span><span class="cmd-desc">Record every dice roll, generator, oracle and pick to a dated Rolls log. Set a home with the bullet menu.</span></div></div>
+        <div class="cmd-item" id="btn-rolllog-goto" role="button" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-arrow-up-right-from-square" data-fb="↗">↗</div><div class="cmd-info"><span class="cmd-label">Go to your Rolls log</span><span class="cmd-desc">Jump to the point your rolls are recorded under</span></div></div>
         <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
       </div>
 
@@ -13220,6 +13221,33 @@ let _packEditId = null; // when set, the manager shows the edit view for this pa
 let _packDraft = null;  // BUG-1: a NEW pack lives here (in memory) until first Save — never persisted
                         // on root.plugins until the user commits, so "New pack → Back" leaves no junk.
 let _packFocusId = null; // UX-1: the pack whose row control to re-focus after an in-place re-render
+// UXP-244: unsaved editor input, keyed by pack id, so dismissing the editor no longer destroys what
+// you typed. The fifth application of the rule the app already keeps in captureDraft / journalDraft /
+// chronicleDraft / _builderFormDrafts — a draft survives close and reopen, and is cleared only by a
+// successful Save. It holds TEXT, never a pack: root.plugins is untouched until you commit, so
+// BUG-1's "New pack -> Back leaves no junk" still holds.
+let _packDrafts = {};
+// Set by buildPackEditView to read its live fields; null while the list view is up. Both exits
+// (the Back button and ioCancel, which Escape and the backdrop route through) stash through this,
+// so no dismissal path can quietly skip the draft.
+let _packReadFields = null;
+// Which slot a pack's draft lives in. A SAVED pack keys by its own id. An uncommitted new pack
+// keys by a constant, because "+ New pack" mints a fresh id on every click: keying by that id would
+// file the draft under an identifier that never comes back, so the store would faithfully keep
+// every draft and restore none of them. (Driven: without this the New-pack form came back blank.)
+const PACK_NEW_DRAFT_KEY = '(new)';
+function packDraftKey(pack) {
+  if (!pack) return PACK_NEW_DRAFT_KEY;
+  return (_packDraft && pack.id === _packDraft.id) ? PACK_NEW_DRAFT_KEY : pack.id;
+}
+function stashPackDraft() {
+  if (!_packReadFields) return;
+  const p = packUnderEdit();
+  if (!p) return;
+  const key = packDraftKey(p);
+  const draft = packDraftFrom(_packReadFields(), p);
+  if (draft) _packDrafts[key] = draft; else delete _packDrafts[key];
+}
 
 // Resolve the pack under edit — the in-memory draft (a fresh New pack) or one on root.plugins.
 function packUnderEdit() {
@@ -13238,12 +13266,16 @@ function openDataPackManager() {
   if (_packEditId) buildPackEditView(); else buildPackListView();
 
   if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target (UXP-81)
-  ioCancel = () => { _packEditId = null; _packDraft = null; closeIo(); }; // drop any unsaved draft on close
+  // UXP-244: stash what was typed BEFORE dropping the in-memory pack. _packDraft is the unsaved
+  // pack shell (which must not be persisted — BUG-1); _packDrafts holds the typed text (which must
+  // not be lost). Dropping one no longer means losing the other.
+  ioCancel = () => { stashPackDraft(); _packEditId = null; _packDraft = null; closeIo(); };
   ioCard.setAttribute('aria-label', _packEditId ? 'Edit pack' : 'Reusable packs');
   ioBack.classList.add('on');
 }
 
 function buildPackListView() {
+  _packReadFields = null;   // UXP-244: no edit fields on screen; nothing for stashPackDraft to read
   const list = root.plugins || [];
   if (!list.length) {
     const empty = document.createElement('p');
@@ -13347,13 +13379,16 @@ function buildPackEditView() {
   const mkPreview = (f) => { const p = document.createElement('div'); p.className = 'io-preview io-preview-note'; f.appendChild(p); return p; };
   const setPrev = (el, text, bad) => { el.textContent = text; el.classList.toggle('io-preview-bad', !!bad); el.classList.toggle('io-preview-note', !bad); };
 
+  // UXP-244: show the kept draft when the last visit was dismissed mid-edit, else the saved pack.
+  // The text itself is the cue that work is pending, exactly as the capture strip's box is.
+  const shown = packFieldsFor(p, _packDrafts[packDraftKey(p)]);
   // name
-  const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = p.name || '';
+  const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = shown.name;
   nameIn.spellcheck = false; nameIn.autocomplete = 'off';
   mkField('Pack name', nameIn);
   // rules
   const rulesIn = document.createElement('textarea'); rulesIn.className = 'io-mono'; rulesIn.rows = 5;
-  rulesIn.value = p.rules || ''; rulesIn.placeholder = 'color: red | blue | green\nnpc: a {color} knight';
+  rulesIn.value = shown.rules; rulesIn.placeholder = 'color: red | blue | green\nnpc: a {color} knight';
   rulesIn.spellcheck = false; rulesIn.autocomplete = 'off';
   const rulesPrev = mkPreview(mkField('Grammar rules (one per line, name: choices)', rulesIn));
   const updRules = () => {
@@ -13378,9 +13413,12 @@ function buildPackEditView() {
   const varsIn = document.createElement('textarea'); varsIn.className = 'io-mono'; varsIn.rows = 3;
   // #585: a saved pick var re-displays in its authoring form `name: source` (the grammar it was
   // rolled from), a formula var as `name = expr`. Editing the source re-rolls on the next save.
-  varsIn.value = (p.vars || []).map(v => v.kind === 'pick' ? `${v.name}: ${v.expr}` : `${v.name} = ${v.expr}`).join('\n');
+  varsIn.value = shown.vars;   // UXP-244: packVarsText via packFieldsFor, or the kept draft
   varsIn.placeholder = 'tax = 0.2\narea = pi * 4^2\nstrength: 3d6';
   varsIn.spellcheck = false; varsIn.autocomplete = 'off';
+  // UXP-244: the live-field reader both exits stash through. Declared once the three controls
+  // exist so no dismissal path can read a half-built form.
+  _packReadFields = () => ({ name: nameIn.value, rules: rulesIn.value, vars: varsIn.value });
   const varsPrev = mkPreview(mkField('Variables (name = formula, or name: random pick, one per line)', varsIn));
   const updVars = () => {
     const parsed = parsePackVarLines(varsIn.value);
@@ -13433,7 +13471,8 @@ function buildPackEditView() {
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const backBtn = document.createElement('button'); backBtn.className = 'io-btn'; backBtn.textContent = 'Back';
-  backBtn.addEventListener('click', () => { _packEditId = null; _packDraft = null; openDataPackManager(); }); // BUG-1: Back drops an unsaved draft
+  // BUG-1: Back still drops the unsaved PACK. UXP-244: it now keeps the typed TEXT first.
+  backBtn.addEventListener('click', () => { stashPackDraft(); _packEditId = null; _packDraft = null; openDataPackManager(); });
   const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
   const save = () => {
     const vp = parsePackVarLines(varsIn.value);
@@ -13449,10 +13488,15 @@ function buildPackEditView() {
     // edit to name/rules/vars would silently drop every captured template.
     const cur = packUnderEdit();
     const fields = { name, rules: rulesIn.value.trim(), vars: frozen, templates: (cur && cur.templates) || [] };
+    // UXP-244: read the draft slot BEFORE _packDraft is cleared below — packDraftKey asks whether
+    // this pack IS the uncommitted draft, and once _packDraft is null a new pack keys as a saved
+    // one, leaving its committed draft behind to shadow the next New pack.
+    const draftKey = packDraftKey(p);
     pushUndo();
     if (isDraft) root.plugins = [...(root.plugins || []), { ..._packDraft, ...fields }]; // BUG-1: a New pack is persisted only NOW
     else root.plugins = updatePluginPack(root.plugins, p.id, fields);
     _packDraft = null;
+    delete _packDrafts[draftKey];   // UXP-244: committed, so the kept draft has served its purpose
     markDirty(); render();
     flashHint(`Saved pack “${name}”`);
     _packFocusId = p.id; _packEditId = null; openDataPackManager(); // UX-1: land on the saved row
@@ -13489,6 +13533,45 @@ function parsePackVarLines(text) {
     else vars.push({ name, expr: rhs });
   }
   return { vars, bad };
+}
+
+// UXP-244: a pack's stored var records rendered back to their authoring text — the inverse of
+// parsePackVarLines, lifted out of buildPackEditView so the draft cores below can ask "does the
+// form differ from the pack?" without a dialog. Pure.
+function packVarsText(vars) {
+  return (vars || []).map(v => v.kind === 'pick' ? `${v.name}: ${v.expr}` : `${v.name} = ${v.expr}`).join('\n');
+}
+
+// UXP-244: is there anything in the editor worth keeping when the user dismisses it? Pure.
+//
+// ONE rule: keep the fields when they differ from the pack as stored, else keep nothing. That
+// single comparison does both jobs. It preserves BUG-1's guarantee — a New pack opened and
+// abandoned without typing reads identical to the fresh `newPluginPack` record, so it returns null
+// and no junk is stored — and it keeps a deliberate CLEARING of a saved pack's rules, which a
+// "keep it only if non-empty" test would have thrown away as if it were an untouched form.
+//
+// Trimmed on both sides so trailing whitespace alone is not a change worth remembering.
+function packDraftFrom(fields, saved) {
+  const f = {
+    name: String(fields?.name ?? '').trim(),
+    rules: String(fields?.rules ?? '').trim(),
+    vars: String(fields?.vars ?? '').trim(),
+  };
+  const s = {
+    name: String(saved?.name ?? '').trim(),
+    rules: String(saved?.rules ?? '').trim(),
+    vars: packVarsText(saved?.vars).trim(),
+  };
+  if (f.name === s.name && f.rules === s.rules && f.vars === s.vars) return null;
+  return f;
+}
+
+// UXP-244: what the edit view SHOWS — a kept draft when there is one, else the saved pack. Pure, so
+// the restore rule is pinned without opening a dialog. The pack is never mutated by a draft; the
+// draft only survives in memory until Save commits it or a fresh form matches the pack again.
+function packFieldsFor(pack, draft) {
+  if (draft) return { name: String(draft.name ?? ''), rules: String(draft.rules ?? ''), vars: String(draft.vars ?? '') };
+  return { name: String(pack?.name ?? ''), rules: String(pack?.rules ?? ''), vars: packVarsText(pack?.vars) };
 }
 
 // Freeze every classified pick var to a rolled value at COMMIT time (#585). Given the parse
@@ -14899,6 +14982,38 @@ function resolveRollLogHome() {
   if (staleTarget) root.rollLog = { on: !!root.rollLog?.on, targetId: null };
   return home;
 }
+// UXP-245: the roll-log home IF one exists — this never creates it. resolveRollLogHome does the
+// creating, so asking it "is there a log yet?" (to paint a menu row, say) would conjure the point as
+// a side effect of a render. Mirrors chronicleHome(). Takes an explicit root so it tests DOM-free.
+function rollLogHome(rootNode = root) {
+  const id = rootNode?.rollLog?.targetId;
+  if (id) {
+    const byId = (function find(n) {
+      if (!n) return null;
+      if (n.id === id) return n;
+      for (const c of (n.children || [])) { const hit = find(c); if (hit) return hit; }
+      return null;
+    })(rootNode);
+    if (byId) return byId;   // a dangling targetId falls through to the by-title lookup
+  }
+  return (rootNode?.children || []).find(c => (c.text || '').split('\n', 1)[0].trim() === 'Rolls') || null;
+}
+
+// UXP-245: what toggling roll logging says. The old copy always promised "your Rolls log" — a
+// place that, before the first roll, does not exist, and after it sits at the END of the document
+// (measured: point 121 of 122, not even in the DOM). Name the real home when there is one, and say
+// plainly that the first roll starts it when there is not. Pure.
+function rollLogToggleMessage(on, homeLabel) {
+  if (!on) return 'Roll logging off';
+  return homeLabel ? `Logging rolls to “${homeLabel}”` : 'Logging rolls. Your first roll starts a Rolls log.';
+}
+// UXP-245: the ONE confirmation a session gives that a roll was recorded, fired on the first logged
+// roll after logging is switched on. Every roll would be noise; none at all was the defect (the roll
+// that grew the document said nothing). It names the destination and the door that reaches it. Pure.
+function rollLogFirstEntryMessage(homeLabel) {
+  return `Recorded in “${homeLabel}”. Open it from the File menu, Go to your Rolls log.`;
+}
+
 // Pure: one roll-log line, `HH:MM · <source> → <result>`. The source (the pill's expr / def /
 // name) is context and is omitted when empty. Node-testable.
 function rollLogEntry(source, result, hhmm) {
@@ -14928,10 +15043,18 @@ function logRoll(node, source, result) {
   // rolled pill's partial repaint would never show it. Flag it so repaintAfterRoll full-renders
   // (a roll is a user click, not a hot path), keeping the roll log visibly live as you roll.
   _rollLogged = true;
+  // UXP-245: say it landed, once per switch-on. The roll grew the document by a point the user
+  // cannot see (the home is appended last and is off-screen in any real document), so with no
+  // message at all a recorded roll was indistinguishable from an unrecorded one.
+  if (!_rollLogAnnounced) {
+    _rollLogAnnounced = true;
+    flashHint(rollLogFirstEntryMessage(crumbLabel(home)));
+  }
   markDirty();
   return true;
 }
 let _rollLogged = false;
+let _rollLogAnnounced = false;   // UXP-245: reset by toggleRollLog, so each switch-on confirms once
 // The roll-log source label for a grammar pill: a NAMED grammar/table logs its callable name; an
 // ANONYMOUS one (an inline {a|b}, oracle, glue template, {ref}) logs its template (the def's RHS),
 // which is the most useful "what was rolled" context. Pure.
@@ -33478,12 +33601,28 @@ function syncRollLogLabel() {
   // #951: the toolbar toggle mirrors the File-menu control (active tint + aria-pressed)
   const tb = document.getElementById('btn-rolllog-tb');
   if (tb) { tb.setAttribute('aria-pressed', on ? 'true' : 'false'); tb.classList.toggle('active', on); }
+  // UXP-245: the door to the log, shown only once there IS a log — the same "exists, so offer it"
+  // gate btn-chronicle uses. rollLogHome never creates, so painting this row cannot conjure a point.
+  const go = document.getElementById('btn-rolllog-goto');
+  if (go) go.style.display = rollLogHome() ? '' : 'none';
 }
+// UXP-245: navigate to the log. zoomInto is the capture strip's own answer to "where does this
+// land" (its cap-dest-jump uses it), so the two destinations are reached the same way.
+document.getElementById('btn-rolllog-goto')?.addEventListener('click', () => {
+  const home = rollLogHome();
+  if (!home) { flashHint('No Rolls log yet. Turn on Log rolls, then roll something.'); return; }
+  closeFileMenu();
+  zoomInto(home.id);
+});
 function toggleRollLog() {
   root.rollLog = { on: !root.rollLog?.on, targetId: root.rollLog?.targetId ?? null };
   markDirty();
   syncRollLogLabel();
-  flashHint(root.rollLog.on ? 'Logging rolls to your Rolls log' : 'Roll logging off');
+  // UXP-245: name the actual home (or say the first roll will start one) instead of promising
+  // "your Rolls log", a place the user had no way to reach. Arm the one-shot landing confirmation.
+  if (root.rollLog.on) _rollLogAnnounced = false;
+  const home = rollLogHome();
+  flashHint(rollLogToggleMessage(root.rollLog.on, home ? crumbLabel(home) : null));
 }
 document.getElementById('btn-rolllog')?.addEventListener('click', toggleRollLog);
 document.getElementById('btn-rolllog-tb')?.addEventListener('click', toggleRollLog);   // #951: first-class toolbar toggle
@@ -34548,10 +34687,11 @@ const GUIDE = [
     ] },
   { id:'roll-log', cat:'dates',
     title:'Roll log',
-    body:"Keep a running record of every random or generated result, so nothing is lost when you click a pill again. Normally re-rolling a pill replaces its result; with the roll log on, each roll is ALSO written to a dated Rolls log the moment it happens. This covers all of the generating pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, roll-on-your-document and estimates. Turn it on with the scroll button in the toolbar (or from the File menu, Log rolls: Off/On). Entries land under a top-level Rolls point, filed by date like the journal (year then month then day), each line reading the time, what was rolled, and the result. To keep the log somewhere specific, open any point's bullet menu and choose Log rolls here; that point becomes the home and logging turns on. It is off by default and adds nothing until you switch it on, so an ordinary document is untouched. Handy for solo journaling play, where the log of what the oracle said is the record you keep.",
+    body:"Keep a running record of every random or generated result, so nothing is lost when you click a pill again. Normally re-rolling a pill replaces its result; with the roll log on, each roll is ALSO written to a dated Rolls log the moment it happens. This covers all of the generating pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, roll-on-your-document and estimates. Turn it on with the scroll button in the toolbar (or from the File menu, Log rolls: Off/On). Entries land under a top-level Rolls point, filed by date like the journal (year then month then day), each line reading the time, what was rolled, and the result. Your first roll after switching on says where it landed, and the File menu then offers Go to your Rolls log, which takes you straight there, since the log sits at the end of a long document where you would not stumble on it. To keep the log somewhere specific, open any point's bullet menu and choose Log rolls here; that point becomes the home and logging turns on. It is off by default and adds nothing until you switch it on, so an ordinary document is untouched. Handy for solo journaling play, where the log of what the oracle said is the record you keep.",
     related:['journal','dice','gen-rules'],
     examples:[
       { syn:'Toolbar scroll button', desc:'toggle roll logging on or off' },
+      { syn:'Menu → Go to your Rolls log', desc:'jump to the log once you have one' },
       { syn:'Menu → Log rolls here', desc:'set a point as the Rolls home (bullet menu)' },
       { syn:'14:32 · 2d6 → 9',  desc:'a log line: time, source, result' },
     ] },
