@@ -2,9 +2,9 @@
 
 > **This is the frozen historical record.** Every entry below is **closed/resolved** and is
 > retained for its decisions and regression tripwires, NOT as active work. The live register is
-> `ux-remediation.md`, which now holds only the two still-open items: **UXP-20** (the standing
-> syntax-sprawl guard, which by design never closes) and **UXP-170** (a deferred, egress-blocked
-> glyph rebuild). Do not file new defects here; file them in `ux-remediation.md`.
+> `ux-remediation.md`, which holds the still-open items: **UXP-20** (the standing syntax-sprawl
+> guard, which by design never closes), **UXP-237**, and **UXP-240 / 242 / 243** from the
+> graph+timeline pass. Do not file new defects here; file them in `ux-remediation.md`.
 >
 > Status glyphs on old headings are historical: a `◐ (RESOLVED pending merge)` heading from a
 > July batch long since merged reads `resolved` in its body — trust the body, not the glyph.
@@ -3088,3 +3088,45 @@ When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and d
   - **A chart glyph would have been the wrong fix.** The est pill already renders a live sparkline beside its icon, so `fa-chart-area` would have read as the same thing twice, which is the look-alike half of the same §1 rule.
   - **The ASCII fallback carried the same defect one layer down**, unnoticed: `≈` at three sites and `∿` at the bullet-menu re-sample row. §1 says a concept wears one mark *everywhere it is referenced*, so the fallbacks are unified on `≈`.
 - **Verified by driving**, because a source pin proves the class name and not the glyph: the rendered `.est-ico` resolves to `U+f83e`, `document.fonts.check` confirms the subset covers it, and its box measures 15.7x12.6 against a known-good icon at 12.5x12.5 (a missing codepoint renders tofu or zero-width, which a presence check would have passed).
+
+### UXP-239 ✓ Toggling a timeline source drops focus to `<body>` and takes Escape with it 🟡 [timeline] (RESOLVED 2026-07-25)
+- **Problem:** `renderTimeline` opens with `panel.innerHTML = ''`, and the source chips (Tasks / Journal / Lore) call `renderTimeline(panel)` with **no refocus**. The focused chip is destroyed, so focus falls to `<body>`. Both the Tab trap and Escape are bound on `#timeline-back` via `keydown`, which only fires for descendants, and the global `document` keydown has an Escape branch for `fileMenu` only. Driven, with a real `Enter` on a focused chip:
+  ```
+  focus before toggle : BUTTON.tl-toggle.tl-src-task.on "Tasks"  [in panel]
+  focus after toggle  : BODY  (focus lost)
+  real Escape         : timelineOpen === true   <-- Escape is dead
+  one Tab             : BUTTON.graph-close      [in panel]
+  real Escape         : closes                  <-- recovers, but only after Tab
+  ```
+- **The control, 200 lines away:** the graph's own toggle does the same destroy-and-rebuild and **restores focus explicitly**, and Escape keeps working. Same interaction, two behaviors:
+  ```
+  graph unlinked toggle:  focus before "Unlinked" -> focus after "Unlinked" -> Escape closes
+  ```
+- **Bounded honestly:** focus does **not** wander behind the overlay (a 6-press Tab walk from the lost-focus state stayed inside the panel), and one Tab recovers. So it is a recoverable dead-end, not a trap: Escape silently does nothing until you press a key that gives no hint it is needed. 🟡, not 🔴.
+- **Rule:** P3 (focus management on re-render) headline, P1-3 (Esc resolves outward) secondary, P4-1 (a key that silently does nothing).
+- **Target:** copy the graph's own line — refocus the equivalent chip after `renderTimeline(panel)`. One statement, with the sibling to copy verbatim.
+- **Resolved:** the chip handler refocuses `.tl-toggle.tl-src-KEY` after `renderTimeline(panel)` — the graph's own line, copied. The **qualified** selector matters: timeline rows reuse the bare `tl-src-KEY` class (`'tl-item tl-src-' + it.source`), so the unqualified form only finds the chip by accident of the chip bar being appended before the body. A pin holds the qualified form specifically.
+- **Verified by driving both builds, because a source pin cannot see focus move.** The same driver was run against the pre-fix `index.html` as a control, and every assertion flipped:
+  ```
+                                          pre-fix          fixed
+  focus after a real Enter on "Tasks"     BODY             BUTTON.tl-toggle.tl-src-task
+  real Escape, no intervening Tab         timelineOpen=1   timelineOpen=0
+  ```
+  A driver that passes on both builds is proving nothing; the control is what makes the pass mean something.
+
+### UXP-241 ✓ Neither overlay announces its own count change 🟢 [graph] [timeline] (RESOLVED 2026-07-25)
+- **Problem:** both panels headline a live count in `.graph-count`, and both rewrite it on a toggle with no announcement. Driven: toggling the timeline's Tasks chip took the count from **"128 dated points" to "8 dated points"**, and the graph's Unlinked toggle took **"15 points, 1 links, 20 unlinked references" to "2 points, 1 links, …"**. Neither panel contains any `[aria-live]`:
+  ```
+  timeline-panel: 0 live regions      graph-panel: 0 live regions
+  ```
+- **The fix has an existing home:** the app already owns a global live region, `#a11y-live`, with an `announce()` helper. This is a missing call, not a missing mechanism.
+- **Rule:** P4-1 (no silent success) for a filter whose whole purpose is changing that number.
+- **Resolved:** `announceOverlayCount(panel)` on all three count-changing toggles — the timeline source chips and **both** graph toggles. The graph's scope toggle was not in the measurement above but rewrites the same count line; leaving it out would have put two toggles in one header where one speaks and one does not (P1).
+- **It reads the RENDERED string back** (`.graph-count`, falling back to `.graph-empty-title` through the pure `overlayCountMessage`) rather than recomputing the count, so the announcement cannot drift from what is on screen. The fallback is not decoration: a filter that empties the panel blanks the count line entirely, and "No dated points here yet" is the honest answer where silence would repeat the original defect at the one moment the user most needs telling.
+- **Verified by driving,** against the pre-fix build as a control — `#a11y-live` was empty after all three toggles before, and carries the new count after:
+  ```
+  timeline Tasks off  -> "5 dated points"
+  graph Unlinked off  -> "2 points, 1 links, 1 unlinked references"
+  graph scope Folder  -> "No links between documents yet"   (the empty-title fallback)
+  timeline all off    -> "No dated points here yet"
+  ```
