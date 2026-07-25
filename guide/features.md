@@ -264,7 +264,10 @@ Build a connected notebook (Zettelkasten style), not just a single document.
   the pack (a captured deck keeps drawing without repeats when someone stamps it). Manage packs in
   File then Reusable packs: every rule and variable becomes callable across the document, captured
   templates appear in the `/template` picker, and you can enable, disable, edit, import or export
-  packs. Pure data, no code, so opening any file stays safe.
+  packs. Half-written rules are safe to walk away from: closing the pack editor keeps what you
+  typed and offers it back next time you open it, the same way the capture box holds an unsent
+  note. Nothing reaches the pack itself until you press Save. Pure data, no code, so opening any
+  file stays safe.
 - **Start from an example.** File then **Start from an example** drops a ready-made, fully live
   example into your document. There are twelve: solo-RPG starters (a campaign oracle that rolls on
   your own cast and threads, an oracle-driven scene loop, a self-computing character sheet) and

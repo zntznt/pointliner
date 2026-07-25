@@ -135,6 +135,11 @@ each line reading the time, what was rolled and the result:
 14:35 · loot → a silver ring
 ```
 
+Your first roll after switching on tells you where it landed, and the **File menu** then offers
+**Go to your Rolls log**, which takes you straight to it. That matters because the log is a point
+like any other: in a long document it sits at the end, out of sight, so without a door you would
+have to scroll to the bottom to read what you rolled.
+
 To keep the log in a particular place, open any point's bullet menu and choose **Log rolls here**;
 that point becomes the home and logging turns on. The entries are ordinary points, so you can search,
 export or annotate them. Logging is off by default and adds nothing until you switch it on.

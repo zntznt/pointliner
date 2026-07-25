@@ -38,10 +38,17 @@ acting (controls drift).
 > overstated the defect in one direction (13 of 15 nodes already cleared the floor) and hid it in the
 > other (the label it counted as target width is `pointer-events:none` and never was tappable).
 >
-> **As of 2026-07-25 the register holds no open defects.** The only item under "Open items" is
-> **UXP-20**, the standing P5 syntax-sprawl guard, which is a gate rather than a bug and is meant to
-> stay open. (The `✓` entries still sitting in this file below are closed work that predates the
-> move-to-archive convention being applied consistently; they are not open items.)
+> The 2026-07-25 **rolls log + reusable packs** pass — the second aimed at surfaces the register had
+> never reached (both were at **zero** mentions across all 304 register + archive entries) — opened
+> **UXP-244** (the pack editor silently discarded typed input on dismissal) and **UXP-245** (a roll
+> landed where you could not find it). **Both are closed and archived**, each driven in a browser
+> before and after. See the pass section at the foot of this file for what was checked and
+> deliberately not filed, including one candidate that died on its control.
+>
+> **As of 2026-07-25 the register again holds no open defects.**
+> (The `✓` entries still sitting in this file below are closed work that predates the
+> move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
+> standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
 
 ---
 
@@ -227,3 +234,110 @@ points for the timeline, 40 linked points plus a deliberately broken link for th
 - **The unlinked count is honest.** The graph reports `"N of M unlinked references"` when `GRAPH_UNLINKED_CAP` truncates, and the plain total when it does not. That is UXP-146's lesson already applied correctly. Confirmed at 20 uncapped references; no finding.
 - **Both overlays trap Tab and restore focus on close** (`graphReturnFocus` / `timelineReturnFocus`), and open with focus on the close button rather than stranding it on the hidden toolbar. Working as documented.
 - **Empty states were read in source only** and cite the fix path well; they were **not driven** in this pass, so nothing is claimed about them.
+
+---
+
+## Rolls log + reusable packs persona pass (2026-07-25) — UXP-244…245
+
+The second pass aimed at surfaces the register had **never reached.** The graph/timeline pass's own
+sweep named the two that were left at **zero** mentions across all 304 register + archive entries:
+the **rolls log** (`logRoll` / `resolveRollLogHome`, the `btn-rolllog-tb` toolbar toggle) and
+**reusable packs** (`openDataPackManager` and its list/edit views). Everything below was driven in
+headless Chromium with real keypresses, against seeded documents.
+
+**Both entries below are CLOSED and their full text, with the resolution, is in
+`ux-remediation-archive.md`.** They are kept here in short form because this pass section is the
+record of how the two surfaces were reached.
+
+### UXP-244 ✓ The pack editor silently discarded everything you typed 🟡 [packs] (RESOLVED 2026-07-25)
+- **Problem:** the pack editor is a full authoring surface (name + a multi-line **Grammar rules**
+  textarea + a multi-line **Variables** textarea), and every way out of it destroys unsaved input
+  with **no message at all**. Driven with 63 characters typed across the three fields:
+
+  | gesture | typed input | packs saved | toast |
+  |---|---|---|---|
+  | `Escape` | 63 chars | 0 | **none emitted** (`#flash-hint` never created) |
+  | `Back` button | 63 chars | 0 | **none emitted** |
+  | `Escape` over an unsaved **edit of a saved pack** | rules grown from 2 choices to 6 | reverts to the 2-choice version | **none emitted** |
+
+  Re-opening does not offer the draft back: `New pack` gives a blank form (`name:"New pack"`,
+  `rules:""`, `vars:""`). The third row is the worst of the three — it silently reverts data that
+  was already **in the document**, and because the discard says nothing, the last toast still on
+  screen at that moment read *“Saved pack “Bestiary””*.
+- **This is not a missing mechanism, it is an unapplied one.** The same file implements
+  draft-survival **four** times: `captureDraft` ("survives close/reopen; cleared only on successful
+  capture", §6/UXP-84), `journalDraft`, `chronicleDraft`, and `_builderFormDrafts` — which
+  **UXP-180 added for exactly this defect in the builder's embedded forms.** The pack editor has no
+  equivalent; a source sweep finds `_builderFormDrafts` present and no pack-draft store.
+- **The intent behind the current code is right and must be preserved.** `_packDraft`'s comment
+  ("BUG-1: … never persisted on root.plugins until the user commits, so 'New pack → Back' leaves no
+  junk") is a deliberate fix: an abandoned pack must not litter the list. Keeping the *typed text*
+  is a different question from persisting an *empty pack*, and the fix must not undo BUG-1.
+- **Violates:** P4 — `ux-definition-of-done.md` §4, "**Drafts survive dismissal**: a transient input
+  surface never silently discards non-empty typed input." Secondarily P1: the rule is applied in
+  four other surfaces of the same app and not this one.
+- **Fixed (owner's call: keep the draft, like capture).** A `_packDrafts` store keyed per pack, read
+  back through the pure `packFieldsFor` when the editor opens and written by `stashPackDraft` on
+  **both** exits (the Back button and `ioCancel`, which Escape and the backdrop route through);
+  cleared only by a successful Save. `packDraftFrom` decides what is worth keeping with one rule —
+  the fields differ from the pack as stored — which both preserves BUG-1 (an untouched New pack is
+  identical to its own fresh record, so nothing is kept and no junk pack is persisted) and keeps a
+  deliberate **clearing**, which a "non-empty only" test would have discarded as an untouched form.
+- **The bug that only driving caught.** The first implementation keyed the draft by `pack.id`. For a
+  new pack that id is minted fresh on every `+ New pack` click, so the store kept every draft
+  faithfully and restored **none** — and every source pin passed, because the code was all present
+  and correct-looking. `packDraftKey` routes the uncommitted pack to a constant slot, and Save
+  snapshots that slot before `_packDraft` is cleared. Pinned by name, since no source pin would have
+  found it.
+
+### UXP-245 ✓ A logged roll landed where you could not find it 🟢 [rolls log] (RESOLVED 2026-07-25)
+- **Problem:** turning the log on flashes *“Logging rolls to your Rolls log”* — naming a place the
+  user then has no way to reach. Driven in a **122-point** document with the dice pill near the top:
+
+  | measured | value |
+  |---|---|
+  | index of the created `Rolls` home | **121 of 122** (appended last) |
+  | is it in the DOM after the roll | **no** (virtualized; below the fold) |
+  | is it in the viewport | **no** |
+  | toast on the roll itself | **none** (empty `#flash-hint`) |
+  | any code path that jumps to the log | **none** (`anyJumpToLog: false`) |
+
+  So the one message the feature ever gives names a destination that is off-screen, un-rendered, and
+  unreachable except by manually scrolling to the end of the document and hoping.
+- **Scope note, stated honestly:** the log itself is **correct**. Entries nest properly under
+  `Rolls → 2026 → 07 → 25` and read `21:13 · 2d6 → 8`; repeat rolls append under the same date; a
+  second roll source appends beside the first; and with logging off `logRoll` is a clean no-op. The
+  defect is discoverability of the destination, not the recording.
+- **Violates:** P2 (a capability whose output has no visible front door) and P4-1 in its "no silent
+  success" reading — the roll that was recorded says nothing.
+- **Fixed (owner's call: the first roll names it, and there is a jump).** Three parts, all through
+  pure cores: `rollLogToggleMessage` stops promising "your Rolls log" and instead names the real
+  home, or says plainly that the first roll will start one; `rollLogFirstEntryMessage` fires **once
+  per switch-on** from `logRoll` (every roll would be noise, none was the defect) and names both the
+  destination and the door; and a **Go to your Rolls log** row in the File menu navigates with
+  `zoomInto`, which is the capture strip's own answer to "where does this land" (`cap-dest-jump`).
+  The row is keyboard-operable for free through the menu's existing roving tabindex and Enter
+  handler, so no new gesture or keybinding was minted.
+- **One trap worth naming:** the row's visibility must be gated on `rollLogHome`, a **non-creating**
+  lookup. `resolveRollLogHome` creates the home as a side effect, so gating on it would have
+  conjured a "Rolls" point into every document each time the File menu was painted. Pinned.
+
+### Checked and deliberately NOT filed
+- **Undo is coherent with logging on — a candidate that died on its control.** The first reading of
+  this pass was "one `Ctrl+Z` after a roll destroys the whole roll log". Re-driven **with logging
+  off as a control**, that is false: with logging on, one undo restores the previous roll value
+  *and* removes that roll's log line (2 lines → 1), exactly as with logging off. The original
+  reading was an artifact of the first roll of a session, where creating the `Rolls` home is its own
+  (correct, and correctly undoable) document change. Recorded because the withdrawal is the useful
+  part: **a driver with no control cannot tell "the feature broke undo" from "this was never
+  undoable".**
+- **The File-menu `Log rolls` and `Reusable packs` rows are keyboard-operable.** Both are
+  `div[role=button]` with no native semantics, which is the shape of the builder keyboard-nav bug
+  (#1021) — but driven, they focus (`tabindex="-1"` seeded by the menu's own roving pass) and
+  `Enter` activates them through the menu's `keydown` handler. Working as documented; no finding.
+- **The pack list view's own P4 work is already done:** `Export…` is `disabled` with no packs,
+  removal goes through `openConfirmDialog`, enable/disable and save/remove each flash a named toast,
+  and `_packFocusId` keeps focus on the acted-on row across the in-place re-render.
+- **The toast on toggling logging on was measured, not assumed.** An earlier reading of "no toast"
+  was the driver querying `#hint`; the element is `#flash-hint`, and the message is present at full
+  opacity. No finding.
