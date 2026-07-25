@@ -75,10 +75,20 @@ and use **Export .md** on the selection bar. The file is named after the first p
 frozen to their current values (the same one-way snapshot as the full Markdown export).
 
 **Leave scaffolding out.** If a point is planning material, not prose (a variable declaration, a
-note to self, a private section), open its **bullet menu** and choose **Exclude from export**: the
-Markdown and plain-text exports skip that point and everything under it, while your OPML save and
-the Web page export keep it. An excluded point shows a faint ring on its bullet so you can see at a
-glance what a shared copy will leave out; choose **Include in export** to undo it.
+note to self, a private section), open its **bullet menu** and choose **Exclude from export**: all
+three **Export a copy** formats skip that point and everything under it, Markdown, plain text and
+Web page alike. Your **OPML save** is the one thing that keeps it, which is the division the feature
+rests on: the save is your backup, the exports are what you hand to someone else. An excluded point
+shows a faint ring on its bullet so you can see at a glance what a shared copy will leave out;
+choose **Include in export** to undo it.
+
+**Excluding a variable declaration is the case to watch.** Markdown and plain text freeze pills to
+the values they are showing, so a frozen number survives the exclusion. The Web page export stays
+live and recomputes on the other person's machine, so a point that reads a variable declared inside
+an excluded section has nothing to read there and shows its "no variable named that" note instead.
+You are told when this happens: the message after the export names the variables the copy lost, and
+counts any links that now point at something the copy does not contain. Move the declaration to a
+point you are keeping, or leave it out on purpose.
 
 ## Taking your work elsewhere
 

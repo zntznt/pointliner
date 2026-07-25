@@ -244,7 +244,7 @@ export function loadCores() {
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','seqDeclParts','ruleDeclParts','makeGrammarRoll','sequenceLint','collectSequences','sequenceForKeyword','keywordIsDone','keywordIsHeld','seqDefString',
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
-    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','queryRows','queryParts','countParts','pickFromQuery','stripQueryTags','queryCountIn','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
+    'pruneNoexport','exportExclusionImpact','parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','queryRows','queryParts','countParts','pickFromQuery','stripQueryTags','queryCountIn','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
     'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting
 

@@ -345,11 +345,25 @@ spaces/level, todos as `- [ ]`, ol numbered, headings bolded, tables as raw md
 blocks); plain text is tab-indented with `stripInlineMd()` removing emphasis
 markers. Neither calls `markClean()` — OPML save remains the canonical "saved".
 **Exclude-from-export (#954, agent-review):** a point flagged `node.noexport` (bullet menu
-"Exclude from export", `_noexport` OPML round-trip) is skipped by BOTH `emit`s — the guard
+"Exclude from export", `_noexport` OPML round-trip) is skipped by BOTH prose `emit`s — the guard
 sits at the top of `emit` so the point AND its subtree drop out, keeping scaffolding
-(variable declarations, planning notes) out of the prose snapshot. Display-only elsewhere:
-the OPML save, the self-contained-HTML export (which embeds the full OPML), and the in-app
-view are untouched; the flagged point carries a faint `.nt-noexport` bullet-ring cue.
+(variable declarations, planning notes) out of the prose snapshot. The flagged point carries a
+faint `.nt-noexport` bullet-ring cue.
+
+The **self-contained-HTML export honors it too**, by a different mechanism: it embeds raw OPML
+rather than walking an emit, so `exportSelfContainedHtml` calls `toOpml(pruneNoexport(root))`.
+`pruneNoexport` returns a root-shaped COPY (shallow per node, sidecar arrays shared by reference
+since `toOpml` only reads them) and never mutates the input, because the save paths run on that
+same live object. The prune is deliberately NOT an option on `toOpml`: it has eleven callers and
+ten are saves, so a flag would put silent data loss one argument away from all of them.
+
+**The OPML save is now the only writer that keeps everything**, which is what makes the flat menu
+label "Exclude from export" accurate as written. It also means the HTML export can lose a
+declaration a kept point reads — the prose exports freeze pills to values, but HTML stays live and
+re-resolves on open. `exportExclusionImpact(full, pruned)` diffs the two trees through
+`collectVars`/`collectLinks` (both take an explicit `rootNode` and bypass the `_varsVer` cache) and
+the post-export toast names the lost variables and newly-broken links. Both trees are read inside
+ONE `withFoldedActive` pass, or the actively-edited point reports a spurious loss.
 
 ### Export — self-contained HTML (the app + the document as one file)
 
