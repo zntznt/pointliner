@@ -21,6 +21,8 @@ acting (controls drift).
 > closing it would remove the gate rather than satisfy it. UXP-170's blocker turned out to be
 > environmental and was resolved 2026-07-25 once the egress was tested rather than assumed.
 > UXP-171–183 closed in Phases 2–7 (UXP-178, the builder's front door, shipped last).
+> Later persona passes on the uncovered surfaces added **UXP-237** (open: an export decision about
+> someone else's file) and **UXP-238** (closed: the search legend's 48 tab stops).
 
 ---
 
@@ -180,3 +182,13 @@ acting (controls drift).
 - **Rule:** P4-1 (no silent failure) at the export surface, and the fidelity rule the S3-PR5b work was about: what ships should not misrepresent what you wrote.
 - **Target:** decide what an unwritten footnote should DO on export rather than defaulting to leaking the syntax. The obvious candidates are dropping the marker (the reference was never real) or emitting a placeholder definition. Not decided here on purpose: it is a content decision about someone else's file, and the render fix does not force it.
 - **Not bundled with the render cue deliberately:** that PR is about the marker on screen, this is about bytes in an exported file. Two surfaces, two changes, per the split that kept S3-PR5a and S3-PR5b honest.
+
+### UXP-238 ✓ The search legend is 48 tab stops 🟡 [search] (SHIPPED 2026-07-25)
+- **Problem:** every one of the 48 cheatsheet chips in `#search-hint` carried `tabindex="0"`, so a keyboard user who Tabbed off the search box walked **48 stops** to reach the next real control. Driven with real keypresses:
+  - `Tab` from `#search-box` → `KBD "#tag"`, and 48 of the page's 64 focusable stops were chips
+  - `Escape` from a chip → focus **stayed on the chip**, panel stayed open (no way out but Tab)
+  - `ArrowRight` from a chip → focus did not move (no alternative to Tab)
+- Tier-gated in the direction that makes it worse: Standard and Lean measure **0** focusable chips (`.sh-row` is `display:none`, which takes them out of the tab order), so it bit only in **Guided**, the tier newcomers start in.
+- **Not** that the chips are focusable: they insert a token on click, so P3 requires keyboard operation. The defect is putting a 48-member group in the *sequential* order instead of giving it one stop.
+- **Rule:** P3-2 (keyboard operability) headline, P1-3 (Esc resolves outward) secondary.
+- **Fixed:** roving tabindex in `wireSearchExamples`, the pattern this file already uses four times (agenda calendar grid, table grid #443, the `role="grid"` helper, the tablist). Chip 0 seeds `tabindex="0"` and the other 47 `-1`; Left/Right walk the flat document order (the rows are ragged, one to three chips each, so there is no column count to assume), Up/Down jump to the first chip of the adjacent `.sh-row`, Home/End reach the ends of the group, and each move swaps `-1`/`0` and focuses. Ends **clamp** rather than wrap, matching the calendar grid. Escape returns focus to `#search-box` **without clearing**, so a second Escape hits the box's own handler and does the clear plus `restoreChromeReturn()` — two levels, in the documented order. No tier gate needed; `display:none` already handles Standard and Lean.

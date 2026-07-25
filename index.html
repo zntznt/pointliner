@@ -30722,11 +30722,31 @@ renderSavedSearches();
 (function wireSearchExamples() {
   const hint = document.getElementById('search-hint');
   if (!hint) return;
-  hint.querySelectorAll('.sh-row kbd').forEach(k => {
+  // ROVING TABINDEX. These 48 chips are deliberately keyboard-operable (they insert a token, so
+  // P3 requires it), but every one of them used to carry tabindex 0 — so a Guided keyboard user
+  // who Tabbed off the search box walked 48 stops to reach the next real control, with no arrow
+  // alternative and no Escape. Exactly one chip is a tab stop now; arrows move within the group.
+  // The pattern is this file's own, used by the agenda calendar grid, the table grid (#443) and
+  // the tablist: one 0, the rest -1, and the swap happens on move.
+  //
+  // No tier gate needed: Standard and Lean hide .sh-row entirely, and display:none already takes
+  // the chips out of the tab order (measured: 0 focusable in both).
+  // Read the group live on every move — the panel's rows are built once, but reading fresh keeps
+  // this honest if a row is ever added. forEach (not spread) on the seeding pass: this line runs
+  // at load, and the headless test harness's document stub is forEach-able but NOT iterable, so a
+  // spread here throws before the file finishes executing and strands every later `let` in TDZ.
+  const chips = () => [...hint.querySelectorAll('.sh-row kbd')];
+  hint.querySelectorAll('.sh-row kbd').forEach((k, i) => {
     k.setAttribute('role', 'button');
-    k.setAttribute('tabindex', '0');
+    k.setAttribute('tabindex', i === 0 ? '0' : '-1');
     k.setAttribute('aria-label', `Add ${k.textContent} to the search`);
   });
+  const rove = (from, to) => {
+    if (!to || to === from) return;
+    from.setAttribute('tabindex', '-1');
+    to.setAttribute('tabindex', '0');
+    to.focus();
+  };
   const applyExample = tok => {
     const sb = document.getElementById('search-box');
     const cur = sb.value.trim();
@@ -30747,6 +30767,37 @@ renderSavedSearches();
     if (!k) return;
     e.preventDefault();
     applyExample(k.textContent);
+  });
+  // Arrow / Home / End navigation within the group, plus Escape outward. The rows are RAGGED (one
+  // to three chips each), so unlike the calendar grid there is no fixed column count: left/right
+  // walk the flat document order the way the legend reads, and up/down jump to the first chip of
+  // the adjacent .sh-row, which is what "a row" means here.
+  hint.addEventListener('keydown', e => {
+    const k = e.target.closest('.sh-row kbd');
+    if (!k) return;
+    // ESCAPE RESOLVES OUTWARD, ONE LEVEL (P1-3). A chip sits inside the search excursion, so the
+    // first Escape leaves the chips for the box WITHOUT clearing, and a second Escape hits the
+    // search box's own handler, which clears and restoreChromeReturn()s the caret. Collapsing both
+    // into one would throw away the query the user just built. The panel stays open either way:
+    // #search-hint is inside #search-wrap, and the panel opens on :focus-within.
+    if (e.key === 'Escape') { e.preventDefault(); document.getElementById('search-box').focus(); return; }
+    if (!['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
+    const all = chips();
+    const i = all.indexOf(k);
+    if (i < 0) return;
+    e.preventDefault();
+    let to = null;
+    if (e.key === 'ArrowRight') to = all[i + 1];
+    else if (e.key === 'ArrowLeft') to = all[i - 1];
+    else if (e.key === 'Home') to = all[0];
+    else if (e.key === 'End') to = all[all.length - 1];
+    else {
+      const rows = [...hint.querySelectorAll('.sh-row')];
+      const r = rows.indexOf(k.closest('.sh-row'));
+      const next = rows[r + (e.key === 'ArrowDown' ? 1 : -1)];
+      to = next?.querySelector('kbd');
+    }
+    rove(k, to);
   });
 })();
 document.getElementById('search-box').addEventListener('keydown', e => {

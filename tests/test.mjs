@@ -15932,11 +15932,60 @@ test('modes batch — search-hint tiered display + clickable examples', () => {
   assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}'),
     'Guided example chips must be clickable (pointer-events re-enabled on the kbd)');
   // the applier stacks the token onto the search box and keeps focus (the saved-chip mousedown model).
-  const wire = _src.slice(_src.indexOf('function wireSearchExamples('), _src.indexOf('function wireSearchExamples(') + 1100);
+  // fnBody, not a byte window: the old pin sliced a fixed 1100 bytes, which is exactly the brittle
+  // shape this file's header warns about — the roving-tabindex keydown pushed the assertions past
+  // the cut and turned a behaviour-preserving insert into a false red.
+  const wire = fnBody(_src, 'wireSearchExamples');
+  assert.ok(wire, 'wireSearchExamples must exist');
   assert.ok(wire.includes("cur ? `${cur} ${tok}` : tok") && wire.includes('applySearch(sb.value)'),
     'clicking an example must add its token to the search box and run the search');
-  assert.ok(wire.includes("e.preventDefault()") && wire.includes("k.setAttribute('role', 'button')") && wire.includes("k.setAttribute('tabindex', '0')"),
-    'example chips must keep the caret (mousedown preventDefault) and be keyboard-operable (role/button + tabindex)');
+  assert.ok(wire.includes("e.preventDefault()") && wire.includes("k.setAttribute('role', 'button')"),
+    'example chips must keep the caret (mousedown preventDefault) and carry role=button');
+  // the apply path the chips exist for stays keyboard-reachable alongside the pointer path
+  assert.ok(/if \(e\.key !== 'Enter' && e\.key !== ' '\) return;[\s\S]{0,200}applyExample\(k\.textContent\)/.test(wire),
+    'Enter/Space on a chip must still insert its token');
+});
+
+// ROVING TABINDEX on the search legend. 48 chips used to each carry tabindex="0", so a Guided
+// keyboard user Tabbing off the search box walked 48 stops to reach the next real control, with no
+// arrow alternative and no Escape (measured: Escape from a chip did nothing at all). One tab stop
+// now; arrows move within the group. Source pins prove the wiring is PRESENT — the focus movement
+// itself was driven in a headless browser (the #1021 lesson).
+test('search legend chips are ONE tab stop with arrow navigation (roving tabindex)', () => {
+  const wire = fnBody(_src, 'wireSearchExamples');
+  // THE FIX: exactly one chip seeded 0, every other -1. A plain `'0'` for all is the bug.
+  assert.ok(wire.includes("k.setAttribute('tabindex', i === 0 ? '0' : '-1')"),
+    'only the FIRST chip may be a tab stop; the rest must be tabindex="-1"');
+  assert.ok(!/k\.setAttribute\('tabindex', '0'\)/.test(wire),
+    'no unconditional tabindex="0" seeding may survive (that is the 48-stop bug)');
+  // the swap: leaving chip drops to -1, arriving chip takes 0 and focus. Without the swap the
+  // group loses its tab stop entirely and Tab can never re-enter it.
+  assert.ok(/const rove = \(from, to\) => \{[\s\S]{0,260}from\.setAttribute\('tabindex', '-1'\)[\s\S]{0,120}to\.setAttribute\('tabindex', '0'\)[\s\S]{0,60}to\.focus\(\)/.test(wire),
+    'rove() must move the tab stop (-1 on the old, 0 on the new) and focus the new chip');
+  // all six keys are handled on the container
+  for (const k of ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End']) {
+    assert.ok(wire.includes(`'${k}'`), `${k} must be handled in the legend keydown`);
+  }
+  assert.ok(wire.includes("if (e.key === 'ArrowRight') to = all[i + 1]") && wire.includes("else if (e.key === 'ArrowLeft') to = all[i - 1]"),
+    'Left/Right walk the FLAT document order (the rows are ragged, so there is no column count)');
+  assert.ok(wire.includes("else if (e.key === 'Home') to = all[0]") && wire.includes("else if (e.key === 'End') to = all[all.length - 1]"),
+    'Home/End reach the ends of the whole group, matching the calendar grid and the builder');
+  assert.ok(/rows\[r \+ \(e\.key === 'ArrowDown' \? 1 : -1\)\]/.test(wire) && wire.includes(".querySelector('kbd')"),
+    'Up/Down must jump to the first chip of the adjacent .sh-row');
+  assert.ok(wire.includes('rove(k, to)'), 'every arrow move must go through rove()');
+  // ESCAPE RESOLVES OUTWARD, ONE LEVEL (P1-3): chip -> search box WITHOUT clearing. A second
+  // Escape then hits the search box's own handler, which clears and restoreChromeReturn()s. If
+  // this branch ever cleared, the two-level resolution would collapse and the query would be lost.
+  const esc = wire.slice(wire.indexOf("if (e.key === 'Escape')"));
+  assert.ok(/if \(e\.key === 'Escape'\) \{ e\.preventDefault\(\); document\.getElementById\('search-box'\)\.focus\(\); return; \}/.test(wire),
+    'Escape on a chip must return focus to the search box and nothing else');
+  assert.ok(!/if \(e\.key === 'Escape'\)[\s\S]{0,160}(value = ''|applySearch\(''\)|restoreChromeReturn)/.test(esc),
+    'Escape on a chip must NOT clear the query — that is the SECOND Escape, on the search box');
+  // the seeding pass must not spread the NodeList: it runs at load, and the headless harness's
+  // document stub is forEach-able but NOT iterable, so a spread throws mid-file and strands every
+  // later `let` in TDZ (14 unrelated-looking failures, none pointing at this line).
+  assert.ok(wire.includes("hint.querySelectorAll('.sh-row kbd').forEach((k, i) =>"),
+    'the load-time seeding pass must use forEach on the NodeList, not a spread');
 });
 
 // item 8 (modes batch): the { grammar picker matches the lean / and @ commands — a one-line tip.
