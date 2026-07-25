@@ -128,6 +128,14 @@ Type words in the search box and **every word must appear**. The operators:
 
 Anything malformed stays a literal text term, so a stray `:` or `#` never breaks the search.
 
+An `is:` filter is the one exception, because `is:` is reserved: there is nothing else an unknown
+value could have meant. Type `is:blocked` and the search box says the filter is not one this app
+knows, and points you at `is:held` (or at `state:blocked`, if your document declares a state by
+that name). It matches nothing rather than quietly searching for the text "is:blocked", and the
+same note appears on a `{query:}` or `{count:}` pill, so a live count in your document is never a
+number that came from a filter which never ran. A half-typed value stays quiet: typing your way
+to `is:todo` never accuses you along the way.
+
 ## Saved searches
 
 Keep a search you run often within one click instead of retyping it. Pin filters like open tasks

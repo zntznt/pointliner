@@ -9082,8 +9082,13 @@ test('search query: parseSearchQuery — words, phrases, tags, is:, negation', (
 });
 
 test('search query: malformed tokens stay literal text (the escape hatch)', () => {
+  // The escape hatch is INTACT for everything that has a second reading as prose. `is:` is the
+  // one exception, and it is not an exception to the hatch's PURPOSE ("never silently match
+  // everything") but to its mechanism: `is:` is a reserved closed namespace, so a rejected value
+  // has no prose reading, and laundering it into text ran a literal search for "is:tomorrow"
+  // rather than matching nothing. It parses invalid now; the three below are unchanged.
   assert.deepEqual(host(c.parseSearchQuery('is:tomorrow')),
-    [{ neg: false, kind: 'text', value: 'is:tomorrow' }]);  // unknown is: value
+    [{ neg: false, kind: 'invalid', field: 'is', value: 'tomorrow', raw: 'is:tomorrow' }]);
   assert.deepEqual(host(c.parseSearchQuery('-')),
     [{ neg: false, kind: 'text', value: '-' }]);            // lone dash is literal
   assert.deepEqual(host(c.parseSearchQuery('#')),
@@ -9190,9 +9195,139 @@ test('properties: parseSearchQuery parses has: and key:value operators', () => {
     [{ neg: true, kind: 'has', value: 'priority' }]);
   assert.deepEqual(host(c.parseSearchQuery('author:alice')),
     [{ neg: false, kind: 'prop', key: 'author', value: 'alice' }]);
-  // is: with unrecognised value still stays literal text
+  // is: with an unrecognised value is an INVALID term, not literal text. It used to be a text
+  // term, i.e. a literal search for the string "is:tomorrow" — this test asserted that.
   assert.deepEqual(host(c.parseSearchQuery('is:tomorrow')),
-    [{ neg: false, kind: 'text', value: 'is:tomorrow' }]);
+    [{ neg: false, kind: 'invalid', field: 'is', value: 'tomorrow', raw: 'is:tomorrow' }]);
+});
+
+// ── an unreadable is: filter matches nothing and says why ────────────────────
+// The parse half and the message half are deliberately separate: matching is honest the instant
+// the token is rejected, while the message waits until the value can no longer become valid.
+
+test('parseSearchQuery — a rejected is: value is invalid, a bare is: is not', () => {
+  const p = s => host(c.parseSearchQuery(s))[0];
+  assert.equal(p('is:held').kind, 'is', 'a canonical value is untouched');
+  assert.equal(p('is:blocked').kind, 'invalid');
+  assert.equal(p('is:blocked').field, 'is');
+  assert.equal(p('is:blocked').value, 'blocked');
+  assert.equal(p('IS:Blocked').value, 'blocked', 'case-insensitive, lowercased like every term');
+  assert.equal(p('-is:blocked').neg, true, 'negation still parses onto the invalid term');
+  // a bare `is:` is a half-typed query: incomplete, not wrong, and it must not accuse anyone
+  assert.equal(p('is:').kind, 'text');
+  // the quoted arm is the same rule: no is: value holds a space, so a quoted one cannot be valid
+  assert.equal(p('is:"a b"').kind, 'invalid');
+  assert.equal(p('is:"a b"').value, 'a b');
+  assert.equal(p('is:""').kind, 'text', 'an empty quoted value is incomplete too');
+});
+
+test('queryMatchesNode — an invalid term kills its clause, and NEGATING it does not widen', () => {
+  const q = s => c.parseSearchQuery(s);
+  const n = c.mkNode('#urgent ship the thing');
+  // The whole point. queryMatchesNode compares `termMatchesNode(...) === !t.neg`, so a guard
+  // placed inside termMatchesNode would make this match EVERY point in the document — a typo
+  // turned into a wider query than the user asked for. It must be a hard false above that.
+  assert.equal(c.queryMatchesNode(q('-is:blocked'), n), false, 'a negated invalid filter matches NOTHING');
+  assert.equal(c.queryMatchesNode(q('is:blocked'), n), false);
+  // AND: the clause is dead, so the query is dead. Answering with the #urgent subset would be
+  // answering a different question than the one asked, which is the defect, not the fix.
+  assert.equal(c.queryMatchesNode(q('is:blocked #urgent'), n), false);
+  assert.equal(c.queryMatchesNode(q('#urgent is:blocked'), n), false, 'order does not matter');
+  // OR: a clause is explicitly independent, so a dead one takes only its own conjunction down.
+  assert.equal(c.queryMatchesNode(q('is:blocked | #urgent'), n), true);
+  assert.equal(c.queryMatchesNode(q('is:blocked | #nope'), n), false);
+  // and the literal-text behaviour it replaced is gone: a point whose PROSE contains the typo
+  // used to match it, because the term was a text search for that string.
+  const literal = c.mkNode('the is:blocked filter never worked');
+  assert.equal(c.queryMatchesNode(q('is:blocked'), literal), false, 'no longer a literal string search');
+});
+
+test('searchHighlightNeedles — a rejected filter is not <mark>ed as if it were a search word', () => {
+  // It used to be: an invalid is: token became kind:'text', and every text term is a needle, so
+  // the app highlighted the user's own typo in the body.
+  assert.deepEqual(host(c.searchHighlightNeedles(c.parseSearchQuery('is:blocked'))), []);
+  assert.deepEqual(host(c.searchHighlightNeedles(c.parseSearchQuery('is:blocked ship'))), ['ship']);
+});
+
+test('searchTermProblems — the four suggestion ranks, best answer first', () => {
+  const msg = (query, opts) => c.searchTermProblems(c.parseSearchQuery(query), opts)[0]?.message || '';
+  // rank 1 — a live sequence state is the EXACT answer: state:blocked returns the user's actual
+  // rows, where is:held returns a superset. So it outranks the alias map, and names both.
+  const withState = { states: ['TODO', 'BLOCKED', 'DONE'] };
+  assert.match(msg('is:blocked', withState), /state:blocked/);
+  assert.match(msg('is:blocked', withState), /is:held/, 'the held band is still offered as the wider read');
+  // rank 2 — no such state, so the curated alias map. `blocked` and `held` share no characters,
+  // which is exactly why this map is hand-written rather than an edit-distance metric.
+  assert.match(msg('is:blocked', { states: ['TODO'] }), /Try is:held\./);
+  assert.ok(!/state:/.test(msg('is:blocked', { states: ['TODO'] })), 'no state is offered when none exists');
+  assert.match(msg('is:finished', {}), /Try is:done\./);
+  assert.match(msg('is:late', {}), /Try is:overdue\./);
+  // rank 3 — a prefix of a real value, on COMMITTED text (no typing flag)
+  assert.match(msg('is:duplicate', {}), /Did you mean is:duplicate-title\?/);
+  // rank 4 — nothing to suggest, so name the door instead of shrugging
+  assert.match(msg('is:bogusfilter', {}), /is:todo, is:done or is:overdue/);
+  // every message leads with what went wrong, and house style bans em dashes in user copy
+  assert.match(msg('is:bogusfilter', {}), /^is:bogusfilter is not a filter this app knows, so it matches nothing\./);
+  for (const qy of ['is:blocked', 'is:finished', 'is:duplicate', 'is:bogusfilter'])
+    assert.ok(!msg(qy, withState).includes('—'), `no em dash in user copy: ${qy}`);
+});
+
+test('searchTermProblems — opts.typing separates "still typing" from "wrong"', () => {
+  const probs = (query, opts) => c.searchTermProblems(c.parseSearchQuery(query), opts);
+  // A live input suppresses a value that is still GROWING toward a real one, so typing i-s-:-t-o-d
+  // on the way to is:todo never accuses anyone. The MATCH is already honest either way.
+  assert.equal(probs('is:tod', { typing: true }).length, 0);
+  assert.equal(probs('is:d', { typing: true }).length, 0);
+  // ...but a value that can never become valid is reported immediately, mid-typing or not.
+  assert.equal(probs('is:blocked', { typing: true }).length, 1);
+  assert.equal(probs('is:doen', { typing: true }).length, 1, 'a transposition is not a prefix');
+  // committed text (a pill in a document) has no half-typed state, so it always reports
+  assert.equal(probs('is:tod', {}).length, 1);
+  // one entry per DISTINCT token, however many times it appears
+  assert.equal(probs('is:blocked is:blocked', {}).length, 1);
+  assert.equal(probs('is:blocked is:bogus', {}).length, 2);
+  // a valid query has nothing to say
+  assert.equal(probs('is:todo #urgent', {}).length, 0);
+  assert.equal(probs('', {}).length, 0);
+  assert.equal(c.searchTermProblems(null).length, 0, 'null-safe, like every pure core here');
+});
+
+test('the search legend teaches exactly the is: values the parser accepts', () => {
+  // Nothing pinned this. The legend is where a Guided user LEARNS the vocabulary, so a value the
+  // parser gained without a chip is unteachable, and a chip the parser lost teaches a filter that
+  // now explains itself instead of working. The completion drift guard covers the OTHER direction
+  // (SEARCH_IS_VALUES vs searchCompletions); this covers the human-readable surface.
+  const canonical = searchIsValuesFromSrc(_src);
+  const legend = _src.slice(_src.indexOf('<div id="search-hint"'), _src.indexOf('</div>\n      </div>'));
+  const chips = [...legend.matchAll(/<kbd>is:([\w-]+)<\/kbd>/g)].map(m => m[1]);
+  const missing = canonical.filter(v => !chips.includes(v));
+  const extra = chips.filter(v => !canonical.includes(v));
+  assert.equal(missing.length, 0, `is: values with no legend chip: ${missing.join(', ')}`);
+  assert.equal(extra.length, 0, `legend chips the parser rejects: ${extra.join(', ')}`);
+});
+
+test('the invalid-filter reason is WIRED, in the search box and in the pills', () => {
+  // A source pin proves the call is present, not that it works; the behaviour is driven in a
+  // browser. What these own is the wiring that cannot run headless, and the two easy mistakes.
+  const app = fnBody(_src, 'applySearch');
+  assert.ok(app.includes('renderSearchProblems(searchTerms)'), 'applySearch must compute the problems');
+  // ONE announce() call. announce() clears the live region then rAF-sets it, so a second call
+  // swallows the first and the reason would be the half that got lost.
+  assert.equal((app.match(/announce\(/g) || []).length, 1, 'exactly one announce() call, with the reason folded in');
+  assert.ok(/announce\(problems\.length \?/.test(app), 'the reason must lead the announcement, not the count');
+
+  const rsp = fnBody(_src, 'renderSearchProblems');
+  assert.ok(rsp.includes('typing: true'), 'the search box is a LIVE input, so a still-growing value stays quiet');
+  assert.ok(rsp.includes('el.hidden = !problems.length'), 'the island hides itself when there is nothing to say');
+  assert.ok(/some\(t => t\.kind === 'invalid'\)/.test(rsp), 'knownStates() is only paid for when there IS a problem');
+
+  const pill = fnBody(_src, 'renderQueryPill');
+  assert.ok(pill.includes('searchTermProblems(parseSearchQuery(expr)'), 'the query/count pill must explain itself too');
+  assert.ok(!/searchTermProblems\(parseSearchQuery\(expr\)[^)]*typing/.test(pill),
+    'a pill is COMMITTED text: no typing flag, so a prefix miss like {count: is:tod} still reports');
+  // the reason REPLACES the zero-result line: an unreadable filter did not find zero, it never ran
+  assert.ok(pill.indexOf('probs.length') < pill.indexOf('No matching points.'),
+    'the problem branch must precede the no-match branch, or the misleading copy wins');
 });
 
 test('properties: queryMatchesNode — has: and key:value matching', () => {
@@ -14038,8 +14173,9 @@ test('oracleSwingBody — every arm is a nonzero weight (a swing still swings)',
 test('parseSearchQuery — is:scheduled and is:unscheduled are recognized is: values', () => {
   assert.equal(host(c.parseSearchQuery('is:scheduled'))[0].value, 'scheduled');
   assert.equal(host(c.parseSearchQuery('is:unscheduled'))[0].value, 'unscheduled');
-  // a bogus is: value falls through to plain text (the reserved-prefix rule)
-  assert.equal(host(c.parseSearchQuery('is:nonsense'))[0].kind, 'text');
+  // a bogus is: value is an invalid term (the reserved-prefix rule: no second reading, so it is
+  // a mistake to explain, not text to search for)
+  assert.equal(host(c.parseSearchQuery('is:nonsense'))[0].kind, 'invalid');
 });
 
 test('termMatchesNode — is:scheduled matches a dated point; is:unscheduled its complement', () => {
@@ -14150,8 +14286,10 @@ test('QX-1 parseSearchQuery — the new is: verbs tokenize as is: terms, not tex
     assert.equal(t.kind, 'is', v);
     assert.equal(t.value, v, v);
   }
-  // an unknown is: verb stays a literal text term (the escape-hatch rule)
-  assert.equal(host(c.parseSearchQuery('is:banana'))[0].kind, 'text');
+  // an unknown is: verb is an invalid term: `is:` is reserved, so there is nothing else it could
+  // have meant. A BARE `is:` is still text — half-typed is incomplete, not wrong.
+  assert.equal(host(c.parseSearchQuery('is:banana'))[0].kind, 'invalid');
+  assert.equal(host(c.parseSearchQuery('is:'))[0].kind, 'text');
 });
 
 test('QX-1 is:passing / is:leaf / is:parent / is:collapsed / is:expanded', () => {
@@ -14260,8 +14398,9 @@ test('QX-4 parseSearchQuery — key:>N parses to propnum; longest-match >= over 
   t = p('cost:>=100'); assert.equal(t.op, '>=');    // >= wins longest-match, NOT '>' + text '=100'
   t = p('score:<=3.5'); assert.equal(t.op, '<='); assert.equal(t.num, 3.5);
   t = p('temp:<-4');    assert.equal(t.op, '<'); assert.equal(t.num, -4);   // signed
-  // is: is never a numeric prop key
-  assert.equal(p('is:>1').kind, 'text');
+  // is: is never a numeric prop key. It is not text either: `is:` is reserved, so `is:>1` is a
+  // rejected is: value that says so, rather than a literal search for the string "is:>1".
+  assert.equal(p('is:>1').kind, 'invalid');
   // a non-numeric value is NOT propnum: it stays the exact key:value (bare) or text
   assert.equal(p('cost:high').kind, 'prop');
   assert.equal(p('cost:>high').kind, 'text');   // op but no number → falls through to literal text
@@ -15380,10 +15519,13 @@ test('modes batch — search-hint tiered display + clickable examples', () => {
     'Guided/classless must open the search-hint on focus');
   // Standard AND Lean open ONLY with live data (saved searches or cross-doc hits) — no empty rectangle,
   // and no cheatsheet, but saved searches stay reachable (a user must be able to recall what they saved).
-  assert.ok(_src.includes('body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]))'),
-    'Standard must open the panel only when saved searches or cross-doc hits exist (no empty rectangle)');
-  assert.ok(_src.includes('body.v-lean #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]))'),
-    'Lean must still open the panel for saved searches / cross-doc data (data, not a helper)');
+  // #sh-invalid joins both gates: a filter the app cannot read is a FACT, not a helper you can
+  // silence by switching tier. Omitting it here would hide the explanation in two tiers of three,
+  // which is the same shape as the bug it explains.
+  assert.ok(_src.includes('body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]),#sh-invalid:not([hidden]))'),
+    'Standard must open the panel only when saved searches, cross-doc hits or an invalid filter exist (no empty rectangle)');
+  assert.ok(_src.includes('body.v-lean #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]),#sh-invalid:not([hidden]))'),
+    'Lean must still open the panel for saved searches / cross-doc data / an invalid filter');
   // the old UNCONDITIONAL opener (a bare selector, no body-class prefix) is retired: every opener now
   // leads with a body tier gate, so the cheatsheet never pops in Standard/Lean.
   assert.ok(!/(^|\n)#search-wrap:focus-within #search-hint\{display:block\}/.test(_src),
