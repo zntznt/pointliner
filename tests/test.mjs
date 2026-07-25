@@ -10146,6 +10146,105 @@ test('UXP-239/241 overlay toggles: refocus after re-render + announce the new co
   assert.ok(unlinkedLine && unlinkedLine.includes('announceOverlayCount(panel)'), 'the graph unlinked toggle must announce its new count');
 });
 
+// UXP-243 pure cores: the graph's tap-target floor. A node's hit area can only grow as far as its
+// nearest neighbour allows, so the separation pass and the radius clamp are one fix in two halves.
+test('UXP-243 tapRadius: takes the floor, clamps to the gap, never shrinks the dot', () => {
+  // a generous gap: take the 24px floor (radius 12)
+  assert.equal(c.tapRadius(5, 100), 12);
+  assert.equal(c.tapRadius(11, 60), 12);
+  // a lone node has no neighbour to steal from
+  assert.equal(c.tapRadius(5, Infinity), 12);
+  // a tight gap clamps to half of it, less a 1px gutter, so two targets never meet
+  assert.equal(c.tapRadius(4, 14), 6);
+  assert.equal(c.tapRadius(4, 20), 9);
+  // ...but NEVER below the dot you can already see — the clamp limits growth, it does not shrink
+  assert.equal(c.tapRadius(11, 14), 11);
+  assert.equal(c.tapRadius(8, 10), 8);
+  // exactly at the separation the layout aims for (26), the floor is reachable
+  assert.equal(c.tapRadius(4, 26), 12);
+  // degenerate radii do not produce a negative or NaN target
+  assert.ok(c.tapRadius(0, 100) === 12 && c.tapRadius(NaN, 100) === 12);
+  assert.ok(c.tapRadius(5, 0) === 5, 'a zero gap keeps the visible radius rather than going negative');
+});
+
+test('UXP-243 nearestDistances: closest other node, per node', () => {
+  const mk = pairs => new Map(pairs.map(([id, x, y]) => [id, { x, y }]));
+  const d = c.nearestDistances(mk([['a', 0, 0], ['b', 3, 4], ['c', 100, 0]]));
+  assert.equal(d.get('a'), 5);          // b is 3-4-5 away, c is 100
+  assert.equal(d.get('b'), 5);
+  assert.equal(+d.get('c').toFixed(3), 97.082);   // hypot(100-3, 0-4), b being closer than a
+  // a single node has no neighbour at all
+  assert.equal(c.nearestDistances(mk([['solo', 10, 10]])).get('solo'), Infinity);
+  assert.equal(c.nearestDistances(new Map()).size, 0);
+  // coincident points report 0 rather than throwing
+  assert.equal(c.nearestDistances(mk([['a', 5, 5], ['b', 5, 5]])).get('a'), 0);
+});
+
+test('UXP-243 relaxSeparation: separates, stays in the box, and is deterministic', () => {
+  const mk = () => new Map([['a', { x: 100, y: 100 }], ['b', { x: 108, y: 100 }], ['c', { x: 104, y: 106 }]]);
+  const W = 400, H = 300, M = 24, MIN = 26;
+  const minPair = pos => {
+    const ids = [...pos.keys()];
+    let best = Infinity;
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+      const p = pos.get(ids[i]), q = pos.get(ids[j]);
+      best = Math.min(best, Math.hypot(p.x - q.x, p.y - q.y));
+    }
+    return best;
+  };
+  assert.ok(minPair(mk()) < 10, 'the fixture starts crowded');
+  const out = c.relaxSeparation(mk(), MIN, W, H, M);
+  assert.ok(minPair(out) > 20, 'crowded nodes must be pushed apart, got ' + minPair(out));
+  // every node stays on the canvas — being pushed off screen is worse than being a little close
+  for (const p of out.values()) {
+    assert.ok(p.x >= M - 0.01 && p.x <= W - M + 0.01, 'x in box: ' + p.x);
+    assert.ok(p.y >= M - 0.01 && p.y <= H - M + 0.01, 'y in box: ' + p.y);
+  }
+  // deterministic: the layout's seeded-determinism pin depends on this having no randomness
+  const a = c.relaxSeparation(mk(), MIN, W, H, M), b = c.relaxSeparation(mk(), MIN, W, H, M);
+  for (const id of a.keys()) { assert.equal(a.get(id).x, b.get(id).x); assert.equal(a.get(id).y, b.get(id).y); }
+  // an already-separated set is left exactly alone
+  const roomy = new Map([['a', { x: 50, y: 50 }], ['b', { x: 200, y: 200 }]]);
+  const same = c.relaxSeparation(roomy, MIN, W, H, M);
+  assert.equal(same.get('a').x, 50); assert.equal(same.get('b').y, 200);
+  // coincident points still separate (the deterministic parity split), rather than dividing by zero
+  const stacked = c.relaxSeparation(new Map([['a', { x: 100, y: 100 }], ['b', { x: 100, y: 100 }]]), MIN, W, H, M);
+  assert.ok(minPair(stacked) > 20, 'coincident nodes must split, got ' + minPair(stacked));
+  assert.ok(Number.isFinite(stacked.get('a').x) && Number.isFinite(stacked.get('a').y));
+  // fewer than two nodes is a no-op, not a crash
+  assert.equal(c.relaxSeparation(new Map([['a', { x: 1, y: 2 }]]), MIN, W, H, M).get('a').x, 1);
+});
+
+test('UXP-243 graphLayout separates its own output (the two halves meet)', () => {
+  const nodes = Array.from({ length: 12 }, (_, i) => ({ id: 'n' + i, title: 'N' + i, deg: 1 }));
+  const edges = nodes.slice(1).map((n, i) => ({ a: nodes[i].id, b: n.id }));
+  const pos = c.graphLayout({ nodes, edges }, { width: 400, height: 700, margin: 24, iterations: 200 });
+  const ids = [...pos.keys()];
+  let worst = Infinity;
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    const p = pos.get(ids[i]), q = pos.get(ids[j]);
+    worst = Math.min(worst, Math.hypot(p.x - q.x, p.y - q.y));
+  }
+  // with this much room the separation pass should reach its target; the point of the pin is that
+  // graphLayout runs it at all, so a future edit cannot quietly drop it
+  assert.ok(worst >= 20, 'graphLayout output should be separated, min pair was ' + worst.toFixed(1));
+});
+
+test('UXP-243 graph node tap target: hit circle + touch gate (src pins)', () => {
+  const rg = fnBody(_src, 'renderGraph');
+  assert.ok(rg.includes('nearestDistances(pos)'), 'renderGraph must measure the real gaps');
+  assert.ok(rg.includes("hit.setAttribute('class', 'graph-hit')") && rg.includes('tapRadius(r,'), 'each node needs a hit circle sized by tapRadius');
+  // the hit circle goes in BEFORE the visible one, or it paints over the dot's hover/focus state
+  assert.ok(rg.indexOf('graph-hit') < rg.indexOf("c.setAttribute('r', r)"), 'the hit circle must be appended before the visible circle');
+  // fill:transparent, never fill:none — `none` is not hit-tested, so the target would receive nothing
+  assert.ok(_src.includes('.graph-hit{fill:transparent'), 'the hit circle must be fill:transparent (fill:none is not hit-tested)');
+  assert.ok(_src.includes('@media(hover:none){.graph-hit{pointer-events:all}}'), 'the enlarged target must be gated to touch');
+  assert.ok(_src.includes('.graph-hit{fill:transparent;stroke:none;pointer-events:none}'), 'it must be inert on a pointer device');
+  // the layout aims for a separation that lets the floor fit
+  assert.ok(_src.includes('const GRAPH_TAP_MIN = 24'), 'the floor must name WCAG 2.2 24px');
+  assert.ok(fnBody(_src, 'graphLayout').includes('relaxSeparation('), 'graphLayout must run the separation pass');
+});
+
 // UXP-242 pure core: the sentence a broken graph node says when activated. The author's own link
 // caption is the only human-readable name a deleted target ever had, so it leads when present.
 test('UXP-242 brokenNodeMessage: names the target and where it is linked from', () => {

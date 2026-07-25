@@ -3178,3 +3178,35 @@ When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and d
 - **Folder scope is covered too.** A missing *document* has no caption, so it names the documents that link to it (`That document is missing. Linked from “notes”.`). Leaving it silent would have been the same defect one scope over.
 - **Verified by driving, against the pre-fix build as a control:** 13/13 after, 5/13 before. Enter, Space and click all speak, the message reaches `#a11y-live` through `flashHint`'s existing channel, a healthy node still navigates, and no opaque id leaks into the copy.
 - **Still true, and deliberately unchanged:** the node stays in the roving order UXP-240 gave it. This entry's alternative — dropping it to `tabindex="-1"` — would have hidden the one dot you opened the graph to investigate.
+
+### UXP-243 ✓ Graph node hit areas sit under the 24px floor on touch 🟢 [graph] (RESOLVED 2026-07-25)
+- **Problem:** `const r = 4 + Math.round((n.deg / maxDeg) * 7)` gives node radii of 4–11px. Measured on a real 390×844 touch viewport with `matchMedia('(hover:none)').matches === true`, taking the **`<g>` group box** (circle plus label, which is what carries the handler) rather than the circle alone:
+  ```
+  15 of 15 nodes under 24px tall   heights 15–23px   widths 49–176px
+  ```
+- **Measured against the right standard:** `ux-definition-of-done.md` §3 reconciles the floor to **WCAG 2.2's 24px**, aiming for the 36–38px strip idiom — not the 44px the first recon assumed. Width passes comfortably; **height fails on every node.**
+- **Genuine tension to resolve, not just a number to raise:** nodes are force-positioned and can sit under 40px apart, so a naive 24px-tall hit box would overlap neighbours and make the wrong node activate. The honest options are increasing `graphLayout`'s minimum separation, or an explicit hit-rect sized to the gap.
+- **Rule:** P3 (tap-target floor, `ux-definition-of-done.md` §3).
+- **This entry measured the wrong thing, in both directions, and the correction is the useful part.** It took the `<g>` group box, calling it "circle plus label, **which is what carries the handler**". The CSS says otherwise:
+  ```css
+  .graph-node text{ … pointer-events:none … }
+  ```
+  The label is **not tappable**. Driven with `elementFromPoint` at a label's coordinates, the hit returns the `svg`, not the node. So:
+  - the 49–176px widths that "passed comfortably" were **untappable geometry**; the real target is the circle alone, and
+  - "15 of 15 nodes under 24px" overstated it — measured as taps rather than boxes, **13 of 15 already cleared the floor**, because the `<g>` height is the circle's height and the larger dots reach 23–24px.
+  `getBBox()` was the wrong instrument. `elementFromPoint` is what a tap actually does.
+- **The real defect is crowding, which the entry half-saw.** The small (low-degree) dots fall to 18px, and where neighbours cluster they overlap each other, dropping the smallest EFFECTIVE tap diameter to **13px at 40 nodes** with 11 pairs sitting closer than 24px apart. The tension this entry named ("a naive 24px hit box would overlap neighbours") is real, and it is why the two options it listed are complements rather than alternatives.
+- **Resolved with both halves** (owner's call): `relaxSeparation` in `graphLayout` pushes any pair closer than 26px apart, and each node carries an invisible `.graph-hit` circle sized by `tapRadius`, clamped to half the real gap so it can never steal a neighbour's tap. The separation runs **after `clampPositions`**, since that rescales every point to fill the box and would otherwise squeeze the separation straight back out.
+- **Measured on a real 390x844 touch viewport** (`matchMedia('(hover:none)')` true), tappable diameter probed by `elementFromPoint` in 8 directions:
+  ```
+                        before                     after
+  15 nodes   min 18px, 13/15 clear        min 26px, 15/15 clear
+  40 nodes   min 13px, 25-30/40 clear     min 25px, 40/40 clear   (3 runs)
+  separation min 16.2px, 11 pairs <24     min 26.4px, 0 pairs <24
+  wrong node returned at a centre: 0 before, 0 after
+  ```
+  The before-figures vary run to run because node ids come from `Math.random()`, so each run lays out differently; the after-figure was 40/40 on every run.
+- **Gated to touch, deliberately.** §3 scopes the floor to `@media(hover:none)`, and an always-on 24px target would light the hover paint from 12px away from a 4px dot. Driven on a desktop viewport, the tappable radius is **byte-identical before and after** (min 18, median 24, 13/15) — the gate holds.
+- **`fill:transparent`, not `fill:none`.** `none` is not hit-tested at all, so the target would have received nothing. This is the kind of thing a source pin cannot catch, and it is pinned by name for that reason.
+- **What this does NOT achieve, stated plainly:** §3's aspirational 36–38px strip idiom. Reaching it would need radius 18–19 on dots that sit 26px apart, which cannot be done without changing the graph's visual density. **24px is the target taken**; the strip idiom does not fit a force-directed web.
+- **The separation is best effort by construction.** A crowded enough canvas cannot separate every pair, and staying on screen matters more, so the box clamp is applied last and may undo a push. `tapRadius` is what keeps that honest: it clamps to the gap that actually exists, never to the one the pass hoped for.
