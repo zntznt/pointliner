@@ -126,6 +126,12 @@ Type words in the search box and **every word must appear**. The operators:
 - `has:key` / `key:value` filter by a property; `key:>N` (also `<`, `>=`, `<=`) compares a numeric
   property, like `cost:>100` or `score:<=3.5`.
 
+You do not have to remember any of this. In **Guided**, focusing the search box opens a cheatsheet
+of the operators above; click any example to add it to what you have already typed, so you can stack
+filters by picking them. From the keyboard it is a single stop: one `Tab` from the search box lands
+on the examples, the arrow keys move between them (`Home` and `End` jump to the ends), `Enter` adds
+the one you are on, and `Esc` puts you back in the search box with your query intact.
+
 Anything malformed stays a literal text term, so a stray `:` or `#` never breaks the search.
 
 An `is:` filter is the one exception, because `is:` is reserved: there is nothing else an unknown

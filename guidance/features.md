@@ -561,8 +561,15 @@ Implemented:
   earliest needle per text node. The search path ignores the show-done toggle
   (as it always has), so `is:done` / `-is:done` are the explicit override.
   Doors (P2): a **focus-shown legend** under the search box (`#search-hint`,
-  CSS `:focus-within`, non-interactive, `aria-describedby` on the input) and a
-  **"Search & filter" section in the `?` panel**. Hashtag click still writes
+  CSS `:focus-within`, `aria-describedby` on the input) and a
+  **"Search & filter" section in the `?` panel**. The legend's example chips are
+  **live**: click (or Enter/Space) stacks that token onto whatever is already
+  typed, so filters are composed by picking. The 48 chips are ONE tab stop, not
+  48 (**roving tabindex**, UXP-238): chip 0 seeds `tabindex="0"`, arrows move
+  within the group (Left/Right flat across the ragged rows, Up/Down to the
+  adjacent `.sh-row`, Home/End to the ends, clamping like the calendar grid),
+  and Escape resolves outward to the search box **without clearing** so a second
+  Escape does the clear + `restoreChromeReturn()`. Hashtag click still writes
   `#tag` into the box — same language, now word-anchored instead of substring.
 - **Saved searches** — star the current query to save it with the document.
   A saved search is the **raw query string** (no naming dialog — queries are

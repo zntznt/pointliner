@@ -1059,6 +1059,15 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-ref{color:var(--acc);font-size:.72em;vertical-align:super;cursor:pointer;opacity:.75;font-weight:600;line-height:0}
 .fn-ref.hi,.fn-ref:hover{opacity:1;text-decoration:underline}
 .fn-ref:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs)}
+/* A marker whose note was never written. MUTED, not --bad/--del: an unwritten footnote is
+   UNFINISHED, not an error — the same distinction UXP-175 recorded for the oracle ("a No is not
+   an error, so it uses --muted, never --warn"). Two precedents point the same way: .brace-attempt
+   is muted ink + a dotted underline for an attempt rather than a failure, and .note-ind's own
+   comment is "the .fn-ref metrics, but muted ink — accent would read as a link-jump". A .fn-ref is
+   --acc precisely BECAUSE it is a live jump; one with nothing to jump to should stop claiming so.
+   No new token, so the dual-home palette invariant is untouched. */
+.fn-ref-empty{color:var(--muted);text-decoration:underline dotted;text-underline-offset:2px;cursor:help}
+.fn-ref-empty:hover,.fn-ref-empty.hi{color:var(--fg)}
 #fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
 #fn-panel.on{transform:translateY(0)}
 .fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
@@ -6753,8 +6762,26 @@ function mdInline(s) {
     const u = safeUrl(url); if (!u) return txt;
     return stash(`<a href="${escQ(u)}" target="_blank" rel="noopener"${title?` title="${escQ(title)}"`:''}>${mdEmph(txt)}</a>`);
   });
-  // footnote refs
-  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(k)}" aria-label="Footnote ${escQ(k)}">[${k}]</sup>`));
+  // footnote refs. A marker whose note was never written used to render IDENTICALLY to one that
+  // has a note — same class, same accent ink, no tooltip — so the only way to tell was to click
+  // it. It was the one dangling reference in the app with no cue, while a broken link gets
+  // node-link-broken, a propless meter gets meter-bad, and an undefined name gets brace-attempt.
+  //
+  // Written-ness is `text.trim()`, NOT record existence: opening the footnote editor creates
+  // {key, text:''} before anything is typed, so a record-existence test would drop the cue the
+  // moment a user clicked the marker and closed without writing — when nothing had changed.
+  // toMarkdown's export already tests fn.text.trim() for the same reason.
+  //
+  // cookieNode null (breadcrumbs, search snippets, the guide — every mdInline caller outside a
+  // node render) means we do not KNOW the footnotes, so it renders exactly as before. An unknown
+  // state must never paint as broken, or every footnote in a search result would be accused.
+  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => {
+    const known = !!cookieNode;
+    const written = !known || (cookieNode.footnotes || []).some(f => f.key === k && (f.text || '').trim());
+    if (written) return stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(k)}" aria-label="Footnote ${escQ(k)}">[${k}]</sup>`);
+    const tip = 'Nothing written here yet. Click to write this footnote.';
+    return stash(`<sup class="fn-ref fn-ref-empty" role="button" tabindex="-1" data-key="${escQ(k)}" title="${escQ(tip)}" aria-label="Footnote ${escQ(k)}, not written yet. Click to write it.">[${k}]</sup>`);
+  });
   // dice rolls — [[dice:KEY]] resolves against the node's stored roll data
   s = s.replace(/\[\[dice:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderDicePill(k, diceRenderList?.find(d => d.key === k))));
@@ -30695,11 +30722,31 @@ renderSavedSearches();
 (function wireSearchExamples() {
   const hint = document.getElementById('search-hint');
   if (!hint) return;
-  hint.querySelectorAll('.sh-row kbd').forEach(k => {
+  // ROVING TABINDEX. These 48 chips are deliberately keyboard-operable (they insert a token, so
+  // P3 requires it), but every one of them used to carry tabindex 0 — so a Guided keyboard user
+  // who Tabbed off the search box walked 48 stops to reach the next real control, with no arrow
+  // alternative and no Escape. Exactly one chip is a tab stop now; arrows move within the group.
+  // The pattern is this file's own, used by the agenda calendar grid, the table grid (#443) and
+  // the tablist: one 0, the rest -1, and the swap happens on move.
+  //
+  // No tier gate needed: Standard and Lean hide .sh-row entirely, and display:none already takes
+  // the chips out of the tab order (measured: 0 focusable in both).
+  // Read the group live on every move — the panel's rows are built once, but reading fresh keeps
+  // this honest if a row is ever added. forEach (not spread) on the seeding pass: this line runs
+  // at load, and the headless test harness's document stub is forEach-able but NOT iterable, so a
+  // spread here throws before the file finishes executing and strands every later `let` in TDZ.
+  const chips = () => [...hint.querySelectorAll('.sh-row kbd')];
+  hint.querySelectorAll('.sh-row kbd').forEach((k, i) => {
     k.setAttribute('role', 'button');
-    k.setAttribute('tabindex', '0');
+    k.setAttribute('tabindex', i === 0 ? '0' : '-1');
     k.setAttribute('aria-label', `Add ${k.textContent} to the search`);
   });
+  const rove = (from, to) => {
+    if (!to || to === from) return;
+    from.setAttribute('tabindex', '-1');
+    to.setAttribute('tabindex', '0');
+    to.focus();
+  };
   const applyExample = tok => {
     const sb = document.getElementById('search-box');
     const cur = sb.value.trim();
@@ -30720,6 +30767,37 @@ renderSavedSearches();
     if (!k) return;
     e.preventDefault();
     applyExample(k.textContent);
+  });
+  // Arrow / Home / End navigation within the group, plus Escape outward. The rows are RAGGED (one
+  // to three chips each), so unlike the calendar grid there is no fixed column count: left/right
+  // walk the flat document order the way the legend reads, and up/down jump to the first chip of
+  // the adjacent .sh-row, which is what "a row" means here.
+  hint.addEventListener('keydown', e => {
+    const k = e.target.closest('.sh-row kbd');
+    if (!k) return;
+    // ESCAPE RESOLVES OUTWARD, ONE LEVEL (P1-3). A chip sits inside the search excursion, so the
+    // first Escape leaves the chips for the box WITHOUT clearing, and a second Escape hits the
+    // search box's own handler, which clears and restoreChromeReturn()s the caret. Collapsing both
+    // into one would throw away the query the user just built. The panel stays open either way:
+    // #search-hint is inside #search-wrap, and the panel opens on :focus-within.
+    if (e.key === 'Escape') { e.preventDefault(); document.getElementById('search-box').focus(); return; }
+    if (!['ArrowRight','ArrowLeft','ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
+    const all = chips();
+    const i = all.indexOf(k);
+    if (i < 0) return;
+    e.preventDefault();
+    let to = null;
+    if (e.key === 'ArrowRight') to = all[i + 1];
+    else if (e.key === 'ArrowLeft') to = all[i - 1];
+    else if (e.key === 'Home') to = all[0];
+    else if (e.key === 'End') to = all[all.length - 1];
+    else {
+      const rows = [...hint.querySelectorAll('.sh-row')];
+      const r = rows.indexOf(k.closest('.sh-row'));
+      const next = rows[r + (e.key === 'ArrowDown' ? 1 : -1)];
+      to = next?.querySelector('kbd');
+    }
+    rove(k, to);
   });
 })();
 document.getElementById('search-box').addEventListener('keydown', e => {

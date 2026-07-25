@@ -2244,6 +2244,67 @@ test('mdToHtml — ATX heading becomes a real <h1>', () => {
   assert.equal(c.mdToHtml('# Title'), '<h1 class="md-h">Title</h1>');
 });
 
+// ── a footnote marker with nothing behind it says so ─────────────────────────
+// Found by the 2026-07-25 persona pass: a written and an unwritten marker rendered IDENTICALLY
+// (same class, same accent ink, no tooltip), so the only way to tell was to click. It was the one
+// dangling reference in the app with no cue, while a broken link, a propless meter and an
+// undefined name all announce themselves.
+function withCookieNode(node, fn) {
+  c._context.__fnNode = node;
+  vm.runInContext('cookieNode = __fnNode;', c._context);
+  try { return fn(); } finally { vm.runInContext('cookieNode = null;', c._context); }
+}
+const fnNode = footnotes => ({ id: 'n1', text: '', children: [], props: [], seq: [], footnotes });
+
+test('a footnote marker whose note was never written is marked; a written one is untouched', () => {
+  // WRITTEN: byte-identical to before. The common case must never acquire a warning — that is the
+  // regression this pair exists to catch.
+  const ok = withCookieNode(fnNode([{ key: 'a', text: 'the actual note' }]), () => c.mdToHtml('See[^a]'));
+  assert.ok(ok.includes('class="fn-ref"'), 'a written footnote keeps the plain class');
+  assert.ok(!ok.includes('fn-ref-empty'), 'and gains no modifier');
+  assert.ok(!ok.includes('title='), 'and no tooltip');
+
+  // UNWRITTEN: the cue, plus a tooltip that names the ACTION rather than the failure.
+  const bad = withCookieNode(fnNode([]), () => c.mdToHtml('See[^a]'));
+  assert.ok(bad.includes('fn-ref fn-ref-empty'), 'an unwritten footnote is marked');
+  assert.match(bad, /title="Nothing written here yet\. Click to write this footnote\."/);
+  assert.match(bad, /aria-label="Footnote a, not written yet\. Click to write it\."/);
+});
+
+test('footnote written-ness is text.trim(), not whether a record exists', () => {
+  // THE SUBTLE ONE. Opening the footnote editor creates {key, text:''} BEFORE anything is typed,
+  // so a record-existence test would drop the cue the moment a user clicked the marker and closed
+  // without writing — exactly when nothing had changed. toMarkdown already tests fn.text.trim().
+  const empty = withCookieNode(fnNode([{ key: 'a', text: '' }]), () => c.mdToHtml('See[^a]'));
+  assert.ok(empty.includes('fn-ref-empty'), 'an empty record still counts as unwritten');
+  const blank = withCookieNode(fnNode([{ key: 'a', text: '   \n ' }]), () => c.mdToHtml('See[^a]'));
+  assert.ok(blank.includes('fn-ref-empty'), 'whitespace-only counts as unwritten too, like the export');
+  // one key written, a second not: only the second is marked
+  const mixed = withCookieNode(fnNode([{ key: 'a', text: 'here' }]), () => c.mdToHtml('One[^a] two[^b]'));
+  assert.equal((mixed.match(/fn-ref-empty/g) || []).length, 1, 'exactly the unwritten one is marked');
+  assert.match(mixed, /data-key="b"[^>]*title=/, 'and it is the one with no note');
+});
+
+test('with no node in scope a footnote marker is never accused (cookieNode null)', () => {
+  // mdInline also runs for breadcrumbs, search snippets and the guide, where there is no node and
+  // therefore no way to know the footnotes. An UNKNOWN state must not paint as broken, or every
+  // footnote in a search result would be marked dangling.
+  const out = c.mdToHtml('See[^a]');   // cookieNode is null outside withCookieNode
+  assert.ok(out.includes('class="fn-ref"'), 'renders exactly as before');
+  assert.ok(!out.includes('fn-ref-empty'), 'and is NOT marked, because we do not know');
+});
+
+test('the unwritten-footnote cue is muted, not an error colour', () => {
+  // Locked as a decision, not left to drift: an unwritten footnote is UNFINISHED, not broken —
+  // the distinction UXP-175 recorded for the oracle ("a No is not an error, so it uses --muted").
+  const rule = _src.match(/\.fn-ref-empty\{[^}]*\}/)?.[0] || '';
+  assert.ok(rule, '.fn-ref-empty must have its own rule');
+  assert.ok(/color:var\(--muted\)/.test(rule), 'muted ink, the .brace-attempt / .note-ind register');
+  assert.ok(!/var\(--bad\)|var\(--del\)|var\(--warn\)/.test(rule),
+    'never an error colour: the marker is unfinished, not wrong');
+  assert.ok(/text-decoration:underline dotted/.test(rule), 'a dotted underline, like .brace-attempt');
+});
+
 test('mdInline — a URL/link char class never swallows an adjacent stashed placeholder (#761)', () => {
   // A footnote ref glued to a URL: both must render, and no raw NUL sentinel may leak.
   const h = c.mdToHtml('See http://example.com[^1]');
@@ -15871,11 +15932,60 @@ test('modes batch — search-hint tiered display + clickable examples', () => {
   assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}'),
     'Guided example chips must be clickable (pointer-events re-enabled on the kbd)');
   // the applier stacks the token onto the search box and keeps focus (the saved-chip mousedown model).
-  const wire = _src.slice(_src.indexOf('function wireSearchExamples('), _src.indexOf('function wireSearchExamples(') + 1100);
+  // fnBody, not a byte window: the old pin sliced a fixed 1100 bytes, which is exactly the brittle
+  // shape this file's header warns about — the roving-tabindex keydown pushed the assertions past
+  // the cut and turned a behaviour-preserving insert into a false red.
+  const wire = fnBody(_src, 'wireSearchExamples');
+  assert.ok(wire, 'wireSearchExamples must exist');
   assert.ok(wire.includes("cur ? `${cur} ${tok}` : tok") && wire.includes('applySearch(sb.value)'),
     'clicking an example must add its token to the search box and run the search');
-  assert.ok(wire.includes("e.preventDefault()") && wire.includes("k.setAttribute('role', 'button')") && wire.includes("k.setAttribute('tabindex', '0')"),
-    'example chips must keep the caret (mousedown preventDefault) and be keyboard-operable (role/button + tabindex)');
+  assert.ok(wire.includes("e.preventDefault()") && wire.includes("k.setAttribute('role', 'button')"),
+    'example chips must keep the caret (mousedown preventDefault) and carry role=button');
+  // the apply path the chips exist for stays keyboard-reachable alongside the pointer path
+  assert.ok(/if \(e\.key !== 'Enter' && e\.key !== ' '\) return;[\s\S]{0,200}applyExample\(k\.textContent\)/.test(wire),
+    'Enter/Space on a chip must still insert its token');
+});
+
+// ROVING TABINDEX on the search legend. 48 chips used to each carry tabindex="0", so a Guided
+// keyboard user Tabbing off the search box walked 48 stops to reach the next real control, with no
+// arrow alternative and no Escape (measured: Escape from a chip did nothing at all). One tab stop
+// now; arrows move within the group. Source pins prove the wiring is PRESENT — the focus movement
+// itself was driven in a headless browser (the #1021 lesson).
+test('search legend chips are ONE tab stop with arrow navigation (roving tabindex)', () => {
+  const wire = fnBody(_src, 'wireSearchExamples');
+  // THE FIX: exactly one chip seeded 0, every other -1. A plain `'0'` for all is the bug.
+  assert.ok(wire.includes("k.setAttribute('tabindex', i === 0 ? '0' : '-1')"),
+    'only the FIRST chip may be a tab stop; the rest must be tabindex="-1"');
+  assert.ok(!/k\.setAttribute\('tabindex', '0'\)/.test(wire),
+    'no unconditional tabindex="0" seeding may survive (that is the 48-stop bug)');
+  // the swap: leaving chip drops to -1, arriving chip takes 0 and focus. Without the swap the
+  // group loses its tab stop entirely and Tab can never re-enter it.
+  assert.ok(/const rove = \(from, to\) => \{[\s\S]{0,260}from\.setAttribute\('tabindex', '-1'\)[\s\S]{0,120}to\.setAttribute\('tabindex', '0'\)[\s\S]{0,60}to\.focus\(\)/.test(wire),
+    'rove() must move the tab stop (-1 on the old, 0 on the new) and focus the new chip');
+  // all six keys are handled on the container
+  for (const k of ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End']) {
+    assert.ok(wire.includes(`'${k}'`), `${k} must be handled in the legend keydown`);
+  }
+  assert.ok(wire.includes("if (e.key === 'ArrowRight') to = all[i + 1]") && wire.includes("else if (e.key === 'ArrowLeft') to = all[i - 1]"),
+    'Left/Right walk the FLAT document order (the rows are ragged, so there is no column count)');
+  assert.ok(wire.includes("else if (e.key === 'Home') to = all[0]") && wire.includes("else if (e.key === 'End') to = all[all.length - 1]"),
+    'Home/End reach the ends of the whole group, matching the calendar grid and the builder');
+  assert.ok(/rows\[r \+ \(e\.key === 'ArrowDown' \? 1 : -1\)\]/.test(wire) && wire.includes(".querySelector('kbd')"),
+    'Up/Down must jump to the first chip of the adjacent .sh-row');
+  assert.ok(wire.includes('rove(k, to)'), 'every arrow move must go through rove()');
+  // ESCAPE RESOLVES OUTWARD, ONE LEVEL (P1-3): chip -> search box WITHOUT clearing. A second
+  // Escape then hits the search box's own handler, which clears and restoreChromeReturn()s. If
+  // this branch ever cleared, the two-level resolution would collapse and the query would be lost.
+  const esc = wire.slice(wire.indexOf("if (e.key === 'Escape')"));
+  assert.ok(/if \(e\.key === 'Escape'\) \{ e\.preventDefault\(\); document\.getElementById\('search-box'\)\.focus\(\); return; \}/.test(wire),
+    'Escape on a chip must return focus to the search box and nothing else');
+  assert.ok(!/if \(e\.key === 'Escape'\)[\s\S]{0,160}(value = ''|applySearch\(''\)|restoreChromeReturn)/.test(esc),
+    'Escape on a chip must NOT clear the query — that is the SECOND Escape, on the search box');
+  // the seeding pass must not spread the NodeList: it runs at load, and the headless harness's
+  // document stub is forEach-able but NOT iterable, so a spread throws mid-file and strands every
+  // later `let` in TDZ (14 unrelated-looking failures, none pointing at this line).
+  assert.ok(wire.includes("hint.querySelectorAll('.sh-row kbd').forEach((k, i) =>"),
+    'the load-time seeding pass must use forEach on the NodeList, not a spread');
 });
 
 // item 8 (modes batch): the { grammar picker matches the lean / and @ commands — a one-line tip.
