@@ -161,6 +161,8 @@ Turn the document into a lightweight planner.
   `is:recently-edited`), date and property operators (`due:overdue`, `due:week` / `due:month`,
   `priority:a`, `var:name`, `has:key`, `key:value`, numeric compares `key:>N` / `key:<=N`), exact
   `"phrases"`, `-` to exclude, and `a | b` for either-side (OR) matching. Star a search to save it.
+  An `is:` filter the app does not know says so and names the one you probably wanted, in every
+  tier and on `{query:}` / `{count:}` pills too, rather than answering with a confident zero.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 - **Browse tags.** File then Browse tags shows every hashtag as a tree with a count on each (nested
   tags under their parent); pick one to filter the document to it. ([hashtags](getting-around.md#hashtags))

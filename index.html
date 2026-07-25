@@ -380,8 +380,12 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
      user DATA and must stay reachable (you can't recall what you saved with no surface for it), so
      the data islands still open the panel. */
 body:not(.v-standard):not(.v-lean) #search-wrap:focus-within #search-hint{display:block}
-body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])),
-body.v-lean #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden])){display:block}
+/* #sh-invalid joins both gates: it is the one island that is a FAILURE MESSAGE rather than
+   teaching (.sh-row) or data (#sh-saved, #sh-workspace). Copy you switch tiers to silence is a
+   preference; a filter the app cannot read is a fact, and it reaches every tier. Leaving it out
+   here would hide the explanation in two tiers of three, which is the shape of the bug it fixes. */
+body.v-standard #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]),#sh-invalid:not([hidden])),
+body.v-lean #search-wrap:focus-within #search-hint:has(#sh-saved:not([hidden]),#sh-workspace:not([hidden]),#sh-invalid:not([hidden])){display:block}
 /* DIAL: the search legend TEACHES the query operators (is:done, #tag, "phrase") via the .sh-row cheatsheet
    rows. Standard AND Lean strip those rows (teaching text off once you know the commands); Guided keeps
    them. The operators still work, the cheatsheet just doesn't pop. #sh-saved (saved searches) + #sh-workspace
@@ -400,6 +404,11 @@ body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:n
 body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}
 #search-hint .sh-row kbd:hover{border-color:var(--acc)}
 #search-hint .sh-row kbd:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* an unreadable filter (searchTermProblems). Inert like the teaching rows — it is text to read,
+   never a target — so pointer-events stay off and the caret never leaves the search box. --warn
+   already lives in BOTH palette homes (the CSS :root blocks and applyTheme's string), so this
+   costs no dual-home edit. */
+#sh-invalid{pointer-events:none;color:var(--warn);border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px;max-width:340px}
 /* saved searches: the one interactive island in the otherwise inert hint panel */
 #sh-saved{pointer-events:auto;border-bottom:1px solid var(--bdr);margin-bottom:6px;padding-bottom:6px}
 .sh-saved-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px}/* UXP-135: the one eyebrow recipe (DL §4): 10px/600/.07em, was missing font-weight */
@@ -2480,6 +2489,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
       <button id="search-save" title="Save this search" aria-label="Save this search" aria-pressed="false"></button>
       <button id="search-clear" title="Clear search" aria-label="Clear search">✕</button>
       <div id="search-hint" role="group" aria-label="Search filters">
+        <div id="sh-invalid" hidden></div>
         <div id="sh-workspace" hidden>
           <div class="sh-saved-title" id="sh-workspace-title">Found in other documents</div>
           <div id="sh-workspace-list" role="list" aria-label="Matches in other documents"></div>
@@ -15025,9 +15035,18 @@ function cycleJournalMode() {
 //               ANY clause does. No grouping (parens deferred until real queries
 //               demand them). `|` reuses the app's own alternation glyph ({a|b},
 //               sequence declarations, tables), not a new sigil.
-// Anything malformed (unknown is: value, lone -, #non-word, a glued a|b) stays a
-// literal text term — the same invalid-body escape hatch as {…} shorthand, so a
-// query never silently matches everything (an empty OR clause is dropped, same rule).
+// Anything malformed (lone -, #non-word, a glued a|b) stays a literal text term — the
+// same invalid-body escape hatch as {…} shorthand, so a query never silently matches
+// everything (an empty OR clause is dropped, same rule).
+// EXCEPT `is:`, which is a RESERVED, CLOSED namespace — the two prop arms below carve it
+// out explicitly, so an `is:` token the closed set rejects has no second reading. It is
+// unambiguously a mistake, not prose (the {oracle}-with-no-argument shape: the keyword
+// committed, so the tail is what went wrong). Laundering it into a text term never meant
+// "match nothing": it ran a LITERAL search for the string "is:blocked" and handed it to
+// searchHighlightNeedles, so the app searched for and <mark>ed the user's typo. It now
+// parses {kind:'invalid'}, which matches nothing at every consumer of this one funnel
+// (search box, {query}/{count}/{roll}, query bases, folder pills, cross-doc search) and
+// carries a reason for the surfaces that can show one (searchTermProblems).
 
 // The search-operator vocabulary — SINGLE-SOURCED here so the parser and the picker's
 // completion can never drift. SEARCH_IS_VALUES is the one canonical is: list: the
@@ -15066,7 +15085,14 @@ function parseSearchQuery(q) {
     if (m[2] !== undefined) {                       // key:"value with spaces" — a contains prop filter
       const val = (m[3] !== undefined ? m[3] : m[4]) || '';
       const key = m[2].toLowerCase();
-      if (key === 'is') { terms.push({ neg, kind: 'text', value: (m[2] + ':' + val).toLowerCase() }); continue; }  // is: is reserved, never a prop
+      // is: is reserved, never a prop. No member of the closed set holds a space or a quote, so a
+      // QUOTED is: value can never be valid — it is the invalid arm's twin, not a text term. An
+      // EMPTY one (is:"") is incomplete rather than wrong, so it keeps the literal escape hatch.
+      if (key === 'is') {
+        terms.push(val ? { neg, kind: 'invalid', field: 'is', value: val.toLowerCase(), raw: (m[2] + ':' + val).toLowerCase() }
+                       : { neg, kind: 'text', value: (m[2] + ':').toLowerCase() });
+        continue;
+      }
       terms.push({ neg, kind: 'prop', key, value: val.toLowerCase(), contains: true });
       continue;
     }
@@ -15087,6 +15113,11 @@ function parseSearchQuery(q) {
     // limit and throws mid-render(). (Adversarial pass, blast: crash.) The `else if` chain below
     // catches the fall-through; an over-long token becomes a plain text search, which is harmless.
     else if ((t = tok.match(SEARCH_IS_RE)))                    terms.push({ neg, kind: 'is',   value: t[1].toLowerCase() }); // built from SEARCH_IS_VALUES — one source for parser + completion
+    // A committed-but-unreadable is: token (see the header note). A BARE `is:` stays a text term:
+    // that is a half-typed query, incomplete rather than wrong, and it must not accuse the user
+    // mid-keystroke. Placed right after the canonical arm; no later arm can claim an `is:` token
+    // anyway (both prop arms exclude the key by name), so this only ever catches the fall-through.
+    else if (/^is:.+$/i.test(tok))                             terms.push({ neg, kind: 'invalid', field: 'is', value: tok.slice(3).toLowerCase(), raw: tok.toLowerCase() });
     else if ((t = tok.match(/^has:([\w][\w-]*)$/i)))            terms.push({ neg, kind: 'has',  value: t[1].toLowerCase() });
     else if ((t = tok.match(/^(due|start):(.+)$/i))) {
       // due:today  due:overdue  due:YYYY-MM-DD  due:<date  due:>date — and the
@@ -15128,6 +15159,51 @@ function parseSearchQuery(q) {
     else terms.push({ neg, kind: 'text', value: tok.toLowerCase() });
   }
   return terms;
+}
+
+// The words people reach for that are NOT is: values, each mapped to the one that is. Curated,
+// not computed: `blocked` and `held` share no characters, so no edit-distance metric could ever
+// connect them — the same reason braceAttemptReason's NEAR_MISS map is hand-written. Keep the
+// values inside the is: family; a cross-field suggestion (state:, has:) is decided per rank below.
+const SEARCH_IS_NEAR = {
+  blocked:'held', waiting:'held', stalled:'held', paused:'held', onhold:'held',
+  next:'todo', open:'todo', active:'todo', unchecked:'todo', incomplete:'todo',
+  complete:'done', completed:'done', finished:'done', closed:'done', checked:'done',
+  late:'overdue',
+};
+
+// searchTermProblems(terms, opts) — why an unreadable filter matches nothing, one entry per
+// distinct offending token. This is the MESSAGE half, split from the parse half on purpose:
+// parsing is honest IMMEDIATELY (an unreadable filter matches nothing, always), while the message
+// waits until the value can no longer become valid. That split is what keeps a half-typed `is:tod`
+// from accusing the user on every keystroke of `is:todo`, without ever letting the MATCH lie.
+//   opts.states — the doc's live sequence states (knownStates()); enables the exact answer.
+//   opts.typing — the caller is a live input, so stay silent while the value is still a prefix of
+//                 a real one. Committed text (a pill in a document) omits it and always reports.
+// Pure + Node-testable. User-facing copy: AP punctuation, no em dashes.
+function searchTermProblems(terms, opts) {
+  opts = opts || {};
+  const states = (opts.states || []).map(s => String(s).toLowerCase());
+  const out = [], seen = new Set();
+  for (const t of terms || []) {
+    if (t.kind !== 'invalid' || t.field !== 'is') continue;
+    const v = t.value || '';
+    if (seen.has(v)) continue;
+    const prefixOf = SEARCH_IS_VALUES.find(x => x.startsWith(v));
+    if (opts.typing && prefixOf) continue;                 // still growing toward a real value
+    seen.add(v);
+    let fix;
+    // Rank 1 outranks the alias map because it is EXACT: with a real BLOCKED state in the
+    // document, state:blocked returns the user's actual rows while is:held returns a superset.
+    if (states.includes(v)) fix = 'Try state:' + v + ', the sequence state by that name'
+      + (SEARCH_IS_NEAR[v] ? ', or is:' + SEARCH_IS_NEAR[v] + ' for the whole held band.' : '.');
+    else if (SEARCH_IS_NEAR[v]) fix = 'Try is:' + SEARCH_IS_NEAR[v] + '.';
+    else if (prefixOf) fix = 'Did you mean is:' + prefixOf + '?';
+    else fix = 'Try is:todo, is:done or is:overdue. The search legend lists every one of them.';
+    out.push({ raw: t.raw || ('is:' + v), value: v,
+      message: 'is:' + v + ' is not a filter this app knows, so it matches nothing. ' + fix });
+  }
+  return out;
 }
 
 // Does one term hit this node (negation NOT applied here)? Pure given seqs + vars
@@ -15348,7 +15424,14 @@ function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMa
   const clauses = [[]];
   for (const t of terms) { if (t.kind === 'or') clauses.push([]); else clauses[clauses.length - 1].push(t); }
   const live = clauses.filter(c => c.length);
-  return live.length > 0 && live.some(c => c.every(t => termMatchesNode(t, node, seqs, vars, links) === !t.neg));
+  // An 'invalid' term (an unreadable is: filter) kills its whole clause REGARDLESS of neg, and the
+  // check sits HERE rather than inside termMatchesNode on purpose: the comparison below is
+  // `=== !t.neg`, so a termMatchesNode-side `return false` would make `-is:blocked` read
+  // false === !true → TRUE and match every point in the document. A typo must never WIDEN a query.
+  // Same rule as the dropped empty clause above: never auto-true (P4). An OR clause is explicitly
+  // independent, so `is:blocked | #urgent` still answers with the #urgent side; a dead clause only
+  // takes its own conjunction down with it.
+  return live.length > 0 && live.some(c => c.every(t => t.kind !== 'invalid' && termMatchesNode(t, node, seqs, vars, links) === !t.neg));
 }
 
 // queryRows(expr, rootNode, hostId, cap) — the shared query-to-rows core: run a search
@@ -24978,13 +25061,18 @@ function renderQueryPill(key, q) {
   const scopeTip = !folderScope ? '' : folderLive
     ? ' Searches the whole folder; other documents count as saved.'
     : ' Folder search: no folder is connected, so this shows the current document only.';
+  // An unreadable filter inside the expression. No `typing` flag: a pill is COMMITTED text sitting
+  // in a document, so there is no half-typed state to protect and a prefix miss ({count: is:tod})
+  // should say so. This is why a 0 here is trustworthy now: either the search ran, or it explains.
+  const probs = expr.trim() ? searchTermProblems(parseSearchQuery(expr), { states: [...knownStates()] }) : [];
+  const probTip = probs.length ? ' ' + probs.map(p => p.message).join(' ') : '';
   // #541: the count variant is a compact INLINE number, not the block list — same record,
   // same live recompute, only the render differs. 0 is a valid, visible answer (P4).
   if (q.show === 'count') {
     const total = expr.trim() ? runQuery().total : 0;
     return `<span class="query-pill query-pill-count${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
-      + ` title="Count of: ${escQ(expr || 'empty query')}.${escQ(scopeTip)} Click to edit"`
-      + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}.${escQ(scopeTip)} Click to edit the search">`
+      + ` title="Count of: ${escQ(expr || 'empty query')}.${escQ(scopeTip)}${escQ(probTip)} Click to edit"`
+      + ` aria-label="Count of ${escQ(expr || 'empty query')}: ${total} matching point${total === 1 ? '' : 's'}.${escQ(scopeTip)}${escQ(probTip)} Click to edit the search">`
       + `<span class="query-ico"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`
       + `<span class="query-count">${total}</span>`
       + `<span class="query-edit" role="button" tabindex="-1" aria-label="Edit query" title="Edit query"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
@@ -24997,6 +25085,9 @@ function renderQueryPill(key, q) {
     + `<span class="query-edit" role="button" tabindex="-1" aria-label="Edit query" title="Edit query"><i class="fa-solid fa-pen" aria-hidden="true"></i></span></span>`;
   let body;
   if (!expr.trim()) body = `<span class="query-empty">No query yet. Click to edit.</span>`;
+  // The reason REPLACES "No matching points." rather than joining it: an unreadable filter did not
+  // find zero, it never ran. Saying both would keep the confidently-wrong half on screen.
+  else if (probs.length) body = `<span class="query-empty">${escHtml(probs.map(p => p.message).join(' '))}</span>`;
   else if (!total) body = `<span class="query-empty">No matching points.</span>`;
   else {
     const items = rows.map(r => {
@@ -25011,7 +25102,7 @@ function renderQueryPill(key, q) {
   }
   return `<span class="query-pill${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1"`
     + (scopeTip ? ` title="${escQ(scopeTip.trim())}"` : '')
-    + ` aria-label="Query ${escQ(expr)}: ${total} matching point${total === 1 ? '' : 's'}.${escQ(scopeTip)} Click a result to jump, or click the pill to edit its search.">`
+    + ` aria-label="Query ${escQ(expr)}: ${total} matching point${total === 1 ? '' : 's'}.${escQ(scopeTip)}${escQ(probTip)} Click a result to jump, or click the pill to edit its search.">`
     + head + body + `</span>`;
 }
 
@@ -30130,13 +30221,32 @@ function applySearch(q) {
   syncSearchSave();
   render();
   renderWorkspaceSearchResults(searchQuery);   // WS-2: refresh cross-doc results (covers typing, clear, programmatic)
+  const problems = renderSearchProblems(searchTerms);
   if (searchQueryLC && searchTerms.length) {       // P3: a filter that repaints without moving focus announces (UXP-88)
     const vp = focusedId ? nodeById(focusedId) : root;
     let n = 0;
     const cnt = node => { if (nodeMatchesSearch(node)) n++; (node.children || []).forEach(cnt); };
     (vp.children || []).forEach(cnt);
-    announce(n === 1 ? '1 matching point' : n + ' matching points');
+    const count = n === 1 ? '1 matching point' : n + ' matching points';
+    // ONE live-region write, not two: each clears the region then rAF-sets it, so a second write
+    // swallows the first. The reason leads — "0 matching points" is the misleading half.
+    announce(problems.length ? problems[0].message + ' ' + count : count);
   }
+}
+
+// The #sh-invalid island: the search box's rendering of searchTermProblems. Returns the problems
+// so applySearch can fold the first into its single announce(). The island alone is not enough for
+// a screen reader: #search-hint is the box's aria-describedby, and that is read on FOCUS, not when
+// its text changes under a caret that never moved.
+function renderSearchProblems(terms) {
+  // Only pay knownStates() when there is something to explain. It is _varsVer-cached, so the cost
+  // is a miss at most once per edit, but the overwhelmingly common query has nothing invalid in it
+  // and should walk nothing at all (guidance/performance.md: the keystroke path stays cheap).
+  const problems = (terms || []).some(t => t.kind === 'invalid')
+    ? searchTermProblems(terms, { states: [...knownStates()], typing: true }) : [];
+  const el = document.getElementById('sh-invalid');
+  if (el) { el.textContent = problems.map(p => p.message).join(' '); el.hidden = !problems.length; }
+  return problems;
 }
 
 document.getElementById('search-box').addEventListener('input', function() {
@@ -33368,7 +33478,7 @@ const GUIDE = [
     ] },
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
-    body:"Find anything in a large document without scrolling. Narrow to a topic, surface all open tasks or spot everything that's overdue. Type words and every word must appear.\n\nPut a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.",
+    body:"Find anything in a large document without scrolling. Narrow to a topic, surface all open tasks or spot everything that's overdue. Type words and every word must appear.\n\nPut a minus sign before a word to exclude it, quotes around an exact phrase or a #tag to filter by label. Extra filters like is:done or due:today narrow things down further. A pipe with spaces around it means either side can match: draft | review finds points with either word.\n\nIf you use an is: filter this app does not know, it tells you instead of quietly answering nothing. Type is:blocked and it will say so and point you at is:held, or at the sequence state by that name if your document has one. The same note appears on a {query:} or {count:} pill, so a live count in your document is never a number derived from a filter that never ran.",
     related:['saved-searches','query','hashtags'],
     examples:[
       { syn:'word word',              desc:'all terms must match' },
