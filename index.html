@@ -2483,6 +2483,42 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
   #sc-toggle{width:36px;height:36px;font-size:15px}
   /* suppress the iOS long-press text/callout on tappable widgets */
   .bullet,.collapse-btn,.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.fn-ref{-webkit-touch-callout:none}
+
+  /* ── UXP-248: the 24px tap floor, for the controls the enlargement pass never reached ──
+     Found by auditing guardrail 5 across every surface rather than one screen: nine SHARED
+     control classes measured under the WCAG 2.2 floor on touch, fanning out to 100+ instances.
+     Every one is fixed the same way the guardrail prescribes — an invisible ::after overlay that
+     lifts the HIT area and leaves the visual box exactly where it was. That is not merely the
+     tidier option here, it is the only legal one: `.ag-toggle`'s 22px height is pinned by the
+     canon-chip design test (#397), so growing the box would trade an accessibility fix for a
+     design regression. Growth is vertical-only where a control sits in a row of text or chips,
+     so a bigger target never steals its neighbour's tap. */
+  .close-btn,.collapse-btn,.io-chip,.tl-toggle,.prop-chip,.fm-title,.guide-nav-btn,.ag-toggle{position:relative}
+  /* the shared dismiss button is the worst of them at 19x16, and design-language §4 makes it the
+     ONE close affordance, so every dialog that obeys that rule inherited an under-floor target */
+  .close-btn::after{content:'';position:absolute;inset:-10px}
+  /* The chevron is 24px wide and so already legal on paper, but measured only 23: the bullet's
+     own -5px overlay reaches back over its right edge. The bullet is the app's most important
+     touch target, so the chevron yields rather than contests it, and grows LEFT into empty
+     gutter instead. Symmetric growth here would just re-fight the same pixel. */
+  .collapse-btn::after{content:'';position:absolute;inset:0 0 0 -6px}
+  .io-chip::after,.ag-toggle::after,.tl-toggle::after{content:'';position:absolute;inset:-4px 0}
+  /* prop chips sit inline in a point's text, so they grow vertically only and by less than half
+     the row gap — verified against the rows above and below, which keep their own taps */
+  .prop-chip::after{content:'';position:absolute;inset:-4px 0}
+  /* The guide nav and the document title sit inside SCROLLABLE panes (overflow:auto), which clip
+     any overlay that leaves the box — so for these two the overlay path is simply unavailable and
+     the visual box itself has to grow. Padding, not height, so the text stays put. */
+  .guide-nav-btn{padding-top:8px;padding-bottom:8px}
+  .fm-title{padding-top:5px;padding-bottom:5px;margin-top:-5px;margin-bottom:-5px}
+  /* Same trap as `.cap-chip` above, missed one container over — and here it bites TWICE. The
+     parent `.cap-dest-btn` is overflow:hidden for its corner rounding, and the button itself is
+     overflow:hidden to ellipsis a long inbox name. Both clip the -8px overlay the button already
+     declares, so the recipe was applied and then silently defeated at two levels. The parent can
+     simply stop clipping; the button still must, or the name stops truncating, so it clips with
+     an 8px margin instead — text truncates exactly as before, the overlay survives. */
+  .cap-dest-btn{overflow:visible}
+  .cap-dest-name-btn{overflow:clip;overflow-clip-margin:8px}
 }
 /* focus-visible sweep (UXP-17): every keyboard-focusable control shows the standard
    2px accent ring (the app's one focus indicator), instead of the per-browser default. */

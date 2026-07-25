@@ -47,6 +47,10 @@ The everyday outliner. This is the part you use without thinking about it.
 - **Touch quick bar.** On a phone or tablet, a bottom bar keeps the essentials under your
   thumb: capture, a new point, a new point with the `@` insert menu, and help. While you
   edit, it swaps for a bar of structural controls (indent, move, insert).
+- **Small controls are bigger than they look on touch.** Chips, toggles, close buttons and the
+  fold arrow all take a comfortable tap on a phone even where the visible control is small. The
+  target grows, not the design, so nothing shifts and no control starts stealing its neighbor's
+  taps. On a mouse, everything stays exactly as it was.
 
 ## Generating text
 
