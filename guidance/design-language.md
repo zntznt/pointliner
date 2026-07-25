@@ -68,7 +68,13 @@ always `fa-clone`, journal always `fa-book`, and so on — the door, the pill, a
 keyboard action must not disagree (e.g. a deck's pill-action once showed `fa-shuffle` while
 its pill showed `fa-clone`). Conversely, one glyph must not carry two unrelated meanings
 (`fa-left-right` was width **and** estimate **and** refile; refile moved to
-`fa-arrow-right-arrow-left`, leaving `fa-left-right` for the horizontal-span concept only;
+`fa-arrow-right-arrow-left`, and 2026-07-25 (UXP-170) **estimate moved to `fa-wave-square`** — a
+varying value — so `fa-left-right` now genuinely is the horizontal-span concept only, which is
+what the earlier "leaving it for width" claim asserted before it was true. The *chart* glyphs were
+rejected for estimate under the look-alike half of this same rule: the est pill already draws a
+live sparkline beside its icon, so a chart mark would read as the same thing twice. Its ASCII
+fallback was split `≈`/`∿` across sites and is unified on `≈`, since this rule governs the fallback
+layer too;
 likewise 2026-07-09, #412/#413: **template is `fa-stamp`** — stamp-a-copy — leaving
 `fa-clone` deck-only; **progress is `fa-bars-progress`**, leaving `fa-circle-half-stroke`
 theme-only; and the **Check verb is `fa-clipboard-check`** — a pass/fail assertion —

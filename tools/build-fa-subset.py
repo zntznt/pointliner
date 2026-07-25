@@ -72,6 +72,12 @@ ICONS = [
     # (rendered unicode fallbacks; fa-angles-down was a blank box — no setIcon path)
     "angles-down", "clock-rotate-left", "download", "eye-slash", "list",
     "fingerprint", "snowflake",
+    # glyph identity (UXP-170): estimate gets its OWN mark, leaving fa-left-right for the
+    # horizontal-span concept (the width control) only — the same corollary that moved refile,
+    # template, progress and Check. A square wave reads as "a varying value" and stays distinct
+    # from the live sparkline the est pill already draws beside it, which is why a chart glyph
+    # was NOT chosen (design-language §1 forbids look-alikes in one list).
+    "wave-square",
 ]
 
 # Some icons are used in BOTH solid and regular in the app. The font subset must
