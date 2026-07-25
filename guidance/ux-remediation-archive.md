@@ -3130,3 +3130,29 @@ When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and d
   graph scope Folder  -> "No links between documents yet"   (the empty-title fallback)
   timeline all off    -> "No dated points here yet"
   ```
+
+### UXP-240 ✓ Both overlays put every item in the tab order with no arrow alternative 🟡 [graph] [timeline] (RESOLVED 2026-07-25)
+- **Problem:** the same shape as UXP-238, in the two surfaces that were never audited. Measured:
+  ```
+  timeline, 128 dated points : 132 focusables (128 rows + 3 source chips + close)
+                               ArrowDown NO-OP, End NO-OP
+  graph, 40 linked points    :  42 focusables (41 nodes + close)
+                               ArrowRight NO-OP, Home NO-OP
+  ```
+  Neither count is capped: `graphModel` caps nothing (only *unlinked* edges cap, at `GRAPH_UNLINKED_CAP = 150`), and `collectTimelineItems` caps nothing. A year of journal entries is a year of tab stops. The timeline's `.tl-month` headers are not focusable, so there is no month-to-month jump either.
+- **Milder than UXP-238, and the entry should say so:** both overlays are modal Tab traps, so cycling is the intended model and Escape does work (until UXP-239 fires). Shift+Tab from the first row reaches Close in one press. The harm is reaching Close from deep in a long list, and having no in-group navigation at all.
+- **WITHDRAWN sub-claim:** the recon predicted the graph's Tab order would be "effectively random" because nodes are force-directed. **Measured and false** — mean 86px between consecutive tab stops with only 3 jumps over 200px across 41 nodes. Document order and the layout largely agree. The finding stands on the stop count alone.
+- **Rule:** P3-2 (keyboard operability).
+- **Target:** the repo's own roving-tabindex pattern, applied a fifth and sixth time. The timeline is a plain list (Up/Down + Home/End, and PgUp/PgDn to the adjacent `.tl-month` is the natural month jump). The graph needs a decision first: document order or spatial nearest-neighbour. Do not assume spatial — the measurement above says document order is already close to spatial, so the cheap answer may be the right one.
+- **Resolved:** roving tabindex, the repo's own pattern applied a fifth and sixth time. Driven and measured:
+  ```
+  timeline, 128 dated points : 132 tab stops -> 5    (close + 3 source chips + 1 row stop)
+  graph,     42 nodes        :  42 tab stops -> 2
+  ```
+  **Timeline** (a vertical list): `↑/↓` adjacent row, `Home`/`End` the ends, `PageUp`/`PageDown` the adjacent **month**. **Graph**: all four arrows step one node in **document order** (owner decision, on this entry's own measurement that document order already tracks the layout), `Home`/`End` the ends, and `PageUp`/`PageDown` deliberately unclaimed so they keep scrolling the panel. Ends clamp, never wrap.
+- **The five prior roving groups each inlined their own index math; this one extracted it.** `roveIndex(key, i, count, groupStarts)` is now the shared pure core, which is what guarantees the two overlays cannot drift apart. Paging is **strictly adjacent-group**: the "first press goes to the top of this group, second press goes to the previous group" variant was rejected because it makes one key mean two things depending on where you already are, and §3's `PageUp`/`PageDown` already means exactly one month.
+- **`PageUp`/`PageDown` is not a new binding.** §3 already reserves it for month paging in the agenda calendar grid and the Schedule date picker; the timeline is grouped by month, so this is that meaning reused on a third surface.
+- **The arrow mapping differs from the search legend's on purpose,** and §3 now records the reconciliation: in both, the arrows follow the **visual layout** (the legend's chips run horizontally, the timeline is vertical) and the secondary key jumps a group. Not a P1 context inversion.
+- **A latent trap regression this fix would otherwise have introduced, caught before it shipped.** Both overlay traps collected focusables as `[tabindex="0"],button:not(:disabled)`. Timeline rows are real `<button>`s, so they kept matching at `tabindex="-1"` while native Tab skipped them — `last` became an element Tab could never reach, the wrap never fired, and **Tab walked out of the modal**. Proven load-bearing rather than asserted: a build with the roving seeds but the old selector was driven, and Tab escaped the timeline (`inPanel: false`) while the graph, whose nodes are `<g>` and never matched the button clause, was unaffected. Both selectors now carry `:not([tabindex="-1"])`.
+- **Broken graph nodes stay in the roving order** — whether they should be focusable at all is UXP-242, still open, and this change deliberately does not prejudge it.
+- **Also corrected:** §3's UXP-65 "sanctioned transient Tab-group" note still claimed the search legend's chips were full `tabindex="0"` stops, which UXP-238 had made false the same day. The rule was narrowed to what actually survives: a transient panel may host a Tab-group only while the group stays small, and size must be **measured**, not assumed.

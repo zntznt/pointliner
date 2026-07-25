@@ -25960,6 +25960,52 @@ function announceOverlayCount(panel) {
   if (msg) announce(msg);
 }
 
+// UXP-240: where a roving-tabindex group's focus goes for a navigation key. This file already grew
+// five of these groups (the agenda calendar grid, the table grid, the role="grid" helper, the
+// tablist, the search legend) and each inlined its own index math; this is the extraction, shared
+// by the graph and the timeline so the two overlays cannot drift apart.
+//
+// `groupStarts` is the ASCENDING list of indices that begin a group — the timeline's months. Pass
+// none and the paging keys decline, which is how the graph opts out of PageUp/PageDown and lets
+// them scroll the panel natively instead.
+//
+// Ends CLAMP rather than wrap, matching the calendar grid and the legend. null = no move (an
+// unhandled key, or already at the clamp), so callers branch on null the way they do everywhere.
+function roveIndex(key, i, count, groupStarts = []) {
+  if (!Number.isInteger(i) || i < 0 || !Number.isInteger(count) || count <= 0 || i >= count) return null;
+  const clamp = n => Math.max(0, Math.min(count - 1, n));
+  let to;
+  if (key === 'ArrowDown' || key === 'ArrowRight') to = clamp(i + 1);
+  else if (key === 'ArrowUp' || key === 'ArrowLeft') to = clamp(i - 1);
+  else if (key === 'Home') to = 0;
+  else if (key === 'End') to = count - 1;
+  else if (key === 'PageDown' || key === 'PageUp') {
+    const starts = (groupStarts || []).filter(n => Number.isInteger(n) && n >= 0 && n < count);
+    if (!starts.length) return null;
+    // the group this index sits in, then its NEIGHBOUR — strictly adjacent, the same "page a month"
+    // step the calendar grid makes. Deliberately not the "first press goes to the top of this
+    // group, second press goes to the previous group" variant: that makes one key mean two things
+    // depending on where you already are, and §3's PageUp/PageDown already means exactly one month.
+    // No neighbour in that direction declines, rather than clamping onto the current group's start
+    // (which on PageDown in the last group would move focus BACKWARD).
+    let g = 0;
+    for (let k = 0; k < starts.length; k++) if (starts[k] <= i) g = k;
+    const ng = g + (key === 'PageDown' ? 1 : -1);
+    if (ng < 0 || ng >= starts.length) return null;
+    to = starts[ng];
+  } else return null;
+  return to === i ? null : to;
+}
+
+// Swap the group's single tab stop onto `to` and focus it. The other five groups each wrote this
+// inline; both overlays share it.
+function roveTo(from, to) {
+  if (!to || to === from) return;
+  from?.setAttribute('tabindex', '-1');
+  to.setAttribute('tabindex', '0');
+  to.focus();
+}
+
 function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); leanSlashTip?.classList.remove('on'); slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
@@ -32684,6 +32730,7 @@ function renderGraph(panel) {
   // Folder mode: a node is a DOCUMENT — activating it opens that document (dirty-guarded
   // switch); the current document wears an accent ring so "you are here" is visible.
   const maxDeg = Math.max(...model.nodes.map(n => n.deg), 1);
+  let nodeIdx = 0;   // UXP-240: roving tab stop, seeded over model.nodes = <g> document order
   const go = folder
     ? (id) => { const name = workspaceIndex?.nameByDocId?.get(id); if (!name) return; closeGraph(); switchWorkspaceDoc(name); }
     : (id) => { closeGraph(); zoomInto(id); };
@@ -32692,7 +32739,13 @@ function renderGraph(panel) {
     const g = document.createElementNS(SVG_NS, 'g');
     g.setAttribute('class', 'graph-node' + (n.broken ? ' graph-node-broken' : '') + (n.current ? ' graph-node-current' : ''));
     g.setAttribute('transform', `translate(${p.x},${p.y})`);
-    g.setAttribute('tabindex', '0');
+    // UXP-240: every node used to carry tabindex 0 — 42 tab stops on a 40-point document, with the
+    // arrows dead. One stop for the whole group now; #graph-back's keydown walks DOCUMENT order,
+    // which the pass measured as already close to the force-directed layout (mean 86px between
+    // consecutive stops, 3 jumps over 200px across 41 nodes), so no spatial search is warranted.
+    // Broken nodes stay in the order: whether they should be focusable at all is UXP-242, open.
+    g.setAttribute('tabindex', nodeIdx === 0 ? '0' : '-1');
+    nodeIdx++;
     g.setAttribute('role', 'button');
     const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title;
     g.setAttribute('aria-label',
@@ -32731,11 +32784,31 @@ document.getElementById('graph-back').addEventListener('keydown', e => {
   // trap Tab within the panel (a modal), like the io-card dialogs
   if (e.key !== 'Tab') return;
   const panel = document.getElementById('graph-panel');
-  const focusable = [...panel.querySelectorAll('[tabindex="0"],button:not(:disabled)')];
+  // UXP-240: `:not([tabindex="-1"])` is load-bearing, not tidiness. A roved-out item is skipped by
+  // native Tab, so counting it here would make `last` an element Tab can never reach — the wrap
+  // would never fire and Tab would escape the modal. Bites the timeline (its rows are <button>s)
+  // and is carried here too so the two traps stay identical.
+  const focusable = [...panel.querySelectorAll('[tabindex="0"],button:not(:disabled):not([tabindex="-1"])')];
   if (!focusable.length) return;
   const first = focusable[0], last = focusable[focusable.length - 1];
   if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
   else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+// UXP-240: arrow navigation WITHIN the node group (one tab stop for the whole web). Document order,
+// per the owner decision: the pass measured it as already tracking the layout closely. All four
+// arrows walk that one order — a graph LOOKS two-dimensional, so leaving Up/Down dead would be a
+// silent no-op on the keys a user reaches for first. PageUp/PageDown are deliberately NOT claimed
+// (the graph has no groups), so they keep scrolling the panel.
+document.getElementById('graph-back').addEventListener('keydown', e => {
+  if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+  const panel = document.getElementById('graph-panel');
+  const nodes = [...panel.querySelectorAll('.graph-node')];   // read live: a re-render replaces them
+  const from = e.target.closest?.('.graph-node') || (nodes.includes(e.target) ? e.target : null);
+  const i = from ? nodes.indexOf(from) : -1;
+  if (i < 0) return;
+  e.preventDefault();
+  const to = roveIndex(e.key, i, nodes.length);
+  if (to != null) roveTo(from, nodes[to]);
 });
 // click the scrim (outside the panel) closes, matching the dialog dismissal idiom
 document.getElementById('graph-back').addEventListener('mousedown', e => {
@@ -32844,6 +32917,11 @@ function renderTimeline(panel) {
 
   const body = document.createElement('div'); body.className = 'tl-body';
   const go = (id) => { closeTimeline(); zoomInto(id); };
+  // UXP-240: ROVING TABINDEX. Rows are real <button>s, so every one of them used to be a tab stop —
+  // 132 of them on a 128-point document, with ArrowDown and End doing nothing. Exactly one row is a
+  // tab stop now (`tabindex="-1"` keeps the rest programmatically focusable); the #timeline-back
+  // keydown handler moves within the group. Same pattern as the search legend and the calendar grid.
+  let rowIdx = 0;
   for (const g of groups) {
     const grp = document.createElement('div'); grp.className = 'tl-group';
     const mh = document.createElement('div'); mh.className = 'tl-month'; mh.textContent = g.label;
@@ -32867,6 +32945,8 @@ function renderTimeline(panel) {
       if (it.source !== 'task') { const sr = document.createElement('span'); sr.className = 'tl-src-tag'; sr.textContent = it.source; row.appendChild(sr); }
       const srcNote = it.source === 'task' ? (it.done ? ', done' : '') : `, ${it.source}`;
       row.setAttribute('aria-label', `${calDayLabel(it.epochDay, rowCal)}: ${it.title}${srcNote}. Activate to open.`);
+      row.setAttribute('tabindex', rowIdx === 0 ? '0' : '-1');   // UXP-240: one stop for the group
+      rowIdx++;
       row.addEventListener('mousedown', ev => ev.preventDefault());   // caret invariant
       row.addEventListener('click', () => go(it.id));
       grp.appendChild(row);
@@ -32886,11 +32966,42 @@ document.getElementById('timeline-back').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeTimeline(); return; }
   if (e.key !== 'Tab') return;
   const panel = document.getElementById('timeline-panel');
-  const focusable = [...panel.querySelectorAll('[tabindex="0"],button:not(:disabled)')];
+  // UXP-240: the `:not([tabindex="-1"])` clause is what keeps this trap correct once the rows rove.
+  // Rows are real <button>s, so `button:not(:disabled)` would keep matching them at tabindex -1
+  // while native Tab skips them — `last` would be unreachable, the wrap would never fire, and Tab
+  // would walk straight out of the modal.
+  const focusable = [...panel.querySelectorAll('[tabindex="0"],button:not(:disabled):not([tabindex="-1"])')];
   if (!focusable.length) return;
   const first = focusable[0], last = focusable[focusable.length - 1];
   if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
   else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+// UXP-240: arrow navigation WITHIN the row group. Up/Down walk rows because the timeline is a
+// VERTICAL list — the search legend uses Left/Right for the same step because its chips run
+// horizontally in ragged rows. The invariant across both is that the arrows follow the visual
+// layout and the secondary key jumps a group, not that a given arrow always means one thing.
+//
+// PageUp/PageDown jump to the adjacent MONTH's first row. That is not a new binding: ux-discipline
+// §3 already reserves PageUp/PageDown for month paging in the agenda calendar grid and the Schedule
+// date picker, and the timeline is grouped by month. Left/Right stay unbound (no horizontal axis).
+document.getElementById('timeline-back').addEventListener('keydown', e => {
+  if (!['ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key)) return;
+  const panel = document.getElementById('timeline-panel');
+  const rows = [...panel.querySelectorAll('.tl-item')];       // read live (a toggle re-renders them)
+  const from = e.target.closest?.('.tl-item');
+  const i = from ? rows.indexOf(from) : -1;
+  if (i < 0) return;
+  e.preventDefault();
+  // group starts = the index of each month's first row, derived from the rendered DOM rather than
+  // re-deriving the grouping, so the jump can never disagree with the headers on screen.
+  const starts = [];
+  let seen = 0;
+  for (const grp of panel.querySelectorAll('.tl-group')) {
+    starts.push(seen);
+    seen += grp.querySelectorAll('.tl-item').length;
+  }
+  const to = roveIndex(e.key, i, rows.length, starts);
+  if (to != null) roveTo(from, rows[to]);
 });
 document.getElementById('timeline-back').addEventListener('mousedown', e => {
   if (e.target.id === 'timeline-back') closeTimeline();

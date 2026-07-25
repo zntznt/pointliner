@@ -63,6 +63,11 @@ another appears as a dot, joined by a line to what it connects to. The most-link
 larger, so the hubs stand out. Click any dot to jump straight to that point in the document; press
 `Esc` (or the ✕) to close and return to where you were.
 
+The web is one stop on the keyboard rather than one per dot: `Tab` puts you on a point, the arrow
+keys move from point to point, `Home` and `End` reach the first and last, `Enter` opens the one you
+are on, and `Esc` closes. The order the arrows follow is the document's own, so moving through the
+graph walks your points in the order you wrote them.
+
 A point that links to a **deleted** target shows as a red dot, so a dangling reference is visible
 rather than silently missing. Points with no links (and no unlinked mentions, below) do not appear,
 keeping the graph a web rather than a scatter of unconnected dots. The graph is a live rendering of
