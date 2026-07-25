@@ -16227,12 +16227,113 @@ test('#658/#659/#660 toast + banner positioning (src pins)', () => {
   assert.match(th, /flashHint\('Tip: swipe a point right/, 'the touch hint must go through flashHint');
   assert.ok(th.includes('drag it to move the point'), 'the touch hint must also teach drag-to-move (not just swipe + menu)');
   assert.ok(!th.includes("_hintTimer = setTimeout"), 'the touch hint must not hand-roll its own timer/paint anymore');
-  // #659: flashBottom counts the edit bar, so a mid-edit touch toast clears it instead of sitting under it.
+  // #659: the bottom stack counts the edit bar, so a mid-edit touch toast clears it instead of
+  // sitting under it. The sum now lives in bottomStackHeight() because the bullet popup needs the
+  // same answer, so the assertion follows it there and the delegation is pinned too.
+  const bs = fnBody(_src, 'bottomStackHeight');
+  assert.ok(bs.includes("on('edit-bar')"), 'the bottom stack must include the edit-bar height');
+  assert.ok(bs.includes('quickBarHeight()'), 'and the quick bar');
   const fb = fnBody(_src, 'flashBottom');
-  assert.ok(fb.includes("on('edit-bar')"), 'flashBottom must include the edit-bar height in the bottom stack');
+  assert.ok(fb.includes('bottomStackHeight()'), 'flashBottom must use the shared sum, not its own copy');
   // #658: the toolbar height is published as --toolbar-h and the top banner tracks it (not a fixed 52px).
   assert.ok(_src.includes("setProperty('--toolbar-h'"), 'syncBodyPad must publish the live toolbar height');
   assert.match(_src, /#storage-warn\{[^}]*top:calc\(var\(--toolbar-h/, 'the banner top must track --toolbar-h, not a fixed 52px');
+});
+
+// ── the bullet menu clears the touch bar (#659, at a second surface) ─────────
+// Measured before the fix, on a Pixel 5, with the menu scrolled to its last row: Delete rendered
+// at 1262-1277 while the quick bar starts at 1253, and elementFromPoint at Delete's centre
+// returned `qb-roll`. The one destructive action in the menu, and the only touch route to delete
+// a point, was the row the bar ate.
+test('#bpop clears the touch bars: z-index, height cap, and the shared bottom-stack clamp', () => {
+  const z = re => { const m = _src.match(re); return m ? +m[1] : null; };
+  const bpop  = z(/#bpop\{[^}]*z-index:(\d+)/);
+  const quick = z(/#quick-bar\{[^}]*z-index:(\d+)/);
+  const edit  = z(/#edit-bar\{[^}]*z-index:(\d+)/);
+  assert.ok(bpop && quick && edit, 'all three z-indexes must be readable from the source');
+  assert.ok(bpop > quick && bpop > edit,
+    `#bpop (${bpop}) must outrank the quick bar (${quick}) and the edit bar (${edit}) — a menu the user opened deliberately sits over a persistent bar`);
+  // Clamping alone is not enough: max-height is measured against the VIEWPORT, so a menu taller
+  // than the usable height still runs under a bar. The cap subtracts the same --qbar-h the docked
+  // panels already use, and the menu scrolls instead.
+  assert.match(_src, /#bpop\{[^}]*max-height:calc\(85vh - var\(--qbar-h/,
+    'the #bpop height cap must subtract the bar height, not just 85vh');
+  // and the position clamp asks the SAME question the toast asks, so the two cannot drift
+  // BOTH surfaces that position #bpop: the bullet menu (long-press) and the selection type menu.
+  // They ask through usableBottom(), the shared "where does the usable area end" helper that every
+  // popup positioner now uses (UXP-236) — see the drift guard below for the full list.
+  for (const fn of ['showBulletPopup', 'showSelTypeMenu']) {
+    assert.ok(fnBody(_src, fn).includes('usableBottom()'),
+      `${fn} must clamp against the usable bottom, not the raw viewport bottom`);
+  }
+});
+
+test('the two touch bars cannot co-occupy the strip (the guarantee that makes a fix unnecessary)', () => {
+  // PR-6 was written up as ALSO fixing "Done opens Help", on the theory that both bars could carry
+  // .on at once. Driven on a Pixel 5, that does not reproduce: tapping Done committed the edit and
+  // called toggleGuide zero times. The reason is structural, and it is pinned here so a later
+  // refactor cannot quietly remove the property that makes the collision impossible.
+  assert.match(_src, /#edit-bar\{[^}]*display:none/, 'the edit bar is display:none when off');
+  assert.match(_src, /#quick-bar\{[^}]*display:none/, 'the quick bar is display:none when off');
+  assert.ok(_src.includes('#edit-bar.on{display:flex}') && _src.includes('#quick-bar.on{display:flex}'),
+    'each bar renders ONLY under .on, so an off bar cannot be hit whatever its z-index');
+  // exactly one writer, deriving synchronously from the other bar's state
+  assert.equal((_src.match(/quickBar\.classList\.toggle/g) || []).length, 1,
+    'quickBar.classList must have exactly one writer, or the swap becomes racy');
+  const uq = fnBody(_src, 'updateQuickBar');
+  assert.ok(uq.includes("editBar.classList.contains('on')"),
+    'updateQuickBar derives from the edit bar synchronously, so the two can never both be on');
+});
+
+// ── UXP-236: every popup positioner asks ONE question about the usable bottom ────
+// `window.innerHeight - 8` was hand-copied at ten sites, so each independently believed the touch
+// bar's strip was free space. The literal is the bug; the guard below is what stops it returning.
+
+test('UXP-236 drift guard: no positioner may clamp to the raw viewport bottom again', () => {
+  // Only the helper itself may name the raw expression. Every other occurrence in the file is a
+  // COMMENT explaining the history — those carry no `if`/assignment, so they are excluded by shape
+  // rather than by an allowlist that would rot.
+  const lines = _src.split('\n')
+    .filter(l => l.includes('window.innerHeight - 8'))
+    .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l.trim()))          // drop comment lines
+    .filter(l => !l.includes('function usableBottom'));          // the one legitimate definition
+  assert.deepEqual(lines, [],
+    'a popup is clamping to the raw viewport bottom again; use usableBottom():\n  ' + lines.join('\n  '));
+});
+
+test('UXP-236: all ten popup positioners route through usableBottom()', () => {
+  // Named individually so a site cannot be quietly dropped from the sweep. Three different
+  // placement strategies live here (flip above the anchor, park at the bottom, and mtOpenMenu's
+  // flip-to-the-roomier-side); they share the usable-bottom question, not a positioner.
+  for (const fn of ['mtOpenMenu', 'showCellEditorPop', 'showTodoPicker', 'positionSlashMenu',
+                    'placeAtCaret', 'openSizePicker', 'positionLinkMenu', 'positionCaretMenu',
+                    'showBulletPopup', 'showSelTypeMenu']) {
+    assert.ok(fnBody(_src, fn).includes('usableBottom()'), `${fn} must ask usableBottom()`);
+  }
+  // mtOpenMenu needs it TWICE: fixing only the threshold would look right and still choose "below"
+  // on the strength of room that belongs to the bar.
+  const mt = fnBody(_src, 'mtOpenMenu');
+  assert.ok(/const spaceBelow = usableBottom\(\)/.test(mt),
+    "mtOpenMenu's spaceBelow must exclude the bar strip, or it flips the wrong way");
+  // and the helper is defined in terms of the shared stack, not its own copy of the sum
+  assert.match(_src, /function usableBottom\(\)\s*\{\s*return window\.innerHeight - 8 - bottomStackHeight\(\);/);
+});
+
+test('UXP-236: the two table popups were the only ones a bar could steal from', () => {
+  const z = re => { const m = _src.match(re); return m ? +m[1] : null; };
+  const quick = z(/#quick-bar\{[^}]*z-index:(\d+)/), edit = z(/#edit-bar\{[^}]*z-index:(\d+)/);
+  const bars = Math.max(quick, edit);
+  // FIXED here: at 600 these sat below both bars, so a row parked in the bar's strip lost the hit
+  // test to the bar (measured: #mt-colpanel -> qb-insert).
+  for (const sel of [/#mt-colpanel\{[^}]*z-index:(\d+)/, /#mt-cellpop\{[^}]*z-index:(\d+)/]) {
+    assert.ok(z(sel) > bars, `a table popup is back below the bars (${z(sel)} vs ${bars})`);
+  }
+  // CHARACTERIZATION: these were already above the bars, which is the measured reason they needed
+  // no z-index change. If someone lowers one, that reasoning silently stops holding — so pin it.
+  for (const sel of [/#slash-menu[^{]*\{[^}]*z-index:(\d+)/, /#lp-menu[^{]*\{[^}]*z-index:(\d+)/,
+                     /#brace-menu[^{]*\{[^}]*z-index:(\d+)/, /#bpop\{[^}]*z-index:(\d+)/]) {
+    assert.ok(z(sel) > bars, `a menu that used to outrank the bars no longer does (${z(sel)} vs ${bars})`);
+  }
 });
 
 // ── Docked-stack viewport ceiling (#389): the toolbar can never exceed the screen ──
