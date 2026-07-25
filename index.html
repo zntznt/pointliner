@@ -1344,7 +1344,12 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #sel-tb.cell-sel .seltb-fn{display:none} /* footnotes are node-level, not per-cell */
 
 /* bullet popup */
-#bpop{position:fixed;display:none;z-index:500;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;box-shadow:var(--sh-1);min-width:210px;max-height:85vh;overflow-y:auto;scrollbar-width:thin}
+/* z-index 660 clears BOTH touch bars (quick 640, edit 650) and matches #roll-palette, the other
+   transient surface that opens over them. Clamping alone is not enough: a menu taller than the
+   usable height still runs under a bar, because max-height is measured against the viewport. So
+   the cap subtracts the same --qbar-h the docked panels use, and the menu scrolls instead. A menu
+   the user opened deliberately outranks a persistent bar. */
+#bpop{position:fixed;display:none;z-index:660;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;box-shadow:var(--sh-1);min-width:210px;max-height:calc(85vh - var(--qbar-h,0px));overflow-y:auto;scrollbar-width:thin}
 #bpop.on{display:block}
 /* Section headings in the point menu: a plain uppercase label per category (same
    visual language as the File menu's .fm-group). Static, non-interactive. */
@@ -8569,11 +8574,18 @@ let _pendingHint = null;  // the LAST hint deferred during an error dwell; repla
 // so it never stacks over their content — the same collision syncHelpBtnBottom solves for the
 // help toggle, extended to count #var-panel too. Stays bottom-center (not top) so the toast's
 // location never becomes context-dependent (P1). Returns a CSS length for `bottom`.
-function flashBottom() {
+// How many pixels at the bottom of the viewport are already spoken for: the docked panels plus
+// whichever touch bar is up. 0 on desktop with nothing open, so a caller that subtracts it is
+// unchanged there. Extracted from flashBottom so the bullet popup can ask the SAME question — the
+// two must not drift, since they are solving one collision at two surfaces.
+// #659: on touch mid-edit the edit bar is up (the quick bar is not), so quickBarHeight() is 0 and
+// a toast sat at bottom:20px UNDER the edit bar (z-index collision). Both bars are in the sum.
+function bottomStackHeight() {
   const on = id => { const el = document.getElementById(id); return el?.classList.contains('on') ? el.offsetHeight : 0; };
-  // #659: on touch mid-edit the edit bar is up (the quick bar is not), so quickBarHeight() is 0 and
-  // a toast sat at bottom:20px UNDER the edit bar (z-index collision). Count the edit bar too.
-  const stack = on('fn-panel') + on('bl-panel') + on('var-panel') + quickBarHeight() + on('edit-bar');   // 0 when none open (#566: the bar is part of the stack)
+  return on('fn-panel') + on('bl-panel') + on('var-panel') + quickBarHeight() + on('edit-bar');   // 0 when none open (#566: the bar is part of the stack)
+}
+function flashBottom() {
+  const stack = bottomStackHeight();
   const safe = 'env(safe-area-inset-bottom)';
   return stack ? `calc(${stack + 20}px + ${safe})` : `calc(20px + ${safe})`;
 }
@@ -18034,9 +18046,14 @@ function showSelTypeMenu(anchorEl) {
     if (pr.right > window.innerWidth - 8) bpop.style.left = (window.innerWidth - pr.width - 8) + 'px';
     let top = rect.top - pr.height - 4;                     // prefer above the anchor
     if (top < 8) top = rect.bottom + 4;                     // no room above → go below
-    // Clamp so the popup (capped at 85vh + scroll in CSS) stays fully on-screen even on a
-    // short viewport — otherwise a tall menu below the anchor runs off the bottom edge.
-    const maxTop = window.innerHeight - 8 - pr.height;
+    // Clamp so the popup (capped at 85vh minus the stack + scroll in CSS) stays fully REACHABLE,
+    // not merely on-screen. It used to clamp to window.innerHeight - 8, i.e. the viewport bottom,
+    // which on touch put its last rows under the quick bar: measured 45px of overlap, and since
+    // #bpop was z-index 500 against the bar's 640, elementFromPoint at those rows returned the
+    // BAR. Delete is the last row, and there is no other touch route to delete a point, so the
+    // one destructive action in the menu was the one you could not reach. This is #659 again,
+    // which fixed the identical collision for toasts; bottomStackHeight() is that fix's own sum.
+    const maxTop = window.innerHeight - 8 - bottomStackHeight() - pr.height;
     if (top > maxTop) top = Math.max(8, maxTop);
     bpop.style.top = top + 'px';
     bpop.querySelector('.bpop-type')?.focus();
@@ -18646,7 +18663,14 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   requestAnimationFrame(() => {
     const pr = bpop.getBoundingClientRect();
     if (pr.right  > window.innerWidth  - 8) bpop.style.left = (rect.left - pr.width - 4) + 'px';
-    if (pr.bottom > window.innerHeight - 8) bpop.style.top  = (window.innerHeight - pr.height - 8) + 'px';
+    // Clamp to the USABLE bottom, not the raw viewport bottom. On touch the quick bar (or, mid-edit,
+    // the edit bar) owns the last ~53px, so clamping to window.innerHeight - 8 parked the menu's
+    // final rows underneath it. Delete is the last row and the only touch route to deleting a point:
+    // measured on a Pixel 5 with the menu scrolled down, Delete sat at 1262-1277 against a bar
+    // starting at 1253, and elementFromPoint returned `qb-roll`. bottomStackHeight() is #659's own
+    // sum, so the toast and this menu ask one question and cannot drift.
+    const usableBottom = window.innerHeight - 8 - bottomStackHeight();
+    if (pr.bottom > usableBottom) bpop.style.top = Math.max(8, usableBottom - pr.height) + 'px';
     // Keyboard open: move focus into the menu (first item). Hover open never steals focus.
     if (opts.keyboard) bpop.querySelector('.bpop-type, .cmd-item')?.focus();
   });
