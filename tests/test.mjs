@@ -8095,9 +8095,14 @@ test('4c wiring: the query dialog folder checkbox, the pill folder branch, and t
   // a folder-scoped record must NOT unfold — the {query: …} text cannot carry the scope
   const ats = fnBody(_src, 'artifactToShorthand');
   assert.ok(ats.includes('if (rec.scope) return null'), 'a scoped query pill stays atomic in edit mode');
-  // the two folder memos are cleared on doc swap alongside the other doc caches
-  const rdc = fnBody(_src, 'resetDocCaches');
-  assert.ok(rdc.includes('_qrfMemo.clear()') && rdc.includes('_qpfMemo.clear()'), 'resetDocCaches must clear the folder memos');
+  // the two folder memos are cleared on doc swap alongside the other doc caches. resetDocCaches now
+  // DERIVES its clears from DOC_CACHES, so the load-bearing code is the registered reset closure at
+  // each cache site — that is what this pins, plus the derivation loop that runs them.
+  assert.ok(/regDocCache\('qrfMemo', \{ reset: \(\) => _qrfMemo\.clear\(\) \}\)/.test(_src)
+         && /regDocCache\('qpfMemo', \{ reset: \(\) => _qpfMemo\.clear\(\) \}\)/.test(_src),
+    'the folder memos must register their doc-swap reset in DOC_CACHES');
+  assert.ok(fnBody(_src, 'resetDocCaches').includes('if (e.reset) e.reset()'),
+    'resetDocCaches must run every registered reset');
   // the math pill names the folder staleness in its tip
   const rmp = fnBody(_src, 'renderMathPill');
   assert.ok(rmp.includes('Folder totals count other documents as saved'), 'folder-scoped math pills carry the as-saved tip');
@@ -17522,8 +17527,9 @@ test('query-pill memo is _varsVer-guarded and cleared on doc reset (#451 item 4)
     'the memo must guard on _varsVer (else it serves stale results after an edit)');
   assert.ok(/_queryPillCache\.set\(k, \{ ver: _varsVer, result \}\)/.test(_src),
     'the memo must stamp the current _varsVer');
-  assert.ok(fnBody(_src, 'resetDocCaches').includes('_queryPillCache.clear()'),
-    'resetDocCaches must clear the query-pill cache on doc swap');
+  // cleared on doc swap via its registered reset (resetDocCaches derives from DOC_CACHES)
+  assert.ok(/regDocCache\('queryPillCache', \{ reset: \(\) => _queryPillCache\.clear\(\) \}\)/.test(_src),
+    'resetDocCaches must clear the query-pill cache on doc swap (via its DOC_CACHES reset)');
   // renderQueryPill must READ through the memo for the LIVE doc; the ONE sanctioned uncached
   // call is the cross-doc-mirror arm (4a), which queries a FOREIGN doc's retained tree — the
   // live-doc memo would be both wrong (different tree) and unkeyable (_varsVer is per-doc).
@@ -20517,6 +20523,68 @@ test('tag inheritance: an ancestor state never floods its subtree', () => {
   assert.deepEqual(titles('#saga'), ['Book two #WAITING #saga', 'Draft the letter'], 'a real tag inherits');
   assert.deepEqual(titles('#waiting'), ['Book two #WAITING #saga'],
     'the state matches the point that carries it and NOT its children');
+});
+
+test('DOC_CACHES parity: every marker registers, every registration marks its site', () => {
+  // The registry is only the truth if nothing can exist outside it. Markers are the human-readable
+  // trail at each cache site; DOC_CACHES is what resetDocCaches() and the derived protocol test run
+  // on. Set-equality between the two means: a cache with a marker but no registration fails here
+  // (it would silently skip doc-swap resets and test coverage), and a registration with no marker
+  // fails here too (an invisible cache is how the old convention drifted to eleven-called-nine).
+  // An OLD-STYLE numbered marker ("doc-cache 10:") would be invisible to the name regex below and
+  // escape the whole net — caught during this test's own guard-proof, so ban the form outright.
+  assert.ok(!/\/\/ doc-cache \d/.test(_src),
+    'a numbered doc-cache marker survives — normalize it to `// doc-cache: <name>` and register it');
+  const markers = [..._src.matchAll(/\/\/ doc-cache: ([A-Za-z]+)/g)].map(m => m[1]);
+  assert.ok(markers.length >= 20, `expected the full marker census, got ${markers.length}`);
+  const registered = host(c.docCaches().map(e => e.name));
+  const mSet = new Set(markers), rSet = new Set(registered);
+  assert.deepEqual([...mSet].sort(), [...rSet].sort(),
+    'marker/registry mismatch — markers without registration: [' +
+    [...mSet].filter(x => !rSet.has(x)).join(', ') + '], registrations without a marker: [' +
+    [...rSet].filter(x => !mSet.has(x)).join(', ') + ']');
+});
+
+test('DOC_CACHES derived protocol: every readable cache invalidates on the generation bump', () => {
+  // THE auto-coverage: iterate the registry, not a hand-kept list. A future cache registered with a
+  // `read` (which is what makeDocCache does for you) is tested here the day it lands, with nobody
+  // editing this file. Same protocol as the canonical-nine test — same generation returns the
+  // identical object, a resetDocCaches() bump returns a fresh one.
+  const bump = c._context.resetDocCaches;
+  const entries = c.docCaches().filter(e => e.read);
+  assert.ok(host(entries.map(e => e.name)).length >= 10,
+    'the readable set collapsed — did registrations move off `read`?');
+  for (const e of entries) {
+    const name = String(e.name);
+    const a = e.read();
+    assert.strictEqual(e.read(), a, `${name}: same generation must return the identical cached object`);
+    bump();
+    assert.notStrictEqual(e.read(), a, `${name}: a generation bump must invalidate the cache`);
+  }
+  // The reset family is exercised too: a bump must run every registered reset without throwing
+  // (their Maps exist in the stubbed context), and the entries must carry one or the other.
+  for (const e of c.docCaches())
+    assert.ok(e.read || e.reset || ['varMapAt','renderPosVarMaps','inferredColRoles','varBaseDefs','mtModelRead','searchBlob'].includes(String(e.name)),
+      `${e.name}: neither read nor reset, and not on the named per-node allowlist ` +
+      '(per-node caches self-check _varsVer inline; each carries its own bespoke test)');
+});
+
+test('collectPropKeys contract: dual-mode collector, before and after the factory move', () => {
+  // Pinned BEFORE the makeDocCache conversion so the move is proven against it: an explicit tree
+  // bypasses the cache entirely (what makes it testable), no-arg reads the live doc per generation,
+  // and the result shape is the sorted lowercase key list.
+  const tree = { id: 'r', text: '', children: [
+    { id: 'a', text: 'x', props: [{ key: 'Due', val: '1' }, { key: ' cost ', val: '2' }], children: [
+      { id: 'b', text: 'y', props: [{ key: 'owner', val: 'z' }], children: [] } ] } ] };
+  assert.deepEqual(host(c.collectPropKeys(tree)), ['cost', 'due', 'owner'],
+    'explicit tree: lowercased, trimmed, sorted, deduped');
+  assert.deepEqual(host(c.collectPropKeys({ id: 'e', text: '', children: [] })), []);
+  const bump = c._context.resetDocCaches;
+  bump();
+  const live = c.collectPropKeys();
+  assert.strictEqual(c.collectPropKeys(), live, 'no-arg: cached within the generation');
+  bump();
+  assert.notStrictEqual(c.collectPropKeys(), live, 'no-arg: fresh after the bump');
 });
 
 test('doc-cache 11: searchBlob caches within a generation and refreshes on the bump', () => {

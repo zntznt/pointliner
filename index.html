@@ -2920,6 +2920,42 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 <script>
 'use strict';
 
+// ─── doc-cache registry ──────────────────────────────────────────────────────
+// Every cross-node cache in the file registers here, so resetDocCaches() AND the invalidation test
+// in tests/test.mjs DERIVE their coverage instead of enumerating it by hand. That is the cure for
+// the drift class this replaced: the old convention needed three unconnected manual edits per new
+// cache (a marker comment, the resetDocCaches list, the test's collector list), and by cache 11 the
+// docs said "nine", the markers counted to eleven, and number 9 was skipped. A structure cannot
+// drift from itself.
+//
+// Declared HERE, above the first cache site (~line 3400): registration calls run at top level in
+// file order, so the registry must exist before any of them. Two entry kinds:
+//   read  — zero-arg probe returning the cached value (an identity-comparable object). Present →
+//           the derived test auto-covers this cache (same generation: identical object; after a
+//           resetDocCaches() bump: fresh object). Every generation-checked cache should carry one.
+//   reset — called by resetDocCaches(); for the explicit-clear Maps (the doc-swap family).
+// Every registered name must also appear at its cache site as a `// doc-cache: <name>` marker —
+// the parity test holds the two in set-equality, so an unregistered cache fails CI.
+const DOC_CACHES = [];
+function regDocCache(name, entry) { DOC_CACHES.push({ name, ...entry }); return entry; }
+function docCaches() { return DOC_CACHES; }   // function declaration: harvestable by load-cores
+// makeDocCache(name, compute) — the sanctioned door for a NEW whole-tree cache: the standard
+// dual-mode collector (an explicit rootNode bypasses the cache — that is what makes it testable
+// over a plain tree; no-arg reads the live document, cached per _varsVer generation) with the
+// registry entry built in, so cache twelve is auto-covered by the derived test the day it lands.
+// collectPropKeys is the living tenant; the older collectors predate this and stay
+// bespoke-but-registered (their bodies differ in load-bearing quirks — see the backlog entry).
+function makeDocCache(name, compute) {
+  const slot = { ver: -1, val: null };
+  const fn = (rootNode) => {
+    if (rootNode !== undefined) return compute(rootNode);
+    if (slot.ver !== _varsVer) { slot.val = compute(root); slot.ver = _varsVer; }
+    return slot.val;
+  };
+  regDocCache(name, { read: () => fn() });
+  return fn;
+}
+
 // ─── model ───────────────────────────────────────────────────────────────────
 
 let root      = mkRoot();
@@ -3375,7 +3411,8 @@ function sequenceLint(def) {
 // Document-wide declared sequences in document order (token-gated like the other
 // sidecar indexes). No-arg = the live document with the per-generation cache;
 // an explicit root bypasses the cache (pure function of its argument — tests).
-let _seqsCacheVer = -1, _seqsCached = []; // doc-cache 6: collectSequences (see resetDocCaches registry)
+let _seqsCacheVer = -1, _seqsCached = []; // doc-cache: collectSequences (see DOC_CACHES)
+regDocCache('collectSequences', { read: () => collectSequences() });
 function collectSequences(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -3496,7 +3533,8 @@ function keywordIsHeld(keyword, seqs = allSequences()) {
 
 // Every recognized state keyword (default + declared), uppercase. Cached on
 // _varsVer; this is the dynamic replacement for the old hardcoded keyword regex.
-let _statesCacheVer = -1, _statesCached = null; // doc-cache 7: knownStates (see resetDocCaches registry)
+let _statesCacheVer = -1, _statesCached = null; // doc-cache: knownStates (see DOC_CACHES)
+regDocCache('knownStates', { read: () => knownStates() });
 function knownStates(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache && _statesCacheVer === _varsVer && _statesCached) return _statesCached;
@@ -6212,7 +6250,8 @@ function collectVars(rootNode) {
 // Built per call (cheap: one short-circuited tree walk + the shared resolver) and cached by
 // node id on _varsVer, so repeated render reads of the same node don't re-walk. Pack vars
 // (plugin formula vars) are global and always precede document declarations, as before.
-let _varMapAtCacheVer = -1, _varMapAtCache = new Map(); // doc-cache: varMapAt, keyed by node id
+let _varMapAtCacheVer = -1, _varMapAtCache = new Map(); // doc-cache: varMapAt (per-node; see DOC_CACHES)
+regDocCache('varMapAt', {});
 function varMapAt(targetNode) {
   if (!targetNode) return collectVars();                 // no anchor → global map (back-compat)
   if (_varMapAtCacheVer !== _varsVer) { _varMapAtCache = new Map(); _varMapAtCacheVer = _varsVer; }
@@ -6277,7 +6316,8 @@ function collectNodeDecls(node, add) {
 // before the token. resolveVarDefs eagerly snapshots, so `defs` can grow in place between tokens.
 // Returns Map(key -> resolved map), or null for the common point that declares nothing inline —
 // every pill then shares varMapAt(node), an identical result at zero extra cost. Cached on _varsVer.
-let _posVarMapCacheVer = -1, _posVarMapCache = new Map(); // doc-cache: renderPosVarMaps, keyed by node id (see resetDocCaches registry)
+let _posVarMapCacheVer = -1, _posVarMapCache = new Map(); // doc-cache: renderPosVarMaps (per-node; see DOC_CACHES)
+regDocCache('renderPosVarMaps', {});
 function renderPosVarMaps(node) {
   if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
@@ -7139,8 +7179,10 @@ let globalRuleMap = null; // document-wide grammar rule map, cached per _varsVer
 // Defaults to globalVarMap so any reader outside a node render still resolves globally.
 let renderVarMap = {};
 let renderPosVarMap = null;   // #767: per-pill positional var maps (key -> map) for the node being rendered; null = share renderVarMap
-let _varsCacheVer = -1, _varsVer = 0, _varsCached = {}; // doc-cache 1: collectVars; _varsVer is the shared generation counter (see resetDocCaches registry)
-let _computedNodeIds = new Set(); // nodes whose renderContentHTML output depends on document-wide state (math/vars/est/query pills, progress cookies)
+let _varsCacheVer = -1, _varsVer = 0, _varsCached = {}; // doc-cache: collectVars — bespoke (Proxy/cycle side effects), registered read only; _varsVer is the shared generation counter (see DOC_CACHES)
+regDocCache('collectVars', { read: () => collectVars() });
+let _computedNodeIds = new Set(); // doc-cache: computedNodeIds — nodes whose renderContentHTML output depends on document-wide state (math/vars/est/query pills, progress cookies) (see DOC_CACHES)
+regDocCache('computedNodeIds', { reset: () => _computedNodeIds.clear() });
 let _varCycles        = new Set(); // names that participate in a reference cycle
 let _varShadowedKeys  = new Set(); // sidecar keys whose name is overridden by a later declaration
 let _varActiveExprs   = {};        // name -> expr for the last/active declaration of each var
@@ -8548,7 +8590,8 @@ const DEFAULT_STATE_ICONS = {
   WAITING: { icon:'⏳', fa:'fa-solid fa-hourglass-half' },
   DONE:    { icon:'✓', fa:'fa-solid fa-square-check' },
 };
-let _stateCmdsCacheVer = -1, _stateCmdsCached = null; // doc-cache 8: stateCmds — no rootNode override; reads live state via allSequences() (see resetDocCaches registry)
+let _stateCmdsCacheVer = -1, _stateCmdsCached = null; // doc-cache: stateCmds — bespoke (no rootNode override; reads live state via allSequences()), registered read only (see DOC_CACHES)
+regDocCache('stateCmds', { read: () => stateCmds() });
 function stateCmds() {
   if (_stateCmdsCacheVer === _varsVer && _stateCmdsCached) return _stateCmdsCached;
   const out = [], seen = new Set();
@@ -9659,7 +9702,8 @@ function inferColRolesFromModel(model, hasFooter, states, cal) {
 // per-node cache, ver-guarded with a text check on top — so the O(rows·cols) scan runs once
 // per (generation, text), not per cell paint (mtColRoles is read for every cell). Self-invalidated
 // by the _varsVer bump, like mtModelRead (no explicit clear needed in resetDocCaches).
-let _mtInferRoleCacheVer = -1, _mtInferRoleCache = new Map(); // doc-cache: inferredColRoles, keyed by node id
+let _mtInferRoleCacheVer = -1, _mtInferRoleCache = new Map(); // doc-cache: inferredColRoles (per-node; see DOC_CACHES)
+regDocCache('inferredColRoles', {});
 function inferredColRoles(node) {
   if (!node || node.qbase || node.id == null) return [];
   if (_mtInferRoleCacheVer !== _varsVer) { _mtInferRoleCache = new Map(); _mtInferRoleCacheVer = _varsVer; }
@@ -9800,7 +9844,8 @@ function varBaseDefs(node) {
 // Memo: the parse + classify pass must not run once per varMapAt call (collectVars
 // rebuilds every markDirty). Ver-guarded per-node Map, the _varMapAtCache precedent —
 // NOT a tenth collector (self-invalidating; see the resetDocCaches doc-comment).
-let _varBaseDefsCacheVer = -1, _varBaseDefsCache = new Map(); // doc-cache: varBaseDefs, keyed by node id
+let _varBaseDefsCacheVer = -1, _varBaseDefsCache = new Map(); // doc-cache: varBaseDefs (per-node; see DOC_CACHES)
+regDocCache('varBaseDefs', {});
 function varBaseDefsMemo(node) {
   if (_varBaseDefsCacheVer !== _varsVer) { _varBaseDefsCache = new Map(); _varBaseDefsCacheVer = _varsVer; }
   if (node.id != null && _varBaseDefsCache.has(node.id)) return _varBaseDefsCache.get(node.id);
@@ -9863,12 +9908,14 @@ function varBasePreview(node, name, docVars = {}) {
 // The synthesized model is memoized per generation + config, so an unchanged query
 // base does ZERO tree work on a plain re-render (base-views-vision §0.3 — this is
 // what keeps the no-eager-reactive-query-layer property performance.md relies on).
-const _qbaseCache = new Map(); // doc-cache — nodeId -> {ver, cfg, model}; cleared on doc swap (resetDocCaches)
+const _qbaseCache = new Map(); // doc-cache: qbaseCache — nodeId -> {ver, cfg, model}; cleared on doc swap (see DOC_CACHES)
+regDocCache('qbaseCache', { reset: () => _qbaseCache.clear() });
 // Query-PILL row cache (#451 item 4): renderQueryPill runs a full-document queryRows on
 // EVERY render of a node containing a [[query:]] token — re-searching the whole tree each
 // frame. Results depend on (expr, hostId, whole-doc state); _varsVer tracks doc state, so
 // key on `expr\0hostId` + a _varsVer guard, mirroring _qbaseCache. Cleared in resetDocCaches.
-const _queryPillCache = new Map(); // `expr\0hostId` -> {ver, result:{rows,total,truncated}}
+const _queryPillCache = new Map(); // doc-cache: queryPillCache — `expr\0hostId` -> {ver, result:{rows,total,truncated}} (see DOC_CACHES)
+regDocCache('queryPillCache', { reset: () => _queryPillCache.clear() });
 function queryRowsMemo(expr, hostId) {
   const k = (expr || '') + '\0' + (hostId || '');
   const hit = _queryPillCache.get(k);
@@ -9945,7 +9992,8 @@ function mtModel(node) { return node.qbase ? qbaseModel(node) : mtModelText(node
 // so even a bump-free mutation can never serve a stale grid. The returned model is
 // SHARED and must be treated as immutable — every path that mutates rows then
 // mtCommit()s stays on mtModel() (a fresh parse, safe to mutate).
-let _mtModelReadCacheVer = -1, _mtModelReadCache = new Map(); // doc-cache: mtModelRead, keyed by node id
+let _mtModelReadCacheVer = -1, _mtModelReadCache = new Map(); // doc-cache: mtModelRead (per-node; see DOC_CACHES)
+regDocCache('mtModelRead', {});
 let _mtEditSession = null;   // {id, model, text} — the cell input handler's last-commit parse (self-invalidating via the text key)
 function mtModelRead(node) {
   if (node.qbase) return qbaseModel(node);   // already generation+config memoized
@@ -15907,7 +15955,8 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
     || (!!node.note && node.note.toLowerCase().includes(term.value));
 }
 
-// doc-cache 11: searchBlob — the text-term haystack, stripMd(textForDisplay(n)).toLowerCase(),
+// doc-cache: searchBlob (per-node; see DOC_CACHES) — the text-term haystack,
+// stripMd(textForDisplay(n)).toLowerCase(),
 // which every text query used to recompute per node per keystroke (~29 ms of the ~29 ms text-query
 // cost at 50k). Cached per GENERATION like the other ten: the version check against _varsVer is
 // mandatory (CLAUDE.md registry rule) and exitEdit's markDirty() bumps it on every text commit, so
@@ -15916,6 +15965,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
 // map could serve one document's text for another's node — object identity cannot collide, and the
 // WeakMap lets swapped-out trees garbage-collect. (see resetDocCaches registry)
 let _searchBlobVer = -1, _searchBlobs = null;
+regDocCache('searchBlob', {});
 function searchBlob(node) {
   if (_searchBlobVer !== _varsVer) { _searchBlobs = new WeakMap(); _searchBlobVer = _varsVer; }
   let b = _searchBlobs.get(node);
@@ -16023,7 +16073,8 @@ function queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars()) 
 // on (workspaceIndex.gen, _varsVer) — the folder walk is 1.5–31 ms measured, so it must never
 // run per render pass: a foreign change bumps gen (rescan / refresh-on-save), an own-doc edit
 // bumps _varsVer, everything else is a map hit. Cleared in resetDocCaches on doc swap.
-let _qrfMemo = new Map(), _qrfGen = -1, _qrfVer = -1;
+let _qrfMemo = new Map(), _qrfGen = -1, _qrfVer = -1; // doc-cache: qrfMemo (see DOC_CACHES)
+regDocCache('qrfMemo', { reset: () => _qrfMemo.clear() });
 function queryReduceFolder(fn, expr, prop) {
   const gen = workspaceIndex?.gen || 0;
   if (gen !== _qrfGen || _varsVer !== _qrfVer) { _qrfMemo.clear(); _qrfGen = gen; _qrfVer = _varsVer; }
@@ -16062,7 +16113,8 @@ function queryReduceFolder(fn, expr, prop) {
 // others as saved), merged in folder order, each row carrying its docId so the pill can
 // navigate cross-doc. Same cap/truncation contract as queryRows (per-doc context computed
 // inside it). Memoized like queryReduceFolder, same invalidation pair.
-let _qpfMemo = new Map(), _qpfGen = -1, _qpfVer = -1;
+let _qpfMemo = new Map(), _qpfGen = -1, _qpfVer = -1; // doc-cache: qpfMemo (see DOC_CACHES)
+regDocCache('qpfMemo', { reset: () => _qpfMemo.clear() });
 function queryRowsFolder(expr, hostId, cap = QUERY_ROW_CAP) {
   const gen = workspaceIndex?.gen || 0;
   if (gen !== _qpfGen || _varsVer !== _qpfVer) { _qpfMemo.clear(); _qpfGen = gen; _qpfVer = _varsVer; }
@@ -21989,7 +22041,8 @@ function rollPickSource(source, rules = collectRules(), vars = collectVars()) {
 // This is what lets `{ruleName}` resolve from any grammar or shorthand anywhere.
 // Cached per markDirty() generation, like collectVars(). Cycles are caught lazily
 // at expansion time, so no eager resolution is needed here.
-let _rulesCacheVer = -1, _rulesCached = {}; // doc-cache 2: collectRules (see resetDocCaches registry)
+let _rulesCacheVer = -1, _rulesCached = {}; // doc-cache: collectRules (see DOC_CACHES)
+regDocCache('collectRules', { read: () => collectRules() });
 // ─── declarative data packs (plugins) ─────────────────────────────────────────
 // A pack is PURE DATA merged into the generative namespace — never code (the locked
 // plugins gate, guidance/plugins-direction.md §0–1). v1 carries grammar rules
@@ -22170,7 +22223,8 @@ function collectRules(rootNode) {
 // rules (named roll tables ARE one-rule grammars since the collapse), and named
 // markov chains — grouped for the brace autocomplete picker. Cached on _varsVer
 // like collectVars/collectRules.
-let _callablesCacheVer = -1, _callablesCached = []; // doc-cache 5: collectCallables (see resetDocCaches registry)
+let _callablesCacheVer = -1, _callablesCached = []; // doc-cache: collectCallables (see DOC_CACHES)
+regDocCache('collectCallables', { read: () => collectCallables() });
 function collectCallables(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache && _callablesCacheVer === _varsVer) return _callablesCached;
@@ -22353,7 +22407,8 @@ function ancestorTagText(ancestors, states) {
   return out;
 }
 // Pure over rootNode (tests); no-arg = the live document, cached on _varsVer.
-let _tagsCacheVer = -1, _tagsCached = null; // doc-cache 4: collectTags (see resetDocCaches registry)
+let _tagsCacheVer = -1, _tagsCached = null; // doc-cache: collectTags (see DOC_CACHES)
+regDocCache('collectTags', { read: () => collectTags() });
 function collectTags(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -22381,25 +22436,24 @@ function collectTags(rootNode) {
   return result;
 }
 
-let _propKeysCacheVer = -1, _propKeysCached = null; // doc-cache 10: collectPropKeys (see resetDocCaches registry)
+// doc-cache: collectPropKeys (see DOC_CACHES) — the living makeDocCache tenant: the factory owns
+// the dual-mode idiom (explicit rootNode bypasses; no-arg cached per generation) and the registry
+// entry, so this cache is auto-covered by the derived protocol test. The hoisted function wrapper
+// stays so callers above this line and load-cores harvesting are unaffected (a bare const would
+// put every earlier caller a TDZ away from breaking).
 // Distinct property keys across the whole document, sorted — the vocabulary behind
 // has:/key: search completion. Mirrors collectTags: walk children, gather node.props
-// keys (lowercased + deduped), cache on _varsVer. Pure over rootNode; no-arg = the live
-// document (cached). Includes reserved keys (due/start/check) — has:due is a valid filter.
-function collectPropKeys(rootNode) {
-  const useCache = rootNode === undefined;
-  if (useCache) rootNode = root;
-  if (useCache && _propKeysCacheVer === _varsVer && _propKeysCached) return _propKeysCached;
+// keys (lowercased + deduped). Includes reserved keys (due/start/check) — has:due is a valid filter.
+function collectPropKeys(rootNode) { return _collectPropKeysCache(rootNode); }
+const _collectPropKeysCache = makeDocCache('collectPropKeys', (rootNode) => {
   const keys = new Set();
   function walk(n) {
     for (const p of n.props || []) { const k = (p.key || '').trim().toLowerCase(); if (k) keys.add(k); }
     for (const c of n.children || []) walk(c);
   }
   if (rootNode?.children) for (const c of rootNode.children) walk(c);
-  const result = [...keys].sort();
-  if (useCache) { _propKeysCacheVer = _varsVer; _propKeysCached = result; }
-  return result;
-}
+  return [...keys].sort();
+});
 
 // Ids of every point whose display title collides (case-insensitively) with at least one
 // OTHER point's title — the data behind `is:duplicate-title` (#468). Built ONCE per search
@@ -22408,7 +22462,8 @@ function collectPropKeys(rootNode) {
 // (textForDisplay), so `# Draft` and `Draft` collide but `## Draft` vs `# Draft` do not
 // differ by prefix (both read "Draft"). Aliases are deliberately out — a title collision is
 // the plain-title case; alias overlap is a separate, fuzzier notion.
-let _dupTitleCacheVer = -1, _dupTitleCached = null; // doc-cache: duplicateTitleIds
+let _dupTitleCacheVer = -1, _dupTitleCached = null; // doc-cache: duplicateTitleIds (see DOC_CACHES)
+regDocCache('duplicateTitleIds', { read: () => duplicateTitleIds(), reset: () => { _dupTitleCached = null; } });
 function duplicateTitleIds(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -22486,7 +22541,8 @@ function filterTagCandidates(tags, prefix) {
 // `label` is only a fallback caption — display resolves the target's LIVE title.
 // Pure over rootNode; cached on _varsVer for the live document (mirrors collectVars).
 const LINK_RE = /\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
-let _linksCacheVer = -1, _linksCached = null; // doc-cache 3: collectLinks (see resetDocCaches registry)
+let _linksCacheVer = -1, _linksCached = null; // doc-cache: collectLinks (see DOC_CACHES)
+regDocCache('collectLinks', { read: () => collectLinks() });
 function collectLinks(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -28968,36 +29024,22 @@ function performMultiDrop(ids, targetId, position) {
 
 // ─── dirty ────────────────────────────────────────────────────────────────────
 
-// Invalidate every _varsVer-keyed document cache. This bump is the single
-// invalidation point shared with markDirty(); both do `_varsVer++` and nothing
-// else touches the eight per-generation caches.
+// Invalidate every registered document cache. This bump is the single invalidation point shared
+// with markDirty(); both do `_varsVer++`, and the explicit-clear family's resets run here too.
 //
-// THE CANONICAL REGISTRY — every whole-tree cache keyed on _varsVer (grep
-// `doc-cache` to list all ten declarations; an eleventh MUST join this list AND
-// be wired to _varsVer, or it will silently serve stale data):
-//   1. collectVars      (_varsCacheVer)
-//   2. collectRules     (_rulesCacheVer)
-//   3. collectLinks     (_linksCacheVer)
-//   4. collectTags      (_tagsCacheVer)
-//   5. collectCallables (_callablesCacheVer)
-//   6. collectSequences (_seqsCacheVer)
-//   7. knownStates      (_statesCacheVer)
-//   8. stateCmds        (_stateCmdsCacheVer)   ← no rootNode override; reads live state via allSequences()
-//   9. varMapAt         (_varMapAtCacheVer)    ← per-node positional scope; a Map keyed on node id, reset on generation bump
-//  10. collectPropKeys  (_propKeysCacheVer)    ← distinct property keys, the has:/key: completion vocabulary
-// Self-invalidating per-node Maps in the same family (ver-guarded like varMapAt, not
-// collectors — the collector-identity test does not cover them):
-//   renderPosVarMaps  (_posVarMapCacheVer)     ← per-pill positional maps (#767)
-//   varBaseDefs       (_varBaseDefsCacheVer)   ← variable-base row projections (varBaseDefsMemo)
-//   mtModelRead       (_mtModelReadCacheVer)   ← base grid parse for PAINT paths (text-checked on top; write paths stay on mtModel)
-//   inferredColRoles  (_mtInferRoleCacheVer)   ← authored-base column role inference (#922; text-checked, over mtModelRead)
+// THE REGISTRY IS DOC_CACHES (declared at the top of the script), not a list in this comment.
+// The hand-kept eleven-called-nine list that used to live here is exactly what drifted: every new
+// cache needed three unconnected manual edits (marker, this list, the test), and by cache 11 all
+// three disagreed. Now `regDocCache` at the cache site is the one edit; the marker-parity test
+// holds `// doc-cache: <name>` markers and registrations in set-equality, and the derived protocol
+// test in tests/test.mjs exercises every entry that carries a `read`. New whole-tree caches go
+// through makeDocCache (collectPropKeys is the living example) and are auto-covered the day they
+// land.
 //
-// markDirty does this on every edit, but a fresh document load (newFile/openFile/
-// restore) replaces `root` without an edit — so the previous document's caches
-// would be served until the first keystroke (UXP-32). Call beside every
-// buildIndex(root, null) that swaps the tree. The invariant is pinned by the
-// "doc-cache invalidation" regression test in tests/test.mjs.
-function resetDocCaches() { _varsVer++; _qbaseCache.clear(); _queryPillCache.clear(); _qrfMemo.clear(); _qpfMemo.clear(); _dupTitleCached = null; _computedNodeIds.clear(); }
+// markDirty does this on every edit, but a fresh document load (newFile/openFile/restore) replaces
+// `root` without an edit — so the previous document's caches would be served until the first
+// keystroke (UXP-32). Call beside every buildIndex(root, null) that swaps the tree.
+function resetDocCaches() { _varsVer++; for (const e of DOC_CACHES) if (e.reset) e.reset(); }
 
 // UXP-103: the persistence signals must all mean the SAME thing — "unsaved to a named disk
 // target," not "there is any unpersisted keystroke." In default (no-handle) mode autosave keeps
