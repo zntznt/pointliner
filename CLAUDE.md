@@ -19,7 +19,7 @@ No build, lint, or typecheck — it's one file. The test count serves as a stale
 
 ## Conventions
 
-- **`markDirty()` is the single invalidation point.** Bumps `_varsVer`. All cross-node caches key on it. A tenth cache MUST join the nine-cache registry and check `_varsVer`, or it serves stale data.
+- **`markDirty()` is the single invalidation point.** Bumps `_varsVer`. All cross-node caches key on it. Every cache MUST register in `DOC_CACHES` at its declaration site (a `// doc-cache: <name>` marker + a `regDocCache` entry; the marker-parity test enforces the pair). New whole-tree caches go through `makeDocCache`, which registers and auto-tests them; skipping the registry means stale data AND a red CI.
 - **Pure cores return `null` on invalid input.** Callers branch on `null`.
 - **Custom OPML attributes are `_underscorePrefixed`.** Add serialize + parse in the same change or data drops on save.
 - **Theme via CSS custom properties.** The palette lives in two homes: CSS `:root` AND `applyTheme`/`applyAccentCSS`. A CSS-only edit silently regresses when the user toggles theme.

@@ -462,7 +462,7 @@ both machines.
   edit DOM work is bounded by the *window*, not the document. This is the single biggest
   reason it doesn't die where DOM-the-whole-tree outliners do.
 - **Lazy, generation-keyed caches.** `markDirty()`/`resetDocCaches()` do exactly `_varsVer++`;
-  the 9 whole-tree collectors (`collectVars`, `collectRules`, `collectLinks`, `collectTags`,
+  the whole-tree collectors, all registered in `DOC_CACHES` (see CLAUDE.md) (`collectVars`, `collectRules`, `collectLinks`, `collectTags`,
   `collectCallables`, `collectSequences`, `knownStates`, `stateCmds`, `collectPropKeys`) re-walk only
   on the *next read after* an edit — and the keystroke path doesn't read them. A full cold re-walk of
   all nine is ~6 ms at 10k, so even pathological invalidation is cheap. (`allSequences` is an uncached
