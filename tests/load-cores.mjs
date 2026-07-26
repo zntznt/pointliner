@@ -162,6 +162,7 @@ export function loadCores() {
 
   const need = [
     'parseDice', 'rollParsed', 'diceExprStr',
+    'tapFloorCandidates',   // UXP-249: the static tap-floor guard
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr', 'groupThousands', 'formatNumDisplay', 'parseNumFmt',   // #649 moon phase + math display seam; #946 number formatting
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
