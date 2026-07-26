@@ -262,6 +262,41 @@ acting (controls drift).
 > covers `#level-ctl` by 117px at every width including the two bands UXP-256 never touched, so it is
 > the intended overlay, not a regression.
 >
+> **UXP-260, UXP-261 and UXP-262 closed 2026-07-26**, from extending the layout driver to the
+> surfaces nobody had listed (bases chrome, the graph/timeline overlays, the two-pane bodies).
+>
+> **UXP-260** — `.mt-baseheader,.mt-base-views{flex-wrap:wrap}` lived in `@media(hover:none)` with
+> the comment *"collapse + Rows + four view buttons exceed a phone's width"*. A 360px **desktop**
+> window has the same problem and got none of the remedy: 18px of spill at 390, 48px at 360, 88px at
+> 320, with the Calendar button off the viewport and no scroll container to bring it back. The rule
+> moved to the base declarations. This is deliberately **not** the UXP-258/259 "a bar must not wrap"
+> case: `.mt-baseheader` is in-document content and already wrapped on touch by design.
+>
+> **UXP-261** — a CSS specificity collision. The `#604` narrow-sheet block sets
+> `#io-card{margin-top:8px}` and sizes both wraps to `100dvh - 16px` (an 8px gutter top and bottom),
+> but `#io-card.guide-open` / `.builder-open` carry `margin-top:5vh` globally and **id+class outranks
+> id**. Both overlays kept a 5vh margin while sized for an 8px one, hanging `5vh - 16px` below the
+> window: 16px past at 640 tall, 31px at 930, 26px at 844, 12px at 568. **20 of the guide's 83 nav
+> buttons could not be brought on screen** (`#io-back` is `overflow:visible`). The builder was
+> measured before being included in the fix, not assumed. Caveat: this reproduced in mouse runs;
+> under Playwright's `isMobile` emulation `dvh` resolves smaller and both sheets fit, so no claim is
+> made about physical phones.
+>
+> **UXP-262 was found incidentally and is the worst of the three.** Setting up the builder
+> measurement showed that the document-derived callables ("Your names") take `desc` from the
+> variable's **live value**, so `{rate := 85}` handed a Number to a text field. `escHtml` was
+> `(s || '').replace(...)`, which throws on any truthy non-string — so `renderNav` threw mid-loop and
+> the **All commands panel rendered completely empty**, with no error surface. That is the primary
+> command door dead for any document defining a numeric variable, including every first run, since
+> the welcome document defines one. Reproduced independently with `{price := 42}`: 0 of 74 commands
+> before, 74 after. Fixed at the source *and* in `escHtml`, which is the shared chokepoint for every
+> rendered surface.
+>
+> **The recurring lesson: three of these were a narrow-window fix gated on `hover:none`** (the edit
+> bar's 38px floor, the base header, the sheets). The §7 driver now runs both input modes on any
+> surface with a `hover:none` rule, and carries a card-fits-the-window column, because no existing
+> column caught UXP-261.
+>
 > **As of 2026-07-26 the register holds one open item: UXP-20, the standing P5 syntax-sprawl guard,
 > which is a gate rather than a defect and is meant to stay open.**
 > (The `✓` entries still sitting in this file below are closed work that predates the
