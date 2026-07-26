@@ -20395,6 +20395,44 @@ test('UXP-259 scrollCueClasses: which edge fades a strip shows, seeded', () => {
   assert.deepEqual(cue(0, 301, 300), { left: false, right: false }, '1px of overflow is noise');
 });
 
+test('UXP-260 the base header wrap is not touch-only', () => {
+  // The rule lived in @media(hover:none) with the comment "collapse + Rows + four view buttons
+  // exceed a phone's width". A 360px DESKTOP window has the same problem and got none of it:
+  // measured 18px of spill at 390 and 88px at 320, with mt-view-btn off the viewport and no
+  // scroll container to bring it back. Not the UXP-258/259 "a bar must not wrap" case — this is
+  // in-document content that already wrapped on touch by design.
+  assert.ok(/\.mt-baseheader\{[^}]*flex-wrap:wrap/.test(_src),
+    'the base header must wrap at every input type, not just touch');
+  assert.ok(/\.mt-base-views\{[^}]*flex-wrap:wrap/.test(_src),
+    'the view switcher must wrap at every input type too');
+  // And it must NOT be re-added to the touch block, or the mouse path silently rots again.
+  const hover = _src.slice(_src.indexOf('@media(hover:none)'));
+  const hoverEnd = hover.indexOf('\n}\n');
+  assert.ok(!/\.mt-baseheader,\.mt-base-views\{flex-wrap:wrap\}/.test(hover.slice(0, hoverEnd)),
+    'the touch-gated copy must stay deleted — that gating WAS the bug');
+});
+
+test('UXP-261 the narrow-sheet block wins its own top margin', () => {
+  // #604's block sets #io-card{margin-top:8px} and sizes both wraps to 100dvh-16px: an 8px gutter
+  // top and bottom. But #io-card.guide-open / .builder-open carry margin-top:5vh globally, and
+  // id+class outranks id — so both overlays kept a 5vh margin while sized for an 8px one and hung
+  // `5vh - 16px` below the window. Measured 16px past at 640 tall, 31px at 930, 26px at 844, 12px
+  // at 568 — exactly the formula. 20 of the guide's 83 nav buttons were unreachable as a result,
+  // because #io-back is overflow:visible and nothing scrolls to reveal them.
+  // Anchor on the MULTI-LINE block: three one-line @media(max-width:560px) rules appear earlier
+  // in the file, and indexOf found the first of those, making the extracted block a few bytes long.
+  const i = _src.indexOf('@media(max-width:560px){\n');
+  assert.ok(i > -1, 'the narrow-sheet block must exist');
+  const blk = _src.slice(i, _src.indexOf('\n}\n', i));
+  for (const cls of ['guide-open', 'builder-open'])
+    assert.ok(new RegExp(`#io-card\\.${cls}\\{margin-top:8px`).test(blk),
+      `#io-card.${cls} must restate margin-top inside the narrow block — equal specificity plus ` +
+      'later source order is what beats the global 5vh; omitting it is the whole defect');
+  // The global 5vh rules stay: they are correct above the breakpoint.
+  assert.ok(/#io-card\.guide-open\{width:min\(760px[^}]*margin-top:5vh/.test(_src),
+    'the wide-layout 5vh margin is deliberate and must remain');
+});
+
 test('UXP-262 escHtml survives a truthy non-string, and callable descs are strings', () => {
   // A numeric variable in the document ({rate := 85} in the welcome doc) made ONE builder row's
   // desc a Number. escHtml was `(s || '').replace(...)`, so it threw on the first truthy

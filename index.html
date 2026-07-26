@@ -728,7 +728,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-qbase-sort{font-size:.8em;color:var(--muted);white-space:nowrap}
 .mt-qbase-empty{font-size:.85em;color:var(--muted)}
 /* base view switcher (BV-1): text buttons in the reserved strip */
-.mt-base-views{display:flex;align-items:center;gap:2px;flex:1}
+.mt-base-views{display:flex;align-items:center;gap:2px;flex:1;flex-wrap:wrap}/* UXP-260: see .mt-baseheader — wrapping is not touch-only */
 .mt-view-btn{font-family:var(--font);font-size:.78em;font-weight:600;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);padding:2px 8px;cursor:pointer}
 /* variable-base badge (§7b): the always-visible "rows declare variables" cue + dialog door */
 .mt-varbase-badge{font-family:var(--font);font-size:.72em;font-weight:600;color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,transparent);border:1px solid color-mix(in srgb,var(--acc) 30%,transparent);border-radius:var(--r-sm);padding:1px 7px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
@@ -849,7 +849,14 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* base header bar: a strip atop the base for whole-base controls. It now carries the BV-1 view
    switcher (Table/Board/Cards/Calendar) in .mt-base-views; other whole-base ops live on the base
    bullet's menu. Collapses to nothing on a table-only base with no switcher yet. */
-.mt-baseheader{display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* UXP-260: flex-wrap here is NOT touch-only. It used to live in the @media(hover:none) block with
+   the comment "collapse + Rows + four view buttons exceed a phone's width" — true, and equally true
+   of a 360px desktop window, which never got the rule: measured 18px of spill at 390 and 88px at
+   320, with the Calendar button off the viewport and no scroll container to bring it back. This is
+   not the UXP-258/259 "a bar must not wrap" case: .mt-baseheader is in-document content, not fixed
+   chrome, and it already wrapped on touch by design. flex-wrap is inert while things fit, so wide
+   layouts are unchanged. */
+.mt-baseheader{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 /* base outline controls (collapse + row cap) + the zoom-in footer (BC) */
 .mt-base-left{display:flex;align-items:center;gap:4px}
 .mt-base-collapse{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;color:var(--muted);background:none;border:1px solid transparent;border-radius:var(--r-sm);cursor:pointer;font-size:.8em;flex-shrink:0}
@@ -2270,9 +2277,16 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      minimal top margin. One shared behavior, not per-surface pixel tweaks (DL §4). */
   #file-menu{min-width:0;width:calc(100vw - 16px);max-width:calc(100vw - 16px)}
   #io-card{margin-top:8px;width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
-  #io-card.guide-open{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  /* UXP-261: margin-top MUST be restated here. This block sets `#io-card{margin-top:8px}` and sizes
+     both wraps to `100dvh - 16px` — an 8px gutter top and bottom. But `#io-card.guide-open` and
+     `#io-card.builder-open` carry `margin-top:5vh` globally, and id+class outranks id, so the two
+     overlays kept a 5vh top margin while being sized for an 8px one. They hung `5vh - 16px` below
+     the window: measured 16px past at 640 tall, 31px at 930, 26px at 844, 12px at 568 — exactly
+     what the formula predicts. The guide's bottom 20 nav buttons were unreachable as a result,
+     because #io-back is overflow:visible and nothing scrolls to reveal them. */
+  #io-card.guide-open{margin-top:8px;width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
   .guide-wrap{height:calc(100dvh - 16px)}
-  #io-card.builder-open{width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
+  #io-card.builder-open{margin-top:8px;width:calc(100vw - 16px);max-height:calc(100dvh - 16px)}
   .builder-wrap{height:calc(100dvh - 16px)}
   .builder-nav{width:150px}
   /* Agenda on phones: the desktop side-by-side (controls | rows) leaves the Due/Running
@@ -2461,8 +2475,9 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
      there (swipe-to-indent is not attached on bases; the bullet drag still moves them).
      Wide grids already pan inside the .mt-scroll wrapper; pan-y was what blocked it. */
   .nt-base>.node-row>.node-content{touch-action:manipulation}
-  /* the base header strip: collapse + Rows + four view buttons exceed a phone's width */
-  .mt-baseheader,.mt-base-views{flex-wrap:wrap}
+  /* UXP-260: the base header's flex-wrap MOVED to the base rules — it was never touch-specific.
+     A narrow desktop window has the same problem and used to get none of the remedy. Do not
+     re-add it here. */
   /* calendar view chrome: the agenda's .cal-nav touch rule doesn't reach the base view's
      own controls; the chips are the tap-to-zoom door and get a real tap height */
   .cv-btn{min-width:32px;min-height:32px}
