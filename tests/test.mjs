@@ -20328,6 +20328,23 @@ test('UXP-252 the touch roll picker is a MENU, not a palette (V-1)', () => {
   assert.ok(_src.includes("id:'roll-palette'"), 'the internal GUIDE id is deliberately unchanged');
 });
 
+test('UXP-257 the wrapped toolbar row starts at the left, not indented', () => {
+  // At <=560px the row is flex-wrap:wrap and #tbtn-cluster keeps `margin-left:auto`. On a SHARED
+  // line that means "sit at the right edge"; once the cluster wraps to a line of its own there is
+  // nothing to push against, so the auto margin only indents it — measured 145px of dead space at
+  // 510px, shrinking to the row padding by 370px. Wrapping begins at 510px with today's 11 buttons.
+  assert.ok(/@media\(max-width:510px\)\{\s*\n\s*#tbtn-cluster\{margin-left:0\}/.test(_src),
+    'the auto margin must be dropped once the row wraps');
+  // It must NOT be dropped above the wrap point, or the single-row right-alignment is lost.
+  assert.ok(/#tbtn-cluster\{flex-shrink:0;flex-wrap:wrap;overflow:visible;max-width:100%;margin-left:auto\}/.test(_src),
+    'the <=560px single-row rule keeps pushing the icons right');
+  // The 510px bound and the 1279px bound in UXP-256 both assume the current button count; the
+  // ratchet in that test is what keeps them honest.
+  assert.ok(_src.indexOf('@media(max-width:510px)') > _src.lastIndexOf('@media(max-width:560px){'),
+    'the wrap rule must come AFTER the 560 block, not inside it — splitting that block detached ' +
+    'the spacer-hide rule and made 520-560 wrap too');
+});
+
 test('UXP-256 the toolbar row cannot let the level control land on the search box', () => {
   // `#search-wrap` is position:absolute above 950px — viewport-centred and OUT OF FLOW — so the
   // flex row laid #level-ctl out as if the search were not there. Harmless at 9 toolbar buttons,

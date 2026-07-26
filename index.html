@@ -2265,6 +2265,17 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .ag-list{padding-left:0}
 }
 
+/* UXP-257: once the row actually WRAPS, the `margin-left:auto` on #tbtn-cluster above stops meaning
+   "sit at the right edge" and starts meaning "leave a hole". The cluster gets a line to itself, so
+   there is nothing left to push against and the auto margin just indents it — measured 145px of
+   dead space at 510px, shrinking to the row padding by 370px. Right-alignment is only meaningful
+   while the icons SHARE a line with the logo and the search. 510px is where the wrap begins at
+   today's 11 buttons; the toolbar-button ratchet in tests/test.mjs is what stops that count
+   drifting out from under this bound. */
+@media(max-width:510px){
+  #tbtn-cluster{margin-left:0}
+}
+
 /* ── node links ── */
 .node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:var(--r-xs);padding:0 1px}
 .node-link:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
