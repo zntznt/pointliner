@@ -18614,7 +18614,9 @@ function guideEntryIds(src) {
 }
 
 test('chrome drift guard: every toolbar-cluster button has a live TB_GUIDE_MAP guide door', () => {
-  const cStart = GUIDE_SRC.indexOf('<div id="tbtn-cluster">');
+  // Match the id, not the whole open tag: UXP-259 added class="scroll-strip" and this guard fired
+  // as designed ("did it move/rename?"). It is the attribute list that is free to change, not the id.
+  const cStart = GUIDE_SRC.indexOf('<div id="tbtn-cluster"');
   const cEnd = GUIDE_SRC.indexOf('</div>', cStart);
   assert.ok(cStart > -1 && cEnd > cStart, 'the #tbtn-cluster markup is findable — did it move/rename?');
   const btnIds = [...GUIDE_SRC.slice(cStart, cEnd).matchAll(/<button id="([^"]+)"/g)].map(m => m[1]);
@@ -20336,37 +20338,100 @@ test('UXP-258 the toolbar is one strip at every width: it scrolls, it never wrap
     'the toolbar row must not wrap at any width — it is one strip');
   assert.ok(!/#tbtn-cluster\{[^}]*flex-wrap:wrap/.test(_src),
     'the icon strip must not wrap internally either');
-  // The strip yields by scrolling: shrinkable, floor-free, overflowing on ONE axis.
-  assert.ok(/#tbtn-cluster\{display:flex;[^}]*min-width:0;flex-shrink:1;overflow-x:auto;overflow-y:hidden/.test(_src),
-    'the strip must be the row\'s yielding element (flex-shrink:1, min-width:0, overflow-x:auto)');
+  // The strip yields by scrolling, via the shared .scroll-strip recipe (UXP-259 generalized it to
+  // the two bottom bars; a #tbtn-cluster-only copy would be the dual-home drift CLAUDE.md warns of).
+  assert.ok(/#tbtn-cluster[^{]*\{[^}]*\}[\s\S]{0,1400}\.scroll-strip\{[^}]*min-width:0;flex-shrink:1;overflow-x:auto;overflow-y:hidden/.test(_src),
+    'the strip must yield via .scroll-strip (flex-shrink:1, min-width:0, overflow-x:auto)');
+  assert.ok(/<div id="tbtn-cluster" class="scroll-strip">/.test(_src),
+    'the toolbar cluster must actually carry the shared class');
   // …and the scrollbar is hidden, so the edge fade is the ENTIRE affordance. It must exist for both
   // edges and for the both-edges case, or scrolled-away icons are silently truncated (P4).
-  for (const cls of ['tb-more-r', 'tb-more-l'])
-    assert.ok(_src.includes(`#tbtn-cluster.${cls}{mask-image:`), `the ${cls} edge fade is missing`);
-  assert.ok(_src.includes('#tbtn-cluster.tb-more-l.tb-more-r{mask-image:'),
+  for (const cls of ['more-r', 'more-l'])
+    assert.ok(_src.includes(`.scroll-strip.${cls}{mask-image:`), `the ${cls} edge fade is missing`);
+  assert.ok(_src.includes('.scroll-strip.more-l.more-r{mask-image:'),
     'scrolled to the middle, BOTH edges have more behind them');
-  assert.ok(/scrollbar-width:none/.test(_src) && /#tbtn-cluster::-webkit-scrollbar\{display:none\}/.test(_src),
+  assert.ok(/scrollbar-width:none/.test(_src) && /\.scroll-strip::-webkit-scrollbar\{display:none\}/.test(_src),
     'the fade is only load-bearing because the scrollbar is hidden — if that changed, revisit');
   // The fade is class-driven off the live scroll position, not painted permanently: a standing
   // fade would claim there is more to see at widths where the icons fit.
-  assert.ok(/function syncToolbarScrollCue\(\)/.test(_src), 'the cue sync function is missing');
-  const fn = _src.slice(_src.indexOf('function syncToolbarScrollCue()'));
-  assert.ok(/scrollWidth - c\.clientWidth/.test(fn.slice(0, 500)), 'the cue must measure real overflow');
-  assert.ok(/classList\.toggle\('tb-more-l'[\s\S]{0,200}classList\.toggle\('tb-more-r'/.test(fn.slice(0, 600)),
+  assert.ok(/function syncScrollCue\(el\)/.test(_src), 'the cue sync wrapper is missing');
+  const fn = _src.slice(_src.indexOf('function syncScrollCue(el)'));
+  assert.ok(/scrollCueClasses\(el\.scrollLeft, el\.scrollWidth, el\.clientWidth\)/.test(fn.slice(0, 400)),
+    'the wrapper must read real geometry and defer the decision to the pure core');
+  assert.ok(/classList\.toggle\('more-l'[\s\S]{0,200}classList\.toggle\('more-r'/.test(fn.slice(0, 600)),
     'both edge classes must be toggled, not just the right one');
   // Wired to every input that can change the overflow state: scroll, resize, button visibility.
-  assert.ok(/addEventListener\('scroll', syncToolbarScrollCue/.test(_src), 'scroll must re-sync the cue');
-  assert.ok(/new ResizeObserver\(syncToolbarScrollCue\)/.test(_src), 'a width change must re-sync the cue');
-  assert.ok(/syncToolbarScrollCue\(\);\s*\/\/ hiding\/showing buttons/.test(_src),
+  assert.ok(/el\.addEventListener\('scroll', \(\) => syncScrollCue\(el\)/.test(_src), 'scroll must re-sync the cue');
+  assert.ok(/new ResizeObserver\(\(\) => syncScrollCue\(el\)\)/.test(_src), 'a width change must re-sync the cue');
+  assert.ok(/syncScrollCues\(\);\s*\/\/ hiding\/showing buttons/.test(_src),
     'applyToolbarPrefs must re-sync — hiding a button changes whether the strip overflows');
   // A keyboard-focused button must be revealed CLEAR of the fade (P3). scroll-padding-inline is
   // declared, but driving it showed Chromium's own focus scroll ignoring it — focusing the 8th
   // icon left it 8px past the strip edge with scrollLeft still 0. So the focusin handler is the
   // load-bearing half and the source pin has to cover it, not just the CSS.
-  assert.ok(/#tbtn-cluster\{scroll-padding-inline:/.test(_src),
+  assert.ok(/\.scroll-strip\{[^}]*scroll-padding-inline:/.test(_src),
     'the declarative half must stay for browsers that honour it');
   assert.ok(/addEventListener\('focusin', e => \{[\s\S]{0,400}scrollLeft \+=/.test(_src),
     'the focusin reveal is what actually clears the fade — CSS alone did not');
+});
+
+test('UXP-259 scrollCueClasses: which edge fades a strip shows, seeded', () => {
+  // Pure core. The fade is the only affordance a hidden-scrollbar strip has, so the decision has to
+  // be exact in both directions: silent when it fits, and never claiming a side that has nothing.
+  const cue = (l, sw, cw) => host(c.scrollCueClasses(l, sw, cw));
+  // Fits exactly, and fits with room: no fade at all. A standing fade here is the lie that makes
+  // the cue worthless — it would say "more this way" on a bar with nothing hidden.
+  assert.deepEqual(cue(0, 300, 300), { left: false, right: false }, 'exact fit shows nothing');
+  assert.deepEqual(cue(0, 200, 300), { left: false, right: false }, 'room to spare shows nothing');
+  // Overflowing: at the start only the right edge, at the end only the left, in between both.
+  assert.deepEqual(cue(0, 500, 300), { left: false, right: true }, 'at the start, more is to the right');
+  assert.deepEqual(cue(100, 500, 300), { left: true, right: true }, 'mid-scroll, both edges hide content');
+  assert.deepEqual(cue(200, 500, 300), { left: true, right: false }, 'at the end, more is to the left');
+  // The 1px slack is deliberate, not sloppy: sub-pixel layout leaves scrollLeft a hair short of its
+  // own maximum, and an exact `< over` test paints a right fade on a strip already at the end.
+  assert.deepEqual(cue(199.6, 500, 300), { left: true, right: false }, 'a sub-pixel short of the end is the end');
+  assert.deepEqual(cue(0.4, 500, 300), { left: false, right: true }, 'a sub-pixel off the start is the start');
+  // A 1px overflow is layout noise, not content: treat it as fitting.
+  assert.deepEqual(cue(0, 301, 300), { left: false, right: false }, '1px of overflow is noise');
+});
+
+test('UXP-259 the bottom bars scroll their tools and keep their exit button', () => {
+  // `.eb-btn` bottoms out at min-width:38px — a floor #437 tuned for SEVEN buttons. The edit bar has
+  // nine, so below ~360px the tail ran off: measured 20px past the viewport at 340 and 40px at 320,
+  // where elementFromPoint at Done's centre returned nothing. Done is the only labelled exit from
+  // edit mode and touch has no Escape key. Pre-existing: identical on af0ecbf, c91028b and HEAD.
+  for (const [bar, tools, keep] of [['edit-bar', 'eb-tools', 'eb-done'], ['quick-bar', 'qb-tools', 'qb-help']]) {
+    const m = new RegExp(`<div id="${bar}"[\\s\\S]*?\\n</div>`).exec(_src);
+    assert.ok(m, `the ${bar} markup is findable — did it move/rename?`);
+    const html = m[0];
+    assert.ok(html.includes(`<div id="${tools}" class="scroll-strip">`),
+      `${bar}: the tools must sit in a .scroll-strip, or the bar has nothing that can yield`);
+    // The exit button must be OUTSIDE the scroller. Inside it, reaching it needs a swipe — which is
+    // strictly worse than the bug, since it is the control you use to get out.
+    const after = html.slice(html.indexOf('</div>') + 6);
+    assert.ok(new RegExp(`id="${keep}"`).test(after),
+      `${bar}: ${keep} must be a SIBLING of the strip, not inside it — the exit never scrolls away`);
+    assert.ok(/<span class="eb-spacer"><\/span>/.test(after),
+      `${bar}: the spacer stays outside too, so it collapses instead of pushing the exit off`);
+  }
+  // Both bars are display:none until .on, so a strip measured while hidden reports clientWidth 0 and
+  // the cue would be wrong on first show. Each bar re-syncs when it becomes visible.
+  assert.ok(/syncScrollCue\(document\.getElementById\('eb-tools'\)\)/.test(_src),
+    'updateEditBar must re-sync once the bar is visible');
+  assert.ok(/if \(show\) syncScrollCue\(document\.getElementById\('qb-tools'\)\)/.test(_src),
+    'updateQuickBar must re-sync once the bar is visible');
+  // One wiring call covers all three strips — toolbar + both bars — rather than three copies.
+  assert.ok(/document\.querySelectorAll\('\.scroll-strip'\)\.forEach\(wireScrollStrip\)/.test(_src),
+    'every .scroll-strip must be wired by the same call');
+
+  // RATCHET, mirroring UXP-256's. Scrolling absorbs growth, but the bars are the last surface a
+  // phone user has: a new button must force a re-measure at 320px rather than land silently.
+  for (const [bar, max] of [['edit-bar', 9], ['quick-bar', 6]]) {
+    const html = new RegExp(`<div id="${bar}"[\\s\\S]*?\\n</div>`).exec(_src)[0];
+    const n = (html.match(/class="eb-btn"/g) || []).length;
+    assert.ok(n <= max, `${bar} has ${n} .eb-btn (> ${max}). Re-measure both bars at 320px ` +
+      '(the driver in ux-definition-of-done.md §7) before raising this number.');
+  }
 });
 
 test('UXP-256 the toolbar row cannot let the level control land on the search box', () => {

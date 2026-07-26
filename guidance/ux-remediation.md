@@ -244,6 +244,24 @@ acting (controls drift).
 > overlap, 10 -> 64px, 11 -> 105px) and the layout is byte-identical before and after this session's
 > commits. See the archive entries.
 >
+> **UXP-259 closed 2026-07-26** — the first defect the layout driver found on its own, and the
+> first that no human had reported. `#edit-bar` is `position:fixed` with no wrap and `.eb-btn` bottoms
+> out at `min-width:38px`, a floor #437 tuned for SEVEN buttons; the bar now has nine, so below ~350px
+> the tail ran off: `#eb-done` 20px past the viewport at 340 and 40px at 320, with `elementFromPoint`
+> at its centre returning nothing. Done is the only labelled exit from edit mode and touch has no
+> Escape key. **Pre-existing** — identical on `af0ecbf`, `c91028b` and `HEAD`. Fixed with UXP-258's
+> mechanism rather than a second one: the tools moved into a shared `.scroll-strip` and the exit
+> button stayed outside it, so the control you use to get out never needs a swipe. `#quick-bar` got
+> the same structure preventively (6 buttons still clear 320px) because the two are declared twins.
+>
+> **The sweep also corrected the driver five times before any finding could be trusted** — v1 failed
+> its own control at all 11 widths. Negative margins read as spill, a scroll container's overflow read
+> as spill, `position:absolute` children read as overlap, focus state leaked between controls, and
+> scrolled-out read as offscreen. All five, plus the control-first rule, are recorded in
+> `ux-definition-of-done.md` §7. One near-miss was deliberately NOT filed: the focused search box
+> covers `#level-ctl` by 117px at every width including the two bands UXP-256 never touched, so it is
+> the intended overlay, not a regression.
+>
 > **As of 2026-07-26 the register holds one open item: UXP-20, the standing P5 syntax-sprawl guard,
 > which is a gate rather than a defect and is meant to stay open.**
 > (The `✓` entries still sitting in this file below are closed work that predates the
