@@ -2138,6 +2138,26 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
    search collides with the right-side level control / icons — measured up to ~950px, so
    the gate is 950px (was 820px, which still let the 1/2/3/All control bleed into the
    search box around 821-900px). The phone-only shrinking stays at 560px. */
+/* ── UXP-256: the 951-1215px gap where the level control landed ON the search box ──────────
+   `#search-wrap` is `position:absolute; left:50%` above 950px — viewport-centred and OUT OF FLOW —
+   so the flex row lays `#level-ctl` and the icon strip out as if the search were not there. That
+   was harmless at 9 toolbar buttons and became a 105px overlap at 11, growing one button at a time
+   (measured: 9 buttons = 21px, 10 = 64px, 11 = 105px). Nothing in the row could yield, because
+   `#level-ctl` is flex-shrink:0 and the search was not participating at all.
+
+   The fix reuses the in-flow treatment the <=950px block below already proves out, extended across
+   the gap: as a real flex item the search cannot be overlapped, because flex distributes rather
+   than stacks. Above 1280px the viewport-centred design is kept — the overlap ends at a measured
+   1215px, so that bound carries ~65px of headroom at today's 11 buttons, and the toolbar-button
+   ratchet in tests/test.mjs fails if a 12th arrives to eat it. */
+@media(min-width:951px) and (max-width:1279px){
+  /* Same 220px the wide layout uses, centred between the two groups with auto margins, so crossing
+     1280px changes only where the field sits by a few pixels and never its size — an in-flow field
+     that grew to 324px here would snap back to 220px at the breakpoint, which reads as a glitch. */
+  #search-wrap{position:relative;left:auto;transform:none;flex:0 1 220px;min-width:min(190px,calc(100vw - 130px));margin:0 auto}
+  #search-box{width:100%}
+}
+
 @media(max-width:950px){
   /* In-flow flex search fills the space between the logo and the icons. Give it a min-width
      floor so the AT-REST field never collapses to near-nothing at the narrow end of this range
@@ -8469,7 +8489,8 @@ function stateCmds() {
 function blockCmdsPool() { return [...BLOCK_CMDS, ...stateCmds()]; }
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
-// #520: the touch roll palette. Each entry inserts a ready-to-edit {…} template so a mid-scene
+// #520: the touch roll menu (V-1: §1 maps an overlay list to "menu"; "palette" is banned).
+// Each entry inserts a ready-to-edit {…} template so a mid-scene
 // roll never means hunting { and } on a soft keyboard. `ins` is EXISTING grammar syntax (dice,
 // yes/no oracle, {roll:} query, alternation) — no new sigil, inside the closed P5 inventory — so
 // each template promotes to a real pill on exit and rolls on tap like any hand-typed one. `caret`
@@ -16761,6 +16782,14 @@ function classifyBraceBody(body, rules, vars) {
   const diceClean = body.replace(/\s/g, '');
   const diceish = DICE_SNIFF.test(diceClean) || DICE_ATTEMPT.test(diceClean);   // {2d6}, or a faceless {2d}
   if (diceish && parseDice(body, vars)) return 'artifact';
+  // UXP-254: the LAST silent rejected input, and it must sit AFTER the parseDice line above —
+  // dice is the only pill form whose keyword is its SHAPE, so a commit placed with the keyword
+  // commits fires before dice are ever parsed and condemns VALID Fate dice (`{4dF}`, documented in
+  // guide/generating-text.md). Reaching here means the shape looks like dice and parseDice refused
+  // it, so it is an attempt, not prose. `{2dX}` used to fall through to 'literal' and say nothing,
+  // while `{2d}`, `{2d0}`, `{0d6}` and `{2d6kX}` were already marked. The tail is a SINGLE letter
+  // on purpose: an existing pin records that `{2days}` is prose, and a looser `\d+d[a-z]` broke it.
+  if (/^\d+d[a-z]$/i.test(body)) return 'invalid';
   if (estParts(body, vars)) return 'artifact';                         // {5 to 10} / {lo to hi}
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
@@ -16855,6 +16884,11 @@ function braceAttemptReason(body, rules, vars) {
   };
   const nm = NEAR_MISS[body.toLowerCase()];
   if (nm) return nm;
+  // UXP-254: a dice-shaped typo. Pattern-matched rather than keyed like the entries above, because
+  // dice has no keyword — its shape IS the keyword. Names the fix, not just the miss, the same way
+  // the modifier branch above does.
+  const dm = /^(\d+)d([a-z])$/i.exec(body);
+  if (dm) return `Dice need a number of sides: try {${dm[1]}d6}. "${dm[2]}" is not a number.`;
   // A {rule …} that classified invalid: the keyword committed, so the tail is what went wrong.
   // Name the shape rather than the parser, and separate the two ways it fails.
   if (/^rule\s/i.test(body)) {
@@ -18182,7 +18216,7 @@ function updateQuickBar() {
 // and focusNode's the fresh point itself. withAt then types '@' at the new caret — the
 // eb-insert path (UXP-105), so one tap goes from nothing to the pill palette mid-scene.
 // insertText (optional): a string typed into the fresh point once its caret exists — '@' opens
-// the insert menu (#566), a '{…}' template comes from the roll palette (#520). Both ride the same
+// the insert menu (#566), a '{…}' template comes from the roll menu (#520). Both ride the same
 // execCommand path so the text is a normal edit (undoable, promotes on exit like hand-typed).
 function quickNewPoint(insertText) {
   let container = (focusedId && nodeById(focusedId)) || root;
@@ -35050,11 +35084,11 @@ const GUIDE = [
       { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
     ] },
   { id:'roll-palette', cat:'generators',
-    title:'Roll palette (touch)',
+    title:'Roll menu (touch)',
     body:"Drop a roll mid-scene on a phone without hunting for braces on the keyboard. On a touch device the bottom bar has a dice button; tap it for a small palette of ready-made rolls (a d6, a d20, a yes/no oracle, a roll on your own document, a this-or-that pick). Tap one and it lands as an editable point you can tweak, then tap Done to turn it into a pill and tap the pill to roll. Everything it inserts is ordinary pill text, so a roll you make this way is the same as one you typed by hand: it re-rolls on tap and can be named and reused. The palette is a shortcut for the common rolls; the @ insert menu still has the full set.",
     related:['roll-query','grammar'],
     examples:[
-      { syn:'Dice button on the bottom bar', desc:'touch only: opens the roll palette' },
+      { syn:'Dice button on the bottom bar', desc:'touch only: opens the roll menu' },
       { syn:'{2d6} / {1d20}',           desc:'a dice roll, ready to edit then tap to roll' },
       { syn:'{oracle: likely}',         desc:'a yes/no oracle at the chosen odds' },
     ] },

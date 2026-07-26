@@ -20292,6 +20292,71 @@ test('UXP-246 openInsertDialog stashes on cancel and clears on submit', () => {
   assert.ok(/read: \(\) => rawVals\(\),/.test(_src), 'openInsertDialog must hand the shell its UNTRIMMED reader');
 });
 
+test('UXP-254 a dice-shaped typo is an attempt, not prose', () => {
+  // The last silent rejected input. Measured first: `2d`, `2d0`, `0d6`, `2d6x` were ALREADY cued;
+  // only `\d+d` + a letter fell through to 'literal' and said nothing.
+  for (const b of ['2dX', '2dz', '4dQ', '1dK', '20dY'])
+    assert.equal(c.classifyBraceBody(b, {}, {}), 'invalid', `{${b}} is a dice typo, not prose`);
+  // ORDER MATTERS, and getting it wrong condemned real dice. Dice is the only form whose keyword is
+  // its SHAPE, so this commit must sit AFTER the parseDice line — placed up with the keyword
+  // commits it fired first and marked VALID Fate dice invalid.
+  const iDice = _src.indexOf('if (diceish && parseDice(body, vars)) return \'artifact\';');
+  const iCommit = _src.indexOf("if (/^\\d+d[a-z]$/i.test(body)) return 'invalid';");
+  assert.ok(iDice > 0 && iCommit > iDice, 'the dice commit must follow the dice parse');
+  // The forms that must survive: Fate dice (guide/generating-text.md documents {4dF}), plain and
+  // keep-highest dice.
+  for (const b of ['4dF', '4df', '2d6', '1d20', '4d6kh3'])
+    assert.equal(c.classifyBraceBody(b, {}, {}), 'artifact', `{${b}} is valid dice and must promote`);
+  // Prose that must NOT be condemned. `{2days}` is pinned as prose elsewhere in this file, which is
+  // why the tail is a single letter rather than `[a-z]+`.
+  for (const b of ['2days', '3 days', '2 dragons', '12 down'])
+    assert.equal(c.classifyBraceBody(b, {}, {}), 'literal', `{${b}} is prose`);
+  // It routes into the richer .brace-attempt cue with a REASON, not a bare mark.
+  const why = c.braceAttemptReason('2dX', {}, {});
+  assert.ok(/number of sides/.test(why) && /2d6/.test(why), 'the reason must name the fix: ' + why);
+  assert.ok(!why.includes('—'), 'no em dash');
+});
+
+test('UXP-252 the touch roll picker is a MENU, not a palette (V-1)', () => {
+  // §1 maps a keyboard-navigable overlay list to "menu" and bans "palette". Only two user-facing
+  // strings existed and the picker never displays its own name, so this is a copy fix.
+  assert.ok(_src.includes("title:'Roll menu (touch)'"), 'the GUIDE entry title uses the canonical word');
+  assert.ok(_src.includes("desc:'touch only: opens the roll menu'"), 'the command desc too');
+  assert.ok(!/roll palette/i.test(_src), 'no site may still say "roll palette"');
+  // The entry ID stays `roll-palette` on purpose: it is an internal key referenced by the
+  // concept-guide drift guard, and renaming it would break `covers:[…]` for no user benefit.
+  assert.ok(_src.includes("id:'roll-palette'"), 'the internal GUIDE id is deliberately unchanged');
+});
+
+test('UXP-256 the toolbar row cannot let the level control land on the search box', () => {
+  // `#search-wrap` is position:absolute above 950px — viewport-centred and OUT OF FLOW — so the
+  // flex row laid #level-ctl out as if the search were not there. Harmless at 9 toolbar buttons,
+  // a 105px overlap at 11: measured 9 -> 21px, 10 -> 64px, 11 -> 105px, growing one button at a
+  // time across four PRs with no single commit looking guilty.
+  assert.ok(/@media\(min-width:951px\) and \(max-width:1279px\)\{/.test(_src),
+    'the gap between the narrow reflow and the roomy widths must be covered');
+  // In the gap the search is a REAL flex item, which is what makes overlap impossible: flex
+  // distributes rather than stacks.
+  const gap = _src.slice(_src.indexOf('@media(min-width:951px) and (max-width:1279px){'));
+  assert.ok(/#search-wrap\{position:relative;left:auto;transform:none;flex:0 1 220px/.test(gap),
+    'the search must participate in the flex row across the gap');
+  // Same 220px as the wide layout, so crossing the breakpoint never changes the field's SIZE.
+  assert.ok(/flex:0 1 220px/.test(gap) && /#search-box\{width:100%\}/.test(gap),
+    'the gap width must match the wide layout to avoid a snap at 1280px');
+  // The <=950px reflow this reuses must still be there — it is the proven half.
+  assert.ok(/@media\(max-width:950px\)\{/.test(_src), 'the narrow reflow must remain');
+
+  // RATCHET. The 1279px bound carries ~65px of measured headroom at today's 11 buttons (the overlap
+  // ended at 1215px before the fix). A 12th button eats it, so adding one must force a re-measure
+  // rather than silently re-creating the defect at a slightly different width.
+  const buttons = (_src.match(/class="tbtn[^"]*"/g) || []).length;
+  const MAX = 11;
+  assert.ok(buttons <= MAX,
+    `the toolbar has ${buttons} buttons (> ${MAX}). Each one pushes #level-ctl further left; ` +
+    're-measure the overlap across widths (search/level rectangle intersection) and move the ' +
+    '1279px bound, or move a button behind a menu, before raising this number.');
+});
+
 test('UXP-249 tapFloorCandidates: the static tap-floor proxy, seeded', () => {
   // Pure core pins. `cursor:pointer` is the stand-in for "tappable"; covered = an explicit
   // >=24px height/min-height anywhere, or ANY rule inside an @media(hover:none) block.

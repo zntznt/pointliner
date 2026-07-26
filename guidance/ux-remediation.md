@@ -223,7 +223,14 @@ acting (controls drift).
 > (8 of 9 catch rate against UXP-248's ground truth) and its three blind spots are documented in
 > `accessibility.md`, so the hit-test driver remains the measurement of record.
 >
-> **As of 2026-07-26 the register holds three open defects (UXP-252 vocab; UXP-254 feedback; UXP-20 standing guard).**
+> **UXP-252 and UXP-254 closed 2026-07-26**, and a NEW defect was found and fixed in the same pass:
+> **UXP-256**, the toolbar row letting the level control land on the search box. It was reported as a
+> regression from recent work and is not: it accumulated one toolbar button at a time (9 -> 21px
+> overlap, 10 -> 64px, 11 -> 105px) and the layout is byte-identical before and after this session's
+> commits. See the archive entries.
+>
+> **As of 2026-07-26 the register holds one open item: UXP-20, the standing P5 syntax-sprawl guard,
+> which is a gate rather than a defect and is meant to stay open.**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
@@ -231,33 +238,6 @@ acting (controls drift).
 ---
 
 ## Open items
-
-### UXP-254 ☐ A dice-shaped typo is the one rejected input that still says nothing 🟢 [feedback]
-- **Problem:** `{2dX}` (a letter where the sides go) gets **no cue at all** in edit mode — neither
-  `.gr-src` nor `.gr-bad`. `{2d0}`, one character away, IS marked. Dice is the only pill form whose
-  keyword is its SHAPE rather than a word, so `classifyBraceBody` has nothing to commit on and the
-  body falls through to 'literal'.
-- **Rule:** P4-1 (no silent failure). Every other authoring surface now signals; this one does not.
-- **Why it is filed rather than fixed:** the fix means committing on a SHAPE (`/^\d+\s*d/`) instead
-  of a keyword, which is a change to parsing semantics with a real false-positive surface — a
-  legitimate literal pick like `{2d6 apples}` or prose beginning with a number-d pattern would be
-  condemned. Every other keyword-commit is anchored to an unambiguous word. Extending the doctrine
-  to shapes is a judgment call for the owner, and riskier than the copy fixes this pass shipped.
-- **Target:** either commit on the dice shape (with the false-positive set enumerated and pinned),
-  or add the near-miss suggester to this case so the typo is cued without changing classification.
-
-### UXP-252 ☐ "Roll palette" uses a banned word for an overlay list 🟢 [vocab]
-- **Problem:** §1 maps "a keyboard-navigable overlay list" to **menu**, and bans **palette**. The
-  touch roll picker is called "Roll palette" in its GUIDE title and in a command desc ("touch only:
-  opens the roll palette").
-- **Why it is filed rather than fixed:** it is the one V-1 hit where the ban is arguable. The row's
-  concept is a *keyboard-navigable* overlay list and this picker is explicitly touch-only, so it may
-  fall outside the row entirely; and "Roll palette" is a shipped feature NAME, so renaming it is a
-  user-visible change with knock-on guide edits, not a copy tweak. That is an owner's call, not an
-  auditor's.
-- **Target:** either rename to "Roll menu" everywhere (GUIDE title, command desc, backlog mention),
-  or add an explicit carve-out to §1 saying the touch picker keeps its name — but not leave the
-  standard and the app disagreeing silently.
 
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
 - **Problem:** the loudest symptom of the scattered direction is the steady flood of new authoring syntaxes and grammars, each invented per-feature. The architecture *encourages* it (`CLAUDE.md`: "a new token type / expression primitive fits very well"), so the pressure is structural and continuous — this guard never fully closes.
