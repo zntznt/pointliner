@@ -387,6 +387,22 @@ both machines.
    slower machine genuinely moves**, by about one size step. This is also the clearest
    candidate for future work: it is the only path where the 2.4× constant crosses a
    perceptual line inside the document sizes users actually reach before the storage wall.
+
+   **Tag inheritance added a measured cost to `#tag` queries only** (container run, median of 9
+   applied queries over a 3-level tree, same page for both builds):
+
+   | query | 10k before → after | 50k before → after |
+   |---|---|---|
+   | `#campaign` | 4.9 → **11.2 ms** | 23.7 → **34.9 ms** |
+   | `Task` (text) | 18 → 26 ms | 94.6 → 92 ms |
+   | `is:todo` | 1.6 → 1.6 ms | 6.2 → 6.6 ms |
+
+   Only the tag row moves; the other two are run-to-run noise (the text row lands on both sides of
+   zero across runs). Two things keep it to ~+11 ms at 50k rather than the **+59 ms** the first
+   implementation measured: the walkers accumulate the ancestor chain one level per descent (O(1)
+   per node, not O(depth)), and both regexes are memoised — building a `RegExp` per node was the
+   single largest cost, at 50k constructions per query. `computeMatchSet` also skips the
+   accumulation entirely when the query has no tag term, so text and `is:` queries pay nothing.
 3. **Structural-edit latency (grows with size, but stays under the line at 50k on both).**
    Each structural op pays `pushUndo` → `snapshot` (`JSON.stringify(root)`, O(total)) + a
    full `render()` + the next reads of the doc-caches. M: ~11 ms at 25k, ~29 ms at 50k —

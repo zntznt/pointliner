@@ -2642,7 +2642,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
         </div>
-        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><kbd>has:tag</kbd><span>points with a tag (nested OK; <code>#tag</code> also matches <code>#tag/sub</code>, states like <code>#todo</code> count); <code>has:tag</code> matches any tag at all</span></div>
+        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><kbd>has:tag</kbd><span>points with a tag, <b>and everything filed under them</b> (nested OK; <code>#tag</code> also matches <code>#tag/sub</code>; a point's own state like <code>#todo</code> counts, but a parent's does not pass down); <code>has:tag</code> is the point's own tag only</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><kbd>is:passing</kbd><span>points whose <code>check</code> constraint fails / passes (the lint filter)</span></div>
         <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
@@ -16221,10 +16221,14 @@ function mergedTemplates(plugins = root?.plugins, docTemplates = root?.templates
 // O(1) per node instead of re-deriving each node's chain. This is THE hot path — performance.md
 // puts an applied query at ~372 ms at 50k on the slower machine — so the accumulation is not an
 // optimisation to add later.
-function computeMatchSet(node, set, anc = '', states = knownStates()) {
+function computeMatchSet(node, set, anc = '', states = knownStates(),
+                        needTags = searchTerms.some(t => t.kind === 'tag')) {
   let any = nodeMatchesSearch(node, anc);
-  const kids = anc + ' ' + stripStateTags(tagScanText(node.text), states);
-  for (const c of node.children) { if (computeMatchSet(c, set, kids, states)) any = true; }
+  // Only accumulate when the query actually has a tag term: a text or is: query has nothing to
+  // inherit, so it should not pay for the chain at all. ('' is passed, not undefined, so
+  // termMatchesNode's ancestorsOf default stays out of the hot path.)
+  const kids = needTags ? anc + ' ' + stripStateTags(tagScanText(node.text), states) : '';
+  for (const c of node.children) { if (computeMatchSet(c, set, kids, states, needTags)) any = true; }
   if (any) set.add(node.id);
   return any;
 }
@@ -22240,9 +22244,17 @@ function tagScanText(text) {
 //   read as tags); word-anchored both sides so #todo never matches #todos. Nested tags are
 //   hierarchical: a query for #thread matches #thread AND #thread/torn-letter (the trailing boundary
 //   allows a / continuation but not another [\w-] char). `value` may contain / and -, so escape it.
+let _tagReKey = null, _tagRe = null;
 function tagHit(value, text) {
-  const esc = String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i').test(text || '');
+  // Memoised on the tag: a query's tag is constant while the walk runs, so this saves one RegExp
+  // construction per node. Not /g, so there is no lastIndex to carry between .test calls.
+  const key = String(value ?? '');
+  if (key !== _tagReKey) {
+    const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    _tagRe = new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i');
+    _tagReKey = key;
+  }
+  return _tagRe.test(text || '');
 }
 /* Tag inheritance (Tag power, the last Tier 1 item): a tag on a point is in effect for its whole
    subtree, so filing work under a #campaign heading and searching #campaign finds the work, not
@@ -22254,11 +22266,20 @@ function tagHit(value, text) {
    #WAITING would drop a whole project into `is:held` and the agenda's held band while none of the
    work is actually blocked. A point's OWN state still matches exactly as before — only an
    ancestor's is stripped, which is why this runs over ancestor text and never over own text. */
+let _stateReKey = null, _stateRe = null;
 function stripStateTags(text, states) {
   const list = [...(states || [])].filter(Boolean);
   if (!list.length) return text || '';
-  const esc = list.map(s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  return (text || '').replace(new RegExp('(?<![a-zA-Z0-9])#(?:' + esc + ')(?![\\w-])', 'gi'), ' ');
+  // Memoised on the state list. This runs once per node on every tag query, so building the RegExp
+  // each time cost 50k constructions per query — measured at 21.9 -> 81.3 ms at 50k before this
+  // cache. A /g regex resets lastIndex on .replace, so sharing one instance is safe.
+  const key = list.join('\u0000');
+  if (key !== _stateReKey) {
+    const esc = list.map(s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    _stateRe = new RegExp('(?<![a-zA-Z0-9])#(?:' + esc + ')(?![\\w-])', 'gi');
+    _stateReKey = key;
+  }
+  return (text || '').replace(_stateRe, ' ');
 }
 // The tag text an ancestor chain contributes: each ancestor's scan text, states stripped.
 function ancestorTagText(ancestors, states) {
@@ -34857,11 +34878,13 @@ const GUIDE = [
     ] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
-    body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.\n\nTo see all your tags at once, open File then Browse tags: it shows the whole tag hierarchy as a tree with a count on each, so nested tags sit under their parent. Type to filter, arrow to browse, and press Enter (or click) to filter the document to that tag.",
+    body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. **A tag covers everything filed beneath it**, so tagging a heading `#campaign` and searching `#campaign` finds the work under it, not just the heading itself. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nTwo things deliberately stay put. A status word like `#WAITING` describes the point it sits on, so it never passes down to the work underneath. And `has:tag` asks whether a point carries a tag *itself*, which is what makes `-has:tag` a useful way to find points you have not labelled yet.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.\n\nTo see all your tags at once, open File then Browse tags: it shows the whole tag hierarchy as a tree with a count on each, so nested tags sit under their parent. Type to filter, arrow to browse, and press Enter (or click) to filter the document to that tag.",
     related:['search-ops','properties','tags'],
     examples:[
       { syn:'#tag',         desc:'label a point by topic, status or project' },
       { syn:'#tag/subtag',  desc:'nest a tag; searching #tag also finds #tag/subtag' },
+      { syn:'#tag on a parent', desc:'covers every point filed under it' },
+      { syn:'has:tag',      desc:"the point's own tag only, so -has:tag finds unlabelled points" },
       { syn:'#',            desc:"opens a menu of tags you've used, with counts" },
       { syn:'click a tag',  desc:'filter to every point that shares it' },
       { syn:'File, Browse tags', desc:'see every tag as a tree; pick one to filter' },

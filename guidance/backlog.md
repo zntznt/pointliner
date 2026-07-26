@@ -118,7 +118,7 @@ click to zoom in. `/due` slash verb + bullet menu "Set due date" front door. Sea
 existing `key:value` search operator family. P5 gate signed off (recorded UXP-20 decision,
 2026-06-13: `due` property is the home; inventory row added to `ux-discipline.md`).
 
-### ◐ Tag power
+### ✓ Tag power — complete (tag inheritance shipped 2026-07-26)
 Tag *filtering* already works (click a `#tag` to filter), **tag autocomplete shipped**
 (the `#` picker, sourced from `collectTags`, most-used-first — UXP-10), **search query
 operators shipped** (2026-06-13, the UXP-20-routed decision): implicit AND, `-` negation,
@@ -128,8 +128,14 @@ focus-shown legend under the search box + the `?` panel as front doors, and pure
 hashtag-shaped, `#waiting` filters by state with no `state:` operator. **Saved searches
 shipped** (2026-06-13): star the query to save it doc-level (OPML head element), saved
 queries are chips in the focus-shown panel — apply/forget by mouse or keyboard. `OR` has since
-shipped (QX-5, a standalone spaced `|`); only tag inheritance remains.
-- **Fit — medium.** Inheritance layered on the tag-term matcher.
+shipped (QX-5, a standalone spaced `|`). **Tag inheritance shipped** (2026-07-26): a tag is in
+effect for the whole subtree beneath it, on by default, threaded through every door (search box,
+`{query:}`, `{count:}`, `{roll:}`, workspace search) rather than read from the live parent index —
+`ancestorsOf` returns `[]` outside the live tree, so a lookup would have made the same filter answer
+two ways. Ancestor STATE keywords are stripped (a held parent must not drag its subtree into
+`is:held`) and `has:tag` stays literal (so `-has:tag` still finds unlabelled points). Cost measured
+and recorded in `performance.md`: ~+11 ms on a tag query at 50k, nothing on text/`is:` queries.
+**Tier 1 is now complete.**
 
 ---
 
