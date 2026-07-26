@@ -232,6 +232,16 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 #tbtn-cluster{display:flex;align-items:center;gap:7px;min-width:0;flex-shrink:1;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;padding:5px 5px 0 0;margin:-5px -5px 0 0;overscroll-behavior-x:contain}
 #tbtn-cluster::-webkit-scrollbar{display:none}
 #tbtn-cluster>*{flex-shrink:0}
+/* UXP-258: the strip is the toolbar's ONLY yielding element, so on a phone it is genuinely
+   scrolled, not inert — and its scrollbar is hidden. The fade at an overflowing edge is the
+   whole affordance (P4: no silent truncation). It is class-driven by syncToolbarScrollCue
+   rather than always painted, because a permanent fade would claim there is more to see when
+   the icons fit. scroll-padding keeps a keyboard-focused button clear of the fade when the
+   browser scrolls it into view. */
+#tbtn-cluster{scroll-padding-inline:28px}
+#tbtn-cluster.tb-more-r{mask-image:linear-gradient(to left,transparent 0,#000 28px)}
+#tbtn-cluster.tb-more-l{mask-image:linear-gradient(to right,transparent 0,#000 28px)}
+#tbtn-cluster.tb-more-l.tb-more-r{mask-image:linear-gradient(to right,transparent 0,#000 28px,#000 calc(100% - 28px),transparent 100%)}
 /* MOBILE-2: the "N done hidden" count badge on the Done button. A calm accent-tinted corner
    count that appears only when checked items are hidden, so the cue and the recovery control
    (this same toggle) are one element. Hidden by default; .has-hidden reveals it. */
@@ -2192,15 +2202,13 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .logo{padding:4px 3px}
   .logo-mark{width:20px;height:20px}
   #toolbar-row{gap:6px;padding:0 8px}
-  /* #827 item 14: seven icon toggles no longer fit one 390px row at touch tap sizes — the
-     cluster compressed into a scrollbar-less hidden overflow, clipping the Notes toggle with
-     no affordance. Let the row wrap instead: the cluster is flex-shrink:0 here so, when it
-     does not fit, it drops whole onto its own full-width line (and wraps internally on
-     ultra-narrow screens) rather than compressing into the scroll. Everything stays visible;
-     the toolbar's ResizeObserver re-pads the outline below the taller bar. Desktop-narrow
-     windows (28px buttons) still fit one row, so nothing changes there. */
-  #toolbar-row{height:auto;min-height:44px;flex-wrap:wrap}
-  #tbtn-cluster{flex-shrink:0;flex-wrap:wrap;overflow:visible;max-width:100%;margin-left:auto}
+  /* UXP-258: the toolbar is ONE strip at every width. #827 item 14 let the row wrap here,
+     because the cluster's overflow was a scrollbar-less clip with no affordance — icons past
+     the edge simply vanished. The strip now scrolls (base #tbtn-cluster rule) and says so with
+     an edge fade driven by syncToolbarScrollCue, so the reason for wrapping is gone: a second
+     row changes the toolbar's HEIGHT as buttons accumulate, which moves every surface below it
+     and reads as breakage. Scrolling degrades in one axis instead (P1). No rules here — the
+     base strip already carries flex-shrink:1 / min-width:0 / overflow-x:auto. */
   /* Phone: put the search magnifier immediately after the logo (hide the first spacer,
      the one between the dirty-dot and the search wrap), and keep the second spacer so it
      pushes the 5 icon toggles to the right. */
@@ -2265,16 +2273,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   .ag-list{padding-left:0}
 }
 
-/* UXP-257: once the row actually WRAPS, the `margin-left:auto` on #tbtn-cluster above stops meaning
-   "sit at the right edge" and starts meaning "leave a hole". The cluster gets a line to itself, so
-   there is nothing left to push against and the auto margin just indents it — measured 145px of
-   dead space at 510px, shrinking to the row padding by 370px. Right-alignment is only meaningful
-   while the icons SHARE a line with the logo and the search. 510px is where the wrap begins at
-   today's 11 buttons; the toolbar-button ratchet in tests/test.mjs is what stops that count
-   drifting out from under this bound. */
-@media(max-width:510px){
-  #tbtn-cluster{margin-left:0}
-}
+/* UXP-257/258: the wrapped-row indent this used to correct is gone with the wrap itself — the row
+   no longer breaks onto a second line at any width, so `margin-left:auto` never gets a line of its
+   own to indent. Kept as a note so the 145px-at-510px measurement is not re-discovered. */
 
 /* ── node links ── */
 .node-link{color:var(--acc);text-decoration:underline;cursor:pointer;border-radius:var(--r-xs);padding:0 1px}
@@ -15194,6 +15195,7 @@ function syncChronicleButton() {
   const btn = document.getElementById('btn-chronicle'); if (!btn) return;
   const bound = !!chronicleHome();
   btn.style.display = bound ? '' : 'none';
+  syncToolbarScrollCue();  // an 11th visible icon can push the strip into overflow
   if (!bound && chronicleOpen) closeChronicleStrip();
 }
 function toggleChronicleStrip() { if (chronicleOpen) closeChronicleStrip(); else openChronicleStrip(); }
@@ -34047,6 +34049,19 @@ function applyToolbarPrefs() {
       if (cluster) cluster.appendChild(btn);  // reorder buttons to match TOOLBAR_FEATURES order
     }
   });
+  syncToolbarScrollCue();  // hiding/showing buttons changes whether the strip overflows
+}
+/* UXP-258: the icon strip is one scrolling row at every width — it never wraps to a second line,
+   because a toolbar that changes height as buttons accumulate moves every surface below it. The
+   scrollbar is hidden, so the edge fade is the only thing that says "there is more this way", and
+   it has to track the live scroll position: painted permanently it would lie whenever the icons
+   fit. Toggled here, read by the .tb-more-l/.tb-more-r rules. */
+function syncToolbarScrollCue() {
+  const c = document.getElementById('tbtn-cluster');
+  if (!c) return;
+  const over = c.scrollWidth - c.clientWidth;
+  c.classList.toggle('tb-more-l', over > 1 && c.scrollLeft > 1);
+  c.classList.toggle('tb-more-r', over > 1 && c.scrollLeft < over - 1);
 }
 function buildToolbarChooser() {
   const host = document.getElementById('fm-toolbar-opts');
@@ -34508,6 +34523,24 @@ const TB_GUIDE_MAP = {
   'btn-done': 'appearance-controls',
   'btn-notes': 'notes',
 };
+// UXP-258: keep the edge fade honest — on scroll, on resize, and once at boot.
+document.getElementById('tbtn-cluster').addEventListener('scroll', syncToolbarScrollCue, { passive: true });
+/* P3: `scroll-padding-inline` is supposed to keep a keyboard-focused button clear of the fade, but
+   driving it showed Chromium's own focus scroll ignoring it — focusing the 8th icon left it 8px
+   past the strip edge with scrollLeft still 0, i.e. clipped and fading. So reveal it explicitly.
+   The 28px margin is the fade width in the .tb-more-* rules; scrollLeft clamps itself at both ends,
+   so the first and last icons simply sit flush, which is correct because no fade is drawn there. */
+document.getElementById('tbtn-cluster').addEventListener('focusin', e => {
+  const c = e.currentTarget, btn = e.target.closest('button');
+  if (!btn) return;
+  const m = 28, r = btn.getBoundingClientRect(), rc = c.getBoundingClientRect();
+  if (r.right > rc.right - m) c.scrollLeft += r.right - (rc.right - m);
+  else if (r.left < rc.left + m) c.scrollLeft -= (rc.left + m) - r.left;
+  syncToolbarScrollCue();
+});
+try { new ResizeObserver(syncToolbarScrollCue).observe(document.getElementById('tbtn-cluster')); }
+catch (_) { window.addEventListener('resize', syncToolbarScrollCue); }
+syncToolbarScrollCue();
 document.getElementById('tbtn-cluster').addEventListener('contextmenu', e => {
   const btn = e.target.closest('button');
   if (!btn) return;

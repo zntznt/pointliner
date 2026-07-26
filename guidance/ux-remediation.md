@@ -227,6 +227,17 @@ acting (controls drift).
 > makes sense while the icons share a line. Pre-existing (baseline and deployed identical from 560
 > down to 340), found by the owner right after UXP-256 shipped.
 >
+> **UXP-258 closed 2026-07-26** — and it supersedes UXP-257 rather than extending it. The owner's
+> call: the toolbar is **one strip**, and the icons scroll past the search rather than starting a
+> second row. Wrapping made the bar's *height* a function of the button count (44 -> 88 -> 133px as
+> the viewport narrowed), which moves every surface below it; the 145px indent UXP-257 patched was a
+> symptom of the wrap, so removing the wrap removed the patch. The reason wrapping was introduced in
+> the first place (#827 item 14: the overflow clipped icons with no affordance) is answered directly
+> instead — the strip carries an edge fade that tracks the live scroll position, and a `focusin`
+> reveal, because driving it showed Chromium's focus scroll ignoring `scroll-padding-inline` and
+> leaving the 8th icon 8px under the clip. **A layout driver now exists** (`ux-definition-of-done.md`
+> §7) and was run against the pre-fix build first: 9 of 12 widths failed there, 0 on `HEAD`.
+>
 > **UXP-252 and UXP-254 closed 2026-07-26**, and a NEW defect was found and fixed in the same pass:
 > **UXP-256**, the toolbar row letting the level control land on the search box. It was reported as a
 > regression from recent work and is not: it accumulated one toolbar button at a time (9 -> 21px

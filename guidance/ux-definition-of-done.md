@@ -116,7 +116,116 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **OPML round-trip** preserved for any new persisted data (serialize + parse in the same change). *(`CLAUDE.md`)*
 - [ ] **Design-language conformance** for any visual change (`guidance/design-language.md`): colors via tokens (semantic `--ok/--warn/--bad/--info`, `--acc-fg` on accent backgrounds, radii/shadows from the token sets), new color pairs ship their contrast ratio, the palette change lands in **both** homes (CSS *and* the `applyTheme`/`applyAccentCSS` strings), and both-mode + forced-theme screenshots were checked. *(design-language §3/§6)*
 - [ ] **Drift guards stay green**: `node --test tests/test.mjs` carries the design pins (dual-home token parity, radius/weight/size floors, and the em-dash ban — now enforced across **all** user-facing copy: `README.md`, the whole `guide/` tree, every GUIDE body/example, and every command `desc`, not the three narrow spots it used to spot-check) and CI runs them on every PR. *(tests/test.mjs)*
+- [ ] **Layout swept across widths** for any change to a fixed-height bar, a flex row, or a breakpoint: run the layout driver below and confirm **zero overlaps, zero wraps, zero page-level horizontal spill, zero unreachable controls**. A screenshot at one width is not a sweep — the toolbar overlap below was invisible at 900px and 105px wide at 1000px. *(UXP-256/257/258)*
 - [ ] **Acceptance tests met** — the five self-checks below.
+
+### The layout driver (the check that catches what a pin cannot)
+
+`tests/test.mjs` can pin that a *rule exists*; it cannot see that two boxes land on top of each
+other. Both toolbar defects (UXP-256, UXP-257) were found by a person looking at the app, months
+after they shipped — the button-count ratchet catches *growth*, nothing measured *position*. This
+driver is that measurement. It lives in the scratchpad, never in the repo (`CLAUDE.md`: verification
+artifacts stay out of git); what is recorded here is the recipe and the numbers of record.
+
+**What it measures, and why each one is a rectangle and not an eyeball:**
+
+| check | how | the defect it would have caught |
+|---|---|---|
+| **Overlap** | rectangle intersection of every visible pair of `#toolbar-row` children | UXP-256: `#search-wrap` was `position:absolute` above 950px, so flex laid `#level-ctl` out as if it were not there — 21px of overlap at 9 buttons, **105px at 11** |
+| **Wrap** | count of distinct child top-offsets, **ignoring differences under 12px** | UXP-258: a wrapped row makes the toolbar's height a function of the button count. The 12px guard is not cosmetic — without it, buttons of slightly different heights read as two lines and the first run called *every* width broken |
+| **Spill** | `documentElement.scrollWidth - clientWidth` | a row that "fits" by pushing the page into a horizontal scroll has not fitted |
+| **Reach** | scroll each control into view, then `elementFromPoint` at its centre | a scrolling strip that hides a control with no way to get to it |
+| **Scroll cue** | the `.tb-more-l/.tb-more-r` classes at scrollLeft 0 / middle / max | a hidden scrollbar with a permanently-painted fade lies about there being more (P4) |
+
+**Numbers of record.** Chromium, `hasTouch`, 11 toolbar buttons. Both columns are this driver's own
+output — **before** is `c91028b` (the last build with all three defects), **after** is `HEAD`. Running
+it against the broken build is the part that matters: a guard nobody has watched fail is not a guard.
+
+| width | before — `c91028b` | after — `HEAD` |
+|---|---|---|
+| 1400 | clean | clean, strip does not scroll (no fade painted) |
+| 1100 | **124px overlap**, search × level | 0 |
+| 1000 | **130px overlap** + 36px search × strip; `btn-builder` unreachable | 0 |
+| 950 → 820 | no overlap, no wrap | 0; strip scrolls 65 → 141px, fades track |
+| 700 → 620 | **2–3 buttons unreachable** — clipped in the overflow with no reveal | 0 unreachable; scrolls 257 → 337px |
+| 560 → 510 | **wrapped: row 88px tall** (and the 145px indent UXP-257 patched) | **1 line, 44px**; scrolls 8 → 58px |
+| 430 → 340 | **wrapped: row 133px tall** | 1 line, 44px; scrolls 138 → 228px |
+
+**9 of 12 widths failed on the old build; 0 fail on `HEAD`.** Page-level horizontal spill was 0 in
+both — the row broke by stacking and by hiding, never by pushing the page wide, which is precisely
+why nothing downstream noticed.
+
+<details>
+<summary>Layout driver (scratchpad Playwright — Chromium at <code>/opt/pw-browsers/</code>, never <code>npx playwright install</code>)</summary>
+
+```js
+import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const file = process.argv.find(a => a.endsWith('.html')) || '/home/user/pointliner/index.html';
+
+const probe = async (w) => {
+  const ctx = await b.newContext({ viewport: { width: w, height: 380 }, hasTouch: true, isMobile: true });
+  const p = await ctx.newPage();
+  await p.goto('file://' + file); await p.waitForTimeout(500);
+  await p.evaluate(() => { document.getElementById('storage-warn')?.remove();   // it covers the bar
+    root.children = []; const n = mkNode('Alpha'); n.type = 'ul';
+    root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); markDirty(); render(); });
+  await p.waitForTimeout(250);
+  const r = await p.evaluate(async () => {
+    const row = document.getElementById('toolbar-row'), c = document.getElementById('tbtn-cluster');
+    const vis = e => { const s = getComputedStyle(e), q = e.getBoundingClientRect();
+                       return s.display !== 'none' && s.visibility !== 'hidden' && q.width && q.height; };
+    const kids = [...row.children].filter(vis);
+    // OVERLAP: every visible pair, as a rectangle intersection. Not "does it look wrong".
+    const overlaps = [];
+    for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) {
+      const a = kids[i].getBoundingClientRect(), d = kids[j].getBoundingClientRect();
+      const ox = Math.min(a.right, d.right) - Math.max(a.left, d.left);
+      const oy = Math.min(a.bottom, d.bottom) - Math.max(a.top, d.top);
+      if (ox > 0 && oy > 0) overlaps.push(`${kids[i].id || kids[i].className}x${kids[j].id || kids[j].className}:${Math.round(ox)}`);
+    }
+    // WRAP: distinct top-offsets, but only counting a gap big enough to BE a line (see the table).
+    const tops = [];
+    for (const k of kids) { const t = Math.round(k.getBoundingClientRect().top);
+                            if (!tops.some(u => Math.abs(u - t) < 12)) tops.push(t); }
+    // SCROLL CUE: the classes must track the position, not stand permanently on.
+    const cls = () => [...c.classList].filter(x => x.startsWith('tb-more')).join('+') || '-';
+    const over = c.scrollWidth - c.clientWidth;
+    const atLeft = cls();
+    c.scrollLeft = Math.round(over / 2); await new Promise(r2 => setTimeout(r2, 60));
+    const atMid = cls();
+    c.scrollLeft = over; await new Promise(r2 => setTimeout(r2, 60));
+    const atRight = cls();
+    // REACH: scroll each control into view, then hit-test its own centre.
+    const unreachable = [];
+    for (const x of [...c.querySelectorAll('button')].filter(vis)) {
+      x.focus(); await new Promise(r2 => setTimeout(r2, 40));
+      const q = x.getBoundingClientRect();
+      const t = document.elementFromPoint(Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2));
+      if (!t || !(t === x || x.contains(t))) unreachable.push(x.id);
+    }
+    c.scrollLeft = 0;
+    return { rowH: Math.round(row.getBoundingClientRect().height), lines: tops.length, overlaps,
+             over: Math.round(over), atLeft, atMid, atRight, unreachable,
+             spill: Math.round(document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+  });
+  await ctx.close(); return r;
+};
+
+let bad = 0;
+console.log('\n   width  rowH lines overflow  fade L/M/R          spill  overlaps  unreachable');
+for (const w of [1400, 1100, 1000, 950, 820, 700, 620, 560, 510, 430, 390, 340]) {
+  const r = await probe(w);
+  const fail = r.lines > 1 || r.overlaps.length || r.unreachable.length || r.spill > 0
+            || (r.over > 1 && (r.atLeft.includes('-l') || r.atRight.includes('-r')));  // cue must not lie
+  if (fail) bad++;
+  console.log(`   ${String(w).padStart(5)}  ${String(r.rowH).padStart(3)}  ${String(r.lines).padStart(4)}  ${String(r.over).padStart(7)}  ${`${r.atLeft}/${r.atMid}/${r.atRight}`.padEnd(20)}${String(r.spill).padStart(4)}  ${(r.overlaps.join(',') || '-').padEnd(9)} ${r.unreachable.join(',') || '-'}${fail ? '   <== FAIL' : ''}`);
+}
+console.log(`\n  widths that failed: ${bad}`);
+await b.close();
+```
+
+</details>
 
 ---
 
