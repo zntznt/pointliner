@@ -387,6 +387,48 @@ both machines.
    slower machine genuinely moves**, by about one size step. This is also the clearest
    candidate for future work: it is the only path where the 2.4× constant crosses a
    perceptual line inside the document sizes users actually reach before the storage wall.
+
+   **The tag-inheritance perf pass ended up making search faster than it has ever been** (container
+   run, median of 9 applied queries over a 3-level tree, same page for both builds; `before` is the
+   pre-inheritance `origin/main`):
+
+   | query | 10k before → after | 50k before → after |
+   |---|---|---|
+   | `#campaign` (now inheriting) | 5.4 → **5.2 ms** | 26.6 → **12.1 ms** |
+   | `Task` (text) | 18 → **7.5 ms** | 91.5 → **29.4 ms** |
+   | `is:todo` | 1.4 → 1.7 ms | 6.8 → 6.2 ms |
+
+   Three layers, in the order they were found. (1) The naive inheritance walk measured 21.9 →
+   **81.3 ms** at 50k — per-node `RegExp` construction in `stripStateTags`/`tagHit`, 50k
+   constructions per query; both are now memoised (a small Map, not one slot: a `#a #b` query
+   alternates values and thrashes a single slot). (2) The `indexOf('#')` guard: the scan/strip
+   regexes only ever *blank* characters, so a text without `#` can never match — and ~99% of real
+   points carry no tag, so `extendAncTagText` also returns the SAME string reference down untagged
+   spines instead of reallocating. That took tag queries *below* their pre-inheritance baseline.
+   (3) The same sniff idea applied to `stripMd` (`MD_SNIFF`): one regex scan proves none of its
+   twenty replaces can fire, so plain text skips all of them. That is the text-query win above, and
+   it applies to every title, breadcrumb, and export path too, not just search. The W-machine
+   ceiling above (~372 ms at 50k) predates all three and should scale down proportionally —
+   re-measure on W before quoting it.
+   **Whole-tree operation census (container run, 2026-07-26, 50k mixed doc, median of 5)** — taken
+   to find the next ceiling after the search sniffs, and worth re-running before optimising
+   anything, because it killed one "obvious" idea on the spot:
+
+   | op | ms | verdict |
+   |---|---|---|
+   | undo restore (parse + reindex) | ~48 | `JSON.parse` floor — leave |
+   | snapshot (`JSON.stringify`) | 37–45 | **`structuredClone` measured 5× SLOWER (221 ms)** — stringify IS the fast primitive; leave |
+   | `toOpml` | 72 → **32** | rewritten: line accumulator instead of nested `children.map().join()`, direct attr concat instead of a 24-slot array+filter+join per node, and an `EX_SNIFF` escape guard in `ex()` (node ids are always plain, so every id skipped 8 regex scans). Output byte-identical — golden pin + browser round-trip (body is a fixed point through the real DOMParser) |
+   | 9 doc-caches cold (sum) | ~24 | fusing the walks is the deferred registry refactor (backlog) — not taken opportunistically |
+   | text query | ~28 | post-sniff; further needs a per-node blob cache (nine-cache registry implications) |
+   | full `render()` | ~20 | flatten ~9 + window ~5 — bounded, leave |
+   | `buildIndex` | ~6 | leave |
+   | `recordTextEdit` ×1000 | ~1 | typing is effectively free, as designed |
+
+   The autosave debounce burst for a folder-backed 50k doc is the compound beneficiary: it runs
+   `JSON.stringify` (~44 ms) + `toOpml` (~72 → ~32 ms) synchronously, so the burst dropped from
+   ~116 ms to ~76 ms. The remaining floor is the stringify itself.
+
 3. **Structural-edit latency (grows with size, but stays under the line at 50k on both).**
    Each structural op pays `pushUndo` → `snapshot` (`JSON.stringify(root)`, O(total)) + a
    full `render()` + the next reads of the doc-caches. M: ~11 ms at 25k, ~29 ms at 50k —

@@ -2642,7 +2642,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
           <div class="sh-saved-title">Saved</div>
           <div id="sh-saved-list"></div>
         </div>
-        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><kbd>has:tag</kbd><span>points with a tag (nested OK; <code>#tag</code> also matches <code>#tag/sub</code>, states like <code>#todo</code> count); <code>has:tag</code> matches any tag at all</span></div>
+        <div class="sh-row"><kbd>#tag</kbd><kbd>#tag/sub</kbd><kbd>has:tag</kbd><span>points with a tag, <b>and everything filed under them</b> (nested OK; <code>#tag</code> also matches <code>#tag/sub</code>; a point's own state like <code>#todo</code> counts, but a parent's does not pass down); <code>has:tag</code> is the point's own tag only</span></div>
         <div class="sh-row"><kbd>is:todo</kbd><kbd>is:done</kbd><kbd>is:note</kbd><span>open / finished / noted</span></div>
         <div class="sh-row"><kbd>is:failing</kbd><kbd>is:passing</kbd><span>points whose <code>check</code> constraint fails / passes (the lint filter)</span></div>
         <div class="sh-row"><kbd>is:scheduled</kbd><kbd>is:unscheduled</kbd><span>has a date / has no date</span></div>
@@ -7647,8 +7647,17 @@ function mdToHtml(raw, isCode) {
   return out.join('');
 }
 
+// One sniff, twenty replaces: every transform below requires one of these — a char-anywhere
+// trigger (` [ = * ~ + ^) or a line-anchored marker (`- `, `1. `, `: `). If the sniff misses,
+// every replace is a no-op, so plain text (most of an outline) returns unchanged after ONE scan
+// instead of twenty. stripMd sits in the search hot path (one call per node per text term) and
+// on every title/export path, so this is a broad win, not a search-only one. If a NEW transform
+// is added below, its trigger must join this sniff or it silently stops applying to plain text.
+const MD_SNIFF = /[`\[=*~^+]|^\s*(?:-\s|\d+\.\s|:\s)/m;
 function stripMd(text) {
-  return (text||'')
+  const t = text || '';
+  if (!MD_SNIFF.test(t)) return t;
+  return t
     .replace(/`([^`\n]+)`/g,'$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g,'$1')
     .replace(/\[([^\]]*)\]\([^)]+\)/g,'$1')
@@ -8198,37 +8207,45 @@ function headJSONArray(doc, tag, valid) {
 }
 
 function toOpml(r) {
+  // Perf shape (measured 56-72 ms at 50k before, on the autosave/folder-flush path): emit LINES
+  // into one accumulator and join once, instead of nested children.map().join() intermediates per
+  // level; build attrs by direct concat instead of a 24-slot array + filter + join per node. The
+  // attribute ORDER and every condition are unchanged — the golden pin in tests/test.mjs holds the
+  // output byte-identical, and byte drift here is data-format drift for every existing OPML file.
+  const out = [];
+  const pads = [];
+  const padOf = d => pads[d] || (pads[d] = '  '.repeat(d));
   function nx(n, d) {
-    const pad = '  '.repeat(d);
-    const attrs = [
-      `text="${ex(n.text)}"`,
-      n.type && n.type !== 'ul' ? `_type="${n.type}"` : '',
-      n.checked   ? `_checked="true"` : '',
-      n.collapsed ? `_collapsed="true"` : '',
-      n.folded ? `_folded="true"` : '',                   // paragraph collapsed to its first line
-      n.noexport ? `_noexport="true"` : '',               // #954: skipped by the lossy markdown/text export
-      n.footnotes?.length ? `_footnotes="${ex(JSON.stringify(n.footnotes))}"` : '',
-      n.dice?.length ? `_dice="${ex(JSON.stringify(n.dice))}"` : '',
-      n.markov?.length ? `_markov="${ex(JSON.stringify(n.markov))}"` : '',
-      n.math?.length     ? `_math="${ex(JSON.stringify(n.math))}"` : '',
-      n.vars?.length     ? `_vars="${ex(JSON.stringify(n.vars))}"` : '',
-      n.grammar?.length  ? `_grammar="${ex(JSON.stringify(n.grammar))}"` : '',
-      n.est?.length      ? `_est="${ex(JSON.stringify(n.est))}"` : '',
-      n.seq?.length      ? `_seq="${ex(JSON.stringify(n.seq))}"` : '',
-      n.query?.length    ? `_query="${ex(JSON.stringify(n.query))}"` : '',
-      n.note             ? `_note="${ex(n.note)}"` : '',
-      n.props?.length    ? `_props="${ex(JSON.stringify(n.props))}"` : '',
-      n.colW?.some(w => w != null) ? `_colw="${ex(JSON.stringify(n.colW))}"` : '', // base column widths (px|null)
-      n.qbase            ? `_qbase="${ex(JSON.stringify(n.qbase))}"` : '',
-    n.varbase          ? `_varbase="${ex(JSON.stringify(n.varbase))}"` : '', // query-base config (QP-2)
-      n.colRole?.some(x => x != null) ? `_colrole="${ex(JSON.stringify(n.colRole))}"` : '', // column display roles (FR-1)
-      n.colFmt?.some(x => x != null) ? `_colfmt="${ex(JSON.stringify(n.colFmt))}"` : '', // per-column number formats (ε)
-      n.view             ? `_view="${ex(JSON.stringify(n.view))}"` : '', // base view config (BV-1)
-      (Number.isFinite(n.baseRows) && n.baseRows > 0) ? `_baserows="${n.baseRows}"` : '', // inline row cap
-      `_id="${ex(n.id)}"`,
-    ].filter(Boolean).join(' ');
-    if (!n.children.length) return `${pad}<outline ${attrs}/>`;
-    return `${pad}<outline ${attrs}>\n${n.children.map(c=>nx(c,d+1)).join('\n')}\n${pad}</outline>`;
+    const pad = padOf(d);
+    let attrs = `text="${ex(n.text)}"`;
+    if (n.type && n.type !== 'ul') attrs += ` _type="${n.type}"`;
+    if (n.checked)   attrs += ` _checked="true"`;
+    if (n.collapsed) attrs += ` _collapsed="true"`;
+    if (n.folded)    attrs += ` _folded="true"`;               // paragraph collapsed to its first line
+    if (n.noexport)  attrs += ` _noexport="true"`;             // #954: skipped by the lossy markdown/text export
+    if (n.footnotes?.length) attrs += ` _footnotes="${ex(JSON.stringify(n.footnotes))}"`;
+    if (n.dice?.length)      attrs += ` _dice="${ex(JSON.stringify(n.dice))}"`;
+    if (n.markov?.length)    attrs += ` _markov="${ex(JSON.stringify(n.markov))}"`;
+    if (n.math?.length)      attrs += ` _math="${ex(JSON.stringify(n.math))}"`;
+    if (n.vars?.length)      attrs += ` _vars="${ex(JSON.stringify(n.vars))}"`;
+    if (n.grammar?.length)   attrs += ` _grammar="${ex(JSON.stringify(n.grammar))}"`;
+    if (n.est?.length)       attrs += ` _est="${ex(JSON.stringify(n.est))}"`;
+    if (n.seq?.length)       attrs += ` _seq="${ex(JSON.stringify(n.seq))}"`;
+    if (n.query?.length)     attrs += ` _query="${ex(JSON.stringify(n.query))}"`;
+    if (n.note)              attrs += ` _note="${ex(n.note)}"`;
+    if (n.props?.length)     attrs += ` _props="${ex(JSON.stringify(n.props))}"`;
+    if (n.colW?.some(w => w != null))    attrs += ` _colw="${ex(JSON.stringify(n.colW))}"`;      // base column widths (px|null)
+    if (n.qbase)             attrs += ` _qbase="${ex(JSON.stringify(n.qbase))}"`;
+    if (n.varbase)           attrs += ` _varbase="${ex(JSON.stringify(n.varbase))}"`;            // query-base config (QP-2)
+    if (n.colRole?.some(x => x != null)) attrs += ` _colrole="${ex(JSON.stringify(n.colRole))}"`; // column display roles (FR-1)
+    if (n.colFmt?.some(x => x != null))  attrs += ` _colfmt="${ex(JSON.stringify(n.colFmt))}"`;   // per-column number formats (ε)
+    if (n.view)              attrs += ` _view="${ex(JSON.stringify(n.view))}"`;                  // base view config (BV-1)
+    if (Number.isFinite(n.baseRows) && n.baseRows > 0) attrs += ` _baserows="${n.baseRows}"`;    // inline row cap
+    attrs += ` _id="${ex(n.id)}"`;
+    if (!n.children.length) { out.push(`${pad}<outline ${attrs}/>`); return; }
+    out.push(`${pad}<outline ${attrs}>`);
+    for (const c of n.children) nx(c, d + 1);
+    out.push(`${pad}</outline>`);
   }
   // doc-level config in the head, each via the shared headEl serializer (F6)
   // #464: emit <_appearance> only when it holds at least one mapping (mirrors headEl's empty-skip)
@@ -8249,7 +8266,7 @@ function toOpml(r) {
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
   <body>
-${r.children.map(c=>nx(c,2)).join('\n')}
+${(r.children.forEach(c=>nx(c,2)), out.join('\n'))}
   </body>
 </opml>`;
 }
@@ -8317,8 +8334,16 @@ function exportExclusionImpact(full, pruned) {
 // document becomes unloadable). A surrogate that is part of a valid pair (emoji,
 // astral-plane text) is legal XML and must survive, so the lone-half pattern guards
 // with lookaround instead of stripping the whole \uD800-\uDFFF block.
+// One test, eight replaces: every escape below triggers on a char in this class (\t \n \r are
+// inside x00-x1F). Attribute values are mostly plain — node ids ALWAYS are — so the miss path
+// (one scan, input returned as-is) is the common one. Same discipline as MD_SNIFF: a new escape
+// must add its trigger here or it silently stops applying to plain values (the golden toOpml pin
+// is where that failure surfaces).
+const EX_SNIFF = /[\x00-\x1F&"<>\uD800-\uDFFF\uFFFE\uFFFF]/;
 function ex(s){
-  return(s||'')
+  const t = s || '';
+  if (!EX_SNIFF.test(t)) return t;
+  return t
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]/g,'')
     .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,'')
     .replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -9170,7 +9195,11 @@ function flatten(vp) {
   flatRows = []; flatIndex = new Map();
   if (searchQuery) {
     searchMatchSet = new Set();
-    vp.children.forEach(c => computeMatchSet(c, searchMatchSet));
+    // Seed from the viewport root's OWN ancestors: while zoomed, tags above the zoom root are still
+    // in effect, and a point must not answer differently zoomed in than zoomed out. vp === root
+    // gives [] (ancestorsOf stops at root), i.e. the unzoomed case is unchanged.
+    const vpAnc = ancestorTagText(ancestorsOf(vp), knownStates()) + ' ' + stripStateTags(tagScanText(vp.text), knownStates());
+    vp.children.forEach(c => computeMatchSet(c, searchMatchSet, vpAnc));
     const vis = vp.children.filter(c => searchMatchSet.has(c.id));
     vis.forEach((c, i) => pushSearchRows(c, 0, vp, i + 1, vis.length));
   } else {
@@ -15654,21 +15683,36 @@ function searchTermProblems(terms, opts) {
 
 // Does one term hit this node (negation NOT applied here)? Pure given seqs + vars
 // (vars feeds the is:failing check eval; defaults to the live globalVarMap).
-function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
+/* `ancTagText` is the tag text inherited from this node's ancestors, already state-stripped and
+   pre-joined into one string. A STRING, not an ancestors array, and threaded rather than looked up,
+   for two reasons:
+
+   1. Correctness. ancestorsOf() walks the live parentMap and its own comment admits it degrades to
+      [] outside the live index — an explicit test tree, a foreign workspace doc. Relying on it would
+      make #campaign inherit in the search box and silently NOT inherit inside {query:}, {count:},
+      {roll:} and workspace search: one filter, two answers (P1).
+   2. Speed. performance.md names search as the tightest ceiling in the app (~372 ms per applied
+      query at 50k on the slower machine) and this branch now sits in that loop. Every caller walks
+      the tree anyway, so each appends its own level on the way down — O(1) per node, where
+      re-deriving the chain per node would be O(depth).
+
+   The default keeps non-walking callers (nodeMatchesSearch on a live node) correct with no change. */
+function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
+                         ancTagText = ancestorTagText(ancestorsOf(node), knownStates())) {
   // QX-6: `links` is the doc-wide link index (collectLinks: outgoing/backlinks/broken),
   // threaded like seqs/vars. It is NOT defaulted in the signature: only the two branches
   // that need it fall back to the cached collectLinks(), so a text query never pays for
   // the index. Workspace search passes THIS doc's collectLinks(root), same as seqs/vars.
+  // Own text ALWAYS counts as-is (a point's own #WAITING still matches); ancestor text arrives
+  // already state-stripped, so only real tags inherit. Tested as two strings rather than one
+  // concat — equivalent, because a #tag token lies entirely within one side of the join (the
+  // join space can never be part of a match, and a string edge behaves exactly like a space for
+  // both the lookbehind and the lookahead) — so the untagged majority can bail on indexOf('#')
+  // without paying tagScanText, and the shared anc string is tested as-is.
   if (term.kind === 'tag') {
-    // mirror collectTags: hashtags live in node.text with [[…]] tokens blanked
-    // (so link targets never read as tags); word-anchored both sides so #todo
-    // never matches #todos. Nested tags are hierarchical: a query for #thread
-    // matches #thread AND #thread/torn-letter (the trailing boundary allows a /
-    // continuation but not another [\w-] char). term.value may contain / and -,
-    // so escape it for regex safety.
-    const text = tagScanText(node.text);
-    const esc = term.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i').test(text);
+    const t = node.text;
+    if (t && t.indexOf('#') !== -1 && tagHit(term.value, tagScanText(t))) return true;
+    return !!ancTagText && tagHit(term.value, ancTagText);
   }
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
@@ -15802,6 +15846,10 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     if (term.value === 'link' && /\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|[^\]\n]*)?\]\]/i.test(node.text || '')) return true;
     // (#827 item 3: the sniff requires a letter before any /, mirroring the tag grammar,
     // so a bare "#1" no longer counts as carrying a tag)
+    // has:tag is deliberately NOT inherited, unlike a `#tag` term. It answers "does this point
+    // itself carry a tag", which is what makes `-has:tag` useful for finding untagged points; if it
+    // inherited, every descendant of any tagged point would count as tagged and `-has:tag` would
+    // return almost nothing. The asymmetry is chosen, not an oversight.
     if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\d_-]*[a-zA-Z]/.test(tagScanText(node.text))) return true;
     if (term.value === 'backlink') {
       const lk = links || collectLinks();
@@ -15861,7 +15909,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
 
 // AND of all terms; a negated term must NOT match. Empty term list matches
 // nothing (callers gate on the raw query string anyway). Pure given seqs.
-function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap, links) {
+function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap, links, ancTagText) {
   if (!terms || !terms.length) return false;
   // QX-5: {kind:'or'} markers split the flat term list into clauses of ANDed terms;
   // the query matches when ANY clause does (OR binds looser than the implicit AND;
@@ -15877,7 +15925,7 @@ function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMa
   // Same rule as the dropped empty clause above: never auto-true (P4). An OR clause is explicitly
   // independent, so `is:blocked | #urgent` still answers with the #urgent side; a dead clause only
   // takes its own conjunction down with it.
-  return live.length > 0 && live.some(c => c.every(t => t.kind !== 'invalid' && termMatchesNode(t, node, seqs, vars, links) === !t.neg));
+  return live.length > 0 && live.some(c => c.every(t => t.kind !== 'invalid' && termMatchesNode(t, node, seqs, vars, links, ancTagText) === !t.neg));
 }
 
 // queryRows(expr, rootNode, hostId, cap) — the shared query-to-rows core: run a search
@@ -15899,15 +15947,19 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
   const links = needsLinks ? collectLinks(rootNode) : undefined;
   const rows = [];
   let total = 0;
-  (function walk(n) {
+  // Tag inheritance: accumulate one level per descent (O(1) per node) rather than deriving the
+  // chain per node (O(depth)) -- this walk is in the search hot path. States are stripped so an
+  // ancestor's #WAITING never reaches its subtree.
+  const tagStates = knownStates(rootNode);
+  (function walk(n, anc) {
     for (const c of (n.children || [])) {
-      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
         total++;
         if (rows.length < cap) rows.push({ id: c.id, title: stripMd(textForDisplay(c)) || '(untitled)' });
       }
-      walk(c);
+      walk(c, extendAncTagText(anc, c.text, tagStates));
     }
-  })(rootNode);
+  })(rootNode, '');
   return { rows, total, truncated: total > rows.length };
 }
 
@@ -15973,15 +16025,16 @@ function queryReduceFolder(fn, expr, prop) {
       const seqs = allSequences(r);
       const vars = needsCtx ? collectVars(r) : undefined;
       const links = needsLinks ? collectLinks(r) : undefined;
-      (function walk(n) {
+      const tagStates = knownStates(r);
+      (function walk(n, anc) {
         for (const c of (n.children || [])) {
-          if (queryMatchesNode(terms, c, seqs, vars, links)) {
+          if (queryMatchesNode(terms, c, seqs, vars, links, anc)) {
             if (fn === 'count') count++;
             else { const pv = childPropNumber(c, prop); if (pv !== null) vals.push(pv); }
           }
-          walk(c);
+          walk(c, extendAncTagText(anc, c.text, tagStates));
         }
-      })(r);
+      })(r, '');
     }
     v = fn === 'count' ? count : reduceAgg(fn, vals);
   }
@@ -16046,14 +16099,15 @@ function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
   const needsLinks = terms.some(t => (t.kind === 'is' && (t.value === 'broken' || t.value === 'orphan')) || (t.kind === 'has' && t.value === 'backlink'));
   const links = needsLinks ? collectLinks(ctxRoot) : undefined;
   const hits = [];
-  (function walk(n) {
+  const tagStates = knownStates(rootNode);
+  (function walk(n, anc) {
     for (const c of (n.children || [])) {
-      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
         hits.push(stripQueryTags(stripMd(textForDisplay(c)), terms) || '(untitled)');
       }
-      walk(c);
+      walk(c, extendAncTagText(anc, c.text, tagStates));
     }
-  })(rootNode);
+  })(rootNode, '');
   if (!hits.length) return '';
   return hits[Math.floor(Math.random() * hits.length)];
 }
@@ -16103,15 +16157,16 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
   };
   const rows = [];
   let total = 0;
-  (function walk(node) {
+  const tagStates = knownStates(rootNode);
+  (function walk(node, anc) {
     for (const c of (node.children || [])) {
-      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
         total++;
         if (rows.length < cap) rows.push({ id: c.id, cells: colList.map(col => project(c, col.field)) });
       }
-      walk(c);
+      walk(c, extendAncTagText(anc, c.text, tagStates));
     }
-  })(rootNode);
+  })(rootNode, '');
   return { header, rows, total, truncated: total > rows.length };
 }
 
@@ -16130,9 +16185,10 @@ function searchHighlightNeedles(terms) {
   return out;
 }
 
-function nodeMatchesSearch(node) {
+function nodeMatchesSearch(node, ancTagText) {
   if (!searchQueryLC || !searchTerms.length) return false;
-  return queryMatchesNode(searchTerms, node);
+  // ancTagText omitted (a one-off check on a live node) → termMatchesNode's ancestorsOf default.
+  return queryMatchesNode(searchTerms, node, undefined, undefined, undefined, ancTagText);
 }
 
 // ── saved searches ──
@@ -16194,9 +16250,18 @@ function mergedTemplates(plugins = root?.plugins, docTemplates = root?.templates
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
 // so the flatten pass is O(n) instead of re-scanning subtrees at every level.
-function computeMatchSet(node, set) {
-  let any = nodeMatchesSearch(node);
-  for (const c of node.children) { if (computeMatchSet(c, set)) any = true; }
+// Tag inheritance: `anc` accumulates one level per descent, so the search's full-tree walk pays
+// O(1) per node instead of re-deriving each node's chain. This is THE hot path — performance.md
+// puts an applied query at ~372 ms at 50k on the slower machine — so the accumulation is not an
+// optimisation to add later.
+function computeMatchSet(node, set, anc = '', states = knownStates(),
+                        needTags = searchTerms.some(t => t.kind === 'tag')) {
+  let any = nodeMatchesSearch(node, anc);
+  // Only accumulate when the query actually has a tag term: a text or is: query has nothing to
+  // inherit, so it should not pay for the chain at all. ('' is passed, not undefined, so
+  // termMatchesNode's ancestorsOf default stays out of the hot path.)
+  const kids = needTags ? extendAncTagText(anc, node.text, states) : '';
+  for (const c of node.children) { if (computeMatchSet(c, set, kids, states, needTags)) any = true; }
   if (any) set.add(node.id);
   return any;
 }
@@ -22206,6 +22271,71 @@ function tagScanText(text) {
   return (text || '').replace(/\[\[[^\]]*\]\]/g, ' ')
     .replace(/^(\s*#\w+\s+)?\[#[A-Za-z]\]/, m => ' '.repeat(m.length));
 }
+// Does `text` carry `value` as a hashtag? Lifted verbatim out of termMatchesNode's tag branch so
+// the rule is pinned on its own before tag inheritance layers on top of it.
+//   mirror collectTags: hashtags live in node.text with [[…]] tokens blanked (so link targets never
+//   read as tags); word-anchored both sides so #todo never matches #todos. Nested tags are
+//   hierarchical: a query for #thread matches #thread AND #thread/torn-letter (the trailing boundary
+//   allows a / continuation but not another [\w-] char). `value` may contain / and -, so escape it.
+const _tagReCache = new Map();
+function tagHit(value, text) {
+  // Memoised per tag in a small Map, not a single slot: a query with two tag terms (#a #b)
+  // alternates values every node and would thrash one slot straight back to per-node RegExp
+  // construction — the exact cost this cache exists to remove (measured 21.9 -> 81.3 ms at 50k
+  // before caching). Not /g, so there is no lastIndex to carry between .test calls.
+  const key = String(value ?? '');
+  let re = _tagReCache.get(key);
+  if (!re) {
+    if (_tagReCache.size > 32) _tagReCache.clear();   // bound it; 32 distinct tags per epoch is plenty
+    const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    re = new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i');
+    _tagReCache.set(key, re);
+  }
+  return re.test(text || '');
+}
+/* Tag inheritance (Tag power, the last Tier 1 item): a tag on a point is in effect for its whole
+   subtree, so filing work under a #campaign heading and searching #campaign finds the work, not
+   just the heading. On by default — there is no opt-in sigil, because `#tag` gains REACH, not
+   notation (P5).
+
+   STATE KEYWORDS NEVER INHERIT. collectTags deliberately counts #TODO/#WAITING as tags (that is how
+   #waiting filters by state), but a state describes the point, not the subtree: an inheriting
+   #WAITING would drop a whole project into `is:held` and the agenda's held band while none of the
+   work is actually blocked. A point's OWN state still matches exactly as before — only an
+   ancestor's is stripped, which is why this runs over ancestor text and never over own text. */
+let _stateReKey = null, _stateRe = null;
+function stripStateTags(text, states) {
+  const list = [...(states || [])].filter(Boolean);
+  if (!list.length) return text || '';
+  // Memoised on the state list. This runs once per node on every tag query, so building the RegExp
+  // each time cost 50k constructions per query — measured at 21.9 -> 81.3 ms at 50k before this
+  // cache. A /g regex resets lastIndex on .replace, so sharing one instance is safe.
+  const key = list.join('\u0000');
+  if (key !== _stateReKey) {
+    const esc = list.map(s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    _stateRe = new RegExp('(?<![a-zA-Z0-9])#(?:' + esc + ')(?![\\w-])', 'gi');
+    _stateReKey = key;
+  }
+  return (text || '').replace(_stateRe, ' ');
+}
+// Extend an accumulated ancestor-tag string by ONE level — the walkers' per-descent step.
+// The fast paths here are the whole cost model of tag inheritance:
+//   - tagScanText/stripStateTags only ever BLANK characters, so a text without '#' cannot
+//     contribute; most points carry no tag, and they skip both regex replaces entirely.
+//   - when nothing survives the strip (state-only, or '#' only inside a [[link]]), the SAME
+//     string reference is returned, so the chain is identical down untagged spines instead of
+//     reallocating per node.
+function extendAncTagText(anc, text, states) {
+  if (!text || text.indexOf('#') === -1) return anc;
+  const t = stripStateTags(tagScanText(text), states);
+  return t.indexOf('#') === -1 ? anc : anc + ' ' + t;
+}
+// The tag text an ancestor chain contributes: each ancestor's scan text, states stripped.
+function ancestorTagText(ancestors, states) {
+  let out = '';
+  for (const a of ancestors || []) out += ' ' + stripStateTags(tagScanText(a && a.text), states);
+  return out;
+}
 // Pure over rootNode (tests); no-arg = the live document, cached on _varsVer.
 let _tagsCacheVer = -1, _tagsCached = null; // doc-cache 4: collectTags (see resetDocCaches registry)
 function collectTags(rootNode) {
@@ -23164,16 +23294,18 @@ function searchWorkspace(query, index, currentDocId, cap = 50) {
     const seqs = needsCtx ? allSequences(root) : undefined;   // THIS doc's sequences → exact is:done/is:todo
     const vars = needsCtx ? collectVars(root)  : undefined;   // THIS doc's resolved vars → exact is:failing
     const links = needsLinks ? collectLinks(root) : undefined; // THIS doc's link index → exact has:backlink/is:broken (QX-6)
-    const walk = (n) => {
+    const tagStates = knownStates(root);
+    const walk = (n, anc) => {
       if (out.length >= cap) return;
-      if (queryMatchesNode(terms, n, seqs, vars, links)) {
+      if (queryMatchesNode(terms, n, seqs, vars, links, anc)) {
         out.push({ docId, nodeId: n.id, docName,
                    title: textForDisplay(n) || '(untitled)',
                    snippet: searchSnippet(n, terms) });
       }
-      for (const c of (n.children || [])) walk(c);
+      const kids = extendAncTagText(anc, n.text, tagStates);
+      for (const c of (n.children || [])) walk(c, kids);
     };
-    for (const c of (root?.children || [])) walk(c);
+    for (const c of (root?.children || [])) walk(c, '');
     if (out.length >= cap) break;
   }
   // UXP-146: signal truncation so the count doesn't read as complete (P4). The array's items are
@@ -34795,11 +34927,13 @@ const GUIDE = [
     ] },
   { id:'hashtags', cat:'getting-around',
     title:'Hashtags',
-    body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.\n\nTo see all your tags at once, open File then Browse tags: it shows the whole tag hierarchy as a tree with a count on each, so nested tags sit under their parent. Type to filter, arrow to browse, and press Enter (or click) to filter the document to that tag.",
+    body:"Label points by topic, status or project so related ones are easy to round up later. Type `#` followed by a word anywhere in a point, like `#idea` or `#urgent`, and it becomes a clickable tag. Click any tag to filter instantly to every point that shares it. **A tag covers everything filed beneath it**, so tagging a heading `#campaign` and searching `#campaign` finds the work under it, not just the heading itself. Nest tags with a slash, like `#thread/torn-letter` under `#thread`, and searching the parent finds every point under it while the subtag narrows to just that branch.\n\nTwo things deliberately stay put. A status word like `#WAITING` describes the point it sits on, so it never passes down to the work underneath. And `has:tag` asks whether a point carries a tag *itself*, which is what makes `-has:tag` a useful way to find points you have not labelled yet.\n\nAs you type `#`, a menu lists the tags you have already used with a count of how many points carry each, so you reuse `#todo` instead of drifting to `#todos`. Arrow to one and press Enter, or keep typing to coin a new tag.\n\nTo see all your tags at once, open File then Browse tags: it shows the whole tag hierarchy as a tree with a count on each, so nested tags sit under their parent. Type to filter, arrow to browse, and press Enter (or click) to filter the document to that tag.",
     related:['search-ops','properties','tags'],
     examples:[
       { syn:'#tag',         desc:'label a point by topic, status or project' },
       { syn:'#tag/subtag',  desc:'nest a tag; searching #tag also finds #tag/subtag' },
+      { syn:'#tag on a parent', desc:'covers every point filed under it' },
+      { syn:'has:tag',      desc:"the point's own tag only, so -has:tag finds unlabelled points" },
       { syn:'#',            desc:"opens a menu of tags you've used, with counts" },
       { syn:'click a tag',  desc:'filter to every point that shares it' },
       { syn:'File, Browse tags', desc:'see every tag as a tree; pick one to filter' },

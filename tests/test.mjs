@@ -15502,7 +15502,7 @@ test('per-column number format — menu/dialog/footer/parity wiring (src pins)',
   assert.ok(/if \(node\.colFmt\) mtMoveItem\(node\.colFmt, from, to\)/.test(_src), 'the header-drag drop handler keeps colFmt aligned too (the inline mtMoveCol twin)');
   assert.ok(/if \(node\.colFmt\) \{ node\.colFmt\.splice\(colIdx, 1\);/.test(_src), 'delete keeps colFmt aligned + drops when empty');
   assert.ok(/delete node\.colFmt;/.test(_src), 'base→text teardown drops colFmt');
-  assert.ok(/n\.colFmt\?\.some\(x => x != null\) \? `_colfmt=/.test(_src), 'toOpml serializes _colfmt when set');
+  assert.ok(/n\.colFmt\?\.some\(x => x != null\)\)\s+attrs \+= ` _colfmt=/.test(_src), 'toOpml serializes _colfmt when set');
 });
 
 // ── Bases round 1 (B1–B4): correctness fixes ─────────────────────────────────
@@ -20431,6 +20431,215 @@ test('UXP-261 the narrow-sheet block wins its own top margin', () => {
   // The global 5vh rules stay: they are correct above the breakpoint.
   assert.ok(/#io-card\.guide-open\{width:min\(760px[^}]*margin-top:5vh/.test(_src),
     'the wide-layout 5vh margin is deliberate and must remain');
+});
+
+test('tagHit: the hashtag rule, pinned verbatim before inheritance layers on it', () => {
+  // Lifted out of termMatchesNode's tag branch UNCHANGED. These cases are today's behaviour, so a
+  // failure here means the extraction moved something, not that inheritance is wrong.
+  assert.equal(c.tagHit('thread', 'a #thread here'), true);
+  assert.equal(c.tagHit('thread', 'a #thread/torn-letter here'), true, 'nested tags are hierarchical');
+  assert.equal(c.tagHit('thread', 'a #threads here'), false, 'word-anchored: #thread never matches #threads');
+  assert.equal(c.tagHit('thread', 'a #re-thread here'), false, 'anchored on the left too');
+  assert.equal(c.tagHit('THREAD', 'a #thread here'), true, 'case-insensitive');
+  assert.equal(c.tagHit('thread/torn-letter', 'x #thread/torn-letter y'), true, '/ and - are escaped, not regex');
+  // Escaping means a metacharacter is matched literally: #a.b hits #a.b and NOT #axb.
+  assert.equal(c.tagHit('a.b', 'x #a.b y'), true);
+  assert.equal(c.tagHit('a.b', 'x #axb y'), false, 'the dot must not act as a regex wildcard');
+  assert.equal(c.tagHit('thread', ''), false);
+  assert.equal(c.tagHit('thread', null), false);
+});
+
+test('stripStateTags: an ancestor state never reaches the subtree', () => {
+  // collectTags counts #TODO/#WAITING as tags deliberately (that is how #waiting filters by state).
+  // A state describes the POINT, not the subtree: an inheriting #WAITING would drop a whole project
+  // into is:held and the agenda's held band with nothing actually blocked. So ancestor text is
+  // stripped of states; own text never is.
+  const states = ['TODO', 'WAITING', 'DONE'];
+  assert.equal(c.stripStateTags('Plan #WAITING #campaign', states).includes('#WAITING'), false);
+  assert.equal(c.stripStateTags('Plan #WAITING #campaign', states).includes('#campaign'), true,
+    'only the state goes; real tags survive');
+  assert.equal(c.stripStateTags('Plan #waiting', states).includes('#waiting'), false, 'case-insensitive');
+  // Word-anchored, exactly like the tag rule: a tag that merely STARTS with a state name stays.
+  assert.equal(c.stripStateTags('#WAITING-room', states).includes('#WAITING-room'), true);
+  assert.equal(c.stripStateTags('#todos', states).includes('#todos'), true);
+  // No states configured (a doc with no sequences) → nothing is stripped.
+  assert.equal(c.stripStateTags('Plan #WAITING', []), 'Plan #WAITING');
+  assert.equal(c.stripStateTags('Plan #WAITING', null), 'Plan #WAITING');
+});
+
+test('ancestorTagText: the chain contributes tags, never states', () => {
+  const states = ['WAITING'];
+  const chain = [{ text: 'Act one #campaign' }, { text: 'Book #WAITING #saga' }];
+  const t = c.ancestorTagText(chain, states);
+  assert.equal(c.tagHit('campaign', t), true);
+  assert.equal(c.tagHit('saga', t), true);
+  assert.equal(c.tagHit('waiting', t), false, 'the ancestor state is stripped');
+  assert.equal(c.ancestorTagText([], states), '', 'no ancestors contribute nothing');
+  assert.equal(c.ancestorTagText(null, states), '');
+  // [[…]] link targets are blanked on the way in, same as tagScanText does for own text.
+  assert.equal(c.tagHit('x', c.ancestorTagText([{ text: 'see [[doc#x]]' }], states)), false);
+});
+
+test('tag inheritance: a tag reaches the whole subtree, states do not', () => {
+  // The feature: filing work under a #campaign heading and searching #campaign finds the WORK, not
+  // just the heading. Built on queryRows, which is the same core the search box, {query:}, {count:}
+  // and {roll:} all run — so a pass here is a pass for every door.
+  const mk = (text, kids = []) => ({ id: 'n' + (mk._i = (mk._i || 0) + 1), text, type: 'ul', children: kids });
+  const grandchild = mk('Buy rope');
+  const child = mk('Session two', [grandchild]);
+  const tagged = mk('Act one #campaign', [child]);
+  const outside = mk('Shopping list');
+  const tree = { id: 'root', text: '', children: [tagged, outside] };
+
+  const titles = q => host(c.queryRows(q, tree, null, 50)).rows.map(r => r.title).sort();
+  // titles keep their hashtags — stripMd removes markdown, not tags
+  assert.deepEqual(titles('#campaign'), ['Act one #campaign', 'Buy rope', 'Session two'],
+    'the tag reaches children AND grandchildren, not just the point carrying it');
+  assert.deepEqual(titles('#nothere'), [], 'an absent tag still matches nothing');
+  // A sibling subtree is untouched: inheritance goes DOWN, never sideways or up.
+  assert.equal(titles('#campaign').includes('Shopping list'), false);
+
+  // has:tag is deliberately NOT inherited — it answers "does this point itself carry a tag", which
+  // is what keeps -has:tag useful for finding untagged points.
+  assert.deepEqual(titles('has:tag'), ['Act one #campaign'], 'has:tag stays literal');
+  assert.equal(host(c.queryRows('-has:tag', tree, null, 50)).rows.length, 3,
+    'the untagged-points query still finds the three untagged points');
+});
+
+test('tag inheritance: an ancestor state never floods its subtree', () => {
+  // collectTags counts #WAITING as a tag, so without stripping, one held parent would drag its whole
+  // subtree into #waiting (and is:held, and the agenda's held band) with nothing actually blocked.
+  const kid = { id: 'k', text: 'Draft the letter', type: 'ul', children: [] };
+  const parent = { id: 'p', text: 'Book two #WAITING #saga', type: 'ul', children: [kid] };
+  const tree = { id: 'root', text: '', children: [parent] };
+  const titles = q => host(c.queryRows(q, tree, null, 50)).rows.map(r => r.title).sort();
+
+  assert.deepEqual(titles('#saga'), ['Book two #WAITING #saga', 'Draft the letter'], 'a real tag inherits');
+  assert.deepEqual(titles('#waiting'), ['Book two #WAITING #saga'],
+    'the state matches the point that carries it and NOT its children');
+});
+
+test('toOpml golden: byte-identical serialization across the perf rewrite', () => {
+  // Captured from the build BEFORE toOpml's nx/ex were rewritten for speed (accumulator + escape
+  // sniff). Every sidecar attr, in order, plus a kitchen-sink escape string and a plain nested
+  // pair. If this fails after a toOpml change, the OUTPUT changed — that is data-format drift,
+  // not a style problem, and every existing OPML file is the blast radius.
+  const sink = {
+    id: 'sinkid1', text: 'A & B "quoted" <tag>\nline2\ttab', type: 'h1', checked: true, collapsed: true,
+    folded: true, noexport: true,
+    footnotes: [{ id: 'f1', text: 'note & so' }], dice: [{ key: 'd1', expr: '2d6' }],
+    markov: [{ key: 'm1' }], math: [{ key: 'x1' }], vars: [{ name: 'v', expr: '3' }],
+    grammar: [{ key: 'g1' }], est: [{ key: 'e1' }], seq: [{ key: 's1' }], query: [{ key: 'q1' }],
+    note: 'a note\nwith newline', props: [{ key: 'due', val: '2026-08-01' }],
+    colW: [120, null], qbase: { q: 'is:todo', cols: 'Title' }, varbase: { name: 'Data' },
+    colRole: ['status', null], colFmt: [null, 'int'], view: { kind: 'board' }, baseRows: 7,
+    children: [],
+  };
+  const plain = { id: 'plainid2', text: 'just words', type: 'ul', children: [] };
+  const parent = { id: 'par3', text: 'parent', type: 'ul', children: [plain] };
+  const tree = { text: 'Doc', children: [sink, parent], savedSearches: [], templates: [], inboxes: [], plugins: [] };
+  const body = c.toOpml(tree).split('<body>')[1].split('</body>')[0];
+  assert.equal(body, "\n    <outline text=\"A &amp; B &quot;quoted&quot; &lt;tag&gt;&#10;line2&#9;tab\" _type=\"h1\" _checked=\"true\" _collapsed=\"true\" _folded=\"true\" _noexport=\"true\" _footnotes=\"[{&quot;id&quot;:&quot;f1&quot;,&quot;text&quot;:&quot;note &amp; so&quot;}]\" _dice=\"[{&quot;key&quot;:&quot;d1&quot;,&quot;expr&quot;:&quot;2d6&quot;}]\" _markov=\"[{&quot;key&quot;:&quot;m1&quot;}]\" _math=\"[{&quot;key&quot;:&quot;x1&quot;}]\" _vars=\"[{&quot;name&quot;:&quot;v&quot;,&quot;expr&quot;:&quot;3&quot;}]\" _grammar=\"[{&quot;key&quot;:&quot;g1&quot;}]\" _est=\"[{&quot;key&quot;:&quot;e1&quot;}]\" _seq=\"[{&quot;key&quot;:&quot;s1&quot;}]\" _query=\"[{&quot;key&quot;:&quot;q1&quot;}]\" _note=\"a note&#10;with newline\" _props=\"[{&quot;key&quot;:&quot;due&quot;,&quot;val&quot;:&quot;2026-08-01&quot;}]\" _colw=\"[120,null]\" _qbase=\"{&quot;q&quot;:&quot;is:todo&quot;,&quot;cols&quot;:&quot;Title&quot;}\" _varbase=\"{&quot;name&quot;:&quot;Data&quot;}\" _colrole=\"[&quot;status&quot;,null]\" _colfmt=\"[null,&quot;int&quot;]\" _view=\"{&quot;kind&quot;:&quot;board&quot;}\" _baserows=\"7\" _id=\"sinkid1\"/>\n    <outline text=\"parent\" _id=\"par3\">\n      <outline text=\"just words\" _id=\"plainid2\"/>\n    </outline>\n  ");
+  // The escape sniff must still fire on every escapable class, and pass plain text through as-is.
+  assert.equal(c.ex('plain words 123'), 'plain words 123');
+  assert.equal(c.ex('a & b'), 'a &amp; b');
+  assert.equal(c.ex('q"x'), 'q&quot;x');
+  assert.equal(c.ex('a<b>c'), 'a&lt;b&gt;c');
+  assert.equal(c.ex('l1\nl2\tt\rr'), 'l1&#10;l2&#9;t&#13;r');
+  assert.equal(c.ex('ctl\x07x'), 'ctlx', 'control chars still stripped');
+  assert.equal(c.ex('lone\uD800surrogate'), 'lonesurrogate', 'lone surrogates still stripped');
+});
+
+test('stripMd sniff: every transform class still fires, plain text passes through', () => {
+  // stripMd now bails after ONE regex scan when no trigger char is present. The risk of a sniff is
+  // a hole: a transform whose trigger is missing from it silently stops applying. So every
+  // transform class gets a case proving it still strips — if someone adds a transform without
+  // extending MD_SNIFF, the matching case here is where that shows up.
+  const cases = [
+    ['`code` x',            'code x'],          // backtick
+    ['![alt](u) y',         'alt y'],           // image
+    ['[label](u) y',        'label y'],         // link
+    ['a[^fn] b',            'a b'],             // footnote marker
+    ['==hi== there',        'hi there'],        // highlight (=)
+    ['**bold** x',          'bold x'],          // bold (*)
+    ['~~gone~~ x',          'gone x'],          // strike (~)
+    ['++ins++ x',           'ins x'],           // insert (+)
+    ['~sub~ x',             'sub x'],           // subscript
+    ['^sup^ x',             'sup x'],           // superscript
+    ['- [ ] task text',     'task text'],       // task marker (line-anchored -)
+    ['- plain bullet',      'plain bullet'],    // bare list marker
+    ['1. numbered',         'numbered'],        // numbered list
+    [': definition',        'definition'],      // definition lead
+  ];
+  for (const [input, want] of cases)
+    assert.equal(c.stripMd(input), want, `sniff hole: ${JSON.stringify(input)} no longer strips`);
+  // Plain text returns unchanged — and as the SAME string, so callers pay no allocation either.
+  const plain = 'Task 3.1.4 finish the report by Tuesday';
+  assert.equal(c.stripMd(plain), plain, 'no markdown, no change');
+  assert.equal(c.stripMd('a - b (mid-line dash)'), 'a - b (mid-line dash)',
+    'a mid-line dash is not a list marker and must not trigger');
+});
+
+test('extendAncTagText: identity is preserved down untagged spines', () => {
+  // The cost model of tag inheritance: a node contributes to the chain only when a REAL tag
+  // survives scanning, and otherwise the SAME string reference flows down. That is what makes the
+  // per-descent step O(1) with no allocation for the untagged majority (~99% of a real outline).
+  const states = ['WAITING'];
+  const anc = ' #campaign';
+  assert.equal(c.extendAncTagText(anc, 'no tags here', states), anc, 'untagged: same value back');
+  assert.equal(c.extendAncTagText(anc, '', states), anc);
+  assert.equal(c.extendAncTagText(anc, null, states), anc);
+  // '#' present but nothing survives the strip: state-only, or a link-target '#'
+  assert.equal(c.extendAncTagText(anc, '#WAITING only a state', states), anc,
+    'a state-only point contributes nothing to the chain');
+  assert.equal(c.extendAncTagText(anc, 'see [[doc#x]]', states), anc,
+    'a link-target # is not a tag and must not extend the chain');
+  // a real tag extends it
+  const grown = c.extendAncTagText(anc, 'plot #saga', states);
+  assert.equal(c.tagHit('saga', grown), true);
+  assert.equal(c.tagHit('campaign', grown), true, 'the existing chain survives the append');
+  assert.equal(c.tagHit('waiting', c.extendAncTagText('', '#WAITING x #saga', states)), false,
+    'a mixed point contributes its tag but never its state');
+});
+
+test('tag term: the split own/ancestor test matches the old concat at the boundaries', () => {
+  // The matcher used to test ONE concatenated string (own + ' ' + anc); it now tests the two
+  // halves separately so untagged nodes can bail on indexOf('#'). Equivalence rests on a #tag
+  // token lying entirely within one side of the join — pin the edge cases that argument covers:
+  // a tag at the very END of own text, and one at the very START of the ancestor string.
+  const mk = (text, kids = []) => ({ id: 'b' + (mk._i = (mk._i || 0) + 1), text, type: 'ul', children: kids });
+  const child = mk('plain');
+  const tree = { id: 'root', text: '', children: [mk('ends with #edge', [child])] };
+  const rows = q => host(c.queryRows(q, tree, null, 50)).rows.length;
+  assert.equal(rows('#edge'), 2, 'a tag at the end of the parent text still reaches the child');
+  const tree2 = { id: 'root2', text: '', children: [mk('#lead first', [mk('kid')])] };
+  assert.equal(host(c.queryRows('#lead', tree2, null, 50)).rows.length, 2,
+    'a tag at the start of the ancestor chain still matches');
+  // and the join can never MANUFACTURE a match: neither half carries #whole, so a fragment
+  // ending in "#wh" above a child starting with "ole" must not combine.
+  const tree3 = { id: 'root3', text: '', children: [mk('x #wh', [mk('ole y')]) ] };
+  assert.equal(host(c.queryRows('#whole', tree3, null, 50)).rows.length, 0);
+});
+
+test('tag inheritance: the threaded chain and the ancestorsOf default agree', () => {
+  // Two paths reach the same verdict: walkers thread an accumulated string, while a one-off check on
+  // a live node falls back to ancestorsOf(). If those ever disagree, one filter answers two ways
+  // depending on which door you came through — the exact P1 break this design exists to avoid.
+  // ancestorsOf reads the live parentMap, absent here, so the equivalence is checked by feeding
+  // termMatchesNode the SAME chain both ways: pre-joined, and derived from the node list.
+  const anc = [{ text: 'Act one #campaign' }, { text: 'Book #WAITING #saga' }];
+  const node = { id: 'x', text: 'Buy rope', type: 'ul', children: [] };
+  const states = ['WAITING'];
+  const joined = c.ancestorTagText(anc, states);
+  // accumulate the same chain the way a walker does, outermost first
+  let acc = '';
+  for (const a of [...anc].reverse()) acc = acc + ' ' + c.stripStateTags(c.tagScanText(a.text), states);
+  for (const tag of ['campaign', 'saga', 'waiting', 'absent']) {
+    const viaJoined = c.tagHit(tag, c.tagScanText(node.text) + ' ' + joined);
+    const viaAcc    = c.tagHit(tag, c.tagScanText(node.text) + ' ' + acc);
+    assert.equal(viaJoined, viaAcc, `#${tag}: the two accumulation orders must agree`);
+  }
+  assert.equal(c.tagHit('waiting', c.tagScanText(node.text) + ' ' + joined), false);
 });
 
 test('UXP-262 escHtml survives a truthy non-string, and callable descs are strings', () => {

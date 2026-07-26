@@ -217,6 +217,12 @@ notes** list; click one to jump straight there.
 Label points by topic, status or project so related ones are easy to round up later. Type `#`
 followed by a word anywhere in a point (like `#idea` or `#urgent`) and it becomes a clickable tag.
 
+**A tag covers everything filed beneath it.** Tag a heading `#campaign` and a search for
+`#campaign` finds the work under it, not just the heading. Two things deliberately stay put: a
+status word like `#WAITING` describes the point it sits on and never passes down to the work
+underneath, and `has:tag` asks whether a point carries a tag *itself* (which is what makes
+`-has:tag` a useful way to find points you have not labelled yet).
+
 **Nest tags** with a slash to build a little hierarchy, like `#thread/torn-letter` under `#thread`: a
 search for the parent `#thread` rounds up every point under it, while `#thread/torn-letter` narrows
 to just that branch.

@@ -158,7 +158,7 @@ Turn the document into a lightweight planner.
   date and agenda view speaks it; advance the clock from the agenda. The journal stays on the
   real calendar, and you can set one subtree as a chronicle with its own calendar, so real and
   custom-calendar dates coexist in one document. ([custom calendars](dates-and-planning.md#custom-calendars))
-- **Search and filter.** Filter with `#tag`, the `is:todo` / `is:done` / `is:note` / `is:failing` /
+- **Search and filter.** Filter with `#tag` (which covers every point filed under a tagged one; `has:tag` stays the point's own), the `is:todo` / `is:done` / `is:note` / `is:failing` /
   `is:passing` / `is:scheduled` / `is:unscheduled` / `is:overdue` / `is:held` flags, structure and pill flags
   (`is:leaf` / `is:parent` / `is:collapsed` / `is:expanded` / `is:pill` / `is:random`, plus
   `has:children` / `has:footnote` and `has:dice` / `has:math` / `has:est` / `has:grammar` / `has:markov`
