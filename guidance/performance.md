@@ -410,6 +410,25 @@ both machines.
    it applies to every title, breadcrumb, and export path too, not just search. The W-machine
    ceiling above (~372 ms at 50k) predates all three and should scale down proportionally —
    re-measure on W before quoting it.
+   **Whole-tree operation census (container run, 2026-07-26, 50k mixed doc, median of 5)** — taken
+   to find the next ceiling after the search sniffs, and worth re-running before optimising
+   anything, because it killed one "obvious" idea on the spot:
+
+   | op | ms | verdict |
+   |---|---|---|
+   | undo restore (parse + reindex) | ~48 | `JSON.parse` floor — leave |
+   | snapshot (`JSON.stringify`) | 37–45 | **`structuredClone` measured 5× SLOWER (221 ms)** — stringify IS the fast primitive; leave |
+   | `toOpml` | 72 → **32** | rewritten: line accumulator instead of nested `children.map().join()`, direct attr concat instead of a 24-slot array+filter+join per node, and an `EX_SNIFF` escape guard in `ex()` (node ids are always plain, so every id skipped 8 regex scans). Output byte-identical — golden pin + browser round-trip (body is a fixed point through the real DOMParser) |
+   | 9 doc-caches cold (sum) | ~24 | fusing the walks is the deferred registry refactor (backlog) — not taken opportunistically |
+   | text query | ~28 | post-sniff; further needs a per-node blob cache (nine-cache registry implications) |
+   | full `render()` | ~20 | flatten ~9 + window ~5 — bounded, leave |
+   | `buildIndex` | ~6 | leave |
+   | `recordTextEdit` ×1000 | ~1 | typing is effectively free, as designed |
+
+   The autosave debounce burst for a folder-backed 50k doc is the compound beneficiary: it runs
+   `JSON.stringify` (~44 ms) + `toOpml` (~72 → ~32 ms) synchronously, so the burst dropped from
+   ~116 ms to ~76 ms. The remaining floor is the stringify itself.
+
 3. **Structural-edit latency (grows with size, but stays under the line at 50k on both).**
    Each structural op pays `pushUndo` → `snapshot` (`JSON.stringify(root)`, O(total)) + a
    full `render()` + the next reads of the doc-caches. M: ~11 ms at 25k, ~29 ms at 50k —

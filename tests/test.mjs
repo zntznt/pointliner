@@ -15502,7 +15502,7 @@ test('per-column number format — menu/dialog/footer/parity wiring (src pins)',
   assert.ok(/if \(node\.colFmt\) mtMoveItem\(node\.colFmt, from, to\)/.test(_src), 'the header-drag drop handler keeps colFmt aligned too (the inline mtMoveCol twin)');
   assert.ok(/if \(node\.colFmt\) \{ node\.colFmt\.splice\(colIdx, 1\);/.test(_src), 'delete keeps colFmt aligned + drops when empty');
   assert.ok(/delete node\.colFmt;/.test(_src), 'base→text teardown drops colFmt');
-  assert.ok(/n\.colFmt\?\.some\(x => x != null\) \? `_colfmt=/.test(_src), 'toOpml serializes _colfmt when set');
+  assert.ok(/n\.colFmt\?\.some\(x => x != null\)\)\s+attrs \+= ` _colfmt=/.test(_src), 'toOpml serializes _colfmt when set');
 });
 
 // ── Bases round 1 (B1–B4): correctness fixes ─────────────────────────────────
@@ -20517,6 +20517,37 @@ test('tag inheritance: an ancestor state never floods its subtree', () => {
   assert.deepEqual(titles('#saga'), ['Book two #WAITING #saga', 'Draft the letter'], 'a real tag inherits');
   assert.deepEqual(titles('#waiting'), ['Book two #WAITING #saga'],
     'the state matches the point that carries it and NOT its children');
+});
+
+test('toOpml golden: byte-identical serialization across the perf rewrite', () => {
+  // Captured from the build BEFORE toOpml's nx/ex were rewritten for speed (accumulator + escape
+  // sniff). Every sidecar attr, in order, plus a kitchen-sink escape string and a plain nested
+  // pair. If this fails after a toOpml change, the OUTPUT changed — that is data-format drift,
+  // not a style problem, and every existing OPML file is the blast radius.
+  const sink = {
+    id: 'sinkid1', text: 'A & B "quoted" <tag>\nline2\ttab', type: 'h1', checked: true, collapsed: true,
+    folded: true, noexport: true,
+    footnotes: [{ id: 'f1', text: 'note & so' }], dice: [{ key: 'd1', expr: '2d6' }],
+    markov: [{ key: 'm1' }], math: [{ key: 'x1' }], vars: [{ name: 'v', expr: '3' }],
+    grammar: [{ key: 'g1' }], est: [{ key: 'e1' }], seq: [{ key: 's1' }], query: [{ key: 'q1' }],
+    note: 'a note\nwith newline', props: [{ key: 'due', val: '2026-08-01' }],
+    colW: [120, null], qbase: { q: 'is:todo', cols: 'Title' }, varbase: { name: 'Data' },
+    colRole: ['status', null], colFmt: [null, 'int'], view: { kind: 'board' }, baseRows: 7,
+    children: [],
+  };
+  const plain = { id: 'plainid2', text: 'just words', type: 'ul', children: [] };
+  const parent = { id: 'par3', text: 'parent', type: 'ul', children: [plain] };
+  const tree = { text: 'Doc', children: [sink, parent], savedSearches: [], templates: [], inboxes: [], plugins: [] };
+  const body = c.toOpml(tree).split('<body>')[1].split('</body>')[0];
+  assert.equal(body, "\n    <outline text=\"A &amp; B &quot;quoted&quot; &lt;tag&gt;&#10;line2&#9;tab\" _type=\"h1\" _checked=\"true\" _collapsed=\"true\" _folded=\"true\" _noexport=\"true\" _footnotes=\"[{&quot;id&quot;:&quot;f1&quot;,&quot;text&quot;:&quot;note &amp; so&quot;}]\" _dice=\"[{&quot;key&quot;:&quot;d1&quot;,&quot;expr&quot;:&quot;2d6&quot;}]\" _markov=\"[{&quot;key&quot;:&quot;m1&quot;}]\" _math=\"[{&quot;key&quot;:&quot;x1&quot;}]\" _vars=\"[{&quot;name&quot;:&quot;v&quot;,&quot;expr&quot;:&quot;3&quot;}]\" _grammar=\"[{&quot;key&quot;:&quot;g1&quot;}]\" _est=\"[{&quot;key&quot;:&quot;e1&quot;}]\" _seq=\"[{&quot;key&quot;:&quot;s1&quot;}]\" _query=\"[{&quot;key&quot;:&quot;q1&quot;}]\" _note=\"a note&#10;with newline\" _props=\"[{&quot;key&quot;:&quot;due&quot;,&quot;val&quot;:&quot;2026-08-01&quot;}]\" _colw=\"[120,null]\" _qbase=\"{&quot;q&quot;:&quot;is:todo&quot;,&quot;cols&quot;:&quot;Title&quot;}\" _varbase=\"{&quot;name&quot;:&quot;Data&quot;}\" _colrole=\"[&quot;status&quot;,null]\" _colfmt=\"[null,&quot;int&quot;]\" _view=\"{&quot;kind&quot;:&quot;board&quot;}\" _baserows=\"7\" _id=\"sinkid1\"/>\n    <outline text=\"parent\" _id=\"par3\">\n      <outline text=\"just words\" _id=\"plainid2\"/>\n    </outline>\n  ");
+  // The escape sniff must still fire on every escapable class, and pass plain text through as-is.
+  assert.equal(c.ex('plain words 123'), 'plain words 123');
+  assert.equal(c.ex('a & b'), 'a &amp; b');
+  assert.equal(c.ex('q"x'), 'q&quot;x');
+  assert.equal(c.ex('a<b>c'), 'a&lt;b&gt;c');
+  assert.equal(c.ex('l1\nl2\tt\rr'), 'l1&#10;l2&#9;t&#13;r');
+  assert.equal(c.ex('ctl\x07x'), 'ctlx', 'control chars still stripped');
+  assert.equal(c.ex('lone\uD800surrogate'), 'lonesurrogate', 'lone surrogates still stripped');
 });
 
 test('stripMd sniff: every transform class still fires, plain text passes through', () => {
