@@ -388,21 +388,28 @@ both machines.
    candidate for future work: it is the only path where the 2.4× constant crosses a
    perceptual line inside the document sizes users actually reach before the storage wall.
 
-   **Tag inheritance added a measured cost to `#tag` queries only** (container run, median of 9
-   applied queries over a 3-level tree, same page for both builds):
+   **The tag-inheritance perf pass ended up making search faster than it has ever been** (container
+   run, median of 9 applied queries over a 3-level tree, same page for both builds; `before` is the
+   pre-inheritance `origin/main`):
 
    | query | 10k before → after | 50k before → after |
    |---|---|---|
-   | `#campaign` | 4.9 → **11.2 ms** | 23.7 → **34.9 ms** |
-   | `Task` (text) | 18 → 26 ms | 94.6 → 92 ms |
-   | `is:todo` | 1.6 → 1.6 ms | 6.2 → 6.6 ms |
+   | `#campaign` (now inheriting) | 5.4 → **5.2 ms** | 26.6 → **12.1 ms** |
+   | `Task` (text) | 18 → **7.5 ms** | 91.5 → **29.4 ms** |
+   | `is:todo` | 1.4 → 1.7 ms | 6.8 → 6.2 ms |
 
-   Only the tag row moves; the other two are run-to-run noise (the text row lands on both sides of
-   zero across runs). Two things keep it to ~+11 ms at 50k rather than the **+59 ms** the first
-   implementation measured: the walkers accumulate the ancestor chain one level per descent (O(1)
-   per node, not O(depth)), and both regexes are memoised — building a `RegExp` per node was the
-   single largest cost, at 50k constructions per query. `computeMatchSet` also skips the
-   accumulation entirely when the query has no tag term, so text and `is:` queries pay nothing.
+   Three layers, in the order they were found. (1) The naive inheritance walk measured 21.9 →
+   **81.3 ms** at 50k — per-node `RegExp` construction in `stripStateTags`/`tagHit`, 50k
+   constructions per query; both are now memoised (a small Map, not one slot: a `#a #b` query
+   alternates values and thrashes a single slot). (2) The `indexOf('#')` guard: the scan/strip
+   regexes only ever *blank* characters, so a text without `#` can never match — and ~99% of real
+   points carry no tag, so `extendAncTagText` also returns the SAME string reference down untagged
+   spines instead of reallocating. That took tag queries *below* their pre-inheritance baseline.
+   (3) The same sniff idea applied to `stripMd` (`MD_SNIFF`): one regex scan proves none of its
+   twenty replaces can fire, so plain text skips all of them. That is the text-query win above, and
+   it applies to every title, breadcrumb, and export path too, not just search. The W-machine
+   ceiling above (~372 ms at 50k) predates all three and should scale down proportionally —
+   re-measure on W before quoting it.
 3. **Structural-edit latency (grows with size, but stays under the line at 50k on both).**
    Each structural op pays `pushUndo` → `snapshot` (`JSON.stringify(root)`, O(total)) + a
    full `render()` + the next reads of the doc-caches. M: ~11 ms at 25k, ~29 ms at 50k —

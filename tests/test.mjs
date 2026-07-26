@@ -20519,6 +20519,77 @@ test('tag inheritance: an ancestor state never floods its subtree', () => {
     'the state matches the point that carries it and NOT its children');
 });
 
+test('stripMd sniff: every transform class still fires, plain text passes through', () => {
+  // stripMd now bails after ONE regex scan when no trigger char is present. The risk of a sniff is
+  // a hole: a transform whose trigger is missing from it silently stops applying. So every
+  // transform class gets a case proving it still strips — if someone adds a transform without
+  // extending MD_SNIFF, the matching case here is where that shows up.
+  const cases = [
+    ['`code` x',            'code x'],          // backtick
+    ['![alt](u) y',         'alt y'],           // image
+    ['[label](u) y',        'label y'],         // link
+    ['a[^fn] b',            'a b'],             // footnote marker
+    ['==hi== there',        'hi there'],        // highlight (=)
+    ['**bold** x',          'bold x'],          // bold (*)
+    ['~~gone~~ x',          'gone x'],          // strike (~)
+    ['++ins++ x',           'ins x'],           // insert (+)
+    ['~sub~ x',             'sub x'],           // subscript
+    ['^sup^ x',             'sup x'],           // superscript
+    ['- [ ] task text',     'task text'],       // task marker (line-anchored -)
+    ['- plain bullet',      'plain bullet'],    // bare list marker
+    ['1. numbered',         'numbered'],        // numbered list
+    [': definition',        'definition'],      // definition lead
+  ];
+  for (const [input, want] of cases)
+    assert.equal(c.stripMd(input), want, `sniff hole: ${JSON.stringify(input)} no longer strips`);
+  // Plain text returns unchanged — and as the SAME string, so callers pay no allocation either.
+  const plain = 'Task 3.1.4 finish the report by Tuesday';
+  assert.equal(c.stripMd(plain), plain, 'no markdown, no change');
+  assert.equal(c.stripMd('a - b (mid-line dash)'), 'a - b (mid-line dash)',
+    'a mid-line dash is not a list marker and must not trigger');
+});
+
+test('extendAncTagText: identity is preserved down untagged spines', () => {
+  // The cost model of tag inheritance: a node contributes to the chain only when a REAL tag
+  // survives scanning, and otherwise the SAME string reference flows down. That is what makes the
+  // per-descent step O(1) with no allocation for the untagged majority (~99% of a real outline).
+  const states = ['WAITING'];
+  const anc = ' #campaign';
+  assert.equal(c.extendAncTagText(anc, 'no tags here', states), anc, 'untagged: same value back');
+  assert.equal(c.extendAncTagText(anc, '', states), anc);
+  assert.equal(c.extendAncTagText(anc, null, states), anc);
+  // '#' present but nothing survives the strip: state-only, or a link-target '#'
+  assert.equal(c.extendAncTagText(anc, '#WAITING only a state', states), anc,
+    'a state-only point contributes nothing to the chain');
+  assert.equal(c.extendAncTagText(anc, 'see [[doc#x]]', states), anc,
+    'a link-target # is not a tag and must not extend the chain');
+  // a real tag extends it
+  const grown = c.extendAncTagText(anc, 'plot #saga', states);
+  assert.equal(c.tagHit('saga', grown), true);
+  assert.equal(c.tagHit('campaign', grown), true, 'the existing chain survives the append');
+  assert.equal(c.tagHit('waiting', c.extendAncTagText('', '#WAITING x #saga', states)), false,
+    'a mixed point contributes its tag but never its state');
+});
+
+test('tag term: the split own/ancestor test matches the old concat at the boundaries', () => {
+  // The matcher used to test ONE concatenated string (own + ' ' + anc); it now tests the two
+  // halves separately so untagged nodes can bail on indexOf('#'). Equivalence rests on a #tag
+  // token lying entirely within one side of the join — pin the edge cases that argument covers:
+  // a tag at the very END of own text, and one at the very START of the ancestor string.
+  const mk = (text, kids = []) => ({ id: 'b' + (mk._i = (mk._i || 0) + 1), text, type: 'ul', children: kids });
+  const child = mk('plain');
+  const tree = { id: 'root', text: '', children: [mk('ends with #edge', [child])] };
+  const rows = q => host(c.queryRows(q, tree, null, 50)).rows.length;
+  assert.equal(rows('#edge'), 2, 'a tag at the end of the parent text still reaches the child');
+  const tree2 = { id: 'root2', text: '', children: [mk('#lead first', [mk('kid')])] };
+  assert.equal(host(c.queryRows('#lead', tree2, null, 50)).rows.length, 2,
+    'a tag at the start of the ancestor chain still matches');
+  // and the join can never MANUFACTURE a match: neither half carries #whole, so a fragment
+  // ending in "#wh" above a child starting with "ole" must not combine.
+  const tree3 = { id: 'root3', text: '', children: [mk('x #wh', [mk('ole y')]) ] };
+  assert.equal(host(c.queryRows('#whole', tree3, null, 50)).rows.length, 0);
+});
+
 test('tag inheritance: the threaded chain and the ancestorsOf default agree', () => {
   // Two paths reach the same verdict: walkers thread an accumulated string, while a one-off check on
   // a live node falls back to ancestorsOf(). If those ever disagree, one filter answers two ways

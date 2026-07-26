@@ -7647,8 +7647,17 @@ function mdToHtml(raw, isCode) {
   return out.join('');
 }
 
+// One sniff, twenty replaces: every transform below requires one of these — a char-anywhere
+// trigger (` [ = * ~ + ^) or a line-anchored marker (`- `, `1. `, `: `). If the sniff misses,
+// every replace is a no-op, so plain text (most of an outline) returns unchanged after ONE scan
+// instead of twenty. stripMd sits in the search hot path (one call per node per text term) and
+// on every title/export path, so this is a broad win, not a search-only one. If a NEW transform
+// is added below, its trigger must join this sniff or it silently stops applying to plain text.
+const MD_SNIFF = /[`\[=*~^+]|^\s*(?:-\s|\d+\.\s|:\s)/m;
 function stripMd(text) {
-  return (text||'')
+  const t = text || '';
+  if (!MD_SNIFF.test(t)) return t;
+  return t
     .replace(/`([^`\n]+)`/g,'$1')
     .replace(/!\[([^\]]*)\]\([^)]+\)/g,'$1')
     .replace(/\[([^\]]*)\]\([^)]+\)/g,'$1')
@@ -15679,8 +15688,16 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
   // that need it fall back to the cached collectLinks(), so a text query never pays for
   // the index. Workspace search passes THIS doc's collectLinks(root), same as seqs/vars.
   // Own text ALWAYS counts as-is (a point's own #WAITING still matches); ancestor text arrives
-  // already state-stripped, so only real tags inherit.
-  if (term.kind === 'tag') return tagHit(term.value, tagScanText(node.text) + ' ' + (ancTagText || ''));
+  // already state-stripped, so only real tags inherit. Tested as two strings rather than one
+  // concat — equivalent, because a #tag token lies entirely within one side of the join (the
+  // join space can never be part of a match, and a string edge behaves exactly like a space for
+  // both the lookbehind and the lookahead) — so the untagged majority can bail on indexOf('#')
+  // without paying tagScanText, and the shared anc string is tested as-is.
+  if (term.kind === 'tag') {
+    const t = node.text;
+    if (t && t.indexOf('#') !== -1 && tagHit(term.value, tagScanText(t))) return true;
+    return !!ancTagText && tagHit(term.value, ancTagText);
+  }
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
     // #467: recently-edited = the point's `edited` timestamp is within the last 48h. An
@@ -15924,7 +15941,7 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
         total++;
         if (rows.length < cap) rows.push({ id: c.id, title: stripMd(textForDisplay(c)) || '(untitled)' });
       }
-      walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
+      walk(c, extendAncTagText(anc, c.text, tagStates));
     }
   })(rootNode, '');
   return { rows, total, truncated: total > rows.length };
@@ -15999,7 +16016,7 @@ function queryReduceFolder(fn, expr, prop) {
             if (fn === 'count') count++;
             else { const pv = childPropNumber(c, prop); if (pv !== null) vals.push(pv); }
           }
-          walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
+          walk(c, extendAncTagText(anc, c.text, tagStates));
         }
       })(r, '');
     }
@@ -16072,7 +16089,7 @@ function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
       if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
         hits.push(stripQueryTags(stripMd(textForDisplay(c)), terms) || '(untitled)');
       }
-      walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
+      walk(c, extendAncTagText(anc, c.text, tagStates));
     }
   })(rootNode, '');
   if (!hits.length) return '';
@@ -16131,7 +16148,7 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
         total++;
         if (rows.length < cap) rows.push({ id: c.id, cells: colList.map(col => project(c, col.field)) });
       }
-      walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
+      walk(c, extendAncTagText(anc, c.text, tagStates));
     }
   })(rootNode, '');
   return { header, rows, total, truncated: total > rows.length };
@@ -16227,7 +16244,7 @@ function computeMatchSet(node, set, anc = '', states = knownStates(),
   // Only accumulate when the query actually has a tag term: a text or is: query has nothing to
   // inherit, so it should not pay for the chain at all. ('' is passed, not undefined, so
   // termMatchesNode's ancestorsOf default stays out of the hot path.)
-  const kids = needTags ? anc + ' ' + stripStateTags(tagScanText(node.text), states) : '';
+  const kids = needTags ? extendAncTagText(anc, node.text, states) : '';
   for (const c of node.children) { if (computeMatchSet(c, set, kids, states, needTags)) any = true; }
   if (any) set.add(node.id);
   return any;
@@ -22244,17 +22261,21 @@ function tagScanText(text) {
 //   read as tags); word-anchored both sides so #todo never matches #todos. Nested tags are
 //   hierarchical: a query for #thread matches #thread AND #thread/torn-letter (the trailing boundary
 //   allows a / continuation but not another [\w-] char). `value` may contain / and -, so escape it.
-let _tagReKey = null, _tagRe = null;
+const _tagReCache = new Map();
 function tagHit(value, text) {
-  // Memoised on the tag: a query's tag is constant while the walk runs, so this saves one RegExp
-  // construction per node. Not /g, so there is no lastIndex to carry between .test calls.
+  // Memoised per tag in a small Map, not a single slot: a query with two tag terms (#a #b)
+  // alternates values every node and would thrash one slot straight back to per-node RegExp
+  // construction — the exact cost this cache exists to remove (measured 21.9 -> 81.3 ms at 50k
+  // before caching). Not /g, so there is no lastIndex to carry between .test calls.
   const key = String(value ?? '');
-  if (key !== _tagReKey) {
+  let re = _tagReCache.get(key);
+  if (!re) {
+    if (_tagReCache.size > 32) _tagReCache.clear();   // bound it; 32 distinct tags per epoch is plenty
     const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    _tagRe = new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i');
-    _tagReKey = key;
+    re = new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i');
+    _tagReCache.set(key, re);
   }
-  return _tagRe.test(text || '');
+  return re.test(text || '');
 }
 /* Tag inheritance (Tag power, the last Tier 1 item): a tag on a point is in effect for its whole
    subtree, so filing work under a #campaign heading and searching #campaign finds the work, not
@@ -22280,6 +22301,18 @@ function stripStateTags(text, states) {
     _stateReKey = key;
   }
   return (text || '').replace(_stateRe, ' ');
+}
+// Extend an accumulated ancestor-tag string by ONE level — the walkers' per-descent step.
+// The fast paths here are the whole cost model of tag inheritance:
+//   - tagScanText/stripStateTags only ever BLANK characters, so a text without '#' cannot
+//     contribute; most points carry no tag, and they skip both regex replaces entirely.
+//   - when nothing survives the strip (state-only, or '#' only inside a [[link]]), the SAME
+//     string reference is returned, so the chain is identical down untagged spines instead of
+//     reallocating per node.
+function extendAncTagText(anc, text, states) {
+  if (!text || text.indexOf('#') === -1) return anc;
+  const t = stripStateTags(tagScanText(text), states);
+  return t.indexOf('#') === -1 ? anc : anc + ' ' + t;
 }
 // The tag text an ancestor chain contributes: each ancestor's scan text, states stripped.
 function ancestorTagText(ancestors, states) {
@@ -23253,7 +23286,7 @@ function searchWorkspace(query, index, currentDocId, cap = 50) {
                    title: textForDisplay(n) || '(untitled)',
                    snippet: searchSnippet(n, terms) });
       }
-      const kids = anc + ' ' + stripStateTags(tagScanText(n.text), tagStates);
+      const kids = extendAncTagText(anc, n.text, tagStates);
       for (const c of (n.children || [])) walk(c, kids);
     };
     for (const c of (root?.children || [])) walk(c, '');
