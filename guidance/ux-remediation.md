@@ -70,6 +70,26 @@ acting (controls drift).
 > routes to the Builder instead of `#slash-menu`. Auditing `#slash-menu` in the default tier
 > reports "menu did not open" forever.
 >
+> **P1-3 (`Esc` resolves outward) was audited 2026-07-26 and is CLEAN — 15/15 driven.** Chosen
+> because it governs interaction SEQUENCES, which an entry-point-list audit structurally cannot see.
+> Both halves of the rule hold: the **ladder** (`Shift+F10` opens the point menu and Escape closes
+> the menu only, returning focus to the point it was opened from; a real `Shift+ArrowDown` selection
+> of 3 clears on the next Escape; `zoomInto` then Escape zooms back out) and the §3 **chrome
+> contract** (search field, file menu and help panel each put the caret back on the SAME point at
+> the SAME offset, 9/9).
+>
+> **Every failure this audit reported was the driver, five times over**, and the list is the useful
+> artifact: (1) a scripted `enterEdit()` arms NEITHER `armChromeReturn` path — it loses
+> `data-editing` to its own `scheduleReconcile` and never blurs, so there is no `lastEdit` — making
+> the file menu and help panel look like they discarded the caret; (2) a door-finder matched a
+> hidden element INSIDE the file menu; (3) the File door is `#logo-btn`, whose visible "File ▾" text
+> is `aria-hidden`, so a `textContent` match cannot find it; (4) the `Shift+F10` handler is bound to
+> the CONTENT element's keydown, so pressing Escape first (to build a selection) blurs the element
+> the key needed to reach; (5) zoom state is `focusedId`, not `zoomId` — the check read `undefined`
+> and reported "not zoomed" unconditionally. The standing lesson: on an interaction rule, a failing
+> assertion is more likely to be the harness than the app, and must be proven against the real user
+> path before it is written down.
+>
 > **P3-1 and P3-3 were RE-RUN per tier on 2026-07-26 and are clean in all three.** Both had
 > originally been walked in the default tier only, which UXP-250 showed is not the whole app.
 > 18 surfaces x 3 tiers: **647 focus stops (guided 226, standard 221, lean 200), 0 unnamed
