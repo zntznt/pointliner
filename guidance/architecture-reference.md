@@ -731,9 +731,17 @@ sigil rule (`[[…]]` tokens stripped first so link targets never read as tags),
 on `_varsVer`; it sources the `#` tag-picker menu (same §7.1 pattern as the `{` picker).
 The tag grammar is `#` + `[\w-]+` segments joined by `/` for **nested tags**
 (`#thread/torn-letter`); search is hierarchical (`#thread` matches `#thread` and any
-`#thread/…`, an exact subtag matches only itself). This pattern is **mirrored in three
-places that must stay in lockstep**: `mdInline` (render), `collectTags` (index), and
-the search-query parser/`termMatchesNode`. Change one, change all three.
+`#thread/…`, an exact subtag matches only itself) **and inherits down the subtree**
+(2026-07-26): a tag on a point is in effect for everything filed beneath it. Two carve-outs —
+ancestor **state** keywords are stripped (`stripStateTags`; a held parent must not drag its
+subtree into `is:held`), and `has:tag` stays literal (so `-has:tag` still finds unlabelled
+points). The ancestor chain is **threaded** through every walker as a pre-joined string, never
+read from `ancestorsOf` — that returns `[]` outside the live index, which would make the same
+filter answer differently in the search box and inside `{query:}`/`{count:}`/`{roll:}`/workspace
+search. This pattern is **mirrored in four places that must stay in lockstep**: `mdInline`
+(render), `collectTags` (index), the search-query parser/`termMatchesNode` (via the extracted
+`tagHit` core), and the chain builders (`stripStateTags`/`extendAncTagText`/`ancestorTagText`).
+Change one, change all four.
 `collectLinks(rootNode = root)` walks the tree for `[[#TARGETID|label]]` tokens and
 returns `{ outgoing, backlinks, broken }`, cached on `_varsVer`. A link is **token-in-
 text, not a sidecar artifact** — the target id lives directly in `node.text` (like a
