@@ -15903,8 +15903,24 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
     return (node.vars || []).some(v => v.expr && hit(v.name))
       || (isVarBase(node) && varBaseDefsMemo(node).some(d => hit(d.name)));
   }
-  return stripMd(textForDisplay(node)).toLowerCase().includes(term.value)
+  return searchBlob(node).includes(term.value)
     || (!!node.note && node.note.toLowerCase().includes(term.value));
+}
+
+// doc-cache 11: searchBlob — the text-term haystack, stripMd(textForDisplay(n)).toLowerCase(),
+// which every text query used to recompute per node per keystroke (~29 ms of the ~29 ms text-query
+// cost at 50k). Cached per GENERATION like the other ten: the version check against _varsVer is
+// mandatory (CLAUDE.md registry rule) and exitEdit's markDirty() bumps it on every text commit, so
+// an edited point re-blobs on the next query. Keyed by NODE OBJECT in a WeakMap, not by id, on
+// purpose: workspace search walks FOREIGN docs, and a copied doc keeps its node ids, so an id-keyed
+// map could serve one document's text for another's node — object identity cannot collide, and the
+// WeakMap lets swapped-out trees garbage-collect. (see resetDocCaches registry)
+let _searchBlobVer = -1, _searchBlobs = null;
+function searchBlob(node) {
+  if (_searchBlobVer !== _varsVer) { _searchBlobs = new WeakMap(); _searchBlobVer = _varsVer; }
+  let b = _searchBlobs.get(node);
+  if (b === undefined) { b = stripMd(textForDisplay(node)).toLowerCase(); _searchBlobs.set(node, b); }
+  return b;
 }
 
 // AND of all terms; a negated term must NOT match. Empty term list matches

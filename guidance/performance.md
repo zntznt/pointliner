@@ -420,7 +420,7 @@ both machines.
    | snapshot (`JSON.stringify`) | 37–45 | **`structuredClone` measured 5× SLOWER (221 ms)** — stringify IS the fast primitive; leave |
    | `toOpml` | 72 → **32** | rewritten: line accumulator instead of nested `children.map().join()`, direct attr concat instead of a 24-slot array+filter+join per node, and an `EX_SNIFF` escape guard in `ex()` (node ids are always plain, so every id skipped 8 regex scans). Output byte-identical — golden pin + browser round-trip (body is a fixed point through the real DOMParser) |
    | 9 doc-caches cold (sum) | ~24 | fusing the walks is the deferred registry refactor (backlog) — not taken opportunistically |
-   | text query | ~28 | post-sniff; further needs a per-node blob cache (nine-cache registry implications) |
+   | text query | ~28 | post-sniff; now also blob-cached — see below |
    | full `render()` | ~20 | flatten ~9 + window ~5 — bounded, leave |
    | `buildIndex` | ~6 | leave |
    | `recordTextEdit` ×1000 | ~1 | typing is effectively free, as designed |
@@ -428,6 +428,22 @@ both machines.
    The autosave debounce burst for a folder-backed 50k doc is the compound beneficiary: it runs
    `JSON.stringify` (~44 ms) + `toOpml` (~72 → ~32 ms) synchronously, so the burst dropped from
    ~116 ms to ~76 ms. The remaining floor is the stringify itself.
+
+   **Doc-cache 11, `searchBlob`, closed the text-query loop** (2026-07-26). The text term's haystack
+   (`stripMd(textForDisplay(n)).toLowerCase()`) was recomputed per node per applied keystroke; it is
+   now cached per generation, keyed by **node object in a WeakMap** — not by id, because workspace
+   search walks foreign docs and a copied doc keeps its ids. Incremental typing at 50k (per applied
+   keystroke, before = pre-inheritance baseline):
+
+   | step | before | after |
+   |---|---|---|
+   | first keystroke (builds blobs) | ~127 ms | ~78 ms |
+   | each further keystroke | ~90–157 ms | **~17 ms** |
+   | first query after an edit (bump + rebuild) | ~98 ms | ~45 ms |
+
+   The registry rule held: the cache checks `_varsVer`, `exitEdit`'s `markDirty()` is the bump, and
+   the pin includes the negative control (an unbumped mutation keeps serving the stale blob — the
+   same contract every other doc-cache has) plus an id-collision case proving the WeakMap choice.
 
 3. **Structural-edit latency (grows with size, but stays under the line at 50k on both).**
    Each structural op pays `pushUndo` → `snapshot` (`JSON.stringify(root)`, O(total)) + a
