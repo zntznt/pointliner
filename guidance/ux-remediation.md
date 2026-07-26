@@ -70,6 +70,22 @@ acting (controls drift).
 > routes to the Builder instead of `#slash-menu`. Auditing `#slash-menu` in the default tier
 > reports "menu did not open" forever.
 >
+> **P2-1 (all three doors / "built != hidden") was audited 2026-07-26 and is CLEAN.** Audited per
+> verbosity tier, because UXP-250 established that `checkSlash` branches on the tier and every audit
+> before it had run in the default tier only. Reachable-through-a-menu, per tier: **guided 72 via the
+> Builder, standard 29 (`/`) + 21 (`@`) via `#slash-menu`, lean a visible `role="status"` tip naming
+> the match and count** — and **0 commands of 50 are built without a menu door in any tier**. The
+> Builder itself has a visible door in all three. Two false alarms were killed by controls rather
+> than filed: "21 insert commands unreachable in standard" was a builder left open by the previous
+> loop iteration (**21 on a fresh page**), and "lean shows no tip at all" was `offsetParent` being
+> null for a `position:fixed` element, which says nothing about visibility.
+>
+> **That pass also closed a gap in UXP-248's own audit.** That audit walked its surfaces in the
+> default tier, where `#slash-menu` never opens — so the entire `/` and `@` menu of the standard
+> tier had never been measured against the 24px floor. Re-measured with the same hit-test method:
+> rows are **192x44 visual, 44px effective, 0 under the floor**. No defect was hiding in the gap,
+> but the gap was real and is now closed.
+>
 > A fourth pass continued by defect CLASS. Two rules were triaged by measurement before picking one:
 > **P3-1 accessible name** came back **0 unnamed across 25 surfaces** (the accessibility work held,
 > so there was nothing to fix), while the **24px tap floor** came back with **nine shared control
