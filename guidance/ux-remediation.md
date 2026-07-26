@@ -133,7 +133,12 @@ acting (controls drift).
 > quietly EXPIRED: the first-run banner button kept the banned "Start a blank outline" with a comment
 > citing `ux-discipline §L81` as its authority, and that line no longer exists in the standard.
 >
-> **As of 2026-07-26 the register holds four open defects (UXP-247, UXP-249 structural; UXP-252 vocab; UXP-20 standing guard).**
+> **P4-1 (no silent failure) was audited 2026-07-26 — see UXP-253, closed, and UXP-254, open.**
+> The app applies a KEYWORD-COMMIT doctrine (typed the keyword, body will not parse -> marked as an
+> attempt with a reason). `shuffle:` and `markov:` were the only two keyword forms never given it.
+> 7 of 10 rejected inputs were cued before, 9 of 10 after.
+>
+> **As of 2026-07-26 the register holds five open defects (UXP-247, UXP-249 structural; UXP-252 vocab; UXP-254 feedback; UXP-20 standing guard).**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
@@ -141,6 +146,20 @@ acting (controls drift).
 ---
 
 ## Open items
+
+### UXP-254 ☐ A dice-shaped typo is the one rejected input that still says nothing 🟢 [feedback]
+- **Problem:** `{2dX}` (a letter where the sides go) gets **no cue at all** in edit mode — neither
+  `.gr-src` nor `.gr-bad`. `{2d0}`, one character away, IS marked. Dice is the only pill form whose
+  keyword is its SHAPE rather than a word, so `classifyBraceBody` has nothing to commit on and the
+  body falls through to 'literal'.
+- **Rule:** P4-1 (no silent failure). Every other authoring surface now signals; this one does not.
+- **Why it is filed rather than fixed:** the fix means committing on a SHAPE (`/^\d+\s*d/`) instead
+  of a keyword, which is a change to parsing semantics with a real false-positive surface — a
+  legitimate literal pick like `{2d6 apples}` or prose beginning with a number-d pattern would be
+  condemned. Every other keyword-commit is anchored to an unambiguous word. Extending the doctrine
+  to shapes is a judgment call for the owner, and riskier than the copy fixes this pass shipped.
+- **Target:** either commit on the dice shape (with the false-positive set enumerated and pinned),
+  or add the near-miss suggester to this case so the typo is cued without changing classification.
 
 ### UXP-252 ☐ "Roll palette" uses a banned word for an overlay list 🟢 [vocab]
 - **Problem:** §1 maps "a keyboard-navigable overlay list" to **menu**, and bans **palette**. The

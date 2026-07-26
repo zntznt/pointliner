@@ -17163,6 +17163,28 @@ test('column header carries the visible menu door; agenda groups carry kind labe
 });
 
 // ── Mobile neophyte batch: first-run tap targets + duplicate-inbox guard ──
+test('UXP-253 P4-1: shuffle: and markov: are keyword-commits like every other keyword form', () => {
+  // Found by feeding each authoring surface input it must reject and asking what the user is left
+  // looking at. The app marks an unrecognized {…} in EDIT MODE with .gr-bad + a title that says
+  // why — but only for bodies classifyBraceBody calls 'invalid'. `seq`/`rule`/`oracle`/`meter`/
+  // `date` all keyword-commit (typed the keyword, body will not parse -> invalid). `shuffle:` and
+  // `markov:` did not, so the same typo said nothing at all after those two.
+  assert.ok(_src.includes("if (/^shuffle\\s*:/i.test(body)) return 'invalid';"),
+    'a body that opens with shuffle: and does not parse is an attempt, not prose');
+  assert.ok(_src.includes("if (/^markov\\s*:/i.test(body)) return 'invalid';"),
+    'a body that opens with markov: and does not parse is an attempt, not prose');
+  // They must sit AFTER the parse attempts, or every valid shuffle/markov would be condemned.
+  const iSeq = _src.indexOf("if (seqParts(body)) return 'artifact';");
+  const iMk  = _src.indexOf("if (markovParts(body)) return 'artifact';");
+  const iCommit = _src.indexOf("if (/^shuffle\\s*:/i.test(body)) return 'invalid';");
+  assert.ok(iSeq > 0 && iMk > iSeq && iCommit > iMk,
+    'the commit must follow seqParts/markovParts so a parsing body still wins');
+  // The cue those verdicts drive must still exist and still state a reason (P4-2).
+  assert.ok(_src.includes('title="Not recognized, so it stays plain text"'),
+    'the invalid mark must carry its reason, not just be a colour');
+  assert.ok(_src.includes("class=\"gr-src gr-bad\""), 'the invalid mark is the gr-bad span');
+});
+
 test('UXP-251 V-1: user-facing copy does not call the document an outline', () => {
   // ux-discipline §1 permits "outliner" (the app) and "the outline" (the navigable tree view), and
   // bans "outline" for the DOCUMENT. Audited over the strings a user actually sees; the code keeps

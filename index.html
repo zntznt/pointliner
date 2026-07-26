@@ -16706,6 +16706,15 @@ function classifyBraceBody(body, rules, vars) {
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
+  // UXP-253: `shuffle:` and `markov:` are keyword-commits too, and were the only two keyword forms
+  // never given the treatment that `seq`/`rule`/`oracle`/`meter`/`date` all already carry. Reaching
+  // this line means the keyword WAS typed and its body did not parse, so it is an attempt, not
+  // prose. Before this, a typo after `shuffle:` fell through to 'literal' and said nothing at all,
+  // while the identical typo after `seq ` was marked — the same mistake, opposite treatment.
+  // (Unlike `seq`, there is no shred to close here: `seqParts` accepts comma-separated items, so
+  // `{shuffle: a, b | c}` parses and stays a real pill. Verified, not assumed.)
+  if (/^shuffle\s*:/i.test(body)) return 'invalid';
+  if (/^markov\s*:/i.test(body)) return 'invalid';
   // {seq Flow: A B | C} — KEYWORD-COMMIT, like oracle/meter/rule. Once a body opens with `seq `, a
   // tail that will not parse is INVALID. This closes two different failures at once: a broken tail
   // WITH a pipe used to reach the alternation branch and become a nonsense pill (`seq Growth: Seed,
