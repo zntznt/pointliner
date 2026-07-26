@@ -159,6 +159,11 @@ are why the control passes.
    centre lies inside the container's own rect, which excludes popups that open on focus.
 5. **Scrolled-out is not offscreen.** Icons scrolled out of a `.scroll-strip` are reachable by
    swiping. Only a control with no scrollable ancestor is genuinely lost.
+6. **A column container is not a wrapped row.** `.builder-wrap` and `.ag-top` are
+   `flex-direction:column`; counting their children's top offsets reports a wrap at every width.
+7. **`past` measures the sheet, not the surface inside it.** Including the host's own bottom made
+   `.io-foot` report 56px past at every width — the footer sits below the fold of a scrollable
+   `#io-card`, which is what scrolling is for. Only the sheet cannot be scrolled into view.
 
 **And one that does not belong in the generic driver at all:** on `#edit-bar`, calling `.focus()` on
 a button moves focus out of the point being edited, which **ends the edit and hides the bar** — so
@@ -268,10 +273,14 @@ const MEASURE = `window.__measure = async function (sel) {
     if (ox > 1 && oy > 1) overlaps.push(name(inFlow[i]) + 'x' + name(inFlow[j]) + ':' + Math.round(ox));
   }
   // Zero-area children have no visual line (.eb-spacer sits 20px below the buttons and read as a
-  // second row), and a sub-12px difference is button-height noise, not a wrap.
+  // second row), and a sub-12px difference is button-height noise, not a wrap. A COLUMN-direction
+  // container is skipped outright: stacking is what column means, so counting its children's tops
+  // always reports a wrap (.builder-wrap failed all 12 widths this way).
+  const column = cs.display.includes('flex') && cs.flexDirection.startsWith('column');
   const tops = [];
-  for (const k of inFlow) { const t = Math.round(k.getBoundingClientRect().top);
+  if (!column) for (const k of inFlow) { const t = Math.round(k.getBoundingClientRect().top);
                             if (!tops.some(u => Math.abs(u - t) < 12)) tops.push(t); }
+  else tops.push(0);
   // (2) a scroll container's overflow is its feature; (1) spill discounts negative margins.
   const scrolls = ['auto','scroll'].includes(cs.overflowX);
   const scrollOver = scrolls ? Math.round(host.scrollWidth - host.clientWidth) : 0;
@@ -316,8 +325,11 @@ const MEASURE = `window.__measure = async function (sel) {
   // "unreachable" with nothing in the table explaining why. A sheet sized for one top margin while
   // carrying another is invisible until you subtract innerHeight.
   // (No backticks in this string: it lives inside a template literal.)
+  // Measure the SHEET, never the host inside it. Including the host's own bottom made .io-foot
+  // report 56px past at every width: the footer sits below the fold of a scrollable #io-card, which
+  // is what scrolling is for. Only the sheet cannot be scrolled into view, so only the sheet counts.
   const sheet = host.closest('#io-card, #file-menu, #graph-panel, #timeline-panel') || host;
-  const past = Math.round(Math.max(sheet.getBoundingClientRect().bottom, hr.bottom) - innerHeight);
+  const past = Math.round(sheet.getBoundingClientRect().bottom - innerHeight);
   return { kids: inFlow.length, h: Math.round(hr.height), lines: tops.length, overlaps,
            spill, spiller, scrollOver, offscreen, unreachable, past: Math.max(0, past) };
 };`;
