@@ -465,9 +465,27 @@ Implemented:
   tags; `#work` ≠ `#workshops`) and **hierarchical**: a tag is `#` + `[\w-]+`
   segments joined by `/` (`#thread/torn-letter`), and a parent query matches its
   subtags (`#thread` finds `#thread/torn-letter`; an exact subtag matches only
-  itself). Hyphens are valid tag chars (`#plain-tag`). The grammar is mirrored in
-  three sites that must stay in lockstep: `mdInline`, `collectTags`, and the parser
-  / `termMatchesNode`. Because `#KEYWORD` states are
+  itself). Hyphens are valid tag chars (`#plain-tag`).
+  **`#tag` also INHERITS down the subtree** (2026-07-26, the last Tier 1 item — on by default,
+  no opt-in sigil, because the tag gained *reach* and not notation): a tag on a point is in
+  effect for everything filed beneath it, so tagging a heading `#campaign` and searching
+  `#campaign` finds the work under it, not just the heading. Two deliberate exceptions, both
+  commented at their site: **ancestor STATE keywords are stripped** (`stripStateTags` — an
+  inheriting `#WAITING` would drag a whole project into `is:held` and the agenda's held band
+  with nothing actually blocked; a point's OWN state still matches), and **`has:tag` stays
+  literal** (it answers "does this point itself carry a tag", which is what keeps `-has:tag`
+  useful for finding unlabelled points). The ancestor chain is **threaded** through every
+  walker as a pre-joined, state-stripped string — never looked up via `ancestorsOf`, which
+  degrades to `[]` outside the live index and would make `#campaign` inherit in the search box
+  but silently NOT inside `{query:}` / `{count:}` / `{roll:}` / workspace search (one filter,
+  two answers). Accumulating one level per descent is also O(1) per node instead of O(depth),
+  which matters because this branch sits in the app's tightest loop; `extendAncTagText` returns
+  the SAME string reference down untagged spines, and both regexes are memoised. See
+  `guidance/performance.md` for the measured cost.
+  The grammar is mirrored in **four** sites that must stay in lockstep: `mdInline`,
+  `collectTags`, the parser / `termMatchesNode` (via the extracted `tagHit` core), and the
+  inheritance chain builders (`stripStateTags` / `extendAncTagText` / `ancestorTagText`).
+  Because `#KEYWORD` states are
   hashtag-shaped, `#waiting` filters by state for free, and a seq-aware
   **`state:value`** operator also exists (`state:waiting` / `state:done`, matched
   only against recognized states; `status:` stays the generic property lookup, not

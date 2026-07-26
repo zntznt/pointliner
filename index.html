@@ -7128,8 +7128,10 @@ function mdInline(s) {
   // #827 item 3: the FIRST segment must contain at least one letter — the (?=[\d_-]*[a-zA-Z])
   // lookahead — so a bare number ("#1 priority", "#2024") stays plain text instead of
   // false-positiving into a tag pill; digits elsewhere still tag (#v2, #2024-plans).
-  // This rule is mirrored in collectTags, parseSearchQuery/termMatchesNode, and
-  // isValidTagName — the three-place lockstep (CLAUDE.md); change one, change all.
+  // This rule is mirrored in collectTags, parseSearchQuery/termMatchesNode (now via the extracted
+  // tagHit core), isValidTagName, and — since tag inheritance — stripStateTags, which strips
+  // ancestor state keywords using the SAME anchoring so a state cannot half-match; change one,
+  // change all.
   s = s.replace(/(?<![a-zA-Z0-9])#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)/g, (_,t) => {
     const col = tagColorOf(t); // #464: an on-brand swatch, hierarchical (nearest configured ancestor)
     return `<a class="hashtag" data-tag="#${t}"${col ? ` data-color="${col}"` : ''} role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`;
