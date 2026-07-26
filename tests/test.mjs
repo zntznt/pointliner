@@ -20328,21 +20328,45 @@ test('UXP-252 the touch roll picker is a MENU, not a palette (V-1)', () => {
   assert.ok(_src.includes("id:'roll-palette'"), 'the internal GUIDE id is deliberately unchanged');
 });
 
-test('UXP-257 the wrapped toolbar row starts at the left, not indented', () => {
-  // At <=560px the row is flex-wrap:wrap and #tbtn-cluster keeps `margin-left:auto`. On a SHARED
-  // line that means "sit at the right edge"; once the cluster wraps to a line of its own there is
-  // nothing to push against, so the auto margin only indents it — measured 145px of dead space at
-  // 510px, shrinking to the row padding by 370px. Wrapping begins at 510px with today's 11 buttons.
-  assert.ok(/@media\(max-width:510px\)\{\s*\n\s*#tbtn-cluster\{margin-left:0\}/.test(_src),
-    'the auto margin must be dropped once the row wraps');
-  // It must NOT be dropped above the wrap point, or the single-row right-alignment is lost.
-  assert.ok(/#tbtn-cluster\{flex-shrink:0;flex-wrap:wrap;overflow:visible;max-width:100%;margin-left:auto\}/.test(_src),
-    'the <=560px single-row rule keeps pushing the icons right');
-  // The 510px bound and the 1279px bound in UXP-256 both assume the current button count; the
-  // ratchet in that test is what keeps them honest.
-  assert.ok(_src.indexOf('@media(max-width:510px)') > _src.lastIndexOf('@media(max-width:560px){'),
-    'the wrap rule must come AFTER the 560 block, not inside it — splitting that block detached ' +
-    'the spacer-hide rule and made 520-560 wrap too');
+test('UXP-258 the toolbar is one strip at every width: it scrolls, it never wraps', () => {
+  // The row used to wrap below 560px (#827 item 14), which made the toolbar's HEIGHT a function of
+  // the button count — a second line pushes every surface below it down. Wrapping also produced the
+  // 145px indent UXP-257 had to correct at 510px. Single strip instead: the icons scroll.
+  assert.ok(!/#toolbar-row\{[^}]*flex-wrap:wrap/.test(_src),
+    'the toolbar row must not wrap at any width — it is one strip');
+  assert.ok(!/#tbtn-cluster\{[^}]*flex-wrap:wrap/.test(_src),
+    'the icon strip must not wrap internally either');
+  // The strip yields by scrolling: shrinkable, floor-free, overflowing on ONE axis.
+  assert.ok(/#tbtn-cluster\{display:flex;[^}]*min-width:0;flex-shrink:1;overflow-x:auto;overflow-y:hidden/.test(_src),
+    'the strip must be the row\'s yielding element (flex-shrink:1, min-width:0, overflow-x:auto)');
+  // …and the scrollbar is hidden, so the edge fade is the ENTIRE affordance. It must exist for both
+  // edges and for the both-edges case, or scrolled-away icons are silently truncated (P4).
+  for (const cls of ['tb-more-r', 'tb-more-l'])
+    assert.ok(_src.includes(`#tbtn-cluster.${cls}{mask-image:`), `the ${cls} edge fade is missing`);
+  assert.ok(_src.includes('#tbtn-cluster.tb-more-l.tb-more-r{mask-image:'),
+    'scrolled to the middle, BOTH edges have more behind them');
+  assert.ok(/scrollbar-width:none/.test(_src) && /#tbtn-cluster::-webkit-scrollbar\{display:none\}/.test(_src),
+    'the fade is only load-bearing because the scrollbar is hidden — if that changed, revisit');
+  // The fade is class-driven off the live scroll position, not painted permanently: a standing
+  // fade would claim there is more to see at widths where the icons fit.
+  assert.ok(/function syncToolbarScrollCue\(\)/.test(_src), 'the cue sync function is missing');
+  const fn = _src.slice(_src.indexOf('function syncToolbarScrollCue()'));
+  assert.ok(/scrollWidth - c\.clientWidth/.test(fn.slice(0, 500)), 'the cue must measure real overflow');
+  assert.ok(/classList\.toggle\('tb-more-l'[\s\S]{0,200}classList\.toggle\('tb-more-r'/.test(fn.slice(0, 600)),
+    'both edge classes must be toggled, not just the right one');
+  // Wired to every input that can change the overflow state: scroll, resize, button visibility.
+  assert.ok(/addEventListener\('scroll', syncToolbarScrollCue/.test(_src), 'scroll must re-sync the cue');
+  assert.ok(/new ResizeObserver\(syncToolbarScrollCue\)/.test(_src), 'a width change must re-sync the cue');
+  assert.ok(/syncToolbarScrollCue\(\);\s*\/\/ hiding\/showing buttons/.test(_src),
+    'applyToolbarPrefs must re-sync — hiding a button changes whether the strip overflows');
+  // A keyboard-focused button must be revealed CLEAR of the fade (P3). scroll-padding-inline is
+  // declared, but driving it showed Chromium's own focus scroll ignoring it — focusing the 8th
+  // icon left it 8px past the strip edge with scrollLeft still 0. So the focusin handler is the
+  // load-bearing half and the source pin has to cover it, not just the CSS.
+  assert.ok(/#tbtn-cluster\{scroll-padding-inline:/.test(_src),
+    'the declarative half must stay for browsers that honour it');
+  assert.ok(/addEventListener\('focusin', e => \{[\s\S]{0,400}scrollLeft \+=/.test(_src),
+    'the focusin reveal is what actually clears the fade — CSS alone did not');
 });
 
 test('UXP-256 the toolbar row cannot let the level control land on the search box', () => {
