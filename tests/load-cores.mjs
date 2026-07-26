@@ -164,7 +164,7 @@ export function loadCores() {
     'parseDice', 'rollParsed', 'diceExprStr',
     'tapFloorCandidates',   // UXP-249: the static tap-floor guard
     'scrollCueClasses',     // UXP-259: which edge fades a .scroll-strip shows
-    'tagHit', 'stripStateTags', 'ancestorTagText',   // tag inheritance
+    'tagHit', 'stripStateTags', 'ancestorTagText', 'tagScanText',   // tag inheritance
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr', 'groupThousands', 'formatNumDisplay', 'parseNumFmt',   // #649 moon phase + math display seam; #946 number formatting
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',

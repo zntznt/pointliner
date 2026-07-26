@@ -20480,6 +20480,66 @@ test('ancestorTagText: the chain contributes tags, never states', () => {
   assert.equal(c.tagHit('x', c.ancestorTagText([{ text: 'see [[doc#x]]' }], states)), false);
 });
 
+test('tag inheritance: a tag reaches the whole subtree, states do not', () => {
+  // The feature: filing work under a #campaign heading and searching #campaign finds the WORK, not
+  // just the heading. Built on queryRows, which is the same core the search box, {query:}, {count:}
+  // and {roll:} all run — so a pass here is a pass for every door.
+  const mk = (text, kids = []) => ({ id: 'n' + (mk._i = (mk._i || 0) + 1), text, type: 'ul', children: kids });
+  const grandchild = mk('Buy rope');
+  const child = mk('Session two', [grandchild]);
+  const tagged = mk('Act one #campaign', [child]);
+  const outside = mk('Shopping list');
+  const tree = { id: 'root', text: '', children: [tagged, outside] };
+
+  const titles = q => host(c.queryRows(q, tree, null, 50)).rows.map(r => r.title).sort();
+  // titles keep their hashtags — stripMd removes markdown, not tags
+  assert.deepEqual(titles('#campaign'), ['Act one #campaign', 'Buy rope', 'Session two'],
+    'the tag reaches children AND grandchildren, not just the point carrying it');
+  assert.deepEqual(titles('#nothere'), [], 'an absent tag still matches nothing');
+  // A sibling subtree is untouched: inheritance goes DOWN, never sideways or up.
+  assert.equal(titles('#campaign').includes('Shopping list'), false);
+
+  // has:tag is deliberately NOT inherited — it answers "does this point itself carry a tag", which
+  // is what keeps -has:tag useful for finding untagged points.
+  assert.deepEqual(titles('has:tag'), ['Act one #campaign'], 'has:tag stays literal');
+  assert.equal(host(c.queryRows('-has:tag', tree, null, 50)).rows.length, 3,
+    'the untagged-points query still finds the three untagged points');
+});
+
+test('tag inheritance: an ancestor state never floods its subtree', () => {
+  // collectTags counts #WAITING as a tag, so without stripping, one held parent would drag its whole
+  // subtree into #waiting (and is:held, and the agenda's held band) with nothing actually blocked.
+  const kid = { id: 'k', text: 'Draft the letter', type: 'ul', children: [] };
+  const parent = { id: 'p', text: 'Book two #WAITING #saga', type: 'ul', children: [kid] };
+  const tree = { id: 'root', text: '', children: [parent] };
+  const titles = q => host(c.queryRows(q, tree, null, 50)).rows.map(r => r.title).sort();
+
+  assert.deepEqual(titles('#saga'), ['Book two #WAITING #saga', 'Draft the letter'], 'a real tag inherits');
+  assert.deepEqual(titles('#waiting'), ['Book two #WAITING #saga'],
+    'the state matches the point that carries it and NOT its children');
+});
+
+test('tag inheritance: the threaded chain and the ancestorsOf default agree', () => {
+  // Two paths reach the same verdict: walkers thread an accumulated string, while a one-off check on
+  // a live node falls back to ancestorsOf(). If those ever disagree, one filter answers two ways
+  // depending on which door you came through — the exact P1 break this design exists to avoid.
+  // ancestorsOf reads the live parentMap, absent here, so the equivalence is checked by feeding
+  // termMatchesNode the SAME chain both ways: pre-joined, and derived from the node list.
+  const anc = [{ text: 'Act one #campaign' }, { text: 'Book #WAITING #saga' }];
+  const node = { id: 'x', text: 'Buy rope', type: 'ul', children: [] };
+  const states = ['WAITING'];
+  const joined = c.ancestorTagText(anc, states);
+  // accumulate the same chain the way a walker does, outermost first
+  let acc = '';
+  for (const a of [...anc].reverse()) acc = acc + ' ' + c.stripStateTags(c.tagScanText(a.text), states);
+  for (const tag of ['campaign', 'saga', 'waiting', 'absent']) {
+    const viaJoined = c.tagHit(tag, c.tagScanText(node.text) + ' ' + joined);
+    const viaAcc    = c.tagHit(tag, c.tagScanText(node.text) + ' ' + acc);
+    assert.equal(viaJoined, viaAcc, `#${tag}: the two accumulation orders must agree`);
+  }
+  assert.equal(c.tagHit('waiting', c.tagScanText(node.text) + ' ' + joined), false);
+});
+
 test('UXP-262 escHtml survives a truthy non-string, and callable descs are strings', () => {
   // A numeric variable in the document ({rate := 85} in the welcome doc) made ONE builder row's
   // desc a Number. escHtml was `(s || '').replace(...)`, so it threw on the first truthy

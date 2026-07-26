@@ -9170,7 +9170,11 @@ function flatten(vp) {
   flatRows = []; flatIndex = new Map();
   if (searchQuery) {
     searchMatchSet = new Set();
-    vp.children.forEach(c => computeMatchSet(c, searchMatchSet));
+    // Seed from the viewport root's OWN ancestors: while zoomed, tags above the zoom root are still
+    // in effect, and a point must not answer differently zoomed in than zoomed out. vp === root
+    // gives [] (ancestorsOf stops at root), i.e. the unzoomed case is unchanged.
+    const vpAnc = ancestorTagText(ancestorsOf(vp), knownStates()) + ' ' + stripStateTags(tagScanText(vp.text), knownStates());
+    vp.children.forEach(c => computeMatchSet(c, searchMatchSet, vpAnc));
     const vis = vp.children.filter(c => searchMatchSet.has(c.id));
     vis.forEach((c, i) => pushSearchRows(c, 0, vp, i + 1, vis.length));
   } else {
@@ -15654,12 +15658,29 @@ function searchTermProblems(terms, opts) {
 
 // Does one term hit this node (negation NOT applied here)? Pure given seqs + vars
 // (vars feeds the is:failing check eval; defaults to the live globalVarMap).
-function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
+/* `ancTagText` is the tag text inherited from this node's ancestors, already state-stripped and
+   pre-joined into one string. A STRING, not an ancestors array, and threaded rather than looked up,
+   for two reasons:
+
+   1. Correctness. ancestorsOf() walks the live parentMap and its own comment admits it degrades to
+      [] outside the live index — an explicit test tree, a foreign workspace doc. Relying on it would
+      make #campaign inherit in the search box and silently NOT inherit inside {query:}, {count:},
+      {roll:} and workspace search: one filter, two answers (P1).
+   2. Speed. performance.md names search as the tightest ceiling in the app (~372 ms per applied
+      query at 50k on the slower machine) and this branch now sits in that loop. Every caller walks
+      the tree anyway, so each appends its own level on the way down — O(1) per node, where
+      re-deriving the chain per node would be O(depth).
+
+   The default keeps non-walking callers (nodeMatchesSearch on a live node) correct with no change. */
+function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
+                         ancTagText = ancestorTagText(ancestorsOf(node), knownStates())) {
   // QX-6: `links` is the doc-wide link index (collectLinks: outgoing/backlinks/broken),
   // threaded like seqs/vars. It is NOT defaulted in the signature: only the two branches
   // that need it fall back to the cached collectLinks(), so a text query never pays for
   // the index. Workspace search passes THIS doc's collectLinks(root), same as seqs/vars.
-  if (term.kind === 'tag') return tagHit(term.value, tagScanText(node.text));
+  // Own text ALWAYS counts as-is (a point's own #WAITING still matches); ancestor text arrives
+  // already state-stripped, so only real tags inherit.
+  if (term.kind === 'tag') return tagHit(term.value, tagScanText(node.text) + ' ' + (ancTagText || ''));
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
     // #467: recently-edited = the point's `edited` timestamp is within the last 48h. An
@@ -15792,6 +15813,10 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
     if (term.value === 'link' && /\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|[^\]\n]*)?\]\]/i.test(node.text || '')) return true;
     // (#827 item 3: the sniff requires a letter before any /, mirroring the tag grammar,
     // so a bare "#1" no longer counts as carrying a tag)
+    // has:tag is deliberately NOT inherited, unlike a `#tag` term. It answers "does this point
+    // itself carry a tag", which is what makes `-has:tag` useful for finding untagged points; if it
+    // inherited, every descendant of any tagged point would count as tagged and `-has:tag` would
+    // return almost nothing. The asymmetry is chosen, not an oversight.
     if (term.value === 'tag' && /(?<![a-zA-Z0-9])#[\d_-]*[a-zA-Z]/.test(tagScanText(node.text))) return true;
     if (term.value === 'backlink') {
       const lk = links || collectLinks();
@@ -15851,7 +15876,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
 
 // AND of all terms; a negated term must NOT match. Empty term list matches
 // nothing (callers gate on the raw query string anyway). Pure given seqs.
-function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap, links) {
+function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap, links, ancTagText) {
   if (!terms || !terms.length) return false;
   // QX-5: {kind:'or'} markers split the flat term list into clauses of ANDed terms;
   // the query matches when ANY clause does (OR binds looser than the implicit AND;
@@ -15867,7 +15892,7 @@ function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMa
   // Same rule as the dropped empty clause above: never auto-true (P4). An OR clause is explicitly
   // independent, so `is:blocked | #urgent` still answers with the #urgent side; a dead clause only
   // takes its own conjunction down with it.
-  return live.length > 0 && live.some(c => c.every(t => t.kind !== 'invalid' && termMatchesNode(t, node, seqs, vars, links) === !t.neg));
+  return live.length > 0 && live.some(c => c.every(t => t.kind !== 'invalid' && termMatchesNode(t, node, seqs, vars, links, ancTagText) === !t.neg));
 }
 
 // queryRows(expr, rootNode, hostId, cap) — the shared query-to-rows core: run a search
@@ -15889,15 +15914,19 @@ function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
   const links = needsLinks ? collectLinks(rootNode) : undefined;
   const rows = [];
   let total = 0;
-  (function walk(n) {
+  // Tag inheritance: accumulate one level per descent (O(1) per node) rather than deriving the
+  // chain per node (O(depth)) -- this walk is in the search hot path. States are stripped so an
+  // ancestor's #WAITING never reaches its subtree.
+  const tagStates = knownStates(rootNode);
+  (function walk(n, anc) {
     for (const c of (n.children || [])) {
-      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
         total++;
         if (rows.length < cap) rows.push({ id: c.id, title: stripMd(textForDisplay(c)) || '(untitled)' });
       }
-      walk(c);
+      walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
     }
-  })(rootNode);
+  })(rootNode, '');
   return { rows, total, truncated: total > rows.length };
 }
 
@@ -15963,15 +15992,16 @@ function queryReduceFolder(fn, expr, prop) {
       const seqs = allSequences(r);
       const vars = needsCtx ? collectVars(r) : undefined;
       const links = needsLinks ? collectLinks(r) : undefined;
-      (function walk(n) {
+      const tagStates = knownStates(r);
+      (function walk(n, anc) {
         for (const c of (n.children || [])) {
-          if (queryMatchesNode(terms, c, seqs, vars, links)) {
+          if (queryMatchesNode(terms, c, seqs, vars, links, anc)) {
             if (fn === 'count') count++;
             else { const pv = childPropNumber(c, prop); if (pv !== null) vals.push(pv); }
           }
-          walk(c);
+          walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
         }
-      })(r);
+      })(r, '');
     }
     v = fn === 'count' ? count : reduceAgg(fn, vals);
   }
@@ -16036,14 +16066,15 @@ function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
   const needsLinks = terms.some(t => (t.kind === 'is' && (t.value === 'broken' || t.value === 'orphan')) || (t.kind === 'has' && t.value === 'backlink'));
   const links = needsLinks ? collectLinks(ctxRoot) : undefined;
   const hits = [];
-  (function walk(n) {
+  const tagStates = knownStates(rootNode);
+  (function walk(n, anc) {
     for (const c of (n.children || [])) {
-      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
         hits.push(stripQueryTags(stripMd(textForDisplay(c)), terms) || '(untitled)');
       }
-      walk(c);
+      walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
     }
-  })(rootNode);
+  })(rootNode, '');
   if (!hits.length) return '';
   return hits[Math.floor(Math.random() * hits.length)];
 }
@@ -16093,15 +16124,16 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
   };
   const rows = [];
   let total = 0;
-  (function walk(node) {
+  const tagStates = knownStates(rootNode);
+  (function walk(node, anc) {
     for (const c of (node.children || [])) {
-      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links)) {
+      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
         total++;
         if (rows.length < cap) rows.push({ id: c.id, cells: colList.map(col => project(c, col.field)) });
       }
-      walk(c);
+      walk(c, anc + ' ' + stripStateTags(tagScanText(c.text), tagStates));
     }
-  })(rootNode);
+  })(rootNode, '');
   return { header, rows, total, truncated: total > rows.length };
 }
 
@@ -16120,9 +16152,10 @@ function searchHighlightNeedles(terms) {
   return out;
 }
 
-function nodeMatchesSearch(node) {
+function nodeMatchesSearch(node, ancTagText) {
   if (!searchQueryLC || !searchTerms.length) return false;
-  return queryMatchesNode(searchTerms, node);
+  // ancTagText omitted (a one-off check on a live node) → termMatchesNode's ancestorsOf default.
+  return queryMatchesNode(searchTerms, node, undefined, undefined, undefined, ancTagText);
 }
 
 // ── saved searches ──
@@ -16184,9 +16217,14 @@ function mergedTemplates(plugins = root?.plugins, docTemplates = root?.templates
 
 // Single post-order pass: record every node whose subtree (incl. self) matches,
 // so the flatten pass is O(n) instead of re-scanning subtrees at every level.
-function computeMatchSet(node, set) {
-  let any = nodeMatchesSearch(node);
-  for (const c of node.children) { if (computeMatchSet(c, set)) any = true; }
+// Tag inheritance: `anc` accumulates one level per descent, so the search's full-tree walk pays
+// O(1) per node instead of re-deriving each node's chain. This is THE hot path — performance.md
+// puts an applied query at ~372 ms at 50k on the slower machine — so the accumulation is not an
+// optimisation to add later.
+function computeMatchSet(node, set, anc = '', states = knownStates()) {
+  let any = nodeMatchesSearch(node, anc);
+  const kids = anc + ' ' + stripStateTags(tagScanText(node.text), states);
+  for (const c of node.children) { if (computeMatchSet(c, set, kids, states)) any = true; }
   if (any) set.add(node.id);
   return any;
 }
@@ -23186,16 +23224,18 @@ function searchWorkspace(query, index, currentDocId, cap = 50) {
     const seqs = needsCtx ? allSequences(root) : undefined;   // THIS doc's sequences → exact is:done/is:todo
     const vars = needsCtx ? collectVars(root)  : undefined;   // THIS doc's resolved vars → exact is:failing
     const links = needsLinks ? collectLinks(root) : undefined; // THIS doc's link index → exact has:backlink/is:broken (QX-6)
-    const walk = (n) => {
+    const tagStates = knownStates(root);
+    const walk = (n, anc) => {
       if (out.length >= cap) return;
-      if (queryMatchesNode(terms, n, seqs, vars, links)) {
+      if (queryMatchesNode(terms, n, seqs, vars, links, anc)) {
         out.push({ docId, nodeId: n.id, docName,
                    title: textForDisplay(n) || '(untitled)',
                    snippet: searchSnippet(n, terms) });
       }
-      for (const c of (n.children || [])) walk(c);
+      const kids = anc + ' ' + stripStateTags(tagScanText(n.text), tagStates);
+      for (const c of (n.children || [])) walk(c, kids);
     };
-    for (const c of (root?.children || [])) walk(c);
+    for (const c of (root?.children || [])) walk(c, '');
     if (out.length >= cap) break;
   }
   // UXP-146: signal truncation so the count doesn't read as complete (P4). The array's items are
