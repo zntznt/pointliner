@@ -72,7 +72,7 @@ press Enter, and you are back in the scene, the idea safely written down somewhe
 
 Where does it go? To a **designated inbox point**. You set the inbox once, from a point's bullet
 menu, **Set as inbox** (the same menu toggles it back off on the current inbox). After that,
-every capture appends **one point as that inbox's last child**. The dialog is markdown-aware, so
+every capture appends **one point as that inbox's last child**. The dialog is Markdown-aware, so
 typing a `- [ ]` line captures a to-do, and it **stays open after each capture** with a running
 "Captured N" confirmation, so you can log two or three ideas in a row without breaking stride,
 Enter captures, Shift+Enter adds a line break.

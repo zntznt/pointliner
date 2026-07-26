@@ -39,7 +39,7 @@ Markdown, plain text, OPML, or a self-contained runnable HTML you can hand to an
 | `{= sum(cost)}` | the total of a `cost` property across child points |
 | `{5 to 10}` | an estimate: **7.2 (5 to 10)** with a distribution sparkline |
 | `{shuffle: a \| b \| c}` | a deck you draw from without replacement |
-| `{roll: #npc}` | a random point from your own outline (tag some points, roll on them) |
+| `{roll: #npc}` | a random point from your own document (tag some points, roll on them) |
 
 That last one is the pill no other tool has: the table it rolls on is your own living document,
 so your campaign, your backlog, or your idea list surprises you with its own contents.
@@ -67,8 +67,8 @@ journals, and your own cast of characters as the random tables, all in one docum
 and tracks state for you. Pointliner was born here, and the [worked examples](guide/solo-rpg/README.md)
 (thirteen cases with importable demos) are the fastest way to see the whole engine at work.
 
-And underneath it all, a full outliner: nested points, markdown, to-dos with states and priorities,
-per-point notes, properties, `[[links]]` with backlinks and live mirrors, a multi-document workspace
+And underneath it all, a full outliner: nested points, Markdown, to-dos with states and priorities,
+per-point notes, properties, `[[links]]` with backlinks and live mirrors, a multi-document folder
 with whole-folder search, a daily journal, an agenda with timeline and calendar views, interactive
 tables and bases, and more. The [complete feature list](guide/features.md) covers everything.
 What makes it different is not the list: it is that every bullet can generate or compute.
@@ -108,10 +108,10 @@ with a [cookbook](guide/cookbook.md) of copy-paste recipes.
 
 ## How it works (for the curious)
 
-The document is an in-memory tree of plain-text nodes. A pill is a markdown-style token in that
+The document is an in-memory tree of plain-text nodes. A pill is a Markdown-style token in that
 text plus a record in a sidecar array; plain text is always the source of truth. The view is
 virtualized (only a screenful of rows is ever in the DOM), so it stays comfortable past 10,000
-points. No framework, no build step; rendering is hand-written per-line markdown plus pure
+points. No framework, no build step; rendering is hand-written per-line Markdown plus pure
 cores (parsers and evaluators) that are unit-tested in plain Node.
 
 Measured performance and a re-run harness live in [`guidance/performance.md`](guidance/performance.md).

@@ -1,7 +1,7 @@
 # The Pointliner guide
 
 Pointliner is an **outliner**: a document of nested bullet points (each one is called a
-**point**), with markdown, to-dos, dates and search. That part is self-explanatory, you just
+**point**), with Markdown, to-dos, dates and search. That part is self-explanatory, you just
 type. What makes Pointliner different is the **pill**.
 
 ## The one big idea: `{curly braces}` become pills

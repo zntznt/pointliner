@@ -90,7 +90,7 @@ Notes:
 **Do not inject demo content into the user's blank document.** People have to delete it, it
 reads as junk, and it blurs "my notes" with "tutorial."
 - **Instead:** on first run, open a **clearly-labeled "Examples" document** (obviously a sample,
-  with a prominent "Start a blank outline" button). Show-don't-tell without the
+  with a prominent "Start a blank document" button). Show-don't-tell without the
   delete-the-clutter problem, because it's plainly not their notes. Offered in Guided only.
 - Returning users open their own content; the Examples doc is always reachable from a menu for
   anyone who wants to browse what's possible.

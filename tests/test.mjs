@@ -17163,6 +17163,79 @@ test('column header carries the visible menu door; agenda groups carry kind labe
 });
 
 // ── Mobile neophyte batch: first-run tap targets + duplicate-inbox guard ──
+test('UXP-253 P4-1: shuffle: and markov: are keyword-commits like every other keyword form', () => {
+  // Found by feeding each authoring surface input it must reject and asking what the user is left
+  // looking at. The app marks an unrecognized {…} in EDIT MODE with .gr-bad + a title that says
+  // why — but only for bodies classifyBraceBody calls 'invalid'. `seq`/`rule`/`oracle`/`meter`/
+  // `date` all keyword-commit (typed the keyword, body will not parse -> invalid). `shuffle:` and
+  // `markov:` did not, so the same typo said nothing at all after those two.
+  assert.ok(_src.includes("if (/^shuffle\\s*:/i.test(body)) return 'invalid';"),
+    'a body that opens with shuffle: and does not parse is an attempt, not prose');
+  assert.ok(_src.includes("if (/^markov\\s*:/i.test(body)) return 'invalid';"),
+    'a body that opens with markov: and does not parse is an attempt, not prose');
+  // They must sit AFTER the parse attempts, or every valid shuffle/markov would be condemned.
+  const iSeq = _src.indexOf("if (seqParts(body)) return 'artifact';");
+  const iMk  = _src.indexOf("if (markovParts(body)) return 'artifact';");
+  const iCommit = _src.indexOf("if (/^shuffle\\s*:/i.test(body)) return 'invalid';");
+  assert.ok(iSeq > 0 && iMk > iSeq && iCommit > iMk,
+    'the commit must follow seqParts/markovParts so a parsing body still wins');
+  // The cue those verdicts drive must still exist and still state a reason (P4-2).
+  assert.ok(_src.includes('title="Not recognized, so it stays plain text"'),
+    'the invalid mark must carry its reason, not just be a colour');
+  assert.ok(_src.includes("class=\"gr-src gr-bad\""), 'the invalid mark is the gr-bad span');
+});
+
+test('UXP-251 V-1: user-facing copy does not call the document an outline', () => {
+  // ux-discipline §1 permits "outliner" (the app) and "the outline" (the navigable tree view), and
+  // bans "outline" for the DOCUMENT. Audited over the strings a user actually sees; the code keeps
+  // node/artifact by V-2, so the source at large is out of scope by design.
+  // The banner button is the interesting one: UXP-185 deliberately kept the banned wording because
+  // ux-discipline L81 prescribed that exact string. That line no longer exists in the standard, so
+  // the exception had nothing left holding it up.
+  assert.ok(_src.includes("storageWarnBtn.textContent = 'Start a blank document';"),
+    'the first-run banner button must use the document term');
+  assert.ok(!/Start a blank outline/.test(_src), 'no site may reintroduce the expired exception');
+  // The roll-on-your-document command disagreed with its own label, which is how this surfaced.
+  assert.ok(_src.includes("label:'roll on document'"), 'the roll palette template must say document');
+  assert.ok(_src.includes('your own document is the table'), 'the command desc must match its label');
+  assert.ok(_src.includes("Roll on your own document: your NPCs and threads become the tables."),
+    'the guide entry must say document');
+  assert.ok(!/Roll on your own outline/.test(_src), 'and nothing may still cite the old guide title');
+  // The legitimate senses must SURVIVE — a blanket ban on the word would be the wrong fix.
+  assert.ok(_src.includes("vlist.setAttribute('aria-label', 'Outline')"),
+    'the tree view is legitimately called the outline and must not be "corrected"');
+});
+
+test('UXP-250 the Guided command menu teaches, not just names', () => {
+  // P2-2 says every menu item shows label + description + typed form. The surface map is the
+  // finding: `/` and `@` do not open one menu, they branch on the verbosity tier --
+  //   guided   -> openBuilder(trigger)   (the Builder IS the menu, and it is the DEFAULT tier)
+  //   standard -> renderSlashMenu()      (#slash-menu: per-row desc + typed form in the footer)
+  //   lean     -> renderLeanSlashTip()   (no menu, by design)
+  // Guided rendered `icon + label` only, so the beginner tier taught strictly LESS than Standard.
+  assert.ok(_src.includes("if (isGuided()) { hideSlashMenu(); builderState ="),
+    'the tier branch this rule turns on must still be here');
+  // The row now carries all three parts, in the same .cmd-info shape the slash menu already uses
+  // (reuse the row pattern, do not invent a second one).
+  assert.ok(_src.includes("'<span class=\"cmd-info\">' +"), 'the builder row must use the shared cmd-info shape');
+  assert.ok(_src.includes("'<span class=\"cmd-desc\">' + escHtml(cmd.desc || '') + '</span>'"),
+    'every builder row must render its description');
+  assert.ok(_src.includes("'<span class=\"builder-typed\">' + escHtml(typed) + '</span>'"),
+    'every builder row must render its typed form');
+  // Fallback so a command with no markdown equivalent still shows the verb you would type.
+  assert.ok(_src.includes("const typed = cmd.ex ? cmd.ex : (cmd.trigger || '') + cmd.id;"),
+    'a command with no `ex` must fall back to its typed verb, never to blank');
+  // Unclamped, the long entries ran to five lines and the list lost its rhythm.
+  assert.ok(/-webkit-line-clamp:2/.test(_src), 'the row description must be clamped so rows stay even');
+  // The five panel verbs that had NO typed form at all: their footer taught description only.
+  for (const id of ['querybase', 'journal', 'variables', 'builder', 'units']) {
+    assert.ok(_src.includes("ex:'/" + id + "'"), `/${id} must carry a typed form for the footer to teach`);
+  }
+  // The footer only prints a typed form when the command has one, which is why the five mattered.
+  assert.ok(_src.includes("if (cmd.ex) html += `<span class=\"sf-ex\">"),
+    'the slash footer prints the typed form conditionally — so every command needs one');
+});
+
 test('UXP-248 the 24px tap floor holds for the shared controls the enlargement pass missed', () => {
   // Found by auditing guardrail 5 across every surface instead of one screen: nine SHARED control
   // classes measured under the WCAG 2.2 floor on touch, fanning out to 100+ instances. Measured by
@@ -19902,6 +19975,42 @@ test('blank-canvas door (beginner PR B) — decision gates + wiring', () => {
     'the close button waives it');
   assert.ok(_src.includes('hideExamplesBanner(); hideBlankInviteBanner(); openStarterGallery()'),
     'the examples door hides the invite before opening the gallery');
+});
+
+test('UXP-255 "Markdown" is capitalized in user-facing copy (§6), guarded like the em-dash ban', () => {
+  // §6: 'Labels are sentence case; "Markdown" is always capitalized in user-facing copy.' That rule
+  // had no guard, while its neighbour (the em-dash ban) has a comprehensive one — so four lowercase
+  // uses had shipped. Same scope and same exemptions as the em-dash guard: guidance/ and code
+  // comments are internal, and a lowercase `markdown` inside code/backticks or a .md path is a
+  // filename or identifier, not prose.
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const prose = (txt) => txt
+    .replace(/```[\s\S]*?```/g, '')          // fenced code
+    .replace(/`[^`\n]*`/g, '')               // inline code
+    .replace(/\]\([^)]*\)/g, '')             // link targets (paths like foo.md)
+    .replace(/^\s*\[[^\]]+\]:.*$/gm, '');    // link definitions
+  const mdFiles = [resolve(root, 'README.md')];
+  (function walk(dir) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = resolve(dir, e.name);
+      if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) mdFiles.push(p);
+    }
+  })(resolve(root, 'guide'));
+  for (const f of mdFiles) {
+    const txt = prose(readFileSync(f, 'utf8'));
+    const m = /\bmarkdown\b/.exec(txt);
+    assert.equal(m, null, `${f.slice(root.length + 1)} says lowercase "markdown" near: "${txt.slice(Math.max(0, (m?.index ?? 0) - 40), (m?.index ?? 0) + 40).replace(/\n/g, ' ')}"`);
+  }
+  // in-app copy: command descriptions and the toast/hint strings
+  for (const cmd of c.builderCmdPool(null)) {
+    assert.ok(!/\bmarkdown\b/.test(cmd.desc || ''), `command "${cmd.label}" desc says lowercase markdown`);
+  }
+  for (const m of _src.matchAll(/\bflashHint\(\s*'((?:[^'\\]|\\.)*)'/g)) {
+    assert.ok(!/\bmarkdown\b/.test(m[1]), `a hint says lowercase markdown: "${m[1].slice(0, 60)}"`);
+  }
+  // the specific site that shipped the violation
+  assert.ok(_src.includes('Edit it as plain Markdown; undo restores the base.'),
+    'the base-to-table hint must capitalize Markdown');
 });
 
 test('em-dash ban is ENFORCED across all user-facing copy (README, guide/, GUIDE bodies, command descs)', () => {

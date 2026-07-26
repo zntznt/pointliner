@@ -54,13 +54,166 @@ acting (controls drift).
 > keeping: UXP-244 looked like one careless surface, and was actually the visible edge of a rule
 > applied 5 times out of 20.
 >
+> **P3-3 (focus-visible on every focus stop) was audited 2026-07-25 and is CLEAN**: 21 surfaces
+> walked with real Tab keypresses, **302 focus stops, 0 without a focus indicator**. Driven rather
+> than grepped because the ring is applied through a hand-maintained list of 112 `:focus-visible`
+> selectors, and the interesting question was which stops are missing from it. **The first run of
+> that driver was wrong and is worth remembering:** it reported six inputs as having no indicator,
+> because their focus styles are TRANSITIONED (`border-color`/`box-shadow`, .12s) and the computed
+> style was read immediately after Tab, mid-transition, still at the unfocused value. With a settle
+> delay the count went to zero. Nothing was filed, because there was nothing wrong.
+>
+> **P2-2 (the menu teaches label + description + typed form) is now audited — see UXP-250, closed.**
+> The earlier "driver could not open the menus" note was half right: the driver did have two real
+> bugs, but the headline symptom was the APP behaving correctly. `/` and `@` do not open one menu;
+> `checkSlash` branches on the verbosity tier, and in the DEFAULT (guided) tier it deliberately
+> routes to the Builder instead of `#slash-menu`. Auditing `#slash-menu` in the default tier
+> reports "menu did not open" forever.
+>
+> **P1-3 (`Esc` resolves outward) was audited 2026-07-26 and is CLEAN — 15/15 driven.** Chosen
+> because it governs interaction SEQUENCES, which an entry-point-list audit structurally cannot see.
+> Both halves of the rule hold: the **ladder** (`Shift+F10` opens the point menu and Escape closes
+> the menu only, returning focus to the point it was opened from; a real `Shift+ArrowDown` selection
+> of 3 clears on the next Escape; `zoomInto` then Escape zooms back out) and the §3 **chrome
+> contract** (search field, file menu and help panel each put the caret back on the SAME point at
+> the SAME offset, 9/9).
+>
+> **Every failure this audit reported was the driver, five times over**, and the list is the useful
+> artifact: (1) a scripted `enterEdit()` arms NEITHER `armChromeReturn` path — it loses
+> `data-editing` to its own `scheduleReconcile` and never blurs, so there is no `lastEdit` — making
+> the file menu and help panel look like they discarded the caret; (2) a door-finder matched a
+> hidden element INSIDE the file menu; (3) the File door is `#logo-btn`, whose visible "File ▾" text
+> is `aria-hidden`, so a `textContent` match cannot find it; (4) the `Shift+F10` handler is bound to
+> the CONTENT element's keydown, so pressing Escape first (to build a selection) blurs the element
+> the key needed to reach; (5) zoom state is `focusedId`, not `zoomId` — the check read `undefined`
+> and reported "not zoomed" unconditionally. The standing lesson: on an interaction rule, a failing
+> assertion is more likely to be the harness than the app, and must be proven against the real user
+> path before it is written down.
+>
+> **P3-1 and P3-3 were RE-RUN per tier on 2026-07-26 and are clean in all three.** Both had
+> originally been walked in the default tier only, which UXP-250 showed is not the whole app.
+> 18 surfaces x 3 tiers: **647 focus stops (guided 226, standard 221, lean 200), 0 unnamed
+> interactive elements, 0 focus stops without an indicator.** The differing stop counts are the
+> control that the tier switch actually took effect — lean carries fewer stops, matching its
+> reduced chrome (13 visible controls against 18).
+>
+> The re-run also exposed that **`#slash-menu` had never been audited by either rule in any tier**,
+> because no `open*()` entry point reaches it — it exists only when `checkSlash` fires from a real
+> caret, and it never opens at all in the default tier. Audited directly: **29 (`/`) and 21 (`@`)
+> options, 0 unnamed**, `role="listbox"` carrying a name ("Point commands" / "Insert commands"),
+> `aria-activedescendant` that RESOLVES to a real element, exactly one `aria-selected`, and the
+> active row visually highlighted. Its options are correctly NOT tab stops — the listbox pattern
+> keeps focus in the editor — so P3-3 finding no stops there is conformance, not a gap. The lean tip
+> is `role="status"`, visible, named, with no interactive children.
+>
+> **P2-1 (all three doors / "built != hidden") was audited 2026-07-26 and is CLEAN.** Audited per
+> verbosity tier, because UXP-250 established that `checkSlash` branches on the tier and every audit
+> before it had run in the default tier only. Reachable-through-a-menu, per tier: **guided 72 via the
+> Builder, standard 29 (`/`) + 21 (`@`) via `#slash-menu`, lean a visible `role="status"` tip naming
+> the match and count** — and **0 commands of 50 are built without a menu door in any tier**. The
+> Builder itself has a visible door in all three. Two false alarms were killed by controls rather
+> than filed: "21 insert commands unreachable in standard" was a builder left open by the previous
+> loop iteration (**21 on a fresh page**), and "lean shows no tip at all" was `offsetParent` being
+> null for a `position:fixed` element, which says nothing about visibility.
+>
+> **That pass also closed a gap in UXP-248's own audit.** That audit walked its surfaces in the
+> default tier, where `#slash-menu` never opens — so the entire `/` and `@` menu of the standard
+> tier had never been measured against the 24px floor. Re-measured with the same hit-test method:
+> rows are **192x44 visual, 44px effective, 0 under the floor**. No defect was hiding in the gap,
+> but the gap was real and is now closed.
+>
 > A fourth pass continued by defect CLASS. Two rules were triaged by measurement before picking one:
 > **P3-1 accessible name** came back **0 unnamed across 25 surfaces** (the accessibility work held,
 > so there was nothing to fix), while the **24px tap floor** came back with **nine shared control
 > classes under it**. That became **UXP-248**, closed and archived. The floor's lack of an automated
 > guard is **UXP-249**, open.
 >
-> **As of 2026-07-25 the register holds three open defects (UXP-247, UXP-249 structural; UXP-20 standing guard).**
+> **V-1 (canonical vocabulary) was audited 2026-07-26 — see UXP-251, closed, and UXP-252, open.**
+> Audited statically over 1740 strings a user actually sees. The headline was a decision that had
+> quietly EXPIRED: the first-run banner button kept the banned "Start a blank outline" with a comment
+> citing `ux-discipline §L81` as its authority, and that line no longer exists in the standard.
+>
+> ## The audit-by-class program is COMPLETE (2026-07-26)
+>
+> Every rule in `ux-definition-of-done.md` has now been audited as a STATE of the app, not as a
+> process step. Final tally: **6 rules were dirty and are fixed** (UXP-246 drafts, UXP-248 tap floor,
+> UXP-250 menu teaching, UXP-251 vocabulary, UXP-253 silent failure, UXP-255 Markdown), **13 were
+> clean**, and **5 gaps are filed** for an owner decision (UXP-247, 249, 252, 254 + the standing
+> UXP-20).
+>
+> | rule | verdict |
+> |---|---|
+> | P1-1 no context inversion | clean — Enter is +1 point in ul/ol/todo/h1/quote; paragraph is the ONE documented exception |
+> | P1-3 Esc resolves outward | clean — 15/15 |
+> | P1-4 destructive keys guarded | clean — incl. the empty-with-children guard |
+> | P1-5 claimable chords not the only path | clean — File menu is the twin |
+> | P2-1 three doors / built != hidden | clean — 0 of 50 commands doorless, per tier |
+> | P2-2 menu teaches syntax | **FIXED** (UXP-250) |
+> | P3-1 accessible name | clean — 0 unnamed, 3 tiers |
+> | P3-2 caret invariant | clean — 90 mousedown / 92 keydown, both alive |
+> | P3-3 focus-visible + reduced motion | clean — 647 stops, 0 animating under reduce |
+> | P3-4 not colour-alone | clean — a failing check is "✗check" + a full label |
+> | P3-5 off-focus announced | clean — reroll, filter count, both channels |
+> | P3 tap floor 24px | **FIXED** (UXP-248) |
+> | P4-1/P4-2 no silent failure | **FIXED** (UXP-253) |
+> | P4-3 destructive actions confirm | clean — and the count includes hidden children |
+> | P4-4 one feedback pattern | clean — 0 native alert/confirm/prompt |
+> | P4 drafts survive dismissal | **FIXED** (UXP-246) |
+> | P5-4 inventory matches the engine | clean — every keyword form is on the §2 row |
+> | V-1 canonical vocabulary | **FIXED** (UXP-251) |
+> | V-2 internal identifiers intact | clean |
+> | §6 sentence case · Markdown · dismiss glyph | Markdown **FIXED** (UXP-255); other two clean |
+> | virtual-list per-row ARIA | clean — no global post-pass |
+>
+> **The method's own lesson, recorded because it cost the most time:** on interaction rules, a
+> failing assertion was more often the harness than the app. Across the program the drivers produced
+> at least a dozen false results — stale shared pages, an element read mid-CSS-transition,
+> `offsetParent` on a `position:fixed` node, a cue read from a leftover nudge, a vacuous pass over
+> zero elements, a selector blind to the very element just added, and a 4000-char slice that
+> truncated the inventory row being checked. **Every reported defect in this program was re-proved
+> against the real user path before it was written down**, and several candidate findings died
+> there. A clean rule reported as clean is the other half of the work.
+>
+> **§3 remaining batch audited 2026-07-26 — all CLEAN.** P3-5 (off-focus announced): the live region
+> `#a11y-live` exists; a reroll announces "2d6 re-rolled: 7" AND updates the pill's `aria-label` to
+> the new value; a search filter announces "1 matching point" (the case the rule names). P3-4 (not
+> colour-alone): a FAILING check renders "✗check" with `aria-label` "Check sum(cost) <= budget is
+> failing" — glyph plus text, not colour. Reduced motion: under `prefers-reduced-motion: reduce`,
+> **0 elements** keep a perceptible transition or animation. Virtual-list invariant: `role="tree"`,
+> every row carries its own accessible text, and no global post-pass stamps ARIA over `.node-row`.
+>
+> **Three of that batch's first-run results were wrong and were chased down rather than filed:** the
+> "reroll announces" pass was reading a leftover Welcome-tour nudge (the dice pill had not rendered
+> at all, because `mkNode` alone does not promote shorthand — `promoteLoadedShorthand` does); the
+> colour-alone check passed VACUOUSLY on 0 elements until a genuinely failing check was constructed,
+> and its two "colour-only" hits were decorative `<i>` icons inside labelled buttons; and the one
+> row "with no accessible text" was the `{2d6}` seed row, not a real row.
+>
+> **§6 mechanical batch audited 2026-07-26 (sentence case · "Markdown" · dismiss glyph · V-2).**
+> Three clean, one dirty. **Sentence case: clean** (every Title Case hit was a sentence start or a
+> proper noun — Markov, Ironsworn, Chrome/Edge). **Dismiss buttons: conformant** (the two bespoke
+> `✕` are chip-REMOVES, a different concept, one carrying an explicit "one glyph per concept"
+> comment). **V-2: clean** (`node.text` 314 uses, `nodeById` 143, `artifact` 107 — the internal
+> identifiers are intact). **"Markdown" capitalisation: DIRTY — see UXP-255, closed.**
+>
+> **P1-4 (destructive keys guarded) and P4-3 (destructive actions confirm) were audited 2026-07-26
+> and are CLEAN — 7/7 driven.** The dangerous shape is a COLLAPSED parent, whose children are
+> off-screen, so a keystroke that takes them destroys work the user cannot see. Driven: Backspace at
+> the very start of a parent with two children preserves them, collapsed and expanded; the guard the
+> rule NAMES holds (an **empty** point that HAS children keeps them) without being over-broad (an
+> empty, childless point is still removable); and a multi-point Delete spanning a collapsed parent is
+> undoable, with undo restoring the hidden children.
+>
+> **The confirmation counts the hidden cost, which is the part worth recording:** deleting a
+> selection of 2 visible points that spans a collapsed parent announces **"Deleted 4 points. Ctrl+Z
+> to undo"** — 4, not 2. The number the user is given includes the children they could not see.
+>
+> **P4-1 (no silent failure) was audited 2026-07-26 — see UXP-253, closed, and UXP-254, open.**
+> The app applies a KEYWORD-COMMIT doctrine (typed the keyword, body will not parse -> marked as an
+> attempt with a reason). `shuffle:` and `markov:` were the only two keyword forms never given it.
+> 7 of 10 rejected inputs were cued before, 9 of 10 after.
+>
+> **As of 2026-07-26 the register holds five open defects (UXP-247, UXP-249 structural; UXP-252 vocab; UXP-254 feedback; UXP-20 standing guard).**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
@@ -68,6 +221,33 @@ acting (controls drift).
 ---
 
 ## Open items
+
+### UXP-254 ☐ A dice-shaped typo is the one rejected input that still says nothing 🟢 [feedback]
+- **Problem:** `{2dX}` (a letter where the sides go) gets **no cue at all** in edit mode — neither
+  `.gr-src` nor `.gr-bad`. `{2d0}`, one character away, IS marked. Dice is the only pill form whose
+  keyword is its SHAPE rather than a word, so `classifyBraceBody` has nothing to commit on and the
+  body falls through to 'literal'.
+- **Rule:** P4-1 (no silent failure). Every other authoring surface now signals; this one does not.
+- **Why it is filed rather than fixed:** the fix means committing on a SHAPE (`/^\d+\s*d/`) instead
+  of a keyword, which is a change to parsing semantics with a real false-positive surface — a
+  legitimate literal pick like `{2d6 apples}` or prose beginning with a number-d pattern would be
+  condemned. Every other keyword-commit is anchored to an unambiguous word. Extending the doctrine
+  to shapes is a judgment call for the owner, and riskier than the copy fixes this pass shipped.
+- **Target:** either commit on the dice shape (with the false-positive set enumerated and pinned),
+  or add the near-miss suggester to this case so the typo is cued without changing classification.
+
+### UXP-252 ☐ "Roll palette" uses a banned word for an overlay list 🟢 [vocab]
+- **Problem:** §1 maps "a keyboard-navigable overlay list" to **menu**, and bans **palette**. The
+  touch roll picker is called "Roll palette" in its GUIDE title and in a command desc ("touch only:
+  opens the roll palette").
+- **Why it is filed rather than fixed:** it is the one V-1 hit where the ban is arguable. The row's
+  concept is a *keyboard-navigable* overlay list and this picker is explicitly touch-only, so it may
+  fall outside the row entirely; and "Roll palette" is a shipped feature NAME, so renaming it is a
+  user-visible change with knock-on guide edits, not a copy tweak. That is an owner's call, not an
+  auditor's.
+- **Target:** either rename to "Roll menu" everywhere (GUIDE title, command desc, backlog mention),
+  or add an explicit carve-out to §1 saying the touch picker keeps its name — but not leave the
+  standard and the app disagreeing silently.
 
 ### UXP-249 ☐ Nothing enforces the tap floor for a NEW control 🟢 [touch] [structural]
 - **Problem:** UXP-248 fixed nine shared classes that sat under the 24px floor, and pinned those nine

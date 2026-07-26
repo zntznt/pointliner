@@ -1754,6 +1754,16 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
 .builder-section-hdr{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:11px 12px 3px;user-select:none;border-bottom:1px solid var(--bdr);margin-bottom:2px}
 .builder-section-hdr:first-child{padding-top:3px}
 .builder-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:5px 12px 5px 18px;font-size:11.5px;line-height:1.3;color:var(--fg);border:none;background:none;cursor:pointer;transition:background .09s}
+/* UXP-250: the row now teaches (label + description + typed form), so it stacks like the slash
+   menu's own row instead of being a bare label. The typed form sits right-aligned in the app's
+   mono face, the same way a keyboard hint reads elsewhere. */
+.builder-item{align-items:flex-start}
+.builder-item>.cmd-info{display:flex;flex-direction:column;min-width:0;flex:1;gap:1px}
+/* clamped to two lines: unclamped, the long entries (Secret, Base, Paragraph) ran to five lines
+   and the list lost its even rhythm. The full text is still one keystroke away in the doc pane. */
+.builder-item>.cmd-info>.cmd-desc{font-size:10.5px;color:var(--muted);line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.builder-item>.builder-typed{font-family:var(--mono);font-size:10px;color:var(--muted);opacity:.75;white-space:nowrap;flex-shrink:0;padding-top:1px}
+.builder-item.active>.builder-typed,.builder-item:hover>.builder-typed{opacity:1}
 .builder-item:hover{background:color-mix(in srgb,var(--acc) 10%,transparent)}
 .builder-item .cmd-icon{width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;color:var(--muted)}
 .builder-item .cmd-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -8398,7 +8408,7 @@ const BLOCK_CMDS = [
   { id:'quote',   icon:'❝',    fa:'fa-solid fa-quote-right',   keys:['blockquote','callout','cite'], label:'Quote',      desc:'Indented blockquote for callouts.',       ex:'> text', section:'Blocks', turn:true },
   { id:'secret',  icon:'🙈',   fa:'fa-solid fa-eye-slash',     keys:['spoiler','hide','blur','hidden'], label:'Secret',     desc:'Hide a line behind a blur until you click or press it to reveal. Good for spoilers or a surprise you do not want to see yet.', ex:'>! hidden text', section:'Blocks' },
   { id:'base',    icon:'▦',    fa:'fa-solid fa-table-cells',   keys:['database','grid','board','kanban','cards','calendar','spreadsheet'], label:'Base',       desc:'A structured table with editable cells, alignment, Calculate and formulas. View it as a table, board, cards, or calendar. Type /base:3x4 for that size, or /base for a 3x3.', ex:'/base:3x4', section:'Blocks' },
-  { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A base whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', section:'Blocks' },
+  { id:'querybase', icon:'\u{1F50D}', fa:'fa-solid fa-magnifying-glass', label:'Query base', desc:'A base whose rows come from a live search. Columns show each matching point, a property, or a per-point formula, and the rows update as the document changes.', ex:'/querybase', section:'Blocks' },
   { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         keys:['stamp','insert'], label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-stamp',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  keys:['date','deadline','when','remind'], label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or bare /due to open the Schedule dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
@@ -8407,10 +8417,10 @@ const BLOCK_CMDS = [
   { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          keys:['property','field','attribute','meta'], label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
   { id:'note',    icon:'≡',    fa:'fa-solid fa-pen',           label:'Note',       desc:'Add a plain-text note under this point for context that does not belong on the line. Opens the note editor right below the point, no dialog.', ex:'/note', section:'Organize' },
   { id:'refile',  icon:'⇄',    fa:'fa-solid fa-arrow-right-arrow-left', keys:['move'], label:'Refile', desc:'Move this point and its children under another point. Type /refile:title to move it there directly (or /refile:top to lift it out), or /refile to pick from a tree.', ex:'/refile:Inbox · /refile:top', section:'Organize' },
-  { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', section:'Organize' },
-  { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', section:'Organize' },
-  { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'All commands', desc:'Open All commands: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', section:'Organize' },
-  { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, mass, volume and time units already work.', section:'Organize' },
+  { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', ex:'/journal', section:'Organize' },
+  { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', ex:'/variables', section:'Organize' },
+  { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'All commands', desc:'Open All commands: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', ex:'/builder', section:'Organize' },
+  { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, mass, volume and time units already work.', ex:'/units', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -8463,7 +8473,7 @@ const ROLL_TEMPLATES = [
   { ins:'{1d20}',          label:'d20',        caret:0 },
   { ins:'{1d100}',         label:'d100',       caret:0 },
   { ins:'{oracle: likely}', label:'oracle',    caret:1 },   // caret lands after "likely" for a quick swap of the odds band
-  { ins:'{roll: #tag}',     label:'roll on outline', caret:1 },   // after "#tag" to type the real tag/query
+  { ins:'{roll: #tag}',     label:'roll on document', caret:1 },   // after "#tag" to type the real tag/query
   { ins:'{a | b}',          label:'either / or', caret:5 },   // back onto the first option "a"
 ];
 const INSERT_CMDS = [
@@ -8474,7 +8484,7 @@ const INSERT_CMDS = [
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     keys:['roll','d20','d100','d6','fudge','pool'], label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Generate' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', keys:['chain'], label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Generate' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  keys:['loot','treasure','encounter'], label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll. Type {rule loot: sword | shield 2} to make one inline, then call it as {loot}.',  ex:'{rule loot: sword | shield 2}',  section:'Generate' },
-  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
+  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own document is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     keys:['generate','name','npc','tracery','generator','rule'], label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math. Type {rule name: a | b} to declare one inline, or use the dialog for several rules at once.', ex:'{rule origin: a {color} {animal}}', section:'Generate' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
@@ -16696,6 +16706,15 @@ function classifyBraceBody(body, rules, vars) {
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
+  // UXP-253: `shuffle:` and `markov:` are keyword-commits too, and were the only two keyword forms
+  // never given the treatment that `seq`/`rule`/`oracle`/`meter`/`date` all already carry. Reaching
+  // this line means the keyword WAS typed and its body did not parse, so it is an attempt, not
+  // prose. Before this, a typo after `shuffle:` fell through to 'literal' and said nothing at all,
+  // while the identical typo after `seq ` was marked — the same mistake, opposite treatment.
+  // (Unlike `seq`, there is no shred to close here: `seqParts` accepts comma-separated items, so
+  // `{shuffle: a, b | c}` parses and stays a real pill. Verified, not assumed.)
+  if (/^shuffle\s*:/i.test(body)) return 'invalid';
+  if (/^markov\s*:/i.test(body)) return 'invalid';
   // {seq Flow: A B | C} — KEYWORD-COMMIT, like oracle/meter/rule. Once a body opens with `seq `, a
   // tail that will not parse is INVALID. This closes two different failures at once: a broken tail
   // WITH a pipe used to reach the alternation branch and become a nonsense pill (`seq Growth: Seed,
@@ -19755,7 +19774,7 @@ function convertBaseToText(nodeId) {
     ensureRowVisible(node.id);
     document.querySelector(`.node-content[data-id="${node.id}"]`)?.closest('.node-row')?.querySelector('.bullet')?.focus();
   });
-  flashHint('Converted to a text table. Edit it as plain markdown; undo restores the base.'
+  flashHint('Converted to a text table. Edit it as plain Markdown; undo restores the base.'
     + (wasQuery ? ' The query result is now a static snapshot.' : '')
     + (wasVar ? ' Rows no longer declare variables.' : ''));
 }
@@ -36010,9 +36029,19 @@ function openBuilder(trigger) {
       // tabindex="-1" makes the option programmatically focusable — without it every
       // item.focus() in the nav/search handlers is a no-op, so arrow-nav never enters the
       // list and the Arrow/Home/End/PageUp/PageDown handler below is unreachable.
+      // UXP-250: the row carries its description and typed form, not just its label. Guided is the
+      // DEFAULT tier and the one aimed at beginners, but `/` routes it here instead of to
+      // #slash-menu — so before this, the beginner tier taught strictly LESS than Standard, where
+      // every row shows a description. Same `.cmd-info` shape the slash menu already uses, so this
+      // reuses the row pattern rather than inventing a second one.
+      const typed = cmd.ex ? cmd.ex : (cmd.trigger || '') + cmd.id;
       html += '<div class="builder-item' + (i === activeIdx ? ' active' : '') + '" tabindex="-1" data-i="' + i + '" role="option" aria-selected="' + (i === activeIdx ? 'true' : 'false') + '">' +
         '<span class="cmd-icon">' + escHtml(icon) + '</span>' +
-        '<span class="cmd-label">' + escHtml(cmd.label) + '</span>' +
+        '<span class="cmd-info">' +
+          '<span class="cmd-label">' + escHtml(cmd.label) + '</span>' +
+          '<span class="cmd-desc">' + escHtml(cmd.desc || '') + '</span>' +
+        '</span>' +
+        '<span class="builder-typed">' + escHtml(typed) + '</span>' +
       '</div>';
     });
     if (!html) html = '<div class="builder-no-results">No commands match your search.</div>';
@@ -36700,7 +36729,7 @@ storageWarnBtn.addEventListener('click', () => {
   else saveFile();
 });
 document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
-// #565: a second action shown ONLY on the first-run examples banner, beside "Start a blank outline".
+// #565: a second action shown ONLY on the first-run examples banner, beside "Start a blank document".
 // It has its own handler (not routed through _warnAction) and is hidden by default + on every other
 // banner state, so it never leaks into the save/reconnect/snapshot banners that share this element.
 const storageWarnExamples = document.getElementById('storage-warn-examples');
@@ -36741,7 +36770,7 @@ function showReopenFileBanner(name) {
 // blank outline" button; dismissing keeps the examples visible to read.
 function showExamplesBanner() {
   _warnAction = 'startblank';
-  storageWarnBtn.textContent = 'Start a blank outline';   // UXP-185: button label stays (ux-discipline §L81)
+  storageWarnBtn.textContent = 'Start a blank document';   // V-1: UXP-185 kept "outline" only because ux-discipline L81 prescribed it; that line is gone from the standard, so the exception expired
   storageWarnMsg.textContent = `These are live examples to explore. ${IS_TOUCH ? 'Tap' : 'Click'} any pill, or start your own document.`;
   // the invite variant, not the warn caution lane (issue #404): a greeting is not a warning,
   // and it announces politely (role=status), not assertively (role=alert)
@@ -36760,7 +36789,7 @@ function hideExamplesBanner() {
 // the guide"). When the CURRENT doc is blank, offer both doors on the same invite surface as the
 // first-run banner. Session-dismissible; never in Lean (the expert opt-in keeps its clean canvas,
 // LF-2); never over a real warn/save banner; never during the pristine first-run tour; and never
-// after the user explicitly chose "Start a blank outline" (that click waives it).
+// after the user explicitly chose "Start a blank document" (that click waives it).
 let _blankInviteDismissed = false;
 var _blankInviteReady;   // var (hoisted): set true only after _showingExamples exists, so early renders no-op
 // Pure show-decision (DOM-free, pinned): every gate in one testable place.
@@ -36946,7 +36975,7 @@ function maybeNudgeSum(node, key) {
 function maybeNudgeRoll() {
   if (!isGuided() || nudgeSeen('roll')) return;
   const tag = nudgeRollTag(collectTags());
-  if (tag) fireNudge('roll', `Tip: {roll: #${tag}} draws a random one of your #${tag} points, a live oracle from your own notes. See the Roll on your own outline guide.`);
+  if (tag) fireNudge('roll', `Tip: {roll: #${tag}} draws a random one of your #${tag} points, a live oracle from your own notes. See the Roll on your own document guide.`);
 }
 // Trigger 3: the first time a user's OWN typing turns {…} into a live pill, welcome it once.
 // Called from exitEdit right after the promote pass, gated on a real pill token being produced
@@ -37197,7 +37226,7 @@ let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from l
 // no workspace to reopen) a newcomer would see one empty bullet + three sigils they have no reason
 // to trust. Instead, open a read-only-feeling Examples doc of LIVE pills (authored as plain {…}
 // source that promotes via promoteLoadedShorthand in adoptDoc, like the solo-rpg demos), plus a
-// "Start a blank outline" door. It never silently becomes the user's saved doc: `_showingExamples`
+// "Start a blank document" door. It never silently becomes the user's saved doc: `_showingExamples`
 // suppresses autosave until they edit (markDirty clears the flag) or hit Start blank. Reachable
 // again afterward from the File menu. NOT gated on a verbosity dial (that dial isn't built).
 const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
@@ -37300,7 +37329,7 @@ const STARTERS = [
   },
   { id: 'campaign-oracle',
     name: 'Campaign oracle',
-    desc: 'Roll on your own outline: your NPCs and threads become the tables.',
+    desc: 'Roll on your own document: your NPCs and threads become the tables.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Campaign oracle</title></head><body>
 <outline text="# Campaign oracle">
