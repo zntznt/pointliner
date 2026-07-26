@@ -223,6 +223,10 @@ acting (controls drift).
 > (8 of 9 catch rate against UXP-248's ground truth) and its three blind spots are documented in
 > `accessibility.md`, so the hit-test driver remains the measurement of record.
 >
+> **UXP-257 closed 2026-07-26**: the wrapped toolbar row was indented by an auto margin that only
+> makes sense while the icons share a line. Pre-existing (baseline and deployed identical from 560
+> down to 340), found by the owner right after UXP-256 shipped.
+>
 > **UXP-252 and UXP-254 closed 2026-07-26**, and a NEW defect was found and fixed in the same pass:
 > **UXP-256**, the toolbar row letting the level control land on the search box. It was reported as a
 > regression from recent work and is not: it accumulated one toolbar button at a time (9 -> 21px
