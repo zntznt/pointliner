@@ -70,6 +70,22 @@ acting (controls drift).
 > routes to the Builder instead of `#slash-menu`. Auditing `#slash-menu` in the default tier
 > reports "menu did not open" forever.
 >
+> **P3-1 and P3-3 were RE-RUN per tier on 2026-07-26 and are clean in all three.** Both had
+> originally been walked in the default tier only, which UXP-250 showed is not the whole app.
+> 18 surfaces x 3 tiers: **647 focus stops (guided 226, standard 221, lean 200), 0 unnamed
+> interactive elements, 0 focus stops without an indicator.** The differing stop counts are the
+> control that the tier switch actually took effect — lean carries fewer stops, matching its
+> reduced chrome (13 visible controls against 18).
+>
+> The re-run also exposed that **`#slash-menu` had never been audited by either rule in any tier**,
+> because no `open*()` entry point reaches it — it exists only when `checkSlash` fires from a real
+> caret, and it never opens at all in the default tier. Audited directly: **29 (`/`) and 21 (`@`)
+> options, 0 unnamed**, `role="listbox"` carrying a name ("Point commands" / "Insert commands"),
+> `aria-activedescendant` that RESOLVES to a real element, exactly one `aria-selected`, and the
+> active row visually highlighted. Its options are correctly NOT tab stops — the listbox pattern
+> keeps focus in the editor — so P3-3 finding no stops there is conformance, not a gap. The lean tip
+> is `role="status"`, visible, named, with no interactive children.
+>
 > **P2-1 (all three doors / "built != hidden") was audited 2026-07-26 and is CLEAN.** Audited per
 > verbosity tier, because UXP-250 established that `checkSlash` branches on the tier and every audit
 > before it had run in the default tier only. Reachable-through-a-menu, per tier: **guided 72 via the
