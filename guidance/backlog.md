@@ -361,7 +361,7 @@ Recorded here so they sit with the other shelved directions, not buried in an ac
 
 ## Tech debt / internal refactors
 
-### ☐ Doc-cache registry / `makeDocCache` refactor (deferred)
+### ✓ Doc-cache registry / `makeDocCache` refactor — shipped (2026-07-26)
 
 PR #99 *guarded* the whole-tree `_varsVer` invalidation invariant (named caches,
 `// doc-cache` markers, a regression test with a proven negative control). The canonical registry is
@@ -371,9 +371,17 @@ invalidation test **derive from** (so a tenth cache is auto-covered), optionally
 *vanilla* caches through a `makeDocCache(name, compute)` factory while leaving `collectVars`
 (Proxy / cycle-detection / `_varShadowedKeys`/`_varActiveExprs`/`_varCycles` side-effects) and
 `stateCmds` (no dual-mode) **bespoke-but-registered**. Registry-first, factory-second.
-**Do opportunistically the next time a doc-cache is added** — not worth a standalone hot-path
-rewrite for zero user value. (A circulated brief mis-listed `allSequences` as a cache; the
-actual eighth-set member is `collectSequences` — `allSequences` is an uncached wrapper.)
+**Shipped exactly on its own trigger** — doc-cache 11 (`searchBlob`) landed, and this followed in
+the next change. `DOC_CACHES` now exists with all 21 caches registered (both families);
+`resetDocCaches()` and the invalidation test both derive from it, a marker-parity test bans
+unregistered caches and the old numbered-marker form, and `makeDocCache(name, compute)` is the door
+for new whole-tree caches with `collectPropKeys` converted as the living tenant. **The deliberate
+stop:** the other six vanilla collectors (and `collectVars`/`stateCmds`, as specified here) stay
+bespoke-but-registered — their bodies differ in load-bearing quirks (`collectCallables` forwards
+`rootNode` into `collectVars`, `knownStates` delegates to `collectSequences`), and rewriting seven
+hot-path functions for zero user value is the risk this entry itself named. (A circulated brief
+mis-listed `allSequences` as a cache; the actual member is `collectSequences` — `allSequences` is an
+uncached wrapper.)
 
 ---
 
