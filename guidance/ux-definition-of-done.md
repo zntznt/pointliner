@@ -223,7 +223,12 @@ const SURFACES = [
       openMathDialog({ title:'Insert a calculation', submitLabel:'Insert', onResult(){} });` },
   { sel: '.guide-header', touch: false, note: 'File menu header', setup: `openFileMenu();` },
   { sel: '.fm-head', touch: false, note: 'File menu doc header', setup: `openFileMenu();` },
-  { sel: '#search-wrap', touch: false, note: 'search field (absolute children BY DESIGN)', setup: `
+  // `overflows: true` = a child is MEANT to exceed this box. #search-box:focus grows to 592px (the
+  // help-popup width, so the two read as one unit) inside a 220px wrap in the 951-1279 band, which
+  // reads as 372px of spill. Verified intentional, not a UXP-256 side effect: the focused field
+  // covers #level-ctl by 117px at EVERY width, including 1350 and 900 — bands that change never
+  // touched. Same reasoning as `wraps`: an unexplained red row trains people to skip the whole sweep.
+  { sel: '#search-wrap', touch: false, overflows: true, note: 'search field (focus overlay BY DESIGN)', setup: `
       const sb = document.getElementById('search-box'); sb.focus();
       sb.value = 'is:todo'; sb.dispatchEvent(new Event('input', { bubbles: true }));` },
 ];
@@ -319,8 +324,8 @@ for (const s of SURFACES) {
     await ctx.close();
     if (r.missing) { console.log(`   ${String(w).padStart(5)}  (not in the DOM) ${setupErr}`); continue; }
     if (r.hidden)  { console.log(`   ${String(w).padStart(5)}  (hidden at this width)`); continue; }
-    const fail = r.overlaps.length || r.spill > 1 || r.offscreen.length || r.unreachable.length
-              || (r.lines > 1 && !s.wraps);
+    const fail = r.overlaps.length || r.offscreen.length || r.unreachable.length
+              || (r.spill > 1 && !s.overflows) || (r.lines > 1 && !s.wraps);
     console.log(`   ${String(w).padStart(5)} ${String(r.kids).padStart(4)} ${String(r.h).padStart(3)} ${String(r.lines).padStart(4)}   ${(r.overlaps.join(',') || '-').padEnd(23)} ${String(r.spill).padStart(4)}${(r.spiller || '').slice(0,9).padStart(10)}  ${String(r.scrollOver).padStart(5)}  ${(r.offscreen.join(',') || '-').padEnd(15)}  ${r.unreachable.join(',') || '-'}${fail ? '   <== FAIL' : ''}`);
   }
 }
