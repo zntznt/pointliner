@@ -12365,28 +12365,23 @@ function openPropsDialog(nodeId, targets = null) {
   if (!props.length) props.push({ key: '', val: '' });   // #948: always show one empty row (a type/paste target, not an empty void)
   const reservedProps = (node.props || []).filter(p => reserved(p.key.trim().toLowerCase()));
 
-  ioCard.innerHTML = '';
-
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
-  setIcon(ic, PROPS_ICON);
-  const ttl = document.createElement('div'); ttl.className = 'io-title';
-  ttl.textContent = 'Properties';
-  head.append(ic, ttl); dialogHelp(head, 'properties'); ioCard.appendChild(head);
+  // UXP-247: shell owns head, footer, cancel and the globals. The body stays a repeating key/value
+  // row list — the shape no field vocabulary was going to express.
+  const _pKey = 'props-dialog:' + (targets ? applyList.map(t => t.id).join(',') : nodeId);
+  const _shell = openDialogShell({
+    icon: PROPS_ICON, title: 'Properties', guideId: 'properties',
+    draftKey: _pKey, seeds: { rows: JSON.stringify(props) },
+  });
 
   const list = document.createElement('div'); list.className = 'props-list';
   ioCard.appendChild(list);
 
   // UXP-246: this editor's content is a ROW LIST, not fixed fields, so the draft carries the rows
   // serialized. Wired before the first renderRows() so a restored list is what gets painted.
-  // Keyed by the point (or the bulk target set) so half-entered properties come back to the same
-  // subject and never leak onto the next point you open.
-  const _pSeeds = { rows: JSON.stringify(props) };
-  const _pKey = 'props-dialog:' + (targets ? applyList.map(t => t.id).join(',') : nodeId);
-  const _stashProps = wireDialogDraft(_pKey, _pSeeds,
+  _shell.wireDraft(
     () => ({ rows: JSON.stringify(props) }),
     v => { try { const r = JSON.parse(v.rows); if (Array.isArray(r) && r.length) props = r; } catch (_) {} });
-  const _cancelProps = () => { _stashProps(); closeIo(); };
+  const _cancelProps = _shell.close;
 
   function renderRows(focusLast = false) {
     list.innerHTML = '';
@@ -12457,10 +12452,11 @@ function openPropsDialog(nodeId, targets = null) {
   errDiv.style.cssText = 'display:none;color:var(--bad);font-size:11px;padding:0 16px 8px';
   ioCard.appendChild(errDiv);
 
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const saveBtn   = document.createElement('button'); saveBtn.className   = 'io-btn primary'; saveBtn.textContent = 'Save';
-  foot.append(cancelBtn, saveBtn); ioCard.appendChild(foot);
+  _shell.mountFooter([
+    { key: 'cancel', role: 'dismiss', label: 'Cancel' },
+    { key: 'save', role: 'commit', label: 'Save', onClick: () => save() },
+  ]);
+  const cancelBtn = _shell.btns.cancel, saveBtn = _shell.btns.save;
 
   function save() {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
@@ -12498,13 +12494,6 @@ function openPropsDialog(nodeId, targets = null) {
     // (a bulk edit is a different intent); Guided-only + once-ever enforced inside.
     if (applyList.length === 1) for (const p of cleaned) maybeNudgeSum(node, p.key);
   }
-  cancelBtn.addEventListener('click', _cancelProps);
-  saveBtn.addEventListener('click', save);
-  ioCancel = _cancelProps;
-
-  ioReturnFocus = document.activeElement;
-  ioCard.setAttribute('aria-label', 'Properties');
-  ioBack.classList.add('on');
   requestAnimationFrame(() => {
     if (!props.length) addBtn.focus();
     else list.querySelector('.props-input')?.focus();
@@ -12929,11 +12918,15 @@ function openDueDateDialog(nodeId, targets = null) {
   const dueInit   = propVal('due') || (startInit ? '' : formatEpochDays(dueDateToday()));
   const repeatInit = propVal(REPEAT_KEY);
 
-  ioCard.innerHTML = '';
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, DUE_ICON);
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Schedule';
-  head.append(ic, ttl); dialogHelp(head, 'dates'); ioCard.appendChild(head);
+  // UXP-247: head, footer, cancel and the shell globals come from the shared shell. The body below
+  // is unchanged — a date row with an inline day picker is exactly the kind of thing the shell is
+  // meant to allow, rather than forcing it through a fixed field vocabulary.
+  const _shell = openDialogShell({
+    icon: DUE_ICON, title: 'Schedule', guideId: 'dates',
+    // keyed by the point, so a half-typed repeat phrase comes back to THAT task
+    draftKey: 'due-dialog:' + nodeId,
+    seeds: { start: String(startInit || ''), due: String(dueInit || ''), repeat: String(repeatInit || '') },
+  });
 
   const wrap = document.createElement('div'); wrap.style.cssText = 'padding:6px 16px 12px;display:flex;flex-direction:column;gap:12px';
 
@@ -13007,19 +13000,17 @@ function openDueDateDialog(nodeId, targets = null) {
   wrap.append(repeatF.f);
   ioCard.appendChild(wrap);
 
-  // UXP-246: draft survival for this hand-rolled dialog, through the shared cores. The slot is keyed
-  // by the point being scheduled, so a half-typed repeat phrase comes back to THAT task and cannot
-  // reappear on the next one you open.
-  const _dSeeds = { start: String(startInit || ''), due: String(dueInit || ''), repeat: String(repeatInit || '') };
-  const _stashDueDraft = wireDialogDraft('due-dialog:' + nodeId, _dSeeds,
+  // UXP-246 draft survival, now wired through the shell once the fields it writes into exist.
+  _shell.wireDraft(
     () => ({ start: startF.inp.value, due: dueF.inp.value, repeat: repeatF.inp.value }),
     v => { startF.inp.value = v.start ?? ''; dueF.inp.value = v.due ?? ''; repeatF.inp.value = v.repeat ?? ''; });
-  const _cancelDue = () => { _stashDueDraft(); closeIo(); };
+  const _cancelDue = _shell.close;
 
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const saveBtn = document.createElement('button'); saveBtn.className = 'io-btn primary'; saveBtn.textContent = 'Save';
-  foot.append(cancelBtn, saveBtn); ioCard.appendChild(foot);
+  _shell.mountFooter([
+    { key: 'cancel', role: 'dismiss', label: 'Cancel' },
+    { key: 'save', role: 'commit', label: 'Save', onClick: () => save() },
+  ]);
+  const cancelBtn = _shell.btns.cancel, saveBtn = _shell.btns.save;
 
   function save() {
     if (!startF.valid()) { startF.inp.focus(); return; }
@@ -13037,16 +13028,10 @@ function openDueDateDialog(nodeId, targets = null) {
     delete _insertDrafts['due-dialog:' + nodeId];   // UXP-246: committed
     closeIo();
   }
-  cancelBtn.addEventListener('click', _cancelDue);
-  saveBtn.addEventListener('click', save);
   [startF.inp, dueF.inp, repeatF.inp].forEach(inp => inp.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); save(); }
-    if (e.key === 'Escape') { e.preventDefault(); _cancelDue(); }   // UXP-246: keep the draft
+    if (e.key === 'Escape') { e.preventDefault(); _cancelDue(); }   // the shell's close: keeps the draft
   }));
-  ioCancel = _cancelDue;
-  ioReturnFocus = document.activeElement;
-  ioCard.setAttribute('aria-label', 'Schedule');
-  ioBack.classList.add('on');
   requestAnimationFrame(() => { dueF.inp.select(); dueF.inp.focus(); });
 }
 
@@ -13713,16 +13698,18 @@ let _apprFocus = 'tag'; // #464 review #1: which section's input to focus after 
 function openAppearanceDialog() {
   root.appearance = root.appearance || { tags: {}, props: {} };
   const ap = root.appearance;
-  // UXP-246: this dialog also re-renders IN PLACE after every swatch/icon commit. A draft may only
-  // be restored on a FRESH open — restoring during a rebuild would push a stale name over the input
-  // the user is mid-way through. `ioBack` already carrying `.on` is the existing in-place signal
-  // (the ioReturnFocus line below reads it the same way); read it before anything sets it.
-  const _apprFresh = !ioBack.classList.contains('on');
-  ioCard.innerHTML = '';
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, APPEARANCE_ICON);
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = 'Tag & property styling';
-  head.append(ic, ttl); dialogHelp(head, 'appearance'); ioCard.appendChild(head);
+  // UXP-247: the shell supplies the in-place-rebuild signal that used to be this dialog's private
+  // `_apprFresh`. This dialog re-renders itself after every swatch/icon commit, and `freshOnly`
+  // tells the shell that a draft may be restored on a FIRST open only — restoring mid-rebuild would
+  // push a stale name over the input being typed into.
+  const _shell = openDialogShell({
+    icon: APPEARANCE_ICON, title: 'Tag & property styling', guideId: 'appearance',
+    ariaLabel: 'Tag and property styling',
+    draftKey: 'appearance-dialog',
+    // lookups, not stored state, so the seeds are blank and "matches" reduces to "was anything typed"
+    seeds: { tag: '', prop: '' }, freshOnly: true,
+  });
+  const _apprFresh = _shell.fresh;
 
   const commit = (msg) => { markDirty(); render(); if (msg) flashHint(msg); openAppearanceDialog(); };
 
@@ -13803,22 +13790,18 @@ function openAppearanceDialog() {
     ioCard.appendChild(list);
   }
 
-  const foot = document.createElement('div'); foot.className = 'io-foot';
   // UXP-246: the two lookup inputs are typed input like any other, and dismissing threw them away.
   // Seeds are always blank here (the fields are lookups, not seeded from stored state), so the
   // match test reduces to "was anything typed".
-  const _aStash = wireDialogDraft('appearance-dialog', { tag: '', prop: '' },
+  _shell.wireDraft(
     () => ({ tag: tagIn.value, prop: propIn.value }),
-    v => { if (_apprFresh) { tagIn.value = v.tag ?? ''; propIn.value = v.prop ?? ''; } });
-  const _cancelAppr = () => { _aStash(); closeIo(); };
+    v => { tagIn.value = v.tag ?? ''; propIn.value = v.prop ?? ''; });   // freshOnly gates this
+  const _cancelAppr = _shell.close;
 
-  const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn primary'; closeBtn.textContent = 'Close';
-  closeBtn.addEventListener('click', _cancelAppr);
-  foot.append(closeBtn); ioCard.appendChild(foot);
-  ioCancel = _cancelAppr;
-  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target
-  ioCard.setAttribute('aria-label', 'Tag and property styling');
-  ioBack.classList.add('on');
+  // A settings surface: no submit, so Close is the only button. It is the DISMISS role, which is
+  // why it can carry the shell's `close` and keep the typed lookup on the way out.
+  _shell.mountFooter([{ key: 'close', role: 'dismiss', label: 'Close' }]);
+  const closeBtn = _shell.btns.close;
   // #464 review #1: after an in-place rebuild, return focus to the section the user was acting in
   // (not always the Tag input), so configuring several properties in a row doesn't jump to the top.
   requestAnimationFrame(() => (_apprFocus === 'prop' ? propIn : tagIn).focus());
@@ -20472,6 +20455,90 @@ function wireDialogDraft(key, seeds, readFields, applyFields) {
   };
 }
 
+// ─── the shared dialog shell (UXP-247) ────────────────────────────────────────────────────────
+// The ONE place a dialog's shell lives. Every part of this was copy-pasted across 22 dialogs, and
+// UXP-246 proved what that costs: a fix applied at one of them reached none of the others, so ten
+// dialogs silently discarded typed input for as long as the duplication stood. The entry was filed
+// as "grow openInsertDialog's field vocabulary", but the forfeited fix lived in `cancel()` — the
+// shell — not in the fields. Callers keep full control of their own body; only the scaffolding is
+// shared, so a dialog with a picker grid, a repeating row list or swatches is a first-class citizen
+// instead of being pushed out into hand-rolling everything.
+//
+// Returns { body, stash, close, fresh }:
+//   body   the element to append the caller's own DOM to (head and footer are already placed)
+//   stash  keep the draft now (for a caller that closes on its own commit path)
+//   close  cancel: stash the draft, then tear down — the exact function bound to every exit
+//   fresh  true when this is a FIRST open rather than an in-place rebuild. openAppearanceDialog
+//          re-renders itself after every swatch commit; restoring a draft mid-rebuild would push a
+//          stale value over the input being typed into. Read before anything sets `.on`.
+function openDialogShell(opts) {
+  const root = opts.root || ioCard;
+  // Read BEFORE ioBack gains `.on` below, or a fresh open cannot be told from a rebuild.
+  const fresh = !ioBack.classList.contains('on');
+  root.innerHTML = '';
+
+  const head = document.createElement('div'); head.className = 'io-head';
+  if (opts.icon) { const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, opts.icon); head.appendChild(ic); }
+  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title || '';
+  head.appendChild(ttl);
+  if (opts.guideId) dialogHelp(head, opts.guideId);
+  root.appendChild(head);
+
+  // No body wrapper: the caller appends straight to `root`, and mounts the footer once its content
+  // is in. That keeps the rendered DOM byte-identical to the hand-rolled shells this replaces
+  // (head, content…, foot as flat siblings) — a wrapper would be layout-neutral here but would
+  // still move every `.io-field` a level deeper for no benefit.
+
+  // UXP-246's cores, unchanged — the shell just makes every dialog reach them. A caller with no
+  // fields to keep never wires one, and the draft machinery sits out.
+  //
+  // Wiring is DEFERRED because restoring a draft means writing into fields, and a caller builds its
+  // fields after the head. `wireDraft` is therefore called by the caller once its body exists;
+  // openInsertDialog is the exception that can pass `read` up front, because its fields restore
+  // themselves from `_useDraft` as they are built and its `apply` is a no-op.
+  let stash = () => {};
+  const wireDraft = (read, apply) => {
+    stash = wireDialogDraft(opts.draftKey, opts.seeds || {},
+      read, v => { if (fresh || !opts.freshOnly) apply(v); });
+  };
+  if (opts.read) wireDraft(opts.read, opts.apply || (() => {}));
+
+  // ONE cancel, bound to the dismiss button AND `ioCancel`, so the button, the backdrop and global
+  // Escape cannot diverge — they did before UXP-246, which is how the drafts bug hid so long.
+  // Reads `stash` through the closure, so a draft wired later is still the one that runs.
+  const close = () => { stash(); if (opts.onCancel) opts.onCancel(); else closeIo(); };
+
+  // §6/§7.6 order is enforced HERE rather than asked for: dismiss/neutral first, the committing
+  // action last, danger in the final slot. A caller cannot get it wrong by listing its buttons in
+  // whatever order it happened to build them.
+  const btns = {};
+  function mountFooter(spec) {
+    const foot = document.createElement('div'); foot.className = 'io-foot';
+    const ordered = [...spec.filter(b => b.role === 'dismiss' || b.role === 'neutral'),
+                     ...spec.filter(b => !b.role || b.role === 'commit'),
+                     ...spec.filter(b => b.role === 'danger')];
+    for (const b of ordered) {
+      const el = document.createElement('button');
+      el.className = 'io-btn' + (b.role === 'commit' ? ' primary' : b.role === 'danger' ? ' danger' : '');
+      el.textContent = b.label;
+      el.addEventListener('click', b.role === 'dismiss' ? close : b.onClick);
+      btns[b.key || b.label] = el;
+      foot.appendChild(el);
+    }
+    root.appendChild(foot);
+    return foot;
+  }
+
+  if (!opts.nested) {
+    ioCancel = close;
+    // An in-place rebuild must not overwrite the return target captured on the first open.
+    if (fresh) ioReturnFocus = document.activeElement;
+    root.setAttribute('aria-label', opts.ariaLabel || opts.title || '');
+    ioBack.classList.add('on');
+  }
+  return { root, body: root, mountFooter, wireDraft, btns, close, fresh, stash: () => stash() };
+}
+
 function openInsertDialog(opts) {
   const root = _dialogRoot || ioCard;
   const isNested = _dialogRoot != null;
@@ -20484,10 +20551,20 @@ function openInsertDialog(opts) {
   (opts.fields || []).forEach(f => { _seeds[f.key] = f.type === 'checkbox' ? String(!!f.value) : String(f.value ?? ''); });
   const _draft = _insertDrafts[_draftKey];
   const _useDraft = insertDraftMatches(_draft, _seeds);
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, opts.icon);
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = opts.title;
-  head.append(ic, ttl); dialogHelp(head, opts.guideId); root.appendChild(head);
+  // UXP-247: head, footer, cancel wiring and the shell globals come from openDialogShell now. The
+  // draft is still read the same way (fields are built from `_useDraft` below, so this dialog does
+  // its own restore rather than handing the shell an `apply`), and the shell is told how to READ
+  // the fields so its `close` stashes exactly what the old local `cancel()` did.
+  const _shell = openDialogShell({
+    root, nested: isNested, icon: opts.icon, title: opts.title, guideId: opts.guideId,
+    draftKey: _draftKey, seeds: _seeds,
+    read: () => rawVals(),
+    apply: () => {},                      // fields self-restore from _useDraft as they are built
+    onCancel: () => {
+      if (isNested) { _dialogCancel?.(); _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; _dialogFormEl = null; _restoreState = null; return; }
+      closeIo();
+    },
+  });
 
   const inputs = {};
   const _previewFns = [];
@@ -20550,12 +20627,13 @@ function openInsertDialog(opts) {
   // directly between text inputs and the Cancel/Insert buttons.
   if (isNested) root.querySelectorAll('.io-field button').forEach(b => { if (!b.classList.contains('io-btn')) b.setAttribute('tabindex', '-1'); });
 
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = opts.submitLabel || 'Insert';
-  cancelBtn.addEventListener('click', cancel);
-  okBtn.addEventListener('click', submit);
-  foot.append(cancelBtn, okBtn); root.appendChild(foot);
+  // UXP-247: the shell places these in the §7.6 order (dismiss first, commit last) and binds the
+  // dismiss button to the same `close` that `ioCancel` and the backdrop use.
+  _shell.mountFooter([
+    { key: 'cancel', role: 'dismiss', label: 'Cancel' },
+    { key: 'ok', role: 'commit', label: opts.submitLabel || 'Insert', onClick: () => submit() },
+  ]);
+  const cancelBtn = _shell.btns.cancel, okBtn = _shell.btns.ok;
 
   // GUIDE entry below the dialog form when nested in the builder
   if (isNested && _dialogGuideCmd) {
@@ -20570,11 +20648,6 @@ function openInsertDialog(opts) {
   // UXP-246: untrimmed, stringified, for the draft comparison — `vals()` trims, and comparing a
   // trimmed value against an untrimmed seed would read trailing whitespace as an edit worth keeping.
   const rawVals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].type === 'checkbox' ? String(inputs[k].checked) : inputs[k].value; return v; };
-  // UXP-246: both exits stash. Called before any teardown, so it never reads an emptied card.
-  const stashInsertDraft = () => {
-    const d = insertDraftFrom(rawVals(), _seeds);
-    if (d) _insertDrafts[_draftKey] = d; else delete _insertDrafts[_draftKey];
-  };
   const valid = () => opts.fields.every(f => !f.required || vals()[f.key]) && (!opts.validate || opts.validate(vals()));
   function validate() { okBtn.disabled = !valid(); }
   function submit() {
@@ -20584,20 +20657,14 @@ function openInsertDialog(opts) {
     if (isNested) { closeBuilderWindow(); return; }
     closeIo();
   }
-  function cancel() {
-    stashInsertDraft();   // UXP-246: keep what was typed before the card is torn down
-    if (isNested) { _dialogCancel?.(); _dialogRoot = null; _dialogCancel = null; _dialogGuideCmd = null; _dialogFormEl = null; _restoreState = null; return; }
-    closeIo();
-  }
+  // UXP-247: `cancel` is the shell's `close` — stash then tear down — so the button, the backdrop
+  // and global Escape are literally the same function rather than three copies that can drift.
+  const cancel = _shell.close;
   if (isNested) {
     _dialogFormEl = okBtn;
     // Nested in builder: builder manages its own scrim and focus; no global dialog state
   } else {
-    ioCancel = cancel;
-    validate();
-    ioReturnFocus = document.activeElement;
-    root.setAttribute('aria-label', opts.title);
-    ioBack.classList.add('on');
+    validate();   // the rest of the non-nested setup (ioCancel, focus, aria, scrim) is the shell's
   }
   requestAnimationFrame(() => { const f = root.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
 }
@@ -26143,11 +26210,16 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
 
   ioCard.innerHTML = '';
 
-  // Header
-  const head = document.createElement('div'); head.className = 'io-head';
-  const ic = document.createElement('div'); ic.className = 'cmd-icon accent'; setIcon(ic, { fa:'fa-solid fa-dollar-sign', fb:'$' });
-  const ttl = document.createElement('div'); ttl.className = 'io-title'; ttl.textContent = title;
-  head.append(ic, ttl); dialogHelp(head, 'var'); ioCard.appendChild(head);   // #466
+  // UXP-247: the shell owns head, footer, cancel and the globals. The body keeps its picker grid and
+  // its io-seg mode control — the two things the field-vocabulary plan could not express, and the
+  // reason this dialog opted out of the builder and so missed the UXP-246 drafts fix.
+  const _shell = openDialogShell({
+    icon: { fa:'fa-solid fa-dollar-sign', fb:'$' }, title, guideId: 'var', ariaLabel: 'Variable',
+    draftKey: 'var-dialog',
+    // the MODE is part of the seed: restoring text without the toggle it was typed under would hand
+    // back a value the dialog then validates by the wrong rule
+    seeds: { name: String(name || ''), expr: String(expr || ''), mode: String(kind === 'pick' ? 'pick' : 'formula') },
+  });
 
   // Known-variable picker (only when vars exist)
   let cardEls = [];
@@ -26246,22 +26318,19 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     updatePrev(); validate();
   }
 
-  // UXP-246: draft survival, through the same cores the shared builder uses. The mode is part of
-  // the draft: restoring the text without the formula/pick toggle it was typed under would hand
-  // back a value the dialog then validates by the wrong rule.
-  const _vSeeds = { name: String(name || ''), expr: String(expr || ''), mode: String(kind === 'pick' ? 'pick' : 'formula') };
-  const _stashVarDraft = wireDialogDraft('var-dialog', _vSeeds,
+  _shell.wireDraft(
     () => ({ name: nameInp.value, expr: exprInp.value, mode }),
     v => { nameInp.value = v.name ?? ''; exprInp.value = v.expr ?? ''; if (v.mode === 'pick' || v.mode === 'formula') mode = v.mode; });
-  const _cancelVar = () => { _stashVarDraft(); closeIo(); };
+  const _cancelVar = _shell.close;
 
-  // Footer
-  const foot = document.createElement('div'); foot.className = 'io-foot';
-  const cancelBtn = document.createElement('button'); cancelBtn.className = 'io-btn'; cancelBtn.textContent = 'Cancel';
-  const okBtn = document.createElement('button'); okBtn.className = 'io-btn primary'; okBtn.textContent = submitLabel || 'Insert';
-  cancelBtn.addEventListener('click', _cancelVar);
-  okBtn.addEventListener('click', submit);
-  foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
+  _shell.mountFooter([
+    { key: 'cancel', role: 'dismiss', label: 'Cancel' },
+    { key: 'ok', role: 'commit', label: submitLabel || 'Insert', onClick: () => submit() },
+  ]);
+  // setMode() below rewrites this button's text (the D2 two-verb rule: a random-pick var creates
+  // with "Roll", a formula var with its submitLabel), which is exactly why the shell hands the
+  // element back rather than owning the label.
+  const cancelBtn = _shell.btns.cancel, okBtn = _shell.btns.ok;
 
   function valid() {
     const nm = nameInp.value.trim(), ex = exprInp.value.trim();
@@ -26301,11 +26370,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     match?.classList.add('selected');
   }
 
-  ioCancel = _cancelVar;   // UXP-246: the backdrop and the global Escape stash too
   setMode(mode); // applies label/placeholder/hint/button text, then validates + previews
-  ioReturnFocus = document.activeElement;
-  ioCard.setAttribute('aria-label', 'Variable');
-  ioBack.classList.add('on');
   requestAnimationFrame(() => { nameInp.focus(); nameInp.select(); });
 }
 

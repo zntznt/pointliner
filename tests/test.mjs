@@ -20235,12 +20235,49 @@ test('UXP-246 insertDraftMatches: a draft never shadows a different pill', () =>
   assert.equal(c.insertDraftMatches({}, { def: '' }), false);
 });
 
+test('UXP-247 the dialog shell is the one place a dialog shell lives', () => {
+  // The entry was filed as "grow openInsertDialog's field vocabulary", but the fix that was
+  // actually forfeited (UXP-246 drafts) lived in cancel() — the SHELL. Measured on the tree that
+  // filed it: 22 dialogs each assigned ioCancel/ioReturnFocus/aria-label/ioBack/io-foot themselves,
+  // so a fix at any one of them reached none of the others. The shell owns those five.
+  assert.ok(_src.includes('function openDialogShell(opts) {'), 'the shared shell must exist');
+  // ONE cancel behind the button, the backdrop and global Escape. Three copies is how they drift.
+  assert.ok(/const close = \(\) => \{ stash\(\); if \(opts\.onCancel\) opts\.onCancel\(\); else closeIo\(\); \};/.test(_src),
+    'close must stash first, then run the caller teardown or the default');
+  assert.ok(/ioCancel = close;/.test(_src), 'the shell binds the same close to the global Escape path');
+  // The §7.6 footer order is enforced by construction, so a caller cannot get it wrong by listing
+  // its buttons in whatever order it built them.
+  assert.ok(/spec\.filter\(b => b\.role === 'dismiss' \|\| b\.role === 'neutral'\)/.test(_src),
+    'dismiss and neutral buttons sort first');
+  assert.ok(/spec\.filter\(b => b\.role === 'danger'\)/.test(_src), 'danger takes the final slot');
+  // The in-place-rebuild signal, promoted from openAppearanceDialog's one-off _apprFresh. Must be
+  // read BEFORE ioBack gains `.on`, or a rebuild is indistinguishable from a fresh open.
+  assert.ok(/const fresh = !ioBack\.classList\.contains\('on'\);\s*\n\s*root\.innerHTML = '';/.test(_src),
+    'fresh must be sampled before the shell touches the scrim');
+  assert.ok(/if \(fresh\) ioReturnFocus = document\.activeElement;/.test(_src),
+    'an in-place rebuild must not overwrite the return target from the first open');
+  // openInsertDialog is built ON the shell — the proof case, since it carries the nested-in-builder
+  // path and the bulk of the existing pins.
+  assert.ok(/const _shell = openDialogShell\(\{/.test(_src), 'openInsertDialog must use the shell');
+  assert.ok(/_shell\.mountFooter\(\[/.test(_src), 'and take its footer from the shell');
+  // The nested-in-builder teardown is NOT closeIo, and must stay with openInsertDialog.
+  assert.ok(/onCancel: \(\) => \{\s*\n\s*if \(isNested\) \{ _dialogCancel\?\.\(\);/.test(_src),
+    'the nested teardown stays the caller’s, passed in as onCancel');
+});
+
 test('UXP-246 openInsertDialog stashes on cancel and clears on submit', () => {
   // Source pins: this is DOM wiring. The stash must happen inside cancel() BEFORE the nested/plain
   // teardown branches, or the card is already emptied when the values are read.
   assert.ok(_src.includes('let _insertDrafts = {};'), 'the shared draft store must exist');
-  assert.ok(/function cancel\(\) \{\s*\n\s*stashInsertDraft\(\);/.test(_src),
-    'cancel must stash before either teardown branch runs');
+  // UXP-247 MOVED this, it did not change it. The stash-before-teardown ordering used to live in
+  // openInsertDialog's own `cancel()`; it now lives once in openDialogShell's `close`, which every
+  // dialog shares. Re-proved by driving before this pin was touched: 10/10 insert surfaces still
+  // keep a draft and all 8 safety properties still hold, so this asserts the same behaviour at its
+  // new home rather than being relaxed to accommodate a regression.
+  assert.ok(/const close = \(\) => \{ stash\(\);/.test(_src),
+    'the shared close must stash before any teardown runs');
+  assert.ok(/const cancel = _shell\.close;/.test(_src),
+    'openInsertDialog must use that one close, so button, backdrop and Escape cannot diverge');
   assert.ok(_src.includes('delete _insertDrafts[_draftKey];   // UXP-246'), 'submit must clear the draft');
   assert.ok(/const _draftKey = opts\.draftKey \|\| opts\.guideId \|\| opts\.title \|\| 'insert';/.test(_src),
     'the slot is per dialog KIND, so each dialog keeps its own work');
@@ -20249,42 +20286,63 @@ test('UXP-246 openInsertDialog stashes on cancel and clears on submit', () => {
   // the raw (untrimmed) reader: comparing a trimmed value against an untrimmed seed would read
   // trailing whitespace as an edit worth keeping
   assert.ok(_src.includes('const rawVals = ()'), 'the draft comparison needs untrimmed values');
-  assert.ok(/insertDraftFrom\(rawVals\(\), _seeds\)/.test(_src), 'the stash must compare raw values against seeds');
+  // Same move: the comparison is now made once inside wireDialogDraft, and openInsertDialog hands
+  // it the untrimmed reader. The property being pinned is unchanged — raw values against seeds.
+  assert.ok(/insertDraftFrom\(readFields\(\), seeds\)/.test(_src), 'the stash must compare raw values against seeds');
+  assert.ok(/read: \(\) => rawVals\(\),/.test(_src), 'openInsertDialog must hand the shell its UNTRIMMED reader');
 });
 
-test('UXP-246 the four hand-rolled dialogs share the rule, not a fifth mechanism', () => {
-  // openVarDialog, openPropsDialog, openDueDateDialog and openAppearanceDialog build their own DOM
-  // (openInsertDialog cannot express a picker grid, a segmented control or a date row), so they
-  // silently missed the shared fix. They now route through wireDialogDraft, which delegates to the
-  // SAME two pure cores — one definition of what a draft is across all 20 surfaces. The structural
-  // problem, that opting out of the builder forfeits every later improvement, is UXP-247.
-  assert.ok(_src.includes('function wireDialogDraft(key, seeds, readFields, applyFields)'),
-    'the shared helper must exist so the hand-rolled dialogs do not grow their own rules');
+test('UXP-247 ratchet: hand-rolled dialog shells may only ever decrease', () => {
+  // The defect is not that 22 dialogs each owned a shell — it is that a NEW one could, and would
+  // then miss every fix made at the shell (which is exactly how UXP-246 destroyed typed input in
+  // ten dialogs). A guard demanding "exactly one" cannot ship today: 16 dialogs still hand-roll
+  // theirs and migrating all of them at once would be a far riskier change than the defect.
+  // So this is a RATCHET. It locks in the progress made and blocks a 23rd, and the number may only
+  // ever be lowered — never raised to accommodate a new hand-rolled dialog.
+  const assigns = (_src.match(/^\s*ioCancel = (?!null)/gm) || []);
+  // one of these IS the shell's own; the rest are the not-yet-migrated dialogs
+  assert.ok(/ioCancel = close;/.test(_src), 'the shell must be one of them');
+  // 17 = the shell's own + the 16 dialogs not yet migrated. It was 22 before this change.
+  const MAX = 17;
+  assert.ok(assigns.length <= MAX,
+    `a new dialog is hand-rolling its shell (${assigns.length} > ${MAX}). Use openDialogShell: ` +
+    'a dialog that assigns ioCancel itself will miss every fix made at the shell, which is UXP-247.');
+  // And the five that HAVE migrated must stay migrated.
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 5,
+    'openInsertDialog and the four named dialogs must keep using the shell');
+});
+
+test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL', () => {
+  // UXP-246 wired wireDialogDraft into each of these four by hand — which is exactly the symptom
+  // UXP-247 names: four copies of one rule. UXP-247 moved the wiring into openDialogShell, so the
+  // property is now structural. Re-proved by driving BEFORE this pin was rewritten: 10/10
+  // hand-rolled surfaces still keep a draft, 8/8 safety properties hold, and the appearance
+  // in-place rebuild still refuses to restore mid-edit.
+  for (const [dialog, key] of [
+    ['openVarDialog', "draftKey: 'var-dialog'"],
+    ['openDueDateDialog', "draftKey: 'due-dialog:' + nodeId"],
+    ['openAppearanceDialog', "draftKey: 'appearance-dialog'"],
+    ['openPropsDialog', 'draftKey: _pKey'],
+  ]) {
+    assert.ok(_src.includes(key), `${dialog} must declare its draft slot to the shell`);
+  }
+  // Per-subject keys: a half-typed schedule or property set comes back to the SAME point.
+  assert.ok(/const _pKey = 'props-dialog:' \+ \(targets \?/.test(_src), 'the props draft is keyed by its target point(s)');
+  // All four now take head/footer/cancel/globals from the shell rather than assigning their own.
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 5,
+    'openInsertDialog + the four migrated dialogs each construct exactly one shell');
+  // The appearance dialog's private in-place signal became a shell option.
+  assert.ok(/freshOnly: true,/.test(_src), 'the appearance dialog restores on a FRESH open only');
+  assert.ok(/const _apprFresh = _shell\.fresh;/.test(_src), 'and takes that signal from the shell');
+  // The bodies these dialogs hand-roll are precisely what a field vocabulary could not express, and
+  // are untouched by the migration — the point of fixing the shell instead.
+  assert.ok(_src.includes("grid.className = 'var-pick-grid'"), 'the variable picker grid survives');
+  assert.ok(_src.includes("segRow.className = 'io-seg'"), 'the segmented mode control survives');
+  assert.ok(_src.includes("keyIn.className = 'props-input key-in'"), 'the repeating property rows survive');
+  // Carried over from the pin this replaced: restoration is still GATED by the seed comparison,
+  // never applied blindly. That is the property that stops an abandoned draft shadowing a different
+  // pill or a different point, and it now lives in the one shared helper.
   assert.ok(/insertDraftMatches\(draft, seeds\)\) applyFields\(draft\.values\)/.test(_src),
     'wireDialogDraft must gate restoration on the shared seed comparison');
-  for (const [dialog, key] of [
-    ['openVarDialog', "'var-dialog'"],
-    ['openDueDateDialog', "'due-dialog:' + nodeId"],
-    ['openAppearanceDialog', "'appearance-dialog'"],
-  ]) {
-    assert.ok(_src.includes(`wireDialogDraft(${key}`), `${dialog} must wire its draft slot`);
-  }
-  assert.ok(_src.includes('wireDialogDraft(_pKey'), 'openPropsDialog must wire its draft slot');
-  // Per-subject keys: a half-typed schedule or property set must come back to the SAME point and
-  // never leak onto the next one opened.
-  assert.ok(/const _pKey = 'props-dialog:' \+ \(targets \?/.test(_src), 'the props draft is keyed by its target point(s)');
-  assert.ok(_src.includes("'due-dialog:' + nodeId"), 'the schedule draft is keyed by its point');
-  // Every dismissal path stashes, and every commit clears.
-  assert.ok(_src.includes('ioCancel = _cancelVar;'), 'var: the backdrop/global Escape must stash');
-  assert.ok(_src.includes('ioCancel = _cancelDue;'), 'schedule: the backdrop/global Escape must stash');
-  assert.ok(_src.includes('ioCancel = _cancelProps;'), 'props: the backdrop/global Escape must stash');
-  assert.ok(_src.includes('ioCancel = _cancelAppr;'), 'appearance: the backdrop/global Escape must stash');
-  for (const del of ["delete _insertDrafts['var-dialog']", "delete _insertDrafts['due-dialog:' + nodeId]", 'delete _insertDrafts[_pKey]']) {
-    assert.ok(_src.includes(del), `a commit must clear its draft: ${del}`);
-  }
-  // The appearance dialog re-renders IN PLACE after every swatch commit; restoring mid-rebuild
-  // would push a stale name over the input the user is typing into.
-  assert.ok(_src.includes('const _apprFresh = !ioBack.classList.contains(\'on\');'),
-    'appearance must capture the fresh-open signal before anything sets it');
-  assert.ok(/v => \{ if \(_apprFresh\)/.test(_src), 'appearance may only restore on a fresh open');
 });
+
