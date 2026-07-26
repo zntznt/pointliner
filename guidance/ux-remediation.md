@@ -218,7 +218,12 @@ acting (controls drift).
 > forfeited UXP-246 fix lived in `cancel()`). Shipped `openDialogShell` + a ratchet that fails CI if
 > a 23rd dialog hand-rolls its own. See the archive entry for the full reasoning.
 >
-> **As of 2026-07-26 the register holds four open defects (UXP-249 structural; UXP-252 vocab; UXP-254 feedback; UXP-20 standing guard).**
+> **UXP-249 closed 2026-07-26.** The tap floor now has a CI guard: a static ratchet over classes
+> declaring `cursor:pointer` with no touch treatment, which may only ever decrease. It is a proxy
+> (8 of 9 catch rate against UXP-248's ground truth) and its three blind spots are documented in
+> `accessibility.md`, so the hit-test driver remains the measurement of record.
+>
+> **As of 2026-07-26 the register holds three open defects (UXP-252 vocab; UXP-254 feedback; UXP-20 standing guard).**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
@@ -253,20 +258,6 @@ acting (controls drift).
 - **Target:** either rename to "Roll menu" everywhere (GUIDE title, command desc, backlog mention),
   or add an explicit carve-out to §1 saying the touch picker keeps its name — but not leave the
   standard and the app disagreeing silently.
-
-### UXP-249 ☐ Nothing enforces the tap floor for a NEW control 🟢 [touch] [structural]
-- **Problem:** UXP-248 fixed nine shared classes that sat under the 24px floor, and pinned those nine
-  by name. Nothing stops the tenth. The floor is checkable only by measuring the running app under
-  `@media(hover:none)`, and no test does that — the design pins are all `_src.includes(…)` string
-  matches, which can only ever assert the rules someone already thought to write.
-- **Why it recurs:** the guardrail's own escape hatch makes static checking hard. A control may be
-  20px and conformant (an `::after` extends it) or 24px and NOT conformant (a neighbour's overlay
-  shaves it, which is exactly what happened to `.collapse-btn`). Only a hit-test knows.
-- **Target:** promote the audit driver into the repo as a headless check over the surface list, so a
-  new control that misses the floor fails rather than waits for the next audit. Wants deciding
-  first: the project keeps verification artifacts OUT of git (`CLAUDE.md` working notes), so this
-  needs an owner call on whether a Playwright-dependent check earns an exception, or whether it
-  stays an external audit re-run on a cadence.
 
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
 - **Problem:** the loudest symptom of the scattered direction is the steady flood of new authoring syntaxes and grammars, each invented per-feature. The architecture *encourages* it (`CLAUDE.md`: "a new token type / expression primitive fits very well"), so the pressure is structural and continuous — this guard never fully closes.

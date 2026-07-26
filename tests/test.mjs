@@ -20292,6 +20292,62 @@ test('UXP-246 openInsertDialog stashes on cancel and clears on submit', () => {
   assert.ok(/read: \(\) => rawVals\(\),/.test(_src), 'openInsertDialog must hand the shell its UNTRIMMED reader');
 });
 
+test('UXP-249 tapFloorCandidates: the static tap-floor proxy, seeded', () => {
+  // Pure core pins. `cursor:pointer` is the stand-in for "tappable"; covered = an explicit
+  // >=24px height/min-height anywhere, or ANY rule inside an @media(hover:none) block.
+  const css = `
+    .a{cursor:pointer;font-size:12px}
+    .b{cursor:pointer;min-height:36px}
+    .c{cursor:pointer}
+    .d{font-size:12px}
+    @media(hover:none){ .a{position:relative} .a::after{content:'';position:absolute;inset:-8px} }
+  `;
+  // cores run in a vm context, so their arrays are cross-realm — normalize with host() before
+  // any strict comparison (the convention documented at the top of this file).
+  const r = host(c.tapFloorCandidates(css));
+  assert.deepEqual(r.tappable, ['a', 'b', 'c'], 'only cursor:pointer classes count as tappable');
+  assert.ok(r.covered.includes('a'), 'a rule inside @media(hover:none) counts as a treatment');
+  assert.ok(r.covered.includes('b'), 'an intrinsic min-height >= 24px counts');
+  assert.ok(r.uncovered.includes('c'), 'neither treatment nor size = uncovered');
+  assert.ok(!r.tappable.includes('d'), 'a non-tappable class is never considered');
+  // covered and uncovered must partition tappable — a class cannot be both or neither
+  assert.equal(r.covered.length + r.uncovered.length, r.tappable.length, 'the split must partition');
+  assert.ok(!r.covered.some(x => r.uncovered.includes(x)), 'no class may appear on both sides');
+  // A hover:none block containing NESTED braces must not end the slice early, or classes after
+  // the nested rule would be read as untreated.
+  const nested = `.z{cursor:pointer}\n@media(hover:none){ .y{color:red} .z{padding:9px} }`;
+  assert.ok(host(c.tapFloorCandidates(nested)).covered.includes('z'), 'the block walk must survive nesting');
+  // A treatment OUTSIDE any hover:none block must not count — that is a desktop rule.
+  const outside = `.q{cursor:pointer}\n.q{padding:9px}`;
+  assert.ok(host(c.tapFloorCandidates(outside)).uncovered.includes('q'), 'a desktop-only rule is not a touch treatment');
+});
+
+test('UXP-249 ratchet: tappable classes with NO touch treatment may only ever decrease', () => {
+  // UXP-248 fixed nine controls under the 24px floor and pinned those nine BY NAME; nothing stopped
+  // the tenth. This is the guard. It is a STATIC PROXY, and its limits are stated so a green run is
+  // not mistaken for a measured floor: it catches 8 of the 9 UXP-248 found by driving (the miss is
+  // .fm-title, cursor:text), and it is blind to an overlay CLIPPED by an ancestor and to a target
+  // SHAVED by a neighbour — both real UXP-248 findings. The hit-test driver stays the periodic audit.
+  const { uncovered } = host(c.tapFloorCandidates(_src));
+  // Measured in a browser under hover:none and found to clear the floor on their own padding, so
+  // they need no explicit treatment. Effective hit area, not bounding box.
+  const MEASURED_OK = {
+    'bm-item': '61x49', 'lp-item': '61x33', 'sh-chip': '61x24',
+  };
+  const rest = uncovered.filter(x => !(x in MEASURED_OK));
+  // 19 = classes carrying no explicit touch treatment and not yet measured. It may only ever be
+  // LOWERED — either by giving a control a treatment, or by measuring it and adding it above with
+  // its size. Never raised to admit a new untreated control.
+  const MAX = 19;
+  assert.ok(rest.length <= MAX,
+    `a tappable class has no touch treatment (${rest.length} > ${MAX}): ${rest.join(', ')}. ` +
+    'Give it one under @media(hover:none) (the ::after overlay recipe), or measure it in a browser ' +
+    'and add it to MEASURED_OK with its effective size.');
+  // the UXP-249 fix itself must stay put
+  assert.ok(_src.includes(".bm-help::after{content:'';position:absolute;inset:-5px}"),
+    'the brace-menu help glyph keeps its lifted hit area (measured 16x17 -> 24x25)');
+});
+
 test('UXP-247 ratchet: hand-rolled dialog shells may only ever decrease', () => {
   // The defect is not that 22 dialogs each owned a shell — it is that a NEW one could, and would
   // then miss every fix made at the shell (which is exactly how UXP-246 destroyed typed input in

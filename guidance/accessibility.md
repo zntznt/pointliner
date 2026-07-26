@@ -242,3 +242,30 @@ interactive base table is `role="grid"` (HTML-AAM maps its `tr`/`th`/`td` for
 free), computed cells are `aria-readonly`, and pills carry `tabindex="-1"` +
 Enter/Space activation via the same bubbling-`mousedown` dispatch the pencils
 use. Details in `ux-remediation.md` § UXP-19.
+
+---
+
+## Guardrail 5 has a CI guard now, and it is a proxy (UXP-249)
+
+`tapFloorCandidates` (a pure core, pinned in `tests/test.mjs`) lists every class declaring
+`cursor:pointer` that has **no touch treatment at all** — no rule inside an `@media(hover:none)`
+block and no explicit `height`/`min-height` ≥ 24px. A ratchet asserts that count may only ever
+**decrease**, so a newly added control with nothing done for touch fails CI instead of waiting for
+the next audit. This exists because UXP-248 fixed nine controls and pinned those nine **by name**,
+which did nothing about the tenth.
+
+**A green ratchet does NOT mean the floor is met.** Its accuracy was measured, not assumed: it
+catches **8 of the 9** classes UXP-248 found by driving. Three known limits, each a real finding
+from that audit:
+
+| it cannot see | the case that proves it |
+|---|---|
+| A control that is tappable without `cursor:pointer` | `.fm-title` — `cursor:text`, a click-to-rename field, measured 21px tall |
+| An overlay **clipped** by an ancestor | `.cap-dest-name-btn` declared the `-8px` overlay and was clipped twice: by its parent's corner rounding and by its own name ellipsis |
+| A target **shaved** by a neighbour's overlay | `.collapse-btn` is 24px wide and measured **23** — the bullet's own `-5px` overlay reached over it |
+
+Only a hit-test sees those. **The measurement of record is still the driver**: probe
+`elementFromPoint` outward from each control's centre in a `hover:none` context, never
+`getBoundingClientRect` — the guardrail's own `::after` escape hatch means a bounding box is wrong in
+both directions. Re-run it when touch work is done, and check `matchMedia('(hover:none)').matches`
+first, or the numbers describe the desktop layout.

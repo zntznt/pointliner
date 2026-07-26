@@ -2494,6 +2494,13 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
   /* suppress the iOS long-press text/callout on tappable widgets */
   .bullet,.collapse-btn,.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.fn-ref{-webkit-touch-callout:none}
 
+  /* ── UXP-249: found by the STATIC proxy rather than by driving. UXP-248 walked a list of surfaces
+     it could open; `.bm-help` lives in the caret-anchored `{` menu, which no `open*()` entry point
+     reaches, so that audit never saw it. MEASURED first: 16x17 effective, 5 instances. Only the hit
+     area moves — it is a 16px circular glyph and its look is the point. */
+  .bm-help{position:relative}
+  .bm-help::after{content:'';position:absolute;inset:-5px}
+
   /* ── UXP-248: the 24px tap floor, for the controls the enlargement pass never reached ──
      Found by auditing guardrail 5 across every surface rather than one screen: nine SHARED
      control classes measured under the WCAG 2.2 floor on touch, fanning out to 100+ instances.
@@ -22644,6 +22651,46 @@ function tapRadius(visualR, nearestDist, floor = GRAPH_TAP_MIN / 2) {
   const v = Number.isFinite(visualR) && visualR > 0 ? visualR : 0;
   if (!Number.isFinite(nearestDist)) return Math.max(v, floor);   // a lone node has no neighbour
   return Math.max(v, Math.min(floor, nearestDist / 2 - 1));
+}
+
+// ─── UXP-249: the tap-floor guard ─────────────────────────────────────────────────────────────
+// UXP-248 fixed nine controls under the 24px floor and pinned those nine BY NAME. Nothing stopped
+// the tenth. The floor is properly checkable only by hit-testing the running app (the guardrail lets
+// an invisible `::after` extend a target, so a bounding box lies in both directions), and CI here is
+// plain `node --test` with no browser — putting Playwright in the repo would contradict CLAUDE.md's
+// "verification artifacts stay out of the repo" and the whole dependency-free identity.
+//
+// So this is a STATIC PROXY, and its accuracy is measured rather than assumed: `cursor:pointer`
+// catches 8 of the 9 classes UXP-248 found by driving (the miss is `.fm-title`, which is
+// `cursor:text` — a click-to-rename field). It is deliberately blind to two things a hit-test sees:
+// an overlay CLIPPED by an ancestor's overflow, and a target SHAVED by a neighbour's overlay. Both
+// were real UXP-248 findings, so the hit-test driver stays the periodic audit — a green ratchet here
+// means "nobody added a control with no touch treatment at all", not "the floor is met".
+//
+// Pure: CSS text in, class names out.
+function tapFloorCandidates(cssText) {
+  const src = String(cssText || '');
+  // every class whose OWN rule declares cursor:pointer — the static stand-in for "tappable"
+  const tappable = new Set();
+  for (const m of src.matchAll(/\.([a-zA-Z][\w-]*)\{([^}]*)\}/g)) {
+    if (m[2].includes('cursor:pointer')) tappable.add(m[1]);
+  }
+  // everything inside any @media(hover:none) block — where a touch treatment must live
+  let touch = '';
+  for (const m of src.matchAll(/@media\(hover:none\)\{/g)) {
+    // walk braces from the block open so a nested rule cannot end the slice early
+    let i = m.index + m[0].length, depth = 1;
+    while (i < src.length && depth > 0) { const ch = src[i]; if (ch === '{') depth++; else if (ch === '}') depth--; i++; }
+    touch += src.slice(m.index, i);
+  }
+  const covered = [], uncovered = [];
+  for (const cls of [...tappable].sort()) {
+    const own = new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])');
+    // covered = an intrinsic >=24px height/min-height anywhere, or ANY rule under hover:none
+    const intrinsic = new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])[^{]*\\{[^}]*(?:min-height|height):\\s*(?:2[4-9]|[3-9]\\d|\\d{3,})px').test(src);
+    (intrinsic || own.test(touch) ? covered : uncovered).push(cls);
+  }
+  return { tappable: [...tappable].sort(), covered, uncovered };
 }
 
 // Rescale a position map to fit [margin, dim-margin] on each axis, preserving the
