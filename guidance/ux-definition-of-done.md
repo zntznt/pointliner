@@ -231,6 +231,20 @@ const SURFACES = [
   { sel: '#search-wrap', touch: false, overflows: true, note: 'search field (focus overlay BY DESIGN)', setup: `
       const sb = document.getElementById('search-box'); sb.focus();
       sb.value = 'is:todo'; sb.dispatchEvent(new Event('input', { bubbles: true }));` },
+  // ── round 2 (UXP-260/261): run every hover:none surface in BOTH input modes. Three defects so
+  // far have been a narrow-window remedy gated on touch, so a mouse row is not a duplicate of the
+  // touch row — it is the row that finds them.
+  { sel: '.mt-baseheader', touch: true,  wraps: true, note: 'base header, touch', setup: `mkBase();` },
+  { sel: '.mt-baseheader', touch: false, wraps: true, note: 'base header, MOUSE — found UXP-260', setup: `mkBase();` },
+  { sel: '.mt-base-views', touch: true,  wraps: true, note: 'Table/Board/Cards/Calendar switcher', setup: `mkBase();` },
+  { sel: '.graph-head',  touch: false, note: 'link graph header', setup: `mkLinks(); openGraph();` },
+  { sel: '.tl-toggles',  touch: false, note: 'timeline filter toggles', setup: `mkDated(); openTimeline();` },
+  { sel: '.tl-toggles',  touch: true,  note: 'timeline filter toggles, touch', setup: `mkDated(); openTimeline();` },
+  { sel: '#file-menu .guide-body', touch: false, note: 'File menu two-pane body', setup: `openFileMenu();` },
+  { sel: '#io-card .guide-body',   touch: false, note: 'concept guide two-pane — found UXP-261', setup: `openGuide('nav-move');` },
+  { sel: '#io-card .builder-wrap', touch: false, note: 'All commands two-pane', setup: `
+      mkLinks(); document.querySelector('.node-content')?.focus();
+      await new Promise(r => setTimeout(r, 120)); document.getElementById('btn-builder').click();` },
 ];
 const WIDTHS = [1400, 1100, 950, 820, 700, 620, 560, 510, 430, 390, 360, 320];
 
@@ -297,8 +311,15 @@ const MEASURE = `window.__measure = async function (sel) {
     if (!t || !(t === el || el.contains(t))) unreachable.push(name(el));
   }
   document.activeElement?.blur?.();
+  // UXP-261: does the surface (or its sheet) hang BELOW the window? No other column caught that --
+  // the offscreen column only walks controls, and the guide's buried nav buttons surfaced as
+  // "unreachable" with nothing in the table explaining why. A sheet sized for one top margin while
+  // carrying another is invisible until you subtract innerHeight.
+  // (No backticks in this string: it lives inside a template literal.)
+  const sheet = host.closest('#io-card, #file-menu, #graph-panel, #timeline-panel') || host;
+  const past = Math.round(Math.max(sheet.getBoundingClientRect().bottom, hr.bottom) - innerHeight);
   return { kids: inFlow.length, h: Math.round(hr.height), lines: tops.length, overlaps,
-           spill, spiller, scrollOver, offscreen, unreachable };
+           spill, spiller, scrollOver, offscreen, unreachable, past: Math.max(0, past) };
 };`;
 
 const SEED = `
@@ -306,11 +327,24 @@ const SEED = `
   root.children = [];
   for (const t of ['Alpha point','Beta point with a longer title','Gamma']) {
     const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
-  markDirty(); render();`;
+  markDirty(); render();
+  window.mkBase = () => { root.children = [];
+    const rows = ['| Task | Status | Due | Cost |', '| --- | --- | --- | --- |',
+                  '| Fix the roof | TODO | 2026-08-01 | 1200 |', '| Paint | DONE | 2026-08-09 | 300 |'];
+    const n = mkNode(rows.join(String.fromCharCode(10))); n.type = 'base';
+    root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); markDirty(); render(); };
+  window.mkLinks = () => { root.children = [];
+    for (const t of ['Target one', 'See [[Target one]] and [[Nowhere]]', 'Also [[Target one]]']) {
+      const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    markDirty(); render(); };
+  window.mkDated = () => { root.children = [];
+    for (const t of ['Ship it due:2026-08-01', 'Draft due:2026-09-15', 'Review start:2026-07-30']) {
+      const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    markDirty(); render(); };`;
 
 for (const s of SURFACES) {
   console.log(`\n══ ${s.sel}  — ${s.note}${s.touch ? '  [touch]' : ''}`);
-  console.log('   width kids   h lines  overlaps                 spill  scroll  offscreen        unreachable');
+  console.log('   width kids   h lines  overlaps                 spill  scroll  past  offscreen        unreachable');
   for (const w of WIDTHS) {
     const ctx = await b.newContext({ viewport: { width: w, height: 640 }, hasTouch: s.touch, isMobile: s.touch });
     const p = await ctx.newPage();
@@ -324,9 +358,9 @@ for (const s of SURFACES) {
     await ctx.close();
     if (r.missing) { console.log(`   ${String(w).padStart(5)}  (not in the DOM) ${setupErr}`); continue; }
     if (r.hidden)  { console.log(`   ${String(w).padStart(5)}  (hidden at this width)`); continue; }
-    const fail = r.overlaps.length || r.offscreen.length || r.unreachable.length
+    const fail = r.overlaps.length || r.offscreen.length || r.unreachable.length || r.past > 1
               || (r.spill > 1 && !s.overflows) || (r.lines > 1 && !s.wraps);
-    console.log(`   ${String(w).padStart(5)} ${String(r.kids).padStart(4)} ${String(r.h).padStart(3)} ${String(r.lines).padStart(4)}   ${(r.overlaps.join(',') || '-').padEnd(23)} ${String(r.spill).padStart(4)}${(r.spiller || '').slice(0,9).padStart(10)}  ${String(r.scrollOver).padStart(5)}  ${(r.offscreen.join(',') || '-').padEnd(15)}  ${r.unreachable.join(',') || '-'}${fail ? '   <== FAIL' : ''}`);
+    console.log(`   ${String(w).padStart(5)} ${String(r.kids).padStart(4)} ${String(r.h).padStart(3)} ${String(r.lines).padStart(4)}   ${(r.overlaps.join(',') || '-').padEnd(23)} ${String(r.spill).padStart(4)}${(r.spiller || '').slice(0,9).padStart(10)}  ${String(r.scrollOver).padStart(5)}  ${String(r.past).padStart(4)}  ${(r.offscreen.join(',') || '-').padEnd(15)}  ${r.unreachable.join(',') || '-'}${fail ? '   <== FAIL' : ''}`);
   }
 }
 await b.close();
