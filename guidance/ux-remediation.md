@@ -63,11 +63,12 @@ acting (controls drift).
 > style was read immediately after Tab, mid-transition, still at the unfocused value. With a settle
 > delay the count went to zero. Nothing was filed, because there was nothing wrong.
 >
-> **P2-2 (the menu teaches label + description + typed form) is NOT yet audited.** The driver could
-> not open the `/` or `@` menus headless (they render into a lazily-created `#slash-menu` on real
-> keystrokes at a real caret) and returned "0 items", which is the driver being blind rather than a
-> measurement — the same failure mode the UXP-246 pass caught with a control. No count from that run
-> should be quoted. It needs a driver that opens the menus through the app's own trigger path.
+> **P2-2 (the menu teaches label + description + typed form) is now audited — see UXP-250, closed.**
+> The earlier "driver could not open the menus" note was half right: the driver did have two real
+> bugs, but the headline symptom was the APP behaving correctly. `/` and `@` do not open one menu;
+> `checkSlash` branches on the verbosity tier, and in the DEFAULT (guided) tier it deliberately
+> routes to the Builder instead of `#slash-menu`. Auditing `#slash-menu` in the default tier
+> reports "menu did not open" forever.
 >
 > A fourth pass continued by defect CLASS. Two rules were triaged by measurement before picking one:
 > **P3-1 accessible name** came back **0 unnamed across 25 surfaces** (the accessibility work held,
@@ -75,7 +76,7 @@ acting (controls drift).
 > classes under it**. That became **UXP-248**, closed and archived. The floor's lack of an automated
 > guard is **UXP-249**, open.
 >
-> **As of 2026-07-25 the register holds three open defects (UXP-247, UXP-249 structural; UXP-20 standing guard).**
+> **As of 2026-07-26 the register holds three open defects (UXP-247, UXP-249 structural; UXP-20 standing guard).**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)

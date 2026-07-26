@@ -17163,6 +17163,36 @@ test('column header carries the visible menu door; agenda groups carry kind labe
 });
 
 // ── Mobile neophyte batch: first-run tap targets + duplicate-inbox guard ──
+test('UXP-250 the Guided command menu teaches, not just names', () => {
+  // P2-2 says every menu item shows label + description + typed form. The surface map is the
+  // finding: `/` and `@` do not open one menu, they branch on the verbosity tier --
+  //   guided   -> openBuilder(trigger)   (the Builder IS the menu, and it is the DEFAULT tier)
+  //   standard -> renderSlashMenu()      (#slash-menu: per-row desc + typed form in the footer)
+  //   lean     -> renderLeanSlashTip()   (no menu, by design)
+  // Guided rendered `icon + label` only, so the beginner tier taught strictly LESS than Standard.
+  assert.ok(_src.includes("if (isGuided()) { hideSlashMenu(); builderState ="),
+    'the tier branch this rule turns on must still be here');
+  // The row now carries all three parts, in the same .cmd-info shape the slash menu already uses
+  // (reuse the row pattern, do not invent a second one).
+  assert.ok(_src.includes("'<span class=\"cmd-info\">' +"), 'the builder row must use the shared cmd-info shape');
+  assert.ok(_src.includes("'<span class=\"cmd-desc\">' + escHtml(cmd.desc || '') + '</span>'"),
+    'every builder row must render its description');
+  assert.ok(_src.includes("'<span class=\"builder-typed\">' + escHtml(typed) + '</span>'"),
+    'every builder row must render its typed form');
+  // Fallback so a command with no markdown equivalent still shows the verb you would type.
+  assert.ok(_src.includes("const typed = cmd.ex ? cmd.ex : (cmd.trigger || '') + cmd.id;"),
+    'a command with no `ex` must fall back to its typed verb, never to blank');
+  // Unclamped, the long entries ran to five lines and the list lost its rhythm.
+  assert.ok(/-webkit-line-clamp:2/.test(_src), 'the row description must be clamped so rows stay even');
+  // The five panel verbs that had NO typed form at all: their footer taught description only.
+  for (const id of ['querybase', 'journal', 'variables', 'builder', 'units']) {
+    assert.ok(_src.includes("ex:'/" + id + "'"), `/${id} must carry a typed form for the footer to teach`);
+  }
+  // The footer only prints a typed form when the command has one, which is why the five mattered.
+  assert.ok(_src.includes("if (cmd.ex) html += `<span class=\"sf-ex\">"),
+    'the slash footer prints the typed form conditionally — so every command needs one');
+});
+
 test('UXP-248 the 24px tap floor holds for the shared controls the enlargement pass missed', () => {
   // Found by auditing guardrail 5 across every surface instead of one screen: nine SHARED control
   // classes measured under the WCAG 2.2 floor on touch, fanning out to 100+ instances. Measured by

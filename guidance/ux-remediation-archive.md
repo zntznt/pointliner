@@ -3307,3 +3307,24 @@ When an item closes, flip its matrix cell in `ux-discipline.md` §9 to ✅ and d
 - **One reported failure was a measurement artifact, and is recorded as such.** A `.guide-nav-btn` reading 23px turned out to be clipped at the scroll-pane boundary; scrolled into view it measures **31px visual, 31px effective**. Chased down rather than counted.
 - **Verified by driving: 16 under the floor → 0**, plus **8/8 on the two ways enlarging a target goes wrong** — no prop-chip answers at another row's centre, every bullet still owns its own centre, the chevron did not take the bullet's centre, a tap in the chevron's *new* extension really does collapse, and desktop is untouched (no overlay at all off touch; `.guide-nav-btn` stays 23px there vs 31px on touch).
 - **Tests 1607 → 1608.** The absence of an automated guard for the *next* control is filed as **UXP-249**.
+
+### UXP-250 ✓ The Guided command menu named commands without teaching them 🟡 [menus] (RESOLVED 2026-07-26)
+- **The surface map WAS the finding.** P2-2 says every menu item shows label + description + typed form, and the natural reading is that there is one `/`-menu to check. There is not. `checkSlash` branches on the verbosity tier:
+
+  | tier | what `/` and `@` open | teaches |
+  |---|---|---|
+  | **guided** (the DEFAULT) | `hideSlashMenu(); openBuilder(trigger)` — the Builder IS the menu | label only |
+  | standard | `renderSlashMenu()` — `#slash-menu`, per-row description, typed form in the footer | all three |
+  | lean | `renderLeanSlashTip()` — no menu at all, by design | n/a (documented floor) |
+
+- **The defect:** the Guided builder row rendered `<span class="cmd-icon">/</span><span class="cmd-label">Bullet</span>` and nothing else — **0 of 72 rows carried a description**, on both triggers, with no detail pane and no `title`. So the tier named *Guided*, the default, the one aimed at beginners, taught **strictly less** than Standard, where every row has a description. That inverts the verbosity ladder's own promise.
+- **A second, smaller gap:** `slashFooterHTML` prints the typed form only `if (cmd.ex)`, and **5 block commands had no `ex`** — `/querybase`, `/journal`, `/variables`, `/builder`, `/units`. All five are panel verbs with no markdown equivalent, so their honest typed form is the verb itself. In Standard their footer taught description only.
+- **Fixed by reuse, not invention.** The builder row now uses the same `.cmd-info` shape the slash menu already renders (label + description stacked), plus a right-aligned mono `builder-typed`. A command with no `ex` falls back to `(trigger + id)`, so a row can never show a blank typed form. The five verbs gained a real `ex`, which closes the gap in Standard too.
+- **The description is clamped to two lines.** Unclamped, the long entries (Secret, Base, Paragraph) ran to five lines and the list lost its even rhythm — rows reached ~110px. Clamped, they are 41–55px. Checked on a rendered screenshot, not by reasoning about line counts.
+- **The driver took four attempts, and three of its failures were instrument bugs worth recording:**
+  1. Typing `/` from the outside never reached the point, because **`/` is also a global shortcut that focuses the command search** — focus landed on `.builder-search`.
+  2. The node's `input` handler bails on its first line unless `content.dataset.editing` is set, and `enterEdit()` schedules a reconcile that **wipes that flag**, so any awaited pause between entering edit mode and typing loses it.
+  3. The first reader reported "72 of 72 rows have no typed form" **after** the fix shipped — it was querying `.cmd-ex`, and the new element is `.builder-typed`. Selector blindness, caught by the numbers being implausibly total.
+  The one symptom that was NOT a driver bug was "the menu did not open" in the default tier: that is the app correctly routing to the Builder.
+- **Verified by driving, per tier:** guided `/` and `@` → **72 items, 0 without a label, 0 without a description, 0 without a typed form**; standard `/` → 29 items all described, footer teaching the typed form; standard `@` → 21 items, same (re-checked on a clean page, because the loop's first reading was polluted by the previous iteration's builder); lean → renders nothing, by design. Command pools: **0 of 50 commands now lack a description or a typed form** (was 5).
+- **Tests 1608 → 1609.**
