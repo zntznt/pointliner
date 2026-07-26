@@ -229,19 +229,32 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    negative margins keep the Done button's absolute count badge (top/right -4px) from being
    clipped by overflow, without shifting the buttons. The bar only ever scrolls when the icons
    don't fit (narrow phone, or the 8th Chronicle button); at any comfortable width it is inert. */
-#tbtn-cluster{display:flex;align-items:center;gap:7px;min-width:0;flex-shrink:1;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;padding:5px 5px 0 0;margin:-5px -5px 0 0;overscroll-behavior-x:contain}
-#tbtn-cluster::-webkit-scrollbar{display:none}
-#tbtn-cluster>*{flex-shrink:0}
-/* UXP-258: the strip is the toolbar's ONLY yielding element, so on a phone it is genuinely
-   scrolled, not inert — and its scrollbar is hidden. The fade at an overflowing edge is the
-   whole affordance (P4: no silent truncation). It is class-driven by syncToolbarScrollCue
-   rather than always painted, because a permanent fade would claim there is more to see when
-   the icons fit. scroll-padding keeps a keyboard-focused button clear of the fade when the
-   browser scrolls it into view. */
-#tbtn-cluster{scroll-padding-inline:28px}
-#tbtn-cluster.tb-more-r{mask-image:linear-gradient(to left,transparent 0,#000 28px)}
-#tbtn-cluster.tb-more-l{mask-image:linear-gradient(to right,transparent 0,#000 28px)}
-#tbtn-cluster.tb-more-l.tb-more-r{mask-image:linear-gradient(to right,transparent 0,#000 28px,#000 calc(100% - 28px),transparent 100%)}
+/* Per-strip: only the gap and, for the toolbar, the focus-ring escape. Everything structural is
+   in .scroll-strip below — including display:flex, which is NOT optional: without it the strip is
+   a block box and the buttons stack vertically (measured: the quick bar rendered 213px tall). */
+#tbtn-cluster{gap:7px;padding:5px 5px 0 0;margin:-5px -5px 0 0}
+#eb-tools{gap:3px}
+#qb-tools{gap:4px}
+/* ── .scroll-strip: the one way a fixed bar yields (UXP-258, UXP-259) ────────────────────────
+   Three bars have the same shape — a frame that must not change height, holding more controls
+   than a narrow phone can fit: #toolbar-row/#tbtn-cluster, #edit-bar/#eb-tools,
+   #quick-bar/#qb-tools. They share ONE recipe rather than three near-copies, because the
+   toolbar's own history is the argument: the dual-home drift this file warns about is exactly
+   how #edit-bar kept a 38px floor tuned for seven buttons while growing to nine.
+
+   min-width:0 lets it shrink below its content width inside the flex row; flex-shrink:1 makes
+   it the element that gives; the scrollbar is hidden (a short icon strip, not a scroll region
+   a user reads a bar for). Because it IS hidden, the edge fade below is the entire affordance
+   (P4: no silent truncation) — and it is class-driven by syncScrollCue off the live scroll
+   position, never painted standing, or it would claim there is more to see when the icons fit.
+   scroll-padding-inline is the declarative half of keeping a focused button clear of the fade;
+   the focusin handler is the half that actually works (Chromium ignores the former). */
+.scroll-strip{display:flex;align-items:center;min-width:0;flex-shrink:1;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;overscroll-behavior-x:contain;scroll-padding-inline:28px}
+.scroll-strip::-webkit-scrollbar{display:none}
+.scroll-strip>*{flex-shrink:0}
+.scroll-strip.more-r{mask-image:linear-gradient(to left,transparent 0,#000 28px)}
+.scroll-strip.more-l{mask-image:linear-gradient(to right,transparent 0,#000 28px)}
+.scroll-strip.more-l.more-r{mask-image:linear-gradient(to right,transparent 0,#000 28px,#000 calc(100% - 28px),transparent 100%)}
 /* MOBILE-2: the "N done hidden" count badge on the Done button. A calm accent-tinted corner
    count that appears only when checked items are hidden, so the cue and the recovery control
    (this same toggle) are one element. Hidden by default; .has-hidden reveals it. */
@@ -2205,7 +2218,7 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   /* UXP-258: the toolbar is ONE strip at every width. #827 item 14 let the row wrap here,
      because the cluster's overflow was a scrollbar-less clip with no affordance — icons past
      the edge simply vanished. The strip now scrolls (base #tbtn-cluster rule) and says so with
-     an edge fade driven by syncToolbarScrollCue, so the reason for wrapping is gone: a second
+     an edge fade driven by syncScrollCue, so the reason for wrapping is gone: a second
      row changes the toolbar's HEIGHT as buttons accumulate, which moves every surface below it
      and reads as breakage. Scrolling degrades in one axis instead (P1). No rules here — the
      base strip already carries flex-shrink:1 / min-width:0 / overflow-x:auto. */
@@ -2648,7 +2661,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
       <button class="lvl-btn" data-lvl="3" aria-label="Show 3 levels">3</button>
       <button class="lvl-btn" id="lvl-all" title="Expand everything" aria-label="Show all levels">All</button>
     </div>
-    <div id="tbtn-cluster">
+    <div id="tbtn-cluster" class="scroll-strip">
     <button id="btn-builder" class="tbtn-toggle" title="All commands: browse and insert anything" aria-label="All commands" aria-pressed="false"><i class="fa-solid fa-list-check"></i></button>
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
@@ -2819,17 +2832,24 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 <!-- touch edit bar: while a single point is being edited on touch, a strip of structural
      controls (outdent / indent / move up / move down) pinned above the on-screen keyboard,
      so reordering and nesting never need the fiddly bullet drag. Touch-only; hidden otherwise. -->
+<!-- UXP-259: the 8 tools scroll; Done does NOT. `.eb-btn` bottoms out at min-width:38px (a floor
+     tuned in #437 for SEVEN buttons), so at 320px the tail ran off the screen and Done — the only
+     labelled exit from edit mode, with no Escape key on touch — was untappable. The tools go in a
+     .scroll-strip and Done stays outside it, which is the toolbar's own shape: a frame that holds
+     position with exactly one element that yields. -->
 <div id="edit-bar" role="toolbar" aria-label="Edit point" aria-hidden="true">
-  <button class="eb-btn" id="eb-insert" title="Insert a pill" aria-label="Insert a pill">@</button>
-  <button class="eb-btn" id="eb-todo" title="Toggle to-do" aria-label="Toggle to-do">☑</button>
-  <span class="eb-sep"></span>
-  <button class="eb-btn" id="eb-outdent" title="Outdent" aria-label="Outdent point">⇤</button>
-  <button class="eb-btn" id="eb-indent"  title="Indent"  aria-label="Indent point">⇥</button>
-  <span class="eb-sep"></span>
-  <button class="eb-btn" id="eb-up"   title="Move up"   aria-label="Move point up">↑</button>
-  <button class="eb-btn" id="eb-down" title="Move down" aria-label="Move point down">↓</button>
-  <span class="eb-sep"></span>
-  <button class="eb-btn" id="eb-undo" title="Undo" aria-label="Undo">↺</button><!-- ζ: the Ctrl/Cmd+Z twin for touch (dead on a phone otherwise); a literal ↺ since bar buttons bypass paintIcon -->
+  <div id="eb-tools" class="scroll-strip">
+    <button class="eb-btn" id="eb-insert" title="Insert a pill" aria-label="Insert a pill">@</button>
+    <button class="eb-btn" id="eb-todo" title="Toggle to-do" aria-label="Toggle to-do">☑</button>
+    <span class="eb-sep"></span>
+    <button class="eb-btn" id="eb-outdent" title="Outdent" aria-label="Outdent point">⇤</button>
+    <button class="eb-btn" id="eb-indent"  title="Indent"  aria-label="Indent point">⇥</button>
+    <span class="eb-sep"></span>
+    <button class="eb-btn" id="eb-up"   title="Move up"   aria-label="Move point up">↑</button>
+    <button class="eb-btn" id="eb-down" title="Move down" aria-label="Move point down">↓</button>
+    <span class="eb-sep"></span>
+    <button class="eb-btn" id="eb-undo" title="Undo" aria-label="Undo">↺</button><!-- ζ: the Ctrl/Cmd+Z twin for touch (dead on a phone otherwise); a literal ↺ since bar buttons bypass paintIcon -->
+  </div>
   <span class="eb-spacer"></span>
   <button class="eb-btn" id="eb-done" title="Done editing" aria-label="Done editing">Done</button>
 </div>
@@ -2837,12 +2857,18 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
      DISPLAY mode (the edit bar takes its place while editing, so there is one bottom bar
      at a time): capture, new point, new point + the @ insert menu, help. The corner ?
      button folds in here on touch, so the bottom edge holds one surface, not two. -->
+<!-- UXP-259: same shape as the edit bar above — tools scroll, the trailing button holds position.
+     Six buttons still clear 320px today, so this half is PREVENTIVE: the two bars are declared
+     twins ("same envelope, same .eb-btn controls"), and twins that narrow differently is exactly
+     the P1 break that let the edit bar drift to nine buttons unnoticed. -->
 <div id="quick-bar" role="toolbar" aria-label="Quick actions" aria-hidden="true">
-  <button class="eb-btn" id="qb-capture" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox" aria-hidden="true"></i></button>
-  <button class="eb-btn" id="qb-new" title="New point" aria-label="New point at the end">+</button>
-  <button class="eb-btn" id="qb-insert" title="New point with the insert menu" aria-label="New point with the insert menu">@</button>
-  <button class="eb-btn" id="qb-roll" title="Roll templates" aria-label="Insert a roll template" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-dice-d20" aria-hidden="true"></i></button><!-- #812: fa-dice is NOT in the FA subset (painted blank); fa-dice-d20 is -->
-  <button class="eb-btn" id="qb-undo" title="Undo" aria-label="Undo">↺</button><!-- ζ: the Ctrl/Cmd+Z twin for touch; makes the "one undo takes it back" toasts true on a phone -->
+  <div id="qb-tools" class="scroll-strip">
+    <button class="eb-btn" id="qb-capture" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox" aria-hidden="true"></i></button>
+    <button class="eb-btn" id="qb-new" title="New point" aria-label="New point at the end">+</button>
+    <button class="eb-btn" id="qb-insert" title="New point with the insert menu" aria-label="New point with the insert menu">@</button>
+    <button class="eb-btn" id="qb-roll" title="Roll templates" aria-label="Insert a roll template" aria-haspopup="true" aria-expanded="false"><i class="fa-solid fa-dice-d20" aria-hidden="true"></i></button><!-- #812: fa-dice is NOT in the FA subset (painted blank); fa-dice-d20 is -->
+    <button class="eb-btn" id="qb-undo" title="Undo" aria-label="Undo">↺</button><!-- ζ: the Ctrl/Cmd+Z twin for touch; makes the "one undo takes it back" toasts true on a phone -->
+  </div>
   <span class="eb-spacer"></span>
   <button class="eb-btn" id="qb-help" title="Help &amp; guide" aria-label="Help and concept guide">?</button>
 </div>
@@ -15195,7 +15221,7 @@ function syncChronicleButton() {
   const btn = document.getElementById('btn-chronicle'); if (!btn) return;
   const bound = !!chronicleHome();
   btn.style.display = bound ? '' : 'none';
-  syncToolbarScrollCue();  // an 11th visible icon can push the strip into overflow
+  syncScrollCues();  // an 11th visible icon can push the strip into overflow
   if (!bound && chronicleOpen) closeChronicleStrip();
 }
 function toggleChronicleStrip() { if (chronicleOpen) closeChronicleStrip(); else openChronicleStrip(); }
@@ -18090,6 +18116,9 @@ function updateEditBar() {
   updateQuickBar();   // #566: the quick bar and the edit bar swap — one bottom bar at a time
   if (!show) return;
   positionEditBar();
+  // UXP-259: the bar is display:none until .on, so a strip measured while hidden reports
+  // clientWidth 0 and the cue would be wrong on first show. Re-sync now that it is visible.
+  syncScrollCue(document.getElementById('eb-tools'));
   // Disable dead-end directions (P4: a control that would do nothing is disabled, not silently inert).
   const parent = parentOf(id), idx = parent ? parent.children.findIndex(c => c.id === id) : -1;
   const canIndent  = !!parent && idx > 0;
@@ -18220,6 +18249,7 @@ function updateQuickBar() {
   quickBar.classList.toggle('on', show);
   quickBar.setAttribute('aria-hidden', show ? 'false' : 'true');
   document.documentElement.style.setProperty('--qbar-h', quickBarHeight() + 'px');
+  if (show) syncScrollCue(document.getElementById('qb-tools'));   // UXP-259: see updateEditBar
   syncBlPanelBottom();
   syncBodyPadBottom();
 }
@@ -34049,19 +34079,47 @@ function applyToolbarPrefs() {
       if (cluster) cluster.appendChild(btn);  // reorder buttons to match TOOLBAR_FEATURES order
     }
   });
-  syncToolbarScrollCue();  // hiding/showing buttons changes whether the strip overflows
+  syncScrollCues();  // hiding/showing buttons changes whether the strip overflows
 }
-/* UXP-258: the icon strip is one scrolling row at every width — it never wraps to a second line,
-   because a toolbar that changes height as buttons accumulate moves every surface below it. The
-   scrollbar is hidden, so the edge fade is the only thing that says "there is more this way", and
-   it has to track the live scroll position: painted permanently it would lie whenever the icons
-   fit. Toggled here, read by the .tb-more-l/.tb-more-r rules. */
-function syncToolbarScrollCue() {
-  const c = document.getElementById('tbtn-cluster');
-  if (!c) return;
-  const over = c.scrollWidth - c.clientWidth;
-  c.classList.toggle('tb-more-l', over > 1 && c.scrollLeft > 1);
-  c.classList.toggle('tb-more-r', over > 1 && c.scrollLeft < over - 1);
+/* UXP-258/259: a .scroll-strip never wraps to a second line — a bar that changes height as buttons
+   accumulate moves every surface around it. It scrolls instead, and since its scrollbar is hidden
+   the edge fade is the only thing that says "there is more this way". The fade must track the live
+   scroll position: painted permanently it would lie whenever the controls fit.
+
+   The decision is pure, so it is testable without a DOM. The 1px slack on both comparisons is not
+   cosmetic: sub-pixel layout leaves scrollLeft a fraction short of its own maximum, and an exact
+   test paints a right-hand fade on a strip that is already scrolled to the end. */
+function scrollCueClasses(scrollLeft, scrollWidth, clientWidth) {
+  const over = scrollWidth - clientWidth;
+  if (!(over > 1)) return { left: false, right: false };   // fits: no fade, or it claims a lie
+  return { left: scrollLeft > 1, right: scrollLeft < over - 1 };
+}
+function syncScrollCue(el) {
+  if (!el) return;
+  const cue = scrollCueClasses(el.scrollLeft, el.scrollWidth, el.clientWidth);
+  el.classList.toggle('more-l', cue.left);
+  el.classList.toggle('more-r', cue.right);
+}
+function syncScrollCues() { document.querySelectorAll('.scroll-strip').forEach(syncScrollCue); }
+/* Wire one strip: re-sync on scroll and on resize, and reveal a focused control clear of the fade.
+   That last one is load-bearing, not belt-and-braces — `scroll-padding-inline` is declared on
+   .scroll-strip and Chromium's own focus scroll ignores it (driven: focusing the 8th toolbar icon
+   left it 8px past the clip with scrollLeft still 0). scrollLeft clamps itself at both ends, so
+   the first and last controls sit flush, which is right because no fade is drawn there. */
+function wireScrollStrip(el) {
+  if (!el) return;
+  el.addEventListener('scroll', () => syncScrollCue(el), { passive: true });
+  el.addEventListener('focusin', e => {
+    const btn = e.target.closest('button,[tabindex]');
+    if (!btn || !el.contains(btn)) return;
+    const m = 28, r = btn.getBoundingClientRect(), rc = el.getBoundingClientRect();
+    if (r.right > rc.right - m) el.scrollLeft += r.right - (rc.right - m);
+    else if (r.left < rc.left + m) el.scrollLeft -= (rc.left + m) - r.left;
+    syncScrollCue(el);
+  });
+  try { new ResizeObserver(() => syncScrollCue(el)).observe(el); }
+  catch (_) { window.addEventListener('resize', () => syncScrollCue(el)); }
+  syncScrollCue(el);
 }
 function buildToolbarChooser() {
   const host = document.getElementById('fm-toolbar-opts');
@@ -34523,24 +34581,8 @@ const TB_GUIDE_MAP = {
   'btn-done': 'appearance-controls',
   'btn-notes': 'notes',
 };
-// UXP-258: keep the edge fade honest — on scroll, on resize, and once at boot.
-document.getElementById('tbtn-cluster').addEventListener('scroll', syncToolbarScrollCue, { passive: true });
-/* P3: `scroll-padding-inline` is supposed to keep a keyboard-focused button clear of the fade, but
-   driving it showed Chromium's own focus scroll ignoring it — focusing the 8th icon left it 8px
-   past the strip edge with scrollLeft still 0, i.e. clipped and fading. So reveal it explicitly.
-   The 28px margin is the fade width in the .tb-more-* rules; scrollLeft clamps itself at both ends,
-   so the first and last icons simply sit flush, which is correct because no fade is drawn there. */
-document.getElementById('tbtn-cluster').addEventListener('focusin', e => {
-  const c = e.currentTarget, btn = e.target.closest('button');
-  if (!btn) return;
-  const m = 28, r = btn.getBoundingClientRect(), rc = c.getBoundingClientRect();
-  if (r.right > rc.right - m) c.scrollLeft += r.right - (rc.right - m);
-  else if (r.left < rc.left + m) c.scrollLeft -= (rc.left + m) - r.left;
-  syncToolbarScrollCue();
-});
-try { new ResizeObserver(syncToolbarScrollCue).observe(document.getElementById('tbtn-cluster')); }
-catch (_) { window.addEventListener('resize', syncToolbarScrollCue); }
-syncToolbarScrollCue();
+// UXP-258/259: every .scroll-strip gets the same wiring — the toolbar icons and both bottom bars.
+document.querySelectorAll('.scroll-strip').forEach(wireScrollStrip);
 document.getElementById('tbtn-cluster').addEventListener('contextmenu', e => {
   const btn = e.target.closest('button');
   if (!btn) return;

@@ -116,44 +116,74 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **OPML round-trip** preserved for any new persisted data (serialize + parse in the same change). *(`CLAUDE.md`)*
 - [ ] **Design-language conformance** for any visual change (`guidance/design-language.md`): colors via tokens (semantic `--ok/--warn/--bad/--info`, `--acc-fg` on accent backgrounds, radii/shadows from the token sets), new color pairs ship their contrast ratio, the palette change lands in **both** homes (CSS *and* the `applyTheme`/`applyAccentCSS` strings), and both-mode + forced-theme screenshots were checked. *(design-language §3/§6)*
 - [ ] **Drift guards stay green**: `node --test tests/test.mjs` carries the design pins (dual-home token parity, radius/weight/size floors, and the em-dash ban — now enforced across **all** user-facing copy: `README.md`, the whole `guide/` tree, every GUIDE body/example, and every command `desc`, not the three narrow spots it used to spot-check) and CI runs them on every PR. *(tests/test.mjs)*
-- [ ] **Layout swept across widths** for any change to a fixed-height bar, a flex row, or a breakpoint: run the layout driver below and confirm **zero overlaps, zero wraps, zero page-level horizontal spill, zero unreachable controls**. A screenshot at one width is not a sweep — the toolbar overlap below was invisible at 900px and 105px wide at 1000px. *(UXP-256/257/258)*
+- [ ] **Layout swept across widths** for any change to a fixed-height bar, a flex row, or a breakpoint: run the layout driver below and confirm **zero overlaps, zero wraps, zero controls off the viewport, zero unreachable controls** — and confirm the driver's own control surface passes first. A screenshot at one width is not a sweep: the toolbar overlap was invisible at 900px and 105px wide at 1000px, and the edit bar looked perfect at 375px while losing its Done button at 320px. *(UXP-256/257/258/259)*
 - [ ] **Acceptance tests met** — the five self-checks below.
 
 ### The layout driver (the check that catches what a pin cannot)
 
 `tests/test.mjs` can pin that a *rule exists*; it cannot see that two boxes land on top of each
-other. Both toolbar defects (UXP-256, UXP-257) were found by a person looking at the app, months
-after they shipped — the button-count ratchet catches *growth*, nothing measured *position*. This
-driver is that measurement. It lives in the scratchpad, never in the repo (`CLAUDE.md`: verification
-artifacts stay out of git); what is recorded here is the recipe and the numbers of record.
+other. Every layout defect this project has shipped was found by a person looking at the app, months
+later: UXP-256 (105px overlap), UXP-257 (145px indent), UXP-259 (the edit bar's Done button off the
+screen at 320px, present since before the toolbar work). The button-count ratchets catch *growth*;
+nothing measured *position*. This driver is that measurement. It lives in the scratchpad, never in
+the repo (`CLAUDE.md`: verification artifacts stay out of git); what is recorded here is the recipe,
+the corrections it needed, and the numbers.
 
-**What it measures, and why each one is a rectangle and not an eyeball:**
+> **`#toolbar-row` is the control, and it is listed first for a reason. If the control fails, the
+> driver is wrong — fix the driver before believing a single other row.** The first version of this
+> sweep reported 11 broken widths on a surface verified clean the same day. Every "finding" in that
+> run was an instrument bug.
 
-| check | how | the defect it would have caught |
+**What it measures, and why each is a rectangle and not an eyeball:**
+
+| check | how | the defect it catches |
 |---|---|---|
-| **Overlap** | rectangle intersection of every visible pair of `#toolbar-row` children | UXP-256: `#search-wrap` was `position:absolute` above 950px, so flex laid `#level-ctl` out as if it were not there — 21px of overlap at 9 buttons, **105px at 11** |
-| **Wrap** | count of distinct child top-offsets, **ignoring differences under 12px** | UXP-258: a wrapped row makes the toolbar's height a function of the button count. The 12px guard is not cosmetic — without it, buttons of slightly different heights read as two lines and the first run called *every* width broken |
-| **Spill** | `documentElement.scrollWidth - clientWidth` | a row that "fits" by pushing the page into a horizontal scroll has not fitted |
+| **Overlap** | rectangle intersection of every visible **in-flow** pair of children | UXP-256: `#search-wrap` was `position:absolute` above 950px, so flex laid `#level-ctl` out as if it were not there — 21px of overlap at 9 toolbar buttons, **105px at 11** |
+| **Wrap** | distinct child top-offsets, **ignoring gaps under 12px and zero-height children** | UXP-258: a wrapped row makes the bar's height a function of the button count |
+| **Offscreen** | a control past the viewport edge **with no scrollable ancestor to reveal it** | UXP-259: `#eb-done` 40px past the screen at 320px, `elementFromPoint` returning nothing |
 | **Reach** | scroll each control into view, then `elementFromPoint` at its centre | a scrolling strip that hides a control with no way to get to it |
-| **Scroll cue** | the `.tb-more-l/.tb-more-r` classes at scrollLeft 0 / middle / max | a hidden scrollbar with a permanently-painted fade lies about there being more (P4) |
+| **Scroll cue** | the `.more-l` / `.more-r` classes at scrollLeft 0 / middle / max | a hidden scrollbar with a permanently painted fade lies about there being more (P4) |
 
-**Numbers of record.** Chromium, `hasTouch`, 11 toolbar buttons. Both columns are this driver's own
-output — **before** is `c91028b` (the last build with all three defects), **after** is `HEAD`. Running
-it against the broken build is the part that matters: a guard nobody has watched fail is not a guard.
+**The five corrections, each traced to a real CSS idiom the naive version misread.** Keep them: they
+are why the control passes.
 
-| width | before — `c91028b` | after — `HEAD` |
+1. **Negative margins are not spill.** `#tbtn-cluster` is `padding:5px 5px 0 0; margin:-5px -5px 0 0`
+   so a focus ring can escape the clip; it legitimately sits 5px past its parent's content box.
+2. **A scroll container's overflow is its feature.** `#doc-tabs` is `overflow-x:auto` with a visible
+   scrollbar. Report `scrollWidth` overflow separately and never as spill.
+3. **Deliberate stacking is not overlap.** `#search-save` / `#search-clear` are `position:absolute`
+   inside the field, sitting on the input by design. Compare in-flow children only.
+4. **Reset focus between controls.** Focusing `#search-box` opens `#search-hint`, which then covers
+   `#level-ctl`, so every control measured afterwards reads as unreachable. Blur between controls,
+   skip `disabled` ones (`pointer-events:none` is correct for those), and only walk controls whose
+   centre lies inside the container's own rect, which excludes popups that open on focus.
+5. **Scrolled-out is not offscreen.** Icons scrolled out of a `.scroll-strip` are reachable by
+   swiping. Only a control with no scrollable ancestor is genuinely lost.
+
+**And one that does not belong in the generic driver at all:** on `#edit-bar`, calling `.focus()` on
+a button moves focus out of the point being edited, which **ends the edit and hides the bar** — so
+every reading after the first button comes from a hidden bar. The bar is tapped via
+`mousedown`+`preventDefault` (the caret invariant), so reach there is measured by *scrolling*, not
+focusing. A per-surface probe sometimes needs a different verb than the sweep.
+
+**Numbers of record.** Chromium, `hasTouch`. `before` is `c91028b` (the last build with the toolbar
+defects) and `af0ecbf` for the bars; `after` is `HEAD`.
+
+| surface | before | after |
 |---|---|---|
-| 1400 | clean | clean, strip does not scroll (no fade painted) |
-| 1100 | **124px overlap**, search × level | 0 |
-| 1000 | **130px overlap** + 36px search × strip; `btn-builder` unreachable | 0 |
-| 950 → 820 | no overlap, no wrap | 0; strip scrolls 65 → 141px, fades track |
-| 700 → 620 | **2–3 buttons unreachable** — clipped in the overflow with no reveal | 0 unreachable; scrolls 257 → 337px |
-| 560 → 510 | **wrapped: row 88px tall** (and the 145px indent UXP-257 patched) | **1 line, 44px**; scrolls 8 → 58px |
-| 430 → 340 | **wrapped: row 133px tall** | 1 line, 44px; scrolls 138 → 228px |
+| `#toolbar-row` **(control)** | 124px overlap at 1100, 130px at 1000, `btn-builder` unreachable; wrapped to 88px then 133px tall below 560 | **0 failures at all 12 widths**; one 44px line, strip scrolls 65 → 337px |
+| `#edit-bar` | `#eb-done` 20px past the viewport at 340, **40px at 320**, untappable | 53px, one line, Done flush and hit-testable at 320; tools scroll 13 → 52px |
+| `#quick-bar` | clean (6 buttons fit) | clean; same structure as the edit bar so a 7th cannot silently break it |
+| `#doc-tabs` | scrolls with a visible scrollbar; the `+` sits at the far end with 5 docs open | unchanged, not a defect |
+| `#capture-strip .cap-row`, `#journal-strip .cap-row` | 2 lines ≤560 | unchanged — declared `.cap-row{flex-wrap:wrap}`, so marked `wraps: true` |
+| `#agenda-strip .ag-top` | 2 lines ≤560 | unchanged — declared `flex-direction:column`, marked `wraps: true` |
+| `#breadcrumb-row` | 2 lines ≤430 | unchanged — declared `flex-wrap:wrap`, marked `wraps: true` |
+| `.io-foot`, `.guide-header`, `.fm-head` | clean | clean |
+| `#search-wrap` | focused box covers `#level-ctl` by **117px** | **unchanged and not a defect** — identical at 1350 (wide design) and 900 (narrow design), i.e. the intended focus overlay, not a UXP-256 side effect |
 
-**9 of 12 widths failed on the old build; 0 fail on `HEAD`.** Page-level horizontal spill was 0 in
-both — the row broke by stacking and by hiding, never by pushing the page wide, which is precisely
-why nothing downstream noticed.
+The last two rows exist so neither gets re-filed. A by-design `flex-wrap` and an intended overlay
+both look exactly like defects in a table of numbers; what distinguishes them is that they are
+**identical across bands the change never touched**.
 
 <details>
 <summary>Layout driver (scratchpad Playwright — Chromium at <code>/opt/pw-browsers/</code>, never <code>npx playwright install</code>)</summary>
@@ -161,67 +191,139 @@ why nothing downstream noticed.
 ```js
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
-const file = process.argv.find(a => a.endsWith('.html')) || '/home/user/pointliner/index.html';
+const APP = 'file:///home/user/pointliner/index.html';
 
-const probe = async (w) => {
-  const ctx = await b.newContext({ viewport: { width: w, height: 380 }, hasTouch: true, isMobile: true });
-  const p = await ctx.newPage();
-  await p.goto('file://' + file); await p.waitForTimeout(500);
-  await p.evaluate(() => { document.getElementById('storage-warn')?.remove();   // it covers the bar
-    root.children = []; const n = mkNode('Alpha'); n.type = 'ul';
-    root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); markDirty(); render(); });
-  await p.waitForTimeout(250);
-  const r = await p.evaluate(async () => {
-    const row = document.getElementById('toolbar-row'), c = document.getElementById('tbtn-cluster');
-    const vis = e => { const s = getComputedStyle(e), q = e.getBoundingClientRect();
-                       return s.display !== 'none' && s.visibility !== 'hidden' && q.width && q.height; };
-    const kids = [...row.children].filter(vis);
-    // OVERLAP: every visible pair, as a rectangle intersection. Not "does it look wrong".
-    const overlaps = [];
-    for (let i = 0; i < kids.length; i++) for (let j = i + 1; j < kids.length; j++) {
-      const a = kids[i].getBoundingClientRect(), d = kids[j].getBoundingClientRect();
-      const ox = Math.min(a.right, d.right) - Math.max(a.left, d.left);
-      const oy = Math.min(a.bottom, d.bottom) - Math.max(a.top, d.top);
-      if (ox > 0 && oy > 0) overlaps.push(`${kids[i].id || kids[i].className}x${kids[j].id || kids[j].className}:${Math.round(ox)}`);
-    }
-    // WRAP: distinct top-offsets, but only counting a gap big enough to BE a line (see the table).
-    const tops = [];
-    for (const k of kids) { const t = Math.round(k.getBoundingClientRect().top);
+// The control is FIRST. Each surface names the row to measure and the setup that renders it;
+// a surface that does not render is reported as such, never as "clean".
+const SURFACES = [
+  { sel: '#toolbar-row', touch: true, note: 'CONTROL — must pass, or the driver is wrong', setup: `` },
+  { sel: '#edit-bar', touch: true, note: 'touch edit bar', setup: `
+      const c = document.querySelectorAll('.node-content')[1], n = root.children[1];
+      enterEdit(c, n); c.focus(); activeContentId = n.id; updateEditBar();` },
+  { sel: '#quick-bar', touch: true, note: 'touch display-mode bar', setup: `
+      activeContentId = null; updateEditBar(); updateQuickBar();` },
+  { sel: '#doc-tabs', touch: false, note: '5 open documents', setup: `
+      workspaceDir = { name: 'ws' };
+      openTabs = ['inbox.opml','campaign-notes.opml','session-log.opml','characters.opml','worldbuilding.opml'];
+      fileName = 'inbox.opml'; renderDocTabs();` },
+  // `wraps: true` = this row is DECLARED to reflow (flex-wrap / flex-direction:column in its own
+  // rule), so a second line is the design, not a defect. Marking intent explicitly is the point: a
+  // driver that prints six permanent FAILs teaches people to ignore it, which is how the toolbar
+  // defect survived four PRs. An UNexpected wrap on any other surface still fails.
+  { sel: '#capture-strip .cap-row', touch: true, wraps: true, note: 'capture row (.cap-row wraps)', setup: `toggleCapture();` },
+  { sel: '#journal-strip .cap-row', touch: true, wraps: true, note: 'journal row (.cap-row wraps)', setup: `openJournalStrip();` },
+  { sel: '#agenda-strip .ag-top', touch: true, wraps: true, note: 'agenda (.ag-top stacks ≤560)', setup: `openAgenda();` },
+  { sel: '#breadcrumb-row', touch: false, wraps: true, note: 'zoom trail (flex-wrap:wrap)', setup: `
+      const deep = ['Campaign','Act one','The road north','A very long point title here'];
+      root.children = []; let par = root;
+      for (const t of deep) { const n = mkNode(t); n.type='ul'; n.children=[]; par.children.push(n);
+        nodeMap.set(n.id,n); parentMap.set(n.id,par); par = n; }
+      markDirty(); render(); zoomTo(par.id);` },
+  { sel: '.io-foot', touch: false, note: 'dialog footer', setup: `
+      openMathDialog({ title:'Insert a calculation', submitLabel:'Insert', onResult(){} });` },
+  { sel: '.guide-header', touch: false, note: 'File menu header', setup: `openFileMenu();` },
+  { sel: '.fm-head', touch: false, note: 'File menu doc header', setup: `openFileMenu();` },
+  { sel: '#search-wrap', touch: false, note: 'search field (absolute children BY DESIGN)', setup: `
+      const sb = document.getElementById('search-box'); sb.focus();
+      sb.value = 'is:todo'; sb.dispatchEvent(new Event('input', { bubbles: true }));` },
+];
+const WIDTHS = [1400, 1100, 950, 820, 700, 620, 560, 510, 430, 390, 360, 320];
+
+const MEASURE = `window.__measure = async function (sel) {
+  const host = document.querySelector(sel);
+  if (!host) return { missing: true };
+  const cs = getComputedStyle(host), hr = host.getBoundingClientRect();
+  if (cs.display === 'none' || cs.visibility === 'hidden' || !hr.width || !hr.height) return { hidden: true };
+  const vis = e => { const s = getComputedStyle(e), q = e.getBoundingClientRect();
+                     return s.display !== 'none' && s.visibility !== 'hidden' && q.width > 0 && q.height > 0; };
+  const name = e => e.id || (e.className && String(e.className).split(' ')[0]) || e.tagName.toLowerCase();
+  const st = e => getComputedStyle(e);
+  const kids = [...host.children].filter(vis);
+  // (3) stacked-by-design children are excluded from the overlap check.
+  const inFlow = kids.filter(k => !['absolute','fixed'].includes(st(k).position));
+  const overlaps = [];
+  for (let i = 0; i < inFlow.length; i++) for (let j = i + 1; j < inFlow.length; j++) {
+    const a = inFlow[i].getBoundingClientRect(), d = inFlow[j].getBoundingClientRect();
+    const ox = Math.min(a.right, d.right) - Math.max(a.left, d.left);
+    const oy = Math.min(a.bottom, d.bottom) - Math.max(a.top, d.top);
+    if (ox > 1 && oy > 1) overlaps.push(name(inFlow[i]) + 'x' + name(inFlow[j]) + ':' + Math.round(ox));
+  }
+  // Zero-area children have no visual line (.eb-spacer sits 20px below the buttons and read as a
+  // second row), and a sub-12px difference is button-height noise, not a wrap.
+  const tops = [];
+  for (const k of inFlow) { const t = Math.round(k.getBoundingClientRect().top);
                             if (!tops.some(u => Math.abs(u - t) < 12)) tops.push(t); }
-    // SCROLL CUE: the classes must track the position, not stand permanently on.
-    const cls = () => [...c.classList].filter(x => x.startsWith('tb-more')).join('+') || '-';
-    const over = c.scrollWidth - c.clientWidth;
-    const atLeft = cls();
-    c.scrollLeft = Math.round(over / 2); await new Promise(r2 => setTimeout(r2, 60));
-    const atMid = cls();
-    c.scrollLeft = over; await new Promise(r2 => setTimeout(r2, 60));
-    const atRight = cls();
-    // REACH: scroll each control into view, then hit-test its own centre.
-    const unreachable = [];
-    for (const x of [...c.querySelectorAll('button')].filter(vis)) {
-      x.focus(); await new Promise(r2 => setTimeout(r2, 40));
-      const q = x.getBoundingClientRect();
-      const t = document.elementFromPoint(Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2));
-      if (!t || !(t === x || x.contains(t))) unreachable.push(x.id);
-    }
-    c.scrollLeft = 0;
-    return { rowH: Math.round(row.getBoundingClientRect().height), lines: tops.length, overlaps,
-             over: Math.round(over), atLeft, atMid, atRight, unreachable,
-             spill: Math.round(document.documentElement.scrollWidth - document.documentElement.clientWidth) };
-  });
-  await ctx.close(); return r;
-};
+  // (2) a scroll container's overflow is its feature; (1) spill discounts negative margins.
+  const scrolls = ['auto','scroll'].includes(cs.overflowX);
+  const scrollOver = scrolls ? Math.round(host.scrollWidth - host.clientWidth) : 0;
+  const padL = parseFloat(cs.paddingLeft) || 0, padR = parseFloat(cs.paddingRight) || 0;
+  const inL = hr.left + padL, inR = hr.right - padR;
+  let spill = 0, spiller = '';
+  if (!scrolls) for (const k of inFlow) {
+    const q = k.getBoundingClientRect(), ks = st(k);
+    const mr = Math.min(0, parseFloat(ks.marginRight) || 0), ml = Math.min(0, parseFloat(ks.marginLeft) || 0);
+    const s = Math.max(Math.round(q.right + mr - inR), Math.round(inL - (q.left - ml)));
+    if (s > spill) { spill = s; spiller = name(k); }
+  }
+  // (5) past the viewport is only a failure with no scrollable ancestor to bring it back.
+  const scrollableUp = el => { for (let p = el.parentElement; p; p = p.parentElement)
+      if (['auto','scroll'].includes(getComputedStyle(p).overflowX) && p.scrollWidth > p.clientWidth + 1) return true;
+    return false; };
+  const offscreen = [];
+  for (const el of host.querySelectorAll('button,[role=button],input,select,textarea')) {
+    if (!vis(el) || el.disabled) continue;
+    const q = el.getBoundingClientRect();
+    if ((q.right > innerWidth + 1 || q.left < -1) && !scrollableUp(el)) offscreen.push(name(el));
+  }
+  // (4) reach, with state reset between controls and popups excluded by geometry.
+  const unreachable = [];
+  const inHost = el => { const q = el.getBoundingClientRect();
+    const cx = q.left + q.width / 2, cy = q.top + q.height / 2;
+    return cx >= hr.left - 1 && cx <= hr.right + 1 && cy >= hr.top - 1 && cy <= hr.bottom + 1; };
+  for (const el of host.querySelectorAll('button,[role=button],input,select,textarea,[tabindex]')) {
+    if (!vis(el) || el.disabled) continue;
+    document.activeElement?.blur?.(); await new Promise(r => setTimeout(r, 30));
+    if (!vis(el) || !inHost(el)) continue;
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    await new Promise(r => setTimeout(r, 40));
+    if (!inHost(el)) continue;
+    const q = el.getBoundingClientRect();
+    const t = document.elementFromPoint(Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2));
+    if (!t || !(t === el || el.contains(t))) unreachable.push(name(el));
+  }
+  document.activeElement?.blur?.();
+  return { kids: inFlow.length, h: Math.round(hr.height), lines: tops.length, overlaps,
+           spill, spiller, scrollOver, offscreen, unreachable };
+};`;
 
-let bad = 0;
-console.log('\n   width  rowH lines overflow  fade L/M/R          spill  overlaps  unreachable');
-for (const w of [1400, 1100, 1000, 950, 820, 700, 620, 560, 510, 430, 390, 340]) {
-  const r = await probe(w);
-  const fail = r.lines > 1 || r.overlaps.length || r.unreachable.length || r.spill > 0
-            || (r.over > 1 && (r.atLeft.includes('-l') || r.atRight.includes('-r')));  // cue must not lie
-  if (fail) bad++;
-  console.log(`   ${String(w).padStart(5)}  ${String(r.rowH).padStart(3)}  ${String(r.lines).padStart(4)}  ${String(r.over).padStart(7)}  ${`${r.atLeft}/${r.atMid}/${r.atRight}`.padEnd(20)}${String(r.spill).padStart(4)}  ${(r.overlaps.join(',') || '-').padEnd(9)} ${r.unreachable.join(',') || '-'}${fail ? '   <== FAIL' : ''}`);
+const SEED = `
+  document.getElementById('storage-warn')?.remove();
+  root.children = [];
+  for (const t of ['Alpha point','Beta point with a longer title','Gamma']) {
+    const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+  markDirty(); render();`;
+
+for (const s of SURFACES) {
+  console.log(`\n══ ${s.sel}  — ${s.note}${s.touch ? '  [touch]' : ''}`);
+  console.log('   width kids   h lines  overlaps                 spill  scroll  offscreen        unreachable');
+  for (const w of WIDTHS) {
+    const ctx = await b.newContext({ viewport: { width: w, height: 640 }, hasTouch: s.touch, isMobile: s.touch });
+    const p = await ctx.newPage();
+    await p.goto(APP); await p.waitForTimeout(500);
+    await p.evaluate(SEED); await p.waitForTimeout(150);
+    let setupErr = '';
+    try { await p.evaluate(`(async () => { ${s.setup} })()`); } catch (e) { setupErr = String(e).slice(0, 90); }
+    await p.waitForTimeout(350);
+    await p.addScriptTag({ content: MEASURE });
+    const r = await p.evaluate(sel => window.__measure(sel), s.sel);
+    await ctx.close();
+    if (r.missing) { console.log(`   ${String(w).padStart(5)}  (not in the DOM) ${setupErr}`); continue; }
+    if (r.hidden)  { console.log(`   ${String(w).padStart(5)}  (hidden at this width)`); continue; }
+    const fail = r.overlaps.length || r.spill > 1 || r.offscreen.length || r.unreachable.length
+              || (r.lines > 1 && !s.wraps);
+    console.log(`   ${String(w).padStart(5)} ${String(r.kids).padStart(4)} ${String(r.h).padStart(3)} ${String(r.lines).padStart(4)}   ${(r.overlaps.join(',') || '-').padEnd(23)} ${String(r.spill).padStart(4)}${(r.spiller || '').slice(0,9).padStart(10)}  ${String(r.scrollOver).padStart(5)}  ${(r.offscreen.join(',') || '-').padEnd(15)}  ${r.unreachable.join(',') || '-'}${fail ? '   <== FAIL' : ''}`);
+  }
 }
-console.log(`\n  widths that failed: ${bad}`);
 await b.close();
 ```
 
