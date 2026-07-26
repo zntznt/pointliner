@@ -117,7 +117,120 @@ Use `N/A — <reason>` for any principle a change genuinely doesn't touch (a cop
 - [ ] **Design-language conformance** for any visual change (`guidance/design-language.md`): colors via tokens (semantic `--ok/--warn/--bad/--info`, `--acc-fg` on accent backgrounds, radii/shadows from the token sets), new color pairs ship their contrast ratio, the palette change lands in **both** homes (CSS *and* the `applyTheme`/`applyAccentCSS` strings), and both-mode + forced-theme screenshots were checked. *(design-language §3/§6)*
 - [ ] **Drift guards stay green**: `node --test tests/test.mjs` carries the design pins (dual-home token parity, radius/weight/size floors, and the em-dash ban — now enforced across **all** user-facing copy: `README.md`, the whole `guide/` tree, every GUIDE body/example, and every command `desc`, not the three narrow spots it used to spot-check) and CI runs them on every PR. *(tests/test.mjs)*
 - [ ] **Layout swept across widths** for any change to a fixed-height bar, a flex row, or a breakpoint: run the layout driver below and confirm **zero overlaps, zero wraps, zero controls off the viewport, zero unreachable controls** — and confirm the driver's own control surface passes first. A screenshot at one width is not a sweep: the toolbar overlap was invisible at 900px and 105px wide at 1000px, and the edit bar looked perfect at 375px while losing its Done button at 320px. *(UXP-256/257/258/259)*
+- [ ] **Data shapes swept** for any change that renders a value derived from *document data* (a variable's value, a property, a base cell, an OPML attribute): run the data-shape sweep below. UXP-262 shipped because a numeric variable made one row's `desc` a Number and the shared escaper threw, rendering the whole All commands panel empty with no error surface. *(UXP-262)*
 - [ ] **Acceptance tests met** — the five self-checks below.
+
+### The data-shape sweep (the silent-failure class)
+
+Not a layout check. This hunts the shape UXP-262 had: **a value that is normally a string arrives as
+something else, and a shared renderer dies, taking a whole surface with it.** Seed documents a user
+can legitimately author, open every surface, and watch for a `pageerror` or a surface that opens
+with nothing in it.
+
+> **Run the control first, exactly as with the layout driver.** Point the sweep at a build that has
+> the defect (`git show <pre-fix>:index.html`) and confirm it reports the throw. A clean sweep only
+> means something if you have watched the harness catch one.
+
+**Two prongs, and one of them is mostly noise — this is worth knowing before you repeat it.**
+
+*Prong A, fuzzing the pure cores by type, is a poor primary.* `CLAUDE.md` says cores return `null`
+on invalid input, so a throw looks like a violation — but calling `buildIndex(42)` is type abuse no
+document can produce. That framing reported **232 of 514 cores "violating"** the rule, which is
+meaningless. Narrowing to *works on a string, throws on a number* — the shape a variable or property
+value actually has — cuts it to ~40 candidates. Even then it is only a **map**, not a finding:
+reachability is what prong B decides.
+
+*Prong B, driving hostile-but-legal documents, is the real check*, because every input is something
+a user can type.
+
+**A CSP trap that will cost you a whole run.** The app ships a Content-Security-Policy without
+`unsafe-eval`, so calling `eval()` **inside** the page is refused. A driver that does that reports
+the same CSP error for every combination and opens nothing — the first run of this sweep scored a
+perfect 80 of 80 "failures" that way. Interpolate the opener into the evaluated *source* instead;
+Playwright compiles that over CDP, which the page CSP does not govern.
+
+**Numbers of record** (5 documents × 16 surfaces = 80 runs):
+
+| build | runs that threw | which |
+|---|---|---|
+| pre-UXP-262 (`origin/main` before the fix) | **1** | `numeric vars` × All commands — `(s \|\| "").replace is not a function`, 0 of 74 rows rendered |
+| `HEAD` | **0** | — |
+
+The control also proves the surfaces genuinely open rather than merely failing to throw: on the same
+pre-fix run the File menu rendered 41 rows, the guide 83, the variables panel 20, the tag browser 9,
+the graph 9, the timeline 12 — and All commands rendered **0**.
+
+<details>
+<summary>Data-shape sweep (scratchpad Playwright — same rules as the layout driver)</summary>
+
+```js
+import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const APP = 'file:///home/user/pointliner/index.html';   // point at a pre-fix build for the control
+
+// Documents a user can legitimately write. Each pushes a different SHAPE through the pipes.
+const DOCS = {
+  'numeric vars':  ['{n := 42}', '{z := 0}', '{f := 1.5}', '{neg := -7}', 'ref {n} and {= n * 2}'],
+  'numeric props': ['Task A', 'cost: 100', 'ratio: 1.5', 'zero: 0', 'blank:', 'Task B'],
+  'numeric names': ['{rule Loot: 10 | 20 | 30}', '{Loot}', '{markov M: 1 2 3}', '{seq S: 5, 6}'],
+  'numeric base':  ['| Item | Qty | Cost |', '| --- | --- | --- |', '| Rope | 5 | 12.5 |', '| Torch | 0 | 0 |'],
+  'odd strings':   ['{s := }', '{t :=   }', 'prop: <b>&"x</b>', '{u := 0000}', 'x'.repeat(400)],
+};
+const SURFACES = [
+  ['All commands',    `document.getElementById('btn-builder').click()`, '#io-card .builder-item'],
+  ['File menu',       `openFileMenu()`,        '#file-menu .cmd-item'],
+  ['Concept guide',   `openGuide('nav-move')`, '#io-card .guide-nav-btn'],
+  ['Variables panel', `openVarPanel()`,        '#var-panel *'],
+  ['Tag browser',     `openTagBrowser()`,      '#io-card *'],
+  ['Agenda',          `openAgenda()`,          '#agenda-strip *'],
+  ['Link graph',      `openGraph()`,           '#graph-panel *'],
+  ['Timeline',        `openTimeline()`,        '#timeline-panel *'],
+  ['Rolls log',       `toggleRollLog()`,       'body'],
+  ['Capture',         `openCaptureDialog()`,   '#capture-strip *'],
+  ['Journal',         `openJournalStrip()`,    '#journal-strip *'],
+  ['Search is:pill',  `{const s=document.getElementById('search-box');s.focus();s.value='is:pill';s.dispatchEvent(new Event('input',{bubbles:true}))}`, '#outline *'],
+  ['Search key:>N',   `{const s=document.getElementById('search-box');s.focus();s.value='cost:>50';s.dispatchEvent(new Event('input',{bubbles:true}))}`, '#outline *'],
+  ['Search var:',     `{const s=document.getElementById('search-box');s.focus();s.value='var:n';s.dispatchEvent(new Event('input',{bubbles:true}))}`, '#outline *'],
+  ['Export markdown', `toMarkdown ? toMarkdown(root) : null`, 'body'],
+  ['Export OPML',     `toOpml(root)`,          'body'],
+];
+
+const rows = [];
+for (const [docName, lines] of Object.entries(DOCS)) {
+  for (const [sName, open, probe] of SURFACES) {
+    const ctx = await b.newContext({ viewport: { width: 1100, height: 800 } });
+    const p = await ctx.newPage();
+    const errs = [];
+    p.on('pageerror', e => errs.push(String(e.message || e).slice(0, 70)));
+    await p.goto(APP); await p.waitForTimeout(420);
+    // The opener is interpolated into the evaluated SOURCE, never eval()'d at runtime -- see the
+    // CSP note above.
+    const r = await p.evaluate(`(async () => {
+      document.getElementById('storage-warn')?.remove();
+      root.children = [];
+      for (const t of ${JSON.stringify(lines)}) { const n = mkNode(t); n.type = 'ul';
+        root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+      if (typeof promoteLoadedShorthand === 'function') promoteLoadedShorthand(root);
+      buildIndex(root, null); markDirty(); render();
+      await new Promise(r => setTimeout(r, 200));
+      let threw = null;
+      try { ${open}; } catch (e) { threw = String(e.message || e).slice(0, 70); }
+      await new Promise(r => setTimeout(r, 350));
+      return { threw, n: document.querySelectorAll(${JSON.stringify(probe)}).length };
+    })()`);
+    await ctx.close();
+    // A surface that opens EMPTY is the symptom, not just a throw: that is what a user sees.
+    console.log(`   ${docName.padEnd(15)} ${sName.padEnd(16)} rendered ${r.n}${r.threw ? "  THREW: " + r.threw : ""}`);
+    if (r.threw || errs.length) rows.push({ docName, sName, threw: r.threw || errs[0], n: r.n });
+  }
+}
+console.log(`\n  runs that threw: ${rows.length}`);
+for (const r of rows) console.log(`  ${r.docName} / ${r.sName}: ${r.threw} (rendered ${r.n})`);
+await b.close();
+```
+
+</details>
+
 
 ### The layout driver (the check that catches what a pin cannot)
 
