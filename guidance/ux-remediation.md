@@ -133,6 +133,18 @@ acting (controls drift).
 > quietly EXPIRED: the first-run banner button kept the banned "Start a blank outline" with a comment
 > citing `ux-discipline §L81` as its authority, and that line no longer exists in the standard.
 >
+> **P1-4 (destructive keys guarded) and P4-3 (destructive actions confirm) were audited 2026-07-26
+> and are CLEAN — 7/7 driven.** The dangerous shape is a COLLAPSED parent, whose children are
+> off-screen, so a keystroke that takes them destroys work the user cannot see. Driven: Backspace at
+> the very start of a parent with two children preserves them, collapsed and expanded; the guard the
+> rule NAMES holds (an **empty** point that HAS children keeps them) without being over-broad (an
+> empty, childless point is still removable); and a multi-point Delete spanning a collapsed parent is
+> undoable, with undo restoring the hidden children.
+>
+> **The confirmation counts the hidden cost, which is the part worth recording:** deleting a
+> selection of 2 visible points that spans a collapsed parent announces **"Deleted 4 points. Ctrl+Z
+> to undo"** — 4, not 2. The number the user is given includes the children they could not see.
+>
 > **P4-1 (no silent failure) was audited 2026-07-26 — see UXP-253, closed, and UXP-254, open.**
 > The app applies a KEYWORD-COMMIT doctrine (typed the keyword, body will not parse -> marked as an
 > attempt with a reason). `shuffle:` and `markov:` were the only two keyword forms never given it.
