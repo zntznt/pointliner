@@ -20433,6 +20433,53 @@ test('UXP-261 the narrow-sheet block wins its own top margin', () => {
     'the wide-layout 5vh margin is deliberate and must remain');
 });
 
+test('tagHit: the hashtag rule, pinned verbatim before inheritance layers on it', () => {
+  // Lifted out of termMatchesNode's tag branch UNCHANGED. These cases are today's behaviour, so a
+  // failure here means the extraction moved something, not that inheritance is wrong.
+  assert.equal(c.tagHit('thread', 'a #thread here'), true);
+  assert.equal(c.tagHit('thread', 'a #thread/torn-letter here'), true, 'nested tags are hierarchical');
+  assert.equal(c.tagHit('thread', 'a #threads here'), false, 'word-anchored: #thread never matches #threads');
+  assert.equal(c.tagHit('thread', 'a #re-thread here'), false, 'anchored on the left too');
+  assert.equal(c.tagHit('THREAD', 'a #thread here'), true, 'case-insensitive');
+  assert.equal(c.tagHit('thread/torn-letter', 'x #thread/torn-letter y'), true, '/ and - are escaped, not regex');
+  // Escaping means a metacharacter is matched literally: #a.b hits #a.b and NOT #axb.
+  assert.equal(c.tagHit('a.b', 'x #a.b y'), true);
+  assert.equal(c.tagHit('a.b', 'x #axb y'), false, 'the dot must not act as a regex wildcard');
+  assert.equal(c.tagHit('thread', ''), false);
+  assert.equal(c.tagHit('thread', null), false);
+});
+
+test('stripStateTags: an ancestor state never reaches the subtree', () => {
+  // collectTags counts #TODO/#WAITING as tags deliberately (that is how #waiting filters by state).
+  // A state describes the POINT, not the subtree: an inheriting #WAITING would drop a whole project
+  // into is:held and the agenda's held band with nothing actually blocked. So ancestor text is
+  // stripped of states; own text never is.
+  const states = ['TODO', 'WAITING', 'DONE'];
+  assert.equal(c.stripStateTags('Plan #WAITING #campaign', states).includes('#WAITING'), false);
+  assert.equal(c.stripStateTags('Plan #WAITING #campaign', states).includes('#campaign'), true,
+    'only the state goes; real tags survive');
+  assert.equal(c.stripStateTags('Plan #waiting', states).includes('#waiting'), false, 'case-insensitive');
+  // Word-anchored, exactly like the tag rule: a tag that merely STARTS with a state name stays.
+  assert.equal(c.stripStateTags('#WAITING-room', states).includes('#WAITING-room'), true);
+  assert.equal(c.stripStateTags('#todos', states).includes('#todos'), true);
+  // No states configured (a doc with no sequences) → nothing is stripped.
+  assert.equal(c.stripStateTags('Plan #WAITING', []), 'Plan #WAITING');
+  assert.equal(c.stripStateTags('Plan #WAITING', null), 'Plan #WAITING');
+});
+
+test('ancestorTagText: the chain contributes tags, never states', () => {
+  const states = ['WAITING'];
+  const chain = [{ text: 'Act one #campaign' }, { text: 'Book #WAITING #saga' }];
+  const t = c.ancestorTagText(chain, states);
+  assert.equal(c.tagHit('campaign', t), true);
+  assert.equal(c.tagHit('saga', t), true);
+  assert.equal(c.tagHit('waiting', t), false, 'the ancestor state is stripped');
+  assert.equal(c.ancestorTagText([], states), '', 'no ancestors contribute nothing');
+  assert.equal(c.ancestorTagText(null, states), '');
+  // [[…]] link targets are blanked on the way in, same as tagScanText does for own text.
+  assert.equal(c.tagHit('x', c.ancestorTagText([{ text: 'see [[doc#x]]' }], states)), false);
+});
+
 test('UXP-262 escHtml survives a truthy non-string, and callable descs are strings', () => {
   // A numeric variable in the document ({rate := 85} in the welcome doc) made ONE builder row's
   // desc a Number. escHtml was `(s || '').replace(...)`, so it threw on the first truthy

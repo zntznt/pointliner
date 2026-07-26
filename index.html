@@ -15659,17 +15659,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links) {
   // threaded like seqs/vars. It is NOT defaulted in the signature: only the two branches
   // that need it fall back to the cached collectLinks(), so a text query never pays for
   // the index. Workspace search passes THIS doc's collectLinks(root), same as seqs/vars.
-  if (term.kind === 'tag') {
-    // mirror collectTags: hashtags live in node.text with [[…]] tokens blanked
-    // (so link targets never read as tags); word-anchored both sides so #todo
-    // never matches #todos. Nested tags are hierarchical: a query for #thread
-    // matches #thread AND #thread/torn-letter (the trailing boundary allows a /
-    // continuation but not another [\w-] char). term.value may contain / and -,
-    // so escape it for regex safety.
-    const text = tagScanText(node.text);
-    const esc = term.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i').test(text);
-  }
+  if (term.kind === 'tag') return tagHit(term.value, tagScanText(node.text));
   if (term.kind === 'is') {
     if (term.value === 'note') return !!node.note;
     // #467: recently-edited = the point's `edited` timestamp is within the last 48h. An
@@ -22205,6 +22195,38 @@ function defaultBraceChoice(matches, prefix) {
 function tagScanText(text) {
   return (text || '').replace(/\[\[[^\]]*\]\]/g, ' ')
     .replace(/^(\s*#\w+\s+)?\[#[A-Za-z]\]/, m => ' '.repeat(m.length));
+}
+// Does `text` carry `value` as a hashtag? Lifted verbatim out of termMatchesNode's tag branch so
+// the rule is pinned on its own before tag inheritance layers on top of it.
+//   mirror collectTags: hashtags live in node.text with [[…]] tokens blanked (so link targets never
+//   read as tags); word-anchored both sides so #todo never matches #todos. Nested tags are
+//   hierarchical: a query for #thread matches #thread AND #thread/torn-letter (the trailing boundary
+//   allows a / continuation but not another [\w-] char). `value` may contain / and -, so escape it.
+function tagHit(value, text) {
+  const esc = String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(?<![a-zA-Z0-9])#' + esc + '(?![\\w-])', 'i').test(text || '');
+}
+/* Tag inheritance (Tag power, the last Tier 1 item): a tag on a point is in effect for its whole
+   subtree, so filing work under a #campaign heading and searching #campaign finds the work, not
+   just the heading. On by default — there is no opt-in sigil, because `#tag` gains REACH, not
+   notation (P5).
+
+   STATE KEYWORDS NEVER INHERIT. collectTags deliberately counts #TODO/#WAITING as tags (that is how
+   #waiting filters by state), but a state describes the point, not the subtree: an inheriting
+   #WAITING would drop a whole project into `is:held` and the agenda's held band while none of the
+   work is actually blocked. A point's OWN state still matches exactly as before — only an
+   ancestor's is stripped, which is why this runs over ancestor text and never over own text. */
+function stripStateTags(text, states) {
+  const list = [...(states || [])].filter(Boolean);
+  if (!list.length) return text || '';
+  const esc = list.map(s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  return (text || '').replace(new RegExp('(?<![a-zA-Z0-9])#(?:' + esc + ')(?![\\w-])', 'gi'), ' ');
+}
+// The tag text an ancestor chain contributes: each ancestor's scan text, states stripped.
+function ancestorTagText(ancestors, states) {
+  let out = '';
+  for (const a of ancestors || []) out += ' ' + stripStateTags(tagScanText(a && a.text), states);
+  return out;
 }
 // Pure over rootNode (tests); no-arg = the live document, cached on _varsVer.
 let _tagsCacheVer = -1, _tagsCached = null; // doc-cache 4: collectTags (see resetDocCaches registry)
