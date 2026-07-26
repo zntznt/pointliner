@@ -213,7 +213,12 @@ acting (controls drift).
 > attempt with a reason). `shuffle:` and `markov:` were the only two keyword forms never given it.
 > 7 of 10 rejected inputs were cued before, 9 of 10 after.
 >
-> **As of 2026-07-26 the register holds five open defects (UXP-247, UXP-249 structural; UXP-252 vocab; UXP-254 feedback; UXP-20 standing guard).**
+> **UXP-247 closed 2026-07-26 — with its target changed.** It was filed as "grow the field
+> vocabulary"; research showed the leak was the dialog SHELL (22 dialogs each owned one; the
+> forfeited UXP-246 fix lived in `cancel()`). Shipped `openDialogShell` + a ratchet that fails CI if
+> a 23rd dialog hand-rolls its own. See the archive entry for the full reasoning.
+>
+> **As of 2026-07-26 the register holds four open defects (UXP-249 structural; UXP-252 vocab; UXP-254 feedback; UXP-20 standing guard).**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
@@ -262,33 +267,6 @@ acting (controls drift).
   first: the project keeps verification artifacts OUT of git (`CLAUDE.md` working notes), so this
   needs an owner call on whether a Playwright-dependent check earns an exception, or whether it
   stays an external audit re-run on a cadence.
-
-### UXP-247 ☐ Dialogs opt out of the shared builder, and forfeit every later fix 🟡 [dialogs] [structural]
-- **Problem:** `openInsertDialog` is the shared dialog builder, and its field vocabulary is
-  **text / textarea / checkbox** plus chips, preview and hint. Four dialogs need more than that and
-  so build their own DOM instead:
-
-  | dialog | what it needs that the builder cannot express |
-  |---|---|
-  | `openVarDialog` | a **"Known variables" picker grid** (`var-pick-grid`, cards that fill both fields and flip the mode) and an **`io-seg` segmented "Value type"** control that rewrites label, placeholder, hint and button text via `setMode()` |
-  | `openPropsDialog` | a **repeating key/value row list** with add/delete and multi-line paste |
-  | `openDueDateDialog` | a **date row** with an inline day picker per field |
-  | `openAppearanceDialog` | **swatch / icon grids** that commit on click and re-render in place |
-
-- **Why this is a defect and not just an implementation detail:** every opt-out silently forfeits
-  every future improvement to the shared builder. **UXP-246 is the proof** — one fix at the choke
-  point reached nine dialogs and skipped exactly these four, and nothing in the codebase or the
-  tests would have said so. It was found only by auditing the RULE across surfaces.
-- **Violates:** §6 "Reuses the menu / pill / feedback / affordance patterns rather than reinventing",
-  and the DoD's own premise that a gate applied at one place holds everywhere.
-- **Target:** grow `openInsertDialog`'s field vocabulary to cover the four cases (a `seg` field type
-  and a `grid` field type would cover var and appearance; a `rows` type would cover props; the date
-  row is closest to existing chips), then migrate the four. **Sequencing note:** this is a refactor
-  of four working dialogs plus the builder every other dialog depends on, so it wants its own PR
-  train with the driven per-dialog checks UXP-246 already wrote, not a drive-by.
-- **Interim state (shipped with UXP-246):** all four now conform to the drafts rule via
-  `wireDialogDraft`, which delegates to the same two pure cores rather than growing a fifth
-  mechanism. The rule is satisfied; the structural cause is not.
 
 ### UXP-20 ☐ Syntax sprawl — standing guard (P5)
 - **Problem:** the loudest symptom of the scattered direction is the steady flood of new authoring syntaxes and grammars, each invented per-feature. The architecture *encourages* it (`CLAUDE.md`: "a new token type / expression primitive fits very well"), so the pressure is structural and continuous — this guard never fully closes.
