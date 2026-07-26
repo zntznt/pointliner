@@ -20235,12 +20235,49 @@ test('UXP-246 insertDraftMatches: a draft never shadows a different pill', () =>
   assert.equal(c.insertDraftMatches({}, { def: '' }), false);
 });
 
+test('UXP-247 the dialog shell is the one place a dialog shell lives', () => {
+  // The entry was filed as "grow openInsertDialog's field vocabulary", but the fix that was
+  // actually forfeited (UXP-246 drafts) lived in cancel() — the SHELL. Measured on the tree that
+  // filed it: 22 dialogs each assigned ioCancel/ioReturnFocus/aria-label/ioBack/io-foot themselves,
+  // so a fix at any one of them reached none of the others. The shell owns those five.
+  assert.ok(_src.includes('function openDialogShell(opts) {'), 'the shared shell must exist');
+  // ONE cancel behind the button, the backdrop and global Escape. Three copies is how they drift.
+  assert.ok(/const close = \(\) => \{ stash\(\); if \(opts\.onCancel\) opts\.onCancel\(\); else closeIo\(\); \};/.test(_src),
+    'close must stash first, then run the caller teardown or the default');
+  assert.ok(/ioCancel = close;/.test(_src), 'the shell binds the same close to the global Escape path');
+  // The §7.6 footer order is enforced by construction, so a caller cannot get it wrong by listing
+  // its buttons in whatever order it built them.
+  assert.ok(/spec\.filter\(b => b\.role === 'dismiss' \|\| b\.role === 'neutral'\)/.test(_src),
+    'dismiss and neutral buttons sort first');
+  assert.ok(/spec\.filter\(b => b\.role === 'danger'\)/.test(_src), 'danger takes the final slot');
+  // The in-place-rebuild signal, promoted from openAppearanceDialog's one-off _apprFresh. Must be
+  // read BEFORE ioBack gains `.on`, or a rebuild is indistinguishable from a fresh open.
+  assert.ok(/const fresh = !ioBack\.classList\.contains\('on'\);\s*\n\s*root\.innerHTML = '';/.test(_src),
+    'fresh must be sampled before the shell touches the scrim');
+  assert.ok(/if \(fresh\) ioReturnFocus = document\.activeElement;/.test(_src),
+    'an in-place rebuild must not overwrite the return target from the first open');
+  // openInsertDialog is built ON the shell — the proof case, since it carries the nested-in-builder
+  // path and the bulk of the existing pins.
+  assert.ok(/const _shell = openDialogShell\(\{/.test(_src), 'openInsertDialog must use the shell');
+  assert.ok(/_shell\.mountFooter\(\[/.test(_src), 'and take its footer from the shell');
+  // The nested-in-builder teardown is NOT closeIo, and must stay with openInsertDialog.
+  assert.ok(/onCancel: \(\) => \{\s*\n\s*if \(isNested\) \{ _dialogCancel\?\.\(\);/.test(_src),
+    'the nested teardown stays the caller’s, passed in as onCancel');
+});
+
 test('UXP-246 openInsertDialog stashes on cancel and clears on submit', () => {
   // Source pins: this is DOM wiring. The stash must happen inside cancel() BEFORE the nested/plain
   // teardown branches, or the card is already emptied when the values are read.
   assert.ok(_src.includes('let _insertDrafts = {};'), 'the shared draft store must exist');
-  assert.ok(/function cancel\(\) \{\s*\n\s*stashInsertDraft\(\);/.test(_src),
-    'cancel must stash before either teardown branch runs');
+  // UXP-247 MOVED this, it did not change it. The stash-before-teardown ordering used to live in
+  // openInsertDialog's own `cancel()`; it now lives once in openDialogShell's `close`, which every
+  // dialog shares. Re-proved by driving before this pin was touched: 10/10 insert surfaces still
+  // keep a draft and all 8 safety properties still hold, so this asserts the same behaviour at its
+  // new home rather than being relaxed to accommodate a regression.
+  assert.ok(/const close = \(\) => \{ stash\(\);/.test(_src),
+    'the shared close must stash before any teardown runs');
+  assert.ok(/const cancel = _shell\.close;/.test(_src),
+    'openInsertDialog must use that one close, so button, backdrop and Escape cannot diverge');
   assert.ok(_src.includes('delete _insertDrafts[_draftKey];   // UXP-246'), 'submit must clear the draft');
   assert.ok(/const _draftKey = opts\.draftKey \|\| opts\.guideId \|\| opts\.title \|\| 'insert';/.test(_src),
     'the slot is per dialog KIND, so each dialog keeps its own work');
@@ -20249,7 +20286,10 @@ test('UXP-246 openInsertDialog stashes on cancel and clears on submit', () => {
   // the raw (untrimmed) reader: comparing a trimmed value against an untrimmed seed would read
   // trailing whitespace as an edit worth keeping
   assert.ok(_src.includes('const rawVals = ()'), 'the draft comparison needs untrimmed values');
-  assert.ok(/insertDraftFrom\(rawVals\(\), _seeds\)/.test(_src), 'the stash must compare raw values against seeds');
+  // Same move: the comparison is now made once inside wireDialogDraft, and openInsertDialog hands
+  // it the untrimmed reader. The property being pinned is unchanged — raw values against seeds.
+  assert.ok(/insertDraftFrom\(readFields\(\), seeds\)/.test(_src), 'the stash must compare raw values against seeds');
+  assert.ok(/read: \(\) => rawVals\(\),/.test(_src), 'openInsertDialog must hand the shell its UNTRIMMED reader');
 });
 
 test('UXP-246 the four hand-rolled dialogs share the rule, not a fifth mechanism', () => {
