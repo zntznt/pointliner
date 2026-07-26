@@ -115,7 +115,7 @@ A live calculator that can see your document. Math pills recompute on their own.
 - **Uncertain estimates.** `{5 to 10}` models a range with a little distribution sparkline, and the
   uncertainty propagates through math. Bounds can be declared variables (`{cost_low to cost_high}`).
   ([estimates](computing-numbers.md#uncertain-values-estimates))
-- **Self-checking outlines.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
+- **Self-checking documents.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
   ([constraints](computing-numbers.md#make-the-document-check-itself-constraints))
 - **Progress cookies.** Drop `[/]` or `[%]` for a live tally of checkboxes and child to-dos.
@@ -209,7 +209,7 @@ Turn the document into a lightweight planner.
 
 ## Linking and connecting documents
 
-Build a connected notebook (Zettelkasten style), not just a single document.
+Build a connected folder of documents (Zettelkasten style), not just a single one.
 
 - **Internal links.** `[[#point]]` links to any other point, with live titles and backlinks.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))

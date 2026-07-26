@@ -39,7 +39,7 @@ Markdown, plain text, OPML, or a self-contained runnable HTML you can hand to an
 | `{= sum(cost)}` | the total of a `cost` property across child points |
 | `{5 to 10}` | an estimate: **7.2 (5 to 10)** with a distribution sparkline |
 | `{shuffle: a \| b \| c}` | a deck you draw from without replacement |
-| `{roll: #npc}` | a random point from your own outline (tag some points, roll on them) |
+| `{roll: #npc}` | a random point from your own document (tag some points, roll on them) |
 
 That last one is the pill no other tool has: the table it rolls on is your own living document,
 so your campaign, your backlog, or your idea list surprises you with its own contents.
@@ -68,7 +68,7 @@ and tracks state for you. Pointliner was born here, and the [worked examples](gu
 (thirteen cases with importable demos) are the fastest way to see the whole engine at work.
 
 And underneath it all, a full outliner: nested points, markdown, to-dos with states and priorities,
-per-point notes, properties, `[[links]]` with backlinks and live mirrors, a multi-document workspace
+per-point notes, properties, `[[links]]` with backlinks and live mirrors, a multi-document folder
 with whole-folder search, a daily journal, an agenda with timeline and calendar views, interactive
 tables and bases, and more. The [complete feature list](guide/features.md) covers everything.
 What makes it different is not the list: it is that every bullet can generate or compute.

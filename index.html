@@ -8473,7 +8473,7 @@ const ROLL_TEMPLATES = [
   { ins:'{1d20}',          label:'d20',        caret:0 },
   { ins:'{1d100}',         label:'d100',       caret:0 },
   { ins:'{oracle: likely}', label:'oracle',    caret:1 },   // caret lands after "likely" for a quick swap of the odds band
-  { ins:'{roll: #tag}',     label:'roll on outline', caret:1 },   // after "#tag" to type the real tag/query
+  { ins:'{roll: #tag}',     label:'roll on document', caret:1 },   // after "#tag" to type the real tag/query
   { ins:'{a | b}',          label:'either / or', caret:5 },   // back onto the first option "a"
 ];
 const INSERT_CMDS = [
@@ -8484,7 +8484,7 @@ const INSERT_CMDS = [
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     keys:['roll','d20','d100','d6','fudge','pool'], label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Generate' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', keys:['chain'], label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Generate' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  keys:['loot','treasure','encounter'], label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll. Type {rule loot: sword | shield 2} to make one inline, then call it as {loot}.',  ex:'{rule loot: sword | shield 2}',  section:'Generate' },
-  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own outline is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
+  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own document is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     keys:['generate','name','npc','tracery','generator','rule'], label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math. Type {rule name: a | b} to declare one inline, or use the dialog for several rules at once.', ex:'{rule origin: a {color} {animal}}', section:'Generate' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
@@ -36720,7 +36720,7 @@ storageWarnBtn.addEventListener('click', () => {
   else saveFile();
 });
 document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
-// #565: a second action shown ONLY on the first-run examples banner, beside "Start a blank outline".
+// #565: a second action shown ONLY on the first-run examples banner, beside "Start a blank document".
 // It has its own handler (not routed through _warnAction) and is hidden by default + on every other
 // banner state, so it never leaks into the save/reconnect/snapshot banners that share this element.
 const storageWarnExamples = document.getElementById('storage-warn-examples');
@@ -36761,7 +36761,7 @@ function showReopenFileBanner(name) {
 // blank outline" button; dismissing keeps the examples visible to read.
 function showExamplesBanner() {
   _warnAction = 'startblank';
-  storageWarnBtn.textContent = 'Start a blank outline';   // UXP-185: button label stays (ux-discipline §L81)
+  storageWarnBtn.textContent = 'Start a blank document';   // V-1: UXP-185 kept "outline" only because ux-discipline L81 prescribed it; that line is gone from the standard, so the exception expired
   storageWarnMsg.textContent = `These are live examples to explore. ${IS_TOUCH ? 'Tap' : 'Click'} any pill, or start your own document.`;
   // the invite variant, not the warn caution lane (issue #404): a greeting is not a warning,
   // and it announces politely (role=status), not assertively (role=alert)
@@ -36780,7 +36780,7 @@ function hideExamplesBanner() {
 // the guide"). When the CURRENT doc is blank, offer both doors on the same invite surface as the
 // first-run banner. Session-dismissible; never in Lean (the expert opt-in keeps its clean canvas,
 // LF-2); never over a real warn/save banner; never during the pristine first-run tour; and never
-// after the user explicitly chose "Start a blank outline" (that click waives it).
+// after the user explicitly chose "Start a blank document" (that click waives it).
 let _blankInviteDismissed = false;
 var _blankInviteReady;   // var (hoisted): set true only after _showingExamples exists, so early renders no-op
 // Pure show-decision (DOM-free, pinned): every gate in one testable place.
@@ -36966,7 +36966,7 @@ function maybeNudgeSum(node, key) {
 function maybeNudgeRoll() {
   if (!isGuided() || nudgeSeen('roll')) return;
   const tag = nudgeRollTag(collectTags());
-  if (tag) fireNudge('roll', `Tip: {roll: #${tag}} draws a random one of your #${tag} points, a live oracle from your own notes. See the Roll on your own outline guide.`);
+  if (tag) fireNudge('roll', `Tip: {roll: #${tag}} draws a random one of your #${tag} points, a live oracle from your own notes. See the Roll on your own document guide.`);
 }
 // Trigger 3: the first time a user's OWN typing turns {…} into a live pill, welcome it once.
 // Called from exitEdit right after the promote pass, gated on a real pill token being produced
@@ -37217,7 +37217,7 @@ let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from l
 // no workspace to reopen) a newcomer would see one empty bullet + three sigils they have no reason
 // to trust. Instead, open a read-only-feeling Examples doc of LIVE pills (authored as plain {…}
 // source that promotes via promoteLoadedShorthand in adoptDoc, like the solo-rpg demos), plus a
-// "Start a blank outline" door. It never silently becomes the user's saved doc: `_showingExamples`
+// "Start a blank document" door. It never silently becomes the user's saved doc: `_showingExamples`
 // suppresses autosave until they edit (markDirty clears the flag) or hit Start blank. Reachable
 // again afterward from the File menu. NOT gated on a verbosity dial (that dial isn't built).
 const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
@@ -37320,7 +37320,7 @@ const STARTERS = [
   },
   { id: 'campaign-oracle',
     name: 'Campaign oracle',
-    desc: 'Roll on your own outline: your NPCs and threads become the tables.',
+    desc: 'Roll on your own document: your NPCs and threads become the tables.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Campaign oracle</title></head><body>
 <outline text="# Campaign oracle">

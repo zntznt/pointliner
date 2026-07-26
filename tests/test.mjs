@@ -17163,6 +17163,27 @@ test('column header carries the visible menu door; agenda groups carry kind labe
 });
 
 // ── Mobile neophyte batch: first-run tap targets + duplicate-inbox guard ──
+test('UXP-251 V-1: user-facing copy does not call the document an outline', () => {
+  // ux-discipline §1 permits "outliner" (the app) and "the outline" (the navigable tree view), and
+  // bans "outline" for the DOCUMENT. Audited over the strings a user actually sees; the code keeps
+  // node/artifact by V-2, so the source at large is out of scope by design.
+  // The banner button is the interesting one: UXP-185 deliberately kept the banned wording because
+  // ux-discipline L81 prescribed that exact string. That line no longer exists in the standard, so
+  // the exception had nothing left holding it up.
+  assert.ok(_src.includes("storageWarnBtn.textContent = 'Start a blank document';"),
+    'the first-run banner button must use the document term');
+  assert.ok(!/Start a blank outline/.test(_src), 'no site may reintroduce the expired exception');
+  // The roll-on-your-document command disagreed with its own label, which is how this surfaced.
+  assert.ok(_src.includes("label:'roll on document'"), 'the roll palette template must say document');
+  assert.ok(_src.includes('your own document is the table'), 'the command desc must match its label');
+  assert.ok(_src.includes("Roll on your own document: your NPCs and threads become the tables."),
+    'the guide entry must say document');
+  assert.ok(!/Roll on your own outline/.test(_src), 'and nothing may still cite the old guide title');
+  // The legitimate senses must SURVIVE — a blanket ban on the word would be the wrong fix.
+  assert.ok(_src.includes("vlist.setAttribute('aria-label', 'Outline')"),
+    'the tree view is legitimately called the outline and must not be "corrected"');
+});
+
 test('UXP-250 the Guided command menu teaches, not just names', () => {
   // P2-2 says every menu item shows label + description + typed form. The surface map is the
   // finding: `/` and `@` do not open one menu, they branch on the verbosity tier --

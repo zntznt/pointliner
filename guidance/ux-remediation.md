@@ -128,7 +128,12 @@ acting (controls drift).
 > classes under it**. That became **UXP-248**, closed and archived. The floor's lack of an automated
 > guard is **UXP-249**, open.
 >
-> **As of 2026-07-26 the register holds three open defects (UXP-247, UXP-249 structural; UXP-20 standing guard).**
+> **V-1 (canonical vocabulary) was audited 2026-07-26 — see UXP-251, closed, and UXP-252, open.**
+> Audited statically over 1740 strings a user actually sees. The headline was a decision that had
+> quietly EXPIRED: the first-run banner button kept the banned "Start a blank outline" with a comment
+> citing `ux-discipline §L81` as its authority, and that line no longer exists in the standard.
+>
+> **As of 2026-07-26 the register holds four open defects (UXP-247, UXP-249 structural; UXP-252 vocab; UXP-20 standing guard).**
 > (The `✓` entries still sitting in this file below are closed work that predates the
 > move-to-archive convention being applied consistently; they are not open items. **UXP-20**, the
 > standing P5 syntax-sprawl guard, is a gate rather than a bug and is meant to stay open.)
@@ -136,6 +141,19 @@ acting (controls drift).
 ---
 
 ## Open items
+
+### UXP-252 ☐ "Roll palette" uses a banned word for an overlay list 🟢 [vocab]
+- **Problem:** §1 maps "a keyboard-navigable overlay list" to **menu**, and bans **palette**. The
+  touch roll picker is called "Roll palette" in its GUIDE title and in a command desc ("touch only:
+  opens the roll palette").
+- **Why it is filed rather than fixed:** it is the one V-1 hit where the ban is arguable. The row's
+  concept is a *keyboard-navigable* overlay list and this picker is explicitly touch-only, so it may
+  fall outside the row entirely; and "Roll palette" is a shipped feature NAME, so renaming it is a
+  user-visible change with knock-on guide edits, not a copy tweak. That is an owner's call, not an
+  auditor's.
+- **Target:** either rename to "Roll menu" everywhere (GUIDE title, command desc, backlog mention),
+  or add an explicit carve-out to §1 saying the touch picker keeps its name — but not leave the
+  standard and the app disagreeing silently.
 
 ### UXP-249 ☐ Nothing enforces the tap floor for a NEW control 🟢 [touch] [structural]
 - **Problem:** UXP-248 fixed nine shared classes that sat under the 24px floor, and pinned those nine
