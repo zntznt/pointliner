@@ -35088,6 +35088,20 @@ const GUIDE = [
       { syn:'[text](url)',              desc:'link' },
       { syn:'![alt](url)',             desc:'image' },
       { syn:':dragon: :fire: :dice:',   desc:'emoji: type the whole name, or : and part of it to pick from a list' },
+      { syn:'term, then : meaning',     desc:'definition list: a term line, then its meanings on ": " lines below' },
+    ] },
+  // #717: definition lists RENDER (isDefTerm/DD_RE in mdToHtml) but had no door of any kind —
+  // no menu verb, no picker, no guide entry — so the capability was reachable only by prior
+  // knowledge (a P2-1 "built is not shipped-discoverable" gap). A ?-panel entry is the right
+  // weight: it is multi-line markdown, so a / verb that writes one line would teach it wrong.
+  { id:'deflist', cat:'writing', covers:['deflist'],
+    title:'Definition lists',
+    body:"Lay out terms and their meanings so they read as a glossary rather than a flat list: a rules reference, a cast of characters, an ingredient list, the jargon at the front of a project.\n\nWrite the term on its own line, then put each meaning on the line below it starting with a colon and a space. One term can carry several meanings, each on its own `: ` line, and you can stack as many term-and-meaning pairs in a point as you need. The term renders bold, its meanings indented under it.",
+    related:['inline-md','point-types'],
+    examples:[
+      { syn:'Oracle',             desc:'the term, alone on its line' },
+      { syn:': a table you roll on', desc:'its meaning, on the next line after a colon and a space' },
+      { syn:': also: a yes/no answer', desc:'a second meaning for the same term' },
     ] },
   // Pure concept entry (no covers — /base and /querybase are covered by their own
   // entries): the one page that says WHICH of the table-family features to reach for.

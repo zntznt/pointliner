@@ -8534,6 +8534,37 @@ const _htmlPath = process.env.POINTLINER_HTML
   || resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
 const _src = readFileSync(_htmlPath, 'utf8');
 
+test('#716: every command-table fa: glyph is in the embedded FA subset', () => {
+  // The icon-subset invariant (CLAUDE.md): a glyph outside FA_GLYPHS is not in the built font. A
+  // MENU icon self-heals to its data-fb unicode fallback, but a toolbar raw <i> paints BLANK — so
+  // this is the failure mode with teeth, and APPEARANCE_ICONS was the only set guarded against it.
+  // All 47 command icons pass today; this is preventive, so a new command with a CDN-only glyph
+  // fails CI instead of shipping an invisible button.
+  const subset = new Set(_src.match(/FA_GLYPHS\s*=\s*new Set\(\[([^\]]*)\]/)[1]
+    .replace(/'/g, '').split(',').map(s2 => s2.trim()).filter(Boolean));
+  assert.ok(subset.size >= 60, `FA_GLYPHS parsed as only ${subset.size} entries — did the literal move?`);
+  // FA_GLYPHS holds BARE glyph names ('fa-dollar-sign'); the command tables hold full class strings
+  // ('fa-solid fa-dollar-sign'). Compare the glyph token, or every icon reads as missing — which is
+  // exactly what a naive first pass reported.
+  const glyphOf = cls => { const parts = String(cls).split(/\s+/)
+    .filter(x => x && !['fa-solid', 'fa-regular', 'fa-brands'].includes(x)); return parts[parts.length - 1] || ''; };
+  let checked = 0;
+  for (const table of ['BLOCK_CMDS', 'INSERT_CMDS', 'FORMAT_CMDS']) {
+    const start = _src.indexOf(`const ${table} = [`);
+    assert.ok(start > -1, `${table} not found — did it move or get renamed?`);
+    const blk = _src.slice(start, _src.indexOf('\n];', start) + 3);
+    const icons = [...blk.matchAll(/fa:\s*'([^']*)'/g)].map(m => m[1]).filter(Boolean);
+    assert.ok(icons.length >= 5, `${table}: parsed only ${icons.length} fa: values — extraction broke`);
+    for (const cls of icons) {
+      checked++;
+      assert.ok(subset.has(glyphOf(cls)),
+        `${table}: '${cls}' is not in the embedded FA subset — a toolbar <i> would paint blank. ` +
+        'Add the glyph to FA_GLYPHS and rebuild: python tools/build-fa-subset.py');
+    }
+  }
+  assert.ok(checked >= 40, `expected the full command-icon census, checked only ${checked}`);
+});
+
 test('UXP-36: GUIDE registry declaration is present', () => {
   assert.ok(_src.includes('const GUIDE = ['),
     'const GUIDE = [ not found in index.html — the unified registry was renamed or removed');
