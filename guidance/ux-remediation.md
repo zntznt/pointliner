@@ -133,6 +133,21 @@ acting (controls drift).
 > quietly EXPIRED: the first-run banner button kept the banned "Start a blank outline" with a comment
 > citing `ux-discipline §L81` as its authority, and that line no longer exists in the standard.
 >
+> **§3 remaining batch audited 2026-07-26 — all CLEAN.** P3-5 (off-focus announced): the live region
+> `#a11y-live` exists; a reroll announces "2d6 re-rolled: 7" AND updates the pill's `aria-label` to
+> the new value; a search filter announces "1 matching point" (the case the rule names). P3-4 (not
+> colour-alone): a FAILING check renders "✗check" with `aria-label` "Check sum(cost) <= budget is
+> failing" — glyph plus text, not colour. Reduced motion: under `prefers-reduced-motion: reduce`,
+> **0 elements** keep a perceptible transition or animation. Virtual-list invariant: `role="tree"`,
+> every row carries its own accessible text, and no global post-pass stamps ARIA over `.node-row`.
+>
+> **Three of that batch's first-run results were wrong and were chased down rather than filed:** the
+> "reroll announces" pass was reading a leftover Welcome-tour nudge (the dice pill had not rendered
+> at all, because `mkNode` alone does not promote shorthand — `promoteLoadedShorthand` does); the
+> colour-alone check passed VACUOUSLY on 0 elements until a genuinely failing check was constructed,
+> and its two "colour-only" hits were decorative `<i>` icons inside labelled buttons; and the one
+> row "with no accessible text" was the `{2d6}` seed row, not a real row.
+>
 > **§6 mechanical batch audited 2026-07-26 (sentence case · "Markdown" · dismiss glyph · V-2).**
 > Three clean, one dirty. **Sentence case: clean** (every Title Case hit was a sentence start or a
 > proper noun — Markov, Ironsworn, Chrome/Edge). **Dismiss buttons: conformant** (the two bespoke
