@@ -133,6 +133,47 @@ acting (controls drift).
 > quietly EXPIRED: the first-run banner button kept the banned "Start a blank outline" with a comment
 > citing `ux-discipline §L81` as its authority, and that line no longer exists in the standard.
 >
+> ## The audit-by-class program is COMPLETE (2026-07-26)
+>
+> Every rule in `ux-definition-of-done.md` has now been audited as a STATE of the app, not as a
+> process step. Final tally: **6 rules were dirty and are fixed** (UXP-246 drafts, UXP-248 tap floor,
+> UXP-250 menu teaching, UXP-251 vocabulary, UXP-253 silent failure, UXP-255 Markdown), **13 were
+> clean**, and **5 gaps are filed** for an owner decision (UXP-247, 249, 252, 254 + the standing
+> UXP-20).
+>
+> | rule | verdict |
+> |---|---|
+> | P1-1 no context inversion | clean — Enter is +1 point in ul/ol/todo/h1/quote; paragraph is the ONE documented exception |
+> | P1-3 Esc resolves outward | clean — 15/15 |
+> | P1-4 destructive keys guarded | clean — incl. the empty-with-children guard |
+> | P1-5 claimable chords not the only path | clean — File menu is the twin |
+> | P2-1 three doors / built != hidden | clean — 0 of 50 commands doorless, per tier |
+> | P2-2 menu teaches syntax | **FIXED** (UXP-250) |
+> | P3-1 accessible name | clean — 0 unnamed, 3 tiers |
+> | P3-2 caret invariant | clean — 90 mousedown / 92 keydown, both alive |
+> | P3-3 focus-visible + reduced motion | clean — 647 stops, 0 animating under reduce |
+> | P3-4 not colour-alone | clean — a failing check is "✗check" + a full label |
+> | P3-5 off-focus announced | clean — reroll, filter count, both channels |
+> | P3 tap floor 24px | **FIXED** (UXP-248) |
+> | P4-1/P4-2 no silent failure | **FIXED** (UXP-253) |
+> | P4-3 destructive actions confirm | clean — and the count includes hidden children |
+> | P4-4 one feedback pattern | clean — 0 native alert/confirm/prompt |
+> | P4 drafts survive dismissal | **FIXED** (UXP-246) |
+> | P5-4 inventory matches the engine | clean — every keyword form is on the §2 row |
+> | V-1 canonical vocabulary | **FIXED** (UXP-251) |
+> | V-2 internal identifiers intact | clean |
+> | §6 sentence case · Markdown · dismiss glyph | Markdown **FIXED** (UXP-255); other two clean |
+> | virtual-list per-row ARIA | clean — no global post-pass |
+>
+> **The method's own lesson, recorded because it cost the most time:** on interaction rules, a
+> failing assertion was more often the harness than the app. Across the program the drivers produced
+> at least a dozen false results — stale shared pages, an element read mid-CSS-transition,
+> `offsetParent` on a `position:fixed` node, a cue read from a leftover nudge, a vacuous pass over
+> zero elements, a selector blind to the very element just added, and a 4000-char slice that
+> truncated the inventory row being checked. **Every reported defect in this program was re-proved
+> against the real user path before it was written down**, and several candidate findings died
+> there. A clean rule reported as clean is the other half of the work.
+>
 > **§3 remaining batch audited 2026-07-26 — all CLEAN.** P3-5 (off-focus announced): the live region
 > `#a11y-live` exists; a reroll announces "2d6 re-rolled: 7" AND updates the pill's `aria-label` to
 > the new value; a search filter announces "1 matching point" (the case the rule names). P3-4 (not
