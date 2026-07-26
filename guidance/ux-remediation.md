@@ -133,6 +133,13 @@ acting (controls drift).
 > quietly EXPIRED: the first-run banner button kept the banned "Start a blank outline" with a comment
 > citing `ux-discipline §L81` as its authority, and that line no longer exists in the standard.
 >
+> **§6 mechanical batch audited 2026-07-26 (sentence case · "Markdown" · dismiss glyph · V-2).**
+> Three clean, one dirty. **Sentence case: clean** (every Title Case hit was a sentence start or a
+> proper noun — Markov, Ironsworn, Chrome/Edge). **Dismiss buttons: conformant** (the two bespoke
+> `✕` are chip-REMOVES, a different concept, one carrying an explicit "one glyph per concept"
+> comment). **V-2: clean** (`node.text` 314 uses, `nodeById` 143, `artifact` 107 — the internal
+> identifiers are intact). **"Markdown" capitalisation: DIRTY — see UXP-255, closed.**
+>
 > **P1-4 (destructive keys guarded) and P4-3 (destructive actions confirm) were audited 2026-07-26
 > and are CLEAN — 7/7 driven.** The dangerous shape is a COLLAPSED parent, whose children are
 > off-screen, so a keystroke that takes them destroys work the user cannot see. Driven: Backspace at

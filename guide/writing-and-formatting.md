@@ -147,7 +147,7 @@ column's role, so a Number column sorts numerically, a Date column by date, and 
 your sequence's own state order. Blank cells always sink to the bottom.
 
 A base is never a trap: the base's own menu has **Convert to text**, which turns it back into a plain
-markdown table in the same point (the reverse of turning a table into a base). You get a normal,
+Markdown table in the same point (the reverse of turning a table into a base). You get a normal,
 freeform table you can edit as text, delete, or rewrite as prose. Formulas and pill values come
 along, and one undo restores the base if you change your mind. A structure is always one *optional*
 way to hold your work, never the only way.

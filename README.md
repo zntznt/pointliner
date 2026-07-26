@@ -67,7 +67,7 @@ journals, and your own cast of characters as the random tables, all in one docum
 and tracks state for you. Pointliner was born here, and the [worked examples](guide/solo-rpg/README.md)
 (thirteen cases with importable demos) are the fastest way to see the whole engine at work.
 
-And underneath it all, a full outliner: nested points, markdown, to-dos with states and priorities,
+And underneath it all, a full outliner: nested points, Markdown, to-dos with states and priorities,
 per-point notes, properties, `[[links]]` with backlinks and live mirrors, a multi-document folder
 with whole-folder search, a daily journal, an agenda with timeline and calendar views, interactive
 tables and bases, and more. The [complete feature list](guide/features.md) covers everything.
@@ -108,10 +108,10 @@ with a [cookbook](guide/cookbook.md) of copy-paste recipes.
 
 ## How it works (for the curious)
 
-The document is an in-memory tree of plain-text nodes. A pill is a markdown-style token in that
+The document is an in-memory tree of plain-text nodes. A pill is a Markdown-style token in that
 text plus a record in a sidecar array; plain text is always the source of truth. The view is
 virtualized (only a screenful of rows is ever in the DOM), so it stays comfortable past 10,000
-points. No framework, no build step; rendering is hand-written per-line markdown plus pure
+points. No framework, no build step; rendering is hand-written per-line Markdown plus pure
 cores (parsers and evaluators) that are unit-tested in plain Node.
 
 Measured performance and a re-run harness live in [`guidance/performance.md`](guidance/performance.md).

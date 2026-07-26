@@ -19774,7 +19774,7 @@ function convertBaseToText(nodeId) {
     ensureRowVisible(node.id);
     document.querySelector(`.node-content[data-id="${node.id}"]`)?.closest('.node-row')?.querySelector('.bullet')?.focus();
   });
-  flashHint('Converted to a text table. Edit it as plain markdown; undo restores the base.'
+  flashHint('Converted to a text table. Edit it as plain Markdown; undo restores the base.'
     + (wasQuery ? ' The query result is now a static snapshot.' : '')
     + (wasVar ? ' Rows no longer declare variables.' : ''));
 }

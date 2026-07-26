@@ -493,7 +493,7 @@ It's plain text in the point, so there's no setup, and it round-trips through sa
 
 ## Table formulas (briefly)
 
-A markdown table can carry a spreadsheet-style formula line, Org-mode style:
+A Markdown table can carry a spreadsheet-style formula line, Org-mode style:
 
 ```
 | item   | qty | each | total |

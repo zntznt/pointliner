@@ -19977,6 +19977,42 @@ test('blank-canvas door (beginner PR B) — decision gates + wiring', () => {
     'the examples door hides the invite before opening the gallery');
 });
 
+test('UXP-255 "Markdown" is capitalized in user-facing copy (§6), guarded like the em-dash ban', () => {
+  // §6: 'Labels are sentence case; "Markdown" is always capitalized in user-facing copy.' That rule
+  // had no guard, while its neighbour (the em-dash ban) has a comprehensive one — so four lowercase
+  // uses had shipped. Same scope and same exemptions as the em-dash guard: guidance/ and code
+  // comments are internal, and a lowercase `markdown` inside code/backticks or a .md path is a
+  // filename or identifier, not prose.
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const prose = (txt) => txt
+    .replace(/```[\s\S]*?```/g, '')          // fenced code
+    .replace(/`[^`\n]*`/g, '')               // inline code
+    .replace(/\]\([^)]*\)/g, '')             // link targets (paths like foo.md)
+    .replace(/^\s*\[[^\]]+\]:.*$/gm, '');    // link definitions
+  const mdFiles = [resolve(root, 'README.md')];
+  (function walk(dir) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = resolve(dir, e.name);
+      if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) mdFiles.push(p);
+    }
+  })(resolve(root, 'guide'));
+  for (const f of mdFiles) {
+    const txt = prose(readFileSync(f, 'utf8'));
+    const m = /\bmarkdown\b/.exec(txt);
+    assert.equal(m, null, `${f.slice(root.length + 1)} says lowercase "markdown" near: "${txt.slice(Math.max(0, (m?.index ?? 0) - 40), (m?.index ?? 0) + 40).replace(/\n/g, ' ')}"`);
+  }
+  // in-app copy: command descriptions and the toast/hint strings
+  for (const cmd of c.builderCmdPool(null)) {
+    assert.ok(!/\bmarkdown\b/.test(cmd.desc || ''), `command "${cmd.label}" desc says lowercase markdown`);
+  }
+  for (const m of _src.matchAll(/\bflashHint\(\s*'((?:[^'\\]|\\.)*)'/g)) {
+    assert.ok(!/\bmarkdown\b/.test(m[1]), `a hint says lowercase markdown: "${m[1].slice(0, 60)}"`);
+  }
+  // the specific site that shipped the violation
+  assert.ok(_src.includes('Edit it as plain Markdown; undo restores the base.'),
+    'the base-to-table hint must capitalize Markdown');
+});
+
 test('em-dash ban is ENFORCED across all user-facing copy (README, guide/, GUIDE bodies, command descs)', () => {
   // The strict rule (CLAUDE.md: "No em dashes in user strings") was guarded in only three narrow
   // spots, so violations shipped in the README (unguarded entirely) and one command desc. This
