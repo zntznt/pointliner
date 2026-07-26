@@ -20519,6 +20519,30 @@ test('tag inheritance: an ancestor state never floods its subtree', () => {
     'the state matches the point that carries it and NOT its children');
 });
 
+test('doc-cache 11: searchBlob caches within a generation and refreshes on the bump', () => {
+  // Same protocol as the canonical-nine registry test, adapted for a per-node cache whose value is
+  // a primitive: the NEGATIVE control (an unbumped edit keeps serving the stale blob) is what
+  // proves it is a cache at all, and the bump is what proves it obeys the registry rule. A tenth+
+  // cache that skips the _varsVer check is exactly the drift CLAUDE.md forbids.
+  const bump = c._context.resetDocCaches;
+  const node = { id: 'sb1', text: '**Bold** words here', type: 'ul', children: [] };
+  bump();
+  assert.equal(c.searchBlob(node), 'bold words here', 'stripMd + toLowerCase, as the text term expects');
+  // Mutate WITHOUT a bump: the cache must keep serving the old blob — staleness within a
+  // generation is the contract every other doc-cache has, not a bug.
+  node.text = 'changed entirely';
+  assert.equal(c.searchBlob(node), 'bold words here', 'negative control: no bump, no rebuild');
+  // The bump refreshes it — this is what exitEdit's markDirty() does after every text commit.
+  bump();
+  assert.equal(c.searchBlob(node), 'changed entirely', 'a generation bump must rebuild the blob');
+  // Two nodes with the SAME id must never share a blob (workspace search walks foreign docs, and a
+  // copied doc keeps its ids) — the WeakMap keys on object identity, so this cannot collide.
+  const twinA = { id: 'dup', text: 'alpha doc text', type: 'ul', children: [] };
+  const twinB = { id: 'dup', text: 'beta doc text', type: 'ul', children: [] };
+  assert.equal(c.searchBlob(twinA), 'alpha doc text');
+  assert.equal(c.searchBlob(twinB), 'beta doc text', 'id collision across docs must not cross-serve');
+});
+
 test('toOpml golden: byte-identical serialization across the perf rewrite', () => {
   // Captured from the build BEFORE toOpml's nx/ex were rewritten for speed (accumulator + escape
   // sniff). Every sidecar attr, in order, plus a kitchen-sink escape string and a plain nested
