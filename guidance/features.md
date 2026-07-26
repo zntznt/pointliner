@@ -400,6 +400,18 @@ Implemented:
   not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
 ### Outline structure & content
 
+- **Image width modes (#992)** — `![alt](url "wide")` / `"full"` / `"3/4"` / `"point"` / `"N%"`,
+  carried on the Markdown title field, so no new syntax (P5). `imgSizeParts` is the pure core;
+  the mode is a class (`.md-img-wide` / `.md-img-full`) and the percentage an inline `width:N%`.
+  **All-or-nothing token rule** (a deliberate departure from the issue's per-token spec): the
+  title is a sizing directive only if EVERY token is recognized, so `"full moon"` stays a caption
+  instead of silently widening the image and eating half the tooltip. Lowercase-only for the same
+  reason. Centring is `cqw` off an inline-size container on `#outline` plus `translateX(-50%)`,
+  not the usual negative-margin full-bleed recipe: a point's text box is inset by the bullet
+  gutter and by its indent, so the standard recipe centres on the wrong point and spills the page
+  (measured 13px at depth 0, worse when nested). `--sbw` (a live `innerWidth - clientWidth`)
+  keeps `100vw` from overshooting a classic scrollbar. Door: Width + Scale selects on `@image`.
+
 - **Table formulas** — Org-mode `#+TBLFM:` spreadsheet conventions. The formula line
   lives as a trailing `#+TBLFM:` line *inside* `node.text` (Org-style), so it round-trips
   through OPML / Markdown / plain-text for free — no sidecar, no new attribute. **Cells hold

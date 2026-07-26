@@ -20967,3 +20967,152 @@ test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL'
     'wireDialogDraft must gate restoration on the shared seed comparison');
 });
 
+
+// ── #992: image sizing modes ride the markdown title field ────────────────────
+//
+// The core is ALL-OR-NOTHING by deliberate deviation from the issue, which specced per-token
+// stripping. Per-token means `"full moon"` widens the image to the viewport AND drops "full"
+// from the tooltip: one word of ordinary prose silently changes the layout (P1). These pins
+// encode the stricter rule, so a later "simplification" back to per-token fails here.
+//
+// host() everywhere: the cores run in a vm, so a returned object literal is cross-realm and
+// deepEqual would reject it on prototype identity alone.
+test('#992 imgSizeParts: the three width modes and the point default', () => {
+  assert.deepEqual(host(c.imgSizeParts('full')),  { cls:'md-img-full', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('wide')),  { cls:'md-img-wide', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('3/4')),   { cls:'md-img-wide', style:'', title:'' });
+  // `point` is the default, so it is RECOGNIZED (the title is consumed) but adds no class.
+  assert.deepEqual(host(c.imgSizeParts('point')), { cls:'', style:'', title:'' });
+  // No title at all is the same shape as `point`.
+  assert.deepEqual(host(c.imgSizeParts('')),        { cls:'', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts(undefined)), { cls:'', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts(null)),      { cls:'', style:'', title:'' });
+});
+
+test('#992 imgSizeParts: N% is a percentage of the COLUMN, and composes with a mode', () => {
+  assert.deepEqual(host(c.imgSizeParts('50%')),        { cls:'', style:'width:50%', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('wide 150%')),  { cls:'md-img-wide', style:'width:150%', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('full 80%')),   { cls:'md-img-full', style:'width:80%', title:'' });
+  // Order is free — these are tokens, not a grammar.
+  assert.deepEqual(host(c.imgSizeParts('80% full')),   { cls:'md-img-full', style:'width:80%', title:'' });
+  // Extra whitespace between tokens is not significant.
+  assert.deepEqual(host(c.imgSizeParts('  full   80%  ')), { cls:'md-img-full', style:'width:80%', title:'' });
+  // Last token of a kind wins rather than erroring out.
+  assert.deepEqual(host(c.imgSizeParts('wide full')),  { cls:'md-img-full', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('50% 75%')),    { cls:'', style:'width:75%', title:'' });
+});
+
+test('#992 imgSizeParts: one unrecognized token makes the WHOLE title prose', () => {
+  // The backward-compatibility case from the issue's acceptance list.
+  assert.deepEqual(host(c.imgSizeParts('My vacation photo')),
+    { cls:'', style:'', title:'My vacation photo' });
+  // The case the issue's per-token rule would have broken: prose that happens to start with a
+  // keyword. Nothing is stripped, nothing is resized.
+  assert.deepEqual(host(c.imgSizeParts('full moon')), { cls:'', style:'', title:'full moon' });
+  assert.deepEqual(host(c.imgSizeParts('wide open spaces')), { cls:'', style:'', title:'wide open spaces' });
+  assert.deepEqual(host(c.imgSizeParts('100% cotton')), { cls:'', style:'', title:'100% cotton' });
+  // Case-sensitive on purpose: a capitalized word is a caption, not a directive.
+  assert.deepEqual(host(c.imgSizeParts('Full')), { cls:'', style:'', title:'Full' });
+  assert.deepEqual(host(c.imgSizeParts('WIDE')), { cls:'', style:'', title:'WIDE' });
+  // A surrounding-whitespace-only difference still yields the trimmed title.
+  assert.deepEqual(host(c.imgSizeParts('  a caption  ')), { cls:'', style:'', title:'a caption' });
+});
+
+test('#992 imgSizeParts: the percentage is bounded, and junk that looks numeric is prose', () => {
+  assert.deepEqual(host(c.imgSizeParts('1%')),    { cls:'', style:'width:1%', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('1000%')), { cls:'', style:'width:1000%', title:'' });
+  // Out of range, no unit, a decimal, a sign, or an absolute length: all prose, no inline style.
+  for (const bad of ['0%', '1001%', '50', '1.5%', '-50%', '+50%', '500px', '%', '%50']) {
+    assert.deepEqual(host(c.imgSizeParts(bad)), { cls:'', style:'', title:bad },
+      bad + ' is not a sizing token');
+  }
+  // Prototype keys must not read as modes (hasOwnProperty, not `in`).
+  for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    assert.deepEqual(host(c.imgSizeParts(k)), { cls:'', style:'', title:k },
+      k + ' is not a width mode');
+  }
+});
+
+test('#992 mdInline renders the width modes, and leaves a prose title as a tooltip', () => {
+  const full = c.mdInline('![a](https://x.test/a.png "full")');
+  assert.ok(full.includes('class="md-img md-img-full"'), 'full gets the full-width class');
+  assert.ok(!/ title=/.test(full), 'and the consumed title does not also become a tooltip');
+
+  const wide = c.mdInline('![a](https://x.test/a.png "3/4")');
+  assert.ok(wide.includes('class="md-img md-img-wide"'), '3/4 is a synonym for wide');
+
+  const scaled = c.mdInline('![a](https://x.test/a.png "wide 150%")');
+  assert.ok(scaled.includes('class="md-img md-img-wide"') && scaled.includes('style="width:150%"'),
+    'mode and scale compose into a class plus an inline width');
+
+  // Backward compatibility: an ordinary caption renders exactly as it did before #992 —
+  // the bare .md-img class, the title as a tooltip, no style attribute.
+  const prose = c.mdInline('![a](https://x.test/a.png "My vacation photo")');
+  assert.ok(prose.includes('class="md-img"'), 'a prose title leaves the class alone');
+  assert.ok(prose.includes('title="My vacation photo"'), 'and keeps the tooltip');
+  assert.ok(!/ style=/.test(prose), 'and adds no inline width');
+
+  // No title at all is unchanged too.
+  const plain = c.mdInline('![a](https://x.test/a.png)');
+  assert.ok(plain.includes('class="md-img"') && !/ title=/.test(plain) && !/ style=/.test(plain),
+    'a titleless image is byte-for-byte what it always was');
+});
+
+// The CSS half cannot run headless, so it is source-pinned: the mode classes must EXIST, and the
+// two contexts the issue promised not to disturb must pin the two properties the inline style
+// could otherwise reach into them (specificity alone does not beat a style attribute).
+test('#992 the width-mode CSS ships, and cards/base cells are insulated from it', () => {
+  // The issue's full-bleed recipe (margin-left:calc(-50vw + 50%)) centres on the CONTAINING
+  // BLOCK, which for a point is inset by the bullet gutter and by its indent — driving the app
+  // measured a 13px page spill at depth 0 and worse when nested. It must not come back.
+  assert.ok(!/margin-left:calc\(-50vw \+ 50%\)/.test(_src),
+    'the containing-block-centred full-bleed recipe is gone (it spilled the page at every width)');
+  assert.ok(/#outline\{container-type:inline-size\}/.test(_src),
+    '#outline is an inline-size container, so cqw is the COLUMN width at any depth');
+  assert.ok(_src.includes('.md-img-full,.md-img-wide{position:relative;left:calc(100% - 50cqw + var(--nc-pad));transform:translateX(-50%)}'),
+    'the modes centre on the column via cqw, backing off half their own width with translateX');
+  // --nc-pad is the point text box's right padding, and the centring maths depends on the two
+  // staying equal — so it must be a variable used in BOTH places, not a literal in each.
+  assert.ok(/--nc-pad:3px;/.test(_src) && /\.node-content\{[^}]*padding:1px var\(--nc-pad\)/.test(_src),
+    'the right inset is one variable, used by .node-content and by the centring maths');
+  // 100vw includes a classic scrollbar; the ceilings subtract the measured width or full-bleed
+  // images push the page into horizontal scroll everywhere overlay scrollbars are not used.
+  assert.ok(/\.md-img-full\{max-width:calc\(100vw - var\(--sbw,0px\)\);width:calc\(100vw - var\(--sbw,0px\)\)/.test(_src),
+    'full mode is the window width MINUS the scrollbar');
+  assert.ok(/\.md-img-wide\{max-width:calc\(\(100vw - var\(--sbw,0px\)\) \* \.75\)/.test(_src),
+    'wide mode is three quarters of the same scrollbar-corrected width');
+  assert.ok(/window\.innerWidth - document\.documentElement\.clientWidth/.test(_src)
+         && /setProperty\('--sbw'/.test(_src)
+         && /new ResizeObserver\(syncScrollbarW\)\.observe\(document\.body\)/.test(_src),
+    '--sbw is measured and republished whenever the client box changes (a scrollbar appearing)');
+  // Cards and base cells: outside #outline there is no container, so an un-neutralised cqw would
+  // resolve against the VIEWPORT and fling the image off screen.
+  assert.ok(_src.includes('.gv-card .md-img,.mt-cell .md-img{max-width:100%!important;margin-left:0!important;position:static!important;transform:none!important}'),
+    'cards and base cells neutralise every property the modes introduce');
+  assert.ok(_src.includes('.gv-card .md-img{width:100%!important}')
+         && _src.includes('.mt-cell .md-img{width:auto!important}'),
+    'and pin the width each context already computed');
+});
+
+test('#992 the @image form offers the width modes, and point still writes no title', () => {
+  // BUILDER_FORMS lives behind the DOM layer, so this is a source pin (same shape as the
+  // @meter form pin above). The behaviour of what it WRITES is pinned by re-parsing below.
+  assert.ok(/'image': \{ fields: \[[\s\S]{0,400}name:'url'[\s\S]{0,200}name:'alt'[\s\S]{0,240}name:'width'[\s\S]{0,240}name:'scale'/.test(_src),
+    "BUILDER_FORMS['image'] gained width and scale fields");
+  assert.ok(/name:'width', label:'Width', type:'select', options:\['point','wide','full'\]/.test(_src),
+    'width is a constrained select whose options are the literal title keywords (the door teaches the syntax)');
+  assert.ok(/name:'scale',[^\n]*type:'select', options:\['','50%','75%','100%','125%','150%','200%'\]/.test(_src),
+    'scale is a constrained select with a blank default');
+  assert.ok(/const w = \(vals\.width && vals\.width !== 'point'\) \? vals\.width : '';/.test(_src),
+    'point writes no title at all, so the default insert is byte-identical to pre-#992');
+  assert.ok(/return '!\[' \+ \(vals\.alt \|\| ''\) \+ '\]\(' \+ vals\.url \+ \(t \? ' "' \+ t \+ '"' : ''\) \+ '\)';/.test(_src),
+    'insert composes ![alt](url "mode scale") with the title omitted when empty');
+
+  // What the form writes must round-trip through the parser it is a door for.
+  for (const [written, want] of [
+    ['full',      { cls:'md-img-full', style:'',            title:'' }],
+    ['wide',      { cls:'md-img-wide', style:'',            title:'' }],
+    ['wide 150%', { cls:'md-img-wide', style:'width:150%',  title:'' }],
+    ['50%',       { cls:'',            style:'width:50%',   title:'' }],
+  ]) assert.deepEqual(host(c.imgSizeParts(written)), want, written + ' round-trips');
+});

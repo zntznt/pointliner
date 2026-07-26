@@ -22,6 +22,9 @@ The everyday outliner. This is the part you use without thinking about it.
   ([point types](writing-and-formatting.md#point-types))
 - **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line.
   ([styling text](writing-and-formatting.md#styling-text))
+- **Image size.** An image fits the reading column by default; add `"wide"`, `"full"` or a
+  percentage in the Markdown title to run it three quarters of the window, edge to edge, or at a
+  size you pick. ([image size](writing-and-formatting.md#image-size))
 - **Secret and spoiler blocks.** Start a line with `>!` to hide it behind a blur until you click
   or press it to reveal. ([secret blocks](writing-and-formatting.md#secret-and-spoiler-blocks))
 - **Emoji.** Type `:` and a name (`:fire`, `:tada`) to pick from a menu, or type the full

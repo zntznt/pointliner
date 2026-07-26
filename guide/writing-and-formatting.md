@@ -175,6 +175,30 @@ see at a glance which ones are still waiting. Those unfinished marks are **left 
 copy** rather than printed as stray brackets in the middle of your sentence, and the export tells you
 how many it left out.
 
+### Image size
+
+An image sits inside the reading column by default. Put a size in quotes after the address to
+change that, or pick one from the **Width** and **Scale** menus on `@` then **Image**:
+
+| Written | Result |
+|---|---|
+| `![alt](url)` | The reading column, the default |
+| `![alt](url "point")` | The reading column, said out loud |
+| `![alt](url "wide")` or `"3/4"` | Three quarters of the window |
+| `![alt](url "full")` | The full width of the window |
+| `![alt](url "50%")` | Half as wide as the text |
+| `![alt](url "wide 150%")` | Half again as wide as the text, up to three quarters of the window |
+
+The size word sets how far the image is allowed to grow and the percentage sets how wide it
+actually is, so a percentage on its own is capped by the column: `"150%"` alone looks unchanged,
+and `"wide 150%"` is the one that gets bigger. Anything up to `100%` always works. Whichever you
+pick, the image is centred on the window, at any indent level.
+
+The quotes are the ordinary Markdown title field, so a caption still works. The size is read only
+when **everything** inside the quotes is size words: `"full"` resizes, `"full moon"` stays a
+caption and shows as a tooltip. Capitals count as a caption too, so `"Full"` is a label, not a
+size. Cards and table cells keep their own sizing and ignore all of this.
+
 ## Per-point notes
 
 Tuck a bit of context under any point without cluttering the line: a source, a reminder, a caption

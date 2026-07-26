@@ -149,6 +149,10 @@ button,[contenteditable],input{touch-action:manipulation}
   color-scheme:light;
   --bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--bullet-h:#4338ca;
   --cb:#8f887b;--ind:24px;--lh:1.55;
+  /* A point's text box is inset from the column by the bullet gutter on the left and by this
+     padding on the right. #992's full-bleed images need the RIGHT one to re-centre exactly,
+     so it is a variable rather than a literal in two places that could drift apart. */
+  --nc-pad:3px;
   --font:'Geist',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --display-font:'Fraunces',ui-serif,Georgia,serif;
   --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
@@ -640,7 +644,7 @@ body.v-lean #toolbar:has(#search-box:focus){transform:translateY(0)}
    word as a last resort for a genuinely unbreakable string (long URL/token). word-break
    was eagerly chopping normal words when a non-breakable inline pill starved the line,
    e.g. "{2d6} rooms" splitting "rooms" → "roo/ms" at narrow widths. */
-.node-content{flex:1;min-width:0;outline:none;overflow-wrap:break-word;line-height:var(--lh);padding:1px 3px;border-radius:var(--r-xs);white-space:pre-wrap}
+.node-content{flex:1;min-width:0;outline:none;overflow-wrap:break-word;line-height:var(--lh);padding:1px var(--nc-pad);border-radius:var(--r-xs);white-space:pre-wrap}
 .node-content:focus{box-shadow:0 0 0 2px var(--ring)}
 .node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
 /* ── per-point note: a second mirrored flex row (invisible gutter clones keep the
@@ -891,6 +895,32 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-total-blank::before{content:none!important}
 .mt-total-cell::before{content:attr(data-agg) '\00a0';font-size:.72em;font-weight:600;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:var(--r-sm);margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
+/* #992 image width modes. The mode raises the CEILING; an inline width:N% (also from the title)
+   sets the width WITHIN it.
+   The issue's negative-margin full-bleed recipe (half a viewport left, half a container right,
+   the one every full-bleed blog post prescribes) is WRONG here, and driving the
+   app proved it: an image's containing block is a point's content box, which sits behind the
+   bullet gutter and moves further right with every level of indent. That recipe centres on the
+   CONTAINING BLOCK's centre, so a 100vw image started 13px right of the viewport centre at depth
+   zero (more when indented) and pushed the whole page into horizontal scroll at every width.
+   `#outline` IS centred in the window, so make it an inline-size container. `100cqw` is then
+   the column width at any depth, and because a point's text box shares the column's RIGHT edge
+   (bar --nc-pad), `100% - 50cqw + var(--nc-pad)` is the column's centre expressed from the text
+   box's left edge. translateX(-50%) then backs off half the image's OWN width, which is what
+   makes this work for a width the stylesheet cannot know (a title can set any N%) and where
+   auto margins cannot help (they collapse to 0 once the image is wider than its container).
+   Measured centring error: 0px at depths 0-3, on headings and quotes, at 420/900/1280. */
+#outline{container-type:inline-size}
+.md-img-full,.md-img-wide{position:relative;left:calc(100% - 50cqw + var(--nc-pad));transform:translateX(-50%)}
+.md-img-full{max-width:calc(100vw - var(--sbw,0px));width:calc(100vw - var(--sbw,0px));max-height:540px}
+.md-img-wide{max-width:calc((100vw - var(--sbw,0px)) * .75);max-height:480px}
+/* Cards and base cells keep the sizing they already had. Descendant specificity already beats
+   the mode classes, but NOT the inline width the title can now set — and outside #outline there
+   is no inline-size container, so `cqw` would fall back to the VIEWPORT and fling the image off
+   screen. Both are neutralised here, at the three properties this feature introduces. */
+.gv-card .md-img,.mt-cell .md-img{max-width:100%!important;margin-left:0!important;position:static!important;transform:none!important}
+.gv-card .md-img{width:100%!important}
+.mt-cell .md-img{width:auto!important}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
 /* Hashtags read as bounded label chips (the design-language badge recipe: color-mix 14%
@@ -6914,6 +6944,31 @@ function renderCrossLinkPill(docId, target, label) {
   return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docLabel)}" aria-label="${escQ(capText + ', link to a point in ' + docLabel)}">${cap}</span>`;
 }
 
+// #992 image sizing. The width modes ride the markdown title field — no new syntax (P5).
+// `full`/`wide`/`3/4`/`point` set the CEILING; `N%` sets the width WITHIN it, always as a
+// percentage of the outline column (what CSS `width:N%` natively means). So `150%` alone is
+// clamped by the point-width ceiling and does nothing visible; `wide 150%` is 1.5x the column.
+//
+// ALL OR NOTHING: the title is read as a sizing directive only when EVERY token is recognized.
+// The issue specced per-token stripping, but that makes `"full moon"` silently widen the image
+// AND eat half the tooltip — one word of prose changing the layout is a P1 violation. A mixed
+// title is prose, and prose is left exactly as written.
+//
+// Lowercase-only for the same reason: `"Full"` capitalized is a caption, not a directive.
+const IMG_MODE_CLS = { full:'md-img-full', wide:'md-img-wide', '3/4':'md-img-wide', point:'' };
+function imgSizeParts(title) {
+  const t = String(title == null ? '' : title).trim();
+  if (!t) return { cls:'', style:'', title:'' };
+  let mode = null, pct = null;
+  for (const tk of t.split(/\s+/)) {
+    if (Object.prototype.hasOwnProperty.call(IMG_MODE_CLS, tk)) { mode = tk; continue; }
+    const m = /^([0-9]{1,4})%$/.exec(tk);
+    if (m && +m[1] >= 1 && +m[1] <= 1000) { pct = +m[1]; continue; }
+    return { cls:'', style:'', title:t };            // one unrecognized token → the whole title is prose
+  }
+  return { cls: mode ? IMG_MODE_CLS[mode] : '', style: pct == null ? '' : 'width:' + pct + '%', title:'' };
+}
+
 function mdInline(s) {
   // Strip NUL first: \x00 is our stash sentinel (\x00N\x00), so a literal NUL in user
   // text could otherwise collide with a placeholder and inject a stashed fragment.
@@ -6935,7 +6990,8 @@ function mdInline(s) {
   // images first: ![alt](url "title") — superset of link syntax
   s = s.replace(/!\[([^\]]*)\]\(([^)\s\x00]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
     const u = safeUrl(url, true); if (!u) return '';
-    return stash(`<img src="${escQ(u)}" alt="${escQ(alt)}"${title?` title="${escQ(title)}"`:''} class="md-img" loading="lazy">`);
+    const sz = imgSizeParts(title);
+    return stash(`<img src="${escQ(u)}" alt="${escQ(alt)}"${sz.title?` title="${escQ(sz.title)}"`:''} class="md-img${sz.cls?' '+sz.cls:''}"${sz.style?` style="${escQ(sz.style)}"`:''} loading="lazy">`);
   });
   // links: [text](url "title") — emphasis allowed inside the text
   s = s.replace(/\[([^\]]*)\]\(([^)\s\x00]+)(?:\s+"([^"]*?)")?\)/g, (_, txt, url, title) => {
@@ -35078,7 +35134,7 @@ const GUIDE = [
   { id:'inline-md', cat:'writing',
     title:'Styling text',
     body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you.",
-    related:['point-types','footnotes','secret'],
+    related:['point-types','footnotes','secret','image-size'],
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
       { syn:'*italic* or _italic_',     desc:'italic' },
@@ -35102,6 +35158,19 @@ const GUIDE = [
       { syn:'Oracle',             desc:'the term, alone on its line' },
       { syn:': a table you roll on', desc:'its meaning, on the next line after a colon and a space' },
       { syn:': also: a yes/no answer', desc:'a second meaning for the same term' },
+    ] },
+  // #992: image width modes. No `covers` — @image is already claimed by the footnotes entry,
+  // and adding it here would double-cover a single command id.
+  { id:'image-size', cat:'writing',
+    title:'Image size',
+    body:"An image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
+    related:['inline-md','point-types'],
+    examples:[
+      { syn:'![map](map.png "wide")',      desc:'three quarters of the window' },
+      { syn:'![art](art.png "full")',      desc:'the full width of the window' },
+      { syn:'![fig](fig.png "point")',     desc:'the reading column, same as writing nothing' },
+      { syn:'![fig](fig.png "50%")',       desc:'half as wide as the text' },
+      { syn:'![map](map.png "wide 150%")', desc:'half again as wide as the text, up to three quarters of the window' },
     ] },
   // Pure concept entry (no covers — /base and /querybase are covered by their own
   // entries): the one page that says WHICH of the table-family features to reach for.
@@ -36245,11 +36314,21 @@ const BUILDER_FORMS = {
     { name:'url', label:'URL', type:'text', required:true },
     { name:'text', label:'Display text', type:'text' },
   ], insert: vals => '[' + (vals.text || vals.url) + '](' + vals.url + ')' },
-  // @image: URL + alt text
+  // @image: URL + alt text + width. #992 shipped the width modes on the markdown title field;
+  // the SELECT here is the door (P2-3: no syntax-only capability), and its options are the
+  // literal title keywords, so using the form teaches the syntax. `point` is the default and
+  // emits no title at all, keeping the plain insert byte-identical to before.
   'image': { fields: [
     { name:'url', label:'Image URL', type:'text', required:true },
     { name:'alt', label:'Alt text', type:'text' },
-  ], insert: vals => '![' + (vals.alt || '') + '](' + vals.url + ')' },
+    { name:'width', label:'Width', type:'select', options:['point','wide','full'] },
+    { name:'scale', label:'Scale (of the column width)', type:'select', options:['','50%','75%','100%','125%','150%','200%'] },
+  ], insert: vals => {
+    const w = (vals.width && vals.width !== 'point') ? vals.width : '';
+    const sc = String(vals.scale || '').trim();
+    const t = [w, sc].filter(Boolean).join(' ');
+    return '![' + (vals.alt || '') + '](' + vals.url + (t ? ' "' + t + '"' : '') + ')';
+  } },
   // @table: rows × cols number inputs (insert path only; /table uses slash-menu size picker)
   '@table': { fields: [
     { name:'rows', label:'Rows', type:'number', min:1, max:8 },
@@ -36983,6 +37062,25 @@ window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventD
   const _ro = new ResizeObserver(syncBodyPad);
   _ro.observe(_tb);
   _ro.observe(_warn);
+}
+
+// #992: publish the classic-scrollbar width. `100vw` INCLUDES the scrollbar, so a full-bleed
+// image sized at 100vw is wider than the page can show and pushes it into horizontal scroll on
+// every platform that does not use overlay scrollbars (html sets scrollbar-width:thin, so this
+// app has a real one on Linux/Windows). The CSS subtracts --sbw from the full-bleed width.
+// body's width IS the client width, so its resize observer fires exactly when a scrollbar
+// appears or disappears; writing only on a real change keeps that from feeding back into itself.
+{
+  let _sbw = -1;
+  const syncScrollbarW = () => {
+    const w = Math.max(0, Math.round(window.innerWidth - document.documentElement.clientWidth));
+    if (w === _sbw) return;
+    _sbw = w;
+    document.documentElement.style.setProperty('--sbw', w + 'px');
+  };
+  syncScrollbarW();
+  new ResizeObserver(syncScrollbarW).observe(document.body);
+  window.addEventListener('resize', syncScrollbarW);
 }
 
 // keep footnote panel above the software keyboard on mobile (syncFnPanelBottom
