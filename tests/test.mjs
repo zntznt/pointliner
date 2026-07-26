@@ -20395,6 +20395,30 @@ test('UXP-259 scrollCueClasses: which edge fades a strip shows, seeded', () => {
   assert.deepEqual(cue(0, 301, 300), { left: false, right: false }, '1px of overflow is noise');
 });
 
+test('UXP-262 escHtml survives a truthy non-string, and callable descs are strings', () => {
+  // A numeric variable in the document ({rate := 85} in the welcome doc) made ONE builder row's
+  // desc a Number. escHtml was `(s || '').replace(...)`, so it threw on the first truthy
+  // non-string, renderNav threw mid-loop, and the ENTIRE All commands panel rendered empty with
+  // no error surface — the primary command door, dead for any document defining a numeric
+  // variable, including every first run. Reproduced with {price := 42} of my own.
+  assert.equal(c.escHtml(85), '85', 'a truthy non-string must escape, not throw');
+  assert.equal(c.escHtml(0.5), '0.5');
+  assert.equal(c.escHtml(true), 'true');
+  // Falsy handling is deliberately UNCHANGED (`|| ''`, not `?? ''`): none of these ever threw,
+  // because `0 || ''` is '', and changing them would be a silent behaviour edit riding along.
+  for (const v of [undefined, null, 0, false, '', NaN])
+    assert.equal(c.escHtml(v), '', `falsy ${String(v)} must still escape to ''`);
+  // The actual escaping is untouched.
+  assert.equal(c.escHtml('<a & b>'), '&lt;a &amp; b&gt;');
+  assert.equal(c.escAttr('"<x>"'), '&quot;&lt;x&gt;&quot;', 'escAttr rides on escHtml and must still work');
+  // Fixed at the source too: a desc is searched, measured and truncated elsewhere, and those
+  // paths have no reason to re-learn that a variable's value can be a Number.
+  assert.ok(/desc: String\(c\.hint \|\| c\.val \|\| ''\)/.test(_src),
+    'the callable command desc must be coerced where it is built, not only at render');
+  assert.ok(/const escHtml = s => String\(s \|\| ''\)/.test(_src),
+    'escHtml is the shared chokepoint — the class guard belongs there');
+});
+
 test('UXP-259 the bottom bars scroll their tools and keep their exit button', () => {
   // `.eb-btn` bottoms out at min-width:38px — a floor #437 tuned for SEVEN buttons. The edit bar has
   // nine, so below ~360px the tail ran off: measured 20px past the viewport at 340 and 40px at 320,

@@ -6494,7 +6494,14 @@ function safeUrl(u, allowDataImage) {
 }
 // url/alt/title arrive already &<>-escaped from the caller; only quotes remain
 // Escape raw data for HTML text content / attributes (state names, etc.)
-const escHtml = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/* UXP-262: `String(s || '')`, not `(s || '')`. A truthy non-string used to throw here
+   ("(s || '').replace is not a function") and take its whole caller down with it — a numeric
+   variable in the document made ONE builder row's desc a Number, renderNav threw mid-loop, and
+   the All commands panel rendered completely empty with no error surface. escHtml is the shared
+   chokepoint for every rendered surface, so it is the right place to make that class impossible.
+   `|| ''` is kept rather than `?? ''` to preserve today's falsy handling exactly: undefined, null,
+   0, false and '' all still escape to '' (0 and false never threw, since `0 || ''` is ''). */
+const escHtml = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const escAttr = s => escHtml(s).replace(/"/g,'&quot;');
 // escQ is used ONLY inside attribute values. It must be a full attribute escaper, not
 // quotes-only: a hostile sidecar field (d.expr, v.name, mk.name from a malicious OPML)
@@ -35873,7 +35880,11 @@ function builderCmdPool(trigger) {
   cmds.push({ id: 'markov',  icon: '⛓', fa: '', label: 'Define a Markov chain', desc: 'A named chain you can walk with {name}.',            trigger: '@', type: 'insert', _section: 'Your names', _create: true });
   for (const c of collectCallables()) {
     const icon = c.group === 'var' ? '$' : c.group === 'rule' ? '❖' : '⛓';
-    cmds.push({ id: c.name, icon, fa: '', label: c.name, desc: c.hint || c.val || '', trigger: '{', type: 'callable', _section: 'Your names', _brace: { name: c.name, group: c.group, insert: '{' + c.name + '}', sel: [c.name.length + 1, c.name.length + 1] } });
+    // UXP-262: `c.val` is the variable's LIVE value, so `{rate := 85}` handed a Number straight to
+    // a field every consumer treats as text. Coerce at the source too, not only in escHtml: a
+    // command's desc is also searched, measured and truncated elsewhere, and those paths have no
+    // reason to re-learn this.
+    cmds.push({ id: c.name, icon, fa: '', label: c.name, desc: String(c.hint || c.val || ''), trigger: '{', type: 'callable', _section: 'Your names', _brace: { name: c.name, group: c.group, insert: '{' + c.name + '}', sel: [c.name.length + 1, c.name.length + 1] } });
   }
   // Reorder sections so the summoning trigger's section appears first
   const order = [
