@@ -36322,7 +36322,7 @@ const BUILDER_FORMS = {
     { name:'url', label:'Image URL', type:'text', required:true },
     { name:'alt', label:'Alt text', type:'text' },
     { name:'width', label:'Width', type:'select', options:['point','wide','full'] },
-    { name:'scale', label:'Scale (of the column width)', type:'select', options:['','50%','75%','100%','125%','150%','200%'] },
+    { name:'scale', label:'Scale (of the point width)', type:'select', options:['','50%','75%','100%','125%','150%','200%'] },
   ], insert: vals => {
     const w = (vals.width && vals.width !== 'point') ? vals.width : '';
     const sc = String(vals.scale || '').trim();
