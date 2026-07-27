@@ -776,7 +776,26 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .cv-undated{font-size:.8em;color:var(--muted);padding:4px 2px}
 /* cards view (BV-2): a responsive reading grid */
 .gv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;padding:4px 0 6px}
-.gv-card{background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 10px;min-width:0}
+.gv-card{background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 10px;min-width:0;position:relative}
+/* #955: the gallery's cards edit, reorder, add and delete. The chrome is deliberately quiet — a
+   card is mostly its content, and the menu only surfaces on hover or focus, the same restraint the
+   outline's pencils use. */
+.gv-card:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.gv-card.gv-dragging{opacity:.5}
+.gv-card.gv-drop-before{box-shadow:-3px 0 0 var(--acc)}
+.gv-card.gv-drop-after{box-shadow:3px 0 0 var(--acc)}
+.gv-card-menu{position:absolute;top:4px;right:4px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border:none;background:transparent;color:var(--muted);border-radius:var(--r-sm);cursor:pointer;opacity:0;transition:opacity .12s}
+.gv-card:hover .gv-card-menu,.gv-card:focus-within .gv-card-menu,.gv-card-menu:focus-visible{opacity:1}
+.gv-card-menu:hover{background:var(--hbg);color:var(--fg)}
+.gv-card-menu:focus-visible{outline:2px solid var(--acc);outline-offset:-1px}
+.gv-card-add{display:flex;align-items:center;justify-content:center;gap:6px;color:var(--muted);font:inherit;font-size:.9em;cursor:pointer;border-style:dashed;min-height:56px}
+.gv-card-add:hover{color:var(--acc);border-color:var(--acc)}
+.gv-card-add:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* A blank field still renders, because the (r,c) grid has to be dense for Tab and the arrows to
+   reach every cell. It reads as an empty slot rather than a missing one. */
+.bv-field-blank .bv-k{opacity:.6}
+.gv-card .mt-cell{min-width:0;overflow-wrap:anywhere}
+.gv-card .mt-cell:empty::after{content:'';display:inline-block;min-width:2em;min-height:1em}
 .gv-card-title{font-weight:600;margin-bottom:4px;overflow-wrap:anywhere}
 .gv-card .md-img{display:block;width:100%;max-height:150px;object-fit:cover;border-radius:var(--r-sm);margin:2px 0 4px}
 /* role chips never wrap inside a narrow cell (FR-1) */
@@ -9737,6 +9756,29 @@ function mtSpliceCell(nodeId, r, c, start, end, str) {
   scheduleReconcile();
 }
 function mtMoveItem(arr, from, to) { const x = arr.splice(from, 1)[0]; arr.splice(to, 0, x); }
+
+// #955: the two shared cores behind card reordering. Both surfaces that reorder cards — the gallery
+// (rows of a base) and the corkboard (child points) — need the same two answers, and neither answer
+// has anything to do with what the cards represent, so both are pure and Node-tested.
+
+// Which side of a card the pointer is on. A grid reads left to right, so the horizontal midline is
+// the insertion axis; the vertical one only decides when the pointer is below the card entirely
+// (dragging into the gap under the last row of a grid).
+function cardDropAfter(rect, x, y) {
+  if (y > rect.bottom) return true;
+  if (y < rect.top) return false;
+  return x > rect.left + rect.width / 2;
+}
+
+// Where an item lands when dropped on a target. The subtlety this exists to get right: removing the
+// item before re-inserting it shifts every index above it down by one, so dropping "after" a target
+// that sits BELOW the source lands on the target's index, not one past it. Off-by-one here means a
+// card that refuses to move to the very end, which is the case a manual test always misses.
+function reorderIndex(from, target, after) {
+  if (!Number.isFinite(from) || !Number.isFinite(target)) return from;
+  const to = after ? target + 1 : target;
+  return to > from ? to - 1 : to;
+}
 // Parse a base's stored text into its {aligns, rows} grid model (sans the #+TBLFM
 // recipe). Split text-pure (mtModelText) so the portable-copy serializers stay
 // DOM-free and unit-testable; mtModel is the node-taking convenience wrapper.
@@ -10630,7 +10672,9 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
     addSection('Date', true);
     addItem('Pick a date (calendar)…', { onApply: () => requestAnimationFrame(() => {
       // the panel's close restored focus to the cell; re-open its popover and enter the grid
-      const cellEl = mtHost(node.id)?.querySelector(`td[data-r="${rowIdx}"][data-c="${colIdx}"]`);
+      // #955: `.mt-cell[data-r][data-c]`, not `td[...]` — a card's field is a div, and this was the
+      // last selector in the base subsystem that assumed the table layout.
+      const cellEl = mtHost(node.id)?.querySelector(`.mt-cell[data-r="${rowIdx}"][data-c="${colIdx}"]`);
       if (!cellEl) return;
       cellEl.focus();
       showCellEditorPop(node, cellEl);
@@ -11446,23 +11490,155 @@ function buildCardsWidget(node, model, readOnly) {
   const host = document.createElement('div');
   host.className = 'md-table-host mt-cards-host';
   host.dataset.id = node.id;
+  const roles = mtColRoles(node);
+  // #955: a card's title and fields are REAL GRID CELLS — `.mt-cell` with the row/column
+  // coordinates the shared handlers read. That is the whole of "the gallery is editable now": the
+  // layer is delegated on `host` and addressed by coordinate, so the cells simply exist in a
+  // different layout. The column name pill has been proving this since BV-1 (a `.mt-cell` inside
+  // a `<th>`, riding every handler unchanged).
+  const ro = readOnly ? '' : ' contenteditable="true"';
+  const cell = (r, c, raw) =>
+    `<div class="mt-cell" data-r="${r}" data-c="${c}"${ro} role="textbox"`
+    + ` aria-label="${escQ((String(model.rows[0]?.[c] || '').trim() || 'Field ' + (c + 1)) + ', card ' + r)}"`
+    + `>${mtCellHtml(node, raw, c, roles)}</div>`;
   let h = mtBaseChromeHtml(node, model, readOnly);
   h += '<div class="gv-grid">';
   for (let r = 1; r <= lastRow; r++) {
     const titleRaw = String(model.rows[r]?.[0] || '');
-    h += `<div class="gv-card" role="group" aria-label="${escQ(stripMd(titleRaw) || 'card')}">`
-      + `<div class="gv-card-title">${mtCellHtml(node, titleRaw, 0)}</div>`;
+    h += `<div class="gv-card" data-r="${r}"${readOnly ? '' : ' tabindex="-1"'} role="group" aria-label="${escQ(stripMd(titleRaw) || 'card')}">`
+      + (readOnly ? '' : `<button type="button" class="gv-card-menu" tabindex="-1" aria-label="${escQ('Options for ' + (stripMd(titleRaw) || 'this card'))}"><span aria-hidden="true">⋯</span></button>`)
+      + `<div class="gv-card-title">${cell(r, 0, titleRaw)}</div>`;
     for (let c = 1; c < model.aligns.length; c++) {
+      // Empty fields render too, as a placeholder cell. The read-only version skipped them, which
+      // left holes in the (r,c) grid — and mtFocusCell resolves by `.mt-cell[data-r][data-c]`
+      // selector, so Tab and the arrows would dead-end on the first blank. A dense grid is a
+      // requirement of the navigation model, not a cosmetic choice.
       const v = model.rows[r]?.[c];
-      if (!String(v || '').trim()) continue;
-      h += `<div class="bv-field"><span class="bv-k">${escHtml(String(model.rows[0]?.[c] || '').trim())}</span>${mtCellHtml(node, v, c)}</div>`;
+      const k = String(model.rows[0]?.[c] || '').trim();
+      const blank = !String(v || '').trim();
+      h += `<div class="bv-field${blank ? ' bv-field-blank' : ''}"><span class="bv-k">${escHtml(k)}</span>${cell(r, c, v)}</div>`;
     }
     h += '</div>';
   }
+  if (!readOnly) h += `<button type="button" class="gv-card gv-card-add" aria-label="Add a card">`
+    + `<span aria-hidden="true">+</span> New card</button>`;
   h += '</div>';
   host.innerHTML = h;
   mtWireBaseChrome(host, node);
+  mtSetRovingCell(host, host.querySelector('.mt-cell[data-r="1"]') || host.querySelector('.mt-cell'));
+  if (readOnly) return host;
+  mtWireCells(host, node);
+  mtWireCardOps(host, node);
+  mtInitGlobal();
   return host;
+}
+
+// #955: the card-level structure ops for the gallery — reorder, add, delete. Every one is a DOOR
+// onto a row op that already exists and is already tested (mtMoveRow / mtInsertRow / mtDeleteRow);
+// nothing here computes a new way to change a base. Delegated on `host`, like the cell layer, so a
+// refreshTable rebuild does not need re-wiring.
+//
+// A card is a row, so "move a card" is "move a row" and the two views can never disagree about the
+// order — the order is the document's, not the view's.
+function mtWireCardOps(host, node) {
+  const cardOf = el => el?.closest?.('.gv-card');
+  const rowOf = el => { const c = cardOf(el); return c ? +c.dataset.r : NaN; };
+
+  // Drag to reorder. Desktop only, matching the board (touch drags scroll the grid; the card menu
+  // is the touch door, as it is on the board).
+  if (!IS_TOUCH) {
+    host.querySelectorAll('.gv-card').forEach(card => {
+      card.draggable = true;
+      card.addEventListener('dragstart', e => {
+        // A drag starting inside a cell being edited is a text selection, not a card move.
+        if (e.target.closest('.mt-cell[contenteditable]') === document.activeElement) { e.preventDefault(); return; }
+        e.dataTransfer.setData('text/plain', card.dataset.r);
+        e.dataTransfer.effectAllowed = 'move';
+        card.classList.add('gv-dragging');
+      });
+      card.addEventListener('dragend', () => {
+        card.classList.remove('gv-dragging');
+        host.querySelectorAll('.gv-drop-before,.gv-drop-after').forEach(x => x.classList.remove('gv-drop-before', 'gv-drop-after'));
+      });
+      card.addEventListener('dragover', e => {
+        e.preventDefault();
+        const r = card.getBoundingClientRect();
+        const after = cardDropAfter(r, e.clientX, e.clientY);
+        card.classList.toggle('gv-drop-after', after);
+        card.classList.toggle('gv-drop-before', !after);
+      });
+      card.addEventListener('dragleave', () => card.classList.remove('gv-drop-before', 'gv-drop-after'));
+      card.addEventListener('drop', e => {
+        e.preventDefault();
+        const from = +e.dataTransfer.getData('text/plain');
+        const r = card.getBoundingClientRect();
+        const to = reorderIndex(from, +card.dataset.r, cardDropAfter(r, e.clientX, e.clientY));
+        host.querySelectorAll('.gv-drop-before,.gv-drop-after').forEach(x => x.classList.remove('gv-drop-before', 'gv-drop-after'));
+        if (!Number.isFinite(from) || to === from) return;
+        mtMoveRowTo(node, from, to);
+      });
+    });
+  }
+
+  // The card menu: the touch door for moving, and where add/delete live. showColPanel already
+  // carries Insert row / Move up / Move down / Delete row when handed a rowIdx — it was only ever
+  // unreachable from a card because nothing called it with one.
+  host.querySelectorAll('.gv-card-menu').forEach(btn => {
+    const open = () => { const r = rowOf(btn); if (Number.isFinite(r)) showGalleryCardMenu(node, r, btn); };
+    btn.addEventListener('mousedown', e => { e.preventDefault(); open(); });   // caret invariant
+    btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  });
+
+  const add = host.querySelector('.gv-card-add');
+  if (add) {
+    const go = () => {
+      const m = mtModelRead(node);
+      const last = mtLastDataRow(node, m);
+      mtInsertRow(node, last, 'below');
+      // Land the caret in the new card's title, so adding one and naming it is a single motion.
+      requestAnimationFrame(() => mtFocusCell(node, last + 1, 0));
+    };
+    add.addEventListener('mousedown', e => { e.preventDefault(); go(); });
+    add.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  }
+}
+
+// The card's own menu. Driving showed why this is not showColPanel: handed a rowIdx it opens with
+// Sum / Average / Count / Column formula / Show as / Sort — the COLUMN's menu, on a gesture that
+// pointed at a card. A card is a row, so its menu is the row ops and nothing else. Same shape and
+// same builder as the board's showCardMenu, and every row op it lists already existed.
+function showGalleryCardMenu(node, rowIdx, anchorEl) {
+  const panel = document.getElementById('mt-colpanel');
+  panel.innerHTML = '';
+  const { addSection, addItem } = mtMenuBuilder(panel);
+  const m = mtModelRead(node);
+  const lastDataRow = mtLastDataRow(node, m);
+  const minRows = mtHasFooter(extractTblfm(node.text)) ? 3 : 2;
+  addSection('Add a card');
+  addItem('Before this one', { onApply: () => mtInsertRow(node, rowIdx, 'above') });
+  addItem('After this one',  { onApply: () => mtInsertRow(node, rowIdx, 'below') });
+  addSection('Move', true);
+  addItem('Earlier', { disabled: rowIdx <= 1,           onApply: () => mtMoveRow(node, rowIdx, -1) });
+  addItem('Later',   { disabled: rowIdx >= lastDataRow, onApply: () => mtMoveRow(node, rowIdx,  1) });
+  addSection('Remove', true);
+  addItem('Delete this card', { danger: true, disabled: m.rows.length <= minRows,
+    onApply: () => mtDeleteRow(node, rowIdx) });
+  mtOpenMenu(panel, anchorEl);
+}
+
+// Move a row to an absolute index. mtMoveRow only steps by ±1 (it is the menu's Up/Down), and a
+// drag lands anywhere, so this is the same commit with an arbitrary destination.
+function mtMoveRowTo(node, from, to) {
+  const m = mtModel(node);
+  const last = mtLastDataRow(node, m);
+  if (from < 1 || from > last || to < 1 || to > last || to === from) return;
+  mtMoveItem(m.rows, from, to);
+  mtCommit(node, m); mtClearSelection(); refreshTable(node);
+  requestAnimationFrame(() => {
+    const card = mtHost(node.id)?.querySelector(`.gv-card[data-r="${to}"]`);
+    if (card) card.focus();
+  });
+  announce(`Card moved to position ${to}`);
 }
 
 // The calendar view (BV-3): the FR-1 date column places each row on a month grid.
@@ -11667,6 +11843,23 @@ function buildTableWidget(node, readOnly) {
   // read-only query base whose only cells are computed). Applies to readOnly grids too.
   mtSetRovingCell(host, host.querySelector('.mt-cell[data-r="1"]') || host.querySelector('.mt-cell'));
   if (readOnly) return host;
+  mtWireCells(host, node);
+  mtInitGlobal();
+  return host;
+}
+
+// #955: the cell edit/nav layer, lifted verbatim out of buildTableWidget so a NON-TABLE view can
+// call it. It only ever closed over `host` and `node`, which is what made the lift mechanical.
+//
+// base-views-vision.md §0.2 says interaction on a non-table view is net-new because these
+// handlers are "bound to <td data-r/data-c> grid geometry". They are not: every one is delegated
+// on `host` (a plain div) and finds its cell by closest('.mt-cell') with data-r/data-c read as
+// LOGICAL MODEL COORDINATES — no rowIndex, no cellIndex, no closest('tr'), no HTMLTable API. The
+// proof was already shipping before this change: the column name pill is a <span class="mt-cell"
+// data-r="0"> inside a <th>, and it rides this entire layer with no branch anywhere. §0.2 is
+// corrected in place; the real rule is that interaction is net-new only where a view has no
+// owning editor for its data.
+function mtWireCells(host, node) {
 
   // cell editing: show raw text on focus, render markdown on blur
   host.addEventListener('focusin', e => {
@@ -11693,6 +11886,11 @@ function buildTableWidget(node, readOnly) {
     // mutation between keystrokes (recompute, undo, a slash apply, another commit).
     const m = (_mtEditSession && _mtEditSession.id === node.id && _mtEditSession.text === node.text)
       ? _mtEditSession.model : mtModel(node);
+    // A cell can outlive its row: deleting or shrinking the table detaches the focused cell, and
+    // its pending input/focusout still runs with the old coordinates. Pre-existing on main (delete
+    // the row your caret is in, in the TABLE view, and this threw); #955 gave it a second door via
+    // the card menu, so it is guarded here, in the one handler both views share.
+    if (!m.rows[+cell.dataset.r]) return;
     m.rows[+cell.dataset.r][+cell.dataset.c] = cell.textContent;
     mtCommit(node, m);
     _mtEditSession = { id: node.id, model: m, text: node.text };   // key on the text just committed
@@ -11707,6 +11905,7 @@ function buildTableWidget(node, readOnly) {
     const enteredWith = cell.dataset.enterVal ?? '';   // value when the cell was focused
     delete cell.dataset.enterVal;
     const m = mtModel(node);
+    if (!m.rows[+cell.dataset.r]) return;   // the row went away under the caret (see the input guard)
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
     mtCommit(node, m);
     // Promote typed {…} shorthand on exit, per cell — the same promote-on-blur model as
@@ -11985,9 +12184,8 @@ function buildTableWidget(node, readOnly) {
     }
   });
 
-  mtInitGlobal();
-  return host;
 }
+
 
 // global gesture + keyboard handlers for table cell selection (attached once)
 function mtInitGlobal() {
@@ -35576,7 +35774,7 @@ const GUIDE = [
   // subset assertion requires every listed command id to exist. This is a pure concept-guide entry.
   { id:'base-views', cat:'writing',
     title:'Base views',
-    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable one), Board (a kanban of cards grouped by a status column), Cards (a gallery) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date, and most of the time they figure it out on their own: a column whose cells are all task states (TODO, DONE) is detected as Status, and a column of dates as Date, so Board and Calendar light up with nothing to set. When a column is ambiguous, mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role (your choice sticks from then on). A query base figures this out from its own columns (a due or start column is the date) the same way. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. Nothing about the data changes, only how it is laid out, so you can flip between views freely.\n\nA long base can also stay out of the way in the document. The chevron at its top left collapses it to a one-line strip (click it again, or zoom in, to see the rows), and the Rows button beside it caps how many rows show there (All, 5, 10 or 20), with a Zoom in to see more footer for the rest. Zoomed into the base, every row always shows. The view and the rows cap are also in the point's menu under View & rows shown.",
+    body:"A base is not only a table. Once you have one, the button strip at its top left switches how you see the same rows: Table (the editable one), Board (a kanban of cards grouped by a status column), Cards (a gallery you can edit) or Calendar (cards placed on the days of a date column). Board and Calendar need to know which column carries the status or the date, and most of the time they figure it out on their own: a column whose cells are all task states (TODO, DONE) is detected as Status, and a column of dates as Date, so Board and Calendar light up with nothing to set. When a column is ambiguous, mark it with the column's Show as menu, or press Alt+R on a cell in that column to cycle its role (your choice sticks from then on). A query base figures this out from its own columns (a due or start column is the date) the same way. On a Board, drag a card between lanes or, with a card focused, press Alt+Left or Alt+Right to move it. On Cards, click any field to edit it and Tab to walk from field to field and on into the next card; drag a card to put it in a different order, and use the \u22ef button on a card to add one either side of it, move it, or delete it. A New card button sits at the end of the grid. A query base's cards are a reading view only, since its rows belong to other points. Nothing about the data changes, only how it is laid out, so you can flip between views freely.\n\nA long base can also stay out of the way in the document. The chevron at its top left collapses it to a one-line strip (click it again, or zoom in, to see the rows), and the Rows button beside it caps how many rows show there (All, 5, 10 or 20), with a Zoom in to see more footer for the rest. Zoomed into the base, every row always shows. The view and the rows cap are also in the point's menu under View & rows shown.",
     related:['tables','querybase','properties'],
     examples:[
       { syn:'Base → Board',   desc:'group the rows into kanban lanes by a status column' },

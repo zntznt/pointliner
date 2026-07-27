@@ -202,6 +202,9 @@ Turn the document into a lightweight planner.
 - **Cards view.** Show any base as a responsive card grid: rows become cards, images become
   covers, and per-cell generator pills make a re-rollable deck.
   ([tables](writing-and-formatting.md#tables))
+  Cards are **editable**: click a field to type in it, drag a card to reorder, and use a card's
+  menu to add one before or after, move it, or delete it. (A query base's cards stay read-only,
+  since its rows are drawn from other points.)
 - **Calendar view.** A base with a Date column shows its rows on a month grid, undated rows
   counted below, never lost. ([tables](writing-and-formatting.md#tables))
 - **Collapse and cap a base.** In the document, collapse a base to one line or cap how many rows it

@@ -154,8 +154,13 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
 - **The cards view (BV-2) — moved above the line 2026-07-02 (owner call).** A reading view:
   every data row is a card in a responsive grid, first column the title, the rest its fields,
   painted through the role-aware cell renderer so chips, pills, and images compose (a per-cell
-  grammar pill makes a re-rollable generative deck; an image paints as the cover). No group field,
-  no editing gesture; read-only by construction on both authored and query bases.
+  grammar pill makes a re-rollable generative deck; an image paints as the cover). No group field.
+  **No longer read-only (#955, 2026-07-27):** an authored base's cards edit, reorder, add and delete.
+  The edit layer is not new — `mtWireCells(host, node)` was extracted from `buildTableWidget` and is
+  called by both views, so a card's title and fields are literally grid cells (`.mt-cell` +
+  `data-r`/`data-c`) in a different layout. Reorder/add/delete are doors onto `mtMoveRow` /
+  `mtInsertRow` / `mtDeleteRow` through a card menu that carries the ROW ops only. A **query base's
+  cards stay read-only** — write-through remains parked (base-views-vision §0.4).
 
 - **The calendar view (BV-3) — moved above the line 2026-07-02 (owner call).** The FR-1 date
   column places each row on a compact month grid (the agenda's pure `agendaMonthCells` reused;

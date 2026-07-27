@@ -15638,7 +15638,10 @@ test('bases round 1 — B4 read sites + write sites stay split (source pins)', (
 });
 
 test('bases round 1 — B1/B2/B3 wiring (source pins)', () => {
-  const btw = fnBody(_src, 'buildTableWidget');
+  // #955 extracted the cell edit/nav handlers into mtWireCells so a non-table view could call
+  // them. They are one unit of behaviour that now lives in two functions, so the slice is both
+  // — these pins are about what the handlers DO, not which function declares them.
+  const btw = fnBody(_src, 'buildTableWidget') + fnBody(_src, 'mtWireCells');
   // B1/B2 (via the round-2 extraction): BOTH commit chokepoints run the shared epilogue —
   // prune orphaned records, re-bump the generation past the promotion, re-run the recipe —
   // and the focusout repaints sibling cells when it says so (recompute OR projecting varbase)
@@ -15699,7 +15702,10 @@ test('round 2 — perf wiring + canonical vocabulary (source pins)', () => {
   assert.ok(/setTimeout/.test(fnBody(_src, 'scheduleVarPanelUpdate')), 'the panel update is a trailing debounce');
   assert.ok(/updateVarPanelContent\(\)/.test(fnBody(_src, 'openVarPanel')), 'opening the panel still updates synchronously');
   // the per-keystroke cell handler reuses the session parse, self-invalidating via the committed text
-  const btw = fnBody(_src, 'buildTableWidget');
+  // #955 extracted the cell edit/nav handlers into mtWireCells so a non-table view could call
+  // them. They are one unit of behaviour that now lives in two functions, so the slice is both
+  // — these pins are about what the handlers DO, not which function declares them.
+  const btw = fnBody(_src, 'buildTableWidget') + fnBody(_src, 'mtWireCells');
   assert.ok(/_mtEditSession && _mtEditSession\.id === node\.id && _mtEditSession\.text === node\.text/.test(btw),
     'the input handler reuses the last-commit parse, text-keyed');
   // the column-total matcher compiles once per base.col
@@ -15770,7 +15776,10 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
   // the shared filter is consumed at all three sites
   assert.ok(/const colList = qbaseColList\(cols\)/.test(fnBody(_src, 'queryTableRows')), 'queryTableRows shares the filter');
   assert.ok(/qbaseColList\(cols\)\.map/.test(fnBody(_src, 'qbaseColRoles')), 'qbaseColRoles shares the filter');
-  const btw = fnBody(_src, 'buildTableWidget');
+  // #955 extracted the cell edit/nav handlers into mtWireCells so a non-table view could call
+  // them. They are one unit of behaviour that now lives in two functions, so the slice is both
+  // — these pins are about what the handlers DO, not which function declares them.
+  const btw = fnBody(_src, 'buildTableWidget') + fnBody(_src, 'mtWireCells');
   assert.ok(/qbaseColList\(node\.qbase\.cols\)\.map\(x => x\.field\.trim\(\)\)/.test(btw), 'the paint shares the filter');
   // paint: writable qbase cells are contenteditable and badged; others stay read-only
   assert.ok(/qEdit = _qFields && qbaseFieldWritable\(_qFields\[c\]\)/.test(btw), 'only writable columns edit');
@@ -15949,7 +15958,10 @@ test('FR-1 editors — popover + menu doors + commit routing (source pins)', () 
   assert.ok(/addEventListener\('mousedown', e => \{ e\.preventDefault\(\); write\(/.test(pop), 'state picks keep the cell focused');
   assert.ok(/cell\.focus\(\);\s*\/\/ focus FIRST|cell\.focus\(\);\s*\n\s*cell\.textContent = v/.test(pop.replace(/focus FIRST[^\n]*/, 'focus FIRST')), 'write focuses the cell before setting the value (a query focusin re-reads the model)');
   // both edit paths show it on focusin and hide it, deferred, on focusout
-  const btw = fnBody(_src, 'buildTableWidget');
+  // #955 extracted the cell edit/nav handlers into mtWireCells so a non-table view could call
+  // them. They are one unit of behaviour that now lives in two functions, so the slice is both
+  // — these pins are about what the handlers DO, not which function declares them.
+  const btw = fnBody(_src, 'buildTableWidget') + fnBody(_src, 'mtWireCells');
   assert.ok(/showCellEditorPop\(node, cell\)/.test(btw), 'authored focusin shows the popover');
   assert.ok(/scheduleCellPopHide\(cell\)/.test(btw), 'authored focusout schedules the hide');
   const w = fnBody(_src, 'mtWireQBaseEdit');
@@ -21580,4 +21592,115 @@ test('#898 the scope group scrolls instead of spilling the panel head', () => {
     'and is wired for the fade cue + focus reveal, so a chip scrolled out of sight is still reachable (P3)');
   assert.ok(/scope\.setAttribute\('role', 'group'\)/.test(rg) && /aria-label', 'Graph scope'/.test(rg),
     'a scrolling group of chips is a named group');
+});
+
+// ── #955: the shared card-reorder cores ──
+//
+// Both card surfaces need the same two answers and neither answer depends on what a card holds,
+// so both are pure. The gallery (rows of a base) uses them now; the corkboard (child points) next.
+test('#955 cardDropAfter: the insertion axis is the one the eye reads', () => {
+  const r = { left: 100, right: 200, top: 50, bottom: 100, width: 100, height: 50 };
+  // A grid reads left to right, so the horizontal midline decides.
+  assert.equal(c.cardDropAfter(r, 120, 75), false, 'left half → insert before');
+  assert.equal(c.cardDropAfter(r, 180, 75), true,  'right half → insert after');
+  assert.equal(c.cardDropAfter(r, 150, 75), false, 'exactly the midline is still before (a tie goes left)');
+  // Below the card entirely: dragging into the gap under the last row of the grid.
+  assert.equal(c.cardDropAfter(r, 120, 140), true, 'below the card → after, whichever side');
+  assert.equal(c.cardDropAfter(r, 180, 140), true);
+  assert.equal(c.cardDropAfter(r, 180, 10),  false, 'above the card → before, whichever side');
+  assert.equal(c.cardDropAfter(r, 120, 10),  false);
+});
+
+test('#955 reorderIndex: the off-by-one a manual test always misses', () => {
+  // Removing the item before re-inserting shifts everything above it down by one, so dropping
+  // AFTER a target below the source lands ON the target's index, not one past it.
+  assert.equal(c.reorderIndex(1, 3, true), 3, 'card 1 dropped after card 3 lands at 3, not 4');
+  assert.equal(c.reorderIndex(1, 3, false), 2, 'and before card 3 lands at 2');
+  // Dragging upward needs no correction — the removal is above the destination.
+  assert.equal(c.reorderIndex(3, 1, false), 1, 'card 3 dropped before card 1 lands at 1');
+  assert.equal(c.reorderIndex(3, 1, true), 2, 'and after card 1 lands at 2');
+  // The case the off-by-one breaks: moving the first card to the very end.
+  assert.equal(c.reorderIndex(1, 5, true), 5, 'first card to the end reaches the END, not one short');
+  // A no-op drop is a no-op, from either side of itself.
+  assert.equal(c.reorderIndex(2, 2, false), 2);
+  assert.equal(c.reorderIndex(2, 2, true), 2);
+  // Junk in, the source index out — never a NaN write into a row array.
+  assert.equal(c.reorderIndex(NaN, 3, true), NaN);
+  assert.equal(c.reorderIndex(1, NaN, true), 1);
+});
+
+test('#955 the cell layer is extractable, and the gallery calls it', () => {
+  // base-views-vision §0.2 claimed these handlers are "bound to <td data-r/data-c> grid geometry"
+  // and that interaction on a non-table view is therefore net-new. They are delegated on a plain
+  // div host and addressed by class + logical coordinates; the extraction is the proof.
+  const w = fnBody(_src, 'mtWireCells');
+  assert.ok(/host\.addEventListener\('focusin'/.test(w) && /host\.addEventListener\('input'/.test(w)
+         && /host\.addEventListener\('focusout'/.test(w) && /host\.addEventListener\('keydown'/.test(w),
+    'all four cell handlers live in the extracted function, delegated on the host');
+  assert.ok(!/\bdocument\.querySelectorAll\('td/.test(w) && !/closest\('tr'\)/.test(w) && !/rowIndex|cellIndex/.test(w),
+    'and none of them reaches for table DOM');
+  const btw = fnBody(_src, 'buildTableWidget');
+  assert.ok(/if \(readOnly\) return host;\s*\n\s*mtWireCells\(host, node\);/.test(btw),
+    'the table view calls it after its read-only return, exactly where the block used to sit');
+  const cards = fnBody(_src, 'buildCardsWidget');
+  assert.ok(/if \(readOnly\) return host;\s*\n\s*mtWireCells\(host, node\);/.test(cards),
+    'and the cards view calls the same one — one edit layer, two layouts');
+  assert.ok(/mtWireCardOps\(host, node\);/.test(cards), 'plus the card structure ops');
+});
+
+test('#955 a card field is a real grid cell, and the grid is dense', () => {
+  const cards = fnBody(_src, 'buildCardsWidget');
+  assert.ok(/class="mt-cell" data-r="\$\{r\}" data-c="\$\{c\}"/.test(cards),
+    'cells carry the class and the logical coordinates the shared handlers read');
+  assert.ok(/const ro = readOnly \? '' : ' contenteditable="true"'/.test(cards),
+    'and are editable only when the base is');
+  // The dense-grid requirement: mtFocusCell resolves by [data-r][data-c] selector, so a skipped
+  // blank leaves a hole that Tab and the arrows dead-end on.
+  // Pin the PROPERTY, not one spelling of its violation: the field loop must not skip, however
+  // the skip is written. (Guard-proofing caught this — a differently-worded `continue` passed.)
+  const fieldLoop = cards.slice(cards.indexOf('for (let c = 1;'), cards.indexOf("h += '</div>';"));
+  assert.ok(!/\bcontinue\b/.test(fieldLoop),
+    'the field loop emits a cell for EVERY column — a hole in the (r,c) grid dead-ends Tab and the arrows');
+  assert.ok(/bv-field-blank/.test(cards), 'they render as an explicit empty slot instead');
+  assert.ok(/mtSetRovingCell\(host, host\.querySelector\('\.mt-cell\[data-r="1"\]'\)/.test(cards),
+    'one Tab stop seeds the grid, same as the table');
+  // The last table-only selector in the base subsystem.
+  assert.ok(!/querySelector\(`td\[data-r=/.test(_src),
+    "showColPanel's date row no longer assumes a <td>");
+});
+
+test('#955 a card menu is the ROW ops, and a query base stays inert', () => {
+  // Driving showed showColPanel(node, 0, btn, r) opening with Sum / Average / Column formula /
+  // Show as / Sort — the COLUMN's menu, on a gesture that pointed at a card.
+  const m = fnBody(_src, 'showGalleryCardMenu');
+  for (const s of ['Add a card', 'Move', 'Remove', 'Delete this card'])
+    assert.ok(m.includes(s), 'the card menu carries the ' + JSON.stringify(s) + ' section');
+  for (const s of ['Show as', 'Sort rows', 'Column formula'])
+    assert.ok(!m.includes(s), 'and not the column op ' + JSON.stringify(s));
+  assert.ok(/mtInsertRow\(node, rowIdx/.test(m) && /mtMoveRow\(node, rowIdx/.test(m) && /mtDeleteRow\(node, rowIdx\)/.test(m),
+    'every item is a door onto a row op that already existed');
+  // The §0.4 fence: a query base's cards render read-only, so none of the above is even built.
+  assert.ok(/buildCardsWidget\(node, model, readOnly \|\| !!node\.qbase\)/.test(_src),
+    'a query base forces read-only cards — write-through stays parked');
+  const ops = fnBody(_src, 'mtWireCardOps');
+  // And the button must actually call it. (Guard-proofing caught this too: reverting the call site
+  // to showColPanel left every assertion above green, because they only read the menu's body.)
+  assert.ok(/showGalleryCardMenu\(node, r, btn\)/.test(ops), 'the card button opens the CARD menu');
+  assert.ok(!/showColPanel\(/.test(ops), 'and never the column panel');
+  assert.ok(/if \(!IS_TOUCH\)/.test(ops), 'drag is desktop-only, matching the board (the menu is the touch door)');
+  assert.ok(/reorderIndex\(from, \+card\.dataset\.r, cardDropAfter\(/.test(ops),
+    'and the drop goes through the shared pure cores');
+});
+
+test('#955 a cell that outlived its row does not throw (pre-existing, now guarded)', () => {
+  // Reproduced on origin/main in the TABLE view: focus a cell, delete that row, and the pending
+  // focusout writes m.rows[r][c] for a row that is gone. #955 gave it a second door (the card
+  // menu's Delete), so the guard lands in the one handler both views share.
+  const w = fnBody(_src, 'mtWireCells');
+  assert.equal((w.match(/if \(!m\.rows\[\+cell\.dataset\.r\]\)/g) || []).length, 2,
+    'both the input and the focusout write are guarded');
+  assert.ok(/if \(!m\.rows\[\+cell\.dataset\.r\]\) return;\s*\n\s*m\.rows\[\+cell\.dataset\.r\]\[\+cell\.dataset\.c\] = cell\.textContent;/.test(w),
+    'the input handler checks before writing');
+  assert.ok(/if \(!m\.rows\[\+cell\.dataset\.r\]\) return;   \/\/ the row went away/.test(w),
+    'and so does the focusout handler');
 });
