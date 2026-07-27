@@ -6310,10 +6310,6 @@ function renderContentHTML(node) {
   renderVarMap      = globalVarMap;
   renderPosVarMap   = null;
   cookieNode        = null;
-  // Track nodes whose display depends on document-wide state so repaintComputedDependents
-  // can target them specifically instead of scanning every visible DOM row after each edit.
-  if ((node.math?.length) || (node.vars?.length) || (node.est?.length) || (node.query?.length) || /\[[\/%]/.test(node.text))
-    _computedNodeIds.add(node.id);
   return html;
 }
 
@@ -7504,8 +7500,6 @@ let renderVarMap = {};
 let renderPosVarMap = null;   // #767: per-pill positional var maps (key -> map) for the node being rendered; null = share renderVarMap
 let _varsCacheVer = -1, _varsVer = 0, _varsCached = {}; // doc-cache: collectVars — bespoke (Proxy/cycle side effects), registered read only; _varsVer is the shared generation counter (see DOC_CACHES)
 regDocCache('collectVars', { read: () => collectVars() });
-let _computedNodeIds = new Set(); // doc-cache: computedNodeIds — nodes whose renderContentHTML output depends on document-wide state (math/vars/est/query pills, progress cookies) (see DOC_CACHES)
-regDocCache('computedNodeIds', { reset: () => _computedNodeIds.clear() });
 let _varCycles        = new Set(); // names that participate in a reference cycle
 let _varShadowedKeys  = new Set(); // sidecar keys whose name is overridden by a later declaration
 let _varActiveExprs   = {};        // name -> expr for the last/active declaration of each var
@@ -18148,12 +18142,6 @@ function exitEdit(content, node) {
       // visible point that displays computed values. Without this, a {= 2*pi*r} pill keeps
       // its old number after r changes and a words(subtree) target never ticks (the values
       // recompute per render; only this repaint was missing after the partial-repaint work).
-      // Update the computed-node set so the repaint below only targets nodes that genuinely
-      // hold computed state, rather than scanning every visible DOM row.
-      if ((node.math?.length) || (node.vars?.length) || (node.est?.length) || (node.query?.length) || /\[[\/%]/.test(node.text))
-        _computedNodeIds.add(node.id);
-      else
-        _computedNodeIds.delete(node.id);
       repaintComputedDependents(node.id);
     }
   }
@@ -18174,13 +18162,30 @@ function exitEdit(content, node) {
 // another point), so patch innerHTML per node: the same surgical idiom as the
 // backlink-source repaint in exitEdit. Skips the just-committed node (already
 // repainted), live editors (never clobber a caret), and bases (own machinery).
+// #1109: does this point's rendered output depend on document-wide state? Pure + DOM-free so it
+// can be pinned in Node. Math/var/estimate/query pills read the variable map or the tree; a progress
+// cookie counts children. Generative pills (dice/grammar/markov/roll) are deliberately absent: they
+// freeze until clicked, so repainting them would silently change a value the user is reading.
+function isComputedNode(node) {
+  if (!node) return false;
+  return !!((node.math?.length) || (node.vars?.length) || (node.est?.length) || (node.query?.length)
+    || /\[[\/%]/.test(node.text || ''));
+}
+
 function repaintComputedDependents(exceptId) {
-  for (const nid of _computedNodeIds) {
-    if (nid === exceptId) continue;
-    const el = document.querySelector(`.node-content[data-id="${escQ(nid)}"]`);
-    if (!el || el.dataset.editing) continue;
+  // #1109: the worklist is derived from the MOUNTED ROWS, not from a set filled as a render side
+  // effect. The old set was registered in DOC_CACHES, so `resetDocCaches()` cleared it — and
+  // promoteBraceBodyIn calls that on every declaration it promotes, which happens inside exitEdit
+  // BEFORE this sweep runs. Editing `{rate := 45 to 75}` therefore emptied the worklist and then
+  // swept nothing, leaving every dependent showing its old number. Reproduced: the set went 3 -> 0
+  // across one commit. A set that is populated lazily also silently missed any point that had not
+  // been rendered yet. The rows are bounded by virtualization and the predicate is a field test, so
+  // the scan costs far less than the innerHTML rebuilds it gates.
+  for (const el of document.querySelectorAll('.node-content[data-id]')) {
+    const nid = el.dataset.id;
+    if (nid === exceptId || el.dataset.editing) continue;
     const n = nodeById(nid);
-    if (!n || n.type === 'base') continue;
+    if (!n || n.type === 'base' || !isComputedNode(n)) continue;
     el.innerHTML = renderContentHTML(n);
   }
   document.querySelectorAll('.prop-check[data-props-id]').forEach(chip => {
@@ -26828,6 +26833,10 @@ function rerollEst(node, key) {
   announce(sm ? `${e.expr} re-sampled: ${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : `${e.expr} re-sampled`);
   logRoll(node, e.expr, sm ? `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : '');   // #918
   const el = repaintAfterRoll(node);   // agent-review: full-render when the roll logged, so the log shows live
+  // #1109: a re-sample changes a number OTHER points read (a {= percentile(x, 90)} elsewhere, a
+  // rollup over this subtree). repaintAfterRoll only covers this node unless the roll logged, so
+  // sweep the dependents too or they keep the previous draw with nothing saying so.
+  repaintComputedDependents(node.id);
   el?.querySelector(`.est-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('est-rolled');
 }
 
@@ -26843,6 +26852,9 @@ function editEst(node, key) {
       Object.assign(e, { expr: rec.expr, seed: rec.seed });
       markDirty();
       repaintNodeContent(node);
+      // #1109: a pill edit rewrites the SIDECAR record and leaves node.text byte-identical, so
+      // exitEdit's `node.text !== prevText` gate never fires for it. Sweep dependents here.
+      repaintComputedDependents(node.id);
     },
   });
 }
@@ -27599,6 +27611,7 @@ function editMath(node, key) {
       if (roll.fmt) m.fmt = roll.fmt; else delete m.fmt;   // #946: reflect the format both ways
       markDirty();
       const el = repaintNodeContent(node);
+      repaintComputedDependents(node.id);   // #1109: sidecar-only edit; the text gate never fires
       el?.querySelector(`.math-roll[data-key="${CSS.escape(key)}"]`)?.classList.add('math-edited');
     },
   });

@@ -166,6 +166,7 @@ export function loadCores() {
     'scrollCueClasses',     // UXP-259: which edge fades a .scroll-strip shows
     'tagHit', 'stripStateTags', 'ancestorTagText', 'tagScanText', 'extendAncTagText',   // tag inheritance
     'searchBlob',           // doc-cache: the text-term haystack
+    'isComputedNode',       // #1109: does a point's render depend on document-wide state
     'docCaches', 'makeDocCache', 'regDocCache',   // the DOC_CACHES registry
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
     'moonGlyph', 'isMoonExpr', 'formatMathDisplay', 'isDateExpr', 'groupThousands', 'formatNumDisplay', 'parseNumFmt',   // #649 moon phase + math display seam; #946 number formatting

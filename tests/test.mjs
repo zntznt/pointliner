@@ -19719,6 +19719,50 @@ test('mergeBodyText: split→merge round-trips a to-do byte-identically (the #81
 
 // src wiring pins for the DOM-path fixes
 const _fix = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+// ── #1109: the computed-dependents sweep must not ride a resettable worklist ──
+test('#1109 isComputedNode — which points depend on document-wide state', () => {
+  const n = (o) => Object.assign({ text: '', children: [] }, o);
+  assert.equal(c.isComputedNode(n({ math: [{ key: 'm' }] })), true, 'a math pill reads the var map');
+  assert.equal(c.isComputedNode(n({ vars: [{ key: 'v' }] })), true, 'a var declaration or reference');
+  assert.equal(c.isComputedNode(n({ est:  [{ key: 'e' }] })), true, 'an estimate re-derives from expr+seed');
+  assert.equal(c.isComputedNode(n({ query:[{ key: 'q' }] })), true, 'a query pill reads the tree');
+  assert.equal(c.isComputedNode(n({ text: 'Chapters [/]' })), true, 'a progress cookie counts children');
+  assert.equal(c.isComputedNode(n({ text: 'plain point' })), false, 'plain text is not computed');
+  assert.equal(c.isComputedNode(n({ est: [] })), false, 'an EMPTY sidecar is not computed');
+  assert.equal(c.isComputedNode(null), false, 'no node, no repaint');
+  // deliberately absent: dice/grammar/markov/roll. Those freeze until clicked, so repainting them
+  // would silently change a value the user is reading. See the comment at the declaration.
+  assert.equal(c.isComputedNode(n({ grammar: [{ key: 'g' }] })), false, 'a generative pill is NOT swept');
+});
+
+test('#1109 the sweep derives its worklist from mounted rows, never a resettable set', () => {
+  // THE REGRESSION. repaintComputedDependents used to iterate `_computedNodeIds`, a Set registered
+  // in DOC_CACHES — so resetDocCaches() cleared it. promoteBraceBodyIn calls resetDocCaches() for
+  // every declaration it promotes, and that runs inside exitEdit BEFORE the sweep. Editing
+  // `{rate := 45 to 75}` therefore emptied the worklist and swept nothing, leaving every dependent
+  // showing its old number. Driven before the fix: the set went 3 -> 0 across one commit, and both
+  // dependents held their previous values; a full render() showed the correct ones.
+  assert.ok(!/_computedNodeIds/.test(_src),
+    'the resettable worklist is gone — reintroducing it reintroduces the stale-total bug (#1109)');
+  const body = fnBody(_src, 'repaintComputedDependents');
+  assert.match(body, /querySelectorAll\('\.node-content\[data-id\]'\)/,
+    'the sweep enumerates the mounted rows, which no cache reset can empty');
+  assert.match(body, /isComputedNode\(n\)/, 'and gates each row on the shared pure predicate');
+  assert.match(body, /el\.dataset\.editing/, 'still never clobbers a live editor (the caret invariant)');
+  assert.match(body, /n\.type === 'base'/, 'still leaves bases to their own machinery');
+});
+
+test('#1109 sidecar-only pill edits sweep their dependents too', () => {
+  // A pill edit rewrites the SIDECAR record and leaves node.text byte-identical (driven: true), so
+  // exitEdit's `node.text !== prevText` gate cannot fire for it. Each of these must sweep itself.
+  for (const fn of ['editEst', 'editMath']) {
+    assert.match(fnBody(_src, fn), /repaintComputedDependents\(node\.id\)/,
+      `${fn} must repaint dependents — its edit never changes node.text, so the text gate never fires`);
+  }
+  assert.match(fnBody(_src, 'rerollEst'), /repaintComputedDependents\(node\.id\)/,
+    'a re-sample changes a draw other points may read');
+});
+
 test('#801 wiring: exitEdit repaints computed dependents on text change', () => {
   assert.ok(_fix.includes('function repaintComputedDependents'), 'helper missing');
   assert.match(_fix, /node\.text !== prevText\) \{[\s\S]{0,2000}repaintComputedDependents\(node\.id\)/,

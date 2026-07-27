@@ -826,3 +826,38 @@ shared with search, and belongs in its own issue.
 A new drift guard scrapes every shipped OPML block and fails if a `{roll: #tag}` has no matching tag
 in its own document — the test that did not exist, which is why five starters could ship broken with
 nothing red.
+
+### UXP-251 ✓ Computed totals went stale because the repaint worklist was wiped mid-edit 🔴 [estimates] (RESOLVED 2026-07-27)
+
+**P4.** Filed as #1109 from the persona pass, a consultant building a real costing memo. Changing an
+upstream input left every downstream pill showing its previous number with nothing signalling it:
+*"So it's live-on-demand, not live. In a client meeting I would not notice that, and I would quote
+the old number."* They named it first among what a spreadsheet still wins on: *"recalculation I can
+trust without clicking."*
+
+**Cause.** `repaintComputedDependents` iterated `_computedNodeIds`, a Set registered in `DOC_CACHES`
+— so `resetDocCaches()` cleared it. `promoteBraceBodyIn` calls `resetDocCaches()` for every
+declaration it promotes, and that runs inside `exitEdit` **before** the sweep. Editing
+`{rate := 45 to 75}` therefore emptied the worklist and then swept nothing. Reproduced headless: the
+set went **3 → 0** across one commit, both dependents held their old values, and a full `render()`
+showed the correct ones. The set was also populated only as a render side effect, so any point not
+yet materialised was invisible to it regardless.
+
+**Not a freeze problem.** The estimate family's recorded P5 sign-off — the pill freezes and
+re-samples on click, like dice — is untouched and needed no narrowing. Sampling is deterministic on
+`(expr, seed)` and no samples are stored, so a repaint IS a recompute from the stored seed: the
+number moves because the input moved, never jitters, and still reproduces from a snapshot. The
+architecture reference already called the family "Live like B1"; that claim is now true.
+
+**Fix.** The sweep derives its worklist from the **mounted rows** (`.node-content[data-id]`), gated
+on a new pure predicate `isComputedNode`. No cache reset can empty the DOM, and a row that exists is
+a row that can be stale. Generative pills (dice/grammar/markov/roll) are deliberately excluded —
+they freeze until clicked, and repainting them would silently change a value the user is reading.
+Also wired `editEst`/`editMath`/`rerollEst` to sweep: a pill edit rewrites the sidecar record and
+leaves `node.text` byte-identical (driven: true), so `exitEdit`'s `node.text !== prevText` gate can
+never fire for it. That second part is defensive — no user-visible repro was demonstrated for it,
+unlike the worklist wipe.
+
+**Measured:** 1200 points, 41 mounted rows, sweep median **1.10ms**, max 2.40ms. The old set existed
+to avoid "scanning every visible DOM row"; virtualization already bounds that to the viewport, and
+the scan costs far less than the `innerHTML` rebuilds it gates.
