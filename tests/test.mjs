@@ -21844,3 +21844,91 @@ test('#955 the corkboard has two doors, and the outline one takes you to the boa
   assert.ok(/document\.querySelector\('\.zoom-view-toggle \.on'\)\?\.focus\(\);/.test(t),
     'focus survives the re-render that destroys the pressed chip');
 });
+
+// ── #983: a bare conversion prints a number you can read ──
+test('#983 isConvertExpr: only a BARE convert, for the reason isMoonExpr states', () => {
+  // replaceConvert substitutes the converted number back into the expression as TEXT before
+  // evalMath runs, and the guide promises convert() composes. So a composed expression must keep
+  // full precision or the arithmetic after it is rounded input.
+  assert.equal(c.isConvertExpr('convert(180, mi, km)'), true);
+  assert.equal(c.isConvertExpr('  convert(180, mi, km)  '), true, 'whitespace is not significance');
+  assert.equal(c.isConvertExpr('CONVERT(180, MI, KM)'), true, 'case-insensitive, like its siblings');
+  assert.equal(c.isConvertExpr('convert(convert(1, mi, ft), ft, in)'), true, 'a nested convert is still bare');
+  // Composed: full precision.
+  assert.equal(c.isConvertExpr('convert(weight, kg, lb) * price'), false);
+  assert.equal(c.isConvertExpr('2 * convert(1, mi, km)'), false);
+  assert.equal(c.isConvertExpr('round(convert(1, mi, km))'), false);
+  assert.equal(c.isConvertExpr('sum(cost)'), false);
+  assert.equal(c.isConvertExpr(''), false);
+  assert.equal(c.isConvertExpr(null), false);
+  assert.equal(c.isConvertExpr(undefined), false);
+});
+
+test('#983 formatConvertResult: 4 significant figures, and the two escapes go toward MORE precision', () => {
+  // The measured table this shipped from. Two decimals was rejected on the 1 in -> m row: it prints
+  // 0.03 for 0.0254, a worse answer than the raw float it was replacing.
+  assert.equal(c.formatConvertResult(289.68192), '289.7');      // 180 mi -> km
+  assert.equal(c.formatConvertResult(6.2137119224), '6.214');   // 10 km -> mi
+  assert.equal(c.formatConvertResult(11.023113109), '11.02');   // 5 kg -> lb
+  assert.equal(c.formatConvertResult(3.527396195), '3.527');    // 100 g -> oz
+  assert.equal(c.formatConvertResult(0.0254), '0.02540');       // 1 in -> m, the deciding case
+  assert.equal(c.formatConvertResult(0.2365882365), '0.2366');  // 1 cup -> l
+  // Escape 1: a whole number is already exact. `1`, never `1.000`.
+  assert.equal(c.formatConvertResult(1), '1');
+  assert.equal(c.formatConvertResult(0), '0');
+  assert.equal(c.formatConvertResult(-5), '-5');
+  assert.equal(c.formatConvertResult(1000), '1000');
+  // Escape 2: outside fixed notation, fall through to full precision rather than round away
+  // integer digits. 160934.4 must NOT become 160900.
+  assert.equal(c.formatConvertResult(160934.4), c.formatMathResult(160934.4));
+  assert.ok(!/e/i.test(c.formatConvertResult(160934.4)), 'and never shows the user an exponent');
+  assert.equal(c.formatConvertResult(1e-9), c.formatMathResult(1e-9));
+  // Negatives keep their sign and their significance.
+  assert.equal(c.formatConvertResult(-289.68192), '-289.7');
+  // Non-numbers defer to the canonical formatter rather than inventing an answer.
+  assert.equal(c.formatConvertResult(Infinity), c.formatMathResult(Infinity));
+  assert.equal(c.formatConvertResult(NaN), c.formatMathResult(NaN));
+  assert.equal(c.formatConvertResult('x'), c.formatMathResult('x'));
+});
+
+test('#983 formatMathResult is UNCHANGED — it is the lossless path this change must not touch', () => {
+  // The whole safety argument: formatMathResult's output is persisted into node.text by table
+  // recompute, so a rounding change there would be saved, not merely displayed. This pins the
+  // values #983 is about, so any future attempt to "just round it at the source" fails here.
+  assert.equal(c.formatMathResult(289.68192), '289.68192');
+  assert.equal(c.formatMathResult(6.2137119224), '6.2137119');
+  assert.equal(c.formatMathResult(0.0254), '0.0254');
+  assert.equal(c.formatMathResult(0.2365882365), '0.23658824');
+  assert.equal(c.formatMathResult(160934.4), '160934.4');
+  assert.equal(c.formatMathResult(1), '1');
+  assert.equal(c.formatMathResult(123456789012), '123456789012', 'the big-integer guard still holds');
+  assert.equal(c.formatMathResult(1.2246467991473532e-16), '0', 'and the near-zero snap');
+  // Side by side, so the change is legible as exactly one thing: display rounds, persistence does not.
+  for (const [n, lossless, shown] of [
+    [289.68192,    '289.68192', '289.7'],
+    [6.2137119224, '6.2137119', '6.214'],
+    [11.023113109, '11.023113', '11.02'],
+    [3.527396195,  '3.5273962', '3.527'],
+    [0.0254,       '0.0254',    '0.02540'],
+    [0.2365882365, '0.23658824','0.2366'],
+  ]) {
+    assert.equal(c.formatMathResult(n), lossless, n + ' persists at full precision');
+    assert.equal(c.formatConvertResult(n), shown, n + ' displays rounded');
+  }
+});
+
+test('#983 the display branch: convert rounds, everything else is untouched', () => {
+  const fmd = fnBody(_src, 'formatMathDisplay');
+  assert.ok(/isMoonExpr\(expr\) \? moonGlyph\(v\)/.test(fmd) && /isDateExpr\(expr\) \? formatEpochDays\(v\)/.test(fmd),
+    'the moon and date branches are unchanged and still come first');
+  assert.ok(/isConvertExpr\(expr\) && !\(fmt && Number\.isInteger\(fmt\.decimals\)\)/.test(fmd),
+    'an explicit per-pill decimals (#946) wins — that is the user stating a precision');
+  assert.ok(/\(fmt\?\.prefix \|\| ''\) \+ groupThousands\(formatConvertResult\(v\)\) \+ \(fmt\?\.suffix \|\| ''\)/.test(fmd),
+    'a fmt carrying only affixes still gets the default, and keeps its affixes');
+  assert.ok(/: formatNumDisplay\(v, fmt\);/.test(fmd), 'every other expression falls through unchanged');
+  // The rounding must NOT have been put where the issue implies — inside the conversion itself.
+  const rc = fnBody(_src, 'replaceConvert');
+  assert.ok(!/toPrecision|toFixed|formatConvertResult/.test(rc),
+    'replaceConvert stays exact: it substitutes into the expression as text, so rounding there ' +
+    'would corrupt any arithmetic composed around it');
+});

@@ -104,15 +104,24 @@ Or use the general `convert(x, from, to)`, which reads the unit names as words a
 whole table of built-in units. Many are ready with nothing to set up:
 
 ```
-{= convert(10, km, mi)}    → 6.21    length: m, km, cm, mm, mi, yd, ft, in
+{= convert(10, km, mi)}    → 6.214   length: m, km, cm, mm, mi, yd, ft, in
 {= convert(70, kg, lb)}    → 154.3   mass: kg, g, mg, lb, oz, stone
 {= convert(2, l, cup)}     volume: l, ml, gal, qt, pt, cup
 {= convert(90, min, hr)}   time: s, min, hr, day, week
 ```
 
+A conversion on its own **rounds to four significant figures** so the answer is readable at a
+glance: `180 mi` is `289.7 km`, not `289.68192`. Four *significant figures* rather than a fixed
+number of decimals, because that keeps working when the answer is small: `1 in` is `0.02540 m`,
+where two decimal places would have shown you `0.03`. A whole number stays whole, and a very large
+or very small result keeps its full precision rather than lose digits. To choose the precision
+yourself, use the number format on the pill (see [format the number](#format-the-number)).
+
 Conversions only work **within one dimension**: converting a length to a mass is left unresolved
 (shown as `#ERR`) rather than guessed. The result is an ordinary number, so it composes with the
-rest of math: `{= convert(weight, kg, lb) * price_per_lb}`.
+rest of math: `{= convert(weight, kg, lb) * price_per_lb}`. **A conversion you have composed into a
+bigger sum keeps its full precision**, so the rounding is only ever what you see, never what is
+calculated with.
 
 ### Your own units
 

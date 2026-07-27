@@ -220,6 +220,20 @@ Implemented:
   `openOracleDialog`/`ORACLE_BANDS`.
 ### Computation (the math engine)
 
+- **A bare conversion rounds for display (#983)** — `{= convert(180, mi, km)}` printed `289.68192`.
+  `isConvertExpr` sits beside `isMoonExpr` / `isDateExpr` in `formatMathDisplay`, which already
+  branched on expression shape, and `formatConvertResult` gives **4 significant figures**.
+  Significant figures, not decimals: two decimals reads fine at 289.68 and turns `1 in -> m` into
+  `0.03` for `0.0254`, worse than the float it replaced. Two escapes, both toward MORE precision — a
+  whole number prints plainly, and a magnitude outside fixed notation falls through to the full
+  formatter rather than lose integer digits.
+  **Bare only**, for the reason `isMoonExpr`'s comment already states: `replaceConvert` substitutes
+  the converted number back into the expression as TEXT before `evalMath` runs, so rounding anything
+  but a whole-expression call would corrupt the arithmetic composed around it. `formatMathResult` is
+  **untouched and pinned byte-identical** — it is persisted into `node.text` by table recompute, so
+  it is the lossless path. An explicit per-pill `decimals` (#946) still wins; a fmt carrying only
+  affixes keeps them and still gets the default.
+
 - **Estimate / uncertainty fields (B2)** — `@estimate` (or the `{lo to hi}` shorthand):
   an **uncertain value** sampled Monte-Carlo and displayed as **mean ± [p5,p95] + a
   unicode sparkline** (`7.2 (5 – 10) ▁▂▄▆█…`); click the pill to re-sample. This is the
