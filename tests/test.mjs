@@ -19884,6 +19884,49 @@ test('commit hygiene: the workflow reads COMMITS whole, and the BODY narrowly', 
   assert.match(_wfHygiene, /CLAUDE\.md/, "the failure message names the rule's home");
 });
 
+// ── #1113: the storage signals must match what actually survives a reload ──
+test('#1113 storageAdvice — names the real failure, and only when there is no durable copy', () => {
+  // Driven on a real origin BEFORE the fix: the two-tier fallback works. localStorage blocked alone
+  // survives (OPFS covers it) and OPFS blocked alone survives (localStorage covers it). Work is lost
+  // only when BOTH fail. In that state two things lied: the message blamed SIZE, and unsavedToDisk()
+  // returned false so the dirty dot and the unload guard both reported "safe".
+  const blocked = c.storageAdvice({ lsFailed: true, quota: false, opfsOk: false });
+  assert.equal(blocked.why, 'blocked');
+  assert.equal(blocked.durable, false);
+  assert.match(blocked.message, /blocking storage/, 'names the real cause, not size');
+  assert.doesNotMatch(blocked.message, /too large/, 'a private window is not a size problem');
+
+  const full = c.storageAdvice({ lsFailed: true, quota: true, opfsOk: false });
+  assert.equal(full.why, 'quota');
+  assert.match(full.message, /too large/, 'a genuine quota failure keeps the size wording');
+
+  // the cases that must stay QUIET, because the work is genuinely safe
+  assert.equal(c.storageAdvice({ lsFailed: true, opfsOk: true }), null, 'OPFS covers a blocked localStorage');
+  assert.equal(c.storageAdvice({ lsFailed: true, opfsOk: false, workspaceFile: true }), null, 'the folder file is durable');
+  assert.equal(c.storageAdvice({}), null, 'nothing wrong, nothing said');
+
+  // the soft, nearing-the-wall warning survives, and only without a second sink
+  assert.equal(c.storageAdvice({ oversize: true, opfsOk: true }), null, 'OPFS has no size cap');
+  assert.equal(c.storageAdvice({ oversize: true, opfsOk: false }).level, 'soft');
+});
+
+test('#1113 capability is learned, not inferred from the presence of an API', () => {
+  // hasOPFS is `navigator.storage && navigator.storage.getDirectory` -- a PRESENCE check. The method
+  // exists in a private window and on file://, where calling it throws. Everything that asks "is
+  // there a durable copy" must consult opfsOk, which is cleared the first time a real call fails.
+  assert.match(_src, /let opfsOk = hasOPFS;/, 'the learned capability flag exists');
+  assert.match(fnBody(_src, 'writeOpfsAutosave'), /opfsOk = false;/,
+    'a failed OPFS WRITE is what proves the sink unusable');
+  assert.doesNotMatch(fnBody(_src, 'readOpfsAutosave'), /opfsOk = false/,
+    'but a failed READ must not: a first boot has no autosave.json, and NotFoundError is not a ' +
+    'capability failure. Clearing it there raised a false "unsaved" alarm on every fresh start.');
+  // the consumers
+  assert.match(fnBody(_src, 'unsavedToDisk'), /autosaveDisabled && !opfsOk/,
+    'the dirty dot and the beforeunload guard read capability, not presence');
+  assert.match(fnBody(_src, 'scheduleAutosave'), /autosaveDisabled && !opfsOk && !workspaceFile/,
+    'and so does the autosave bail');
+});
+
 // ── #1108: a slash in prose must not eat the paragraph ──
 test('#1108 restoreTypedRun — hands back what was typed into the palette', () => {
   // The inverse of stripTriggerRun. A novelist typed "the harbour master / his son, whichever

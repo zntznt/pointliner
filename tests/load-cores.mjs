@@ -166,6 +166,7 @@ export function loadCores() {
     'scrollCueClasses',     // UXP-259: which edge fades a .scroll-strip shows
     'tagHit', 'stripStateTags', 'ancestorTagText', 'tagScanText', 'extendAncTagText',   // tag inheritance
     'searchBlob',           // doc-cache: the text-term haystack
+    'storageAdvice',        // #1113: which storage warning applies, and is there a durable copy
     'isComputedNode',       // #1109: does a point's render depend on document-wide state
     'docCaches', 'makeDocCache', 'regDocCache',   // the DOC_CACHES registry
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
