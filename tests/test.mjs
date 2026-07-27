@@ -13508,6 +13508,67 @@ test('#1119: parsePropArg returns null with no separator or no key, so bare /pro
   assert.equal(c.parsePropArg(undefined), null);
 });
 
+// ── #1121 — /prop routes a reserved date through its validated writer ──
+// `/prop:` is the typed twin of the generic Properties editor, whose posture is KEY ALLOWED,
+// VALUE VALIDATED: it deliberately lets a typed reserved key override the preserved one, then
+// refuses an unreadable date before saving. The slash arm allowed the key and skipped the
+// validation, so /prop:due=friday wrote a string nothing parses. The point kept a due chip and
+// vanished from the agenda, the week grid and every date view. Meanwhile /due:friday, the
+// validated door, refuses the same input.
+test('#1121: propWriteRoute sends an unreadable date to baddate, a readable one to the date writer', () => {
+  assert.equal(c.propWriteRoute('due', 'friday'), 'baddate');
+  assert.equal(c.propWriteRoute('due', 'notadate'), 'baddate');
+  assert.equal(c.propWriteRoute('start', 'friday'), 'baddate');
+  assert.equal(c.propWriteRoute('due', '2026-08-14'), 'date');
+  assert.equal(c.propWriteRoute('due', 'tomorrow'), 'date', 'a relative form is readable');
+  assert.equal(c.propWriteRoute('due', 'today+7'), 'date');
+  assert.equal(c.propWriteRoute('start', '2026-08-14'), 'date');
+});
+
+test('#1121: propWriteRoute treats an EMPTY value as the clear, not as a bad date', () => {
+  // /prop:due= is how you unset a date. Refusing it would break the documented clear.
+  assert.equal(c.propWriteRoute('due', ''), 'date');
+  assert.equal(c.propWriteRoute('due', null), 'date');
+  assert.equal(c.propWriteRoute('start', ''), 'date');
+});
+
+test('#1121: propWriteRoute is case-insensitive and trims, matching the other guards', () => {
+  assert.equal(c.propWriteRoute('DUE', 'friday'), 'baddate');
+  assert.equal(c.propWriteRoute('  Due  ', '2026-08-14'), 'date');
+  assert.equal(c.propWriteRoute('Start', 'friday'), 'baddate');
+});
+
+test('#1121: repeat rides the date writer but is NOT date-validated', () => {
+  // REPEAT_KEY takes a phrase ("every Monday"), and setDateProp only normalizes DATE_KEYS.
+  // The Properties dialog validates DATE_KEYS only too, so this is parity, not an oversight.
+  assert.equal(c.propWriteRoute('repeat', 'every Monday'), 'date');
+  assert.equal(c.propWriteRoute('repeat', 'weekly'), 'date');
+  assert.equal(c.propWriteRoute('REPEAT', 'weekly'), 'date');
+});
+
+test('#1121: ordinary keys keep the generic bag, and check/aliases stay there DELIBERATELY', () => {
+  assert.equal(c.propWriteRoute('owner', 'Priya'), 'prop');
+  assert.equal(c.propWriteRoute('cost', '120'), 'prop');
+  // Scope call recorded in UXP-248, not an oversight: an invalid `check` already renders a
+  // visible error chip (ux-discipline.md section 3, "never silently passing"), so it signals
+  // itself. A bad date is the one that disappears. Do not "fix" these to 'date' without
+  // reading that entry first.
+  assert.equal(c.propWriteRoute('check', 'garbage'), 'prop');
+  assert.equal(c.propWriteRoute('aliases', 'a, b'), 'prop');
+});
+
+test('#1121: the /prop arm routes, refuses in the shared date voice, and echoes what was stored', () => {
+  assert.ok(_src.includes('const route = propWriteRoute(ps.key, ps.val)'), 'the arm routes');
+  assert.ok(_src.includes("if (route === 'date') setDateProp(cur, ps.key.trim().toLowerCase(), ps.val)"),
+    'a date key reaches the validated writer, which resolves relative forms (#808)');
+  // One sentence across all four date doors: /due:value, {date due:}, the dialog, and now /prop.
+  assert.ok(_src.includes("flashHint('Not a valid date: ' + ps.val + '. ' + dateFormsHint())"),
+    'the refusal reuses the existing date voice rather than minting new copy');
+  // The guard must NOT live in the parser: parsePropSlash is pinned to agree with parsePropArg.
+  assert.ok(!/function parsePropArg[\s\S]{0,400}DATE_KEYS/.test(_src),
+    'parsePropArg stays a pure splitter, so parsePropSlash keeps agreeing with it');
+});
+
 test('#1119: parsePropSlash still strips its prefix and agrees with parsePropArg', () => {
   // The wrapper's contract is unchanged — that is the refactor's control, and the pins above it
   // must keep passing untouched.

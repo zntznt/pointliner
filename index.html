@@ -5478,6 +5478,28 @@ function parsePropSlash(query) {
   const m = String(query || '').match(/^prop:(.+)$/i);
   return m ? parsePropArg(m[1]) : null;
 }
+// propWriteRoute(key, val) — pure. #1121: which WRITER a /prop:key=value payload belongs to.
+//   'baddate' — a due/start key whose value no calendar can read. Refuse and say why.
+//   'date'    — route through setDateProp, the validated writer.
+//   'prop'    — the ordinary generic bag, setProp.
+// Why this exists: `/prop:` is the typed twin of the generic Properties editor, and that dialog's
+// posture is KEY ALLOWED, VALUE VALIDATED (it deliberately lets a typed reserved key override the
+// preserved one, then rejects an unreadable date with dateFormsHint before saving). The slash arm
+// allowed the key and skipped the validation, so `/prop:due=friday` wrote a string nothing can
+// parse: the point kept a due chip and silently vanished from the agenda, the week grid and every
+// date view. Routing also restores #808/UXP-202 — setDateProp RESOLVES a relative date at commit,
+// so `/prop:due=tomorrow` stores an absolute date instead of a literal that re-anchors daily.
+// An EMPTY value is 'date', not 'baddate': that is the documented clear, not a malformed date.
+// REPEAT_KEY rides setDateProp with a phrase value ("every Monday"), so it is not date-validated —
+// matching the dialog, whose validation is DATE_KEYS-only.
+// `check` and `aliases` deliberately stay 'prop' (scope call, #1121): an invalid check already
+// renders a visible error chip, so it is self-signalling; a bad date is the one that disappears.
+function propWriteRoute(key, val) {
+  const lk = String(key || '').trim().toLowerCase();
+  if (DATE_KEYS.has(lk)) return (val && parseDueDate(val) === null) ? 'baddate' : 'date';
+  if (lk === REPEAT_KEY) return 'date';
+  return 'prop';
+}
 
 // parsePropLines(text) — pure. #948: a multi-line block of `key: value` (or `key = value`) lines,
 // one per line, → [{ key, val }]. The batch-entry bridge so a stat block or a line-item set drops
@@ -20366,9 +20388,26 @@ function slashApply() {
     const ps = parsePropArg(rawArg);
     if (ps) {
       const cur = nodeById(nodeId); if (!cur) return;
-      pushUndo(); setProp(cur, ps.key, ps.val); markDirty(); render();
-      flashHint(ps.val ? `Set ${ps.key} to ${ps.val}.` : `Cleared ${ps.key}.`);
-      maybeNudgeSum(cur, ps.key);   // #519: once, if this numeric prop can now roll up
+      // #1121: a reserved date key routes through its validated writer, exactly as the Properties
+      // dialog does. The guard lives HERE and not inside parsePropArg because parsePropSlash is
+      // pinned to agree with it, and because the message needs the parsed value to echo it back.
+      const route = propWriteRoute(ps.key, ps.val);
+      if (route === 'baddate') {
+        // Same sentence the /due arm and the {date due:} promote use (#407 P4 parity), so the four
+        // date doors cannot drift apart in copy. flashHint reaches #a11y-live on its own.
+        flashHint('Not a valid date: ' + ps.val + '. ' + dateFormsHint());
+        return;
+      }
+      pushUndo();
+      if (route === 'date') setDateProp(cur, ps.key.trim().toLowerCase(), ps.val);
+      else setProp(cur, ps.key, ps.val);
+      markDirty(); render();
+      // Echo what was STORED, not what was typed: setDateProp resolves a relative date, so
+      // "tomorrow" reports back as the date it landed on. Reporting the typed string would be the
+      // same class of lie this fix is about.
+      const stored = (nodeById(nodeId)?.props || []).find(p => p.key.trim().toLowerCase() === ps.key.trim().toLowerCase());
+      flashHint(ps.val ? `Set ${ps.key} to ${stored ? stored.val : ps.val}.` : `Cleared ${ps.key}.`);
+      if (route === 'prop') maybeNudgeSum(cur, ps.key);   // #519: once, if this numeric prop can now roll up
       return;
     }
     // bare /prop → the promoting inline stub. Insert `{prop : }` at the trigger and park the caret on

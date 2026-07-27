@@ -681,3 +681,63 @@ the `{prop : }` stub. Each new pin was watched failing against `main` first.
 **Noted, not fixed:** `propDeclParts` (the `{prop key: val}` brace twin) rejects reserved keys
 (`due`, `check`, `aliases`, the timestamps); `parsePropArg` has no such guard, so `/prop:due=friday`
 still writes an unvalidated generic prop. Pre-existing, unchanged by this work.
+
+### UXP-248 ✓ `/prop:due=friday` wrote a date nothing could read 🔴 [properties] (RESOLVED 2026-07-27)
+
+**P4 (a write that reports success and silently destroys the meaning) + P1 (a typed door
+disagreeing with the dialog it twins).** Filed as #1121 out of the UXP-247 work.
+
+`/prop:due=friday` stored `due=friday`. Nothing parses it, so the point kept a `due` chip and
+disappeared from the agenda, the week grid and every date view. It looked scheduled and was not.
+The validated door refuses the same input: `/due:friday` sets nothing.
+
+**The premise in the filed issue was wrong**, and the correction is the useful part. I reported
+"two doors guard reserved keys, the slash door does not." The three doors actually hold three
+different postures:
+
+| door | posture |
+|---|---|
+| `{prop due: friday}` | refuses the **key** (`propDeclParts` → `null`) |
+| Properties dialog | **allows** the key deliberately ("a reserved key typed into the generic editor overrides the preserved one"), then **validates the value** with `parseDueDate` |
+| `/prop:key=value` | allowed the key **and** skipped the validation |
+
+So the dialog's posture is *key allowed, value validated*, and `/prop:` is its typed twin.
+Matching it, rather than adding a key guard, is the fix.
+
+**The sharper half, not visible when the issue was filed.** `setDateProp` **resolves a relative
+date at commit** (#808/UXP-202: "a deadline typed relatively never actually arrives"), and the
+generic `setProp` does not. So `/prop:due=tomorrow` stored the literal string `tomorrow`, which
+re-anchors every day, silently reintroducing the exact bug #808 fixed. Routing closes this too.
+
+**Fix.** `propWriteRoute(key, val)` as a pure core (in `load-cores.mjs` `need`) returning
+`'baddate'` / `'date'` / `'prop'`; the `/prop` arm routes on it. A bad date refuses in the
+sentence the other three date doors already use, `'Not a valid date: ' + val + '. ' +
+dateFormsHint()` (#407 P4 parity), so four doors share one voice. An empty value stays the
+documented **clear**, not a bad date. `repeat` rides `setDateProp` with a phrase value and is
+not date-validated, matching the dialog, whose check is `DATE_KEYS`-only. The success flash
+echoes what was **stored**, so `/prop:due=tomorrow` reports the date it landed on.
+
+The guard sits in the **arm**, not in `parsePropArg`: `parsePropSlash` is pinned to agree with
+that parser, and the message needs the parsed value to echo it.
+
+**Deliberately additive.** There are **five** near-copies of the reserved-key predicate
+(`propDeclParts`, `openPropsDialog`, `nodePropVars`, `nudgeSumKey`, the chip router), and
+`nudgeSumKey`'s omits `TIMESTAMP_KEYS` on purpose, so unifying them is a behaviour change rather
+than a refactor. Consolidation is its own job.
+
+**Scope: dates only** (owner decision). `check` and `aliases` keep the generic bag because an
+invalid `check` already renders a visible error chip (§3, "never silently passing") and so
+signals itself; a bad date is the one that disappears.
+
+**Verified by driving**, both tiers and against the dialog: `/prop:due=friday` writes nothing and
+flashes why; `/prop:due=2026-08-14` writes and the point **appears** in `collectDueDates`;
+`/prop:due=tomorrow` stores `2026-07-28`, not the literal; `/prop:owner=Priya` keeps its case
+(UXP-247 holds); `/prop:repeat=weekly` writes with no date error; `/prop:due=` clears; bare
+`/prop` still stubs. Each new pin was watched failing against `main` first.
+
+**Adjacent holes found while mapping, filed separately, NOT fixed here.** Query-base cells write
+dates through `setProp` (`qbaseFieldWritable` excludes only `title` and formula columns), so
+`today+7` in a base cell re-anchors daily, the same #808 bug on a second surface. The Properties
+dialog's **bulk** branch skips even the reserved merge. The paste path (`parsePropLines`) feeds
+dialog rows with no key filter. And `/prop:created=2020-01-01` forges an app-maintained
+timestamp that `propDeclParts` explicitly prevents.
