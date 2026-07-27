@@ -512,6 +512,10 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 #vlist{position:relative}
 .vspacer{flex:none;width:100%}
 #vlist>.node{position:relative}
+/* The edited row while the viewport has scrolled away from it: kept in the DOM (and focusable, so
+   the caret and any uncommitted text survive) at its real offset, without the window having to
+   span every row in between. Not display:none, which would make it unfocusable. */
+#vlist>.node.vl-parked{position:absolute;left:0;right:0}
 /* The title wraps and is capped at --zoom-title-max height. fitZoomTitle() shrinks the
    font (from --zoom-title-size down to the body-text floor) until the text fits; if it
    still overflows at the floor, the title scrolls vertically within the cap. */
@@ -3104,6 +3108,7 @@ const OVERSCAN = 10;   // extra rows rendered above/below the viewport
 let flatRows  = [];    // ordered visible rows: { node, depth, parent, searchCtx?, highlight? }
 let flatIndex = new Map();   // node id → index in flatRows
 let rowTops   = [];    // cumulative top offset of each row (length flatRows.length+1)
+let _vlParkedIdx = null;  // row index of the edited row while it sits OUTSIDE the window (parked)
 let totalHeight = 0;
 let heightCache = new Map(); // node id → measured px height
 let vlist = null, vTop = null, vBot = null;
@@ -9615,13 +9620,18 @@ function computeWindow() {
 function renderWindow(force) {
   if (!vlist) return;
   let [s, e] = computeWindow();
-  // never drop the row currently being edited from the DOM (would kill focus)
+  // The edited row must never leave the DOM (removing it fires blur, which exitEdits and kills the
+  // caret — see the note below). That used to be done by WIDENING the window to span it, which was
+  // free only because the viewport was pinned to the caret and you could never scroll away from it.
+  // Now that you can, the span is the whole document: measured at 1200 points with the caret at row
+  // 2 and the view at the end, 926 rows mounted and renderWindow took 232ms per scroll frame, against
+  // 28 rows and 3.6ms with nothing edited. Virtualisation was simply switched off.
+  // So keep the row, but as ONE parked element positioned at its true offset (below), never by
+  // dragging the window across everything in between. `keepIdx` is null when it already falls inside.
   const keepId = activeContentId ?? forceIncludeId;
-  if (keepId != null) {
-    const fi = flatIndex.get(keepId);
-    if (fi != null) { s = Math.min(s, fi); e = Math.max(e, fi); }
-  }
-  if (!force && s === winStart && e === winEnd) return;
+  const keepFi = keepId != null ? flatIndex.get(keepId) : null;
+  const keepIdx = (keepFi != null && (keepFi < s || keepFi > e)) ? keepFi : null;
+  if (!force && s === winStart && e === winEnd && keepIdx === _vlParkedIdx) return;
 
   // preserve the live editing element across the rebuild (keeps caret + edit state).
   // covers a .node-content editor (activeContentId) AND a focused table cell
@@ -9642,9 +9652,29 @@ function renderWindow(force) {
 
   vlist.innerHTML = '';
   vlist.appendChild(vTop);
+  // The parked row: out of the window, so it goes back absolutely positioned at its real offset
+  // (#vlist is position:relative, and rowTops already holds every offset). It stays in the DOM and
+  // focusable — which is all the force-include ever needed — without the spacers or the rows in
+  // between knowing it exists. Off-screen by construction, since the window is what is on screen.
+  if (keepIdx != null && activeEl) {
+    // #736, which parking would otherwise re-open. The old code let a scrolled-out row be DROPPED,
+    // and losing focus is what closed the caret-anchored pickers. Parking keeps the row connected,
+    // so that teardown never fires and a slash/brace/tag menu would hang at stale coordinates over
+    // rows it has nothing to do with. Close them on the transition INTO parked (not on every
+    // re-window while parked, which would be pointless work).
+    if (_vlParkedIdx == null) hideInlineMenus();
+    activeEl.classList.add('vl-parked');
+    activeEl.style.top = rowTops[keepIdx] + 'px';
+    vlist.appendChild(activeEl);
+  } else if (activeEl) {
+    activeEl.classList.remove('vl-parked');   // back inside the window: rejoin the flow
+    activeEl.style.top = '';
+  }
+  _vlParkedIdx = keepIdx;
   for (let i = s; i <= e; i++) {
     const r = flatRows[i];
     let el;
+    if (keepIdx != null && r.node.id === liveId) continue;   // already parked above; never mount twice
     if (activeEl && r.node.id === liveId) {
       el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; el.style.setProperty('--depth-w', (r.depth * IND) + 'px');
       // keep the reused row's tree position attributes fresh (UXP-19)
@@ -9658,7 +9688,16 @@ function renderWindow(force) {
   winStart = s; winEnd = e;
   if (focusedInner) {
     if (focusedInner.isConnected) {
-      focusedInner.focus();
+      // preventScroll is the whole reason the outline could not be scrolled while editing. focus()
+      // scrolls its target into view by default, and this call runs on EVERY re-window — including
+      // the one the user's own scroll just triggered. So: scroll → rAF → renderWindow → focus() →
+      // the browser scrolls back → another scroll event → repeat. Measured before the fix, six
+      // wheel ticks over a 300-point document left scrollY at 0,0,0,0,0,0; with nothing being
+      // edited the same ticks reached 2400. The viewport was not jittering, it was arrested.
+      // Scoped deliberately to THIS call: focusNode and the menus are navigation, and navigation
+      // should still bring its target into view. Here we are restoring focus to a row the user has
+      // chosen to look away from, which is the one case where following it is wrong.
+      focusedInner.focus({ preventScroll: true });
       if (caretOff != null) setCaretByOffset(focusedInner, caretOff);
     } else {
       // The edited row scrolled OUT of the window and was not re-appended: focus is gone
@@ -17233,6 +17272,11 @@ function attachContentEvents(content, node) {
   });
   content.addEventListener('input', (e) => {
     if (!content.dataset.editing) return;
+    // You can browse the outline freely now; working at the caret is what brings you back to it.
+    // Any input counts (typing, paste, delete) because they are all "I am editing HERE" — one rule
+    // rather than a special case for letters. Cheap: caretScrollDelta returns 0, and nothing moves,
+    // whenever the caret is already on screen, which is nearly every keystroke.
+    keepCaretInView(content);
     node.text = editableText(content); markDirty();
     scheduleReconcile(); // row may have grown/shrunk a line — keep offsets honest
     if (checkInlineHighlight(content, node)) { hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); return; } // typed {2d6} / {=x} / {a|b} → grammar-styled text (promotes to a pill on exit)
@@ -17269,7 +17313,16 @@ function attachContentEvents(content, node) {
     checkTagTrigger(content, node.id);
     checkEmojiTrigger(content, node.id);
   });
-  content.addEventListener('keydown', e => onKeyDown(e, node.id, content));
+  content.addEventListener('keydown', e => {
+    // Caret MOVEMENT returns you too: a caret you cannot see makes arrowing as blind as typing, so
+    // both count as working here (P1 — one rule, not two). Deliberately not Escape, and not a
+    // shortcut chord: those are commands, and yanking the viewport for them would be the arrest
+    // this change removes, wearing a different hat. After the key, so the caret has moved first.
+    if (CARET_KEEP_KEYS.has(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey && content.dataset.editing) {
+      requestAnimationFrame(() => keepCaretInView(content));
+    }
+    onKeyDown(e, node.id, content);
+  });
   content.addEventListener('paste', e => handlePaste(e, node, content));
   content.addEventListener('mouseup', updateSelToolbar);
   content.addEventListener('keyup', updateSelToolbar);
@@ -29592,6 +29645,61 @@ function insertLineBreak(content) {
   r.setStart(zw, 1); r.collapse(true);
   sel.removeAllRanges(); sel.addRange(r);
 }
+
+// How far to scroll so the caret is visible, in pixels to ADD to the scroll position; 0 when it is
+// already comfortably inside. Pure, so the rule lives somewhere testable rather than inside an event
+// handler. Everything is in viewport coordinates.
+//
+// "Only when needed" is the whole point: with the viewport no longer pinned to the caret, typing at
+// a caret you can already see must not move the page at all, or we would have replaced an arrest
+// with a twitch. `margin` keeps the caret off the exact edge so the line stays readable.
+//
+// A caret taller than the usable box (a huge line height, or a zoomed page) aligns to its TOP:
+// showing the start of the line you are typing on beats showing its end.
+function caretScrollDelta(caretTop, caretBottom, viewTop, viewBottom, margin = 0) {
+  const t = Number(caretTop), bm = Number(caretBottom);
+  const vt = Number(viewTop), vb = Number(viewBottom), m = Math.max(0, Number(margin) || 0);
+  if (![t, bm, vt, vb].every(Number.isFinite) || vb <= vt) return 0;
+  const top = vt + m, bot = vb - m;
+  if (bot <= top) return t - vt;                 // margins swallow the box: just align the top
+  if (bm - t > bot - top) return t - top;        // taller than the usable box: align its top
+  if (t < top) return t - top;                   // above the fold: negative (scroll up)
+  if (bm > bot) return bm - bot;                 // below it: positive (scroll down)
+  return 0;                                      // already visible: do not move
+}
+
+// The caret's rect, or the element's as a fallback — a collapsed range yields no rects on an empty
+// line, which is exactly where a naive reader would return nothing and scroll to the wrong place.
+// Same idiom isAtFirstLine/isAtLastLine already use.
+function caretRectIn(el) {
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount) {
+    const rects = sel.getRangeAt(0).getClientRects();
+    if (rects.length) return rects[0];
+    const r = sel.getRangeAt(0).getBoundingClientRect();
+    if (r && (r.top || r.bottom)) return r;
+  }
+  return el ? el.getBoundingClientRect() : null;
+}
+
+// Bring the caret back into view, but only if it has left it. Called when the user WORKS (types or
+// moves the caret), never on render or scroll — that distinction is the feature: browse freely, and
+// the moment you do something at the caret, the view returns to it.
+// On touch the usable box is the visual viewport, which the on-screen keyboard shrinks; using
+// innerHeight there would scroll the caret to a spot the keyboard is covering.
+function keepCaretInView(el) {
+  if (!el || !el.dataset.editing) return;
+  const r = caretRectIn(el);
+  if (!r) return;
+  const vv = window.visualViewport;
+  const viewTop = 0, viewBottom = vv ? vv.height : window.innerHeight;
+  const d = caretScrollDelta(r.top, r.bottom, viewTop, viewBottom, CARET_KEEP_MARGIN);
+  if (d) window.scrollBy(0, d);
+}
+const CARET_KEEP_MARGIN = 48;   // keep the caret off the exact edge, about two lines of breathing room
+// The keys that mean "I am working at the caret" without producing input. Escape and chords are
+// excluded on purpose: a command must not move the page.
+const CARET_KEEP_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown']);
 
 function isAtFirstLine(el) {
   const sel = window.getSelection();

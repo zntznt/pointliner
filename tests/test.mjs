@@ -2128,9 +2128,19 @@ test('the caret-walker suite is consolidated: no third walkDom copy; boundary ru
   assert.ok(/if \(rem === 0\)[\s\S]{0,160}BR/.test(dpl) || /BR[\s\S]{0,300}rem === 0/.test(dpl),
     'an offset ON a line break resolves BEFORE it (setCaretByOffset\u2019s rule)');
   assert.ok(dpl.includes('rem <= len'), 'an offset inside a pill resolves at the following boundary, never negative');
-  // the VL scroll-out path closes the pickers (the one teardown gap left)
-  assert.ok(/isConnected[\s\S]{0,800}hideInlineMenus\(\)/.test(_src.slice(_src.indexOf('_vlPreservingFocus = true'), _src.indexOf('_vlPreservingFocus = false'))),
-    'a scrolled-out edited row closes the inline pickers instead of leaking them');
+  // The VL scroll-out path closes the pickers (the one teardown gap left). There are now TWO ways
+  // an edited row leaves the visible window, and both must close them, or a caret-anchored menu
+  // hangs at stale coordinates over rows it has nothing to do with:
+  //   - dropped entirely (the row is gone from the DOM) — the original #736 case;
+  //   - PARKED (kept in the DOM, absolutely positioned off-window, so it stays focusable). Parking
+  //     means the drop path no longer fires, which is exactly how this bug would have come back.
+  // Asserted by ORDER within renderWindow rather than a byte window: the old fixed 800-char slice
+  // broke the moment a comment grew above it, which says nothing about the behaviour.
+  const rw = fnBody(_src, 'renderWindow');
+  assert.ok(/isConnected[\s\S]*?hideInlineMenus\(\)/.test(rw),
+    'a DROPPED edited row closes the inline pickers instead of leaking them');
+  assert.ok(/if \(_vlParkedIdx == null\) hideInlineMenus\(\);[\s\S]{0,200}vl-parked/.test(rw),
+    'and a PARKED one closes them on the transition into parked');
 });
 
 test('defaultBraceChoice — an exactly-typed callable name wins the selection, not the list order (#730)', () => {
@@ -22506,4 +22516,67 @@ test('#1099 scope is gated, announced, and foreign rows navigate cross-doc', () 
   assert.ok(/else zoomInto\(it\.id\)/.test(wan), 'same-doc behaviour unchanged');
   // a foreign row says so to a screen reader, not only visually
   assert.ok(/in \$\{dn\}, as saved/.test(fnBody(_src, 'agItemAria')));
+});
+
+// ── outline scrolling: browse freely, return to the caret when you work ──
+test('caretScrollDelta moves the minimum, and nothing at all when the caret is visible', () => {
+  const D = c.caretScrollDelta;
+  // the common case, and the one that matters most: already visible -> do not move. With the
+  // viewport no longer pinned to the caret, a non-zero here would replace an arrest with a twitch.
+  assert.equal(D(300, 320, 0, 700, 48), 0);
+  assert.equal(D(48, 68, 0, 700, 48), 0, 'exactly on the top margin still counts as visible');
+  assert.equal(D(632, 652, 0, 700, 48), 0, 'and exactly on the bottom margin');
+  // above the fold -> negative (scroll up), by exactly the shortfall
+  assert.equal(D(10, 30, 0, 700, 48), 10 - 48);
+  assert.equal(D(-100, -80, 0, 700, 0), -100);
+  // below it -> positive, by exactly the overshoot
+  assert.equal(D(690, 710, 0, 700, 48), 710 - 652);
+  assert.equal(D(800, 820, 0, 700, 0), 120);
+  // a caret taller than the usable box aligns its TOP: the start of the line you are typing on
+  assert.equal(D(100, 900, 0, 700, 48), 100 - 48);
+  // degenerate inputs never produce a nonsense jump
+  assert.equal(D(NaN, 10, 0, 700, 0), 0);
+  assert.equal(D(10, 20, 0, 0, 0), 0, 'a zero-height viewport');
+  assert.equal(D(10, 20, 700, 0, 0), 0, 'an inverted viewport');
+  assert.equal(D(10, 20, 0, 700, -5), D(10, 20, 0, 700, 0), 'a negative margin clamps to zero');
+  // margins wider than the box: fall back to aligning the top rather than oscillating
+  assert.equal(D(300, 320, 0, 100, 90), 300);
+});
+
+test('the outline scrolls freely while editing, and returns to the caret only on USE', () => {
+  const rw = fnBody(_src, 'renderWindow');
+  // THE bug: focus() scrolls its target into view by default, and this runs on every re-window,
+  // including the one the user's own scroll just triggered. Measured before the fix: six wheel
+  // ticks over a 300-point document left scrollY at 0,0,0,0,0,0.
+  assert.ok(/focusedInner\.focus\(\{ preventScroll: true \}\)/.test(rw),
+    'the re-mount restores focus WITHOUT dragging the viewport back');
+  // Scoped to that one site: navigation must still bring its target into view.
+  assert.ok(/el\.focus\(\);/.test(fnBody(_src, '_focusNodeGo')),
+    'focusNode still scrolls to follow — it is navigation, not a restore');
+  // the return fires on work, not on render or scroll
+  assert.ok(/keepCaretInView\(content\);/.test(_src));
+  assert.ok(/CARET_KEEP_KEYS\.has\(e\.key\) && !e\.ctrlKey && !e\.metaKey && !e\.altKey/.test(_src),
+    'caret-moving keys return you; chords do not');
+  const keys = _src.match(/const CARET_KEEP_KEYS = new Set\(\[([^\]]*)\]\)/)[1];
+  for (const k of ['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']) assert.ok(keys.includes(k), k);
+  assert.ok(!keys.includes('Escape'), 'Escape is a command, and must not move the page');
+  // never wired to scroll or render, which is what made it an arrest in the first place
+  assert.ok(!/addEventListener\('scroll'[\s\S]{0,200}keepCaretInView/.test(_src));
+});
+
+test('the edited row is PARKED off-window, not chased by widening the window', () => {
+  const rw = fnBody(_src, 'renderWindow');
+  // The old force-include widened [s,e] to span the edited row. Free while the viewport was pinned
+  // to the caret; once you can scroll away it mounts everything in between. Measured at 1200 points
+  // with the caret at row 2 and the view at the end: 926 rows and 232ms per scroll frame, against
+  // 28 rows / 3.6ms with nothing edited. After parking: 45 rows and 9.7ms, flat in document size.
+  assert.ok(!/s = Math\.min\(s, fi\); e = Math\.max\(e, fi\)/.test(rw), 'the span-widening is gone');
+  assert.ok(/keepIdx = \(keepFi != null && \(keepFi < s \|\| keepFi > e\)\) \? keepFi : null/.test(rw),
+    'the row is parked only when it falls OUTSIDE the window');
+  assert.ok(/activeEl\.classList\.add\('vl-parked'\)[\s\S]{0,120}rowTops\[keepIdx\]/.test(rw),
+    'parked at its real offset, so the spacers and the rows between it are untouched');
+  assert.ok(/if \(keepIdx != null && r\.node\.id === liveId\) continue;/.test(rw), 'and never mounted twice');
+  // parked, not hidden: display:none would make it unfocusable and lose the caret it exists to keep
+  assert.match(_src, /#vlist>\.node\.vl-parked\{position:absolute/);
+  assert.ok(!/\.vl-parked\{[^}]*display:none/.test(_src));
 });
