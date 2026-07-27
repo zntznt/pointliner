@@ -641,10 +641,16 @@ test('the two {roll:} resolution chokepoints are wrapped in withHostScope', () =
   // The @/`/` "Roll on your document" doors build their record in a dialog callback, which is not a
   // render either — BOTH of them (the outline path and the base-cell path) need the same scope, or
   // the most discoverable front door keeps leaking while the typed one is fixed.
-  const doors = [..._src.matchAll(/withHostScope\((n|node), \(\) => makeGrammarRoll\(`origin: \{roll: \$\{expr\}\}`, 'origin'\)\)/g)];
-  assert.equal(doors.length, 2, 'both rollpick dialog doors resolve under the host scope');
-  // and no rollpick door builds the record unscoped
-  assert.ok(!/[^>] makeGrammarRoll\(`origin: \{roll: \$\{expr\}\}`/.test(_src), 'no unscoped rollpick door remains');
+  // Anchored on the PROPERTY (every door that builds a roll record is wrapped), not on the
+  // template literal — #899 put a `folder` modifier inside that literal, and a byte-exact pin
+  // would have gone quietly vacuous instead of failing.
+  const doors = [..._src.matchAll(/makeGrammarRoll\(`origin: \{roll[^`]*`, 'origin'\)/g)];
+  assert.equal(doors.length, 2, 'exactly the two rollpick dialog doors build a roll record');
+  for (const m of doors) {
+    const before = _src.slice(Math.max(0, m.index - 40), m.index);
+    assert.match(before, /withHostScope\((n|node), \(\) => $/,
+      'every rollpick dialog door resolves under the host scope — none builds the record unscoped');
+  }
 });
 
 test('{roll:} promotes to an anonymous grammar pill (rides the grammar machinery)', () => {
@@ -8207,6 +8213,159 @@ test('folder-scoped reducers + query rows: sum/count("q", …, folder) across th
   }
 });
 
+test('#899 rollParts: an optional `folder` modifier, and `folder` stays searchable text', () => {
+  // the plain form is untouched
+  assert.deepEqual(host(c.rollParts('roll: #npc')), { expr: '#npc', folder: false });
+  // the modifier widens the draw
+  assert.deepEqual(host(c.rollParts('roll folder: #npc')), { expr: '#npc', folder: true });
+  assert.deepEqual(host(c.rollParts('roll   folder  :  is:todo | #thread')), { expr: 'is:todo | #thread', folder: true });
+  // THE load-bearing guarantee (the §4c decision: `folder` must stay searchable TEXT). A query FOR
+  // the word "folder" is not a folder-scoped roll — the modifier lives before the colon, never in
+  // the query. Without this, {roll: folder} would silently stop meaning what it says.
+  assert.deepEqual(host(c.rollParts('roll: folder')), { expr: 'folder', folder: false });
+  assert.deepEqual(host(c.rollParts('roll: #folder is:todo')), { expr: '#folder is:todo', folder: false });
+  // an empty query is not a roll, modifier or not
+  assert.equal(c.rollParts('roll folder:'), null);
+  assert.equal(c.rollParts('roll:'), null);
+  // an unknown modifier is NOT a roll at all (it stays literal, so the near-miss cue can speak)
+  assert.equal(c.rollParts('roll notebook: #npc'), null);
+  // and a folder roll is still an artifact to the brace sniff, so it promotes like the plain form
+  assert.equal(c.classifyBraceBody('roll folder: #npc', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('roll: #npc', {}, {}), 'artifact');
+});
+
+test('#899 queryHits / queryHitsFolder: the deterministic pool behind a roll', () => {
+  // queryHits is pickFromQuery with the Math.random() step removed, so the POOL is assertable.
+  const r = c.mkRoot();
+  const a = c.mkNode('Alia the smith #npc'); a.id = 'a1';
+  const b = c.mkNode('Bram the sour #npc');  b.id = 'b1';
+  const hostPt = c.mkNode('roster #npc');    hostPt.id = 'h1';
+  const other = c.mkNode('a plain point');   other.id = 'o1';
+  r.children.push(a, b, hostPt, other);
+  const hits = host(c.queryHits('#npc', r, 'h1', r)).sort();
+  // the query's own tag is stripped from the payoff (#558), the host point excludes itself
+  assert.deepEqual(hits, ['Alia the smith', 'Bram the sour'], 'every match, tag stripped, host excluded');
+  assert.deepEqual(host(c.queryHits('', r, null, r)), [], 'an empty query has no pool');
+  assert.deepEqual(host(c.queryHits('#npc', null, null, null)), [], 'a null scope has no pool');
+  // and the pick is a member of the pool it was handed
+  const picked = c.pickFromQuery('#npc', r, 'h1', r);
+  assert.ok(hits.includes(picked), 'pickFromQuery draws from exactly that pool');
+});
+
+test('#899 queryHitsFolder: own doc LIVE + every other as saved, with per-doc context', () => {
+  // live doc "da": one #npc; foreign doc "db": two #npc, one of them done under db's OWN sequence.
+  const live = c.mkRoot(); live.docId = 'da';
+  const l1 = c.mkNode('Alia #npc'); l1.id = 'l1';
+  const lhost = c.mkNode('the roster #npc'); lhost.id = 'lh';
+  live.children.push(l1, lhost);
+  const db = cfDocFor('db', 'b.opml', [['f1', 'Bram #npc'], ['f2', 'Cass #npc'], ['f3', 'not a person']]);
+  c._context.__live = live;
+  c._context.__wi = c.buildWorkspaceIndex([db]);
+  vm.runInContext('root = __live; workspaceIndex = __wi; workspaceIndex.gen = 1; resetDocCaches();', c._context);
+  try {
+    const hits = host(c.queryHitsFolder('#npc', 'lh')).sort();
+    assert.deepEqual(hits, ['Alia', 'Bram', 'Cass'],
+      'the pool spans the reading set: own doc live, the other as saved, host excluded, tags stripped');
+    // the DOCUMENT-scoped roll still stops at its own doc — that is the difference the modifier buys
+    assert.deepEqual(host(c.queryHits('#npc', live, 'lh', live)).sort(), ['Alia'], 'without the modifier, own doc only');
+    // an own-doc edit is seen immediately (no memo on this path, deliberately — a memoized random
+    // draw would freeze the re-roll, and the roll branch never runs during a render)
+    const l2 = c.mkNode('Dara #npc'); l2.id = 'l2';
+    live.children.push(l2);
+    assert.deepEqual(host(c.queryHitsFolder('#npc', 'lh')).sort(), ['Alia', 'Bram', 'Cass', 'Dara'],
+      'the own-doc tree is read live, with no cache to go stale');
+    // the pick is a member, and over many draws it reaches the FOREIGN document (the whole point)
+    const seen = new Set();
+    for (let i = 0; i < 200; i++) seen.add(c.pickFromQueryFolder('#npc', 'lh'));
+    assert.ok(seen.has('Bram') || seen.has('Cass'), 'a folder roll can land on a foreign document');
+    // no folder connected → a folder of one, never an empty pool (the P4 degradation the pill names)
+    vm.runInContext('workspaceIndex = null; resetDocCaches();', c._context);
+    assert.deepEqual(host(c.queryHitsFolder('#npc', 'lh')).sort(), ['Alia', 'Dara'], 'folder-of-one degradation');
+  } finally {
+    vm.runInContext('workspaceIndex = null; root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('#899 the modifier actually routes: a folder roll reaches a point NO document roll can see', () => {
+  // Behavioural, not a source pin: a dead `rlp.folder` branch reads fine and does nothing. Rig the
+  // own document to hold NO match at all, so only the reading set can answer. A document roll must
+  // come back empty; the folder roll must come back with the foreign point.
+  const live = c.mkRoot(); live.docId = 'da';
+  const hostN = c.mkNode('who shows up?'); hostN.id = 'h1'; hostN.grammar = [];
+  live.children.push(hostN);
+  const db = cfDocFor('db', 'b.opml', [['f1', 'Bram the sour #npc']]);
+  c._context.__live = live;
+  c._context.__wi = c.buildWorkspaceIndex([db]);
+  vm.runInContext('root = __live; workspaceIndex = __wi; workspaceIndex.gen = 1; resetDocCaches();', c._context);
+  try {
+    const tokF = c.promoteBraceBody(hostN, 'roll folder: #npc');
+    assert.match(tokF, /^\[\[grammar:/, 'a folder roll still promotes to the anonymous grammar pill');
+    assert.equal(hostN.grammar[0].result, 'Bram the sour',
+      'the folder roll drew from the OTHER document (tag stripped, as always)');
+    // the control: the same query WITHOUT the modifier can see nothing, so it shows the empty marker
+    const hostN2 = c.mkNode('and again?'); hostN2.id = 'h2'; hostN2.grammar = [];
+    live.children.push(hostN2);
+    c.promoteBraceBody(hostN2, 'roll: #npc');
+    assert.equal(hostN2.grammar[0].result, '{roll: #npc?}',
+      'without the modifier the same query is document-scoped and finds nothing');
+    // and the folder marker echoes the modifier when IT finds nothing, so it reads back as its source
+    const hostN3 = c.mkNode('nobody'); hostN3.id = 'h3'; hostN3.grammar = [];
+    live.children.push(hostN3);
+    c.promoteBraceBody(hostN3, 'roll folder: #nosuchtag');
+    assert.equal(hostN3.grammar[0].result, '{roll folder: #nosuchtag?}');
+  } finally {
+    vm.runInContext('workspaceIndex = null; root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
+test('#899 wiring: both doors offer the folder checkbox with the roll verb (src pins)', () => {
+  // both rollpick doors now offer the checkbox: no folderOption:false survives anywhere
+  assert.ok(!/folderOption: false/.test(_src), 'no door opts out of the folder checkbox any more');
+  assert.equal((_src.match(/folderLabel: 'Roll on the whole folder'/g) || []).length, 2,
+    'both rollpick doors label the checkbox with the ROLL verb, not "search"');
+  assert.equal((_src.match(/\{roll\$\{scope === 'folder' \? ' folder' : ''\}: \$\{expr\}\}/g) || []).length, 2,
+    'both doors write the modifier into the roll source, which is what rerollGrammar re-expands');
+  const oqd = fnBody(_src, 'openQueryDialog');
+  assert.ok(oqd.includes('label: folderLabel') && oqd.includes('hint: folderHint'),
+    'the shared checkbox takes the caller wording, so a roll never says "search"');
+  assert.ok(_src.includes('.gr-roll.gr-folder-off{border-style:dashed}'), 'the dashed treatment matches .query-folder-off');
+});
+
+test('#899 P4: the roll pill says when a folder roll narrowed, and still explains an unreadable filter', () => {
+  // renderGrammarPill is callable in Node, so these are BEHAVIOURAL, not source pins — a source pin
+  // here went vacuous once (the widened regex appears twice in the function, so asserting its
+  // presence passed even with the badFilter one narrowed back). Drive the output instead.
+  const mk = (def, result) => ({ def, origin: 'origin', anon: true, result, deps: {} });
+  const folderRoll = () => c.renderGrammarPill('k', mk('origin: {roll folder: #npc}', 'Alia'));
+  const plainRoll  = () => c.renderGrammarPill('k', mk('origin: {roll: #npc}', 'Alia'));
+  try {
+    // no folder connected: visibly degraded, and the tip says what it fell back to
+    vm.runInContext('workspaceIndex = null;', c._context);
+    const off = folderRoll();
+    assert.match(off, /class="gr-roll[^"]*gr-folder-off"/, 'a folder roll with no folder connected is VISIBLY degraded');
+    assert.match(off, /title="[^"]*rolled on the current document only/, 'the tooltip says what it fell back to');
+    assert.match(off, /aria-label="[^"]*rolled on the current document only/, 'and so does the accessible name (P3)');
+    // a plain roll is untouched by any of it — the control that makes the above mean something
+    const plain = plainRoll();
+    assert.doesNotMatch(plain, /gr-folder/, 'a document roll carries no scope class');
+    assert.doesNotMatch(plain, /current document only|count as saved/, 'and no scope sentence');
+    // folder connected: live scope, staleness named
+    c._context.__wi = c.buildWorkspaceIndex([cfDocFor('db', 'b.opml', [['f1', 'Bram #npc']])]);
+    vm.runInContext('workspaceIndex = __wi;', c._context);
+    const on = folderRoll();
+    assert.match(on, /class="gr-roll[^"]*gr-folder"/, 'a live folder roll is marked, not dashed');
+    assert.doesNotMatch(on, /gr-folder-off/);
+    assert.match(on, /title="[^"]*other documents count as saved/, 'staleness is named, never implied');
+    // UXP-232 must survive the modifier: an unreadable filter still explains itself
+    const bad = c.renderGrammarPill('k', mk('origin: {roll folder: is:tod}', '{roll folder: is:tod?}'));
+    assert.match(bad, /title="[^"]*is:tod is not a filter this app knows/,
+      'a folder roll with an unreadable filter keeps its reason, not "nothing matched yet"');
+    assert.doesNotMatch(bad, /title="[^"]*Nothing matched yet/);
+  } finally {
+    vm.runInContext('workspaceIndex = null;', c._context);
+  }
+});
+
 test('4c wiring: the query dialog folder checkbox, the pill folder branch, and the atomic scoped pill (src pins)', () => {
   const oqd = fnBody(_src, 'openQueryDialog');
   assert.ok(oqd.includes("folderOption && !!workspaceDir"), 'the folder checkbox is offered only with a connected folder');
@@ -9564,11 +9723,15 @@ test('UXP-232: the roll pill and the math pill carry the reason too', () => {
   // (the marker is text inside the point, where a sentence does not belong).
   const gp = fnBody(_src, 'renderGrammarPill');
   assert.ok(gp.includes('searchTermProblems('), 'the roll pill must ask why it found nothing');
-  assert.ok(/roll\\s\*:/.test(gp) || gp.includes('roll'), 'it reads the query back out of g.def');
+  // #899: the extraction regex must accept the OPTIONAL `folder` modifier, or a folder roll with an
+  // unreadable filter loses its reason. The old form of this line fell back to gp.includes('roll'),
+  // which is true of every grammar pill — vacuous. Pin the widened regex itself.
+  assert.ok(/roll\(\?:\\s\+folder\)\?\\s\*:/.test(gp),
+    'it reads the query back out of g.def, modifier or not');
   // Assert the ternary's SHAPE, not string positions: the comment above it quotes the old copy,
   // so indexOf would measure the comment rather than the code (the same trap the announce() count
   // hit in S3-PR4 — comments in this file are read by the tests).
-  assert.match(gp, /const cta = badFilter \?/,
+  assert.match(gp, /const cta = \(badFilter \?/,
     'the reason must win over the "nothing matched" copy, which is itself the wrong answer here');
 
   // The math pill is the subtle one: count() returns 0, not null, so math-err never fires and the

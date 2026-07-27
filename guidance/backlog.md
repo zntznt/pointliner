@@ -329,7 +329,9 @@ lines this entry asked for: a reserved keyword form inside the existing `{…}` 
 wraps it in an anonymous grammar (`origin: {roll: …}`) so it freezes/re-rolls like any grammar pill,
 and the §2 syntax inventory records it (DECISION-191b). "Advance a random open thread" is
 `{roll: #thread is:todo}`; wrap in a pick var for a stable value. (Issue #546 flagged this row as
-stale after the ship.)
+stale after the ship.) **Extended folder-wide 2026-07-27 (#899):** `{roll folder: #npc}` draws from
+every note in a connected folder, the last member of the query family to reach past the document
+edge (see `cross-document-direction.md` §6 step 4).
 
 ### ⊘ Mirrors / cloned items — *shelved (but a useful slice now exists)*
 The same node in multiple places with synced edits. Hardest item; conflicts with the strict
@@ -355,7 +357,8 @@ Recorded here so they sit with the other shelved directions, not buried in an ac
   the **data-pack** lane (`plugins-direction.md`) for shared rules/vars. An *explicitly-addressed*
   future form (`{doc:name.var}`) would be a new §2 syntax-inventory decision, not a silent behavior.
 - **Doable remainder filed as issues** (not parked — sequencing-deferred): **neighborhood graph**
-  (§6 step 5) and a **folder-scoped `{roll:}`** (§6 step 4 remainder). See the open issue queue.
+  (§6 step 5, ✓ shipped as #898) and a **folder-scoped `{roll:}`** (§6 step 4 remainder,
+  ✓ shipped 2026-07-27 as #899 — `{roll folder: query}`). Both closed; nothing left in this row.
 
 ---
 

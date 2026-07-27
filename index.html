@@ -1053,6 +1053,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    Result ink and pill chrome are untouched — identity at whisper level. */
 .gr-roll.gr-stale{position:relative}
 .gr-roll.gr-stale::after{content:'';position:absolute;top:-2px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--info);pointer-events:none}
+/* #899: a folder-scoped roll running with NO folder connected drew from this document only —
+   visibly degraded, same dashed language as .query-folder-off, tooltip says why (P4). */
+.gr-roll.gr-folder-off{border-style:dashed}
 @keyframes roll-pop{0%{opacity:.3;transform:scale(.88)}60%{transform:scale(1.04)}100%{opacity:1;transform:scale(1)}}
 .gr-roll.gr-rolled .gr-result{display:inline-block;animation:roll-pop .28s cubic-bezier(.2,.8,.3,1)}
 .gr-preview-result{font-weight:600;color:var(--acc)}
@@ -2780,6 +2783,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
         <div class="sh-row"><kbd>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
         <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from the points below this one (rolls on your live document)</span></div>
+        <div class="sh-row"><kbd>{roll folder: #npc}</kbd><span>the same roll across every note in the connected folder</span></div>
         <div class="sh-row"><kbd>/querybase</kbd><span>a live base of matching points: title, properties or a per-point formula as columns</span></div>
       </div>
     </div>
@@ -3467,12 +3471,21 @@ function countParts(body) {
 // point live at render time (pickFromQuery). Not a pill/sidecar — pure inline expansion resolved in
 // resolveBrace, re-rolled each render; wrap in a pick var ({npc := {roll: is:npc}}) for a stable,
 // click-re-rollable value (the existing rollPickSource / rerollPickVar freeze machinery).
+// #899: an optional `folder` MODIFIER before the colon widens the draw to the whole reading set —
+// {roll folder: #npc}. It sits in the reserved-keyword slot, not in the query, for two reasons.
+// (a) The §4c decision binds: `folder` must stay searchable TEXT, so it can never be a query word —
+// {roll: folder} still rolls on points containing "folder", and that is pinned. (b) Unlike its
+// sibling {query:}, a roll has NO sidecar record to carry a scope field: it freezes into an
+// anonymous grammar whose def IS this source text, and rerollGrammar re-expands that text through
+// resolveBrace, which only ever sees the body. The scope lives in the text or it cannot survive a
+// re-roll. A bonus over the scoped query pill: this DOES unfold in edit mode, because the text can
+// say it. Same pre-colon modifier shape as {prop KEY: …} / {date due: …} / {rule Name: …}.
 function rollParts(body) {
-  const m = /^roll\s*:(.*)$/is.exec((body || '').trim());
+  const m = /^roll(\s+folder)?\s*:(.*)$/is.exec((body || '').trim());
   if (!m) return null;
-  const expr = m[1].trim();
+  const expr = m[2].trim();
   if (!expr) return null;                              // {roll:} with no query → not a roll
-  return { expr };
+  return { expr, folder: !!m[1] };
 }
 
 // LEAN FLOOR phase 1 — the promoting inline stub for a SIDECAR-backed verb. propDeclParts(body) sniffs
@@ -8938,7 +8951,7 @@ const INSERT_CMDS = [
   { id:'dice',     icon:'🎲', fa:'fa-solid fa-dice-d20',     keys:['roll','d20','d100','d6','fudge','pool'], label:'Dice roll',    desc:'Live dice; click the pill to re-roll.',      ex:'2d6+3 · 4d6kh3 · 4d6r1 · 2d6! · 4dF · 6d10>=7', section:'Generate' },
   { id:'markov',   icon:'⛓', fa:'fa-solid fa-circle-nodes', keys:['chain'], label:'Markov chain', desc:'Weighted random walk; click to re-walk. Type {markov: a→b, b→c} to make one inline, or use the dialog to name it and call it as {name}.', ex:'{markov: a→b, b→c}', section:'Generate' },
   { id:'rolltable',icon:'🎯', fa:'fa-solid fa-table-list',  keys:['loot','treasure','encounter'], label:'Roll table',   desc:'A named weighted table built from one grammar rule. Click to re-roll. Type {rule loot: sword | shield 2} to make one inline, then call it as {loot}.',  ex:'{rule loot: sword | shield 2}',  section:'Generate' },
-  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own document is the table. Click to re-roll.', ex:'{roll: #npc} · {roll: is:todo}', section:'Generate' },
+  { id:'rollpick', icon:'🔀', fa:'fa-solid fa-shuffle',     keys:['random','pick'], label:'Roll on your document', desc:'Pick a random point matching a search: your own document is the table, or the whole folder. Click to re-roll.', ex:'{roll: #npc} · {roll folder: #npc}', section:'Generate' },
   { id:'grammar',  icon:'❖', fa:'fa-solid fa-shuffle',     keys:['generate','name','npc','tracery','generator','rule'], label:'Grammar',      desc:'Recursive text generator; rules call rules, dice and math. Type {rule name: a | b} to declare one inline, or use the dialog for several rules at once.', ex:'{rule origin: a {color} {animal}}', section:'Generate' },
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
@@ -16707,8 +16720,15 @@ function stripQueryTags(text, terms) {
 // the context document-wide. Without it a subtree-scoped {roll: is:todo} would stop matching the
 // moment its custom sequence or variable was declared outside that subtree.
 function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
+  return pickOneHit(queryHits(expr, rootNode, hostId, ctxRoot));
+}
+// #899: the POOL behind a roll, split out of pickFromQuery so the draw is testable without
+// sampling — the walk is deterministic, only the final index is random. Every caller that used to
+// live inside pickFromQuery keeps its exact semantics (host exclusion, ancestor tag inheritance,
+// stripQueryTags on the payoff). Returns [] on an unreadable/empty query. Pure.
+function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
   const terms = parseSearchQuery(expr || '');
-  if (!terms.length) return '';
+  if (!terms.length || !rootNode) return [];
   const seqs = allSequences(ctxRoot);
   const needsCtx = terms.some(t => t.kind === 'is');
   const vars = needsCtx ? collectVars(ctxRoot) : undefined;
@@ -16724,8 +16744,34 @@ function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
       walk(c, extendAncTagText(anc, c.text, tagStates));
     }
   })(rootNode, '');
-  if (!hits.length) return '';
-  return hits[Math.floor(Math.random() * hits.length)];
+  return hits;
+}
+function pickOneHit(hits) {
+  return hits.length ? hits[Math.floor(Math.random() * hits.length)] : '';
+}
+
+// #899: the FOLDER-scoped pool behind {roll folder: <query>} — the generative member of the 4c
+// family, joining queryReduceFolder (the reducers) and queryRowsFolder (the query pill). Same
+// reading set and the same PER-DOC context rule: wsAllDocRoots substitutes the LIVE root for the
+// own document and hands the retained as-saved tree for every other, and each doc's own
+// sequences / variables / link index resolve ITS `is:` terms (queryHits computes them from the
+// ctxRoot it is given). hostId still excludes the pill's own point, which lives in the own doc.
+//
+// DELIBERATELY NOT MEMOIZED, unlike its two siblings. They memoize because they are read on every
+// render pass; the roll branch is not — resolveBrace's roll arm runs at PROMOTION and at re-roll
+// only (see the withHostScope comment), never during a render. And a memo over a random draw would
+// freeze the re-roll, which is the whole point of the pill. The folder walk costs 1.5–31 ms
+// measured, which is a click, not a frame.
+function queryHitsFolder(expr, hostId) {
+  const hits = [];
+  for (const [, r] of wsAllDocRoots()) {
+    if (!r) continue;
+    for (const h of queryHits(expr, r, hostId, r)) hits.push(h);
+  }
+  return hits;
+}
+function pickFromQueryFolder(expr, hostId) {
+  return pickOneHit(queryHitsFolder(expr, hostId));
 }
 
 // queryTableRows(expr, cols, rootNode, hostId, cap) — the query-base row engine
@@ -20721,11 +20767,14 @@ function insertInlineArtifact(id, nodeId, content) {
     openQueryDialog({
       title: 'Roll on your document',
       submitLabel: 'Roll',
-      folderOption: false,   // a {roll:} grammar reads the live document; folder rolls are not a thing (yet)
-      onResult: expr => {
+      folderLabel: 'Roll on the whole folder',
+      folderHint: 'Draws from every document of the connected folder, not just this one. Other documents count as saved on disk.',
+      // #899: the folder checkbox now applies here too — a scoped roll writes the `folder`
+      // modifier into its own source text, which is what rerollGrammar re-expands.
+      onResult: (expr, scope) => {
         const n = nodeById(nodeId); if (!n) return;
         // Scoped to the host point, like the typed path — a dialog submit is not a render either.
-        const roll = withHostScope(n, () => makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin'));
+        const roll = withHostScope(n, () => makeGrammarRoll(`origin: {roll${scope === 'folder' ? ' folder' : ''}: ${expr}}`, 'origin'));
         if (!roll) return;
         roll.anon = true;
         (n.grammar ||= []).push(roll);
@@ -20948,10 +20997,11 @@ function insertCellArtifact(id, node, r, c, offset) {
     openQueryDialog({
       title: 'Roll on your document',
       submitLabel: 'Roll',
-      folderOption: false,   // a {roll:} grammar reads the live document; folder rolls are not a thing (yet)
-      onResult: expr => {
+      folderLabel: 'Roll on the whole folder',
+      folderHint: 'Draws from every document of the connected folder, not just this one. Other documents count as saved on disk.',
+      onResult: (expr, scope) => {   // #899: same folder modifier as the node-path branch
         // Scoped to the host point, like the typed path — a dialog submit is not a render either.
-        const roll = withHostScope(node, () => makeGrammarRoll(`origin: {roll: ${expr}}`, 'origin'));
+        const roll = withHostScope(node, () => makeGrammarRoll(`origin: {roll${scope === 'folder' ? ' folder' : ''}: ${expr}}`, 'origin'));
         if (!roll) return;
         roll.anon = true;
         (node.grammar ||= []).push(roll); splice(`[[grammar:${roll.key}]]`);
@@ -22364,10 +22414,16 @@ function resolveBrace(body, ctx) {
   // sequence or variable declared outside the subtree still resolves an `is:` term.
   const rlp = rollParts(body);
   if (rlp) {
-    const picked = pickFromQuery(rlp.expr, cookieNode || root, cookieNode ? cookieNode.id : null, root);
+    // #899: `{roll folder: …}` draws from the whole reading set instead. No cookieNode subtree
+    // scope on that path — the folder walk IS the scope, and narrowing it to the host's subtree
+    // first would make "folder" mean two things (P1). hostId still excludes the pill's own point.
+    const picked = rlp.folder
+      ? pickFromQueryFolder(rlp.expr, cookieNode ? cookieNode.id : null)
+      : pickFromQuery(rlp.expr, cookieNode || root, cookieNode ? cookieNode.id : null, root);
     // The marker keeps its shape: it is inline TEXT inside the point, so a full sentence does not
-    // belong here. renderGrammarPill turns it into the pill's tooltip instead (UXP-232).
-    return picked || `{roll: ${rlp.expr}?}`;
+    // belong here. renderGrammarPill turns it into the pill's tooltip instead (UXP-232). It echoes
+    // the modifier so the marker reads back as the source that made it.
+    return picked || `{roll${rlp.folder ? ' folder' : ''}: ${rlp.expr}?}`;
   }
   const cp = condParts(body);
   if (cp) {
@@ -24357,19 +24413,32 @@ function renderGrammarPill(key, g) {
   // READ. A {roll:} rides an anonymous grammar, so its query lives in g.def — ask the same
   // searchTermProblems the search box and the query pill ask, and let the reason replace the cta.
   // No `typing` flag: a pill is committed text with no half-typed state.
+  // #899: the modifier is optional here too, or a `{roll folder: …}` whose filter cannot be READ
+  // would silently lose its reason and fall back to the confidently wrong "Nothing matched yet".
   let badFilter = '';
   if (emptyMark) {
-    const rm = /\{\s*roll\s*:([^{}]*)\}/i.exec(g.def || '');
+    const rm = /\{\s*roll(?:\s+folder)?\s*:([^{}]*)\}/i.exec(g.def || '');
     if (rm) {
       const probs = searchTermProblems(parseSearchQuery(rm[1].trim()), { states: [...knownStates()] });
       if (probs.length) badFilter = probs[0].message;
     }
   }
-  const cta = badFilter ? badFilter + ' Click to edit'
+  // #899 (P4): a folder roll drawn with no folder connected quietly becomes a document roll — the
+  // reading set is a folder of one. Say so, the way the query pill does (query-folder-off): sniff
+  // the SOURCE (the isYesNoOracle content-sniff pattern, so typed and dialog-made rolls read alike)
+  // and name both the scope and its staleness in the tip and the aria-label together (P3).
+  const rollSrcM = /\{\s*(roll(?:\s+folder)?\s*:[^{}]*)\}/i.exec(g.def || '');
+  const folderRoll = !!(rollSrcM && rollParts(rollSrcM[1])?.folder);
+  const folderLive = folderRoll && !!workspaceIndex?.roots;
+  const scopeTip = !folderRoll ? '' : folderLive
+    ? ' Rolls across the whole folder; other documents count as saved.'
+    : ' Folder roll: no folder is connected, so this rolled on the current document only.';
+  const cta = (badFilter ? badFilter + ' Click to edit'
             : emptyMark ? 'Nothing matched yet. Click to try again, or add points that fit'
-            : stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate';
+            : stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate') + scopeTip;
   const shownResult = emptyMark ? 'no match yet' : g.result;
-  return `<span class="gr-roll${stale ? ' gr-stale' : ''}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${cta}` : cta}"`
+  const scopeCls = folderRoll ? (folderLive ? ' gr-folder' : ' gr-folder-off') : '';
+  return `<span class="gr-roll${stale ? ' gr-stale' : ''}${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${cta}` : cta}"`
     + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(shownResult)}. ${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
@@ -27095,10 +27164,14 @@ const QUERY_CHIPS = [
   { label:'| OR', title:'Match either side (a spaced | is OR)',              insert: el => insertAtCaret(el, ' | ') },
 ];
 
-function openQueryDialog({ title, submitLabel, expr = '', scope = '', folderOption = true, onResult }) {
-  // 4c: the folder checkbox is offered only where the capability exists (a connected folder)
-  // and where the caller's record can carry it (the {roll:} door passes folderOption:false —
-  // a grammar roll stays document-scoped). The preview follows the toggle live.
+function openQueryDialog({ title, submitLabel, expr = '', scope = '', folderOption = true,
+                          folderLabel = 'Search the whole folder',
+                          folderHint = 'Matches in every document of the connected folder. Other documents count as saved on disk.',
+                          onResult }) {
+  // 4c: the folder checkbox is offered only where the capability exists (a connected folder).
+  // The preview follows the toggle live. #899: the {roll:} door now takes it too (its scope
+  // rides the `folder` modifier in the roll's own source text), with its own verb in the label —
+  // the checkbox is shared, the wording is the caller's, so a roll never says "search".
   const offerFolder = folderOption && !!workspaceDir;
   openInsertDialog({
     icon: { fa: 'fa-solid fa-magnifying-glass', fb: '🔍' },
@@ -27114,8 +27187,8 @@ function openQueryDialog({ title, submitLabel, expr = '', scope = '', folderOpti
         },
         hint: 'Any search the box accepts: words, #tag, is:todo, due:week, key:value and | for OR. The list updates itself as the document changes.' },
       ...(offerFolder ? [{
-        key: 'folder', type: 'checkbox', label: 'Search the whole folder', value: scope === 'folder',
-        hint: 'Matches in every document of the connected folder. Other documents count as saved on disk.',
+        key: 'folder', type: 'checkbox', label: folderLabel, value: scope === 'folder',
+        hint: folderHint,
       }] : []),
     ],
     validate: (v) => !!v.expr.trim(),
@@ -36968,12 +37041,13 @@ const GUIDE = [
     ] },
   { id:'roll-query', cat:'generators', covers:['rollpick'],
     title:'Roll on your own document',
-    body:"Pick a random point from your live document instead of a typed list. Keep a list of open questions, ideas or tasks as ordinary points, then let one get chosen at random: great for any \"surprise me from what I already wrote\" moment, breaking a brainstorm rut, or solo tabletop play (advance a random thread, a random NPC reacts). Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random.",
+    body:"Pick a random point from your live document instead of a typed list. Keep a list of open questions, ideas or tasks as ordinary points, then let one get chosen at random: great for any \"surprise me from what I already wrote\" moment, breaking a brainstorm rut, or solo tabletop play (advance a random thread, a random NPC reacts). Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random. With a folder connected, tick \"Roll on the whole folder\" in that menu (or write {roll folder: SEARCH}) to draw from every note in the folder, not just this one: the other notes count as they were last saved, and if no folder is connected the pill says so and rolls on this document alone. The word folder before the colon is the switch, so {roll: folder} still searches for points containing the word.",
     related:['grammar','gen-rules','roll-palette'],
     examples:[
       { syn:'{roll: is:todo}',          desc:'a random open thread from the points below' },
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
       { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
+      { syn:'{roll folder: #npc}',      desc:'draw from every note in the connected folder' },
     ] },
   { id:'roll-palette', cat:'generators',
     title:'Roll menu (touch)',
