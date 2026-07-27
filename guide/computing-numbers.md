@@ -460,8 +460,32 @@ uncertainty. Click the declaration to re-sample and every mention follows at onc
 Names resolve top to bottom, so declaring `cost` again further down starts a **separate** uncertain
 number from that point on. Mentions above keep reading the earlier one.
 
+### Ask it real questions
+
+A named range answers more than "roughly how much". Anywhere in the document:
+
+```
+{= percentile(cost, 90)}      the value to budget to be safe nine times in ten
+{= percentile(cost, 50)}      the middle: half the time it lands under this
+{= chanceover(cost, 500)}     the percentage chance it comes in over 500
+{= chanceunder(cost, 200)}    and the chance it comes in under
+```
+
+These are ordinary numbers, so they compose with everything else: `{= percentile(cost, 90) * 1.1}`
+adds a ten percent margin on top of your ninetieth-percentile figure. The threshold can be another
+variable, which is usually how the question actually reads:
+
+```
+budget = 450
+{= chanceover(cost, budget)}  the odds you go over budget
+```
+
+Each answer comes from the same draw the pill shows, so a percentile never disagrees with the range
+beside it, and re-sampling the declaration moves them together.
+
 An uncertain variable is still not a plain number, so `{= cost * 3}` will not work; it says so, and
-points you at the estimate form instead.
+points you at the estimate form instead. Asking for a percentile is not an exception to that rule:
+a percentile is a single number, which is exactly why it is allowed through.
 
 **Rolling up estimates:** like `sum(cost)`, an estimate can aggregate **children's uncertain
 properties** with `sum(effort)` / `avg(effort)` over child points whose `effort` property is itself an

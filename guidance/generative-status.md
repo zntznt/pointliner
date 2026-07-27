@@ -120,9 +120,12 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
   distribution (`{cost := 100 to 200}`); the record stores a **seed**, not samples, so every reader
   re-derives the identical array and `{cost}` / `{cost * 2}` move together element-wise. The
   correlation unit is the declaration record (Stage B positional), so a redeclaration further down
-  is a separate, independent number. Still open: `min/max/count` in the uncertain context; mixtures
-  (`mx`); more families (beta, …); the analytic `est+` (no-sampling) rollup; cross-engine use (an
-  estimate's mean as a number inside `{= …}`); sensitivity / tornado.
+  is a separate, independent number. ~~percentile / threshold readouts~~ shipped 2026-07-27 via
+  #1101 — `percentile(name, n)`, `chanceover(name, t)`, `chanceunder(name, t)` through the
+  `expandAggExpr` pre-pass, so a **scalar** reaches `evalMath` and the fence is untouched. Still
+  open: an inline uncertain expression as the first argument; `min/max/count` in the uncertain
+  context; mixtures (`mx`); more families (beta, …); the analytic `est+` (no-sampling) rollup;
+  cross-engine use (an estimate's mean as a number inside `{= …}`); sensitivity / tornado.
 - **A1 modifiers:** aliases (`.an`/`.capitalize`/`.plural`). ~~Irregular plurals / past tense~~ —
   common irregulars shipped 2026-07-12 (curated closed dictionaries `IRREGULAR_PLURALS`/`IRREGULAR_PAST`
   checked before the regular heuristics; anything absent still falls through regular). Modifiers on

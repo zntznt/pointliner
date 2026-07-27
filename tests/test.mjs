@@ -22282,3 +22282,132 @@ test('#952 the lane key is never mistaken for a variable read', () => {
   assert.ok(!c.VAR_NAME_RE?.test?.('#dists') ?? true);
   assert.ok(!/^[a-z_][a-z0-9_]*$/i.test('#dists'), 'a variable name can never contain #');
 });
+
+// ── #1101: ask a distribution for a percentile or a probability ──
+test('#1101 distQuantile: the general form of the rule distSummary already used', () => {
+  const xs = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  assert.equal(c.distQuantile(xs, 0), 1, 'p0 is the minimum');
+  assert.equal(c.distQuantile(xs, 1), 9, 'p100 is the maximum');
+  assert.equal(c.distQuantile(xs, 0.5), 5, 'p50 of an odd-length array is the middle');
+  assert.equal(c.distQuantile([1, 2, 3, 4], 0.5), 2.5, 'and interpolates on an even one');
+  // linear interpolation between bracketing order statistics: idx = (n-1)*p
+  assert.equal(c.distQuantile(xs, 0.9), 8.2);
+  assert.equal(c.distQuantile(xs, 0.05), 1.4);
+  // unsorted input is sorted first; non-finite values are dropped like distSummary
+  assert.equal(c.distQuantile([9, 1, 5], 0.5), 5);
+  assert.equal(c.distQuantile([3, NaN, 1, Infinity, 2], 0.5), 2);
+  // out-of-range p clamps rather than reading off the end of the array
+  assert.equal(c.distQuantile(xs, -1), 1);
+  assert.equal(c.distQuantile(xs, 42), 9);
+  // pure-core contract: null on nothing usable
+  assert.equal(c.distQuantile([], 0.5), null);
+  assert.equal(c.distQuantile(null, 0.5), null);
+  assert.equal(c.distQuantile([NaN, Infinity], 0.5), null);
+  assert.equal(c.distQuantile(xs, 'abc'), null, 'a non-numeric percentile is not silently 0');
+});
+
+test('#1101 the distSummary rewire is EXACT — including the order the mean is summed in', () => {
+  // distSummary used to carry its own copy of the interpolation. Extracting it is only safe if the
+  // numbers do not move, so this pins the three it exposes against the shared implementation.
+  const noisy = Array.from({ length: 997 }, (_, i) => Math.sin(i) * 100);
+  const sm = c.distSummary(noisy);
+  assert.equal(sm.p5,  c.distQuantile(noisy, 0.05));
+  assert.equal(sm.p50, c.distQuantile(noisy, 0.5));
+  assert.equal(sm.p95, c.distQuantile(noisy, 0.95));
+  // THE subtle one, and the reason this test exists. Float addition is not associative, so summing
+  // the filtered array in input order rather than sorted order shifted the mean in its last bits
+  // (measured 0.17723084039575354 against 0.1772308403957733 on this very array). Numerically
+  // harmless, but it would have moved a rendered readout for no reason. The sum runs over the
+  // SORTED array; this pins that, since nothing else would notice.
+  const sorted = noisy.filter(Number.isFinite).sort((a, b) => a - b);
+  let s = 0; for (const x of sorted) s += x;
+  assert.equal(sm.mean, s / sorted.length, 'the mean is summed in sorted order');
+  // known-value spot checks, so a wholesale rewrite cannot pass by being self-consistent
+  assert.deepEqual(host(c.distSummary([1, 2, 3, 4, 5])), { mean: 3, p5: 1.2, p50: 3, p95: 4.8 });
+  assert.equal(c.distSummary([]), null);
+  assert.equal(c.distSummary([NaN]), null);
+});
+
+test('#1101 distChanceOver / distChanceUnder are percentages, strict, and partition the mass', () => {
+  const xs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  assert.equal(c.distChanceOver(xs, 5), 50, 'five of ten are strictly over 5');
+  assert.equal(c.distChanceUnder(xs, 5), 40, 'four are strictly under; 5 itself is neither');
+  // strict on both sides, so the two plus the mass exactly at t accounts for everything
+  const at = xs.filter(x => x === 5).length / xs.length * 100;
+  assert.equal(c.distChanceOver(xs, 5) + c.distChanceUnder(xs, 5) + at, 100);
+  // percentages (0..100), matching pctof/pctchange rather than fractions
+  assert.equal(c.distChanceOver(xs, 0), 100);
+  assert.equal(c.distChanceOver(xs, 10), 0);
+  assert.equal(c.distChanceUnder(xs, 1), 0);
+  // non-finite samples dropped, like distSummary
+  // NaN and Infinity drop, leaving [1,2,4]; two of those three are strictly over 1.
+  assert.equal(c.distChanceOver([1, 2, NaN, Infinity, 4], 1), 2 / 3 * 100,
+    'the denominator is the FINITE count, not the raw length');
+  // pure-core contract
+  for (const f of [c.distChanceOver, c.distChanceUnder]) {
+    assert.equal(f([], 5), null);
+    assert.equal(f(null, 5), null);
+    assert.equal(f([NaN], 5), null);
+    assert.equal(f([1, 2, 3], 'abc'), null, 'a non-numeric threshold is not silently 0');
+  }
+});
+
+test('#1101 the reducers resolve through the pre-pass, and compose because they yield a SCALAR', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 12345 };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  vars['budget'] = 150;
+  // EST_N is a top-level const, not reachable as a core, so it is asserted rather than assumed:
+  // a mismatch here would silently compare two different-sized draws and the test would mean nothing.
+  assert.match(_src, /const EST_N = 1000;/, 'the draw size this test hard-codes');
+  const draw = c.varDistDraw(rec, 1000, vars);
+  const E = (e) => c.evalMath(c.expandAggExpr(e, null, vars), vars);
+  // THE property: the answer comes from the SAME seeded draw the pill shows, not a fresh one.
+  // Asking for the p90 of a number on screen must not silently sample a different distribution.
+  assert.equal(E('percentile(cost, 90)'), c.distQuantile(draw, 0.9));
+  assert.equal(E('percentile(cost, 50)'), c.distQuantile(draw, 0.5));
+  assert.equal(E('chanceover(cost, 150)'), c.distChanceOver(draw, 150));
+  assert.equal(E('chanceunder(cost, 150)'), c.distChanceUnder(draw, 150));
+  // over + under partitions the mass (nothing lands exactly on a lognormal draw)
+  assert.equal(E('chanceover(cost, 150)') + E('chanceunder(cost, 150)'), 100);
+  // the threshold may be a declared variable, which is the natural question
+  assert.equal(E('chanceover(cost, budget)'), E('chanceover(cost, 150)'));
+  // composes, because what reaches evalMath is a number
+  assert.equal(E('percentile(cost, 90) * 2'), c.distQuantile(draw, 0.9) * 2);
+  // stable across calls: the seed is the only source of the draw
+  assert.equal(E('percentile(cost, 90)'), E('percentile(cost, 90)'));
+  // a different seed is a different answer (so this is not accidentally constant)
+  const vars2 = c.attachVarDists(Object.create(null), { cost: { ...rec, seed: 999 } });
+  assert.notEqual(c.evalMath(c.expandAggExpr('percentile(cost, 90)', null, vars2), vars2), E('percentile(cost, 90)'));
+});
+
+test('#1101 every unrecognised form stays LITERAL so evalMath surfaces #ERR, never a wrong number', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 5 };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  vars['budget'] = 150;
+  const E = (e) => c.evalMath(c.expandAggExpr(e, null, vars), vars);
+  assert.equal(E('percentile(budget, 90)'), null, 'a plain number is not a distribution');
+  assert.equal(E('percentile(nope, 90)'), null, 'an unknown name');
+  assert.equal(E('chanceover(cost, zzz)'), null, 'an unresolvable threshold');
+  assert.equal(E('percentile(cost)'), null, 'the arity is not optional');
+  // left literal, not silently rewritten to something evalMath would swallow
+  assert.equal(c.expandAggExpr('percentile(budget, 90)', null, vars), 'percentile(budget, 90)');
+  // THE FENCE. A percentile composing is not a licence for a distribution to enter math.
+  assert.equal(E('cost * 3'), null);
+  assert.equal(c.mathErrorReason('cost * 3', vars), 'estimate');
+});
+
+test('#1101 the wrong-type failure says something a person can act on (P4)', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 5 };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  vars['budget'] = 150;
+  // Before this, aiming a reducer at a plain number produced NO reason at all — the caller fell
+  // back to a bare "syntax error" for a precise, fixable mistake.
+  assert.equal(c.mathErrorReason('percentile(budget, 90)', vars), 'not-uncertain');
+  assert.equal(c.mathErrorReason('chanceover(budget, 5)', vars), 'not-uncertain');
+  assert.match(c.mathReasonPhrase('not-uncertain'), /uncertain value/);
+  assert.match(c.mathReasonPhrase('not-uncertain'), /100 to 200/, 'and shows the shape that would work');
+  // Scoped: an unknown name stays 'bad ref', which is the better answer when it IS a typo.
+  assert.equal(c.mathErrorReason('percentile(nope, 90)', vars), 'bad ref');
+  // and a reducer aimed at a real distribution produces no complaint
+  assert.notEqual(c.mathErrorReason('percentile(cost, 90)', vars), 'not-uncertain');
+});
