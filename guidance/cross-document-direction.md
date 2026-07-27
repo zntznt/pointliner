@@ -163,6 +163,25 @@ Sam's `{= sum("#project cost", cost)}` across the folder, plus folder-scoped `{q
      document scope with a visible cue, never a silent 0.
 - **Cost:** small engine arms + the memo layer. The dominant work is §5.
 
+### 4c-bis. Folder-scoped AGENDA — shipped 2026-07-27 (#1099)
+
+The same reading set as 4c, aimed at dated points rather than queries. `collectDueDatesFolder`
+walks `wsAllDocRoots()` (own doc live, §5.3), reads each tree with **its own** `allSequences(r)`
+because a held/blocked keyword is per-document, and merges through `dueItemOrder` — the comparator
+extracted from `collectDueDates` so the two scopes cannot order differently. Memoised on
+`(workspaceIndex.gen, _varsVer)` and registered in `DOC_CACHES`.
+
+The three §5 rules held as written: own-doc liveness came free from `wsAllDocRoots`; the memo keeps
+the 1.5–31 ms walk off the render path (measured warm: a map hit); and staleness is stated in words
+beside the rows (`agendaScopeMessage`, "across 4 of 5 documents, as saved") rather than left for a
+lagging total to imply. Navigation reuses `followLinkTarget`, which already reports both
+document-gone and point-gone.
+
+Worth recording for the next member of this family: **one gather point fed all four views**
+(List/Week/Month/Timeline), so scope cost one swap rather than four changes, and `wireAgNav` was
+already the single navigation chokepoint. Surfaces that funnel through one collector and one
+activator are cheap to extend folder-wide; surfaces that do not, are not.
+
 ### 4d. Cross-doc backlink context previews — cheap, rides along
 
 `workspaceBacklinks` returns titles; the backlinks panel could show the source line's

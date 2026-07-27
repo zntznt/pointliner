@@ -22411,3 +22411,99 @@ test('#1101 the wrong-type failure says something a person can act on (P4)', () 
   // and a reducer aimed at a real distribution produces no complaint
   assert.notEqual(c.mathErrorReason('percentile(cost, 90)', vars), 'not-uncertain');
 });
+
+// ── #1099: folder-scoped agenda ──
+test('#1099 dueItemOrder is the ONE agenda ordering rule (UXP-109), now shared by both scopes', () => {
+  const it = (epochDay, priority, title) => ({ epochDay, priority, title });
+  // date first
+  assert.ok(c.dueItemOrder(it(10, null, 'a'), it(20, null, 'b')) < 0);
+  assert.ok(c.dueItemOrder(it(20, null, 'a'), it(10, null, 'b')) > 0);
+  // then priority within a date: A before B before C before none
+  const sameDay = [it(5, 'C', 'c'), it(5, null, 'none'), it(5, 'A', 'a'), it(5, 'B', 'b')];
+  assert.deepEqual(host(sameDay.slice().sort(c.dueItemOrder)).map(x => x.priority), ['A', 'B', 'C', null]);
+  // a later date with a high priority still sorts after an earlier one with none: the deadline wins
+  assert.ok(c.dueItemOrder(it(1, null, 'early'), it(2, 'A', 'urgent-but-later')) < 0);
+  // stable for equals, so the merge of several per-document lists keeps tree order within a tie
+  assert.equal(c.dueItemOrder(it(5, 'A', 'x'), it(5, 'A', 'y')), 0);
+});
+
+test('#1099 extracting the comparator did NOT move the single-document agenda order', () => {
+  // The regression this refactor could cause, and the reason it is checked against real output
+  // rather than a green suite — the same discipline that caught the distSummary mean drift in
+  // #1101. Tree order is deliberately opposed to sort order so a no-op sort would fail.
+  const mk = (txt, due) => { const x = c.mkNode(txt); x.props = [{ key: 'due', val: due }]; return x; };
+  const r = c.mkNode('root');
+  r.children = [
+    mk('#TODO [#C] late-c', '2026-08-01'), mk('#TODO [#A] late-a', '2026-08-01'),
+    mk('no-prio late', '2026-08-01'),      mk('#TODO [#B] late-b', '2026-08-01'),
+    mk('#TODO [#B] early', '2026-07-01'),  mk('plain early', '2026-07-01'),
+  ];
+  const order = c.collectDueDates(r, []).map(i => `${i.title}/${i.priority || '-'}`);
+  assert.deepEqual(host(order),
+    ['early/B', 'plain early/-', 'late-a/A', 'late-b/B', 'late-c/C', 'no-prio late/-'],
+    'measured against origin/main before the extraction; byte-identical');
+  // and the collector genuinely routes through the shared core rather than keeping a copy
+  const cdd = fnBody(_src, 'collectDueDates');
+  assert.ok(/items\.sort\(dueItemOrder\)/.test(cdd), 'one comparator, called by name');
+  assert.ok(!/epochDay - b\.epochDay/.test(cdd), 'and no second inline copy left behind');
+});
+
+test('#1099 agendaScopeMessage states the reach AND the staleness (§5.5)', () => {
+  assert.equal(c.agendaScopeMessage(4, 0), 'across 4 documents, as saved');
+  assert.equal(c.agendaScopeMessage(1, 0), 'across 1 document, as saved', 'singular');
+  // the case §5.5 exists for: some documents did not answer, and the count says so rather than
+  // quietly under-reporting a folder total.
+  assert.equal(c.agendaScopeMessage(4, 1), 'across 4 of 5 documents, as saved');
+  assert.equal(c.agendaScopeMessage(12, 1), 'across 12 of 13 documents, as saved');
+  // never a silent nothing
+  assert.equal(c.agendaScopeMessage(0, 0), 'No documents readable in this folder');
+  assert.equal(c.agendaScopeMessage(0, 3), 'No documents readable in this folder');
+  // "as saved" is the load-bearing phrase; a folder total that silently lags another window's edit
+  // is the class #887-#889 removed, and this family must not put it back.
+  for (const [d, s] of [[1, 0], [4, 0], [4, 2]]) assert.match(c.agendaScopeMessage(d, s), /as saved/);
+  assert.equal(c.agendaScopeMessage(-1, -1), 'No documents readable in this folder', 'no negative counts');
+});
+
+test('#1099 the folder gather obeys the cross-doc rules it inherits', () => {
+  const cdf = fnBody(_src, 'collectDueDatesFolder');
+  // §5.3 own-doc liveness: the reading set comes from wsAllDocRoots, which substitutes the LIVE
+  // root for this document. Reading the index's stale copy of self would show your own edits late.
+  assert.ok(/wsAllDocRoots\(\)/.test(cdf), 'the reading set is wsAllDocRoots (own doc live)');
+  // each tree read with ITS OWN sequences — a held/blocked keyword is defined per document
+  assert.ok(/collectDueDates\(r, allSequences\(r\)\)/.test(cdf), 'per-document sequence context');
+  // §5.1 memoised on the generation pair, so the 1.5-31ms walk never runs per render pass
+  assert.ok(/workspaceIndex\?\.gen/.test(cdf) && /_varsVer/.test(cdf), 'keyed on (gen, _varsVer)');
+  // ONE ordering rule across the merge, not a second copy
+  assert.ok(/items\.sort\(dueItemOrder\)/.test(cdf));
+  // and the cache is registered, or it silently serves stale data (the DOC_CACHES contract)
+  assert.ok(/\/\/ doc-cache: agendaFolderDue/.test(_src) && /regDocCache\('agendaFolderDue'/.test(_src));
+  // skipped documents are counted, not dropped, so the message can name them
+  assert.ok(/skipped\+\+/.test(cdf));
+});
+
+test('#1099 scope is gated, announced, and foreign rows navigate cross-doc', () => {
+  // The gather, the control and the message all ask the SAME availability question — a scope that
+  // silently fell back to one document would be the silent-wrong-answer class this avoids.
+  assert.ok(/function agendaFolderScopeAvailable\(\)\s*\{\s*return !!\(workspaceDir && workspaceIndex\?\.roots\?\.size\)/.test(_src));
+  const ra = fnBody(_src, 'renderAgenda');
+  assert.ok(/const folderReady = agendaFolderScopeAvailable\(\)/.test(ra));
+  assert.ok(/const folderOn = agendaFolderScope && folderReady/.test(ra), 'the flag alone never enables it');
+  // ONE gather point feeds all four views, so scope is a swap rather than four changes
+  assert.ok(/fold \? fold\.items : collectDueDates\(root\)/.test(ra));
+  // the control explains itself rather than appearing and doing nothing (the workspace-feature rule)
+  assert.ok(/if \(!folderReady\) \{ flashHint\(agendaFolderUnavailableMessage\(\)\); return; \}/.test(ra));
+  // Asserted against THIS function, not against the whole file: the browser sentence already
+  // exists elsewhere (the workspace invite), so a file-wide match would pass on a build without
+  // any of this and prove nothing.
+  const afu = fnBody(_src, 'agendaFolderUnavailableMessage');
+  assert.match(afu, /Folders need Chrome, Edge or a similar browser/);
+  assert.match(afu, /No other documents in this folder yet/, 'and the folder-open-but-empty case reads differently');
+  // navigation: a foreign row routes through the shared cross-doc path, which already reports both
+  // "document gone" and "point gone"; a same-doc row keeps zoomInto exactly as before.
+  const wan = fnBody(_src, 'wireAgNav');
+  assert.ok(/it\.docId && it\.docId !== \(root\.docId \|\| ''\)/.test(wan), 'branches on the row\'s document');
+  assert.ok(/followLinkTarget\(it\.docId, it\.id\)/.test(wan));
+  assert.ok(/else zoomInto\(it\.id\)/.test(wan), 'same-doc behaviour unchanged');
+  // a foreign row says so to a screen reader, not only visually
+  assert.ok(/in \$\{dn\}, as saved/.test(fnBody(_src, 'agItemAria')));
+});

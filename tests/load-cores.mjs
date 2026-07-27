@@ -200,6 +200,8 @@ export function loadCores() {
     'isConvertExpr', 'formatConvertResult',   // #983: a bare conversion rounds for display
     'varDeclKind', 'varDistDraw', 'varDistHeadline',   // #952: a variable may hold a distribution; readers correlate
     'distQuantile', 'distChanceOver', 'distChanceUnder',   // #1101: ask a distribution for a percentile or a probability
+    'dueItemOrder',   // #1099: the one agenda ordering rule, shared by the document and folder scopes
+    'agendaScopeMessage',   // #1099: the folder agenda's staleness line (pure, like overlayCountMessage)
     'varDistsOf', 'varDistRec', 'attachVarDists', 'usesDistVar',   // #952: the sibling lane that carries it alongside `resolved`
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
     'parseRulesLoose',   // #582 pack-tolerant rule parser
