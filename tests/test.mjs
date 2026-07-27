@@ -6538,6 +6538,50 @@ test('#925f: the prose-mode pill CSS drops the stadium in a paragraph', () => {
 });
 
 // UXP-137: the freeze-to-text core produces exactly what flattenArtifacts inlines (lockstep).
+test('#952 a distribution FREEZES and EXPORTS to its summary, never to "?"', () => {
+  // The hole: frozenTokenText's var arm resolves through varMap[name], and #952 deliberately keeps
+  // distributions OUT of that map (the sibling lane protects resolveVarDefs' number|string
+  // contract). So every freeze/export sink printed "?" — the .md and .txt exports, the bullet
+  // menu's freeze action, and every displayText sink (backlinks, unlinked-reference matching,
+  // search snippets). Measured on the pre-fix build: flattenArtifacts(...) === 'Budget ? total'.
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 12345, typed: true };
+  const ref = { key: 'v2', name: 'cost', expr: '' };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  const para   = c.mkNode('Budget [[var:v1]] and [[var:v2]] total'); para.type = 'para'; para.vars = [rec, ref];
+  const bullet = c.mkNode('Budget [[var:v1]] and [[var:v2]] total'); bullet.vars = [rec, ref];
+  const SUM = /^[\d.]+ \([\d.]+ – [\d.]+\) \S+$/;   // "mean (p5 – p95) ▂▄█…", the est arm's shape
+  for (const [label, node, pe] of [['para export', para, true], ['para display', para, false],
+                                   ['bullet export', bullet, true], ['bullet display', bullet, false]]) {
+    const out = c.flattenArtifacts(node.text, node, vars, pe);
+    assert.ok(!out.includes('?'), `${label} must not export a distribution as "?" (${out})`);
+    assert.ok(/\d/.test(out), `${label} carries real numbers`);
+  }
+  // the DECLARATION keeps its name outside a prose export, like every other var; the reference
+  // never does. '≈' not '=': the frozen text must not claim a certainty the value lacks.
+  assert.match(c.frozenTokenText('var', 'v1', bullet, vars, undefined, false), /^cost ≈ /);
+  assert.match(c.frozenTokenText('var', 'v1', para, vars, undefined, true), SUM, 'a prose export is result-only (#925f)');
+  assert.match(c.frozenTokenText('var', 'v2', bullet, vars, undefined, false), SUM, 'a reference is result-only everywhere');
+  // THE property, surviving the freeze: a reference and its declaration freeze to the SAME text.
+  assert.equal(c.frozenTokenText('var', 'v2', para, vars, undefined, true),
+               c.frozenTokenText('var', 'v1', para, vars, undefined, true),
+               'the frozen reference is the frozen declaration — correlation survives export');
+  // deterministic, because the seed is (still) the only source of the draw
+  assert.equal(c.frozenTokenText('var', 'v1', para, vars, undefined, true),
+               c.frozenTokenText('var', 'v1', para, vars, undefined, true));
+  // an unsamplable dist says #ERR rather than lying or blanking
+  const bad = { key: 'v9', name: 'oops', kind: 'dist', expr: 'garbage', seed: 1 };
+  const bn = c.mkNode('[[var:v9]]'); bn.vars = [bad];
+  assert.equal(c.frozenTokenText('var', 'v9', bn, c.attachVarDists(Object.create(null), { oops: bad })), 'oops ≈ #ERR');
+  // regression: the other two kinds are untouched
+  const f  = { key: 'v3', name: 'rate', expr: '85' };
+  const pk = { key: 'v4', name: 'tone', kind: 'pick', expr: 'warm|cool', rolled: 'warm' };
+  const n2 = c.mkNode('[[var:v3]] [[var:v4]]'); n2.vars = [f, pk];
+  assert.equal(c.flattenArtifacts(n2.text, n2, { rate: 85, tone: 'warm' }, false), 'rate = 85 tone = warm');
+  // and a name with NO value at all still reads '?' — the honest answer stays for the honest case
+  const n3 = c.mkNode('[[var:v5]]'); n3.vars = [{ key: 'v5', name: 'nope', expr: '1/0' }];
+  assert.equal(c.frozenTokenText('var', 'v5', n3, {}), 'nope = ?');
+});
+
 test('frozenTokenText — per type, and matches flattenArtifacts', () => {
   const node = c.mkNode('x');
   node.dice = [{ key: 'd1', expr: '2d6', total: 7, parts: [{ kind: 'dice', sides: 6 }] }];

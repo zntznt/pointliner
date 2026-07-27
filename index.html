@@ -31801,6 +31801,18 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
   // var: "name = value" for defining pills, or just "value" for display-only
   const rec = node.vars?.find(x => x.key === key);
   if (!rec) return '';
+  // #952: a DISTRIBUTION is deliberately not in the resolved map (it is not a number), so reading
+  // varMap alone froze and exported it as "?" — in the .md/.txt exports, in the bullet menu's
+  // freeze action, and in every displayText sink (backlinks, unlinked-reference matching, search
+  // snippets). Consult the sibling lane the way renderVarPill and vpRow do, and freeze to the SAME
+  // shape the est arm above produces, so the two members of the estimate family export alike.
+  // The separator is '≈', not '=': the frozen text must not claim a certainty the value lacks.
+  const dRec = varDistRec(varMap, rec.name);
+  if (dRec) {
+    const samples = varDistDraw(dRec, EST_N, varMap);
+    const dist = samples ? formatDist(samples) : '#ERR';
+    return (rec.expr && !prose) ? `${rec.name} ≈ ${dist}` : dist;
+  }
   const val = varMap[(rec.name || '').toLowerCase()];
   const valStr = val !== undefined ? formatVarValue(val) : '?';
   return (rec.expr && !prose) ? `${rec.name} = ${valStr}` : valStr;
