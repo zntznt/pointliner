@@ -19809,6 +19809,81 @@ test('#1109 sidecar-only pill edits sweep their dependents too', () => {
     'a re-sample changes a draw other points may read');
 });
 
+// ── commit hygiene: the rule that existed, was written down, and still got broken ──
+// CLAUDE.md bans agent attribution and session links. Eight consecutive merged commits carried
+// both anyway, because nothing read commit messages: the UX gate reads the PR BODY, and the
+// written procedure only described stripping an AUTO-APPENDED link from the PR. An author typing
+// the trailer into the commit was an unguarded surface, so the rule was honour-system.
+// These tests parse the patterns out of the workflow and run them, so the guard is proven to bite
+// rather than assumed to. A CI rule nobody has seen reject anything is not yet a guard.
+const _wfHygiene = readFileSync(new URL('../.github/workflows/ux-conformance.yml', import.meta.url), 'utf8');
+function hygienePatterns() {
+  const body = _wfHygiene.slice(_wfHygiene.indexOf('const BANNED = ['));
+  const src = body.slice(0, body.indexOf(']'));
+  return [...src.matchAll(/\{ re: \/(.+?)\/([a-z]*),/g)].map(m => new RegExp(m[1], m[2]));
+}
+const hygieneViolates = (msg) => hygienePatterns().some(re => re.test(msg));
+
+test('commit hygiene: the workflow patterns are parseable and non-empty', () => {
+  const pats = hygienePatterns();
+  assert.ok(pats.length >= 4, `expected the BANNED list to parse, got ${pats.length}`);
+  // Guards the guard: if the workflow's BANNED shape changes, this parse yields [] and EVERY
+  // assertion below would pass vacuously. Assert the count first, always.
+});
+
+test('commit hygiene: the real historical violations are caught', () => {
+  assert.ok(hygieneViolates('Claude-Session: https://claude.ai/code/session_01Rxqq'), 'session trailer');
+  assert.ok(hygieneViolates('Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>'), 'agent co-author');
+  assert.ok(hygieneViolates('see https://claude.ai/code/session_abc for context'), 'a bare session URL anywhere');
+  assert.ok(hygieneViolates('fixed the thing\n\nbody\n\nCo-Authored-By: Claude Opus 5 <x@y>'), 'trailer at the end');
+});
+
+test('commit hygiene: ordinary messages and HUMAN co-authors pass', () => {
+  // The negative matters as much as the positive: if a real pairing trips this, the first thing
+  // anyone does is delete the guard. Human co-authorship is normal and must stay legal.
+  assert.equal(hygieneViolates('made {roll:} draw from the document\n\nFixes #1107'), false);
+  assert.equal(hygieneViolates('fixed a bug\n\nCo-Authored-By: Ada Lovelace <ada@example.com>'), false,
+    'a HUMAN co-author is not agent attribution');
+  assert.equal(hygieneViolates('add a session timeout to the login flow'), false,
+    'the word "session" alone is not a session link');
+});
+
+test('commit hygiene: a PR body may DISCUSS the banned trailers without failing', () => {
+  // This guard failed its own first PR. The commit was clean; the DESCRIPTION was the only
+  // offender, because it quoted the banned trailers in order to explain the bug. Matching raw text
+  // cannot tell a violation from a discussion of one -- the same defect as the PR-conformance hook
+  // (#1130), which blocks a shell command for merely quoting a command name inside a doc string.
+  const bodyViolates = (text) => {
+    const prose = String(text || '').replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
+    return hygienePatterns().some(re => new RegExp('^[ \\t>]*(?:' + re.source + ')', 'im').test(prose));
+  };
+  assert.equal(bodyViolates('Eight commits carried `Claude-Session:` trailers.'), false, 'inline code');
+  assert.equal(bodyViolates('```\nCo-Authored-By: Claude Opus 5 <x@y>\n```'), false, 'fenced block');
+  assert.equal(bodyViolates('The commits carried Claude-Session trailers and I removed them.'), false,
+    'named mid-sentence, which is how you describe a bug');
+  assert.equal(bodyViolates('Fixes #1\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>'), true,
+    'a genuine trailer at line start still fails');
+  assert.equal(bodyViolates('  > Claude-Session: https://claude.ai/code/session_abc'), true,
+    'indentation and quote markers do not smuggle it past');
+});
+
+test('commit hygiene: the workflow reads COMMITS whole, and the BODY narrowly', () => {
+  // The whole point. The pre-existing gate only ever saw the PR description, which is why a
+  // banned trailer could sit in every commit while that gate reported green.
+  assert.match(_wfHygiene, /pulls\.listCommits/, 'the job must enumerate the PR commits');
+  assert.match(_wfHygiene, /c\.commit\.message/, 'and test each commit MESSAGE');
+  assert.match(_wfHygiene, /const checkCommit = \(where, text\) => \{/, 'commits keep the strict check');
+  assert.match(_wfHygiene, /const checkBody = \(text\) => \{/, 'the body has its own, narrower check');
+  // The behavioural test above builds its own matcher, so it proves the RULE but not the WORKFLOW.
+  // Caught by mutation: reverting the body check to the strict form failed nothing. These two pin
+  // the workflow's actual narrowing, so the bug that rejected this very PR cannot come back.
+  assert.match(_wfHygiene, /\.replace\(\/```\[\\s\\S\]\*\?```\/g, ''\)/,
+    'the body check must drop fenced code before matching');
+  assert.match(_wfHygiene, /\^\[ \\\\t>\]\*\(\?:/,
+    'and anchor the trailer to line start, or a body that DISCUSSES the rule fails again');
+  assert.match(_wfHygiene, /CLAUDE\.md/, "the failure message names the rule's home");
+});
+
 // ── #1108: a slash in prose must not eat the paragraph ──
 test('#1108 restoreTypedRun — hands back what was typed into the palette', () => {
   // The inverse of stripTriggerRun. A novelist typed "the harbour master / his son, whichever

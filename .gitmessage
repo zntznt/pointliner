@@ -13,10 +13,14 @@ Tests: green   Touch:    OPML:
 #   • "New non-conformances": file each gap as UXP-NN in guidance/ux-remediation.md, or "none".
 #   • If this commit has NO UI surface, replace the whole block with:  UI: none
 #
+# HYGIENE: no agent attribution, no session links. Never end a message with a
+#   Co-Authored-By: Claude... / Claude-Session: ... / "Generated with" line.
+#   A HUMAN Co-Authored-By is fine. CI (commit-hygiene) rejects the rest.
+#
 # Full process: guidance/ux-definition-of-done.md → "How this gate is run".
 # Rule: no Conformance Statement, no merge.
 #
-# Enable this template once (repo-local):
+# Enable this template once (repo-local) - it does NOTHING until you run this:
 #   git config commit.template .gitmessage
 # (place this file at the repo root as .gitmessage)
 # ─────────────────────────────────────────────────────────────────────────
