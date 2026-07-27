@@ -6528,10 +6528,21 @@ test('#925f: the prose-mode pill CSS drops the stadium in a paragraph', () => {
     'a .nt-para-scoped rule must lighten the inline pills');
   assert.ok(/\.nt-para \.dice-roll[^{]*\{[^}]*background:transparent/.test(_src),
     'para pills drop the capsule background');
-  assert.ok(_src.includes('.nt-para .dice-formula, .nt-para .dice-eq{display:none}') ||
-            /\.nt-para \.dice-formula, \.nt-para \.dice-eq\}/.test(_src) ||
-            /\.nt-para \.dice-ico[\s\S]*\.nt-para \.dice-formula, \.nt-para \.dice-eq\{display:none\}/.test(_src),
-    'the dice recipe (formula/=) is hidden in a paragraph (result-only)');
+  // PER FAMILY, not just dice. The original pin asserted only the dice recipe, and that is exactly
+  // how the est family drifted: `.est-expr`/`.est-eq` were never hidden and `.est-summary` was never
+  // flattened, so a paragraph showed "Also 5 to 10 ≈ 7.13 (4.96 – 9.91)▃▅▇█ nights" while the EXPORT
+  // already dropped the recipe. Screen and file out of step, on the one invariant this exception is
+  // stated to hold. A per-family list is the only shape that cannot silently miss a family again.
+  const chromeDrop = _src.slice(_src.indexOf('.nt-para .dice-ico'), _src.indexOf('.nt-para .var-ref .var-name'));
+  for (const sel of ['.nt-para .dice-formula', '.nt-para .dice-eq', '.nt-para .est-expr', '.nt-para .est-eq']) {
+    assert.ok(chromeDrop.includes(sel), `${sel} must be hidden in a paragraph (recipe off, result-only)`);
+  }
+  assert.ok(/\{display:none\}/.test(chromeDrop), 'and the block actually hides them');
+  for (const sel of ['.nt-para .dice-total', '.nt-para .var-val', '.nt-para .est-summary']) {
+    assert.ok(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^{]*\\{font-weight:inherit;font-family:inherit\\}|' +
+                         sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ',').test(_src),
+      `${sel} must read as prose, not a bold-mono island`);
+  }
   // both export paths (markdown + plain text) pass proseExport=true to flattenArtifacts
   assert.ok((_src.match(/flattenArtifacts\([\s\S]*?, node, varMap, true\)/g) || []).length >= 2,
     'both the markdown and plain-text export bodies must pass proseExport=true');
@@ -6550,8 +6561,10 @@ test('#952 the distribution pill does not fight the shipped prose-mode rules (#9
     'no font-weight override on .var-dist .var-val — it would out-specify the prose-mode flattening');
   assert.ok(/\.nt-para \.var-ref \.var-name, \.nt-para \.var-ref \.var-eq\{display:none\}/.test(_src),
     'the separator is hidden wherever the name is: it only ever separated the name from the value');
-  // the prose-mode rule still lists .var-val among the values it flattens (the rule being relied on)
-  assert.ok(/\.nt-para \.dice-total, \.nt-para \.var-val\{font-weight:inherit;font-family:inherit\}/.test(_src),
+  // the prose-mode rule still flattens .var-val (the rule being relied on). Asserted as MEMBERSHIP,
+  // not as the exact selector list — pinning the whole list broke the moment .est-summary joined it,
+  // which is the brittleness the widened #925f pin above exists to avoid.
+  assert.ok(/\.nt-para \.var-val[,{][^{]*\{font-weight:inherit;font-family:inherit\}/.test(_src),
     'the prose-mode weight/family flattening covers .var-val');
   // and the DECLARATION keeps its separator in prose — only a reference drops name+separator (#944)
   assert.ok(!/\.nt-para \.var-pill \.var-eq\{display:none\}/.test(_src),

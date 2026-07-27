@@ -1295,7 +1295,12 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .nt-para .est-pill:hover, .nt-para .var-pill:hover, .nt-para .seq-pill:hover{
   border-color:transparent;background:color-mix(in srgb,var(--acc) 8%,transparent);border-radius:var(--r-sm)}
 .nt-para .dice-ico, .nt-para .gr-ico, .nt-para .mk-ico, .nt-para .est-ico, .nt-para .var-ico, .nt-para .seq-ico,
-.nt-para .dice-formula, .nt-para .dice-eq{display:none}
+/* The RECIPE, per family. Dice shipped with #925f; the est family was missed, so a paragraph read
+   "Also 5 to 10 ≈ 7.13 (4.96 – 9.91)▃▅▇█ nights" — the recipe still on screen. The export side
+   already dropped it (frozenTokenText's est arm honours proseExport), so screen and file were out
+   of step on the one invariant this exception exists to state. Measured, then fixed. */
+.nt-para .dice-formula, .nt-para .dice-eq,
+.nt-para .est-expr, .nt-para .est-eq{display:none}
 /* #944: in prose, a variable REFERENCE reads as just its value (the name is shown on the
    declaration pill) — a reused frozen name renders "Sor", not "captainSor". Reference-only
    (.var-ref); the declaration pill keeps its name=value form.
@@ -1303,7 +1308,10 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
    without it left a dangling "≈ 143.2" mid-sentence. The separator only ever separated the
    name from the value, so it goes wherever the name goes. */
 .nt-para .var-ref .var-name, .nt-para .var-ref .var-eq{display:none}
-.nt-para .dice-total, .nt-para .var-val{font-weight:inherit;font-family:inherit}   /* read as prose, not a bold-mono island */
+/* The VALUE, per family: read as prose, not a bold-mono island. .est-summary joins its siblings
+   here for the same reason the est recipe joins them above — the exception is stated for every
+   inline generator, so a per-family list is the only shape that cannot silently miss one. */
+.nt-para .dice-total, .nt-para .var-val, .nt-para .est-summary{font-weight:inherit;font-family:inherit}
 /* query pill (block): a live embedded search. --pill hue #4a6b8a (info-family blue, distinct
    from the artifact hues per design-language §4). Uses only tokens + the --r-* radii. */
 .query-pill{--pill:var(--pill-query);display:block;margin:3px 0;border:1px solid color-mix(in srgb,var(--pill) 22%,var(--bdr));border-radius:var(--r-md);background:color-mix(in srgb,var(--pill) 5%,var(--bg));font-size:.92em;cursor:pointer;user-select:none;overflow:hidden}
