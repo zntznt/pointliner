@@ -6799,6 +6799,13 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     // problem in user terms (no engine jargon) and, where there is one, the fix.
     assert.match(c.mathReasonPhrase('estimate'), /estimate/);
     assert.match(c.mathReasonPhrase('estimate'), /5 to 10/);          // shows the user form, not "separate engine"
+    // #1127: and it names the form that WORKS, not only the one that does not. The refusal was
+    // correct but stopped one step short, so a user with the right model and the right tool still
+    // stalled. Mirrors the not-uncertain arm, which already ends by naming a working shape.
+    // Driven: dropping the "=" promotes {total * 1.2} to a real estimate pill, so the advice is
+    // followable. {cost * 2} is the shape guide/computing-numbers.md already teaches verbatim.
+    assert.match(c.mathReasonPhrase('estimate'), /without the =/, 'names the fix, not just the miss');
+    assert.match(c.mathReasonPhrase('estimate'), /\{cost \* 2\}/, 'and shows the shape that would work');
     assert.match(c.mathReasonPhrase('bad ref'), /declare it|add it as a property/); // names the fix
     assert.match(c.mathReasonPhrase('non-numeric'), /not a number/);
     assert.match(c.mathReasonPhrase('cycle'), /depends on itself/);

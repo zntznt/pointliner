@@ -608,7 +608,8 @@ string in the pill and `flattenArtifacts`). Live like B1 — Phase-2 rollups rec
 (`repaintComputedDependents` / `isComputedNode`) so a dependent never keeps a superseded number
 (#1109; the sweep reads the DOM, never a resettable set). The pill freezes + re-samples on click (dice model), unfolds to its
 `{expr}` source in edit mode, and promotes from the `{lo to hi}` constructor shorthand
-(`estParts` — constructors only, so a bare `{sum(cost)}` never diverges from `{= sum(cost)}`
+(`estParts` — constructors, PLUS any expression referencing a declared distribution (#952's
+`usesDistVar`), so `{cost * 2}` promotes while a bare `{sum(cost)}` never diverges from `{= sum(cost)}`
 deterministic math; rollups are `@estimate`-dialog-authored). The engines stay **separate in v1**:
 an estimate inside a `{= …}` math expr fails visibly, like any non-number — and **legibly**:
 `mathErrorReason` sniffs estimate-constructor syntax (`to`/`normal(`/`uniform(`) and returns the
