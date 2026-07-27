@@ -197,6 +197,7 @@ export function loadCores() {
     'nearbyAdjacency', 'nearbyGraphModel', 'qid', 'unqid',   // #898: neighborhood graph (current point +/- N hops, cross-doc)
     'cardDropAfter', 'reorderIndex',   // #955: shared card-reorder geometry + index math
     'corkboardCards', 'cardMoveIndex',   // #955: the corkboard's card model + keyboard move
+    'isConvertExpr', 'formatConvertResult',   // #983: a bare conversion rounds for display
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
     'parseRulesLoose',   // #582 pack-tolerant rule parser
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',

@@ -25748,10 +25748,39 @@ function moonGlyph(phase) {
 // Glyph-format only a BARE moonphase call (the whole expression), so composing it for the raw number
 // works: moonphase(d, 28, 0) → 🌒, but moonphase(d, 28, 0) * 8 or floor(moonphase(…) * 8) → a number.
 function isMoonExpr(expr) { return /^\s*moonphase\s*\(.*\)\s*$/i.test(expr || ''); }
+// #983: a BARE convert (the whole expression) rounds for display. Same rule as isMoonExpr above and
+// for the same reason: replaceConvert substitutes the converted number back into the expression as
+// TEXT before evalMath runs, and the guide promises convert() composes
+// ({= convert(weight, kg, lb) * price}) — so rounding anything but a bare call would corrupt the
+// arithmetic that follows. A composed expression keeps full precision.
+function isConvertExpr(expr) { return /^\s*convert\s*\(.*\)\s*$/i.test(expr || ''); }
+
+// 4 significant figures, not N decimal places. Two decimals reads fine at 289.68 and destroys
+// `1 in -> m`, printing 0.03 for 0.0254 — a worse answer than the raw float it replaced. Significant
+// figures are scale-independent, so a small conversion survives.
+//
+// Two escapes, both toward MORE precision, never less:
+//   * a whole number is already exact and prints plainly (1000 m -> km is `1`, not `1.000`);
+//   * a magnitude outside fixed notation would come back as `1.609e+5`, so it falls through to the
+//     full-precision formatter rather than rounding away integer digits.
+function formatConvertResult(n) {
+  if (typeof n !== 'number' || !isFinite(n)) return formatMathResult(n);
+  if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
+  const s = n.toPrecision(4);
+  return /e/i.test(s) ? formatMathResult(n) : s;
+}
+
 function formatMathDisplay(v, expr, fmt) {
   // #946: a plain-number result groups thousands (and honors a per-pill fmt); dates/moon are their
   // own display forms and never group.
-  return isMoonExpr(expr) ? moonGlyph(v) : isDateExpr(expr) ? formatEpochDays(v) : formatNumDisplay(v, fmt);
+  return isMoonExpr(expr) ? moonGlyph(v)
+    : isDateExpr(expr) ? formatEpochDays(v)
+    // #983: the conversion default yields to an explicit per-pill decimals (#946) — that is the user
+    // stating a precision. A fmt carrying only a prefix/suffix is not a precision, so it still gets
+    // the default, and keeps its affixes.
+    : (isConvertExpr(expr) && !(fmt && Number.isInteger(fmt.decimals)))
+      ? (fmt?.prefix || '') + groupThousands(formatConvertResult(v)) + (fmt?.suffix || '')
+    : formatNumDisplay(v, fmt);
 }
 
 function formatMathResult(n) {
@@ -36425,7 +36454,7 @@ const GUIDE = [
     ] },
   { id:'units', cat:'compute', covers:['convert','units'],
     title:'Units & conversion',
-    body:"Convert between units right in a pill. Write `{= convert(10, km, mi)}` and the result renders live, or use @convert to fill in the amount and units in a small form. Built-in units need no setup: length (m, km, cm, mm, mi, yd, ft, in), mass (kg, g, mg, lb, oz, stone), volume (l, ml, gal, qt, pt, cup) and time (s, min, hr, day, week).\n\nNeed your own units? Type /units (or File then Custom units) and define them one per line, like `gp = 100 cp`, then convert with them: `{= convert(2, gp, cp)}` is 200. Converting between mismatched dimensions (km to kg) shows #ERR rather than a wrong number.\n\nTemperature is different: it needs an offset, not a ratio, so it is not a convert() unit. Use the c2f() and f2c() functions instead, like `{= c2f(100)}`.",
+    body:"Convert between units right in a pill. Write `{= convert(10, km, mi)}` and the result renders live, or use @convert to fill in the amount and units in a small form. Built-in units need no setup: length (m, km, cm, mm, mi, yd, ft, in), mass (kg, g, mg, lb, oz, stone), volume (l, ml, gal, qt, pt, cup) and time (s, min, hr, day, week).\n\nNeed your own units? Type /units (or File then Custom units) and define them one per line, like `gp = 100 cp`, then convert with them: `{= convert(2, gp, cp)}` is 200. Converting between mismatched dimensions (km to kg) shows #ERR rather than a wrong number.\n\nA conversion on its own rounds to four significant figures so it reads at a glance: 180 miles is 289.7 km, not 289.68192. Significant figures rather than decimal places, so a small answer still reads properly (1 inch is 0.02540 m, where two decimals would have shown 0.03). A whole number stays whole. Set the precision yourself with the number format on the pill, and note that a conversion composed into a bigger calculation keeps its full precision: the rounding is what you see, never what is calculated with.\n\nTemperature is different: it needs an offset, not a ratio, so it is not a convert() unit. Use the c2f() and f2c() functions instead, like `{= c2f(100)}`.",
     related:['math','math-fns'],
     examples:[
       { syn:'{= convert(10, km, mi)}', desc:'10 kilometres in miles (6.21)' },
@@ -36467,7 +36496,7 @@ const GUIDE = [
     ] },
   { id:'custom-units', cat:'compute', related:['math-dates','math','varbase'],
     title:'Custom units',
-    body:"Convert between units in a calculation with convert(x, from, to), and teach the document your own units when the built-ins aren't enough. Many common units are built in already (m, km, mi, ft, in for length; kg, g, lb, oz for mass; l, ml, gal, cup for volume; s, min, hr, day for time), so {= convert(10, km, mi)} works with nothing to set up. To add your own, like a currency or a fictional measure, open File then Custom units and declare them one per line: a bare name is a new base unit, and \"name = number unit\" relates it to a built-in or an earlier line, so gp = 10 sp chains from a cp base and league = 3 mi extends the built-in distances. Conversions only work within one dimension, so converting length to mass is left unresolved rather than guessed. The result is an ordinary number, so it composes with the rest of math: {= convert(weight, kg, lb) * price}. Temperature stays on the c2f and f2c functions, since that is a shift, not a ratio.",
+    body:"Convert between units in a calculation with convert(x, from, to), and teach the document your own units when the built-ins aren't enough. Many common units are built in already (m, km, mi, ft, in for length; kg, g, lb, oz for mass; l, ml, gal, cup for volume; s, min, hr, day for time), so {= convert(10, km, mi)} works with nothing to set up. To add your own, like a currency or a fictional measure, open File then Custom units and declare them one per line: a bare name is a new base unit, and \"name = number unit\" relates it to a built-in or an earlier line, so gp = 10 sp chains from a cp base and league = 3 mi extends the built-in distances. Conversions only work within one dimension, so converting length to mass is left unresolved rather than guessed. The result is an ordinary number, so it composes with the rest of math: {= convert(weight, kg, lb) * price}. A composed conversion keeps full precision, while a conversion on its own rounds to four significant figures for display. Temperature stays on the c2f and f2c functions, since that is a shift, not a ratio.",
     examples:[
       { syn:'{= convert(10, km, mi)}', desc:'built-in units need no setup' },
       { syn:'File → Custom units',     desc:'declare units for this document' },
