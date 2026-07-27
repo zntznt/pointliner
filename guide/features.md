@@ -86,7 +86,7 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 - **Markov chains and a yes/no oracle** for organic sequences and solo-play decisions; type an
   oracle as `{oracle: likely}`.
   ([Markov](generating-text.md#markov-chains) · [oracle](generating-text.md#yesno-oracle))
-- **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (the points below it, or a `#tag` anywhere), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every note in a connected folder.
+- **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (anywhere in it, like a search), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every note in a connected folder.
   ([roll on your document](generating-text.md#roll-on-your-own-document))
 - **Roll log.** Turn on File menu, Log rolls and every random result (dice, generators, tables, decks, chains, the oracle, roll-on-document, estimates) is also written to a dated Rolls log, so re-rolling never loses the record. Off by default; set a home point from the bullet menu. ([roll log](dates-and-planning.md#roll-log))
 

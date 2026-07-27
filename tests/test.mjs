@@ -565,9 +565,48 @@ function withRollScopeRoot(fn) {
   finally { vm.runInContext('root = mkRoot(); cookieNode = null; resetDocCaches();', c._context); }
 }
 
-test('{roll:} scopes to the host point subtree, not the whole document (the leak regression)', () => {
-  // 60 promotions onto subtree A. Every result must come from A. Before the fix this leaked into B
-  // about half the time, so a single sample would have passed by luck — hence the repeat count.
+// #1107 drift guard. There was no test that loaded shipped content and checked a roll RESOLVES,
+// which is why five starters, the first-run tour and the living-oracle demo could all ship with
+// every roll pill reading "no match yet" and nothing turn red. This scrapes the OPML we ship and
+// asserts each {roll:} has a reachable pool DOCUMENT-wide, so authored content and the engine can
+// never drift apart again silently.
+test('#1107 drift guard: every shipped {roll:} has a pool in its own document', () => {
+  const tagsIn = txt => [...String(txt).matchAll(/(?:^|\s)#([\w/-]+)/g)].map(m => m[1].toLowerCase());
+  const rollTagsIn = txt => [...String(txt).matchAll(/\{roll(?:\s+folder)?:\s*([^}]*)\}/gi)].map(m => m[1]);
+  const docs = [];
+  for (const m of _src.matchAll(/opml:\s*`([\s\S]*?)`/g)) docs.push(['STARTERS', m[1]]);
+  for (const m of _src.matchAll(/FIRST_RUN_EXAMPLES\s*=\s*`([\s\S]*?)`/g)) docs.push(['first-run', m[1]]);
+  assert.ok(docs.length >= 5, `expected the shipped OPML blocks, found ${docs.length}`);
+  let checked = 0;
+  for (const [where, opml] of docs) {
+    const texts = [...opml.matchAll(/text="([^"]*)"/g)].map(m => m[1]);
+    const pool = new Set(texts.flatMap(tagsIn));
+    for (const t of texts) {
+      for (const q of rollTagsIn(t)) {
+        // only tag-driven rolls are checkable statically; is:/word queries need the live engine
+        const want = tagsIn(' ' + q);
+        if (!want.length) continue;
+        checked++;
+        for (const tag of want) {
+          assert.ok(pool.has(tag),
+            `${where}: {roll: ${q}} has no #${tag} anywhere in its own document, so it renders "no match yet"`);
+        }
+      }
+    }
+  }
+  assert.ok(checked >= 5, `expected several shipped tag rolls to check, got ${checked}`);
+});
+
+test('#1107: {roll:} draws DOCUMENT-wide, like the {query:}/{count:} siblings it belongs to', () => {
+  // REVERSAL, recorded deliberately. This test previously asserted the opposite: that a roll is
+  // confined to its host point's descendants. That behaviour was half of DECISION-191b, whose owner
+  // sign-off actually read "subtree-by-default … whole-doc for free when the query names a #tag".
+  // The second half was never implementable as built (queryHits matches a tag INSIDE its walk), so
+  // only the narrow half shipped while every authored example was written against the wide one:
+  // five starters, the first-run welcome document and the living-oracle demo all place the roll as
+  // a LEAF beside the tagged list, so all of them rendered "no match yet". A scope that varies with
+  // the query's CONTENT would be the context inversion P1 forbids, so the fix is one scope for the
+  // one verb. Do not "restore" the subtree behaviour without reading #1107 first.
   const fromA = new Set(['alpha', 'beta']), fromB = new Set(['gamma', 'delta']);
   const seen = new Set();
   for (let i = 0; i < 60; i++) {
@@ -578,17 +617,18 @@ test('{roll:} scopes to the host point subtree, not the whole document (the leak
       seen.add(A.grammar[0].result);
     });
   }
-  assert.ok([...seen].every(v => fromA.has(v)), `every draw comes from the host subtree, got ${[...seen]}`);
-  assert.ok([...seen].some(v => fromB.has(v)) === false, 'no draw leaks into a sibling subtree');
-  assert.ok(seen.size === 2, `both of the host subtree points are reachable, got ${[...seen]}`);
+  // promoted ON subtree A, but the pool is the whole document: B must be reachable.
+  assert.ok([...seen].some(v => fromB.has(v)), `a roll hosted in A still reaches B, got ${[...seen]}`);
+  assert.ok([...seen].some(v => fromA.has(v)), 'and its own subtree stays reachable');
+  assert.equal(seen.size, 4, `all four tagged points are in the pool, got ${[...seen]}`);
 
-  // …and pinned from the other side: with no host scope it IS document-wide, so the test would
-  // fail loudly if the wrapper were ever removed rather than silently passing on a narrower tree.
-  const wide = new Set();
-  withRollScopeRoot(() => {
-    for (let i = 0; i < 60; i++) wide.add(c.resolveBrace('roll: #openq', { rules: {}, vars: {}, depth: 0, stack: [] }));
+  // The self-exclusion is NOT part of the reversal: a roll still cannot draw its own point.
+  withRollScopeRoot(r => {
+    const a1 = r.children[0].children[0];          // 'alpha #openq' — matches its own query
+    a1.grammar = [];
+    for (let i = 0; i < 40; i++) { a1.grammar = []; c.promoteBraceBody(a1, 'roll: #openq'); 
+      assert.notEqual(a1.grammar[0].result, 'alpha', 'the host point is still excluded from its own pool'); }
   });
-  assert.ok([...wide].some(v => fromB.has(v)), 'with cookieNode null the pick is document-wide (the old behavior)');
 });
 
 test('{roll:} scoping keeps its is: context document-wide (pickFromQuery ctxRoot)', () => {

@@ -786,3 +786,43 @@ the user's real previous edit. Both pinned tests were watched failing against `m
 that fence is itself pinned. Authored (non-query) base cells store dates as cell TEXT via
 `mtCommit`, not as properties — the starters legitimately ship `today+14` in a table — so routing
 that path would be a behaviour change, not a fix. Left alone deliberately.
+
+### UXP-250 ✓ `{roll:}` drew from the host's subtree, so every shipped example was dead 🔴 [generators] (RESOLVED 2026-07-27)
+
+**P1 + P4.** Filed as #1107 from the persona pass. `resolveBrace` scoped the draw to the host
+point's descendants (`cookieNode || root`), and `queryHits` walks descendants only. A roll written
+as a LEAF, which is where everyone writes it, searched an empty subtree and rendered `no match yet`.
+
+**Eight shipped roll pills, all dead.** Driven on `main` before the change: `campaign-oracle` (3),
+`reading-log`, `life-dashboard`, `worldbuilding`, `flashcards`, and the **first-run welcome tour**
+all returned the empty marker. The reading-log is the proof: `{count: #toread}` sits one line above
+`{roll: #toread}`, same tag, same document; count is document-wide and saw four books, roll saw none.
+The insert dialog previewed the pool document-wide too ("4 matching points right now") and then
+inserted a pill that found nothing.
+
+**Why it survived.** DECISION-191b's owner sign-off was TWO-part: "subtree-by-default … **whole-doc
+for free when the query names a `#tag`**". The second half was never implementable as built, because
+`queryHits` matches a tag INSIDE its walk. Only the narrow half shipped; every authored example was
+written against the wide one. A later fix then hardened the narrow half by citing an in-code comment
+that cited itself ("only `{roll:}` is documented as subtree-scoped") — no user-facing doc ever said
+it, and `ux-discipline.md` §2 calls the verb "the generative twin of `{query:}`", which is
+document-wide.
+
+**Fix.** One line: the roll branch reads `root`, like `{query:}` and `{count:}`. `cookieNode` stays
+the self-exclusion, so a roll still cannot draw itself. The literal two-part decision is NOT
+restored: a scope that varies with the query's CONTENT is the context inversion P1 forbids, and the
+query/count comment rejects that reasoning in its own words. One verb, one scope; `folder` remains
+the single opt-in widening.
+
+**Content the widening exposed.** Four instructional lines carried a LIVE tag ("tag a book `#toread`
+and the picker learns it"), so the heading joined its own pool and the roll could draw the
+instruction. Reworded in the three starters and the flashcards note. Left alone deliberately: a tag
+inside a pill's SOURCE (`{count: #openq}`) also matches, but ordinary search already matches those
+points too — six hits for `#openq` in the first-run doc, of which four are questions. The roll pool
+now equals the search result set, which is the point; the tag-in-pill-source question is pre-existing,
+shared with search, and belongs in its own issue.
+
+**Verified by driving the shipped content**, before and after: 8 empty markers becomes 8 real titles.
+A new drift guard scrapes every shipped OPML block and fails if a `{roll: #tag}` has no matching tag
+in its own document — the test that did not exist, which is why five starters could ship broken with
+nothing red.

@@ -417,10 +417,10 @@ Open threads
 Advance one: {roll: is:todo}
 ```
 
-The search is a normal search string (words, `#tag`, `is:todo`, `key:value`). `{roll:}` picks from
-the points **under the one you write it in**, so place it above the list it should choose from. A
-point with nothing under it has nothing to draw from, and the pill says so ("no match yet") rather
-than quietly reaching across your whole document.
+The search is a normal search string (words, `#tag`, `is:todo`, `key:value`). `{roll:}` searches
+**the whole document**, exactly like `{query:}` and `{count:}`, so the list it draws from can sit
+anywhere and the pill can go wherever it reads best. When the search genuinely matches nothing the
+pill says so ("no match yet") rather than going quiet.
 
 The result is rolled once and kept, like a dice pill: click it to roll again. If you want the same
 value in several places, name it with `:=` (below).
