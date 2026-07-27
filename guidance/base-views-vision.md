@@ -29,7 +29,20 @@ plain strings inside `queryTableRows` before it reaches `mtInline` (or rebind th
 The title-projection case is the common one and must be handled explicitly. The axes still multiply,
 but only after this pre-resolution step, which the doc's "for free" framing omitted.
 
-**0.2 Only static PAINT is free; INTERACTION on non-table views is net-new, mandatory cost.** The
+**0.2 Only static PAINT is free; INTERACTION on non-table views is net-new, mandatory cost.**
+**— CORRECTED 2026-07-27 (#955). The premise below is wrong and the codebase disproves it.** The
+`mt*` handlers are NOT bound to `<td>` geometry: all four are delegated on `host`, a plain
+`<div class="md-table-host">`, and find their target by `closest('.mt-cell')` with `data-r`/`data-c`
+read as *logical model coordinates*. There is no `rowIndex`, no `cellIndex`, no `closest('tr')` and
+no HTMLTable API anywhere in the authored path — and the proof was already shipping when this
+paragraph was written: the **column name pill** is a `<span class="mt-cell" data-r="0" data-c="N"
+contenteditable>` inside a `<th>`, riding the entire layer with no branch. Making the Cards view
+editable was therefore an *extraction* (`mtWireCells(host, node)`), not a rebuild.
+**The rule that survives, and it is the useful one:** interaction is net-new only where a view has
+no owning editor for its data. A base card has one (the cell layer). A card standing for a *point*
+has one too (the point editor). What genuinely costs is a view whose items belong to neither.
+The original text follows, retained because its conclusion — that each view owes its own
+focus/keyboard/a11y story — still holds even though its reasoning did not: The
 "free tier" (links, images, tags, pills render in a cell) is real for *read-only paint*. It is NOT
 true for interaction. The ~33 `mt*` edit/focus/keyboard handlers are bound to `<td data-r/data-c>`
 grid geometry (`focusin`/`input`/`focusout`, `mtSpliceCell`, cell-caret nav); none of it applies to a

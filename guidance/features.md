@@ -400,6 +400,19 @@ Implemented:
   not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
 ### Outline structure & content
 
+- **The gallery edits (#955)** — the base Cards view was "read-only by construction"; it now edits,
+  reorders, adds and deletes. `mtWireCells(host, node)` is the cell edit/nav layer lifted verbatim
+  out of `buildTableWidget` (it only ever closed over `host` and `node`), and both views call it, so
+  there is exactly one edit layer and it cannot drift. A card's title and fields are real
+  `.mt-cell` elements with `data-r`/`data-c`; **blank fields render as placeholder cells**, because
+  `mtFocusCell` resolves by selector and a sparse grid dead-ends Tab and the arrows. Structure ops go
+  through `showGalleryCardMenu` (row ops only — driving showed `showColPanel` opening with
+  Sum/Average/Sort on a gesture that pointed at a card) plus drag, via the shared pure cores
+  `cardDropAfter` and `reorderIndex`. Query bases stay read-only (§0.4).
+  **Fixed in passing, pre-existing on main:** deleting the row holding the focused cell fired a
+  focusout that wrote `m.rows[r][c]` for a row that was gone. Reproduced in the shipped TABLE view
+  on `origin/main`; guarded in the one handler both views share.
+
 - **Image width modes (#992)** — `![alt](url "wide")` / `"full"` / `"3/4"` / `"point"` / `"N%"`,
   carried on the Markdown title field, so no new syntax (P5). `imgSizeParts` is the pure core;
   the mode is a class (`.md-img-wide` / `.md-img-full`) and the percentage an inline `width:N%`.
