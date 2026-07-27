@@ -289,9 +289,21 @@ feature — it is making the index a dependable substrate:
    (`query-folder-off`), and a scoped pill ATOMIC in edit mode (the text can't carry the scope).
    **Decision recorded:** the pill's folder scope is a dialog toggle + record field, NOT a query
    word — `folder` must remain searchable text (P1); the reducers use the arg slot where no
-   collision exists. §5.2 incremental rescan shipped after this (see §5.2). **Remaining:** a
-   folder-scoped `{roll:}` (kept document-scoped, `folderOption:false`, revisit on demand) —
-   filed as a **doable** issue (GH #899).
+   collision exists. §5.2 incremental rescan shipped after this (see §5.2).
+   **Remainder delivered 2026-07-27 (#899):** the folder-scoped `{roll:}` shipped as a `folder`
+   MODIFIER in the reserved-keyword slot, `{roll folder: #npc}`. Not a record field, because a roll
+   has no sidecar (it freezes into an anonymous grammar whose `def` IS that text, and
+   `rerollGrammar` re-expands it) — and not a query word, which the decision above forbids, so
+   `{roll: folder}` still searches for the word. Pure cores `queryHits` (the deterministic pool
+   split out of `pickFromQuery`) and `queryHitsFolder` (the same per-doc-context walk over
+   `wsAllDocRoots()` as `queryReduceFolder`). Deliberately **unmemoized**, unlike its two siblings:
+   the roll branch never runs during a render (promotion and re-roll only — measured 0 calls across
+   30 renders, 0.5 ms per re-roll), and a memo over a random draw would freeze the re-roll. The `@`
+   door reuses the same checkbox with the roll verb ("Roll on the whole folder") and its live count
+   previews the pool before you commit (0 in the document, 2 across the folder); with no folder
+   connected the pill goes dashed and says it narrowed (`gr-folder-off`, the `query-folder-off`
+   language). Unlike the scoped query pill it **unfolds normally** in edit mode, because here the
+   text can carry the scope.
 5. ✅ **Graph unlinked (textual-match) edges, same-doc only** (product-identity.md §2c, "the
    scratchpad test"): the graph now also draws dashed edges for points that mention each
    other's title/alias in plain prose with no `[[#id]]` link — the same signal

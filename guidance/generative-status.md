@@ -46,6 +46,11 @@ distinguished `count("query")`. Rows below are updated where these landed.
   **repeat** `{Nx: template}`, **text modifiers** `{ref.mod}` (A1 — `cap/title/upper/lower/a/s/ed/ing/poss/ord`; `.poss`/`.ing` added via #545 sign-off),
   **hierarchical items** `{item.field}` via dotted sub-rules (A6), named rules/tables/chains/vars.
 - **Yes/no oracle** (a front door over weighted-alt — original neutral odds, IP-fenced).
+- **Roll on the live outline** `{roll: query}` (DECISION-191b) — the generative reader of your own
+  points, and since #899 (2026-07-27) `{roll folder: query}` draws from every note in a connected
+  folder. Pure cores `queryHits` / `queryHitsFolder`; unmemoized on purpose (the roll branch is off
+  the render path, and a memo over a random draw would freeze the re-roll). This closed the last
+  member of the query family still stuck at the document edge.
 - Variables: **formula** + **random pick** (frozen, re-rollable) — the locked consistency model.
 - **Typed inline declaration** `{name := expr}` (Stage A) + **positional resolution** (Stage B):
   declare a variable by typing, and a `{name}` resolves to the nearest preceding declaration. See
