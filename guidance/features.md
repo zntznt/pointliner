@@ -274,7 +274,20 @@ Implemented:
   independent (Stage B). Body-click re-seeds and every reference follows (`rerollDistVar`); the
   bare-name reference and a using-expression both resolve through the lane (`usesDistVar` widens
   the `estParts` sniff). Cores: `varDeclKind`, `varDistDraw`, `varDistHeadline`, `usesDistVar`.
-  **Out of scope (recorded follow-ons)**: min/max/count in the uncertain context, mixtures (`mx`),
+  **Ask a distribution for a number (#1101)**: `percentile(name, n)`, `chanceover(name, t)` and
+  `chanceunder(name, t)` resolve through the `expandAggExpr` pre-pass, the same one `sum(prop)` and
+  `count("query")` use, so what reaches `evalMath` is a **scalar** and the distribution-in-math
+  fence is untouched (`{= cost * 3}` still fails with the estimate reason). They read the SAME
+  seeded draw the pill shows, so a percentile can never disagree with the range beside it, and
+  they compose (`{= percentile(cost, 90) * 1.1}`). The threshold may be a declared variable
+  (`chanceover(cost, budget)`). Aiming one at a plain number is named precisely (`not-uncertain`)
+  rather than falling through to a bare syntax error, while an unknown name still says `bad ref`.
+  Cores: `distQuantile` (extracted from `distSummary`, which now calls it), `distChanceOver`,
+  `distChanceUnder`. Front door: the variable dialog's uncertain-value preview, which shows the
+  copyable form with this variable's own name — not the estimate dialog, whose pills are anonymous
+  and have nothing to reference.
+  **Out of scope (recorded follow-ons)**: an inline uncertain expression as the first argument
+  (`percentile(5 to 10, 90)`), min/max/count in the uncertain context, mixtures (`mx`),
   more families (beta/…), the analytic `est+` no-sampling variant, and cross-engine use (an
   estimate's mean as a number in `{= …}`).
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables

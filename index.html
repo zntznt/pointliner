@@ -4494,6 +4494,39 @@ function expandAggExpr(expr, node, vars = null) {
     e = e.replace(/\bwords\s*\(\s*(self|children|subtree|\d+)\s*(?:,\s*(notes)\s*)?\)/g,
       (_, scope, notes) => '(' + subtreeWords(node, scope, notes !== undefined) + ')');
   }
+  // #1101: percentile(name, n) / chanceover(name, t) / chanceunder(name, t) — ask a DECLARED
+  // distribution (#952) for a number. "What should I budget to be safe nine times in ten" is
+  // percentile(cost, 90); "what are the odds this runs over 500" is chanceover(cost, 500).
+  //
+  // This does NOT move the distribution-in-math fence. Like every rollup above, the pre-pass
+  // substitutes a SCALAR before evalMath parses anything — a percentile is a number, so it
+  // composes ({= percentile(cost, 90) * 1.1}) for the same reason sum(prop) always has. A
+  // distribution itself still cannot enter evalMath, and {= cost * 3} still fails.
+  //
+  // The draw comes from varDistDraw, which is seeded, so the answer is stable until the
+  // declaration is re-sampled AND it is the same draw the pill shows — asking for the p90 of a
+  // number you can see on screen must not silently sample a different one.
+  //
+  // The second argument may be a literal or a declared variable (chanceover(cost, budget) is the
+  // natural question), but not yet an arbitrary expression. Anything unrecognised — a name that
+  // is not a distribution, an unresolvable threshold — leaves the call LITERAL so evalMath
+  // surfaces #ERR, never a confidently wrong number (P4).
+  if (/\b(?:percentile|chanceover|chanceunder)\s*\(/.test(e)) {
+    e = e.replace(/\b(percentile|chanceover|chanceunder)\s*\(\s*([A-Za-z_]\w*)\s*,\s*(-?\d+(?:\.\d+)?|[A-Za-z_]\w*)\s*\)/g,
+      (m, fn, name, arg) => {
+        const vars = varsMap();
+        const rec = varDistRec(vars, name);
+        if (!rec) return m;                                   // not a distribution → literal → #ERR
+        const n = /^[A-Za-z_]/.test(arg) ? evalMath(arg, vars) : Number(arg);
+        if (n === null || !Number.isFinite(n)) return m;      // unresolvable threshold → literal → #ERR
+        const samples = varDistDraw(rec, EST_N, vars);
+        if (!samples) return m;
+        const v = fn === 'percentile' ? distQuantile(samples, n / 100)
+                : fn === 'chanceover' ? distChanceOver(samples, n)
+                :                       distChanceUnder(samples, n);
+        return v === null ? m : '(' + v + ')';
+      });
+  }
   // convert(valueExpr, from, to) — unit conversion over the doc's table (built-ins + declared
   // units), substituted to a number before evalMath (the rollup model, so units stay function-
   // shaped and evalMath stays number-only). The value arg is itself evaluated, so it composes
@@ -8090,6 +8123,17 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
   // (cross-dimension convert(), #889). Name it precisely so the pill does not blame a missing
   // variable (km/kg read as unknown names). Checked before the identifier scan for that reason.
   if (s.includes('#ERR')) return 'convert';
+  // #1101: a distribution reducer aimed at something that is not a distribution. The identifier
+  // scan below would say NOTHING here (the name resolves, and it is a number, so no arm fires) and
+  // the caller would fall back to a bare "syntax error" for what is actually a precise, fixable
+  // mistake. Deliberately scoped to a name that DOES resolve: an unknown name stays 'bad ref',
+  // which is the more actionable answer when the real problem is a typo.
+  const dre = /\b(?:percentile|chanceover|chanceunder)\s*\(\s*([A-Za-z_]\w*)\s*,/.exec(s);
+  if (dre) {
+    const id = dre[1].toLowerCase();
+    const known = (id in vars) || !!(globalVars && id in globalVars);
+    if (known && !varDistRec(vars, id) && !varDistRec(globalVars, id)) return 'not-uncertain';
+  }
   const re = /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*/g;   // a dotted name (variable-base projection) is ONE identifier
   let m, sawNonNumeric = false, sawBadRef = false, sawLater = false, sawDist = false;
   while ((m = re.exec(s)) !== null) {
@@ -8121,7 +8165,8 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
 // and #ERR pills explain a failure the SAME way (P1/P4 — legible, consistent). ''
 // for a generic/unknown code (the caller supplies its own "syntax error" fallback).
 function mathReasonPhrase(why) {
-  return why === 'estimate'    ? 'an estimate like 5 to 10 (or a variable holding one), which works on its own but not inside a math formula or check'
+  return why === 'not-uncertain' ? 'a plain number where an uncertain value was expected; percentile() and chanceover() only work on a variable declared as a range, like cost := 100 to 200'
+       : why === 'estimate'    ? 'an estimate like 5 to 10 (or a variable holding one), which works on its own but not inside a math formula or check'
        : why === 'convert'     ? 'a conversion between two different kinds of units (like a length and a mass), which has no answer'
        : why === 'declared later' ? 'a variable declared later in the document; values resolve top to bottom, so move its declaration above this point'
        : why === 'bad ref'     ? 'a name with no value here; declare it as a variable or add it as a property'
@@ -26295,18 +26340,59 @@ function sampleUncertain(expr, n, seed, node, vars = null) {
   return sampleUncAst(ast, (n | 0) || EST_N, rng, node || null, vars);
 }
 
+// #1101: the quantile lived unexposed inside distSummary, which computed p5/p50/p95 and threw the
+// general function away. It is the whole of "what should I budget to be safe nine times in ten",
+// so it is a core now — and distSummary CALLS it rather than keeping a second copy, because two
+// implementations of the same interpolation are two things that can drift.
+// `p` is a fraction (0..1). Linear interpolation between the bracketing order statistics, which is
+// the same rule the old local used, so p5/p50/p95 are bit-for-bit what they were.
+// The interpolation itself, over an ALREADY-SORTED finite array. Split out so distSummary can sort
+// once and ask three times without paying for three sorts on every pill render, while both entry
+// points share one copy of the rule.
+function quantileSorted(xs, f) {
+  const idx = (xs.length - 1) * f;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return lo === hi ? xs[lo] : xs[lo] + (xs[hi] - xs[lo]) * (idx - lo);
+}
+function distQuantile(samples, p) {
+  if (!samples || !samples.length) return null;
+  const f = Number(p);
+  if (!Number.isFinite(f)) return null;
+  const xs = Array.prototype.filter.call(samples, Number.isFinite).sort((a, b) => a - b);
+  if (!xs.length) return null;
+  return quantileSorted(xs, Math.min(1, Math.max(0, f)));
+}
+
+// The share of the distribution strictly above / below a threshold, as a PERCENTAGE (0..100) —
+// matching pctof/pctchange, which also return percentages rather than fractions, so a reader never
+// has to remember which convention this corner uses. Non-finite samples are dropped, like
+// distSummary. Strict on both sides, so over + under + (mass exactly at t) == 100.
+function distChanceOver(samples, t) {
+  if (!samples || !samples.length || !Number.isFinite(Number(t))) return null;
+  const xs = Array.prototype.filter.call(samples, Number.isFinite);
+  if (!xs.length) return null;
+  let n = 0; for (const x of xs) if (x > t) n++;
+  return n / xs.length * 100;
+}
+function distChanceUnder(samples, t) {
+  if (!samples || !samples.length || !Number.isFinite(Number(t))) return null;
+  const xs = Array.prototype.filter.call(samples, Number.isFinite);
+  if (!xs.length) return null;
+  let n = 0; for (const x of xs) if (x < t) n++;
+  return n / xs.length * 100;
+}
+
 // {mean, p5, p50, p95} of a sample array (non-finite values dropped), or null.
+// The sum runs over the SORTED array, which is not incidental: float addition is not associative,
+// so summing in input order instead shifted the mean in its last bits (measured: 0.17723084039575354
+// against 0.1772308403957733). Harmless numerically, but it would have moved a rendered readout for
+// no reason, so the order is preserved deliberately rather than by luck.
 function distSummary(samples) {
   if (!samples || !samples.length) return null;
-  const xs = samples.filter(Number.isFinite).sort((a, b) => a - b);
+  const xs = Array.prototype.filter.call(samples, Number.isFinite).sort((a, b) => a - b);
   if (!xs.length) return null;
-  const q = (p) => {
-    const idx = (xs.length - 1) * p;
-    const lo = Math.floor(idx), hi = Math.ceil(idx);
-    return lo === hi ? xs[lo] : xs[lo] + (xs[hi] - xs[lo]) * (idx - lo);
-  };
   let s = 0; for (const x of xs) s += x;
-  return { mean: s / xs.length, p5: q(0.05), p50: q(0.5), p95: q(0.95) };
+  return { mean: s / xs.length, p5: quantileSorted(xs, 0.05), p50: quantileSorted(xs, 0.5), p95: quantileSorted(xs, 0.95) };
 }
 
 // A pure-string unicode histogram of a sample array (the export-safe inline viz).
@@ -27354,11 +27440,22 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     // the estimate dialog does (fixed seed, so it stays still while typing) rather than calling
     // it invalid. The real seed is minted on submit.
     if (varDeclKind(v, collectVars()) === 'dist') {
-      const sm = distSummary(sampleUncertain(v, EST_N, 0x9e3779b9, null, collectVars()) || []);
-      prev.innerHTML = sm
-        ? `<span class="var-preview-result">${escHtml(`${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})`)}</span>`
-          + ` <span class="io-hint" style="display:inline">(uncertain; every reference to this name shows the same draw)</span>`
-        : '<span class="io-preview-bad">No finite samples</span>';
+      const draw = sampleUncertain(v, EST_N, 0x9e3779b9, null, collectVars()) || [];
+      const sm = distSummary(draw);
+      if (!sm) { prev.innerHTML = '<span class="io-preview-bad">No finite samples</span>'; return; }
+      // #1101 P2 DOOR. percentile()/chanceover() take a NAMED distribution, so this dialog — not the
+      // estimate dialog, whose pills are anonymous and have nothing to reference — is where they are
+      // discoverable. Shown with THIS variable's name and a threshold drawn from its own middle, so
+      // the line is copy-pasteable rather than an abstract example the reader has to translate.
+      const nm = (nameInp.value.trim() || 'name').toLowerCase();
+      const mid = distQuantile(draw, 0.5);
+      const t = Number.isFinite(mid) ? Number(estNumFmt(mid)) : 0;
+      prev.innerHTML =
+          `<span class="var-preview-result">${escHtml(`${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})`)}</span>`
+        + ` <span class="io-hint" style="display:inline">(uncertain; every reference to this name shows the same draw)</span>`
+        + `<div class="io-hint" style="margin-top:5px">Ask more of it anywhere in the document:`
+        + ` <code>{= percentile(${escHtml(nm)}, 90)}</code> is ${escHtml(estNumFmt(distQuantile(draw, 0.9)))},`
+        + ` <code>{= chanceover(${escHtml(nm)}, ${escHtml(String(t))})}</code> is ${escHtml(estNumFmt(distChanceOver(draw, t)))}% </div>`;
       return;
     }
     const r = evalMath(v, collectVars());
@@ -36836,7 +36933,7 @@ const GUIDE = [
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
-    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-`, `*` and `/`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nGive an uncertain number a name and every mention of it means the SAME number. Declare `{cost := 100 to 200}`, then `{cost}` and `{cost * 2}` are one draw and its double, not two unrelated guesses, so a model built on one uncertain input moves as a piece. Click the declaration to re-sample and every mention follows. Declare the name again further down and that is a separate number from there on, since values resolve top to bottom.\n\nAny bound can be a declared variable too: declare `cost_low` and `cost_high` and write `{cost_low to cost_high}`, or scale an uncertain unit cost by a count with `{units * (5 to 10)}`. A variable that holds text fails visibly, the same as in a calculation.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse, and neither can a variable that holds one. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
+    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-`, `*` and `/`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nGive an uncertain number a name and every mention of it means the SAME number. Declare `{cost := 100 to 200}`, then `{cost}` and `{cost * 2}` are one draw and its double, not two unrelated guesses, so a model built on one uncertain input moves as a piece. Click the declaration to re-sample and every mention follows. Declare the name again further down and that is a separate number from there on, since values resolve top to bottom.\n\nAny bound can be a declared variable too: declare `cost_low` and `cost_high` and write `{cost_low to cost_high}`, or scale an uncertain unit cost by a count with `{units * (5 to 10)}`. A variable that holds text fails visibly, the same as in a calculation.\n\nOnce a range has a name you can ask it real questions, anywhere in the document. `{= percentile(cost, 90)}` is the number to budget if you want to be safe nine times in ten, and `{= chanceover(cost, 500)}` is the percentage chance it lands over 500 (`chanceunder` is its twin). Those are ordinary numbers, so they add and multiply like any other: `{= percentile(cost, 90) * 1.1}` works. The threshold can be another variable, so `{= chanceover(cost, budget)}` reads as the question it is.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse, and neither can a variable that holds one. Asking for a percentile is not an exception to that: a percentile IS a single number, which is why it is allowed through. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
     related:['math','rollups','variables'],
     examples:[
       { syn:'{5 to 10}',      desc:'a 90% range, most likely 5 to 10' },
@@ -36844,6 +36941,9 @@ const GUIDE = [
       { syn:'{uniform(1, 6)}',desc:'any value 1 to 6, equally likely' },
       { syn:'{cost := 100 to 200}', desc:'name an uncertain number' },
       { syn:'{cost} and {cost * 2}', desc:'every mention is the same draw' },
+      { syn:'{= percentile(cost, 90)}', desc:'the number to budget to be safe nine times in ten' },
+      { syn:'{= chanceover(cost, 500)}', desc:'the percentage chance it lands over 500' },
+      { syn:'{= chanceunder(cost, budget)}', desc:'and the odds it comes in under a declared budget' },
       { syn:'{cost_low to cost_high}', desc:'a range driven by declared variables' },
       { syn:'{(5 to 10) + (2 to 4)}', desc:'combine two ranges in one estimate' },
       { syn:'Click the pill', desc:'re-sample it, like re-rolling dice' },
