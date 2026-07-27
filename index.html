@@ -19294,6 +19294,21 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   clearTimeout(bpopShowTimer);   // any pending hover-show is now moot
   const node = nodeById(nodeId);
   if (!node) return;
+  // The Pills section is collected from node.text, and reaching a point with the KEYBOARD means
+  // focusing it — which unfolds its pills, rewriting the text from `[[dice:key]]` to `{2d6}`. So
+  // collectPillActions found no tokens and the whole section vanished: the advertised keyboard door
+  // to the pill wall was empty for EVERY pill family, while the mouse path (hovering a bullet from
+  // display mode) worked. Found by driving Shift+F10 and watching node.text across the focus, after
+  // a source pin said the row existed; reproduced identically on the build before this one, so it is
+  // long-standing, not new. Commit first, then collect, so the rows are read from folded text.
+  // Scoped to THIS point (activeContentId === nodeId): a hover over some OTHER point's bullet must
+  // never commit an edit in progress somewhere else.
+  if (activeContentId === nodeId) {
+    commitActiveEdit();
+    // exitEdit may rebuild the row, so re-resolve the anchor rather than positioning against a
+    // detached element.
+    bulletEl = document.querySelector(`.node-content[data-id="${nodeId}"]`)?.closest('.node-row')?.querySelector('.bullet') || bulletEl;
+  }
   bpop.innerHTML = '';
   // Which point to send focus back to when the menu is closed by keyboard (Escape).
   // Only set when opened from the keyboard — mouse hover must not steal focus.

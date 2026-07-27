@@ -6549,6 +6549,28 @@ test('#925f: the prose-mode pill CSS drops the stadium in a paragraph', () => {
 });
 
 // UXP-137: the freeze-to-text core produces exactly what flattenArtifacts inlines (lockstep).
+test('the Shift+F10 pill rows are collected from FOLDED text, or the keyboard door is empty', () => {
+  // Found by driving, after a source pin said the "Re-sample value" row existed. Reaching a point
+  // with the keyboard means FOCUSING it, and focus unfolds its pills — node.text goes from
+  // `Dice [[dice:key]] here` to `Dice {2d6} here`. collectPillActions matches on the token, so it
+  // returned [] and the entire Pills section vanished from the menu. The mouse path (hover a bullet
+  // from display mode) worked, which is why it went unnoticed: the advertised keyboard door to the
+  // pill wall was empty for EVERY pill family. Reproduced identically on origin/main, so it is
+  // long-standing rather than new — but #952 added a row to that menu and claimed P3 through it.
+  const sbp = fnBody(_src, 'showBulletPopup');
+  assert.ok(/if \(activeContentId === nodeId\) \{[\s\S]{0,400}commitActiveEdit\(\)/.test(sbp),
+    'the point being edited must be committed (and refolded) before its rows are collected');
+  assert.ok(sbp.indexOf('commitActiveEdit()') < sbp.indexOf('collectPillActions(node)'),
+    'and the commit must precede the collection, or the rows are read from unfolded text');
+  // Scoped to THIS point: a hover over another point's bullet must not commit an edit elsewhere.
+  assert.ok(/activeContentId === nodeId/.test(sbp),
+    'the commit is scoped to the menu\'s own point, so hovering never closes an unrelated edit');
+  // commitActiveEdit is the shared helper render() already uses; this must not grow a second one.
+  assert.ok(/function commitActiveEdit\(\)/.test(_src));
+  // and the row this all exists to reach is still emitted
+  assert.ok(/label:'Re-sample value' \+ tag\(v\.name\)/.test(_src));
+});
+
 test('#952 the distribution pill does not fight the shipped prose-mode rules (#925f/#944)', () => {
   // Found by measuring computed styles in a paragraph, not by reading the CSS. Two artifacts this
   // change introduced, both invisible to a source-only reading:
