@@ -19961,6 +19961,79 @@ test('builderCmdPool — the summoning trigger’s section leads, all three trig
   }
 });
 
+// ── #1106 — the builder search speaks /verb:value, and Enter fires the verb you typed ──
+// In Guided (the DEFAULT tier) `/` opens the builder immediately, so its search box IS the command
+// line: everything after the trigger is typed there, not into the point. Before this it matched the
+// raw string as one substring over label+desc+section+keys, so every documented `/verb:value` form
+// filtered to nothing and Insert greyed out.
+test('#1106: builderFilterCmds splits verb from value, so /prop:owner=zeo still finds Property', () => {
+  const pool = c.builderCmdPool('/');
+  const bare = c.builderFilterCmds(pool, 'prop', '/');
+  assert.ok(bare.some(x => x.id === 'prop'), 'bare verb finds the command');
+  // The value must not be part of the haystack probe. Use a value that does NOT appear in any
+  // desc — /prop:owner=zeo is quoted verbatim inside prop's own desc, so it would pass by accident.
+  const withArg = c.builderFilterCmds(pool, 'prop:owner=Priya', '/');
+  assert.ok(withArg.some(x => x.id === 'prop'), 'a real value still finds Property');
+  assert.ok(c.builderFilterCmds(pool, 'due:2026-08-14', '/').some(x => x.id === 'due'), 'due keeps its date');
+  assert.ok(c.builderFilterCmds(pool, 'check:sum(cost) <= budget', '/').some(x => x.id === 'check'),
+    'a space-bearing value still resolves');
+  // An empty query is the whole pool (the browse case), not an empty list.
+  assert.equal(c.builderFilterCmds(pool, '', '/').length, pool.length);
+});
+
+test('#1106: builderFilterCmds matches a command by its own id', () => {
+  const pool = c.builderCmdPool('/');
+  // `id` was absent from the haystack, so a command matched only via label/desc/keys.
+  const only = c.builderFilterCmds(pool, 'savetemplate', '/');
+  assert.ok(only.some(x => x.id === 'savetemplate'), 'id is searchable');
+});
+
+test('#1106: builderBestIdx fires the exact-id verb, not the first fuzzy description hit', () => {
+  const pool = c.builderCmdPool('/');
+  const vis = c.builderFilterCmds(pool, 'prop', '/');
+  // The regression this pins: `prop` matches querybase/math/meter first (their descriptions
+  // mention properties), so Enter applied a TABLE BUILDER when the user typed /prop.
+  assert.notEqual(vis[0].id, 'prop', 'precondition: the exact command is not first in pool order');
+  assert.equal(vis[c.builderBestIdx(vis, 'prop', '/')].id, 'prop', 'Enter fires Property');
+  // Same with a value attached, and for a second verb.
+  const visArg = c.builderFilterCmds(pool, 'prop:owner=Priya', '/');
+  assert.equal(visArg[c.builderBestIdx(visArg, 'prop:owner=Priya', '/')].id, 'prop');
+  const visDue = c.builderFilterCmds(pool, 'due:tomorrow', '/');
+  assert.equal(visDue[c.builderBestIdx(visDue, 'due:tomorrow', '/')].id, 'due');
+  // A hidden `keys` synonym still wins over an unrelated description hit.
+  const visDate = c.builderFilterCmds(pool, 'deadline', '/');
+  assert.equal(visDate[c.builderBestIdx(visDate, 'deadline', '/')].id, 'due', 'a keys synonym resolves');
+  // No query → the first row, unchanged.
+  assert.equal(c.builderBestIdx(pool, '', '/'), 0);
+});
+
+test('#1106: the guided builder delegates every / command to slashApply, ungated', () => {
+  // The delegation existed but was gated on `slashState`, which checkSlash's guided fork always
+  // nulls (hideSlashMenu) before opening the builder — so from the DEFAULT tier it never ran and
+  // /verb:value fell through to applyBlockCmd, which has no arg concept and ends `node.type = id`.
+  assert.ok(_src.includes("if (cmd.trigger === '/') {"), 'the / delegation is ungated');
+  assert.ok(!_src.includes("if (cmd.trigger === '/' && slashState) {"), 'the slashState gate is gone');
+  // It must run BEFORE the shared strip, because slashApply strips its own text.
+  const del = _src.indexOf("if (cmd.trigger === '/') {\n      // stripLen is the NODE-text query length");
+  const strip = _src.indexOf('// Strip the trigger text from the node (non-dialog commands)');
+  assert.ok(del > 0 && strip > 0 && del < strip, 'delegation precedes the strip (no double-strip)');
+  // stripLen decouples how much text to remove from what the query says.
+  assert.ok(_src.includes('stripTriggerRun(currentText, slashOffset, stripLen ?? query.length'),
+    'slashApply honours an explicit stripLen');
+  // The search box feeds its own fields; builderState.query stays the NODE-text query, because it
+  // drives the strip math — overwriting it would eat the arg's length out of the user's sentence.
+  assert.ok(_src.includes('builderState.argQuery = psq.query'), 'the typed value rides in argQuery');
+  assert.ok(!_src.includes('builderState.query = psq.query'), 'node-text query is not overwritten');
+  // A colon after a NON-opted-in verb is plain text (§3: /quote:x → quote, `:x` stays). In Standard
+  // that is free (the tail is in the node); typed into the builder's search box it has to be
+  // carried back, or the same keystrokes mean different things per tier.
+  assert.ok(_src.includes("builderState.argTail = (!psq.hasArg && colon >= 0) ? filterQ.slice(colon) : ''"),
+    'a non-arg colon tail is preserved');
+  assert.ok(_src.includes("tailInsert: st.argTail || ''"), 'the tail reaches slashApply');
+  assert.ok(_src.includes("stripTriggerRun(currentText, slashOffset, stripLen ?? query.length, tailInsert || '')"),
+    'the tail is re-inserted at the trigger position');
+});
+
 test('builderGuideEntry — null/unknown guard; a covered command resolves to its GUIDE entry', () => {
   // the null-cmd guard (a shipped bug, added in the remediation batch) and the unknown-id path.
   assert.equal(c.builderGuideEntry(null), null);

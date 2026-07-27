@@ -20177,15 +20177,19 @@ function slashMove(dir) {
 function slashApply() {
   if (!slashState) return;
   if (slashState.cell) { cellSlashApply(); return; }
-  const { nodeId, content, slashOffset, activeIdx, matches, trigger, query, rawArg } = slashState;
+  const { nodeId, content, slashOffset, activeIdx, matches, trigger, query, rawArg, stripLen, tailInsert } = slashState;
   const cmd = matches[activeIdx];
   hideSlashMenu();
   // strip the trigger char + exactly the query checkSlash settled on (its length
   // matches the source text regardless of case). For a date verb the query includes
   // the ":value" suffix (e.g. "due:tomorrow"); for other verbs a trailing ":x" was
   // already excluded from the query, so it stays in the node text.
+  // #1106: `stripLen` decouples HOW MUCH TEXT to remove from WHAT THE QUERY SAYS. They are the same
+  // on the inline path (the verb was typed into the point), but differ when the builder delegates
+  // here: there the query was typed into the builder's search box, so the point holds only the
+  // trigger char. Absent (every pre-existing caller), it falls back to query.length — unchanged.
   const currentText = editableText(content);
-  const { text: newText } = stripTriggerRun(currentText, slashOffset, query.length);
+  const { text: newText } = stripTriggerRun(currentText, slashOffset, stripLen ?? query.length, tailInsert || '');
   const node = nodeById(nodeId);
   if (node) {
     node.text = newText;
@@ -37737,6 +37741,48 @@ function openGuide(initialId) {
 // selected command's guide entry on the right.
 let builderState = null; // { nodeId, content, trigger, offset, query, rawArg }
 
+// #1106: the builder's search is the COMMAND LINE in Guided (the default tier) — `/` matches every
+// command, so the window opens on the trigger char alone and every keystroke after it lands in the
+// search box, not in the point. It therefore has to speak the same `verb:value` grammar the inline
+// menu does, or a documented form like /prop:owner=zeo filters to nothing and Insert greys out.
+// Reuse parseSlashQuery rather than re-splitting: ONE splitter, or the two doors drift apart again,
+// which is exactly how this bug was born. `id` joins the haystack too — before this `prop` matched
+// only by accident of its label reading "Property". Pure (pool in, pool out), so it is pinned
+// DOM-free rather than only source-pinned.
+function builderFilterCmds(cmds, rawQuery, trigger) {
+  const raw = String(rawQuery || '').trim();
+  if (!raw) return cmds;
+  const { matchWord } = parseSlashQuery(raw, trigger || '/');
+  const q = (matchWord || raw).toLowerCase();
+  return cmds.filter(c => {
+    const hay = (c.id||'') + ' ' + (c.label||'') + ' ' + (c.desc||'') + ' ' + (c._section||'') + ' ' + ((c.keys||[]).join(' '));
+    return hay.toLowerCase().includes(q);
+  });
+}
+// #1106: which row Enter actually fires. The list keeps POOL order so renderNav's section headers
+// stay contiguous, so the pick cannot just be "the first row" — typing `prop` matched querybase,
+// math and meter first (their descriptions mention properties) and Enter applied a table builder
+// instead of setting the property. Prefer the command whose own id IS what you typed, then an id
+// prefix, then a hidden `keys` synonym, then a label prefix. Generalises checkSlash's exact-id
+// preselect to the bare verb. Pure.
+function builderBestIdx(vis, rawQuery, trigger) {
+  const raw = String(rawQuery || '').trim();
+  const { matchWord } = parseSlashQuery(raw, trigger || '/');
+  const q = (matchWord || raw).toLowerCase();
+  if (!q) return 0;
+  const rank = c => {
+    const id = (c.id || '').toLowerCase();
+    if (id === q) return 0;
+    if (id.startsWith(q)) return 1;
+    if ((c.keys || []).some(k => String(k).toLowerCase().startsWith(q))) return 2;
+    if ((c.label || '').toLowerCase().startsWith(q)) return 3;
+    return 4;
+  };
+  let best = 0, bestRank = 5;
+  (vis || []).forEach((c, i) => { const r = rank(c); if (r < bestRank) { bestRank = r; best = i; } });
+  return best;
+}
+
 function builderCmdPool(trigger) {
   const cmds = [];
   // / — point commands (BLOCK_CMDS + dynamic per-sequence states)
@@ -38141,14 +38187,14 @@ function openBuilder(trigger) {
   let activeIdx = 0;
   let liveSuppress = true;   // UXP-173: suppress aria-live announcement on initial render
 
-  function visibleCmds() {
-    const q = filterQ.trim().toLowerCase();
-    if (!q) return cmds;
-    return cmds.filter(c => {
-      const hay = (c.label||'') + ' ' + (c.desc||'') + ' ' + (c._section||'') + ' ' + ((c.keys||[]).join(' '));
-      return hay.toLowerCase().includes(q);
-    });
-  }
+  // #1106: in Guided (the DEFAULT tier) this search box IS the command line — `/` matches every
+  // command, so the builder opens on the trigger char alone and every keystroke after it lands
+  // here, not in the point. It therefore has to speak the same `verb:value` grammar the inline
+  // menu does, or a documented form like /prop:owner=zeo filters to nothing and Insert greys out.
+  // Reuse parseSlashQuery rather than re-splitting: ONE splitter, or the two doors drift apart
+  // again, which is exactly how this bug was born. `id` joins the haystack too — before this,
+  // `prop` matched only by accident of its label reading "Property".
+  function visibleCmds() { return builderFilterCmds(cmds, filterQ, (builderState && builderState.trigger) || '/'); }
 
   function renderNav() {
     const vis = visibleCmds();
@@ -38240,8 +38286,27 @@ function openBuilder(trigger) {
       insertInlineArtifact(cmd.id, st.nodeId, st.content);
       return;
     }
-    // Commands that fall through to the / block-command path (non-@{</>) or
-    // brace-forms also close the builder before applying.
+    // #1106: /-commands are fully handled by slashApply, including every `:value` arm — delegate
+    // BEFORE the shared strip, since slashApply strips its own text. Two things were wrong here.
+    // The delegation sat AFTER the strip (its comment claimed otherwise, so the text was stripped
+    // twice), and it was gated on `slashState`, which checkSlash's guided fork always nulls via
+    // hideSlashMenu before opening the builder. So from the DEFAULT tier it never ran: every
+    // /verb:value fell through to applyBlockCmd, which has no arg concept and ends `node.type = id`
+    // — a documented string that silently did the wrong thing. Synthesizing the state makes Guided
+    // and Standard share ONE apply path, which is the whole P1 point.
+    if (cmd.trigger === '/') {
+      // stripLen is the NODE-text query length: 0 in Guided (only `/` reached the point, the rest
+      // was typed into the search box), the real length when the text carries the verb, and a
+      // no-op strip for the front door (launchBuilder parks offset at end of text). The parsed
+      // value rides in query/rawArg, which is where slashApply's per-verb arms read it.
+      const seed = { nodeId: st.nodeId, content: st.content, slashOffset: st.offset,
+                     query: st.argQuery || st.query || '', rawArg: st.argRaw || st.rawArg || '',
+                     stripLen: (st.query || '').length, tailInsert: st.argTail || '', trigger: '/' };
+      closeBuilder();
+      if (!slashState) slashState = seed;
+      slashState.matches = [cmd]; slashState.activeIdx = 0;
+      slashApply(); return;
+    }
     // Strip the trigger text from the node (non-dialog commands) — shared strip math
     const currentText = editableText(st.content);
     node.text = stripTriggerRun(currentText, st.offset, st.query.length).text;
@@ -38250,13 +38315,6 @@ function openBuilder(trigger) {
     markDirty();
     // Commands that fall through to the / block-command path (non-@{</>) or
     // brace-forms also close the builder before applying.
-    // /-commands with :value args (check, alias, due, template, etc.) are fully handled
-    // by slashApply. Delegate without stripping first — slashApply strips its own text.
-    if (cmd.trigger === '/' && slashState) {
-      closeBuilder();
-      slashState.matches = [cmd]; slashState.activeIdx = 0;
-      slashApply(); return;
-    }
     closeBuilder();
     // Apply the selected command
     if (cmd.trigger === '/' || cmd.trigger === '@') {
@@ -38400,14 +38458,32 @@ function openBuilder(trigger) {
   // Search
   searchEl.addEventListener('input', () => {
     filterQ = searchEl.value;
-    activeIdx = 0;
+    // #1106: carry the typed `verb:value` so applyBuilder can hand it to slashApply. These land in
+    // their OWN fields, never on builderState.query — that one is the NODE-text query and drives
+    // the strip math in applyBuilder, and in Guided it is correctly empty (only the trigger char
+    // reached the point). Overwriting it would strip the arg's length out of the user's sentence.
+    if (builderState && builderState.trigger === '/') {
+      const psq = parseSlashQuery(filterQ.trim(), '/');
+      builderState.argQuery = psq.query;
+      builderState.argRaw   = psq.rawArg;
+      builderState.hasArg   = psq.hasArg;
+      // A colon after a NON-opted-in verb is plain text, per the §3 inventory rule (/quote:x →
+      // quote, and `:x` stays). In Standard that falls out for free because the tail sits in the
+      // node; here it was typed into the search box, so carry it back and re-insert it on apply,
+      // or the same keystrokes would mean different things in different tiers — the P1 inversion
+      // this whole fix is about.
+      const colon = filterQ.indexOf(':');
+      builderState.argTail = (!psq.hasArg && colon >= 0) ? filterQ.slice(colon) : '';
+    }
+    activeIdx = builderBestIdx(visibleCmds(), filterQ, (builderState && builderState.trigger) || '/');
     renderNav();
     syncActive();
-    // Ghost text: show the top matching command label as a suggestion suffix
+    // Ghost text: show the SELECTED command's label as a suggestion suffix. It follows activeIdx,
+    // not the first row, so the suggestion always names the command Enter will actually fire.
     const vis = visibleCmds();
     const ghost = ioCard.querySelector('.builder-search-ghost');
     if (ghost && vis.length && filterQ) {
-      const top = vis[0].label;
+      const top = (vis[activeIdx] || vis[0]).label;
       const prefix = filterQ.toLowerCase();
       if (top.toLowerCase() !== prefix) {
         ghost.textContent = filterQ + top.slice(filterQ.length);

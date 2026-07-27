@@ -594,3 +594,53 @@ record of how the two surfaces were reached.
 - **The toast on toggling logging on was measured, not assumed.** An earlier reading of "no toast"
   was the driver querying `#hint`; the element is `#flash-hint`, and the message is present at full
   opacity. No finding.
+
+## Six-persona demo pass (2026-07-27) — UXP-246
+
+### UXP-246 ✓ Every documented `/verb:value` form was dead in the DEFAULT tier 🔴 [Builder Window] (RESOLVED 2026-07-27)
+
+**P1 (context inversion) + P4 (silent failure).** The same keystrokes did one thing in Standard and
+Lean and nothing in Guided, which is the tier aimed at beginners and the default. Five of six
+personas hit it; three were typing a string the app had just told them to type.
+
+The `/verb:value` grammar (`parseSlashQuery`, `SLASH_ARG_VERBS`, and every `rawArg` arm in
+`slashApply`) was already built and correct. It reached only the inline menu. In Guided, `/` matches
+every command, so the builder window opened on the trigger char alone and its search box took focus:
+everything typed after the slash landed there, not in the point. Two consequences.
+
+1. `visibleCmds` substring-matched the raw text over `label + desc + _section + keys` (no `id`), so
+   `prop:owner=Priya` matched nothing. **The doc examples masked this**: `/prop:owner=zeo` and
+   `/due:tomorrow` appear verbatim inside their own `desc` strings, so the exact documented literal
+   matched by accident while any real value failed. Anyone testing with the example would see it work.
+2. `applyBuilder`'s hand-off to `slashApply` was gated on `slashState`, which the guided fork always
+   nulls (`hideSlashMenu`) before opening the builder. So it never fired, and every `/` command fell
+   through to `applyBlockCmd`, which has no argument concept and ends `node.type = id`.
+
+Two further defects surfaced while fixing it, both P1, neither separately reported:
+
+- **Enter fired the wrong command.** The list keeps pool order so section headers stay contiguous,
+  and the pick was hardcoded to row 0. Typing `prop` matched `querybase`, `math` and `meter` first
+  (their descriptions mention properties), so Enter applied a table builder. Now `builderBestIdx`
+  ranks exact id, then id prefix, then a `keys` synonym, then a label prefix, and the ghost-text
+  suggestion follows the selection rather than row 0, so it always names what Enter will do.
+- **`/todo` diverged by tier.** Guided applied `state:TODO` (`#TODO`) because the checkbox command's
+  label reads "To-do" and never matched the string "todo"; Standard applied the checkbox (`- [ ]`).
+  Adding `id` to the haystack settles both on the checkbox.
+
+**Fix.** `builderFilterCmds` and `builderBestIdx` extracted as pure cores (pinned DOM-free, in
+`load-cores.mjs` `need`); the builder search routes through the same `parseSlashQuery` as the inline
+menu; the `/` delegation is ungated and moved above the shared strip (it had been running after it,
+double-stripping, despite its comment claiming otherwise); `stripLen` decouples how much text to
+remove from what the query says, since in Guided only the trigger char reached the point; and
+`tailInsert` carries back a non-opted-in colon tail so the §3 rule (`/quote:x` → quote, `:x` stays)
+holds in both tiers.
+
+**Verified by driving both tiers to equality**, which is the actual claim: nine forms
+(`/prop:owner=Priya`, `/due:tomorrow`, `/check:sum(cost) <= budget`, `/alias:wyrm, drake`, bare
+`/prop`, bare `/due`, `/todo`, `/quote:hello`, `/base:2x3`) now produce byte-identical node state in
+Guided and Standard. Each new pin was watched failing against `origin/main` first.
+
+**Not fixed here.** Escape still discards what was typed into the search box and leaves a bare `/` in
+the point (#1108, separately filed). `/prop:owner=Priya` lowercases the value to `priya` in *both*
+tiers, because the `prop` arm reads the lowercased `query` rather than `rawArg` — pre-existing, out
+of scope, and worth its own issue.
