@@ -6549,6 +6549,22 @@ test('#925f: the prose-mode pill CSS drops the stadium in a paragraph', () => {
 });
 
 // UXP-137: the freeze-to-text core produces exactly what flattenArtifacts inlines (lockstep).
+test('both collectPillActions callers read UNRENDERED text — the reason one broke and one did not', () => {
+  // The bullet menu broke because focusing a point unfolds its pills, so the tokens were gone from
+  // node.text by the time rows were collected. The base cell menu (the other caller) is immune for a
+  // structural reason worth pinning: it reads the cell out of the parsed MODEL, which comes from
+  // node.text, never from the rendered cell. Driven and confirmed — both "Re-sample value" and the
+  // long-shipped "Re-roll dice" appear in a focused cell's Shift+F10 menu and both mutate the record.
+  // If either caller ever starts reading rendered DOM text, that is the regression this catches.
+  const cp = fnBody(_src, 'showColPanel');
+  assert.ok(/const cellRaw = rowOps \? String\(model\.rows\[rowIdx\]\?\.\[colIdx\] \?\? ''\) : '';/.test(cp),
+    'the cell menu takes its raw cell text from the parsed model, not from the DOM');
+  assert.ok(/collectPillActions\(node, cellRaw\)/.test(cp), 'and scopes the pill rows to that cell');
+  // exactly two callers; a third would need the same argument made for it
+  assert.equal((_src.match(/collectPillActions\(/g) || []).length, 3,
+    'two call sites plus the declaration — a new caller must show it reads unrendered text');
+});
+
 test('the Shift+F10 pill rows are collected from FOLDED text, or the keyboard door is empty', () => {
   // Found by driving, after a source pin said the "Re-sample value" row existed. Reaching a point
   // with the keyboard means FOCUSING it, and focus unfolds its pills — node.text goes from
