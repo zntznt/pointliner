@@ -60,6 +60,55 @@ as the work ships.
    pickers; roving focus is fine for a modal browser. Verify by driving the running app — press
    the arrow key and confirm `activeElement` actually moved. *(The builder command list shipped
    the roving path missing its `tabindex`; every arrow key was dead until #1021.)*
+7. **A menu's CONTENTS must be computed from state that opening it does not change.** Guardrail 6
+   covers a dead *focus* model; this is the other half, and it is the one that got past us. The
+   Shift+F10 point menu built its Pills section from `node.text`, matching `[[type:key]]` tokens —
+   but reaching a point with the keyboard means *focusing* it, and focus **unfolds** its pills,
+   rewriting the text to `{2d6}`. So the rows were collected from text the act of opening had
+   already changed, and the whole section came up empty for **every** pill family. The mouse path
+   (hovering a bullet from display mode) read folded text and worked, which is exactly why it
+   survived: the pointer door and the keyboard door disagreed, and only the pointer one was ever
+   tried. The fix is to normalize first — `commitActiveEdit()` before collecting, scoped to the
+   menu's own point so hovering never closes an unrelated edit. **The check:** open the menu both
+   ways and compare the rows. Same menu, same point, same rows, or something reads mutated state.
+   *(Found 2026-07-27 while driving a row a source pin had already declared present.)*
+
+## Keyboard-door audit (2026-07-27)
+
+Guardrails 6 and 7 both describe handlers that exist and never run, and both had bitten, so the
+"Status: complete" above was worth testing rather than trusting. Every container-level arrow-nav
+handler in `index.html` was enumerated (37 `ArrowDown` sites, 13 of them list navigation) and
+**driven in a real browser**: focus the first option, press the arrow, observe.
+
+The predicate allows for both sanctioned focus models — a surface passes if `activeElement` moved
+**or** `aria-activedescendant` changed. A naive "did focus move?" check would have condemned the
+`[[` picker, which deliberately keeps focus on the caret.
+
+| surface | model | result |
+|---|---|---|
+| point bullet menu (`.cmd-item`) | roving | alive |
+| base cell / column panel (`.mt-col-item`) | roving | alive |
+| `[[` tree picker | activedescendant | alive |
+| concept guide: left nav (`.guide-nav-btn`) | roving | alive |
+| concept guide: search field | roving | alive |
+| all commands: item list (`.builder-item`) | roving | alive *(the #1021 fix holds)* |
+| all commands: search field | roving | alive |
+| file menu rows | roving | alive |
+| documents / broken-links rows (`.tpl-pick`) | roving | alive |
+| roll palette (`.rp-chip`) | roving | alive |
+| agenda calendar (`.agc-cell`) | roving | alive |
+| graph overlay (`g.graph-node`) | roving | alive |
+| date picker grid (`.cal-day`) | roving | alive |
+
+**All thirteen alive.** The probe was calibrated first against a known-good surface and against a
+deliberately broken copy of it (same handler, `tabindex` stripped), and reported them correctly as
+alive and dead — a probe that has never caught a dead surface is not evidence.
+
+Two false alarms during the run, both the harness's fault and worth recording so the next audit
+does not repeat them: a one-row broken-links report reads as dead because `Math.min(i+1, len-1)`
+correctly has nowhere to go, and the graph's `className` is an `SVGAnimatedString` rather than a
+string. **Re-run this table when a new list surface ships**; the previous claim rested on phase
+history, this one rests on a measurement with a date.
 
 ## Phase 0 — Accessible names (quick wins, zero risk)
 
