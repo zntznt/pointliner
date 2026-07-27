@@ -19770,6 +19770,51 @@ test('#1109 sidecar-only pill edits sweep their dependents too', () => {
     'a re-sample changes a draw other points may read');
 });
 
+// ── #1108: a slash in prose must not eat the paragraph ──
+test('#1108 restoreTypedRun — hands back what was typed into the palette', () => {
+  // The inverse of stripTriggerRun. A novelist typed "the harbour master / his son, whichever
+  // answered."; the slash opened the Guided palette and every character after it landed in the
+  // search input, which closeBuilderWindow destroyed with innerHTML = ''. The text never reached
+  // the document, so undo could not reach it either. Driven before the fix: node.text ended at
+  // "...harbour master /" and the rest was gone for good.
+  const r = c.restoreTypedRun('She would ask the harbour master /', 33, 0, ' his son, whichever answered.');
+  assert.equal(r.text, 'She would ask the harbour master / his son, whichever answered.');
+  assert.equal(r.caret, r.text.length, 'the caret lands where the typing left off');
+  const mid = c.restoreTypedRun('a / b', 2, 0, 'X');
+  assert.equal(mid.text, 'a /X b', 'splices at the trigger, so text after the run survives');
+  assert.equal(c.restoreTypedRun('go /tod', 3, 3, 'o').text, 'go /todo', 'a matched query is part of the run');
+  assert.equal(c.restoreTypedRun('a /', 2, 0, '').text, 'a /', 'nothing typed changes nothing');
+  assert.equal(c.restoreTypedRun('a /', 2, 0, null).text, 'a /');
+});
+
+test('#1108 the trigger stops firing on a bare slash mid-prose', () => {
+  // At the start of a point a lone `/` still opens (the Guided command line); mid-text it needs at
+  // least one word character. Driven: "three / four" and "email me @ home" no longer open anything,
+  // "/tod" mid-line still does, and the novelist's full sentence survives intact.
+  // NB: not fnBody(). fnBody does indexOf('function ' + name), which PREFIX-matches -- it returns
+  // closeBuilderWindow's body for 'closeBuilder'. Anchor on the source directly (#1131).
+  assert.match(_src, /if \(slashOffset !== 0 && !rawQuery\) \{ hideSlashMenu\(\); return; \}/,
+    'a bare trigger mid-text must not open the palette');
+  assert.match(_src, /nodeById\(nodeId\)\?\.type === 'para'\) \{ hideSlashMenu/,
+    'the paragraph carve-out stays: Enter means line break there, so an open menu could eat the block');
+});
+
+test('#1108 dismissal is a CANCEL that returns the text; apply is not', () => {
+  // The close path had NO test at all before this - not dismissal, not Escape, not text
+  // preservation - which is why four sentences could vanish with a green suite.
+  assert.match(_src, /function closeBuilder\(cancelled = false\)/,
+    'closeBuilder distinguishes cancel from apply');
+  assert.match(_src, /else if \(cancelled\) builderReturnTypedText\(\);/,
+    'only a cancel restores - an apply already spliced its result, so restoring would double it');
+  const rt = fnBody(_src, 'builderReturnTypedText');
+  assert.ok(rt.length > 60, 'builderReturnTypedText exists (fnBody returns \'\' on a miss)');
+  assert.match(rt, /restoreTypedRun\(/, 'the restore routes through the pure core');
+  assert.match(rt, /\.builder-search/, 'and reads the search box, the only place those characters existed');
+  assert.match(_src, /ioCancel = \(\) => closeBuilder\(true\)/, 'backdrop dismiss cancels');
+  assert.ok((_src.match(/closeBuilder\(true\)/g) || []).length >= 3,
+    'the Escape handlers cancel too (search, nav, pane), not just the backdrop');
+});
+
 test('#801 wiring: exitEdit repaints computed dependents on text change', () => {
   assert.ok(_fix.includes('function repaintComputedDependents'), 'helper missing');
   assert.match(_fix, /node\.text !== prevText\) \{[\s\S]{0,2000}repaintComputedDependents\(node\.id\)/,
@@ -20483,7 +20528,11 @@ test('builder cleanups (#1023/#1024/#1025) — dead code removed, related-chip f
   assert.ok(_src.includes("ioBack.addEventListener('mousedown', e =>"), 'global mousedown dismiss still present');
   // #1024: exactly one closeBuilder definition (the nested duplicate removed).
   assert.equal((_src.match(/function closeBuilder\b/g) || []).length, 1, 'a single closeBuilder definition');
-  assert.ok(_src.includes('ioCancel = closeBuilder;'), 'openBuilder still binds ioCancel to it');
+  // #1108: was a byte-exact pin on `ioCancel = closeBuilder;`. Backdrop dismiss is a CANCEL and now
+  // passes that through so the typed text is handed back, so the pin anchors on the PROPERTY
+  // (ioCancel routes to closeBuilder) rather than on one spelling of the binding.
+  assert.match(_src, /ioCancel = (?:closeBuilder;|\(\) => closeBuilder\(true\);)/,
+    'openBuilder still binds ioCancel to closeBuilder (cancelling form allowed)');
   // #1025: the See-also chip renders the CLICKED entry via the guide-id path, not a stale {...cmd}.
   assert.ok(_src.includes("renderBuilderPaneInto({ _brace: { guide: e.id }, label: e.title, desc: '' }, container)"),
     'related-chip forces the clicked entry by id');

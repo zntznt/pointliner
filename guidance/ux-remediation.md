@@ -894,3 +894,43 @@ a real estimate pill reading `≈172.4 (118.8 – 243.1)` — correct for 1.2x a
 is not followable is the defect, so following it is the acceptance test. Negatives unchanged:
 `{= 2 * 3}` still computes, and a genuine typo still returns `bad ref` (`sawBadRef` outranks
 `sawDist`).
+
+### UXP-253 ✓ A slash in prose opened the palette and ate the paragraph 🔴 [triggers] (RESOLVED 2026-07-27)
+
+**P4 + P1.** Filed as #1108 from the persona pass. A novelist writing *"She would ask the harbour
+master / his son, whichever answered."* lost about four sentences. Her verdict: *"I will not compose
+prose in a room where a slash can eat a paragraph. Scrivener is uglier and dumber and it has never
+once swallowed my typing."* She was otherwise positive; this was the only reason she would not draft
+in the app.
+
+**Two independent defects, both real.**
+
+1. **The trigger.** One permissive regex, `(^|[\s}])([/@])(\w*(?::.*)?)$` — start-of-text, ANY
+   whitespace, or `}`. The prose carve-out beside it was scoped to `node.type === 'para'` and to `/`
+   only, so an ordinary point, which is what a manuscript is typed into, had no protection.
+2. **The capture, which was deliberate.** `verbosity = 'guided'` is the DEFAULT tier, and in Guided
+   the inline popup is replaced by the modal builder ending in `searchEl.focus()`. Then
+   `closeBuilderWindow` runs `ic.innerHTML = ''`, destroying the input and every character in it.
+   The text never entered the document model, so **undo was structurally incapable** of recovering
+   it. Reproduced: `node.text` ended at `"...harbour master /"` and the search box held
+   `" his son, whichever answered."`, which Escape discarded.
+
+**Fix.** `restoreTypedRun`, a pure DOM-free inverse of `stripTriggerRun`, plus `closeBuilder(cancelled)`
+so a dismissal (Escape on any of the three panes, or the backdrop) hands the text back while an apply
+does not, since an apply already spliced its own result. And a bare trigger mid-text no longer opens:
+at offset 0 a lone `/` still opens on the trigger alone, which is the Guided command line and where
+it is meant to be used; mid-text it takes at least one word character. That is the discipline `#`
+and `:` already had, and it subsumes the `para` carve-out rather than adding a second rule beside it.
+
+**Driven, all six paths:** the novelist's full sentence now survives with no palette; `three / four`,
+`12/3` and `email me @ home` never open; `/tod` mid-line still opens; a deliberate `/` at offset 0
+then Escape returns `"/zzz nonsense"`; backdrop dismiss returns `"/abc"`. Both new pins guard-proofed
+by reverting each half.
+
+**Why it shipped:** the entire close path (`closeBuilder` / `closeBuilderWindow`) had **no test at
+all** - not dismissal, not Escape, not text preservation. That coverage is added here.
+
+**Found while pinning, filed separately (#1131):** `fnBody(src, name)` does
+`indexOf('function ' + name)`, which PREFIX-matches. `fnBody(_src, 'closeBuilder')` returns
+**`closeBuilderWindow`'s** body, because that function is defined earlier in the file. Every pin
+using a name that is a prefix of another function name has been asserting against the wrong body.

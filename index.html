@@ -6798,6 +6798,19 @@ function editableText(el) {
 // The slash blind-apply and every builder apply path share this so the strip math lives
 // in ONE testable place — an inline copy per site is exactly what produced the shipped
 // double-strip / form-overwrite bugs (the builder remediation batch). DOM-free by design.
+// #1108: the inverse of stripTriggerRun. Splice a run the user typed into the palette's search box
+// back into the point, just after the trigger run it was typed "into". A novelist writing
+// "the harbour master / his son" had the slash open the Guided palette, and every character after
+// it landed in the search input, which closeBuilderWindow then destroyed with innerHTML = ''. The
+// text never entered the document, so undo could not reach it either: four sentences, gone. Any
+// trigger will sometimes be wrong, so the recovery cannot depend on the trigger being right.
+// DOM-free by design, like stripTriggerRun.
+function restoreTypedRun(text, offset, queryLen, typed) {
+  const at = Math.min(offset + 1 + queryLen, text.length);   // just past the trigger char + matched query
+  const t = String(typed || '');
+  return { text: text.slice(0, at) + t + text.slice(at), caret: at + t.length };
+}
+
 function stripTriggerRun(text, offset, queryLen, insert = '') {
   const rawLen = 1 + queryLen;                       // trigger char + matched query
   const before = text.slice(0, offset);
@@ -20060,6 +20073,14 @@ function checkSlash(content, nodeId) {
   // would apply the highlighted command and convert the whole multi-line paragraph to a
   // Bullet, destroying it. In prose you type freely; new structure is Shift+Enter (a new
   // point) then `/`. The `@` insert menu stays live everywhere (inline pills belong in prose).
+  // #1108: a BARE trigger mid-text is punctuation, not a command. "the harbour master / his son"
+  // opened the full-screen palette and swallowed the rest of the paragraph. At the start of a point
+  // a lone `/` still opens on the trigger alone (that is the Guided command line, and it is where
+  // it is meant to be used); mid-text it takes at least one word character, so `/todo` still works
+  // and " / " never fires. This is the discipline `#` and `:` already have: their pool is real
+  // existing tags, so a bare trigger matches nothing and stays quiet. A `/` matches EVERY command
+  // when the query is empty, so the "no matches -> hide" branch below can never fire for it.
+  if (slashOffset !== 0 && !rawQuery) { hideSlashMenu(); return; }
   if (m[2] === '/' && slashOffset !== 0 && nodeById(nodeId)?.type === 'para') { hideSlashMenu(); return; }
   const { word, query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
@@ -38445,7 +38466,7 @@ function openBuilder(trigger) {
     }
   }
 
-  ioCancel = closeBuilder;   // the top-level closeBuilder (shared with builderFormApply); #1024
+  ioCancel = () => closeBuilder(true);   // backdrop dismiss is a CANCEL: hand typed text back (#1108); #1024
 
   renderNav();
   renderBuilderPane(cmds[0] || null);
@@ -38501,7 +38522,7 @@ function openBuilder(trigger) {
       e.stopPropagation();
       if (_dialogCancel) { _dialogCancel(); }
       else if (pane.querySelector('.builder-form-cancel')) { pane.querySelector('.builder-form-cancel').click(); }
-      else closeBuilder();
+      else closeBuilder(true);
     }
   });
   // Pane: Shift+Tab back to nav, Escape closes
@@ -38522,7 +38543,7 @@ function openBuilder(trigger) {
       e.stopPropagation();
       if (_dialogCancel) { _dialogCancel(); }
       else if (pane.querySelector('.builder-form-cancel')) { pane.querySelector('.builder-form-cancel').click(); }
-      else closeBuilder();
+      else closeBuilder(true);
     }
   });
   // Load dialog form or GUIDE entry when pane receives focus (Tab/Right from search or nav)
@@ -38623,7 +38644,7 @@ function openBuilder(trigger) {
       else announce('No matching commands');
     } else if (e.key === 'Escape') {
       e.stopPropagation();
-      closeBuilder();
+      closeBuilder(true);
     }
   });
   // Insert button
@@ -38635,11 +38656,31 @@ function openBuilder(trigger) {
 
 // The one closeBuilder — shared by openBuilder (via ioCancel + its handlers) and the top-level
 // builderFormApply. Restores a stripped trigger if a nested dialog was mid-flight, then tears down. #1024
-function closeBuilder() {
+function closeBuilder(cancelled = false) {
   // builderRestoreTrigger sets its own caret (after the restored trigger run), so disarm the
   // chrome-return or the rAF below would overwrite it a frame later with the pre-open offset.
   if (_restoreState) { builderRestoreTrigger(); chromeReturn = null; }
+  // #1108: a DISMISS (Escape, backdrop) must hand back what was typed. Only on cancel -- an apply
+  // has already spliced its own result in through stripTriggerRun, so restoring here would double
+  // it. The search box is the only place these characters ever existed.
+  else if (cancelled) builderReturnTypedText();
   closeBuilderWindow();
+}
+
+// Put the palette's search text back into the point it was typed from (#1108).
+function builderReturnTypedText() {
+  const st = builderState;
+  if (!st) return;
+  const typed = document.querySelector('.builder-search')?.value || '';
+  if (!typed) return;
+  const node = nodeById(st.nodeId);
+  if (!node || !st.content) return;
+  const r = restoreTypedRun(editableText(st.content), st.offset, st.query.length, typed);
+  node.text = r.text;
+  st.content.innerHTML = editModeHTML(node);
+  try { setCaretByOffset(st.content, r.caret); } catch (_) {}
+  chromeReturn = null;   // the caret is already where the typing left off
+  markDirty();
 }
 
 document.addEventListener('keydown', e => {
