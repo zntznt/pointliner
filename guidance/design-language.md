@@ -213,14 +213,22 @@ two shapes, two meanings, shared vertical metrics (`.72em/600/.06em`, `padding:1
   Don't re-blur the focus indicator into a 20%-alpha ghost.
 - **Sanctioned exception — the prose-mode pill (`.nt-para`, #925f).** Inside a **paragraph**
   point the stadium is *dropped*: inline generators (dice/grammar/markov/est/var/seq) shed the
-  capsule, the leading icon, and the dice recipe, and read as tinted inline text so a generated
-  sentence reads as prose, not a row of widgets. This is the same restraint the math **"Show value
+  capsule, the leading icon, and the **recipe** (`.dice-formula`/`.dice-eq` and
+  `.est-expr`/`.est-eq`), and read as tinted inline text so a generated sentence reads as prose,
+  not a row of widgets. This is the same restraint the math **"Show value
   only"** (`.math-bare`) mode already established, generalized to every inline generator *in a
   paragraph only*. The family hue survives at whisper level (identity is kept), the pill stays
   clickable with a faint hover tint, and the stadium is untouched everywhere else (bullets, headings,
   bases). Block pills (query) are exempt. This is the ONLY context in which the artifact signature is
   suppressed, and it is intentional: the paragraph type is prose-first, so its export flattens pills
   to their result too (the two stay in step). Do not extend the chrome-drop beyond paragraphs.
+  **The rules are written PER FAMILY, and that is load-bearing.** The estimate family shipped
+  missing from both lists for months: `.est-expr`/`.est-eq` were never hidden and `.est-summary`
+  was never flattened, so a paragraph rendered `Also 5 to 10 ≈ 7.13 (4.96 – 9.91)▃▅▇█ nights` while
+  `frozenTokenText` already exported the result alone — screen and file out of step on the one
+  invariant this exception is stated to hold. It survived because the `#925f` pin asserted only the
+  *dice* rule. Closed 2026-07-27; the pin now asserts each family, which is the only shape that
+  cannot silently miss the next one. A new inline artifact family joins both lists in its own PR.
   **#944 (agent-review) extends this one step:** in a paragraph a variable *reference* pill
   (`.var-ref`) also drops its **name**, reading as just its value — a reused frozen name renders
   "Sor", not "captainSor" (the name still shows on the declaration pill; the aria-label keeps it).

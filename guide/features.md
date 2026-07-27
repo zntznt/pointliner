@@ -116,7 +116,9 @@ A live calculator that can see your document. Math pills recompute on their own.
   of the count unless you write `{= words(subtree, notes)}`.
   ([word counts](computing-numbers.md#roll-a-number-up-your-document-aggregation))
 - **Uncertain estimates.** `{5 to 10}` models a range with a little distribution sparkline, and the
-  uncertainty propagates through math. Bounds can be declared variables (`{cost_low to cost_high}`).
+  uncertainty propagates through math. Bounds can be declared variables (`{cost_low to cost_high}`),
+  and a variable can hold the uncertain value itself: `{cost := 100 to 200}` makes every later
+  `{cost}` and `{cost * 2}` the same draw, so a model moves as one piece.
   ([estimates](computing-numbers.md#uncertain-values-estimates))
 - **Self-checking documents.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
