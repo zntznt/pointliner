@@ -71,7 +71,9 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   `qbaseFieldWritable` (a field that is not `title` and not a `=` formula) marks the cell
   editable (`.mt-qcell`, an explaining `title`), focusin swaps the role chip for the raw value,
   and blur resolves `tr.data-nid → nodeById → setProp` — never `node.text` (a point owns its own
-  text). The §0.4 footguns are answered head-on: every commit is ANNOUNCED (a flash naming the
+  text). **Amended 2026-07-27 (#1123):** a reserved DATE key (`due`/`start`/`repeat`) routes through
+  `setDateProp` instead, after `propWriteRoute` validates it, so a relative form resolves at commit
+  (#808) and an unreadable one is refused in the shared date sentence rather than stored raw. The §0.4 footguns are answered head-on: every commit is ANNOUNCED (a flash naming the
   field and the point, including when the edit makes the row leave the query — the membership
   check against the recomputed `qids`), and undo-LOCAL (`pushUndo` per commit, one Ctrl/Cmd+Z
   restores the foreign point). Enter/Shift+Enter/Tab mirror the authored-cell grammar (P1); the

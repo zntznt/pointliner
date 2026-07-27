@@ -11396,10 +11396,27 @@ function mtWireQBaseEdit(host, node) {
     const src = nid ? nodeById(nid) : null;
     const field = qbaseColList(node.qbase.cols)[c]?.field.trim();
     if (!src || !field || !qbaseFieldWritable(field)) { cell.innerHTML = mtCellHtml(node, was, c); return; }
+    // #1123: a reserved date routes through its validated writer, like every other date door.
+    // Before this, a cell wrote straight to setProp: `friday` was stored raw (the point kept a due
+    // chip and vanished from every date view), and `today+7` was stored LITERALLY, re-anchoring
+    // every day — #808/UXP-202 reproduced on a surface it never covered.
+    const route = propWriteRoute(field, raw);
+    if (route === 'baddate') {
+      // Refuse BEFORE pushUndo: nothing is committed, so no undo entry should exist for it.
+      // Restore the cell the same way the untouched-value early return above does.
+      cell.innerHTML = mtCellHtml(node, was, c);
+      flashHint('Not a valid date: ' + raw + '. ' + dateFormsHint());
+      return;
+    }
     pushUndo();
-    setProp(src, field, raw);
+    if (route === 'date') setDateProp(src, field.trim().toLowerCase(), raw);
+    else setProp(src, field, raw);
     markDirty();
-    cell.innerHTML = mtCellHtml(node, raw, c);   // immediate feedback in place
+    // Repaint from what was STORED, not what was typed: setDateProp resolves a relative form, so
+    // `today+7` must show as the date it landed on rather than leaving the cell disagreeing with
+    // the model until the next full render.
+    const shown = (src.props || []).find(p => p.key.trim().toLowerCase() === field.trim().toLowerCase())?.val ?? raw;
+    cell.innerHTML = mtCellHtml(node, shown, c);   // immediate feedback in place
     const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);
     const stillMatches = qbaseModel(node).qids.includes(nid);
     flashHint((raw ? `Updated ${field} on "${title}".` : `Cleared ${field} on "${title}".`)
@@ -11487,8 +11504,13 @@ function mtSetCellValue(node, r, c, val) {
     const src = q.qids[r] ? nodeById(q.qids[r]) : null;
     const field = qbaseColList(node.qbase.cols)[c]?.field.trim();
     if (!src || !field || !qbaseFieldWritable(field)) return;
+    // #1123: same routing as the focusout commit. This is a SECOND, independent write site (the
+    // cell context menu), so fixing one does not fix the other.
+    const route = propWriteRoute(field, val);
+    if (route === 'baddate') { flashHint('Not a valid date: ' + val + '. ' + dateFormsHint()); return; }
     pushUndo();
-    setProp(src, field, val);
+    if (route === 'date') setDateProp(src, field.trim().toLowerCase(), val);
+    else setProp(src, field, val);
     markDirty();
     const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);
     const stillMatches = qbaseModel(node).qids.includes(src.id);

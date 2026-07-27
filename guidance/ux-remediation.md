@@ -735,9 +735,54 @@ flashes why; `/prop:due=2026-08-14` writes and the point **appears** in `collect
 (UXP-247 holds); `/prop:repeat=weekly` writes with no date error; `/prop:due=` clears; bare
 `/prop` still stubs. Each new pin was watched failing against `main` first.
 
-**Adjacent holes found while mapping, filed separately, NOT fixed here.** Query-base cells write
-dates through `setProp` (`qbaseFieldWritable` excludes only `title` and formula columns), so
-`today+7` in a base cell re-anchors daily, the same #808 bug on a second surface. The Properties
+**Adjacent holes found while mapping, filed separately.** Query-base cells wrote dates through
+`setProp` — **fixed in UXP-249 below (#1123)**. The Properties
 dialog's **bulk** branch skips even the reserved merge. The paste path (`parsePropLines`) feeds
 dialog rows with no key filter. And `/prop:created=2020-01-01` forges an app-maintained
 timestamp that `propDeclParts` explicitly prevents.
+
+
+### UXP-249 ✓ Query-base cells wrote a date the validated writer would refuse 🔴 [bases] (RESOLVED 2026-07-27)
+
+**P4 + P1.** Filed as #1123 out of the UXP-248 mapping. `qbaseFieldWritable` excludes only `title`
+and `=` formula columns, so `due` and `start` are writable cells that went straight to `setProp`.
+Two defects, measured:
+
+| written as | stored (today 2026-07-27) |
+|---|---|
+| `setProp(n,'due','today+7')` — what a cell did | `due=today+7` |
+| `setDateProp(n,'due','today+7')` | `due=2026-08-03` |
+| `setProp(n,'due','friday')` | `due=friday` |
+
+A relative date was stored literally and **re-anchored every day** (#808/UXP-202 reproduced on a
+surface it never covered: `today+7` meant Aug 3 today and Aug 4 tomorrow, so the deadline never
+arrives). An unreadable value was stored raw, so the point kept a `due` chip and dropped out of
+every date view, the UXP-248 harm on the one door that fix did not touch.
+
+**Fix.** Both write sites route through `propWriteRoute` (the pure core added by UXP-248, so no new
+core and no new copy). `'baddate'` refuses **before `pushUndo`** in the shared date sentence,
+`'Not a valid date: ' + val + '. ' + dateFormsHint()` — now five doors, one voice. `'date'` calls
+`setDateProp`. The commit handler also repaints from what was **stored**, not what was typed: after
+normalization the cell would otherwise show `today+7` while the model held `2026-08-03`.
+
+**A trap worth recording.** `setDateProp`'s guard is a bare `DATE_KEYS.has(key)` with **no**
+lowercasing, and a base column's `field` preserves the user's case. So `setDateProp(src, 'Due', …)`
+would skip resolution entirely and silently reintroduce the very bug being fixed. Both call sites
+pass `field.trim().toLowerCase()`, matching what the `/prop:` arm already does.
+
+**Two sites, not one.** The `focusout` commit and `mtSetCellValue` (the cell context menu) are
+independent handlers; fixing one does not fix the other, and each carries its own pins. Note the
+`mtSetCellValue` qbase arm is currently **unreachable from the UI** (a query base is always
+`readOnly`, so `mtWireCells` never wires `showColPanel` on it) — it is fixed for consistency and
+because it is pinned, not because a user can reach it today.
+
+**Verified by driving a real query base**: `today+7` stores `2026-08-03` and the cell repaints to
+the `Aug 3` chip; `friday` writes nothing, flashes the shared sentence, and leaves the cell on its
+prior paint; `2026-08-14` writes and the point appears in `collectDueDates`; a non-date column is
+untouched and keeps its case. Undo depth is unchanged across a refusal, and one undo still reverts
+the user's real previous edit. Both pinned tests were watched failing against `main` first.
+
+**Confirmed not a third site:** board, cards and calendar all force `readOnly || !!node.qbase`, and
+that fence is itself pinned. Authored (non-query) base cells store dates as cell TEXT via
+`mtCommit`, not as properties — the starters legitimately ship `today+14` in a table — so routing
+that path would be a behaviour change, not a fix. Left alone deliberately.
