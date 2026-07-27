@@ -604,7 +604,9 @@ mulberry32) reproduces the exact distribution, so it round-trips through `_est`,
 reproduces it, and a click just re-seeds (`rerollEst`). Display is `mean ± [p5,p95]` + a
 **pure-string unicode sparkline** (`distSummary`/`sparkline`/`formatDist` — export-safe, the same
 string in the pill and `flattenArtifacts`). Live like B1 — Phase-2 rollups recompute through the
-`cookieNode` render global. The pill freezes + re-samples on click (dice model), unfolds to its
+`cookieNode` render global, and a commit sweeps every mounted computed row
+(`repaintComputedDependents` / `isComputedNode`) so a dependent never keeps a superseded number
+(#1109; the sweep reads the DOM, never a resettable set). The pill freezes + re-samples on click (dice model), unfolds to its
 `{expr}` source in edit mode, and promotes from the `{lo to hi}` constructor shorthand
 (`estParts` — constructors only, so a bare `{sum(cost)}` never diverges from `{= sum(cost)}`
 deterministic math; rollups are `@estimate`-dialog-authored). The engines stay **separate in v1**:
