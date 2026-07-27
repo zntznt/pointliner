@@ -641,6 +641,43 @@ holds in both tiers.
 Guided and Standard. Each new pin was watched failing against `origin/main` first.
 
 **Not fixed here.** Escape still discards what was typed into the search box and leaves a bare `/` in
-the point (#1108, separately filed). `/prop:owner=Priya` lowercases the value to `priya` in *both*
-tiers, because the `prop` arm reads the lowercased `query` rather than `rawArg` — pre-existing, out
-of scope, and worth its own issue.
+the point (#1108, separately filed).
+
+### UXP-247 ✓ `/prop:key=value` stored the value lowercased 🟡 [Builder Window] (RESOLVED 2026-07-27)
+
+**P1 (two doors, one capability, different data).** Filed out of UXP-246 as #1119. `/prop:owner=Priya`
+stored `owner = priya`; the Properties dialog, given the same input, stored `owner = Priya`.
+
+`parseSlashQuery` returns two fields. `query` is lowercased **because it doubles as the strip-length
+token** — the invariant `query.length === raw.length` is pinned, and exists so a mixed-case value
+cannot mangle the surrounding text on strip. `rawArg` is the sibling that preserves what was typed.
+The `prop` arm was the only arm parsing a value out of `query`; `check`, `alias`, `template`,
+`savetemplate` and `refile` already read `rawArg`, and `due`/`base` read `query` but are immune
+(`tomorrow`, `3x4` carry no case). So: one call site reading the wrong one of two existing fields.
+
+The value half was real corruption — values are stored and displayed verbatim, so the chip, an
+exact-match filter and the export all carried the mangled string. The key half was cosmetic (keys are
+compared case-insensitively everywhere, but `setProp` **stores** the key as typed, so the dialog
+already puts mixed-case keys in documents); preserving it is parity, and it falls out of the same
+change. It also repairs a round-trip the app broke against itself: `maybeNudgeField` toasts *"type
+/prop:HP=12"* for a point reading `HP: 12` (`fieldNudgeKey` captures the key with `/i`), and typing
+that suggestion used to yield `hp`.
+
+**Fix.** `parsePropArg(rest)` split out as a pure core (in `load-cores.mjs` `need`); `parsePropSlash`
+kept as the prefix-stripping wrapper over it so its contract and every existing pin are unchanged —
+that wrapper is the refactor's control. The arm reads `parsePropArg(rawArg)`.
+
+Deliberately **not** fixed by making `parseSlashQuery` preserve case: `query` is the strip-length
+token, and that invariant is load-bearing. The call site was the right place.
+
+**Verified by driving the two doors to equality**, which is the actual claim: `/prop:owner=Priya`,
+`/prop:Owner=Priya Sharma`, `/prop:status:In Progress`, `/prop:HP=12` and
+`/prop:url=https://x.com/a?b=c` produce identical `node.props` via the slash path (in **both** Guided
+and Standard, confirming UXP-246 kept the tiers unified) and via `setProp` as the dialog writes it.
+The URL case matters: the value carries both `:` and `=`, and `rawArg` slices at the query's first
+colon while `parsePropArg` splits on the first separator, so it survives. Bare `/prop` still writes
+the `{prop : }` stub. Each new pin was watched failing against `main` first.
+
+**Noted, not fixed:** `propDeclParts` (the `{prop key: val}` brace twin) rejects reserved keys
+(`due`, `check`, `aliases`, the timestamps); `parsePropArg` has no such guard, so `/prop:due=friday`
+still writes an unvalidated generic prop. Pre-existing, unchanged by this work.

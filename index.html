@@ -5456,17 +5456,27 @@ function parseDateSlash(query) {
   return { key: m[1].toLowerCase(), raw };
 }
 
-// parsePropSlash(query) — pure. The /prop:key=value (or key:value) one-shot inline bridge. The slash
-// query arrives as "prop:REST"; REST is "key=value" or "key:value". Returns { key, val } or null when
-// there's no value (a bare /prop falls through to writing the fill-in-the-blank stub). Node-testable.
-function parsePropSlash(query) {
-  const m = String(query || '').match(/^prop:(.+)$/i);
-  if (!m) return null;
-  const kv = m[1].match(/^([^=:]+)[=:](.*)$/);          // key = value | key : value
+// parsePropArg(rest) — pure. The payload half of a /prop one-shot: "key=value" or "key:value" →
+// { key, val }, or null when there is no separator or no key (a bare /prop falls through to writing
+// the fill-in-the-blank stub). #1119: split out of parsePropSlash so the slash arm can feed it
+// `rawArg`, which preserves the case the user typed. parseSlashQuery's `query` is LOWERCASED because
+// it doubles as the strip-length token (pinned: query.length === raw.length), so reading a VALUE out
+// of it silently mangled it — /prop:owner=Priya stored `priya`, while the Properties dialog stored
+// `Priya`. Two doors, one capability, different data. Node-testable.
+function parsePropArg(rest) {
+  const kv = String(rest || '').match(/^([^=:]+)[=:](.*)$/);   // key = value | key : value
   if (!kv) return null;
   const key = kv[1].trim(), val = kv[2].trim();
   if (!key) return null;
   return { key, val };
+}
+// parsePropSlash(query) — pure. The /prop:key=value (or key:value) one-shot inline bridge. The slash
+// query arrives as "prop:REST"; REST is "key=value" or "key:value". Returns { key, val } or null when
+// there's no value. Kept as the prefix-stripping wrapper over parsePropArg so its contract (and its
+// pins) are unchanged; the live slash arm now calls parsePropArg directly with `rawArg`. Node-testable.
+function parsePropSlash(query) {
+  const m = String(query || '').match(/^prop:(.+)$/i);
+  return m ? parsePropArg(m[1]) : null;
 }
 
 // parsePropLines(text) — pure. #948: a multi-line block of `key: value` (or `key = value`) lines,
@@ -20348,7 +20358,12 @@ function slashApply() {
     // fill-in-the-blank stub `{prop : }` with the caret parked on the KEY blank — type key, then the
     // value, and it promotes to a chip on exit (promoteBraceBody's propDecl branch). The full Property
     // editor stays as the higher-verbosity door (the bullet menu / a prop-chip click).
-    const ps = parsePropSlash(query);
+    // #1119: read the payload from `rawArg`, NOT `query`. parseSlashQuery lowercases `query` because
+    // it doubles as the strip-length token (pinned: query.length === raw.length), so parsing a VALUE
+    // out of it silently mangled it — /prop:owner=Priya stored `priya` while the Properties dialog
+    // stored `Priya`. `rawArg` is the sibling field that exists for exactly this, and every other
+    // arg-carrying verb (check, alias, template, savetemplate, refile) already reads it.
+    const ps = parsePropArg(rawArg);
     if (ps) {
       const cur = nodeById(nodeId); if (!cur) return;
       pushUndo(); setProp(cur, ps.key, ps.val); markDirty(); render();

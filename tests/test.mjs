@@ -13478,6 +13478,44 @@ test('parsePropSlash — /prop:key=value (or key:value) one-shot; incomplete →
   assert.equal(c.parsePropSlash('due:friday'), null);         // a different verb is not a prop slash
 });
 
+// ── #1119 — /prop keeps the case you typed ──
+// parseSlashQuery lowercases `query` because it doubles as the strip-length token (see the
+// "text-strip invariant" pin). The prop arm used to parse its VALUE out of it, so /prop:owner=Priya
+// stored `priya` while the Properties dialog stored `Priya` — two doors, one capability, different
+// data. parsePropArg takes the payload straight from the case-preserving `rawArg`.
+test('#1119: parsePropArg preserves the case of both key and value', () => {
+  assert.deepEqual(host(c.parsePropArg('owner=Priya')), { key: 'owner', val: 'Priya' });
+  assert.deepEqual(host(c.parsePropArg('Owner=Priya Sharma')), { key: 'Owner', val: 'Priya Sharma' },
+    'a multi-word value keeps its interior spaces and its capitals');
+  assert.deepEqual(host(c.parsePropArg('HP=12')), { key: 'HP', val: '12' },
+    'matches what fieldNudgeKey echoes in its toast, so the suggestion round-trips');
+  assert.deepEqual(host(c.parsePropArg('status:In Progress')), { key: 'status', val: 'In Progress' },
+    'the colon form too');
+});
+
+test('#1119: parsePropArg splits on the FIRST separator, so a value may contain = and :', () => {
+  assert.deepEqual(host(c.parsePropArg('url=https://x.com/a?b=c')),
+    { key: 'url', val: 'https://x.com/a?b=c' });
+  assert.deepEqual(host(c.parsePropArg('note=see 3:04 in the recording')),
+    { key: 'note', val: 'see 3:04 in the recording' });
+});
+
+test('#1119: parsePropArg returns null with no separator or no key, so bare /prop still stubs', () => {
+  assert.equal(c.parsePropArg(''), null);            // bare /prop: rawArg is '' → falls to the {prop : } stub
+  assert.equal(c.parsePropArg('owner'), null);       // key only, no separator
+  assert.equal(c.parsePropArg('=zeo'), null);        // no key
+  assert.equal(c.parsePropArg(null), null);
+  assert.equal(c.parsePropArg(undefined), null);
+});
+
+test('#1119: parsePropSlash still strips its prefix and agrees with parsePropArg', () => {
+  // The wrapper's contract is unchanged — that is the refactor's control, and the pins above it
+  // must keep passing untouched.
+  for (const rest of ['owner=zeo', 'Owner=Priya Sharma', 'url=https://x.com/a?b=c']) {
+    assert.deepEqual(host(c.parsePropSlash('prop:' + rest)), host(c.parsePropArg(rest)), rest);
+  }
+});
+
 test('#948 parsePropLines — a multi-line key:value block → props; skips separator-less / empty-key lines', () => {
   assert.deepEqual(host(c.parsePropLines('hp: 10\nstr: 14\ndex = 12')),
     [{ key: 'hp', val: '10' }, { key: 'str', val: '14' }, { key: 'dex', val: '12' }]);
@@ -13729,7 +13767,9 @@ test('LEAN-FLOOR: the /prop verb + bare-stub DOM wiring is present (slashApply i
   assert.ok(gate, 'SLASH_ARG_VERBS gate not found');
   for (const v of ['prop', 'base', 'savetemplate', 'refile']) assert.ok(gate[1].split('|').includes(v), `${v} missing from the arg-verb gate`);
   assert.ok(_src.includes("const stub = '{prop : }'"), 'the bare-/prop fill-in stub is missing');
-  assert.ok(_src.includes('parsePropSlash(query)'), 'the /prop:key=value one-shot branch is missing');
+  // #1119: the arm reads the CASE-PRESERVING rawArg, not the lowercased strip-length token.
+  assert.ok(_src.includes('parsePropArg(rawArg)'), 'the /prop:key=value one-shot branch is missing');
+  assert.ok(!/const ps = parsePropSlash\(query\)/.test(_src), 'the arm must not read the lowercased query');
   // the promotion loop counts a consumed-no-token ('') as promoted, not "keep the brace"
   assert.ok(_src.includes('if (token != null)'), 'the promotion loop must treat an empty-string return as consumed');
 });
