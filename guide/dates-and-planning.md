@@ -51,6 +51,24 @@ deeper view at a time below the List (click the active one again to return to ju
 - **Month** , a full month calendar. Hover a day (or, on touch, look for the corner **+**) to schedule a new point for that day: it opens the capture bar with the due date preloaded (a **due …** chip you can dismiss), so you type the point, pick or confirm the inbox it lands in, and press Capture without leaving the calendar.
 - **Timeline** , a Gantt-style view of overlapping tasks. A Titles chip cycles the name-column width (narrow, default, wide); on desktop you can also drag the dotted separator.
 
+### One agenda for a whole folder
+
+If each project lives in its own document, no single document can answer "what is due this week".
+The **Scope** chip switches the agenda between this document and the whole folder:
+
+- `Scope: document` , dated points from here only. This is the default and what you had before.
+- `Scope: folder` , dated points from every document in the open folder, merged and ordered
+  together. Rows from another document carry its name; clicking one opens that document at that
+  point.
+
+Beside the chip, a line says how many documents answered, and that they answer **as saved**. Your
+own document is always live, so your edits show immediately. Other documents are read as of their
+last save, which matters if you have one open in another window. If a document cannot be read the
+line says so ("across 4 of 5 documents") rather than quietly leaving it out.
+
+Folders need Chrome, Edge or a similar browser. Without one the chip explains that instead of
+appearing to work, and the agenda stays on this document.
+
 In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
 do, y done**) and lists the active ones first; when a day has more than fit, click its **more** to
 expand that day in place and see them all. On a wide screen the **Month** view also shows the

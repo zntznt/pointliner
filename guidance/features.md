@@ -802,7 +802,13 @@ Implemented:
   `due`/`start` property **chip** routes to the same dialog, and date keys are hidden from the generic
   Properties editor (`DATE_KEYS`-filtered, merged back on save). Chips are **urgency-colored**: Today
   (green) / Tomorrow + this week (accent) / Later (muted) / Overdue (red); the start chip carries a
-  leading `▸` and never-overdue ink. **Agenda** is a toggleable vertical stack inside the toolbar
+  leading `▸` and never-overdue ink. **Folder scope (#1099)**: a `Scope:` chip switches the agenda
+  between this document and every document in the open folder, gathered through `collectDueDatesFolder`
+  (the `wsAllDocRoots` reading set, own doc live per §5.3, memoised on `(workspaceIndex.gen, _varsVer)`
+  like the 4c reducers). One gather point feeds all four views. Foreign rows carry their document's
+  name and navigate through `followLinkTarget`; the strip states the reach and the staleness
+  ("across 4 of 5 documents, as saved"), and without a workspace the chip explains rather than
+  silently falling back. **Agenda** is a toggleable vertical stack inside the toolbar
   (`#btn-agenda`, no sidebar so it never constrains the outline width), with three surfaces over the
   same dated points (`collectDueDates`): a **List** (Due row + a Running row for started points, with
   elapsed `▶ Nd`), a **Timeline** Gantt chart (`agendaGantt` — range bars start→due, 1-day bars for

@@ -1969,6 +1969,13 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
 .ag-controls{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;align-content:center;justify-content:center;padding-right:10px;border-right:1px solid var(--bdr)}
 .ag-switcher,.ag-filters{display:flex;gap:3px;align-items:center}
 .ag-grp-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);min-width:44px;user-select:none}/* #419: kind labels (caps-eyebrow exemption) — a VIEW opens a pane, a FILTER changes the List */
+/* #1099: an unavailable scope chip reads as unavailable rather than off. Not `disabled`, because the
+   chip stays activatable so it can EXPLAIN why (flashHint) instead of swallowing the press. */
+.ag-toggle.ag-off{opacity:.5;border-style:dashed}
+/* the staleness line beside the scope chip: other documents answer as of their last save (§5.5) */
+.ag-scope-note{font-size:11px;color:var(--muted);align-self:center;margin-left:2px}
+/* a row from another document, marked so folder scope never looks like this document's list */
+.ag-doc-badge{font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--muted);border:1px solid var(--bdr);border-radius:var(--r-xs);padding:0 4px;margin-right:5px;white-space:nowrap}
 .ag-view{min-width:0}   /* switcher buttons size to their label, not the 64px filter min */
 .ag-list{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;padding-left:10px}
 .ag-toggle{display:inline-flex;align-items:center;height:22px;box-sizing:border-box;font-size:11px;font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:0 8px;cursor:pointer;white-space:nowrap;line-height:1.4;min-width:64px;text-align:left}/* #397: the canon chip pins the explicit 22px it defines */
@@ -5596,10 +5603,60 @@ function collectDueDates(rootNode = root, seqs = allSequences()) {
     for (const c of (n.children || [])) walk(c, childPath);
   }
   for (const c of (rootNode?.children || [])) walk(c, []);
-  // UXP-109: same date first, then higher priority (A < B < … < none) as the tiebreak, so the
-  // agenda surfaces the most urgent work within a given day rather than tree order.
-  items.sort((a, b) => a.epochDay - b.epochDay || priorityRank(a.priority) - priorityRank(b.priority));
+  items.sort(dueItemOrder);
   return items;
+}
+
+// UXP-109: same date first, then higher priority (A < B < … < none) as the tiebreak, so the agenda
+// surfaces the most urgent work within a given day rather than tree order.
+// #1099: a named core rather than an inline comparator, because the FOLDER agenda merges several
+// already-sorted per-document lists and has to re-sort the union. A second copy of this rule is how
+// the two scopes would quietly order differently — the same reasoning that made distQuantile a core
+// in #1101. Pure; the epochDay/priority pair is all it reads.
+function dueItemOrder(a, b) {
+  return a.epochDay - b.epochDay || priorityRank(a.priority) - priorityRank(b.priority);
+}
+
+// #1099: the same gather over the FOLDER's reading set. wsAllDocRoots substitutes the LIVE root for
+// this document (§5.3 own-doc liveness) and hands the others as saved, which is the whole
+// staleness story: your own edits are instant, another window's are as of its last write.
+//
+// Each tree is read with ITS OWN allSequences, because a held/blocked keyword is defined per
+// document — reading a foreign doc's states through this one's sequences would mislabel its rows.
+//
+// Memoised on (workspaceIndex.gen, _varsVer), the pair 4c established: a foreign change bumps the
+// generation (rescan / refresh-on-save), an own-doc edit bumps _varsVer, everything else is a map
+// hit. The folder walk is 1.5-31ms measured (cross-document-direction §3), so it must never run per
+// render pass. `skipped` counts docs in the index that produced no tree, so the UI can say "across
+// 4 of 5 documents" rather than quietly under-reporting (§5.5).
+let _addMemo = null, _addGen = -1, _addVer = -1;   // doc-cache: agendaFolderDue (see DOC_CACHES)
+regDocCache('agendaFolderDue', { reset: () => { _addMemo = null; } });
+function collectDueDatesFolder() {
+  const gen = workspaceIndex?.gen || 0;
+  if (gen !== _addGen || _varsVer !== _addVer) { _addMemo = null; _addGen = gen; _addVer = _varsVer; }
+  if (_addMemo) return _addMemo;
+  const items = [];
+  let docs = 0, skipped = 0;
+  for (const [docId, r] of wsAllDocRoots()) {
+    if (!r) { skipped++; continue; }
+    docs++;
+    for (const it of collectDueDates(r, allSequences(r))) items.push({ ...it, docId });
+  }
+  items.sort(dueItemOrder);          // ONE rule, shared with the per-document scope
+  _addMemo = { items, docs, skipped };
+  return _addMemo;
+}
+
+// The line the agenda shows when folder scope is on. Pure so it is pinnable without a browser
+// (the overlayCountMessage shape from UXP-241). Staleness is stated, never implied: a folder total
+// that silently lags a document edited in another window is exactly the silent-wrong-value class
+// #887-#889 removed, and this family must not put it back (§5.5).
+function agendaScopeMessage(docs, skipped) {
+  const d = Math.max(0, docs | 0), s = Math.max(0, skipped | 0);
+  if (!d) return 'No documents readable in this folder';
+  const total = d + s;
+  const across = s ? `across ${d} of ${total} documents` : `across ${d} document${d === 1 ? '' : 's'}`;
+  return `${across}, as saved`;
 }
 
 // #647 timeline sources 2 + 3. The timeline reads collectDueDates (tasks) plus two more sources so
@@ -33831,6 +33888,16 @@ let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
 let agendaOverdueOnly = false;  // focus filter: when on, every view shows only overdue items
 let agendaSort = 'date';        // UXP-132: 'date' (default) | 'priority' — List row ordering
+let agendaFolderScope = false;  // #1099: read dated points from the whole folder, not just this doc
+// Folder scope needs an open workspace (File System Access, Chromium-only). Kept as a named pair so
+// the control, the gather and the message all ask the SAME question — a scope that silently fell
+// back would be the silent-wrong-answer class this feature exists to avoid.
+function agendaFolderScopeAvailable() { return !!(workspaceDir && workspaceIndex?.roots?.size); }
+function agendaFolderUnavailableMessage() {
+  return workspaceDir
+    ? 'No other documents in this folder yet'
+    : 'Open a folder first (File then Open folder). Folders need Chrome, Edge or a similar browser.';
+}
 let agendaMonth = null;         // Month/Week view: any epoch-day in the shown period (session-only)
 let agendaWeek = null;          // Week view: any epoch-day in the shown week (session-only)
 let ganttNamesW = null;         // Timeline: pinned width (px) of the titles column, null = CSS clamp default
@@ -33877,7 +33944,18 @@ function agItemAria(it) {
   let s = it.title + ', ' + (it.due !== null ? 'due ' : it.start !== null ? 'starts ' : '') + agendaLabel(it);
   if (it.started && it.runningDays != null) s += it.runningDays === 0 ? ', started today' : ', running ' + it.runningDays + 'd';
   if (it.done && it.state !== 'overdue') s += ', done';  // agendaLabel already says "done" for a done+overdue item
-  return s + pathStr;
+  // #1099: a foreign row says which document it came from, and that the answer is as-saved. Without
+  // this a screen reader hears a flat list and cannot tell that activating a row will switch docs.
+  const dn = agDocLabel(it);
+  return s + pathStr + (dn ? ` · in ${dn}, as saved` : '');
+}
+
+// The display name of the document a row belongs to, or null for this one. Reads the index's
+// docId→name map, the same source the cross-doc link pills use.
+function agDocLabel(it) {
+  if (!it || !it.docId || it.docId === (root.docId || '')) return null;
+  const n = workspaceIndex?.nameByDocId?.get(it.docId);
+  return n ? displayName(n) : 'another document';
 }
 
 // Wire an agenda element to navigate (zoom) to its point. Clicking ZOOMS, never
@@ -33888,7 +33966,15 @@ function agItemAria(it) {
 function wireAgNav(el, it, aria) {
   el.setAttribute('role', 'button'); el.setAttribute('tabindex', '0');
   el.title = aria; el.setAttribute('aria-label', aria);
-  const navigate = () => { zoomInto(it.id); };
+  // #1099: under folder scope a row may belong to ANOTHER document. followLinkTarget is the shared
+  // cross-doc path (switch, then zoom) and already reports both failure modes — the document gone
+  // from the folder, and the point gone from the document — so this needs no error handling of its
+  // own. Same-document rows keep zoomInto exactly as before. This is the one navigation chokepoint
+  // for all four views, so scope costs one branch rather than four.
+  const navigate = () => {
+    if (it.docId && it.docId !== (root.docId || '')) followLinkTarget(it.docId, it.id);
+    else zoomInto(it.id);
+  };
   el.addEventListener('mousedown', e => { e.preventDefault(); navigate(); });
   el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(); } });
 }
@@ -33939,9 +34025,14 @@ function mkAgChip(it, kind) {
     chip.appendChild(badge);
     aria = it.title + (it.waiting && !it.done ? ', waiting' : '') + ', due ' + agendaLabel(it) + pathStr;
   }
+  // #1099: a foreign row is marked in the chip itself, not only in its aria-label, so folder scope
+  // never reads as a longer version of this document's list. Its own aria comes from agItemAria via
+  // wireAgNav below, which appends the document name and "as saved".
+  const dn = agDocLabel(it);
+  if (dn) { const d = document.createElement('span'); d.className = 'ag-doc-badge'; d.textContent = dn; chip.appendChild(d); }
   const titleEl = document.createElement('span'); titleEl.className = 'ag-chip-title'; titleEl.textContent = it.title;
   chip.appendChild(titleEl);
-  wireAgNav(chip, it, aria);
+  wireAgNav(chip, it, dn ? `${aria} · in ${dn}, as saved` : aria);
   return chip;
 }
 
@@ -33953,7 +34044,14 @@ function renderAgenda() {
   if (!strip) return;
   strip.innerHTML = '';
 
-  const all = collectDueDates(root);
+  // #1099: ONE gather point feeds all four views (List / Week / Month / Timeline), so folder scope
+  // is a swap here rather than four changes. Folder mode needs a workspace (File System Access,
+  // Chromium), so an unavailable workspace resolves to document scope with the control saying why
+  // — never a control that appears and does nothing, and never a silent zero.
+  const folderReady = agendaFolderScopeAvailable();
+  const folderOn = agendaFolderScope && folderReady;
+  const fold = folderOn ? collectDueDatesFolder() : null;
+  const all = fold ? fold.items : collectDueDates(root);
   // Done is an inclusion toggle; Overdue-only is a FOCUS filter (agendaState collapses a
   // met-but-past deadline to 'done', so this never shows a completed item as overdue).
   const visible = all.filter(it =>
@@ -34005,6 +34103,31 @@ function renderAgenda() {
   const sortRow = document.createElement('div'); sortRow.className = 'ag-filters ag-sortrow';
   sortRow.setAttribute('role', 'group'); sortRow.setAttribute('aria-label', 'Agenda ordering');
   sortRow.append(mkGrpLbl('Sort'), sortT);
+  // #1099: the scope control, self-labelling like "Sort: date" beside it. A planner with a document
+  // per project has no other place that answers "what is due this week" across all of them.
+  // Where the workspace is unavailable (non-Chromium, or no folder open) the chip is DISABLED and
+  // says why, rather than appearing and doing nothing — the standing rule for workspace features.
+  const scopeT = mkAgToggle(folderOn ? 'Scope: folder' : 'Scope: document', folderOn, () => {
+    if (!folderReady) { flashHint(agendaFolderUnavailableMessage()); return; }
+    agendaFolderScope = !agendaFolderScope; renderAgenda(); scheduleAutosave();
+    announce(agendaFolderScope ? 'Agenda scope: whole folder' : 'Agenda scope: this document');
+  });
+  scopeT.title = folderReady
+    ? 'Read dated points from this document only, or from every document in the folder'
+    : agendaFolderUnavailableMessage();
+  if (!folderReady) { scopeT.classList.add('ag-off'); scopeT.setAttribute('aria-disabled', 'true'); }
+  scopeT.setAttribute('aria-label', folderOn
+    ? 'Agenda scope: whole folder. Activate to read this document only.'
+    : 'Agenda scope: this document. Activate to read the whole folder.');
+  sortRow.append(scopeT);
+  // The staleness line (§5.5). Other documents answer as of their last save; this says so in
+  // words, beside the rows, rather than leaving a lagging total to look authoritative.
+  if (folderOn) {
+    const note = document.createElement('span');
+    note.className = 'ag-scope-note';
+    note.textContent = agendaScopeMessage(fold.docs, fold.skipped);
+    sortRow.append(note);
+  }
   if (agendaView === 'timeline') {  // §7.5 twin for the titles-column drag (the separator is hidden on touch), UXP-85
     const wName = ganttNamesW == null ? 'default' : (ganttNamesW <= 110 ? 'narrow' : 'wide');
     const wT = mkAgToggle('Titles', ganttNamesW != null, () => {
@@ -36643,7 +36766,7 @@ const GUIDE = [
     ] },
   { id:'agenda', cat:'dates',
     title:'Agenda & calendar',
-    body:"See all your upcoming work without scrolling the document. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done points sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a seven-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar) or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centered one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
+    body:"See all your upcoming work without scrolling the document. Click the calendar button in the toolbar to open the agenda below the breadcrumb (click it again to close). A compact List is always shown, ordered by urgency (most overdue and soonest-due first, with done points sunk to the end) so nothing gets lost. Click any point to jump straight to it.\n\nA single view switcher opens one deeper view at a time below the List: Week (a seven-day planner spread, with overdue points gathered in a leading Earlier column), Month (a month calendar) or Timeline (a Gantt of overlapping tasks, where a Titles chip cycles the name-column width). Click the active one again to return to just the List.\n\nIn Week and Month every day box is the same size; each shows how many points it holds (x to do, y done) and lists the active ones first. When a day holds more than fit, click its 'more' to expand that day in place and see them all. On a wide screen the Month view also shows the previous and next months peeking in at the sides at the same size as the centered one; click either to jump to it. The ‹‹ and ›› buttons jump a whole month (Week) or year (Month).\n\nA Scope chip reads either `Scope: document` or `Scope: folder`. Switch it to folder and the agenda gathers dated points from EVERY document in the open folder, not just this one, which is what you want when a project lives in its own file. Rows from another document carry its name, and activating one opens that document at that point. The line beside the chip says how many documents answered and that they answer as saved: your own edits are instant, another window's are as of its last save. Folders need Chrome, Edge or a similar browser; without one the chip says so instead of quietly doing nothing.\n\nThree filters shape every view: turn on Done to include completed points, toggle Running to show or hide started work, and turn on Overdue to focus on just the late points. Below the dated rows, an Actions row gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the things you have not scheduled yet still have a home; the same list is a search away with `state:next` or `is:todo`.\n\nPointliner has no background reminders or notifications: it runs entirely offline with no server, so the agenda is where you come to check what is due. A one-off dated point stays where it is once done; a task with a Repeat schedule (set in the Schedule dialog) rolls its date forward and re-opens when you complete it.",
     related:['dates','timeline','custom-calendars'],
     examples:[
       { syn:'List (always on)', desc:'urgency-ordered: most overdue / soonest first' },
@@ -36651,6 +36774,7 @@ const GUIDE = [
       { syn:'Month',      desc:'a month grid' },
       { syn:'Timeline',   desc:'bars across a scrolling day axis' },
       { syn:'Done / Running', desc:'filters: include done, show/hide started work' },
+      { syn:'Scope: folder', desc:'gather dated points from every document in the folder' },
     ] },
 
   { id:'timeline', cat:'dates',
@@ -38750,7 +38874,7 @@ function scheduleAutosave() {
 // The debounce body, extracted so the pagehide flush below can run it synchronously.
 function writeAutosavePayloadNow() {
   autosaveTimer = null;
-  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
+  const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
   if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
   if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
   if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
@@ -38859,7 +38983,7 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 // is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
 // avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
 function writeLocalAutosave(payload) {
-  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
+  if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
   try {
     // UXP-147: roll the OUTGOING value into the prev-snapshot slot before overwriting it, throttled
     // so the snapshot trails by ~SNAPSHOT_EVERY_MS. Skipped past the soft limit (two big copies would
@@ -38992,6 +39116,7 @@ function applyAutosaveData(data) {
   if (typeof data.agendaShowDone === 'boolean') agendaShowDone = data.agendaShowDone;
   if (typeof data.agendaOverdueOnly === 'boolean') agendaOverdueOnly = data.agendaOverdueOnly;
   if (data.agendaSort === 'date' || data.agendaSort === 'priority') agendaSort = data.agendaSort;   // UXP-132
+  if (typeof data.agendaFolderScope === 'boolean') agendaFolderScope = data.agendaFolderScope;      // #1099
   if (typeof data.ganttNamesW === 'number' && data.ganttNamesW > 0) ganttNamesW = clampGanttNamesW(data.ganttNamesW);
   if (data.accentId && ACCENT_PRESETS.some(p => p.id === data.accentId)) accentId = data.accentId;
   if (data.forcedTheme !== undefined) forcedTheme = data.forcedTheme;
