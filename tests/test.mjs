@@ -17186,8 +17186,13 @@ test('conditional grammar — captured d20 crit/DC check expands through collect
 test('typed var decl promotion — fresh name visible to later braces in the same pass', () => {
   const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
   const declBlock = src.slice(src.indexOf('function promoteBraceBody'), src.indexOf('// dice: {2d6}'));
-  assert.equal((declBlock.match(/resetDocCaches\(\)/g) || []).length, 2,
-    'both decl pushes (formula + pick) must reset the doc caches');
+  // Every arm that PUSHES a declaration record must reset the caches — count the pushes and
+  // require a reset for each, rather than pinning a magic number that rots when a kind is added
+  // (#952 added the 'dist' arm and the old literal 2 broke without anything being wrong).
+  const pushes = (declBlock.match(/\(node\.vars \|\|= \[\]\)\.push\(rec\)/g) || []).length;
+  assert.ok(pushes >= 3, `all three decl kinds (formula, pick, dist) push a record; saw ${pushes}`);
+  assert.equal((declBlock.match(/resetDocCaches\(\)/g) || []).length, pushes,
+    'every decl push (formula + pick + dist) must reset the doc caches');
   const walk = src.slice(src.indexOf('function promoteInlineShorthand'), src.indexOf('function promoteLoadedShorthand'));
   assert.ok(walk.includes('node.text = out + text.slice(i); continue;'),
     'the walk must publish the partial rewrite so collectVars sees the fresh [[var:]] token');
@@ -18030,9 +18035,17 @@ test('#523: declaration forms are deliberately NOT resolved nested (top-level-on
   // the generator branches sit BEFORE the | split, so a quoted literal and alternation are untouched
   assert.equal(c.resolveBrace('"quoted | lit"', ctx), 'quoted | lit');
   assert.equal(c.resolveBrace('= 2+2', ctx), '4');
-  // src-pin: the generator branches exist before the alternation split (window sized for
-  // the whole nested-generator block: markov/query/count/oracle/est, #541/#543 included)
-  assert.ok(/const mkp = markovParts\(body\);[\s\S]{0,1500}const alts = splitTopLevel/.test(_src), 'the generator branches must precede the | split (or a |-bearing generator body shreds)');
+  // src-pin: the generator branches exist before the alternation split. Anchored by ORDER, not by
+  // a byte window — a fixed-length slice silently rots as the block between them grows.
+  {
+    const rb = fnBody(_src, 'resolveBrace');
+    const iMk = rb.indexOf('const mkp = markovParts(body);');
+    const iEst = rb.indexOf('estParts(');
+    const iAlts = rb.indexOf('const alts = splitTopLevel');
+    assert.ok(iMk >= 0 && iEst >= 0 && iAlts >= 0, 'the markov, est and alternation branches all live in resolveBrace');
+    assert.ok(iMk < iAlts, 'the markov branch must precede the | split (or a |-bearing markov body shreds)');
+    assert.ok(iEst < iAlts, 'the est branch must precede the | split (or a |-bearing est body shreds)');
+  }
 });
 
 // ── #528: rollup est pills stay atomic (only constructor est unfolds) ──
@@ -21931,4 +21944,226 @@ test('#983 the display branch: convert rounds, everything else is untouched', ()
   assert.ok(!/toPrecision|toFixed|formatConvertResult/.test(rc),
     'replaceConvert stays exact: it substitutes into the expression as text, so rounding there ' +
     'would corrupt any arithmetic composed around it');
+});
+
+// ── #952: a variable may hold a distribution, and references to it correlate ──
+// The bug this starts from: on origin/main `{cost := 100 to 200}` parsed, promised a valid pill,
+// and then FROZE. varDeclIsPick called it a pick (evalMath cannot parse `to`), rollPickSource
+// routed to resolveBrace's estimate branch, and the resulting DISPLAY STRING became the variable's
+// value. Measured on origin/main: rollPickSource('100 to 200') === '145.7 (100.2 – 197.5) ▂▄█▆▇▆▅▄▃▂▂',
+// identical on a second call — not a distribution, and not even random (the nested-estimate branch
+// passed the expression as its own seed, so ('100 to 200' >>> 0) || 1 made every draw seed 1).
+
+test('#952 varDeclKind: an estimate RHS is its own kind, claimed before the pick branch', () => {
+  // dist — the digit/constructor evidence path
+  for (const e of ['100 to 200', '5 to 10', 'normal(8, 2)', 'uniform(0, 10)', '1 to 2 + 3']) {
+    assert.equal(c.varDeclKind(e), 'dist', `${e} is a distribution`);
+  }
+  // pick and formula are UNCHANGED — the new kind is claimed narrowly, not greedily
+  for (const e of ['a | b', '2d6', '"hi"', 'Acme Corp']) assert.equal(c.varDeclKind(e), 'pick', `${e} stays a pick`);
+  for (const e of ['2+2', 'x', 'pi * r', '5']) assert.equal(c.varDeclKind(e), 'formula', `${e} stays a formula`);
+  // THE tie-break, because `lo to hi` and `go to market` are the same shape. Numeric evidence
+  // decides: bounds that resolve where they stand make it a distribution, prose stays a pick.
+  assert.equal(c.varDeclKind('go to market'), 'pick', 'a phrase with `to` in it is still a phrase');
+  assert.equal(c.varDeclKind('lo to hi'), 'pick', 'unresolvable bounds carry no numeric evidence');
+  assert.equal(c.varDeclKind('lo to hi', { lo: 100, hi: 200 }), 'dist',
+    'bounds that resolve HERE (Stage B is positional) make it a distribution');
+});
+
+test('#952 varDistDraw is a pure function of (expr, seed) — which is the whole correlation mechanism', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 12345 };
+  const a = host(c.varDistDraw(rec, 16));
+  const b = host(c.varDistDraw(rec, 16));
+  assert.deepEqual(a, b, 'the same record re-derives the IDENTICAL array; nothing is stored');
+  assert.notDeepEqual(a, host(c.varDistDraw({ ...rec, seed: 999 }, 16)), 'a different seed draws differently');
+  assert.notDeepEqual(a, host(c.varDistDraw({ ...rec, expr: '1 to 2' }, 16)), 'a different expression draws differently');
+  // guards
+  assert.equal(c.varDistDraw({ kind: 'pick', expr: '100 to 200' }), null, 'only a dist record draws');
+  assert.equal(c.varDistDraw({ kind: 'dist', expr: '' }), null);
+  assert.equal(c.varDistDraw(null), null);
+  assert.equal(c.varDistDraw({ kind: 'dist', expr: 'garbage' }), null, 'an unparseable expr draws nothing');
+});
+
+test('#952 THE property: two references to one declaration move together, element-wise', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 12345 };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  const a = host(c.sampleUncertain('cost', 32, 1, null, vars));
+  const b = host(c.sampleUncertain('cost * 2', 32, 999, null, vars));
+  assert.ok(a && b, 'both references sample');
+  assert.ok(a.every((x, i) => Math.abs(b[i] - 2 * x) < 1e-9),
+    '{cost} and {cost * 2} are the SAME draw scaled — that is correlation, and it is what a Fermi model needs');
+  // The PILL's own seed is deliberately ignored for a var reference: the declaration owns the draw.
+  assert.deepEqual(host(c.sampleUncertain('cost', 8, 1, null, vars)),
+                   host(c.sampleUncertain('cost', 8, 424242, null, vars)),
+                   'the reader\'s seed cannot change a declaration\'s draw');
+  // And the independence that must NOT regress: two anonymous pills keep their own seeds.
+  assert.notDeepEqual(host(c.sampleUncertain('100 to 200', 16, 1, null, {})),
+                      host(c.sampleUncertain('100 to 200', 16, 2, null, {})),
+                      'two separate {100 to 200} pills stay independent');
+});
+
+test('#952 a distribution may reference another (the natural use), and a cycle fills NaN instead of hanging', () => {
+  const base  = { key: 'x', name: 'base',  kind: 'dist', expr: '10 to 20',  seed: 7 };
+  const total = { key: 'y', name: 'total', kind: 'dist', expr: 'base * 3', seed: 8 };
+  const vars = c.attachVarDists(Object.create(null), { base, total });
+  const bs = host(c.sampleUncertain('base', 12, 1, null, vars));
+  const ts = host(c.sampleUncertain('total', 12, 1, null, vars));
+  assert.ok(ts.every((x, i) => Math.abs(x - 3 * bs[i]) < 1e-9), 'a chained distribution correlates with its input');
+  // self- and mutual reference: bounded, finite work, NaN out (so the pill reads #ERR)
+  const selfRec = { key: 's', name: 's', kind: 'dist', expr: 's + 1', seed: 1 };
+  const sv = c.attachVarDists(Object.create(null), { s: selfRec });
+  // Array.from, not host(): host() is a JSON round-trip and JSON turns NaN into null.
+  assert.ok(Array.from(c.sampleUncertain('s', 4, 1, null, sv)).every(Number.isNaN), 'a self-reference fills NaN');
+  const a = { key: 'a', name: 'a', kind: 'dist', expr: 'b to b*2', seed: 1 };
+  const b = { key: 'b', name: 'b', kind: 'dist', expr: 'a to a*2', seed: 2 };
+  const mv = c.attachVarDists(Object.create(null), { a, b });
+  assert.ok(Array.from(c.sampleUncertain('a', 4, 1, null, mv)).every(Number.isNaN), 'a mutual reference fills NaN');
+});
+
+test('#952 the sibling lane never leaks into the resolved map (the number|string contract holds)', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 5 };
+  const resolved = c.attachVarDists(Object.create(null), { cost: rec });
+  assert.deepEqual(Object.keys(resolved), [], 'a distribution is NOT a value in the map');
+  assert.equal(JSON.stringify(resolved), '{}', 'so nothing that serialises the map (the var-panel signature) sees it');
+  assert.equal(resolved['cost'], undefined, 'evalMath still cannot read it, which is the fence staying up');
+  assert.equal(c.varDistRec(resolved, 'cost'), rec, 'but the lane finds it');
+  assert.equal(c.varDistRec(resolved, 'COST'), rec, 'case-insensitively, like every other name lookup');
+  assert.equal(c.varDistRec(resolved, 'nope'), null);
+  assert.equal(c.varDistRec(null, 'cost'), null);
+  assert.equal(c.varDistsOf(Object.create(null)), null, 'a map with no distributions carries no lane');
+});
+
+test('#952 the type boundary: {= cost * 3} fails, and now says ESTIMATE instead of blaming a typo', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 5 };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  assert.equal(c.evalMath('cost * 3', vars), null, 'the fence stays up: a distribution cannot ride evalMath');
+  assert.equal(c.mathErrorReason('cost * 3', vars), 'estimate',
+    'on origin/main this was "bad ref" — "declare it as a variable", about a variable declared two lines up');
+  assert.match(c.mathReasonPhrase('estimate'), /estimate like 5 to 10/);
+  assert.match(c.mathReasonPhrase('estimate'), /variable holding one/, 'the phrase covers the variable case too');
+  // a REAL typo still wins, because it is the more actionable fix
+  assert.equal(c.mathErrorReason('cost * qqq', vars), 'bad ref');
+  // and a plain unknown name with no distributions around is unchanged
+  assert.equal(c.mathErrorReason('cost * 3', {}), 'bad ref');
+});
+
+test('#952 the P4 regression: a declaration no longer freezes into a display string', () => {
+  // On origin/main, MEASURED: rollPickSource('100 to 200') returns the rendered summary
+  // '145.7 (100.2 – 197.5) ▂▄█▆▇▆▅▄▃▂▂' and returns the SAME string on a second call. That value
+  // became the variable. Both halves are pinned: the kind is no longer 'pick', and the nested
+  // estimate branch no longer seeds itself from its own expression text.
+  assert.notEqual(c.varDeclKind('100 to 200'), 'pick', 'the pick path is the one that froze it');
+  const a = c.rollPickSource('100 to 200'), b = c.rollPickSource('100 to 200');
+  assert.notEqual(a, b, 'a nested estimate draws freshly each expansion (the seed was the expr string)');
+  const rb = fnBody(_src, 'resolveBrace');
+  assert.ok(!/sampleUncertain\(ep, 400, ep,/.test(rb), 'the expression must never be its own seed');
+  assert.ok(/sampleUncertain\(ep, 400, estNewSeed\(\)/.test(rb), 'a real seed is minted per expansion');
+});
+
+test('#952 classify and promote agree about a distribution RHS (the #407/#522 lockstep rule)', () => {
+  assert.equal(c.classifyBraceBody('cost := 100 to 200', {}, {}), 'artifact');
+  // both sides route through the SAME classifier, which is what makes divergence impossible
+  const cbb = fnBody(_src, 'classifyBraceBody'), pbb = fnBody(_src, 'promoteBraceBodyIn');
+  assert.ok(/varDeclKind\(decl\.expr, vars\) !== 'pick'/.test(cbb), 'classify asks varDeclKind');
+  assert.ok(/varDeclKind\(decl\.expr, collectVars\(\)\)/.test(pbb), 'promote asks varDeclKind');
+  assert.ok(pbb.indexOf("declKind === 'dist'") < pbb.indexOf('rollPickSource(decl.expr)'),
+    'the dist arm is claimed BEFORE the pick branch, or the freeze comes back');
+  assert.ok(/kind: 'dist', expr: decl\.expr, seed: estNewSeed\(\)/.test(pbb),
+    'the record stores a SEED and never a sample array');
+});
+
+test('#952 the render + panel surfaces read the distribution instead of showing ?', () => {
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 12345 };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  const head = c.varDistHeadline(rec, vars);
+  assert.match(head, /^[\d.]+ \([\d.]+ – [\d.]+\)$/, 'the shared headline is the est pill\'s: mean (p5 – p95)');
+  assert.equal(c.varDistHeadline({ kind: 'dist', expr: 'garbage', seed: 1 }), null, 'an unsamplable record has no headline');
+  assert.equal(c.varDistHeadline(null), null);
+  // the declaration pill and the reference pill both render the readout, never '—' or '?'
+  const rvp = fnBody(_src, 'renderVarPill');
+  assert.ok(rvp.indexOf("v.kind === 'dist'") < rvp.indexOf('if (!v.expr)'),
+    'the dist declaration arm runs before the display-only arm');
+  assert.ok(/const dRec = varDistRec\(vmap, v\.name\)/.test(rvp), 'a REFERENCE resolves through the lane too');
+  assert.ok((rvp.match(/est-spark/g) || []).length >= 2, 'both arms carry the sparkline (P1: one display for one thing)');
+  // the panel: value, and a signature that changes when the seed does
+  const vpr = fnBody(_src, 'vpRow'), uvp = fnBody(_src, 'updateVarPanelContent');
+  assert.ok(/varDistHeadline\(varDistRec\(vars, nm\), vars\)/.test(vpr), 'the panel reads the lane before falling back to ?');
+  assert.ok(/varDistRec\(vars, nm\)\.seed/.test(uvp), 'and keys its row on the seed, so a re-sample repaints');
+});
+
+test('#952 the reroll gesture reaches every door, and the record shape survives OPML', () => {
+  // gesture: body-click re-seeds (the generative-pill gesture), pencil edits
+  const rdv = fnBody(_src, 'rerollDistVar');
+  assert.ok(/v\.seed = estNewSeed\(\)/.test(rdv) && /markDirty\(\)/.test(rdv), 'a re-sample mints a seed and invalidates');
+  assert.ok(/render\(\)/.test(rdv), 'and repaints the WHOLE document, because references live in other points');
+  assert.ok(/pushUndo\(\)/.test(rdv), 'undoable in display mode, like every other re-roll');
+  // three doors: display click, edit-mode click, and the keyboard hub
+  assert.ok(/vRec\?\.kind === 'dist' && !target\.closest\('\.var-edit'\)\) rerollDistVar\(node, key\)/.test(_src),
+    'the display-mode click routes to it');
+  assert.ok(/vRec\?\.kind === 'dist' \? rerollDistVar/.test(_src), 'the edit-mode click routes to it');
+  assert.ok(/label:'Re-sample value' \+ tag\(v\.name\)/.test(_src), 'and the Shift+F10 hub carries a keyboard door (P3)');
+  assert.ok(/v\.kind === 'pick' \|\| v\.kind === 'dist'/.test(_src), 'is:random finds it, since it re-rolls on click');
+  // the pencil is not a dead end: the dialog validates and saves an uncertain value
+  const ovd = fnBody(_src, 'openVarDialog');
+  assert.ok(/varDeclKind\(ex, collectVars\(\)\) === 'dist'/.test(ovd), 'Save is enabled for an uncertain value');
+  assert.ok(/kind: 'dist', seed: seed \|\| estNewSeed\(\)/.test(ovd), 'and an existing seed is KEPT, so a rename does not re-draw');
+  // OPML: the record is plain JSON on the existing _vars attribute, and arrAttr imposes no per-kind
+  // shape, so the round-trip is free — pinned so a future validator cannot silently drop `dist`.
+  assert.ok(/vars: *arrAttr\(el, '_vars'\)/.test(_src), '_vars parses through the shared array guard');
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 12345, typed: true };
+  assert.deepEqual(JSON.parse(JSON.stringify([rec]))[0], rec, 'every field survives JSON, including the seed');
+  assert.equal(c.artifactToShorthand('var', rec), '{cost := 100 to 200}', 'and a typed declaration still unfolds to editable text');
+});
+
+test('#952 the reference paths: {cost} stays a variable, {cost * 2} becomes an estimate', () => {
+  // Found by DRIVING, not by reading: both references were dead. estParts sniffs `to`/normal(/
+  // uniform( and `cost * 2` has none, so it stayed prose; the bare-name branch tested `low in
+  // collectVars()` and a distribution is deliberately NOT in that map, so {cost} stayed prose too.
+  // The feature's own headline example did not work.
+  const rec = { key: 'v1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 5 };
+  const vars = c.attachVarDists(Object.create(null), { cost: rec });
+  assert.equal(c.estParts('cost * 2', vars), 'cost * 2', 'an expression USING a distribution is an uncertain expression');
+  assert.equal(c.estParts('cost / 4 + 1', vars), 'cost / 4 + 1');
+  assert.equal(c.estParts('cost', vars), null,
+    'but a LONE name is a variable REFERENCE, not an anonymous estimate — it must keep its name (P1)');
+  assert.equal(c.estParts('cost * 2', {}), null, 'with no distribution in scope it is prose again');
+  assert.equal(c.estParts('price * 2', vars), null, 'an unrelated name does not summon the sniff');
+  // usesDistVar is the predicate, and it is narrow on purpose
+  assert.equal(c.usesDistVar('cost * 2', vars), true);
+  assert.equal(c.usesDistVar('cost', vars), false, 'a lone name is excluded');
+  assert.equal(c.usesDistVar('cost * 2', null), false);
+  assert.equal(c.usesDistVar('', vars), false);
+  // classify agrees for both shapes, so the editor promises what promote delivers
+  assert.equal(c.classifyBraceBody('cost * 2', {}, vars), 'artifact');
+  assert.equal(c.classifyBraceBody('cost', {}, vars), 'artifact', 'the bare-name branch consults the lane');
+  assert.equal(c.classifyBraceBody('cost', {}, {}), 'invalid', 'and still says so when nothing declares it');
+  // the promote side reads the lane at the bare-name branch too
+  assert.ok(/if \(low in cv \|\| varDistRec\(cv, low\)\)/.test(fnBody(_src, 'promoteBraceBodyIn')),
+    'promote resolves {cost} through the lane');
+});
+
+test('#952 an estimate pill resolves its variables POSITIONALLY, like every other pill', () => {
+  // renderEstPill read globalVarMap (document-wide) where var/math pills read the positional map.
+  // #952 made that visible: an estimate referencing a REDECLARED name showed the last declaration
+  // in the document instead of the nearest one above it. Driven: a second {cost := 1000 to 2000}
+  // below leaves the earlier {cost * 2} reading the earlier declaration, which is Stage B.
+  const rep = fnBody(_src, 'renderEstPill');
+  assert.ok(/renderPosVarMap && renderPosVarMap\.get\(key\)/.test(rep), 'per-pill positional map first');
+  assert.ok(/\|\| renderVarMap \|\| globalVarMap/.test(rep), 'then node scope, then the doc-wide default');
+  assert.ok(!/sampleUncertain\(e\.expr, EST_N, e\.seed, cookieNode, globalVarMap\)/.test(rep),
+    'the document-wide read is gone');
+});
+
+test('#952 the lane key is never mistaken for a variable read', () => {
+  // runGrammar records every var read so a frozen roll can tell when its inputs changed. estParts
+  // now consults the lane through that same proxy, so without a guard '#dists' entered the dep set
+  // of EVERY grammar roll — and depsChanged would then compare a record object on each check.
+  assert.ok(/if \(k === VAR_DISTS_KEY\) return Object\.prototype\.hasOwnProperty\.call\(vars, k\)/.test(fnBody(_src, 'recordVarReads')),
+    'recordVarReads skips the lane key');
+  const deps = {};
+  c.runGrammar('origin: {2d6} gold', 'origin', {}, {}, deps);
+  assert.deepEqual(host(deps), {}, 'a roll that reads no variables records no dependencies');
+  // and the key genuinely cannot be a variable name, which is why skipping it is safe
+  assert.ok(!c.VAR_NAME_RE?.test?.('#dists') ?? true);
+  assert.ok(!/^[a-z_][a-z0-9_]*$/i.test('#dists'), 'a variable name can never contain #');
 });

@@ -441,6 +441,28 @@ A variable that holds text (not a number) fails visibly, the same way it does in
 Click the pill to **re-sample**. The result is reproducible (it stores a seed, not the samples),
 so it survives save/reload and exports.
 
+### Name an uncertain number, and every mention agrees
+
+Two `{100 to 200}` pills are two unrelated guesses. Often you want one number you do not know yet,
+used in several places. Give it a name:
+
+```
+{cost := 100 to 200}        an uncertain value with a name
+{cost}                      the same draw, wherever you mention it
+{cost * 2}                  exactly double that draw, never a fresh guess
+```
+
+The declaration pill shows the range like any estimate. Every mention below it shows the **same**
+range, and an expression built on it moves with it: if the draw comes out at the high end, so does
+everything downstream. That is what makes a model add up instead of quietly averaging out its own
+uncertainty. Click the declaration to re-sample and every mention follows at once.
+
+Names resolve top to bottom, so declaring `cost` again further down starts a **separate** uncertain
+number from that point on. Mentions above keep reading the earlier one.
+
+An uncertain variable is still not a plain number, so `{= cost * 3}` will not work; it says so, and
+points you at the estimate form instead.
+
 **Rolling up estimates:** like `sum(cost)`, an estimate can aggregate **children's uncertain
 properties** with `sum(effort)` / `avg(effort)` over child points whose `effort` property is itself an
 estimate. That's how you Fermi-estimate a whole project from uncertain parts (see the

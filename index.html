@@ -1142,6 +1142,11 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* var-ref: display-only variant (no expression — reads from globalVarMap) */
 .var-pill.var-ref{border:1px solid var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--cbg))}
 .var-pill.var-undef{border-color:var(--del);border-style:dashed}
+/* var-dist (#952): a variable holding an uncertain value. Reads as an estimate — same headline,
+   same sparkline treatment — because it IS one; the $ icon keeps it recognisable as a variable. */
+.var-pill.var-dist .var-val{font-weight:600}
+.var-pill.var-dist .est-spark{font-family:var(--mono);letter-spacing:-.03em;color:color-mix(in srgb,var(--pill-est) 62%,var(--fg))}
+.var-pill.var-dist.var-rolled .est-spark{display:inline-block;animation:dice-pop .28s cubic-bezier(.2,.8,.3,1)}
 .var-pill.var-rolled .var-val{display:inline-block;animation:roll-pop .28s cubic-bezier(.2,.8,.3,1)}
 /* visually-hidden polite live region for AT announcements (re-rolls) */
 #a11y-live{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -6265,6 +6270,7 @@ function collectVars(rootNode) {
   // `allKeysForName.constructor` is a truthy function — `||= []` skips, `.push` throws).
   const defs = Object.create(null);         // lowercase name -> expr string (last wins)
   const pickVals = Object.create(null);     // lowercase name -> frozen rolled string (random picks only)
+  const dists = Object.create(null);        // lowercase name -> distribution record (#952 — the sibling lane)
   const order = [];        // names in first-seen order, for deterministic resolution
   const lastKeyForName = Object.create(null); // name -> key of last declaration seen
   const allKeysForName = Object.create(null); // name -> [all keys seen]
@@ -6287,6 +6293,9 @@ function collectVars(rootNode) {
         // across kinds, so a later formula clears an earlier pick and vice versa.
         if (v.kind === 'pick') pickVals[nm] = String(v.rolled ?? '');
         else delete pickVals[nm];
+        // #952: a distribution declaration claims the name in the sibling lane and, because a
+        // later formula/pick of the same name must clear it, the delete is unconditional first.
+        if (v.kind === 'dist') dists[nm] = v; else delete dists[nm];
         lastKeyForName[nm] = v.key;
         (allKeysForName[nm] ||= []).push(v.key);
         events.push({ name: nm, key: v.key, isDecl: true });
@@ -6303,6 +6312,7 @@ function collectVars(rootNode) {
         defs[d.name] = d.expr;
         if (d.pick !== undefined) pickVals[d.name] = d.pick;
         else delete pickVals[d.name];
+        delete dists[d.name];   // #952: a base row redeclaring the name clears any distribution above it
       }
     }
     for (const c of node.children) gather(c);
@@ -6319,6 +6329,7 @@ function collectVars(rootNode) {
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
   const { resolved, cycles } = resolveVarDefs(defs, pickVals, order);
+  attachVarDists(resolved, dists);
   // Only the live-document pass owns the display globals. An explicit-root call
   // (e.g. workspace search resolving a FOREIGN doc's vars) must not clobber them:
   // the next live collectVars() returns early on the still-valid cache and never
@@ -6351,11 +6362,12 @@ function varMapAt(targetNode) {
   const id = targetNode.id;
   if (id != null && _varMapAtCache.has(id)) return _varMapAtCache.get(id);
 
-  const defs = Object.create(null), pickVals = Object.create(null), order = [];
-  const add = (nm, expr, pick) => {
+  const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
+  const add = (nm, expr, pick, dist) => {
     if (!(nm in defs)) order.push(nm);
     defs[nm] = expr;
     if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
+    if (dist !== undefined) dists[nm] = dist; else delete dists[nm];   // #952 sibling lane
   };
   // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
   // #585: a pack pick var passes its frozen roll through the `pick` slot, like a document pick.
@@ -6378,6 +6390,7 @@ function varMapAt(targetNode) {
   })(root);
 
   const { resolved } = resolveVarDefs(defs, pickVals, order);
+  attachVarDists(resolved, dists);
   if (id != null) _varMapAtCache.set(id, resolved);
   return resolved;
 }
@@ -6390,7 +6403,8 @@ function collectNodeDecls(node, add) {
   let m;
   while ((m = re.exec(node.text || '')) !== null) {
     const v = node.vars?.find(v => v.key === m[1]);
-    if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined);
+    if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
+                               v.kind === 'dist' ? v : undefined);
   }
   // A variable base is a declaration site like any other: its projected rows enter the
   // positional walk here (covers varMapAt AND renderPosVarMaps), after the node's own
@@ -6415,8 +6429,8 @@ function renderPosVarMaps(node) {
   if (!node || !(node.vars || []).some(v => v.name && v.expr && node.text.includes('[[var:' + v.key + ']]'))) return null;
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
   if (node.id != null && _posVarMapCache.has(node.id)) return _posVarMapCache.get(node.id);
-  const defs = Object.create(null), pickVals = Object.create(null), order = [];
-  const add = (nm, expr, pick) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; };
+  const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
+  const add = (nm, expr, pick, dist) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; };
   for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
   let done = false;    // gather declarations from every point ABOVE this one (document order)
   (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add); for (const c of n.children || []) { walk(c); if (done) return; } })(root);
@@ -6424,14 +6438,47 @@ function renderPosVarMaps(node) {
   const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   let m;
   while ((m = RE.exec(node.text || '')) !== null) {
-    byKey.set(m[2], resolveVarDefs(defs, pickVals, order).resolved);   // vars visible BEFORE this token
+    // the dists lane is a snapshot too — copy it, or every token would share the final map (#952)
+    byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order).resolved, Object.assign(Object.create(null), dists)));
     if (m[1] === 'var') {                                              // a declaration adds itself, so a
       const v = node.vars?.find(x => x.key === m[2]);                  // LATER ref sees it, an earlier one not
-      if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined);
+      if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
+                                 v.kind === 'dist' ? v : undefined);
     }
   }
   if (node.id != null) _posVarMapCache.set(node.id, byKey);
   return byKey;
+}
+
+// #952: THE DISTRIBUTION LANE. A variable may hold an uncertain quantity ({cost := 100 to 200}),
+// and that value is not a number or a string — it is a distribution. resolveVarDefs' contract is
+// `number | string` and every consumer assumes it (evalMath, mathErrorReason, formatVarValue,
+// vpRow, parseDice, computeTable, aggregateVarBaseColumn, the OPML round-trip), so a distribution
+// must NOT enter `resolved`. It rides a SIBLING channel instead, the way frozen picks already do.
+//
+// The channel is a non-enumerable property on the resolved map rather than a fourth return value,
+// so every existing call site that passes `resolved` around as `vars` carries the lane for free
+// and no signature changes. The key holds a '#' — illegal in a variable name (VAR_NAME_RE), so it
+// can never collide with a declared variable, and non-enumerable keeps it out of Object.keys /
+// JSON.stringify (the var panel's change signature, the base preview).
+const VAR_DISTS_KEY = '#dists';
+function varDistsOf(vars) {
+  return (vars && typeof vars === 'object' && vars[VAR_DISTS_KEY]) || null;
+}
+function attachVarDists(resolved, dists) {
+  if (dists && Object.keys(dists).length) {
+    Object.defineProperty(resolved, VAR_DISTS_KEY, { value: dists, enumerable: false, configurable: true });
+  }
+  return resolved;
+}
+// A distribution record for a name visible in `vars`, or null. Positional by construction: the
+// lane is built by the same walk that builds `resolved`, so a name resolves to the NEAREST
+// declaration above the reader. That is what makes correlation scope to the declaration rather
+// than to the name — a later redeclaration is a different record with its own seed.
+function varDistRec(vars, name) {
+  const d = varDistsOf(vars);
+  const rec = d && d[String(name || '').toLowerCase()];
+  return rec || null;
 }
 
 // Resolve a name→expr `defs` map (+ frozen `pickVals` + first-seen `order`) into a
@@ -8029,13 +8076,18 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
   // variable (km/kg read as unknown names). Checked before the identifier scan for that reason.
   if (s.includes('#ERR')) return 'convert';
   const re = /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*/g;   // a dotted name (variable-base projection) is ONE identifier
-  let m, sawNonNumeric = false, sawBadRef = false, sawLater = false;
+  let m, sawNonNumeric = false, sawBadRef = false, sawLater = false, sawDist = false;
   while ((m = re.exec(s)) !== null) {
     if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;  // followed by '(' → function call, not a var
     const id = m[0].toLowerCase();
     if (MATH_CONST_NAMES.has(id)) continue;
     if (cycles.has(id)) return 'cycle';                  // cycle is the most specific reason
     if (id in vars) { if (typeof vars[id] === 'string') sawNonNumeric = true; }
+    // #952: a DISTRIBUTION variable is declared and correct — it just isn't a number. Without
+    // this it fell to 'bad ref' ("a name with no value here; declare it as a variable"), which
+    // sends the author looking for a typo in a name they declared two lines up. The boundary is
+    // real and stays fenced; only the explanation changes.
+    else if (varDistRec(vars, id) || varDistRec(globalVars, id)) sawDist = true;
     // agent-review: a name absent from the positional scope but present doc-wide is a FORWARD
     // reference (values resolve top to bottom, Stage B), not a typo. Name it distinctly so the
     // pill says "declared later, move it up" instead of the misleading "bad ref" (which sent a
@@ -8044,6 +8096,7 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
     else sawBadRef = true;
   }
   if (sawBadRef) return 'bad ref';                       // a truly-unknown name is the more actionable fix
+  if (sawDist) return 'estimate';                        // #952: declared, but holds a distribution
   if (sawLater) return 'declared later';
   if (sawNonNumeric) return 'non-numeric';
   return '';
@@ -8053,7 +8106,7 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
 // and #ERR pills explain a failure the SAME way (P1/P4 — legible, consistent). ''
 // for a generic/unknown code (the caller supplies its own "syntax error" fallback).
 function mathReasonPhrase(why) {
-  return why === 'estimate'    ? 'an estimate like 5 to 10, which works on its own but not inside a math formula or check'
+  return why === 'estimate'    ? 'an estimate like 5 to 10 (or a variable holding one), which works on its own but not inside a math formula or check'
        : why === 'convert'     ? 'a conversion between two different kinds of units (like a length and a mass), which has no answer'
        : why === 'declared later' ? 'a variable declared later in the document; values resolve top to bottom, so move its declaration above this point'
        : why === 'bad ref'     ? 'a name with no value here; declare it as a variable or add it as a property'
@@ -10284,6 +10337,7 @@ function handleCellPill(node, pill, target) {
   } else if (pill.classList.contains('var-pill') && !pill.classList.contains('var-bad')) {
     const vRec = node.vars?.find(x => x.key === key);
     if (vRec?.kind === 'pick' && !target.closest('.var-edit')) rerollPickVar(node, key);
+    else if (vRec?.kind === 'dist' && !target.closest('.var-edit')) rerollDistVar(node, key);   // #952
     else editVar(node, key);
   }
 }
@@ -16148,9 +16202,9 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
     if (term.value === 'pill')      return SIDECAR_KEYS.some(k => (node[k] || []).length);
     if (term.value === 'random') {
       // the generative subset of is:pill (re-rolls on click): dice/markov/grammar/est,
-      // plus a pick variable (display-only vars and static math are excluded).
+      // plus a pick or distribution variable (display-only vars and static math are excluded).
       return ['dice', 'markov', 'grammar', 'est'].some(k => (node[k] || []).length)
-        || (node.vars || []).some(v => v.kind === 'pick');
+        || (node.vars || []).some(v => v.kind === 'pick' || v.kind === 'dist');
     }
     if (term.value === 'broken') {
       // QX-6: this point contains a link whose target id does not exist in the document
@@ -16938,12 +16992,14 @@ function attachContentEvents(content, node) {
     if (vp2 && !vp2.classList.contains('var-bad')) {
       e.preventDefault(); e.stopPropagation();
       const vRec = node.vars?.find(x => x.key === vp2.dataset.key);
-      if (vRec?.kind === 'pick' && !e.target.closest('.var-edit')) {
+      // #952: a distribution declaration is generative too — body re-seeds, pencil edits.
+      const genReroll = vRec?.kind === 'pick' ? rerollPickVar : vRec?.kind === 'dist' ? rerollDistVar : null;
+      if (genReroll && !e.target.closest('.var-edit')) {
         if (content.dataset.editing) {
           // mirror the dice edit-mode reroll: swap the buffer in place, keep the caret (#450)
-          rerollInEdit(content, node, () => rerollPickVar(node, vp2.dataset.key, { repaintAll: false }));
+          rerollInEdit(content, node, () => genReroll(node, vp2.dataset.key, { repaintAll: false }));
         } else {
-          rerollPickVar(node, vp2.dataset.key); // re-renders: every {name} reference updates
+          genReroll(node, vp2.dataset.key); // re-renders: every {name} reference updates
         }
         return;
       }
@@ -17240,7 +17296,9 @@ function classifyBraceBody(body, rules, vars) {
     // formula-vs-pick inference via the shared varDeclIsPick(): a formula (incl. a
     // reference to a not-yet-defined var, {y := x}) is always a valid artifact; a pick
     // source is valid when it actually resolves (a rule / alternation / dice / literal).
-    if (!varDeclIsPick(decl.expr)) return 'artifact';                  // formula (live, self-heals)
+    // #952: lockstep with promoteBraceBodyIn's varDecl arm through the shared varDeclKind — a
+    // formula (live, self-heals) and a distribution (a seeded uncertain value) are both valid.
+    if (varDeclKind(decl.expr, vars) !== 'pick') return 'artifact';
     const c = classifyBraceBody(decl.expr, rules, vars);
     // A quoted-string RHS classifies 'literal' (a fixed text value) — it IS a usable pick source,
     // exactly what rollPickSource accepts (#522: classify said 'invalid' while promote built a pill).
@@ -17326,7 +17384,7 @@ function classifyBraceBody(body, rules, vars) {
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
-    return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low)) ? 'artifact' : 'invalid';
+    return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low) || varDistRec(vars, low)) ? 'artifact' : 'invalid';
   }
   if (templateParts(body, rules, vars)) return 'artifact';              // {…}glue{…} template (#916)
   // A body that is template-SHAPED but whose parts don't all resolve is an ATTEMPT, not prose:
@@ -19177,6 +19235,11 @@ function collectPillActions(node, scopeText = null) {
   }
   for (const v of node.vars || []) if (v.kind === 'pick' && has('var', v.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-roll pick' + tag(v.name), fn:() => rerollPickVar(node, v.key) });
+    rows.push(freeze('var', v.key));
+  }
+  // #952: the keyboard door for a distribution variable, whose body-click gesture is re-sample.
+  for (const v of node.vars || []) if (v.kind === 'dist' && has('var', v.key)) {
+    rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-sample value' + tag(v.name), fn:() => rerollDistVar(node, v.key) });
     rows.push(freeze('var', v.key));
   }
   // Manual clocks and spoilers are plain-text tokens (no sidecar), so surface them by their
@@ -22226,7 +22289,10 @@ function resolveBrace(body, ctx) {
   if (orp) return expandTemplate(`{${orp.body}}`, ctx);   // #543: a Yes/No pick at the band's odds
 
   const ep = estParts(body, ctx.vars);   // estParts returns the expr STRING (or null), not an object
-  if (ep) { const s = sampleUncertain(ep, 400, ep, cookieNode || null, ctx.vars); return s ? formatDist(s) : `{est?}`; }
+  // #952: the seed was `ep`, the expression STRING — `('5 to 10' >>> 0) || 1` is always 1, so every
+  // estimate nested in a rule drew the same numbers, in every document, forever. A fresh seed per
+  // expansion is what the standalone pill has always done.
+  if (ep) { const s = sampleUncertain(ep, 400, estNewSeed(), cookieNode || null, ctx.vars); return s ? formatDist(s) : `{est?}`; }
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
   if (body[0] === '=') {
@@ -22296,6 +22362,10 @@ function expandRule(name, ctx) {
 function recordVarReads(vars, deps) {
   const note = k => {
     if (typeof k !== 'string') return false;
+    // #952: the distribution lane is not a variable read. Its key can never be a variable name
+    // (VAR_NAME_RE has no '#'), and recording it would both pollute the dep set and make
+    // depsChanged compare a record object on every re-roll check.
+    if (k === VAR_DISTS_KEY) return Object.prototype.hasOwnProperty.call(vars, k);
     const has = Object.prototype.hasOwnProperty.call(vars, k);
     deps[k] = has ? vars[k] : null;
     return has;
@@ -24438,6 +24508,45 @@ function varDeclIsPick(expr) {
 }
 const _VAR_PROBE = new Proxy({}, { has: () => true, get: () => 1 });
 
+// #952: a declaration's RHS is one of THREE kinds now, not two. The estimate case has to be named,
+// because `100 to 200` looks like a PICK to varDeclIsPick (evalMath cannot parse `to`), and the
+// pick path freezes it through resolveBrace into a display STRING — "145.7 (100.2 - 197.5) ▂▄█…"
+// stored as a variable's value. That was a silent wrong answer: not a distribution, not even
+// random (the nested-estimate branch passed the expression as its own seed, so every draw came
+// from seed 1 and every document got the same numbers).
+//
+// The tie-break, stated because it is a real ambiguity: `lo to hi` and `go to market` are the same
+// shape. An RHS is a distribution when it sniffs as one AND carries evidence of being numeric —
+// a digit, a distribution function, or bounds that already resolve to numbers where it stands
+// (Stage B is positional, so you declare bounds above the point that uses them). Otherwise the
+// adjacent-bare-words rule keeps it a pick, so freezing a phrase still works.
+function varDeclKind(expr, vars = null) {
+  const e = String(expr || '').trim();
+  if (estParts(e, vars)) {
+    if (/\d/.test(e) || /\b(normal|uniform)\s*\(/i.test(e)) return 'dist';
+    const probe = sampleUncertain(e, 4, 1, null, vars || {});
+    if (probe && probe.every(Number.isFinite)) return 'dist';
+  }
+  return varDeclIsPick(e) ? 'pick' : 'formula';
+}
+
+// The draw behind a distribution variable. Correlation is not a mechanism built here — it falls out
+// of sampling being a pure function of (expr, seed): every reader of one declaration re-derives the
+// identical array, so {cost} and {cost * 2} move together by construction, while two separate
+// {5 to 10} pills keep their own seeds and stay independent.
+function varDistDraw(rec, n = EST_N, vars = null) {
+  if (!rec || rec.kind !== 'dist' || !rec.expr) return null;
+  return sampleUncertain(rec.expr, n, (rec.seed >>> 0) || 1, null, vars || {});
+}
+
+// "mean (p5 – p95)" for a distribution variable, or null when it will not sample. The SAME
+// headline an estimate pill shows, so one thing has one display (P1) across the pill, the
+// reference and the variable panel.
+function varDistHeadline(rec, vars = null) {
+  const sm = distSummary(varDistDraw(rec, EST_N, vars) || []);
+  return sm ? `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : null;
+}
+
 // Promotion is one of the two places a {roll:} resolves (the other is rerollGrammar), and it is
 // not a render — so cookieNode is null here unless we set it. Scope the WHOLE body to the host
 // point rather than the roll branch alone: a {roll:} nests inside an alternation, a conditional,
@@ -24476,7 +24585,19 @@ function promoteBraceBodyIn(node, body) {
     // typed declarations unfold back to editable `{name := expr}` text — safe because the
     // name lives in the text, so re-promotion never loses it. Dialog-declared vars have no
     // flag and stay atomic (artifactToShorthand). See the proposal's §4 / O1.
-    if (!varDeclIsPick(decl.expr)) {
+    // #952: THREE kinds, and the distribution case is claimed before the pick branch — an
+    // estimate RHS reads as a pick to varDeclIsPick (evalMath cannot parse `to`), and the pick
+    // path would freeze it into a display STRING. The record stores a SEED, never samples: every
+    // reader re-derives the identical array from (expr, seed), which is what makes references
+    // correlate. classifyBraceBody uses the same varDeclKind so the editor's promise matches.
+    const declKind = varDeclKind(decl.expr, collectVars());
+    if (declKind === 'dist') {
+      const rec = { key: varKey(), name: decl.name, kind: 'dist', expr: decl.expr, seed: estNewSeed(), typed: true };
+      (node.vars ||= []).push(rec);
+      resetDocCaches();
+      return `[[var:${rec.key}]]`;
+    }
+    if (declKind === 'formula') {
       const rec = { key: varKey(), name: decl.name, expr: decl.expr, kind: undefined, rolled: undefined, typed: true };
       (node.vars ||= []).push(rec);
       resetDocCaches();   // a later brace in this same promotion pass may read the fresh name
@@ -24708,7 +24829,10 @@ function promoteBraceBodyIn(node, body) {
       const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
       if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
     }
-    if (low in collectVars()) {
+    // #952: a distribution is not IN the resolved map (it is not a number), so the sibling lane
+    // is consulted too — otherwise {cost} stays raw prose for the very variable just declared.
+    const cv = collectVars();
+    if (low in cv || varDistRec(cv, low)) {
       const rec = { key: varKey(), name: body, expr: '' };
       (node.vars ||= []).push(rec);
       return `[[var:${rec.key}]]`;
@@ -26020,7 +26144,10 @@ function parseUncertain(expr, vars = null) {
       // else null (unknown → the whole expr fails to parse, the #ERR/no-promote gate).
       // hasOwnProperty (not `in`) so a plain-object vars map never reads `constructor` etc.
       // off the prototype as a phantom variable.
-      if (vars && Object.prototype.hasOwnProperty.call(vars, tk.v)) { pos++; return { k: 'var', name: tk.v }; }
+      // #952: a DISTRIBUTION variable is not in the resolved map (it is not a number), so the
+      // sibling lane is consulted too — otherwise {cost * 2} would fail to parse for the very
+      // variable it was declared to serve.
+      if (vars && (Object.prototype.hasOwnProperty.call(vars, tk.v) || varDistRec(vars, tk.v))) { pos++; return { k: 'var', name: tk.v }; }
       return null;
     }
     return null;
@@ -26052,10 +26179,28 @@ function estChildPropExpr(node, prop) {
 // `vars` (SR-7 / #876) is the resolved doc variable map: a `var` node broadcasts its
 // numeric value across the array (a scalar, like `num`); a non-numeric/text var fills
 // NaN so the estimate reads #ERR — the same type-safety contract math variables follow.
+const _distSampleStack = new Set();   // #952 cycle guard: distribution records currently expanding
 function sampleUncAst(ast, n, rng, node, vars) {
   switch (ast.k) {
     case 'num': return new Array(n).fill(ast.v);
     case 'var': {
+      // #952: a distribution variable expands to ITS OWN draw, derived from the declaration's
+      // stored seed. That is the entire correlation mechanism: two readers of one declaration
+      // build the identical array, so {cost} and {cost * 2} move together element-wise, while
+      // two independent {5 to 10} pills keep their own seeds and stay uncorrelated.
+      const rec = varDistRec(vars, ast.name);
+      if (rec && rec.expr) {
+        // A distribution may reference another (the natural use: {total := base to base * 2}),
+        // so guard the descent — a self- or mutual reference fills NaN and reads #ERR rather
+        // than recursing forever.
+        if (_distSampleStack.has(rec)) return new Array(n).fill(NaN);
+        _distSampleStack.add(rec);
+        try {
+          const sub = parseUncertain(rec.expr, vars);
+          if (sub) return sampleUncAst(sub, n, rngFromSeed((rec.seed >>> 0) || 1), node, vars);
+          return new Array(n).fill(NaN);
+        } finally { _distSampleStack.delete(rec); }
+      }
       const v = vars && vars[ast.name];
       const num = (typeof v === 'number' && Number.isFinite(v)) ? v : NaN;
       return new Array(n).fill(num);
@@ -26178,12 +26323,24 @@ function formatDist(samples) {
 // bounds be declared variables (`{cost_low to cost_high}`); parseUncertain(b, vars) is
 // the real gate, so an unknown word never promotes regardless of the sniff. Returns the
 // trimmed expr, or null.
+// #952: a body that USES a distribution variable in an expression ({cost * 2}) is an uncertain
+// expression even with no `to` / normal( / uniform( of its own — the uncertainty comes from the
+// name. A body that is JUST the name is deliberately excluded: {cost} is a variable REFERENCE and
+// renders as one (P1, one display for one thing), so it must fall through to the bare-name branch
+// rather than becoming an anonymous estimate pill that drops the name.
+function usesDistVar(body, vars) {
+  const b = String(body || '').trim();
+  if (!b || !varDistsOf(vars)) return false;
+  if (/^[a-z_]\w*$/i.test(b)) return false;
+  return (b.toLowerCase().match(/[a-z_]\w*/g) || []).some(id => !!varDistRec(vars, id));
+}
+
 function estParts(body, vars = null) {
   const b = String(body || '').trim();
   const low = b.toLowerCase();
   // The digit requirement is dropped: parseUncertain is the truth (a `to` form with
   // unknown/non-variable words fails there), so a var-driven `{lo to hi}` can promote.
-  const sniff = /\bto\b/.test(low) || /^(normal|uniform)\s*\(/.test(low);
+  const sniff = /\bto\b/.test(low) || /^(normal|uniform)\s*\(/.test(low) || usesDistVar(b, vars);
   if (!sniff) return null;
   return parseUncertain(b, vars) ? b : null;
 }
@@ -26204,8 +26361,12 @@ function makeEstRoll(input, vars = null) {
 // aria-label is the mean±CI text; the sparkline is decorative (aria-hidden) — P3.
 function renderEstPill(key, e) {
   if (!e) return `<span class="est-pill est-bad" data-key="${escQ(key)}" aria-label="Estimate (missing data)">≈ ?</span>`;
-  // globalVarMap is the render-set doc variable map (SR-7): an estimate may reference declared vars.
-  const samples = sampleUncertain(e.expr, EST_N, e.seed, cookieNode, globalVarMap);
+  // The render-set variable map: POSITIONAL, like every other pill (#767 / Stage B). It was
+  // document-wide (globalVarMap) here alone, which #952 made visible — an estimate referencing a
+  // redeclared name has to read the nearest declaration ABOVE it, the same rule its neighbours
+  // follow. renderVarMap defaults to globalVarMap outside a node render, so nothing loses scope.
+  const vmap = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap || globalVarMap;
+  const samples = sampleUncertain(e.expr, EST_N, e.seed, cookieNode, vmap);
   const sm = samples && distSummary(samples);
   if (!sm) {
     return `<span class="est-pill est-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Invalid expression. Click to edit"`
@@ -26453,10 +26614,60 @@ function renderVarPill(key, v) {
       + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit random variable" title="Edit random variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
+  // #952: a DISTRIBUTION declaration renders as an estimate pill, because it is one — the same
+  // mean, (p5 – p95) and sparkline a {5 to 10} shows (P1: one display for one thing). Body-click
+  // re-seeds; every reference of this name below follows, because they all derive from this seed.
+  if (v.kind === 'dist') {
+    const shadowed = _varShadowedKeys.has(key);
+    const vars = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap;
+    const samples = varDistDraw(v, EST_N, vars);
+    const head = distSummary(samples || []);
+    let cls = 'var-pill var-dist';
+    if (shadowed) cls += ' var-shadowed';
+    if (!head) {
+      return `<span class="var-pill var-dist var-cycle" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Invalid uncertain value. Click to edit"`
+        + ` aria-label="Uncertain variable ${escQ(v.name)} shows #ERR. Click to edit">`
+        + `<span class="var-ico" aria-hidden="true"><i class="fa-solid fa-dollar-sign"></i></span>`
+        + `<span class="var-name">${escHtml(v.name)}</span>`
+        + `<span class="var-eq">=</span>`
+        + `<span class="var-val">#ERR</span>`
+        + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit uncertain variable" title="Edit uncertain variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+        + `</span>`;
+    }
+    const headline = `${estNumFmt(head.mean)} (${estNumFmt(head.p5)} – ${estNumFmt(head.p95)})`;
+    const title = shadowed ? 'Shadowed by a later declaration of this name' : 'Uncertain value. Click to re-sample · pencil to edit';
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
+      + ` aria-label="Uncertain variable ${escQ(v.name)}: mean ${escQ(headline)}${shadowed ? ' (shadowed by a later declaration)' : ''}. Click to re-sample">`
+      + `<span class="var-ico" aria-hidden="true"><i class="fa-solid fa-dollar-sign"></i></span>`
+      + `<span class="var-name">${escHtml(v.name)}</span>`
+      + `<span class="var-eq">≈</span>`
+      + `<span class="var-val">${escHtml(headline)}</span>`
+      + `<span class="est-spark" aria-hidden="true">${escHtml(sparkline(samples, 11))}</span>`
+      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit uncertain variable" title="Edit uncertain variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `</span>`;
+  }
   // Display-only mode: empty expr — read value from the positional map (vars visible AT this
   // node), so {name} reads the nearest declaration above it (Stage B), not the global last-win.
   if (!v.expr) {
-    const val = ((renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap)[(v.name || '').toLowerCase()];   // #767: positional
+    const vmap = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap;
+    // #952: a reference to a distribution reads the SAME array its declaration does — the
+    // correlation the whole feature exists for, visible as an identical readout.
+    const dRec = varDistRec(vmap, v.name);
+    if (dRec) {
+      const samples = varDistDraw(dRec, EST_N, vmap);
+      const sm = distSummary(samples || []);
+      const display = sm ? `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : '#ERR';
+      return `<span class="var-pill var-ref var-dist" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escAttr(`$${v.name} ≈ ${display}. Click to edit`)}"`
+        + ` aria-label="Uncertain variable ${escQ(v.name)}: mean ${escQ(display)}. Click to edit">`
+        + `<span class="var-ico" aria-hidden="true"><i class="fa-solid fa-dollar-sign"></i></span>`
+        + `<span class="var-name">${escHtml(v.name)}</span>`
+        + `<span class="var-eq">≈</span>`
+        + `<span class="var-val">${escHtml(display)}</span>`
+        + `<span class="est-spark" aria-hidden="true">${escHtml(sm ? sparkline(samples, 11) : '')}</span>`
+        + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit variable reference" title="Edit variable reference"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+        + `</span>`;
+    }
+    const val = vmap[(v.name || '').toLowerCase()];   // #767: positional
     const display = val !== undefined ? formatVarValue(val) : '—';
     const cls = `var-pill var-ref${val === undefined ? ' var-undef' : ''}`;
     const title = val === undefined ? 'Variable not found. Click to edit' : escAttr(`$${v.name} = ${display}. Click to edit`);
@@ -27021,7 +27232,7 @@ const VAR_CHIPS = [
   { label:'e',   insert: 'e' },
 ];
 
-function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefined, existing = null, onResult }) {
+function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefined, seed = undefined, existing = null, onResult }) {
   const varMap  = collectVars();
   // Dotted names (variable-base projections) are excluded: a card would seed a name that
   // can never pass VAR_NAME_RE validation here — those are edited on their base instead.
@@ -27109,13 +27320,24 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
         : `<span class="var-preview-result">${escHtml(sample)}</span> <span class="io-hint" style="display:inline">(sample; rolls fresh on ${existing ? 'save' : 'insert'})</span>`;
       return;
     }
+    // #952: an uncertain value ({100 to 200}) is a valid Formula-lane value; preview it the way
+    // the estimate dialog does (fixed seed, so it stays still while typing) rather than calling
+    // it invalid. The real seed is minted on submit.
+    if (varDeclKind(v, collectVars()) === 'dist') {
+      const sm = distSummary(sampleUncertain(v, EST_N, 0x9e3779b9, null, collectVars()) || []);
+      prev.innerHTML = sm
+        ? `<span class="var-preview-result">${escHtml(`${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})`)}</span>`
+          + ` <span class="io-hint" style="display:inline">(uncertain; every reference to this name shows the same draw)</span>`
+        : '<span class="io-preview-bad">No finite samples</span>';
+      return;
+    }
     const r = evalMath(v, collectVars());
     prev.innerHTML = r === null ? '<span class="io-preview-bad">Invalid expression</span>'
       : `<span class="var-preview-result">${escHtml(formatMathResult(r))}</span>`;
   };
   const chipsRow = buildChipRow(VAR_CHIPS, exprInp, validate);
   const exprHint = document.createElement('div'); exprHint.className = 'io-hint';
-  exprHint.textContent = 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
+  exprHint.textContent = 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2), or hold an uncertain value (100 to 200) that every reference draws from together.';
   exprWrap.append(exprLab, exprInp, prev, chipsRow, exprHint); ioCard.appendChild(exprWrap);
 
   // Swap the expression field between the two value types. A random pick's value
@@ -27132,7 +27354,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
       : 'e.g. 5, 2*pi, sqrt(16); leave blank to just display';
     exprHint.textContent = pick
       ? 'Options split on | (weights: dragon 2), dice (2d6), a rule/table name or a template like {color} {beast}. Rolled once; every {name} reference shows the same value until you re-roll the pill.'
-      : 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2).';
+      : 'Leave blank to display an existing variable without redefining it. May reference other variables (area = pi*r^2), or hold an uncertain value (100 to 200) that every reference draws from together.';
     chipsRow.style.display = pick ? 'none' : '';
     // D2 two-verb rule: a random-pick var is generative → create=Roll, edit=Save;
     // a formula var is static → its submitLabel (Insert / Save).
@@ -27158,7 +27380,9 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     const nm = nameInp.value.trim(), ex = exprInp.value.trim();
     if (!VAR_NAME_RE.test(nm)) return false;
     if (mode === 'pick') return ex !== '';                  // any non-empty grammar source
-    return ex === '' || evalMath(ex, collectVars()) !== null;
+    // #952: an uncertain value is a valid Formula-lane value too, so the pencil on a distribution
+    // variable is not a dead end (Save was permanently disabled: evalMath cannot parse `to`).
+    return ex === '' || evalMath(ex, collectVars()) !== null || varDeclKind(ex, collectVars()) === 'dist';
   }
   function validate() { okBtn.disabled = !valid(); }
   function submit() {
@@ -27173,8 +27397,16 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
       return;
     }
     closeIo();
+    // #952: the Formula lane covers uncertain values too. Classify with the SAME varDeclKind the
+    // typed {name := expr} path uses, so the dialog and the text syntax can never disagree about
+    // what a body means. A pre-existing seed is kept (editing the name must not re-draw); a new
+    // declaration mints one.
+    if (varDeclKind(ex, collectVars()) === 'dist') {
+      onResult({ key: existing || varKey(), name: nm, expr: ex, kind: 'dist', seed: seed || estNewSeed(), rolled: undefined });
+      return;
+    }
     // kind/rolled explicitly undefined so editing a pick into a formula clears them
-    onResult({ key: existing || varKey(), name: nm, expr: ex, kind: undefined, rolled: undefined });
+    onResult({ key: existing || varKey(), name: nm, expr: ex, kind: undefined, rolled: undefined, seed: undefined });
   }
 
   [nameInp, exprInp].forEach(inp => {
@@ -27202,11 +27434,12 @@ function editVar(node, key) {
   openVarDialog({
     title: v.kind === 'pick' ? 'Edit random variable' : 'Edit variable',
     submitLabel: 'Save',
-    name: v.name, expr: v.expr, kind: v.kind, existing: key,
+    name: v.name, expr: v.expr, kind: v.kind, seed: v.seed, existing: key,
     onResult: result => {
       // assign the full shape: a pick→formula save must clear kind+rolled
-      // (undefined fields drop out of the JSON sidecar on serialize)
-      Object.assign(v, { name: result.name, expr: result.expr, kind: result.kind, rolled: result.rolled });
+      // (undefined fields drop out of the JSON sidecar on serialize). #952 adds `seed`, which
+      // must be assigned on BOTH arms so a dist→formula save clears it and a formula→dist mints it.
+      Object.assign(v, { name: result.name, expr: result.expr, kind: result.kind, rolled: result.rolled, seed: result.seed });
       markDirty();
       // A variable's value is document-wide: {name} / {= name * …} references in OTHER points
       // depend on it, so a dialog Save must re-render everything, not just the declaring node.
@@ -27231,6 +27464,24 @@ function rerollPickVar(node, key, opts) {
   markDirty();
   announce(`${v.name} re-rolled: ${rolled}`);
   logRoll(node, v.name, rolled);   // #918
+  if (opts?.repaintAll === false) return; // edit-mode caller swaps its own buffer
+  render();
+  document.querySelector(`.var-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('var-rolled');
+}
+
+// #952: re-seed a DISTRIBUTION variable in place. The gesture is the existing one (body-click
+// re-rolls a generative pill); what makes it different from rerollEst is reach — every reference
+// below this declaration derives from this seed, so all of them move together on one click. That
+// correlation is the feature, and this is where a user sees it happen.
+function rerollDistVar(node, key, opts) {
+  const v = node?.vars?.find(x => x.key === key);
+  if (!v || v.kind !== 'dist') return;
+  if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
+  v.seed = estNewSeed();
+  markDirty();
+  const head = varDistHeadline(v, collectVars());
+  announce(head ? `${v.name} re-sampled: ${head}` : `${v.name} re-sampled`);
+  logRoll(node, v.name, head || '');   // #918
   if (opts?.repaintAll === false) return; // edit-mode caller swaps its own buffer
   render();
   document.querySelector(`.var-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('var-rolled');
@@ -33334,8 +33585,15 @@ function vpRow(nm, vars) {
     row.appendChild(cycleEl);
   } else {
     const val = vars[nm];
+    // #952: a distribution is not in `vars` (it is not a number), so read the sibling lane
+    // before falling back to '?' — a declared, working variable must never read as missing.
+    const dist = val === undefined ? varDistHeadline(varDistRec(vars, nm), vars) : null;
     const valEl = document.createElement('span'); valEl.className = 'vp-val';
-    valEl.textContent = val === undefined ? '?'
+    // '≈', not '=': the row would otherwise read "cost = 145 (100 – 198)" and claim a certainty
+    // the value does not have. Replacing the separator keeps it to one sign, not "= ≈".
+    if (dist) { valEl.classList.add('vp-dist'); eqEl.textContent = '≈'; }
+    valEl.textContent = dist ? dist
+      : val === undefined ? '?'
       : typeof val === 'string' ? val   // random pick — frozen text, not a number
       : Number.isInteger(val) ? String(val) : String(+val.toPrecision(6));
     row.appendChild(valEl);
@@ -33364,8 +33622,12 @@ function updateVarPanelContent() {
   // markDirty fires on every keystroke while the panel is open, and the list carries
   // aria-live="polite" — re-emitting an identical list on each keystroke would spam a
   // screen reader. Includes group membership + expand state so AT hears real changes only.
+  // #952: a distribution's value is not in `vars`, so key its row on (expr, seed) — otherwise
+  // every dist row signs as '?' and a re-seed leaves a stale summary on screen.
   const sig = JSON.stringify([names.map(nm =>
-    [nm, _varCycles.has(nm) ? '↻' : (vars[nm] === undefined ? '?' : vars[nm])]),
+    [nm, _varCycles.has(nm) ? '↻'
+       : varDistRec(vars, nm) ? `≈${varDistRec(vars, nm).expr}#${varDistRec(vars, nm).seed}`
+       : (vars[nm] === undefined ? '?' : vars[nm])]),
     groups.map(g => [g.key, g.label, g.names.size, _vpExpandedGroups.has(g.key)])]);
   if (list.dataset.sig === sig) return;
   list.dataset.sig = sig;
@@ -36506,11 +36768,12 @@ const GUIDE = [
     ] },
   { id:'variables', cat:'compute', covers:['var','variables'], related:['math','gen-conditions','recipe-crit'],
     title:'Variables',
-    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text or a frozen random pick. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, and options split on the bar like `{tone := warm | cool}` make a random pick.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the document, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
+    body:"Change one number and have it update everywhere it's used. Set a tax rate, a day rate, a budget cap or a project score as a named variable, then use `{name}` in any calculation or generator. Update the variable and everything that references it recalculates instantly.\n\nA variable can be a fixed number, a formula that depends on other variables, a bit of text, a frozen random pick or an uncertain value. Declare one with the @ Variable dialog, or just type it inline as `{name := value}`: a number or formula on the right makes a number, quoted text like `{company := \"Acme Corp\"}` makes a text value, options split on the bar like `{tone := warm | cool}` make a random pick, and a range like `{cost := 100 to 200}` makes an uncertain value.\n\nAn uncertain variable is one number you do not know yet, not a new guess each time it is mentioned: `{cost}` and `{cost * 2}` draw from the same declaration, so they move together and a model built on one uncertain input stays consistent. Click the declaration to re-sample and every mention follows. See Estimates & ranges for how to write the range.\n\nA point's own numeric properties are variables too: give a point a `STR: 14` property and `{= STR + 2}` on it reads 16, no declaration needed. Properties also inherit down the document, so a pill reads a numeric property set on an ancestor point (a scene under a `STR: 14` character sees STR). The nearest value wins: the point's own property beats an ancestor's, and a nearer ancestor beats a farther one.",
     examples:[
       { syn:'{rate := 0.2}', desc:'a number, by typing' },
       { syn:'{company := "Acme Corp"}', desc:'a text value (quote it)' },
       { syn:'{tone := warm | cool}', desc:'a random pick' },
+      { syn:'{cost := 100 to 200}', desc:'an uncertain value; every mention is the same draw' },
       { syn:'{markup := cost * 1.2}', desc:'built from another variable' },
       { syn:'{name}',      desc:'drop the value in' },
       { syn:'{= 2 * area}',desc:'use a number in a calculation' },
@@ -36531,12 +36794,14 @@ const GUIDE = [
     ] },
   { id:'estimates', cat:'compute', covers:['est'],
     title:'Estimates & ranges',
-    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-`, `*` and `/`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nAny bound can be a declared variable, so an estimate composes with the rest of the number system: declare `cost_low` and `cost_high` and write `{cost_low to cost_high}`, or scale an uncertain unit cost by a count with `{units * (5 to 10)}`. A variable that holds text fails visibly, the same as in a calculation.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
+    body:"Plan honestly when you do not have exact numbers. Instead of pretending a task takes exactly three days, say it takes `{2 to 5}`. The pill shows the average and a small spread chart, so you read the realistic range at a glance rather than a false-precise single number.\n\nWrite the uncertainty a few ways: `lo to hi` is a 90% range (nine times in ten the real value lands between them), `normal(mean, spread)` is a bell curve, and `uniform(lo, hi)` treats every value in the range as equally likely. Combine them with `+`, `-`, `*` and `/`, and the math is done right: three phases of `2 to 5 days` each roll up to the true combined spread, wider than the midpoints added but far narrower than the worst cases stacked, because they rarely all run long at once.\n\nGive an uncertain number a name and every mention of it means the SAME number. Declare `{cost := 100 to 200}`, then `{cost}` and `{cost * 2}` are one draw and its double, not two unrelated guesses, so a model built on one uncertain input moves as a piece. Click the declaration to re-sample and every mention follows. Declare the name again further down and that is a separate number from there on, since values resolve top to bottom.\n\nAny bound can be a declared variable too: declare `cost_low` and `cost_high` and write `{cost_low to cost_high}`, or scale an uncertain unit cost by a count with `{units * (5 to 10)}`. A variable that holds text fails visibly, the same as in a calculation.\n\nThe result is a genuine simulation, not a formula, so it is separate from the plain `{= ...}` calculator: an estimate cannot go inside a math pill and the reverse, and neither can a variable that holds one. Click the pill to re-sample it, the way you re-roll dice. A parent can roll up its children's estimated properties with `sum` or `avg`, so a project's total time is the honest combination of its parts.",
     related:['math','rollups','variables'],
     examples:[
       { syn:'{5 to 10}',      desc:'a 90% range, most likely 5 to 10' },
       { syn:'{normal(8, 2)}', desc:'a bell curve around 8' },
       { syn:'{uniform(1, 6)}',desc:'any value 1 to 6, equally likely' },
+      { syn:'{cost := 100 to 200}', desc:'name an uncertain number' },
+      { syn:'{cost} and {cost * 2}', desc:'every mention is the same draw' },
       { syn:'{cost_low to cost_high}', desc:'a range driven by declared variables' },
       { syn:'{(5 to 10) + (2 to 4)}', desc:'combine two ranges in one estimate' },
       { syn:'Click the pill', desc:'re-sample it, like re-rolling dice' },

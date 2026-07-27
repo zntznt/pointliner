@@ -116,9 +116,13 @@ Typing a bare `2d6` or a comma-separated `{a, b, c}` stays plain text with no nu
 
 - **A6:** ~~field × modifier chaining (`{w.damage.cap}`)~~ shipped 2026-07-12 via #545; multi-level nesting (`{planet.country.town}`);
   fields with their own frozen state.
-- **B2:** `min/max/count` in the uncertain context; mixtures (`mx`); correlation / shared variables;
-  more families (beta, …); the analytic `est+` (no-sampling) rollup; cross-engine use (an estimate's
-  mean as a number inside `{= …}`); sensitivity / tornado.
+- **B2:** ~~correlation / shared variables~~ shipped 2026-07-27 via #952 — a variable may HOLD a
+  distribution (`{cost := 100 to 200}`); the record stores a **seed**, not samples, so every reader
+  re-derives the identical array and `{cost}` / `{cost * 2}` move together element-wise. The
+  correlation unit is the declaration record (Stage B positional), so a redeclaration further down
+  is a separate, independent number. Still open: `min/max/count` in the uncertain context; mixtures
+  (`mx`); more families (beta, …); the analytic `est+` (no-sampling) rollup; cross-engine use (an
+  estimate's mean as a number inside `{= …}`); sensitivity / tornado.
 - **A1 modifiers:** aliases (`.an`/`.capitalize`/`.plural`). ~~Irregular plurals / past tense~~ —
   common irregulars shipped 2026-07-12 (curated closed dictionaries `IRREGULAR_PLURALS`/`IRREGULAR_PAST`
   checked before the regular heuristics; anything absent still falls through regular). Modifiers on

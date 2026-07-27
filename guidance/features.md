@@ -262,10 +262,21 @@ Implemented:
   variables (SR-7/#876)**: a bound may be a declared var — `{cost_low to cost_high}`,
   `{units * (5 to 10)}` — resolved through the threaded doc `vars` map (`parseUncertain(expr, vars)`
   is the promotion gate, so an unknown word still fails → literal); a text var fails visibly, the
-  type-safety contract math variables follow. **Out of scope (recorded follow-ons)**: min/max/count
-  in the uncertain context, mixtures (`mx`), *correlation* between variables (independent draws only),
-  more families (beta/…), the analytic `est+` no-sampling variant, and cross-engine use (an estimate's
-  mean as a number in `{= …}`).
+  type-safety contract math variables follow. **A variable may HOLD a distribution (#952)**:
+  `{cost := 100 to 200}` promotes to a `kind:'dist'` var record `{key, name, expr, seed, typed}`,
+  and because sampling is a pure function of `(expr, seed)` every reader re-derives the identical
+  array — so `{cost}` and `{cost * 2}` correlate element-wise while two anonymous `{100 to 200}`
+  pills stay independent. Correlation is therefore not a mechanism but a consequence of storing the
+  seed on the declaration. The distribution rides a **sibling lane** on the resolved map
+  (`VAR_DISTS_KEY`, non-enumerable; `varDistsOf`/`varDistRec`) so `resolveVarDefs`' `number | string`
+  contract is untouched and `{= cost * 3}` still fails, now naming the reason `estimate` instead of
+  `bad ref`. The unit is the **declaration record**, not the name, so a later redeclaration is
+  independent (Stage B). Body-click re-seeds and every reference follows (`rerollDistVar`); the
+  bare-name reference and a using-expression both resolve through the lane (`usesDistVar` widens
+  the `estParts` sniff). Cores: `varDeclKind`, `varDistDraw`, `varDistHeadline`, `usesDistVar`.
+  **Out of scope (recorded follow-ons)**: min/max/count in the uncertain context, mixtures (`mx`),
+  more families (beta/…), the analytic `est+` no-sampling variant, and cross-engine use (an
+  estimate's mean as a number in `{= …}`).
 - **Math** — `@math`: recursive-descent evaluator; recomputes live as variables
   change. **Conditionals** already exist (`a>b ? x : y` and `if(a>b, x, y)`).
   **Unit conversions** come two ways: fixed unary fns in `FN1` named `from2to` (`c2f`/`f2c`,
