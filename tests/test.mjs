@@ -15039,12 +15039,51 @@ test('collectRules — an explicit root walks that tree, bypassing the live cach
 
 const RAW_HTML = readFileSync(
   process.env.POINTLINER_HTML || new URL('../index.html', import.meta.url), 'utf8');
-// comment-stripped view: HTML comments, /*…*/ blocks, and //-to-EOL (the (?<!:)
-// guard spares https:// URLs). Comments are exempt from the copy rules.
-const NC = RAW_HTML
-  .replace(/<!--[\s\S]*?-->/g, '')
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/(?<!:)\/\/[^\n]*/g, '');
+// Comment-stripped view: HTML comments, /*…*/ blocks, and //-to-EOL. Comments are exempt from the
+// copy rules, so every drift guard below reads THIS rather than the raw file.
+//
+// #1132 — two bugs lived here, and both were SILENT. Every consumer is a collect-then-
+// assert.deepEqual(bad, []) guard, so a shrinking input is indistinguishable from a clean codebase.
+//
+//   1. Block comments were stripped BEFORE line comments. A `//` comment containing the text
+//      `#thread/*` opened a block comment that ran to the next real `*/` 1,527 lines later,
+//      deleting 88,290 chars: 72 function declarations, 19 flashHint calls, 27 aria-labels. The
+//      em-dash ban was blind over the whole capture/inbox/journal region.
+//   2. The embedded Font Awesome subset is src:url("data:font/woff2;base64,…"). Base64 uses `/`,
+//      so `//` inside it matched the line rule and stripped to end of line. The three longest
+//      "line comments" in the file were 108,933 / 89,741 / 38,614 chars of font data.
+//
+// Fixed by redacting quoted data URIs first, then stripping LINE comments before BLOCK comments so
+// a line comment consumes its own `/*`. This is still regex approximation, not a JS tokenizer: a
+// `/*` inside a string literal would still mislead it. That residual risk is why stripSpans below
+// exists — it makes any future runaway LOUD instead of silently narrowing every guard downstream.
+const DATA_URI_RE = /"data:[^"]*"/g;
+const RAW_NO_DATA = RAW_HTML.replace(DATA_URI_RE, '"data:REDACTED"');
+const _ncSpans = [];
+const _strip = (src, re) => src.replace(re, m => { _ncSpans.push(m); return ''; });
+const NC = (() => {
+  let s = _strip(RAW_NO_DATA, /<!--[\s\S]*?-->/g);
+  s = _strip(s, /(?<!:)\/\/[^\n]*/g);          // line comments FIRST (see bug 1)
+  s = _strip(s, /\/\*[\s\S]*?\*\//g);
+  return s;
+})();
+
+test('#1132 the comment stripper has not silently eaten the source', () => {
+  // THE GUARD ON THE GUARD. Four drift guards read NC and all of them pass vacuously on a shrinking
+  // input, so the stripper failing quietly disabled them for an unknown length of time. Measured
+  // against the real file: the largest legitimate line comment is 367 chars and the largest block
+  // comment is 1,342, while the two bugs produced spans of 108,933 and 88,290. A 4,000 cap sits 3x
+  // above anything real and 20x below either runaway, so it cannot false-fire and cannot miss them.
+  const worst = _ncSpans.reduce((a, b) => (b.length > a.length ? b : a), '');
+  assert.ok(_ncSpans.length > 5000,
+    `the stripper must actually be finding comments, got ${_ncSpans.length} spans`);
+  assert.ok(worst.length < 4000,
+    `a single stripped span of ${worst.length} chars means the stripper ran away again (#1132). ` +
+    `First 120 chars: ${JSON.stringify(worst.slice(0, 120))}`);
+  // and the surviving view must still be most of the non-data source
+  const keep = NC.length / RAW_NO_DATA.length;
+  assert.ok(keep > 0.55, `NC kept only ${(keep * 100).toFixed(1)}% of the non-data source`);
+});
 const CSS_TEXT = [...RAW_HTML.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)]
   .map(m => m[1]).join('\n').replace(/\/\*[\s\S]*?\*\//g, '');
 

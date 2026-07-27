@@ -934,3 +934,43 @@ all** - not dismissal, not Escape, not text preservation. That coverage is added
 `indexOf('function ' + name)`, which PREFIX-matches. `fnBody(_src, 'closeBuilder')` returns
 **`closeBuilderWindow`'s** body, because that function is defined earlier in the file. Every pin
 using a name that is a prefix of another function name has been asserting against the wrong body.
+
+### UXP-254 ✓ The drift guards were blind over 46% of the source, silently 🔴 [tests] (RESOLVED 2026-07-27)
+
+**Meta.** Filed as #1132 out of the guard audit the owner prompted with "our guards are as good as
+the first failure, what's to say the others won't fail?" Four drift guards read a comment-stripped
+view `NC`: the em-dash ban, the border-radius token guard, the font-weight guard, and the
+informational-text-size floor. All four are collect-then-`assert.deepEqual(bad, [])`, so **a
+shrinking input is indistinguishable from a clean codebase** and the failure is silent by
+construction. The em-dash guard was written in this repo and described as comprehensive.
+
+**Two stripper bugs, both measured.**
+
+1. Block comments were stripped BEFORE line comments, so a `//` comment containing `` `#thread/*` ``
+   opened a block comment running to the next real `*/` **1,527 lines later**, deleting **88,290
+   chars**.
+2. Not in the issue, and larger in bytes: the Font Awesome subset is
+   `src:url("data:font/woff2;base64,…")`. Base64 uses `/`, so `//` inside it matched the line rule
+   and stripped to end of line. The three longest "line comments" in the file were **108,933 /
+   89,741 / 38,614 chars of font data**; quoted data URIs total **266,863 bytes**.
+
+**Fix.** Redact quoted data URIs first, then strip LINE comments before BLOCK comments so a line
+comment consumes its own `/*`. The guards recovered **50,770 chars: +71 function declarations,
++19 `flashHint` calls, +26 `aria-label`s**. Re-running all four against the corrected view found
+**zero new offenders**, so nothing was hiding behind the blindness. That is luck, not vindication.
+
+**The actual deliverable is the guard on the guard.** `stripSpans` records every removed span and a
+new test asserts none exceeds **4,000 chars**, plus a floor on the retained fraction. The cap is
+measured, not guessed: the largest legitimate line comment is **367** and the largest block comment
+**1,342**, against runaways of 108,933 and 88,290. Three times above anything real, twenty times
+below either bug, so it can neither false-fire nor miss them. **Proven by mutation:** restoring the
+original strip order fails it, and removing the data-URI redaction fails it. Had this test existed,
+neither bug could have shipped.
+
+**Honest limitation, stated in the code:** this is still regex approximation, not a JS tokenizer. A
+`/*` inside a string literal would still mislead it. A tokenizer was considered and rejected because
+JS regex-literal disambiguation (`/["']/` looks like a string opener) would fail in the same silent
+direction. The span cap is what converts an unknown future class from silent to loud.
+
+**Pattern for #1133:** the strong guards all assert their collection is non-empty before iterating.
+This adds a sibling rule for derived inputs: **assert the input has not silently shrunk.**
