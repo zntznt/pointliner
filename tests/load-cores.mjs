@@ -194,6 +194,7 @@ export function loadCores() {
     'fnIsWritten', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
     'imgSizeParts',   // #992: markdown image title -> width mode class + inline width
     'blSectionModel',   // #953: the shared backlinks section model (strip + in-flow zoom footer)
+    'nearbyAdjacency', 'nearbyGraphModel', 'qid', 'unqid',   // #898: neighborhood graph (current point +/- N hops, cross-doc)
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
     'parseRulesLoose',   // #582 pack-tolerant rule parser
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',

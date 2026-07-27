@@ -214,6 +214,9 @@ Turn the document into a lightweight planner.
 
 Build a connected folder of documents (Zettelkasten style), not just a single one.
 
+- **Nearby graph.** Open the link graph with the cursor in a point and a Nearby view shows just
+  that point and everything within two steps of it, across your documents.
+  ([link graph](links-and-references.md#link-graph))
 - **Backlinks under the note.** Zoom into a point and everything that links to it is listed at the
   foot of the note, under its children, always present.
   ([backlinks](links-and-references.md#backlinks))

@@ -1505,7 +1505,14 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .graph-node:focus circle{stroke-width:2.4}
 .graph-node.graph-node-broken circle{fill:color-mix(in srgb,var(--bad) 16%,var(--bg));stroke:var(--bad)}
 /* 4b: folder scope — the toggle pair in the head, and the current document's accent ring */
-.graph-scope{display:flex;gap:3px;align-items:center}
+/* #898: the scope group is a scrolling strip, not a rigid row. It was built for two chips; a third
+   pushed it past the head's right edge at 390px and narrower, and the CONTROL run showed the
+   two-chip version already spilling 20px at 340px — so this fixes a pre-existing narrow-width
+   defect as well as the one the new chip would have added. Same recipe the toolbar uses: the chips
+   scroll under a fade cue instead of overflowing. `display:flex` comes from .scroll-strip, and
+   omitting it there is what once rendered the quick bar 213px tall, so it is NOT repeated here. */
+.graph-scope{gap:3px}
+.graph-head>.graph-title,.graph-head>.graph-count{flex-shrink:0}
 .graph-node.graph-node-current circle{stroke-width:2.6;fill:color-mix(in srgb,var(--acc) 34%,var(--bg))}
 .graph-node.graph-node-current text{font-weight:600}
 .graph-node text{fill:var(--fg);font-size:11px;font-family:var(--font);pointer-events:none;dominant-baseline:middle}
@@ -22852,6 +22859,103 @@ function mergeUnlinkedEdges(model, edges, titleOf) {
   return { nodes, edges: outEdges };
 }
 
+// #898 (cross-document-direction.md §4b / §6 step 5): the NEIGHBORHOOD graph — the point you are on
+// plus everything within N hops, across documents. Bounded by construction, which is the whole
+// argument for it: the force layout is O(N^2)*iterations (21 s at 2,000 linked points), so an
+// all-points folder graph is out, but a capped local walk never approaches that wall.
+//
+// Every id here is QUALIFIED — `docId + '#' + nodeId`, the key shape workspaceIndex.backlinks
+// already uses. That is what makes the cross-doc version safe: the same-doc index speaks bare ids
+// and the workspace index speaks doc-plus-node, and rather than carry both id spaces through a
+// graph walk, everything is normalised at the door. There is only ever one kind of id in here.
+const qid = (docId, nodeId) => (docId || '') + '#' + nodeId;
+const unqid = q => { const i = String(q).indexOf('#'); return [String(q).slice(0, i), String(q).slice(i + 1)]; };
+
+// The cap. 150 matches GRAPH_UNLINKED_CAP, and the reasoning is the same one: it is the LAYOUT that
+// has to be kept bounded, not the walk. The walk is trivially cheap; graphLayout is the O(N^2) step.
+const GRAPH_NEARBY_CAP = 150;
+const GRAPH_NEARBY_HOPS = 2;
+
+// Undirected adjacency over the whole link web. Undirected on purpose: "near this idea" includes
+// what points AT you, not only what you point at, so each link contributes both directions.
+//
+// The current document's edges come from `links` (a LIVE collectLinks result) and never from
+// wsOutgoing, whose copy of the open document is stale from the last disk write — §5.3 own-doc
+// liveness, the rule every cross-doc read path has to honour. Entries in wsOutgoing whose source
+// IS the current document are therefore skipped, not merged. Pure.
+function nearbyAdjacency({ links, wsOutgoing, ownDocId }) {
+  const own = ownDocId || '';
+  const adj = new Map();
+  const join = (a, b) => {
+    if (a === b) return;                                   // a self-link is not a neighbour
+    if (!adj.has(a)) adj.set(a, new Set());
+    if (!adj.has(b)) adj.set(b, new Set());
+    adj.get(a).add(b); adj.get(b).add(a);
+  };
+  for (const src of Object.keys(links?.outgoing || {}))
+    for (const { target } of links.outgoing[src] || []) join(qid(own, src), qid(own, target));
+  for (const l of wsOutgoing || []) {
+    if (!l || !l.srcNodeId || !l.dstNodeId) continue;
+    if ((l.srcDocId || '') === own) continue;              // the live index above already has these
+    join(qid(l.srcDocId, l.srcNodeId), qid(l.dstDocId, l.dstNodeId));
+  }
+  return adj;
+}
+
+// Breadth-first from the start point out to `hops`, capped at `cap` nodes. BFS order is the point
+// of the cap: when a hub blows the budget, what gets dropped is the FURTHEST away, which is the
+// only defensible thing to drop from a "what is near this" view.
+//
+// Returns graphModel's envelope so graphLayout and the SVG render are untouched (they read only
+// id/a/b), plus `current` on the start node — which the folder scope's "you are here" ring already
+// renders — and the counts the panel needs to report a cap honestly (P4). Pure.
+function nearbyGraphModel(startQid, adj, meta, hops = GRAPH_NEARBY_HOPS, cap = GRAPH_NEARBY_CAP) {
+  const titleOf = (meta && meta.titleOf) || (() => null);
+  const seen = new Map();                                  // qid -> hop distance
+  const order = [];                                        // BFS order, so truncation drops the far ones
+  seen.set(startQid, 0); order.push(startQid);
+  let total = 1;                                           // reachable within `hops`, BEFORE the cap
+  let frontier = [startQid];
+  for (let d = 1; d <= hops && frontier.length; d++) {
+    const next = [];
+    for (const q of frontier)
+      for (const n of (adj.get(q) || [])) {
+        if (seen.has(n)) continue;
+        seen.set(n, d);
+        total++;
+        if (order.length < cap) order.push(n);
+        next.push(n);                                      // keep walking past the cap so `total` is true
+      }
+    frontier = next;
+  }
+  const inView = new Set(order);
+  const deg = new Map(order.map(q => [q, 0]));
+  const edgeSet = new Set();
+  const edges = [];
+  for (const q of order)
+    for (const n of (adj.get(q) || [])) {
+      if (!inView.has(n)) continue;                        // an edge to a node the cap dropped is not drawn
+      const [a, b] = q < n ? [q, n] : [n, q];
+      const key = a + '\x00' + b;
+      if (edgeSet.has(key)) continue;
+      edgeSet.add(key);
+      edges.push({ a, b });
+      deg.set(a, deg.get(a) + 1); deg.set(b, deg.get(b) + 1);
+    }
+  const nodes = order.map(id => {
+    const t = titleOf(id);
+    return {
+      id,
+      title: t || '(untitled)',
+      deg: deg.get(id) || 0,
+      broken: t == null,                                   // no title anywhere → the point is gone (red dot)
+      current: id === startQid,
+      hop: seen.get(id),
+    };
+  });
+  return { nodes, edges, total, capped: total > order.length, hops };
+}
+
 // 4b (cross-document-direction.md): the DOC-LEVEL folder graph — documents as nodes, one
 // undirected edge per linked doc pair, weighted by how many cross-doc links join them.
 // Deliberately doc-level: an all-points folder graph is rejected on measurement (the force
@@ -33708,19 +33812,37 @@ document.getElementById('agenda-strip').addEventListener('keydown', e => {
 // interaction. Click or Enter/Space a node to zoom the outline to that point.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 let graphOpen = false, graphReturnFocus = null;
-let graphScope = 'doc';   // 4b: 'doc' | 'folder' — session-only; the panel opens on the document view
+let graphScope = 'doc';   // 4b/#898: 'doc' | 'folder' | 'nearby' — session-only; the panel opens on the document view
 let graphShowUnlinked = true;   // session-only; unlinked (textual-match) edges default ON
 // Cap on how many unlinked edges the graph draws per open — see the GRAPH_UNLINKED_CAP comment
 // at its declaration for the measured cost this bounds. Recomputed fresh on every openGraph() (the
 // "only when summoned" contract); toggling graphShowUnlinked mid-open reuses this cached result
 // (a cheap re-render), so it must be reset to null on close/reopen, never on a scope toggle.
 let _graphUnlinkedCache = null;
+// #898: the point the Nearby scope is rooted at, and the adjacency map it walks. The anchor is
+// captured on the toolbar button's MOUSEDOWN, not here: by the time openGraph runs the button has
+// taken focus and exitEdit has already cleared activeContentId, so reading the caret at open time
+// finds nothing. Both are per-open, like _graphUnlinkedCache — the adjacency is O(all links) to
+// build, so a scope toggle mid-open must reuse it rather than rebuild.
+let graphAnchorId = null;
+let _graphNearbyAdj = null;
+// Resolve the point a Nearby graph should centre on. captureCurrentPointId is the established
+// precedence (live edit → keyboard cursor → selection anchor); focusedId is the sensible last
+// resort, since being zoomed into a point is also "where you are".
+function graphAnchorNow() {
+  const id = captureCurrentPointId() || focusedId || null;
+  return id && nodeById(id) ? id : null;
+}
 function openGraph() {
   const back = document.getElementById('graph-back');
   const panel = document.getElementById('graph-panel');
   graphReturnFocus = document.activeElement;
   graphOpen = true;
   _graphUnlinkedCache = null;
+  _graphNearbyAdj = null;
+  // The mousedown capture is the reliable one; this is the fallback for the paths that never see a
+  // mousedown at all (a keyboard activation of the toolbar button, or a future command-menu door).
+  if (!graphAnchorId) graphAnchorId = graphAnchorNow();
   back.classList.add('on');
   const btn = document.getElementById('btn-graph');
   btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
@@ -33731,6 +33853,7 @@ function openGraph() {
 }
 function closeGraph() {
   graphOpen = false;
+  graphAnchorId = null;
   document.getElementById('graph-back').classList.remove('on');
   const btn = document.getElementById('btn-graph');
   btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
@@ -33744,41 +33867,71 @@ function renderGraph(panel) {
   // 4b: the Folder scope is offered only when the folder actually has 2+ indexed docs —
   // a single-file session keeps the exact pre-4b panel (the toggle would be noise).
   const folderable = (workspaceIndex?.nameByDocId?.size || 0) > 1;
-  if (!folderable) graphScope = 'doc';
+  // #898: a scope is offered only when it can actually answer — Folder needs 2+ indexed documents,
+  // Nearby needs a point to centre on. A scope that cannot answer falls back to the document view
+  // rather than rendering an empty panel (the pre-4b rule, generalised from one scope to two).
+  const nearbyable = !!(graphAnchorId && nodeById(graphAnchorId));
+  if ((graphScope === 'folder' && !folderable) || (graphScope === 'nearby' && !nearbyable)) graphScope = 'doc';
   const folder = graphScope === 'folder';
-  // header: title, scope toggle (folder sessions), live count, close
+  const nearby = graphScope === 'nearby';
+  // header: title, scope toggle, live count, close
   const head = document.createElement('div'); head.className = 'graph-head';
   const ttl = document.createElement('div'); ttl.className = 'graph-title'; ttl.textContent = 'Link graph';
   head.appendChild(ttl);
-  if (folderable) {
-    const scope = document.createElement('div'); scope.className = 'graph-scope';
-    for (const [key, lbl] of [['doc', 'This document'], ['folder', 'Folder']]) {
+  if (folderable || nearbyable) {
+    const scope = document.createElement('div'); scope.className = 'graph-scope scroll-strip';
+    scope.setAttribute('role', 'group'); scope.setAttribute('aria-label', 'Graph scope');
+    const scopes = [['doc', 'This document']];
+    if (folderable) scopes.push(['folder', 'Folder']);
+    if (nearbyable) scopes.push(['nearby', 'Nearby']);
+    for (const [key, lbl] of scopes) {
       const b = document.createElement('button'); b.type = 'button';
       b.className = 'ag-toggle ag-view' + (graphScope === key ? ' on' : '');
       b.textContent = lbl;
       b.setAttribute('aria-pressed', graphScope === key ? 'true' : 'false');
-      b.setAttribute('aria-label', key === 'doc' ? 'Show links within this document' : 'Show links between the folder’s documents');
+      b.setAttribute('aria-label',
+        key === 'doc' ? 'Show links within this document'
+        : key === 'folder' ? 'Show links between the folder’s documents'
+        : 'Show what links to the point you are on, within ' + GRAPH_NEARBY_HOPS + ' steps');
       b.addEventListener('click', () => { if (graphScope !== key) { graphScope = key; renderGraph(panel); panel.querySelector('.graph-scope .on')?.focus(); announceOverlayCount(panel); } });
       scope.appendChild(b);
     }
     head.appendChild(scope);
+    wireScrollStrip(scope);   // the fade cue + focus-reveal, so a chip scrolled out is still reachable
   }
   const titleOf = id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; };
-  const linked = folder ? null : collectLinks();
-  let model = folder
-    ? docGraphModel(workspaceIndex.outgoing, id => workspaceIndex.nameByDocId.get(id), root.docId || '')
-    : graphModel(linked, titleOf);
+  // #898: the same lookup over a QUALIFIED id. The open document reads LIVE (nodeById); other
+  // documents read the index's title map, which already holds every point — no wsDocRoot walk.
+  // null means "no such point anywhere", which is what makes a node broken (the red dot).
+  const own = root.docId || '';
+  const nearbyTitleOf = q => {
+    const [d, n] = unqid(q);
+    if (d === own) return titleOf(n);
+    const t = workspaceIndex?.titles?.get(d)?.get(n);
+    return t === undefined ? null : (graphNodeLabel(String(t).split('\n')[0]) || '(untitled)');
+  };
+  const linked = (folder || nearby) ? null : collectLinks();
+  let model;
+  if (folder) {
+    model = docGraphModel(workspaceIndex.outgoing, id => workspaceIndex.nameByDocId.get(id), own);
+  } else if (nearby) {
+    if (!_graphNearbyAdj) _graphNearbyAdj = nearbyAdjacency({
+      links: collectLinks(), wsOutgoing: workspaceIndex?.outgoing || [], ownDocId: own });
+    model = nearbyGraphModel(qid(own, graphAnchorId), _graphNearbyAdj, { titleOf: nearbyTitleOf });
+  } else {
+    model = graphModel(linked, titleOf);
+  }
   const realLinkCount = model.edges.length;
   // Same-doc scope only (v1 scope guard — folder-scope unlinked-matching is a deliberately
   // deferred follow-up, see cross-document-direction.md). Cached per-open (not per-render) so
   // toggling graphShowUnlinked is a cheap re-render, not a recompute.
   let unlinkedInfo = null;
-  if (!folder) {
+  if (!folder && !nearby) {
     if (!_graphUnlinkedCache) _graphUnlinkedCache = graphUnlinkedEdges(root, linked, GRAPH_UNLINKED_CAP);
     unlinkedInfo = _graphUnlinkedCache;
     if (graphShowUnlinked && unlinkedInfo.edges.length) model = mergeUnlinkedEdges(model, unlinkedInfo.edges, titleOf);
   }
-  if (!folder && unlinkedInfo && unlinkedInfo.total) {
+  if (!folder && !nearby && unlinkedInfo && unlinkedInfo.total) {
     const ut = document.createElement('button'); ut.type = 'button';
     ut.className = 'ag-toggle ag-view graph-unlinked-toggle' + (graphShowUnlinked ? ' on' : '');
     ut.textContent = 'Unlinked';
@@ -33788,8 +33941,22 @@ function renderGraph(panel) {
     head.appendChild(ut);
   }
   const cnt = document.createElement('div'); cnt.className = 'graph-count';
-  cnt.textContent = !model.nodes.length ? ''
+  // #898: Nearby names its bound in the count line rather than hiding it. The hop distance is
+  // fixed, so it has to be SAID or the view silently looks like the whole web; and when the cap
+  // bites, "N of T" is the same honest form the unlinked cap already uses (P4, no silent
+  // truncation). Cross-doc reach is counted too, so a folder user can tell the walk left the file.
+  const nearbyDocs = nearby ? new Set(model.nodes.map(n => unqid(n.id)[0])).size : 0;
+  // A Nearby model always contains at least the point you are on, so it never reaches the no-nodes
+  // branch below — but one ringed dot with nothing around it answers nothing, so it takes the empty
+  // state instead. The count line blanks with it: found by driving, where it read "1 points, 0
+  // links" UNDER the sentence saying nothing links here, and announceOverlayCount (which prefers
+  // .graph-count) then read that instead of the sentence.
+  const nearbyAlone = nearby && model.nodes.length === 1 && !model.edges.length;
+  cnt.textContent = (!model.nodes.length || nearbyAlone) ? ''
     : folder ? `${model.nodes.length} documents, ${model.edges.length} connections`
+    : nearby ? `${model.capped ? `${model.nodes.length} of ${model.total}` : model.nodes.length} point${model.nodes.length === 1 ? '' : 's'}`
+      + (nearbyDocs > 1 ? ` across ${nearbyDocs} documents` : '')
+      + `, ${model.edges.length} link${model.edges.length === 1 ? '' : 's'}, within ${model.hops} hops`
     : `${model.nodes.length} points, ${realLinkCount} links` + (unlinkedInfo && unlinkedInfo.total
       ? `, ${unlinkedInfo.capped ? `${unlinkedInfo.edges.length} of ${unlinkedInfo.total}` : unlinkedInfo.total} unlinked references`
       : '');
@@ -33802,12 +33969,15 @@ function renderGraph(panel) {
   const canvas = document.createElement('div'); canvas.className = 'graph-canvas';
   panel.appendChild(canvas);
 
-  if (!model.nodes.length) {
+  if (!model.nodes.length || nearbyAlone) {
     const empty = document.createElement('div'); empty.className = 'graph-empty';
     const et = document.createElement('div'); et.className = 'graph-empty-title';
-    et.textContent = folder ? 'No links between documents yet' : 'No links yet';
+    et.textContent = nearbyAlone ? 'Nothing links to this point yet'
+      : folder ? 'No links between documents yet' : 'No links yet';
     const eh = document.createElement('div'); eh.className = 'graph-empty-hint';
-    eh.textContent = folder
+    eh.textContent = nearbyAlone
+      ? `Nearby shows the point you are on and everything within ${model.hops} steps of it, across your documents. Type [[ inside another point to link it here, or switch to This document to see the whole web.`
+      : folder
       ? 'Link a point in one document to a point in another and the documents appear here as a web. Type [[ inside a point; the picker searches the whole folder.'
       : 'Link points together and they appear here as a web you can browse. Type [[ inside a point to link it to another, then reopen the graph. Points that mention each other by name, even without a link, also show up here as a dashed connection.';
     empty.append(et, eh); canvas.appendChild(empty);
@@ -33850,9 +34020,23 @@ function renderGraph(panel) {
   const maxDeg = Math.max(...model.nodes.map(n => n.deg), 1);
   const near = nearestDistances(pos);   // UXP-243: how far each node's tap area may grow
   let nodeIdx = 0;   // UXP-240: roving tab stop, seeded over model.nodes = <g> document order
+  // #898: a Nearby node is a qualified id, so ONE call routes it — followLinkTarget already handles
+  // same-doc zoom, cross-doc switch-then-zoom, and both missing cases with their own P4 messages.
   const go = folder
     ? (id) => { const name = workspaceIndex?.nameByDocId?.get(id); if (!name) return; closeGraph(); switchWorkspaceDoc(name); }
+    : nearby
+    ? (id) => { const [d, n] = unqid(id); closeGraph(); followLinkTarget(d, n); }
     : (id) => { closeGraph(); zoomInto(id); };
+  // The document a Nearby node lives in rides its accessible name and its tooltip, not the visible
+  // label: labels are truncated at 28 characters, and in this scope the POINT is the node (in the
+  // folder scope a document IS the node, which is why that one shows names on the canvas).
+  const nearbyDocOf = (id) => {
+    if (!nearby) return '';
+    const d = unqid(id)[0];
+    if (d === own) return '';
+    const nm = workspaceIndex?.nameByDocId?.get(d);
+    return nm ? displayName(nm) : '';
+  };
   for (const n of model.nodes) {
     const p = pos.get(n.id); if (!p) continue;
     const g = document.createElementNS(SVG_NS, 'g');
@@ -33867,14 +34051,18 @@ function renderGraph(panel) {
     nodeIdx++;
     g.setAttribute('role', 'button');
     const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title;
+    const docHint = nearbyDocOf(n.id);
+    if (docHint) { const tt = document.createElementNS(SVG_NS, 'title'); tt.textContent = label + ' · ' + docHint; g.appendChild(tt); }
     g.setAttribute('aria-label',
       (n.broken ? (folder ? 'Missing document' : 'Broken link target') : label)
-      + (n.current ? ' (current document)' : '')
+      + (docHint ? ' in ' + docHint : '')
+      + (n.current ? (nearby ? ' (the point you are on)' : ' (current document)') : '')
       + `, ${n.deg} link${n.deg === 1 ? '' : 's'}.`
       + (n.unlinkedDeg ? ` ${n.unlinkedDeg} unlinked reference${n.unlinkedDeg === 1 ? '' : 's'}.` : '')
       // UXP-242: a broken node now DOES something, so its name says what — it used to end here,
       // announcing as a button with nothing behind it.
-      + (n.broken ? ' Activate to see what links here.' : folder ? ' Activate to open the document.' : ' Activate to open.'));
+      + (n.broken ? ' Activate to see what links here.' : folder ? ' Activate to open the document.'
+         : docHint ? ' Activate to open it in that document.' : ' Activate to open.'));
     const r = 4 + Math.round((n.deg / maxDeg) * 7);
     // UXP-243: an invisible tap target, FIRST so the visible dot keeps its own hover/focus paint.
     // The label is not part of the target and never was (`.graph-node text{pointer-events:none}`),
@@ -33930,6 +34118,10 @@ function renderGraph(panel) {
   canvas.appendChild(svg);
 }
 
+// #898: snapshot the point the caret is in BEFORE this mousedown moves focus and ends the edit.
+// Added alongside the click handler, never in place of it (P3-3, the caret invariant) — and it
+// deliberately does NOT preventDefault, because the button still needs its normal focus behaviour.
+document.getElementById('btn-graph').addEventListener('mousedown', () => { if (!graphOpen) graphAnchorId = graphAnchorNow(); });
 document.getElementById('btn-graph').addEventListener('click', toggleGraph);
 document.getElementById('graph-back').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeGraph(); return; }
@@ -35928,7 +36120,7 @@ const GUIDE = [
 
   { id:'link-graph', cat:'links',
     title:'Link graph',
-    body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long project or a big set of notes: the source everything cites, the person who keeps recurring, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.\n\nWith a connected folder of two or more documents, a Folder view joins the panel: each document becomes one dot, joined to the documents it links to, with a thicker line where more links run between them. Your current document wears a ring, and clicking a document opens it. It is the map of your notebook, one level up from the map of a document.",
+    body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long project or a big set of notes: the source everything cites, the person who keeps recurring, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.\n\nWith a connected folder of two or more documents, a Folder view joins the panel: each document becomes one dot, joined to the documents it links to, with a thicker line where more links run between them. Your current document wears a ring, and clicking a document opens it. It is the map of your notebook, one level up from the map of a document.\n\nA third view, Nearby, answers a smaller question: what is close to the point I am on? It draws that point, ringed, plus everything within two steps of it, following links in both directions and across your other documents. It is the local map rather than the whole web, and it is what you want while you are reading one note rather than surveying the document. Open the graph with the cursor in a point and the Nearby chip appears; a very busy point is capped, and the count line says how many of how many you are seeing.",
     related:['point-links','backlinks','broken-links'],
     examples:[
       { syn:'Toolbar graph button', desc:'open the link graph (the linked-dots icon)' },
@@ -35936,6 +36128,7 @@ const GUIDE = [
       { syn:'A larger dot',         desc:'a hub: a point many others link to' },
       { syn:'A red dot',            desc:'a link whose target point was deleted' },
       { syn:'Folder',               desc:'documents as dots; click one to open it' },
+      { syn:'Nearby',               desc:'the point you are on, plus 2 steps in every direction' },
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across documents',

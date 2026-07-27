@@ -757,6 +757,29 @@ Implemented:
   `agendaGantt`, `agendaMonthCells`, `calendarMonthGrid`, `addMonths`.
 ### Linking, workspace & knowledge (PKM)
 
+- **Neighborhood graph, the `Nearby` scope (#898)** — cross-document-direction.md §4b / §6 step 5,
+  the last doable graph increment. A third scope chip beside `This document` / `Folder`: the point
+  the cursor is in, plus everything within `GRAPH_NEARBY_HOPS` (2) steps, across documents.
+  Two pure cores: `nearbyAdjacency({links, wsOutgoing, ownDocId})` → `Map(qid → Set(qid))` and
+  `nearbyGraphModel(startQid, adj, meta, hops, cap)` → graphModel's envelope plus
+  `{total, capped, hops}`. **Every id is qualified** (`docId#nodeId`, the key shape
+  `workspaceIndex.backlinks` already uses) so the same-doc index (bare ids) and the workspace index
+  (doc + node) never coexist as two id spaces inside one walk. Undirected, because "near this idea"
+  includes what points AT you. **Own-doc liveness (§5.3):** the open document's edges come from the
+  live `collectLinks()`; `wsOutgoing` rows whose source is the current doc are skipped, since the
+  index's copy is stale from the last disk write. `current: true` on the start node reuses the
+  folder scope's ring for free, and `graphLayout` is untouched (it reads only `id`/`a`/`b`) —
+  the issue's central claim, verified. Clicks route through `followLinkTarget`, one call for
+  same-doc, cross-doc, and both missing cases.
+  **Cap:** `GRAPH_NEARBY_CAP = 150`, BFS order so what is dropped is what is furthest away, and the
+  count line reports `"N of T"` — the count-line idiom the unlinked cap already uses, chosen over
+  the issue's proposed `+K more` button so the panel has one way of saying this, not two.
+  **Measured:** flat in document size, which is the point — 237 ms at 5k points and 248 ms at 50k,
+  of which `graphLayout` at the cap is ~230 ms and the walk itself ~1 ms.
+  **Head layout:** the scope group became a `.scroll-strip`. The §7 driver's control run showed the
+  TWO-chip head already spilling 20 px at 340 px on main; three chips took it to 87 px. Now clean at
+  all 12 widths, and the head no longer wraps at any of them (53 px, against main's 76 px).
+
 - **Backlinks in flow under a zoomed note (#953)** — the inbound-refs answer now has TWO surfaces:
   the caret-driven `#bl-panel` strip (outline view) and an in-flow `.zoom-bl` section appended by
   `render()` after the ghost row when `focusedId != null`. Both draw from one pure model,

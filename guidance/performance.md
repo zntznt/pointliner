@@ -163,6 +163,25 @@ search / snapshot), not render. Versus the 2026-06-29 run (`bdd7bad`, M): struct
 and `snapshot` came down ~3× at the top end (88 → 29 ms and 30 → 22 ms at 50k) and search
 dropped 231 → 156 ms at 50k.
 
+### Neighborhood graph, the `Nearby` scope (D, 2026-07-27, #898)
+
+The cap exists to keep `graphLayout` off its O(N²) wall (1 s at 500 linked points, 21 s at 2,000 —
+the measurement that got an all-points folder graph rejected). It does, and the shape of the result
+is the claim worth recording: **the cost is flat in document size.**
+
+| document | `collectLinks` | `nearbyAdjacency` | `nearbyGraphModel` | `graphLayout` | total |
+|---|---|---|---|---|---|
+| 5 000 points | 4.2 ms | 1.3 ms | 1.1 ms | 230.6 ms | **237 ms** |
+| 50 000 points | 20.5 ms | 0.9 ms | 0.6 ms | 226.1 ms | **248 ms** |
+
+Same neighbourhood in both: 1,201 points reachable within 2 hops, 150 drawn. The walk is ~1 ms; the
+layout at the cap is everything. Ten times the document costs 11 ms more, all of it in
+`collectLinks`, which the panel needs anyway.
+
+`GRAPH_NEARBY_CAP` stays at 150, matching `GRAPH_UNLINKED_CAP` — and the ~230 ms layout it produces
+is the same budget that cap was already chosen against ("layout stays under ~220 ms at every
+measured size"). Two caps in one panel with the same measured bound should be the same number.
+
 ### Backlinks: the `varMapAt` stall, and the zoom-view section (D, 2026-07-27, #953)
 
 Measured on the Debian container while building #953, so the "before" column is `origin/main`,

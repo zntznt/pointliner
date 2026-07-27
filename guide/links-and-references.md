@@ -100,6 +100,18 @@ no longer in the folder shows as a red dot, same as a deleted point. Documents w
 links stay off the map, and the toggle only appears when the folder actually has several documents.
 It is the map of your notebook, one level up from the map of a document.
 
+A third view, **Nearby**, answers a smaller question: *what is close to the point I am on?* It draws
+that point, ringed, plus everything within **two steps** of it, following links in both directions
+(what you linked to, and what links to you) and across your other documents. It is the local map
+rather than the whole web, and it is what you want while reading one note rather than surveying the
+whole document.
+
+Open the graph with the cursor in a point and the **Nearby** chip appears beside the others. A point
+in a very busy neighbourhood is capped, and the count line says how many of how many you are seeing,
+along with how far it reached, for example `150 of 201 points across 3 documents, 149 links, within
+2 hops`. Clicking a dot from another document opens that document at the point. A point nothing
+links to yet says so rather than showing a single lonely dot.
+
 ## Links across documents
 
 Weave together a network of documents: link a project document to a person document, connect a meeting document to an

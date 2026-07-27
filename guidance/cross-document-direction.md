@@ -129,9 +129,11 @@ title-only across docs. Render the target's content instead, from `workspaceInde
   doc-node → switch to it (CF-2's `switchWorkspaceDoc`); click an edge → a list of the
   underlying links. Fits the existing graph panel; the door is a scope toggle in the panel
   head (`This document | Folder`), not a new surface.
-- **Neighborhood graph (later, optional):** the current point + N hops across docs, bounded
-  (cap ~150 nodes, "+K more" affordance). Gives the Obsidian-style local view without the
-  layout wall.
+- ✅ **Neighborhood graph** (shipped 2026-07-27, #898): the current point + 2 hops across docs,
+  bounded (`GRAPH_NEARBY_CAP` 150, reported as "N of T" in the count line rather than a "+K more"
+  button — the panel's existing idiom for a cap). Gives the Obsidian-style local view without the
+  layout wall, and measurement confirms it: 237 ms at 5k points and 248 ms at 50k, i.e. **flat in
+  document size**, with ~230 ms of that the capped layout and ~1 ms the walk.
 - **All-points folder graph: rejected on measurement** (21 s at 2k linked points). Revisit
   only with a different layout algorithm (Barnes-Hut / WebGL), which is a dependency-shaped
   cost this single-file app does not want.
@@ -287,8 +289,15 @@ feature — it is making the index a dependable substrate:
    risk layered on top of an already-rejected all-points folder graph (§3), so it stays a
    deliberately deferred follow-up, not a TODO buried in code — revisit once the same-doc
    version has measured usage, same sequencing discipline as the neighborhood graph below.
-6. **Neighborhood graph** — doable, sequencing-deferred until the shipped surface is in daily
-   use; filed as **GH #898**. Any 4e revisit stays parked (see §4e / `backlog.md`).
+6. ✅ **Neighborhood graph** (shipped 2026-07-27, GH #898): a third `Nearby` scope chip — the
+   point the cursor is in, plus everything within 2 hops, across documents. Two pure cores,
+   `nearbyAdjacency` (undirected, own-doc edges LIVE per §5.3 while `wsOutgoing` supplies the rest)
+   and `nearbyGraphModel` (BFS, capped at `GRAPH_NEARBY_CAP` 150, `{total, capped, hops}` so the
+   count line can report a cap honestly). Every id is qualified `docId#nodeId`, so the two index id
+   spaces never coexist inside one walk; `graphLayout` and the SVG render are untouched, and the
+   start node reuses 4b's `current` ring. Clicks route through `followLinkTarget`. Measured **flat
+   in document size** (237 ms at 5k, 248 ms at 50k), which is the bounded-by-construction claim
+   holding. Any 4e revisit stays parked (see §4e / `backlog.md`).
 
 Each step is a normal PR with tests on the pure cores (`buildWorkspaceIndex` extensions,
 the doc-graph model, the folder reducer arm, the incremental-merge function) and the UX
