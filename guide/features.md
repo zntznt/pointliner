@@ -214,6 +214,9 @@ Turn the document into a lightweight planner.
 
 Build a connected folder of documents (Zettelkasten style), not just a single one.
 
+- **Backlinks under the note.** Zoom into a point and everything that links to it is listed at the
+  foot of the note, under its children, always present.
+  ([backlinks](links-and-references.md#backlinks))
 - **Internal links.** `[[#point]]` links to any other point, with live titles and backlinks.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
 - **Mirrors and subtree embeds.** `[[#id|]]` embeds a point's content inline; alone on its line it

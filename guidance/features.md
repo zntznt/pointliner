@@ -757,6 +757,30 @@ Implemented:
   `agendaGantt`, `agendaMonthCells`, `calendarMonthGrid`, `addMonths`.
 ### Linking, workspace & knowledge (PKM)
 
+- **Backlinks in flow under a zoomed note (#953)** — the inbound-refs answer now has TWO surfaces:
+  the caret-driven `#bl-panel` strip (outline view) and an in-flow `.zoom-bl` section appended by
+  `render()` after the ghost row when `focusedId != null`. Both draw from one pure model,
+  `blSectionModel`, and one renderer, `renderBlRows(inner, hd, subjectId, d, opts)` —
+  `renderBlPanel` is now a wrapper over it, so the two surfaces cannot drift in copy or counts.
+  The strip stands down for the zoom root (a doubled list, one copy over the content, is worse than
+  either alone) and keeps the child case; `zoomInto` puts it down explicitly because its landing
+  focus is the app's choice, not the reader's. `blGatherCached` memoises the gather on
+  `(_varsVer, workspaceIndex.gen, nodeId)` — the workspace generation is load-bearing, a folder
+  rescan does not bump `_varsVer`. Registered as doc-cache `zoomBacklinks`.
+  **Two-stage paint.** On a cold generation `buildZoomBacklinks` draws the heading only and
+  `scheduleZoomBlFill` supplies the rows from an idle callback (re-checking `focusedId` and
+  `sec.isConnected` on arrival, patching in place so it can never loop). Both halves are
+  O(document) cold: the mentions walk 256ms at 50k, and even drawing the link rows cost 116ms
+  because a source title goes through `displayText` → `varMapAt`. A warm memo paints in full, so
+  the deferred path is only taken right after an edit.
+  **`displayText` sniff guard (`ART_SNIFF`).** Every artifact `flattenArtifacts` resolves carries a
+  `[` or a `{`, so with neither present the varMap is never read and `varMapAt` is skipped. This
+  fixed a PRE-EXISTING stall, not one this change introduced: on main the first click into a point
+  in a 5k-point document took 665ms, of which 542ms was warming `varMapAt` across the whole
+  document from `collectUnlinkedRefs`. Measured after: 62ms.
+  **Premise note:** the population half of #953 was already fixed by the time it was worked; what
+  shipped here is the placement (measured: 476px below the note title, docked to the window edge).
+
 - **Multi-document workspace** — a **workspace of many `.opml` notes in a real disk folder**, the
   durable backing for cross-file linking (Phase 1). **Chromium-gated** — the directory picker /
   `queryPermission` are a separate File System Access surface from the single-file open/save, so

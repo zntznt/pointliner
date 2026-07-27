@@ -8217,30 +8217,40 @@ test('#925a: backlinks panel can render always-on (both strip titles shown at 0 
   const fn = _src.slice(_src.indexOf('function showBlPanel('), _src.indexOf('function showBlPanel(') + 900);
   assert.ok(!/if \(!sources\.length && !unlinked\.length && !cross\.length && !crossUnlinked\.length\) \{ hideBlPanel/.test(fn),
     'showBlPanel must NOT hide when everything is empty (always-on render)');
-  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlPanel(') + 5200);
-  assert.ok(rp.includes("hd.textContent = total ? `Linked from · ${total}` : 'Linked from'"),
-    'the "Linked from" title shows always (title-only at 0)');
-  assert.ok(rp.includes("subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '')"),
+  // #953 moved these two rules out of renderBlPanel's body and into the pure blSectionModel, so
+  // they are asserted on BEHAVIOUR now rather than on the source text of one renderer. Both
+  // surfaces read the same model, so this covers the strip and the in-flow section at once.
+  const zero = host(c.blSectionModel({ sources: [], unlinked: [], cross: [], crossUnlinked: [] }, {}));
+  assert.equal(zero.header, 'Linked from', 'the "Linked from" title shows always (title-only at 0)');
+  const zeroUnlinked = zero.sections.find(x => x.kind === 'unlinked');
+  assert.ok(zeroUnlinked, 'the unlinked section is present at 0 (never gated behind a non-empty check)');
+  assert.equal(zeroUnlinked.heading, 'Unlinked references',
     'the "Unlinked references" strip shows its title always (title-only at 0)');
+  // And the renderer still draws that section unconditionally for the strip.
+  const rp = _src.slice(_src.indexOf('function renderBlRows('), _src.indexOf('function renderBlRows(') + 5600);
+  assert.ok(rp.includes('subhd.textContent = unlinkedSec.heading'), 'the renderer takes the subheading from the model');
   assert.ok(!/if \(!unlinked\.length\) return;\s*\n\s*const subhd/.test(rp),
     'the unlinked subheader must no longer be gated behind a non-empty check');
 });
 
-test('backlinks footer visibility: conditional on the outline, always for the zoomed title (owner-directed)', () => {
-  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1100);
+test('backlinks footer visibility: conditional on the outline, never doubled under a zoom (#953)', () => {
+  // The owner-directed outline rule is unchanged: no empty footer on the plain view. What #953
+  // changed is the zoomed half — the zoom root's refs are drawn IN FLOW, so the docked strip must
+  // stand down for that point, or the same list is on screen twice with one copy over the content.
+  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1400);
   assert.ok(/const zoomed = focusedId != null;/.test(ub), 'updateBlPanel branches on zoom state');
-  assert.ok(/if \(zoomed && nodeId === focusedId\) \{ showBlPanel\(nodeId\); return; \}/.test(ub),
-    'the zoomed title always shows its own panel, even empty');
+  assert.ok(/if \(zoomed && nodeId === focusedId\) \{ hideBlPanel\(\); return; \}/.test(ub),
+    'the strip stands down for the zoom root (its refs are in flow)');
+  assert.ok(!/showBlPanel\(focusedId\)/.test(ub),
+    'and the old "empty child falls back to the title" branch is gone with it');
   assert.ok(/const d = blGather\(nodeId\);/.test(ub) && /if \(d\.has\) \{ blShowWith\(nodeId, d\); return; \}/.test(ub),
-    'any point with inbound refs shows its own panel');
-  assert.ok(/if \(zoomed\) \{ showBlPanel\(focusedId\); return; \}/.test(ub),
-    'an empty child under a zoom falls back to the zoomed title');
-  assert.ok(/hideBlPanel\(\);\s+\/\/ outline view/.test(ub),
-    'on the plain outline, a point with nothing inbound hides the footer (no empty clutter)');
-  // scheduleBlHide reverts to the title when zoomed instead of hiding (de-select a child → title)
-  const sb = _src.slice(_src.indexOf('function scheduleBlHide('), _src.indexOf('function scheduleBlHide(') + 1400);
+    'any OTHER point with inbound refs still shows its own panel — the strip keeps the child case');
+  assert.ok(/hideBlPanel\(\);\s+\/\/ nothing inbound/.test(ub),
+    'a point with nothing inbound hides the footer (no empty clutter)');
+  // scheduleBlHide still routes through the one visibility decision rather than hiding directly.
+  const sb = _src.slice(_src.indexOf('function scheduleBlHide('), _src.indexOf('function scheduleBlHide(') + 1600);
   assert.ok(/if \(focusedId != null\) \{ updateBlPanel\(focusedId\); return; \}/.test(sb),
-    'zoomed: focus leaving a child reverts to the title, not hide');
+    'zoomed: focus leaving a child re-runs the visibility decision');
 });
 
 // ── cross-document backlinks (CF-4) ───────────────────────────────────────────
@@ -12960,10 +12970,19 @@ test('agent-review: a logged roll full-renders so the roll log shows live', () =
   assert.ok(/const el = repaintAfterRoll\(node\);[\s\S]*mk-rolled/.test(fnBody(_src, 'rerollMarkov')), 'rerollMarkov uses repaintAfterRoll');
 });
 
-test('agent-review: zoom-in reflects the zoomed point’s backlinks, not an auto-focused child', () => {
-  assert.ok(/if \(_focusChanged && focusedId && vp\.type !== 'base'\) updateBlPanel\(focusedId\);/.test(_src), 'a zoom-in updates the backlink panel for the zoom root');
-  // it runs after focusNode so it wins over the empty-child auto-focus
-  assert.ok(_src.indexOf('if (firstChildId) focusNode(firstChildId)') < _src.indexOf("vp.type !== 'base') updateBlPanel(focusedId)"), 'the panel update runs after focusNode');
+test('agent-review: zoom-in shows the ZOOMED point’s backlinks, not an auto-focused child’s (#953)', () => {
+  // The defect this guards: zooming into a note auto-focuses its first child, and the caret-driven
+  // panel answered for the CHILD. It used to be fixed by re-running updateBlPanel(focusedId) after
+  // focusNode. #953 removes the race instead of winning it: the zoom root's refs are rendered from
+  // the view itself, so no focus event can substitute a different point's answer.
+  assert.ok(/if \(focusedId != null && vp\.type !== 'base'\) container\.appendChild\(buildZoomBacklinks\(vp\.id\)\);/.test(_src),
+    'the zoom view renders the ZOOM ROOT\u2019s refs (vp.id), independent of what holds focus');
+  assert.ok(!/updateBlPanel\(focusedId\);\s*\n\s*else if/.test(_src),
+    'the old post-focusNode re-trigger is gone (it has nothing left to correct)');
+  // And the strip is now forbidden from answering for the zoom root at all, from any trigger.
+  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1400);
+  assert.ok(/if \(zoomed && nodeId === focusedId\) \{ hideBlPanel\(\); return; \}/.test(ub),
+    'no trigger can raise the strip for the zoom root');
 });
 
 test('#950 estimate-in-math boundary renders LOUD (visible tag), not a hover-only underline (src pins)', () => {
@@ -17904,7 +17923,9 @@ test('folder create-name (6b): newWorkspaceDoc prompts for a name, blank keeps t
 
 // ── render() preserves scroll across a full rebuild (#488) ──
 test('render(): captures scrollY and restores it clamped, skipping intentional scroll moves (#488)', () => {
-  const fn = _src.slice(_src.indexOf('function render()'), _src.indexOf('function render()') + 10500);
+  // Slice to the declaration that FOLLOWS render(), not a magic byte count: a fixed length
+  // silently drops the tail of the function the day anything above it grows (it did, on #953).
+  const fn = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
   // capture at entry, before the container wipe
   assert.ok(/const _preScrollY = window\.scrollY/.test(fn), 'render must capture scrollY at entry');
   assert.ok(/const _focusChanged = focusedId !== _lastRenderFocusedId/.test(fn), 'it must detect a zoom (focusedId change) to skip restore');
@@ -21115,4 +21136,192 @@ test('#992 the @image form offers the width modes, and point still writes no tit
     ['wide 150%', { cls:'md-img-wide', style:'width:150%',  title:'' }],
     ['50%',       { cls:'',            style:'width:50%',   title:'' }],
   ]) assert.deepEqual(host(c.imgSizeParts(written)), want, written + ' round-trips');
+});
+
+// ── #953: the note's inbound refs live with the note, not in a strip at the window edge ──
+//
+// Measured on origin/main before this change: the panel DID populate on zoom (the issue's other
+// half was already fixed), but it sat position:fixed against the viewport bottom, 476px below the
+// note title. This is a placement fix, and these pins hold the model both surfaces now share.
+test('#953 blSectionModel: the headings and counts the strip already had, written down once', () => {
+  const mk = (n, u, x, cu) => ({ sources: Array(n).fill(0), unlinked: Array(u).fill(0),
+                                 cross: Array(x).fill(0), crossUnlinked: Array(cu).fill(0) });
+  // "Linked from" counts same-doc AND cross-doc sources together (CF-4), title-only at zero (925a).
+  assert.equal(host(c.blSectionModel(mk(0,0,0,0), {})).header, 'Linked from');
+  assert.equal(host(c.blSectionModel(mk(2,0,0,0), {})).header, 'Linked from · 2');
+  assert.equal(host(c.blSectionModel(mk(2,0,3,0), {})).header, 'Linked from · 5',
+    'same-doc and cross-doc sources are ONE count, not two sections');
+  assert.equal(host(c.blSectionModel(mk(0,9,0,0), {})).header, 'Linked from',
+    'unlinked mentions are not "linked from" and must not inflate the count');
+
+  const unl = d => host(c.blSectionModel(d, {})).sections.find(x => x.kind === 'unlinked');
+  assert.equal(unl(mk(0,0,0,0)).heading, 'Unlinked references', 'title-only at zero');
+  assert.equal(unl(mk(0,3,0,0)).heading, 'Unlinked references · 3');
+  // The divider above it only makes sense when there is something above it to divide from.
+  assert.equal(unl(mk(0,3,0,0)).divider, false, 'no linked rows above → no lone rule');
+  assert.equal(unl(mk(1,3,0,0)).divider, true, 'same-doc rows above → divider');
+  assert.equal(unl(mk(0,3,1,0)).divider, true, 'cross-doc rows above count too');
+});
+
+test('#953 blSectionModel: the cross-doc unlinked section appears only when it has rows', () => {
+  const mk = cu => ({ sources: [], unlinked: [], cross: [], crossUnlinked: Array(cu).fill(0) });
+  const kinds = d => host(c.blSectionModel(d, {})).sections.map(s => s.kind);
+  // Folder-only: an always-on heading would advertise a section most documents cannot fill.
+  assert.deepEqual(kinds(mk(0)), ['linked', 'unlinked'], 'no cross-doc mentions → no section at all');
+  assert.deepEqual(kinds(mk(2)), ['linked', 'unlinked', 'crossUnlinked'], 'and it is always last');
+  assert.equal(host(c.blSectionModel(mk(2), {})).sections[2].heading,
+    'Unlinked references in other documents · 2', 'this one is always counted');
+});
+
+test('#953 blSectionModel: only the in-flow surface says "nothing here", and only when nothing is', () => {
+  const empty = { sources: [], unlinked: [], cross: [], crossUnlinked: [] };
+  // A docked strip can be silent and just be short. A section sitting in the page cannot: a
+  // heading over blank space is a P4 silent nothing.
+  assert.equal(host(c.blSectionModel(empty, {})).empty, '', 'the strip adds no empty line');
+  const inflow = host(c.blSectionModel(empty, { inflow: true }));
+  assert.equal(inflow.empty, 'Nothing links to this point yet. Write [[ in another point to link it here.',
+    'in flow it says so, and says how to change it');
+  // Any content at all, from any section, suppresses the line.
+  for (const d of [{ sources: [1] }, { unlinked: [1] }, { cross: [1] }, { crossUnlinked: [1] }])
+    assert.equal(host(c.blSectionModel(d, { inflow: true })).empty, '',
+      'a section with rows means the note is not empty of references');
+});
+
+test('#953 blSectionModel: both surfaces read the same model, so they cannot drift', () => {
+  const d = { sources: [1,2], unlinked: [1], cross: [1], crossUnlinked: [1] };
+  const strip = host(c.blSectionModel(d, {}));
+  const flow  = host(c.blSectionModel(d, { inflow: true }));
+  assert.equal(strip.header, flow.header, 'same header');
+  assert.deepEqual(strip.sections, flow.sections, 'same sections, same headings, same dividers');
+  // `inflow` is allowed to differ in exactly one thing, and only when there is nothing to show.
+  assert.equal(flow.empty, '', 'and with content, not even that');
+});
+
+test('#953 the mentions walk is off the render path, and the first paint claims nothing it has not counted', () => {
+  // Measured: running the whole gather in render() cost 26ms -> 256ms per edit at 50k points,
+  // because collectUnlinkedRefs walks every point (and every folder document). So the section
+  // paints the LINKS from the index, then fills the MENTIONS in from an idle callback.
+  const d = { sources: [1, 2], unlinked: [], cross: [], crossUnlinked: [] };
+  const pend = host(c.blSectionModel(d, { inflow: true, pending: true }));
+  assert.deepEqual(pend.sections.map(x => x.kind), ['linked'],
+    'while pending, the mention sections are OMITTED, not shown as zero — "Unlinked references" ' +
+    'with no count is a claim about a walk that has not run (P4)');
+  assert.equal(pend.header, 'Linked from · 2', 'the links half is known immediately and is shown');
+  assert.equal(pend.empty, '', 'and "nothing links here" waits until the count is real');
+  // Even with nothing linked, a pending section stays quiet rather than declaring emptiness.
+  const pendEmpty = host(c.blSectionModel({ sources: [], unlinked: [], cross: [], crossUnlinked: [] },
+    { inflow: true, pending: true }));
+  assert.equal(pendEmpty.empty, '', 'a pending empty section does not announce emptiness either');
+  assert.deepEqual(pendEmpty.sections.map(x => x.kind), ['linked']);
+  // Once filled, it is the ordinary model again.
+  const done = host(c.blSectionModel(d, { inflow: true }));
+  assert.deepEqual(done.sections.map(x => x.kind), ['linked', 'unlinked']);
+
+  // Nothing O(document) may run from the render path: not the gather, and not the rows either
+  // (a source title goes through displayText -> varMapAt, which rebuilds the positional map).
+  const bz = _src.slice(_src.indexOf('function buildZoomBacklinks('), _src.indexOf('function scheduleZoomBlFill('));
+  assert.ok(!bz.includes('blGather(') && !bz.includes('blGatherCached('),
+    'the render path never runs the gather — only blGatherWarm, which computes nothing');
+  assert.ok(/const warm = blGatherWarm\(nodeId\);/.test(bz)
+         && /warm \|\| \{ sources: \[\], unlinked: \[\], cross: \[\], crossUnlinked: \[\] \}/.test(bz),
+    'a cold generation draws no rows at all; they arrive from the idle fill');
+  assert.ok(/if \(!warm\) scheduleZoomBlFill\(/.test(bz), 'and only then is a fill scheduled');
+  // The fill re-checks everything on arrival and patches in place (it must never call render()).
+  const sf = _src.slice(_src.indexOf('function scheduleZoomBlFill('), _src.indexOf('function scheduleZoomBlFill(') + 900);
+  assert.ok(/if \(focusedId !== nodeId \|\| !sec\.isConnected\) return;/.test(sf),
+    'a fill that arrives after the reader zoomed away, or after a re-render, is dropped');
+  assert.ok(!/\brender\(\)/.test(sf), 'the fill patches the section in place, so it cannot loop');
+  assert.ok(/cancelIdleCallback \|\| clearTimeout/.test(sf), 'a second render supersedes the first fill');
+});
+
+test('#953 the in-flow section is wired into the zoom view, below the children', () => {
+  // Placement is the whole point of the issue, so pin the ORDER: the section is appended after
+  // the ghost row and before the search-empty banner, i.e. under the note's content.
+  const r = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  const ghost = r.indexOf('appendGhostRow(vp, container)');
+  const sec = r.indexOf('container.appendChild(buildZoomBacklinks(vp.id))');
+  const se = r.indexOf("seEl.id = 'search-empty'");
+  assert.ok(ghost > -1 && sec > -1 && se > -1, 'all three landmarks are present');
+  assert.ok(ghost < sec && sec < se, 'the section sits after the children + New point, before search-empty');
+  assert.ok(/if \(focusedId != null && vp\.type !== 'base'\)/.test(r),
+    'only when zoomed, and never for a base (a zoomed base is a table widget)');
+  // It is in FLOW: no fixed positioning, and it reuses the strip's row CSS rather than forking it.
+  assert.ok(_src.includes('.zoom-bl{margin:26px 0 8px;padding-top:12px;border-top:1px solid var(--bdr)}'),
+    'the section is an ordinary in-flow block');
+  assert.ok(!/\.zoom-bl\{[^}]*position:fixed/.test(_src), 'and is not docked to the viewport');
+  assert.ok(_src.includes('.zoom-bl .bl-item,.zoom-bl .bl-snippet,.zoom-bl .bl-subhd,.zoom-bl .bl-unlinked-label{white-space:normal'),
+    'rows may wrap in flow (the strip clips them because it is height-capped)');
+});
+
+test('#953 one renderer, two containers: the strip is a wrapper, not a copy', () => {
+  // A forked renderer would drift. renderBlPanel must be a thin adapter over renderBlRows, and
+  // renderBlRows must take its subject as a PARAMETER rather than reading the strip's global.
+  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlRows('));
+  assert.ok(/renderBlRows\(document\.getElementById\('bl-list'\), document\.getElementById\('bl-panel-hd'\), blNodeId,/.test(rp),
+    'the strip passes its own container and its own subject');
+  assert.ok(!rp.includes('createElement') && !rp.includes('innerHTML'),
+    'and builds no rows of its own — a second row-builder is exactly the drift this prevents');
+  const rr = _src.slice(_src.indexOf('function renderBlRows('), _src.indexOf('function updateBlPanel('));
+  assert.ok(!rr.includes('blNodeId'), 'the shared renderer never reads the strip-only global');
+  assert.ok(!rr.includes('hideBlPanel()'),
+    'nor dismisses the strip directly — navigation goes through the beforeNavigate hook');
+  assert.ok(/const before = opts\.beforeNavigate \|\| \(\(\) => \{\}\);/.test(rr)
+         && /const afterLink = opts\.afterLink \|\| \(\(\) => \{\}\);/.test(rr),
+    'both hooks default to no-ops, which is exactly what the in-flow section wants');
+  // The in-flow builder supplies neither hook: nothing to dismiss, and Link already re-renders.
+  const bz = _src.slice(_src.indexOf('function buildZoomBacklinks('), _src.indexOf('function blShowWith('));
+  assert.ok(/renderBlRows\(inner, hd, nodeId, blGatherCached\(nodeId\), \{ inflow: true \}\)/.test(bz),
+    'the in-flow section renders the same rows from the memoised gather');
+  assert.ok(/sec\.setAttribute\('role', 'region'\)/.test(bz) && /aria-labelledby/.test(bz),
+    'and is a named region (P3), which the bottom strip never was');
+});
+
+test('#953 a zoom-in starts with the strip down (its landing focus is not the reader\u2019s choice)', () => {
+  // Found by driving, not by reading: zoomInto lands focus on the first child so Esc works, and
+  // that focus handler raises the strip. If the child happens to be linked from somewhere, opening
+  // a note slid a docked panel ABOUT A DIFFERENT POINT over it — the #1080 confusion, reintroduced
+  // through the back door. The strip under a zoom is for a child you deliberately move to.
+  const zi = _src.slice(_src.indexOf('function zoomInto('), _src.indexOf('function zoomTo('));
+  assert.ok(zi.includes('hideBlPanel();'), 'zoomInto puts the strip down after landing focus');
+  assert.ok(zi.indexOf('focusNode(vp.children[0].id)') < zi.indexOf('hideBlPanel();'),
+    'and does it AFTER the focus, or the focus handler would just raise it again');
+});
+
+test('#953 the gather is memoised, keyed on the workspace generation too', () => {
+  // blGather walks the whole tree (collectUnlinkedRefs) and every folder document. As a strip it
+  // ran only when the focused point CHANGED; in flow it is on the render path, so it must memo.
+  const g = _src.slice(_src.indexOf('function blGatherCached('), _src.indexOf('function blGatherCached(') + 1200);
+  assert.ok(/_zblVer === _varsVer && _zblGen === gen && _zblId === nodeId/.test(g),
+    'the key is (document generation, workspace generation, subject)');
+  assert.ok(/const gen = workspaceIndex \? \(workspaceIndex\.gen \|\| 0\) : 0;/.test(g),
+    'the workspace generation is in the key: a folder rescan does NOT bump _varsVer, so a ' +
+    '_varsVer-only memo would serve stale cross-doc rows');
+  // Registered, with the marker the parity test pairs against. (The derived protocol test then
+  // covers its invalidation automatically — it iterates the registry, not a hand-kept list.)
+  assert.ok(_src.includes('// doc-cache: zoomBacklinks (see DOC_CACHES)'), 'the marker is present');
+  assert.ok(/regDocCache\('zoomBacklinks', \{/.test(_src), 'and the registration beside it');
+  assert.ok(c.docCaches().some(e => String(e.name) === 'zoomBacklinks'),
+    'and it is actually in the registry at runtime');
+});
+
+test('#953 displayText skips varMapAt when there is no artifact to flatten (the measured stall)', () => {
+  // Not a micro-optimisation for its own sake: collectUnlinkedRefs calls displayText on EVERY
+  // node, and varMapAt is a per-node cache a generation bump clears, so the first click into a
+  // point in a 5k-point document stalled ~665ms on main. Measured after this guard: 62ms.
+  // Sound because every artifact flattenArtifacts resolves carries a `[` or a `{`:
+  //   [[type:key]] pill tokens · [/] and [%] cookies · [o n/m] clocks · {meter:…}
+  // and flattenSpoilers (the one branch needing neither) never reads the map.
+  const dt = _src.slice(_src.indexOf('function displayText('), _src.indexOf('function aliasesOf('));
+  assert.ok(/ART_SNIFF\.test\(t\) \? varMapAt\(node\) : EMPTY_VARMAP/.test(dt),
+    'the varMap is built only when the text could contain an artifact');
+  assert.ok(/const ART_SNIFF = \/\[\\\[\{\]\//.test(_src), 'the sniff is exactly [ or {');
+  // An explicitly passed varMap must still win — callers that supply one are positional renders.
+  assert.ok(/varMap \|\| \(ART_SNIFF/.test(dt), 'an explicit varMap short-circuits the guard, as before');
+  // The guard would be unsound if flattenArtifacts grew a branch matching neither character.
+  const fa = _src.slice(_src.indexOf('function flattenArtifacts('), _src.indexOf('function flattenSpoilers('));
+  const replaces = fa.match(/\.replace\(([^,]+),/g) || [];
+  assert.ok(replaces.length >= 4, 'flattenArtifacts still has its four resolve passes');
+  for (const r of replaces)
+    assert.ok(r.includes('\\[') || r.includes('\\{') || r.includes('CLOCK_RE') || r.includes('{meter'),
+      'every flattenArtifacts pattern must be anchored on [ or { or the guard is unsound: ' + r);
 });

@@ -38,10 +38,19 @@ See the full web of what connects to an idea: not just what you linked *from* th
 everything across your documents that links *to* it. Useful in a personal wiki or research notes when you
 want to know what else depends on or references a concept.
 
+**Zoom into a point** and its Linked from list sits at the foot of the note, under its children, as
+part of the page rather than in a bar over it. It is always there, and when nothing links to the
+point yet it says so instead of showing an empty space.
+
+On the plain outline the same list **rises from the bottom of the screen** as you work, following
+whichever point holds the cursor, and only when something links to it, so a document without links
+stays uncluttered. While you are zoomed in, that bar is reserved for a child point you move to that
+has links of its own; the note's own list stays where you can read it.
+
 Each row shows a **line of context** from the source under its title, the words around the link, so
 you can see what that point says about this one without visiting it.
 
-The backlinks panel also surfaces **mentions of the title that are not linked yet**, so you can
+Both lists also surface **mentions of the title that are not linked yet**, so you can
 connect them with one click.
 
 In a [connected folder](files-and-export.md#working-with-a-folder-of-documents) the panel adds an

@@ -2371,6 +2371,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .bl-link-btn{flex-shrink:0;font-size:11px;font-weight:600;color:var(--acc);cursor:pointer;padding:1px 6px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;outline-offset:2px}
 .bl-link-btn:hover{background:var(--acc);color:var(--acc-fg)}
 .bl-link-btn:focus-visible{outline:2px solid var(--acc)}
+/* #953: the same rows again, in flow at the foot of a zoomed note, so "what links here" sits with
+   the note instead of in a strip docked to the bottom of the window. Every .bl-* rule above is
+   reused unchanged — only the container differs. The rows drop `white-space:nowrap` here: the
+   strip is 180px tall and must not grow, but in flow there is room to read a long title. */
+.zoom-bl{margin:26px 0 8px;padding-top:12px;border-top:1px solid var(--bdr)}
+.zoom-bl-hd{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em;margin-bottom:4px}
+.zoom-bl .bl-item,.zoom-bl .bl-snippet,.zoom-bl .bl-subhd,.zoom-bl .bl-unlinked-label{white-space:normal;overflow:visible;text-overflow:clip}
+.zoom-bl .bl-empty{font-size:13px;color:var(--muted);padding:2px 0}
 /* ── link picker ([[ trigger) ── */
 #lp-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:260px;max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #lp-menu.on{display:block}
@@ -3196,9 +3204,18 @@ function displayTitle(node) {
 //     unlinked reference (and a footnote marker `[^k]` is never displayed prose).
 // Pure-ish: flattenArtifacts/linkText read sidecars + the live title/var maps, the
 // same reads the render already does.
+// #953 (measured): varMapAt is a per-node cache that a generation bump clears, so warming it
+// across a whole document costs ~540ms at 5k points — and collectUnlinkedRefs calls displayText on
+// every node, which is why the first click into a point in a big document stalled for ~620ms on
+// main. Every artifact flattenArtifacts can resolve is spelled with a `[` or a `{`: the
+// [[type:key]] pill tokens, the [/] and [%] cookies, the [o n/m] clocks, and {meter:…}. With
+// neither character present the map is never read, so it never needs building. Same shape as the
+// MD_SNIFF / EX_SNIFF guards: prove cheaply that no expensive work can fire, then skip it.
+const ART_SNIFF = /[\[{]/;
+const EMPTY_VARMAP = {};
 function displayText(node, { forMatch = false, varMap } = {}) {
   let t = textForDisplay(node) || '';
-  t = flattenArtifacts(t, node, varMap || varMapAt(node));  // dice/grammar/math/etc → shown value (positional)
+  t = flattenArtifacts(t, node, varMap || (ART_SNIFF.test(t) ? varMapAt(node) : EMPTY_VARMAP));  // dice/grammar/math/etc → shown value (positional)
   t = forMatch
     ? t.replace(/\[\[[^\]]*\]\]/g, ' ').replace(/\[\^[^\]]*\]/g, ' ')  // drop link + footnote tokens
     : linkText(t);                                                     // resolve links to legible text
@@ -8804,6 +8821,11 @@ function zoomInto(id) {
   const vp = nodeById(id);
   if (vp?.children?.length) focusNode(vp.children[0].id);
   else document.querySelector('.zoom-title')?.focus();
+  // #953: that landing focus is the app's choice, not the reader's, and its focus handler raises
+  // the strip. Found by driving: zoom into a note whose FIRST CHILD happens to be linked from
+  // somewhere and a docked panel about that child slides over the note you just opened. The strip
+  // under a zoom is for a child you deliberately move to, so start every zoom with it down.
+  hideBlPanel();
 }
 function zoomTo(id)   { focusedId = id; render(); }
 
@@ -9230,6 +9252,12 @@ function render() {
   // identical invitation right under it. (firstChildId is set only in that empty case.)
   if (!firstChildId) appendGhostRow(vp, container);
 
+  // #953: a zoomed note carries its own inbound references in flow, under its children. The
+  // bottom strip stays for the outline's caret case; here the answer belongs WITH the note (the
+  // strip sat ~480px below the title, docked to the window edge). Bases are skipped: a zoomed
+  // base is a table widget, and updateBlPanel already excludes them.
+  if (focusedId != null && vp.type !== 'base') container.appendChild(buildZoomBacklinks(vp.id));
+
   // UXP-59: empty-state banner when a search yields no matches
   const seEl = document.createElement('div');
   seEl.id = 'search-empty';
@@ -9266,8 +9294,10 @@ function render() {
   // empty panel) nor stay hidden on a child-bearing note. Runs last so it wins over focusNode;
   // as the user then focuses child rows, the panel tracks them (unchanged). Bases have no title
   // backlink panel, so skip them.
-  if (_focusChanged && focusedId && vp.type !== 'base') updateBlPanel(focusedId);
-  else if (_focusChanged && !focusedId) { hideBlPanel(); hideFnPanel(); }
+  // #953: zooming IN no longer raises the strip for the zoom root — buildZoomBacklinks drew that
+  // point's refs in flow above, and a docked copy of the same list would sit on top of the note.
+  // Zooming OUT still tears both panels down.
+  if (_focusChanged && !focusedId) { hideBlPanel(); hideFnPanel(); }
   syncBlankInvite();   // the blank-canvas door tracks every repaint: shows when the doc goes blank, gone the moment it isn't
 }
 let _lastRenderFocusedId = null; // #488: detect a zoom (focusedId change) to skip scroll-restore
@@ -32085,8 +32115,10 @@ function scheduleBlHide() {
     // or the zoomed-in title (.zoom-title), which is a separate hand-rolled editor.
     const ae = document.activeElement;
     if (ae?.classList.contains('node-content') || ae?.classList.contains('zoom-title')) return;
-    // When zoomed, the title's footer is ALWAYS shown — moving focus off a child reverts to it
-    // rather than hiding. On the plain outline, focus leaving everything hides the footer.
+    // #953: the "revert to the zoomed title" branch is gone. The title's refs live in flow under
+    // the note now, so focus leaving a child has nothing to revert TO — the strip's only job under
+    // a zoom is a child's own refs, and losing focus ends that. Routed through updateBlPanel so the
+    // one visibility decision stays in one place.
     if (focusedId != null) { updateBlPanel(focusedId); return; }
     hideBlPanel();
   }, 150);
@@ -32139,13 +32171,142 @@ function syncHelpBtnBottom() {
 function blGather(nodeId) {
   const idx = collectLinks();
   const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
-  const unlinked = collectUnlinkedRefs(nodeId);
   // CF-4: inbound links from OTHER workspace docs (same-doc sources come from collectLinks).
   const cross = (workspaceDir && workspaceIndex) ? workspaceBacklinks(root.docId, nodeId, workspaceIndex) : [];
+  // A walk of every point in the document, testing each one's RENDERED text. O(N), ~230ms at 50k
+  // points on a cold generation — the reason the in-flow section never calls this from render().
+  const unlinked = collectUnlinkedRefs(nodeId);
   // backlog #3: unlinked mentions of this point in OTHER folder docs (view-only, no auto-link).
   const crossUnlinked = (workspaceDir && workspaceIndex) ? collectCrossUnlinkedRefs(nodeById(nodeId), root.docId, workspaceIndex) : [];
   return { sources, unlinked, cross, crossUnlinked, has: (sources.length + unlinked.length + cross.length + crossUnlinked.length) > 0 };
 }
+
+// #953: the inbound-refs answer is now drawn in TWO places — the bottom strip (caret-driven, the
+// outline view) and an in-flow section at the foot of a zoomed note. This is the one model both
+// render from, so the headings, the counts and the empty copy cannot drift apart. Pure: it takes
+// blGather's output and returns a render script, no DOM, no globals.
+//
+// The rules it carries are the ones the strip already had, written down instead of inlined:
+//   * "Linked from" counts SAME-DOC + CROSS-DOC sources together (CF-4), and is always present,
+//     title-only at zero (925a) — never a hidden section, never an empty box.
+//   * "Unlinked references" is likewise always present, but its divider is suppressed when there
+//     is nothing above it to divide from (a lone rule reads as broken UI).
+//   * The cross-doc unlinked section appears only when it has rows (it is folder-only, so an
+//     always-on heading would advertise a feature most documents cannot use).
+// `inflow` adds one thing the strip never needed: a sentence when the whole section is empty. A
+// docked strip can say nothing and just be short; a section sitting in the page cannot (P4).
+function blSectionModel(d, opts) {
+  const inflow = !!(opts && opts.inflow);
+  // `pending` is the in-flow section's first paint, before the O(N) mentions walk has run. The
+  // mention sections are OMITTED rather than shown as zero: "Unlinked references" with no count
+  // is the honest zero state, and printing it before anything has been counted would be a claim
+  // the app has not checked (P4). Same reason the empty line waits.
+  const pending = !!(opts && opts.pending);
+  const sources = (d && d.sources) || [], cross = (d && d.cross) || [];
+  const unlinked = (d && d.unlinked) || [], crossUnlinked = (d && d.crossUnlinked) || [];
+  const linked = sources.length + cross.length;
+  const sections = [{ kind:'linked', heading:null, count:linked, rows:linked }];
+  if (!pending) sections.push({ kind:'unlinked',
+    heading:'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : ''),
+    divider: linked > 0, rows:unlinked.length });
+  if (!pending && crossUnlinked.length) sections.push({
+    kind:'crossUnlinked', heading:`Unlinked references in other documents · ${crossUnlinked.length}`,
+    divider:true, rows:crossUnlinked.length });
+  return {
+    header: linked ? `Linked from · ${linked}` : 'Linked from',
+    linked, sections,
+    // The one line the in-flow section adds. Empty means "nothing inbound AND nothing to link",
+    // i.e. every section above rendered zero rows.
+    pending,
+    empty: (inflow && !pending && linked + unlinked.length + crossUnlinked.length === 0)
+      ? 'Nothing links to this point yet. Write [[ in another point to link it here.' : '',
+  };
+}
+
+// #953: blGather is not cheap — it walks the whole tree in collectUnlinkedRefs and every folder
+// document in the two cross-doc collectors. As a caret-driven strip it ran only when the focused
+// point CHANGED; in flow it would run on every render.
+//
+// What this memo is actually for, after measuring: NOT the render path (nothing expensive runs
+// there any more — buildZoomBacklinks defers everything on a cold generation, and defeating this
+// memo moves the benchmark by ~0.2ms). It is the "can I paint now?" signal. A hit means the answer
+// is already known, so the section draws complete and instantly; a miss means deferring, which
+// costs a visible blank-then-fill. Without it EVERY render would defer, including the ones that
+// changed nothing (a collapse, a view toggle). It also collapses repeat fills within a generation.
+//
+// The key is (_varsVer, _wsIndexGen, nodeId), not _varsVer alone: `cross` and `crossUnlinked` come
+// from workspaceIndex, and a folder rescan bumps the workspace generation WITHOUT touching
+// _varsVer, so a _varsVer-only memo would serve stale cross-doc rows. That is also why this cannot
+// go through makeDocCache, which keys on _varsVer only.
+let _zblVer = -1, _zblGen = -1, _zblId = null, _zblData = null;   // doc-cache: zoomBacklinks (see DOC_CACHES)
+regDocCache('zoomBacklinks', {
+  read: () => blGatherCached(focusedId),
+  reset: () => { _zblVer = -1; _zblGen = -1; _zblId = null; _zblData = null; },
+});
+// A memo READ that never computes: the in-flow section uses it to decide whether the full gather
+// is already available (paint it all at once) or has to be filled in off the render path.
+function blGatherWarm(nodeId) {
+  const gen = workspaceIndex ? (workspaceIndex.gen || 0) : 0;
+  return (_zblVer === _varsVer && _zblGen === gen && _zblId === nodeId && _zblData) ? _zblData : null;
+}
+function blGatherCached(nodeId) {
+  const gen = workspaceIndex ? (workspaceIndex.gen || 0) : 0;
+  if (_zblVer === _varsVer && _zblGen === gen && _zblId === nodeId && _zblData) return _zblData;
+  // No subject (not zoomed, or the point is gone) still fills the slot with a FRESH empty gather
+  // rather than a shared constant: the registry's derived test reads every cache through `read`
+  // and requires identity within a generation and a new object after a bump. A shared frozen
+  // blank would pass the first half and fail the second, and would be a lie besides.
+  const node = nodeId ? nodeById(nodeId) : null;
+  _zblData = node ? blGather(nodeId) : { sources: [], unlinked: [], cross: [], crossUnlinked: [], has: false };
+  _zblVer = _varsVer; _zblGen = gen; _zblId = nodeId;
+  return _zblData;
+}
+
+// #953: the note's own inbound refs, in flow under its children. Same rows, same model, same
+// keyboard behaviour as the strip — only the container and the navigate hooks differ.
+function buildZoomBacklinks(nodeId) {
+  const sec = document.createElement('section');
+  sec.className = 'zoom-bl';
+  sec.setAttribute('role', 'region');
+  const hd = document.createElement('div');
+  hd.className = 'zoom-bl-hd';
+  hd.id = 'zoom-bl-hd';
+  sec.setAttribute('aria-labelledby', 'zoom-bl-hd');
+  const inner = document.createElement('div');
+  sec.append(hd, inner);
+  // Two-stage, because this runs on EVERY render while zoomed and BOTH halves are O(document) on a
+  // cold generation. Measured at 50k points, per edit: the mentions walk 256ms, and even the cheap
+  // links half still cost 116ms — not in the gather (9ms) but in drawing the rows, because each
+  // source title goes through displayText -> varMapAt, and the first such call after an edit
+  // rebuilds the positional variable map for the whole document.
+  //
+  // So on a cold generation nothing is drawn here: the heading goes up and the rows arrive from an
+  // idle callback, by which time varMapAt is warm anyway. A warm memo (any render that did not
+  // change the document: a collapse, a view toggle, a scroll-driven rebuild) paints in full, so
+  // the deferred path is only ever taken right after an edit.
+  const warm = blGatherWarm(nodeId);
+  renderBlRows(inner, hd, nodeId, warm || { sources: [], unlinked: [], cross: [], crossUnlinked: [] },
+    { inflow: true, pending: !warm });
+  if (!warm) scheduleZoomBlFill(nodeId, sec, inner, hd);
+  // beforeNavigate is a no-op (nothing is docked to dismiss) and afterLink likewise: doLink already
+  // calls render(), which rebuilds this section from scratch.
+  return sec;
+}
+
+// Stage 2. Cancels any in-flight fill (a second render supersedes the first), and re-checks
+// everything on arrival: still zoomed on the same point, and the element still in the document.
+// It patches the section in place rather than calling render(), so it can never loop.
+let _zblFill = null;
+function scheduleZoomBlFill(nodeId, sec, inner, hd) {
+  if (_zblFill) (window.cancelIdleCallback || clearTimeout)(_zblFill);
+  const run = () => {
+    _zblFill = null;
+    if (focusedId !== nodeId || !sec.isConnected) return;   // superseded: zoomed away, or re-rendered
+    renderBlRows(inner, hd, nodeId, blGatherCached(nodeId), { inflow: true });
+  };
+  _zblFill = window.requestIdleCallback ? requestIdleCallback(run, { timeout: 400 }) : setTimeout(run, 0);
+}
+
 function blShowWith(nodeId, d) {
   blNodeId = nodeId;
   renderBlPanel(d.sources, d.unlinked, d.cross, d.crossUnlinked);
@@ -32167,19 +32328,29 @@ function hideBlPanel() {
   syncBodyPadBottom();
 }
 
+// The bottom strip: the original caller, now a thin wrapper over the shared renderer.
 function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
-  unlinked = unlinked || [];
-  cross = cross || [];
-  crossUnlinked = crossUnlinked || [];
-  const inner = document.getElementById('bl-list');
-  const hd = document.getElementById('bl-panel-hd');
-  const total = sources.length + cross.length;   // "Linked from" is all inbound links (CF-4)
-  if (hd) {
-    // 925a: the title is ALWAYS shown (title-only when 0 inbound links), never hidden and never an
-    // empty box below it — the rows that follow are the only content.
-    hd.style.display = '';
-    hd.textContent = total ? `Linked from · ${total}` : 'Linked from';
-  }
+  renderBlRows(document.getElementById('bl-list'), document.getElementById('bl-panel-hd'), blNodeId,
+    { sources, unlinked, cross, crossUnlinked },
+    { beforeNavigate: hideBlPanel, afterLink: () => showBlPanel(blNodeId) });
+}
+
+// #953: the shared row renderer. This was renderBlPanel's body, with three things parameterised so
+// a second surface reuses it verbatim instead of forking it: WHERE the rows go (inner/hd), WHICH
+// point they are about (subjectId, previously the module global blNodeId), and what happens around
+// navigation. The strip dismisses itself before navigating and re-shows itself after a Link; the
+// in-flow section has nothing to dismiss and is rebuilt by the render() that Link already triggers.
+function renderBlRows(inner, hd, subjectId, d, opts) {
+  if (!inner) return;
+  opts = opts || {};
+  const before = opts.beforeNavigate || (() => {});
+  const afterLink = opts.afterLink || (() => {});
+  const sources = d.sources || [];
+  const unlinked = d.unlinked || [];
+  const cross = d.cross || [];
+  const crossUnlinked = d.crossUnlinked || [];
+  const model = blSectionModel({ sources, unlinked, cross, crossUnlinked }, opts);
+  if (hd) { hd.style.display = ''; hd.textContent = model.header; }
   inner.innerHTML = '';
   sources.forEach(src => {
     const item = document.createElement('div');
@@ -32191,13 +32362,13 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.setAttribute('tabindex', '0');
     // 4d: context preview — the source line around the link, so a row answers "what does it
     // say about this?" without a visit. Skipped when it would just repeat the title.
-    const snip = stripCaptionTags(backlinkSnippet(src.text, blNodeId));   // #943: tag-free context line
+    const snip = stripCaptionTags(backlinkSnippet(src.text, subjectId));   // #943: tag-free context line
     item.setAttribute('aria-label', `Linked from "${t}"${snip && snip !== t ? ': ' + snip : ''}. Open`);
     if (snip && snip !== t) {
       const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;
       item.appendChild(sn);
     }
-    const go = () => { hideBlPanel(); zoomInto(src.id); };
+    const go = () => { before(); zoomInto(src.id); };
     item.addEventListener('click', go);
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     inner.appendChild(item);
@@ -32219,14 +32390,14 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.setAttribute('tabindex', '0');
     // 4d: same context preview as the same-doc rows, read from the index's retained tree.
     const srcNode = findNodeInRoot(wsDocRoot(docId), nodeId);
-    const snip = srcNode ? stripCaptionTags(backlinkSnippet(srcNode.text, blNodeId)) : '';   // #943: tag-free context line
+    const snip = srcNode ? stripCaptionTags(backlinkSnippet(srcNode.text, subjectId)) : '';   // #943: tag-free context line
     item.setAttribute('aria-label', `Linked from "${t}" in ${displayName(docName || 'another document')}${snip && snip !== t ? ': ' + snip : ''}. Open`);
     if (snip && snip !== t) {
       const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;
       item.appendChild(sn);
     }
     const go = () => {
-      hideBlPanel();
+      before();
       followLinkTarget(docId, nodeId);                          // open source note, or flash if it's gone (P4)
     };
     item.addEventListener('click', go);
@@ -32237,13 +32408,22 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   // matches, no empty content below), so the section is a permanent, discoverable affordance.
   // The separator above it only makes sense when there are linked references above to separate
   // from; when there are none, a lone divider reads as a broken UI.
-  const hasLinked = sources.length + cross.length > 0;
+  // #953: in flow, "nothing here" has to SAY nothing is here — a heading over blank space does not.
+  if (model.empty) {
+    const em = document.createElement('div');
+    em.className = 'bl-empty';
+    em.textContent = model.empty;
+    inner.appendChild(em);
+    return;
+  }
+  const unlinkedSec = model.sections.find(x => x.kind === 'unlinked');
+  if (!unlinkedSec) return;                      // pending: the mentions walk has not run yet
   const subhd = document.createElement('div');
   subhd.className = 'bl-subhd';
-  subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '');
-  if (!hasLinked) { subhd.style.borderTop = 'none'; subhd.style.marginTop = '2px'; subhd.style.paddingTop = '2px'; }
+  subhd.textContent = unlinkedSec.heading;
+  if (!unlinkedSec.divider) { subhd.style.borderTop = 'none'; subhd.style.marginTop = '2px'; subhd.style.paddingTop = '2px'; }
   inner.appendChild(subhd);
-  const focusedTitle = textForDisplay(nodeById(blNodeId)) || '';
+  const focusedTitle = textForDisplay(nodeById(subjectId)) || '';
   unlinked.forEach(({ id, title }) => {
     const row = document.createElement('div');
     row.className = 'bl-item bl-unlinked';
@@ -32254,7 +32434,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     label.setAttribute('role', 'link');          // UXP-54: the unlinked-ref title is keyboard-operable too
     label.setAttribute('tabindex', '0');
     label.setAttribute('aria-label', `Open "${title}"`);
-    const goLabel = () => { hideBlPanel(); zoomInto(id); };
+    const goLabel = () => { before(); zoomInto(id); };
     label.addEventListener('click', goLabel);
     label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goLabel(); } });
     const btn = document.createElement('span');
@@ -32267,17 +32447,17 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
       const mentionNode = nodeById(id); if (!mentionNode) return;
       // The matched name may be an alias, not the title (§8): try each name the
       // focus point answers to and link whichever actually appears in this text.
-      const target = nodeById(blNodeId);
+      const target = nodeById(subjectId);
       const names = target ? nodeNames(target) : [focusedTitle];
       let next = null;
       for (const name of names) {
-        next = linkifyMention(mentionNode.text, name, blNodeId);
+        next = linkifyMention(mentionNode.text, name, subjectId);
         if (next != null) break;
       }
       if (next == null) return;
       pushUndo();
       mentionNode.text = next; markDirty(); render();
-      showBlPanel(blNodeId);
+      afterLink();
       announce('Linked mention');
     };
     btn.addEventListener('mousedown', e => { e.preventDefault(); doLink(); });
@@ -32291,10 +32471,11 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   // navigates (followLinkTarget switches the doc), with NO "Link" button, since linking would write
   // into an unopened file (the risky path the backlog fenced off). Marked with its source doc, like
   // the cross-doc backlink rows above.
-  if (!crossUnlinked.length) return;
+  const xSec = model.sections.find(x => x.kind === 'crossUnlinked');
+  if (!xSec) return;
   const xsub = document.createElement('div');
   xsub.className = 'bl-subhd';
-  xsub.textContent = `Unlinked references in other documents · ${crossUnlinked.length}`;
+  xsub.textContent = xSec.heading;
   inner.appendChild(xsub);
   crossUnlinked.forEach(({ docId, docName, nodeId, title }) => {
     const row = document.createElement('div');
@@ -32309,7 +32490,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     label.setAttribute('role', 'link');
     label.setAttribute('tabindex', '0');
     label.setAttribute('aria-label', `Open "${title}" in ${displayName(docName || 'another document')}`);
-    const go = () => { hideBlPanel(); followLinkTarget(docId, nodeId); };
+    const go = () => { before(); followLinkTarget(docId, nodeId); };
     label.addEventListener('click', go);
     label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     row.appendChild(label);
@@ -32320,15 +32501,18 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
 function updateBlPanel(nodeId) {
   // Visibility model (owner-directed): on the OUTLINE (not zoomed) the Linked/Unlinked footer shows
   // ONLY when the interacted point has inbound refs — no empty footer clutter on the plain view.
-  // When ZOOMED, the footer is ALWAYS present and reflects the ZOOMED point (the header-styled title)
-  // by default; focusing a CHILD switches it to that child's refs ONLY if the child has data, else it
-  // falls back to the title's always-on panel. De-selecting a child reverts to the title (scheduleBlHide).
+  //
+  // #953 simplified the zoomed half: the zoomed point's own refs are now drawn IN FLOW under its
+  // children, so the strip must NOT also answer for it — two copies of the same list, one of them
+  // docked over the content, is worse than either alone. The strip's remaining job under a zoom is
+  // the one thing the in-flow section cannot cover: a CHILD row that has inbound refs of its own.
+  // (The old "empty child falls back to the title" branch went with it — the title's refs are
+  // already on screen.)
   const zoomed = focusedId != null;
-  if (zoomed && nodeId === focusedId) { showBlPanel(nodeId); return; }   // the zoomed title: always shown, even empty
+  if (zoomed && nodeId === focusedId) { hideBlPanel(); return; }         // the note's own refs are in flow
   const d = blGather(nodeId);
   if (d.has) { blShowWith(nodeId, d); return; }                          // this point has inbound refs → show them
-  if (zoomed) { showBlPanel(focusedId); return; }                        // empty child under a zoom → fall back to the title
-  hideBlPanel();                                                         // outline view, nothing inbound → hide (no empty footer)
+  hideBlPanel();                                                         // nothing inbound → hide (no empty footer)
 }
 
 // Keep the panel docked above the software keyboard on mobile. Crucially the
@@ -35733,10 +35917,11 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Click into a point and the Linked from panel rises from the bottom of the screen whenever other points link to it or mention its title; it updates as you move between points. Each row shows a line of context from the source under its title, so you can see what it says about this point without visiting. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept.\n\nZoom into a point and its Linked from list sits at the foot of the note, under its children, as part of the page. It is always there, and says so plainly when nothing links to the point yet. On the plain outline the same list rises from the bottom of the screen instead, following whichever point you are working in, and only when something links to it.\n\nEach row shows a line of context from the source under its title, so you can see what it says about this point without visiting. Both lists also surface mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder they list unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
     related:['point-links','link-graph','cross-doc-links'],
     examples:[
       { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
+      { syn:'zoom into a point',    desc:'its Linked from list sits under the note, always' },
       { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
       { syn:'…in other documents',  desc:'mentions in your other folder documents; click to open' },
     ] },
