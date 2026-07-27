@@ -1143,8 +1143,12 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .var-pill.var-ref{border:1px solid var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--cbg))}
 .var-pill.var-undef{border-color:var(--del);border-style:dashed}
 /* var-dist (#952): a variable holding an uncertain value. Reads as an estimate — same headline,
-   same sparkline treatment — because it IS one; the $ icon keeps it recognisable as a variable. */
-.var-pill.var-dist .var-val{font-weight:600}
+   same sparkline treatment — because it IS one; the $ icon keeps it recognisable as a variable.
+   NOTE: no font-weight override here. A `.var-pill.var-dist .var-val` rule (0,3,0) out-specifies
+   the prose-mode `.nt-para .var-val{font-weight:inherit}` (0,2,0) and left a distribution bold
+   inside a paragraph while every neighbouring pill flattened — measured, not guessed. Inheriting
+   `.var-val`'s own weight also matches `.est-summary`, which is the point: one display for one
+   thing. */
 .var-pill.var-dist .est-spark{font-family:var(--mono);letter-spacing:-.03em;color:color-mix(in srgb,var(--pill-est) 62%,var(--fg))}
 .var-pill.var-dist.var-rolled .est-spark{display:inline-block;animation:dice-pop .28s cubic-bezier(.2,.8,.3,1)}
 .var-pill.var-rolled .var-val{display:inline-block;animation:roll-pop .28s cubic-bezier(.2,.8,.3,1)}
@@ -1294,8 +1298,11 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .nt-para .dice-formula, .nt-para .dice-eq{display:none}
 /* #944: in prose, a variable REFERENCE reads as just its value (the name is shown on the
    declaration pill) — a reused frozen name renders "Sor", not "captainSor". Reference-only
-   (.var-ref); the declaration pill keeps its name=value form. */
-.nt-para .var-ref .var-name{display:none}
+   (.var-ref); the declaration pill keeps its name=value form.
+   #952 adds .var-eq: a distribution reference carries an '≈' separator, and hiding the name
+   without it left a dangling "≈ 143.2" mid-sentence. The separator only ever separated the
+   name from the value, so it goes wherever the name goes. */
+.nt-para .var-ref .var-name, .nt-para .var-ref .var-eq{display:none}
 .nt-para .dice-total, .nt-para .var-val{font-weight:inherit;font-family:inherit}   /* read as prose, not a bold-mono island */
 /* query pill (block): a live embedded search. --pill hue #4a6b8a (info-family blue, distinct
    from the artifact hues per design-language §4). Uses only tokens + the --r-* radii. */

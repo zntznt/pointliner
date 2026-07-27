@@ -6538,6 +6538,26 @@ test('#925f: the prose-mode pill CSS drops the stadium in a paragraph', () => {
 });
 
 // UXP-137: the freeze-to-text core produces exactly what flattenArtifacts inlines (lockstep).
+test('#952 the distribution pill does not fight the shipped prose-mode rules (#925f/#944)', () => {
+  // Found by measuring computed styles in a paragraph, not by reading the CSS. Two artifacts this
+  // change introduced, both invisible to a source-only reading:
+  //  (1) a `.var-pill.var-dist .var-val` weight rule (0,3,0) OUT-SPECIFIES the prose-mode
+  //      `.nt-para .var-val{font-weight:inherit}` (0,2,0), so a distribution stayed bold inside a
+  //      paragraph while every neighbouring pill flattened. Measured: weight 600 vs 400.
+  //  (2) the '≈' separator added to the reference pill had no .nt-para rule, so once #944 hides
+  //      the name you got a dangling "≈ 143.2" mid-sentence.
+  assert.ok(!/\.var-pill\.var-dist \.var-val\{[^}]*font-weight/.test(_src),
+    'no font-weight override on .var-dist .var-val — it would out-specify the prose-mode flattening');
+  assert.ok(/\.nt-para \.var-ref \.var-name, \.nt-para \.var-ref \.var-eq\{display:none\}/.test(_src),
+    'the separator is hidden wherever the name is: it only ever separated the name from the value');
+  // the prose-mode rule still lists .var-val among the values it flattens (the rule being relied on)
+  assert.ok(/\.nt-para \.dice-total, \.nt-para \.var-val\{font-weight:inherit;font-family:inherit\}/.test(_src),
+    'the prose-mode weight/family flattening covers .var-val');
+  // and the DECLARATION keeps its separator in prose — only a reference drops name+separator (#944)
+  assert.ok(!/\.nt-para \.var-pill \.var-eq\{display:none\}/.test(_src),
+    'the chrome-drop is reference-only; a declaration still reads name ≈ value');
+});
+
 test('#952 a distribution FREEZES and EXPORTS to its summary, never to "?"', () => {
   // The hole: frozenTokenText's var arm resolves through varMap[name], and #952 deliberately keeps
   // distributions OUT of that map (the sibling lane protects resolveVarDefs' number|string
