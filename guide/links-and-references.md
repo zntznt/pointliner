@@ -38,10 +38,19 @@ See the full web of what connects to an idea: not just what you linked *from* th
 everything across your documents that links *to* it. Useful in a personal wiki or research notes when you
 want to know what else depends on or references a concept.
 
+**Zoom into a point** and its Linked from list sits at the foot of the note, under its children, as
+part of the page rather than in a bar over it. It is always there, and when nothing links to the
+point yet it says so instead of showing an empty space.
+
+On the plain outline the same list **rises from the bottom of the screen** as you work, following
+whichever point holds the cursor, and only when something links to it, so a document without links
+stays uncluttered. While you are zoomed in, that bar is reserved for a child point you move to that
+has links of its own; the note's own list stays where you can read it.
+
 Each row shows a **line of context** from the source under its title, the words around the link, so
 you can see what that point says about this one without visiting it.
 
-The backlinks panel also surfaces **mentions of the title that are not linked yet**, so you can
+Both lists also surface **mentions of the title that are not linked yet**, so you can
 connect them with one click.
 
 In a [connected folder](files-and-export.md#working-with-a-folder-of-documents) the panel adds an
@@ -90,6 +99,18 @@ ring so you can see where you are, and clicking a document opens it. A link that
 no longer in the folder shows as a red dot, same as a deleted point. Documents with no cross-document
 links stay off the map, and the toggle only appears when the folder actually has several documents.
 It is the map of your notebook, one level up from the map of a document.
+
+A third view, **Nearby**, answers a smaller question: *what is close to the point I am on?* It draws
+that point, ringed, plus everything within **two steps** of it, following links in both directions
+(what you linked to, and what links to you) and across your other documents. It is the local map
+rather than the whole web, and it is what you want while reading one note rather than surveying the
+whole document.
+
+Open the graph with the cursor in a point and the **Nearby** chip appears beside the others. A point
+in a very busy neighbourhood is capped, and the count line says how many of how many you are seeing,
+along with how far it reached, for example `150 of 201 points across 3 documents, 149 links, within
+2 hops`. Clicking a dot from another document opens that document at the point. A point nothing
+links to yet says so rather than showing a single lonely dot.
 
 ## Links across documents
 

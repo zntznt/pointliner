@@ -22,6 +22,9 @@ The everyday outliner. This is the part you use without thinking about it.
   ([point types](writing-and-formatting.md#point-types))
 - **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line.
   ([styling text](writing-and-formatting.md#styling-text))
+- **Image size.** An image fits the reading column by default; add `"wide"`, `"full"` or a
+  percentage in the Markdown title to run it three quarters of the window, edge to edge, or at a
+  size you pick. ([image size](writing-and-formatting.md#image-size))
 - **Secret and spoiler blocks.** Start a line with `>!` to hide it behind a blur until you click
   or press it to reveal. ([secret blocks](writing-and-formatting.md#secret-and-spoiler-blocks))
 - **Emoji.** Type `:` and a name (`:fire`, `:tada`) to pick from a menu, or type the full
@@ -211,6 +214,12 @@ Turn the document into a lightweight planner.
 
 Build a connected folder of documents (Zettelkasten style), not just a single one.
 
+- **Nearby graph.** Open the link graph with the cursor in a point and a Nearby view shows just
+  that point and everything within two steps of it, across your documents.
+  ([link graph](links-and-references.md#link-graph))
+- **Backlinks under the note.** Zoom into a point and everything that links to it is listed at the
+  foot of the note, under its children, always present.
+  ([backlinks](links-and-references.md#backlinks))
 - **Internal links.** `[[#point]]` links to any other point, with live titles and backlinks.
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
 - **Mirrors and subtree embeds.** `[[#id|]]` embeds a point's content inline; alone on its line it

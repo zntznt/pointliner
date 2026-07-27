@@ -8217,30 +8217,40 @@ test('#925a: backlinks panel can render always-on (both strip titles shown at 0 
   const fn = _src.slice(_src.indexOf('function showBlPanel('), _src.indexOf('function showBlPanel(') + 900);
   assert.ok(!/if \(!sources\.length && !unlinked\.length && !cross\.length && !crossUnlinked\.length\) \{ hideBlPanel/.test(fn),
     'showBlPanel must NOT hide when everything is empty (always-on render)');
-  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlPanel(') + 5200);
-  assert.ok(rp.includes("hd.textContent = total ? `Linked from · ${total}` : 'Linked from'"),
-    'the "Linked from" title shows always (title-only at 0)');
-  assert.ok(rp.includes("subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '')"),
+  // #953 moved these two rules out of renderBlPanel's body and into the pure blSectionModel, so
+  // they are asserted on BEHAVIOUR now rather than on the source text of one renderer. Both
+  // surfaces read the same model, so this covers the strip and the in-flow section at once.
+  const zero = host(c.blSectionModel({ sources: [], unlinked: [], cross: [], crossUnlinked: [] }, {}));
+  assert.equal(zero.header, 'Linked from', 'the "Linked from" title shows always (title-only at 0)');
+  const zeroUnlinked = zero.sections.find(x => x.kind === 'unlinked');
+  assert.ok(zeroUnlinked, 'the unlinked section is present at 0 (never gated behind a non-empty check)');
+  assert.equal(zeroUnlinked.heading, 'Unlinked references',
     'the "Unlinked references" strip shows its title always (title-only at 0)');
+  // And the renderer still draws that section unconditionally for the strip.
+  const rp = _src.slice(_src.indexOf('function renderBlRows('), _src.indexOf('function renderBlRows(') + 5600);
+  assert.ok(rp.includes('subhd.textContent = unlinkedSec.heading'), 'the renderer takes the subheading from the model');
   assert.ok(!/if \(!unlinked\.length\) return;\s*\n\s*const subhd/.test(rp),
     'the unlinked subheader must no longer be gated behind a non-empty check');
 });
 
-test('backlinks footer visibility: conditional on the outline, always for the zoomed title (owner-directed)', () => {
-  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1100);
+test('backlinks footer visibility: conditional on the outline, never doubled under a zoom (#953)', () => {
+  // The owner-directed outline rule is unchanged: no empty footer on the plain view. What #953
+  // changed is the zoomed half — the zoom root's refs are drawn IN FLOW, so the docked strip must
+  // stand down for that point, or the same list is on screen twice with one copy over the content.
+  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1400);
   assert.ok(/const zoomed = focusedId != null;/.test(ub), 'updateBlPanel branches on zoom state');
-  assert.ok(/if \(zoomed && nodeId === focusedId\) \{ showBlPanel\(nodeId\); return; \}/.test(ub),
-    'the zoomed title always shows its own panel, even empty');
+  assert.ok(/if \(zoomed && nodeId === focusedId\) \{ hideBlPanel\(\); return; \}/.test(ub),
+    'the strip stands down for the zoom root (its refs are in flow)');
+  assert.ok(!/showBlPanel\(focusedId\)/.test(ub),
+    'and the old "empty child falls back to the title" branch is gone with it');
   assert.ok(/const d = blGather\(nodeId\);/.test(ub) && /if \(d\.has\) \{ blShowWith\(nodeId, d\); return; \}/.test(ub),
-    'any point with inbound refs shows its own panel');
-  assert.ok(/if \(zoomed\) \{ showBlPanel\(focusedId\); return; \}/.test(ub),
-    'an empty child under a zoom falls back to the zoomed title');
-  assert.ok(/hideBlPanel\(\);\s+\/\/ outline view/.test(ub),
-    'on the plain outline, a point with nothing inbound hides the footer (no empty clutter)');
-  // scheduleBlHide reverts to the title when zoomed instead of hiding (de-select a child → title)
-  const sb = _src.slice(_src.indexOf('function scheduleBlHide('), _src.indexOf('function scheduleBlHide(') + 1400);
+    'any OTHER point with inbound refs still shows its own panel — the strip keeps the child case');
+  assert.ok(/hideBlPanel\(\);\s+\/\/ nothing inbound/.test(ub),
+    'a point with nothing inbound hides the footer (no empty clutter)');
+  // scheduleBlHide still routes through the one visibility decision rather than hiding directly.
+  const sb = _src.slice(_src.indexOf('function scheduleBlHide('), _src.indexOf('function scheduleBlHide(') + 1600);
   assert.ok(/if \(focusedId != null\) \{ updateBlPanel\(focusedId\); return; \}/.test(sb),
-    'zoomed: focus leaving a child reverts to the title, not hide');
+    'zoomed: focus leaving a child re-runs the visibility decision');
 });
 
 // ── cross-document backlinks (CF-4) ───────────────────────────────────────────
@@ -12960,10 +12970,19 @@ test('agent-review: a logged roll full-renders so the roll log shows live', () =
   assert.ok(/const el = repaintAfterRoll\(node\);[\s\S]*mk-rolled/.test(fnBody(_src, 'rerollMarkov')), 'rerollMarkov uses repaintAfterRoll');
 });
 
-test('agent-review: zoom-in reflects the zoomed point’s backlinks, not an auto-focused child', () => {
-  assert.ok(/if \(_focusChanged && focusedId && vp\.type !== 'base'\) updateBlPanel\(focusedId\);/.test(_src), 'a zoom-in updates the backlink panel for the zoom root');
-  // it runs after focusNode so it wins over the empty-child auto-focus
-  assert.ok(_src.indexOf('if (firstChildId) focusNode(firstChildId)') < _src.indexOf("vp.type !== 'base') updateBlPanel(focusedId)"), 'the panel update runs after focusNode');
+test('agent-review: zoom-in shows the ZOOMED point’s backlinks, not an auto-focused child’s (#953)', () => {
+  // The defect this guards: zooming into a note auto-focuses its first child, and the caret-driven
+  // panel answered for the CHILD. It used to be fixed by re-running updateBlPanel(focusedId) after
+  // focusNode. #953 removes the race instead of winning it: the zoom root's refs are rendered from
+  // the view itself, so no focus event can substitute a different point's answer.
+  assert.ok(/if \(focusedId != null && vp\.type !== 'base'\) container\.appendChild\(buildZoomBacklinks\(vp\.id\)\);/.test(_src),
+    'the zoom view renders the ZOOM ROOT\u2019s refs (vp.id), independent of what holds focus');
+  assert.ok(!/updateBlPanel\(focusedId\);\s*\n\s*else if/.test(_src),
+    'the old post-focusNode re-trigger is gone (it has nothing left to correct)');
+  // And the strip is now forbidden from answering for the zoom root at all, from any trigger.
+  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1400);
+  assert.ok(/if \(zoomed && nodeId === focusedId\) \{ hideBlPanel\(\); return; \}/.test(ub),
+    'no trigger can raise the strip for the zoom root');
 });
 
 test('#950 estimate-in-math boundary renders LOUD (visible tag), not a hover-only underline (src pins)', () => {
@@ -17904,7 +17923,9 @@ test('folder create-name (6b): newWorkspaceDoc prompts for a name, blank keeps t
 
 // ── render() preserves scroll across a full rebuild (#488) ──
 test('render(): captures scrollY and restores it clamped, skipping intentional scroll moves (#488)', () => {
-  const fn = _src.slice(_src.indexOf('function render()'), _src.indexOf('function render()') + 10500);
+  // Slice to the declaration that FOLLOWS render(), not a magic byte count: a fixed length
+  // silently drops the tail of the function the day anything above it grows (it did, on #953).
+  const fn = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
   // capture at entry, before the container wipe
   assert.ok(/const _preScrollY = window\.scrollY/.test(fn), 'render must capture scrollY at entry');
   assert.ok(/const _focusChanged = focusedId !== _lastRenderFocusedId/.test(fn), 'it must detect a zoom (focusedId change) to skip restore');
@@ -20967,3 +20988,596 @@ test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL'
     'wireDialogDraft must gate restoration on the shared seed comparison');
 });
 
+
+// ── #992: image sizing modes ride the markdown title field ────────────────────
+//
+// The core is ALL-OR-NOTHING by deliberate deviation from the issue, which specced per-token
+// stripping. Per-token means `"full moon"` widens the image to the viewport AND drops "full"
+// from the tooltip: one word of ordinary prose silently changes the layout (P1). These pins
+// encode the stricter rule, so a later "simplification" back to per-token fails here.
+//
+// host() everywhere: the cores run in a vm, so a returned object literal is cross-realm and
+// deepEqual would reject it on prototype identity alone.
+test('#992 imgSizeParts: the three width modes and the point default', () => {
+  assert.deepEqual(host(c.imgSizeParts('full')),  { cls:'md-img-full', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('wide')),  { cls:'md-img-wide', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('3/4')),   { cls:'md-img-wide', style:'', title:'' });
+  // `point` is the default, so it is RECOGNIZED (the title is consumed) but adds no class.
+  assert.deepEqual(host(c.imgSizeParts('point')), { cls:'', style:'', title:'' });
+  // No title at all is the same shape as `point`.
+  assert.deepEqual(host(c.imgSizeParts('')),        { cls:'', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts(undefined)), { cls:'', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts(null)),      { cls:'', style:'', title:'' });
+});
+
+test('#992 imgSizeParts: N% is a percentage of the COLUMN, and composes with a mode', () => {
+  assert.deepEqual(host(c.imgSizeParts('50%')),        { cls:'', style:'width:50%', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('wide 150%')),  { cls:'md-img-wide', style:'width:150%', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('full 80%')),   { cls:'md-img-full', style:'width:80%', title:'' });
+  // Order is free — these are tokens, not a grammar.
+  assert.deepEqual(host(c.imgSizeParts('80% full')),   { cls:'md-img-full', style:'width:80%', title:'' });
+  // Extra whitespace between tokens is not significant.
+  assert.deepEqual(host(c.imgSizeParts('  full   80%  ')), { cls:'md-img-full', style:'width:80%', title:'' });
+  // Last token of a kind wins rather than erroring out.
+  assert.deepEqual(host(c.imgSizeParts('wide full')),  { cls:'md-img-full', style:'', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('50% 75%')),    { cls:'', style:'width:75%', title:'' });
+});
+
+test('#992 imgSizeParts: one unrecognized token makes the WHOLE title prose', () => {
+  // The backward-compatibility case from the issue's acceptance list.
+  assert.deepEqual(host(c.imgSizeParts('My vacation photo')),
+    { cls:'', style:'', title:'My vacation photo' });
+  // The case the issue's per-token rule would have broken: prose that happens to start with a
+  // keyword. Nothing is stripped, nothing is resized.
+  assert.deepEqual(host(c.imgSizeParts('full moon')), { cls:'', style:'', title:'full moon' });
+  assert.deepEqual(host(c.imgSizeParts('wide open spaces')), { cls:'', style:'', title:'wide open spaces' });
+  assert.deepEqual(host(c.imgSizeParts('100% cotton')), { cls:'', style:'', title:'100% cotton' });
+  // Case-sensitive on purpose: a capitalized word is a caption, not a directive.
+  assert.deepEqual(host(c.imgSizeParts('Full')), { cls:'', style:'', title:'Full' });
+  assert.deepEqual(host(c.imgSizeParts('WIDE')), { cls:'', style:'', title:'WIDE' });
+  // A surrounding-whitespace-only difference still yields the trimmed title.
+  assert.deepEqual(host(c.imgSizeParts('  a caption  ')), { cls:'', style:'', title:'a caption' });
+});
+
+test('#992 imgSizeParts: the percentage is bounded, and junk that looks numeric is prose', () => {
+  assert.deepEqual(host(c.imgSizeParts('1%')),    { cls:'', style:'width:1%', title:'' });
+  assert.deepEqual(host(c.imgSizeParts('1000%')), { cls:'', style:'width:1000%', title:'' });
+  // Out of range, no unit, a decimal, a sign, or an absolute length: all prose, no inline style.
+  for (const bad of ['0%', '1001%', '50', '1.5%', '-50%', '+50%', '500px', '%', '%50']) {
+    assert.deepEqual(host(c.imgSizeParts(bad)), { cls:'', style:'', title:bad },
+      bad + ' is not a sizing token');
+  }
+  // Prototype keys must not read as modes (hasOwnProperty, not `in`).
+  for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    assert.deepEqual(host(c.imgSizeParts(k)), { cls:'', style:'', title:k },
+      k + ' is not a width mode');
+  }
+});
+
+test('#992 mdInline renders the width modes, and leaves a prose title as a tooltip', () => {
+  const full = c.mdInline('![a](https://x.test/a.png "full")');
+  assert.ok(full.includes('class="md-img md-img-full"'), 'full gets the full-width class');
+  assert.ok(!/ title=/.test(full), 'and the consumed title does not also become a tooltip');
+
+  const wide = c.mdInline('![a](https://x.test/a.png "3/4")');
+  assert.ok(wide.includes('class="md-img md-img-wide"'), '3/4 is a synonym for wide');
+
+  const scaled = c.mdInline('![a](https://x.test/a.png "wide 150%")');
+  assert.ok(scaled.includes('class="md-img md-img-wide"') && scaled.includes('style="width:150%"'),
+    'mode and scale compose into a class plus an inline width');
+
+  // Backward compatibility: an ordinary caption renders exactly as it did before #992 —
+  // the bare .md-img class, the title as a tooltip, no style attribute.
+  const prose = c.mdInline('![a](https://x.test/a.png "My vacation photo")');
+  assert.ok(prose.includes('class="md-img"'), 'a prose title leaves the class alone');
+  assert.ok(prose.includes('title="My vacation photo"'), 'and keeps the tooltip');
+  assert.ok(!/ style=/.test(prose), 'and adds no inline width');
+
+  // No title at all is unchanged too.
+  const plain = c.mdInline('![a](https://x.test/a.png)');
+  assert.ok(plain.includes('class="md-img"') && !/ title=/.test(plain) && !/ style=/.test(plain),
+    'a titleless image is byte-for-byte what it always was');
+});
+
+// The CSS half cannot run headless, so it is source-pinned: the mode classes must EXIST, and the
+// two contexts the issue promised not to disturb must pin the two properties the inline style
+// could otherwise reach into them (specificity alone does not beat a style attribute).
+test('#992 the width-mode CSS ships, and cards/base cells are insulated from it', () => {
+  // The issue's full-bleed recipe (margin-left:calc(-50vw + 50%)) centres on the CONTAINING
+  // BLOCK, which for a point is inset by the bullet gutter and by its indent — driving the app
+  // measured a 13px page spill at depth 0 and worse when nested. It must not come back.
+  assert.ok(!/margin-left:calc\(-50vw \+ 50%\)/.test(_src),
+    'the containing-block-centred full-bleed recipe is gone (it spilled the page at every width)');
+  assert.ok(/#outline\{container-type:inline-size\}/.test(_src),
+    '#outline is an inline-size container, so cqw is the COLUMN width at any depth');
+  assert.ok(_src.includes('.md-img-full,.md-img-wide{position:relative;left:calc(100% - 50cqw + var(--nc-pad));transform:translateX(-50%)}'),
+    'the modes centre on the column via cqw, backing off half their own width with translateX');
+  // --nc-pad is the point text box's right padding, and the centring maths depends on the two
+  // staying equal — so it must be a variable used in BOTH places, not a literal in each.
+  assert.ok(/--nc-pad:3px;/.test(_src) && /\.node-content\{[^}]*padding:1px var\(--nc-pad\)/.test(_src),
+    'the right inset is one variable, used by .node-content and by the centring maths');
+  // 100vw includes a classic scrollbar; the ceilings subtract the measured width or full-bleed
+  // images push the page into horizontal scroll everywhere overlay scrollbars are not used.
+  assert.ok(/\.md-img-full\{max-width:calc\(100vw - var\(--sbw,0px\)\);width:calc\(100vw - var\(--sbw,0px\)\)/.test(_src),
+    'full mode is the window width MINUS the scrollbar');
+  assert.ok(/\.md-img-wide\{max-width:calc\(\(100vw - var\(--sbw,0px\)\) \* \.75\)/.test(_src),
+    'wide mode is three quarters of the same scrollbar-corrected width');
+  assert.ok(/window\.innerWidth - document\.documentElement\.clientWidth/.test(_src)
+         && /setProperty\('--sbw'/.test(_src)
+         && /new ResizeObserver\(syncScrollbarW\)\.observe\(document\.body\)/.test(_src),
+    '--sbw is measured and republished whenever the client box changes (a scrollbar appearing)');
+  // Cards and base cells: outside #outline there is no container, so an un-neutralised cqw would
+  // resolve against the VIEWPORT and fling the image off screen.
+  assert.ok(_src.includes('.gv-card .md-img,.mt-cell .md-img{max-width:100%!important;margin-left:0!important;position:static!important;transform:none!important}'),
+    'cards and base cells neutralise every property the modes introduce');
+  assert.ok(_src.includes('.gv-card .md-img{width:100%!important}')
+         && _src.includes('.mt-cell .md-img{width:auto!important}'),
+    'and pin the width each context already computed');
+});
+
+test('#992 the @image form offers the width modes, and point still writes no title', () => {
+  // BUILDER_FORMS lives behind the DOM layer, so this is a source pin (same shape as the
+  // @meter form pin above). The behaviour of what it WRITES is pinned by re-parsing below.
+  assert.ok(/'image': \{ fields: \[[\s\S]{0,400}name:'url'[\s\S]{0,200}name:'alt'[\s\S]{0,240}name:'width'[\s\S]{0,240}name:'scale'/.test(_src),
+    "BUILDER_FORMS['image'] gained width and scale fields");
+  assert.ok(/name:'width', label:'Width', type:'select', options:\['point','wide','full'\]/.test(_src),
+    'width is a constrained select whose options are the literal title keywords (the door teaches the syntax)');
+  assert.ok(/name:'scale',[^\n]*type:'select', options:\['','50%','75%','100%','125%','150%','200%'\]/.test(_src),
+    'scale is a constrained select with a blank default');
+  assert.ok(/const w = \(vals\.width && vals\.width !== 'point'\) \? vals\.width : '';/.test(_src),
+    'point writes no title at all, so the default insert is byte-identical to pre-#992');
+  assert.ok(/return '!\[' \+ \(vals\.alt \|\| ''\) \+ '\]\(' \+ vals\.url \+ \(t \? ' "' \+ t \+ '"' : ''\) \+ '\)';/.test(_src),
+    'insert composes ![alt](url "mode scale") with the title omitted when empty');
+
+  // What the form writes must round-trip through the parser it is a door for.
+  for (const [written, want] of [
+    ['full',      { cls:'md-img-full', style:'',            title:'' }],
+    ['wide',      { cls:'md-img-wide', style:'',            title:'' }],
+    ['wide 150%', { cls:'md-img-wide', style:'width:150%',  title:'' }],
+    ['50%',       { cls:'',            style:'width:50%',   title:'' }],
+  ]) assert.deepEqual(host(c.imgSizeParts(written)), want, written + ' round-trips');
+});
+
+// ── #953: the note's inbound refs live with the note, not in a strip at the window edge ──
+//
+// Measured on origin/main before this change: the panel DID populate on zoom (the issue's other
+// half was already fixed), but it sat position:fixed against the viewport bottom, 476px below the
+// note title. This is a placement fix, and these pins hold the model both surfaces now share.
+test('#953 blSectionModel: the headings and counts the strip already had, written down once', () => {
+  const mk = (n, u, x, cu) => ({ sources: Array(n).fill(0), unlinked: Array(u).fill(0),
+                                 cross: Array(x).fill(0), crossUnlinked: Array(cu).fill(0) });
+  // "Linked from" counts same-doc AND cross-doc sources together (CF-4), title-only at zero (925a).
+  assert.equal(host(c.blSectionModel(mk(0,0,0,0), {})).header, 'Linked from');
+  assert.equal(host(c.blSectionModel(mk(2,0,0,0), {})).header, 'Linked from · 2');
+  assert.equal(host(c.blSectionModel(mk(2,0,3,0), {})).header, 'Linked from · 5',
+    'same-doc and cross-doc sources are ONE count, not two sections');
+  assert.equal(host(c.blSectionModel(mk(0,9,0,0), {})).header, 'Linked from',
+    'unlinked mentions are not "linked from" and must not inflate the count');
+
+  const unl = d => host(c.blSectionModel(d, {})).sections.find(x => x.kind === 'unlinked');
+  assert.equal(unl(mk(0,0,0,0)).heading, 'Unlinked references', 'title-only at zero');
+  assert.equal(unl(mk(0,3,0,0)).heading, 'Unlinked references · 3');
+  // The divider above it only makes sense when there is something above it to divide from.
+  assert.equal(unl(mk(0,3,0,0)).divider, false, 'no linked rows above → no lone rule');
+  assert.equal(unl(mk(1,3,0,0)).divider, true, 'same-doc rows above → divider');
+  assert.equal(unl(mk(0,3,1,0)).divider, true, 'cross-doc rows above count too');
+});
+
+test('#953 blSectionModel: the cross-doc unlinked section appears only when it has rows', () => {
+  const mk = cu => ({ sources: [], unlinked: [], cross: [], crossUnlinked: Array(cu).fill(0) });
+  const kinds = d => host(c.blSectionModel(d, {})).sections.map(s => s.kind);
+  // Folder-only: an always-on heading would advertise a section most documents cannot fill.
+  assert.deepEqual(kinds(mk(0)), ['linked', 'unlinked'], 'no cross-doc mentions → no section at all');
+  assert.deepEqual(kinds(mk(2)), ['linked', 'unlinked', 'crossUnlinked'], 'and it is always last');
+  assert.equal(host(c.blSectionModel(mk(2), {})).sections[2].heading,
+    'Unlinked references in other documents · 2', 'this one is always counted');
+});
+
+test('#953 blSectionModel: only the in-flow surface says "nothing here", and only when nothing is', () => {
+  const empty = { sources: [], unlinked: [], cross: [], crossUnlinked: [] };
+  // A docked strip can be silent and just be short. A section sitting in the page cannot: a
+  // heading over blank space is a P4 silent nothing.
+  assert.equal(host(c.blSectionModel(empty, {})).empty, '', 'the strip adds no empty line');
+  const inflow = host(c.blSectionModel(empty, { inflow: true }));
+  assert.equal(inflow.empty, 'Nothing links to this point yet. Write [[ in another point to link it here.',
+    'in flow it says so, and says how to change it');
+  // Any content at all, from any section, suppresses the line.
+  for (const d of [{ sources: [1] }, { unlinked: [1] }, { cross: [1] }, { crossUnlinked: [1] }])
+    assert.equal(host(c.blSectionModel(d, { inflow: true })).empty, '',
+      'a section with rows means the note is not empty of references');
+});
+
+test('#953 blSectionModel: both surfaces read the same model, so they cannot drift', () => {
+  const d = { sources: [1,2], unlinked: [1], cross: [1], crossUnlinked: [1] };
+  const strip = host(c.blSectionModel(d, {}));
+  const flow  = host(c.blSectionModel(d, { inflow: true }));
+  assert.equal(strip.header, flow.header, 'same header');
+  assert.deepEqual(strip.sections, flow.sections, 'same sections, same headings, same dividers');
+  // `inflow` is allowed to differ in exactly one thing, and only when there is nothing to show.
+  assert.equal(flow.empty, '', 'and with content, not even that');
+});
+
+test('#953 the mentions walk is off the render path, and the first paint claims nothing it has not counted', () => {
+  // Measured: running the whole gather in render() cost 26ms -> 256ms per edit at 50k points,
+  // because collectUnlinkedRefs walks every point (and every folder document). So the section
+  // paints the LINKS from the index, then fills the MENTIONS in from an idle callback.
+  const d = { sources: [1, 2], unlinked: [], cross: [], crossUnlinked: [] };
+  const pend = host(c.blSectionModel(d, { inflow: true, pending: true }));
+  assert.deepEqual(pend.sections.map(x => x.kind), ['linked'],
+    'while pending, the mention sections are OMITTED, not shown as zero — "Unlinked references" ' +
+    'with no count is a claim about a walk that has not run (P4)');
+  assert.equal(pend.header, 'Linked from · 2', 'the links half is known immediately and is shown');
+  assert.equal(pend.empty, '', 'and "nothing links here" waits until the count is real');
+  // Even with nothing linked, a pending section stays quiet rather than declaring emptiness.
+  const pendEmpty = host(c.blSectionModel({ sources: [], unlinked: [], cross: [], crossUnlinked: [] },
+    { inflow: true, pending: true }));
+  assert.equal(pendEmpty.empty, '', 'a pending empty section does not announce emptiness either');
+  assert.deepEqual(pendEmpty.sections.map(x => x.kind), ['linked']);
+  // Once filled, it is the ordinary model again.
+  const done = host(c.blSectionModel(d, { inflow: true }));
+  assert.deepEqual(done.sections.map(x => x.kind), ['linked', 'unlinked']);
+
+  // Nothing O(document) may run from the render path: not the gather, and not the rows either
+  // (a source title goes through displayText -> varMapAt, which rebuilds the positional map).
+  const bz = _src.slice(_src.indexOf('function buildZoomBacklinks('), _src.indexOf('function scheduleZoomBlFill('));
+  assert.ok(!bz.includes('blGather(') && !bz.includes('blGatherCached('),
+    'the render path never runs the gather — only blGatherWarm, which computes nothing');
+  assert.ok(/const warm = blGatherWarm\(nodeId\);/.test(bz)
+         && /warm \|\| \{ sources: \[\], unlinked: \[\], cross: \[\], crossUnlinked: \[\] \}/.test(bz),
+    'a cold generation draws no rows at all; they arrive from the idle fill');
+  assert.ok(/if \(!warm\) scheduleZoomBlFill\(/.test(bz), 'and only then is a fill scheduled');
+  // The fill re-checks everything on arrival and patches in place (it must never call render()).
+  const sf = _src.slice(_src.indexOf('function scheduleZoomBlFill('), _src.indexOf('function scheduleZoomBlFill(') + 900);
+  assert.ok(/if \(focusedId !== nodeId \|\| !sec\.isConnected\) return;/.test(sf),
+    'a fill that arrives after the reader zoomed away, or after a re-render, is dropped');
+  assert.ok(!/\brender\(\)/.test(sf), 'the fill patches the section in place, so it cannot loop');
+  assert.ok(/cancelIdleCallback \|\| clearTimeout/.test(sf), 'a second render supersedes the first fill');
+});
+
+test('#953 the in-flow section is wired into the zoom view, below the children', () => {
+  // Placement is the whole point of the issue, so pin the ORDER: the section is appended after
+  // the ghost row and before the search-empty banner, i.e. under the note's content.
+  const r = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  const ghost = r.indexOf('appendGhostRow(vp, container)');
+  const sec = r.indexOf('container.appendChild(buildZoomBacklinks(vp.id))');
+  const se = r.indexOf("seEl.id = 'search-empty'");
+  assert.ok(ghost > -1 && sec > -1 && se > -1, 'all three landmarks are present');
+  assert.ok(ghost < sec && sec < se, 'the section sits after the children + New point, before search-empty');
+  assert.ok(/if \(focusedId != null && vp\.type !== 'base'\)/.test(r),
+    'only when zoomed, and never for a base (a zoomed base is a table widget)');
+  // It is in FLOW: no fixed positioning, and it reuses the strip's row CSS rather than forking it.
+  assert.ok(_src.includes('.zoom-bl{margin:26px 0 8px;padding-top:12px;border-top:1px solid var(--bdr)}'),
+    'the section is an ordinary in-flow block');
+  assert.ok(!/\.zoom-bl\{[^}]*position:fixed/.test(_src), 'and is not docked to the viewport');
+  assert.ok(_src.includes('.zoom-bl .bl-item,.zoom-bl .bl-snippet,.zoom-bl .bl-subhd,.zoom-bl .bl-unlinked-label{white-space:normal'),
+    'rows may wrap in flow (the strip clips them because it is height-capped)');
+});
+
+test('#953 one renderer, two containers: the strip is a wrapper, not a copy', () => {
+  // A forked renderer would drift. renderBlPanel must be a thin adapter over renderBlRows, and
+  // renderBlRows must take its subject as a PARAMETER rather than reading the strip's global.
+  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlRows('));
+  assert.ok(/renderBlRows\(document\.getElementById\('bl-list'\), document\.getElementById\('bl-panel-hd'\), blNodeId,/.test(rp),
+    'the strip passes its own container and its own subject');
+  assert.ok(!rp.includes('createElement') && !rp.includes('innerHTML'),
+    'and builds no rows of its own — a second row-builder is exactly the drift this prevents');
+  const rr = _src.slice(_src.indexOf('function renderBlRows('), _src.indexOf('function updateBlPanel('));
+  assert.ok(!rr.includes('blNodeId'), 'the shared renderer never reads the strip-only global');
+  assert.ok(!rr.includes('hideBlPanel()'),
+    'nor dismisses the strip directly — navigation goes through the beforeNavigate hook');
+  assert.ok(/const before = opts\.beforeNavigate \|\| \(\(\) => \{\}\);/.test(rr)
+         && /const afterLink = opts\.afterLink \|\| \(\(\) => \{\}\);/.test(rr),
+    'both hooks default to no-ops, which is exactly what the in-flow section wants');
+  // The in-flow builder supplies neither hook: nothing to dismiss, and Link already re-renders.
+  const bz = _src.slice(_src.indexOf('function buildZoomBacklinks('), _src.indexOf('function blShowWith('));
+  assert.ok(/renderBlRows\(inner, hd, nodeId, blGatherCached\(nodeId\), \{ inflow: true \}\)/.test(bz),
+    'the in-flow section renders the same rows from the memoised gather');
+  assert.ok(/sec\.setAttribute\('role', 'region'\)/.test(bz) && /aria-labelledby/.test(bz),
+    'and is a named region (P3), which the bottom strip never was');
+});
+
+test('#953 a zoom-in starts with the strip down (its landing focus is not the reader\u2019s choice)', () => {
+  // Found by driving, not by reading: zoomInto lands focus on the first child so Esc works, and
+  // that focus handler raises the strip. If the child happens to be linked from somewhere, opening
+  // a note slid a docked panel ABOUT A DIFFERENT POINT over it — the #1080 confusion, reintroduced
+  // through the back door. The strip under a zoom is for a child you deliberately move to.
+  const zi = _src.slice(_src.indexOf('function zoomInto('), _src.indexOf('function zoomTo('));
+  assert.ok(zi.includes('hideBlPanel();'), 'zoomInto puts the strip down after landing focus');
+  assert.ok(zi.indexOf('focusNode(vp.children[0].id)') < zi.indexOf('hideBlPanel();'),
+    'and does it AFTER the focus, or the focus handler would just raise it again');
+});
+
+test('#953 the gather is memoised, keyed on the workspace generation too', () => {
+  // blGather walks the whole tree (collectUnlinkedRefs) and every folder document. As a strip it
+  // ran only when the focused point CHANGED; in flow it is on the render path, so it must memo.
+  const g = _src.slice(_src.indexOf('function blGatherCached('), _src.indexOf('function blGatherCached(') + 1200);
+  assert.ok(/_zblVer === _varsVer && _zblGen === gen && _zblId === nodeId/.test(g),
+    'the key is (document generation, workspace generation, subject)');
+  assert.ok(/const gen = workspaceIndex \? \(workspaceIndex\.gen \|\| 0\) : 0;/.test(g),
+    'the workspace generation is in the key: a folder rescan does NOT bump _varsVer, so a ' +
+    '_varsVer-only memo would serve stale cross-doc rows');
+  // Registered, with the marker the parity test pairs against. (The derived protocol test then
+  // covers its invalidation automatically — it iterates the registry, not a hand-kept list.)
+  assert.ok(_src.includes('// doc-cache: zoomBacklinks (see DOC_CACHES)'), 'the marker is present');
+  assert.ok(/regDocCache\('zoomBacklinks', \{/.test(_src), 'and the registration beside it');
+  assert.ok(c.docCaches().some(e => String(e.name) === 'zoomBacklinks'),
+    'and it is actually in the registry at runtime');
+});
+
+test('#953 displayText skips varMapAt when there is no artifact to flatten (the measured stall)', () => {
+  // Not a micro-optimisation for its own sake: collectUnlinkedRefs calls displayText on EVERY
+  // node, and varMapAt is a per-node cache a generation bump clears, so the first click into a
+  // point in a 5k-point document stalled ~665ms on main. Measured after this guard: 62ms.
+  // Sound because every artifact flattenArtifacts resolves carries a `[` or a `{`:
+  //   [[type:key]] pill tokens · [/] and [%] cookies · [o n/m] clocks · {meter:…}
+  // and flattenSpoilers (the one branch needing neither) never reads the map.
+  const dt = _src.slice(_src.indexOf('function displayText('), _src.indexOf('function aliasesOf('));
+  assert.ok(/ART_SNIFF\.test\(t\) \? varMapAt\(node\) : EMPTY_VARMAP/.test(dt),
+    'the varMap is built only when the text could contain an artifact');
+  assert.ok(/const ART_SNIFF = \/\[\\\[\{\]\//.test(_src), 'the sniff is exactly [ or {');
+  // An explicitly passed varMap must still win — callers that supply one are positional renders.
+  assert.ok(/varMap \|\| \(ART_SNIFF/.test(dt), 'an explicit varMap short-circuits the guard, as before');
+  // The guard would be unsound if flattenArtifacts grew a branch matching neither character.
+  const fa = _src.slice(_src.indexOf('function flattenArtifacts('), _src.indexOf('function flattenSpoilers('));
+  const replaces = fa.match(/\.replace\(([^,]+),/g) || [];
+  assert.ok(replaces.length >= 4, 'flattenArtifacts still has its four resolve passes');
+  for (const r of replaces)
+    assert.ok(r.includes('\\[') || r.includes('\\{') || r.includes('CLOCK_RE') || r.includes('{meter'),
+      'every flattenArtifacts pattern must be anchored on [ or { or the guard is unsound: ' + r);
+});
+
+// ── #898: the neighborhood graph — the current point ± N hops, across documents ──
+//
+// Every id is qualified (`docId#nodeId`) so the same-doc index (bare ids) and the workspace index
+// (doc + node) never have to coexist as two id spaces inside one walk.
+const NB_LINKS = out => ({ outgoing: out, backlinks: {}, broken: [] });
+
+test('#898 nearbyAdjacency: undirected, self-links dropped, same-doc from the LIVE index', () => {
+  // a -> b -> c, and d -> a. Undirected: from a you can reach both b (out) and d (in).
+  const adj = c.nearbyAdjacency({
+    links: NB_LINKS({ a: [{ target: 'b' }], b: [{ target: 'c' }], d: [{ target: 'a' }] }),
+    wsOutgoing: [], ownDocId: 'own',
+  });
+  const nb = q => [...(adj.get(q) || [])].sort();
+  assert.deepEqual(nb('own#a'), ['own#b', 'own#d'], 'both directions count as "near"');
+  assert.deepEqual(nb('own#b'), ['own#a', 'own#c']);
+  assert.deepEqual(nb('own#d'), ['own#a']);
+  // A self-link is not a neighbour, and must not create a phantom node.
+  const selfAdj = c.nearbyAdjacency({ links: NB_LINKS({ a: [{ target: 'a' }] }), wsOutgoing: [], ownDocId: 'own' });
+  assert.equal(selfAdj.size, 0, 'a point linking to itself has no neighbours');
+  // A repeated link is one edge.
+  const dup = c.nearbyAdjacency({ links: NB_LINKS({ a: [{ target: 'b' }, { target: 'b' }] }), wsOutgoing: [], ownDocId: 'own' });
+  assert.deepEqual([...dup.get('own#a')], ['own#b'], 'a repeated link is still one neighbour');
+});
+
+test('#898 nearbyAdjacency: the OPEN document is read live, never from the stale workspace copy', () => {
+  // The rule that matters most (cross-document-direction.md §5.3, own-doc liveness): the workspace
+  // index's copy of the open document is stale from the last disk write. Here the live index says
+  // a->b; the workspace index still believes a->GONE. The stale edge must not appear.
+  const adj = c.nearbyAdjacency({
+    links: NB_LINKS({ a: [{ target: 'b' }] }),
+    wsOutgoing: [
+      { srcDocId: 'own', srcNodeId: 'a', dstDocId: 'own', dstNodeId: 'gone' },   // stale, must be ignored
+      { srcDocId: 'other', srcNodeId: 'x', dstDocId: 'own', dstNodeId: 'a' },    // genuinely cross-doc, kept
+    ],
+    ownDocId: 'own',
+  });
+  const nb = q => [...(adj.get(q) || [])].sort();
+  assert.deepEqual(nb('own#a'), ['other#x', 'own#b'],
+    'the live edge and the cross-doc edge survive; the stale own-doc edge does not');
+  assert.ok(!adj.has('own#gone'), 'and the deleted target never becomes a node');
+});
+
+test('#898 nearbyAdjacency: cross-document hops join the two id spaces', () => {
+  const adj = c.nearbyAdjacency({
+    links: NB_LINKS({ a: [{ target: 'b' }] }),
+    wsOutgoing: [
+      { srcDocId: 'places', srcNodeId: 'p1', dstDocId: 'own', dstNodeId: 'b' },
+      { srcDocId: 'places', srcNodeId: 'p1', dstDocId: 'bestiary', dstNodeId: 'm1' },
+    ],
+    ownDocId: 'own',
+  });
+  assert.deepEqual([...adj.get('own#b')].sort(), ['own#a', 'places#p1']);
+  assert.deepEqual([...adj.get('places#p1')].sort(), ['bestiary#m1', 'own#b']);
+  // Malformed index rows are skipped rather than creating "#undefined" nodes.
+  const junk = c.nearbyAdjacency({ links: NB_LINKS({}), wsOutgoing: [null, {}, { srcDocId: 'd' }], ownDocId: 'own' });
+  assert.equal(junk.size, 0, 'a row missing its node ids is skipped, not turned into a node');
+});
+
+test('#898 qid/unqid round-trip, including a docId-less current document', () => {
+  assert.equal(c.qid('places', 'n1'), 'places#n1');
+  assert.equal(c.qid('', 'n1'), '#n1', 'an unsaved document has no docId, and that is a real case');
+  assert.equal(c.qid(null, 'n1'), '#n1');
+  assert.deepEqual(host(c.unqid('places#n1')), ['places', 'n1']);
+  assert.deepEqual(host(c.unqid('#n1')), ['', 'n1'], 'the empty docId round-trips');
+});
+
+test('#898 nearbyGraphModel: hop expansion stops exactly at the requested distance', () => {
+  //  a — b — c — d   (a chain, so hop distance is unambiguous)
+  const adj = c.nearbyAdjacency({
+    links: NB_LINKS({ a: [{ target: 'b' }], b: [{ target: 'c' }], c: [{ target: 'd' }] }),
+    wsOutgoing: [], ownDocId: '',
+  });
+  const ids = h => host(c.nearbyGraphModel('#a', adj, { titleOf: q => q }, h, 150).nodes.map(n => n.id)).sort();
+  assert.deepEqual(ids(0), ['#a'], '0 hops is the point itself');
+  assert.deepEqual(ids(1), ['#a', '#b']);
+  assert.deepEqual(ids(2), ['#a', '#b', '#c'], 'the default: 2 hops');
+  assert.deepEqual(ids(3), ['#a', '#b', '#c', '#d']);
+  assert.deepEqual(ids(9), ['#a', '#b', '#c', '#d'], 'and it stops when the web runs out');
+  // Hop distance is recorded per node.
+  const m = host(c.nearbyGraphModel('#a', adj, { titleOf: q => q }, 2, 150));
+  assert.deepEqual(m.nodes.map(n => [n.id, n.hop]), [['#a', 0], ['#b', 1], ['#c', 2]]);
+  assert.equal(m.hops, 2, 'the model reports the distance it used, so the count line cannot lie');
+});
+
+test('#898 nearbyGraphModel: the start point is flagged current, and a lone point is not an error', () => {
+  const adj = c.nearbyAdjacency({ links: NB_LINKS({ a: [{ target: 'b' }] }), wsOutgoing: [], ownDocId: '' });
+  const m = host(c.nearbyGraphModel('#a', adj, { titleOf: q => q }, 2, 150));
+  assert.deepEqual(m.nodes.filter(n => n.current).map(n => n.id), ['#a'],
+    'exactly one node wears the ring, and it is the one you were on');
+  // A point with no links at all: itself, alone. Not empty, not an error.
+  const lone = host(c.nearbyGraphModel('#solo', new Map(), { titleOf: q => q }, 2, 150));
+  assert.deepEqual(lone.nodes.map(n => n.id), ['#solo']);
+  assert.deepEqual(lone.edges, []);
+  assert.equal(lone.total, 1);
+  assert.equal(lone.capped, false);
+});
+
+test('#898 nearbyGraphModel: a cycle terminates, and every edge is drawn once', () => {
+  // a — b — c — a. Without the seen-set this walks forever.
+  const adj = c.nearbyAdjacency({
+    links: NB_LINKS({ a: [{ target: 'b' }], b: [{ target: 'c' }], c: [{ target: 'a' }] }),
+    wsOutgoing: [], ownDocId: '',
+  });
+  const m = host(c.nearbyGraphModel('#a', adj, { titleOf: q => q }, 5, 150));
+  assert.equal(m.nodes.length, 3, 'three points, visited once each');
+  assert.equal(m.edges.length, 3, 'three undirected edges, no duplicates');
+  assert.deepEqual(m.edges.map(e => e.a + '-' + e.b).sort(), ['#a-#b', '#a-#c', '#b-#c']);
+  assert.deepEqual(m.nodes.map(n => n.deg), [2, 2, 2], 'deg counts drawn edges, which sizes the dot');
+});
+
+test('#898 nearbyGraphModel: the cap keeps the NEAREST and reports the truth', () => {
+  // A hub: one centre, 10 direct neighbours, each with a neighbour of its own (21 within 2 hops).
+  const out = { hub: [] };
+  for (let i = 0; i < 10; i++) { out.hub.push({ target: 'n' + i }); out['n' + i] = [{ target: 'f' + i }]; }
+  const adj = c.nearbyAdjacency({ links: NB_LINKS(out), wsOutgoing: [], ownDocId: '' });
+  const full = host(c.nearbyGraphModel('#hub', adj, { titleOf: q => q }, 2, 150));
+  assert.equal(full.total, 21);
+  assert.equal(full.capped, false, 'under the cap, nothing is claimed to be missing');
+
+  const cut = host(c.nearbyGraphModel('#hub', adj, { titleOf: q => q }, 2, 6));
+  assert.equal(cut.nodes.length, 6, 'the cap is a hard bound on what is drawn');
+  assert.equal(cut.total, 21, 'and `total` still counts everything in range — the count line needs it');
+  assert.equal(cut.capped, true, 'so the panel can say "6 of 21" instead of silently lying (P4)');
+  // BFS order: the survivors are the start plus its DIRECT neighbours, never a 2-hop node.
+  assert.equal(cut.nodes[0].id, '#hub');
+  assert.ok(cut.nodes.every(n => n.hop <= 1), 'what gets dropped is what is furthest away');
+  // An edge to a node the cap dropped is not drawn — no line to nowhere.
+  const kept = new Set(cut.nodes.map(n => n.id));
+  assert.ok(cut.edges.every(e => kept.has(e.a) && kept.has(e.b)), 'every edge joins two drawn nodes');
+});
+
+test('#898 nearbyGraphModel: a point with no title anywhere is broken, not untitled', () => {
+  const adj = c.nearbyAdjacency({
+    links: NB_LINKS({ a: [{ target: 'gone' }], b: [{ target: 'a' }] }), wsOutgoing: [], ownDocId: '',
+  });
+  // titleOf returns null for a deleted point, '' for one that exists but has no text.
+  const titleOf = q => q === '#gone' ? null : (q === '#b' ? '' : 'A');
+  const m = host(c.nearbyGraphModel('#a', adj, { titleOf }, 2, 150));
+  const byId = Object.fromEntries(m.nodes.map(n => [n.id, n]));
+  assert.equal(byId['#gone'].broken, true, 'a dangling link is a visible red dot, not a silent drop');
+  assert.equal(byId['#gone'].title, '(untitled)');
+  assert.equal(byId['#b'].broken, false, 'an existing point with no text is untitled, NOT broken');
+  assert.equal(byId['#b'].title, '(untitled)');
+  assert.equal(byId['#a'].broken, false);
+});
+
+test('#898 nearbyGraphModel emits exactly what graphLayout consumes', () => {
+  // The issue's central claim: layout and the SVG render are untouched. graphLayout reads only
+  // node.id and edge.a/edge.b, so a model from a different source must run through it unchanged.
+  const adj = c.nearbyAdjacency({
+    links: NB_LINKS({ a: [{ target: 'b' }], b: [{ target: 'c' }] }), wsOutgoing: [], ownDocId: '',
+  });
+  const m = c.nearbyGraphModel('#a', adj, { titleOf: q => q }, 2, 150);
+  const pos = c.graphLayout(m, { width: 400, height: 300, margin: 20, iterations: 40 });
+  for (const n of host(m.nodes)) {
+    const p = pos.get(n.id);
+    assert.ok(p && Number.isFinite(p.x) && Number.isFinite(p.y), n.id + ' got a finite position');
+    assert.ok(p.x >= 0 && p.x <= 400 && p.y >= 0 && p.y <= 300, n.id + ' landed inside the box');
+  }
+  // The node fields the renderer reads are all present and the right types.
+  for (const n of host(m.nodes)) {
+    assert.equal(typeof n.title, 'string');
+    assert.equal(typeof n.deg, 'number');
+    assert.equal(typeof n.broken, 'boolean');
+    assert.equal(typeof n.current, 'boolean');
+  }
+});
+
+test('#898 the Nearby scope is wired, and a scope that cannot answer is not offered', () => {
+  const rg = _src.slice(_src.indexOf('function renderGraph(panel)'), _src.indexOf('function renderGraph(panel)') + 4200);
+  assert.ok(/const nearbyable = !!\(graphAnchorId && nodeById\(graphAnchorId\)\);/.test(rg),
+    'Nearby needs a point to centre on, and checks it still exists');
+  assert.ok(/if \(\(graphScope === 'folder' && !folderable\) \|\| \(graphScope === 'nearby' && !nearbyable\)\) graphScope = 'doc';/.test(rg),
+    'a scope that cannot answer falls back to the document view instead of an empty panel');
+  assert.ok(/if \(folderable \|\| nearbyable\) \{/.test(rg),
+    'the scope strip appears when ANY extra scope is available (it used to be folder-only)');
+  assert.ok(/if \(folderable\) scopes\.push\(\['folder', 'Folder'\]\);/.test(rg)
+         && /if \(nearbyable\) scopes\.push\(\['nearby', 'Nearby'\]\);/.test(rg),
+    'each chip is gated on its own availability');
+  // The model reuses the shipped layout + render untouched — the issue's central claim.
+  assert.ok(/model = nearbyGraphModel\(qid\(own, graphAnchorId\), _graphNearbyAdj, \{ titleOf: nearbyTitleOf \}\);/.test(rg),
+    'Nearby feeds graphLayout the same envelope the other two scopes do');
+  assert.ok(/if \(!_graphNearbyAdj\) _graphNearbyAdj = nearbyAdjacency\(/.test(rg),
+    'the adjacency is built once per open, not per scope toggle (it is O(all links))');
+  // The unlinked (dashed) overlay is same-doc only and stays out of Nearby.
+  assert.ok(/if \(!folder && !nearby\) \{/.test(rg), 'the unlinked overlay is skipped in Nearby scope');
+});
+
+test('#898 a Nearby node routes through followLinkTarget, which already handles every case', () => {
+  const rg = _src.slice(_src.indexOf('const go = folder'), _src.indexOf('const go = folder') + 900);
+  assert.ok(/: nearby\s*\n\s*\? \(id\) => \{ const \[d, n\] = unqid\(id\); closeGraph\(\); followLinkTarget\(d, n\); \}/.test(rg),
+    'one call routes same-doc, cross-doc, and both missing cases — no per-node branching');
+  // The document a node lives in must not eat the visible label (truncated at 28 chars).
+  assert.ok(/const nearbyDocOf = \(id\) => \{/.test(_src), 'the doc hint is computed separately from the label');
+  assert.ok(/tt\.textContent = label \+ ' · ' \+ docHint;/.test(_src), 'it rides the SVG title tooltip');
+  assert.ok(/\+ \(docHint \? ' in ' \+ docHint : ''\)/.test(_src), 'and the accessible name');
+});
+
+test('#898 the anchor is captured before the click can destroy it', () => {
+  // The defect this prevents: openGraph runs from the toolbar button's click, by which time the
+  // button holds focus and exitEdit has cleared activeContentId — so reading the caret there finds
+  // nothing, and Nearby would silently never be offered while editing.
+  assert.ok(/document\.getElementById\('btn-graph'\)\.addEventListener\('mousedown', \(\) => \{ if \(!graphOpen\) graphAnchorId = graphAnchorNow\(\); \}\);/.test(_src),
+    'the caret is snapshotted on mousedown, before focus moves');
+  assert.ok(_src.indexOf("addEventListener('mousedown', () => { if (!graphOpen) graphAnchorId")
+          < _src.indexOf("getElementById('btn-graph').addEventListener('click', toggleGraph)"),
+    'and the click handler is still there — added alongside, never converted (P3-3, the caret invariant)');
+  const ga = _src.slice(_src.indexOf('function graphAnchorNow()'), _src.indexOf('function openGraph()'));
+  assert.ok(/captureCurrentPointId\(\) \|\| focusedId \|\| null/.test(ga),
+    'it reuses the established precedence rather than inventing a new one');
+  assert.ok(/return id && nodeById\(id\) \? id : null;/.test(ga), 'and never returns a dead id');
+  const og = _src.slice(_src.indexOf('function openGraph()'), _src.indexOf('function closeGraph()'));
+  assert.ok(/if \(!graphAnchorId\) graphAnchorId = graphAnchorNow\(\);/.test(og),
+    'a keyboard activation, which sees no mousedown, still gets an anchor');
+  assert.ok(/_graphNearbyAdj = null;/.test(og), 'and the per-open adjacency is cleared');
+  const cg = _src.slice(_src.indexOf('function closeGraph()'), _src.indexOf('function toggleGraph()'));
+  assert.ok(/graphAnchorId = null;/.test(cg), 'closing releases the anchor');
+});
+
+test('#898 Nearby names its bound, and a point with nothing near it says so in words', () => {
+  // Anchored on the surrounding declarations, not a byte count: a fixed-length slice silently
+  // drops the tail of what it is checking the day a comment above it grows (it did, here).
+  const rg = _src.slice(_src.indexOf('const nearbyDocs = nearby'), _src.indexOf("close.className = 'graph-close'"));
+  assert.ok(/within \$\{model\.hops\} hops/.test(rg),
+    'the hop distance is fixed, so it has to be SAID or the view looks like the whole web');
+  assert.ok(/model\.capped \? `\$\{model\.nodes\.length\} of \$\{model\.total\}`/.test(rg),
+    'a cap that bites is reported, not silently applied (P4) — the same form the unlinked cap uses');
+  assert.ok(/point\$\{model\.nodes\.length === 1 \? '' : 's'\}/.test(rg), 'and it counts in English');
+  // The lone-point case: a Nearby model always has >= 1 node, so it never reaches the no-nodes
+  // branch. Driving found it rendering one ringed dot AND a count reading "1 points, 0 links".
+  assert.ok(/const nearbyAlone = nearby && model\.nodes\.length === 1 && !model\.edges\.length;/.test(rg),
+    'the lone-point case is recognised');
+  assert.ok(/cnt\.textContent = \(!model\.nodes\.length \|\| nearbyAlone\) \? ''/.test(rg),
+    'and blanks the count, so announceOverlayCount falls through to the empty title');
+  assert.ok(/et\.textContent = nearbyAlone \? 'Nothing links to this point yet'/.test(_src),
+    'which says what happened');
+});
+
+test('#898 the scope group scrolls instead of spilling the panel head', () => {
+  // Measured with the §7 driver, control first: origin/main's TWO-chip head already spilled 20px
+  // at 340px, and a third chip took it to 87px and started failing at 390px. The strip recipe
+  // fixes both. It is the same one the toolbar uses, and `display:flex` deliberately is NOT
+  // repeated in .graph-scope — .scroll-strip owns it, and duplicating it there is what once
+  // rendered the quick bar 213px tall with its buttons stacked.
+  assert.ok(_src.includes(".graph-scope{gap:3px}"), 'the strip owns the layout; the group only sets its gap');
+  assert.ok(!/\.graph-scope\{[^}]*display:flex/.test(_src), 'display:flex is not duplicated onto the group');
+  assert.ok(_src.includes(".graph-head>.graph-title,.graph-head>.graph-count{flex-shrink:0}"),
+    'the fixed head items keep their size so the strip is what gives');
+  const rg = _src.slice(_src.indexOf('function renderGraph(panel)'), _src.indexOf('function renderGraph(panel)') + 4200);
+  assert.ok(/scope\.className = 'graph-scope scroll-strip';/.test(rg), 'the group is a scroll strip');
+  assert.ok(/wireScrollStrip\(scope\);/.test(rg),
+    'and is wired for the fade cue + focus reveal, so a chip scrolled out of sight is still reachable (P3)');
+  assert.ok(/scope\.setAttribute\('role', 'group'\)/.test(rg) && /aria-label', 'Graph scope'/.test(rg),
+    'a scrolling group of chips is a named group');
+});

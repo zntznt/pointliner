@@ -149,6 +149,10 @@ button,[contenteditable],input{touch-action:manipulation}
   color-scheme:light;
   --bg:#f7f4ed;--fg:#1f1d1a;--muted:#6b665c;--bullet:#8f887b;--bullet-h:#4338ca;
   --cb:#8f887b;--ind:24px;--lh:1.55;
+  /* A point's text box is inset from the column by the bullet gutter on the left and by this
+     padding on the right. #992's full-bleed images need the RIGHT one to re-centre exactly,
+     so it is a variable rather than a literal in two places that could drift apart. */
+  --nc-pad:3px;
   --font:'Geist',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --display-font:'Fraunces',ui-serif,Georgia,serif;
   --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
@@ -640,7 +644,7 @@ body.v-lean #toolbar:has(#search-box:focus){transform:translateY(0)}
    word as a last resort for a genuinely unbreakable string (long URL/token). word-break
    was eagerly chopping normal words when a non-breakable inline pill starved the line,
    e.g. "{2d6} rooms" splitting "rooms" → "roo/ms" at narrow widths. */
-.node-content{flex:1;min-width:0;outline:none;overflow-wrap:break-word;line-height:var(--lh);padding:1px 3px;border-radius:var(--r-xs);white-space:pre-wrap}
+.node-content{flex:1;min-width:0;outline:none;overflow-wrap:break-word;line-height:var(--lh);padding:1px var(--nc-pad);border-radius:var(--r-xs);white-space:pre-wrap}
 .node-content:focus{box-shadow:0 0 0 2px var(--ring)}
 .node-content:empty::before{content:attr(data-ph);color:var(--muted);pointer-events:none}
 /* ── per-point note: a second mirrored flex row (invisible gutter clones keep the
@@ -891,6 +895,32 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-total-blank::before{content:none!important}
 .mt-total-cell::before{content:attr(data-agg) '\00a0';font-size:.72em;font-weight:600;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:var(--r-sm);margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
+/* #992 image width modes. The mode raises the CEILING; an inline width:N% (also from the title)
+   sets the width WITHIN it.
+   The issue's negative-margin full-bleed recipe (half a viewport left, half a container right,
+   the one every full-bleed blog post prescribes) is WRONG here, and driving the
+   app proved it: an image's containing block is a point's content box, which sits behind the
+   bullet gutter and moves further right with every level of indent. That recipe centres on the
+   CONTAINING BLOCK's centre, so a 100vw image started 13px right of the viewport centre at depth
+   zero (more when indented) and pushed the whole page into horizontal scroll at every width.
+   `#outline` IS centred in the window, so make it an inline-size container. `100cqw` is then
+   the column width at any depth, and because a point's text box shares the column's RIGHT edge
+   (bar --nc-pad), `100% - 50cqw + var(--nc-pad)` is the column's centre expressed from the text
+   box's left edge. translateX(-50%) then backs off half the image's OWN width, which is what
+   makes this work for a width the stylesheet cannot know (a title can set any N%) and where
+   auto margins cannot help (they collapse to 0 once the image is wider than its container).
+   Measured centring error: 0px at depths 0-3, on headings and quotes, at 420/900/1280. */
+#outline{container-type:inline-size}
+.md-img-full,.md-img-wide{position:relative;left:calc(100% - 50cqw + var(--nc-pad));transform:translateX(-50%)}
+.md-img-full{max-width:calc(100vw - var(--sbw,0px));width:calc(100vw - var(--sbw,0px));max-height:540px}
+.md-img-wide{max-width:calc((100vw - var(--sbw,0px)) * .75);max-height:480px}
+/* Cards and base cells keep the sizing they already had. Descendant specificity already beats
+   the mode classes, but NOT the inline width the title can now set — and outside #outline there
+   is no inline-size container, so `cqw` would fall back to the VIEWPORT and fling the image off
+   screen. Both are neutralised here, at the three properties this feature introduces. */
+.gv-card .md-img,.mt-cell .md-img{max-width:100%!important;margin-left:0!important;position:static!important;transform:none!important}
+.gv-card .md-img{width:100%!important}
+.mt-cell .md-img{width:auto!important}
 .node-content a{color:var(--acc);text-decoration:none}
 .node-content a:hover{text-decoration:underline}
 /* Hashtags read as bounded label chips (the design-language badge recipe: color-mix 14%
@@ -1475,7 +1505,14 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .graph-node:focus circle{stroke-width:2.4}
 .graph-node.graph-node-broken circle{fill:color-mix(in srgb,var(--bad) 16%,var(--bg));stroke:var(--bad)}
 /* 4b: folder scope — the toggle pair in the head, and the current document's accent ring */
-.graph-scope{display:flex;gap:3px;align-items:center}
+/* #898: the scope group is a scrolling strip, not a rigid row. It was built for two chips; a third
+   pushed it past the head's right edge at 390px and narrower, and the CONTROL run showed the
+   two-chip version already spilling 20px at 340px — so this fixes a pre-existing narrow-width
+   defect as well as the one the new chip would have added. Same recipe the toolbar uses: the chips
+   scroll under a fade cue instead of overflowing. `display:flex` comes from .scroll-strip, and
+   omitting it there is what once rendered the quick bar 213px tall, so it is NOT repeated here. */
+.graph-scope{gap:3px}
+.graph-head>.graph-title,.graph-head>.graph-count{flex-shrink:0}
 .graph-node.graph-node-current circle{stroke-width:2.6;fill:color-mix(in srgb,var(--acc) 34%,var(--bg))}
 .graph-node.graph-node-current text{font-weight:600}
 .graph-node text{fill:var(--fg);font-size:11px;font-family:var(--font);pointer-events:none;dominant-baseline:middle}
@@ -2341,6 +2378,14 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 .bl-link-btn{flex-shrink:0;font-size:11px;font-weight:600;color:var(--acc);cursor:pointer;padding:1px 6px;border:1px solid var(--bdr);border-radius:var(--r-sm);background:transparent;outline-offset:2px}
 .bl-link-btn:hover{background:var(--acc);color:var(--acc-fg)}
 .bl-link-btn:focus-visible{outline:2px solid var(--acc)}
+/* #953: the same rows again, in flow at the foot of a zoomed note, so "what links here" sits with
+   the note instead of in a strip docked to the bottom of the window. Every .bl-* rule above is
+   reused unchanged — only the container differs. The rows drop `white-space:nowrap` here: the
+   strip is 180px tall and must not grow, but in flow there is room to read a long title. */
+.zoom-bl{margin:26px 0 8px;padding-top:12px;border-top:1px solid var(--bdr)}
+.zoom-bl-hd{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em;margin-bottom:4px}
+.zoom-bl .bl-item,.zoom-bl .bl-snippet,.zoom-bl .bl-subhd,.zoom-bl .bl-unlinked-label{white-space:normal;overflow:visible;text-overflow:clip}
+.zoom-bl .bl-empty{font-size:13px;color:var(--muted);padding:2px 0}
 /* ── link picker ([[ trigger) ── */
 #lp-menu{position:fixed;display:none;z-index:700;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-1);width:260px;max-height:220px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;padding:5px}
 #lp-menu.on{display:block}
@@ -3166,9 +3211,18 @@ function displayTitle(node) {
 //     unlinked reference (and a footnote marker `[^k]` is never displayed prose).
 // Pure-ish: flattenArtifacts/linkText read sidecars + the live title/var maps, the
 // same reads the render already does.
+// #953 (measured): varMapAt is a per-node cache that a generation bump clears, so warming it
+// across a whole document costs ~540ms at 5k points — and collectUnlinkedRefs calls displayText on
+// every node, which is why the first click into a point in a big document stalled for ~620ms on
+// main. Every artifact flattenArtifacts can resolve is spelled with a `[` or a `{`: the
+// [[type:key]] pill tokens, the [/] and [%] cookies, the [o n/m] clocks, and {meter:…}. With
+// neither character present the map is never read, so it never needs building. Same shape as the
+// MD_SNIFF / EX_SNIFF guards: prove cheaply that no expensive work can fire, then skip it.
+const ART_SNIFF = /[\[{]/;
+const EMPTY_VARMAP = {};
 function displayText(node, { forMatch = false, varMap } = {}) {
   let t = textForDisplay(node) || '';
-  t = flattenArtifacts(t, node, varMap || varMapAt(node));  // dice/grammar/math/etc → shown value (positional)
+  t = flattenArtifacts(t, node, varMap || (ART_SNIFF.test(t) ? varMapAt(node) : EMPTY_VARMAP));  // dice/grammar/math/etc → shown value (positional)
   t = forMatch
     ? t.replace(/\[\[[^\]]*\]\]/g, ' ').replace(/\[\^[^\]]*\]/g, ' ')  // drop link + footnote tokens
     : linkText(t);                                                     // resolve links to legible text
@@ -6914,6 +6968,31 @@ function renderCrossLinkPill(docId, target, label) {
   return `<span class="node-link node-link-cross" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" title="${escQ(docLabel)}" aria-label="${escQ(capText + ', link to a point in ' + docLabel)}">${cap}</span>`;
 }
 
+// #992 image sizing. The width modes ride the markdown title field — no new syntax (P5).
+// `full`/`wide`/`3/4`/`point` set the CEILING; `N%` sets the width WITHIN it, always as a
+// percentage of the outline column (what CSS `width:N%` natively means). So `150%` alone is
+// clamped by the point-width ceiling and does nothing visible; `wide 150%` is 1.5x the column.
+//
+// ALL OR NOTHING: the title is read as a sizing directive only when EVERY token is recognized.
+// The issue specced per-token stripping, but that makes `"full moon"` silently widen the image
+// AND eat half the tooltip — one word of prose changing the layout is a P1 violation. A mixed
+// title is prose, and prose is left exactly as written.
+//
+// Lowercase-only for the same reason: `"Full"` capitalized is a caption, not a directive.
+const IMG_MODE_CLS = { full:'md-img-full', wide:'md-img-wide', '3/4':'md-img-wide', point:'' };
+function imgSizeParts(title) {
+  const t = String(title == null ? '' : title).trim();
+  if (!t) return { cls:'', style:'', title:'' };
+  let mode = null, pct = null;
+  for (const tk of t.split(/\s+/)) {
+    if (Object.prototype.hasOwnProperty.call(IMG_MODE_CLS, tk)) { mode = tk; continue; }
+    const m = /^([0-9]{1,4})%$/.exec(tk);
+    if (m && +m[1] >= 1 && +m[1] <= 1000) { pct = +m[1]; continue; }
+    return { cls:'', style:'', title:t };            // one unrecognized token → the whole title is prose
+  }
+  return { cls: mode ? IMG_MODE_CLS[mode] : '', style: pct == null ? '' : 'width:' + pct + '%', title:'' };
+}
+
 function mdInline(s) {
   // Strip NUL first: \x00 is our stash sentinel (\x00N\x00), so a literal NUL in user
   // text could otherwise collide with a placeholder and inject a stashed fragment.
@@ -6935,7 +7014,8 @@ function mdInline(s) {
   // images first: ![alt](url "title") — superset of link syntax
   s = s.replace(/!\[([^\]]*)\]\(([^)\s\x00]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
     const u = safeUrl(url, true); if (!u) return '';
-    return stash(`<img src="${escQ(u)}" alt="${escQ(alt)}"${title?` title="${escQ(title)}"`:''} class="md-img" loading="lazy">`);
+    const sz = imgSizeParts(title);
+    return stash(`<img src="${escQ(u)}" alt="${escQ(alt)}"${sz.title?` title="${escQ(sz.title)}"`:''} class="md-img${sz.cls?' '+sz.cls:''}"${sz.style?` style="${escQ(sz.style)}"`:''} loading="lazy">`);
   });
   // links: [text](url "title") — emphasis allowed inside the text
   s = s.replace(/\[([^\]]*)\]\(([^)\s\x00]+)(?:\s+"([^"]*?)")?\)/g, (_, txt, url, title) => {
@@ -8748,6 +8828,11 @@ function zoomInto(id) {
   const vp = nodeById(id);
   if (vp?.children?.length) focusNode(vp.children[0].id);
   else document.querySelector('.zoom-title')?.focus();
+  // #953: that landing focus is the app's choice, not the reader's, and its focus handler raises
+  // the strip. Found by driving: zoom into a note whose FIRST CHILD happens to be linked from
+  // somewhere and a docked panel about that child slides over the note you just opened. The strip
+  // under a zoom is for a child you deliberately move to, so start every zoom with it down.
+  hideBlPanel();
 }
 function zoomTo(id)   { focusedId = id; render(); }
 
@@ -9174,6 +9259,12 @@ function render() {
   // identical invitation right under it. (firstChildId is set only in that empty case.)
   if (!firstChildId) appendGhostRow(vp, container);
 
+  // #953: a zoomed note carries its own inbound references in flow, under its children. The
+  // bottom strip stays for the outline's caret case; here the answer belongs WITH the note (the
+  // strip sat ~480px below the title, docked to the window edge). Bases are skipped: a zoomed
+  // base is a table widget, and updateBlPanel already excludes them.
+  if (focusedId != null && vp.type !== 'base') container.appendChild(buildZoomBacklinks(vp.id));
+
   // UXP-59: empty-state banner when a search yields no matches
   const seEl = document.createElement('div');
   seEl.id = 'search-empty';
@@ -9210,8 +9301,10 @@ function render() {
   // empty panel) nor stay hidden on a child-bearing note. Runs last so it wins over focusNode;
   // as the user then focuses child rows, the panel tracks them (unchanged). Bases have no title
   // backlink panel, so skip them.
-  if (_focusChanged && focusedId && vp.type !== 'base') updateBlPanel(focusedId);
-  else if (_focusChanged && !focusedId) { hideBlPanel(); hideFnPanel(); }
+  // #953: zooming IN no longer raises the strip for the zoom root — buildZoomBacklinks drew that
+  // point's refs in flow above, and a docked copy of the same list would sit on top of the note.
+  // Zooming OUT still tears both panels down.
+  if (_focusChanged && !focusedId) { hideBlPanel(); hideFnPanel(); }
   syncBlankInvite();   // the blank-canvas door tracks every repaint: shows when the doc goes blank, gone the moment it isn't
 }
 let _lastRenderFocusedId = null; // #488: detect a zoom (focusedId change) to skip scroll-restore
@@ -22766,6 +22859,103 @@ function mergeUnlinkedEdges(model, edges, titleOf) {
   return { nodes, edges: outEdges };
 }
 
+// #898 (cross-document-direction.md §4b / §6 step 5): the NEIGHBORHOOD graph — the point you are on
+// plus everything within N hops, across documents. Bounded by construction, which is the whole
+// argument for it: the force layout is O(N^2)*iterations (21 s at 2,000 linked points), so an
+// all-points folder graph is out, but a capped local walk never approaches that wall.
+//
+// Every id here is QUALIFIED — `docId + '#' + nodeId`, the key shape workspaceIndex.backlinks
+// already uses. That is what makes the cross-doc version safe: the same-doc index speaks bare ids
+// and the workspace index speaks doc-plus-node, and rather than carry both id spaces through a
+// graph walk, everything is normalised at the door. There is only ever one kind of id in here.
+const qid = (docId, nodeId) => (docId || '') + '#' + nodeId;
+const unqid = q => { const i = String(q).indexOf('#'); return [String(q).slice(0, i), String(q).slice(i + 1)]; };
+
+// The cap. 150 matches GRAPH_UNLINKED_CAP, and the reasoning is the same one: it is the LAYOUT that
+// has to be kept bounded, not the walk. The walk is trivially cheap; graphLayout is the O(N^2) step.
+const GRAPH_NEARBY_CAP = 150;
+const GRAPH_NEARBY_HOPS = 2;
+
+// Undirected adjacency over the whole link web. Undirected on purpose: "near this idea" includes
+// what points AT you, not only what you point at, so each link contributes both directions.
+//
+// The current document's edges come from `links` (a LIVE collectLinks result) and never from
+// wsOutgoing, whose copy of the open document is stale from the last disk write — §5.3 own-doc
+// liveness, the rule every cross-doc read path has to honour. Entries in wsOutgoing whose source
+// IS the current document are therefore skipped, not merged. Pure.
+function nearbyAdjacency({ links, wsOutgoing, ownDocId }) {
+  const own = ownDocId || '';
+  const adj = new Map();
+  const join = (a, b) => {
+    if (a === b) return;                                   // a self-link is not a neighbour
+    if (!adj.has(a)) adj.set(a, new Set());
+    if (!adj.has(b)) adj.set(b, new Set());
+    adj.get(a).add(b); adj.get(b).add(a);
+  };
+  for (const src of Object.keys(links?.outgoing || {}))
+    for (const { target } of links.outgoing[src] || []) join(qid(own, src), qid(own, target));
+  for (const l of wsOutgoing || []) {
+    if (!l || !l.srcNodeId || !l.dstNodeId) continue;
+    if ((l.srcDocId || '') === own) continue;              // the live index above already has these
+    join(qid(l.srcDocId, l.srcNodeId), qid(l.dstDocId, l.dstNodeId));
+  }
+  return adj;
+}
+
+// Breadth-first from the start point out to `hops`, capped at `cap` nodes. BFS order is the point
+// of the cap: when a hub blows the budget, what gets dropped is the FURTHEST away, which is the
+// only defensible thing to drop from a "what is near this" view.
+//
+// Returns graphModel's envelope so graphLayout and the SVG render are untouched (they read only
+// id/a/b), plus `current` on the start node — which the folder scope's "you are here" ring already
+// renders — and the counts the panel needs to report a cap honestly (P4). Pure.
+function nearbyGraphModel(startQid, adj, meta, hops = GRAPH_NEARBY_HOPS, cap = GRAPH_NEARBY_CAP) {
+  const titleOf = (meta && meta.titleOf) || (() => null);
+  const seen = new Map();                                  // qid -> hop distance
+  const order = [];                                        // BFS order, so truncation drops the far ones
+  seen.set(startQid, 0); order.push(startQid);
+  let total = 1;                                           // reachable within `hops`, BEFORE the cap
+  let frontier = [startQid];
+  for (let d = 1; d <= hops && frontier.length; d++) {
+    const next = [];
+    for (const q of frontier)
+      for (const n of (adj.get(q) || [])) {
+        if (seen.has(n)) continue;
+        seen.set(n, d);
+        total++;
+        if (order.length < cap) order.push(n);
+        next.push(n);                                      // keep walking past the cap so `total` is true
+      }
+    frontier = next;
+  }
+  const inView = new Set(order);
+  const deg = new Map(order.map(q => [q, 0]));
+  const edgeSet = new Set();
+  const edges = [];
+  for (const q of order)
+    for (const n of (adj.get(q) || [])) {
+      if (!inView.has(n)) continue;                        // an edge to a node the cap dropped is not drawn
+      const [a, b] = q < n ? [q, n] : [n, q];
+      const key = a + '\x00' + b;
+      if (edgeSet.has(key)) continue;
+      edgeSet.add(key);
+      edges.push({ a, b });
+      deg.set(a, deg.get(a) + 1); deg.set(b, deg.get(b) + 1);
+    }
+  const nodes = order.map(id => {
+    const t = titleOf(id);
+    return {
+      id,
+      title: t || '(untitled)',
+      deg: deg.get(id) || 0,
+      broken: t == null,                                   // no title anywhere → the point is gone (red dot)
+      current: id === startQid,
+      hop: seen.get(id),
+    };
+  });
+  return { nodes, edges, total, capped: total > order.length, hops };
+}
+
 // 4b (cross-document-direction.md): the DOC-LEVEL folder graph — documents as nodes, one
 // undirected edge per linked doc pair, weighted by how many cross-doc links join them.
 // Deliberately doc-level: an all-points folder graph is rejected on measurement (the force
@@ -32029,8 +32219,10 @@ function scheduleBlHide() {
     // or the zoomed-in title (.zoom-title), which is a separate hand-rolled editor.
     const ae = document.activeElement;
     if (ae?.classList.contains('node-content') || ae?.classList.contains('zoom-title')) return;
-    // When zoomed, the title's footer is ALWAYS shown — moving focus off a child reverts to it
-    // rather than hiding. On the plain outline, focus leaving everything hides the footer.
+    // #953: the "revert to the zoomed title" branch is gone. The title's refs live in flow under
+    // the note now, so focus leaving a child has nothing to revert TO — the strip's only job under
+    // a zoom is a child's own refs, and losing focus ends that. Routed through updateBlPanel so the
+    // one visibility decision stays in one place.
     if (focusedId != null) { updateBlPanel(focusedId); return; }
     hideBlPanel();
   }, 150);
@@ -32083,13 +32275,142 @@ function syncHelpBtnBottom() {
 function blGather(nodeId) {
   const idx = collectLinks();
   const sources = (idx.backlinks[nodeId] || []).map(sid => nodeById(sid)).filter(Boolean);
-  const unlinked = collectUnlinkedRefs(nodeId);
   // CF-4: inbound links from OTHER workspace docs (same-doc sources come from collectLinks).
   const cross = (workspaceDir && workspaceIndex) ? workspaceBacklinks(root.docId, nodeId, workspaceIndex) : [];
+  // A walk of every point in the document, testing each one's RENDERED text. O(N), ~230ms at 50k
+  // points on a cold generation — the reason the in-flow section never calls this from render().
+  const unlinked = collectUnlinkedRefs(nodeId);
   // backlog #3: unlinked mentions of this point in OTHER folder docs (view-only, no auto-link).
   const crossUnlinked = (workspaceDir && workspaceIndex) ? collectCrossUnlinkedRefs(nodeById(nodeId), root.docId, workspaceIndex) : [];
   return { sources, unlinked, cross, crossUnlinked, has: (sources.length + unlinked.length + cross.length + crossUnlinked.length) > 0 };
 }
+
+// #953: the inbound-refs answer is now drawn in TWO places — the bottom strip (caret-driven, the
+// outline view) and an in-flow section at the foot of a zoomed note. This is the one model both
+// render from, so the headings, the counts and the empty copy cannot drift apart. Pure: it takes
+// blGather's output and returns a render script, no DOM, no globals.
+//
+// The rules it carries are the ones the strip already had, written down instead of inlined:
+//   * "Linked from" counts SAME-DOC + CROSS-DOC sources together (CF-4), and is always present,
+//     title-only at zero (925a) — never a hidden section, never an empty box.
+//   * "Unlinked references" is likewise always present, but its divider is suppressed when there
+//     is nothing above it to divide from (a lone rule reads as broken UI).
+//   * The cross-doc unlinked section appears only when it has rows (it is folder-only, so an
+//     always-on heading would advertise a feature most documents cannot use).
+// `inflow` adds one thing the strip never needed: a sentence when the whole section is empty. A
+// docked strip can say nothing and just be short; a section sitting in the page cannot (P4).
+function blSectionModel(d, opts) {
+  const inflow = !!(opts && opts.inflow);
+  // `pending` is the in-flow section's first paint, before the O(N) mentions walk has run. The
+  // mention sections are OMITTED rather than shown as zero: "Unlinked references" with no count
+  // is the honest zero state, and printing it before anything has been counted would be a claim
+  // the app has not checked (P4). Same reason the empty line waits.
+  const pending = !!(opts && opts.pending);
+  const sources = (d && d.sources) || [], cross = (d && d.cross) || [];
+  const unlinked = (d && d.unlinked) || [], crossUnlinked = (d && d.crossUnlinked) || [];
+  const linked = sources.length + cross.length;
+  const sections = [{ kind:'linked', heading:null, count:linked, rows:linked }];
+  if (!pending) sections.push({ kind:'unlinked',
+    heading:'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : ''),
+    divider: linked > 0, rows:unlinked.length });
+  if (!pending && crossUnlinked.length) sections.push({
+    kind:'crossUnlinked', heading:`Unlinked references in other documents · ${crossUnlinked.length}`,
+    divider:true, rows:crossUnlinked.length });
+  return {
+    header: linked ? `Linked from · ${linked}` : 'Linked from',
+    linked, sections,
+    // The one line the in-flow section adds. Empty means "nothing inbound AND nothing to link",
+    // i.e. every section above rendered zero rows.
+    pending,
+    empty: (inflow && !pending && linked + unlinked.length + crossUnlinked.length === 0)
+      ? 'Nothing links to this point yet. Write [[ in another point to link it here.' : '',
+  };
+}
+
+// #953: blGather is not cheap — it walks the whole tree in collectUnlinkedRefs and every folder
+// document in the two cross-doc collectors. As a caret-driven strip it ran only when the focused
+// point CHANGED; in flow it would run on every render.
+//
+// What this memo is actually for, after measuring: NOT the render path (nothing expensive runs
+// there any more — buildZoomBacklinks defers everything on a cold generation, and defeating this
+// memo moves the benchmark by ~0.2ms). It is the "can I paint now?" signal. A hit means the answer
+// is already known, so the section draws complete and instantly; a miss means deferring, which
+// costs a visible blank-then-fill. Without it EVERY render would defer, including the ones that
+// changed nothing (a collapse, a view toggle). It also collapses repeat fills within a generation.
+//
+// The key is (_varsVer, _wsIndexGen, nodeId), not _varsVer alone: `cross` and `crossUnlinked` come
+// from workspaceIndex, and a folder rescan bumps the workspace generation WITHOUT touching
+// _varsVer, so a _varsVer-only memo would serve stale cross-doc rows. That is also why this cannot
+// go through makeDocCache, which keys on _varsVer only.
+let _zblVer = -1, _zblGen = -1, _zblId = null, _zblData = null;   // doc-cache: zoomBacklinks (see DOC_CACHES)
+regDocCache('zoomBacklinks', {
+  read: () => blGatherCached(focusedId),
+  reset: () => { _zblVer = -1; _zblGen = -1; _zblId = null; _zblData = null; },
+});
+// A memo READ that never computes: the in-flow section uses it to decide whether the full gather
+// is already available (paint it all at once) or has to be filled in off the render path.
+function blGatherWarm(nodeId) {
+  const gen = workspaceIndex ? (workspaceIndex.gen || 0) : 0;
+  return (_zblVer === _varsVer && _zblGen === gen && _zblId === nodeId && _zblData) ? _zblData : null;
+}
+function blGatherCached(nodeId) {
+  const gen = workspaceIndex ? (workspaceIndex.gen || 0) : 0;
+  if (_zblVer === _varsVer && _zblGen === gen && _zblId === nodeId && _zblData) return _zblData;
+  // No subject (not zoomed, or the point is gone) still fills the slot with a FRESH empty gather
+  // rather than a shared constant: the registry's derived test reads every cache through `read`
+  // and requires identity within a generation and a new object after a bump. A shared frozen
+  // blank would pass the first half and fail the second, and would be a lie besides.
+  const node = nodeId ? nodeById(nodeId) : null;
+  _zblData = node ? blGather(nodeId) : { sources: [], unlinked: [], cross: [], crossUnlinked: [], has: false };
+  _zblVer = _varsVer; _zblGen = gen; _zblId = nodeId;
+  return _zblData;
+}
+
+// #953: the note's own inbound refs, in flow under its children. Same rows, same model, same
+// keyboard behaviour as the strip — only the container and the navigate hooks differ.
+function buildZoomBacklinks(nodeId) {
+  const sec = document.createElement('section');
+  sec.className = 'zoom-bl';
+  sec.setAttribute('role', 'region');
+  const hd = document.createElement('div');
+  hd.className = 'zoom-bl-hd';
+  hd.id = 'zoom-bl-hd';
+  sec.setAttribute('aria-labelledby', 'zoom-bl-hd');
+  const inner = document.createElement('div');
+  sec.append(hd, inner);
+  // Two-stage, because this runs on EVERY render while zoomed and BOTH halves are O(document) on a
+  // cold generation. Measured at 50k points, per edit: the mentions walk 256ms, and even the cheap
+  // links half still cost 116ms — not in the gather (9ms) but in drawing the rows, because each
+  // source title goes through displayText -> varMapAt, and the first such call after an edit
+  // rebuilds the positional variable map for the whole document.
+  //
+  // So on a cold generation nothing is drawn here: the heading goes up and the rows arrive from an
+  // idle callback, by which time varMapAt is warm anyway. A warm memo (any render that did not
+  // change the document: a collapse, a view toggle, a scroll-driven rebuild) paints in full, so
+  // the deferred path is only ever taken right after an edit.
+  const warm = blGatherWarm(nodeId);
+  renderBlRows(inner, hd, nodeId, warm || { sources: [], unlinked: [], cross: [], crossUnlinked: [] },
+    { inflow: true, pending: !warm });
+  if (!warm) scheduleZoomBlFill(nodeId, sec, inner, hd);
+  // beforeNavigate is a no-op (nothing is docked to dismiss) and afterLink likewise: doLink already
+  // calls render(), which rebuilds this section from scratch.
+  return sec;
+}
+
+// Stage 2. Cancels any in-flight fill (a second render supersedes the first), and re-checks
+// everything on arrival: still zoomed on the same point, and the element still in the document.
+// It patches the section in place rather than calling render(), so it can never loop.
+let _zblFill = null;
+function scheduleZoomBlFill(nodeId, sec, inner, hd) {
+  if (_zblFill) (window.cancelIdleCallback || clearTimeout)(_zblFill);
+  const run = () => {
+    _zblFill = null;
+    if (focusedId !== nodeId || !sec.isConnected) return;   // superseded: zoomed away, or re-rendered
+    renderBlRows(inner, hd, nodeId, blGatherCached(nodeId), { inflow: true });
+  };
+  _zblFill = window.requestIdleCallback ? requestIdleCallback(run, { timeout: 400 }) : setTimeout(run, 0);
+}
+
 function blShowWith(nodeId, d) {
   blNodeId = nodeId;
   renderBlPanel(d.sources, d.unlinked, d.cross, d.crossUnlinked);
@@ -32111,19 +32432,29 @@ function hideBlPanel() {
   syncBodyPadBottom();
 }
 
+// The bottom strip: the original caller, now a thin wrapper over the shared renderer.
 function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
-  unlinked = unlinked || [];
-  cross = cross || [];
-  crossUnlinked = crossUnlinked || [];
-  const inner = document.getElementById('bl-list');
-  const hd = document.getElementById('bl-panel-hd');
-  const total = sources.length + cross.length;   // "Linked from" is all inbound links (CF-4)
-  if (hd) {
-    // 925a: the title is ALWAYS shown (title-only when 0 inbound links), never hidden and never an
-    // empty box below it — the rows that follow are the only content.
-    hd.style.display = '';
-    hd.textContent = total ? `Linked from · ${total}` : 'Linked from';
-  }
+  renderBlRows(document.getElementById('bl-list'), document.getElementById('bl-panel-hd'), blNodeId,
+    { sources, unlinked, cross, crossUnlinked },
+    { beforeNavigate: hideBlPanel, afterLink: () => showBlPanel(blNodeId) });
+}
+
+// #953: the shared row renderer. This was renderBlPanel's body, with three things parameterised so
+// a second surface reuses it verbatim instead of forking it: WHERE the rows go (inner/hd), WHICH
+// point they are about (subjectId, previously the module global blNodeId), and what happens around
+// navigation. The strip dismisses itself before navigating and re-shows itself after a Link; the
+// in-flow section has nothing to dismiss and is rebuilt by the render() that Link already triggers.
+function renderBlRows(inner, hd, subjectId, d, opts) {
+  if (!inner) return;
+  opts = opts || {};
+  const before = opts.beforeNavigate || (() => {});
+  const afterLink = opts.afterLink || (() => {});
+  const sources = d.sources || [];
+  const unlinked = d.unlinked || [];
+  const cross = d.cross || [];
+  const crossUnlinked = d.crossUnlinked || [];
+  const model = blSectionModel({ sources, unlinked, cross, crossUnlinked }, opts);
+  if (hd) { hd.style.display = ''; hd.textContent = model.header; }
   inner.innerHTML = '';
   sources.forEach(src => {
     const item = document.createElement('div');
@@ -32135,13 +32466,13 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.setAttribute('tabindex', '0');
     // 4d: context preview — the source line around the link, so a row answers "what does it
     // say about this?" without a visit. Skipped when it would just repeat the title.
-    const snip = stripCaptionTags(backlinkSnippet(src.text, blNodeId));   // #943: tag-free context line
+    const snip = stripCaptionTags(backlinkSnippet(src.text, subjectId));   // #943: tag-free context line
     item.setAttribute('aria-label', `Linked from "${t}"${snip && snip !== t ? ': ' + snip : ''}. Open`);
     if (snip && snip !== t) {
       const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;
       item.appendChild(sn);
     }
-    const go = () => { hideBlPanel(); zoomInto(src.id); };
+    const go = () => { before(); zoomInto(src.id); };
     item.addEventListener('click', go);
     item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     inner.appendChild(item);
@@ -32163,14 +32494,14 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     item.setAttribute('tabindex', '0');
     // 4d: same context preview as the same-doc rows, read from the index's retained tree.
     const srcNode = findNodeInRoot(wsDocRoot(docId), nodeId);
-    const snip = srcNode ? stripCaptionTags(backlinkSnippet(srcNode.text, blNodeId)) : '';   // #943: tag-free context line
+    const snip = srcNode ? stripCaptionTags(backlinkSnippet(srcNode.text, subjectId)) : '';   // #943: tag-free context line
     item.setAttribute('aria-label', `Linked from "${t}" in ${displayName(docName || 'another document')}${snip && snip !== t ? ': ' + snip : ''}. Open`);
     if (snip && snip !== t) {
       const sn = document.createElement('div'); sn.className = 'bl-snippet'; sn.textContent = snip;
       item.appendChild(sn);
     }
     const go = () => {
-      hideBlPanel();
+      before();
       followLinkTarget(docId, nodeId);                          // open source note, or flash if it's gone (P4)
     };
     item.addEventListener('click', go);
@@ -32181,13 +32512,22 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   // matches, no empty content below), so the section is a permanent, discoverable affordance.
   // The separator above it only makes sense when there are linked references above to separate
   // from; when there are none, a lone divider reads as a broken UI.
-  const hasLinked = sources.length + cross.length > 0;
+  // #953: in flow, "nothing here" has to SAY nothing is here — a heading over blank space does not.
+  if (model.empty) {
+    const em = document.createElement('div');
+    em.className = 'bl-empty';
+    em.textContent = model.empty;
+    inner.appendChild(em);
+    return;
+  }
+  const unlinkedSec = model.sections.find(x => x.kind === 'unlinked');
+  if (!unlinkedSec) return;                      // pending: the mentions walk has not run yet
   const subhd = document.createElement('div');
   subhd.className = 'bl-subhd';
-  subhd.textContent = 'Unlinked references' + (unlinked.length ? ` · ${unlinked.length}` : '');
-  if (!hasLinked) { subhd.style.borderTop = 'none'; subhd.style.marginTop = '2px'; subhd.style.paddingTop = '2px'; }
+  subhd.textContent = unlinkedSec.heading;
+  if (!unlinkedSec.divider) { subhd.style.borderTop = 'none'; subhd.style.marginTop = '2px'; subhd.style.paddingTop = '2px'; }
   inner.appendChild(subhd);
-  const focusedTitle = textForDisplay(nodeById(blNodeId)) || '';
+  const focusedTitle = textForDisplay(nodeById(subjectId)) || '';
   unlinked.forEach(({ id, title }) => {
     const row = document.createElement('div');
     row.className = 'bl-item bl-unlinked';
@@ -32198,7 +32538,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     label.setAttribute('role', 'link');          // UXP-54: the unlinked-ref title is keyboard-operable too
     label.setAttribute('tabindex', '0');
     label.setAttribute('aria-label', `Open "${title}"`);
-    const goLabel = () => { hideBlPanel(); zoomInto(id); };
+    const goLabel = () => { before(); zoomInto(id); };
     label.addEventListener('click', goLabel);
     label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); goLabel(); } });
     const btn = document.createElement('span');
@@ -32211,17 +32551,17 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
       const mentionNode = nodeById(id); if (!mentionNode) return;
       // The matched name may be an alias, not the title (§8): try each name the
       // focus point answers to and link whichever actually appears in this text.
-      const target = nodeById(blNodeId);
+      const target = nodeById(subjectId);
       const names = target ? nodeNames(target) : [focusedTitle];
       let next = null;
       for (const name of names) {
-        next = linkifyMention(mentionNode.text, name, blNodeId);
+        next = linkifyMention(mentionNode.text, name, subjectId);
         if (next != null) break;
       }
       if (next == null) return;
       pushUndo();
       mentionNode.text = next; markDirty(); render();
-      showBlPanel(blNodeId);
+      afterLink();
       announce('Linked mention');
     };
     btn.addEventListener('mousedown', e => { e.preventDefault(); doLink(); });
@@ -32235,10 +32575,11 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
   // navigates (followLinkTarget switches the doc), with NO "Link" button, since linking would write
   // into an unopened file (the risky path the backlog fenced off). Marked with its source doc, like
   // the cross-doc backlink rows above.
-  if (!crossUnlinked.length) return;
+  const xSec = model.sections.find(x => x.kind === 'crossUnlinked');
+  if (!xSec) return;
   const xsub = document.createElement('div');
   xsub.className = 'bl-subhd';
-  xsub.textContent = `Unlinked references in other documents · ${crossUnlinked.length}`;
+  xsub.textContent = xSec.heading;
   inner.appendChild(xsub);
   crossUnlinked.forEach(({ docId, docName, nodeId, title }) => {
     const row = document.createElement('div');
@@ -32253,7 +32594,7 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
     label.setAttribute('role', 'link');
     label.setAttribute('tabindex', '0');
     label.setAttribute('aria-label', `Open "${title}" in ${displayName(docName || 'another document')}`);
-    const go = () => { hideBlPanel(); followLinkTarget(docId, nodeId); };
+    const go = () => { before(); followLinkTarget(docId, nodeId); };
     label.addEventListener('click', go);
     label.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     row.appendChild(label);
@@ -32264,15 +32605,18 @@ function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
 function updateBlPanel(nodeId) {
   // Visibility model (owner-directed): on the OUTLINE (not zoomed) the Linked/Unlinked footer shows
   // ONLY when the interacted point has inbound refs — no empty footer clutter on the plain view.
-  // When ZOOMED, the footer is ALWAYS present and reflects the ZOOMED point (the header-styled title)
-  // by default; focusing a CHILD switches it to that child's refs ONLY if the child has data, else it
-  // falls back to the title's always-on panel. De-selecting a child reverts to the title (scheduleBlHide).
+  //
+  // #953 simplified the zoomed half: the zoomed point's own refs are now drawn IN FLOW under its
+  // children, so the strip must NOT also answer for it — two copies of the same list, one of them
+  // docked over the content, is worse than either alone. The strip's remaining job under a zoom is
+  // the one thing the in-flow section cannot cover: a CHILD row that has inbound refs of its own.
+  // (The old "empty child falls back to the title" branch went with it — the title's refs are
+  // already on screen.)
   const zoomed = focusedId != null;
-  if (zoomed && nodeId === focusedId) { showBlPanel(nodeId); return; }   // the zoomed title: always shown, even empty
+  if (zoomed && nodeId === focusedId) { hideBlPanel(); return; }         // the note's own refs are in flow
   const d = blGather(nodeId);
   if (d.has) { blShowWith(nodeId, d); return; }                          // this point has inbound refs → show them
-  if (zoomed) { showBlPanel(focusedId); return; }                        // empty child under a zoom → fall back to the title
-  hideBlPanel();                                                         // outline view, nothing inbound → hide (no empty footer)
+  hideBlPanel();                                                         // nothing inbound → hide (no empty footer)
 }
 
 // Keep the panel docked above the software keyboard on mobile. Crucially the
@@ -33468,19 +33812,37 @@ document.getElementById('agenda-strip').addEventListener('keydown', e => {
 // interaction. Click or Enter/Space a node to zoom the outline to that point.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 let graphOpen = false, graphReturnFocus = null;
-let graphScope = 'doc';   // 4b: 'doc' | 'folder' — session-only; the panel opens on the document view
+let graphScope = 'doc';   // 4b/#898: 'doc' | 'folder' | 'nearby' — session-only; the panel opens on the document view
 let graphShowUnlinked = true;   // session-only; unlinked (textual-match) edges default ON
 // Cap on how many unlinked edges the graph draws per open — see the GRAPH_UNLINKED_CAP comment
 // at its declaration for the measured cost this bounds. Recomputed fresh on every openGraph() (the
 // "only when summoned" contract); toggling graphShowUnlinked mid-open reuses this cached result
 // (a cheap re-render), so it must be reset to null on close/reopen, never on a scope toggle.
 let _graphUnlinkedCache = null;
+// #898: the point the Nearby scope is rooted at, and the adjacency map it walks. The anchor is
+// captured on the toolbar button's MOUSEDOWN, not here: by the time openGraph runs the button has
+// taken focus and exitEdit has already cleared activeContentId, so reading the caret at open time
+// finds nothing. Both are per-open, like _graphUnlinkedCache — the adjacency is O(all links) to
+// build, so a scope toggle mid-open must reuse it rather than rebuild.
+let graphAnchorId = null;
+let _graphNearbyAdj = null;
+// Resolve the point a Nearby graph should centre on. captureCurrentPointId is the established
+// precedence (live edit → keyboard cursor → selection anchor); focusedId is the sensible last
+// resort, since being zoomed into a point is also "where you are".
+function graphAnchorNow() {
+  const id = captureCurrentPointId() || focusedId || null;
+  return id && nodeById(id) ? id : null;
+}
 function openGraph() {
   const back = document.getElementById('graph-back');
   const panel = document.getElementById('graph-panel');
   graphReturnFocus = document.activeElement;
   graphOpen = true;
   _graphUnlinkedCache = null;
+  _graphNearbyAdj = null;
+  // The mousedown capture is the reliable one; this is the fallback for the paths that never see a
+  // mousedown at all (a keyboard activation of the toolbar button, or a future command-menu door).
+  if (!graphAnchorId) graphAnchorId = graphAnchorNow();
   back.classList.add('on');
   const btn = document.getElementById('btn-graph');
   btn.classList.add('active'); btn.setAttribute('aria-pressed', 'true');
@@ -33491,6 +33853,7 @@ function openGraph() {
 }
 function closeGraph() {
   graphOpen = false;
+  graphAnchorId = null;
   document.getElementById('graph-back').classList.remove('on');
   const btn = document.getElementById('btn-graph');
   btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
@@ -33504,41 +33867,71 @@ function renderGraph(panel) {
   // 4b: the Folder scope is offered only when the folder actually has 2+ indexed docs —
   // a single-file session keeps the exact pre-4b panel (the toggle would be noise).
   const folderable = (workspaceIndex?.nameByDocId?.size || 0) > 1;
-  if (!folderable) graphScope = 'doc';
+  // #898: a scope is offered only when it can actually answer — Folder needs 2+ indexed documents,
+  // Nearby needs a point to centre on. A scope that cannot answer falls back to the document view
+  // rather than rendering an empty panel (the pre-4b rule, generalised from one scope to two).
+  const nearbyable = !!(graphAnchorId && nodeById(graphAnchorId));
+  if ((graphScope === 'folder' && !folderable) || (graphScope === 'nearby' && !nearbyable)) graphScope = 'doc';
   const folder = graphScope === 'folder';
-  // header: title, scope toggle (folder sessions), live count, close
+  const nearby = graphScope === 'nearby';
+  // header: title, scope toggle, live count, close
   const head = document.createElement('div'); head.className = 'graph-head';
   const ttl = document.createElement('div'); ttl.className = 'graph-title'; ttl.textContent = 'Link graph';
   head.appendChild(ttl);
-  if (folderable) {
-    const scope = document.createElement('div'); scope.className = 'graph-scope';
-    for (const [key, lbl] of [['doc', 'This document'], ['folder', 'Folder']]) {
+  if (folderable || nearbyable) {
+    const scope = document.createElement('div'); scope.className = 'graph-scope scroll-strip';
+    scope.setAttribute('role', 'group'); scope.setAttribute('aria-label', 'Graph scope');
+    const scopes = [['doc', 'This document']];
+    if (folderable) scopes.push(['folder', 'Folder']);
+    if (nearbyable) scopes.push(['nearby', 'Nearby']);
+    for (const [key, lbl] of scopes) {
       const b = document.createElement('button'); b.type = 'button';
       b.className = 'ag-toggle ag-view' + (graphScope === key ? ' on' : '');
       b.textContent = lbl;
       b.setAttribute('aria-pressed', graphScope === key ? 'true' : 'false');
-      b.setAttribute('aria-label', key === 'doc' ? 'Show links within this document' : 'Show links between the folder’s documents');
+      b.setAttribute('aria-label',
+        key === 'doc' ? 'Show links within this document'
+        : key === 'folder' ? 'Show links between the folder’s documents'
+        : 'Show what links to the point you are on, within ' + GRAPH_NEARBY_HOPS + ' steps');
       b.addEventListener('click', () => { if (graphScope !== key) { graphScope = key; renderGraph(panel); panel.querySelector('.graph-scope .on')?.focus(); announceOverlayCount(panel); } });
       scope.appendChild(b);
     }
     head.appendChild(scope);
+    wireScrollStrip(scope);   // the fade cue + focus-reveal, so a chip scrolled out is still reachable
   }
   const titleOf = id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; };
-  const linked = folder ? null : collectLinks();
-  let model = folder
-    ? docGraphModel(workspaceIndex.outgoing, id => workspaceIndex.nameByDocId.get(id), root.docId || '')
-    : graphModel(linked, titleOf);
+  // #898: the same lookup over a QUALIFIED id. The open document reads LIVE (nodeById); other
+  // documents read the index's title map, which already holds every point — no wsDocRoot walk.
+  // null means "no such point anywhere", which is what makes a node broken (the red dot).
+  const own = root.docId || '';
+  const nearbyTitleOf = q => {
+    const [d, n] = unqid(q);
+    if (d === own) return titleOf(n);
+    const t = workspaceIndex?.titles?.get(d)?.get(n);
+    return t === undefined ? null : (graphNodeLabel(String(t).split('\n')[0]) || '(untitled)');
+  };
+  const linked = (folder || nearby) ? null : collectLinks();
+  let model;
+  if (folder) {
+    model = docGraphModel(workspaceIndex.outgoing, id => workspaceIndex.nameByDocId.get(id), own);
+  } else if (nearby) {
+    if (!_graphNearbyAdj) _graphNearbyAdj = nearbyAdjacency({
+      links: collectLinks(), wsOutgoing: workspaceIndex?.outgoing || [], ownDocId: own });
+    model = nearbyGraphModel(qid(own, graphAnchorId), _graphNearbyAdj, { titleOf: nearbyTitleOf });
+  } else {
+    model = graphModel(linked, titleOf);
+  }
   const realLinkCount = model.edges.length;
   // Same-doc scope only (v1 scope guard — folder-scope unlinked-matching is a deliberately
   // deferred follow-up, see cross-document-direction.md). Cached per-open (not per-render) so
   // toggling graphShowUnlinked is a cheap re-render, not a recompute.
   let unlinkedInfo = null;
-  if (!folder) {
+  if (!folder && !nearby) {
     if (!_graphUnlinkedCache) _graphUnlinkedCache = graphUnlinkedEdges(root, linked, GRAPH_UNLINKED_CAP);
     unlinkedInfo = _graphUnlinkedCache;
     if (graphShowUnlinked && unlinkedInfo.edges.length) model = mergeUnlinkedEdges(model, unlinkedInfo.edges, titleOf);
   }
-  if (!folder && unlinkedInfo && unlinkedInfo.total) {
+  if (!folder && !nearby && unlinkedInfo && unlinkedInfo.total) {
     const ut = document.createElement('button'); ut.type = 'button';
     ut.className = 'ag-toggle ag-view graph-unlinked-toggle' + (graphShowUnlinked ? ' on' : '');
     ut.textContent = 'Unlinked';
@@ -33548,8 +33941,22 @@ function renderGraph(panel) {
     head.appendChild(ut);
   }
   const cnt = document.createElement('div'); cnt.className = 'graph-count';
-  cnt.textContent = !model.nodes.length ? ''
+  // #898: Nearby names its bound in the count line rather than hiding it. The hop distance is
+  // fixed, so it has to be SAID or the view silently looks like the whole web; and when the cap
+  // bites, "N of T" is the same honest form the unlinked cap already uses (P4, no silent
+  // truncation). Cross-doc reach is counted too, so a folder user can tell the walk left the file.
+  const nearbyDocs = nearby ? new Set(model.nodes.map(n => unqid(n.id)[0])).size : 0;
+  // A Nearby model always contains at least the point you are on, so it never reaches the no-nodes
+  // branch below — but one ringed dot with nothing around it answers nothing, so it takes the empty
+  // state instead. The count line blanks with it: found by driving, where it read "1 points, 0
+  // links" UNDER the sentence saying nothing links here, and announceOverlayCount (which prefers
+  // .graph-count) then read that instead of the sentence.
+  const nearbyAlone = nearby && model.nodes.length === 1 && !model.edges.length;
+  cnt.textContent = (!model.nodes.length || nearbyAlone) ? ''
     : folder ? `${model.nodes.length} documents, ${model.edges.length} connections`
+    : nearby ? `${model.capped ? `${model.nodes.length} of ${model.total}` : model.nodes.length} point${model.nodes.length === 1 ? '' : 's'}`
+      + (nearbyDocs > 1 ? ` across ${nearbyDocs} documents` : '')
+      + `, ${model.edges.length} link${model.edges.length === 1 ? '' : 's'}, within ${model.hops} hops`
     : `${model.nodes.length} points, ${realLinkCount} links` + (unlinkedInfo && unlinkedInfo.total
       ? `, ${unlinkedInfo.capped ? `${unlinkedInfo.edges.length} of ${unlinkedInfo.total}` : unlinkedInfo.total} unlinked references`
       : '');
@@ -33562,12 +33969,15 @@ function renderGraph(panel) {
   const canvas = document.createElement('div'); canvas.className = 'graph-canvas';
   panel.appendChild(canvas);
 
-  if (!model.nodes.length) {
+  if (!model.nodes.length || nearbyAlone) {
     const empty = document.createElement('div'); empty.className = 'graph-empty';
     const et = document.createElement('div'); et.className = 'graph-empty-title';
-    et.textContent = folder ? 'No links between documents yet' : 'No links yet';
+    et.textContent = nearbyAlone ? 'Nothing links to this point yet'
+      : folder ? 'No links between documents yet' : 'No links yet';
     const eh = document.createElement('div'); eh.className = 'graph-empty-hint';
-    eh.textContent = folder
+    eh.textContent = nearbyAlone
+      ? `Nearby shows the point you are on and everything within ${model.hops} steps of it, across your documents. Type [[ inside another point to link it here, or switch to This document to see the whole web.`
+      : folder
       ? 'Link a point in one document to a point in another and the documents appear here as a web. Type [[ inside a point; the picker searches the whole folder.'
       : 'Link points together and they appear here as a web you can browse. Type [[ inside a point to link it to another, then reopen the graph. Points that mention each other by name, even without a link, also show up here as a dashed connection.';
     empty.append(et, eh); canvas.appendChild(empty);
@@ -33610,9 +34020,23 @@ function renderGraph(panel) {
   const maxDeg = Math.max(...model.nodes.map(n => n.deg), 1);
   const near = nearestDistances(pos);   // UXP-243: how far each node's tap area may grow
   let nodeIdx = 0;   // UXP-240: roving tab stop, seeded over model.nodes = <g> document order
+  // #898: a Nearby node is a qualified id, so ONE call routes it — followLinkTarget already handles
+  // same-doc zoom, cross-doc switch-then-zoom, and both missing cases with their own P4 messages.
   const go = folder
     ? (id) => { const name = workspaceIndex?.nameByDocId?.get(id); if (!name) return; closeGraph(); switchWorkspaceDoc(name); }
+    : nearby
+    ? (id) => { const [d, n] = unqid(id); closeGraph(); followLinkTarget(d, n); }
     : (id) => { closeGraph(); zoomInto(id); };
+  // The document a Nearby node lives in rides its accessible name and its tooltip, not the visible
+  // label: labels are truncated at 28 characters, and in this scope the POINT is the node (in the
+  // folder scope a document IS the node, which is why that one shows names on the canvas).
+  const nearbyDocOf = (id) => {
+    if (!nearby) return '';
+    const d = unqid(id)[0];
+    if (d === own) return '';
+    const nm = workspaceIndex?.nameByDocId?.get(d);
+    return nm ? displayName(nm) : '';
+  };
   for (const n of model.nodes) {
     const p = pos.get(n.id); if (!p) continue;
     const g = document.createElementNS(SVG_NS, 'g');
@@ -33627,14 +34051,18 @@ function renderGraph(panel) {
     nodeIdx++;
     g.setAttribute('role', 'button');
     const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title;
+    const docHint = nearbyDocOf(n.id);
+    if (docHint) { const tt = document.createElementNS(SVG_NS, 'title'); tt.textContent = label + ' · ' + docHint; g.appendChild(tt); }
     g.setAttribute('aria-label',
       (n.broken ? (folder ? 'Missing document' : 'Broken link target') : label)
-      + (n.current ? ' (current document)' : '')
+      + (docHint ? ' in ' + docHint : '')
+      + (n.current ? (nearby ? ' (the point you are on)' : ' (current document)') : '')
       + `, ${n.deg} link${n.deg === 1 ? '' : 's'}.`
       + (n.unlinkedDeg ? ` ${n.unlinkedDeg} unlinked reference${n.unlinkedDeg === 1 ? '' : 's'}.` : '')
       // UXP-242: a broken node now DOES something, so its name says what — it used to end here,
       // announcing as a button with nothing behind it.
-      + (n.broken ? ' Activate to see what links here.' : folder ? ' Activate to open the document.' : ' Activate to open.'));
+      + (n.broken ? ' Activate to see what links here.' : folder ? ' Activate to open the document.'
+         : docHint ? ' Activate to open it in that document.' : ' Activate to open.'));
     const r = 4 + Math.round((n.deg / maxDeg) * 7);
     // UXP-243: an invisible tap target, FIRST so the visible dot keeps its own hover/focus paint.
     // The label is not part of the target and never was (`.graph-node text{pointer-events:none}`),
@@ -33690,6 +34118,10 @@ function renderGraph(panel) {
   canvas.appendChild(svg);
 }
 
+// #898: snapshot the point the caret is in BEFORE this mousedown moves focus and ends the edit.
+// Added alongside the click handler, never in place of it (P3-3, the caret invariant) — and it
+// deliberately does NOT preventDefault, because the button still needs its normal focus behaviour.
+document.getElementById('btn-graph').addEventListener('mousedown', () => { if (!graphOpen) graphAnchorId = graphAnchorNow(); });
 document.getElementById('btn-graph').addEventListener('click', toggleGraph);
 document.getElementById('graph-back').addEventListener('keydown', e => {
   if (e.key === 'Escape') { e.preventDefault(); closeGraph(); return; }
@@ -35078,7 +35510,7 @@ const GUIDE = [
   { id:'inline-md', cat:'writing',
     title:'Styling text',
     body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you.",
-    related:['point-types','footnotes','secret'],
+    related:['point-types','footnotes','secret','image-size'],
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
       { syn:'*italic* or _italic_',     desc:'italic' },
@@ -35102,6 +35534,19 @@ const GUIDE = [
       { syn:'Oracle',             desc:'the term, alone on its line' },
       { syn:': a table you roll on', desc:'its meaning, on the next line after a colon and a space' },
       { syn:': also: a yes/no answer', desc:'a second meaning for the same term' },
+    ] },
+  // #992: image width modes. No `covers` — @image is already claimed by the footnotes entry,
+  // and adding it here would double-cover a single command id.
+  { id:'image-size', cat:'writing',
+    title:'Image size',
+    body:"An image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
+    related:['inline-md','point-types'],
+    examples:[
+      { syn:'![map](map.png "wide")',      desc:'three quarters of the window' },
+      { syn:'![art](art.png "full")',      desc:'the full width of the window' },
+      { syn:'![fig](fig.png "point")',     desc:'the reading column, same as writing nothing' },
+      { syn:'![fig](fig.png "50%")',       desc:'half as wide as the text' },
+      { syn:'![map](map.png "wide 150%")', desc:'half again as wide as the text, up to three quarters of the window' },
     ] },
   // Pure concept entry (no covers — /base and /querybase are covered by their own
   // entries): the one page that says WHICH of the table-family features to reach for.
@@ -35664,17 +36109,18 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Click into a point and the Linked from panel rises from the bottom of the screen whenever other points link to it or mention its title; it updates as you move between points. Each row shows a line of context from the source under its title, so you can see what it says about this point without visiting. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept. The panel also surfaces mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder it lists unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept.\n\nZoom into a point and its Linked from list sits at the foot of the note, under its children, as part of the page. It is always there, and says so plainly when nothing links to the point yet. On the plain outline the same list rises from the bottom of the screen instead, following whichever point you are working in, and only when something links to it.\n\nEach row shows a line of context from the source under its title, so you can see what it says about this point without visiting. Both lists also surface mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder they list unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
     related:['point-links','link-graph','cross-doc-links'],
     examples:[
       { syn:'Linked from',          desc:'points that link here (this document + the folder)' },
+      { syn:'zoom into a point',    desc:'its Linked from list sits under the note, always' },
       { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
       { syn:'…in other documents',  desc:'mentions in your other folder documents; click to open' },
     ] },
 
   { id:'link-graph', cat:'links',
     title:'Link graph',
-    body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long project or a big set of notes: the source everything cites, the person who keeps recurring, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.\n\nWith a connected folder of two or more documents, a Folder view joins the panel: each document becomes one dot, joined to the documents it links to, with a thicker line where more links run between them. Your current document wears a ring, and clicking a document opens it. It is the map of your notebook, one level up from the map of a document.",
+    body:"See your whole document as a web instead of a list, so you can find something by looking rather than by searching for its exact name. Every point that links to another shows up as a dot, joined by a line to what it connects to, with the most-linked points drawn larger so the hubs stand out. This is the recognition half of a long project or a big set of notes: the source everything cites, the person who keeps recurring, the note everything else points back to, spotted at a glance. Open it from the graph button in the toolbar (the linked-dots icon). Click any dot to jump to that point; a point that links to a deleted target shows as a red dot so a dangling reference is visible. Points with no links do not appear, so the graph stays a web, not a scatter.\n\nWith a connected folder of two or more documents, a Folder view joins the panel: each document becomes one dot, joined to the documents it links to, with a thicker line where more links run between them. Your current document wears a ring, and clicking a document opens it. It is the map of your notebook, one level up from the map of a document.\n\nA third view, Nearby, answers a smaller question: what is close to the point I am on? It draws that point, ringed, plus everything within two steps of it, following links in both directions and across your other documents. It is the local map rather than the whole web, and it is what you want while you are reading one note rather than surveying the document. Open the graph with the cursor in a point and the Nearby chip appears; a very busy point is capped, and the count line says how many of how many you are seeing.",
     related:['point-links','backlinks','broken-links'],
     examples:[
       { syn:'Toolbar graph button', desc:'open the link graph (the linked-dots icon)' },
@@ -35682,6 +36128,7 @@ const GUIDE = [
       { syn:'A larger dot',         desc:'a hub: a point many others link to' },
       { syn:'A red dot',            desc:'a link whose target point was deleted' },
       { syn:'Folder',               desc:'documents as dots; click one to open it' },
+      { syn:'Nearby',               desc:'the point you are on, plus 2 steps in every direction' },
     ] },
   { id:'cross-doc-links', cat:'links',
     title:'Links across documents',
@@ -36245,11 +36692,21 @@ const BUILDER_FORMS = {
     { name:'url', label:'URL', type:'text', required:true },
     { name:'text', label:'Display text', type:'text' },
   ], insert: vals => '[' + (vals.text || vals.url) + '](' + vals.url + ')' },
-  // @image: URL + alt text
+  // @image: URL + alt text + width. #992 shipped the width modes on the markdown title field;
+  // the SELECT here is the door (P2-3: no syntax-only capability), and its options are the
+  // literal title keywords, so using the form teaches the syntax. `point` is the default and
+  // emits no title at all, keeping the plain insert byte-identical to before.
   'image': { fields: [
     { name:'url', label:'Image URL', type:'text', required:true },
     { name:'alt', label:'Alt text', type:'text' },
-  ], insert: vals => '![' + (vals.alt || '') + '](' + vals.url + ')' },
+    { name:'width', label:'Width', type:'select', options:['point','wide','full'] },
+    { name:'scale', label:'Scale (of the point width)', type:'select', options:['','50%','75%','100%','125%','150%','200%'] },
+  ], insert: vals => {
+    const w = (vals.width && vals.width !== 'point') ? vals.width : '';
+    const sc = String(vals.scale || '').trim();
+    const t = [w, sc].filter(Boolean).join(' ');
+    return '![' + (vals.alt || '') + '](' + vals.url + (t ? ' "' + t + '"' : '') + ')';
+  } },
   // @table: rows × cols number inputs (insert path only; /table uses slash-menu size picker)
   '@table': { fields: [
     { name:'rows', label:'Rows', type:'number', min:1, max:8 },
@@ -36983,6 +37440,25 @@ window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventD
   const _ro = new ResizeObserver(syncBodyPad);
   _ro.observe(_tb);
   _ro.observe(_warn);
+}
+
+// #992: publish the classic-scrollbar width. `100vw` INCLUDES the scrollbar, so a full-bleed
+// image sized at 100vw is wider than the page can show and pushes it into horizontal scroll on
+// every platform that does not use overlay scrollbars (html sets scrollbar-width:thin, so this
+// app has a real one on Linux/Windows). The CSS subtracts --sbw from the full-bleed width.
+// body's width IS the client width, so its resize observer fires exactly when a scrollbar
+// appears or disappears; writing only on a real change keeps that from feeding back into itself.
+{
+  let _sbw = -1;
+  const syncScrollbarW = () => {
+    const w = Math.max(0, Math.round(window.innerWidth - document.documentElement.clientWidth));
+    if (w === _sbw) return;
+    _sbw = w;
+    document.documentElement.style.setProperty('--sbw', w + 'px');
+  };
+  syncScrollbarW();
+  new ResizeObserver(syncScrollbarW).observe(document.body);
+  window.addEventListener('resize', syncScrollbarW);
 }
 
 // keep footnote panel above the software keyboard on mobile (syncFnPanelBottom

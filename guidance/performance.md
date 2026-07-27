@@ -163,6 +163,66 @@ search / snapshot), not render. Versus the 2026-06-29 run (`bdd7bad`, M): struct
 and `snapshot` came down ~3× at the top end (88 → 29 ms and 30 → 22 ms at 50k) and search
 dropped 231 → 156 ms at 50k.
 
+### Neighborhood graph, the `Nearby` scope (D, 2026-07-27, #898)
+
+The cap exists to keep `graphLayout` off its O(N²) wall (1 s at 500 linked points, 21 s at 2,000 —
+the measurement that got an all-points folder graph rejected). It does, and the shape of the result
+is the claim worth recording: **the cost is flat in document size.**
+
+| document | `collectLinks` | `nearbyAdjacency` | `nearbyGraphModel` | `graphLayout` | total |
+|---|---|---|---|---|---|
+| 5 000 points | 4.2 ms | 1.3 ms | 1.1 ms | 230.6 ms | **237 ms** |
+| 50 000 points | 20.5 ms | 0.9 ms | 0.6 ms | 226.1 ms | **248 ms** |
+
+Same neighbourhood in both: 1,201 points reachable within 2 hops, 150 drawn. The walk is ~1 ms; the
+layout at the cap is everything. Ten times the document costs 11 ms more, all of it in
+`collectLinks`, which the panel needs anyway.
+
+`GRAPH_NEARBY_CAP` stays at 150, matching `GRAPH_UNLINKED_CAP` — and the ~230 ms layout it produces
+is the same budget that cap was already chosen against ("layout stays under ~220 ms at every
+measured size"). Two caps in one panel with the same measured bound should be the same number.
+
+### Backlinks: the `varMapAt` stall, and the zoom-view section (D, 2026-07-27, #953)
+
+Measured on the Debian container while building #953, so the "before" column is `origin/main`,
+not a hypothetical.
+
+**A pre-existing stall, found by instrumenting the feature rather than the bug.** Clicking into a
+point runs `blGather` → `collectUnlinkedRefs`, which calls `displayText` on *every* node.
+`displayText` calls `varMapAt`, a per-node cache that a generation bump clears, so the first click
+after any edit warmed the positional variable map across the whole document.
+
+| operation (5k points) | before | after |
+|---|---|---|
+| first `showBlPanel` of a generation (the click into a point) | **665 ms** | **62 ms** |
+| ...of which `varMapAt` cold across the document | 542 ms | skipped |
+| second `showBlPanel`, same generation | 14.5 ms | 13.5 ms |
+
+The fix is a sniff guard in `displayText`: every artifact `flattenArtifacts` resolves is spelled
+with a `[` or a `{` (`[[type:key]]` tokens, `[/]` and `[%]` cookies, `[o n/m]` clocks, `{meter:}`),
+and the one branch needing neither (`flattenSpoilers`) never reads the map. Output verified
+byte-identical over a seeded 13-case document covering every artifact kind.
+
+**The zoom-view section itself.** Median render while zoomed, after an edit (the worst case: the
+generation bump invalidates everything):
+
+| points | `origin/main` | first cut (all work inline) | shipped (deferred) |
+|---|---|---|---|
+| 5 000 | 16.5 ms | 609 ms | **11.3 ms** |
+| 50 000 | 23.7 ms | 256 ms | **29.0 ms** |
+
+The 5k figure ends up *faster than main* because the sniff guard pays for the section and more. The
+first cut is recorded because it is the instructive number: it is what "just render it" costs, and
+it split into two O(document) halves, the mentions walk (256 ms at 50k) and — after that was
+deferred — drawing the link rows (116 ms at 50k, because each source title goes through
+`displayText` → `varMapAt` cold). Hence: nothing at all is drawn on a cold generation.
+
+**The memo (`zoomBacklinks`) is not a perf win, and the numbers say so.** Defeating it moves the
+benchmark by ~0.2 ms, because nothing expensive runs on the render path any more. It survives as
+the "can I paint now?" signal: a hit paints the section complete and instantly, a miss defers and
+costs a visible blank-then-fill. Without it every render would defer, including ones that changed
+nothing.
+
 ### Scroll, doc-caches, and pill-heavy documents
 
 | scenario | M | W |

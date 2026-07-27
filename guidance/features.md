@@ -400,6 +400,18 @@ Implemented:
   not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
 ### Outline structure & content
 
+- **Image width modes (#992)** — `![alt](url "wide")` / `"full"` / `"3/4"` / `"point"` / `"N%"`,
+  carried on the Markdown title field, so no new syntax (P5). `imgSizeParts` is the pure core;
+  the mode is a class (`.md-img-wide` / `.md-img-full`) and the percentage an inline `width:N%`.
+  **All-or-nothing token rule** (a deliberate departure from the issue's per-token spec): the
+  title is a sizing directive only if EVERY token is recognized, so `"full moon"` stays a caption
+  instead of silently widening the image and eating half the tooltip. Lowercase-only for the same
+  reason. Centring is `cqw` off an inline-size container on `#outline` plus `translateX(-50%)`,
+  not the usual negative-margin full-bleed recipe: a point's text box is inset by the bullet
+  gutter and by its indent, so the standard recipe centres on the wrong point and spills the page
+  (measured 13px at depth 0, worse when nested). `--sbw` (a live `innerWidth - clientWidth`)
+  keeps `100vw` from overshooting a classic scrollbar. Door: Width + Scale selects on `@image`.
+
 - **Table formulas** — Org-mode `#+TBLFM:` spreadsheet conventions. The formula line
   lives as a trailing `#+TBLFM:` line *inside* `node.text` (Org-style), so it round-trips
   through OPML / Markdown / plain-text for free — no sidecar, no new attribute. **Cells hold
@@ -744,6 +756,53 @@ Implemented:
   `parseDueDate`, `formatDueDate`, `collectDueDates`,
   `agendaGantt`, `agendaMonthCells`, `calendarMonthGrid`, `addMonths`.
 ### Linking, workspace & knowledge (PKM)
+
+- **Neighborhood graph, the `Nearby` scope (#898)** — cross-document-direction.md §4b / §6 step 5,
+  the last doable graph increment. A third scope chip beside `This document` / `Folder`: the point
+  the cursor is in, plus everything within `GRAPH_NEARBY_HOPS` (2) steps, across documents.
+  Two pure cores: `nearbyAdjacency({links, wsOutgoing, ownDocId})` → `Map(qid → Set(qid))` and
+  `nearbyGraphModel(startQid, adj, meta, hops, cap)` → graphModel's envelope plus
+  `{total, capped, hops}`. **Every id is qualified** (`docId#nodeId`, the key shape
+  `workspaceIndex.backlinks` already uses) so the same-doc index (bare ids) and the workspace index
+  (doc + node) never coexist as two id spaces inside one walk. Undirected, because "near this idea"
+  includes what points AT you. **Own-doc liveness (§5.3):** the open document's edges come from the
+  live `collectLinks()`; `wsOutgoing` rows whose source is the current doc are skipped, since the
+  index's copy is stale from the last disk write. `current: true` on the start node reuses the
+  folder scope's ring for free, and `graphLayout` is untouched (it reads only `id`/`a`/`b`) —
+  the issue's central claim, verified. Clicks route through `followLinkTarget`, one call for
+  same-doc, cross-doc, and both missing cases.
+  **Cap:** `GRAPH_NEARBY_CAP = 150`, BFS order so what is dropped is what is furthest away, and the
+  count line reports `"N of T"` — the count-line idiom the unlinked cap already uses, chosen over
+  the issue's proposed `+K more` button so the panel has one way of saying this, not two.
+  **Measured:** flat in document size, which is the point — 237 ms at 5k points and 248 ms at 50k,
+  of which `graphLayout` at the cap is ~230 ms and the walk itself ~1 ms.
+  **Head layout:** the scope group became a `.scroll-strip`. The §7 driver's control run showed the
+  TWO-chip head already spilling 20 px at 340 px on main; three chips took it to 87 px. Now clean at
+  all 12 widths, and the head no longer wraps at any of them (53 px, against main's 76 px).
+
+- **Backlinks in flow under a zoomed note (#953)** — the inbound-refs answer now has TWO surfaces:
+  the caret-driven `#bl-panel` strip (outline view) and an in-flow `.zoom-bl` section appended by
+  `render()` after the ghost row when `focusedId != null`. Both draw from one pure model,
+  `blSectionModel`, and one renderer, `renderBlRows(inner, hd, subjectId, d, opts)` —
+  `renderBlPanel` is now a wrapper over it, so the two surfaces cannot drift in copy or counts.
+  The strip stands down for the zoom root (a doubled list, one copy over the content, is worse than
+  either alone) and keeps the child case; `zoomInto` puts it down explicitly because its landing
+  focus is the app's choice, not the reader's. `blGatherCached` memoises the gather on
+  `(_varsVer, workspaceIndex.gen, nodeId)` — the workspace generation is load-bearing, a folder
+  rescan does not bump `_varsVer`. Registered as doc-cache `zoomBacklinks`.
+  **Two-stage paint.** On a cold generation `buildZoomBacklinks` draws the heading only and
+  `scheduleZoomBlFill` supplies the rows from an idle callback (re-checking `focusedId` and
+  `sec.isConnected` on arrival, patching in place so it can never loop). Both halves are
+  O(document) cold: the mentions walk 256ms at 50k, and even drawing the link rows cost 116ms
+  because a source title goes through `displayText` → `varMapAt`. A warm memo paints in full, so
+  the deferred path is only taken right after an edit.
+  **`displayText` sniff guard (`ART_SNIFF`).** Every artifact `flattenArtifacts` resolves carries a
+  `[` or a `{`, so with neither present the varMap is never read and `varMapAt` is skipped. This
+  fixed a PRE-EXISTING stall, not one this change introduced: on main the first click into a point
+  in a 5k-point document took 665ms, of which 542ms was warming `varMapAt` across the whole
+  document from `collectUnlinkedRefs`. Measured after: 62ms.
+  **Premise note:** the population half of #953 was already fixed by the time it was worked; what
+  shipped here is the placement (measured: 476px below the note title, docked to the window edge).
 
 - **Multi-document workspace** — a **workspace of many `.opml` notes in a real disk folder**, the
   durable backing for cross-file linking (Phase 1). **Chromium-gated** — the directory picker /
