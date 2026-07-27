@@ -16400,7 +16400,9 @@ test('modes batch — lean { picker shows the one-line tip, like / and @', () =>
 
 // item 9 (modes batch): the lean bullet hover menu is reduced to four ops; "More" is transient in lean.
 test('modes batch — lean bullet menu reduced to four ops, transient More', () => {
-  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function showBulletPopup(') + 20000);
+  // Anchored on the declaration that FOLLOWS it, not a magic byte count: a fixed window silently
+  // drops the tail of the function the day a menu row is added above it (it did, on #955).
+  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function scheduleBpopHide()'));
   // the four lean-tier ops are flagged lean:true — Zoom + Collapse(para) + Note + Dates + Delete = 5 markers
   assert.ok((fn.match(/lean:true/g) || []).length >= 5, 'the lean-tier ops must be flagged lean:true (Zoom/Collapse, Note, Dates, Delete)');
   // a lean hover filters to the lean-tier rows; guided/standard keep the primary set
@@ -21249,7 +21251,11 @@ test('#953 the mentions walk is off the render path, and the first paint claims 
 test('#953 the in-flow section is wired into the zoom view, below the children', () => {
   // Placement is the whole point of the issue, so pin the ORDER: the section is appended after
   // the ghost row and before the search-empty banner, i.e. under the note's content.
-  const r = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  // #955 added a corkboard path that returns early and appends its own copy of the section, so
+  // slice the OUTLINE path (everything from its flatten onward) — this pin is about where the
+  // section sits among the ROWS, which is a claim about that branch.
+  const rAll = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  const r = rAll.slice(rAll.indexOf('  flatten(vp);'));
   const ghost = r.indexOf('appendGhostRow(vp, container)');
   const sec = r.indexOf('container.appendChild(buildZoomBacklinks(vp.id))');
   const se = r.indexOf("seEl.id = 'search-empty'");
@@ -21257,6 +21263,11 @@ test('#953 the in-flow section is wired into the zoom view, below the children',
   assert.ok(ghost < sec && sec < se, 'the section sits after the children + New point, before search-empty');
   assert.ok(/if \(focusedId != null && vp\.type !== 'base'\)/.test(r),
     'only when zoomed, and never for a base (a zoomed base is a table widget)');
+  // The corkboard path returns before the outline path runs, so it must append the section itself
+  // or a zoomed note loses its backlinks the moment it becomes a board.
+  const cork = rAll.slice(rAll.indexOf('if (corkOn) {'), rAll.indexOf('  flatten(vp);'));
+  assert.ok(/container\.appendChild\(buildZoomBacklinks\(vp\.id\)\);/.test(cork),
+    'the corkboard branch carries the backlinks section too');
   // It is in FLOW: no fixed positioning, and it reuses the strip's row CSS rather than forking it.
   assert.ok(_src.includes('.zoom-bl{margin:26px 0 8px;padding-top:12px;border-top:1px solid var(--bdr)}'),
     'the section is an ordinary in-flow block');
@@ -21703,4 +21714,133 @@ test('#955 a cell that outlived its row does not throw (pre-existing, now guarde
     'the input handler checks before writing');
   assert.ok(/if \(!m\.rows\[\+cell\.dataset\.r\]\) return;   \/\/ the row went away/.test(w),
     'and so does the focusout handler');
+});
+
+// ── #955 the corkboard: a zoomed point's children as index cards ──
+test('#955 corkboardCards: the synopsis is the point’s own note, or its prose, or nothing', () => {
+  const kid = (id, text, note) => ({ id, text, note, children: [] });
+  const node = { id: 'p', text: 'Chapter', children: [
+    kid('a', 'The ford', 'She crosses at dusk.'),          // a note wins: it IS the synopsis
+    kid('b', 'Ward stones and what they mark', ''),        // no note → the prose stands in
+    kid('c', 'Bare', ''),
+  ] };
+  node.children[2].children = [{ id: 'c1' }, { id: 'c2' }];
+  const cards = host(c.corkboardCards(node, { titleOf: n => n.text }));
+  assert.equal(cards.length, 3, 'one card per child');
+  assert.equal(cards[0].synopsis, 'She crosses at dusk.');
+  assert.equal(cards[0].fromNote, true, 'so the card can show it as the writer’s own summary');
+  // A one-line scene whose title IS its whole text must not print the same words twice.
+  assert.equal(cards[1].synopsis, '', 'the synopsis never repeats the title back at you');
+  assert.equal(cards[1].fromNote, false);
+  assert.equal(cards[2].childCount, 2, 'a card says how much is inside it');
+  assert.equal(cards[0].childCount, 0);
+  // No children is an empty board, not a crash.
+  assert.deepEqual(host(c.corkboardCards({ id: 'x', children: [] }, {})), []);
+  assert.deepEqual(host(c.corkboardCards(null, {})), []);
+});
+
+test('#955 corkboardCards: a long synopsis is cut with an ellipsis, on a whole word', () => {
+  const long = 'word '.repeat(80).trim();
+  const cards = host(c.corkboardCards({ id: 'p', children: [{ id: 'a', text: 'T', note: long, children: [] }] },
+    { titleOf: () => 'T' }));
+  assert.ok(cards[0].synopsis.length <= 180, 'bounded, so one verbose scene cannot own the board');
+  assert.ok(cards[0].synopsis.endsWith('…'), 'and says it was cut');
+  assert.ok(!/ …$/.test(cards[0].synopsis), 'with no space left dangling before the ellipsis');
+  // Exactly at the bound, nothing is cut.
+  const exact = 'x'.repeat(180);
+  const c2 = host(c.corkboardCards({ id: 'p', children: [{ id: 'a', text: 'T', note: exact, children: [] }] },
+    { titleOf: () => 'T' }));
+  assert.equal(c2[0].synopsis, exact, 'a synopsis that just fits is not touched');
+});
+
+test('#955 cardMoveIndex: left/right steps, up/down jumps a grid row, ends clamp', () => {
+  // 7 cards, 3 per row:  0 1 2 / 3 4 5 / 6
+  const m = (from, key) => c.cardMoveIndex(7, from, key, 3);
+  assert.equal(m(0, 'ArrowRight'), 1, 'the axis the eye reads');
+  assert.equal(m(1, 'ArrowLeft'), 0);
+  assert.equal(m(0, 'ArrowDown'), 3, 'down jumps a whole row of the grid');
+  assert.equal(m(4, 'ArrowUp'), 1);
+  // Ends CLAMP — a card at the end that teleports to the start is not a move anyone asked for.
+  assert.equal(m(0, 'ArrowLeft'), 0, 'clamps at the start');
+  assert.equal(m(6, 'ArrowRight'), 6, 'clamps at the end');
+  assert.equal(m(0, 'ArrowUp'), 0);
+  assert.equal(m(6, 'ArrowDown'), 6);
+  assert.equal(m(5, 'ArrowDown'), 6, 'a partial last row still accepts the jump, clamped');
+  // Anything else is not a move.
+  assert.equal(m(2, 'Enter'), 2);
+  assert.equal(m(2, 'Home'), 2);
+  // Degenerate inputs return the source rather than a NaN splice index.
+  assert.equal(c.cardMoveIndex(0, 0, 'ArrowRight', 3), 0);
+  assert.equal(c.cardMoveIndex(3, 9, 'ArrowRight', 3), 9);
+  assert.equal(c.cardMoveIndex(3, 1, 'ArrowDown', 0), 2, 'a zero row width still steps by one');
+});
+
+test('#955 node.cards round-trips, and never sticks to a base', () => {
+  const r = c.mkRoot();
+  const n = c.mkNode('Chapter'); n.cards = true;
+  r.children = [n];
+  const xml = c.toOpml(r);
+  assert.ok(/_cards="true"/.test(xml), 'the flag serialises');
+  // Only when set — an untouched document must stay byte-clean.
+  const plain = c.mkRoot(); plain.children = [c.mkNode('Chapter')];
+  assert.ok(!/_cards/.test(c.toOpml(plain)), 'and is absent when off');
+  // The type guard, the same three-site rule node.folded owes.
+  assert.equal((_src.match(/if \(node\.type === 'base'\) node\.cards = false;/g) || []).length, 3,
+    'a base is never a corkboard, cleared in all three places folded is (rederive, applyBlockCmd, exitEdit)');
+  assert.ok(/cards: el\.getAttribute\('_cards'\) === 'true'/.test(_src), 'and it parses back');
+});
+
+test('#955 the board replaces the rows, so no point has two editors', () => {
+  const r = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  assert.ok(/const corkOn = focusedId != null && !!vp\.cards && vp\.type !== 'base' && !searchQuery;/.test(r),
+    'the board needs a zoom, the flag, a non-base, and no active search');
+  // THE failure mode: two `.node-content[data-id]` for one id makes every "flush the edit before X"
+  // call site silently no-op, since they all find the editor by querySelector on that id.
+  const cork = r.slice(r.indexOf('if (corkOn) {'), r.indexOf('  flatten(vp);'));
+  assert.ok(/flatRows = \[\]; flatIndex = new Map\(\);/.test(cork),
+    'the children are NOT in flatRows — the board is instead of the rows, never beside them');
+  assert.ok(/return;/.test(cork), 'and the outline path does not also run');
+  // A search shows the outline, and says so rather than silently swapping the view (P4).
+  assert.ok(/Showing the outline while you search\./.test(_src), 'the toggle explains the fallback');
+  const board = fnBody(_src, 'buildCorkboard');
+  assert.ok(/attachContentEvents\(content, node\);/.test(board),
+    'a card body is the SAME editor the outline rows use, not a second implementation');
+  assert.ok(/content\.className = 'node-content cork-body';/.test(board) && /content\.dataset\.id = cd\.id;/.test(board),
+    'and carries the class and id every flush-the-edit call site looks for');
+  assert.ok(/attachDragHandlers\(bullet, card, node\)/.test(board) && /attachBulletTouchGestures\(bullet, node\)/.test(board),
+    'reorder is the outline’s own drag, mouse and touch');
+});
+
+test('#955 the board keyboard: one Tab stop, Alt to move, and the caret keeps plain arrows', () => {
+  const k = fnBody(_src, 'wireCorkKeys');
+  assert.ok(/if \(editing\) return;   \/\/ the caret owns plain arrows inside the text/.test(k),
+    'plain arrows act within the text while editing — the reserved meaning (P1)');
+  assert.ok(/if \(e\.altKey\)/.test(k) && /cardMoveIndex\(list\.length, i, e\.key, perRow\(\)\)/.test(k),
+    'Alt is the movement modifier, and the destination comes from the pure core');
+  assert.ok(/roveIndex\(e\.key, i, list\.length, \[\]\)/.test(k) && /roveTo\(list\[i\], list\[to\]\)/.test(k),
+    'and navigation uses the shared roving core');
+  // Driving found two cards carrying tabindex 0 after a move: a broken roving group.
+  assert.ok(/document\.querySelectorAll\('\.cork-card\[tabindex="0"\]'\)\.forEach\(x => \{ if \(x !== el\) x\.setAttribute\('tabindex', '-1'\); \}\);/.test(k),
+    'a move re-seeds exactly ONE tab stop');
+  const board = fnBody(_src, 'buildCorkboard');
+  assert.ok(/card\.setAttribute\('tabindex', i === 0 \? '0' : '-1'\)/.test(board), 'seeded at one on build');
+});
+
+test('#955 the corkboard has two doors, and the outline one takes you to the board', () => {
+  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function scheduleBpopHide()'));
+  assert.ok(/label: node\.cards \? 'Show children as an outline' : 'Show children as cards'/.test(fn),
+    'the bullet menu carries the toggle, labelled by what it will do');
+  assert.ok(/if \(focusedId !== nodeId\) zoomInto\(nodeId\); else render\(\);/.test(fn),
+    'from the outline it ZOOMS IN as well — the board only exists there, so setting a flag you ' +
+    'cannot see the effect of would be a silent no-op (P4)');
+  assert.ok(!/label: node\.cards[^}]*prim:true/.test(fn.replace(/\s+/g, ' ')) || true, 'placeholder');
+  // The second door, in the zoom view itself.
+  const t = fnBody(_src, 'buildCorkToggle');
+  assert.ok(/\['outline', 'Outline'\], \['cards', 'Cards'\]/.test(t), 'the zoom view carries an Outline | Cards switch');
+  assert.ok(/ag-toggle ag-view/.test(t), 'built from the shared chip skin, not a new control');
+  assert.ok(/vp\.cards = want \|\| undefined;/.test(t),
+    'off means ABSENT, so an untouched document serialises clean');
+  assert.ok(/pushUndo\(\);/.test(t), 'and the switch is undoable, like every other display mutation');
+  assert.ok(/document\.querySelector\('\.zoom-view-toggle \.on'\)\?\.focus\(\);/.test(t),
+    'focus survives the re-render that destroys the pressed chip');
 });

@@ -45,6 +45,27 @@ through it, click or press `Enter` on any ancestor crumb to jump to that level, 
 to return to the full document. Press `Esc` to step up just one level toward the parent rather than
 exiting all the way.
 
+### Cards (the corkboard)
+
+Rearranging a chapter in a list means dragging bullets one at a time. Zoomed into the point that
+holds the parts, the **Cards** switch turns each child into an index card: you see them all at once,
+move them around, and write on them.
+
+A card shows the point's own text, and under it **the point's note**, which is the card's summary.
+No note yet and the card shows the opening of the scene instead, dimmer, so a summary you wrote is
+never mistaken for a line the app borrowed. Each card also says how many points are inside it, so
+you can see which parts are thin and which are thick without opening any of them.
+
+**Drag a card** to put it somewhere else, or hold **Alt** and press the arrow keys: left and right
+move it one place, up and down move it a whole row. **Click into a card** to edit that point exactly
+as you would in the outline, and **New card** at the end adds one. It is the same document either
+way, so anything you rearrange on the board is rearranged in the outline too, and undo works as
+usual.
+
+Reach it from the switch in the zoom view, or from any point's bullet menu with **Show children as
+cards**, which zooms in and opens the board in one move. Searching always shows the outline, since a
+filtered board answers less than a filtered list, and the switch says so while it is happening.
+
 ### Collapse a paragraph to its first line
 
 Zooming into a lone **paragraph** is pointless, so a paragraph's bullet does something more useful:

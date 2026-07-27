@@ -217,6 +217,9 @@ Turn the document into a lightweight planner.
 
 Build a connected folder of documents (Zettelkasten style), not just a single one.
 
+- **Cards (the corkboard).** Zoom into a point and show its children as index cards: drag to
+  rearrange, click to write, the point's note as each card's summary.
+  ([cards](getting-around.md#cards-the-corkboard))
 - **Nearby graph.** Open the link graph with the cursor in a point and a Nearby view shows just
   that point and everything within two steps of it, across your documents.
   ([link graph](links-and-references.md#link-graph))

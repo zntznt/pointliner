@@ -665,6 +665,25 @@ body.v-lean #toolbar:has(#search-box:focus){transform:translateY(0)}
    bottom-border gap so they read as one header block; its gutter mark starts at
    the container's left edge, aligned with the title's divider rule above */
 .zoom-ts-line{font-size:11px;color:var(--muted);margin:-8px 0 16px;letter-spacing:.01em}/* #467: created/edited metadata line in the zoom view */
+/* #955 the corkboard. The card is the outline's row, laid out as a card: the same bullet (drag
+   handle, menu, zoom door) and the same .node-content editor, so nothing about it has to be
+   learned twice. The grid recipe is the gallery's, unchanged. */
+.zoom-view-toggle{display:flex;align-items:center;gap:3px;margin:-6px 0 14px}
+.zoom-view-note{font-size:11px;color:var(--muted);margin-left:8px}
+.corkboard{margin-bottom:10px}
+.cork-card{display:flex;flex-direction:column;gap:4px;padding:10px 12px 12px;min-height:96px;position:relative}
+.cork-card:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.cork-card.dragging{opacity:.5}
+.cork-bullet{position:absolute;top:8px;right:8px;height:auto;padding:2px;opacity:0;transition:opacity .12s}
+.cork-card:hover .cork-bullet,.cork-card:focus-within .cork-bullet{opacity:1}
+.cork-body{outline:none;font-weight:600;overflow-wrap:anywhere;white-space:pre-wrap;padding-right:16px}
+.cork-body:focus{box-shadow:0 0 0 2px var(--ring);border-radius:var(--r-xs)}
+/* The synopsis. A note reads as the writer's own summary; a fallback snippet is the scene's first
+   words, so it is dimmer — the card should not pretend it was written as a synopsis. */
+.cork-syn{font-size:12px;color:var(--muted);line-height:1.45;overflow-wrap:anywhere}
+.cork-syn:not(.cork-syn-note){opacity:.75}
+.cork-count{font-size:11px;color:var(--muted);margin-top:auto;padding-top:4px;letter-spacing:.02em}
+.cork-add{min-height:96px}
 .zoom-note-row{display:flex;align-items:flex-start;margin:-12px 0 18px;padding-top:4px}
 .zoom-note-row>.note-mark{width:auto;margin:8px 7px 0 0}
 .zoom-note{flex:1;min-width:0}
@@ -3136,6 +3155,7 @@ function rederiveFromText(node) {
   if (t) node.type = t;
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
   if (node.type !== 'para') node.folded = false;   // the fold is para-only; clear it when the text derives another type
+  if (node.type === 'base') node.cards = false;   // #955: a base is its own widget, never a corkboard
   node.checked = todoDoneFromText(node.text);
 }
 
@@ -8365,6 +8385,7 @@ function toOpml(r) {
     if (n.checked)   attrs += ` _checked="true"`;
     if (n.collapsed) attrs += ` _collapsed="true"`;
     if (n.folded)    attrs += ` _folded="true"`;               // paragraph collapsed to its first line
+    if (n.cards)     attrs += ` _cards="true"`;                // #955: children shown as a corkboard when zoomed in
     if (n.noexport)  attrs += ` _noexport="true"`;             // #954: skipped by the lossy markdown/text export
     if (n.footnotes?.length) attrs += ` _footnotes="${ex(JSON.stringify(n.footnotes))}"`;
     if (n.dice?.length)      attrs += ` _dice="${ex(JSON.stringify(n.dice))}"`;
@@ -8548,6 +8569,7 @@ function fromOpml(xml) {
       checked: el.getAttribute('_checked') === 'true',
       collapsed: el.getAttribute('_collapsed') === 'true',
       folded: el.getAttribute('_folded') === 'true',
+      cards: el.getAttribute('_cards') === 'true',   // #955 corkboard: a per-point display choice, like _folded
       noexport: el.getAttribute('_noexport') === 'true',   // #954
       // Every sidecar is an ARRAY of records; downstream code calls .find/.map on it. A
       // corrupt/hostile .opml can carry valid JSON that isn't an array (_dice="{}"), which
@@ -9246,6 +9268,29 @@ function render() {
     const tsLine = buildTimestampLine(vp);
     if (tsLine) container.appendChild(tsLine);
     } // end non-table branch
+  }
+
+  // #955 the corkboard. It REPLACES the row list rather than sitting beside it, which is what
+  // makes it affordable: the children are not in flatRows, so there is exactly one
+  // `.node-content[data-id]` per point in the document and the existing point editor can own the
+  // card body outright. (Two would be quietly fatal — the whole "flush the edit before X" family
+  // finds the editor by `querySelector` on that id and takes the first match.)
+  //
+  // A SEARCH always shows the outline: pushSearchRows ignores `collapsed` by design ("search always
+  // expands"), and a filtered board is a worse answer than a filtered list.
+  const corkOn = focusedId != null && !!vp.cards && vp.type !== 'base' && !searchQuery;
+  if (focusedId != null && vp.type !== 'base') container.appendChild(buildCorkToggle(vp, !!searchQuery));
+  if (corkOn) {
+    container.appendChild(buildCorkboard(vp));
+    flatRows = []; flatIndex = new Map();
+    vlist = null; vTop = null; vBot = null;
+    const seEl0 = document.createElement('div'); seEl0.id = 'search-empty'; seEl0.hidden = true;
+    container.appendChild(seEl0);
+    container.appendChild(buildZoomBacklinks(vp.id));
+    syncBlankInvite();
+    _lastRenderFocusedId = focusedId;
+    if (_focusChanged && !focusedId) { hideBlPanel(); hideFnPanel(); }
+    return;
   }
 
   flatten(vp);
@@ -17721,6 +17766,7 @@ function exitEdit(content, node) {
   if (et) node.type = et;
   else if (node.type in BLOCK_PREFIX_MAP || node.type === 'todo' || node.type === 'divider' || node.type === 'ol') node.type = 'ul';
   if (node.type !== 'para') node.folded = false;   // the fold is para-only (matches rederiveFromText)
+  if (node.type === 'base') node.cards = false;   // #955: a base is its own widget, never a corkboard
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   const wasDone = todoDoneFromText(prevText);
@@ -19225,6 +19271,13 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       ? { sec:'Navigate', prim:true, lean:true, icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label: node.folded ? 'Show the full paragraph' : 'Collapse to first line', fn: () => { toggleFold(nodeId); hideBpop(); } }
       : { sec:'Navigate', prim:true, lean:true, icon:{ fa:'fa-solid fa-magnifying-glass-plus', fb:'⊙' }, label:'Zoom into',  fn: () => { zoomInto(nodeId); hideBpop(); } },
     { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-link', fb:'🔗' }, label:'Copy link', fn: () => { copyNodeLink(nodeId); hideBpop(); } },
+    { sec:'Navigate', prim:true, icon:{ fa:'fa-solid fa-table-cells', fb:'▤' },
+      label: node.cards ? 'Show children as an outline' : 'Show children as cards',
+      // The board lives in the zoom view, so this zooms in as well: from the outline the useful
+      // action is "put me on that board", not "set a flag I cannot see the effect of".
+      fn: () => { hideBpop(); const n = nodeById(nodeId); if (!n) return;
+                  pushUndo(); n.cards = !n.cards || undefined; markDirty();
+                  if (focusedId !== nodeId) zoomInto(nodeId); else render(); } },
     { sec:'Annotate', prim:true, lean:true, icon:{ fa:'fa-solid fa-pen', fb:'≡' }, label: node.note ? 'Edit note' : 'Add note',
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
     { sec:'Annotate', prim:true, lean:true, icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
@@ -28131,6 +28184,7 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   // todo/state/block branches: it repaints and either exits edit (display) or re-focuses.
   const finishBlockCmd = () => {
     if (node.type !== 'para') node.folded = false;   // the first-line fold is a paragraph state; never leave it dormant on another type
+    if (node.type === 'base') node.cards = false;   // #955: a base is its own widget, never a corkboard
     markDirty();
     if (opts.display) {
       const ed = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
@@ -32564,6 +32618,212 @@ function blGatherCached(nodeId) {
   return _zblData;
 }
 
+// Keyboard on the board. One Tab stop for the whole grid (the roving pattern this app uses in seven
+// other places), arrows to move between cards, and Alt+arrows to MOVE a card — `Alt` is the
+// movement modifier everywhere, and §3 of ux-discipline explicitly sanctions mapping the arrows to
+// the axis the eye reads, which for a grid is left-to-right first.
+function wireCorkKeys(wrap, vp) {
+  const cardsOf = () => [...wrap.querySelectorAll('.cork-card')];
+  const perRow = () => {
+    const cs = cardsOf();
+    if (cs.length < 2) return 1;
+    const top = Math.round(cs[0].getBoundingClientRect().top);
+    const n = cs.filter(c => Math.round(c.getBoundingClientRect().top) === top).length;
+    return Math.max(1, n);
+  };
+  wrap.addEventListener('keydown', e => {
+    const card = e.target.closest?.('.cork-card');
+    if (!card) return;
+    // Plain keys belong to the text. Only act when the caret is NOT in the body.
+    const editing = e.target.closest?.('.cork-body') && document.activeElement?.dataset?.editing;
+    if (!/^Arrow|^Home$|^End$/.test(e.key)) return;
+    const list = cardsOf();
+    const i = list.indexOf(card);
+    if (i < 0) return;
+    if (e.altKey) {
+      // MOVE the card. Ends clamp; a no-op move says nothing rather than pretending (P4).
+      e.preventDefault();
+      const to = cardMoveIndex(list.length, i, e.key, perRow());
+      if (to === i) return;
+      const kids = vp.children;
+      const node = nodeById(card.dataset.id);
+      const from = kids.indexOf(node);
+      if (from < 0) return;
+      pushUndo();
+      kids.splice(to, 0, kids.splice(from, 1)[0]);
+      markDirty(); render();
+      requestAnimationFrame(() => {
+        // Re-seed the SINGLE tab stop on the card that moved. Clearing the others is the whole
+        // point: driving found two cards carrying tabindex 0 after a move, which is a broken
+        // roving group — Tab would enter the board twice.
+        const el = document.querySelector(`.cork-card[data-id="${node.id}"]`);
+        if (!el) return;
+        document.querySelectorAll('.cork-card[tabindex="0"]').forEach(x => { if (x !== el) x.setAttribute('tabindex', '-1'); });
+        el.setAttribute('tabindex', '0');
+        el.focus();
+      });
+      announce(`Moved to position ${to + 1} of ${list.length}`);
+      return;
+    }
+    if (editing) return;   // the caret owns plain arrows inside the text
+    const to = roveIndex(e.key, i, list.length, []);
+    if (to === i || to == null) return;
+    e.preventDefault();
+    roveTo(list[i], list[to]);
+  });
+}
+
+// The Outline | Cards switch, in the zoom view. The `.ag-toggle` chip skin, the same one the graph
+// scopes and the agenda use. It renders even in Cards mode with a search running, saying why the
+// board is not showing rather than vanishing and leaving the reader to guess (P4).
+function buildCorkToggle(vp, searching) {
+  const wrap = document.createElement('div');
+  wrap.className = 'zoom-view-toggle';
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'How to show this point\u2019s children');
+  for (const [key, lbl] of [['outline', 'Outline'], ['cards', 'Cards']]) {
+    const on = (key === 'cards') === !!vp.cards;
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'ag-toggle ag-view' + (on ? ' on' : '');
+    b.textContent = lbl;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.setAttribute('aria-label', key === 'cards'
+      ? 'Show the children as cards you can rearrange'
+      : 'Show the children as an outline');
+    b.addEventListener('click', () => {
+      const want = key === 'cards';
+      if (!!vp.cards === want) return;
+      pushUndo();
+      vp.cards = want || undefined;   // absent when off, so an untouched document serialises clean
+      markDirty(); render();
+      document.querySelector('.zoom-view-toggle .on')?.focus();
+      announce(want ? 'Cards' : 'Outline');
+    });
+    wrap.appendChild(b);
+  }
+  if (searching && vp.cards) {
+    const note = document.createElement('span');
+    note.className = 'zoom-view-note';
+    note.textContent = 'Showing the outline while you search.';
+    wrap.appendChild(note);
+  }
+  return wrap;
+}
+
+// The board. Each card holds a REAL `.node-content[data-id]` handed to the point editor, so undo,
+// autosave, pills, links and the caret invariant are the outline's, not a second implementation.
+// The bullet is the outline's bullet: drag handle, Shift+F10 menu and zoom door, unchanged.
+function buildCorkboard(vp) {
+  const wrap = document.createElement('div');
+  wrap.className = 'corkboard gv-grid';
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'Cards');
+  const cards = corkboardCards(vp, { titleOf: n => graphNodeLabel((n.text || '').split('\n')[0]) });
+  cards.forEach((cd, i) => {
+    const node = nodeById(cd.id); if (!node) return;
+    const card = document.createElement('div');
+    card.className = 'gv-card cork-card';
+    card.dataset.id = cd.id;
+    card.setAttribute('tabindex', i === 0 ? '0' : '-1');   // one Tab stop for the board (roveIndex)
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-label', (cd.title || '(untitled)')
+      + (cd.childCount ? `, ${cd.childCount} point${cd.childCount === 1 ? '' : 's'} inside` : ''));
+
+    const bullet = document.createElement('div');
+    bullet.className = 'bullet cork-bullet';
+    const dot = document.createElement('div'); dot.className = 'bullet-dot';
+    bullet.appendChild(dot);
+    bullet.setAttribute('aria-label', 'Point actions');
+    card.appendChild(bullet);
+
+    const content = document.createElement('div');
+    content.className = 'node-content cork-body';
+    content.dataset.id = cd.id;
+    content.contentEditable = 'true';
+    content.spellcheck = true;
+    content.innerHTML = renderContentHTML(node);
+    attachContentEvents(content, node);   // the SAME editor the outline rows use
+    card.appendChild(content);
+
+    if (cd.synopsis) {
+      const syn = document.createElement('div');
+      syn.className = 'cork-syn' + (cd.fromNote ? ' cork-syn-note' : '');
+      syn.textContent = cd.synopsis;
+      card.appendChild(syn);
+    }
+    if (cd.childCount) {
+      const cnt = document.createElement('div');
+      cnt.className = 'cork-count';
+      cnt.textContent = cd.childCount + (cd.childCount === 1 ? ' point inside' : ' points inside');
+      card.appendChild(cnt);
+    }
+    attachDragHandlers(bullet, card, node);              // desktop drag, the outline's own
+    if (IS_TOUCH) attachBulletTouchGestures(bullet, node);
+    wrap.appendChild(card);
+  });
+
+  // The add affordance, the board's twin of the outline's ghost row.
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'gv-card gv-card-add cork-add';
+  add.setAttribute('aria-label', 'New card');
+  add.innerHTML = '<span aria-hidden="true">+</span> New card';
+  const addGo = () => {
+    pushUndo();
+    const n = mkNode('');
+    vp.children.push(n);
+    buildIndex(root); markDirty(); render();
+    focusNode(n.id);
+  };
+  add.addEventListener('mousedown', e => { e.preventDefault(); addGo(); });
+  add.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); addGo(); } });
+  wrap.appendChild(add);
+
+  wireCorkKeys(wrap, vp);
+  return wrap;
+}
+
+// #955 the corkboard: a zoomed point's children as index cards you can rearrange and write on.
+// The request is Scrivener's, verbatim from the novelist persona: "I arrange scenes as index cards
+// and reorder them visually."
+//
+// The pure part is what each card SAYS. A card is the point's title plus a synopsis, and the
+// synopsis is the point's own note when it has one — which is what a Scrivener index card IS, so
+// the field already exists and needs no new sidecar. Failing that, a snippet of the scene's own
+// prose, since an empty card tells a writer nothing.
+const CORK_SNIPPET = 180;
+function corkboardCards(node, opts) {
+  const o = opts || {};
+  const textOf = o.textOf || (n => String(n && n.text || ''));
+  const noteOf = o.noteOf || (n => String(n && n.note || ''));
+  return ((node && node.children) || []).map(ch => {
+    const note = noteOf(ch).trim();
+    const body = textOf(ch).trim();
+    // The synopsis never repeats the title back at you: a one-line scene with no note gets a card
+    // that is just its title, not the same words printed twice.
+    const snippet = note || (body && body !== (o.titleOf ? o.titleOf(ch) : body) ? body : '');
+    return {
+      id: ch.id,
+      title: (o.titleOf ? o.titleOf(ch) : body) || '',
+      synopsis: snippet.length > CORK_SNIPPET ? snippet.slice(0, CORK_SNIPPET - 1).trimEnd() + '…' : snippet,
+      fromNote: !!note,
+      childCount: ((ch.children || []).length),
+    };
+  });
+}
+
+// Where a keyboard move lands. `Alt` is the movement modifier everywhere in this app, and a grid
+// has two axes: left/right steps one position (the axis the eye reads), up/down jumps a whole row
+// of the grid. Ends CLAMP rather than wrap, matching roveIndex — a card at the end that silently
+// teleports to the start is not a move anyone asked for.
+function cardMoveIndex(count, from, key, perRow) {
+  if (!(count > 0) || !(from >= 0) || from >= count) return from;
+  const step = key === 'ArrowLeft' ? -1 : key === 'ArrowRight' ? 1
+    : key === 'ArrowUp' ? -Math.max(1, perRow | 0) : key === 'ArrowDown' ? Math.max(1, perRow | 0) : 0;
+  if (!step) return from;
+  return Math.max(0, Math.min(count - 1, from + step));
+}
+
 // #953: the note's own inbound refs, in flow under its children. Same rows, same model, same
 // keyboard behaviour as the strip — only the container and the navigate hooks differ.
 function buildZoomBacklinks(nodeId) {
@@ -35724,6 +35984,17 @@ const GUIDE = [
   // no menu verb, no picker, no guide entry — so the capability was reachable only by prior
   // knowledge (a P2-1 "built is not shipped-discoverable" gap). A ?-panel entry is the right
   // weight: it is multi-line markdown, so a / verb that writes one line would teach it wrong.
+  // #955: the corkboard. A new user-facing feature, so it owes an entry in the same change.
+  { id:'corkboard', cat:'writing',
+    title:'Cards (the corkboard)',
+    body:"Rearranging a chapter in a list means dragging bullets one at a time. Zoom into the point that holds the parts, switch to Cards, and each child becomes an index card you can see all at once, move around, and write on.\n\nEach card shows the point's own text, and under it the point's note if it has one, which is the card's summary. No note yet and the card shows the opening of the scene instead, dimmer, so you can tell a summary you wrote from a line the app borrowed. A card also says how many points are inside it, so you can see which parts are thin and which are thick without opening any of them.\n\nDrag a card to put it somewhere else, or hold Alt and press the arrow keys: left and right move it one place, up and down move it a whole row. Click into a card to edit that point exactly as you would in the outline, and use New card at the end to add one. It is the same document either way, so anything you rearrange here is rearranged in the outline too.\n\nSearching always shows the outline, since a filtered board answers less than a filtered list, and the switch says so while it is happening.",
+    related:['point-types','notes','overview'],
+    examples:[
+      { syn:'Zoom in, then Cards', desc:'the children become cards' },
+      { syn:'drag a card',         desc:'put the part somewhere else' },
+      { syn:'Alt + arrow keys',    desc:'move the card without the mouse' },
+      { syn:'a point\u2019s note',     desc:'becomes that card\u2019s summary' },
+    ] },
   { id:'deflist', cat:'writing', covers:['deflist'],
     title:'Definition lists',
     body:"Lay out terms and their meanings so they read as a glossary rather than a flat list: a rules reference, a cast of characters, an ingredient list, the jargon at the front of a project.\n\nWrite the term on its own line, then put each meaning on the line below it starting with a colon and a space. One term can carry several meanings, each on its own `: ` line, and you can stack as many term-and-meaning pairs in a point as you need. The term renders bold, its meanings indented under it.",

@@ -163,6 +163,23 @@ search / snapshot), not render. Versus the 2026-06-29 run (`bdd7bad`, M): struct
 and `snapshot` came down ~3× at the top end (88 → 29 ms and 30 → 22 ms at 50k) and search
 dropped 231 → 156 ms at 50k.
 
+### The corkboard (D, 2026-07-27, #955)
+
+The board is **not virtualized** — like `buildTableWidget`, it rebuilds wholly on every render — so
+its cost grows with the number of cards rather than with the window. Median render, zoomed, after an
+edit, against the same document shown as an outline:
+
+| children | as cards | as an outline |
+|---|---|---|
+| 20 | **2.3 ms** | 6.9 ms |
+| 200 | **13.5 ms** | 6.7 ms |
+
+At ordinary chapter sizes the board is *faster* than the outline, because it skips the virtualizer
+entirely. It crosses over somewhere under a hundred children and is still well inside a frame at
+200, which is already an implausible chapter. Recorded rather than optimised: if a board ever needs
+virtualizing, this table is the starting point, and the honest trigger is card count, not document
+size.
+
 ### Neighborhood graph, the `Nearby` scope (D, 2026-07-27, #898)
 
 The cap exists to keep `graphLayout` off its O(N²) wall (1 s at 500 linked points, 21 s at 2,000 —
