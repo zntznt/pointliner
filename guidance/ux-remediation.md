@@ -861,3 +861,36 @@ unlike the worklist wipe.
 **Measured:** 1200 points, 41 mounted rows, sweep median **1.10ms**, max 2.40ms. The old set existed
 to avoid "scanning every visible DOM row"; virtualization already bounds that to the viewport, and
 the scan costs far less than the `innerHTML` rebuilds it gates.
+
+### UXP-252 ✓ The "estimate, not math" refusal never named the form that works 🟡 [estimates] (RESOLVED 2026-07-27)
+
+**P4-2 + P2-3.** Filed as #1127 out of #1109. `{= total * 1.2}`, where `total` holds a distribution,
+refuses with *"an estimate like 5 to 10 (or a variable holding one), which works on its own but not
+inside a math formula or check."* The refusal is correct and the reporter praised it as one that says
+why. It stopped one step short: it never said the same uplift works if you **drop the `=`**. The
+persona had the right model and the right tool available and still stalled.
+
+**The capability was already shipped, and the docs denied it.** #952 widened `estParts` with
+`usesDistVar`, so an expression referencing a declared distribution promotes. Verified against the
+cores: `estParts('total * 1.2', vars)` is truthy, `varDeclKind('total * 1.2', vars)` is `'dist'`,
+while `varDeclKind('2 * 3', vars)` correctly stays `'formula'`. But `architecture-reference.md` and
+`ux-discipline.md` both still said the typed shorthand promotes "constructors only". A capability the
+binding docs describe as nonexistent is one the error message cannot point at, so both are corrected
+here along with the copy. The deliberate carve-out is now recorded too: a bare `{cost}` stays a
+variable reference, because the operator is what promotes it.
+
+**Fix.** One string. The `estimate` arm of `mathReasonPhrase` gains ". Write it without the = to keep
+it an estimate, like {cost * 2}." That map is the single shared code→phrase source, so the sentence
+reaches all four text-tolerant surfaces at once: the `#ERR` pill's title/aria, the `brace-attempt`
+title/aria via `braceAttemptReason`, and the math and `/check` dialog previews. The two tight chips
+(`#ERR (estimate)` and the red `estimate, not math` tag) render the CODE, not the phrase, so the loud
+boundary tag is untouched and nothing clips (`.io-preview` has no nowrap/overflow and uses
+min-height). `{cost * 2}` is the shape `guide/computing-numbers.md` already teaches verbatim, chosen
+over interpolating the user's own expression precisely because a generic example that matches
+existing teaching cannot suggest a form that fails to promote.
+
+**Driven, and then the advice was followed:** the cue appears, and typing `{total * 1.2}` promotes to
+a real estimate pill reading `≈172.4 (118.8 – 243.1)` — correct for 1.2x a 100-200 range. A cue that
+is not followable is the defect, so following it is the acceptance test. Negatives unchanged:
+`{= 2 * 3}` still computes, and a genuine typo still returns `bad ref` (`sawBadRef` outranks
+`sawDist`).
