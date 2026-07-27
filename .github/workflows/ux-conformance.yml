@@ -65,3 +65,65 @@ jobs:
             }
 
             core.info('UX Conformance Statement present and filled. ✓');
+
+  # ---------------------------------------------------------------------------
+  # CLAUDE.md -> "PR/commit hygiene: No agent attribution or session links."
+  # That rule existed and was still broken across eight consecutive merged commits,
+  # because nothing read commit messages: the only other gate checks the PR BODY,
+  # and the written procedure only described stripping an auto-appended link from
+  # the PR. An author writing the trailer into the commit was an unguarded surface.
+  # This job reads both surfaces so the rule binds instead of relying on discipline.
+  commit-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: No agent attribution or session links in commits or the PR body
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // BANNED_PATTERNS - kept on one line each, in this exact shape, because
+            // tests/test.mjs parses them out of this file and runs them against real
+            // sample messages. A guard nobody can prove is a guard nobody should trust.
+            const BANNED = [
+              { re: /Claude-Session/i,                 why: 'a Claude-Session trailer' },
+              { re: /claude\.ai\/code\/session/i,      why: 'a claude.ai session link' },
+              { re: /Co-Authored-By:.*Claude/i,        why: 'Claude listed as a co-author' },
+              { re: /Generated with .{0,20}Claude Code/i, why: 'a "Generated with Claude Code" line' },
+            ];
+            const pr = context.payload.pull_request;
+            const bad = [];
+            // A COMMIT is checked whole: a session link anywhere in one is a violation, full stop.
+            const checkCommit = (where, text) => {
+              for (const b of BANNED) if (b.re.test(text || '')) bad.push(`${where}: ${b.why}`);
+            };
+            // A PR BODY is prose ABOUT the codebase and legitimately quotes things. This guard's
+            // own first PR described the banned trailers in order to explain the bug, and the first
+            // draft of this job failed it for doing so -- the commit was clean and the description
+            // was the only offender. Matching raw text cannot tell a violation from a DISCUSSION of
+            // one; that is the same defect as the PR-conformance hook in #1130, which blocks a
+            // shell command for merely quoting a command name inside a doc string.
+            // So: drop fenced blocks and inline code, then require a real trailer at LINE START.
+            const checkBody = (text) => {
+              const prose = String(text || '')
+                .replace(/```[\s\S]*?```/g, '')
+                .replace(/`[^`\n]*`/g, '');
+              for (const b of BANNED) {
+                const anchored = new RegExp('^[ \\t>]*(?:' + b.re.source + ')', 'im');
+                if (anchored.test(prose)) bad.push(`PR body: ${b.why}`);
+              }
+            };
+            checkBody(pr && pr.body);
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number,
+            });
+            for (const c of commits) {
+              checkCommit(`commit ${c.sha.slice(0, 7)}`, c.commit.message);
+            }
+            if (bad.length) {
+              core.setFailed(
+                `Commit hygiene gate failed.\n\n${bad.map(b => '  - ' + b).join('\n')}\n\n` +
+                `CLAUDE.md ("PR/commit hygiene") bans agent attribution and session links in ` +
+                `BOTH commit messages and the PR description. Reword the commit (git rebase -i, ` +
+                `or amend if it is the tip) and edit the PR body, then push again.`
+              );
+            }
+            core.info(`Commit hygiene clean across ${commits.length} commit(s). ✓`);

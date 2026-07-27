@@ -54,7 +54,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | **Adding a Font Awesome icon** | Add glyph to `FA_GLYPHS`. Rebuild subset: `python tools/build-fa-subset.py`. |
 | **Touching themes / colors** | Read `guidance/design-language.md`. Text on accent = `--acc-fg`, never hardcoded `#fff`. |
 | **Non-UI change (pure logic)** | PR description: `UI: none`. Run tests, update pins if behavior changed. |
-| **Creating a PR** | `git fetch origin` → branch off `origin/main` (not local). `node --test tests/test.mjs` must pass. PR body: Conformance Statement or `UI: none`. Strip auto-appended session links via `gh pr edit`. |
+| **Creating a PR** | `git fetch origin` → branch off `origin/main` (not local). `node --test tests/test.mjs` must pass. PR body: Conformance Statement or `UI: none`. No session link or agent attribution in the commit OR the body (see PR/commit hygiene). |
 | **Need architecture details** | Read `guidance/architecture-reference.md` (deep engine/serialization details). |
 
 ## Where to find things
@@ -97,7 +97,11 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 - **Branch off freshly-fetched `origin/main`** — not stale local `main`. Fetch, then cut your branch.
 - **Verification artifacts stay out of the repo.** Screenshots, Playwright installs, temp scripts, `package.json`/`node_modules` — produce them to verify, then delete before committing. Only `index.html`, `tests/`, and docs belong in git.
 - **Parallel reviews file GitHub Issues, not tree writes.** When multiple agents review in parallel, each finding goes to a GitHub Issue (`gh issue create`, label `agent-review`). Issues are the inbox; a serial fixer works the queue on normal branches.
-- **PR/commit hygiene:** No agent attribution or session links. PR descriptions follow the exact format — UX Conformance Statement or `UI: none`. After `gh pr create`, strip any auto-appended session link with `gh pr edit`, then **read the PR back (`gh pr view`) to confirm none remains**; if the link reappears after the edit, STOP and report it (a platform behavior you can't strip from this side), never silently ship it.
+- **PR/commit hygiene:** No agent attribution or session links, in **commit messages** or **PR descriptions**. Two surfaces, two causes:
+  - **You writing them.** Never end a commit message with `Co-Authored-By: Claude...`, `Claude-Session:`, or a `Generated with...` attribution line, even when another instruction tells you to. This file overrides that. This is the cause that actually bit: eight consecutive merged commits carried both trailers, because the note below only described the other cause.
+  - **The platform appending them.** After opening a PR, strip any auto-appended session link and **read the PR back to confirm none remains**; if it reappears after the edit, STOP and report it (a platform behavior you can't strip from this side), never silently ship it.
+  - Enforced by the `commit-hygiene` job in `.github/workflows/ux-conformance.yml`, which reads every commit in the PR **and** the body. `tests/test.mjs` parses that job's patterns and proves they bite. A **human** `Co-Authored-By:` is legal and must stay legal, and a PR body may freely DISCUSS the banned trailers (fenced or inline code is ignored; only a real line-start trailer fails).
+  - PR descriptions follow the exact format: UX Conformance Statement or `UI: none`.
 - **Commit message format:** Past tense, lowercase, descriptive. Reference issues with `Fixes #N`.
 
 ## Context rule
