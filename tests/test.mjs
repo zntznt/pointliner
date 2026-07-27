@@ -16176,7 +16176,16 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
   // the wiring: raw swap on focus, source-prop write + undo + flash + membership check on blur
   const w = fnBody(_src, 'mtWireQBaseEdit');
   assert.ok(/mtModelRead\(node\)\.rows/.test(w), 'focusin swaps the chip for the raw value');
-  assert.ok(/pushUndo\(\);\s*\n\s*setProp\(src, field, raw\);\s*\n\s*markDirty\(\)/.test(w), 'blur writes the source prop with undo-locality');
+  // #1123: the write is ROUTED now — a reserved date goes to its validated writer — so this pins
+  // the contract (undo-local, then write, then markDirty) rather than one literal call.
+  assert.ok(/pushUndo\(\);\s*\n\s*if \(route === 'date'\) setDateProp\(src, field\.trim\(\)\.toLowerCase\(\), raw\);\s*\n\s*else setProp\(src, field, raw\);\s*\n\s*markDirty\(\)/.test(w),
+    'blur writes the source prop with undo-locality, routing a reserved date to setDateProp');
+  assert.ok(w.indexOf("route === 'baddate'") > 0 && w.indexOf("route === 'baddate'") < w.indexOf('pushUndo()'),
+    'a refused date returns BEFORE pushUndo, so no undo entry exists for a write that never happened');
+  assert.ok(/Not a valid date: ' \+ raw \+ '\. ' \+ dateFormsHint\(\)/.test(w),
+    'the refusal reuses the shared date voice (#407 P4 parity), not new copy');
+  assert.ok(/const shown = \(src\.props \|\| \[\]\)\.find/.test(w),
+    'the cell repaints from what was STORED, so a normalized date does not disagree with the model');
   assert.ok(/qids\.includes\(nid\)/.test(w) && /no longer matches this query/.test(w), 'a membership-breaking edit is announced, never silent');
   assert.ok(/scheduleVarBaseRender\(host\)/.test(w), 'the repaint is deferred + focus-aware');
   assert.ok(/qbaseFieldWritable\(field\)/.test(w), 'the commit re-checks writability');
@@ -16364,6 +16373,12 @@ test('FR-1 editors — popover + menu doors + commit routing (source pins)', () 
   const sv = fnBody(_src, 'mtSetCellValue');
   assert.ok(/mtCommit\(node, m\);\s*\n\s*mtCommitEpilogue\(node\)/.test(sv), 'authored writes commit + run the epilogue');
   assert.ok(/qbaseFieldWritable\(field\)/.test(sv) && /setProp\(src, field, val\)/.test(sv) && /pushUndo/.test(sv), 'query writes go through the Phase C path, undo-local');
+  // #1123: the context menu is a SECOND, independent write site. Fixing the focusout commit does
+  // not fix this one, so it carries its own routing pins.
+  assert.ok(/const route = propWriteRoute\(field, val\)/.test(sv), 'the menu writer routes a reserved date too');
+  assert.ok(/if \(route === 'date'\) setDateProp\(src, field\.trim\(\)\.toLowerCase\(\), val\)/.test(sv), 'a date reaches the validated writer');
+  assert.ok(sv.indexOf("route === 'baddate'") > 0 && sv.indexOf("route === 'baddate'") < sv.indexOf('pushUndo()'),
+    'the menu refusal also returns before pushUndo');
   assert.ok(/no longer matches this query/.test(sv), 'a membership-breaking menu write is announced');
 });
 
