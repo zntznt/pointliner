@@ -47,7 +47,7 @@ itself because it was never a separate table.
 
 ## Freeze the one you drew
 
-A bare `{roll: #npc}` rolls fresh every time the page redraws, which is what you want for "who
+A bare `{roll: #npc}` re-rolls when you click it, which is what you want for "who
 wanders in." But often you draw an NPC and then want to *keep* them for the rest of the scene: this
 person is here now, and three lines later you are still talking about the same person.
 
@@ -92,7 +92,7 @@ box understands works inside the roll:
 
 ```
 {roll: #npc #faction/ashguild}      a random Ashguild member (both tags must match)
-{roll: is:todo}                     a random open task from the points below this one
+{roll: is:todo}                     a random open task from anywhere in the document
 {roll: #thread -#thread/resolved}   an open thread, excluding ones you tagged resolved
 {roll: #clue is:todo}               a random clue you have not followed up yet
 ```
@@ -135,7 +135,7 @@ that draw from all of them.
 - **Roll a narrowed pool.** Try the `{roll: #clue is:todo}` pill to draw only a clue you have not
   resolved, then check off that clue and roll again to see it leave the pool.
 
-To build your own from nothing: tag a few points `#npc`, write `{roll: #npc}` under them, and you
+To build your own from nothing: tag a few points `#npc`, write `{roll: #npc}` anywhere, and you
 have a personal oracle. Everything else is the same idea pointed at a different tag.
 
 ---

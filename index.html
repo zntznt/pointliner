@@ -2782,7 +2782,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="sh-row"><kbd>priority:A</kbd><kbd>priority:none</kbd><span>to-do priority (<code>priority:a</code>/<code>b</code>); <code>none</code> = unprioritized, <code>any</code> = has one</span></div>
         <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
         <div class="sh-row"><kbd>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
-        <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from the points below this one (rolls on your live document)</span></div>
+        <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from anywhere in this document (rolls on your live points)</span></div>
         <div class="sh-row"><kbd>{roll folder: #npc}</kbd><span>the same roll across every note in the connected folder</span></div>
         <div class="sh-row"><kbd>/querybase</kbd><span>a live base of matching points: title, properties or a per-point formula as columns</span></div>
       </div>
@@ -22483,23 +22483,33 @@ function resolveBrace(body, ctx) {
   if (isQuotedLiteral(body)) {
     return expandTemplate(body.slice(1, -1), ctx);   // the inside, quotes stripped (nested {…} still interpolate)
   }
-  // {roll: <search-query>} — pick a random point matching the query from the current point's
-  // subtree (cookieNode; a #tag query reaches wherever that tag lives). The generative reader of
-  // the LIVE outline: it rolls on your actual points, not literal typed text. Keyword-sniffed first
-  // (before condParts) so a query's `:` never mis-parses as a conditional. No match → visible empty
-  // marker (P4). Consistency across repeated references rides a pick var, like {shuffle:} in a rule.
-  // The subtree scope is only real because promoteBraceBody and rerollGrammar set cookieNode to the
-  // host point around their whole body — this branch never runs during a render, so before that it
-  // silently fell back to `root` and drew document-wide. `root` stays the CONTEXT root so a custom
-  // sequence or variable declared outside the subtree still resolves an `is:` term.
+  // {roll: <search-query>} — pick a random point matching the query, DOCUMENT-wide, exactly like
+  // its siblings `{query:}` and `{count:}`. The generative reader of the LIVE outline: it rolls on
+  // your actual points, not literal typed text. Keyword-sniffed first (before condParts) so a
+  // query's `:` never mis-parses as a conditional. No match → visible empty marker (P4).
+  // Consistency across repeated references rides a pick var, like {shuffle:} in a rule.
+  //
+  // #1107 — scope widened from the host's subtree to the document. DECISION-191b's owner sign-off
+  // was TWO-part: "subtree-by-default … whole-doc for free when the query names a #tag". The second
+  // half was never implementable as built — queryHits matches a tag INSIDE its walk, so a tag never
+  // reached beyond the scope, and the comments claiming it did were describing an intent. Only the
+  // narrow half shipped, and every piece of authored content was written against the wide one:
+  // five starters, the first-run welcome document and the living-oracle demo all place the roll as
+  // a LEAF beside the tagged list, so every one of them rendered "no match yet". The reading-log
+  // starter is the proof — {count: #toread} one line above {roll: #toread}, same tag, count 4 and
+  // roll 0. The insert dialog previewed the pool document-wide too, then inserted a pill that found
+  // nothing.
+  //
+  // The literal two-part decision is NOT restored, deliberately: a scope that changes with the
+  // query's CONTENT is the same context inversion P1 forbids and that the query/count comment below
+  // rejects in its own words. One verb, one scope; `folder` stays the single opt-in widening.
   const rlp = rollParts(body);
   if (rlp) {
-    // #899: `{roll folder: …}` draws from the whole reading set instead. No cookieNode subtree
-    // scope on that path — the folder walk IS the scope, and narrowing it to the host's subtree
-    // first would make "folder" mean two things (P1). hostId still excludes the pill's own point.
+    // #899: `{roll folder: …}` draws from the whole reading set instead. hostId still excludes the
+    // pill's own point on both paths, so a roll can never draw itself.
     const picked = rlp.folder
       ? pickFromQueryFolder(rlp.expr, cookieNode ? cookieNode.id : null)
-      : pickFromQuery(rlp.expr, cookieNode || root, cookieNode ? cookieNode.id : null, root);
+      : pickFromQuery(rlp.expr, root, cookieNode ? cookieNode.id : null, root);
     // The marker keeps its shape: it is inline TEXT inside the point, so a full sentence does not
     // belong here. renderGrammarPill turns it into the pill's tooltip instead (UXP-232). It echoes
     // the modifier so the marker reads back as the source that made it.
@@ -22600,8 +22610,10 @@ function resolveBrace(body, ctx) {
   // whole document (renderQueryPill → queryRowsMemo → queryRows(expr, root, hostId), with an opt-in
   // folder widening), so these read `root` explicitly rather than `cookieNode || root`. Otherwise
   // the same token would mean two different scopes depending on whether it sat inside a rule — the
-  // context inversion P1 forbids. cookieNode stays the self-exclusion. Only {roll:} takes the host
-  // scope, because only {roll:} is documented as subtree-scoped.
+  // context inversion P1 forbids. cookieNode stays the self-exclusion. #1107: {roll:} reads `root`
+  // too now, so all three query verbs agree. The sentence that used to sit here ("only {roll:} is
+  // documented as subtree-scoped") cited a code comment that cited itself; no user-facing doc ever
+  // said it, and every shipped example assumed the opposite.
   const qp = queryParts(body);
   if (qp) { const picked = pickFromQuery(qp.expr, root, cookieNode ? cookieNode.id : null); return picked || `{query: ${qp.expr}?}`; }
   const cnp = countParts(body);
@@ -37121,10 +37133,10 @@ const GUIDE = [
     ] },
   { id:'roll-query', cat:'generators', covers:['rollpick'],
     title:'Roll on your own document',
-    body:"Pick a random point from your live document instead of a typed list. Keep a list of open questions, ideas or tasks as ordinary points, then let one get chosen at random: great for any \"surprise me from what I already wrote\" moment, breaking a brainstorm rut, or solo tabletop play (advance a random thread, a random NPC reacts). Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). By default it picks from the points under the one you write it in, so put it under the list it should choose from; a #tag search reaches wherever that tag lives. It rolls fresh each time the page draws. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random. With a folder connected, tick \"Roll on the whole folder\" in that menu (or write {roll folder: SEARCH}) to draw from every note in the folder, not just this one: the other notes count as they were last saved, and if no folder is connected the pill says so and rolls on this document alone. The word folder before the colon is the switch, so {roll: folder} still searches for points containing the word.",
+    body:"Pick a random point from your live document instead of a typed list. Keep a list of open questions, ideas or tasks as ordinary points, then let one get chosen at random: great for any \"surprise me from what I already wrote\" moment, breaking a brainstorm rut, or solo tabletop play (advance a random thread, a random NPC reacts). Type {roll: SEARCH} where SEARCH is a normal search (words, #tag, is:todo, key:value). It searches the whole document, exactly like {query:} and {count:}, so the list it draws from can live anywhere; place the pill wherever it reads best. It re-rolls when you click it. To keep one result steady and re-roll it on click, name it: {thread := {roll: is:todo}}, then use {thread}. The @ insert menu has it too, under Random. With a folder connected, tick \"Roll on the whole folder\" in that menu (or write {roll folder: SEARCH}) to draw from every note in the folder, not just this one: the other notes count as they were last saved, and if no folder is connected the pill says so and rolls on this document alone. The word folder before the colon is the switch, so {roll: folder} still searches for points containing the word.",
     related:['grammar','gen-rules','roll-palette'],
     examples:[
-      { syn:'{roll: is:todo}',          desc:'a random open thread from the points below' },
+      { syn:'{roll: is:todo}',          desc:'a random open thread from anywhere in the document' },
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
       { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
       { syn:'{roll folder: #npc}',      desc:'draw from every note in the connected folder' },
@@ -39677,7 +39689,7 @@ const STARTERS = [
     <outline text="Cannot decide? Let the shelf choose: {roll: #toread}"/>
     <outline text="Waiting on the shelf: {count: #toread}"/>
   </outline>
-  <outline text="## The shelf (tag a book #toread and the picker learns it)">
+  <outline text="## The shelf (tag a book to-read and the picker learns it)">
     <outline text="The Dispossessed, Ursula K. Le Guin #toread"/>
     <outline text="Piranesi, Susanna Clarke #toread"/>
     <outline text="The Name of the Rose, Umberto Eco #toread"/>
@@ -39744,7 +39756,7 @@ const STARTERS = [
     <outline text="- [ ] Clear the email backlog"/>
     <outline text="- [x] Water the plants"/>
   </outline>
-  <outline text="## Habits (tag one #habit and the nudge learns it)">
+  <outline text="## Habits (tag one as a habit and the nudge learns it)">
     <outline text="Stretch for five minutes #habit"/>
     <outline text="Read ten pages #habit"/>
     <outline text="Step outside before noon #habit"/>
@@ -39850,7 +39862,7 @@ const STARTERS = [
     <outline text="Place: {North | Salt | Raven | Ash | Gray}{crook | mere | fell | hollow | reach}"/>
     <outline text="These are two lists glued together, so the pieces recombine. Swap in syllables that fit your world."/>
   </outline>
-  <outline text="## Your cast (tag a name #character and the spark learns it)">
+  <outline text="## Your cast (tag a name as a character and the spark learns it)">
     <outline text="Mira Holloway, a cartographer who forges maps #character"/>
     <outline text="Cael Reed, a ferryman who owes the wrong people #character"/>
     <outline text="Wren Vane, a child who remembers a life not theirs #character"/>
@@ -39989,7 +40001,7 @@ const STARTERS = [
     <outline text="- [ ] Shakespeare's plays #topic"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="Tag each syllabus line #topic and the roll and the counter learn it. Check a topic off (or mark it DONE) and the progress bar on the Syllabus heading moves; the topics-left counter drops. The flashcard deck is one point you can grow to as many cards as you like."/>
+    <outline text="Tag each syllabus line as a topic and the roll and the counter learn it. Check a topic off (or mark it DONE) and the progress bar on the Syllabus heading moves; the topics-left counter drops. The flashcard deck is one point you can grow to as many cards as you like."/>
     <outline text="Nothing here is new syntax: the card dealer is a shuffle deck, the review picker is a roll on a tag, the counter is a search, and the syllabus bar counts its checkboxes."/>
   </outline>
 </outline>
