@@ -400,6 +400,23 @@ Implemented:
   not the pill. In edit mode, complex pills (tables/markov) reroll on body click.
 ### Outline structure & content
 
+- **The corkboard (#955)** — a zoomed point's children as index cards, in place of the row list.
+  `node.cards` → `_cards="true"` (the `node.folded` pattern, including the three type-guard
+  clearings; a base is never a corkboard). Doors: an `Outline | Cards` switch in the zoom view and a
+  bullet-menu row that **zooms in as well**, since the board only exists there.
+  **Why it is cheap:** a card is a real point, so it holds a genuine `.node-content[data-id]` handed
+  to `attachContentEvents` — the outline's own editor, with its undo, autosave, pills and caret
+  invariant — and reorder commits through the outline's own `attachDragHandlers` /
+  `attachBulletTouchGestures`. This is the other half of the §0.2 correction PR 1 made: interaction
+  is net-new only where a view has no owning editor for its data.
+  **The load-bearing constraint:** the board REPLACES the rows (`flatRows` is emptied and the
+  outline path returns early), so no point ever has two `.node-content` elements for one id — two
+  would make the whole "flush the edit before X" family silently no-op, since every one of those
+  call sites finds the editor by `querySelector` on that id.
+  Pure cores: `corkboardCards` (note-else-snippet synopsis, never repeating the title) and
+  `cardMoveIndex` (left/right one place, up/down a grid row, ends clamp). A **search shows the
+  outline** and says so — `pushSearchRows` ignores `collapsed` by design.
+
 - **The gallery edits (#955)** — the base Cards view was "read-only by construction"; it now edits,
   reorders, adds and deletes. `mtWireCells(host, node)` is the cell edit/nav layer lifted verbatim
   out of `buildTableWidget` (it only ever closed over `host` and `node`), and both views call it, so

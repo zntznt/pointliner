@@ -162,6 +162,12 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   `mtInsertRow` / `mtDeleteRow` through a card menu that carries the ROW ops only. A **query base's
   cards stay read-only** — write-through remains parked (base-views-vision §0.4).
 
+> **Not to be confused with the corkboard (#955).** The Cards view above is a view of a BASE — its
+> cards are rows of a table and its editor is the cell layer. The corkboard is a view of a POINT's
+> CHILDREN in the zoom view — its cards are real points and its editor is the point editor. They
+> share the grid CSS and two pure cores (`cardDropAfter`, `reorderIndex`) and nothing else, because
+> each uses the editor that already owns its data.
+
 - **The calendar view (BV-3) — moved above the line 2026-07-02 (owner call).** The FR-1 date
   column places each row on a compact month grid (the agenda's pure `agendaMonthCells` reused;
   month anchor is session-only view state). Rows without a parseable date surface in a visible
