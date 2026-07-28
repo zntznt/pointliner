@@ -145,3 +145,10 @@ The `ICONS` list in the script is the source of truth for what's embedded; keep
 it a superset of every `fa-` name the app references (grep `index.html` for
 `fa-` to audit). To find a missing-from-subset icon, grep the app's `fa-` usages
 and diff against `FA_GLYPHS`.
+
+**The suite enforces steps 2 and 5 (#1144 / UXP-266.)** `ICONS`, `FA_GLYPHS` and the
+`.fa-NAME::before` rules must agree exactly, and every rule's codepoint must actually be present in
+the embedded font, read from its cmap. Editing `FA_GLYPHS` alone, or splicing the `FA_GLYPHS` line
+but not the style block, is now a red test naming the rebuild command rather than a blank button
+discovered later. Step 6 is still not optional: the guard proves the glyph is in the font, not that
+it is the glyph you wanted.

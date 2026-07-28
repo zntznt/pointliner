@@ -1707,11 +1707,88 @@ that rule was applied from memory instead of by being caught.
 one needs a design call about how to resolve "a durable copy exists but the user has started typing",
 and it is not answered by a message.
 
+## UXP-266 - a guard whose answer key is edited by the change it guards (#1144)
+
+Three guards in `tests/test.mjs` validated a change against a set that the same change also edits.
+That is not a weak guard, it is an **inverted** one: the more thoroughly you make the mistake, the
+more certainly the guard accepts it.
+
+| guard | its answer key | who edits that key |
+|---|---|---|
+| `#466` dialog `?` deep-links | every `id:'…'` **anywhere** in `index.html` | any command, registry or entry - 169 tokens for 130 real entries |
+| `#716` icon census | `FA_GLYPHS` | the icon-adding change itself |
+| `BLOCK_CMDS`/`INSERT_CMDS` drift | a hardcoded list in the test | whoever adds a command, if they remember |
+
+### What the `#466` one was hiding
+
+`openGuide` resolves its argument against **entry ids only** and falls back to `entries[0]` on a
+miss. Three `?` buttons, each labelled "Open the guide for this", opened the keyboard-shortcuts page
+instead. Driven, not inferred:
+
+| dialog | `?` opened | should open |
+|---|---|---|
+| Stamp a template | Navigate (Shortcuts) | Templates |
+| Sequence | Navigate (Shortcuts) | Custom workflows |
+| Variable | Navigate (Shortcuts) | Variables |
+
+All three are near misses of a real id (`template`/`templates`, `sequence`/`sequences`,
+`var`/`variables`) - and all three near misses are **real ids of something else**, which is exactly
+why harvesting every `id:'…'` in the file accepted them. `guideId:'sequence'` was added *by the #466
+change*, and the guard that shipped alongside it green-lit it on the spot.
+
+### The FA half: the issue said this needed CI. It does not.
+
+`#1144` assumed a rebuild could only be verified by shelling out to `python tools/build-fa-subset.py`
+in CI. The script derives **three** artifacts from one `ICONS` list, and all three are readable
+without running anything - including the font, whose cmap says which codepoints really exist. So the
+chain closes end to end in plain Node:
+
+    ICONS  ==  FA_GLYPHS  ==  .fa-NAME::before rules  ->  a real glyph in the embedded face
+
+The last link is the one no list-vs-list check can make. It is what turns the guard from **detecting
+a list that disagrees with itself** into **proving the rebuild happened** - the distinction UXP-260
+drew when it admitted its own census was a ratchet rather than a proof. Here the proof was available.
+
+Mutation-proved, each asserting its target present first:
+
+| mutation | result |
+|---|---|
+| restore any of the three dead deep-links | `#466` red |
+| add a glyph to `FA_GLYPHS`, skip the rebuild | red |
+| drop a `::before` rule | red |
+| point a rule at a codepoint the font lacks | red |
+| edit `ICONS` without splicing the output back | red |
+| **swap in a stale/wrong font blob** | red |
+| make the cmap reader return an empty set | red |
+
+The last two matter most: the guard cannot pass by failing to look, and it reads the artifact the
+issue believed was opaque.
+
+### One found by mutating my own new pin
+
+The woff2 pin first anchored on `@font-face{font-family:'Fraunces'`. Renaming that family did not
+turn it red - the anchor simply slid to the next face and still met a `>= 2` floor. Selecting
+payloads by **magic number** rather than by family name fixed it. A soft floor plus a movable anchor
+is the same vacuity class in miniature, caught only because the mutation was run.
+
+### Deleting a guard, having read it first
+
+`#1144` warned not to assume the hardcoded pair covered nothing. Measured: both lists were strict
+subsets of the live registries (17 of 25, 17 of 21) with no id the registries lacked, so they
+guarded nothing `#596` does not, while being blind to 12 commands - `rollpick` among them, the very
+command whose uncovered shipping caused `#596` to be written. Deleted; their one advantage, reading
+the GUIDE block through the throwing `between` helper, was absorbed into `#596`'s extractors.
+
+**Filed separately:** the embedded FA faces are declared `format("woff2")` but are raw sfnt, because
+the build script sets `subset.Options(flavor="woff2")` and never `font.flavor`. Browsers sniff the
+magic number so the icons paint correctly; it is wasted bytes and a wrong declaration, not a break.
+The new parser handles both formats, so that fix can land without touching this guard.
+
 ## UXP-267 - a guard that was inert on the path actually in use (#1130)
 
-*(Follows UXP-266, in flight in #1154. Same campaign, third distinct failure shape:
-UXP-260 was guards that could not fail, UXP-266 was guards whose answer key the change
-edits, this is a guard that never ran.)*
+*(Follows UXP-266, above. Same campaign, third distinct failure shape: UXP-260 was guards
+that could not fail, UXP-266 was guards whose answer key the change edits, this is a guard
+that never ran.)*
 
 `.claude/hooks/check-pr-conformance.mjs` blocks a PR whose body lacks a Conformance
 Statement. Its own header claimed *"passes this hook == passes CI"*. That equivalence

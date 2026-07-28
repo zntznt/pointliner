@@ -27,6 +27,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { brotliDecompressSync } from 'node:zlib';
 import { loadCores } from './load-cores.mjs';
 
 const c = loadCores();
@@ -9144,45 +9145,194 @@ test('#716: every command-table fa: glyph is in the embedded FA subset', () => {
   assert.ok(checked >= 40, `expected the full command-icon census, checked only ${checked}`);
 });
 
+// ── #1144: FA_GLYPHS stops being an allow-list and starts being a proof ────────
+// The co-edited-set problem, third instance. `FA_GLYPHS` is the set the #716 census validates
+// against, AND the set an icon-adding change edits — so `FA_GLYPHS.add('fa-thing')` made #716 go
+// green whether or not `python tools/build-fa-subset.py` was ever run. A forgotten rebuild paints
+// a blank toolbar button, which is the exact failure #716 was written to prevent, and #716 could
+// not see it. This has already happened once: the build script's own comment records the meter
+// glyphs as "shipped in FA_GLYPHS but not synced here".
+//
+// The rebuild produces THREE artifacts from one ICONS list, and all three are inspectable without
+// running anything: the `FA_GLYPHS` line, one `.fa-NAME::before{content:"\fXXX"}` rule per icon,
+// and the embedded font itself. So the chain below closes end to end:
+//
+//     tools/build-fa-subset.py ICONS  ==  FA_GLYPHS  ==  ::before rules  ->  a real glyph in the font
+//
+// #1144 assumed this half needed a CI step that shells out to the build script. It does not: the
+// last link is checkable by reading the embedded font's cmap directly, which is what proves the
+// rebuild happened rather than merely detecting a list that disagrees with itself.
+
+// Codepoints an sfnt (TrueType/OpenType) actually maps, read from its cmap. Formats 4 and 12 are
+// the two FA ships; an unknown-format-only font yields an empty set, which the caller's floor
+// catches loudly.
+function cmapCodepoints(cmap) {
+  const cps = new Set();
+  for (let i = 0, n = cmap.readUInt16BE(2); i < n; i++) {
+    const sub = cmap.readUInt32BE(4 + i * 8 + 4), fmt = cmap.readUInt16BE(sub);
+    if (fmt === 4) {
+      const segX2 = cmap.readUInt16BE(sub + 6);
+      const endO = sub + 14, startO = endO + segX2 + 2, deltaO = startO + segX2, rangeO = deltaO + segX2;
+      for (let s = 0; s < segX2 / 2; s++) {
+        const end = cmap.readUInt16BE(endO + s * 2), start = cmap.readUInt16BE(startO + s * 2);
+        const delta = cmap.readInt16BE(deltaO + s * 2), ro = cmap.readUInt16BE(rangeO + s * 2);
+        if (start === 0xffff) continue;
+        for (let c = start; c <= end; c++) {
+          let g;
+          if (ro === 0) g = (c + delta) & 0xffff;
+          else {
+            const gi = rangeO + s * 2 + ro + (c - start) * 2;
+            if (gi + 1 >= cmap.length) continue;
+            g = cmap.readUInt16BE(gi);
+            if (g) g = (g + delta) & 0xffff;
+          }
+          if (g) cps.add(c);           // glyph id 0 is .notdef — mapped, but blank
+        }
+      }
+    } else if (fmt === 12) {
+      for (let g = 0, n2 = cmap.readUInt32BE(sub + 12); g < n2; g++) {
+        const o = sub + 16 + g * 12, s = cmap.readUInt32BE(o), e = cmap.readUInt32BE(o + 4);
+        for (let c = s; c <= e && c - s < 10000; c++) cps.add(c);
+      }
+    }
+  }
+  return cps;
+}
+
+// Codepoints a base64 web-font payload maps. The `format("woff2")` hint in the @font-face is NOT
+// trusted: the embedded blobs are declared woff2 but are actually raw sfnt (the build script sets
+// subset.Options(flavor="woff2") but never font.flavor, so fontTools saves an uncompressed sfnt —
+// filed separately, browsers sniff the magic number so the icons do paint). Sniff, don't trust, so
+// this keeps working whichever the blob turns out to be.
+function fontCodepoints(b64) {
+  const buf = Buffer.from(b64, 'base64');
+  const magic = buf.subarray(0, 4);
+  if (magic.toString('ascii') === 'wOF2') {
+    // woff2: a table directory of variable-length records, then one brotli stream of table data.
+    const KNOWN = ['cmap','head','hhea','hmtx','maxp','name','OS/2','post','cvt ','fpgm','glyf','loca',
+      'prep','CFF ','VORG','EBDT','EBLC','gasp','hdmx','kern','LTSH','PCLT','VDMX','vhea','vmtx','BASE',
+      'GDEF','GPOS','GSUB','EBSC','JSTF','MATH','CBDT','CBLC','COLR','CPAL','SVG ','sbix','acnt','avar',
+      'bdat','bloc','bsln','cvar','fdsc','feat','fmtx','fvar','gvar','hsty','just','lcar','mort','morx',
+      'opbd','prop','trak','Zapf','Silf','Glat','Gloc','Feat','Sill'];
+    const numTables = buf.readUInt16BE(12), compressedSize = buf.readUInt32BE(20);
+    let o = 48;
+    const b128 = () => { let v = 0; for (let i = 0; i < 5; i++) { const c = buf[o++]; v = (v << 7) | (c & 0x7f); if (!(c & 0x80)) return v; } throw new Error('bad UIntBase128'); };
+    const dir = [];
+    for (let i = 0; i < numTables; i++) {
+      const flags = buf[o++], idx = flags & 0x3f, xform = (flags >> 6) & 0x3;
+      const tag = idx === 63 ? buf.toString('ascii', (o += 4) - 4, o) : KNOWN[idx];
+      const origLength = b128();
+      // glyf/loca carry a transform at version 0; everything else only at a non-zero version
+      const transformed = (tag === 'glyf' || tag === 'loca') ? xform === 0 : xform !== 0;
+      dir.push({ tag, len: transformed ? b128() : origLength });
+    }
+    const stream = brotliDecompressSync(buf.subarray(o, o + compressedSize));
+    let at = 0;
+    for (const t of dir) {
+      if (t.tag === 'cmap') return cmapCodepoints(stream.subarray(at, at + t.len));
+      at += t.len;
+    }
+    throw new Error('woff2 payload has no cmap table');
+  }
+  // raw sfnt: 0x00010000 (TrueType outlines) or 'OTTO' (CFF outlines)
+  if (!(magic.readUInt32BE(0) === 0x00010000 || magic.toString('ascii') === 'OTTO' || magic.toString('ascii') === 'true'))
+    throw new Error(`unrecognised embedded font payload (magic ${magic.toString('hex')}) — neither woff2 nor sfnt`);
+  for (let i = 0, n = buf.readUInt16BE(4); i < n; i++) {
+    const o = 12 + i * 16;
+    if (buf.toString('ascii', o, o + 4) === 'cmap')
+      return cmapCodepoints(buf.subarray(buf.readUInt32BE(o + 8), buf.readUInt32BE(o + 8) + buf.readUInt32BE(o + 12)));
+  }
+  throw new Error('sfnt payload has no cmap table');
+}
+
+// The shipped allow-list. `between` keeps its start marker, so drop it before splitting.
+const FA_DECL = 'const FA_GLYPHS = new Set([';
+function faGlyphSet() {
+  const set = new Set(between(_src, FA_DECL, ']').slice(FA_DECL.length)
+    .replace(/'/g, '').split(',').map(s => s.trim()).filter(Boolean));
+  assert.ok(set.size >= 60, `FA_GLYPHS parsed as only ${set.size} entries — did the literal move?`);
+  return set;
+}
+
+test('#1144: every FA_GLYPHS entry has a ::before rule AND a real glyph in the embedded font', () => {
+  const faBlock = between(_src, '<style id="fa-embed">', '</style>');
+  const faSet = faGlyphSet();
+
+  // (a) one ::before rule per glyph, both directions. A glyph added to FA_GLYPHS without a rebuild
+  //     has no content rule, so it renders as an empty box rather than an icon.
+  const rules = nonEmpty([...faBlock.matchAll(/\.(fa-[a-z0-9-]+)::before\{content:"\\([0-9a-f]+)"\}/g)]
+    .map(m => [m[1], parseInt(m[2], 16)]), 'fa-embed ::before content rules');
+  const ruleSet = new Set(rules.map(r => r[0]));
+  assert.deepEqual([...faSet].filter(g => !ruleSet.has(g)), [],
+    'in FA_GLYPHS with no ::before rule — the subset was NOT rebuilt: python tools/build-fa-subset.py');
+  assert.deepEqual([...ruleSet].filter(g => !faSet.has(g)), [],
+    'a ::before rule whose glyph is not in FA_GLYPHS — paintIcon would refuse an icon the font carries');
+
+  // (b) the codepoint each rule names is really in one of the embedded faces. This is the link
+  //     that no list-vs-list check can make: it reads the font, so a stale blob fails here.
+  const faces = nonEmpty([...faBlock.matchAll(/font-family:"([^"]+)";font-style:normal;font-weight:(\d+)[^{}]*?base64,([A-Za-z0-9+/=]+)"\)/g)],
+    'embedded @font-face payloads');
+  const inFont = new Set();
+  for (const f of faces) {
+    const cps = fontCodepoints(f[3]);
+    assert.ok(cps.size > 0, `${f[1]} @${f[2]} maps no codepoints — the embedded payload is empty or unreadable`);
+    for (const c of cps) inFont.add(c);
+  }
+  const blank = rules.filter(([, cp]) => !inFont.has(cp));
+  assert.deepEqual(blank.map(b => `${b[0]} U+${b[1].toString(16)}`), [],
+    'these icons have a CSS rule but no glyph in any embedded face — they paint blank. Rebuild: python tools/build-fa-subset.py');
+  assert.ok(inFont.size >= faSet.size,
+    `the embedded faces map ${inFont.size} codepoints for ${faSet.size} declared glyphs — the font is behind the allow-list`);
+});
+
+test('#1144: fontCodepoints reads a real woff2, not only the sfnt the FA block happens to hold', () => {
+  // The FA payloads are sfnt today, so the woff2 arm above would otherwise be dead code that goes
+  // untested until the day someone fixes the build script's flavor bug and this guard breaks with
+  // no warning. index.html also embeds genuine woff2 (the Fraunces/Geist text faces), so pin the
+  // arm against those: brotli stream, variable-length table directory, real cmap.
+  // Select by MAGIC, not by family name: an anchor on 'Fraunces' slid to the next @font-face when
+  // that name changed and still found enough payloads to pass — a soft floor caught by mutation.
+  const woff2 = [...(_src.matchAll(/base64,([A-Za-z0-9+/=]+)"\)/g))].map(m => m[1])
+    .filter(b => Buffer.from(b.slice(0, 8), 'base64').subarray(0, 4).toString('ascii') === 'wOF2');
+  assert.ok(woff2.length >= 3, `expected the embedded woff2 text faces, found ${woff2.length}`);
+  for (const b64 of woff2) {
+    const cps = fontCodepoints(b64);
+    assert.ok(cps.size > 100, `parsed only ${cps.size} codepoints from a full text face`);
+    for (const ch of ['A', 'z', '0', ' ']) assert.ok(cps.has(ch.codePointAt(0)), `a text face must map ${JSON.stringify(ch)}`);
+  }
+  // and a payload that is neither format must fail loudly rather than yield an empty set
+  assert.throws(() => fontCodepoints(Buffer.from('not a font at all, really').toString('base64')),
+    /unrecognised embedded font payload/);
+});
+
+test('#1144: the build script ICONS list matches the FA_GLYPHS actually shipped', () => {
+  // ICONS is the source of truth the rebuild reads. If it drifts from what index.html ships, the
+  // NEXT rebuild silently drops or adds icons — which is how the meter glyphs nearly went (see the
+  // "were shipped in FA_GLYPHS but not synced here" note in the script).
+  const py = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'build-fa-subset.py'), 'utf8');
+  const icons = new Set(nonEmpty([...between(py, 'ICONS = [', '\n]').matchAll(/"([a-z0-9-]+)"/g)], 'ICONS entries')
+    .map(m => 'fa-' + m[1]));
+  const faSet = faGlyphSet();
+  assert.deepEqual([...faSet].filter(g => !icons.has(g)), [],
+    'shipped in FA_GLYPHS but missing from tools/build-fa-subset.py ICONS — the next rebuild would DROP these');
+  assert.deepEqual([...icons].filter(g => !faSet.has(g)), [],
+    'listed in ICONS but not shipped in FA_GLYPHS — the script was edited without splicing the output in');
+});
+
 test('UXP-36: GUIDE registry declaration is present', () => {
   assert.ok(_src.includes('const GUIDE = ['),
     'const GUIDE = [ not found in index.html — the unified registry was renamed or removed');
 });
 
 // ── GUIDE drift guard: every / and @ command id must have a GUIDE entry ────────
-// The GUIDE array is a `const` (not a function declaration) so it lives in the
-// source string only. We extract `id:` values from GUIDE entries via source
-// inspection and verify that all BLOCK_CMDS + INSERT_CMDS ids are covered by
-// some entry's `covers` array or its own `id` field.
-test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
-  const BLOCK_IDS = ['ul','ol','todo','h1','h2','h3','para','code','divider','quote',
-    'base','template','due','check','alias','journal','variables'];
-  // Extract all id:' and covers:[' values from the GUIDE source block
-  const guideBlock = between(_src, 'const GUIDE = [', '// GUIDE-END');
-  const coveredIds = new Set();
-  // Match covers:['id1','id2',...] patterns
-  for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
-    for (const id of m[1].matchAll(/'([^']+)'/g)) coveredIds.add(id[1]);
-  }
-  const missing = BLOCK_IDS.filter(id => !coveredIds.has(id));
-  assert.deepEqual(missing, [],
-    `GUIDE missing covers for BLOCK_CMDS ids: ${missing.join(', ')}\n` +
-    `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
-});
-
-test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
-  const INSERT_IDS = ['footnote','image','link','table','progress','dice','markov',
-    'rolltable','grammar','deck','oracle','math','var','est','sequence','query','count'];
-  const guideBlock = between(_src, 'const GUIDE = [', '// GUIDE-END');
-  const coveredIds = new Set();
-  for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
-    for (const id of m[1].matchAll(/'([^']+)'/g)) coveredIds.add(id[1]);
-  }
-  const missing = INSERT_IDS.filter(id => !coveredIds.has(id));
-  assert.deepEqual(missing, [],
-    `GUIDE missing covers for INSERT_CMDS ids: ${missing.join(', ')}\n` +
-    `(Add covers:[...] to the relevant GUIDE entry, or add a new entry)`);
-});
+// #1144: the two guards that lived here hardcoded the id lists in the test, and were superseded
+// by the '#596 — GUIDE drift guard' pair further down, which DERIVES the ids from the live
+// BLOCK_CMDS/INSERT_CMDS registries. Measured before deleting, per #1144's own warning to read
+// first: both hardcoded lists were strict SUBSETS of the live registries (17 of 25 / 17 of 21) and
+// held no id the registries lacked, so they guarded nothing #596 does not — while being blind to
+// 12 commands, `rollpick` among them, which is the very command #596 exists because the hardcoded
+// list let it ship uncovered. Their one advantage over #596 was reading the GUIDE block through
+// the throwing `between` helper; that is absorbed into #596's extractors below rather than lost.
 
 // #915 (agent-review): the @ menu must LEAD with the generative + compute pills (the app's thesis),
 // not the basic inserts — and the sections are named for the thesis words so the door self-labels.
@@ -18722,7 +18872,21 @@ test('resolveTypedLinks: unambiguous [[Name]] → [[#id]]; zero/many/self → li
 // dialogs reference (guideId:'X' passed to openInsertDialog + dialogHelp(head,'X') direct) and
 // assert each exists as a GUIDE id:'X'. A renamed/typo'd guide id fails CI instead of silently.
 test('dialog ? help icons deep-link to real GUIDE entries (#466)', () => {
-  const guideIds = new Set([...(_src.match(/\bid:'[a-z-]+'/g) || [])].map(s => s.slice(4, -1)));
+  // #1144 (co-edited-set vacuity): this validated refs against EVERY `id:'…'` anywhere in
+  // index.html — 169 tokens, of which only 130 were GUIDE entries. The extra 39 were command and
+  // registry ids (`ul`, `todo`, `var`, `est`, `template`, …), i.e. exactly the vocabulary a
+  // guideId is most likely to be mistyped from, so the set that was supposed to VALIDATE the ref
+  // was widened by the same source the ref is written against. Three dead links passed it,
+  // including `guideId:'sequence'`, which the #466 change itself added. Derive from the GUIDE
+  // block alone, with a floor so a moved/renamed const fails loudly rather than emptily.
+  const guideBlock = between(_src, 'const GUIDE = [', '// GUIDE-END');
+  const guideIds = new Set([...guideBlock.matchAll(/\bid:'([a-z0-9-]+)'/g)].map(m => m[1]));
+  assert.ok(guideIds.size >= 80, `parsed only ${guideIds.size} GUIDE entry ids — did the block move?`);
+  // covers:[…] tokens deliberately do NOT count: openGuide resolves `initialId` against entry ids
+  // only, and silently falls back to entries[0] (Shortcuts) on a miss. Pin that premise here, so a
+  // future covers fallback re-opens this guard instead of quietly making it too strict.
+  assert.ok(/entries\.some\(e => e\.id === initialId\)/.test(_src),
+    'openGuide must still resolve initialId by entry id alone (if it gains a covers fallback, widen guideIds)');
   const refs = new Set();
   for (const m of _src.matchAll(/guideId:\s*'([a-z-]+)'/g))          refs.add(m[1]);
   for (const m of _src.matchAll(/dialogHelp\(head,\s*'([a-z-]+)'\)/g)) refs.add(m[1]);
@@ -19556,23 +19720,21 @@ test('#594 — the emoji reference guide covers every EMOJI shortcode (drift gua
 // found a non-empty registry block, so a renamed/moved const can't make the guard pass vacuously.
 const GUIDE_SRC = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
 
-// Every `id:'…'` inside a `const NAME = [ … ];` registry block. Throws (empty) if the block moved.
+// Every `id:'…'` inside a `const NAME = [ … ];` registry block.
+// #1144: both extractors used to degrade to an empty result when their markers moved, leaning
+// entirely on each caller remembering a floor assertion. They now slice through `between`, which
+// THROWS and names the missing marker — the #1133 rule, absorbed here from the two hardcoded
+// guards this pair replaced. The floors stay as the second half of the pair: `between` catches a
+// moved marker, the floor catches a block that is still there but has been emptied.
 function registryIds(src, name) {
-  const start = src.indexOf('const ' + name + ' = [');
-  if (start < 0) return [];
-  const end = src.indexOf('];', start);
-  return [...src.slice(start, end).matchAll(/\bid:'([^']+)'/g)].map(m => m[1]);
+  return [...between(src, 'const ' + name + ' = [', '];').matchAll(/\bid:'([^']+)'/g)].map(m => m[1]);
 }
 // Every id listed in any GUIDE entry's covers:[…] (a command is "documented" iff it is here).
 // Sliced between `const GUIDE = [` and the stable `GUIDE-END` boundary marker (index.html leaves
-// that marker specifically for this slice). A missing marker returns an empty slice, which the
-// caller's covers.size guard catches as a loud failure rather than a vacuous pass.
+// that marker specifically for this slice).
 function guideCoveredIds(src) {
-  const start = src.indexOf('const GUIDE = [');
-  const end = src.indexOf('// GUIDE-END', start);
-  const guide = end > start ? src.slice(start, end) : '';
   const ids = new Set();
-  for (const m of guide.matchAll(/covers:\[([^\]]+)\]/g))
+  for (const m of between(src, 'const GUIDE = [', '// GUIDE-END').matchAll(/covers:\[([^\]]+)\]/g))
     for (const id of m[1].matchAll(/'([^']+)'/g)) ids.add(id[1]);
   return ids;
 }
