@@ -25,3 +25,8 @@ jobs:
           node-version: 22
       # Node 22 resolves a bare directory as a module; pass the explicit path.
       - run: node --test tests/test.mjs
+      # #1130: the PreToolUse hook has its own self-check, which until now nothing
+      # ran. A guard whose test is never executed rots exactly like the guard it
+      # tests, so CI runs it. It spawns the hook as a subprocess rather than
+      # importing it, which is why it lives beside the hook and not in test.mjs.
+      - run: node .claude/hooks/check-pr-conformance.test.mjs

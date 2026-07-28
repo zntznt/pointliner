@@ -102,6 +102,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
   - **The platform appending them.** After opening a PR, strip any auto-appended session link and **read the PR back to confirm none remains**; if it reappears after the edit, STOP and report it (a platform behavior you can't strip from this side), never silently ship it.
   - Enforced by the `commit-hygiene` job in `.github/workflows/ux-conformance.yml`, which reads every commit in the PR **and** the body. `tests/test.mjs` parses that job's patterns and proves they bite. A **human** `Co-Authored-By:` is legal and must stay legal, and a PR body may freely DISCUSS the banned trailers (fenced or inline code is ignored; only a real line-start trailer fails).
   - PR descriptions follow the exact format: UX Conformance Statement or `UI: none`.
+- **The conformance gate runs before the call, on both doors.** `.claude/hooks/check-pr-conformance.mjs` blocks a PR create/edit whose body has no filled statement, and it is registered for **`gh pr create`/`edit` AND the GitHub MCP create/update tools** (`#1130`: it used to watch Bash only, so every MCP-opened PR bypassed it while it looked active). It fails open on a body it cannot read statically, so CI is still the real gate. Self-check: `node .claude/hooks/check-pr-conformance.test.mjs`, run by the `node-tests` job.
 - **Commit message format:** Past tense, lowercase, descriptive. Reference issues with `Fixes #N`.
 
 ## Context rule

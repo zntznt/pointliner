@@ -1706,3 +1706,89 @@ that rule was applied from memory instead of by being caught.
 **Still open in #1136:** part 2, `reconcileOpfsOnBoot`'s `userTypedSinceBoot` one-way trapdoor. That
 one needs a design call about how to resolve "a durable copy exists but the user has started typing",
 and it is not answered by a message.
+
+## UXP-267 - a guard that was inert on the path actually in use (#1130)
+
+*(Follows UXP-266, in flight in #1154. Same campaign, third distinct failure shape:
+UXP-260 was guards that could not fail, UXP-266 was guards whose answer key the change
+edits, this is a guard that never ran.)*
+
+`.claude/hooks/check-pr-conformance.mjs` blocks a PR whose body lacks a Conformance
+Statement. Its own header claimed *"passes this hook == passes CI"*. That equivalence
+did not hold, in both directions at once.
+
+### It could not see the path in use
+
+The hook was registered for `Bash` only. **Every PR opened in this repo through the
+GitHub MCP tools never reached it** - which is every PR this campaign has opened. CI
+was still the backstop, so nothing shipped unguarded, but the hook was providing none
+of the pre-push guarantee it advertised.
+
+That is the worst shape a guard can take: not absent, and not merely weak, but
+**visible enough that you stop watching for what it was supposed to catch**. Measured
+today: the CI conformance job rejected a PR body of mine for missing `✅` verdicts on
+P1 and P2, an hour after the hook had let the same body through without a word.
+
+### It blocked commands that create no PR
+
+The trigger was `/\bgh\s+pr\s+(create|edit)\b/` against the **raw command string**, so
+it matched the *phrase*, not an invocation. It fired on a `grep` for it, on writing the
+procedure into a doc, on a commit message that named it.
+
+**Reproduced by accident, which is the sharpest version of the finding:** the probe
+written to measure the false positive was itself blocked, because the probe's text
+contained the phrase. The bug obstructed its own measurement.
+
+| the command | old | now |
+|---|---|---|
+| `grep -rn "<phrase> create" CLAUDE.md` | BLOCKED | allowed |
+| `echo "run <phrase> create ..." >> notes.md` | BLOCKED | allowed |
+| `git commit -m "documented <phrase> create hygiene"` | BLOCKED | allowed |
+| `node -e "console.log('to publish, run <phrase> create')"` | BLOCKED | allowed |
+| a real non-conforming create | BLOCKED | BLOCKED |
+
+### The fix
+
+**Match structurally.** The command is split into simple commands (so `git push && gh
+pr create ...` is seen as two) and tokenized with quotes consumed, then `gh` must be
+the invoked binary with `pr create`/`pr edit` as its first two positional arguments.
+Quoted text becomes one token and can never promote itself into a match.
+
+**Cover both doors.** A second matcher registers the same hook for
+`mcp__github__create_pull_request` / `mcp__github__update_pull_request`, where the body
+is read directly with no shell parsing at all.
+
+**Two things found while fixing, both worth keeping:**
+
+- A heredoc body is *statically present* in the command text, so it is now read rather
+  than waved through. But heredocs had to be lifted out **before** splitting on
+  newlines - the first attempt shredded the heredoc into separate "commands" and
+  silently fell back to fail-open, i.e. straight back into the hole being closed. Caught
+  by mutation, not by reading.
+- `gh --repo o/r pr create` read `o/r` as the subcommand and missed. Fixed by skipping
+  `-R`/`--repo` and its value.
+
+### Driven, not assumed
+
+A registered hook that never fires is the builder-keyboard bug (#1021) in a different
+costume, so the matcher was **driven, not inferred**: the hook was instrumented, a live
+MCP call was made, and it logged `FIRED mcp__github__update_pull_request` - in-session,
+with no restart. Then a real MCP update carrying a deliberately non-conforming body was
+attempted against a live PR and was **blocked**, with the PR body verifiably unchanged
+afterwards.
+
+### The call site is pinned, because it is the whole bug
+
+Every behavioural case can pass while the hook is registered for nothing. So the
+self-check now reads `settings.json` and asserts each of the three tool names is
+covered by a registered matcher. Mutation: unregistering the MCP matcher leaves the
+hook's logic perfect and turns the suite red.
+
+Six mutations guard-proofed, each asserting its target present first. And the
+self-check itself was never run by anything - a guard whose test is not executed rots
+exactly like the guard it tests - so CI now runs it.
+
+**Residual limitation, stated rather than implied:** the shell parser is not a shell.
+A body computed at runtime (`--body "$(...)"`), an unreadable `--body-file`, or a piped
+stdin still fail open by design, and CI remains the real gate for those. The MCP door
+has no such gap, because there is no shell involved.
