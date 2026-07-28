@@ -50,9 +50,67 @@ function searchIsValuesFromSrc(src) {
   return [...m[1].matchAll(/'([a-z-]+)'/g)].map(x => x[1]);
 }
 
+// #1133: EXACT, and it THROWS. Both halves close a vacuity class rather than an instance.
+//
+// It used to do `indexOf('function ' + name)`, a PREFIX match, so `fnBody(src, 'closeBuilder')`
+// returned `closeBuilderWindow`'s body — a pin reading a function it does not name. Measured on
+// current main: 202 distinct names across 275 call sites, 2 of them prefixes of another
+// (`collectDueDates`, `renderAgenda`), 0 resolving wrong TODAY only because the shorter name
+// happens to be declared first. A file reorder was all it took.
+//
+// And it used to `return ''` on a miss, which is the worse half: `assert.doesNotMatch(fnBody(…))`
+// and `!/x/.test(fnBody(…))` PASS forever once the target is renamed away. Four such assertions
+// exist and could not fail. Throwing converts all of them from unfalsifiable to falsifiable in one
+// line, with no per-test edit — and it costs nothing, because all 202 names resolve today.
+// #1133: a marker-delimited slice that FAILS LOUDLY when a marker is gone.
+//
+// Every hand-rolled `between(X, A, B)` in this file had the same hazard, and it
+// is nastier than an empty result: a missing END marker makes `indexOf` return -1, and
+// `slice(i, -1)` is "everything to the last character", so the haystack goes UNIVERSAL rather than
+// empty. A guard asking "is `due` mentioned in this row?" then answers yes for any verb mentioned
+// anywhere in a 119 KB document. Same green, opposite reason. 39 sites carried it.
+//
+// Searching the end marker FROM the start marker is a second, quieter fix: the old form found a
+// `B` that appeared BEFORE `A` and silently produced a negative-length (empty) slice.
+// #1133: the class a helper cannot reach by itself. `[].every(f)` is `true` and a `for…of` over an
+// empty collection runs zero assertions, so a guard whose input silently went empty reads exactly
+// like a clean codebase. This file's STRONG guards all do the same thing first — `docs.length >= 5`
+// (#1107), `doors.length === 2` (withHostScope), `markers.length >= 20` (DOC_CACHES parity) — and
+// `concept-guide.md` writes the rule down: a renamed marker must "fail loudly instead of letting the
+// guard pass vacuously." This makes that one word to apply. Wrap the collection, keep the loop.
+function nonEmpty(coll, label) {
+  const n = coll && (coll.length ?? coll.size);
+  if (!n) throw new Error(`nonEmpty: ${label} is empty, so every assertion over it would pass vacuously`);
+  return coll;
+}
+
+// #1133: a byte window from a marker. LAST RESORT, and it says so.
+//
+// `windowAfter(X, A, 4200)` is how a pin quietly stops guarding: add lines above
+// the assertion and it slides out of the window, and the test goes green for a reason unrelated to
+// what it checks. That happened to a #898 pin in PR #1141. Where the region IS a function, use
+// fnBody — it needs no budget. This exists only for regions with no natural end marker (a CSS rule,
+// an event-listener block, an array literal), and it throws when the marker is gone, which is the
+// half that can be fixed here.
+function windowAfter(src, marker, n) {
+  const i = src.indexOf(marker);
+  if (i < 0) throw new Error(`windowAfter: marker not found: ${JSON.stringify(marker)}`);
+  return src.slice(i, i + n);
+}
+
+function between(src, startMarker, endMarker) {
+  const i = src.indexOf(startMarker);
+  if (i < 0) throw new Error(`between: start marker not found: ${JSON.stringify(startMarker)}`);
+  const j = src.indexOf(endMarker, i + startMarker.length);
+  if (j < 0) throw new Error(`between: end marker not found after the start: ${JSON.stringify(endMarker)}`);
+  return src.slice(i, j);
+}
+
 function fnBody(src, name) {
-  const start = src.indexOf('function ' + name);
-  if (start < 0) return '';
+  const start = src.indexOf('function ' + name + '(');
+  if (start < 0) throw new Error(
+    `fnBody: no \`function ${name}(\` in the source. A pin that names a function which no longer ` +
+    `exists must fail loudly — returning '' here made every negative assertion on it pass forever.`);
   // Skip the parameter list first: a destructuring default (e.g. `function f({a} = {})`) puts a
   // `{` INSIDE the params, so the naive "first { after the name" grabs the param object, not the
   // body. Brace-match the `(...)` param list, then take the first `{` after its closing `)`.
@@ -1572,9 +1630,9 @@ test('filterBraceForms — empty prefix returns every form, each a well-formed {
 // `guide` id (the ? help mark, Guided + Standard) that MUST point at a real concept-guide entry, or
 // the ? opens nothing. Guards the picker-to-guide wiring the same way the drift guards protect commands.
 test('BRACE_FORMS: every form has a description and a valid concept-guide link', () => {
-  const g = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const g = nonEmpty(between(_src, 'const GUIDE = [', '// GUIDE-END'), 'the GUIDE source block');
   const guideIds = new Set([...g.matchAll(/\{\s*id:\s*['"]([\w-]+)['"]/g)].map(m => m[1]));
-  for (const f of c.filterBraceForms('')) {
+  for (const f of nonEmpty(c.filterBraceForms(''), 'filterBraceForms("")')) {
     assert.ok(f.desc && typeof f.desc === 'string' && f.desc.length > 3, `${f.name}: has a Guided description`);
     assert.ok(!f.desc.includes('—'), `${f.name}: description has no em dash`);
     assert.ok(f.guide, `${f.name}: names a concept-guide entry for its ? help mark`);
@@ -1648,7 +1706,7 @@ test('BRACE_FORMS parity: every picker scaffold is a recognized brace form', () 
   // meter branch. The old render-time exemption asserted only notEqual('invalid'), which
   // 'literal' also satisfies — so the ONE drift this guard exists to catch (a scaffold
   // that no longer resolves and would insert dead prose) sailed through green (#735).
-  for (const f of c.filterBraceForms('')) {
+  for (const f of nonEmpty(c.filterBraceForms(''), 'filterBraceForms("")')) {
     const body = FILL[f.name] ?? f.insert.slice(1, -1);
     assert.equal(c.classifyBraceBody(body, RULES, VARS), 'artifact',
       `${f.name}: picker scaffold {${body}} must be engine-recognized`);
@@ -1710,7 +1768,7 @@ test('mathCompletions — empty prefix returns nothing (no {= } flood), and it p
 // so a completion popping up inside a { explains itself. Sweep the whole surface: no built-in
 // function/constant/operator/oracle band may be missing its desc or point at a bogus guide entry.
 test('body completions all carry a description and a valid guide link', () => {
-  const g = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const g = nonEmpty(between(_src, 'const GUIDE = [', '// GUIDE-END'), 'the GUIDE source block');
   const guideIds = new Set([...g.matchAll(/\{\s*id:\s*['"]([\w-]+)['"]/g)].map(m => m[1]));
   // math: sweep the whole alphabet to gather every built-in completion (exclude user vars — a var's
   // "desc" is a fixed label, its guide is 'variables', both present, so it passes too).
@@ -1906,7 +1964,7 @@ test('IME composition: triggers are gated and re-derive on commit (src pins, #73
   // chain re-runs, since some browsers fire no post-compositionend input event.
   assert.ok(/if \(e\.isComposing\) \{ hideInlineMenus\(\); return; \}/.test(_src),
     'the input handler hides the pickers and skips the trigger chain mid-composition');
-  const ce = _src.slice(_src.indexOf("addEventListener('compositionend'"), _src.indexOf("addEventListener('compositionend'") + 900);
+  const ce = windowAfter(_src, "addEventListener('compositionend'", 900);
   assert.ok(ce.includes('checkBraceTrigger(content, node.id)'),
     'compositionend re-runs the trigger chain against the committed text');
 });
@@ -2139,7 +2197,7 @@ test('BRACE_FORMS type-to-replace spans are DERIVED from ph placeholders (#736)'
   // rewording can no longer desync selection from text. Pin the derivation contract.
   const m = _src.match(/const BRACE_FORMS = \[([\s\S]*?)\];/);
   assert.ok(m && !/sel:\[/.test(m[1]), 'no hand-counted sel offsets remain in the table');
-  for (const f of c.filterBraceForms('')) {
+  for (const f of nonEmpty(c.filterBraceForms(''), 'filterBraceForms("")')) {
     const [a, b] = f.sel;
     if (a === b) { assert.equal(a, f.insert.length - 1, `${f.name}: the caret form sits before the closing brace`); continue; }
     assert.equal(f.insert.indexOf(f.insert.slice(a, b)), a, `${f.name}: the span is the placeholder's own position`);
@@ -4138,7 +4196,7 @@ test('sampleUncertain — Phase 2: sum(prop)/avg(prop) over children’s uncerta
   assert.ok(Math.abs(av.mean - 7.5) < 0.7, `avg ≈ 7.5, got ${av.mean}`);
   // no qualifying children → an empty rollup is all-zero (vacuous), never throws
   const empty = c.sampleUncertain('sum(cost)', 100, 1, c.mkNode(''));
-  assert.ok(empty.every(x => x === 0));
+  assert.ok(nonEmpty(empty, 'the sum-over-no-children samples').every(x => x === 0));
 });
 
 test('estChildPropExpr — reads a child’s uncertain property string', () => {
@@ -5876,7 +5934,7 @@ test('agent-review (#942): checkInlineHighlight restores the caret SYNCHRONOUSLY
   // Anchor on checkInlineHighlight's own innerHTML rebuild (the one followed by showBracePreview).
   const anchor = _src.indexOf('content.innerHTML = editModeHTML(node);\n  // #942');
   assert.ok(anchor >= 0, 'the #942 sync-restore comment tags checkInlineHighlight’s innerHTML rebuild');
-  const region = _src.slice(anchor, anchor + 900);
+  const region = _src.slice(anchor, anchor + 900);   // #1133: the last fixed window; no natural end marker here
   const syncIdx = region.indexOf('setCaretByOffset(content, off)');
   const rafIdx = region.indexOf('requestAnimationFrame');
   assert.ok(syncIdx >= 0 && rafIdx >= 0 && syncIdx < rafIdx,
@@ -6621,7 +6679,7 @@ test('#925f: the prose-mode pill CSS drops the stadium in a paragraph', () => {
   // flattened, so a paragraph showed "Also 5 to 10 ≈ 7.13 (4.96 – 9.91)▃▅▇█ nights" while the EXPORT
   // already dropped the recipe. Screen and file out of step, on the one invariant this exception is
   // stated to hold. A per-family list is the only shape that cannot silently miss a family again.
-  const chromeDrop = _src.slice(_src.indexOf('.nt-para .dice-ico'), _src.indexOf('.nt-para .var-ref .var-name'));
+  const chromeDrop = between(_src, '.nt-para .dice-ico', '.nt-para .var-ref .var-name');
   for (const sel of ['.nt-para .dice-formula', '.nt-para .dice-eq', '.nt-para .est-expr', '.nt-para .est-eq']) {
     assert.ok(chromeDrop.includes(sel), `${sel} must be hidden in a paragraph (recipe off, result-only)`);
   }
@@ -7627,7 +7685,7 @@ test('linkCandidates: non-alias behavior unchanged — alias defaults to null on
 // candidate label — it flows the DISPLAYED title through displayTitle (flatten + link-resolve), the
 // same no-pill sink resolver breadcrumbs use, while matching + the empty-title guard stay on raw text.
 test('#912: linkCandidates displays via displayTitle (artifact tokens never leak raw)', () => {
-  const fn = _src.slice(_src.indexOf('function linkCandidates('), _src.indexOf('function linkCandidates(') + 1400);
+  const fn = fnBody(_src, 'linkCandidates');
   assert.ok(fn.includes('out.push({ id: n.id, title: displayTitle(n), alias });'),
     'linkCandidates must build the displayed title via displayTitle (flattens [[type:key]])');
   assert.ok(fn.includes('const title = textForDisplay(n)'),
@@ -8577,7 +8635,7 @@ test('workspaceCandidates: absent or empty index → []', () => {
 // capability now backs the ZOOMED-TITLE path (see the visibility-model test below); the show/hide
 // DECISION lives in updateBlPanel. Browser-side render, so source-pinned (like the rest of this panel).
 test('#925a: backlinks panel can render always-on (both strip titles shown at 0 matches)', () => {
-  const fn = _src.slice(_src.indexOf('function showBlPanel('), _src.indexOf('function showBlPanel(') + 900);
+  const fn = fnBody(_src, 'showBlPanel');
   assert.ok(!/if \(!sources\.length && !unlinked\.length && !cross\.length && !crossUnlinked\.length\) \{ hideBlPanel/.test(fn),
     'showBlPanel must NOT hide when everything is empty (always-on render)');
   // #953 moved these two rules out of renderBlPanel's body and into the pure blSectionModel, so
@@ -8590,7 +8648,7 @@ test('#925a: backlinks panel can render always-on (both strip titles shown at 0 
   assert.equal(zeroUnlinked.heading, 'Unlinked references',
     'the "Unlinked references" strip shows its title always (title-only at 0)');
   // And the renderer still draws that section unconditionally for the strip.
-  const rp = _src.slice(_src.indexOf('function renderBlRows('), _src.indexOf('function renderBlRows(') + 5600);
+  const rp = fnBody(_src, 'renderBlRows');
   assert.ok(rp.includes('subhd.textContent = unlinkedSec.heading'), 'the renderer takes the subheading from the model');
   assert.ok(!/if \(!unlinked\.length\) return;\s*\n\s*const subhd/.test(rp),
     'the unlinked subheader must no longer be gated behind a non-empty check');
@@ -8600,7 +8658,7 @@ test('backlinks footer visibility: conditional on the outline, never doubled und
   // The owner-directed outline rule is unchanged: no empty footer on the plain view. What #953
   // changed is the zoomed half — the zoom root's refs are drawn IN FLOW, so the docked strip must
   // stand down for that point, or the same list is on screen twice with one copy over the content.
-  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1400);
+  const ub = fnBody(_src, 'updateBlPanel');
   assert.ok(/const zoomed = focusedId != null;/.test(ub), 'updateBlPanel branches on zoom state');
   assert.ok(/if \(zoomed && nodeId === focusedId\) \{ hideBlPanel\(\); return; \}/.test(ub),
     'the strip stands down for the zoom root (its refs are in flow)');
@@ -8611,7 +8669,7 @@ test('backlinks footer visibility: conditional on the outline, never doubled und
   assert.ok(/hideBlPanel\(\);\s+\/\/ nothing inbound/.test(ub),
     'a point with nothing inbound hides the footer (no empty clutter)');
   // scheduleBlHide still routes through the one visibility decision rather than hiding directly.
-  const sb = _src.slice(_src.indexOf('function scheduleBlHide('), _src.indexOf('function scheduleBlHide(') + 1600);
+  const sb = fnBody(_src, 'scheduleBlHide');
   assert.ok(/if \(focusedId != null\) \{ updateBlPanel\(focusedId\); return; \}/.test(sb),
     'zoomed: focus leaving a child re-runs the visibility decision');
 });
@@ -8952,7 +9010,7 @@ test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
   const BLOCK_IDS = ['ul','ol','todo','h1','h2','h3','para','code','divider','quote',
     'base','template','due','check','alias','journal','variables'];
   // Extract all id:' and covers:[' values from the GUIDE source block
-  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const guideBlock = between(_src, 'const GUIDE = [', '// GUIDE-END');
   const coveredIds = new Set();
   // Match covers:['id1','id2',...] patterns
   for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
@@ -8967,7 +9025,7 @@ test('GUIDE drift guard: all BLOCK_CMDS ids are covered in GUIDE', () => {
 test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
   const INSERT_IDS = ['footnote','image','link','table','progress','dice','markov',
     'rolltable','grammar','deck','oracle','math','var','est','sequence','query','count'];
-  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const guideBlock = between(_src, 'const GUIDE = [', '// GUIDE-END');
   const coveredIds = new Set();
   for (const m of guideBlock.matchAll(/covers:\[([^\]]+)\]/g)) {
     for (const id of m[1].matchAll(/'([^']+)'/g)) coveredIds.add(id[1]);
@@ -8981,7 +9039,7 @@ test('GUIDE drift guard: all INSERT_CMDS ids are covered in GUIDE', () => {
 // #915 (agent-review): the @ menu must LEAD with the generative + compute pills (the app's thesis),
 // not the basic inserts — and the sections are named for the thesis words so the door self-labels.
 test('#915: the @ menu leads with the generative + compute sections', () => {
-  const arr = _src.slice(_src.indexOf('const INSERT_CMDS = ['), _src.indexOf('];', _src.indexOf('const INSERT_CMDS = [')));
+  const arr = between(_src, 'const INSERT_CMDS = [', '];');
   assert.ok(arr.indexOf("id:'dice'") < arr.indexOf("id:'footnote'"),
     'dice (Generate) must precede footnote (Insert) in the @ menu order');
   assert.ok(arr.indexOf("section:'Generate'") >= 0 && arr.indexOf("section:'Generate'") < arr.indexOf("section:'Compute'"),
@@ -9016,7 +9074,7 @@ test('GUIDE drift guard: every essSection has its own Shortcuts nav entry', () =
   // essSection value with no matching nav entry would silently vanish from the guide nav
   // (and the SC_SECTIONS list that builds the page), so pin the section set against both
   // the scrollTo targets and SC_SECTIONS in the source.
-  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const guideBlock = between(_src, 'const GUIDE = [', '// GUIDE-END');
   const sections = new Set([...guideBlock.matchAll(/essSection:\s*'([^']+)'/g)].map(m => m[1]));
   const navTargets = new Set([...guideBlock.matchAll(/scrollTo:\s*'([^']+)'/g)].map(m => m[1]));
   const scList = new Set([...(_src.match(/const SC_SECTIONS\s*=\s*\[([^\]]+)\]/)?.[1] || '')
@@ -9255,10 +9313,7 @@ test('shipped-syntax guard: every promotable {…} form is documented in a canon
   // appear only inside a "do not use" warning — a false-positive a substring check on
   // the dev docs would wrongly accept). Presence in the GUIDE means genuinely documented
   // for users.
-  const guideArr = (() => {
-    const i = _src.indexOf('const GUIDE = [');
-    return _src.slice(i, _src.indexOf('// GUIDE-END', i));
-  })();
+  const guideArr = between(_src, 'const GUIDE = [', '// GUIDE-END');
   const documented = (sig) => guideArr.includes(sig);
 
   // Extract the example tokens from classifyBraceBody's branch comments.
@@ -9352,7 +9407,7 @@ test('GUIDE: the guide nav is a two-level list (category header per group, each 
   assert.ok(_src.includes('guide-nav-group'), 'category header class missing — nav is not grouped');
   assert.ok(_src.includes('data-id="'), 'per-topic data-id missing — entries are not individual items');
   // every cat entry must carry a title (it is the left-list label)
-  const guideBlock = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const guideBlock = between(_src, 'const GUIDE = [', '// GUIDE-END');
   const catEntries = [...guideBlock.matchAll(/cat:'[^']+'/g)].length;
   const titles = [...guideBlock.matchAll(/title:'[^']*'|title:"[^"]*"/g)].length;
   assert.ok(titles >= catEntries,
@@ -9853,7 +9908,7 @@ test('the search legend teaches exactly the is: values the parser accepts', () =
   // now explains itself instead of working. The completion drift guard covers the OTHER direction
   // (SEARCH_IS_VALUES vs searchCompletions); this covers the human-readable surface.
   const canonical = searchIsValuesFromSrc(_src);
-  const legend = _src.slice(_src.indexOf('<div id="search-hint"'), _src.indexOf('</div>\n      </div>'));
+  const legend = between(_src, '<div id="search-hint"', '</div>\n      </div>');
   const chips = [...legend.matchAll(/<kbd>is:([\w-]+)<\/kbd>/g)].map(m => m[1]);
   const missing = canonical.filter(v => !chips.includes(v));
   const extra = chips.filter(v => !canonical.includes(v));
@@ -10454,7 +10509,7 @@ test('link graph: unlinked (textual-match) edges — wiring + v1 scope guard (sr
   // ...but NOT inside the folder branch: split renderGraph at the `if (folder)`/`docGraphModel(` call
   // and confirm the folder-scope model construction (everything before the doc-scope graphModel call)
   // never mentions the unlinked cores — v1 is deliberately same-doc only.
-  const folderSlice = rg.slice(rg.indexOf('docGraphModel('), rg.indexOf('graphModel(linked'));
+  const folderSlice = between(rg, 'docGraphModel(', 'graphModel(linked');
   assert.ok(folderSlice.length > 0, 'expected to find the folder-branch model construction');
   assert.ok(!folderSlice.includes('graphUnlinkedEdges'), 'folder-scope must stay real-links-only (v1 scope guard)');
   // count line + aria-label copy use the shared vocabulary term
@@ -11510,7 +11565,7 @@ test('value-only math pill (m.bare): render, dialog toggle, edit round-trip, and
   assert.ok(rmp.indexOf('math-err') < rmp.indexOf('if (m.bare)'), 'bare must come after the #ERR branch (a failure stays loud)');
   assert.ok(rmp.indexOf('firstEmptyRollup') < rmp.indexOf('if (m.bare)'), 'bare must come after the empty-rollup branch');
   // the bare pill still names the full expression for assistive tech and keeps click-to-edit
-  const bareChunk = rmp.slice(rmp.indexOf('if (m.bare)'), rmp.indexOf('if (m.bare)') + 600);
+  const bareChunk = windowAfter(rmp, 'if (m.bare)', 600);
   assert.ok(/aria-label="Math \$\{escQ\(m\.expr\)\}/.test(bareChunk), 'the bare pill aria-label must still carry the expression');
   assert.ok(bareChunk.includes('math-edit'), 'the bare pill keeps its edit affordance');
 
@@ -13081,7 +13136,7 @@ test('#918 wiring — config round-trips + the front doors exist', () => {
   // mkRoot default
   assert.ok(_src.includes("rollLog: { on: false, targetId: null }"), 'mkRoot must default rollLog off');
   // logRoll is opt-in and appends under a dated entry
-  const lr = _src.slice(_src.indexOf('function logRoll('), _src.indexOf('function logRoll(') + 900);
+  const lr = fnBody(_src, 'logRoll');
   assert.ok(lr.includes('if (!root.rollLog?.on) return false'), 'logRoll must be a no-op unless logging is on');
   assert.ok(lr.includes('findOrCreateDatedEntry'), 'roll entries nest under today (the dated-log substrate)');
   // the shared home resolver (§8a substrate) backs both journal and rolls
@@ -13364,7 +13419,7 @@ test('agent-review: zoom-in shows the ZOOMED point’s backlinks, not an auto-fo
   assert.ok(!/updateBlPanel\(focusedId\);\s*\n\s*else if/.test(_src),
     'the old post-focusNode re-trigger is gone (it has nothing left to correct)');
   // And the strip is now forbidden from answering for the zoom root at all, from any trigger.
-  const ub = _src.slice(_src.indexOf('function updateBlPanel('), _src.indexOf('function updateBlPanel(') + 1400);
+  const ub = fnBody(_src, 'updateBlPanel');
   assert.ok(/if \(zoomed && nodeId === focusedId\) \{ hideBlPanel\(\); return; \}/.test(ub),
     'no trigger can raise the strip for the zoom root');
 });
@@ -15350,7 +15405,7 @@ test('#593 the expanded dictionary resolves through the render substitution; a b
   // the escape-hatch contract: an unknown shortcode passes through as literal text, never dropped.
   assert.equal(c.mdInline(':notareal:'), ':notareal:', 'a bogus shortcode stays literal');
   // a source-side floor so the dictionary can only grow, not silently shrink under a refactor.
-  const block = _src.slice(_src.indexOf('const EMOJI = {'), _src.indexOf('};', _src.indexOf('const EMOJI = {')));
+  const block = between(_src, 'const EMOJI = {', '};');
   const names = block.match(/[a-z0-9_+-]+\s*:/gi) || [];
   assert.ok(names.length > 300, `the EMOJI dictionary should carry 300+ shortcodes (parsed ${names.length})`);
 });
@@ -16836,7 +16891,7 @@ test('first-run atom: the entry hint and the tour intro lead with a live pill (I
     'the Guided entry cue is the simpler four-move wording that still cues {');
   // the Welcome tour's intro paragraph carries a real, clickable {2d6} pill (not only the
   // illustrative "{curly-brace}"), so the first paragraph delivers the atom hands-on
-  const intro = _src.slice(_src.indexOf('const FIRST_RUN_EXAMPLES'), _src.indexOf('const FIRST_RUN_EXAMPLES') + 1200);
+  const intro = windowAfter(_src, 'const FIRST_RUN_EXAMPLES', 1200);
   assert.ok(/Click this: \{2d6\}/.test(intro), 'the tour opens by handing the reader a clickable {2d6} (the IA-2 atom, first point)');
 });
 
@@ -16985,7 +17040,7 @@ test('modes batch — lean { picker shows the one-line tip, like / and @', () =>
 test('modes batch — lean bullet menu reduced to four ops, transient More', () => {
   // Anchored on the declaration that FOLLOWS it, not a magic byte count: a fixed window silently
   // drops the tail of the function the day a menu row is added above it (it did, on #955).
-  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function scheduleBpopHide()'));
+  const fn = between(_src, 'function showBulletPopup(', 'function scheduleBpopHide()');
   // the four lean-tier ops are flagged lean:true — Zoom + Collapse(para) + Note + Dates + Delete = 5 markers
   assert.ok((fn.match(/lean:true/g) || []).length >= 5, 'the lean-tier ops must be flagged lean:true (Zoom/Collapse, Note, Dates, Delete)');
   // a lean hover filters to the lean-tier rows; guided/standard keep the primary set
@@ -17381,7 +17436,7 @@ test('board card opener and the document closer agree on the click event (#417)'
   // mousedown let the same gesture's click bubble to document and close the just-opened
   // menu (mouse flicker), and left touch with no move door at all (drag is off on touch)
   const wire = _src.slice(_src.indexOf("host.querySelectorAll('.bv-card').forEach"));
-  const down = wire.slice(wire.indexOf("card.addEventListener('mousedown'"), wire.indexOf("card.addEventListener('click'"));
+  const down = between(wire, "card.addEventListener('mousedown'", "card.addEventListener('click'");
   assert.ok(down.length > 0, 'the card must keep its mousedown listener (the caret-invariant preventDefault)');
   assert.ok(!down.includes('showCardMenu'), 'mousedown must NOT open the menu (the flicker/touch bug)');
   const clickBody = wire.slice(wire.indexOf("card.addEventListener('click'"));
@@ -17401,7 +17456,7 @@ test('board card opener and the document closer agree on the click event (#417)'
     && closer.indexOf('_mtPanelOpenGuard') < closer.indexOf('hideColPanel()'),
     'the opener-tail guard must run before the outside-click close (#811)');
   for (const opener of ['function showBaseRowsMenu', 'function showBaseSettingsMenu', 'function showBaseColumnsMenu']) {
-    const body = _src.slice(_src.indexOf(opener), _src.indexOf('mtOpenMenu(panel', _src.indexOf(opener)));
+    const body = between(_src, opener, 'mtOpenMenu(panel');
     assert.ok(body.includes('mtGuardPanelDismiss()'), `${opener} is mousedown-activated and must arm the dismissal guard (#811)`);
   }
 });
@@ -17619,7 +17674,7 @@ test('promoteBraceBody: the invalid-date decline flashes the shared message (#40
 // against it. It drifted four times in three weeks because nothing enforced it. These pins make
 // shipping a brace sniff, an is: keyword, or an arg-verb without recording it a CI failure.
 const _uxd = readFileSync(new URL('../guidance/ux-discipline.md', import.meta.url), 'utf8');
-const _inv = _uxd.slice(_uxd.indexOf('Syntax inventory — the closed set'), _uxd.indexOf('## 3. Keyboard grammar'));
+const _inv = between(_uxd, 'Syntax inventory — the closed set', '## 3. Keyboard grammar');
 
 test('inventory drift guard: every brace sniff in code has its token in the section 2 inventory (#393)', () => {
   // sniff function in index.html → the syntax token the inventory must carry for it
@@ -17647,7 +17702,7 @@ test('inventory drift guard: the is: whitelist in parseSearchQuery matches the s
 test('inventory drift guard: every SLASH_ARG_VERBS member is listed in the section 3 row (#409)', () => {
   const m = _src.match(/const SLASH_ARG_VERBS = \/\^\(([a-z|]+)\)\$\//);
   assert.ok(m, 'could not find SLASH_ARG_VERBS in index.html — update this guard with the new shape');
-  const row = _uxd.slice(_uxd.indexOf('`/verb:value`'), _uxd.indexOf('*(Retired:'));
+  const row = between(_uxd, '`/verb:value`', '*(Retired:');
   for (const verb of m[1].split('|')) {
     assert.ok(row.includes('`' + verb + '`'), `arg-verb /${verb}: shipped in SLASH_ARG_VERBS but missing from the section 3 row`);
   }
@@ -17768,7 +17823,7 @@ test('conditional grammar — captured d20 crit/DC check expands through collect
 // (the promotion chain reads the module-level `root`, so it can't run against a test tree).
 test('typed var decl promotion — fresh name visible to later braces in the same pass', () => {
   const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
-  const declBlock = src.slice(src.indexOf('function promoteBraceBody'), src.indexOf('// dice: {2d6}'));
+  const declBlock = between(src, 'function promoteBraceBody', '// dice: {2d6}');
   // Every arm that PUSHES a declaration record must reset the caches — count the pushes and
   // require a reset for each, rather than pinning a magic number that rots when a kind is added
   // (#952 added the 'dist' arm and the old literal 2 broke without anything being wrong).
@@ -17776,7 +17831,7 @@ test('typed var decl promotion — fresh name visible to later braces in the sam
   assert.ok(pushes >= 3, `all three decl kinds (formula, pick, dist) push a record; saw ${pushes}`);
   assert.equal((declBlock.match(/resetDocCaches\(\)/g) || []).length, pushes,
     'every decl push (formula + pick + dist) must reset the doc caches');
-  const walk = src.slice(src.indexOf('function promoteInlineShorthand'), src.indexOf('function promoteLoadedShorthand'));
+  const walk = between(src, 'function promoteInlineShorthand', 'function promoteLoadedShorthand');
   assert.ok(walk.includes('node.text = out + text.slice(i); continue;'),
     'the walk must publish the partial rewrite so collectVars sees the fresh [[var:]] token');
 });
@@ -18158,7 +18213,7 @@ test('base grid roving tabindex is wired (#443)', () => {
 // keeps the typed stub in lean. The apply branch is DOM/dialog-coupled, so pin the gate
 // at the source: the isLean split, the dialog call, and the stub fallback.
 test('bare /due: dialog in guided/standard, stub in lean (#442)', () => {
-  const branch = _src.slice(_src.indexOf("cmd.id === 'due'"), _src.indexOf("cmd.id === 'check'"));
+  const branch = between(_src, "cmd.id === 'due'", "cmd.id === 'check'");
   assert.ok(/if \(!isLean\(\)\) \{/.test(branch), 'the bare-/due branch must split on !isLean()');
   assert.ok(/openDueDateDialog\(nodeId\)/.test(branch), 'guided/standard opens the Schedule dialog');
   assert.ok(/applyInlineInsertion\(nodeId, slashOffset, '\{date due: \}'\)/.test(branch),
@@ -18495,7 +18550,7 @@ test('doc view persistence: adoptDoc restores a remembered focus only if the nod
 });
 
 test('concept guide: the workspace-search entry now carries usage examples (idea 4 fill)', () => {
-  const entry = _src.slice(_src.indexOf("id:'workspace-search'"), _src.indexOf("id:'hashtags'"));
+  const entry = between(_src, "id:'workspace-search'", "id:'hashtags'");
   assert.ok(!/examples:\[\]/.test(entry), 'the workspace-search entry must not have empty examples');
   assert.ok(/Found in other documents/.test(entry), 'it teaches the cross-doc results list');
 });
@@ -18527,7 +18582,7 @@ test('folder create-name (6b): newWorkspaceDoc prompts for a name, blank keeps t
 test('render(): captures scrollY and restores it clamped, skipping intentional scroll moves (#488)', () => {
   // Slice to the declaration that FOLLOWS render(), not a magic byte count: a fixed length
   // silently drops the tail of the function the day anything above it grows (it did, on #953).
-  const fn = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  const fn = between(_src, 'function render()', 'let _lastRenderFocusedId');
   // capture at entry, before the container wipe
   assert.ok(/const _preScrollY = window\.scrollY/.test(fn), 'render must capture scrollY at entry');
   assert.ok(/const _focusChanged = focusedId !== _lastRenderFocusedId/.test(fn), 'it must detect a zoom (focusedId change) to skip restore');
@@ -19127,7 +19182,7 @@ test('meter (#708) — a pool meter labels its style word and the ROUNDED icon c
   // isolate the pool render branch and confirm its aria names the style word (the visual IS a
   // row of hearts/skulls/…, so "Meter, hearts, 4 of 5 filled" describes what the eye sees —
   // the clock's "N of M filled" pattern) and uses pool.filled, not the raw value. #708
-  const poolBranch = src.slice(src.indexOf('meter meter-pool'), src.indexOf('meter meter-pool') + 240);
+  const poolBranch = windowAfter(src, 'meter meter-pool', 240);
   assert.match(poolBranch, /aria-label="Meter, \$\{parsed\.style\}, \$\{pool\.filled\} of \$\{pool\.filled \+ pool\.empty\} filled"/,
     'the pool aria names the style word and reports the rounded icon counts (pool.filled), so the label matches the visual');
 });
@@ -19258,6 +19313,10 @@ test('#596 — GUIDE drift guard: every INSERT_CMDS (@ insert) id is covered', (
   const ids = registryIds(GUIDE_SRC, 'INSERT_CMDS');
   assert.ok(ids.length > 15, `INSERT_CMDS block found and non-empty (got ${ids.length}) — did the const move/rename?`);
   const covered = guideCoveredIds(GUIDE_SRC);
+  // #1133: the BLOCK half floors BOTH sides; this one floored only the subject, so an emptied
+  // covers set would have made every `covered.has(id)` below fail loudly — or, had the assertion
+  // been the other way round, pass vacuously. Symmetry with its twin, one line.
+  assert.ok(covered.size > 20, `GUIDE covers tokens found (got ${covered.size}) — did the GUIDE block move?`);
   const missing = ids.filter(id => !covered.has(id));
   assert.deepEqual(missing, [],
     `these @ commands have no concept-guide entry: ${missing.join(', ')}\n` +
@@ -19358,14 +19417,14 @@ test('#612 — chip rendering is unified through buildChipRow (shared + var dial
 
 test('#612 — parity chips: estimate avg(), query operator chips, trimmed var chips', () => {
   // Estimate gained avg() beside sum() (the engine supported avg(prop) with no front door).
-  const est = GUIDE_SRC.slice(GUIDE_SRC.indexOf('const EST_CHIPS = ['), GUIDE_SRC.indexOf('const EST_CHIPS = [') + 400);
+  const est = windowAfter(GUIDE_SRC, 'const EST_CHIPS = [', 400);
   assert.ok(est.includes("label:'avg()'") && est.includes("label:'sum()'"), 'EST_CHIPS must offer both sum() and avg()');
   // The query + query-base search fields now carry the shared operator chips.
   assert.ok(GUIDE_SRC.includes('const QUERY_CHIPS = ['), 'QUERY_CHIPS operator chips missing');
   const qchips = (GUIDE_SRC.match(/chips: QUERY_CHIPS/g) || []).length;
   assert.equal(qchips, 2, 'both the query and query-base search fields must use QUERY_CHIPS');
   // The weakest var chips (÷2, ½) were cut; π/e stay.
-  const varc = GUIDE_SRC.slice(GUIDE_SRC.indexOf('const VAR_CHIPS = ['), GUIDE_SRC.indexOf('const VAR_CHIPS = [') + 200);
+  const varc = windowAfter(GUIDE_SRC, 'const VAR_CHIPS = [', 200);
   assert.ok(!varc.includes("label:'÷2'") && !varc.includes("label:'½'"), 'the weak ÷2 / ½ var chips must be gone');
   assert.ok(varc.includes("label:'π'") && varc.includes("label:'e'"), 'π and e stay in VAR_CHIPS');
 });
@@ -19374,7 +19433,7 @@ test('#612 — parity chips: estimate avg(), query operator chips, trimmed var c
 // nav + a search box, opened over the shared #io-back scrim. Src-pins over GUIDE_SRC lock the
 // structure and, critically, that NO action was dropped in the restructure (every row id survives).
 test('#603 — the file menu uses the two-pane overlay shell (nav + search + categories)', () => {
-  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  const menu = between(GUIDE_SRC, 'id="file-menu"', '<div id="outline">');
   assert.ok(menu.includes('id="fm-search"'), 'the menu search box is missing');
   assert.ok(menu.includes('id="fm-nav"') && menu.includes('class="guide-nav"'), 'the category nav (reusing .guide-nav) is missing');
   const cats = ['document', 'export', 'settings', 'learn', 'tools'];
@@ -19387,14 +19446,14 @@ test('#603 — the file menu uses the two-pane overlay shell (nav + search + cat
   assert.ok(!/fileMenu\.style\.(top|left)\s*=/.test(GUIDE_SRC), 'the old corner-positioning of the menu must be gone');
   // Adversarial-review fixes that must not regress:
   assert.ok(GUIDE_SRC.includes('id="fm-noresults"'), 'the search no-results state (P4) is missing');   // F2
-  const showCat = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function fmShowCategory('), GUIDE_SRC.indexOf('function fmApplySearch('));
+  const showCat = between(GUIDE_SRC, 'function fmShowCategory(', 'function fmApplySearch(');
   assert.ok(/search\.value = ''/.test(showCat), 'switching category must clear the search box so it never lies about what shows');   // F1
   assert.ok(GUIDE_SRC.includes('#accent-row') && GUIDE_SRC.includes("querySelector('#accent-row')?.classList.add('fm-search-hidden')"),
     'the color swatches must hide during search (they have no searchable text)');   // F3
 });
 
 test('#603 — every menu action survived the restructure (no dropped rows)', () => {
-  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  const menu = between(GUIDE_SRC, 'id="file-menu"', '<div id="outline">');
   // The full inventory of action rows + their special controls, as before the restructure.
   const ids = [
     'btn-new', 'btn-open', 'btn-save', 'btn-save-as', 'btn-restore', 'btn-workspace',
@@ -19413,7 +19472,7 @@ test('#603 — every menu action survived the restructure (no dropped rows)', ()
 // the menu — guidance is a 3-choice radiogroup, the toolbar chooser is a checkbox list — and the
 // "File ▾" cue is Guided-only.
 test('modes batch — verbosity card, toolbar chooser, File-pill gate, no-close settings', () => {
-  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  const menu = between(GUIDE_SRC, 'id="file-menu"', '<div id="outline">');
   // item 4: guidance is a 3-choice radiogroup card, not a cycle button.
   assert.ok(menu.includes('id="fm-verbosity-card"') && menu.includes('role="radiogroup"'),
     'the guidance card (radiogroup) is missing');
@@ -19440,7 +19499,7 @@ test('modes batch — verbosity card, toolbar chooser, File-pill gate, no-close 
   assert.ok(GUIDE_SRC.includes('body:not(.v-guided) .logo-file-cue{display:none}'),
     'the File cue must be hidden outside Guided mode (item 1)');
   // item 7: the width toggle no longer closes the menu.
-  const widthH = GUIDE_SRC.slice(GUIDE_SRC.indexOf("getElementById('btn-width').addEventListener"), GUIDE_SRC.indexOf("getElementById('btn-width').addEventListener") + 300);
+  const widthH = windowAfter(GUIDE_SRC, "getElementById('btn-width').addEventListener", 300);
   assert.ok(!widthH.includes('closeFileMenu'), 'the width toggle must NOT close the menu (item 7)');
 });
 
@@ -19450,8 +19509,8 @@ test('modes batch — verbosity card, toolbar chooser, File-pill gate, no-close 
 // shared-CSS decision; the behavioral JS is intentionally separate (different data models: the guide
 // filters entry objects, the menu filters DOM rows) and is NOT asserted to be shared.
 test('#603 — menu and concept guide share the guide-* overlay classes (consistency)', () => {
-  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
-  const guideFn = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function openGuide('), GUIDE_SRC.indexOf('function openGuide(') + 3000);
+  const menu = between(GUIDE_SRC, 'id="file-menu"', '<div id="outline">');
+  const guideFn = fnBody(GUIDE_SRC, 'openGuide');
   for (const cls of ['guide-header', 'guide-search', 'guide-nav', 'guide-pane']) {
     assert.ok(menu.includes(cls), `the menu must reuse .${cls}, not a bespoke skin`);
     assert.ok(guideFn.includes(cls), `the concept guide must use .${cls} (the shared structure)`);
@@ -19466,8 +19525,7 @@ test('#603 — menu and concept guide share the guide-* overlay classes (consist
 // MUST early-return when the menu is not open — otherwise a click inside the guide tears its scrim down
 // and the guide vanishes. (Found live during review; this pins the guard.)
 test('#603 — closeFileMenu no-ops when the menu is closed (does not kill the shared scrim)', () => {
-  const fn = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function closeFileMenu('),
-                            GUIDE_SRC.indexOf('function closeFileMenu(') + 500);
+  const fn = fnBody(GUIDE_SRC, 'closeFileMenu');
   const guardAt = fn.search(/if \(!fileMenu\.classList\.contains\('on'\)\) return/);
   assert.ok(guardAt >= 0, 'closeFileMenu must early-return when the menu is not open');
   const scrimAt = fn.indexOf("ioBack.classList.remove('on')");
@@ -19493,12 +19551,11 @@ test('agent-review: btn-new closes the file menu BEFORE opening the New-document
 // #603 — the menu is a SINGLE scrollable page: all categories stacked with section headings, and a
 // nav that SCROLLS to a section (docs-sidebar style) with scroll-spy, rather than hiding the others.
 test('#603 — single-page menu: nav scrolls to sections (not hide-others)', () => {
-  const showCat = GUIDE_SRC.slice(GUIDE_SRC.indexOf('function fmShowCategory('),
-                              GUIDE_SRC.indexOf('function fmApplySearch('));
+  const showCat = between(GUIDE_SRC, 'function fmShowCategory(', 'function fmApplySearch(');
   assert.ok(/scrollTop/.test(showCat), 'fmShowCategory must scroll to the section (single-page model)');
   assert.ok(!/sec\.hidden = sec\.dataset\.cat !== cat/.test(showCat),
     'fmShowCategory must NOT hide the other categories (that was the old show-one model)');
-  const menu = GUIDE_SRC.slice(GUIDE_SRC.indexOf('id="file-menu"'), GUIDE_SRC.indexOf('<div id="outline">'));
+  const menu = between(GUIDE_SRC, 'id="file-menu"', '<div id="outline">');
   assert.ok((menu.match(/class="fm-cat-head"/g) || []).length >= 4, 'each non-document category needs a section heading');
   assert.ok(GUIDE_SRC.includes('function fmScrollSpy('), 'a scroll-spy must highlight the section currently in view');
 });
@@ -19508,7 +19565,7 @@ test('#603 — single-page menu: nav scrolls to sections (not hide-others)', () 
 // graph/timeline panels, which are flex/margin-centered — folding a -50% translate into menu-pop made
 // the GUIDE animate from the top-left then snap to center. (Found live; this pins the split.)
 test('#603 — shared menu-pop keyframe carries no centering transform; the menu uses its own fm-pop', () => {
-  const mp = GUIDE_SRC.slice(GUIDE_SRC.indexOf('@keyframes menu-pop{'), GUIDE_SRC.indexOf('@keyframes menu-pop{') + 160);
+  const mp = windowAfter(GUIDE_SRC, '@keyframes menu-pop{', 160);
   assert.ok(mp.length > 20, 'menu-pop keyframe not found');
   assert.ok(!/translate\(-50%/.test(mp),
     'the shared menu-pop (used by #io-card/guide/graph/timeline) must NOT carry a -50% centering transform');
@@ -19520,7 +19577,7 @@ test('#603 — shared menu-pop keyframe carries no centering transform; the menu
 // rendered as "See also" chips. Drift guard: every related id must point to a real GUIDE entry, and
 // the recipes category must have real entries. (The GUIDE slice ends at // GUIDE-END, before CATS.)
 test('#597 — recipes category + every related:[…] id points to a real GUIDE entry', () => {
-  const g = GUIDE_SRC.slice(GUIDE_SRC.indexOf('const GUIDE = ['), GUIDE_SRC.indexOf('// GUIDE-END'));
+  const g = between(GUIDE_SRC, 'const GUIDE = [', '// GUIDE-END');
   const ids = new Set([...g.matchAll(/\bid:'([^']+)'/g)].map(m => m[1]));
   const related = new Set();
   for (const m of g.matchAll(/related:\[([^\]]+)\]/g))
@@ -20243,7 +20300,7 @@ test('#804 wiring: emoji trigger excludes code colons; unengaged menu never stea
 test('#913 wiring: the tag picker declines an unengaged Enter but accepts Tab', () => {
   assert.match(_fix, /tagState = \{ nodeId, content, hashAt, prefix: m\[1\], activeIdx: 0, matches, engaged: false \}/,
     'tagState must carry an engaged flag (false at open)');
-  const tm = _fix.slice(_fix.indexOf('function tagMove('), _fix.indexOf('function tagMove(') + 220);
+  const tm = fnBody(_fix, 'tagMove');
   assert.ok(tm.includes('tagState.engaged = true'), 'arrowing must engage the tag picker');
   assert.match(_fix, /canApply: \(key\) => key === 'Tab' \|\| !!tagState\?\.engaged/,
     'the tag picker must accept Tab always but Enter only when engaged');
@@ -20630,14 +20687,14 @@ test('#840 — the flush pre-write gate and the change detector pass both finger
     'checkExternalChange must compare size too');
 });
 test('#842 — BOTH mid-session losing-copy branches stash the local copy before adopting (the #729/#746 doctrine)', () => {
-  const fn = _fSync.slice(_fSync.indexOf('async function handleExternalChange('), _fSync.indexOf('function openReconcileDialog('));
+  const fn = between(_fSync, 'async function handleExternalChange(', 'function openReconcileDialog(');
   // the silent 'reload' branch: capture pre-adopt, stash, and point at the restore door
   const reload = fn.slice(0, fn.indexOf('_wsReconciling = true;'));
   assert.match(reload, /localPayload = localStorage\.getItem\(AUTOSAVE_KEY\);[\s\S]{0,700}adoptDoc\(fromOpml\(await file\.text\(\)\)[\s\S]{0,400}stashPayloadAsPrev\(localPayload, localId\)/,
     'reload branch must capture the payload pre-adopt and stash it');
   assert.ok(reload.includes("(stashed ? ' Your previous copy: File menu, Restore earlier version.' : '')"), 'reload flash must carry the restore pointer when stashed');
   // the 'theirs' choice: same capture-pre-adopt + stash + pointer
-  const theirs = fn.slice(fn.indexOf("if (choice === 'theirs')"), fn.indexOf("else if (choice === 'copy')"));
+  const theirs = between(fn, "if (choice === 'theirs')", "else if (choice === 'copy')");
   assert.match(theirs, /localPayload = localStorage\.getItem\(AUTOSAVE_KEY\);[\s\S]{0,700}adoptDoc\(fromOpml\(await file\.text\(\)\)[\s\S]{0,400}stashPayloadAsPrev\(localPayload, localId\)/,
     "'theirs' must capture the payload pre-adopt and stash it");
   assert.ok(theirs.includes("(stashed ? ' Your previous copy: File menu, Restore earlier version.' : '')"), "'theirs' flash must carry the restore pointer when stashed");
@@ -20646,7 +20703,7 @@ test('#842 — BOTH mid-session losing-copy branches stash the local copy before
   assert.ok(!mine.includes('stashPayloadAsPrev'), "'mine' must not stash (recorded asymmetry)");
 });
 test('#845 item 1 — every boot losing-copy path flashes, honestly, whether or not the stash stuck', () => {
-  const fn = _fSync.slice(_fSync.indexOf('async function reopenWorkspaceDoc('), _fSync.indexOf('function unmarkedFilesNote('));
+  const fn = between(_fSync, 'async function reopenWorkspaceDoc(', 'function unmarkedFilesNote(');
   // sameDocDiverged: the old code gated the whole hint on stash success — silence exactly when storage is full
   assert.ok(!fn.includes('sameDocDiverged && stashPayloadAsPrev'), 'the success-gated hint must be gone');
   // (the stash is awaited since #846 made stashPayloadAsPrev async under the prev-store lock)
@@ -21230,6 +21287,101 @@ test('UXP-255 "Markdown" is capitalized in user-facing copy (§6), guarded like 
     'the base-to-table hint must capitalize Markdown');
 });
 
+// ── #1133: the helpers get their own tests ───────────────────────────────────────────────────
+// Four hardening mutations reported "0 failing", and that was honest: nothing in the suite calls
+// these helpers on their failure paths, so the protections were latent. A helper with no test of
+// its own is exactly the habit this change exists to correct.
+test('#1133 fnBody is EXACT — a name that prefixes another does not read the wrong function', () => {
+  // The two real prefix pairs on current main, measured: 202 distinct names across 275 call sites.
+  // `collectDueDates` is a prefix of `collectDueDatesFolder`; `renderAgenda` of four others. They
+  // resolve correctly today only because the shorter name happens to be declared first, which a
+  // file reorder would undo silently.
+  const a = fnBody(_src, 'collectDueDates');
+  const b = fnBody(_src, 'collectDueDatesFolder');
+  assert.notEqual(a, b, 'the prefix and the longer name must return DIFFERENT bodies');
+  assert.ok(_src.indexOf('function collectDueDates(') < _src.indexOf('function collectDueDatesFolder('),
+    'the shorter name is declared first — which is why the old prefix match happened to be right');
+  const r = fnBody(_src, 'renderAgenda');
+  assert.notEqual(r, fnBody(_src, 'renderAgendaWeek'));
+
+  // The two real pairs above resolve correctly TODAY only by declaration order, so they cannot
+  // detect a regression to prefix matching — reverting the fix leaves them green. (Measured: that
+  // mutation failed nothing until this synthetic case existed.) So the contract is tested on a
+  // crafted source where the LONGER name is declared first, which is the arrangement one file
+  // reorder away.
+  const crafted = 'function saveFileAs(a) { return LONGER; }\nfunction saveFile(b) { return SHORT; }';
+  assert.match(fnBody(crafted, 'saveFile'), /SHORT/, 'must find `function saveFile(`, not `saveFileAs`');
+  assert.match(fnBody(crafted, 'saveFileAs'), /LONGER/);
+});
+
+test('#1133 fnBody THROWS on a miss — the half that made negative assertions unfalsifiable', () => {
+  // It used to `return ''`, so `assert.doesNotMatch(fnBody(_src, 'gone'), /x/)` passed forever once
+  // the target was renamed away. Four such assertions exist in this file. This is what protects
+  // them, and it protects the next one written without anybody noticing.
+  assert.throws(() => fnBody(_src, 'noSuchFunctionAnywhere'), /no `function noSuchFunctionAnywhere\(`/);
+  assert.doesNotThrow(() => fnBody(_src, 'linkText'), 'a real function still resolves');
+});
+
+test('#1133 between THROWS rather than WIDENING when a marker is gone', () => {
+  // The nastiest shape in the audit: `indexOf` returns -1 and `slice(i, -1)` is "everything to the
+  // last character", so the haystack goes UNIVERSAL, not empty. A guard asking "is `due` in this
+  // row?" then answers yes for any verb mentioned anywhere downstream. Same green, opposite reason.
+  const src = 'AAA start MIDDLE end ZZZ';
+  assert.equal(between(src, 'start', 'end'), 'start MIDDLE ');
+  assert.throws(() => between(src, 'start', 'NOPE'), /end marker not found/);
+  assert.throws(() => between(src, 'NOPE', 'end'), /start marker not found/);
+  // and the end marker is searched FROM the start, so a `B` occurring BEFORE `A` no longer
+  // produces a silent negative-length (empty) slice
+  assert.equal(between('end ... start MIDDLE end', 'start', 'end'), 'start MIDDLE ');
+});
+
+test('#1133 windowAfter throws on a missing marker, and nonEmpty refuses an empty collection', () => {
+  assert.equal(windowAfter('xxHELLOyy', 'HELLO', 3), 'HEL');
+  assert.throws(() => windowAfter('xxHELLOyy', 'NOPE', 3), /marker not found/);
+  assert.throws(() => nonEmpty([], 'a list'), /a list is empty/);
+  assert.throws(() => nonEmpty(new Set(), 'a set'), /a set is empty/);
+  assert.throws(() => nonEmpty(null, 'nothing'), /nothing is empty/);
+  assert.deepEqual(nonEmpty([1, 2], 'ok'), [1, 2], 'a non-empty collection passes straight through');
+  assert.equal(nonEmpty(new Set([1]), 'ok').size, 1, 'Sets count by .size, not .length');
+});
+
+// ── #1133: a guard on the guards ─────────────────────────────────────────────────────────────
+// The helpers above close their classes BY CONSTRUCTION — fnBody throws, between throws,
+// windowAfter throws. This one cannot: no helper can find a loop that never called it. So the file
+// reads ITSELF and counts the tests that iterate or `.every()` over a collection whose size is
+// never asserted, which is the shape where a silently-emptied input reads exactly like a clean
+// codebase.
+//
+// HONEST LIMITATION, stated rather than implied away (the #1132 precedent): this DETECTS, it does
+// not PROVE. It is a ratchet with a frozen count, the same shape #1133 itself criticises in the
+// FA_GLYPHS guard, and the only real difference is the direction of travel — the number may fall
+// and cannot rise without a visible diff line and a reason. It is also regex over JavaScript, so a
+// exotic shape can slip past it. It is worth having anyway, because the alternative measured
+// itself: four vacuous pins shipped across PRs #1134, #1141 and #1143 (twice), every one found by
+// mutation testing rather than by this suite.
+// This file, read as text, so the guard can look at itself.
+const TEST_SRC = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8');
+const VACUITY_FLOOR = 49;
+test('#1133 no NEW guard iterates a collection whose size is never asserted', () => {
+  const blocks = [...TEST_SRC.matchAll(/\b(?:l?test)\(\s*(['"])(.*?)\1/g)].map(m => [m.index, m[2]]);
+  assert.ok(blocks.length > 500, 'the test-block scan must find the tests, or this guard is itself vacuous');
+  blocks.push([TEST_SRC.length, '<eof>']);
+  const risky = [];
+  for (let i = 0; i < blocks.length - 1; i++) {
+    const body = TEST_SRC.slice(blocks[i][0], blocks[i + 1][0]);
+    const iterates = /for\s*\(\s*const\s+\w+\s+of\s+(?!\[)/.test(body) || /\.every\(|\.some\(/.test(body);
+    if (!iterates) continue;
+    const sized = /nonEmpty\(|\.length\s*(?:>=|>|===|==)|\.size\s*(?:>=|>|===)|assert\.(?:ok|equal)\([^)]*\.length/.test(body);
+    if (!sized) risky.push(blocks[i][1]);
+  }
+  assert.ok(risky.length <= VACUITY_FLOOR,
+    `${risky.length} tests iterate an unsized collection (floor ${VACUITY_FLOOR}). Wrap the ` +
+    `collection in nonEmpty(coll, label) — a loop over an empty collection asserts nothing and ` +
+    `passes. New offenders:\n  ` + risky.slice(0, 8).join('\n  '));
+  assert.ok(risky.length >= VACUITY_FLOOR - 12,
+    `only ${risky.length} left (floor ${VACUITY_FLOOR}) — lower VACUITY_FLOOR so the ratchet keeps its teeth`);
+});
+
 test('em-dash ban is ENFORCED across all user-facing copy (README, guide/, GUIDE bodies, command descs)', () => {
   // The strict rule (CLAUDE.md: "No em dashes in user strings") was guarded in only three narrow
   // spots, so violations shipped in the README (unguarded entirely) and one command desc. This
@@ -21260,7 +21412,7 @@ test('em-dash ban is ENFORCED across all user-facing copy (README, guide/, GUIDE
 
   // 3) GUIDE entry bodies + examples (the concept guide's teaching prose). Scan the string VALUES,
   // not the surrounding // comments (those are internal and legitimately use em dashes).
-  const g = _src.slice(_src.indexOf('const GUIDE = ['), _src.indexOf('// GUIDE-END'));
+  const g = nonEmpty(between(_src, 'const GUIDE = [', '// GUIDE-END'), 'the GUIDE source block');
   for (const m of g.matchAll(/\bbody:\s*"((?:[^"\\]|\\.)*)"/g)) {
     assert.ok(!m[1].includes(EM), `a GUIDE body has an em dash near: "${m[1].slice(0, 60)}"`);
   }
@@ -21348,7 +21500,7 @@ test('UXP-244 a new pack draft keys by a constant, not its throwaway id', () => 
   assert.ok(/const key = packDraftKey\(p\);/.test(_src), 'stashPackDraft must resolve the slot through packDraftKey');
   // Save must snapshot the slot BEFORE clearing _packDraft: once it is null, a new pack keys as a
   // saved one and its committed draft survives to shadow the next New pack.
-  const save = _src.slice(_src.indexOf('const draftKey = packDraftKey(p);'), _src.indexOf('delete _packDrafts[draftKey];'));
+  const save = between(_src, 'const draftKey = packDraftKey(p);', 'delete _packDrafts[draftKey];');
   assert.ok(save.includes('_packDraft = null;'), 'the key must be taken before _packDraft is cleared');
 });
 
@@ -22376,7 +22528,7 @@ test('#953 the mentions walk is off the render path, and the first paint claims 
 
   // Nothing O(document) may run from the render path: not the gather, and not the rows either
   // (a source title goes through displayText -> varMapAt, which rebuilds the positional map).
-  const bz = _src.slice(_src.indexOf('function buildZoomBacklinks('), _src.indexOf('function scheduleZoomBlFill('));
+  const bz = between(_src, 'function buildZoomBacklinks(', 'function scheduleZoomBlFill(');
   assert.ok(!bz.includes('blGather(') && !bz.includes('blGatherCached('),
     'the render path never runs the gather — only blGatherWarm, which computes nothing');
   assert.ok(/const warm = blGatherWarm\(nodeId\);/.test(bz)
@@ -22384,7 +22536,7 @@ test('#953 the mentions walk is off the render path, and the first paint claims 
     'a cold generation draws no rows at all; they arrive from the idle fill');
   assert.ok(/if \(!warm\) scheduleZoomBlFill\(/.test(bz), 'and only then is a fill scheduled');
   // The fill re-checks everything on arrival and patches in place (it must never call render()).
-  const sf = _src.slice(_src.indexOf('function scheduleZoomBlFill('), _src.indexOf('function scheduleZoomBlFill(') + 900);
+  const sf = fnBody(_src, 'scheduleZoomBlFill');
   assert.ok(/if \(focusedId !== nodeId \|\| !sec\.isConnected\) return;/.test(sf),
     'a fill that arrives after the reader zoomed away, or after a re-render, is dropped');
   assert.ok(!/\brender\(\)/.test(sf), 'the fill patches the section in place, so it cannot loop');
@@ -22397,7 +22549,7 @@ test('#953 the in-flow section is wired into the zoom view, below the children',
   // #955 added a corkboard path that returns early and appends its own copy of the section, so
   // slice the OUTLINE path (everything from its flatten onward) — this pin is about where the
   // section sits among the ROWS, which is a claim about that branch.
-  const rAll = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  const rAll = between(_src, 'function render()', 'let _lastRenderFocusedId');
   const r = rAll.slice(rAll.indexOf('  flatten(vp);'));
   const ghost = r.indexOf('appendGhostRow(vp, container)');
   const sec = r.indexOf('container.appendChild(buildZoomBacklinks(vp.id))');
@@ -22408,7 +22560,7 @@ test('#953 the in-flow section is wired into the zoom view, below the children',
     'only when zoomed, and never for a base (a zoomed base is a table widget)');
   // The corkboard path returns before the outline path runs, so it must append the section itself
   // or a zoomed note loses its backlinks the moment it becomes a board.
-  const cork = rAll.slice(rAll.indexOf('if (corkOn) {'), rAll.indexOf('  flatten(vp);'));
+  const cork = between(rAll, 'if (corkOn) {', '  flatten(vp);');
   assert.ok(/container\.appendChild\(buildZoomBacklinks\(vp\.id\)\);/.test(cork),
     'the corkboard branch carries the backlinks section too');
   // It is in FLOW: no fixed positioning, and it reuses the strip's row CSS rather than forking it.
@@ -22422,12 +22574,12 @@ test('#953 the in-flow section is wired into the zoom view, below the children',
 test('#953 one renderer, two containers: the strip is a wrapper, not a copy', () => {
   // A forked renderer would drift. renderBlPanel must be a thin adapter over renderBlRows, and
   // renderBlRows must take its subject as a PARAMETER rather than reading the strip's global.
-  const rp = _src.slice(_src.indexOf('function renderBlPanel('), _src.indexOf('function renderBlRows('));
+  const rp = between(_src, 'function renderBlPanel(', 'function renderBlRows(');
   assert.ok(/renderBlRows\(document\.getElementById\('bl-list'\), document\.getElementById\('bl-panel-hd'\), blNodeId,/.test(rp),
     'the strip passes its own container and its own subject');
   assert.ok(!rp.includes('createElement') && !rp.includes('innerHTML'),
     'and builds no rows of its own — a second row-builder is exactly the drift this prevents');
-  const rr = _src.slice(_src.indexOf('function renderBlRows('), _src.indexOf('function updateBlPanel('));
+  const rr = between(_src, 'function renderBlRows(', 'function updateBlPanel(');
   assert.ok(!rr.includes('blNodeId'), 'the shared renderer never reads the strip-only global');
   assert.ok(!rr.includes('hideBlPanel()'),
     'nor dismisses the strip directly — navigation goes through the beforeNavigate hook');
@@ -22435,7 +22587,7 @@ test('#953 one renderer, two containers: the strip is a wrapper, not a copy', ()
          && /const afterLink = opts\.afterLink \|\| \(\(\) => \{\}\);/.test(rr),
     'both hooks default to no-ops, which is exactly what the in-flow section wants');
   // The in-flow builder supplies neither hook: nothing to dismiss, and Link already re-renders.
-  const bz = _src.slice(_src.indexOf('function buildZoomBacklinks('), _src.indexOf('function blShowWith('));
+  const bz = between(_src, 'function buildZoomBacklinks(', 'function blShowWith(');
   assert.ok(/renderBlRows\(inner, hd, nodeId, blGatherCached\(nodeId\), \{ inflow: true \}\)/.test(bz),
     'the in-flow section renders the same rows from the memoised gather');
   assert.ok(/sec\.setAttribute\('role', 'region'\)/.test(bz) && /aria-labelledby/.test(bz),
@@ -22447,7 +22599,7 @@ test('#953 a zoom-in starts with the strip down (its landing focus is not the re
   // that focus handler raises the strip. If the child happens to be linked from somewhere, opening
   // a note slid a docked panel ABOUT A DIFFERENT POINT over it — the #1080 confusion, reintroduced
   // through the back door. The strip under a zoom is for a child you deliberately move to.
-  const zi = _src.slice(_src.indexOf('function zoomInto('), _src.indexOf('function zoomTo('));
+  const zi = between(_src, 'function zoomInto(', 'function zoomTo(');
   assert.ok(zi.includes('hideBlPanel();'), 'zoomInto puts the strip down after landing focus');
   assert.ok(zi.indexOf('focusNode(vp.children[0].id)') < zi.indexOf('hideBlPanel();'),
     'and does it AFTER the focus, or the focus handler would just raise it again');
@@ -22456,7 +22608,7 @@ test('#953 a zoom-in starts with the strip down (its landing focus is not the re
 test('#953 the gather is memoised, keyed on the workspace generation too', () => {
   // blGather walks the whole tree (collectUnlinkedRefs) and every folder document. As a strip it
   // ran only when the focused point CHANGED; in flow it is on the render path, so it must memo.
-  const g = _src.slice(_src.indexOf('function blGatherCached('), _src.indexOf('function blGatherCached(') + 1200);
+  const g = fnBody(_src, 'blGatherCached');
   assert.ok(/_zblVer === _varsVer && _zblGen === gen && _zblId === nodeId/.test(g),
     'the key is (document generation, workspace generation, subject)');
   assert.ok(/const gen = workspaceIndex \? \(workspaceIndex\.gen \|\| 0\) : 0;/.test(g),
@@ -22477,14 +22629,14 @@ test('#953 displayText skips varMapAt when there is no artifact to flatten (the 
   // Sound because every artifact flattenArtifacts resolves carries a `[` or a `{`:
   //   [[type:key]] pill tokens · [/] and [%] cookies · [o n/m] clocks · {meter:…}
   // and flattenSpoilers (the one branch needing neither) never reads the map.
-  const dt = _src.slice(_src.indexOf('function displayText('), _src.indexOf('function aliasesOf('));
+  const dt = between(_src, 'function displayText(', 'function aliasesOf(');
   assert.ok(/ART_SNIFF\.test\(t\) \? varMapAt\(node\) : EMPTY_VARMAP/.test(dt),
     'the varMap is built only when the text could contain an artifact');
   assert.ok(/const ART_SNIFF = \/\[\\\[\{\]\//.test(_src), 'the sniff is exactly [ or {');
   // An explicitly passed varMap must still win — callers that supply one are positional renders.
   assert.ok(/varMap \|\| \(ART_SNIFF/.test(dt), 'an explicit varMap short-circuits the guard, as before');
   // The guard would be unsound if flattenArtifacts grew a branch matching neither character.
-  const fa = _src.slice(_src.indexOf('function flattenArtifacts('), _src.indexOf('function flattenSpoilers('));
+  const fa = between(_src, 'function flattenArtifacts(', 'function flattenSpoilers(');
   const replaces = fa.match(/\.replace\(([^,]+),/g) || [];
   assert.ok(replaces.length >= 4, 'flattenArtifacts still has its four resolve passes');
   for (const r of replaces)
@@ -22685,7 +22837,7 @@ test('#898 the Nearby scope is wired, and a scope that cannot answer is not offe
 });
 
 test('#898 a Nearby node routes through followLinkTarget, which already handles every case', () => {
-  const rg = _src.slice(_src.indexOf('const go = folder'), _src.indexOf('const go = folder') + 900);
+  const rg = windowAfter(_src, 'const go = folder', 900);
   assert.ok(/: nearby\s*\n\s*\? \(id\) => \{ const \[d, n\] = unqid\(id\); closeGraph\(\); followLinkTarget\(d, n\); \}/.test(rg),
     'one call routes same-doc, cross-doc, and both missing cases — no per-node branching');
   // The document a node lives in must not eat the visible label (truncated at 28 chars).
@@ -22707,22 +22859,22 @@ test('#898 the anchor is captured before the click can destroy it', () => {
   assert.ok(_src.indexOf("addEventListener('mousedown', () => { if (!graphOpen) graphAnchorId")
           < _src.indexOf("getElementById('btn-graph').addEventListener('click', toggleGraph)"),
     'and the click handler is still there — added alongside, never converted (P3-3, the caret invariant)');
-  const ga = _src.slice(_src.indexOf('function graphAnchorNow()'), _src.indexOf('function openGraph()'));
+  const ga = between(_src, 'function graphAnchorNow()', 'function openGraph()');
   assert.ok(/captureCurrentPointId\(\) \|\| focusedId \|\| null/.test(ga),
     'it reuses the established precedence rather than inventing a new one');
   assert.ok(/return id && nodeById\(id\) \? id : null;/.test(ga), 'and never returns a dead id');
-  const og = _src.slice(_src.indexOf('function openGraph()'), _src.indexOf('function closeGraph()'));
+  const og = between(_src, 'function openGraph()', 'function closeGraph()');
   assert.ok(/if \(!graphAnchorId\) graphAnchorId = graphAnchorNow\(\);/.test(og),
     'a keyboard activation, which sees no mousedown, still gets an anchor');
   assert.ok(/_graphNearbyAdj = null;/.test(og), 'and the per-open adjacency is cleared');
-  const cg = _src.slice(_src.indexOf('function closeGraph()'), _src.indexOf('function toggleGraph()'));
+  const cg = between(_src, 'function closeGraph()', 'function toggleGraph()');
   assert.ok(/graphAnchorId = null;/.test(cg), 'closing releases the anchor');
 });
 
 test('#898 Nearby names its bound, and a point with nothing near it says so in words', () => {
   // Anchored on the surrounding declarations, not a byte count: a fixed-length slice silently
   // drops the tail of what it is checking the day a comment above it grows (it did, here).
-  const rg = _src.slice(_src.indexOf('const nearbyDocs = nearby'), _src.indexOf("close.className = 'graph-close'"));
+  const rg = between(_src, 'const nearbyDocs = nearby', "close.className = 'graph-close'");
   assert.ok(/within \$\{model\.hops\} hops/.test(rg),
     'the hop distance is fixed, so it has to be SAID or the view looks like the whole web');
   assert.ok(/model\.capped \? `\$\{model\.nodes\.length\} of \$\{model\.total\}`/.test(rg),
@@ -22748,7 +22900,7 @@ test('#898 the scope group scrolls instead of spilling the panel head', () => {
   assert.ok(!/\.graph-scope\{[^}]*display:flex/.test(_src), 'display:flex is not duplicated onto the group');
   assert.ok(_src.includes(".graph-head>.graph-title,.graph-head>.graph-count{flex-shrink:0}"),
     'the fixed head items keep their size so the strip is what gives');
-  const rg = _src.slice(_src.indexOf('function renderGraph(panel)'), _src.indexOf('function renderGraph(panel)') + 4200);
+  const rg = fnBody(_src, 'renderGraph');
   assert.ok(/scope\.className = 'graph-scope scroll-strip';/.test(rg), 'the group is a scroll strip');
   assert.ok(/wireScrollStrip\(scope\);/.test(rg),
     'and is wired for the fade cue + focus reveal, so a chip scrolled out of sight is still reachable (P3)');
@@ -22820,7 +22972,7 @@ test('#955 a card field is a real grid cell, and the grid is dense', () => {
   // blank leaves a hole that Tab and the arrows dead-end on.
   // Pin the PROPERTY, not one spelling of its violation: the field loop must not skip, however
   // the skip is written. (Guard-proofing caught this — a differently-worded `continue` passed.)
-  const fieldLoop = cards.slice(cards.indexOf('for (let c = 1;'), cards.indexOf("h += '</div>';"));
+  const fieldLoop = between(cards, 'for (let c = 1;', "h += '</div>';");
   assert.ok(!/\bcontinue\b/.test(fieldLoop),
     'the field loop emits a cell for EVERY column — a hole in the (r,c) grid dead-ends Tab and the arrows');
   assert.ok(/bv-field-blank/.test(cards), 'they render as an explicit empty slot instead');
@@ -22942,12 +23094,12 @@ test('#955 node.cards round-trips, and never sticks to a base', () => {
 });
 
 test('#955 the board replaces the rows, so no point has two editors', () => {
-  const r = _src.slice(_src.indexOf('function render()'), _src.indexOf('let _lastRenderFocusedId'));
+  const r = between(_src, 'function render()', 'let _lastRenderFocusedId');
   assert.ok(/const corkOn = focusedId != null && !!vp\.cards && vp\.type !== 'base' && !searchQuery;/.test(r),
     'the board needs a zoom, the flag, a non-base, and no active search');
   // THE failure mode: two `.node-content[data-id]` for one id makes every "flush the edit before X"
   // call site silently no-op, since they all find the editor by querySelector on that id.
-  const cork = r.slice(r.indexOf('if (corkOn) {'), r.indexOf('  flatten(vp);'));
+  const cork = between(r, 'if (corkOn) {', '  flatten(vp);');
   assert.ok(/flatRows = \[\]; flatIndex = new Map\(\);/.test(cork),
     'the children are NOT in flatRows — the board is instead of the rows, never beside them');
   assert.ok(/return;/.test(cork), 'and the outline path does not also run');
@@ -22978,7 +23130,7 @@ test('#955 the board keyboard: one Tab stop, Alt to move, and the caret keeps pl
 });
 
 test('#955 the corkboard has two doors, and the outline one takes you to the board', () => {
-  const fn = _src.slice(_src.indexOf('function showBulletPopup('), _src.indexOf('function scheduleBpopHide()'));
+  const fn = between(_src, 'function showBulletPopup(', 'function scheduleBpopHide()');
   assert.ok(/label: node\.cards \? 'Show children as an outline' : 'Show children as cards'/.test(fn),
     'the bullet menu carries the toggle, labelled by what it will do');
   assert.ok(/if \(focusedId !== nodeId\) zoomInto\(nodeId\); else render\(\);/.test(fn),
@@ -23151,11 +23303,11 @@ test('#952 a distribution may reference another (the natural use), and a cycle f
   const selfRec = { key: 's', name: 's', kind: 'dist', expr: 's + 1', seed: 1 };
   const sv = c.attachVarDists(Object.create(null), { s: selfRec });
   // Array.from, not host(): host() is a JSON round-trip and JSON turns NaN into null.
-  assert.ok(Array.from(c.sampleUncertain('s', 4, 1, null, sv)).every(Number.isNaN), 'a self-reference fills NaN');
+  assert.ok(nonEmpty(Array.from(c.sampleUncertain('s', 4, 1, null, sv)), 'the self-reference samples').every(Number.isNaN), 'a self-reference fills NaN');
   const a = { key: 'a', name: 'a', kind: 'dist', expr: 'b to b*2', seed: 1 };
   const b = { key: 'b', name: 'b', kind: 'dist', expr: 'a to a*2', seed: 2 };
   const mv = c.attachVarDists(Object.create(null), { a, b });
-  assert.ok(Array.from(c.sampleUncertain('a', 4, 1, null, mv)).every(Number.isNaN), 'a mutual reference fills NaN');
+  assert.ok(nonEmpty(Array.from(c.sampleUncertain('a', 4, 1, null, mv)), 'the mutual-reference samples').every(Number.isNaN), 'a mutual reference fills NaN');
 });
 
 test('#952 the sibling lane never leaks into the resolved map (the number|string contract holds)', () => {

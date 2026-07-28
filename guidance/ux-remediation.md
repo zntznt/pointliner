@@ -1281,3 +1281,94 @@ shows a user, had no test at all. Added in the same change that gives it a secon
 subtree on screen (`mirrorSubtreeRows`, capped at 40 rows) and exports as **one line of title**. That
 is content loss rather than link-layer loss, and whether an export should inline a transclusion is a
 content decision about someone else's file - the shape UXP-237 refused to settle in passing.
+
+---
+
+## UXP-260 - a pin that cannot fail is not a pin (#1133)
+
+**Principle:** the owner's standing challenge - *"Our guards are as good as the first failure, what's
+to say the others won't fail?"* #1129 answered it for commit hygiene, #1132 for the drift guards.
+This is the audit of `tests/test.mjs` itself.
+
+**Confirmed by recurrence, not by argument.** The mutation harness caught vacuous pins of mine in
+three consecutive PRs:
+
+| PR | the pin that could not fail |
+|---|---|
+| #1134 | the em-dash guard's `NC` input had silently shrunk by 46% |
+| #1141 | a `#898` pin sliced `renderGraph` by a **byte offset** (`+ 4200`); adding lines slid its last assertion out of the window |
+| #1143 | **twice** - `mdLinkOut` and `exportedNote` were pinned perfectly and pinned nothing about whether anything *called* them |
+
+**The house rule already existed in writing**, in `concept-guide.md` on the `#596` guard: *"each
+asserts it found a non-empty registry block and a non-empty covers set, so a renamed/moved const
+fails loudly instead of letting the guard pass vacuously."* It was applied unevenly.
+
+### The insight: four of the five classes were one bug
+
+Not fifteen weak guards. **Helpers that degraded silently instead of throwing.**
+
+| helper | how it degraded | fix |
+|---|---|---|
+| `fnBody` | `indexOf('function ' + name)` - a PREFIX match | exact `function name(` |
+| `fnBody` | returned `''` on a miss, so every negative assertion passed forever | **throws** |
+| hand-rolled `slice(indexOf(A), indexOf(B))` | missing marker -> `-1` -> `slice(i, -1)` is the **rest of the file**: the haystack goes UNIVERSAL, not empty | `between(...)`, throws |
+| hand-rolled `slice(indexOf(A), indexOf(A) + N)` | a fixed byte window slides out of range | `fnBody`, or `windowAfter(...)`, throws |
+
+### Measured on current main, before deciding
+
+| | |
+|---|---|
+| `fnBody` call sites / distinct names | **275 / 202** |
+| names that are a prefix of another (`collectDueDates`, `renderAgenda`) | **2** |
+| names resolving to the wrong body **today** | **0** |
+| names with no `function NAME(` at all | **0** |
+| **tests turned red by making `fnBody` exact AND throwing** | **0** |
+| hand-rolled marker slices migrated to `between` | **53** |
+| byte windows: to `fnBody` / to `windowAfter` | **13 / 10** |
+
+So the highest-leverage fix in the whole issue cost **zero red**. The protection is latent: it
+guards the next rename, not a present break.
+
+**This corrects the issue's own §1 claim** that pins "have been asserting against the wrong body."
+That was an inference from one observed case. Measured: 0. The flaw is a **latent trap**, real and
+reproducible, but not an active correctness problem - and the issue comment already said so.
+
+### The class no helper can reach
+
+`nonEmpty(coll, label)` throws on an empty collection and returns it otherwise, so applying the rule
+is one word. Applied to the guards #1133 named by hand (the em-dash guard's GUIDE slice, the three
+`BRACE_FORMS` loops, both `#952` cycle `.every(Number.isNaN)` pins, and the `sampleUncertain` case
+whose variable is literally named `empty`).
+
+For the rest, a **census** reads `tests/test.mjs` itself and counts tests that iterate or `.every()`
+over a collection whose size is never asserted. Floor frozen at **49**, down from 56.
+
+**Stated in the code as a limitation rather than implied away** (the #1132 precedent): the census
+DETECTS, it does not PROVE. It is a ratchet with an allow-count, the same shape #1133 criticises in
+the `FA_GLYPHS` guard, and the only honest difference is that the number may fall and cannot rise
+without a visible diff line.
+
+### Guard-proofing found four of my own mutations to be mis-designed
+
+Eight mutations, each asserting its target present first. **Four initially reported `0 failing`:**
+
+- two because the protections are **latent** (nothing calls `fnBody`'s failure paths), which was
+  honest and is now covered by direct tests of the helpers - *a helper with no test of its own is
+  exactly the habit under audit*;
+- two because **the mutation was wrong**: removing a throw *and* emptying the input proves the
+  vacuity, not the guard. Corrected to keep the throw and empty the input.
+
+One survived even then: reverting `fnBody` to prefix matching failed nothing, because both real
+prefix pairs resolve correctly today **by declaration order**. The contract is now tested on a
+crafted source where the longer name is declared first - the arrangement one file reorder away. All
+eight bite.
+
+**A process note worth recording:** piping the mutation script through `head` closed the pipe,
+killed it on SIGPIPE before its restore step, and left `tests/test.mjs` mutated with 14 tests red.
+Caught immediately, restored from the backup the script takes first. Never pipe a mutation harness
+into a truncating command.
+
+**Filed, not bundled:** #1133 §4, guards that validate against a set the guarded change also edits -
+the `FA_GLYPHS` icon census (nothing verifies the subset was rebuilt), the GUIDE-id harvest (accepts
+any `id:'...'` anywhere in the file), and the hardcoded `BLOCK_CMDS` duplicate that `#596` already
+does properly. A different class: about *what* is compared, not *whether it ran*.
