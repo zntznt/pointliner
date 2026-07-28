@@ -4359,12 +4359,33 @@ import assert2 from 'node:assert/strict';
   // ── #516 relationship graph pure cores ──────────────────────────────────────
   const titleOf = (id) => ({ a: 'Alpha', b: 'Beta', c: 'Gamma', d: 'Delta' }[id] || id);
 
-  ltest('graphNodeLabel — the point\'s OWN identity, link tokens collapsed not expanded', () => {
-    // a mirror/plain link with no caption drops out (never expands to the target's title)
-    assert2.equal(c2.graphNodeLabel('The Prior [[#bye80c35|]]'), 'The Prior');
-    assert2.equal(c2.graphNodeLabel('The Fence [[#x9|]] [[#y2|]]'), 'The Fence');
-    // a captioned link keeps its caption
-    assert2.equal(c2.graphNodeLabel('see [[#z1|the letter]]'), 'see the letter');
+  ltest('graphNodeLabel — a caption-less link resolves to the target, it is not deleted (#1110)', () => {
+    // REVERSAL, recorded deliberately. This test used to be named "link tokens collapsed not
+    // expanded" and asserted the deletion as intent, on the argument that expanding a mirror is
+    // noise ("The Prior" would read "The Prior Torn Letter"). Two personas independently put the
+    // consequence in their top three findings, because a point whose text is mostly links is
+    // precisely a point the graph exists to show. MEASURED on the pre-fix build:
+    //   `[[#maren|]] and [[#josse|]]: not speaking since March` -> `and : not speaking since Ma…`
+    //   `The honest read: [[#hag|]] does not refute [[#baum|]]` -> `The honest read: does not r…`
+    // The outline shows the resolved text, so the graph disagreed with the document about what a
+    // point is called. Truncation, not deletion, is what keeps a label short.
+    const R = (id, docId) => (docId === 'doc7' ? { n3: 'Voss of Ashguild' }[id] : { bye80c35: 'The Torn Letter', x9: 'Rusty', y2: 'Mara', maren: 'Maren Oskarsdottir', josse: 'Josse the fence' }[id]) || '';
+    assert2.equal(c2.graphNodeLabel('The Prior [[#bye80c35|]]', R), 'The Prior The Torn Letter');
+    assert2.equal(c2.graphNodeLabel('The Fence [[#x9|]] [[#y2|]]', R), 'The Fence Rusty Mara');
+    // the novelist's point, verbatim
+    assert2.equal(c2.graphNodeLabel('[[#maren|]] and [[#josse|]]: not speaking since March', R),
+      'Maren Oskarsdottir and Josse the fence: not speaking since March');
+    // the plain form (no pipe at all) resolves identically — one rule, not two
+    assert2.equal(c2.graphNodeLabel('[[#maren]] and [[#josse]]', R), 'Maren Oskarsdottir and Josse the fence');
+    // a caption still WINS over the resolver: an author who wrote a caption chose those words
+    assert2.equal(c2.graphNodeLabel('see [[#bye80c35|the letter]]', R), 'see the letter');
+    // cross-doc resolves through the docId arm
+    assert2.equal(c2.graphNodeLabel('Voss [[doc7#n3|]]', R), 'Voss Voss of Ashguild');
+    // UNRESOLVABLE still yields nothing, not a bare hex id: a broken target already gets its own
+    // red node in the view, so an id on the label would be noise on top of a signal that exists.
+    assert2.equal(c2.graphNodeLabel('The Prior [[#gone99|]]', R), 'The Prior');
+    assert2.equal(c2.graphNodeLabel('The Prior [[#bye80c35|]]'), 'The Prior', 'no resolver → the old behaviour');
+
     // block prefixes and emphasis strip
     assert2.equal(c2.graphNodeLabel('## Ashguild'), 'Ashguild');
     assert2.equal(c2.graphNodeLabel('- [ ] find **the fence**'), 'find the fence');
@@ -4373,9 +4394,20 @@ import assert2 from 'node:assert/strict';
     assert2.equal(c2.graphNodeLabel('***Dragon Lord***'), 'Dragon Lord');
     assert2.equal(c2.graphNodeLabel('___Ancient One___'), 'Ancient One');
     assert2.equal(c2.graphNodeLabel('The *sly* ++Fence++ and `Rusty`'), 'The sly Fence and Rusty');
-    // cross-doc link form collapses too
-    assert2.equal(c2.graphNodeLabel('Voss [[doc7#n3|]]'), 'Voss');
     assert2.equal(c2.graphNodeLabel(''), '');
+  });
+
+  ltest('graphNodeLabel — one level of resolution, so an A<->B link cycle cannot hang (#1110)', () => {
+    // The recursion guard is STRUCTURAL, not a depth counter: the resolver resolves by calling
+    // graphNodeLabel WITHOUT a resolver, so a link inside a resolved title cannot re-enter. This
+    // pins that the callers' shape terminates — two points that link to each other are ordinary
+    // (a character pair, a claim and its rebuttal) and must not lock the view up.
+    const text = { a: 'The Prior [[#b|]]', b: 'The Fence [[#a|]]' };
+    const inner = (id) => c2.graphNodeLabel(text[id] || '');          // no resolver → one level
+    assert2.equal(c2.graphNodeLabel(text.a, inner), 'The Prior The Fence');
+    assert2.equal(c2.graphNodeLabel(text.b, inner), 'The Fence The Prior');
+    // a point that is NOTHING but links stops being '(untitled)' — the researcher's terminal case
+    assert2.equal(c2.graphNodeLabel('[[#a|]] [[#b|]]', inner), 'The Prior The Fence');
   });
 
   ltest('graphModel — builds undirected nodes+edges from the link index; only linked points appear', () => {
@@ -10380,7 +10412,24 @@ test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
   // rendering goes through the pure cores (graphModel + graphLayout), not ad-hoc DOM math
   const rg = fnBody(_src, 'renderGraph');
   assert.ok(rg.includes('graphModel(') && rg.includes('graphLayout('), 'renderGraph must use the pure cores');
-  assert.ok(rg.includes('graphNodeLabel('), 'labels must use graphNodeLabel (own identity, not mirror-expanded)');
+  assert.ok(rg.includes('graphNodeLabel('), 'labels must use graphNodeLabel');
+  // #1110: and must PASS IT A RESOLVER. graphNodeLabel with one argument still deletes a
+  // caption-less link, so a pin that only proves the call is present would go green on the exact
+  // regression this change exists to remove. Both scopes resolve; Cards share the same builder.
+  assert.match(rg, /graphNodeLabel\(\(n\.text \|\| ''\)\.split\('\\n'\)\[0\], linkTitleOf\)/,
+    'the doc scope must resolve link tokens to their targets (#1110)');
+  assert.match(rg, /graphNodeLabel\(String\(t\)\.split\('\\n'\)\[0\], \(id, dd\) => linkTitleOf\(id, dd \|\| d\)\)/,
+    'the Nearby scope resolves too, anchored on the FOREIGN document (#1110)');
+  assert.match(fnBody(_src, 'buildCorkboard'), /graphNodeLabel\(\(n\.text \|\| ''\)\.split\('\\n'\)\[0\], cardLinkTitle\)/,
+    'Cards share the graph label builder, so they share the fix (#1110)');
+  // the resolver resolves by calling graphNodeLabel WITHOUT a resolver — the structural
+  // one-level guard. If this ever gains a third argument, the cycle protection is gone.
+  assert.match(rg, /const linkTitleOf = \(id, docId\) => \{[\s\S]*?graphNodeLabel\(\(tn\.text \|\| ''\)\.split\('\\n'\)\[0\]\)/,
+    'the resolver must NOT pass itself back in (one level, no recursion)');
+  // #1110 (P3): the ellipsis is a canvas constraint, so the accessible name carries the whole
+  // title. It used to be built from `label`, the already-truncated string.
+  assert.ok(rg.includes("(n.broken ? (folder ? 'Missing document' : 'Broken link target') : n.title)"),
+    'the accessible name must carry the full title, not the truncated label');
   // a11y (P3): the panel is a labelled modal dialog; nodes are focusable buttons with names +
   // Enter/Space activation; mousedown is preventDefault'd (caret invariant), navigation on click
   assert.ok(_src.includes('aria-label="Link graph"'), 'the overlay must be a named dialog');
@@ -22459,7 +22508,11 @@ test('#898 nearbyGraphModel emits exactly what graphLayout consumes', () => {
 });
 
 test('#898 the Nearby scope is wired, and a scope that cannot answer is not offered', () => {
-  const rg = _src.slice(_src.indexOf('function renderGraph(panel)'), _src.indexOf('function renderGraph(panel)') + 4200);
+  // #1110 widened this window from 4200: it is a BYTE OFFSET into renderGraph, so adding lines
+  // above the model selection silently slid the last assertion out of the slice and turned a
+  // green pin red for a reason unrelated to what it guards. Anchored on the function's own end
+  // now, so it cannot drift again.
+  const rg = fnBody(_src, 'renderGraph');
   assert.ok(/const nearbyable = !!\(graphAnchorId && nodeById\(graphAnchorId\)\);/.test(rg),
     'Nearby needs a point to centre on, and checks it still exists');
   assert.ok(/if \(\(graphScope === 'folder' && !folderable\) \|\| \(graphScope === 'nearby' && !nearbyable\)\) graphScope = 'doc';/.test(rg),
@@ -22484,7 +22537,11 @@ test('#898 a Nearby node routes through followLinkTarget, which already handles 
     'one call routes same-doc, cross-doc, and both missing cases — no per-node branching');
   // The document a node lives in must not eat the visible label (truncated at 28 chars).
   assert.ok(/const nearbyDocOf = \(id\) => \{/.test(_src), 'the doc hint is computed separately from the label');
-  assert.ok(/tt\.textContent = label \+ ' · ' \+ docHint;/.test(_src), 'it rides the SVG title tooltip');
+  // Re-anchored in #1110. The intent — the doc hint rides the tooltip rather than eating the
+  // 28-char canvas label — is unchanged; only what the tooltip carries moved, from the truncated
+  // `label` to the full `n.title`, so the hint is not appended to an ellipsis.
+  assert.ok(/tt\.textContent = n\.title \+ ' · ' \+ docHint;/.test(_src), 'it rides the SVG title tooltip');
+  assert.ok(!/tt\.textContent = label \+ /.test(_src), 'and the tooltip is not built from the truncated label');
   assert.ok(/\+ \(docHint \? ' in ' \+ docHint : ''\)/.test(_src), 'and the accessible name');
 });
 
