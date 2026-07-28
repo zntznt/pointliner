@@ -70,8 +70,15 @@ accidental):
 - **People who want their notes in the cloud by default.** The filesystem is storage;
   the user's own sync choice is sync.
 - **WYSIWYG-first writers.** The text is markdown-shaped plain text and proud of it.
-- **Vaults past ~17k points on default storage** (the measured `localStorage` wall;
-  the workspace folder lifts it, but a 100k-node graph-base is not this product).
+- **Vaults at graph-database scale.** This stays a "not for", but **the reason changed and the
+  old one should not be quoted**: it used to cite a measured `localStorage` wall at ~17k points.
+  OPFS is now the durable primary, and a **100k-point / 26 MB document was measured autosaving,
+  surviving a reload intact, and still typing at 5.8 ms** (`performance.md`, "Past the
+  `localStorage` wall") — the very size this line used to name as out of reach. So the boundary
+  is a **product** judgment, not a technical wall: past roughly this scale the thing people want
+  is a queryable graph database, and building toward that would trade away the scratchpad
+  (§2c) and the single-file model. What genuinely degrades first is search latency, and it
+  degrades gradually rather than cutting anyone off.
 
 ## 2c. Not a second brain: the scratchpad test (owner, 2026-07-20)
 

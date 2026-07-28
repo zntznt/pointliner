@@ -11,7 +11,7 @@ move materially.
 |---|---|---|---|
 | **M** | Apple Silicon Mac | headless Chromium | the fast reference |
 | **W** | Windows 11, AMD Ryzen 7 5800H (8C/16T, 32 GB) | timings: Chromium 150 (Electron 43, wmux panel); storage probe: Edge 150. Both `http://127.0.0.1` | the mainstream-laptop reference |
-| **D** | Debian container (4 GB RAM, vCPUs) | Node v22.14.0, pure-core only (no browser) | server-side / CI reference |
+| **D** | Debian container (4 GB RAM, vCPUs) | Node v22.14.0 for pure cores; **headless Chromium via Playwright** on `http://localhost` for DOM and storage runs | server-side / CI reference |
 
 **M is a fast machine; W is an ordinary good one; D is the leanest.** Tables below carry D for
 pure-core operations only (the DOM-bounded hot paths — render, keystroke, scroll — need a
@@ -26,9 +26,9 @@ confirms no regression at 50k nodes.
 > **One-line positioning:** as fast as the good lightweight virtualized outliners
 > (Workflowy-class), and notably *better* than the reactive-graph-DB tools (Logseq /
 > Roam) in the few-thousand-to-10k range that trips them up — because Pointliner has no
-> eager reactive query layer. Its honest ceiling is **storage, not lag**: ~17k nodes via
-> browser `localStorage`, with a clean fallback (a connected workspace folder writes to
-> disk, no cap).
+> eager reactive query layer. Its honest ceiling is **search latency**, and it arrives
+> gradually: storage stopped being the wall once OPFS became the durable primary
+> (measured 2026-07-28 — a 100k-point / 26 MB document autosaves and survives a reload).
 
 ---
 
@@ -44,13 +44,17 @@ confirms no regression at 50k nodes.
   4.1ms (W) — both comfortably inside a 16.7ms frame. This is the virtualization + lazy-cache
   design paying off: the hot paths are bounded by the *window*, and a window is the same
   size everywhere.
-- **The real ceiling is ~17k nodes — and it's storage, not speed.** The default in-browser
-  autosave serializes the whole document to `localStorage`, which browsers cap at ~5 MB
-  (measured on M: 4 MB writes, 5 MB throws). At ~240 bytes/node that's ~17k nodes; past it
-  the app trips its own `autosaveDisabled` guard, warns, and stops re-serializing. **Escape
-  hatch:** connect a workspace folder — it writes to disk with no cap. **Measured identical
-  on M and W** — it is a browser-policy cap, not a hardware one, so the slower machine does
-  not get a smaller document.
+- **Storage is no longer the ceiling — OPFS carries the document past the `localStorage` wall.**
+  The `localStorage` cap is unchanged and still real (4 MB writes, 5 MB throws, on every machine
+  measured), but it now bounds only the *fast-boot copy*. `scheduleAutosave` writes **OPFS as the
+  durable primary**, and OPFS has no 5 MB cap. Measured on D (2026-07-28): at 25k / 50k / 100k
+  points the `localStorage` write fails and `autosaveDisabled` flips true, OPFS takes the whole
+  payload (6.6 / 13.2 / **26.4 MB**), and **every point comes back after a reload** — 100,000 of
+  100,000, with zero page errors. See "Past the `localStorage` wall".
+- **The ceiling that remains is search, and it arrives gradually.** No cliff: at 100k points
+  typing is still 5.8 ms median and a structural edit 313 ms, while an applied query is 1.6 s. So
+  the document stops being *pleasant* long before it stops *working*, which is the opposite of the
+  old storage wall's behaviour (fine, fine, fine, then auto-backup off).
 - **The first thing you *feel* is search — past ~25k on M, past ~10k on W.** Each applied
   query walks the whole tree: 34 / 82 / 156ms at 10k / 25k / 50k on M, and 83 / 201 / 372ms
   on W. Structural edits (Enter / indent / delete / move: a full `render()` + a whole-tree
@@ -297,7 +301,14 @@ under the 16.7 ms frame budget**, so both scroll at 60fps with room to spare. A 
 W (2.6× M): still cheap enough that even pathological invalidation is not felt, which is the
 whole point of the laziness — it is not that the walk is fast, it is that it almost never runs.
 
-### The hard ceiling: `localStorage`
+### The `localStorage` wall (still real, no longer the ceiling)
+
+> **Superseded framing, 2026-07-28.** Everything in this subsection about the *cap itself* still
+> measures true. What changed is what it bounds. This document previously called ~17k nodes "the
+> hard ceiling" and never mentioned OPFS; `scheduleAutosave` has since made OPFS the durable
+> primary, so the cap now limits only the fast-boot copy. The next subsection is the measurement
+> that matters. The 17k arithmetic is kept because it is still exactly right for a browser with
+> no OPFS.
 
 Probed by writing increasing-size strings until `QuotaExceededError`:
 
@@ -323,6 +334,70 @@ to search the document on the way there.
 > origin, which is where the 4 MB / 5 MB result above came from. This is the one measurement
 > in this document that the harness host can silently invalidate, so it is worth re-checking
 > the host before believing a surprising storage number.
+
+### Past the `localStorage` wall (D, 2026-07-28, headless Chromium)
+
+**The question this answers:** does the app keep *working* when the document outgrows
+`localStorage`, and is OPFS actually the thing that saves it? Driven end to end — build the
+document, let autosave land, inspect both sinks, reload, count what came back, then run the
+operation sweep on the restored document.
+
+`scheduleAutosave` writes **OPFS as the durable primary** and `localStorage` as a fast-boot copy:
+
+```js
+if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap)
+if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
+```
+
+| points | payload | `localStorage` | OPFS | `autosaveDisabled` | warning | recovered on reload | restored via |
+|---:|---:|---|---:|---|---|---:|---|
+| 10,000 | 2.63 MB | 2.63 MB | 2.63 MB | false | none | 10,000 | `localStorage` |
+| 25,000 | 6.60 MB | **write failed** | 6.60 MB | true | none | **25,000** | OPFS |
+| 50,000 | 13.21 MB | **write failed** | 13.21 MB | true | none | **50,000** | OPFS |
+| 100,000 | 26.43 MB | **write failed** | 26.43 MB | true | none | **100,000** | OPFS |
+
+**Zero page errors at every size.** The crossing happens between 10k and 25k on this tree shape
+(~265 bytes/point), and nothing about it is visible to the user: `autosaveDisabled` flips, the
+`localStorage` copy stops being written, OPFS keeps the whole document, and the reload restores it
+through `reconcileOpfsOnBoot` instead of the `localStorage` path.
+
+**The silence is correct, and it is deliberate.** `storageAdvice` returns `null` for
+`lsFailed && opfsOk` — *"OPFS is covering it; no loss risk"* — so the app does **not** cry wolf
+about a document it is successfully storing. That distinction was built by #1113; this run is the
+confirmation that it behaves as designed at 4× the old wall.
+
+Working past the wall, on the restored document:
+
+| points | keystroke med / p95 | render | structural edit | applied search |
+|---:|---|---:|---:|---:|
+| 10,000 | 0.6 / 1.1 ms | 11 ms | 29 ms | 125 ms |
+| 25,000 | 2.0 / 2.8 ms | 18 ms | 75 ms | 368 ms |
+| 50,000 | 2.6 / 3.7 ms | 25 ms | 70 ms | 678 ms |
+| 100,000 | 5.8 / 6.2 ms | 52 ms | 313 ms | 1,633 ms |
+
+Typing stays inside a frame budget at every size — the virtualized window again. **Search is what
+degrades**, and it degrades smoothly rather than falling off a cliff.
+
+#### Without OPFS, the old wall is exactly as it was
+
+Measured by removing `navigator.storage.getDirectory`, and separately by making it reject with a
+`SecurityError` (a locked-down profile). Both behave identically, which is the point of #1113's
+capability-not-presence flag:
+
+| | result |
+|---|---|
+| `autosaveDisabled` | true |
+| warning | **hard**, shown |
+| message | *"This document is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)"* |
+| `unsavedToDisk()` | **true** — so the dirty dot shows and the `beforeunload` guard fires |
+| after reload | work is gone (the boot falls back to the examples document) |
+
+So the degradation is loud, names the remedy, and holds the unload guard. **The ~17k arithmetic
+above is still the right number for this case** — it is the browser-without-OPFS ceiling, not the
+product's.
+
+OPFS is available in Chromium, Firefox 111+ and Safari 15.2+, so this is now the narrow case
+rather than the common one — the reverse of how this document used to frame it.
 
 ---
 
@@ -447,23 +522,24 @@ perceptible line, so it moves the envelope.
 
 ## The three ceilings, ranked by what a user hits first
 
-**The ranking is machine-independent; only the distance between rungs changes.** On M the
-storage wall arrives long before search is uncomfortable. On W search closes some of that
-gap (83 ms already at 10k), but storage still wins the race — so the ordering below holds on
-both machines.
+> **Re-ranked 2026-07-28.** This list used to open with the storage wall, on the reasoning that
+> it "wins the race" against search on every machine. That was true when `localStorage` was the
+> only durable sink. With OPFS as the durable primary, a document sails past the old wall with no
+> warning and no loss (measured to 100k points / 26 MB), so **search is now the ceiling a user
+> hits first** on any browser with OPFS. Storage drops to third, and applies only to the browsers
+> without it.
 
-1. **Storage wall (~17k nodes).** Not speed — `localStorage` ~5 MB. **Identical on both
-   machines**, since it is a browser-policy cap (see the storage section's W caveat). Handled gracefully
-   (`autosaveDisabled` + `STORAGE_SOFT_LIMIT` warning; see `writeLocalAutosave`). The
-   workspace-folder path (`flushWorkspaceFile` → `toOpml` to disk) has **no** such cap, so a
-   power user with a huge doc uses the folder workflow.
-2. **Search (M ~156 ms, W ~372 ms per query at 50k).** Each *applied* query (debounced
+**The ranking is machine-independent; only the distance between rungs changes.** Search is the
+first thing anyone feels, and the slower the machine the earlier it arrives.
+
+1. **Search (M ~156 ms, W ~372 ms per query at 50k; D ~678 ms).** Each *applied* query (debounced
    140 ms, so not per-keystroke) is a full `computeMatchSet` walk; `is:failing` additionally
    runs `evalCheck` per node. Fine to ~10k on M (~34 ms), noticeable past ~25k (~82 ms). On
    W it is fine to ~5k (~44 ms) and noticeable from ~10k (~83 ms) — **the one ceiling the
    slower machine genuinely moves**, by about one size step. This is also the clearest
    candidate for future work: it is the only path where the 2.4× constant crosses a
-   perceptual line inside the document sizes users actually reach before the storage wall.
+   perceptual line inside the document sizes users actually reach. Since OPFS removed the storage
+   wall that used to arrive first, this is now the ceiling users meet at all.
 
    **The tag-inheritance perf pass ended up making search faster than it has ever been** (container
    run, median of 9 applied queries over a 3-level tree, same page for both builds; `before` is the
@@ -522,13 +598,23 @@ both machines.
    the pin includes the negative control (an unbumped mutation keeps serving the stale blob — the
    same contract every other doc-cache has) plus an id-collision case proving the WeakMap choice.
 
-3. **Structural-edit latency (grows with size, but stays under the line at 50k on both).**
+2. **Structural-edit latency (grows with size, but stays under the line at 50k on both).**
    Each structural op pays `pushUndo` → `snapshot` (`JSON.stringify(root)`, O(total)) + a
    full `render()` + the next reads of the doc-caches. M: ~11 ms at 25k, ~29 ms at 50k —
-   down ~3× from the June run's 88 ms. W: ~11 ms at 10k, ~26 ms at 25k, ~63 ms at 50k — so
-   W crosses the ~50 ms perceptible line only at 50k, well past the storage wall a user
-   would hit first. *Plain text typing avoids all of this* (`recordTextEdit` is an O(1)
-   per-node diff; no `render()`, no `snapshot()`).
+   down ~3× from the June run's 88 ms. W: ~11 ms at 10k, ~26 ms at 25k, ~63 ms at 50k, so
+   W crosses the ~50 ms perceptible line only at 50k. D: ~75 ms at 25k, ~70 ms at 50k,
+   ~313 ms at 100k — the one operation that grows sharply once a document is genuinely huge,
+   because the undo snapshot is O(total). *Plain text typing avoids all of this*
+   (`recordTextEdit` is an O(1) per-node diff; no `render()`, no `snapshot()`).
+
+3. **Storage — now only on browsers without OPFS (~17k nodes).** Where OPFS exists this rung
+   is gone: measured to 100k points / 26.4 MB with full recovery on reload and no warning
+   (see "Past the `localStorage` wall"). Where it does not, the old wall stands exactly as
+   described — `localStorage` ~5 MB, ~240 bytes/node, `autosaveDisabled` plus a **hard**
+   warning that names the remedy, and `unsavedToDisk()` true so the unload guard fires.
+   The workspace-folder path (`flushWorkspaceFile` → `toOpml` to disk) remains a third
+   durable sink with no cap, and is still the right answer for a user who wants their notes
+   on their own disk rather than in browser storage.
 
 ---
 
@@ -571,8 +657,11 @@ rigorous comparison would install each tool and run the same operations.
 - **Tana** — cloud graph DB; powerful data model, perf tied to the backend.
 
 **Net:** top of its weight class for a virtualized client outliner; better than the
-reactive-DB tools at the scale that trips them; a lower but *cleaner* ceiling (~17k,
-storage-bound, with a disk fallback) than a cloud-backed tool's theoretical max.
+reactive-DB tools at the scale that trips them; and, since OPFS became the durable primary, a
+ceiling set by **search latency rather than storage** — measured working (typing, editing,
+reloading) at 100k points / 26 MB, where the old framing said 17k. Against a cloud-backed
+tool's theoretical max that is still lower, but it is reached without an account, a backend,
+or a sync conflict.
 
 **What the second machine adds to this claim.** The usual rejoinder to "it's fast" is "on
 your machine." The strongest version of the positioning is now the *invariant*, not the
@@ -619,9 +708,11 @@ is a claim about editing, not about every applied query on a big document.
   keystroke path (caret math + reconcile + the trigger-check chain) is what matters, not a
   bare `render()` call. Also run the sweep **twice and read the second pass** — the first
   pass carries JIT warmup (search at 1k reads ~30 ms cold vs ~13 ms warm).
-- **No incremental persistence.** Autosave re-serializes the whole tree (the ~17k wall). A
-  delta-based or chunked save would push that ceiling out a lot — a real architectural cost
-  the single-file model trades away on purpose.
+- **No incremental persistence.** Autosave re-serializes the whole tree on every debounce tick.
+  That no longer caps the document (OPFS takes 26 MB without complaint), but it does mean the
+  per-save cost grows with total size — `JSON.stringify` at 100k is the floor, and it is paid
+  again on every undo snapshot. A delta-based or chunked save would cut both; it is a real
+  architectural cost the single-file model trades away on purpose.
 
 ---
 
@@ -695,6 +786,29 @@ script). It assigns the module-level `root`, so run it in a throwaway tab.
   try { for (let mb = 1; mb <= 16; mb++) { try { localStorage.setItem(KEY, 'x'.repeat(mb * 1048576)); okMB = mb; } catch { failMB = mb; break; } } }
   finally { localStorage.removeItem(KEY); }
   console.log('localStorage OK up to', okMB, 'MB, failed at', failMB, 'MB → ~' + Math.round(okMB * 1048576 / 240) + ' nodes');
+
+  // Past the wall: does OPFS carry the document? Build past the cap, let autosave land, then
+  // RELOAD and count. Two traps that cost real time the first time this was run:
+  //   1. The app boots on the Examples doc and `scheduleAutosave` deliberately never persists it
+  //      (`if (_showingExamples) return`). Leave the flag set and NOTHING is written, which reads
+  //      as "the app failed to save" when it is the pristine-first-run rule working correctly.
+  //   2. `unsavedToDisk()` short-circuits on `!dirty`. Calling scheduleAutosave() without
+  //      markDirty() reports `false` and looks like a missing unload guard. It is not.
+  // So: clear the examples state, and markDirty() like a real edit does.
+  if (_showingExamples) { _showingExamples = false; hideExamplesBanner(); }
+  markDirty(); _userEdited = true; scheduleAutosave();
+  setTimeout(async () => {
+    let opfsMB = null;
+    try { const d = await navigator.storage.getDirectory();
+      for await (const [n, h] of d.entries()) if (h.kind === 'file' && /autosave/.test(n)) opfsMB = +((await h.getFile()).size / 1048576).toFixed(2);
+    } catch (e) { opfsMB = 'ERR ' + e.name; }
+    console.log('after autosave — localStorage', +(((localStorage.getItem('pointliner_autosave')||'').length)/1048576).toFixed(2),
+      'MB | OPFS', opfsMB, 'MB | autosaveDisabled', autosaveDisabled,
+      '| storageWarnState', storageWarnState, '| unsavedToDisk', unsavedToDisk());
+    console.log('now RELOAD and check the point count — that is the only proof that survives.');
+  }, 4000);
+  // NOTE: #storage-warn is shared with the first-run examples banner, so its VISIBILITY is not a
+  // storage signal. Read `storageWarnState` (null = the app is not warning about storage).
 
   // restore a clean doc
   root = mkNode(''); root.children = [mkNode('done')]; root.children[0].type = 'ul';
