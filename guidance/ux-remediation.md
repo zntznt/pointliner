@@ -1372,3 +1372,82 @@ into a truncating command.
 the `FA_GLYPHS` icon census (nothing verifies the subset was rebuilt), the GUIDE-id harvest (accepts
 any `id:'...'` anywhere in the file), and the hardcoded `BLOCK_CMDS` duplicate that `#596` already
 does properly. A different class: about *what* is compared, not *whether it ran*.
+
+---
+
+## UXP-261 - a shipped capability with no door at the point of use reads as an absent one (#1116)
+
+**Principle:** P2 (a capability whose only door is on a different element is not discoverable), with
+a P1 constraint that shaped the whole answer.
+
+**Reported by the novelist persona.** Drafting prose, she wrote
+`{Bight Street | Cross Lane | Anchor Walk}` in a sentence. Clicking it - the same gesture as placing
+a cursor - re-rolled it.
+
+> *"Clicking it once, the way you click to place a cursor, silently changed Bight Street to Cross
+> Lane to Anchor Walk. I couldn't find any way to say 'yes, that one, now be words.'"*
+
+**The issue's premise was wrong, and checking it first changed the whole change.** #1116 says *"There
+is no promote-to-text path."* `freezePillToText` has existed since **UXP-137**: it splices the shown
+text into `node.text`, `pruneArtifacts` drops the orphaned sidecar, and `pushUndo` makes it
+reversible. It does exactly what she asked for.
+
+**Her experience was still entirely right, and the real defect is sharper.** `collectPillActions` was
+surfaced in exactly two places - the ROW's bullet menu and a base-cell menu. **Neither is the pill.**
+A pill in running prose has no affordance of its own at all: click re-rolls, the pencil edits, and
+that is the whole surface. Her own sentence is literally true - *"the only affordance on the pill
+destroys the result she was trying to keep"* - while the remedy sat three steps away, on a different
+element.
+
+### Two constraints ruled out both obvious answers
+
+- **The click could not change.** *"A generative pill changes on click"* is a recorded P1 sign-off,
+  made separately for dice, clocks and estimates. Re-mapping it fixes one case by breaking the family.
+- **No visible control could be added.** #925 item 6 is the SAME persona, saying prose pills already
+  read as *"a boxed capsule with a shuffle icon... reads noisy."*
+
+So: a **context menu**, which adds no weight and changes no gesture. One `contextmenu` listener
+covers mouse right-click **and** touch long-press (Chromium fires it at its own long-press threshold,
+which the base column menu already relies on). Pills stay `tabindex="-1"` - a #701 pin keeps them out
+of the Tab order deliberately - so the keyboard door remains the point's own `Shift+F10`, which
+already lists these rows.
+
+The menu is **scoped to the pill under the pointer** (`collectPillActions` already took a scope
+string for the base cell), and drops point-level chrome - the heading type-switcher and the "More
+actions" expander - so a right-click yields the three rows the user came for, not a wall. Its rows
+also survive the Lean filter, where the Pills section is otherwise hidden entirely.
+
+### Two divergences inside the action itself, both found by driving it
+
+A prominent door onto a subtly wrong action is worse than no door, so both were fixed here:
+
+| | the pill showed | the freeze wrote |
+|---|---|---|
+| a name declared twice (`{n := 10}` above, `{n := 99}` below) | `n * 2=20` | **`198`** |
+| a dice pill on a `para` point | export writes `3` | **`2d6 = 3`** |
+
+The first is the one-value-two-displays bug UXP-257 removed from the estimate export, alive here:
+pills render from the POSITIONAL var map (`#767` `renderPosVarMaps`) and the freeze read the
+document-wide `collectVars()`. Now `varMapAt(node)`, plus the prose flag so freeze and export agree.
+
+### The guards, and two of them re-anchored
+
+Nine mutations, each asserting its target present first; all nine bite, including the one that would
+make this worse than the bug (a plain click committing instead of re-rolling).
+
+**Three existing pins broke on SPELLING rather than behaviour** - `collectPillActions(node)` and
+`if (!isBase && !leanCollapsed)` were matched as literal strings and each grew an argument. Both
+re-anchored on the property, both intents unchanged. Worth recording against UXP-260: making the
+helpers throw closed the vacuity classes, but *"a pin matched a literal that later grew a term"* is a
+different, still-live class, and it cost three fixes in one change.
+
+**The #1133 census caught this PR, correctly and then incorrectly.** It flagged a new unsized
+iteration - which turned out to be `between(_src, 'for (const p of REROLL_PILLS) {', …)`, a source
+snippet passed as a MARKER STRING. The census was scanning quoted text as code. Fixed by stripping
+string literals before the scan, which is strictly more correct and is not the JS tokenizer #1133
+declined to write. The floor stayed at 49, so nothing else was being miscounted.
+
+**Filed, not fixed:** freezing a `{name := a|b|c}` DECLARATION pill removes the name from
+`collectVars`, so every downstream display-only `[[var:KEY]]` reference resolves to `?`. That cliff
+exists today in the bullet menu and is not introduced here, but a more reachable door makes it easier
+to fall off.

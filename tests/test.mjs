@@ -6711,6 +6711,76 @@ test('both collectPillActions callers read UNRENDERED text — the reason one br
     'two call sites plus the declaration — a new caller must show it reads unrendered text');
 });
 
+// ── #1116: the pill's own door ───────────────────────────────────────────────────────────────
+test('#1116 pillTokenFor — a rendered pill element can name the token it draws', () => {
+  // The pure half of the door: the DOM handler reads className + dataset.key, this decides which
+  // artifact that is. Every type in the token grammar is covered, so a new pill family that forgets
+  // to register here opens an empty menu rather than the wrong one.
+  assert.equal(c.pillTokenFor('gr-roll', 'k3f'), '[[grammar:k3f]]');
+  assert.equal(c.pillTokenFor('dice-roll', 'x1'), '[[dice:x1]]');
+  assert.equal(c.pillTokenFor('est-pill', 'e9'), '[[est:e9]]');
+  assert.equal(c.pillTokenFor('mk-roll', 'm2'), '[[markov:m2]]');
+  assert.equal(c.pillTokenFor('math-roll', 'q7'), '[[math:q7]]');
+  assert.equal(c.pillTokenFor('var-pill var-dist', 'v4'), '[[var:v4]]', 'extra classes do not confuse it');
+  assert.equal(c.pillTokenFor('seq-pill', 's1'), '[[seq:s1]]');
+  assert.equal(c.pillTokenFor('query-pill', 'y3'), '[[query:y3]]');
+  // not a pill, or a pill with no key: no token, so the handler falls through and the browser
+  // keeps its own context menu on ordinary prose.
+  assert.equal(c.pillTokenFor('node-content', 'k3f'), null);
+  assert.equal(c.pillTokenFor('gr-roll', ''), null);
+  assert.equal(c.pillTokenFor('gr-roll', undefined), null);
+  assert.equal(c.pillTokenFor(null, 'k3f'), null);
+  assert.equal(c.pillTokenFor(['gr-roll', 'gr-stale'], 'k3f'), '[[grammar:k3f]]', 'an array of classes works too');
+});
+
+test('#1116 collectPillActions scopes to ONE pill when the menu is opened from it', () => {
+  // A point with three pills used to open a nine-row wall. The scope parameter already existed for
+  // the base cell; the pill door reuses it rather than growing a second filter.
+  const node = { text: 'a [[grammar:g1]] b [[dice:d1]] c [[dice:d2]]',
+    grammar: [{ key: 'g1', origin: 'a|b', result: 'a' }],
+    dice: [{ key: 'd1', expr: '2d6', total: 7 }, { key: 'd2', expr: '1d4', total: 3 }] };
+  const all = c.collectPillActions(node);
+  assert.ok(all.length >= 8, `the unscoped menu lists every pill (got ${all.length})`);
+  const scoped = c.collectPillActions(node, '[[dice:d1]]');
+  assert.equal(scoped.length, 3, 'one dice pill contributes re-roll + edit + freeze');
+  assert.ok(scoped.every(r => /2d6/.test(r.label) || r.label === 'Freeze to text'),
+    'and they are THAT pill\'s rows: ' + JSON.stringify(scoped.map(r => r.label)));
+});
+
+test('#1116 the freeze writes what the pill SHOWS, not a value from a different scope', () => {
+  // MEASURED before the fix, by driving: with `{n := 10}` above the reader and `{n := 99}` below,
+  // the pill read `n * 2=20` while Freeze to text wrote `198` — a number never on screen. The pills
+  // render from the POSITIONAL var map (#767 renderPosVarMaps); the freeze read the document-wide
+  // collectVars(). That is the one-value-two-displays bug #1115 removed from the estimate export.
+  const fz = fnBody(_src, 'freezePillToText');
+  assert.match(fz, /frozenTokenText\(type, key, node, varMapAt\(node\), root, node\.type === 'para'\)/,
+    'the freeze must read the positional map, and the prose flag, exactly as the render does');
+  assert.doesNotMatch(fz, /frozenTokenText\([^)]*collectVars\(\)/, 'never the document-wide map');
+  // The prose half: on a paragraph the export writes `3` and the freeze wrote `2d6 = 3`. A novelist
+  // committing a pick in a sentence is asking for words, not a recipe.
+  assert.ok(/node\.type === 'para'/.test(fz), 'the prose flag is passed, so freeze and export agree');
+});
+
+test('#1116 the pill door is wired, scoped, and does not hijack ordinary prose', () => {
+  const ace = fnBody(_src, 'attachContentEvents');
+  assert.match(ace, /content\.addEventListener\('contextmenu'/, 'the pill door exists');
+  assert.match(ace, /pillTokenFor\(el\.className, el\.dataset\.key\)/, 'it resolves the token from the element');
+  assert.match(ace, /if \(!token \|\| !node\.text\.includes\(token\)\) return;/,
+    'a right-click on ordinary text must fall through to the browser menu, not be swallowed');
+  assert.match(ace, /showBulletPopup\(node\.id, bullet, \{ pillScope: token \}\)/, 'and it opens the menu scoped');
+  // THE REGRESSION THAT WOULD MAKE THIS WORSE THAN THE BUG: the click still re-rolls. "A generative
+  // pill changes on click" is a recorded P1 sign-off made separately for dice, clocks and estimates.
+  const md = between(_src, 'for (const p of REROLL_PILLS) {', 'math pill: click anywhere opens the editor');
+  assert.match(md, /if \(onEdit\) p\.edit\(node, key\); else p\.reroll\(node, key\);/,
+    'the mousedown branch is untouched: plain click re-rolls, the pencil edits');
+  assert.doesNotMatch(md, /contextmenu|button === 2|pillScope/, 'the door is a SEPARATE listener, not a new click mode');
+  // A pill-scoped menu drops point-level chrome, or the three rows are buried.
+  const sbp = fnBody(_src, 'showBulletPopup');
+  assert.match(sbp, /opts\.pillScope \? actions\.filter\(a => a\.sec === 'Pills'\)/,
+    'a pill menu shows its rows even in Lean, where the Pills section is otherwise filtered out');
+  assert.match(sbp, /!isBase && !leanCollapsed && !opts\.pillScope/, 'no type switcher on a pill menu');
+});
+
 test('the Shift+F10 pill rows are collected from FOLDED text, or the keyboard door is empty', () => {
   // Found by driving, after a source pin said the "Re-sample value" row existed. Reaching a point
   // with the keyboard means FOCUSING it, and focus unfolds its pills — node.text goes from
@@ -6722,7 +6792,13 @@ test('the Shift+F10 pill rows are collected from FOLDED text, or the keyboard do
   const sbp = fnBody(_src, 'showBulletPopup');
   assert.ok(/if \(activeContentId === nodeId\) \{[\s\S]{0,400}commitActiveEdit\(\)/.test(sbp),
     'the point being edited must be committed (and refolded) before its rows are collected');
-  assert.ok(sbp.indexOf('commitActiveEdit()') < sbp.indexOf('collectPillActions(node)'),
+  // #1116 re-anchored: this matched the call's exact spelling (`collectPillActions(node)`), and the
+  // call grew a scope argument, so indexOf returned -1 and the ordering assertion inverted. The
+  // INTENT is unchanged and still load-bearing - commit before collect - so it is pinned on the
+  // call rather than on how it is spelled.
+  const collectAt = sbp.search(/collectPillActions\(node[,)]/);
+  assert.ok(collectAt > -1, 'showBulletPopup must still collect the pill rows');
+  assert.ok(sbp.indexOf('commitActiveEdit()') < collectAt,
     'and the commit must precede the collection, or the rows are read from unfolded text');
   // Scoped to THIS point: a hover over another point's bullet must not commit an edit elsewhere.
   assert.ok(/activeContentId === nodeId/.test(sbp),
@@ -17048,7 +17124,12 @@ test('modes batch — lean bullet menu reduced to four ops, transient More', () 
     'a lean hover must filter to the lean-tier rows');
   // lean ignores the sticky expand flag, and the type switcher is hidden in a lean-collapsed hover
   assert.ok(fn.includes('(bpopExpanded && !isLean())'), 'lean must ignore the sticky bpopExpanded flag');
-  assert.ok(fn.includes('if (!isBase && !leanCollapsed)'), 'the type switcher must hide in a lean-collapsed hover');
+  // #1116 re-anchored: this matched the condition's exact spelling, and the condition gained a term
+  // (`&& !opts.pillScope`, so a pill-scoped menu drops point-level chrome). The INTENT is unchanged
+  // and still load-bearing, so it is pinned on `leanCollapsed` gating the switcher, not on the
+  // literal conjunction. Third pin in this change to break on spelling rather than behaviour.
+  assert.match(fn, /if \(!isBase && !leanCollapsed[^)]*\) \{\s*\n?\s*(\/\/[^\n]*\n\s*)*\/\/ type switcher row/,
+    'the type switcher must hide in a lean-collapsed hover');
   // "More" is transient in lean (opts.expand, this-open only), sticky in guided/standard (bpopExpanded)
   assert.ok(fn.includes('if (!isLean()) bpopExpanded = true;') && fn.includes('{ ...opts, expand: true }'),
     'More must be transient in lean (opts.expand) and sticky in guided/standard (bpopExpanded)');
@@ -21368,7 +21449,13 @@ test('#1133 no NEW guard iterates a collection whose size is never asserted', ()
   blocks.push([TEST_SRC.length, '<eof>']);
   const risky = [];
   for (let i = 0; i < blocks.length - 1; i++) {
-    const body = TEST_SRC.slice(blocks[i][0], blocks[i + 1][0]);
+    // #1116: scan CODE, not quoted markers. This file routinely passes source snippets to
+    // between()/windowAfter() as string arguments, and the first such marker added after the
+    // census shipped — `between(_src, 'for (const p of REROLL_PILLS) {', …)` — was counted as a
+    // loop. A quoted `.every(` is not an iteration either. Stripping string literals is strictly
+    // more correct than scanning them, and it is not the JS tokenizer #1133 declined to write.
+    const body = TEST_SRC.slice(blocks[i][0], blocks[i + 1][0])
+      .replace(/'(?:[^'\\\n]|\\.)*'/g, "''").replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
     const iterates = /for\s*\(\s*const\s+\w+\s+of\s+(?!\[)/.test(body) || /\.every\(|\.some\(/.test(body);
     if (!iterates) continue;
     const sized = /nonEmpty\(|\.length\s*(?:>=|>|===|==)|\.size\s*(?:>=|>|===)|assert\.(?:ok|equal)\([^)]*\.length/.test(body);

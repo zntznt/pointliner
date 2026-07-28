@@ -9798,8 +9798,21 @@ function renderWindow(force) {
   // (line ~3864 cross-doc = the target doc name; an external link = the URL) is FUNCTIONAL, not a helper, so
   // it's left. Each pill keeps its aria-label twin, so nothing accessible is lost — only the redundant native
   // hover-tooltip goes. One central post-render sweep (title lives in the HTML string; no single chokepoint).
+  const PILL_TITLE_SEL = '.node-content .dice-roll[title], .node-content .mk-roll[title], .node-content .gr-roll[title], .node-content .math-roll[title], .node-content .seq-pill[title], .node-content .est-pill[title], .node-content .var-pill[title], .node-content [class$="-edit"][title]';
   if (isStandardOrLean()) {
-    vlist.querySelectorAll('.node-content .dice-roll[title], .node-content .mk-roll[title], .node-content .gr-roll[title], .node-content .math-roll[title], .node-content .seq-pill[title], .node-content .est-pill[title], .node-content .var-pill[title], .node-content [class$="-edit"][title]').forEach(el => el.removeAttribute('title'));
+    vlist.querySelectorAll(PILL_TITLE_SEL).forEach(el => el.removeAttribute('title'));
+  } else {
+    // #1116: in GUIDED (the teaching tier), the tooltip also names the pill's other door. The
+    // novelist's complaint was that a pill's only affordance re-rolls, so the one thing worth
+    // teaching beside "click re-rolls" is that there is somewhere else to go. Added in the same
+    // central sweep that strips these titles at the quieter tiers, for the same reason recorded
+    // there: the title lives in each renderer's HTML string, so this is the only chokepoint.
+    // Skipped for the `-edit` pencils (they are their own door already) and for pills whose
+    // menu would be empty.
+    vlist.querySelectorAll(PILL_TITLE_SEL).forEach(el => {
+      if (/-edit$/.test(el.className) || el.title.includes(PILL_MENU_TIP)) return;
+      el.title = el.title + PILL_MENU_TIP;
+    });
   }
   // MOBILE-2: keep the "N done hidden" count current — but only on a real re-render (force),
   // not on scroll-driven window shifts (#451 item 3). The count changes only when a to-do
@@ -17108,6 +17121,22 @@ function rerollInEdit(content, node, doReroll) {
   try { setCaretByOffset(content, off); } catch (_) {}
 }
 
+// #1116: which artifact type a rendered pill element is, so a DOM element can name the token it
+// draws. Pure + Node-testable; the DOM half below just reads classList and dataset.key.
+const PILL_CLASS_TYPE = [
+  ['dice-roll', 'dice'], ['est-pill', 'est'], ['mk-roll', 'markov'], ['gr-roll', 'grammar'],
+  ['math-roll', 'math'], ['var-pill', 'var'], ['seq-pill', 'seq'], ['query-pill', 'query'],
+];
+function pillTokenFor(classes, key) {
+  if (!key || !classes) return null;
+  const list = Array.isArray(classes) ? classes : String(classes).split(/\s+/);
+  for (const [cls, type] of PILL_CLASS_TYPE) if (list.includes(cls)) return `[[${type}:${key}]]`;
+  return null;
+}
+
+// #1116: the second half of the pill's tooltip in Guided. AP punctuation, no em dash.
+const PILL_MENU_TIP = '. Right-click for more, including Freeze to text';
+
 // The generative re-rollable pills, data-driving the four identical mousedown branches (#450).
 // sel = pill hit-target, bad = its error class (a bad pill is inert), editSel = the pencil,
 // edit/reroll = the pill's two actions. Order is dice → est → markov → grammar (unchanged).
@@ -17119,6 +17148,30 @@ const REROLL_PILLS = [
 ];
 
 function attachContentEvents(content, node) {
+  // #1116: a pill's own door. A generated pick in prose had exactly ONE affordance and it was the
+  // one that destroyed the result: click re-rolls, the pencil edits, and nothing else. A novelist
+  // lost the street name she wanted three times and could find no way to say "yes, that one, now be
+  // words." The action she needed - freezePillToText, shipped as UXP-137 - existed, three steps away
+  // behind the ROW's bullet menu, on a different element from the one she was looking at.
+  //
+  // So this is a door, not a capability. The click is deliberately untouched: "a generative pill
+  // changes on click" is a recorded P1 sign-off made separately for dice, clocks and estimates, and
+  // re-mapping it here would fix one case by breaking the family. No visible control is added
+  // either - #925 item 6 is the SAME novelist saying prose pills already read too noisy.
+  //
+  // contextmenu covers BOTH pointers: Chromium fires it at its own long-press threshold on touch,
+  // which is the same thing the base column menu relies on. Pills stay tabindex="-1" (a #701 pin
+  // keeps them out of the Tab order on purpose), so the keyboard door remains the point's own
+  // Shift+F10, which already lists these rows.
+  content.addEventListener('contextmenu', e => {
+    const el = e.target.closest?.('[data-key]');
+    const token = el && pillTokenFor(el.className, el.dataset.key);
+    if (!token || !node.text.includes(token)) return;      // not a pill, or its record is gone
+    e.preventDefault(); e.stopPropagation();
+    const bullet = content.closest('.node-row')?.querySelector('.bullet');
+    if (bullet) showBulletPopup(node.id, bullet, { pillScope: token });
+  });
+
   // Table nodes: clicking OUTSIDE the widget → raw-markdown text edit; clicking ON
   // the widget → cell editing handled internally by buildTableWidget.
   if (node.type === 'base') {
@@ -19498,7 +19551,19 @@ function freezePillToText(node, type, key) {
   if (!node) return;
   const token = `[[${type}:${key}]]`;
   if (!node.text.includes(token)) return;
-  const frozen = frozenTokenText(type, key, node, collectVars());
+  // #1116: TWO divergences fixed here, both found by driving the freeze against what the pill
+  // actually shows. This action is about to get a prominent door, and a door onto a subtly wrong
+  // value is worse than no door.
+  //
+  // 1. varMapAt(node), not collectVars(). The pills RENDER from the positional map (#767,
+  //    renderPosVarMaps), so a name declared twice resolved one way on screen and another way in
+  //    the freeze. MEASURED: with `{n := 10}` above the reader and `{n := 99}` below it, the pill
+  //    read `n * 2=20` while the freeze wrote `198` - a number that was never on screen. That is
+  //    the one-value-two-displays bug #1115 removed from the estimate export, alive here.
+  // 2. The prose flag, so the freeze and the prose export agree. On a `para` point the export
+  //    writes `3` and the freeze wrote `2d6 = 3`. A novelist committing a pick in a sentence is
+  //    asking for words, not a recipe - that is the whole point of the action.
+  const frozen = frozenTokenText(type, key, node, varMapAt(node), root, node.type === 'para');
   pushUndo();
   node.text = node.text.replace(token, frozen);   // just this occurrence (a pill is a unique key)
   pruneArtifacts(node);                            // the record's token is gone → the prune drops it
@@ -19629,7 +19694,9 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   const full = opts.keyboard || IS_TOUCH || opts.expand || (bpopExpanded && !isLean());
   const leanCollapsed = isLean() && !full;
 
-  if (!isBase && !leanCollapsed) {
+  // #1116: a menu opened FROM a pill is about that pill. The heading type-switcher and the
+  // "More actions" expander are point-level chrome and would bury the three rows the user came for.
+  if (!isBase && !leanCollapsed && !opts.pillScope) {
     // type switcher row
     const typeRow = document.createElement('div');
     typeRow.className = 'bpop-types';
@@ -19891,11 +19958,18 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // fns don't self-dismiss, so wrap them to close the menu (every other action's fn
   // already calls hideBpop itself — and "Set state…" deliberately re-opens #bpop as a
   // picker, so it must NOT be auto-hidden).
-  for (const r of collectPillActions(node)) actions.push({ sec:'Pills', prim:true, ...r, fn: () => { r.fn(); hideBpop(); } });
+  // #1116: opened FROM a pill, the menu shows only THAT pill's rows. collectPillActions already
+  // takes a scope string (the base cell passes one), so a point holding three pills opens the menu
+  // for the one under the pointer instead of a wall of nine rows.
+  for (const r of collectPillActions(node, opts.pillScope || null)) actions.push({ sec:'Pills', prim:true, ...r, fn: () => { r.fn(); hideBpop(); } });
 
   // full / leanCollapsed were computed up top (they also gate the type-switcher row). A guided/
   // standard hover shows the primary rows; a lean hover shows only the four lean-tier rows.
-  const shown = full ? actions : (leanCollapsed ? actions.filter(a => a.lean) : actions.filter(a => a.prim));
+  // #1116: a menu opened from a pill is ABOUT that pill, so its rows survive the lean filter -
+  // otherwise right-clicking a pill in Lean opened a menu with the pill section missing, which is
+  // the same dead end this change exists to remove.
+  const shown = opts.pillScope ? actions.filter(a => a.sec === 'Pills')
+    : full ? actions : (leanCollapsed ? actions.filter(a => a.lean) : actions.filter(a => a.prim));
 
   // Render section by section, each under a static uppercase heading. Fixed section
   // order; a section with no rows is skipped. Base ops lead ('Base' — the canonical
@@ -19924,7 +19998,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
   // On a reduced hover, a trailing "More actions" row reveals the rest in place. In guided/standard
   // that reveal is remembered for the session (bpopExpanded), so power users don't re-expand each
   // open; in LEAN it is deliberately transient (item 9) so the menu returns to its four ops next time.
-  if (!full && shown.length < actions.length) {
+  if (!full && shown.length < actions.length && !opts.pillScope) {   // #1116: not on a pill-scoped menu
     // '⋯' isn't in the FA subset; use the unicode glyph directly (the conventional
     // "more" mark) rather than rebuild the font for one decorative icon.
     const more = mkCmdItem({ fa:'', fb:'⋯' }, 'More actions', '', () => {
