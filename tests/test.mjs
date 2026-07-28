@@ -20493,6 +20493,57 @@ test('#1113 storageAdvice — names the real failure, and only when there is no 
   assert.equal(c.storageAdvice({ oversize: true, opfsOk: false }).level, 'soft');
 });
 
+// ── #1136: a failed boot restore stops arriving dressed as a tour ────────────────────────────
+test('#1136 restoreFailMessage — four failures, four remedies, none of them silence', () => {
+  // DRIVEN on main, all four modes: work LOST, and the only thing on screen was the examples
+  // banner - "These are live examples to explore. Click any pill" - which is not a MISSING warning
+  // but the opposite of one. Cheerful onboarding copy in place of "we could not read your document".
+  const blocked = c.restoreFailMessage('blocked');
+  const corrupt = c.restoreFailMessage('corrupt');
+  const deep = c.restoreFailMessage('deep');
+  for (const [name, m] of [['blocked', blocked], ['corrupt', corrupt], ['deep', deep]]) {
+    assert.ok(m && m.length > 40, `${name} must say something substantial`);
+    assert.match(m, /could not/i, `${name} names the failure`);
+  }
+  // and each names its OWN remedy, because a blocked profile and a truncated blob are different
+  // problems (the braceAttemptReason house rule: name the fix, not just the miss)
+  assert.match(blocked, /blocking storage|Private windows/i, 'blocked names the cause');
+  assert.match(blocked, /File then Open/, 'and the way back in');
+  assert.match(corrupt, /incomplete or damaged/i);
+  assert.match(deep, /nested too deeply/i);
+  // the two recoverable cases say the copy survives AND that typing replaces it - the cliff
+  assert.match(corrupt, /has not been deleted/i);
+  assert.match(corrupt, /before typing|replaces it/i, 'and warns that editing overwrites it');
+  assert.match(deep, /has not been deleted/i);
+  // three distinct messages, not one wearing three labels
+  assert.equal(new Set([blocked, corrupt, deep]).size, 3);
+  // an unknown reason yields nothing, so a future arm cannot flash `undefined` at a user
+  assert.equal(c.restoreFailMessage('nope'), null);
+  assert.equal(c.restoreFailMessage(undefined), null);
+});
+
+test('#1136 the restore path separates the four failures instead of one bare catch', () => {
+  const fn = between(_src, '(function restoreAutosave()', '// UXP-126: first-run Examples');
+  // the bare `catch(_) {}` that swallowed all four is gone
+  assert.doesNotMatch(fn, /catch\(_\) \{\}/, 'the swallowing catch must not survive');
+  assert.match(fn, /catch\(_\) \{ autosaveRestoreFailed = 'blocked'; return; \}/, 'a throwing getItem is a blocked profile');
+  assert.match(fn, /JSON\.parse\(raw\); \} catch\(_\) \{ autosaveRestoreFailed = 'corrupt'/, 'a truncated payload is corrupt');
+  assert.match(fn, /if \(!data \|\| !data\.root\) \{ autosaveRestoreFailed = 'corrupt'/, 'a missing root is corrupt');
+  assert.match(fn, /if \(treeDepthExceeds\(data\.root\)\) \{ autosaveRestoreFailed = 'deep'/,
+    'and a too-deep tree is its OWN reason - applyAutosaveData returns false for both, which is why they were indistinguishable');
+  // a genuinely fresh boot must stay silent, or every first run cries wolf
+  assert.match(fn, /if \(!raw\) return;/, 'no autosave at all is not a failure');
+
+  // PIN THE CALL SITE, not only the core (#1133 / UXP-260). Sixth time this session that this rule
+  // is the one doing the work.
+  assert.match(_src, /if \(autosaveRestoreFailed\) flashError\(restoreFailMessage\(autosaveRestoreFailed\)\);/,
+    'boot must actually flash the reason');
+  // it sits with its embed twin, which is the precedent (#449 / #845)
+  const bootIdx = _src.indexOf('if (autosaveRestoreFailed) flashError');
+  assert.ok(bootIdx > -1 && _src.indexOf('if (embedRestoreFailed) {') > bootIdx,
+    'the autosave message sits beside the embed one it was modelled on');
+});
+
 test('#1113 capability is learned, not inferred from the presence of an API', () => {
   // hasOPFS is `navigator.storage && navigator.storage.getDirectory` -- a PRESENCE check. The method
   // exists in a private window and on file://, where calling it throws. Everything that asks "is

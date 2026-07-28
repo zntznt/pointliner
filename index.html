@@ -40089,13 +40089,46 @@ let _showingExamples = false;
 _blankInviteReady = true;   // ALL state syncBlankInvite reads now exists; boot renders before this line no-op
 let _adoptingExamples = false;   // true only during the examples adoptDoc, so adoptDoc doesn't self-clear the flag
 let _restoredFromAutosave = false;   // UXP-126: did boot load a real doc from localStorage?
+// #1136: WHY a boot restore failed, and what the user can do about it. Pure + Node-testable.
+//
+// `restoreAutosave`'s `catch(_) {}` swallowed four different failures identically, and every one of
+// them ends at the welcome document. Driven, all four: work LOST, and the only thing on screen is
+// the examples banner - "These are live examples to explore. Click any pill" - which is not a
+// missing warning but the OPPOSITE of one. Cheerful onboarding copy served in place of "we could
+// not read your document."
+//
+// The embed path already got this right (#449, embedRestoreFailed -> flashError "appears to be
+// corrupt... ask the sender to export and share it again"). #845 set the rule - "every boot
+// losing-copy path flashes, honestly" - and it was applied once and never carried here.
+//
+// Four reasons, four remedies, because a blocked profile and a truncated blob are not the same
+// problem (the braceAttemptReason house rule: name the fix, not just the miss).
+const RESTORE_FAIL_MSG = {
+  blocked: 'Could not read your saved work: this browser is blocking storage for this page. '
+    + 'Private windows and locked-down profiles do this. Your previous document is still on disk if you saved one, and File then Open will load it.',
+  corrupt: 'Your saved work could not be read: the stored copy is incomplete or damaged. '
+    + 'It has not been deleted. Export or open a saved file before typing, because editing here replaces it.',
+  deep: 'Your saved work could not be opened: it is nested too deeply to load safely. '
+    + 'It has not been deleted. Open your last saved file instead, or share it so the nesting can be flattened.',
+};
+function restoreFailMessage(reason) { return RESTORE_FAIL_MSG[reason] || null; }
+
+let autosaveRestoreFailed = null;   // #1136: 'blocked' | 'corrupt' | 'deep' - surfaced at boot
 (function restoreAutosave() {
   if (loadedFromEmbed) return; // a shared snapshot is authoritative over local autosave
+  let raw;
   try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (!raw) return;
-    if (applyAutosaveData(JSON.parse(raw))) _restoredFromAutosave = true;
-  } catch(_) {}
+    raw = localStorage.getItem(AUTOSAVE_KEY);
+  } catch(_) { autosaveRestoreFailed = 'blocked'; return; }   // #1136: a blocked profile, not "no autosave"
+  if (!raw) return;                                            // genuinely fresh: stay silent
+  let data;
+  try { data = JSON.parse(raw); } catch(_) { autosaveRestoreFailed = 'corrupt'; return; }
+  // applyAutosaveData returns false for a missing root AND for a tree past MAX_OPML_DEPTH. Those are
+  // different problems with different remedies, so separate them here rather than at the catch.
+  if (!data || !data.root) { autosaveRestoreFailed = 'corrupt'; return; }
+  if (treeDepthExceeds(data.root)) { autosaveRestoreFailed = 'deep'; return; }
+  if (applyAutosaveData(data)) _restoredFromAutosave = true;
+  else autosaveRestoreFailed = 'corrupt';
 })();
 
 // UXP-126: first-run Examples. On a genuinely-fresh boot (no restored autosave, not a snapshot,
@@ -40757,6 +40790,9 @@ requestAnimationFrame(() => {
   // re-rollable doc — not get dropped into edit-mode-on-point-1 (which unfolds pills to
   // raw shorthand). It is also read-into-memory, not saved-to-disk, so say so once (P4)
   // — edits-then-reload data loss is never silent.
+  // #1136: the autosave twin of the embed message below. Same rule (#845: every boot losing-copy
+  // path flashes, honestly), same place, so a failed restore can no longer arrive dressed as a tour.
+  if (autosaveRestoreFailed) flashError(restoreFailMessage(autosaveRestoreFailed));
   if (embedRestoreFailed) {
     // A shared snapshot was embedded but couldn't be parsed — tell the recipient it was
     // corrupt, not empty (#449). We fall through to whatever doc did load (Examples/blank).
