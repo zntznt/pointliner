@@ -30453,7 +30453,54 @@ function renderFileName() {
 // ─── file I/O ─────────────────────────────────────────────────────────────────
 
 const hasFSA = 'showOpenFilePicker' in window;
+// #1112: hasFSA is PRESENCE. The method exists in profiles that refuse to open the picker,
+// so presence is not capability -- the same distinction #1113 drew for OPFS. fsaOk starts
+// optimistic and is cleared the first time a picker is actually refused.
+let fsaOk = hasFSA;
 const OPML_TYPE = { description:'Outline file', accept:{'text/x-opml':['.opml']} };
+// #1112: did the picker get REFUSED, or did the user cancel it? The two are indistinguishable by
+// error name, and treating a refusal as a cancel is why "Save did nothing at all" for a persona
+// whose browser would not grant the picker -- the same restricted profile that lost his session in
+// #1113. Measured in Chromium: a refused showSaveFilePicker rejects with **AbortError in 1ms**,
+// message "The user aborted a request", when no user aborted anything. Other refusals arrive as
+// NotAllowedError, which the existing catches already report.
+//
+// So: anything that is not AbortError is a refusal. An AbortError that arrives faster than a human
+// could see, reach and dismiss a native dialog is a refusal too.
+//
+// This is a HEURISTIC and the threshold is a judgement call, not a fact. The asymmetry is what
+// justifies it: a false "refused" costs a visible message plus a download that works, while a false
+// "cancelled" is exactly the silence being fixed. 250ms sits 250x above the measured refusal and
+// well under any real dismissal, so both errors are unlikely and the cheap one is the survivor.
+const PICKER_REFUSAL_MS = 250;
+function pickerOutcome({ errName, elapsedMs } = {}) {
+  if (errName !== 'AbortError') return 'refused';
+  return (Number(elapsedMs) >= 0 && Number(elapsedMs) < PICKER_REFUSAL_MS) ? 'refused' : 'cancelled';
+}
+
+// Run a picker and classify its failure. Returns { ok, value, outcome } -- outcome is null on
+// success, else 'cancelled' | 'refused'. Callers decide what to do; this only answers "what
+// happened", so the decision stays in one testable place (#1112).
+async function runPicker(fn) {
+  const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  try {
+    return { ok: true, value: await fn(), outcome: null };
+  } catch (e) {
+    const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const outcome = pickerOutcome({ errName: e && e.name, elapsedMs: t1 - t0 });
+    if (outcome === 'refused') fsaOk = false;   // capability learned by experience, as opfsOk is (#1113)
+    return { ok: false, error: e, outcome };
+  }
+}
+// The message a refused picker earns. Names the browser as the cause and the way out, rather than
+// echoing a raw DOMException the user cannot act on. `fallback` is what the app did instead.
+function pickerRefusedMessage(what, fallback) {
+  return 'This browser would not open the file picker for ' + what + '. '
+    + (fallback || 'Use File then Export to save a copy.')
+    + ' (Private browsing and locked-down profiles do this.)';
+}
+
+
 
 // The single runtime chokepoint for making `newRoot` the live document. Every
 // runtime swap (newFile + both openFile paths) funnels through here, so the
@@ -30638,7 +30685,13 @@ async function openFile() {
   })) return;
   if (hasFSA) {
     try {
-      [fileHandle] = await window.showOpenFilePicker({ types:[OPML_TYPE] });
+      const picked = await runPicker(() => window.showOpenFilePicker({ types:[OPML_TYPE] }));
+      if (!picked.ok) {
+        // #1112: refused, not cancelled -- say so and point at the picker-free path that works.
+        if (picked.outcome === 'refused') flashError(pickerRefusedMessage('opening a file', 'Drag a file onto the page, or use a different browser.'));
+        return;
+      }
+      [fileHandle] = picked.value;
       const file = await fileHandle.getFile();
       const text = await file.text();
       adoptDoc(fromOpml(text), { fileName: file.name, fileHandle });
@@ -30662,10 +30715,18 @@ async function saveFile() {
 async function saveAsFile() {
   if (hasFSA) {
     try {
-      const newHandle = await window.showSaveFilePicker({
+      const picked = await runPicker(() => window.showSaveFilePicker({
         suggestedName: (fileName==='unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml',
         types:[OPML_TYPE],
-      });
+      }));
+      // #1112: a REFUSED picker is not a cancel. Fall through to the download that already works
+      // (dlOpml is the non-FSA tier's save, three lines below) and say why, instead of the silence
+      // that made a persona believe Save was broken.
+      if (!picked.ok) {
+        if (picked.outcome === 'refused') { flashError(pickerRefusedMessage('saving', 'Downloading a copy instead.')); dlOpml(); }
+        return;   // 'cancelled' stays silent, which is correct for a real dismissal
+      }
+      const newHandle = picked.value;
       fileHandle = newHandle;
       fileName = newHandle.name;
       saveLastFileHandle(newHandle, newHandle.name);   // UXP-127: remember this standalone file for next session
@@ -31216,7 +31277,14 @@ async function gotoDocTab(n) {
 // writer, make that file THE backing handle, and remember the folder in IndexedDB.
 async function connectWorkspace() {
   try {
-    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const pickedDir = await runPicker(() => window.showDirectoryPicker({ mode: 'readwrite' }));
+    if (!pickedDir.ok) {
+      // #1112: a folder has no download equivalent, so there is nothing to fall back TO -- but a
+      // refusal must still be named rather than read as a cancel.
+      if (pickedDir.outcome === 'refused') flashError(pickerRefusedMessage('choosing a folder', 'Folders need Chrome or Edge, with a profile that allows file access.'));
+      return;
+    }
+    const dir = pickedDir.value;
     // #839: never overwrite a file already in the chosen folder. getFileHandle({create:true})
     // below OPENS an existing file, and the first write truncates it — content this browser
     // has never seen, so no restore point could bring it back. Decide first (pure core):
@@ -31292,6 +31360,10 @@ async function reconnectWorkspace() {
   if (!pendingDir) return;
   try {
     const perm = await pendingDir.requestPermission({ mode: 'readwrite' });
+    // #1112: a denied prompt had NO branch at all and the catch below swallowed every error, so
+    // "Reconnect folder" could be clicked forever with no response. reopenPendingFile -- the
+    // single-file twin -- already does this correctly; this copies it.
+    if (perm !== 'granted') { flashHint('Permission needed to reconnect the folder'); return; }
     if (perm === 'granted') {
       workspaceDir = pendingDir; pendingDir = null;
       const stored = await idbGet(WORKSPACE_KEY);
@@ -31302,7 +31374,7 @@ async function reconnectWorkspace() {
       await reconcileDuplicateDocIds(workspaceDir);   // #745: repair any duplicate-docId collision
       refreshWorkspaceIndex();           // CF-1: rebuild after a successful reconnect
     }
-  } catch (_) { /* denied / dismissed — stays pending, no error toast */ }
+  } catch (_) { flashError('Could not reconnect the folder'); }   // #1112: was a bare swallow
 }
 
 // Reopen the workspace doc from disk, honoring newer-wins, and rebind for auto-write.

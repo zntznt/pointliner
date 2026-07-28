@@ -19915,6 +19915,56 @@ test('commit hygiene: the workflow reads COMMITS whole, and the BODY narrowly', 
   assert.match(_wfHygiene, /CLAUDE\.md/, "the failure message names the rule's home");
 });
 
+// ── #1112: a refused picker is not a user cancelling ──
+test('#1112 pickerOutcome — a refusal and a cancel are told apart', () => {
+  // MEASURED in Chromium, not assumed: a refused showSaveFilePicker rejects with AbortError in
+  // **1ms**, message "The user aborted a request", when no user aborted anything. Other refusals
+  // arrive as NotAllowedError, which the existing catches already reported. Only the AbortError
+  // path was silent, and that silence is why a persona believed Save was broken.
+  assert.equal(c.pickerOutcome({ errName: 'AbortError', elapsedMs: 1 }), 'refused', 'the measured case');
+  assert.equal(c.pickerOutcome({ errName: 'NotAllowedError', elapsedMs: 0 }), 'refused');
+  assert.equal(c.pickerOutcome({ errName: 'SecurityError', elapsedMs: 5 }), 'refused');
+  // THE REGRESSION THAT WOULD MAKE THIS WORSE THAN THE BUG: a real dismissal must stay silent.
+  assert.equal(c.pickerOutcome({ errName: 'AbortError', elapsedMs: 900 }), 'cancelled',
+    'a human reaching for Cancel is not a refusal');
+  assert.equal(c.pickerOutcome({ errName: 'AbortError', elapsedMs: 250 }), 'cancelled', 'at the threshold');
+  assert.equal(c.pickerOutcome({ errName: 'AbortError', elapsedMs: 249 }), 'refused', 'just under it');
+  // the threshold is a judgement call; this pins WHERE it sits so moving it is a deliberate act
+  assert.match(_src, /const PICKER_REFUSAL_MS = 250;/, 'the threshold is named, not inlined');
+  assert.match(_src, /HEURISTIC/, 'and the code admits it is a heuristic rather than implying precision');
+});
+
+test('#1112 the refusal message names the cause and a way out', () => {
+  const m = c.pickerRefusedMessage('saving', 'Downloading a copy instead.');
+  assert.match(m, /would not open the file picker/, 'names the browser as the cause');
+  assert.match(m, /Downloading a copy instead/, 'and what the app did instead');
+  assert.match(m, /Private browsing/, 'and why it might be happening');
+  assert.doesNotMatch(m, /DOMException|Failed to execute/, 'never echoes a raw exception at the user');
+});
+
+test('#1112 every picker routes through the classifier, and Save falls back to the download', () => {
+  // The fallback already existed: `if (hasFSA) {…} else dlOpml()`. Firefox and Safari save fine.
+  // The bug was that the branch is chosen by PRESENCE, so a refused picker in Chromium took the
+  // FSA arm and died there, with a working download three lines away.
+  for (const fn of ['saveAsFile', 'openFile', 'connectWorkspace']) {
+    assert.match(fnBody(_src, fn), /runPicker\(/, `${fn} must classify its picker failure`);
+  }
+  assert.match(fnBody(_src, 'saveAsFile'), /outcome === 'refused'[\s\S]{0,160}dlOpml\(\)/,
+    'a refused save falls back to the download that already works');
+  assert.match(_src, /let fsaOk = hasFSA;/, 'capability is learned, mirroring opfsOk (#1113)');
+  assert.match(fnBody(_src, 'runPicker'), /fsaOk = false/, 'and cleared when a picker is refused');
+});
+
+test('#1112 reconnectWorkspace stops swallowing a denied permission', () => {
+  // Found while mapping this: a bare `catch (_) {}` swallowed EVERY error, and a denied prompt had
+  // no branch at all, so "Reconnect folder" could be clicked forever with no response.
+  // reopenPendingFile -- the single-file twin -- already did it right; this copies it.
+  const rw = fnBody(_src, 'reconnectWorkspace');
+  assert.match(rw, /perm !== 'granted'[\s\S]{0,80}flashHint\(/, 'a denied prompt says so');
+  assert.doesNotMatch(rw, /catch \(_\) \{ \/\* denied/, 'the bare swallow is gone');
+  assert.match(rw, /catch \(_\) \{ flashError\(/, 'and a thrown error is reported');
+});
+
 // ── #1113: the storage signals must match what actually survives a reload ──
 test('#1113 storageAdvice — names the real failure, and only when there is no durable copy', () => {
   // Driven on a real origin BEFORE the fix: the two-tier fallback works. localStorage blocked alone
