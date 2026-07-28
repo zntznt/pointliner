@@ -3603,9 +3603,24 @@ function allSequences(rootNode) { return [DEFAULT_SEQUENCE, ...collectSequences(
 
 // The sequence a keyword belongs to (first match), or null — null also means
 // "this capitalized word is no state at all", which is what gates the badge.
+// #1114: one spelling of a state keyword, for MATCHING only. A sequence declares IN_PROGRESS
+// because a state keyword cannot contain a space (LEAD_WORD_RE stops at the first one, and
+// seqDefString's own advice is "For one multi-word state, join the words"). But a base CELL is
+// free text, and the natural thing to type there is `in progress`. Case was already folded by the
+// role inference; the space-versus-underscore gap was the entire distance between a delivery lead's
+// document and a working Board.
+//
+// This is tolerance, not a constraint: a value matching nothing still falls through to plain text
+// exactly as before, so the base-views-vision 0.5 fence (no validation, no editor gate) is
+// untouched. It is applied at BOTH match sites deliberately - the role inference and the lane
+// mapping. Fixing only the first would light Board up and then bucket every card into "No state",
+// which trades a clear refusal for a view that looks right and is not.
+function normStateKey(s) { return String(s ?? '').trim().toLowerCase().replace(/[_\-\s]+/g, ' '); }
+
 function sequenceForKeyword(keyword, seqs = allSequences()) {
   if (!keyword) return null;
-  for (const sq of seqs) if (sq.states.includes(keyword)) return sq;
+  const k = normStateKey(keyword);
+  for (const sq of seqs) if (sq.states.some(st => normStateKey(st) === k)) return sq;
   return null;
 }
 
@@ -3629,8 +3644,11 @@ function boardLanes(model, groupBy, seqs, lastRow = (model.rows || []).length - 
   const lanes = seq.states.map((kw, i) => ({ kw, done: i >= seq.doneFrom, held: i >= hf && i < seq.doneFrom, rows: [] }));
   const other = { kw: null, done: false, held: false, rows: [] };
   for (let r = 1; r <= lastRow; r++) {
-    const v = String(rows[r]?.[groupBy] || '').trim().toUpperCase();
-    (lanes.find(l => l.kw === v) || other).rows.push(r);
+    // #1114: same normaliser as the role inference and sequenceForKeyword. Matching in only two of
+    // the three places would light Board up and then bucket every card into "No state" - a view
+    // that looks right and is not, which is worse than the honest refusal it replaced.
+    const v = normStateKey(rows[r]?.[groupBy]);
+    (lanes.find(l => normStateKey(l.kw) === v) || other).rows.push(r);
   }
   if (other.rows.length) lanes.push(other);
   return { seq, lanes };
@@ -8993,6 +9011,21 @@ function stateCmds() {
   return out;
 }
 // The / pool: static block commands + the per-sequence state entries.
+// #1114: which row the slash menu pre-selects. Extracted from the menu updater because it is pure
+// sub-logic inside a DOM function, and because a test that re-implements it proves nothing about
+// the app - the first version of this pin did exactly that and survived its own mutation.
+//
+// Two rules, in order: a typed ":value" keeps its exact verb (so Enter applies it), and otherwise
+// an exact state word wins. That second rule exists because blockCmdsPool() splices BLOCK_CMDS
+// before stateCmds() and the checkbox command's id is literally `todo`, so `/TODO` selected a
+// markdown checkbox while `/NEXT`, `/WAITING` and `/DONE` all selected their state.
+function slashActiveIdx(matches, matchWord, hasArg) {
+  if (!matches || !matches.length) return 0;
+  if (hasArg) { const i = matches.findIndex(c => c.id === matchWord); return i >= 0 ? i : 0; }
+  const st = matches.findIndex(c => c.id === 'state:' + String(matchWord || '').toUpperCase());
+  return st >= 0 ? st : 0;
+}
+
 function blockCmdsPool() { return [...BLOCK_CMDS, ...stateCmds()]; }
 
 // Inline inserts — drop a thing AT THE CARET. Triggered by "@".
@@ -10167,7 +10200,7 @@ function inferColRolesFromModel(model, hasFooter, states, cal) {
   if (!model || !model.rows || model.rows.length < 2) return [];
   const ncol = model.aligns ? model.aligns.length : (model.rows[0] || []).length;
   const last = hasFooter ? model.rows.length - 2 : model.rows.length - 1;   // inclusive last data-row index
-  const lc = new Set([...(states || [])].map(s => String(s).toLowerCase()));
+  const lc = new Set([...(states || [])].map(normStateKey));   // #1114: fold case AND space/underscore
   const out = [];
   for (let c = 0; c < ncol; c++) {
     let seen = 0, allState = true, allDate = true;
@@ -10175,7 +10208,7 @@ function inferColRolesFromModel(model, hasFooter, states, cal) {
       const cell = String((model.rows[r] || [])[c] ?? '').trim();
       if (!cell) continue;
       seen++;
-      if (allState && !lc.has(cell.toLowerCase())) allState = false;
+      if (allState && !lc.has(normStateKey(cell))) allState = false;
       if (allDate && parseDueDate(cell, cal) === null) allDate = false;
       if (!allState && !allDate) break;
     }
@@ -11224,7 +11257,11 @@ function mtViewSwitcherHtml(node) {
   const ready = { board: roles.includes('status'), calendar: roles.includes('date') };
   const btn = (k, label) => {
     const dimmed = (k === 'board' || k === 'calendar') && !ready[k];
-    const need = k === 'board' ? 'Mark a column as Status to use Board' : 'Mark a column as Date to use Calendar';
+    // #1114: the tooltip names its own door. The flash on click already said "(Column menu, Show as)";
+    // the dimmed button - the thing a user reads FIRST, and often the only thing they read - did not,
+    // which is how a delivery lead with a column headed "Status" concluded he had already done it.
+    const need = k === 'board' ? 'Mark a column as Status to use Board (Column menu, Show as)'
+                               : 'Mark a column as Date to use Calendar (Column menu, Show as)';
     return `<button type="button" class="mt-view-btn${kind === k ? ' on' : ''}${dimmed ? ' mt-view-btn-dim' : ''}"`
       + ` data-view="${k}" aria-pressed="${kind === k}"${dimmed ? ` aria-disabled="true" title="${need}"` : ''}>${label}</button>`;
   };
@@ -11259,10 +11296,46 @@ function mtRefreshViewSwitcher(node) {
   wireViewButtons(host, node);
 }
 
+// #1114: WHICH half is missing, for the Board refusal. One message used to cover three different
+// situations, and a delivery lead hit the worst of them: he had a column headed "Status", so
+// "Mark a column as Status" read as an instruction he had already followed. He never learned that
+// a column NAME is inert (the role inference reads data rows only) or that his values were not
+// states of any sequence.
+//
+// Pure + Node-testable: takes the header row, the roles, and the known states; returns the reason
+// and the message. `null` means Board can open.
+function boardBlockReason(headerRow, statusIdx, cells, states) {
+  if (statusIdx >= 0) return null;
+  const named = (headerRow || []).findIndex(h => /^(status|state)$/i.test(String(h ?? '').trim()));
+  if (named >= 0) {
+    const vals = [...new Set((cells || []).map(v => String(v ?? '').trim()).filter(Boolean))];
+    const known = new Set([...(states || [])].map(normStateKey));
+    const unknown = vals.filter(v => !known.has(normStateKey(v)));
+    // He is the second case: named it, filled it, and every value is outside every sequence. Name
+    // the values and the in-fence fix - declaring a sequence makes them first-class, and the
+    // matcher folds case and spacing, so `in progress` answers to IN_PROGRESS.
+    if (unknown.length) return { reason: 'unknown-values', samples: unknown.slice(0, 3),
+      msg: `“${headerRow[named]}” holds values that are not states yet: ${unknown.slice(0, 3).map(v => `“${v}”`).join(', ')}. `
+         + `Declare them once, like {seq Flow: TODO IN_PROGRESS | DONE}, then mark the column (Column menu, Show as).` };
+    return { reason: 'named-not-marked',
+      msg: `“${headerRow[named]}” is not marked as a Status column yet. Column menu, Show as, Status - or Alt+R on a cell.` };
+  }
+  return { reason: 'none',
+    msg: 'Mark a column as Status first (Column menu, Show as); its states become the lanes.' };
+}
+
 function mtSetView(node, kind) {
   if (kind === 'board') {
     const gi = (mtColRoles(node) || []).findIndex(r => r === 'status');
-    if (gi < 0) { flashHint('Mark a column as Status first (Column menu, Show as); its states become the lanes.'); return; }
+    if (gi < 0) {
+      // #1114: say which half is missing rather than repeating an instruction the user believes
+      // they followed. The reason is decided by a pure core so it can be pinned per situation.
+      const m = mtModelRead(node), rows = m.rows || [], hdr = rows[0] || [];
+      const nm = hdr.findIndex(h => /^(status|state)$/i.test(String(h ?? '').trim()));
+      const cells = nm >= 0 ? rows.slice(1).map(r => (r || [])[nm]) : [];
+      flashHint(boardBlockReason(hdr, gi, cells, knownStates()).msg);
+      return;
+    }
     node.view = { kind: 'board', groupBy: gi };
   } else if (kind === 'cards') {
     node.view = { kind: 'cards' };
@@ -20201,8 +20274,10 @@ function checkSlash(content, nodeId) {
   // When a ":value" was typed, keep the exact-id verb selected (so Enter applies it)
   // rather than whatever fuzzy-matches the label. matchWord maps start→due; the others
   // (check/alias/template) match their own id.
-  let activeIdx = 0;
-  if (hasArg) { const i = matches.findIndex(c => c.id === matchWord); if (i >= 0) activeIdx = i; }
+  // #1114: the ranking is a pure core (slashActiveIdx) so it can be tested against the real pool.
+  // The checkbox stays one keystroke away: it carries keys ['task','tick'] and the label "To-do",
+  // so /task and /tick still select it directly, and it remains the next row here.
+  const activeIdx = slashActiveIdx(matches, matchWord, hasArg);
   slashState = { nodeId, content, slashOffset, query, rawArg, activeIdx, matches, trigger };
   // LEAN FLOOR: in lean mode the menu is logically open (slashState set → keydown routing + slashApply
   // work) but renders NOTHING — type the command blind, Enter fires it. In guided mode, render + place

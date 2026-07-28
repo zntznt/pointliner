@@ -277,6 +277,7 @@ export function loadCores() {
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','seqDeclParts','ruleDeclParts','makeGrammarRoll','sequenceLint','collectSequences','sequenceForKeyword','keywordIsDone','keywordIsHeld','seqDefString',
+    'normStateKey','boardBlockReason','blockCmdsPool','slashActiveIdx',   // #1114: state matching, the Board refusal, the slash pool
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
     'pruneNoexport','exportExclusionImpact','parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','queryCountIn','rollParts','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
