@@ -19915,6 +19915,79 @@ test('commit hygiene: the workflow reads COMMITS whole, and the BODY narrowly', 
   assert.match(_wfHygiene, /CLAUDE\.md/, "the failure message names the rule's home");
 });
 
+// ── #1115: an estimate number a client can read ──
+test('#1115 estNumFmt — no scientific notation on money, and thousands group', () => {
+  // MEASURED from the consultant's memo: estNumFmt switched to toPrecision(3) at |x| >= 100000, so
+  // `total ≈ 7.00e+5 (6.02e+5 – 8.05e+5)`. His verdict: "cannot go in front of a paying client."
+  // The rest of the app already had this right -- formatNumDisplay(700000, null) is `700,000` with
+  // no configuration at all. The estimate family simply never consulted it.
+  assert.equal(c.estNumFmt(700000), '700,000', 'the exact value from the memo');
+  assert.equal(c.estNumFmt(403000), '403,000');
+  assert.equal(c.estNumFmt(109000), '109,000');
+  assert.equal(c.estNumFmt(99999), '99,999', 'below the old cliff, now grouped too');
+  assert.equal(c.estNumFmt(100000), '100,000', 'AT the old cliff -- this was 1.00e+5');
+  assert.doesNotMatch(c.estNumFmt(700000), /e\+/, 'no exponent reaches a money figure');
+
+  // KEPT DELIBERATELY: the small-number scientific branch, where 1.2e-7 is readable and
+  // 0.00000012 is not.
+  assert.match(c.estNumFmt(0.00000012), /e-/, 'a genuinely tiny number stays scientific');
+});
+
+test('#1115 estNumFmt — the adaptive default keeps its trailing-zero trim', () => {
+  // THE REGRESSION THIS ALMOST SHIPPED WITH. Routing the default through formatNumDisplay's
+  // decimals path turned `5 (4.1 – 5.9)` into `5.00 (4.10 – 5.90)`, because the old code's
+  // `String(+x.toFixed(2))` trimmed trailing zeros and formatNumDisplay does not. Caught by
+  // re-measuring the output, not by the suite.
+  assert.equal(c.estNumFmt(5), '5', 'not 5.00');
+  assert.equal(c.estNumFmt(4.1), '4.1', 'not 4.10');
+  assert.equal(c.estNumFmt(5.9), '5.9');
+  // ...but an EXPLICIT decimals means the author asked for exactly that many, zeros included.
+  assert.equal(c.estNumFmt(5, { decimals: 2 }), '5.00', 'explicit decimals keep their zeros');
+});
+
+test('#1115 estNumFmt — currency and percent, via the format record that already existed', () => {
+  // parseNumFmt(decimals, prefix, suffix) is the SAME record a math pill and a base column carry.
+  // Currency is a prefix, percent is a suffix; no second format model was invented.
+  assert.equal(c.estNumFmt(700000, { decimals: 0, prefix: '£' }), '£700,000');
+  assert.equal(c.estNumFmt(4.7, { suffix: '%' }), '4.7%');
+  assert.equal(c.estNumFmt(1200, { decimals: 2, prefix: '$' }), '$1,200.00', 'matches formatNumDisplay exactly');
+  assert.equal(c.estNumFmt(1200, { decimals: 2, prefix: '$' }), c.formatNumDisplay(1200, { decimals: 2, prefix: '$' }),
+    'the estimate path and the shared path agree, which is the whole point');
+});
+
+test('#1115 distHeadline — one mean (p5 – p95) line, shared by every surface', () => {
+  // Eight call sites used to build this string by hand, which is why threading a format through
+  // them was worth doing once. The pill, the aria-label, the re-sample announcement, the roll log,
+  // the dialog preview and the export all read this.
+  const sm = { mean: 700000, p5: 602000, p95: 805000 };
+  assert.equal(c.distHeadline(sm), '700,000 (602,000 – 805,000)');
+  assert.equal(c.distHeadline(sm, { decimals: 0, prefix: '£' }), '£700,000 (£602,000 – £805,000)');
+  assert.equal(c.distHeadline(null), null, 'no summary, no headline');
+});
+
+test('#1115 the format reaches the pill AND the export, not just the pill', () => {
+  // Driven: with a £ format the pill read £702,141 while the export still read 702,141 -- one
+  // value, two displays, which is the bug this change exists to remove. Both arms now pass it.
+  assert.match(_src, /formatDist\(samples, e\.fmt \|\| null\)/, 'the est export arm carries the format');
+  assert.match(_src, /formatDist\(samples, dRec\.fmt \|\| null\)/, 'and so does the dist-variable arm');
+  assert.match(fnBody(_src, 'renderEstPill'), /const fmt = e\.fmt \|\| null;/, 'the pill reads it off the record');
+  assert.match(_src, /if \(rec\) \{ const f = parseNumFmt\(v\.decimals, v\.prefix, v\.suffix\); if \(f\) rec\.fmt = f; \}/,
+    'the dialog writes it with the SHARED parser, lean-or-absent');
+});
+
+test('#1115 searching the catalogue for "format" finds the pills that own one', () => {
+  // The persona searched for "format" and got NO MATCHES. That was correct behaviour: there is no
+  // standalone format command -- the format is a property of a math pill and (now) an estimate.
+  // So the fix is not a new command, it is making those two answer to the word people type.
+  const pool = c.builderCmdPool(null);
+  assert.ok(pool.length > 0, 'the pool must be non-empty or every assertion below is vacuous');
+  for (const q of ['format', 'currency', 'decimals', 'thousands']) {
+    const ids = c.builderFilterCmds(pool, q, '@').map(x => x.id);
+    assert.ok(ids.includes('est'), `searching ${q} must find the estimate pill`);
+    assert.ok(ids.includes('math'), `searching ${q} must find the math pill`);
+  }
+});
+
 // ── #1112: a refused picker is not a user cancelling ──
 test('#1112 pickerOutcome — a refusal and a cancel are told apart', () => {
   // MEASURED in Chromium, not assumed: a refused showSaveFilePicker rejects with AbortError in

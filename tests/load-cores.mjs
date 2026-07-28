@@ -168,6 +168,7 @@ export function loadCores() {
     'searchBlob',           // doc-cache: the text-term haystack
     'storageAdvice',        // #1113: which storage warning applies, and is there a durable copy
     'pickerOutcome','pickerRefusedMessage',   // #1112: refused picker vs user cancel
+    'estNumFmt','distHeadline',   // #1115: the estimate number, and the shared mean (p5 – p95) line
     'isComputedNode',       // #1109: does a point's render depend on document-wide state
     'docCaches', 'makeDocCache', 'regDocCache',   // the DOC_CACHES registry
     'evalMath', 'formatMathResult', 'formatEpochDays', 'makeMathResult',
