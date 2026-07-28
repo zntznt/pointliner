@@ -974,3 +974,50 @@ direction. The span cap is what converts an unknown future class from silent to 
 
 **Pattern for #1133:** the strong guards all assert their collection is non-empty before iterating.
 This adds a sibling rule for derived inputs: **assert the input has not silently shrunk.**
+
+### UXP-255 ✓ The storage signals said "safe" while the only copy was in memory 🔴 [persistence] (RESOLVED 2026-07-27)
+
+**P4.** Filed as #1113 after three personas reloaded and one lost his entire first pass of literature
+notes while two got everything back. The issue was deliberately filed as a question, because the
+conditional was unknown. It is now measured.
+
+**The conditional, driven on a real origin.** The two-tier fallback WORKS: localStorage blocked alone
+survives (OPFS covers it), OPFS blocked alone survives (localStorage covers it). **Work is lost only
+when both sinks fail** - the private-window / restricted-profile case, which is exactly the
+environment of the persona who lost work, since he is also the one whose browser refused the file
+picker (#1112).
+
+**A correction to the first measurement.** The initial probe ran over `file://` and reported losses
+in three conditions. That was a harness artifact: `file://` is an opaque origin where OPFS does not
+work at all, so localStorage was the only sink in every row. Re-run over `http://localhost`, the
+table came out completely different. Worth recording, because `file://` is how a single-file offline
+app is most often opened, and in that mode there is genuinely no OPFS redundancy.
+
+**What actually lied.** `hasOPFS` is a PRESENCE check - `navigator.storage && navigator.storage.getDirectory`
+- and the method exists in a private window and on `file://` where calling it throws. So in the
+losing state:
+
+1. `unsavedToDisk()` read `autosaveDisabled && !hasOPFS` and returned **false**, so the dirty dot
+   stayed clean and the `beforeunload` guard never prompted. Both of the app's trust signals said the
+   work was safe.
+2. The warning said *"This document is **too large** for browser auto-backup"* when the real cause
+   was storage being blocked. A user with twenty notes reads that as irrelevant and dismisses it. The
+   catch was `catch(e)` on any error and never inspected `e`.
+
+**Fix.** A pure `storageAdvice(...)` core decides which warning applies and whether a durable copy
+exists, and `opfsOk` learns capability from a failed WRITE rather than inferring it from an API name.
+A `QuotaExceededError` keeps the size wording; anything else names blocked storage. Every consumer
+(`unsavedToDisk`, `scheduleAutosave`, both banners) reads capability now.
+
+**A false alarm I introduced and removed:** clearing `opfsOk` in the READ path too. A first boot has
+no `autosave.json`, `getFileHandle` throws `NotFoundError`, and every fresh start then reported
+"unsaved". Caught by re-running the probe, not by the suite. The write path is the honest test.
+
+**Driven, after:** every row's signals now match reality. Lost work reports `unsavedToDisk=true` and
+says "blocking storage"; both surviving fallback rows stay quiet. Three mutations guard-proofed:
+reverting `unsavedToDisk` to presence, reverting the message to the size wording, and re-introducing
+the read-path false alarm each fail a pin.
+
+**Not addressed here (real, separate):** the boot restore path swallows a failed read identically to
+"no autosave" and falls through to the welcome document, and `reconcileOpfsOnBoot`'s
+`userTypedSinceBoot` is a one-way trapdoor. Both are filed rather than bundled.

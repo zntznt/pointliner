@@ -30270,7 +30270,7 @@ function unsavedToDisk() {
   if (!dirty) return false;
   if (diskTargetOpen()) return true;                        // a named target with unwritten edits
   if (loadedFromEmbed) return true;                         // a shared snapshot: reload discards edits (UXP-102)
-  if (autosaveDisabled && !hasOPFS) return true;            // browser auto-backup failed, only memory holds it
+  if (autosaveDisabled && !opfsOk) return true;             // #1113: capability, not presence -- browser auto-backup failed, only memory holds it
   return false;                                             // pure default mode: autosave has it, not a loss risk
 }
 function updateDirtyDot() {
@@ -39027,6 +39027,12 @@ let autosaveDisabled = false; // set once an outline proves too large for localS
 // copy a beat later via adoptDoc. The async main-thread API (createWritable/getFile) is
 // used — no Web Worker needed since autosave is debounced, not per-keystroke-sync.
 const hasOPFS = !!(navigator.storage && navigator.storage.getDirectory);
+// #1113: hasOPFS is PRESENCE. `getDirectory` exists in a private window and on file://,
+// where calling it throws, so presence is not capability. opfsOk starts optimistic and is
+// cleared the first time a real OPFS call fails; everything that asks "is there a durable
+// copy" must read THIS, never hasOPFS.
+let opfsOk = hasOPFS;
+let _lastLsQuota = false;   // #1113: was the last localStorage failure a quota one, or a block?
 const OPFS_AUTOSAVE_NAME = 'autosave.json';
 let _opfsWriting = false, _opfsPending = null;   // coalesce: one write in flight, keep only the latest pending payload
 // Gate: until the boot reconcile has read OPFS, autosave is held entirely, or the
@@ -39049,12 +39055,16 @@ async function writeOpfsAutosave(payload) {
     await w.write(payload); await w.close();
     return true;
   } catch (_) {
+    opfsOk = false;   // #1113: capability learned by experience -- this sink does not work here
     // #748: OPFS is the durable primary, and writeLocalAutosave suppresses its own quota warning
     // whenever hasOPFS (trusting this sink). If OPFS ALSO fails, there is no folder file to land
     // on, AND the localStorage buffer is unavailable, there is NO durable copy left — surface the
     // hard warning instead of failing silently. localStorage runs synchronously earlier in the
     // same autosave tick, so autosaveDisabled already reflects its outcome; showStorageWarn dedups.
-    if (!workspaceFile && autosaveDisabled) showStorageWarn('hard', 'This document is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
+    if (autosaveDisabled) {
+      const advice = storageAdvice({ lsFailed: true, quota: _lastLsQuota, opfsOk: false, workspaceFile: !!workspaceFile });
+      if (advice) showStorageWarn(advice.level, advice.message);
+    }
     return false;
   }
   finally {
@@ -39069,7 +39079,10 @@ async function readOpfsAutosave() {
     const fh = await opfsHandle(false);
     const f = await fh.getFile();
     return { text: await f.text(), lastModified: f.lastModified || 0 };
-  } catch (_) { return null; }   // missing file → null
+  } catch (_) { return null; }   // missing file → null. #1113: deliberately does NOT clear opfsOk --
+  // a first boot has no autosave.json yet and getFileHandle throws NotFoundError, which is not a
+  // capability failure. Clearing it here raised a false "unsaved" alarm on every fresh start.
+  // The WRITE path is the honest capability test, and it is where opfsOk is cleared.
 }
 // Most browsers cap localStorage near 5MB. Warn before we hit the wall so the
 // user can save to a real file rather than discovering a silent autosave loss.
@@ -39261,7 +39274,7 @@ function scheduleAutosave() {
   // localStorage crash-buffer. Folder-backed docs (brief #4) ALSO write to the user's
   // disk. Only bail when there is NO durable store at all: localStorage disabled AND no
   // OPFS AND no folder. With OPFS present, a too-large tree still autosaves to OPFS.
-  if (autosaveDisabled && !hasOPFS && !workspaceFile) return;
+  if (autosaveDisabled && !opfsOk && !workspaceFile) return;   // #1113: capability, not presence
   if (_showingExamples) return;   // UXP-126: the pristine first-run Examples doc never persists as the user's doc
   // Boot race guard: until the OPFS boot reconcile has run, do NOT autosave at all — a
   // fresh-boot empty doc would clobber the durable OPFS copy before we can restore it.
@@ -39382,6 +39395,39 @@ let _autosaveDeferred = false;   // an autosave was requested before reconcile f
 // localStorage cap is no longer data-loss — OPFS still holds the work — so the warning
 // is softened (and skipped entirely when OPFS is present). Takes a prebuilt payload to
 // avoid re-serializing the tree (scheduleAutosave builds it once for all three sinks).
+// #1113: which storage warning applies, and is there a durable copy at all. Pure + DOM-free.
+//
+// Driven, on a real origin: the two-tier fallback WORKS. localStorage blocked alone survives (OPFS
+// covers it); OPFS blocked alone survives (localStorage covers it). Work is lost only when BOTH
+// fail, which is the private-window / restricted-profile case -- and it is the case the persona in
+// #1113 hit, the same one whose browser refused the file picker in #1112.
+//
+// Two things lied in that state. The message blamed SIZE ("This document is too large") when the
+// real cause was storage being blocked, so a user with twenty notes reads it as irrelevant and
+// dismisses it. And unsavedToDisk() consulted `hasOPFS`, which is a PRESENCE check
+// (`navigator.storage && navigator.storage.getDirectory`) -- true in a private window and on
+// file://, where getDirectory() throws. So the dirty dot and the beforeunload guard both reported
+// "safe" while the only copy was in memory.
+//
+// `quota` distinguishes a real QuotaExceededError from any other throw (SecurityError, a blocked
+// profile). Returns null when nothing is wrong.
+function storageAdvice({ lsFailed = false, quota = false, opfsOk = false, workspaceFile = false, oversize = false } = {}) {
+  if (workspaceFile) return null;                       // the folder file is the durable copy
+  if (lsFailed && !opfsOk) {
+    return quota
+      ? { level: 'hard', durable: false, why: 'quota',
+          message: 'This document is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)' }
+      : { level: 'hard', durable: false, why: 'blocked',
+          message: 'This browser is blocking storage, so your work is only in memory and will be lost if you reload. Save to a file to keep it. (Private browsing and blocked-cookie settings do this.)' };
+  }
+  if (lsFailed) return null;                            // OPFS is covering it; no loss risk
+  if (oversize && !opfsOk) {
+    return { level: 'soft', durable: true, why: 'nearing-quota',
+             message: 'This document is getting large; auto-backup may stop soon. Save it to a file to be safe.' };
+  }
+  return null;
+}
+
 function writeLocalAutosave(payload) {
   if (payload == null) payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
   try {
@@ -39425,15 +39471,20 @@ function writeLocalAutosave(payload) {
       }
     }
     localStorage.setItem(AUTOSAVE_KEY, payload);
-    if (!hasOPFS && payload.length > STORAGE_SOFT_LIMIT) {
+    if (!opfsOk && payload.length > STORAGE_SOFT_LIMIT) {   // #1113: capability, not presence
       showStorageWarn('soft', 'This document is getting large; auto-backup may stop soon. Save it to a file to be safe.');
     } else if (storageWarnState) {
       storageWarnState = null; hideStorageWarn(); // back under the limit (or OPFS covers it)
     }
   } catch(e) {
-    autosaveDisabled = true; // localStorage is full; stop thrashing it every keystroke
-    // Only a real loss risk when there's no OPFS durable store to fall back on.
-    if (!hasOPFS) showStorageWarn('hard', 'This document is too large for browser auto-backup. Your work is safe in memory, but save to a file to keep it. (Auto-backup paused.)');
+    autosaveDisabled = true; // this sink is unusable (full, or blocked); stop thrashing it
+    // #1113: a QuotaExceededError and a SecurityError are different failures with different
+    // remedies, and this catch used to report both as "too large". Only a real loss risk when no
+    // other durable sink exists -- and that question is answered by capability, not presence.
+    const quota = !!(e && (e.name === 'QuotaExceededError' || e.code === 22 || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'));
+    _lastLsQuota = quota;
+    const advice = storageAdvice({ lsFailed: true, quota, opfsOk, workspaceFile: !!workspaceFile });
+    if (advice) showStorageWarn(advice.level, advice.message);
   }
 }
 
