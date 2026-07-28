@@ -4535,6 +4535,44 @@ import assert2 from 'node:assert/strict';
     }
   });
 
+  ltest('#1139 clampPositions preserves SHAPE - one scale for both axes, then centre', () => {
+    // It divided spanX and spanY separately, so the two axes were stretched by different factors
+    // while the comment above it claimed "preserving the layout's shape (a uniform-per-axis fit)".
+    // MEASURED on the old code: three points 200 wide and 40 tall (5:1, near-horizontal) came out
+    // as 720 x 520 - a 1.38:1 corner-to-corner diagonal. The shape was not preserved, it was fitted.
+    const wide = new Map([['a', { x: 100, y: 100 }], ['b', { x: 200, y: 120 }], ['c', { x: 300, y: 140 }]]);
+    const out = c2.clampPositions(wide, 800, 600, 40);
+    const pts = [...out.values()];
+    const spanX = Math.max(...pts.map(p => p.x)) - Math.min(...pts.map(p => p.x));
+    const spanY = Math.max(...pts.map(p => p.y)) - Math.min(...pts.map(p => p.y));
+    assert2.ok(Math.abs(spanX / spanY - 5) < 0.01, `the 5:1 input must stay 5:1, got ${(spanX / spanY).toFixed(2)}:1`);
+    // and it is CENTRED in the leftover space, not pushed against a margin
+    const midY = (Math.max(...pts.map(p => p.y)) + Math.min(...pts.map(p => p.y))) / 2;
+    assert2.ok(Math.abs(midY - 300) < 0.5, `the short axis centres (got ${midY.toFixed(1)}, canvas mid 300)`);
+  });
+
+  ltest('#1139 a node is no longer GUARANTEED on all four edges of the canvas', () => {
+    // The old fit mapped min->margin and max->(dim - margin) on BOTH axes, so with few nodes the
+    // extremes were always pinned to the corners. That is the researcher's 7-point graph "in one
+    // corner with two nodes stranded": one outlier pair defined the box and the main component was
+    // squeezed into what was left. Measured: 4 of 7 nodes on an edge before, 2 of 7 after.
+    const model = {
+      nodes: ['a', 'b', 'c', 'd', 'e', 'y', 'z'].map(id => ({ id, deg: 2, broken: false })),
+      edges: [['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'e'], ['a', 'c'], ['y', 'z']].map(([a, b]) => ({ a, b })),
+    };
+    const W = 800, H = 600, M = 40;
+    const pos = c2.graphLayout(model, { width: W, height: H, margin: M, iterations: 320 });
+    const pts = nonEmpty([...pos.values()], 'the laid-out nodes');
+    const eps = 0.5;
+    const onEdge = pts.filter(p => Math.abs(p.x - M) < eps || Math.abs(p.x - (W - M)) < eps
+                                || Math.abs(p.y - M) < eps || Math.abs(p.y - (H - M)) < eps).length;
+    assert2.ok(onEdge <= 2, `at most one axis may touch its bounds (got ${onEdge} of ${pts.length} on an edge)`);
+    // the giveaway of the old transform: BOTH axes filling their box exactly
+    const spanY = Math.max(...pts.map(p => p.y)) - Math.min(...pts.map(p => p.y));
+    assert2.ok(spanY < (H - 2 * M) * 0.9,
+      `a wide layout must not be stretched to fill the short axis too (filled ${(spanY / (H - 2 * M) * 100).toFixed(0)}%)`);
+  });
+
   ltest('graphLayout — a single node centers; empty model yields an empty map', () => {
     const one = c2.graphModel({ outgoing: { a: [{ target: 'a' }] }, backlinks: {}, broken: [] }, titleOf);
     // a→a self-loop drops the edge but 'a' still has no partner → no nodes participate

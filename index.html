@@ -24062,16 +24062,32 @@ function tapFloorCandidates(cssText) {
   return { tappable: [...tappable].sort(), covered, uncovered };
 }
 
-// Rescale a position map to fit [margin, dim-margin] on each axis, preserving the
-// layout's shape (a uniform-per-axis fit). Pure helper for graphLayout.
+// Fit a position map inside [margin, dim-margin], PRESERVING the layout's shape: one scale for
+// both axes, then centre the result in whatever space is left over. Pure helper for graphLayout.
+// (#1139: the previous comment claimed this and the code did not do it.)
 function clampPositions(pos, width, height, margin) {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const p of pos.values()) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
   const spanX = maxX - minX || 1, spanY = maxY - minY || 1;
   const iw = Math.max(width - margin * 2, 1), ih = Math.max(height - margin * 2, 1);
+  // #1139: ONE scale for both axes, then centre. This divided spanX and spanY separately, so the
+  // two axes were stretched by different factors and the comment above was simply false - the
+  // shape was not preserved, it was fitted. MEASURED: three points 200 wide and 40 tall (a 5:1
+  // near-horizontal run) came out as a 1.38:1 corner-to-corner diagonal.
+  //
+  // Two reports, one transform. A five-point chain settles into a roughly straight line at some
+  // angle; the independent fit then forced its bounding box to fill the canvas, which is why the
+  // novelist saw "a perfect diagonal from corner to corner" - measured at r^2 = 1.000, endpoints
+  // exactly on opposite corners. And because `min` mapped to `margin` and `max` to `dim - margin`
+  // on BOTH axes, a node was GUARANTEED on all four edges, which is the researcher's 7-point graph
+  // "in one corner with two nodes stranded": one outlier pair defined the box and the main
+  // component was squeezed into what was left.
+  const scale = Math.min(iw / spanX, ih / spanY);
+  const offX = margin + (iw - spanX * scale) / 2;
+  const offY = margin + (ih - spanY * scale) / 2;
   for (const p of pos.values()) {
-    p.x = margin + (p.x - minX) / spanX * iw;
-    p.y = margin + (p.y - minY) / spanY * ih;
+    p.x = offX + (p.x - minX) * scale;
+    p.y = offY + (p.y - minY) * scale;
   }
   return pos;
 }
