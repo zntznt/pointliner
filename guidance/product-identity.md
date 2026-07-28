@@ -70,15 +70,25 @@ accidental):
 - **People who want their notes in the cloud by default.** The filesystem is storage;
   the user's own sync choice is sync.
 - **WYSIWYG-first writers.** The text is markdown-shaped plain text and proud of it.
-- **Vaults at graph-database scale.** This stays a "not for", but **the reason changed and the
-  old one should not be quoted**: it used to cite a measured `localStorage` wall at ~17k points.
-  OPFS is now the durable primary, and a **100k-point / 26 MB document was measured autosaving,
-  surviving a reload intact, and still typing at 5.8 ms** (`performance.md`, "Past the
-  `localStorage` wall") — the very size this line used to name as out of reach. So the boundary
-  is a **product** judgment, not a technical wall: past roughly this scale the thing people want
-  is a queryable graph database, and building toward that would trade away the scratchpad
-  (§2c) and the single-file model. What genuinely degrades first is search latency, and it
-  degrades gradually rather than cutting anyone off.
+- **Vault-keepers.** The everything-store — capture it all, keep it forever, mine it later — is
+  the second-brain model §2c rejects on its own terms. Out of scope as a *use case*, at any size.
+  **This is not a performance statement and must never be quoted as one.** The exclusion held when
+  the app could hold 17k points and holds identically now that it is measured working far past
+  that; if the app got ten times faster tomorrow, this line would not move. Performance is pursued
+  on its own merits, not as a boundary marker (see below).
+
+**Performance is not one of these exclusions** (owner, 2026-07-28). None of the four lines above
+is a capacity limit, and no measured ceiling is a reason to stop pushing. The standing position:
+**we want the app to perform well, and that means pushing the boundary, which is what has earned
+the improvements.** The record backs it — measuring is how the tag-inheritance pass made search
+faster than it had ever been, how `toOpml` went 72 ms to 32 ms, how structural edits came down ~3x,
+and how one "obvious" optimisation was killed on the spot (`structuredClone` measured **5x slower**
+than `JSON.stringify`). Measure first, then push; see `performance.md`.
+
+A ceiling found there is a **work item**, never a justification for a scope line. The failure mode
+this note exists to prevent is the one that already happened once: `performance.md` said ~17k
+points and this document quoted it as a boundary, so a storage number was doing the work of a
+product decision, and it stayed there long after the storage number stopped being true.
 
 ## 2c. Not a second brain: the scratchpad test (owner, 2026-07-20)
 

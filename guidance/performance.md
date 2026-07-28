@@ -1,9 +1,20 @@
 # Pointliner — Performance baseline
 
-**Measured:** 2026-07-21 · **Build:** `main` @ `a631c2c` · **Machines:** three (see below).
+**Measured:** 2026-07-21 (storage section re-measured 2026-07-28) · **Build:** `main` @ `a631c2c`
+· **Machines:** three (see below).
 **Method:** synthetic trees of N nodes driven through the live code paths; times in ms.
 Re-run harness at the bottom; re-measure and update the date/commit when the numbers
 move materially.
+
+> **A number in this document is a work item, never a scope line.** Ceilings here say what to
+> optimise next; they do **not** define who the product is for, and `product-identity.md`'s
+> exclusions do not rest on any of them. This has been got wrong once, in the direction that
+> matters: the old "~17k nodes" storage figure was quoted in the identity doc as a boundary, so a
+> browser-policy cap stood in for a product decision and outlived the number by months. The
+> standing position (owner, 2026-07-28) is that **performance gets pushed on its own merits** —
+> which is how search became faster than it has ever been, `toOpml` went 72 ms to 32 ms, and one
+> confident optimisation was killed by measuring it (`structuredClone`, 5x slower than
+> `JSON.stringify`).
 
 ### The two reference machines
 
