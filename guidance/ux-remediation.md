@@ -1062,3 +1062,45 @@ After: every entry point names the cause, and Save **actually downloads** rather
 apologising. Three mutations guard-proofed - and the first mutation initially reported "0 failing"
 because a shell-escaping bug meant it never applied. The harness now asserts the target was found
 before trusting the result, which is the same vacuity class this register keeps recording.
+
+### UXP-257 ✓ An estimate rendered `7.00e+5`, which cannot go in front of a client 🟡 [estimates] (RESOLVED 2026-07-28)
+
+**P4 + P2.** Filed as #1115. The consulting persona named exactly two things standing between the app
+and replacing his spreadsheet: *"Fix the stale downstream totals and give me £ and thousands, and this
+replaces the spreadsheet for every memo I write."* UXP-251 fixed the first; this is the second.
+Everything upstream had already won him over, on the uncertainty model itself: *"That is the correct
+answer and almost nobody ships it."*
+
+**Both a coverage gap and a discoverability gap, in different places.**
+
+*Coverage.* `estNumFmt` was a standalone formatter taking one argument. It switched to
+`toPrecision(3)` at `|x| >= 100000` and never grouped thousands, so one headline could read
+`86500 (67150 – 1.06e+5)` - two ungrouped numbers and a scientific one, in the same line. The rest of
+the app already had this right: `formatNumDisplay(700000, null)` is `700,000` with **no configuration
+at all**. The estimate family was the one number sink that never consulted it.
+
+*Discoverability.* He searched the catalogue for "format" and got no matches. That was **correct
+behaviour** - there is no standalone format command, because the format is a property of a pill. The
+fix is not a new command; it is making the two pills that own one answer to the word people type.
+
+**Fix.** `estNumFmt(x, fmt)` routes through the shared `formatNumDisplay` and accepts the same
+`{decimals, prefix, suffix}` record `parseNumFmt` already produces - currency is a prefix, percent is
+a suffix, no second format model invented. The estimate dialog gains the same three fields the math
+dialog has. `distHeadline(sm, fmt)` collapses eight hand-built `mean (p5 – p95)` strings into one, so
+the format threads once rather than eight times. `format`/`currency`/`decimals`/`thousands`/`percent`
+join the `est` and `math` command keys.
+
+**Two things caught by re-measuring rather than by the suite:**
+1. Routing the *default* through `formatNumDisplay`'s decimals path lost the trailing-zero trim, so
+   `5 (4.1 – 5.9)` became `5.00 (4.10 – 5.90)`. The old `String(+x.toFixed(2))` was doing real work.
+2. The export still dropped the format, so a memo showed `£702,141` in the pill and `702,141` in the
+   exported copy - one value, two displays, which is the bug this change exists to remove.
+
+**Driven:** pill, aria-label, export and OPML round-trip all agree, with and without a format. Four
+mutations guard-proofed, each with its target asserted present first, after a shell-escaping bug in
+the #1112 harness silently made one mutation a no-op.
+
+**Not addressed:** `chanceunder(...)` still renders a bare `4.7`. It is a *math* pill, so a `%`
+suffix is settable today and now findable - but nothing makes it the default. The reducers do return
+a percentage by contract, so a default is defensible; it also changes existing documents. Filed
+rather than decided here.

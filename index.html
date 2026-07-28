@@ -8995,9 +8995,9 @@ const INSERT_CMDS = [
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
   // Compute — live numbers and values
-  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
+  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation','format','currency','decimals','thousands','percent'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. The operator is :=, so type {r := 5}. Reference it {name} anywhere.', ex:'{r := 5} · {beast := dragon | wyrm}', section:'Compute' },
-  { id:'est',      icon:'≈',  fa:'fa-solid fa-wave-square',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess'], label:'Estimate / uncertain', desc:'An uncertain value: a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample. Type the range forms directly; the sum and avg roll-ups are built here in the dialog.', ex:'{5 to 10} · {normal(8,2)} · {uniform(1,6)}', section:'Compute' },
+  { id:'est',      icon:'≈',  fa:'fa-solid fa-wave-square',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess','format','currency','decimals','thousands','percent'], label:'Estimate / uncertain', desc:'An uncertain value: a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample. Type the range forms directly; the sum and avg roll-ups are built here in the dialog.', ex:'{5 to 10} · {normal(8,2)} · {uniform(1,6)}', section:'Compute' },
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
   { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', keys:['tension','segment','pie','timer'], label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
@@ -24914,9 +24914,9 @@ function varDistDraw(rec, n = EST_N, vars = null) {
 // "mean (p5 – p95)" for a distribution variable, or null when it will not sample. The SAME
 // headline an estimate pill shows, so one thing has one display (P1) across the pill, the
 // reference and the variable panel.
-function varDistHeadline(rec, vars = null) {
+function varDistHeadline(rec, vars = null, fmt = null) {   // #1115: fmt threads to the shared headline
   const sm = distSummary(varDistDraw(rec, EST_N, vars) || []);
-  return sm ? `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})` : null;
+  return distHeadline(sm, fmt);
 }
 
 // Promotion is one of the two places a {roll:} resolves (the other is rerollGrammar), and it is
@@ -26715,18 +26715,47 @@ function sparkline(samples, buckets = 20) {
 
 // Shared number formatter (concise, finite-safe) so the pill, preview and export
 // agree on how a mean/percentile reads.
-function estNumFmt(x) {
+// #1115: an estimate's number, ready to put in front of a client.
+//
+// This used to switch to toPrecision(3) at |x| >= 100000, so a costing memo read
+// `total ≈ 7.00e+5 (6.02e+5 – 8.05e+5)`. The consultant who hit it: "cannot go in front of a paying
+// client." It also never grouped thousands, so one line could read `86500 (67150 – 1.06e+5)` --
+// two ungrouped numbers and a scientific one, in the same headline.
+//
+// The rest of the app already had this right. formatNumDisplay(700000, null) is `700,000` with no
+// configuration at all; the estimate family simply never consulted it. So this now routes through
+// that shared formatter, which also brings the `fmt` record ({decimals, prefix, suffix}) the math
+// pill and base columns already use -- `£` is a prefix, `%` is a suffix, nothing new invented.
+//
+// Kept deliberately: the SMALL-number scientific branch (|x| < 0.001), where 1.2e-7 is readable and
+// 0.00000012 is not; and the adaptive default decimals (2 below 10, 1 below 1000, else 0), which is
+// what makes `5 (4.1 – 5.9)` read well. An explicit fmt.decimals overrides that.
+function estNumFmt(x, fmt) {
   if (!Number.isFinite(x)) return x > 0 ? '∞' : x < 0 ? '-∞' : 'NaN';
   const a = Math.abs(x);
-  if (a !== 0 && (a < 0.001 || a >= 100000)) return x.toPrecision(3);
-  return String(+x.toFixed(a < 10 ? 2 : a < 1000 ? 1 : 0));
+  if (a !== 0 && a < 0.001) return (fmt?.prefix || '') + x.toPrecision(3) + (fmt?.suffix || '');
+  // An explicit decimals means the author asked for exactly that many, trailing zeros included --
+  // that is what a money column wants. Hand it straight to the shared formatter.
+  if (fmt && Number.isInteger(fmt.decimals) && fmt.decimals >= 0) return formatNumDisplay(x, fmt);
+  // Otherwise keep the adaptive default AND its trailing-zero trim: `String(+x.toFixed(2))` is what
+  // makes a small estimate read `5 (4.1 – 5.9)` rather than `5.00 (4.10 – 5.90)`. Routing this
+  // through formatNumDisplay's decimals path lost the trim -- caught by re-measuring, not by the
+  // suite. Group and affix it here instead.
+  const trimmed = String(+x.toFixed(a < 10 ? 2 : a < 1000 ? 1 : 0));
+  return (fmt?.prefix || '') + groupThousands(trimmed) + (fmt?.suffix || '');
+}
+
+// The `mean (p5 – p95)` headline, in ONE place. Eight call sites used to build this string by hand,
+// which is why threading a format through them was worth doing once rather than eight times.
+function distHeadline(sm, fmt) {
+  return sm ? `${estNumFmt(sm.mean, fmt)} (${estNumFmt(sm.p5, fmt)} – ${estNumFmt(sm.p95, fmt)})` : null;
 }
 
 // "mean (p5 – p95) ▁▂▄▆█…" — the frozen headline display. Pure + export-safe.
-function formatDist(samples) {
+function formatDist(samples, fmt) {
   const sm = distSummary(samples);
   if (!sm) return '#ERR';
-  return `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)}) ${sparkline(samples, 11)}`;
+  return `${distHeadline(sm, fmt)} ${sparkline(samples, 11)}`;
 }
 
 // Sniff a {…} body that should promote to an estimate pill: an uncertain
@@ -26781,6 +26810,7 @@ function renderEstPill(key, e) {
   const vmap = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap || globalVarMap;
   const samples = sampleUncertain(e.expr, EST_N, e.seed, cookieNode, vmap);
   const sm = samples && distSummary(samples);
+  const fmt = e.fmt || null;   // #1115: same {decimals, prefix, suffix} record a math pill carries
   if (!sm) {
     return `<span class="est-pill est-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Invalid expression. Click to edit"`
       + ` aria-label="Estimate ${escQ(e.expr)} shows #ERR. Click to edit">`
@@ -26790,7 +26820,7 @@ function renderEstPill(key, e) {
       + `<span class="est-edit" role="button" tabindex="-1" aria-label="Edit estimate" title="Edit estimate"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
-  const headline = `${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})`;
+  const headline = distHeadline(sm, fmt);
   return `<span class="est-pill" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Uncertain estimate. Click to re-sample"`
     + ` aria-label="Estimate ${escQ(e.expr)}: mean ${escQ(headline)}. Click to re-sample">`
     + `<span class="est-ico" aria-hidden="true"><i class="fa-solid fa-wave-square"></i></span>`
@@ -26811,6 +26841,8 @@ const EST_CHIPS = [
 ];
 
 function openEstimateDialog({ title, submitLabel, expr = '', existing = null, node = null, onResult }) {
+  // #1115: the format of the estimate being edited, so the dialog opens showing what is set.
+  const curFmt = (existing && node?.est?.find(x => x.key === existing)?.fmt) || null;
   const dlgVars = collectVars();   // SR-7: preview/validate/build against the doc's declared variables
   openInsertDialog({
     icon: { fa:'fa-solid fa-wave-square', fb:'≈' },
@@ -26832,10 +26864,37 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
               + `<span class="est-preview-spark">${escHtml(sparkline(samples, 16))}</span></span>`;
           } finally { cookieNode = save; }
         } },
+      // #1115: the same three fields the math pill and base columns already use, verbatim, so a
+      // costing memo can read £700,000 instead of 7.00e+5. Deliberately NOT a new format model --
+      // parseNumFmt gives the identical {decimals, prefix, suffix} record, currency is a prefix and
+      // a percent is a suffix. The estimate family was simply the one number sink that never had a
+      // door onto it.
+      {
+        key: 'decimals',
+        label: 'Decimal places',
+        value: (curFmt && Number.isInteger(curFmt.decimals)) ? String(curFmt.decimals) : '',
+        placeholder: 'auto (e.g. 2 for money)',
+        hint: 'How many digits after the point. Blank rounds automatically; big numbers always group thousands.',
+      },
+      {
+        key: 'prefix',
+        label: 'Prefix',
+        value: (curFmt && curFmt.prefix) || '',
+        placeholder: 'e.g. £',
+      },
+      {
+        key: 'suffix',
+        label: 'Suffix',
+        value: (curFmt && curFmt.suffix) || '',
+        placeholder: 'e.g. kg or %',
+      },
     ],
     validate: v => !!(v.expr && parseUncertain(v.expr, dlgVars)),
     onSubmit: v => {
       const rec = makeEstRoll(v.expr, dlgVars);
+      // #1115: attach the format, using the SAME parser the math dialog uses. A lean record or
+      // nothing at all, so an ordinary estimate carries no fmt and round-trips unchanged.
+      if (rec) { const f = parseNumFmt(v.decimals, v.prefix, v.suffix); if (f) rec.fmt = f; }
       if (!rec) return;
       if (existing) rec.key = existing;
       onResult(rec);
@@ -27014,6 +27073,7 @@ function renderMathPill(key, m) {
 function varKey() { return 'v' + Math.random().toString(36).slice(2, 9); }
 
 function renderVarPill(key, v) {
+  const fmt = (v && v.fmt) || null;   // #1115: a dist variable carries the same fmt record a math pill does
   if (!v) return `<span class="var-pill var-bad" data-key="${escQ(key)}" aria-label="Variable (missing data)">$ ?</span>`;
   // Random pick declaration: shows the FROZEN rolled value (never re-expanded at
   // render — the engine runs only at declaration/re-roll). Generative-pill
@@ -27054,7 +27114,7 @@ function renderVarPill(key, v) {
         + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit uncertain variable" title="Edit uncertain variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
         + `</span>`;
     }
-    const headline = `${estNumFmt(head.mean)} (${estNumFmt(head.p5)} – ${estNumFmt(head.p95)})`;
+    const headline = distHeadline(head, fmt);
     const title = shadowed ? 'Shadowed by a later declaration of this name' : 'Uncertain value. Click to re-sample · pencil to edit';
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
       + ` aria-label="Uncertain variable ${escQ(v.name)}: mean ${escQ(headline)}${shadowed ? ' (shadowed by a later declaration)' : ''}. Click to re-sample">`
@@ -32324,7 +32384,10 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
   if (type === 'est') {
     const e = node.est?.find(x => x.key === key); if (!e) return '';
     const samples = sampleUncertain(e.expr, EST_N, e.seed, node, varMap);   // SR-7: resolve declared vars in export too
-    const dist = samples ? formatDist(samples) : '#ERR';
+    // #1115: the export must show the SAME number as the pill, format included. Dropping e.fmt here
+    // meant a memo exported £699,467 as 699,467 -- one value, two displays, which is the bug this
+    // change exists to remove. Caught by driving the export, not by the suite.
+    const dist = samples ? formatDist(samples, e.fmt || null) : '#ERR';
     return prose ? dist : `${e.expr} ≈ ${dist}`;
   }
   if (type === 'seq') {
@@ -32373,7 +32436,7 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
   const dRec = varDistRec(varMap, rec.name);
   if (dRec) {
     const samples = varDistDraw(dRec, EST_N, varMap);
-    const dist = samples ? formatDist(samples) : '#ERR';
+    const dist = samples ? formatDist(samples, dRec.fmt || null) : '#ERR';   // #1115: same format as the pill
     return (rec.expr && !prose) ? `${rec.name} ≈ ${dist}` : dist;
   }
   const val = varMap[(rec.name || '').toLowerCase()];
