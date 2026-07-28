@@ -1534,3 +1534,59 @@ positive since the string-literal narrowing) and it was fixed rather than the fl
 
 **Filed, not fixed:** the constrained-value-set half, with the §0.5 analysis; and the agenda's
 RUNNING label, which is correct but reads like a status word.
+
+---
+
+## UXP-263 - the graph fit destroyed the shape it claimed to preserve (#1139)
+
+**Principle:** P4 (a view that misrepresents its own data), and a comment that asserted the opposite
+of what the code did.
+
+**Two personas, same pass, one transform:**
+
+> the researcher's 7-point graph *"dumped everything into one corner with two nodes stranded at the
+> bottom"*
+>
+> the novelist's 5 nodes were *"strung along a perfect diagonal from corner to corner"*, with edges
+> she could barely see
+
+`clampPositions` divided `spanX` and `spanY` **separately**, so the two axes were stretched by
+different factors - directly under a comment reading *"preserving the layout's shape (a uniform-per-
+axis fit)."*
+
+**Measured, on the pure core:** three points 200 wide and 40 tall - a 5:1 near-horizontal run - came
+out 720 x 520, a **1.38:1 corner-to-corner diagonal**. And because `min` mapped to `margin` and `max`
+to `dim - margin` on both axes, a node was **guaranteed on all four edges**, which is the researcher's
+report exactly: one outlier pair defined the bounding box and the main component was squeezed into
+what was left.
+
+| | before | after |
+|---|---|---|
+| researcher, 7 nodes: nodes pinned to an edge | **4 of 7** | **2 of 7** |
+| researcher, 7 nodes: short axis filled | **100%** | **31.6%** |
+| a 5:1 input's aspect after fitting | **1.38:1** | **5:1** |
+
+**Fix:** one `Math.min(iw/spanX, ih/spanY)` scale, then centre. Three mutations guard-proofed. All
+four existing `graphLayout` pins are property-based (determinism, in-box, single/empty, spring), so
+none needed rewriting - the in-box pin still holds because centring keeps everything inside.
+
+### The half this does NOT fix, stated rather than implied
+
+**The novelist's chain is still a line spanning the canvas**, and the fix barely moved it: `r^2` stays
+at 1.000. Uniform scaling of a line is still a line. Her case has a **second, separate mechanism**,
+measured while here:
+
+```
+k = sqrt(area / n) * 0.75          the Fruchterman-Reingold ideal edge length
+  n=5  -> 232px      n=7  -> 196px      n=20 -> 116px      n=40 -> 82px
+```
+
+At n=5 on an 800x600 canvas the ideal edge length is **232px**, so a four-edge chain wants 928px of
+run and cannot fit - the simulation stretches it across the canvas before any clamping, and long thin
+edges are exactly *"edges I could barely see"*. There is no small-N branch between `nodes.length === 1`
+and the general case.
+
+**Not fixed here on purpose.** Capping `k` is a tuning decision needing an arbitrary constant, it
+changes every layout rather than correcting a transform that was demonstrably wrong, and this session
+has spent a lot of effort removing unjustified magic numbers. Filed with the measurement so the next
+person starts from a number rather than a hunch.
