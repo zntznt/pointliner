@@ -1104,3 +1104,87 @@ the #1112 harness silently made one mutation a no-op.
 suffix is settable today and now findable - but nothing makes it the default. The reducers do return
 a percentage by contract, so a default is defensible; it also changes existing documents. Filed
 rather than decided here.
+
+---
+
+## UXP-258 - a graph label kept the sentence and deleted the names (#1110)
+
+**Principle:** P1 (predictable - one point, one name), P4 (the most connected point was the least
+readable), P3 (the accessible name was a truncation of a truncation).
+
+**Reported by two personas with nothing in common**, both in their top three findings.
+
+| the point's text | the label it produced |
+|---|---|
+| `[[#maren\|]] and [[#josse\|]]: not speaking since March` | `and : not speaking since Ma…` |
+| `[[#halv\|]] buried the father of [[#maren\|]] and got nothing for it` | `buried the father of and go…` |
+| `The honest read: [[#hag\|]] does not refute [[#baum\|]], it bounds it` | `The honest read: does not r…` |
+| `[[#a\|]] [[#b\|]]` (a pure junction point) | `(untitled)` |
+
+> *"The names had been surgically removed from the labels. As a picture of who knows whom it told me
+> nothing."*
+>
+> *"The node that connects everything is the one you can't read."*
+
+**Cause, and it was argued for in a comment.** `graphNodeLabel` collapsed a link to its caption and
+DELETED it when there was none, on the reasoning that expanding a mirror is *"noise on a graph label
+- 'The Prior' would read 'The Prior Torn Letter'"*. The worry was real; the cure was worse. The
+outline resolves the same tokens, so the graph and the document disagreed about what a point is
+called, and the disagreement was worst exactly where a graph earns its place. Nine other surfaces
+(breadcrumbs, backlink rows, the refile/capture pickers, the link picker, unlinked-reference rows)
+already resolve through `linkText`; `graphNodeLabel` and the corkboard's injected `titleOf` were the
+only two that opted out and hand-rolled a strip.
+
+**The repo had already seen it.** `brokenNodeMessage`'s comment recorded *"the dangling 'and' is the
+hole the removed token left"* and answered it by truncating harder.
+
+**Fix.** `graphNodeLabel(firstLine, resolveLink)` takes an optional resolver - the same injection
+seam `graphModel` already uses for `titleOf`, so the core stays a pure string-to-string function
+callable from Node while resolution (which needs `nodeById` / `workspaceIndex`) lives at the call
+site. Caption wins, then the target's live title, then nothing. Nothing, not a bare id: an
+unresolvable target already gets its own red node, so an id on the label would be noise on top of a
+signal that exists.
+
+**Recursion is prevented by construction, not by a counter.** The resolver resolves by calling
+`graphNodeLabel` *without* a resolver, so a link inside a resolved title cannot re-enter. That is
+`linkText`'s `depth > 0` rule, enforced structurally. Driven: `links [[#b]]` where `b` is
+`[[#a]] and the fence` renders `links and the fence` - exactly one level.
+
+**Three call sites**, all with the same shape: the document scope, the Nearby scope (anchored on the
+*foreign* document, since a bare `[[#id]]` in a foreign title is same-document to that document),
+and Cards, which shared the graph's label builder and therefore shared its bug.
+
+**Also fixed, one variable:** the node's accessible name was built from the already-truncated visible
+label. The 28-character ellipsis is a canvas constraint; the tooltip and the accessible name now
+carry the whole title.
+
+**The budget was left at 28, deliberately.** `Maren Oskarsdottir and Joss…` carries the names, which
+is the whole complaint, and the full sentence is one hover or one screen-reader stop away. Widening
+it would also mean moving `BROKEN_NAME_MAX`, which is pinned byte-identical to it.
+
+**Driven, before and after, on both surfaces**, reproducing all three quoted strings verbatim on
+`main` first. Six mutations guard-proofed, each with its target asserted present before the result
+was trusted. Perf: the label half costs **1.59 ms across 400 nodes** (2.17 vs 0.58 for twenty
+rebuilds), against a ~750 ms force-directed layout.
+
+**Two existing pins re-anchored, not deleted.** The `graphNodeLabel` pin was *named* for the old
+behaviour (`"link tokens collapsed not expanded"`) and now records the reversal and why. The `#898`
+tooltip pin keeps its intent (the doc hint rides the tooltip rather than eating the canvas label);
+only what the tooltip carries moved.
+
+**A third pin was found brittle and fixed while passing through:** the `#898` scope-wiring pin sliced
+`renderGraph` by a **byte offset** (`+ 4200`), so adding lines above the model selection slid its last
+assertion out of the window and turned it red for a reason unrelated to what it guards. Anchored on
+the function's own end now.
+
+**Filed, not bundled:**
+- **Layout** (#1110's adjacent note - 7 nodes in a corner, 5 on a perfect diagonal). Traced to
+  `clampPositions`, which rescales X and Y by *independent* factors despite a comment claiming a
+  shape-preserving fit. Different root cause, different region, collides with the layout determinism
+  and `relaxSeparation` pins.
+- **Other raw leaks in the same labels**: `[[est:key]]` and other artifact pills, live `{= sum(cost)}`
+  recipes, `#hashtags` (the #943 leak, unpatched here) and `[^footnote]` refs all still reach the
+  canvas as raw source.
+
+**Preserved on purpose:** the dotted unlinked-mention edge, which the same researcher called *"the
+single best idea in here"*. Verified still present.

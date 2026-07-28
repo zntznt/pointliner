@@ -23354,17 +23354,35 @@ function collectLinks(rootNode) {
 // naming it. Pure + Node-testable: consumes the collectLinks() index and a titleOf
 // callback (the brokenLinksReport pattern), never touches the DOM.
 
-// A clean label for a graph node: the point's OWN identity, not its rendered-with-
-// mirrors text. displayTitle expands a mirror link `[[#id|]]` into the target's title
-// (right for the outline, noise on a graph label — "The Prior" would read "The Prior
-// Torn Letter"), so here link tokens collapse to their caption or vanish, never to the
-// target's content. Pure + Node-testable: takes the raw first line, no tree read.
-function graphNodeLabel(firstLine) {
+// A clean label for a graph node: the point's identity, in the words it READS as.
+//
+// #1110: this used to DELETE a caption-less link token rather than resolve it, on the argument
+// that expanding a mirror is "noise on a graph label — 'The Prior' would read 'The Prior Torn
+// Letter'". The worry was real and the cure was worse. Two personas with nothing in common both
+// listed the result in their top three findings, because a point whose text is mostly links is
+// exactly a point the graph exists to show:
+//
+//     `[[#maren|]] and [[#josse|]]: not speaking since March`  ->  `and : not speaking since Ma…`
+//     `The honest read: [[#hag|]] does not refute [[#baum|]]`  ->  `The honest read: does not r…`
+//
+// The connective tissue of a sentence with every proper noun removed. And the outline shows the
+// resolved text, so the graph was disagreeing with the document about what a point is called.
+// The truncation to 28 chars, not deletion, is what keeps a label short.
+//
+// `resolveLink(id, docId)` -> the target's plain title, or null/'' when it cannot be resolved
+// (a broken target already gets its own red node, so a bare hex id there would be noise). The
+// resolver is INJECTED, the same seam `graphModel` uses for `titleOf`, because resolution needs
+// `nodeById`/`workspaceIndex` and this stays a pure string->string function callable from Node.
+// Recursion is impossible by construction rather than by a depth counter: a resolver resolves by
+// calling graphNodeLabel WITHOUT a resolver, so a nested link inside a resolved title cannot
+// re-enter. That is linkText's `depth > 0` rule, enforced structurally.
+function graphNodeLabel(firstLine, resolveLink) {
   let t = String(firstLine || '');
   // drop block prefixes the same way textForDisplay does (heading #, quote >, task/ol markers)
   t = t.replace(/^\s*(#{1,6}\s+|>\s+|-\s+\[[ xX]\]\s+|\d+\.\s+|[-*+]\s+)/, '');
-  // collapse links to their caption; a mirror/plain link (no caption) drops out entirely
-  t = t.replace(/\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|([^\]\n]*))?\]\]/gi, (_, cap) => cap || '');
+  // a caption wins; otherwise the target's live title; otherwise (unresolvable) nothing
+  t = t.replace(/\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi,
+    (_, docId, id, cap) => cap || (resolveLink ? (resolveLink(id, docId || '') || '') : ''));
   // strip inline emphasis markers so a bolded title reads plain. Chained longest-first (triple
   // then double then single, like stripInlineMd) so the app's own combined ***bold-italic*** /
   // ___both___ syntax strips CLEANLY — the old single `(\*\*|_|…)(.+?)\1` matched only the outer
@@ -23934,9 +23952,13 @@ function timelineModel(items, monthOf) {
 // `what` is the noun ('target' / 'document').
 //
 // Names are TRUNCATED at the same 28 characters the graph already caps its node labels to. A point's
-// title here is its whole first line with the link tokens stripped, which in real prose is a
-// sentence, not a word — driving this produced `Linked from “Outline links Chapter 3 and”`, where
-// the dangling "and" is the hole the removed token left. A toast carries a name, not a paragraph.
+// title here is its whole first line, which in real prose is a sentence, not a word.
+//
+// This comment used to end: `Linked from “Outline links Chapter 3 and”`, where the dangling "and"
+// is the hole the removed token left. That hole was #1110 — graphNodeLabel DELETED a caption-less
+// link instead of resolving it — observed here, written down, and answered only by truncating
+// harder. The label now resolves, so the sentence reads `Outline links Chapter 3 and The Fence`
+// and the truncation is doing its own job rather than covering for a missing name.
 const BROKEN_NAME_MAX = 28;
 function brokenNodeMessage(label, sources, what = 'target') {
   const trim = s => {
@@ -33636,7 +33658,16 @@ function buildCorkboard(vp) {
   wrap.className = 'corkboard gv-grid';
   wrap.setAttribute('role', 'group');
   wrap.setAttribute('aria-label', 'Cards');
-  const cards = corkboardCards(vp, { titleOf: n => graphNodeLabel((n.text || '').split('\n')[0]) });
+  // #1110: Cards share the graph's label builder, so they shared its bug — a card for
+  // `[[#maren|]] and [[#josse|]]: …` read `and : …`. Same one-level resolver, same reason.
+  const cardLinkTitle = (id, docId) => {
+    if (docId && docId !== (root.docId || '')) {
+      const t = workspaceIndex?.titles?.get(docId)?.get(id);
+      return t === undefined ? '' : graphNodeLabel(String(t).split('\n')[0]);
+    }
+    const tn = nodeById(id); return tn ? graphNodeLabel((tn.text || '').split('\n')[0]) : '';
+  };
+  const cards = corkboardCards(vp, { titleOf: n => graphNodeLabel((n.text || '').split('\n')[0], cardLinkTitle) });
   cards.forEach((cd, i) => {
     const node = nodeById(cd.id); if (!node) return;
     const card = document.createElement('div');
@@ -35352,16 +35383,26 @@ function renderGraph(panel) {
     head.appendChild(scope);
     wireScrollStrip(scope);   // the fade cue + focus-reveal, so a chip scrolled out is still reachable
   }
-  const titleOf = id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0]) || '(untitled)') : null; };
+  // #1110: the resolver a caption-less `[[#id]]` reads through. It calls graphNodeLabel WITHOUT
+  // a resolver, so resolution is exactly one level deep and an A<->B link cycle terminates.
+  const own = root.docId || '';
+  const linkTitleOf = (id, docId) => {
+    if (!docId || docId === own) { const tn = nodeById(id); return tn ? graphNodeLabel((tn.text || '').split('\n')[0]) : ''; }
+    const t = workspaceIndex?.titles?.get(docId)?.get(id);
+    return t === undefined ? '' : graphNodeLabel(String(t).split('\n')[0]);
+  };
+  const titleOf = id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0], linkTitleOf) || '(untitled)') : null; };
   // #898: the same lookup over a QUALIFIED id. The open document reads LIVE (nodeById); other
   // documents read the index's title map, which already holds every point — no wsDocRoot walk.
   // null means "no such point anywhere", which is what makes a node broken (the red dot).
-  const own = root.docId || '';
   const nearbyTitleOf = q => {
     const [d, n] = unqid(q);
     if (d === own) return titleOf(n);
     const t = workspaceIndex?.titles?.get(d)?.get(n);
-    return t === undefined ? null : (graphNodeLabel(String(t).split('\n')[0]) || '(untitled)');
+    // #1110: a foreign point's own links resolve too, and a bare `[[#id]]` inside one is
+    // same-document to THAT document, so the resolver is anchored on its docId, not on ours.
+    return t === undefined ? null
+      : (graphNodeLabel(String(t).split('\n')[0], (id, dd) => linkTitleOf(id, dd || d)) || '(untitled)');
   };
   const linked = (folder || nearby) ? null : collectLinks();
   let model;
@@ -35505,9 +35546,12 @@ function renderGraph(panel) {
     g.setAttribute('role', 'button');
     const label = n.title.length > 28 ? n.title.slice(0, 27) + '…' : n.title;
     const docHint = nearbyDocOf(n.id);
-    if (docHint) { const tt = document.createElementNS(SVG_NS, 'title'); tt.textContent = label + ' · ' + docHint; g.appendChild(tt); }
+    // #1110: the ellipsis is a CANVAS constraint. The tooltip and the accessible name carry the
+    // whole title, so a screen reader is not read a truncation of a truncation.
+    if (docHint) { const tt = document.createElementNS(SVG_NS, 'title'); tt.textContent = n.title + ' · ' + docHint; g.appendChild(tt); }
+    else if (n.title !== label) { const tt = document.createElementNS(SVG_NS, 'title'); tt.textContent = n.title; g.appendChild(tt); }
     g.setAttribute('aria-label',
-      (n.broken ? (folder ? 'Missing document' : 'Broken link target') : label)
+      (n.broken ? (folder ? 'Missing document' : 'Broken link target') : n.title)
       + (docHint ? ' in ' + docHint : '')
       + (n.current ? (nearby ? ' (the point you are on)' : ' (current document)') : '')
       + `, ${n.deg} link${n.deg === 1 ? '' : 's'}.`
