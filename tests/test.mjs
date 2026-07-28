@@ -4417,6 +4417,40 @@ import assert2 from 'node:assert/strict';
   // ── #516 relationship graph pure cores ──────────────────────────────────────
   const titleOf = (id) => ({ a: 'Alpha', b: 'Beta', c: 'Gamma', d: 'Delta' }[id] || id);
 
+  ltest('#1140 graphNodeLabel — a pill on the canvas reads as its VALUE, not its token', () => {
+    // The link rule requires a `#`, so a colon-form artifact token matched nothing and reached the
+    // graph and Cards as raw source. MEASURED before: a point reading `Session cost 2d6 = 7` was
+    // labelled `Session cost [[dice:r0xp9ugu]]`. The resolver is injected for the same reason
+    // resolveLink is - flattenArtifacts needs a varMap, and this stays a pure string function.
+    const flat = (text) => text
+      .replace(/\[\[dice:([a-z0-9]+)\]\]/gi, '2d6 = 7')
+      .replace(/\[\[est:([a-z0-9]+)\]\]/gi, '600 to 900 = 742');
+    assert2.equal(c2.graphNodeLabel('Session cost [[dice:r0]]', undefined, flat), 'Session cost 2d6 = 7');
+    assert2.equal(c2.graphNodeLabel('Budget [[est:u6]]', undefined, flat), 'Budget 600 to 900 = 742');
+    // with no resolver the old behaviour stands, so every non-canvas caller is untouched
+    assert2.equal(c2.graphNodeLabel('Session cost [[dice:r0]]'), 'Session cost [[dice:r0]]');
+  });
+
+  ltest('#1140 the three inline forms the label chain never had, plus footnotes and tags', () => {
+    // MEASURED against what the point READS as (displayText), which is the only bar that matters:
+    // the outline showed `A highlighted claim and text (http://x)` while the canvas showed
+    // `A ==highlighted== claim and [text](http://x)`.
+    assert2.equal(c2.graphNodeLabel('A ==highlighted== claim'), 'A highlighted claim');
+    assert2.equal(c2.graphNodeLabel('see [text](http://x) here'), 'see text here', 'a link keeps its words, drops the URL');
+    assert2.equal(c2.graphNodeLabel('![alt text](img.png)'), 'alt text', 'an image becomes its alt');
+    // #943 strips hashtags at every other caption sink; the graph and Cards were the two that never
+    // got it. A footnote marker is an annotation on a word, not part of the name (the UXP-237 rule).
+    assert2.equal(c2.graphNodeLabel('Atomic notes #zettelkasten/principle'), 'Atomic notes');
+    assert2.equal(c2.graphNodeLabel('Hagger 2016[^k] refutes it'), 'Hagger 2016 refutes it');
+
+    // THE COMPLEMENTARY-CHAIN TRAP, pinned so nobody "simplifies" this into stripInlineMd.
+    // MEASURED: stripInlineMd leaves `___Ancient One___` as `_Ancient One_` because it has no
+    // single-underscore rule, and adding one there would eat `snake_case` in backlink rows and the
+    // plain-text export. The two chains overlap; neither contains the other.
+    assert2.equal(c2.graphNodeLabel('___Ancient One___'), 'Ancient One');
+    assert2.equal(c2.graphNodeLabel('***Dragon Lord***'), 'Dragon Lord');
+  });
+
   ltest('graphNodeLabel — a caption-less link resolves to the target, it is not deleted (#1110)', () => {
     // REVERSAL, recorded deliberately. This test used to be named "link tokens collapsed not
     // expanded" and asserted the deletion as intent, on the argument that expanding a mirror is
@@ -10585,12 +10619,24 @@ test('#516 link graph: UI wiring + front doors + a11y (src pins)', () => {
   // #1110: and must PASS IT A RESOLVER. graphNodeLabel with one argument still deletes a
   // caption-less link, so a pin that only proves the call is present would go green on the exact
   // regression this change exists to remove. Both scopes resolve; Cards share the same builder.
-  assert.match(rg, /graphNodeLabel\(\(n\.text \|\| ''\)\.split\('\\n'\)\[0\], linkTitleOf\)/,
+  // #1140 re-anchored: this matched the call's exact spelling and the call gained a third argument
+  // (the artifact resolver). The #1110 intent is unchanged and still load-bearing. FOURTH pin this
+  // session to break on spelling rather than behaviour - the class UXP-260's helpers do not close.
+  assert.match(rg, /graphNodeLabel\(\(n\.text \|\| ''\)\.split\('\\n'\)\[0\], linkTitleOf[,)]/,
     'the doc scope must resolve link tokens to their targets (#1110)');
+  assert.match(rg, /graphNodeLabel\(\(n\.text \|\| ''\)\.split\('\\n'\)\[0\], linkTitleOf, artifactsOf\(n\)\)/,
+    'and artifact pills to the value they show (#1140)');
+  assert.match(rg, /const artifactsOf = \(node\) => \(text\) => flattenArtifacts\(text, node, varMapAt\(node\)\);/,
+    'reading the POSITIONAL var map, the same one the render uses');
   assert.match(rg, /graphNodeLabel\(String\(t\)\.split\('\\n'\)\[0\], \(id, dd\) => linkTitleOf\(id, dd \|\| d\)\)/,
     'the Nearby scope resolves too, anchored on the FOREIGN document (#1110)');
-  assert.match(fnBody(_src, 'buildCorkboard'), /graphNodeLabel\(\(n\.text \|\| ''\)\.split\('\\n'\)\[0\], cardLinkTitle\)/,
+  // #1140 re-anchored, same class as the doc-scope pin above: the call gained the artifact
+  // resolver. Both #1110 and #1140 intents pinned, neither on the exact argument count.
+  const cb = fnBody(_src, 'buildCorkboard');
+  assert.match(cb, /graphNodeLabel\(\(n\.text \|\| ''\)\.split\('\\n'\)\[0\], cardLinkTitle[,)]/,
     'Cards share the graph label builder, so they share the fix (#1110)');
+  assert.match(cb, /flattenArtifacts\(text, n, varMapAt\(n\)\)/,
+    'and Cards resolve artifact pills too (#1140)');
   // the resolver resolves by calling graphNodeLabel WITHOUT a resolver — the structural
   // one-level guard. If this ever gains a third argument, the cycle protection is gone.
   assert.match(rg, /const linkTitleOf = \(id, docId\) => \{[\s\S]*?graphNodeLabel\(\(tn\.text \|\| ''\)\.split\('\\n'\)\[0\]\)/,
