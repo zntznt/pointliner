@@ -1451,3 +1451,86 @@ declined to write. The floor stayed at 49, so nothing else was being miscounted.
 `collectVars`, so every downstream display-only `[[var:KEY]]` reference resolves to `?`. That cliff
 exists today in the bullet menu and is not introduced here, but a more reachable door makes it easier
 to fall off.
+
+---
+
+## UXP-262 - the Board's dead end told a user to do what he had already done (#1114)
+
+**Principle:** P4 (a refusal that repeats an instruction the user believes they followed teaches
+nothing), P1 (`/TODO` meant something different from its three siblings), P2 (the dimmed tooltip
+never named its own door).
+
+**Reported by the delivery-lead persona**, rebuilding a real week of Linear/Jira work. He got almost
+everything - `due: 3d overdue` in red, `owner: Priya`, a twelve-row live query base, an agenda week
+grid parking slipped items under "Earlier" - and called that table *"the artifact I'd actually stand
+up in Monday triage."* Board was the one door that stayed shut, greyed, saying *"Mark a column as
+Status to use Board"* while he had a column named Status.
+
+### The premise failed three ways, and checking it first is what made the change small
+
+| the issue says | measured |
+|---|---|
+| there is no way to get a first-class status | **three doors exist**: Column menu → Show as → Status, `Alt+R`, and auto-inference (#922) |
+| the only typed door is `/TODO`, which the palette eats | **true, and exactly one command wide** - `/NEXT`, `/WAITING`, `/DONE` all landed correctly |
+| the agenda's "RUNNING, Nothing running" is the same disconnect | **wrong.** RUNNING means *a `start:` date that has arrived*. It has never involved status |
+
+**The actual root cause was two lines in `inferColRolesFromModel`:** the loop starts at `r = 1`, so
+the header row is never read and naming a column "Status" is inert; and every non-empty cell must be
+a known state, so `in progress` fails. He did a reasonable thing twice and the app told him to do the
+thing he thought he had done.
+
+### What the fence allows, and what it recommends
+
+`base-views-vision.md` §0.5 names this request exactly and binds it: a status role that *constrains
+the editor* IS the `bases-direction.md` §4 typed-fields deferral, and *"building anything in the
+deferred list requires reopening this doc and moving it above the line first."* **Owner's call taken:
+stay inside the line.** No constrained value set, no validation.
+
+The doc also names the way through, and it turned out to be one character class wide. A sequence must
+declare `IN_PROGRESS` because a state keyword cannot hold a space (`LEAD_WORD_RE` stops at the first
+one). A base cell is free text, where the natural thing to type is `in progress`. The role inference
+**already folded case** - so space-versus-underscore was the entire distance between his document and
+a working Board.
+
+`normStateKey` folds `_`, `-` and space to one space, for **matching only**. A value matching nothing
+still falls through to plain text, so the §0.5 fence is untouched. Deliberately conservative and
+pinned as such: it folds separators, it does not delete them, so `in progress` answers to
+`IN_PROGRESS` while `to do` still does not answer to `TODO`.
+
+**Applied at all three match sites**, which is the part that matters: the role inference,
+`sequenceForKeyword`, and `boardLanes`' bucketing. Fixing only the first would light Board up and
+then drop every card into the trailing "No state" lane - a view that looks right and is not, which is
+worse than the honest refusal it replaced.
+
+**Acceptance, driven:** his ORIGINAL lowercase cells, plus one declared sequence -
+`inferColRoles` returns `status`, Board opens, and **3 of 3 cards land in real lanes**.
+
+### Also
+
+- **`boardBlockReason`**, a pure core, replaces one message covering three situations: nothing looks
+  like a status column; a column *named* Status is not marked as one; or it is filled with values
+  that are not states of any sequence. The third names the values it could not place and the fix.
+- **`/TODO` selects the state.** `blockCmdsPool()` splices `BLOCK_CMDS` first and the checkbox
+  command's id is literally `todo`, so it won at index 0. The checkbox stays one word away
+  (`/task`, `/tick`, and the next row). There was **no test at all** on this ranking.
+- **The tooltip names its door.** The flash on click already said "(Column menu, Show as)"; the
+  dimmed button - read first, and often the only thing read - did not.
+
+### The guards, and the same lesson a third time
+
+Eleven mutations, each asserting its target present first. **Two initially reported `0 failing`:**
+
+1. A pin of mine **re-implemented the slash ranking** instead of calling it, so reverting the fix
+   proved nothing. Fixed by extracting `slashActiveIdx` as a pure core and calling it.
+2. Then replacing that call with a literal `0` **still** failed nothing - the core was perfectly
+   tested and perfectly ignorant of whether anything called it.
+
+That is UXP-260's rule - *pin the call site, not only the core* - broken for the **third time this
+session**, in the change that follows the one that wrote it down. The rule is in the DoD; the habit
+is what is still lagging, and it is worth saying so rather than reporting eleven green mutations.
+
+**The #1133 census also caught a real unsized `.some()` in a new test of mine** (its first true
+positive since the string-literal narrowing) and it was fixed rather than the floor raised.
+
+**Filed, not fixed:** the constrained-value-set half, with the §0.5 analysis; and the agenda's
+RUNNING label, which is correct but reads like a status word.

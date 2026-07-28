@@ -16320,6 +16320,120 @@ test('#922 inferColRolesFromModel — status/date columns from data; mixed/empty
   assert.deepEqual(host(c.inferColRolesFromModel({ aligns: [null], rows: [['H']] }, false, STATES)), []);
 });
 
+// ── #1114: the Board's dead end ──────────────────────────────────────────────────────────────
+test('#1114 normStateKey — a state answers to the spelling a person types in a cell', () => {
+  // A sequence must declare IN_PROGRESS: a state keyword cannot hold a space (LEAD_WORD_RE stops
+  // at the first one, and seqDefString's own advice is "join the words"). But a base cell is free
+  // text and the natural thing to type is `in progress`. MEASURED: the role inference already
+  // folded case, so space-versus-underscore was the ENTIRE distance between a delivery lead's
+  // document and a working Board.
+  assert.equal(c.normStateKey('IN_PROGRESS'), c.normStateKey('in progress'));
+  assert.equal(c.normStateKey('in-progress'), c.normStateKey('In Progress'));
+  assert.equal(c.normStateKey('  TODO  '), 'todo');
+  assert.equal(c.normStateKey(null), '');
+  // it must NOT collapse distinct states
+  assert.notEqual(c.normStateKey('TODO'), c.normStateKey('DONE'));
+  assert.notEqual(c.normStateKey('in progress'), c.normStateKey('progress'));
+});
+
+test('#1114 the SAME normaliser runs at all three match sites, or Board lights up useless', () => {
+  // Fixing only the inference would mark the column `status`, open Board, and then bucket every
+  // card into the trailing "No state" lane - a view that looks right and is not, which is worse
+  // than the honest refusal it replaced. All three must agree.
+  assert.match(fnBody(_src, 'sequenceForKeyword'), /normStateKey\(/, 'the sequence lookup folds');
+  assert.match(fnBody(_src, 'inferColRolesFromModel'), /lc\.has\(normStateKey\(cell\)\)/, 'the role inference folds');
+  assert.match(fnBody(_src, 'boardLanes'), /lanes\.find\(l => normStateKey\(l\.kw\) === v\)/, 'the lane bucketing folds');
+  // and the behaviour that proves it: a lowercase spaced cell finds its declared lane
+  const seqs = [{ key: 'f', name: 'Flow', states: ['TODO', 'IN_PROGRESS', 'DONE'], doneFrom: 2, heldFrom: 2 }];
+  const model = { rows: [['Task', 'Status'], ['A', 'in progress'], ['B', 'DONE'], ['C', 'todo']] };
+  const { seq, lanes } = c.boardLanes(model, 1, seqs, 3);
+  assert.equal(seq.name, 'Flow');
+  const byKw = Object.fromEntries(lanes.map(l => [l.kw ?? 'none', l.rows.length]));
+  assert.deepEqual(byKw, { TODO: 1, IN_PROGRESS: 1, DONE: 1 }, 'all three cards land in real lanes: ' + JSON.stringify(byKw));
+  assert.ok(!nonEmpty(lanes, 'the board lanes').some(l => l.kw === null), 'nothing falls into the No state lane');
+
+  // DELIBERATELY CONSERVATIVE, and pinned so nobody "fixes" it: the fold turns _ - and space into
+  // ONE space, it does not DELETE separators. So `in progress` answers to IN_PROGRESS (both fold to
+  // "in progress"), but `to do` does NOT answer to TODO - there is no separator in TODO to fold, and
+  // deleting separators instead would start collapsing states a user meant to keep apart.
+  const strict = c.boardLanes({ rows: [['T', 'S'], ['A', 'to do']] }, 1, seqs, 1);
+  assert.equal(strict.lanes.find(l => l.kw === null)?.rows.length, 1, '`to do` stays unmatched, by design');
+});
+
+test('#1114 boardBlockReason — the refusal names WHICH half is missing', () => {
+  const states = new Set(['TODO', 'NEXT', 'WAITING', 'DONE']);
+  // his case: a column HEADED Status, filled, every value outside every sequence. The old single
+  // message read as an instruction he had already followed.
+  const his = c.boardBlockReason(['Task', 'Status', 'Owner'], -1, ['in progress', 'blocked', 'done'], states);
+  assert.equal(his.reason, 'unknown-values');
+  assert.match(his.msg, /not states yet/);
+  assert.match(his.msg, /in progress/, 'it names the values it could not place');
+  assert.match(his.msg, /\{seq /, 'and names the in-fence fix: declare them');
+  // named but never marked - the role is what counts, not the header text
+  const named = c.boardBlockReason(['Task', 'Status'], -1, ['TODO', 'DONE'], states);
+  assert.equal(named.reason, 'named-not-marked');
+  assert.match(named.msg, /Column menu, Show as/, 'it names the door');
+  assert.match(named.msg, /Alt\+R/, 'and the keyboard door');
+  // nothing that looks like a status column: the original message, unchanged
+  const none = c.boardBlockReason(['Task', 'Owner'], -1, [], states);
+  assert.equal(none.reason, 'none');
+  assert.equal(none.msg, 'Mark a column as Status first (Column menu, Show as); its states become the lanes.');
+  // already marked: no refusal at all
+  assert.equal(c.boardBlockReason(['Task', 'Status'], 1, ['TODO'], states), null);
+  // `State` counts too, and matching is case-insensitive
+  assert.equal(c.boardBlockReason(['Task', 'state'], -1, ['TODO'], states).reason, 'named-not-marked');
+});
+
+test('#1114 /TODO selects the STATE, like its three siblings', () => {
+  // MEASURED on main: blockCmdsPool() splices BLOCK_CMDS before stateCmds(), and the checkbox
+  // command's id is literally `todo`, so it won at index 0. /next, /waiting and /done all landed
+  // correctly - one word, four meanings, three of them consistent. There was no test at all.
+  const pool = c.blockCmdsPool();
+  assert.ok(pool.length > 20, `the pool must be non-empty or every assertion below is vacuous (got ${pool.length})`);
+  // THE APP'S ranking, not a copy of it. The first version of this test re-implemented the
+  // findIndex here and SURVIVED its own mutation - it proved my idea, not the code. That is the
+  // #1133 vacuity class in its purest form, so the ranking was extracted to slashActiveIdx and this
+  // now calls it.
+  const pick = (q) => {
+    const matches = nonEmpty(
+      pool.filter(x => x.id.startsWith(q) || x.label.toLowerCase().includes(q) || (x.keys || []).some(k => k.startsWith(q))),
+      `the /${q} matches`);
+    return matches[c.slashActiveIdx(matches, q, false)];
+  };
+  for (const q of ['todo', 'next', 'waiting', 'done']) {
+    assert.equal(pick(q).id, 'state:' + q.toUpperCase(), `/${q} must select the state`);
+  }
+  // THE REGRESSION: the checkbox must stay reachable. It carries keys ['task','tick'].
+  assert.equal(pick('task').id, 'todo', 'the markdown checkbox is still one word away');
+  assert.equal(pick('tick').id, 'todo');
+  const todoMatches = pool.filter(x => x.id.startsWith('todo') || x.label.toLowerCase().includes('todo') || (x.keys || []).some(k => k.startsWith('todo')));
+  assert.ok(nonEmpty(todoMatches, 'the /todo matches').some(x => x.id === 'todo'), 'and it is still the next row under /todo');
+  // the pre-existing rule the extraction must not lose: a typed ":value" keeps its exact verb
+  const argRows = [{ id: 'note' }, { id: 'due' }];
+  assert.equal(c.slashActiveIdx(argRows, 'due', true), 1, 'a /due:tomorrow keeps the due verb selected');
+  assert.equal(c.slashActiveIdx(argRows, 'nope', true), 0, 'an unknown arg verb falls back to the first row');
+  assert.equal(c.slashActiveIdx([], 'todo', false), 0, 'no matches, no crash');
+});
+
+test('#1114 the wiring: the gate consults the reason, and the tooltip names its door', () => {
+  const sv = fnBody(_src, 'mtSetView');
+  assert.match(sv, /flashHint\(boardBlockReason\(hdr, gi, cells, knownStates\(\)\)\.msg\)/,
+    'the board gate must ask WHICH half is missing, not repeat one message');
+  assert.match(sv, /\/\^\(status\|state\)\$\/i/, 'and find the named column to ask about');
+  // the dimmed button is what a user reads FIRST, and often the only thing they read
+  assert.match(fnBody(_src, 'mtViewSwitcherHtml'), /Mark a column as Status to use Board \(Column menu, Show as\)/,
+    'the tooltip names its own door');
+  assert.doesNotMatch(_src, /'Mark a column as Status to use Board'/, 'the doorless tooltip is gone');
+
+  // PIN THE CALL SITE, not only the core (#1133 / UXP-260). Replacing this call with a literal 0
+  // failed NOTHING until this line existed - the ranking core was perfectly tested and perfectly
+  // ignorant of whether the menu consulted it. Third time this session; the rule is in the DoD and
+  // the habit is still the thing lagging.
+  assert.match(_src, /const activeIdx = slashActiveIdx\(matches, matchWord, hasArg\);/,
+    'the slash menu must consult the ranking core, not re-derive or ignore it');
+  assert.doesNotMatch(fnBody(_src, 'slashActiveIdx'), /document|querySelector/, 'and the core stays DOM-free');
+});
+
 test('bases round 1 — B4 read sites + write sites stay split (source pins)', () => {
   // every colRole READ site consults mtColRoles: the cell paint, the switcher, the view gates,
   // and the number right-align in the row loop
