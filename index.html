@@ -2855,9 +2855,9 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 
       <div class="fm-cat" data-cat="export">
         <div class="fm-cat-head">Export a copy</div>
-        <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot, pills frozen to text</span></div></div>
-        <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">One-way snapshot, plain outline</span></div></div>
-        <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Web page (HTML)</span><span class="cmd-desc">Shareable file, reopens as the live app</span></div></div>
+        <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot. Keeps links, freezes pills to text</span></div></div>
+        <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">One-way snapshot. Links become plain words</span></div></div>
+        <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Web page (HTML)</span><span class="cmd-desc">Keeps everything. Reopens as the live app</span></div></div>
       </div>
 
       <div class="fm-cat" data-cat="settings">
@@ -3235,21 +3235,50 @@ function textForDisplay(node) {
 // via the workspace index), else the bare id. `depth` guards recursion: a bare
 // link reads its target's title one level deep, and any link inside that title
 // collapses to its label-or-id without re-resolving, so an A↔B cycle can't loop.
-function linkText(str, depth = 0) {
+// #1111: `emit(text, docId, id)` decides what the resolved token BECOMES. The default returns the
+// text alone, which is every on-screen sink's behaviour and is byte-identical to what this function
+// did before the parameter existed. The Markdown export passes an emit that writes a real markdown
+// link, so the link LAYER survives a file that leaves the app - `product-identity.md` §3b names
+// markdown as one of the four exits that let a user go "taking everything with them", and dissolving
+// every link into prose meant it did not. Injected rather than forked: all the resolution rules
+// (caption, depth, same-doc, cross-doc, unresolvable) live here once. Note `emit` is deliberately
+// NOT applied to the depth > 0 arm - that is a link inside a title being read for its words, not a
+// link occupying a slot in the exported sentence.
+function linkText(str, depth = 0, emit) {
   if (!str || str.indexOf('[[') === -1) return str;
+  const out = emit || ((text) => text);
   WLINK_RE.lastIndex = 0;
   return str.replace(WLINK_RE, (_, docId, id, label) => {
-    if (label) return label;                                   // explicit caption wins
+    if (label) return out(label, docId || '', id);             // explicit caption wins
     if (depth > 0) return id;                                  // inside a resolved title — don't recurse
     if (!docId || docId === (root.docId || '')) {              // same-doc: live title
       const tn = nodeById(id);
-      if (tn) return linkText(textForDisplay(tn), depth + 1) || id;
+      if (tn) return out(linkText(textForDisplay(tn), depth + 1) || id, docId || '', id);
     } else {                                                   // cross-doc: workspace index
       const title = workspaceIndex?.titles?.get(docId)?.get(id);
-      if (title) return linkText(title, depth + 1) || id;
+      if (title) return out(linkText(title, depth + 1) || id, docId, id);
     }
-    return id;                                                 // unresolvable → bare id (better than the raw token)
+    return out(id, docId || '', id);                           // unresolvable → bare id (better than the raw token)
   });
+}
+
+// #1111: the markdown form a resolved link takes in an exported .md.
+//
+// MEASURED against markdown-it (CommonMark) before choosing, the way UXP-237 settled its own export
+// question. `[Caption](#id)` won over the wikilink form `[[Caption]]` on one argument: a prose export
+// exists to read well to someone who does NOT have Pointliner, and `[[Caption]]` renders as literal
+// bracket junk in every strict renderer (the exact failure UXP-237 removed for footnote markers).
+// `[Caption](#id)` is real CommonMark, renders as a link in GitHub and every other renderer, and
+// carries the id, so the link graph is reconstructable from the file - which is what the reporter,
+// a six-year Obsidian user who opened the bytes rather than trusting the toast, actually wanted.
+//
+// The cross-doc form keeps its document: `[Caption](notes.md#id)`. The prose path discarded the
+// docId entirely, so a reader could not tell which document a reference pointed at, or recover it.
+// `docFile` is resolved by the CALLER (it needs workspaceIndex.nameByDocId) and is '' for same-doc,
+// which keeps this a pure string function - the same split #1110 used for graph labels.
+function mdLinkOut(text, id, docFile) {
+  const label = String(text ?? '').replace(/([[\]])/g, '\\$1');   // a ] would close the link early
+  return `[${label}](${docFile || ''}#${id})`;
 }
 // #943: strip hashtag tokens from a title/snippet shown as a link CAPTION or backlink row.
 // A point's title and its #tags share one line, so a live-title link caption or a backlink row
@@ -32537,6 +32566,15 @@ function toMarkdown(rootNode) {
   const varMap = collectVars();
   const out = [];
   let lastWasBlock = false;
+  // #1111: markdown KEEPS the link layer. `mdLinkOut` is pure; resolving a foreign docId to its
+  // file name needs workspaceIndex, so that lookup lives here, at the impure call site.
+  const docFileOf = (docId) => {
+    if (!docId || docId === (root.docId || '')) return '';
+    const nm = workspaceIndex?.nameByDocId?.get(docId);
+    return (nm ? String(nm).replace(/\.opml$/i, '') : docId) + '.md';
+  };
+  const mdLink = (text, docId, id) => mdLinkOut(text, id, docFileOf(docId));
+  const lt = (str) => linkText(str, 0, mdLink);
   // never a leading blank line, and never two in a row
   const sep = () => { if (out.length && out[out.length - 1] !== '') out.push(''); };
   function emit(node, depth, ordinal) {
@@ -32573,11 +32611,11 @@ function toMarkdown(rootNode) {
       // #806 (agent-review, UXP-201): exports resolve node links to legible text — the same
       // linkText displayText already uses (label → live title → workspace-index title → bare
       // id) — never the raw [[#hexid|]] token that made the exported knowledge graph noise.
-      const body = linkText(flattenArtifacts(node.text, node, varMap));
+      const body = lt(flattenArtifacts(node.text, node, varMap));
       body.split('\n').forEach(l => out.push(indent + l));
     } else if (node.type === 'divider') {
       out.push(`${indent}- ---`);
-      const dlabel = textForDisplay(node);
+      const dlabel = lt(textForDisplay(node));
       if (dlabel) out.push(`${indent}  ${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos carry their own markdown (`- [ ]` marker / Org keyword) in node.text —
@@ -32585,7 +32623,7 @@ function toMarkdown(rootNode) {
       const isTodo = node.type === 'todo';
       // UXP-237: strip markers for notes that were never written, AFTER the flatten/link chain
       // (markers are plain text and pass through it untouched, so this is the one uniform point).
-      let body = stripUnwrittenFnRefs(linkText(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)), node.footnotes); // #806: links → titles; #925f: para pills → result-only
+      let body = stripUnwrittenFnRefs(lt(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)), node.footnotes); // #806: links → titles; #925f: para pills → result-only
       const hLvl = hLvlPre;
       // EVERY line, not just the first: a multi-line quote otherwise relies on lazy continuation to
       // stay one <blockquote>, which the blank-line policy above is specifically breaking.
@@ -32610,12 +32648,16 @@ function toMarkdown(rootNode) {
       }
     }
     // the point's note: plain continuation lines indented under the item
-    if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}  ${l}`));
+    // #1111: the note, the property line, the divider label and the footnote definition all
+    // bypassed the link chain, so a link written in any of them shipped as a literal [[#id]] -
+    // the raw-syntax-reaching-a-reader failure UXP-237 removed for footnote markers, still live
+    // in four other sinks of the same two functions.
+    if (node.note) lt(node.note).split('\n').forEach(l => out.push(`${indent}  ${l}`));
     // per-node properties as a single continuation line
     // #813 (agent-review, UXP-206): app-maintained timestamps stay out of the lossy exports —
     // four of seven review personas flagged the [created/edited] noise; OPML keeps them.
     const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase()));
-    if (exProps.length) out.push(`${indent}  [${exProps.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
+    if (exProps.length) out.push(`${indent}  [${exProps.map(p => `${p.key}: ${lt(p.val)}`).join(' · ')}]`);
     lastWasBlock = isBlock;
     // Footnote definitions in reference order, indented under the node. The run is its OWN block:
     // without the blank line it is a lazy continuation of the paragraph above, so `[^1]: …` prints
@@ -32624,7 +32666,7 @@ function toMarkdown(rootNode) {
     const fnLines = [];
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
-      if (fn && fn.text.trim()) fnLines.push(`${indent}  [^${key}]: ${fn.text.replace(/\n+/g, ' ').trim()}`);
+      if (fn && fn.text.trim()) fnLines.push(`${indent}  [^${key}]: ${lt(fn.text.replace(/\n+/g, ' ').trim())}`);
     });
     if (fnLines.length) { sep(); out.push(...fnLines); lastWasBlock = true; }
     let olN = 0;
@@ -32646,7 +32688,7 @@ function toPlainText(rootNode) {
       stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))), node.footnotes).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
-      const dlabel = stripInlineMd(textForDisplay(node));
+      const dlabel = stripInlineMd(linkText(textForDisplay(node)));
       if (dlabel) out.push(`${indent}${dlabel.replace(/\n/g, ' ')}`);
     } else {
       // To-dos: use the raw text (it carries the marker/keyword); reduce a leading
@@ -32660,14 +32702,16 @@ function toPlainText(rootNode) {
       for (let i = 1; i < lines.length; i++) out.push(`${indent}\t${lines[i]}`);
     }
     // the point's note: continuation lines indented under the item
-    if (node.note) node.note.split('\n').forEach(l => out.push(`${indent}\t${l}`));
+    // #1111: these four sinks bypassed the link chain, so a link written in a note, a property, a
+    // divider label or a footnote shipped as a literal [[#id]] to the reader.
+    if (node.note) linkText(node.note).split('\n').forEach(l => out.push(`${indent}\t${l}`));
     // per-node properties as a single continuation line
     const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase())); // #813
-    if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${p.val}`).join(' · ')}]`);
+    if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${linkText(p.val)}`).join(' · ')}]`);
     // footnote text in reference order, indented under the node
     getFnRefs(node.text).forEach(key => {
       const fn = (node.footnotes || []).find(f => f.key === key);
-      if (fn && fn.text.trim()) out.push(`${indent}\t[^${key}] ${stripInlineMd(fn.text).replace(/\n+/g, ' ').trim()}`);
+      if (fn && fn.text.trim()) out.push(`${indent}\t[^${key}] ${stripInlineMd(linkText(fn.text)).replace(/\n+/g, ' ').trim()}`);
     });
     for (const c of node.children) emit(c, depth + 1);
   }
@@ -32694,14 +32738,21 @@ function downloadText(content, ext, mime, nameOverride) {
 // Removing them silently would trade one P4 failure (bracket junk in the file) for another (a
 // change to your prose you were never told about). Empty string when nothing was dropped, so the
 // common export flashes exactly the message it always did.
-function exportedNote(rootNode) {
+// #1111: `flat` is set by the plain-text door, the one format that still dissolves links, so the
+// sentence is only ever claimed by the export that actually does it. Markdown keeps its links now
+// and says nothing extra.
+function exportedNote(rootNode, flat) {
+  const parts = [];
   const n = countUnwrittenFnRefs(rootNode);
+  if (n) parts.push(`${n} unwritten footnote${n === 1 ? '' : 's'} dropped.`);
+  const l = flat ? countExportLinks(rootNode) : 0;
+  if (l) parts.push(`${l} link${l === 1 ? '' : 's'} flattened to plain words. Export Markdown or Web page to keep them.`);
   // the leading period closes the file name: without it the toast runs on as
   // `Exported a copy: “notes.md” 2 unwritten footnotes dropped.`
-  return n ? `. ${n} unwritten footnote${n === 1 ? '' : 's'} dropped.` : '';
+  return parts.length ? '. ' + parts.join(' ') : '';
 }
 function exportMarkdown() { const n = downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); flashHint('Exported a copy: “' + n + '”' + exportedNote(root)); }
-function exportPlainText() { const n = downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); flashHint('Exported a copy: “' + n + '”' + exportedNote(root)); }
+function exportPlainText() { const n = downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); flashHint('Exported a copy: “' + n + '”' + exportedNote(root, true)); }
 
 // Export a point (or a set of selected points) to Markdown. Reuses toMarkdown by wrapping
 // the nodes in a throwaway root, so a point exports as itself + its subtree, and pills
@@ -33293,6 +33344,37 @@ function countUnwrittenFnRefs(rootNode) {
     for (const c of (node?.children || [])) {
       if (c.noexport) continue;
       for (const key of getFnRefs(c.text)) if (!fnIsWritten(c.footnotes, key)) n++;
+      walk(c);
+    }
+  })(rootNode || { children: [] });
+  return n;
+}
+
+// #1111: how many links the PLAIN-TEXT export will dissolve into prose, so the toast can say so.
+// Markdown keeps them now (mdLinkOut), but plain text has no link form and never will, so the
+// honest move is the UXP-237 one: do the lossy thing and report it.
+//
+// WLINK_RE, not LINK_RE. `collectLinks` uses LINK_RE, which is SAME-DOC ONLY, so a count built on
+// it would silently under-report every cross-doc link - and this counter exists precisely to stop
+// under-reporting. It also counts every sink linkText actually reaches: text, note, properties and
+// footnote text, which the four fixes above just brought into the chain.
+//
+// Mirrors countUnwrittenFnRefs' `noexport` skip: a link inside an excluded subtree was never going
+// to be exported, so counting it would over-report what changed.
+function countExportLinks(rootNode) {
+  let n = 0;
+  const inStr = (s) => {
+    if (!s) return;
+    WLINK_RE.lastIndex = 0;
+    while (WLINK_RE.exec(String(s))) n++;
+  };
+  (function walk(node) {
+    for (const c of (node?.children || [])) {
+      if (c.noexport) continue;
+      inStr(c.text);
+      inStr(c.note);
+      for (const p of (c.props || [])) inStr(p.val);
+      for (const f of (c.footnotes || [])) inStr(f.text);
       walk(c);
     }
   })(rootNode || { children: [] });
@@ -37718,7 +37800,7 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing: Markdown or plain text freeze the pills to their shown text for a blog or a README, and Web page (HTML) packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice and calculations still live (it reopens as the running app, not a static page). All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the three Export a copy formats skips that point and everything under it, Markdown, plain text and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing, and they differ in what they keep. Markdown freezes the pills to their shown text and keeps your links, writing each one as a real markdown link so the connections survive in a blog post or a README. Plain text has no way to write a link, so links become the words they point at, and the message after the export tells you how many. Web page (HTML) keeps everything: it packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice, calculations and links still live (it reopens as the running app, not a static page). If you are not sure which to send, send the Web page. All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the three Export a copy formats skips that point and everything under it, Markdown, plain text and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
     related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },

@@ -1188,3 +1188,96 @@ the function's own end now.
 
 **Preserved on purpose:** the dotted unlinked-mention edge, which the same researcher called *"the
 single best idea in here"*. Verified still present.
+
+---
+
+## UXP-259 - Markdown export dissolved the link layer, and the lossless format was the unguessable one (#1111)
+
+**Principle:** P4 (an export that silently drops a layer, and raw syntax reaching a reader), P2 (the
+format that keeps everything was the one nobody would guess), P1 (a link means the same thing in a
+file as on screen).
+
+**Reported by a PKM persona with a six-year Obsidian vault** who has migrated twice and been burned.
+He did not trust the toast: he intercepted the downloads and opened the bytes.
+
+> *"I'd have shipped that .md to a colleague thinking my link graph was in it."*
+
+The menu said *"one-way snapshot"*, which he read as *"you cannot edit it and sync back"*, not as
+*"your links are gone."* Meanwhile two personas with opposite use cases independently found the HTML
+export and called it the door they wanted: *"So the exit works, through the format nobody would guess
+is the lossless one."*
+
+**This is an identity clause, not only a copy gap.** `product-identity.md` §3b guarantees freedom to
+leave - a user *"leaves the app entirely and continues another way, taking everything with them
+(plain text, OPML, **markdown**, a self-contained runnable HTML)."* Markdown is named as one of the
+four exits and it did not take everything.
+
+### Measured before designing, and one measurement thrown away
+
+Calling the pure cores directly reported `[[#maren|]]` exporting as the bare id `maren`. **That was a
+harness artifact**, the same class as the `file://` OPFS mistake in UXP-255: `linkText` resolves
+through `nodeById`, and the Node realm has no built index, so it fell to its `return id` arm. Re-run
+in a browser it resolves to the title. No decision here rests on that line.
+
+Two findings from the same probe were real and are **not in the issue**:
+
+- **Four sinks leaked a RAW token** into both text exports - the divider label, the note, the
+  property line and the footnote definition all bypassed the link chain, so a link written in any of
+  them shipped as a literal `[[#maren|]]`. That is the raw-syntax-reaches-a-reader failure UXP-237
+  removed for footnote markers, still live in four other sinks of the same two functions.
+- **The cross-doc form discarded its docId**, so which document a reference pointed at was
+  unrecoverable from the file.
+
+### Fix
+
+**`linkText(str, depth, emit)`.** `emit(text, docId, id)` decides what a resolved token becomes; the
+default returns the text alone and is byte-identical for all nine on-screen callers. Injected rather
+than forked, so every resolution rule (caption, depth, same-doc, cross-doc, unresolvable) stays in
+one place - the same seam #1110 used for graph labels, deliberately.
+
+**The form was chosen by measurement, not preference.** Through markdown-it (CommonMark), the same
+instrument UXP-237 used:
+
+| form | renders as |
+|---|---|
+| `[Caption](#id)` | `<a href="#hag">Hagger 2016</a>` |
+| `[[Caption]]` | `[[Hagger 2016]]` - literal bracket junk |
+
+The wikilink form is what the reporter's own vault speaks, but a prose export exists to read well to
+someone who does **not** have Pointliner, and junk-in-every-strict-renderer is the exact failure
+UXP-237 removed. Cross-doc keeps its document: `[Voss](notes.md#n7)`.
+
+**The bracket escape is load-bearing, and that is measured too.** Unescaped, an unbalanced `]`
+collapses the link to literal text and an unbalanced `[` **mangles the link text**, silently
+attributing the wrong words to the anchor.
+
+**Plain text has no link form and never will**, so it keeps the prose resolution and *reports*:
+
+> `Exported a copy: "outline.txt". 2 links flattened to plain words. Export Markdown or Web page to keep them.`
+
+The message names a way out, not only a loss. `countExportLinks` uses **`WLINK_RE`, not `LINK_RE`** -
+`collectLinks` uses the latter, which is same-doc only, so a counter built on it would silently
+under-report the cross-doc links a workspace user most cares about, in the very function that exists
+to stop under-reporting. It copies `countUnwrittenFnRefs`' `noexport` skip.
+
+**The three menu rows now say what each format keeps**, not only how it works, and the guide entry
+names the safe default ("If you are not sure which to send, send the Web page").
+
+### Two of my own pins were vacuous, and the mutation harness is what found them
+
+Ten mutations, each asserting its target was present before the result was trusted. **Two initially
+reported `0 failing`**, both the same class: the pure core was pinned and the call site that uses it
+was not. Discarding the docId again, and making the plain-text door silent again, both left
+`mdLinkOut` and `exportedNote` perfectly tested and perfectly ignorant of whether anything called
+them correctly. Fixed by pinning the wiring; all ten bite now.
+
+**The existing `#806` pin would have gone green through the reversal.** Its whole contract was
+`!md.includes('[[#')`, which is still true of `[My Label](#qqq1)`. Rewritten, not extended.
+
+**`exportedNote` was never in `load-cores.mjs`** - the UXP-237 *message builder*, the sentence CI
+shows a user, had no test at all. Added in the same change that gives it a second arm.
+
+**Filed, not bundled:** a caption-less `[[#id|]]` alone on a line transcludes the target's whole
+subtree on screen (`mirrorSubtreeRows`, capped at 40 rows) and exports as **one line of title**. That
+is content loss rather than link-layer loss, and whether an export should inline a transclusion is a
+content decision about someone else's file - the shape UXP-237 refused to settle in passing.

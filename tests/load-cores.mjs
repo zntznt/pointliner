@@ -196,6 +196,10 @@ export function loadCores() {
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'fnIsWritten', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
+    // #1111: markdown keeps the link layer; plain text cannot, so it reports. `exportedNote` is the
+    // UXP-237 message builder, which was never added here — so the sentence CI shows a user has
+    // never been tested. That omission is fixed in the same change that gives it a second arm.
+    'mdLinkOut', 'countExportLinks', 'exportedNote',
     'imgSizeParts',   // #992: markdown image title -> width mode class + inline width
     'blSectionModel',   // #953: the shared backlinks section model (strip + in-flow zoom footer)
     'nearbyAdjacency', 'nearbyGraphModel', 'qid', 'unqid',   // #898: neighborhood graph (current point +/- N hops, cross-doc)

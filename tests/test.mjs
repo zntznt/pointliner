@@ -13882,6 +13882,50 @@ test('the exclusion copy no longer claims the web page export keeps it', () => {
     'the GUIDE no longer promises the web page export keeps excluded points');
 });
 
+test('#1111 the export menu describes each format by what it KEEPS, not only by mechanism', () => {
+  // The reporter read "one-way snapshot" as "you cannot edit it and sync back", never as "your
+  // links are gone" — and two personas with opposite use cases both had to DISCOVER that the HTML
+  // export is the lossless one. Nothing in the menu, the guide or any toast used the word "link"
+  // in connection with the .md/.txt exports.
+  assert.ok(!_src.includes('One-way snapshot, pills frozen to text'), 'the markdown row is updated');
+  assert.ok(!_src.includes('One-way snapshot, plain outline'), 'the plain-text row is updated');
+  assert.ok(!_src.includes('Shareable file, reopens as the live app'), 'the HTML row is updated');
+  assert.ok(_src.includes('One-way snapshot. Keeps links, freezes pills to text'), 'markdown says it keeps links');
+  assert.ok(_src.includes('One-way snapshot. Links become plain words'), 'plain text says what it costs');
+  assert.ok(_src.includes('Keeps everything. Reopens as the live app'),
+    'the lossless format stops being the one nobody would guess');
+  // the guide entry carries the same three facts, and points at the safe default
+  assert.match(_src, /Markdown freezes the pills to their shown text and keeps your links/);
+  assert.match(_src, /Plain text has no way to write a link/);
+  assert.match(_src, /If you are not sure which to send, send the Web page\./);
+  // The plain-text toast names a way OUT, not only a loss (P2 inside a P4 message). Matched on the
+  // source template literal, ternary and all — the assembled sentence itself is pinned by the
+  // exportedNote core test, which is where a rendered-string assertion belongs.
+  assert.match(_src, /flattened to plain words\. Export Markdown or Web page to keep them\./);
+});
+
+test('#1111 the WIRING, not just the cores — two mutations that survived until this test existed', () => {
+  // BOTH of these were found by the mutation harness reporting "0 failing", and both are the same
+  // vacuity class: the pure core was pinned, the call site that USES it was not. `mdLinkOut` and
+  // `exportedNote` are perfectly tested above and neither knows whether anything calls it correctly.
+
+  // 1. Discarding the docId again — a cross-doc link silently loses which document it pointed at.
+  //    Not reachable from the Node realm (docFileOf needs workspaceIndex), so it is source-pinned.
+  const tm = fnBody(_src, 'toMarkdown');
+  assert.match(tm, /const mdLink = \(text, docId, id\) => mdLinkOut\(text, id, docFileOf\(docId\)\);/,
+    'the markdown emit must pass the resolved document file, not an empty string');
+  assert.match(tm, /const docFileOf = \(docId\) => \{[\s\S]{0,320}nameByDocId\?\.get\(docId\)/,
+    'and docFileOf must resolve a foreign docId to its NAME, falling back to the id');
+  assert.match(tm, /const lt = \(str\) => linkText\(str, 0, mdLink\);/, 'the emit must actually be installed');
+
+  // 2. The plain-text door going silent again. `exportedNote(root)` without the flag returns '',
+  //    so dropping the argument reverts the report while every core test stays green.
+  assert.match(_src, /function exportPlainText\(\) \{[^}]*exportedNote\(root, true\)\)/,
+    'the plain-text door must ask for the flattened-link count');
+  assert.match(_src, /function exportMarkdown\(\) \{[^}]*exportedNote\(root\)\)/,
+    'and the markdown door must NOT claim a loss it no longer has');
+});
+
 test('LEAN-FLOOR: {prop …} promotes to node.props via promoteBraceBody, leaving no inline token', () => {
   // the whole point of the sidecar stub: it writes the chip and CONSUMES the brace (no [[…]] token).
   const node = { text: '', props: [] };
@@ -20255,16 +20299,125 @@ test('#808: setDateProp resolves relative dates to ISO at commit; repeat phrases
   assert.equal(n.props.find(p => p.key === 'repeat').val, 'every week');
 });
 
-test('#806: Markdown/plain-text exports resolve node links via linkText — never the raw token', () => {
+test('#806/#1111: no raw token survives export, and Markdown keeps the link LAYER', () => {
+  // REWRITTEN, not extended. This test was named "…resolve node links via linkText — never the raw
+  // token", and its whole contract was `!md.includes('[[#')`. That assertion still passes against
+  // the new output — `[My Label](#qqq1)` contains no `[[#` either — which is exactly why it had to
+  // be rewritten rather than trusted: it would have gone green straight through the reversal.
+  //
+  // #1111: a PKM persona opened the exported bytes rather than trusting the toast: "I'd have
+  // shipped that .md to a colleague thinking my link graph was in it." product-identity.md §3b
+  // names markdown as one of four exits that let a user leave "taking everything with them", and
+  // dissolving every link into prose meant it did not.
   const r = c.mkRoot ? c.mkRoot() : c.mkNode('root');
   const a = c.mkNode('see [[#qqq1|My Label]] and [[#zzzzzz42|]] end');
   r.children = [a];
   const md = c.toMarkdown(r);
-  assert.ok(md.includes('My Label'), 'explicit label must win');
   assert.ok(!md.includes('[[#'), 'no raw link token may survive export: ' + md);
-  assert.ok(md.includes('zzzzzz42'), 'unresolvable target degrades to its bare id');
+  assert.ok(md.includes('[My Label](#qqq1)'), 'the caption becomes the link TEXT, target kept: ' + md);
+  assert.ok(md.includes('](#zzzzzz42)'), 'an unresolvable target still records where it pointed');
+  // Plain text has no link form and never will, so it keeps the prose resolution — the whole
+  // reason its door now reports a count instead of doing this silently.
   const txt = c.toPlainText(r);
   assert.ok(!txt.includes('[[#'), 'plain text too: ' + txt);
+  assert.ok(txt.includes('My Label'), 'explicit label must win');
+  assert.ok(!txt.includes(']('), 'plain text must NOT grow markdown syntax: ' + txt);
+});
+
+test('#1111 mdLinkOut — the export form, chosen by measurement not preference', () => {
+  // MEASURED against markdown-it (CommonMark), the same instrument UXP-237 used:
+  //   [Caption](#id)  ->  <a href="#hag">Hagger 2016</a>       a real link
+  //   [[Caption]]     ->  [[Hagger 2016]]                       literal bracket junk
+  // The wikilink form is what the reporter's own Obsidian vault speaks, but a prose export exists
+  // to read well to someone who does NOT have Pointliner, and junk-in-every-strict-renderer is the
+  // precise failure UXP-237 removed for footnote markers. So: CommonMark.
+  assert.equal(c.mdLinkOut('Hagger 2016', 'hag', ''), '[Hagger 2016](#hag)');
+  // cross-doc keeps its document. The prose path discarded the docId, so a reader could not tell
+  // which document a reference pointed at, and could not recover it.
+  assert.equal(c.mdLinkOut('Voss', 'n7', 'notes.md'), '[Voss](notes.md#n7)');
+
+  // THE ESCAPE IS LOAD-BEARING, and this is the measurement that proves it. Through markdown-it:
+  //   `[a caption with ] inside](#x1)`  unescaped -> the link collapses to literal text
+  //   `[a caption with [ inside](#x1)`  unescaped -> the link TEXT is mangled ("a caption with"
+  //                                                  dropped, the rest wrapped in the anchor)
+  // Both are correct once the brackets are escaped.
+  assert.equal(c.mdLinkOut('a ] caption', 'x1', ''), '[a \\] caption](#x1)');
+  assert.equal(c.mdLinkOut('a [ caption', 'x1', ''), '[a \\[ caption](#x1)');
+  assert.equal(c.mdLinkOut(null, 'x1', ''), '[](#x1)', 'no caption is still a well-formed link');
+});
+
+test('#1111 countExportLinks — WLINK_RE, every sink, and the noexport skip', () => {
+  const mk = (text, extra) => Object.assign(c.mkNode(text), extra || {});
+  const r = c.mkRoot ? c.mkRoot() : c.mkNode('root');
+  r.children = [
+    mk('text link [[#a1|]]'),
+    mk('plain', { note: 'a note link [[#a2|]]' }),
+    mk('plain', { props: [{ key: 'src', val: 'a prop link [[#a3|]]' }] }),
+    mk('plain[^k]', { footnotes: [{ key: 'k', text: 'a footnote link [[#a4|]]' }] }),
+    // WLINK_RE, not LINK_RE. collectLinks uses LINK_RE, which is SAME-DOC ONLY, so a counter built
+    // on it would silently under-report exactly the links a workspace user cares about — and this
+    // counter exists to stop under-reporting.
+    mk('cross-doc [[docB#a5|]]'),
+    // mirrors countUnwrittenFnRefs: a link in an excluded subtree was never going to be exported
+    mk('excluded [[#a6|]]', { noexport: true }),
+  ];
+  assert.equal(c.countExportLinks(r), 5, 'four sinks plus the cross-doc form; the excluded one is not counted');
+  assert.equal(c.countExportLinks(null), 0, 'no tree, no count');
+  assert.equal(c.countExportLinks({ children: [c.mkNode('no links at all')] }), 0);
+});
+
+test('#1111 exportedNote — only the door that actually flattens claims the sentence', () => {
+  const r = c.mkRoot ? c.mkRoot() : c.mkNode('root');
+  r.children = [c.mkNode('one [[#a1|]] and two [[#a2|]]')];
+  // Markdown keeps its links now, so it says nothing extra — the byte-identical old message.
+  assert.equal(c.exportedNote(r), '', 'the markdown door adds nothing');
+  assert.equal(c.exportedNote(r, true),
+    '. 2 links flattened to plain words. Export Markdown or Web page to keep them.',
+    'the plain-text door names the loss AND the two formats that do not have it');
+  // singular conjugates, and the sentence names a way out rather than only a regret (P4/P2)
+  const one = c.mkRoot ? c.mkRoot() : c.mkNode('root');
+  one.children = [c.mkNode('just [[#a1|]]')];
+  assert.match(c.exportedNote(one, true), /^\. 1 link flattened/);
+  // a clean document flashes exactly what it always did, on both doors
+  const clean = c.mkRoot ? c.mkRoot() : c.mkNode('root');
+  clean.children = [c.mkNode('no links here')];
+  assert.equal(c.exportedNote(clean), '');
+  assert.equal(c.exportedNote(clean, true), '');
+});
+
+test('#1111 the four sinks that leaked a RAW token into both exports', () => {
+  // Found by driving, not in the issue. The divider label, the note, the property line and the
+  // footnote definition all bypassed the link chain in BOTH text exports, so a link written in any
+  // of them shipped to the reader as a literal `[[#a1|]]` — the raw-syntax-reaches-a-reader failure
+  // UXP-237 removed for footnote markers, still live in four other sinks of the same two functions.
+  const mk = (text, extra) => Object.assign(c.mkNode(text), extra || {});
+  const r = c.mkRoot ? c.mkRoot() : c.mkNode('root');
+  r.children = [
+    mk('point', { note: 'aside: [[#a1|]] here' }),
+    mk('point', { props: [{ key: 'src', val: 'see [[#a2|]]' }] }),
+    mk('point[^k]', { footnotes: [{ key: 'k', text: 'per [[#a3|]]' }] }),
+  ];
+  const div = c.mkNode('divider label [[#a4|]]'); div.type = 'divider';
+  r.children.push(div);
+  for (const [name, text] of [['markdown', c.toMarkdown(r)], ['plain text', c.toPlainText(r)]]) {
+    assert.ok(!text.includes('[[#'), `${name}: no sink may leak a raw token: ` + text);
+    for (const id of ['a1', 'a2', 'a3', 'a4']) {
+      assert.ok(text.includes(id), `${name}: the ${id} reference must still be represented`);
+    }
+  }
+});
+
+test('#1111 linkText — the default emit is byte-identical, so nine other sinks are untouched', () => {
+  // The emit seam is injected, the same shape #1110 used for graph labels. Every on-screen caller
+  // (breadcrumbs, backlink rows, pickers, unlinked refs) passes nothing and must be unchanged.
+  for (const s of ['gone [[#zzz|]]', 'see [[#q1|My Label]] end', 'plain text', '', 'a [[docB#n7|]] ref']) {
+    assert.equal(c.linkText(s, 0), c.linkText(s), 'default emit must not alter any existing caller: ' + s);
+  }
+  assert.equal(c.linkText('gone [[#zzz|]]'), 'gone zzz', 'the shipped default, unchanged');
+  // and with an emit, the SAME resolution rules drive a different output
+  assert.equal(c.linkText('gone [[#zzz|]]', 0, (t, d, id) => `<${t}|${id}>`), 'gone <zzz|zzz>');
+  assert.equal(c.linkText('see [[#q1|Cap]]', 0, (t, d, id) => `<${t}|${id}>`), 'see <Cap|q1>',
+    'a caption still wins, and the emit still sees the target id');
 });
 
 const _fix2 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
