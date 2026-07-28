@@ -1590,3 +1590,69 @@ and the general case.
 changes every layout rather than correcting a transform that was demonstrably wrong, and this session
 has spent a lot of effort removing unjustified magic numbers. Filed with the measurement so the next
 person starts from a number rather than a hunch.
+
+---
+
+## UXP-264 - the graph and Cards drew source where the outline drew values (#1140)
+
+**Principle:** P1 (a point had two names, one on screen and one on the canvas), P4 (raw syntax
+reaching a reader, the rule UXP-237 set for exports).
+
+**Found while mapping #1110**, not persona-reported. #1110 fixed the LINK half of `graphNodeLabel`;
+this is every other token class the same chain never handled. Driven on `main`, comparing each label
+against what the point actually reads as:
+
+| the point reads as | the canvas drew |
+|---|---|
+| `Session cost 2d6 = 7` | `Session cost [[dice:r0xp9ugu]]` |
+| `Budget 600 to 900 ≈ 738.5 …` | `Budget [[est:u6cui6fn]]` |
+| `Total 0` | `Total [[math:x1iuduzk]]` |
+| `A highlighted claim and text (http://x)` | `A ==highlighted== claim and [text](http://x)` |
+| `Hagger 2016` (marker rendered) | `Hagger 2016[^k]` |
+| `Atomic notes` (tag as a chip) | `Atomic notes #zettelkasten/principle` |
+
+The cause is one line: the link rule requires a `#`, so a colon-form artifact token
+(`[[est:key]]`) matched nothing and passed through untouched.
+
+### Fix
+
+**The same injection seam #1110 used.** `graphNodeLabel(firstLine, resolveLink, resolveArtifact)` -
+`flattenArtifacts` needs a varMap, so it is supplied at the call site and the core stays a pure
+string function callable from Node. Both the graph (all three scopes) and Cards pass one.
+
+**It reads `varMapAt(node)`, the POSITIONAL map (#767)** - the same one the render uses - so a label
+agrees with the point beside it rather than with a document-wide resolution. That is the bug UXP-257
+removed from the estimate export and UXP-261 removed from the pill freeze; this is the third surface
+of the same family and it was fixed by choosing the right map from the start rather than after a
+persona hit it.
+
+**Three inline forms added to the chain**, plus footnote markers and (per #943) hashtags - the graph
+and Cards being the two caption sinks that never got that strip.
+
+### A simplification deliberately NOT made, and pinned
+
+`stripInlineMd` looks like it should replace the hand-rolled chain. **Measured, the two are
+complementary and neither contains the other:** `stripInlineMd` leaves `___Ancient One___` as
+`_Ancient One_` (it has no single-underscore rule), while the label chain handles it via the #635
+fix; and adding a single-underscore rule to `stripInlineMd` would eat `snake_case` in backlink rows
+and the plain-text export, which are its other callers. The label chain gained the three missing
+rules instead. Pinned with the measurement so the next reader does not "simplify" it into a
+regression.
+
+### Perf, since the issue flagged it
+
+#953 measured `varMapAt` at ~540 ms per 5k points **when warmed across a whole tree**. It is called
+here per LABELLED node - a few dozen to a few hundred - so:
+
+```
+400 labelled points, each with a pill and a tag
+  labels without the artifact resolver : 1.76 ms
+  labels WITH it                       : 2.70 ms   (+0.94 ms)
+  openGraph median                     : 869 ms    (the force layout dominates)
+```
+
+**Two more pins re-anchored on spelling rather than behaviour** - the #1110 doc-scope and Cards pins
+both matched their calls' exact argument lists, and both calls gained a third argument. That is the
+**fourth and fifth** instance this session; the class remains open and UXP-260's helpers do not close
+it. One of my own new pins also used `[^)]*` in a regex that cannot cross the `)` in
+`(n.text || '')` - the identical mistake made in UXP-261, two changes earlier.

@@ -23554,8 +23554,14 @@ function collectLinks(rootNode) {
 // Recursion is impossible by construction rather than by a depth counter: a resolver resolves by
 // calling graphNodeLabel WITHOUT a resolver, so a nested link inside a resolved title cannot
 // re-enter. That is linkText's `depth > 0` rule, enforced structurally.
-function graphNodeLabel(firstLine, resolveLink) {
+function graphNodeLabel(firstLine, resolveLink, resolveArtifact) {
   let t = String(firstLine || '');
+  // #1140: artifact pills first, so a token becomes the value the point actually reads as. The
+  // link rule below needs a `#`, so `[[est:key]]` matched NOTHING and reached the canvas as raw
+  // source: a point reading `Session cost 2d6 = 7` was labelled `Session cost [[dice:r0xp9ugu]]`.
+  // Injected, like resolveLink, because flattenArtifacts needs a varMap and this stays a pure
+  // string->string function callable from Node.
+  if (resolveArtifact) t = resolveArtifact(t);
   // drop block prefixes the same way textForDisplay does (heading #, quote >, task/ol markers)
   t = t.replace(/^\s*(#{1,6}\s+|>\s+|-\s+\[[ xX]\]\s+|\d+\.\s+|[-*+]\s+)/, '');
   // a caption wins; otherwise the target's live title; otherwise (unresolvable) nothing
@@ -23569,7 +23575,19 @@ function graphNodeLabel(firstLine, resolveLink) {
     .replace(/\*\*\*([^*]+)\*\*\*/g, '$1').replace(/___([^_]+)___/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1').replace(/__([^_]+)__/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1')
-    .replace(/`([^`]+)`/g, '$1').replace(/~~([^~]+)~~/g, '$1').replace(/\+\+([^+]+)\+\+/g, '$1');
+    .replace(/`([^`]+)`/g, '$1').replace(/~~([^~]+)~~/g, '$1').replace(/\+\+([^+]+)\+\+/g, '$1')
+    // #1140: the three inline forms this chain never had, so `A ==highlighted== claim` and
+    // `see [text](http://x)` reached the canvas with their markers on. Deliberately NOT delegated
+    // to stripInlineMd: the two chains are COMPLEMENTARY, not nested - measured, stripInlineMd
+    // leaves `___Ancient One___` as `_Ancient One_` (it has no single-underscore rule), and adding
+    // one there would eat `snake_case` in backlink rows and the plain-text export.
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')        // image -> alt
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')         // link -> its text (no URL on a 28-char label)
+    .replace(/==([^=]+)==/g, '$1');
+  // #1140: a footnote marker is an annotation on a word, not part of the name (the UXP-237 rule),
+  // and #943 already strips hashtags at every other caption sink - the graph and Cards were the
+  // two that never got it.
+  t = stripCaptionTags(t.replace(/\s*\[\^[^\]]+\]/g, ''));
   return t.replace(/\s+/g, ' ').trim();
 }
 
@@ -33914,7 +33932,8 @@ function buildCorkboard(vp) {
     }
     const tn = nodeById(id); return tn ? graphNodeLabel((tn.text || '').split('\n')[0]) : '';
   };
-  const cards = corkboardCards(vp, { titleOf: n => graphNodeLabel((n.text || '').split('\n')[0], cardLinkTitle) });
+  const cards = corkboardCards(vp, { titleOf: n => graphNodeLabel((n.text || '').split('\n')[0], cardLinkTitle,
+    (text) => flattenArtifacts(text, n, varMapAt(n))) });
   cards.forEach((cd, i) => {
     const node = nodeById(cd.id); if (!node) return;
     const card = document.createElement('div');
@@ -35638,7 +35657,15 @@ function renderGraph(panel) {
     const t = workspaceIndex?.titles?.get(docId)?.get(id);
     return t === undefined ? '' : graphNodeLabel(String(t).split('\n')[0]);
   };
-  const titleOf = id => { const n = nodeById(id); return n ? (graphNodeLabel((n.text || '').split('\n')[0], linkTitleOf) || '(untitled)') : null; };
+  // #1140: artifact tokens resolve to the value the pill shows. varMapAt is the POSITIONAL map the
+  // render itself uses (#767), so a label agrees with the point beside it; #953 measured warming it
+  // across a whole document, which is why it is called per LABELLED node (a few dozen) and never
+  // over the tree.
+  const artifactsOf = (node) => (text) => flattenArtifacts(text, node, varMapAt(node));
+  const titleOf = id => {
+    const n = nodeById(id);
+    return n ? (graphNodeLabel((n.text || '').split('\n')[0], linkTitleOf, artifactsOf(n)) || '(untitled)') : null;
+  };
   // #898: the same lookup over a QUALIFIED id. The open document reads LIVE (nodeById); other
   // documents read the index's title map, which already holds every point — no wsDocRoot walk.
   // null means "no such point anywhere", which is what makes a node broken (the red dot).
