@@ -51,7 +51,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | **Changing bases / tables** | Read `guidance/bases-direction.md`. Read `guidance/base-views-vision.md` §0 (red-team rules bind). |
 | **Changing cross-doc features** | Read `guidance/cross-document-direction.md` §5 (liveness spine). |
 | **Touching plugins / data packs** | Read `guidance/plugins-direction.md`. Data only. No `eval`/`Function`. The gate is locked. |
-| **Adding a Font Awesome icon** | Add glyph to `FA_GLYPHS`. Rebuild subset: `python tools/build-fa-subset.py`. |
+| **Adding a Font Awesome icon** | Add the name to `ICONS` in `tools/build-fa-subset.py` (the source of truth), rebuild (`python tools/build-fa-subset.py`), then splice **both** outputs into `index.html`: the whole `<style id="fa-embed">` block AND the `FA_GLYPHS` line. Editing `FA_GLYPHS` alone paints a blank button; the `#1144` guard now reads the embedded font's cmap and fails if the rebuild was skipped. |
 | **Touching themes / colors** | Read `guidance/design-language.md`. Text on accent = `--acc-fg`, never hardcoded `#fff`. |
 | **Non-UI change (pure logic)** | PR description: `UI: none`. Run tests, update pins if behavior changed. |
 | **Creating a PR** | `git fetch origin` → branch off `origin/main` (not local). `node --test tests/test.mjs` must pass. PR body: Conformance Statement or `UI: none`. No session link or agent attribution in the commit OR the body (see PR/commit hygiene). |

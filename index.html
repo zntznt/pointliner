@@ -14109,7 +14109,9 @@ function openTemplatePicker(nodeId) {
   setIcon(ic, TEMPLATE_ICON);
   const ttl = document.createElement('div'); ttl.className = 'io-title';
   ttl.textContent = 'Stamp a template';
-  head.append(ic, ttl); dialogHelp(head, 'template'); ioCard.appendChild(head);
+  // #1144: the GUIDE entry id is 'templates', not 'template'. openGuide matches on the entry id
+  // alone (no covers fallback), so a near-miss silently opened the first entry, Shortcuts.
+  head.append(ic, ttl); dialogHelp(head, 'templates'); ioCard.appendChild(head);
 
   if (!list.length) {
     const empty = document.createElement('p');
@@ -27540,7 +27542,7 @@ function openSeqDialog({ title, submitLabel, name = '', def = '', onResult }) {
   openInsertDialog({
     icon: { fa: 'fa-solid fa-list-check', fb: '⇶' },
     title,
-    guideId: 'sequence',   // #466
+    guideId: 'sequences',   // #466; #1144 fixed the id ('sequence' had no entry, so ? opened Shortcuts)
     submitLabel,
     fields: [
       { key: 'name', label: 'Name', placeholder: 'e.g. Flow, Pipeline, Review', value: name, required: true,
@@ -27966,7 +27968,8 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   // its io-seg mode control — the two things the field-vocabulary plan could not express, and the
   // reason this dialog opted out of the builder and so missed the UXP-246 drafts fix.
   const _shell = openDialogShell({
-    icon: { fa:'fa-solid fa-dollar-sign', fb:'$' }, title, guideId: 'var', ariaLabel: 'Variable',
+    // #1144: 'variables' is the entry id; 'var' is only a covers token, which openGuide never reads
+    icon: { fa:'fa-solid fa-dollar-sign', fb:'$' }, title, guideId: 'variables', ariaLabel: 'Variable',
     draftKey: 'var-dialog',
     // the MODE is part of the seed: restoring text without the toggle it was typed under would hand
     // back a value the dialog then validates by the wrong rule
