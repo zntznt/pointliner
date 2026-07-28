@@ -1021,3 +1021,44 @@ the read-path false alarm each fail a pin.
 **Not addressed here (real, separate):** the boot restore path swallows a failed read identically to
 "no autosave" and falls through to the welcome document, and `reconcileOpfsOnBoot`'s
 `userTypedSinceBoot` is a one-way trapdoor. Both are filed rather than bundled.
+
+### UXP-256 ✓ A refused file picker was read as a user cancelling, so Save did nothing and said nothing 🔴 [files] (RESOLVED 2026-07-28)
+
+**P4.** Filed as #1112. *"Save, Save as, and Connect a folder did nothing at all for me. Those need
+the file picker, which my browser wouldn't grant, and the app said nothing about it."* The persona
+never connected a folder and could not evaluate the multi-document workspace at all. He is the same
+user whose session did not survive a reload (UXP-255 / #1113) - one restricted environment, two
+storage failures.
+
+Third instance of one root cause: **capability inferred from the presence of an API name.**
+`hasOPFS` was fixed in #1135; `hasFSA` and `hasWorkspace` are the same shape.
+
+**The fallback already existed and was never reached.** `saveFile()` is
+`if (hasFSA) { … } else dlOpml()`. Firefox and Safari have no `showOpenFilePicker`, take the `else`,
+and save fine by download. The bug is exclusively presence-but-refused: `hasFSA === true`, the picker
+throws, and the working download three lines away is unreachable because the branch is chosen by
+presence.
+
+**Measured, not assumed.** In Chromium a refused `showSaveFilePicker` rejects with **`AbortError` in
+1ms**, message "The user aborted a request", when no user aborted anything. Other refusals arrive as
+`NotAllowedError`, which the existing catches already reported. **So only the AbortError path was
+silent** - the issue's framing that all three commands were silent was not accurate, and the
+measurement narrowed it.
+
+**Fix.** A pure `pickerOutcome({ errName, elapsedMs })` tells a refusal from a cancel: anything that
+is not `AbortError` is a refusal, and an `AbortError` faster than a human could dismiss a dialog
+(250ms, 250x above the measured 1ms) is a refusal too. **Stated in the code as a heuristic, not as
+certainty** - the asymmetry justifies it, since a false "refused" costs a visible message plus a
+download that works, while a false "cancelled" is the silence being fixed. `fsaOk` learns capability
+on a refusal, mirroring `opfsOk`. Save then falls back to `dlOpml()` and says why; Open and Connect
+name the cause and the way out.
+
+**Found while mapping, fixed here:** `reconnectWorkspace` had a bare `catch (_) {}` swallowing every
+error AND no branch at all for a denied permission, so "Reconnect folder" could be clicked forever
+with no response. `reopenPendingFile`, its single-file twin, already did it correctly; this copies it.
+
+**Driven, before and after.** Before: `saveAsFile()` silent, the others echoing a raw DOMException.
+After: every entry point names the cause, and Save **actually downloads** rather than only
+apologising. Three mutations guard-proofed - and the first mutation initially reported "0 failing"
+because a shell-escaping bug meant it never applied. The harness now asserts the target was found
+before trusting the result, which is the same vacuity class this register keeps recording.
