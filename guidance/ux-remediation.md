@@ -1656,3 +1656,53 @@ both matched their calls' exact argument lists, and both calls gained a third ar
 **fourth and fifth** instance this session; the class remains open and UXP-260's helpers do not close
 it. One of my own new pins also used `[^)]*` in a regex that cannot cross the `)` in
 `(n.text || '')` - the identical mistake made in UXP-261, two changes earlier.
+
+---
+
+## UXP-265 - a failed boot restore arrived dressed as a guided tour (#1136)
+
+**Principle:** P4, in its worst form. Not a missing signal but a **contradicting** one.
+
+`restoreAutosave` wrapped four different failures in one bare `catch(_) {}`. All four end at the
+welcome document with `_restoredFromAutosave` false. **The issue was filed unreproduced; it is now
+measured.** Driven on a real origin, seeding a recognisable document and booting once per condition:
+
+| condition | their work | told? | what the user actually saw |
+|---|---|---|---|
+| a healthy autosave | restored | n/a | (nothing, correctly) |
+| `localStorage.getItem` throws | **LOST** | **no** | *"These are live examples to explore. Click any pill"* |
+| the payload is truncated | **LOST** | **no** | the same banner |
+| the payload has no `root` | **LOST** | **no** | the same banner |
+| the tree is past `MAX_OPML_DEPTH` | **LOST** | **no** | the same banner |
+
+**The finding is sharper than "silent."** Something IS on screen, and it is the examples banner -
+cheerful onboarding copy served in place of *"we could not read your document."* A user whose work
+has just vanished is told they are on a tour.
+
+The embed path already does this correctly (#449: `embedRestoreFailed` -> *"This shared snapshot
+appears to be corrupt and could not be opened. Ask the sender to export and share it again."*), and
+#845 set the rule outright - *"every boot losing-copy path flashes, honestly."* It was applied once
+and never carried across.
+
+### Fix
+
+The bare catch becomes four named reasons, and boot flashes the matching message next to the embed
+one it is modelled on. **Four remedies, not one**, per the `braceAttemptReason` house rule (name the
+fix, not just the miss): a blocked profile is pointed at File then Open; a corrupt or too-deep copy
+is told it **has not been deleted** and that **editing here replaces it**, which is the actual cliff
+- the welcome document plus one keystroke autosaves straight over the blob that might still be
+recoverable.
+
+Separating `corrupt` from `deep` required moving both checks out of `applyAutosaveData`'s return
+value, which collapses them into one `false`. That is why they were indistinguishable.
+
+**A genuinely fresh boot stays silent** - pinned, because the easy version of this change makes every
+first run cry wolf.
+
+Six mutations guard-proofed. The call-site pin (#1133 / UXP-260) was written **before** running them
+this time rather than after a mutation reported `0 failing` - the first change this session where
+that rule was applied from memory instead of by being caught.
+
+**Still open in #1136:** part 2, `reconcileOpfsOnBoot`'s `userTypedSinceBoot` one-way trapdoor. That
+one needs a design call about how to resolve "a durable copy exists but the user has started typing",
+and it is not answered by a message.
