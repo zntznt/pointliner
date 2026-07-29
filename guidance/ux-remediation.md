@@ -1942,3 +1942,77 @@ the code was right and the guard was blind.
 **Acceptance was following the advice**, the UXP-252 standard: her layout shows the cue, and then
 each remedy the sentence names - move it here, move it to a parent, declare `{cost := 40}` - computes
 560. Negatives unchanged: a real typo still returns `bad ref`, `2 * 3` still computes.
+
+## UXP-269 - the first screen showed what the app can do before saying what it is (#1117)
+
+**P2-1.** Two of six personas in the 2026-07-27 pass read the app as tabletop software and nearly
+closed it before finding anything else.
+
+> **Ops manager:** *"My honest first read was 'this is for someone who plays Dungeons & Dragons.' I
+> nearly closed it."*
+>
+> **PKM researcher:** *"I opened it and got a document about rolling 2d6 and whether a weekend trip
+> fits a GBP 400 budget. My first thought was that I'd been sent to the wrong app."*
+
+A third persona arrived for exactly the current opening and reached a working oracle in two minutes,
+so the origin audience is served and nothing here removes anything.
+
+### Measured on a fresh boot, which corrected the issue's own model
+
+Cleared storage, blocked OPFS, 1280x800, reading rendered text above the fold in DOM order:
+
+| | before | after |
+|---|---|---|
+| points above the fold | 13 | 13 |
+| what they are | **4 dice/coin, then 9 budget, and nothing else** | 1 framing line, then the same |
+| first clickable pill | `{2d6}`, row 1, y=194 | `{2d6}`, row 2, y=253 |
+| first beat that is neither a die nor a budget | y=906, a full screen down | unchanged |
+
+Two things this measurement settled, both against what #1117 assumed:
+
+1. **The researcher was describing the screen accurately.** "Rolling 2d6 and whether a weekend trip
+   fits a GBP 400 budget" is not a caricature; it is the complete contents of the first screen.
+2. **The budget block was never below the fold.** It sat at y=425. The issue's suggested fix - lead
+   with the budget block - would therefore have changed nothing about what he saw, and he named that
+   block as *part of* what put him off: *"a document about rolling 2d6 **and whether a weekend trip
+   fits a GBP 400 budget**."* The issue's proposed remedy is contradicted by its own evidence.
+
+### The fix is framing, not ordering, and IA-2 is left standing
+
+The tour opens `# Poke this document` then immediately `Click this: {2d6}`. That is **IA-2**, shipped
+as #859 with a test enforcing it, and its recorded measure is seconds/keystrokes from a fresh open to
+a live pill. Neither reader complained about that; both said they could not tell what the app was
+for. Reordering would trade a measured win for an unmeasured one.
+
+So: one line above the die.
+
+> Every point here is ordinary text. Some of them also total a list, hold a range instead of a fake
+> number, or pick something at random.
+
+Three concrete capabilities, two of them not tabletop, in the words of what the tour goes on to show
+(the budget total, the album range, the stuck-project draw). IA-3 binds the wording - *external copy
+speaks in problems a stranger recognizes* - so no "your text is alive", and AP punctuation. The atom
+still arrives one line in and still above the fold; what changes is that it reads as a demonstration
+of liveness rather than as the subject matter.
+
+### The second persona's actual gap, closed with one more line
+
+The tour never mentioned links, notes or search at all. The researcher recovered only by **hovering
+the search bar** and finding `has:backlink` / `is:orphan` by accident. "Make it yours" now names the
+link layer and both operators. `[[`, `has:backlink` and `is:orphan` all render as literal `<code>`
+spans (driven and confirmed: no pill, no `.node-link`, no link-index entry).
+
+### Both pins were written to fail, because presence alone could not
+
+The change shipped and all 1798 tests stayed green - the same UXP-260 shape as UXP-268 one PR
+earlier. A pin asserting the framing sentence is *present* would also have passed with the sentence
+placed **after** the die, which is the arrangement being fixed. So the pin asserts the **order**
+(`indexOf(framing) < indexOf('Click this: {2d6}')`), and the IA-2 pin's own message, which called the
+atom "first point", was rewritten rather than left as a stale claim.
+
+Six mutations, each asserting its target present first: drop the framing line, move it below the die,
+drop one named capability, drop the link line, drop the search operators, remove the atom. All six go
+red. **One of them initially reported a false pass** - the harness's "did the mutation apply" check
+compared against `git diff` on an already-dirty file, so it could never fire. The mutation was a
+no-op and the green meant nothing. Recorded because it is the same defect class the harness exists to
+catch, one level up: a guard on a guard that cannot fail.
