@@ -2016,3 +2016,73 @@ red. **One of them initially reported a false pass** - the harness's "did the mu
 compared against `git diff` on an already-dirty file, so it could never fire. The mutation was a
 no-op and the green meant nothing. Recorded because it is the same defect class the harness exists to
 catch, one level up: a guard on a guard that cannot fail.
+
+## UXP-270 - the destructive action was the silent one, not its damage (#1146)
+
+**P4-1.** `{who := Maren Osk | Halvard | Sister Ivy}` declares a named pick; `{who}` elsewhere
+reuses it. Choosing **Freeze to text** on the *declaration* drops its record (`pruneArtifacts`), so
+the name leaves `collectVars` and every reference is stranded.
+
+### Reproduced first, and the issue's premise was wrong
+
+#1146 says the stranded references "render `?`". Driven on `main`, they do not. An orphaned
+reference renders:
+
+| | measured |
+|---|---|
+| value slot | `—` (not `?`) |
+| class | `var-pill var-ref var-undef` |
+| border | dashed, `--del` |
+| title | *"Variable not found. Click to edit"* |
+| aria-label | *"Variable who not found. Click to edit"* |
+
+**So the references were never silent.** They degrade visibly, name the state, and undo restores all
+three points. What was silent is **the destructive action itself**: it announced *"Frozen to text:
+who = Sister Ivy"* and *"Pill frozen to text"* and never mentioned the two points it had just
+changed, which can be anywhere in the document and are usually off screen. That is a much narrower
+defect than filed, and it changes which fix is right.
+
+### Report the consequence, do not refuse the action
+
+The issue offered three answers and my own first pick was **refuse** (*"2 points reference `who`.
+Freeze those first."*). Reproduction argued against it: gating an action whose damage is already
+visible and already undoable costs a user something they may legitimately want, and the app's own
+recorded stance on the adjacent surface is that an editor affordance is *"an affordance, never a
+gate."* So the freeze still works and now says what it cost, reusing the UXP-237 / #1111 shape for
+lossy operations:
+
+> `Frozen to text: who = Sister Ivy. 2 points using who now show no value. Undo to put it back.`
+
+Both channels carry it - the toast a sighted user sees and the live region a screen reader hears.
+Reporting to only one is the half-fix this register keeps recording. When nothing broke, the note is
+empty and the message reads exactly as it did before.
+
+**Cascade was not taken** (freeze the declaration and every reference in one undo step). It is
+probably what a novelist committing a scene wants, but it edits points the user is not looking at,
+and that deserves its own row and its own justification rather than arriving as a side effect of a
+row labelled "Freeze to text". **This is the reversible half of the decision**: if the owner would
+rather have the cascade, it is an addition on top of this reporting, not a replacement for it.
+
+### Positional counting, and why the first version was wrong
+
+The first counter asked "is this name declared anywhere in the document" and returned 0 if any
+declaration survived. **Driving it caught that as wrong**, in a layout that is easy to hit: with the
+surviving declaration BELOW the reference, the screen showed the broken dash and the count said
+nothing was broken. A reference resolves against the nearest declaration **above** it in document
+order (#767 / Stage B), so the counter now walks pre-order and counts references that have seen no
+declaration yet. Count and screen now agree in every driven case.
+
+This is the second time in three PRs that a reasoned-about rule survived unit pins and failed the
+moment it met the running app.
+
+### Seven driven scenarios, eight mutations
+
+Driven: declaration with 2 references, with 1 (singular agreement), with none (message byte-identical
+to before), with a second declaration below the reference (now correctly reports 1), freezing a
+*reference* rather than a declaration, freezing a *dice* pill, and undo restoring all three points.
+
+Eight mutations, all red: drop the counter call, capture the name after the prune, count
+non-positionally, silence the note, drop the note from the live region, drop it from the toast,
+single-row repaint while references elsewhere went stale, drop plural agreement. The harness
+compares against a **backup rather than `git diff`**, because the #1117 harness compared against git
+on an already-dirty tree and reported a false pass on a mutation that never applied.

@@ -6837,6 +6837,83 @@ test('#1116 the freeze writes what the pill SHOWS, not a value from a different 
   assert.ok(/node\.type === 'para'/.test(fz), 'the prose flag is passed, so freeze and export agree');
 });
 
+// ── #1146: freezing a DECLARATION orphans every reference to it, and said nothing about it ──
+// Reproduced on main before any fix: `{who := Maren Osk | Halvard | Sister Ivy}` with two `{who}`
+// references, freeze the declaration, and both references fall to the `var-undef` dash. The issue
+// said they render `?`; they do not. Measured, an orphaned reference renders "—" with a dashed
+// --del border, title "Variable not found. Click to edit", and aria "Variable who not found" — so
+// the REFERENCES were never silent. What was silent is the destructive action itself: it announced
+// "Frozen to text: who = Sister Ivy" / "Pill frozen to text" and never mentioned the two points it
+// had just changed, which can be anywhere in the document including off screen. Undo restores all
+// three, verified. So this reports the consequence rather than refusing the action: the app's own
+// habit is an affordance, never a gate, and gating damage that is already visible and already
+// undoable would cost a user something they may legitimately want.
+test('orphanedVarRefCount: counts POSITIONALLY, because that is how a reference resolves', () => {
+  const decl = { id: 'd', text: 'Tonight [[var:k1]]', vars: [{ key: 'k1', name: 'who', kind: 'pick', expr: 'a | b', rolled: 'a' }], children: [] };
+  const ref1 = { id: 'r1', text: 'At the door [[var:k2]]', vars: [{ key: 'k2', name: 'who', expr: '' }], children: [] };
+  const ref2 = { id: 'r2', text: 'Later [[var:k3]]', vars: [{ key: 'k3', name: 'who', expr: '' }], children: [] };
+  const other = { id: 'o', text: 'Weather [[var:k4]]', vars: [{ key: 'k4', name: 'sky', expr: '' }], children: [] };
+
+  // the declaration is gone (this is the post-prune document): both references are stranded
+  assert.equal(c.orphanedVarRefCount({ children: [ref1, ref2, other] }, 'who'), 2);
+  // a declaration ABOVE covers every reference after it
+  assert.equal(c.orphanedVarRefCount({ children: [decl, ref1, ref2] }, 'who'), 0,
+    'references below a surviving declaration still resolve, so nothing is reported');
+  // THE CASE A NON-POSITIONAL COUNT GOT WRONG, found by driving rather than by reasoning: the
+  // surviving declaration sits BELOW the reference, so the reference reads the dash. "Is the name
+  // declared anywhere" answered 0 here while the screen showed a broken pill.
+  assert.equal(c.orphanedVarRefCount({ children: [ref1, decl, ref2] }, 'who'), 1,
+    'a reference ABOVE the only surviving declaration is orphaned and must be counted');
+  // case-insensitive on the name, like every other var lookup
+  assert.equal(c.orphanedVarRefCount({ children: [ref1] }, 'WHO'), 1);
+  // never counts a different name, and never counts a reference whose token was already removed
+  assert.equal(c.orphanedVarRefCount({ children: [ref1, ref2, other] }, 'sky'), 1);
+  assert.equal(c.orphanedVarRefCount({ children: [{ id: 'x', text: 'no token here', vars: [{ key: 'k9', name: 'who', expr: '' }], children: [] }] }, 'who'), 0,
+    'a dangling record with no [[var:]] token in the text is not a live reference');
+  // it recurses in PRE-ORDER, because a reference is usually not a sibling of the declaration and
+  // "above" means earlier in document order, ancestors included
+  assert.equal(c.orphanedVarRefCount({ children: [{ id: 'p', text: 'parent', vars: [], children: [ref1, { id: 'q', text: 'mid', vars: [], children: [ref2] }] }] }, 'who'), 2,
+    'nested references count, which is the whole reason this walks the tree');
+  assert.equal(c.orphanedVarRefCount({ children: [{ id: 'p', text: 'parent [[var:k1]]', vars: decl.vars, children: [ref1] }] }, 'who'), 0,
+    'a declaration on an ANCESTOR is above its descendants, so they resolve');
+  // empty / missing name is not a match-everything
+  assert.equal(c.orphanedVarRefCount({ children: [ref1] }, ''), 0);
+  assert.equal(c.orphanedVarRefCount({ children: [ref1] }, null), 0);
+});
+
+test('freezeOrphanNote: says what the freeze cost, and says nothing when it cost nothing', () => {
+  assert.equal(c.freezeOrphanNote('who', 0), '', 'the common case must read exactly as it did before');
+  assert.equal(c.freezeOrphanNote('who', null), '');
+  const one = c.freezeOrphanNote('who', 1), many = c.freezeOrphanNote('who', 3);
+  assert.match(one, /1 point using who now shows no value/, 'singular agrees');
+  assert.match(many, /3 points using who now show no value/, 'plural agrees');
+  assert.match(many, /Undo to put it back/, 'names the remedy, not just the miss (the house rule)');
+  for (const s of [one, many]) {
+    assert.doesNotMatch(s, /—/, 'no em dash in a user-facing string');
+    assert.ok(s.startsWith(' '), 'it appends to an existing sentence, so it carries its own leading space');
+  }
+});
+
+test('#1146 the freeze CALLS the counter and reports it (a tested core proves nothing about the call site)', () => {
+  const fz = fnBody(_src, 'freezePillToText');
+  // the name must be read BEFORE the prune drops the record, or the count is always 0
+  assert.match(fz, /const declName = type === 'var' \?/, 'only a var pill can orphan anything');
+  assert.ok(fz.indexOf('const declName') < fz.indexOf('pruneArtifacts('),
+    'the name must be captured BEFORE pruneArtifacts drops the record it lives on');
+  assert.match(fz, /v\.key === key && v\.expr/, 'and only a DECLARATION (non-empty expr) has dependents');
+  // the counter runs after the prune, so the number describes the document the user now has
+  assert.ok(fz.indexOf('orphanedVarRefCount(root, declName)') > fz.indexOf('pruneArtifacts('),
+    'the count must be taken AFTER the prune, or it counts a declaration that is already gone');
+  assert.match(fz, /freezeOrphanNote\(declName, orphaned\)/, 'and the note is built from it');
+  // both feedback channels carry it: the toast a sighted user sees and the live region a screen
+  // reader hears. Reporting to only one is the half-fix this repo keeps finding.
+  assert.match(fz, /announce\(`Frozen to text: \$\{frozen\}\.\$\{note\}`\)/, 'the live region carries the note');
+  assert.match(fz, /flashHint\('Pill frozen to text\.' \+ note\)/, 'and so does the toast');
+  // the orphans are elsewhere in the tree, so a single-row rerender would leave them stale on screen
+  assert.match(fz, /if \(orphaned\) render\(\);/, 'a freeze that stranded references must repaint the tree, not just this row');
+  assert.match(fz, /else rerenderNode\(node\.id\);/, 'and the common case must stay a cheap single-row repaint');
+});
+
 test('#1116 the pill door is wired, scoped, and does not hijack ordinary prose', () => {
   const ace = fnBody(_src, 'attachContentEvents');
   assert.match(ace, /content\.addEventListener\('contextmenu'/, 'the pill door exists');

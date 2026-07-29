@@ -185,7 +185,7 @@ export function loadCores() {
     'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
     'rollLogEntry', 'grammarLogSource',   // #918 roll-log line + grammar source label (pure)
     'rollLogHome', 'rollLogToggleMessage', 'rollLogFirstEntryMessage',   // UXP-245: the log's door + what it says
-    'collectVars', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
+    'collectVars', 'orphanedVarRefCount', 'freezeOrphanNote', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'renderPosVarMaps',   // #767 positional per-pill var maps
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
     'docGraphModel',                                                   // 4b: the doc-level folder graph
