@@ -6459,6 +6459,47 @@ function shadowedDeclKeys(events) {
 // Variables may reference OTHER variables (e.g. area = pi*r^2 where r is a var);
 // references are resolved lazily and reference cycles (a→b→a) are detected and
 // broken instead of overflowing the stack. Result is cached per markDirty() gen.
+// #1146: how many display-only references to `name` would be left with no value if the
+// document's declarations of that name were gone. Freezing a DECLARATION pill to text drops its
+// record (pruneArtifacts), so the name leaves collectVars and every {name} elsewhere degrades to
+// the `var-undef` dash. The references DO say so on their own (dashed --del border, "Variable not
+// found. Click to edit") - what was missing is that the destructive action never mentioned them,
+// and they can be anywhere in the document, including off screen.
+//
+// Counted POSITIONALLY, because that is how a reference actually resolves: `{name}` reads the
+// nearest declaration ABOVE it in document order (#767 renderPosVarMaps / Stage B), not the
+// document-wide last-win. A first pass counting "is the name declared anywhere" was wrong in a
+// layout that is easy to hit, and driving it caught that: with the surviving declaration BELOW the
+// reference, the reference reads the dash and the count said nothing was broken. So walk in
+// pre-order and count references that have seen no declaration of the name yet.
+// DOM-free: takes a root, walks the same [[var:key]] + node.vars pairing collectVars does.
+function orphanedVarRefCount(rootNode, name) {
+  const nm = String(name || '').toLowerCase();
+  if (!nm) return 0;
+  let orphans = 0, declaredAbove = false;
+  (function walk(node) {
+    if (!node) return;
+    const re = /\[\[var:([a-z0-9]+)\]\]/gi;
+    let m;
+    while ((m = re.exec(node.text || '')) !== null) {
+      const v = node.vars?.find(v => v.key === m[1]);
+      if (!v?.name || v.name.toLowerCase() !== nm) continue;
+      if (v.expr) declaredAbove = true;            // a declaration covers every reference after it
+      else if (!declaredAbove) orphans++;          // a reference with nothing above it has no value
+    }
+    for (const c of node.children || []) walk(c);
+  })(rootNode);
+  return orphans;
+}
+
+// #1146: the sentence appended to the freeze's own confirmation. Empty when nothing broke, so
+// the common case reads exactly as it did before. Names the remedy (undo), per the house rule
+// that a message names the fix and not just the miss. AP punctuation, no em dash.
+function freezeOrphanNote(name, n) {
+  if (!n || n < 1) return '';
+  return ` ${n} point${n === 1 ? '' : 's'} using ${name} now show${n === 1 ? 's' : ''} no value. Undo to put it back.`;
+}
+
 function collectVars(rootNode) {
   const useCache = rootNode === undefined;
   if (useCache) rootNode = root;
@@ -19694,13 +19735,21 @@ function freezePillToText(node, type, key) {
   //    writes `3` and the freeze wrote `2d6 = 3`. A novelist committing a pick in a sentence is
   //    asking for words, not a recipe - that is the whole point of the action.
   const frozen = frozenTokenText(type, key, node, varMapAt(node), root, node.type === 'para');
+  // #1146: read the name BEFORE the prune drops the record. Only a var DECLARATION (a non-empty
+  // expr) can orphan anything; a reference, a dice pill or a grammar pill has no dependents.
+  const declName = type === 'var' ? (node.vars?.find(v => v.key === key && v.expr)?.name || '') : '';
   pushUndo();
   node.text = node.text.replace(token, frozen);   // just this occurrence (a pill is a unique key)
   pruneArtifacts(node);                            // the record's token is gone → the prune drops it
   markDirty();
-  rerenderNode(node.id);
-  announce(`Frozen to text: ${frozen}`);
-  flashHint('Pill frozen to text');
+  // counted AFTER the prune, so it reflects the document the user now has, and so a second
+  // declaration of the same name elsewhere correctly reports nothing broken.
+  const orphaned = declName ? orphanedVarRefCount(root, declName) : 0;
+  if (orphaned) render();                          // the orphans are elsewhere in the tree, not in this row
+  else rerenderNode(node.id);
+  const note = freezeOrphanNote(declName, orphaned);
+  announce(`Frozen to text: ${frozen}.${note}`);
+  flashHint('Pill frozen to text.' + note);
 }
 
 // where the pill has a separate editor, an edit row. A short suffix (expr/name/result)
