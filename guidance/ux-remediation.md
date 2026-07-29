@@ -2367,3 +2367,65 @@ so deleting it is red **and** the day it becomes load-bearing you are told. Both
 
 Driven in Chromium: all seven cases above read from the live `title`/`aria-label`, no page errors,
 and following the advice works - `{= moonphase(today, 28, 0)}` promotes and renders its glyph.
+
+---
+
+## UXP-274 - "Top mark -∞" told a teacher something was wrong but not what to do (#1171)
+
+☐→✓ · 🟡 partial / inconsistent · closed 2026-07-29
+
+### The finding
+
+From the second persona fleet (`user-research-2026-07-fleet2.md`). A secondary teacher put
+`{= max(score)}` on a point and read **`Top mark -∞`**. Her marks were children of a *sibling*
+point, so the rollup matched nothing and returned the identity element of the comparison.
+
+Measured across the whole family, with a working control:
+
+| reducer | real children | nothing matches (before) |
+|---|---|---|
+| `sum` / `avg` | 130 / 65 | `0` + *"No score below this point. Move the pill onto the parent, or check the property name."* |
+| `count` | 2 | `0`, no cue - **correct**, a count of nothing is 0 |
+| `min` / `max` | 58 / 72 | **`∞`** / **`-∞`**, no cue |
+
+### The exclusion was deliberate, and half right
+
+`firstEmptyRollup`'s own header gave the reason: *"count() is excluded (0 is its honest answer) and
+min/max already return ±∞ (visibly not a plain 0)"*. The cue exists because `0` is
+pixel-identical to a genuine computed 0; ±∞ is not, so the argument went, it needs no cue.
+
+That is true about *visibility* and false about *actionability*. She could see the number was odd.
+Nothing told her the pill was on the wrong point, which is the one thing she needed.
+
+### Why this is display-only, and not a wider change
+
+`firstEmptyRollup` gates **two** callers, and they want different answers:
+
+- the math pill's cue (display), and
+- the `check` verdict, via `if (firstEmptyRollup(raw, node)) return 'error';`
+
+Widening it outright would silently turn `max(score) <= 100` over an empty scope from a **vacuous
+pass** into an error state. That is a semantic change to a documented convention, not a cue. So the
+core takes an opt-in `opts.extrema`, the display site passes `{ extrema: true }`, and the check site
+keeps the default. `count` stays excluded in **both** modes.
+
+After: `max(score)=-∞ nothing matched` plus the existing cue. The computed value is untouched, which
+is the same treatment `sum` already gets (it still shows `0` beside its cue).
+
+### Guard-proofed, and one existing pin was too loose to notice
+
+Five mutations, each asserting its target present first (#1133): the display site losing the opt-in;
+the check site *gaining* it (2 red - the semantic guard bites); the flag ignored in the core; the flag
+forced always-on; and `count` wrongly included.
+
+The pre-existing source-pin was `_src.includes('firstEmptyRollup(m.expr, cookieNode)')`, which is a
+**substring of the new call**, so it stayed green through the entire change and could not have
+detected a revert. Tightened to require `{ extrema: true }`, and a companion pin now asserts the
+check site does **not** pass it.
+
+### Method note worth keeping
+
+The props sidecar field is `{key, val}`, not `{key, value}` - `childPropNumber` reads `p.val`. Four
+attempts at a control silently produced empty rollups because of it, which made every reducer look
+broken and nearly turned this into a much bigger false finding. The fix is only reported because the
+control was eventually established (`sum(score)` → `130`).

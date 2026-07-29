@@ -11964,10 +11964,39 @@ test('#557 firstEmptyRollup — flags a sum/avg over an empty prop scope; exclud
   assert.equal(c.firstEmptyRollup('count(cost)', noCost), null, 'count is excluded (0 is its honest answer)');
   assert.equal(c.firstEmptyRollup('2 + 2', noCost), null, 'no rollup → null');
   assert.equal(c.firstEmptyRollup('sum(cost)', null), 'cost', 'a null node is an empty scope');
+
+  // ── #1171: min/max get the DISPLAY cue, but checks keep vacuous truth ──────────
+  // A teacher in the 2026-07-29 persona fleet put {= max(score)} on a sibling of her marks and read
+  // "Top mark -∞". The original exclusion reasoned that ±∞ is "visibly not a plain 0" so it needs no
+  // cue; visible is not the same as actionable. Widened for DISPLAY only, because the same core
+  // gates the check's pass/fail and turning a vacuous pass into an error is a semantic change.
+  for (const f of ['min', 'max']) {
+    assert.equal(c.firstEmptyRollup(`${f}(cost)`, noCost, { extrema: true }), 'cost',
+      `${f} over nothing is flagged in DISPLAY mode`);
+    assert.equal(c.firstEmptyRollup(`${f}(cost)`, noCost), null,
+      `${f} over nothing stays UNFLAGGED by default, so checks remain vacuously true`);
+    assert.equal(c.firstEmptyRollup(`${f}(cost)`, withCost, { extrema: true }), null,
+      `${f} over a matched scope is never flagged, in either mode`);
+  }
+  // count stays honest in BOTH modes: 0 is its real answer, not a miss
+  assert.equal(c.firstEmptyRollup('count(cost)', noCost, { extrema: true }), null,
+    'count is excluded even with extrema on');
+  // sum/avg are unchanged by the new flag (no behaviour drift for the original two)
+  for (const f of ['sum', 'avg'])
+    assert.equal(c.firstEmptyRollup(`${f}(cost)`, noCost, { extrema: true }),
+      c.firstEmptyRollup(`${f}(cost)`, noCost), `${f} behaves identically in both modes`);
+  // the scope widener still parses in the new mode
+  assert.equal(c.firstEmptyRollup('max(cost, subtree)', noCost, { extrema: true }), 'cost',
+    'an explicit scope is still honoured with extrema on');
 });
 
 test('#557 renderMathPill wires the empty-rollup "nothing matched" state (src pin)', () => {
-  assert.ok(_src.includes('firstEmptyRollup(m.expr, cookieNode)'), 'renderMathPill must check for an empty rollup');
+  // #1171: must require the opt-in. `includes('firstEmptyRollup(m.expr, cookieNode)')` alone is a
+  // SUBSTRING of the new call, so it stayed green through the change and could not detect a revert.
+  assert.ok(_src.includes('firstEmptyRollup(m.expr, cookieNode, { extrema: true })'),
+    'renderMathPill must check for an empty rollup WITH extrema, so min/max get the cue too');
+  assert.ok(/firstEmptyRollup\(raw, node\)\)\s*return 'error'/.test(_src),
+    'the CHECK site must stay on the default (no extrema): min/max over an empty scope are vacuously true');
   assert.ok(_src.includes('math-empty'), 'the muted nothing-matched pill class is missing');
   assert.ok(_src.includes('No ${emptyProp} below this point'), 'the empty-rollup hint (naming the prop) is missing');
   // a BARE rollup (no scope word) suggests widening by depth (, subtree), not the query-only , document;

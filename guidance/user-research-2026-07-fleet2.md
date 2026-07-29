@@ -131,9 +131,12 @@ about the numbers, not where she would keep them.
 ## Most-wanted (candidate direction, not commitments)
 
 **Close to the grain:**
-- **Make `min`/`max` behave like `sum`/`avg` when the rollup is empty.** The cue text already exists
-  and already names both causes; this is extending its reach, not new copy. Highest value-to-cost
-  item in this fleet.
+- ~~**Make `min`/`max` behave like `sum`/`avg` when the rollup is empty.**~~ **SHIPPED** (#1171 /
+  UXP-274). Widened for the DISPLAY cue only: `firstEmptyRollup` also gates the check's pass/fail,
+  and min/max over an empty scope staying *vacuously true* there is the recorded intent, so the core
+  takes an opt-in `{ extrema: true }` that only the math pill passes. `{= max(score)}` on the wrong
+  point now reads `max(score)=-∞ nothing matched` with *"No score below this point. Move the pill
+  onto the parent, or check the property name."*
 - **A significant-figures or decimal-places control on math pills** (Lin). The number-format door
   already carries prefix/suffix/decimals, so this may be reachable inside the existing model.
 - **Let the toolbar wrap, or collapse into an overflow menu, below some width** (Tobi). The single
@@ -153,7 +156,9 @@ about the numbers, not where she would keep them.
 
 Recorded so the next reader can trust or discount the numbers:
 
-- **Properties are created by `/prop:key=value`, not by typing `key: value`.** Three of my early
+- **Properties are created by `/prop:key=value`, not by typing `key: value`** — and the sidecar
+  field is `{key, val}`, **not** `{key, value}`, which was the actual root cause of my broken
+  controls (`childPropNumber` reads `p.val`, so a `value` key reads as blank). Several early
   probes built documents whose rollups matched nothing, which made *every* reducer look broken. The
   `min`/`max` finding above is only reported because the control was eventually established
   (`sum` → `130`, chips `score:72`, `score:58`). Before that it was indistinguishable from my own
