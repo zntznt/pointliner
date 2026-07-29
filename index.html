@@ -8331,7 +8331,15 @@ function mathReasonPhrase(why) {
        : why === 'estimate'    ? 'an estimate like 5 to 10 (or a variable holding one), which works on its own but not inside a math formula or check. Write it without the = to keep it an estimate, like {cost * 2}'
        : why === 'convert'     ? 'a conversion between two different kinds of units (like a length and a mass), which has no answer'
        : why === 'declared later' ? 'a variable declared later in the document; values resolve top to bottom, so move its declaration above this point'
-       : why === 'bad ref'     ? 'a name with no value here; declare it as a variable or add it as a property'
+       // #1159: the old text was "declare it as a variable or add it as a property". The second
+       // remedy is the one the user has usually ALREADY done: the other coaching cue (maybeNudgeField,
+       // on a bare "cost: 40") sends them to /prop, and then a formula on the NEXT point fails here,
+       // so the message tells them to do the thing they just did. Properties are read from the point
+       // itself and the points above it (nodePropVars via resolveNodeScope), never sideways, which is
+       // what guide/computing-numbers.md already documents: "only numbers inherit, and only down the
+       // tree; a value on a sibling or a child is not in scope." The rule was true, invisible, and
+       // carried entirely by the word "here". Now it is stated, with the two remedies that work.
+       : why === 'bad ref'     ? 'a name with no value here. A property is read from this point and the points above it, so a value on a sibling is out of scope: move it here or to a parent, or declare it as a variable like {cost := 40} to use it anywhere'
        : why === 'non-numeric' ? 'a value that is not a number (a word or random pick can\'t be used in math)'
        : why === 'cycle'       ? 'a loop where a value depends on itself'
        : '';

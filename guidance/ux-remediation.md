@@ -1869,3 +1869,76 @@ exactly like the guard it tests - so CI now runs it.
 A body computed at runtime (`--body "$(...)"`), an unreadable `--body-file`, or a piped
 stdin still fail open by design, and CI remains the real gate for those. The MCP door
 has no such gap, because there is no shell involved.
+
+## UXP-268 - the refusal recommended the remedy the user had already tried (#1159)
+
+**P4-2.** A grad student in the persona pass wrote a cost as a note and a formula on the next line,
+followed the app's own advice, and it still did not compute. She reported it as a coaching loop that
+"did not visibly close." Reproduced, the defect is sharper: **the cue named two remedies, and the one
+she had already done is the one that does not apply.**
+
+`mathReasonPhrase`, `bad ref` arm:
+
+> *"a name with no value here; declare it as a variable **or add it as a property**"*
+
+She had added it as a property. Nothing said a property is read only from its own point and the
+points above it.
+
+### The app was right; only the message was wrong
+
+`guide/computing-numbers.md` already documents the rule exactly: *"Only numbers inherit, and only
+**down** the tree; a value on a sibling or a child is not in scope."* Confirmed in code:
+`nodePropVars` reads the node's own props, `resolveNodeScope` merges `docVars ← ancestors ← own`,
+and nothing in `varMapAt` touches `node.props`. So the guide and the engine agreed with each other,
+and the error message agreed with neither. **The entire scope rule was being carried by the word
+"here".**
+
+Measured through the real render path (calling `evalMath` directly is the wrong entry point, since
+`sum()` is expanded by `expandAggExpr`, a caller that holds the node - that cost two wrong readings
+before the rendered pill was checked):
+
+| shape | renders |
+|---|---|
+| bare prop name on the **same** point | ✅ 560 |
+| bare prop name on a **parent** (inheritance) | ✅ 560 |
+| declared variable, referenced from a sibling | ✅ 560 |
+| `{= sum(cost)}` over child props | ✅ 360 |
+| bare prop name from a **sibling** | ❌ plain text + cue |
+
+### The two cues were pulling against each other
+
+`maybeNudgeField` fires on a bare `cost: 40` and says *"add it as a number: type /prop:cost=40"*.
+Follow it, reference the name from the next line, and `bad ref` says "add it as a property". The
+first cue produced the layout the second one punished. **The prose cue is left alone** (it is not
+wrong on its own terms, and properties do work on their own point and inherit downward); once the
+math cue explains scope, the pair stops contradicting.
+
+### The fix, and what it deliberately is not
+
+One string, the UXP-252 shape: the single shared code→phrase map reaches all four surfaces at once
+(the `#ERR` pill title/aria, the `brace-attempt` cue via `braceAttemptReason`, and the math and
+`/check` dialog previews). The `'bad ref'` **code** is untouched, so the tight chips and
+`computeTable`'s `#ERR (bad ref)` cells are unaffected.
+
+**Not a new reason code.** #1159 proposed detecting "this name is a property elsewhere" via a new
+`mathErrorReason` arm fed by `collectPropKeys()`. That costs a code, a doc-context parameter,
+threading at six call sites and call-site pins, for a message change. Accepted cost of the simpler
+form: a plain typo also sees the scope sentence - no worse than today, which tells that same user to
+add a property.
+
+**`sum()` is deliberately not mentioned.** It answers a different question, and the teaching already
+exists and fires in exactly this situation: `maybeNudgeSum`, gated by `nudgeSumKey`, which requires a
+**sibling** to share the numeric key.
+
+### The pins could not see the fix
+
+The change shipped and **the whole suite stayed green**. The copy lock asserted
+`/declare it|add it as a property/` - an OR that "declare it as a variable" satisfies - and the
+`braceAttemptReason` pin only needed "no value here", which survives. Both rewritten to lock the
+scope sentence and the working remedies, then proved by reverting the string and watching exactly
+those two go red. This is the UXP-260 rule catching a change that had already been made correctly:
+the code was right and the guard was blind.
+
+**Acceptance was following the advice**, the UXP-252 standard: her layout shows the cue, and then
+each remedy the sentence names - move it here, move it to a parent, declare `{cost := 40}` - computes
+560. Negatives unchanged: a real typo still returns `bad ref`, `2 * 3` still computes.

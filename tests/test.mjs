@@ -422,7 +422,10 @@ test('braceAttemptReason — explains why an INVALID {…} did not become a pill
   assert.match(c.braceAttemptReason('d', {}, {}), /No rule or variable named "d"/);
   // a broken calculation ({= badname + 1}) borrows mathReasonPhrase (bad ref)
   assert.equal(c.classifyBraceBody('= badname + 1', {}, {}), 'invalid');
-  assert.match(c.braceAttemptReason('= badname + 1', {}, {}), /calculation uses .*no value here/i);
+  // #1159: "no value here" survives the reword, so this alone could not detect the fix either.
+  const badRefCue = c.braceAttemptReason('= badname + 1', {}, {});
+  assert.match(badRefCue, /calculation uses .*no value here/i);
+  assert.match(badRefCue, /sibling/, 'the display cue carries the scope rule too, not just the miss');
   // an estimate crossing into a math formula ({= 5 to 10}) reads as 'estimate', not 'bad ref'
   assert.match(c.braceAttemptReason('= 5 to 10', {}, {}), /estimate/i);
   // a modifier on an unknown base ({beast.cap}) names the missing base
@@ -7045,7 +7048,18 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     // followable. {cost * 2} is the shape guide/computing-numbers.md already teaches verbatim.
     assert.match(c.mathReasonPhrase('estimate'), /without the =/, 'names the fix, not just the miss');
     assert.match(c.mathReasonPhrase('estimate'), /\{cost \* 2\}/, 'and shows the shape that would work');
-    assert.match(c.mathReasonPhrase('bad ref'), /declare it|add it as a property/); // names the fix
+    // #1159: this used to be /declare it|add it as a property/ — an OR that "declare it as a
+    // variable" satisfies, so it stayed GREEN through the fix and could not detect it. The old
+    // text's second remedy ("add it as a property") is the one the reporter had ALREADY done, and
+    // nothing said a property is read only from this point and the points above it. Lock the
+    // teaching, not a fragment that survives either wording.
+    const badRef = c.mathReasonPhrase('bad ref');
+    assert.match(badRef, /no value here/, 'still names the miss');
+    assert.match(badRef, /sibling/, 'states the scope rule that was invisible before');
+    assert.match(badRef, /points above it|to a parent/, 'names the inheritance remedy');
+    assert.match(badRef, /\{cost := 40\}/, 'and shows the document-wide form that always works');
+    assert.doesNotMatch(badRef, /or add it as a property/,
+      'must not still offer the remedy the user has usually already tried');
     assert.match(c.mathReasonPhrase('non-numeric'), /not a number/);
     assert.match(c.mathReasonPhrase('cycle'), /depends on itself/);
     // jargon must NOT reappear (the de-jargon pass, this commit)
