@@ -9291,10 +9291,11 @@ function cmapCodepoints(cmap) {
 }
 
 // Codepoints a base64 web-font payload maps. The `format("woff2")` hint in the @font-face is NOT
-// trusted: the embedded blobs are declared woff2 but are actually raw sfnt (the build script sets
-// subset.Options(flavor="woff2") but never font.flavor, so fontTools saves an uncompressed sfnt —
-// filed separately, browsers sniff the magic number so the icons do paint). Sniff, don't trust, so
-// this keeps working whichever the blob turns out to be.
+// trusted — sniff the magic number instead. That mattered concretely until #1155: the FA blobs
+// declared woff2 and were raw sfnt, because the build script set subset.Options(flavor="woff2")
+// but never font.flavor, and only subset.main() applies that option. All three faces are genuine
+// woff2 now, but the sniff stays: it is what lets this read a payload whichever format it is in,
+// and the sfnt arm still has to reject a blob that is neither (pinned below).
 function fontCodepoints(b64) {
   const buf = Buffer.from(b64, 'base64');
   const magic = buf.subarray(0, 4);
@@ -9377,16 +9378,30 @@ test('#1144: every FA_GLYPHS entry has a ::before rule AND a real glyph in the e
 });
 
 test('#1144: fontCodepoints reads a real woff2, not only the sfnt the FA block happens to hold', () => {
-  // The FA payloads are sfnt today, so the woff2 arm above would otherwise be dead code that goes
-  // untested until the day someone fixes the build script's flavor bug and this guard breaks with
-  // no warning. index.html also embeds genuine woff2 (the Fraunces/Geist text faces), so pin the
-  // arm against those: brotli stream, variable-length table directory, real cmap.
-  // Select by MAGIC, not by family name: an anchor on 'Fraunces' slid to the next @font-face when
-  // that name changed and still found enough payloads to pass — a soft floor caught by mutation.
-  const woff2 = [...(_src.matchAll(/base64,([A-Za-z0-9+/=]+)"\)/g))].map(m => m[1])
-    .filter(b => Buffer.from(b.slice(0, 8), 'base64').subarray(0, 4).toString('ascii') === 'wOF2');
-  assert.ok(woff2.length >= 3, `expected the embedded woff2 text faces, found ${woff2.length}`);
-  for (const b64 of woff2) {
+  // index.html embeds two KINDS of woff2 and each pins something different, so this has two halves.
+  // Before #1155 the FA payloads were raw sfnt, so the woff2 arm was exercised only by the full
+  // text faces (Fraunces/Geist). Now every face is genuine woff2: the text faces still pin the arm
+  // against a big cmap, and the FA faces pin that the build script's flavor fix is still in place.
+  const isWoff2 = b => Buffer.from(b.slice(0, 8), 'base64').subarray(0, 4).toString('ascii') === 'wOF2';
+  const b64s = s => [...s.matchAll(/base64,([A-Za-z0-9+/=]+)"\)/g)].map(m => m[1]);
+
+  // (a) #1155: every fa-embed payload must be a REAL woff2, not an sfnt wearing a format("woff2")
+  //     label. This is the whole reason the flavor fix needs a guard: browsers sniff the magic
+  //     number, so a rebuild on a tree that lost `font.flavor = "woff2"` reverts to uncompressed
+  //     sfnt and the icons keep painting — nothing else in the suite would ever notice.
+  const faPayloads = nonEmpty(b64s(between(_src, '<style id="fa-embed">', '</style>')), 'fa-embed base64 payloads');
+  for (const b64 of faPayloads)
+    assert.ok(isWoff2(b64), 'an fa-embed payload is not woff2 — rebuild with tools/build-fa-subset.py (#1155)');
+
+  // (b) the arm still reads a full text face. Scope STRUCTURALLY (the woff2 payloads that are not
+  //     in the fa-embed block) rather than by family name: an anchor on 'Fraunces' slid to the next
+  //     @font-face when that name changed and still found enough payloads to pass — a soft floor
+  //     caught by mutation. Structural scoping also cannot slide onto an icon subset, which carries
+  //     ~77 private-use codepoints and no ASCII and would fail both assertions below.
+  const faSet = new Set(faPayloads);
+  const textFaces = nonEmpty(b64s(_src).filter(b => isWoff2(b) && !faSet.has(b)), 'embedded woff2 text faces');
+  assert.ok(textFaces.length >= 3, `expected the embedded woff2 text faces, found ${textFaces.length}`);
+  for (const b64 of textFaces) {
     const cps = fontCodepoints(b64);
     assert.ok(cps.size > 100, `parsed only ${cps.size} codepoints from a full text face`);
     for (const ch of ['A', 'z', '0', ' ']) assert.ok(cps.has(ch.codePointAt(0)), `a text face must map ${JSON.stringify(ch)}`);

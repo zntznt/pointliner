@@ -152,3 +152,10 @@ the embedded font, read from its cmap. Editing `FA_GLYPHS` alone, or splicing th
 but not the style block, is now a red test naming the rebuild command rather than a blank button
 discovered later. Step 6 is still not optional: the guard proves the glyph is in the font, not that
 it is the glyph you wanted.
+
+**The emitted payloads are genuine woff2 (#1155 / UXP-272), and a rebuild is expected to SHRINK
+them.** Until #1155 the script set `subset.Options(flavor="woff2")` but never `font.flavor`, and
+only `subset.main()` applies that option, so it emitted uncompressed sfnt under a `format("woff2")`
+declaration. Browsers sniff the magic number, so the icons painted and nothing caught it. If a
+rebuild ever makes the three payloads GROW by roughly 2.5x, the flavor line has been lost, and the
+`#1144` woff2 test fails on exactly that.
