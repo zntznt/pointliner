@@ -88,7 +88,7 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
   ([Markov](generating-text.md#markov-chains) · [oracle](generating-text.md#yesno-oracle))
 - **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (anywhere in it, like a search), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every note in a connected folder.
   ([roll on your document](generating-text.md#roll-on-your-own-document))
-- **Roll log.** Turn on File menu, Log rolls and every random result (dice, generators, tables, decks, chains, the oracle, roll-on-document, estimates) is also written to a dated Rolls log, so re-rolling never loses the record. Off by default; set a home point from the bullet menu. ([roll log](dates-and-planning.md#roll-log))
+- **Random results log.** Turn on File menu, Log random results and every random result (dice, generators, tables, decks, chains, the oracle, pick-from-document, estimates) is also written to a dated log, each line linking back to the point that produced it, so re-using a pill never loses the record. Off by default; set a home point from the bullet menu. ([random results](dates-and-planning.md#random-results-log))
 
 ## Computing with numbers
 

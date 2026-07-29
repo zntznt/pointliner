@@ -74,6 +74,7 @@ A unified UX requires unified words. These terms are binding for **UI copy, the 
 | The per-column operations menu | — | **Column menu** | column panel |
 | The editable column-name chip in a base header cell | — | **name pill** | header chip |
 | One-click column aggregates | `mtApplyAggregate` | **Calculate** | summary |
+| The dated record of every generated result | `logRoll` / `root.rollLog` / the `Random results` home point | **random results** (the log) | roll log, rolls, dice log |
 
 > **Rule V-1 (MUST):** New user-facing strings use the user-facing term. **Rule V-2 (MUST NOT):** Rename the internal `node`/`artifact` identifiers — that is churn against load-bearing code; the split above is the entire point.
 >

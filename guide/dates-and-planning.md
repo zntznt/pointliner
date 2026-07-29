@@ -135,16 +135,18 @@ entry directly.
 (When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
 journal can instead write one file per day on disk.)
 
-## Roll log
+## Random results log
 
 Every generating pill normally keeps only its latest result: click a dice pill or an oracle again
 and the previous answer is replaced. When you are playing a solo game or want a record of what
 actually happened, that record is the whole point, so Pointliner can log every roll as it happens.
 
-Turn it on with the **scroll button in the toolbar** (or the **File menu, Log rolls**). While it is on, **every** random or generated
-result is also written to a **Rolls** log the instant you roll it, this covers all of the generating
-pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, roll on your
-document, and estimates. Entries file themselves by date exactly like the journal (`2026 › 07 › 19`),
+Turn it on with the **toolbar button** (or the **File menu, Log random results**). While it is on, **every** random or generated
+result is also written to a **Random results** log the instant it happens, and each line links back to
+the point that produced it. This covers all of the generating
+pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, pick from your
+document, and estimates. Deterministic pills (a math total, a query count, a meter) never log, because
+they do not change on their own. Entries file themselves by date exactly like the journal (`2026 › 07 › 19`),
 each line reading the time, what was rolled and the result:
 
 ```
@@ -154,11 +156,11 @@ each line reading the time, what was rolled and the result:
 ```
 
 Your first roll after switching on tells you where it landed, and the **File menu** then offers
-**Go to your Rolls log**, which takes you straight to it. That matters because the log is a point
+**Go to your random results**, which takes you straight to it. That matters because the log is a point
 like any other: in a long document it sits at the end, out of sight, so without a door you would
 have to scroll to the bottom to read what you rolled.
 
-To keep the log in a particular place, open any point's bullet menu and choose **Log rolls here**;
+To keep the log in a particular place, open any point's bullet menu and choose **Log random results here**;
 that point becomes the home and logging turns on. The entries are ordinary points, so you can search,
 export or annotate them. Logging is off by default and adds nothing until you switch it on.
 

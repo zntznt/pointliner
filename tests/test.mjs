@@ -13411,6 +13411,57 @@ test('#918 rollLogEntry — HH:MM · source → result, source omitted when empt
   assert.equal(c.rollLogEntry('  x  ', '  y  ', '1:1'), '1:1 · x → y', 'trims both');
 });
 
+test('2026-07 rollLogEntry — a source id turns the source into a link back to its point', () => {
+  assert.equal(c.rollLogEntry('2d6', '9', '14:32', 'n7'), '14:32 · [[#n7|2d6]] → 9');
+  // a '|' is safe: LINK_RE's label runs to the closing ']]', so a grammar def survives intact
+  assert.equal(c.rollLogEntry('{Grey|Salt}haven', 'Salthaven', '09:05', 'ab12'),
+    '09:05 · [[#ab12|{Grey|Salt}haven]] → Salthaven');
+  // ']' and newlines WOULD truncate the token and leak raw syntax, so they are stripped from the label
+  // ']' becomes a space, so the only ']]' left is the token's own terminator
+  assert.equal(c.rollLogEntry('loot [rare]', 'a ring', '10:00', 'x1'), '10:00 · [[#x1|loot [rare]] → a ring');
+  assert.equal(c.rollLogEntry('a]b', 'r', '1:1', 'q9'), '1:1 · [[#q9|a b]] → r');
+  assert.equal(c.rollLogEntry('a\nb', 'r', '1:1', 'q9'), '1:1 · [[#q9|a b]] → r', 'newline folded to a space');
+  // no id, or no source, degrades to the pre-2026-07 line byte-identical
+  assert.equal(c.rollLogEntry('2d6', '9', '14:32'), '14:32 · 2d6 → 9', 'no id: unchanged');
+  assert.equal(c.rollLogEntry('', '7', '00:00', 'n7'), '00:00 · 7', 'no source: no link, no arrow');
+});
+
+test('2026-07 logRoll passes the point id, so the entry can link back (call site)', () => {
+  // The core above proves the FORMAT. This proves something actually feeds it the id: logRoll
+  // accepted `node` from #918 and discarded it for a year, which is exactly the shape a pure-core
+  // pin cannot see.
+  // NOT a /rollLogEntry\([^)]*\)/ shape: the argument list contains `pad(d.getHours())`, and a
+  // negated-char-class cannot cross that ')'. That exact mistake has bitten three times this session.
+  const body = fnBody(_src, 'logRoll');
+  assert.ok(body.includes('rollLogEntry('), 'logRoll must build the line through the pure core');
+  assert.ok(body.includes('node?.id)'), 'logRoll must pass the source point id to rollLogEntry');
+});
+
+test('2026-07 collectLinks does not index the log subtree (no backlink/graph noise)', () => {
+  // Log entries carry links; without the skip, every logged result becomes a backlink on the
+  // point that produced it and a node in the link graph.
+  const mk = (id, text, children = []) => ({ id, text, children, props: [], seq: [] });
+  const rootNode = {
+    id: 'r', text: '', children: [
+      mk('t', 'The target'),
+      mk('a', 'A real reference to [[#t|target]]'),
+      mk('Random results', 'Random results', [ mk('d1', '2026', [ mk('d2', '07', [
+        mk('e1', '14:32 · [[#t|2d6]] → 9'), mk('e2', '14:33 · [[#t|2d6]] → 4') ]) ]) ]),
+    ], props: [], seq: [],
+  };
+  const { backlinks, broken } = c.collectLinks(rootNode);
+  // spread through the test realm: arrays built inside the vm sandbox carry the SANDBOX's
+  // Array.prototype, and deepStrictEqual compares prototypes, so a bare deepEqual fails on equal data
+  assert.deepEqual([...backlinks['t']], ['a'], 'only the authored reference backlinks, not the two log lines');
+  assert.deepEqual([...broken], [], 'and nothing is reported broken');
+  // guard the guard: with the log home renamed to an ordinary point, the same links DO index —
+  // otherwise this test would pass even if collectLinks stopped collecting entirely.
+  const plain = JSON.parse(JSON.stringify(rootNode));
+  plain.children[2].text = 'Just a normal point';
+  assert.deepEqual([...c.collectLinks(plain).backlinks['t']].sort(), ['a', 'e1', 'e2'],
+    'outside the log home those same lines index normally');
+});
+
 test('#918 grammarLogSource — named logs its name, anonymous logs its template', () => {
   assert.equal(c.grammarLogSource({ anon: true, def: 'origin: {Grey|Salt}haven' }), '{Grey|Salt}haven');
   assert.equal(c.grammarLogSource({ anon: true, def: 'origin: Yes 3 | No 1' }), 'Yes 3 | No 1', 'an oracle logs its odds');
@@ -13423,7 +13474,9 @@ test('#918 grammarLogSource — named logs its name, anonymous logs its template
 // a new such pill added without a logRoll call fails here (and guidance/adding-an-artifact.md
 // step tells the author to add its reroll fn to this list).
 test('#918 roll-log coverage — every reroll function calls logRoll', () => {
-  const REROLLS = ['rerollDice', 'rerollGrammar', 'rerollMarkov', 'rerollEst', 'rerollPickVar'];
+  // rerollDistVar was missing from this list until 2026-07 even though it calls logRoll, so the
+  // drift guard had never covered one of the functions it exists to cover.
+  const REROLLS = ['rerollDice', 'rerollGrammar', 'rerollMarkov', 'rerollEst', 'rerollPickVar', 'rerollDistVar'];
   for (const fn of REROLLS) {
     const start = _src.indexOf('function ' + fn + '(');
     assert.ok(start >= 0, `${fn} not found — did a generative pill's reroll get renamed?`);
@@ -13454,7 +13507,9 @@ test('#918 wiring — config round-trips + the front doors exist', () => {
   assert.ok(/function findOrCreateJournalHome\(\)\s*\{[\s\S]*?findOrCreateNamedHome\(root\.journal/.test(_src), 'the journal home must route through the shared resolver');
   // front doors: File-menu toggle + bullet-menu home door
   assert.ok(_src.includes('id="btn-rolllog"'), 'the File-menu roll-log toggle is missing');
-  assert.ok(_src.includes("'Log rolls here'"), 'the bullet-menu roll-log home door is missing');
+  assert.ok(_src.includes("'Log random results here'"), 'the bullet-menu log-home door is missing');
+  // 2026-07 rename: the user-facing name must NOT be the tabletop one anywhere in the chrome.
+  assert.ok(!_src.includes("'Log rolls here'"), 'the pre-rename bullet-menu label must be gone');
 });
 
 // ─── splitForSibling (UXP-60: Enter splits at the caret) ──────────────────────
@@ -22025,12 +22080,17 @@ test('UXP-245 rollLogHome: finds an existing home, and never creates one', () =>
 });
 
 test('UXP-245 rollLogToggleMessage: names the real home, or says the first roll starts one', () => {
-  assert.equal(c.rollLogToggleMessage(true, 'Rolls'), 'Logging rolls to “Rolls”');
-  assert.equal(c.rollLogToggleMessage(true, 'Combat log'), 'Logging rolls to “Combat log”');
+  assert.equal(c.rollLogToggleMessage(true, 'Random results'), 'Logging random results to “Random results”');
+  assert.equal(c.rollLogToggleMessage(true, 'Combat log'), 'Logging random results to “Combat log”');
   // the pre-first-roll case: no home exists, so promising one the user could open would be a lie
-  assert.equal(c.rollLogToggleMessage(true, null), 'Logging rolls. Your first roll starts a Rolls log.');
-  assert.equal(c.rollLogToggleMessage(false, 'Rolls'), 'Roll logging off');
-  for (const m of [c.rollLogToggleMessage(true, 'Rolls'), c.rollLogToggleMessage(true, null), c.rollLogToggleMessage(false, null)]) {
+  assert.equal(c.rollLogToggleMessage(true, null), 'Logging random results. Your first one starts the log.');
+  assert.equal(c.rollLogToggleMessage(false, 'Random results'), 'Roll logging off');
+  // 2026-07 rename: no message may reach the user calling this "rolls" (the tabletop framing a
+  // non-RPG persona read off the toolbar). Asserted on the COPY, so it fails if the wording regresses.
+  for (const m of [c.rollLogToggleMessage(true, 'X'), c.rollLogToggleMessage(true, null)]) {
+    assert.ok(!/\brolls?\b/i.test(m), `toggle message still says "roll": ${m}`);
+  }
+  for (const m of [c.rollLogToggleMessage(true, 'Random results'), c.rollLogToggleMessage(true, null), c.rollLogToggleMessage(false, null)]) {
     assert.ok(!m.includes('—'), `toggle message has an em dash: ${m}`);   // AP punctuation only
   }
 });
@@ -22046,7 +22106,7 @@ test('UXP-245 rollLogFirstEntryMessage: names the destination and the door', () 
 
 test('UXP-245 the log has a door, and painting it cannot create the log', () => {
   assert.ok(_src.includes('id="btn-rolllog-goto"'), 'the File menu needs a Go-to-your-Rolls-log row');
-  assert.ok(_src.includes('Go to your Rolls log'), 'the row needs its label');
+  assert.ok(_src.includes('Go to your random results'), 'the row needs its label');
   // The row is gated on an EXISTING home, via the non-creating lookup. resolveRollLogHome here
   // would conjure a "Rolls" point every time the File menu rendered.
   assert.ok(/go\.style\.display = rollLogHome\(\) \? '' : 'none'/.test(_src),
