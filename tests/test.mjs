@@ -17383,9 +17383,45 @@ test('first-run atom: the entry hint and the tour intro lead with a live pill (I
   assert.ok(_src.includes("isGuided() ? 'Write, format with /, insert with @, or make a live pill with {'"),
     'the Guided entry cue is the simpler four-move wording that still cues {');
   // the Welcome tour's intro paragraph carries a real, clickable {2d6} pill (not only the
-  // illustrative "{curly-brace}"), so the first paragraph delivers the atom hands-on
+  // illustrative "{curly-brace}"), so the first paragraph delivers the atom hands-on.
+  // #1117 moved it from the FIRST point to the SECOND, behind one framing line. IA-2's measure
+  // is clicks-to-a-live-pill, not ordinal position, and that is unchanged: the atom is still one
+  // line in and still the first clickable thing on the screen. The window is 1200 chars and the
+  // atom now sits at ~350, so there is real headroom; if a future line pushes it past 1200 this
+  // pin goes red, which is the correct outcome (widen deliberately, do not discover it later).
   const intro = windowAfter(_src, 'const FIRST_RUN_EXAMPLES', 1200);
-  assert.ok(/Click this: \{2d6\}/.test(intro), 'the tour opens by handing the reader a clickable {2d6} (the IA-2 atom, first point)');
+  assert.ok(/Click this: \{2d6\}/.test(intro), 'the tour still hands the reader a clickable {2d6} (the IA-2 atom) in its opening lines');
+
+  // #1117: and it arrives AFTER one line that says what the app is. Measured on a fresh boot, the
+  // first screen at 1280x800 held 13 points: four dice/coin, then nine budget, and nothing else.
+  // Two of six personas read that as tabletop software and nearly closed the app; the PKM
+  // researcher's summary ("a document about rolling 2d6 and whether a weekend trip fits a GBP 400
+  // budget") was a literally complete description of it. This asserts the ORDER, not just the
+  // presence of a sentence: framing first, then the atom. Presence alone stayed green through the
+  // whole change, which is the UXP-260 class of vacuous pin.
+  const framing = 'Every point here is ordinary text.';
+  assert.ok(intro.includes(framing), 'the tour must open by saying what a point is before demonstrating a trick');
+  assert.ok(intro.indexOf(framing) < intro.indexOf('Click this: {2d6}'),
+    'the framing line must come BEFORE the die, or the die is still the first thing a stranger reads');
+  // it names capabilities that are not tabletop, in the words of what the tour goes on to show
+  // (the budget total, the album range, the stuck-project draw) — IA-3: speak in problems a
+  // stranger recognizes, never "your text is alive".
+  for (const cue of ['total a list', 'hold a range instead of a fake number', 'pick something at random'])
+    assert.ok(intro.includes(cue), `the framing line must name a concrete capability: ${cue}`);
+});
+
+// #1117: the tour never mentioned the link layer at all, which is the second persona's actual gap.
+// The PKM researcher recovered only by HOVERING the search bar and finding has:backlink / is:orphan
+// by accident. Naming it in "Make it yours" costs one line and puts it on the first-run path.
+test('first-run tour: "Make it yours" names the link layer and the search operators (#1117)', () => {
+  const m = _src.match(/const FIRST_RUN_EXAMPLES = `([\s\S]*?)`;/);
+  assert.ok(m, 'FIRST_RUN_EXAMPLES template literal not found');
+  const tour = m[1];
+  const mine = between(tour, 'Make it yours', 'Now start a point about the thing');
+  assert.ok(/Points can link to each other/.test(mine), 'the closing section must name that points link to each other');
+  assert.ok(/\[\[/.test(mine), 'and must show the door that makes one (the [[ trigger)');
+  assert.ok(/has:backlink/.test(mine) && /is:orphan/.test(mine),
+    'and must name the two operators the researcher found only by hovering the search bar');
 });
 
 test('DIAL: STANDARD + LEAN strip the teaching text (hints, search legend, pill tooltips); guided keeps it', () => {

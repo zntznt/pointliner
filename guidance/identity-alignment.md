@@ -59,6 +59,21 @@ first live pill; (2) the tour intro described the atom but its first paragraph h
 (the illustrative `{curly-brace}` is not one), so it now carries a real `{2d6}` (`Here is one now,
 click it: {2d6}`). Both browser-verified; source-pinned.
 
+**Tested from the other side, 2026-07-29 (#1117 / UXP-269):** a later persona pass hit IA-2's fix
+from the opposite direction. Two of six readers met the atom-first opening and concluded the app was
+tabletop software. Measured on a fresh boot at 1280x800, the first screen held **13 points: four
+dice/coin, then nine budget, and nothing else** - so the PKM researcher's summary ("a document about
+rolling 2d6 and whether a weekend trip fits a GBP 400 budget") was a literally complete description
+of it, not an unfair one.
+
+**IA-2 was left standing, deliberately.** Its measure is seconds/keystrokes from a fresh open to a
+live pill, and neither reader complained about that; both said, in effect, "I could not tell what
+this was for." So the fix is **framing, not ordering**: one line above the die saying what a point
+is, after which `{2d6}` arrives as a demonstration of liveness rather than as the subject matter. The
+atom is still one line in, still above the fold (y=253 vs y=194), and still the first clickable thing
+on the screen - IA-2's measure is unchanged. Recorded here so the next reader finds an argument
+rather than a silent divergence from #1117's suggested direction.
+
 ### IA-3 · Philosophy-speak sweep in user-facing copy (§3, the translation rule) ✓ DONE (#860, verified clean)
 "Text should be alive" and its cousins are internal steering; external copy speaks in
 problems a stranger recognizes. The rule is new, so shipped copy predates it.
