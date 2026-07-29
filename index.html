@@ -1561,9 +1561,19 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .graph-close:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .graph-canvas{flex:1;position:relative;overflow:hidden;min-height:0}
 .graph-canvas svg{display:block;width:100%;height:100%}
-.graph-edge{stroke:var(--bdr);stroke-width:1.2}
-.graph-edge.graph-edge-broken{stroke:color-mix(in srgb,var(--bad) 45%,transparent);stroke-dasharray:3 3}
-.graph-edge.graph-edge-unlinked{stroke:var(--info);stroke-dasharray:2 3;opacity:.6}
+/* #1150: an edge IS the information here, not decoration around it, so it takes --bdr-ui (the
+   functional-boundary token, design-language §3) and NOT --bdr. Measured against the panel's
+   --hbg backdrop, the old values failed the 3:1 non-text floor in both themes: plain 1.27/1.24,
+   broken 2.20/2.50, unlinked 2.79/3.54 — while the NODES sat at 7.58/7.93, six times their edges.
+   That is the reported complaint ("edges I could barely see") as a number.
+   The 65% mixes are derived, not picked: the lowest 5% step at which BOTH themes clear 3:1,
+   computed independently for --bad and --info and landing on the same value. The dashes carry
+   the broken/unlinked DISTINCTION (never faintness), so raising contrast keeps all three kinds
+   apart. stroke-width deliberately held at 1.2 — contrast is the rule-backed defect; width is a
+   taste call, and renderGraph hardcodes the same 1.2 for weighted folder edges. */
+.graph-edge{stroke:var(--bdr-ui);stroke-width:1.2}
+.graph-edge.graph-edge-broken{stroke:color-mix(in srgb,var(--bad) 65%,transparent);stroke-dasharray:3 3}
+.graph-edge.graph-edge-unlinked{stroke:var(--info);stroke-dasharray:2 3;opacity:.65}
 .graph-node{cursor:pointer}
 .graph-node circle{fill:color-mix(in srgb,var(--acc) 22%,var(--bg));stroke:var(--acc);stroke-width:1.4;transition:fill .1s}
 .graph-node:hover circle,.graph-node:focus circle{fill:color-mix(in srgb,var(--acc) 40%,var(--bg))}

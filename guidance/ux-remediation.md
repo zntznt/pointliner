@@ -2086,3 +2086,111 @@ non-positionally, silence the note, drop the note from the live region, drop it 
 single-row repaint while references elsewhere went stale, drop plural agreement. The harness
 compares against a **backup rather than `git diff`**, because the #1117 harness compared against git
 on an already-dirty tree and reported a false pass on a mutation that never applied.
+
+---
+
+## UXP-271 - the layer carrying the graph's meaning was the layer nobody measured (#1150)
+
+A novelist reported two things about the link graph in one sentence: a 5-point chain ran corner to
+corner, and the edges were ones she *"could barely see"*. #1139 fixed the first half (`clampPositions`
+rescaled X and Y independently and destroyed the aspect it claimed to preserve). The issue's
+remaining ask was a small-N cap on the Fruchterman-Reingold ideal edge length `k`.
+
+**The issue itself said to check something else first, and it was right:**
+
+> Before tuning `k`, measure the edge stroke against the design language's contrast floor. If the
+> edges are simply too faint, that is a much smaller fix with no layout blast radius.
+
+Measured, it resolves the visible half outright. Every graph edge class failed the 3:1 non-text
+floor, against the panel's real `--hbg` backdrop:
+
+| element | light | dark | 3:1? |
+|---|---|---|---|
+| `.graph-edge` - `stroke:var(--bdr)` | **1.27** | **1.24** | no, badly, both |
+| `.graph-edge-broken` - `--bad` @45% | **2.20** | **2.50** | no, both |
+| `.graph-edge-unlinked` - `--info` @.6 | **2.79** | 3.54 | no, light |
+| *(for scale)* `.graph-node circle` - `--acc` | 7.58 | 7.93 | yes |
+
+**The nodes were six times the contrast of the lines joining them.** That is her sentence as a
+number: she saw five dots clearly and the edges between them not at all.
+
+### It was a rule violation, not a taste call
+
+`design-language.md` already bound this, and had for as long as the tokens have existed:
+
+> *"`--bdr` is decorative (hairlines may whisper); **`--bdr-ui` (≈3:1) exists for functional
+> boundaries** - use it when a border is the only thing delineating a control."*
+
+A graph edge is the strongest possible case: it is not delineating the content, it **is** the
+content. The correct token already existed, was already defined in both palette homes, and measures
+3.37 / 3.34. So the fix was a token swap the design language prescribes, with zero layout blast
+radius - no arbitrary constant, no re-reading the UXP-243 separation pins, no change to the four
+property-based `graphLayout` pins. The shipped diff touches three CSS declarations and nothing else.
+
+### 65% is derived, not chosen
+
+For the two translucent kinds, 65% is the lowest 5% step at which **both** themes clear 3:1,
+computed independently for `--bad` and `--info` and landing on the same value. The `#1132` precedent
+binds: a constant in this codebase is measured or it does not ship.
+
+After: plain 3.37 / 3.34, broken 3.28 / 3.74, unlinked 3.08 / 3.89. All twelve combinations
+(4 palette homes x 3 edge kinds) clear the floor.
+
+### The dashes, not the faintness, carry the distinction
+
+Broken and unlinked edges are told apart by `stroke-dasharray`, so raising contrast does not collapse
+the three kinds into one. The researcher in the same persona pass called the dotted unlinked-mention
+edge *"the single best idea in here"*, so "still reads as NOT-a-real-link" is an acceptance
+condition, not a nice-to-have. It has its own guard.
+
+### `stroke-width` deliberately untouched
+
+Contrast is the rule-backed defect; width is a taste call. Fixing the measurable one first and
+*then* looking is the honest order, and driving both graphs in both themes afterwards showed the
+edges read clearly at 1.2. Worth knowing before anyone widens it: `renderGraph` hardcodes the same
+`1.2` inside `Math.min(4, 1.2 + Math.log2(e.weight))` for weighted folder edges, so the base width
+lives in **two** places - the same dual-home trap as the palette.
+
+### The gap that let 1.21:1 ship, and the gate that closes it
+
+§3 asked authors to put computed ratios *in the PR*. That is discipline, not a gate, and discipline
+does not survive contact with a hundred merges. There was no test. There is now: it reads the three
+edge rules and the token values **out of the CSS** (so retuning a stroke re-runs the measurement
+rather than dating the guard), and checks every ratio in all **four** palette homes - CSS `:root`,
+the CSS dark media block, and both `applyTheme` strings.
+
+That last part matters more than it looks. The existing dual-home guard checks token **names** are
+present in both homes; it cannot see a token whose *value* diverges between them. Mutating
+`--bdr-ui` in the `applyTheme` dark string alone - leaving the CSS `:root` correct - passes the
+name-parity guard and fails this one. For these tokens the dual-home invariant is now enforced
+rather than merely stated.
+
+Scoped to graph edges deliberately. A whole-palette audit would likely turn other pairs red and is
+its own change, not a drive-by here.
+
+### Guard-proofed, five mutations
+
+All five red, each asserting its target string was present first (#1133): plain edge back to
+`--bdr`; broken back to 45%; unlinked back to `.6`; the two dash patterns collapsed to one; and
+`--bdr-ui` degraded in a single palette home. The guard also asserts it made exactly 12 measurements,
+so a selector rename that finds nothing fails loudly instead of reporting a vacuous pass.
+
+### Driven, both graphs, both themes
+
+Reproduced first on the pre-fix build: her 5-point chain and the researcher's 7-point hub, rendered
+headless, edges measured off the **live** computed styles and screenshotted. A harness bug is worth
+recording, because it briefly produced a confident wrong number: Chromium serialises a `color-mix()`
+result as `color(srgb 0.70 0.15 0.12 / 0.45)` with **0-1** channels while plain colours come back as
+`rgb(r, g, b)` with **0-255**. Parsing both the same way turned the broken edge into a near-black
+stroke and reported 3.32:1 where the truth was 2.20:1. Reading the raw computed value rather than
+trusting the derived ratio is what caught it.
+
+### The `k` half is left OPEN, with evidence
+
+Both halves of her complaint are now addressed without touching layout: #1139 killed the
+corner-to-corner diagonal, this kills the invisible edges. What remains of #1150 is "a 5-point chain
+spans the canvas", and the issue itself concedes *"a sparse graph using the space is not
+self-evidently wrong."* A cap would change every layout and needs a fraction that is a taste call -
+exactly what #1132 established this codebase does not ship. So the issue stays open with the
+measurements and the driven screenshots posted to it, rather than being closed on my own argument.
+If the chain still reads badly now that its edges are visible, the evidence is already there.

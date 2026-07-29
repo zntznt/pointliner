@@ -163,7 +163,19 @@ text ink; this recipe passed AA at badge size in both themes — keep the percen
   rule pairs with `color:var(--acc-fg)`.
 - `--bdr` is decorative (hairlines may whisper); **`--bdr-ui` (≈3:1) exists for functional
   boundaries** — use it when a border is the only thing delineating a control.
-- New color pairs ship with their computed WCAG ratio in the PR.
+  - **The clearest case is a line that IS the information, not a border around it.** Graph edges
+    shipped on `--bdr` and measured **1.27:1 / 1.24:1** against the panel's `--hbg`, while the nodes
+    they joined sat at 7.58 / 7.93 — six times the contrast — so the most connected point in a
+    document was the one whose connections you could not see (#1150 / UXP-271). If a stroke carries
+    meaning (an edge, a connector, a sparkline, an axis), it is functional and takes `--bdr-ui`.
+  - Translucent variants (`color-mix(… N%, transparent)`, `opacity`) are measured **composited over
+    the surface they actually sit on** — the graph panel is `--hbg`, not `--bg`, and measuring
+    against the page background flatters every number.
+- New color pairs ship with their computed WCAG ratio in the PR. For graph edges this is now a
+  **test**, not a habit: `#1150` in `tests/test.mjs` reads the stroke rules and token values out of
+  the CSS and asserts ≥3:1 across all four palette homes (CSS `:root`, the CSS dark block, and both
+  `applyTheme` strings). Note what that catches which the name-parity guard cannot: a token whose
+  **value** diverges between homes while both still declare it.
 
 **Decision: the default accent is indigo (`#4338ca` / `#a5b4fc`).** The editorial Oxblood
 preset exists in the picker, but **a red-family accent must not become the default**: it

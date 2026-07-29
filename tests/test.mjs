@@ -15718,6 +15718,103 @@ test('drift guard: dual-home token parity (design-language §3)', () => {
     'in the applyTheme strings but missing from the :root light home');
 });
 
+// #1150 / UXP-271. A graph edge is not a border around the content — it IS the content, so
+// design-language §3's 3:1 non-text floor binds it. It shipped at 1.27:1 (light) / 1.24:1 (dark)
+// because NOTHING measured it: the §3 rule asked authors for computed ratios in the PR, which is
+// discipline, not a gate. This is the gate. Deliberately scoped to graph edges — a whole-palette
+// audit would likely turn other pairs red and is its own change, not a drive-by here.
+//
+// Values are read from CSS, not hardcoded, so retuning a stroke re-runs the measurement; and every
+// ratio is checked in all FOUR palette homes (CSS :root + CSS dark media block + both applyTheme
+// strings), which makes the dual-home invariant enforced for these tokens rather than merely stated.
+const _srgb = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const _hex = h => { h = h.replace('#', ''); if (h.length === 3) h = [...h].map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+const _lum = ([r, g, b]) => 0.2126 * _srgb(r) + 0.7152 * _srgb(g) + 0.0722 * _srgb(b);
+// contrastRatio lives here, not in index.html: the app never computes contrast at runtime, so
+// shipping it in the single-file bundle would be dead weight. It is test infrastructure.
+const contrastRatio = (fg, bg) => {
+  const [a, b] = [_lum(fg), _lum(bg)];
+  const [hi, lo] = a > b ? [a, b] : [b, a];
+  return (hi + 0.05) / (lo + 0.05);
+};
+// composite a possibly-translucent colour over an opaque backdrop
+const _over = (fg, alpha, bg) => [0, 1, 2].map(i => fg[i] * alpha + bg[i] * (1 - alpha));
+const _tokens = block => new Map([...block.matchAll(/(--[\w-]+)\s*:\s*([^;]+)/g)].map(m => [m[1], m[2].trim()]));
+
+test('#1150: every graph edge clears the 3:1 non-text floor in both themes, in both palette homes', () => {
+  const cssText = CSS_TEXT;
+  // the graph panel's own backdrop is --hbg, NOT --bg: measuring against the page background
+  // would flatter every one of these numbers. Read it rather than assume it.
+  const panel = cssText.match(/#graph-panel\{([^}]*)\}/);
+  assert.ok(panel, '#graph-panel rule not found');
+  const backdropVar = panel[1].match(/background:var\((--[\w-]+)\)/);
+  assert.ok(backdropVar, '#graph-panel has no var() background — re-point this guard at its real backdrop');
+
+  const ruleBody = sel => {
+    const m = cssText.match(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{([^}]*)\\}'));
+    assert.ok(m, `CSS rule ${sel} not found — the #1150 guard cannot measure what it cannot find`);
+    return m[1];
+  };
+  const EDGES = [
+    { sel: '.graph-edge', body: ruleBody('.graph-edge') },
+    { sel: '.graph-edge.graph-edge-broken', body: ruleBody('.graph-edge.graph-edge-broken') },
+    { sel: '.graph-edge.graph-edge-unlinked', body: ruleBody('.graph-edge.graph-edge-unlinked') },
+  ];
+  assert.equal(EDGES.length, 3, 'expected exactly three graph-edge kinds');
+
+  // resolve a stroke expression to [token, alpha]: plain var(), or color-mix with transparent
+  const strokeOf = body => {
+    const s = body.match(/stroke:([^;]+)/);
+    assert.ok(s, 'edge rule has no stroke');
+    const v = s[1].trim();
+    const mix = v.match(/color-mix\(in srgb,\s*var\((--[\w-]+)\)\s*([\d.]+)%\s*,\s*transparent\)/);
+    if (mix) return [mix[1], parseFloat(mix[2]) / 100];
+    const plain = v.match(/^var\((--[\w-]+)\)$/);
+    assert.ok(plain, `unrecognised stroke "${v}" — teach this guard the new form rather than dropping it`);
+    return [plain[1], 1];
+  };
+
+  const HOMES = {
+    'CSS :root (light)': _tokens(cssText.match(/:root\{([\s\S]*?)\}/)[1]),
+    'CSS dark media block': _tokens(cssText.match(/@media\(prefers-color-scheme:dark\)\{:root\{([\s\S]*?)\}\}/)[1]),
+    'applyTheme light string': _tokens(RAW_HTML.match(/:root\{color-scheme:light;([^}]*)\}/)[1]),
+    'applyTheme dark string': _tokens(RAW_HTML.match(/:root\{color-scheme:dark;([^}]*)\}/)[1]),
+  };
+
+  const failures = [];
+  let checked = 0;
+  for (const [home, tok] of Object.entries(HOMES)) {
+    const bgHex = tok.get(backdropVar[1]);
+    assert.ok(bgHex && /^#[0-9a-f]{3,8}$/i.test(bgHex), `${home}: ${backdropVar[1]} missing or not a hex`);
+    const bg = _hex(bgHex);
+    for (const e of EDGES) {
+      const [token, mixAlpha] = strokeOf(e.body);
+      const op = e.body.match(/opacity:([\d.]+)/);
+      const alpha = mixAlpha * (op ? parseFloat(op[1]) : 1);
+      const fgHex = tok.get(token);
+      assert.ok(fgHex && /^#[0-9a-f]{3,8}$/i.test(fgHex), `${home}: ${token} missing or not a hex`);
+      const r = contrastRatio(_over(_hex(fgHex), alpha, bg), bg);
+      checked++;
+      if (r < 3) failures.push(`${home} ${e.sel} = ${r.toFixed(2)}:1 (token ${token}, alpha ${alpha})`);
+    }
+  }
+  // a guard that measured nothing must not report success (#1133)
+  assert.equal(checked, 12, `expected 12 measurements (4 homes x 3 edge kinds), made ${checked}`);
+  assert.deepEqual(failures, [], 'graph edges below the 3:1 non-text floor');
+});
+
+test('#1150: the broken and unlinked edges stay distinguishable by DASH, not by faintness', () => {
+  // Raising contrast must not collapse the three edge kinds into one. The researcher called the
+  // dotted unlinked-mention edge "the single best idea in here" — it has to still read as
+  // NOT-a-real-link, which is carried by stroke-dasharray, never by being hard to see.
+  const body = sel => CSS_TEXT.match(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{([^}]*)\\}'))[1];
+  const plain = body('.graph-edge'), broken = body('.graph-edge.graph-edge-broken'), unl = body('.graph-edge.graph-edge-unlinked');
+  assert.ok(!/stroke-dasharray/.test(plain), 'a real link must stay solid');
+  const dashB = broken.match(/stroke-dasharray:([^;]+)/), dashU = unl.match(/stroke-dasharray:([^;]+)/);
+  assert.ok(dashB, 'broken edge lost its dash'); assert.ok(dashU, 'unlinked edge lost its dash');
+  assert.notEqual(dashB[1].trim(), dashU[1].trim(), 'broken and unlinked must not share one dash pattern');
+});
+
 test('UXP-191: the base font is rem, not px, so the browser font-size preference is honored (P3-3)', () => {
   // a bare px root silently overrides the user's browser default-font-size setting (the primary
   // low-vision control). rem inherits it. pin the intent so a future edit can't regress to px.
