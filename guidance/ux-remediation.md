@@ -2194,3 +2194,92 @@ self-evidently wrong."* A cap would change every layout and needs a fraction tha
 exactly what #1132 established this codebase does not ship. So the issue stays open with the
 measurements and the driven screenshots posted to it, rather than being closed on my own argument.
 If the chain still reads badly now that its edges are visible, the evidence is already there.
+
+---
+
+## UXP-272 - the app declared a font format it did not ship (#1155)
+
+☐→✓ · 🟢 cosmetic-but-tracked · closed 2026-07-29
+
+### The defect, in one line
+
+`tools/build-fa-subset.py` passed `flavor="woff2"` to `subset.Options(...)` but drove `Subsetter`
+directly. Only `subset.main()` applies that option, via `save_font()`:
+
+```
+subset.py:3900   font.flavor = options.flavor      # inside save_font(), called only from main()
+```
+
+So the option was stored and silently dropped, `TTFont.save()` saw `self.flavor is None`, and wrote
+an uncompressed sfnt. All three embedded faces decoded to magic `00010000` while their `@font-face`
+declared `format("woff2")`. Nothing was broken - browsers sniff the magic number, so the icons
+painted - but the app stated a format it did not ship.
+
+### The size claim in the issue was right; its significance was not
+
+The issue called it "~17 KB of wasted bytes in a single-file app". The byte count is accurate: the
+rebuild recovered **17,140 base64 bytes**, 28,512 -> 11,372, a 60% cut of the FA payload.
+
+| face | before (raw / b64) | after (raw / b64) |
+|---|---|---|
+| Free 900 solid | 18,208 / 24,280 | 6,828 / 9,104 |
+| Free 400 regular | 2,020 / 2,696 | 1,028 / 1,372 |
+| Brands 400 | 1,152 / 1,536 | 672 / 896 |
+
+What that is *worth* is smaller than it sounds: `index.html` is 2.86 MB, so this is **0.6% of the
+file**. Size was the secondary benefit. The reason to do it was correctness, plus a guard so the
+declaration cannot drift from the bytes again.
+
+### A claim made while planning this was wrong, and the record should not repeat it
+
+It was asserted mid-session that the woff2 decode arm of `fontCodepoints` "has never executed" and
+that this change would therefore be its first real exercise. **That was false.** The test *"#1144:
+fontCodepoints reads a real woff2"* already drove that arm against the genuine woff2 text faces
+(Fraunces/Geist). The arm was proven; the change was lower-risk than represented. What it genuinely
+added was coverage of a different *shape* - tiny subset fonts with private-use codepoints and
+glyf/loca transforms - and that decoded correctly first time, reading 77 codepoints out of the solid
+subset.
+
+### The guard, which is the point
+
+The fix is one line. The gate is the other half, and it is the UXP-271 lesson again: a rule with no
+test is discipline, not a gate. `#1144`'s woff2 test now has two halves:
+
+- **(a)** every `fa-embed` payload must be real `wOF2`. A rebuild on a tree that lost
+  `font.flavor = "woff2"` reverts to sfnt and the icons keep painting, so nothing else would notice.
+- **(b)** the text faces still pin the decode arm against a big cmap - but scoped **structurally**
+  (the woff2 payloads *not* in the `fa-embed` block) rather than by family name. The previous
+  selector took every woff2 payload in the file, which was correct only while the FA faces were sfnt
+  and thus filtered out; after the fix they matched it and failed the `>100 codepoints` floor, since
+  a subset carries ~77 private-use codepoints and no ASCII.
+
+Three mutations, each asserting its target was present first (#1133): removing the flavor line and
+rebuilding reverts all three payloads to `00010000`; swapping one payload back to its sfnt bytes
+turns (a) red; dropping the `!faSet.has(b)` exclusion turns (b) red with `parsed only 77 codepoints`.
+
+### Two stale comments removed
+
+Both named the bug as live and unfixed - `fontCodepoints`'s header ("*declared woff2 but are actually
+raw sfnt ... filed separately*") and the test body ("*The FA payloads are sfnt today, so the woff2
+arm above would otherwise be dead code*"). Left in place they become the next reader's false premise,
+the #1107 failure mode. The sniff itself stays, along with the sfnt arm and its
+`unrecognised embedded font payload` throw: sniffing rather than trusting is still the right design.
+
+### Driven, because no unit test sees a font that decodes in Node and fails in a browser
+
+Acceptance was a diff of exactly three base64 strings: the 78 `::before` rules and the `FA_GLYPHS`
+line came back **byte-identical**, and `index.html` changed by exactly 3 lines. Decoded codepoint
+sets were compared per face before and after - 77 / 6 / 1, **identical**, so coverage is unchanged
+rather than merely present.
+
+In Chromium: all three faces reach `status: 'loaded'` with no page errors, and the toolbar renders
+**pixel-identical** to the pre-fix build in **both** the light and dark schemes. That comparison is
+falsifiable - a build with one payload corrupted gives `status: 'error'` and a different toolbar hash
+- which is what makes the identical result mean something.
+
+Two earlier per-glyph browser checks were written and **thrown away rather than shipped**, because
+each turned out to be unable to fail: advance-width comparison left 74/77 glyphs "passing" with the
+entire solid face corrupted, and rasterize-vs-fallback passed 78/78 on that same broken build,
+because a missing glyph still renders a notdef box that differs between families. Per-glyph coverage
+is already pinned authoritatively by reading each face's cmap in `#1144`; a decorative second check
+that cannot fail is worse than none (UXP-260).

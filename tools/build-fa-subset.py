@@ -112,6 +112,14 @@ def subset_to_woff2_b64(ttf_bytes, codepoints):
     ))
     ss.populate(unicodes=codepoints)
     ss.subset(font)
+    # subset.Options(flavor=...) is ONLY applied by subset.main() -> save_font(), which does
+    # `font.flavor = options.flavor`. We drive Subsetter directly, so that never runs and
+    # TTFont.save() emits raw sfnt while the @font-face below declares format("woff2").
+    # Browsers sniff the magic number so icons still painted, but the declaration was a lie
+    # and the bytes were uncompressed (#1155). Set the flavor ourselves.
+    # (reorderTables=False stays harmless: WOFF2Writer.reordersTables() is True, so save()
+    # skips its reorder block entirely for woff2.)
+    font.flavor = "woff2"
     buf = io.BytesIO(); font.save(buf, reorderTables=False)
     return base64.b64encode(buf.getvalue()).decode()
 
