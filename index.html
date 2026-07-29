@@ -13,7 +13,8 @@
      policy provides is the URL-fetch directives below, which ARE enforced from a meta tag
      (verified: connect-src 'none' blocks fetch() from the page context under file://).
      Decisions (see the security review):
-       script-src 'self' 'unsafe-inline'  — the 5 inline <script> blocks need 'unsafe-inline'
+       script-src 'self' 'unsafe-inline'  — the 2 inline <script> blocks (the pl-embedded-doc XML
+         data island and the app itself) need 'unsafe-inline'
          (no build step ⇒ no nonces without breaking the byte-for-byte from-disk copy). This does
          NOT stop inline XSS (that's what 'unsafe-inline' permits); the value is in connect-src.
        style-src 'self' 'unsafe-inline'   — inline <style>, runtime-injected theme/accent <style>
@@ -8824,8 +8825,14 @@ function fromOpml(xml) {
   const freshId = (raw) => { let id = raw || uid(); if (seenIds.has(id)) id = uid(); seenIds.add(id); return id; };
   function po(el, depth = 0) {
     // WAVE-3 HARD-11 (crash): clamp ingestion nesting. The recursive tree-walkers downstream
-    // (toOpml / collectVars / collectRules / render) overflow the stack around ~1500 levels, so the
-    // clamp is set LOWER — at MAX_OPML_DEPTH (1000, see its declaration) — well under that crash point.
+    // (toOpml / collectVars / collectRules / render) overflow the stack, so the clamp is set LOWER —
+    // at MAX_OPML_DEPTH (1000, see its declaration) — well under that crash point.
+    // MEASURED 2026-07-28 (headless Chromium, binary search on a pure chain): toOpml and
+    // collectVars both survive depth 6400 and throw RangeError at 6401. This comment previously
+    // said "~1500", which was wrong by ~4x — recorded because the error pointed the wrong way for
+    // anyone reasoning about headroom: 1000 is not near the crash point, it is ~6.4x under it.
+    // (JSON.stringify and treeDepthExceeds itself never overflowed to depth 200000 — the guard is
+    // iterative by design, so it can always measure a tree too deep for the walkers to serialize.)
     // Without it a pathological or hostile OPML/HTML would load into memory and then crash on the next
     // serialize or render, and re-crash on every reopen. A real document is never this deep; reject at
     // import (callers already catch fromOpml throws and flashError), so the deep tree never enters memory.
