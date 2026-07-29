@@ -8829,13 +8829,14 @@ function fromOpml(xml) {
     // at MAX_OPML_DEPTH (1000, see its declaration) — well under that crash point.
     // The crash point is NOT a fixed number, and this comment used to pretend it was ("~1500",
     // which no measurement supports). Do not replace it with a fresh single number — that just
-    // restarts the rot. Measured 2026-07 by binary search on a pure chain, calling the real
-    // toOpml: within ONE build, varying only the CALLER's stack depth, the ceiling moved
-    // 4978 - 7231, and not even monotonically (0 frames 6400, 200 frames 7231, 1000 frames 6136,
-    // 3000 frames 4978). A second environment (Chromium headless shell, macOS arm64) measured
-    // 4876 — inside that same spread, so the cross-machine difference is mostly call context
-    // rather than build. Real callers reach these walkers from render, autosave and export, at
-    // different depths each time.
+    // restarts the rot. Measured 2026-07 by binary search on a pure chain against the real
+    // toOpml, ONE FRESH PAGE PER CONFIGURATION (measuring several in one page warms the JIT
+    // between them and corrupts the comparison — that mistake produced a bogus non-monotonic
+    // result the first time): within one build, burning 0 / 200 / 1000 caller frames all give
+    // 6400, and 3000 frames gives 3200 — a 2x swing from call depth alone, reproducible in both
+    // orders. A second environment (Chromium headless shell, macOS arm64) measured 4876, inside
+    // that range. Real callers reach these walkers from render, autosave and export, at
+    // different depths each time, so no single figure describes the ceiling.
     // So the clamp is 1000 because it is CONSERVATIVE BY DESIGN — comfortably under the lowest
     // ceiling anyone has observed — not because the ceiling was measured once and divided.
     // (JSON.stringify and treeDepthExceeds itself never overflowed to depth 200000: the guard is
