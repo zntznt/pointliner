@@ -8827,11 +8827,18 @@ function fromOpml(xml) {
     // WAVE-3 HARD-11 (crash): clamp ingestion nesting. The recursive tree-walkers downstream
     // (toOpml / collectVars / collectRules / render) overflow the stack, so the clamp is set LOWER —
     // at MAX_OPML_DEPTH (1000, see its declaration) — well under that crash point.
-    // MEASURED 2026-07-28 (headless Chromium, binary search on a pure chain): toOpml and
-    // collectVars both survive depth 6400 and throw RangeError at 6401. This comment previously
-    // said "~1500", which was wrong by ~4x — recorded because the error pointed the wrong way for
-    // anyone reasoning about headroom: 1000 is not near the crash point, it is ~6.4x under it.
-    // (JSON.stringify and treeDepthExceeds itself never overflowed to depth 200000 — the guard is
+    // The crash point is NOT a fixed number, and this comment used to pretend it was ("~1500",
+    // which no measurement supports). Do not replace it with a fresh single number — that just
+    // restarts the rot. Measured 2026-07 by binary search on a pure chain, calling the real
+    // toOpml: within ONE build, varying only the CALLER's stack depth, the ceiling moved
+    // 4978 - 7231, and not even monotonically (0 frames 6400, 200 frames 7231, 1000 frames 6136,
+    // 3000 frames 4978). A second environment (Chromium headless shell, macOS arm64) measured
+    // 4876 — inside that same spread, so the cross-machine difference is mostly call context
+    // rather than build. Real callers reach these walkers from render, autosave and export, at
+    // different depths each time.
+    // So the clamp is 1000 because it is CONSERVATIVE BY DESIGN — comfortably under the lowest
+    // ceiling anyone has observed — not because the ceiling was measured once and divided.
+    // (JSON.stringify and treeDepthExceeds itself never overflowed to depth 200000: the guard is
     // iterative by design, so it can always measure a tree too deep for the walkers to serialize.)
     // Without it a pathological or hostile OPML/HTML would load into memory and then crash on the next
     // serialize or render, and re-crash on every reopen. A real document is never this deep; reject at
