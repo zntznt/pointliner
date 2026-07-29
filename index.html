@@ -2800,7 +2800,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
     <button id="btn-capture" class="tbtn-toggle" title="Capture to inbox" aria-label="Capture to inbox" aria-pressed="false"><i class="fa-solid fa-inbox"></i></button>
     <button id="btn-journal" class="tbtn-toggle" title="Journal" aria-label="Journal" aria-pressed="false"><i class="fa-solid fa-book"></i></button>
     <button id="btn-chronicle" class="tbtn-toggle" title="Chronicle (dated log)" aria-label="Chronicle" aria-pressed="false" style="display:none"><i class="fa-solid fa-calendar-day"></i></button>
-    <button id="btn-rolllog-tb" class="tbtn-toggle" title="Log rolls: record every dice roll, generator, oracle and pick to a dated Rolls log" aria-label="Log rolls" aria-pressed="false"><i class="fa-solid fa-scroll"></i></button>
+    <button id="btn-rolllog-tb" class="tbtn-toggle" title="Log random results: record every roll, generator, oracle and pick to a dated log" aria-label="Log random results" aria-pressed="false"><i class="fa-solid fa-scroll"></i></button>
     <button id="btn-agenda" class="tbtn-toggle" title="Agenda: every dated point and deadline, in one list" aria-label="Agenda: every dated point and deadline, in one list" aria-pressed="false"><i class="fa-solid fa-calendar-days"></i></button>
     <button id="btn-graph" class="tbtn-toggle" title="Link graph" aria-label="Link graph" aria-pressed="false"><i class="fa-solid fa-circle-nodes"></i></button>
     <button id="btn-timeline" class="tbtn-toggle" title="Timeline" aria-label="Timeline" aria-pressed="false"><i class="fa-solid fa-hourglass-half"></i></button>
@@ -2880,8 +2880,8 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="cmd-item" id="btn-datapacks"><div class="cmd-icon" data-fa="fa-solid fa-circle-nodes" data-fb="📦">📦</div><div class="cmd-info"><span class="cmd-label">Reusable packs</span><span class="cmd-desc">Your text generators and variables, bundled to reuse or share across documents</span></div></div>
         <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
         <div class="cmd-item" id="btn-units"><div class="cmd-icon" data-fa="fa-solid fa-arrow-right-arrow-left" data-fb="⇄">⇄</div><div class="cmd-info"><span class="cmd-label">Custom units</span><span class="cmd-desc">Define your own units, then convert with {= convert(x, from, to)}</span></div></div>
-        <div class="cmd-item" id="btn-rolllog" role="button" aria-pressed="false"><div class="cmd-icon" data-fa="" data-fb="⚄">⚄</div><div class="cmd-info"><span class="cmd-label" id="rolllog-label">Log rolls: Off</span><span class="cmd-desc">Record every dice roll, generator, oracle and pick to a dated Rolls log. Set a home with the bullet menu.</span></div></div>
-        <div class="cmd-item" id="btn-rolllog-goto" role="button" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-arrow-up-right-from-square" data-fb="↗">↗</div><div class="cmd-info"><span class="cmd-label">Go to your Rolls log</span><span class="cmd-desc">Jump to the point your rolls are recorded under</span></div></div>
+        <div class="cmd-item" id="btn-rolllog" role="button" aria-pressed="false"><div class="cmd-icon" data-fa="" data-fb="⚄">⚄</div><div class="cmd-info"><span class="cmd-label" id="rolllog-label">Log random results: Off</span><span class="cmd-desc">Record every roll, generator, oracle and pick to a dated log. Set a home with the bullet menu.</span></div></div>
+        <div class="cmd-item" id="btn-rolllog-goto" role="button" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-arrow-up-right-from-square" data-fb="↗">↗</div><div class="cmd-info"><span class="cmd-label">Go to your random results</span><span class="cmd-desc">Jump to the point your rolls are recorded under</span></div></div>
         <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
       </div>
 
@@ -15961,13 +15961,22 @@ function findOrCreateJournalHome() {
 // "Rolls" point. Roll entries nest under today's date (findOrCreateDatedEntry) exactly like the
 // journal, so a session reads as a dated log.
 function resolveRollLogHome() {
-  const { home, staleTarget } = findOrCreateNamedHome(root.rollLog?.targetId, 'Rolls');
+  // Adopt an EXISTING home's own title rather than the new one, or a document that already logged
+  // under the legacy "Rolls" title would get a second, empty "Random results" home beside it. Only a
+  // document with no home at all gets the new name. rollLogHome() knows both titles.
+  const found = rollLogHome();
+  const title = found ? ((found.text || '').split('\n', 1)[0].trim() || ROLL_LOG_HOME) : ROLL_LOG_HOME;
+  const { home, staleTarget } = findOrCreateNamedHome(root.rollLog?.targetId, title);
   if (staleTarget) root.rollLog = { on: !!root.rollLog?.on, targetId: null };
   return home;
 }
 // UXP-245: the roll-log home IF one exists — this never creates it. resolveRollLogHome does the
 // creating, so asking it "is there a log yet?" (to paint a menu row, say) would conjure the point as
 // a side effect of a render. Mirrors chronicleHome(). Takes an explicit root so it tests DOM-free.
+// The point that holds logged results. ROLL_LOG_HOME is what new homes are named; _LEGACY is the
+// pre-rename title, still matched so existing documents keep their log (see rollLogHome).
+const ROLL_LOG_HOME = 'Random results';
+const ROLL_LOG_HOME_LEGACY = 'Rolls';
 function rollLogHome(rootNode = root) {
   const id = rootNode?.rollLog?.targetId;
   if (id) {
@@ -15979,7 +15988,13 @@ function rollLogHome(rootNode = root) {
     })(rootNode);
     if (byId) return byId;   // a dangling targetId falls through to the by-title lookup
   }
-  return (rootNode?.children || []).find(c => (c.text || '').split('\n', 1)[0].trim() === 'Rolls') || null;
+  // The home is matched by TITLE, so the 2026-07 rename ("Roll log" -> "Random results") has to keep
+  // recognising the old one or every existing user's log is orphaned: the "Rolls" subtree stops being
+  // found and a second home appears beside it. New homes are created as ROLL_LOG_HOME; "Rolls" stays
+  // matchable forever as the legacy title. Order matters only cosmetically (a document cannot hold both
+  // as a top-level child without the user having made one by hand).
+  const titles = [ROLL_LOG_HOME, ROLL_LOG_HOME_LEGACY];
+  return (rootNode?.children || []).find(c => titles.includes((c.text || '').split('\n', 1)[0].trim())) || null;
 }
 
 // UXP-245: what toggling roll logging says. The old copy always promised "your Rolls log" — a
@@ -15988,21 +16003,36 @@ function rollLogHome(rootNode = root) {
 // plainly that the first roll starts it when there is not. Pure.
 function rollLogToggleMessage(on, homeLabel) {
   if (!on) return 'Roll logging off';
-  return homeLabel ? `Logging rolls to “${homeLabel}”` : 'Logging rolls. Your first roll starts a Rolls log.';
+  return homeLabel ? `Logging random results to “${homeLabel}”` : 'Logging random results. Your first one starts the log.';
 }
 // UXP-245: the ONE confirmation a session gives that a roll was recorded, fired on the first logged
 // roll after logging is switched on. Every roll would be noise; none at all was the defect (the roll
 // that grew the document said nothing). It names the destination and the door that reaches it. Pure.
 function rollLogFirstEntryMessage(homeLabel) {
-  return `Recorded in “${homeLabel}”. Open it from the File menu, Go to your Rolls log.`;
+  return `Recorded in “${homeLabel}”. Open it from the File menu, Go to your random results.`;
 }
 
-// Pure: one roll-log line, `HH:MM · <source> → <result>`. The source (the pill's expr / def /
-// name) is context and is omitted when empty. Node-testable.
-function rollLogEntry(source, result, hhmm) {
+// Pure: one log line, `HH:MM · <source> → <result>`. The source (the pill's expr / def / name) is
+// context and is omitted when empty. Node-testable.
+// 2026-07: when srcId is given the source becomes a LINK back to the point that produced the
+// result, so a log line is traceable to its origin. A link token rather than a sidecar field is
+// deliberate: it inherits click, keyboard and AT from the existing .node-link renderer, the
+// "target point no longer exists" message from followLinkTarget, and .node-link-broken styling
+// for an absent source, and it needs no OPML change because it is just text.
+// Measured caveat, and it is pre-existing rather than introduced here: deleting the source point
+// does NOT turn the link broken in the SAME session, because buildIndex leaves the removed node in
+// nodeMap and renderLinkPill asks nodeById. On reload the styling and the "(broken link)" aria-label
+// are correct. That staleness affects every link in the app, not just these.
+// LINK_RE's label is [^\]\n]*, so a ']' or a newline in the source would truncate the token and
+// leak raw syntax into the line; both are stripped from the LABEL only. A '|' is safe (the regex
+// takes everything to the closing ']]'), and the id is always uid(), so it never needs escaping.
+// No srcId degrades to the pre-2026-07 line, byte-identical — that is what the no-id pin locks.
+function rollLogEntry(source, result, hhmm, srcId) {
   const s = String(source ?? '').trim();
   const r = String(result ?? '').trim();
-  return `${hhmm} · ${s ? s + ' → ' : ''}${r}`;
+  const label = s.replace(/[\]\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const shown = (srcId && label) ? `[[#${srcId}|${label}]]` : s;
+  return `${hhmm} · ${shown ? shown + ' → ' : ''}${r}`;
 }
 // #918: append ONE roll's result to the roll-log home when logging is on. This is the single
 // contract EVERY generative/randomizing pill must honor: its reroll function calls logRoll with
@@ -16020,7 +16050,9 @@ function logRoll(node, source, result) {
   const mk = (t, p) => { const n = mkNode(t); n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); return n; };
   const { entry: day } = findOrCreateDatedEntry(home, todayISO(), mk);
   const d = new Date(), pad = x => String(x).padStart(2, '0');
-  const pt = mk(rollLogEntry(source, r, `${pad(d.getHours())}:${pad(d.getMinutes())}`), day);
+  // `node` is the point whose pill produced this result. It was accepted and discarded from #918
+  // until 2026-07; passing its id is what makes each entry link back to its origin.
+  const pt = mk(rollLogEntry(source, r, `${pad(d.getHours())}:${pad(d.getMinutes())}`, node?.id), day);
   day.children.push(pt);
   // agent-review: the entry lands on the log-HOME subtree, elsewhere in the tree, so the
   // rolled pill's partial repaint would never show it. Flag it so repaintAfterRoll full-renders
@@ -19886,7 +19918,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       } },
     // #918: make THIS point the roll-log home, and turn logging on so rolls start landing here.
     { sec:'More', icon:{ fa:'', fb:'⚄' },
-      label: root.rollLog?.targetId === nodeId ? 'Unset as roll-log home' : 'Log rolls here',
+      label: root.rollLog?.targetId === nodeId ? 'Unset as roll-log home' : 'Log random results here',
       fn: () => {
         hideBpop();
         if (root.rollLog?.targetId === nodeId) {
@@ -23520,8 +23552,15 @@ function collectLinks(rootNode) {
   const outgoing = {};   // sourceId -> [{ target, label, mirror }]  (every occurrence)
   const backlinks = {};  // targetId -> [sourceId]                   (each source once)
   const ids = new Set(); // every node id, to flag broken targets
-  function walk(n) {
+  // 2026-07: log entries carry a link back to the point that produced them, which would otherwise
+  // make every logged result a backlink on that point and a node in the link graph. A machine-written
+  // bookkeeping line is not authored intent, and a heavy user would drown the backlinks panel and the
+  // graph in dated noise, so the log subtree is indexed for IDENTITY (ids, so links INTO it still
+  // resolve and are not reported broken) but its own link tokens are not collected.
+  const logHome = rollLogHome(rootNode);
+  function walk(n, inLog) {
     ids.add(n.id);
+    if (inLog) { for (const c of n.children) walk(c, true); return; }
     const seen = new Set();
     let m; LINK_RE.lastIndex = 0;
     while ((m = LINK_RE.exec(n.text)) !== null) {
@@ -23534,9 +23573,9 @@ function collectLinks(rootNode) {
       (outgoing[n.id] ||= []).push({ target, label, mirror });
       if (!seen.has(target)) { seen.add(target); (backlinks[target] ||= []).push(n.id); }
     }
-    for (const c of n.children) walk(c);
+    for (const c of n.children) walk(c, false);
   }
-  if (rootNode?.children) for (const c of rootNode.children) walk(c);
+  if (rootNode?.children) for (const c of rootNode.children) walk(c, c === logHome);
   const broken = Object.keys(backlinks).filter(t => !ids.has(t));
   const result = { outgoing, backlinks, broken };
   if (useCache) { _linksCacheVer = _varsVer; _linksCached = result; }
@@ -36400,7 +36439,7 @@ document.getElementById('btn-units')?.addEventListener('click', () => { closeFil
 function syncRollLogLabel() {
   const on = !!root.rollLog?.on;
   const lbl = document.getElementById('rolllog-label');
-  if (lbl) lbl.textContent = 'Log rolls: ' + (on ? 'On' : 'Off');
+  if (lbl) lbl.textContent = 'Log random results: ' + (on ? 'On' : 'Off');
   document.getElementById('btn-rolllog')?.setAttribute('aria-pressed', on ? 'true' : 'false');
   // #951: the toolbar toggle mirrors the File-menu control (active tint + aria-pressed)
   const tb = document.getElementById('btn-rolllog-tb');
@@ -36414,7 +36453,7 @@ function syncRollLogLabel() {
 // land" (its cap-dest-jump uses it), so the two destinations are reached the same way.
 document.getElementById('btn-rolllog-goto')?.addEventListener('click', () => {
   const home = rollLogHome();
-  if (!home) { flashHint('No Rolls log yet. Turn on Log rolls, then roll something.'); return; }
+  if (!home) { flashHint('No log yet. Turn on Log random results, then roll or generate something.'); return; }
   closeFileMenu();
   zoomInto(home.id);
 });
@@ -36475,7 +36514,7 @@ const TOOLBAR_FEATURES = [
   { id: 'btn-capture',    name: 'Capture' },
   { id: 'btn-journal',    name: 'Journal' },
   { id: 'btn-chronicle',  name: 'Chronicle' },
-  { id: 'btn-rolllog-tb', name: 'Log rolls' },
+  { id: 'btn-rolllog-tb', name: 'Log random results' },
   { id: 'btn-agenda',     name: 'Agenda' },
   { id: 'btn-graph',      name: 'Link graph' },
   { id: 'btn-timeline',   name: 'Timeline' },
@@ -37574,13 +37613,13 @@ const GUIDE = [
       { syn:'Ctrl/Cmd+Shift+J', desc:'switch in-doc / file per day' },
     ] },
   { id:'roll-log', cat:'dates',
-    title:'Roll log',
-    body:"Keep a running record of every random or generated result, so nothing is lost when you click a pill again. Normally re-rolling a pill replaces its result; with the roll log on, each roll is ALSO written to a dated Rolls log the moment it happens. This covers all of the generating pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, roll-on-your-document and estimates. Turn it on with the scroll button in the toolbar (or from the File menu, Log rolls: Off/On). Entries land under a top-level Rolls point, filed by date like the journal (year then month then day), each line reading the time, what was rolled, and the result. Your first roll after switching on says where it landed, and the File menu then offers Go to your Rolls log, which takes you straight there, since the log sits at the end of a long document where you would not stumble on it. To keep the log somewhere specific, open any point's bullet menu and choose Log rolls here; that point becomes the home and logging turns on. It is off by default and adds nothing until you switch it on, so an ordinary document is untouched. Handy for solo journaling play, where the log of what the oracle said is the record you keep.",
+    title:'Random results',
+    body:"Keep a running record of every random or generated result, so nothing is lost when you click a pill again. Normally re-using a pill replaces its result; with logging on, each result is ALSO written to a dated log the moment it happens, and each entry links back to the point that produced it. This covers all of the generating pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, pick-from-your-document and estimates. Deterministic pills (a math total, a query count, a meter) never log, because they do not change on their own. Turn it on with the toolbar button (or from the File menu, Log random results: Off/On). Entries land under a top-level Random results point, filed by date like the journal (year then month then day), each line reading the time, what produced it, and the value. Your first result after switching on says where it landed, and the File menu then offers Go to your random results, which takes you straight there, since the log sits at the end of a long document where you would not stumble on it. To keep the log somewhere specific, open any point's bullet menu and choose Log random results here; that point becomes the home and logging turns on. It is off by default and adds nothing until you switch it on, so an ordinary document is untouched. Useful whenever the sequence of what came up is itself the record: a shuffled running order, a sampling run, an estimate you re-drew, a solo game session.",
     related:['journal','dice','gen-rules'],
     examples:[
-      { syn:'Toolbar scroll button', desc:'toggle roll logging on or off' },
-      { syn:'Menu → Go to your Rolls log', desc:'jump to the log once you have one' },
-      { syn:'Menu → Log rolls here', desc:'set a point as the Rolls home (bullet menu)' },
+      { syn:'Toolbar scroll button', desc:'toggle logging on or off' },
+      { syn:'Menu → Go to your random results', desc:'jump to the log once you have one' },
+      { syn:'Menu → Log random results here', desc:'set a point as the log home (bullet menu)' },
       { syn:'14:32 · 2d6 → 9',  desc:'a log line: time, source, result' },
     ] },
   { id:'chronicle', cat:'dates',
