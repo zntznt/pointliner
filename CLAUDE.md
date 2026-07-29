@@ -87,6 +87,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Inspiration catalogue (Tracery, Ink, Squiggle, etc.) | `guidance/enhancement-research.md` | Candidate |
 | Competitive snapshot | `guidance/outliner-frontier-report.md` | Candidate |
 | User research (persona fleet, findings) | `guidance/user-research-2026-07.md` | Candidate |
+| User research, second fleet (keyboard, touch, table, teaching, lab) | `guidance/user-research-2026-07-fleet2.md` | Candidate |
 | Variable declaration spec (Stage B, positional) | `guidance/typed-var-declaration-proposal.md` | Shipped |
 | Discoverability strategy (verbosity dial) | `guidance/ux.md` | Vision |
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
