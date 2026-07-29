@@ -7145,6 +7145,106 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     assert.equal(c.mathReasonPhrase(''), '');         // generic → caller's own fallback
     assert.equal(c.mathReasonPhrase('whatever'), ''); // unknown code → no phrase
   });
+
+  // ── #1169: a KNOWN function at the wrong arity ───────────────────────────────
+  // Before this, moonphase(today) reported byte-identically to notafunction(1): the reason chain
+  // skipped every `name(` call, so a real function given the wrong number of values fell to the
+  // generic "could not be evaluated". evalMath's parser already knew (#827's arity dispatch falls
+  // through to `throw 0`); the sentinel just carried no information.
+  test('#1169: fnArities — the arg counts a name accepts, as a SET (overloads) not a number', () => {
+    assert.deepEqual([...c.fnArities('moonphase')], [3]);
+    assert.deepEqual([...c.fnArities('log')], [1, 2], 'log is 1-arg base-10 AND 2-arg log(x, base)');
+    assert.deepEqual([...c.fnArities('floor')], [1]);
+    // Variadics: min/max/avg/and/or take two or more, so an arity "mismatch" is meaningless for
+    // them. Two assertions, because the first alone CANNOT FAIL (#1133): they are in none of the
+    // FN tables today, so fnArities returns null via want.length regardless of the exclusion.
+    for (const v of ['min', 'max', 'avg', 'and', 'or']) assert.equal(c.fnArities(v), null, v);
+    // (a) the redundancy claim itself - if a fixed-arity `min` is ever added to a table, the
+    //     exclusion stops being belt-and-braces and starts being the only thing preventing a
+    //     false positive on a legal variadic call. Fail loudly at that moment.
+    const fnTables = nonEmpty(['FN1', 'FN2', 'FN3'].map(t => between(_src, `const ${t} = `, '\n});')),
+      'the FN arity tables');
+    for (const v of ['min', 'max', 'avg', 'and', 'or'])
+      for (const [i, body] of fnTables.entries())
+        assert.doesNotMatch(body, new RegExp(`(?<![\\w.])${v}\\s*:`),
+          `'${v}' is now in FN${i + 1}: the MATH_VARIADIC_NAMES exclusion is load-bearing, not redundant`);
+    // (b) and source-pin the exclusion, so deleting it is red even while it is redundant
+    assert.match(_src, /MATH_VARIADIC_NAMES\.has\(n\)\s*\)\s*return null/,
+      'the variadic exclusion was removed from fnArities');
+    assert.equal(c.fnArities('notafunction'), null, 'an unknown name is a DIFFERENT mistake');
+    assert.equal(c.fnArities(''), null);
+  });
+
+  test('#1169: fnArityProblem — finds the mismatch, and stays quiet when there is none', () => {
+    const norm = p => p && { name: p.name, got: p.got, want: [...p.want] };
+    assert.deepEqual(norm(c.fnArityProblem('moonphase(today)')), { name: 'moonphase', got: 1, want: [3] });
+    assert.deepEqual(norm(c.fnArityProblem('moonphase(today, 28)')), { name: 'moonphase', got: 2, want: [3] });
+    assert.deepEqual(norm(c.fnArityProblem('floor()')), { name: 'floor', got: 0, want: [1] });
+    assert.deepEqual(norm(c.fnArityProblem('log(1, 2, 3)')), { name: 'log', got: 3, want: [1, 2] });
+    // the documented form, and both valid log overloads
+    assert.equal(c.fnArityProblem('moonphase(due, 28, 0)'), null);
+    assert.equal(c.fnArityProblem('log(100)'), null);
+    assert.equal(c.fnArityProblem('log(1024, 2)'), null);
+    // a NESTED call's commas must not inflate the outer count (top-level commas only)
+    assert.equal(c.fnArityProblem('floor(moonphase(today, 28, 0) * 8)'), null);
+    assert.deepEqual(norm(c.fnArityProblem('floor(moonphase(today), 2)')),
+      { name: 'floor', got: 2, want: [1] }, 'outer checked first, and its own count is 2');
+    // variadics and unknown names are never flagged
+    assert.equal(c.fnArityProblem('min(1, 2, 3, 4)'), null);
+    assert.equal(c.fnArityProblem('notafunction(1)'), null);
+    // unbalanced parens is a SYNTAX error, not an arity one - do not claim otherwise
+    assert.equal(c.fnArityProblem('moonphase(today'), null);
+    assert.equal(c.fnArityProblem(''), null);
+  });
+
+  test('#1169: the phrase names the function, the counts, and a shape that works', () => {
+    const ph = c.arityPhrase('moonphase(today)');
+    assert.match(ph, /moonphase/, 'names the function, not just "a function"');
+    assert.match(ph, /1 value where it takes 3/, 'names BOTH counts');
+    assert.match(ph, /moonphase\(a, b, c\)/, 'and shows the shape that would work (#1159 house style)');
+    assert.match(ph, /moon phase 0 to 1 for a date/, 'reuses MATH_FN_DESC rather than a second copy');
+    // an overloaded name offers both shapes
+    const lg = c.arityPhrase('log(1, 2, 3)');
+    assert.match(lg, /takes 1 or 2/);
+    assert.match(lg, /log\(a\) or log\(a, b\)/);
+    assert.match(c.arityPhrase('floor()'), /0 values where it takes 1/, 'plural agreement at zero');
+    // no expr (an older caller) still yields a true sentence rather than throwing or lying
+    assert.match(c.arityPhrase(), /wrong number of values/);
+    assert.doesNotMatch(c.arityPhrase(), /undefined|NaN/);
+    // it must read as a NOUN phrase: every caller prefixes it
+    for (const p of ['This uses ', 'This calculation uses ', 'Invalid expression: ']) {
+      assert.doesNotMatch(p + ph, /uses [A-Z]/, 'no sentence-start capital mid-prefix');
+    }
+    assert.doesNotMatch(ph, /—/, 'no em dashes in user copy');
+  });
+
+  test('#1169: the reason chain returns arity LAST, so every specific arm still wins', () => {
+    assert.equal(c.mathErrorReason('moonphase(today)'), 'arity');
+    assert.equal(c.mathErrorReason('log(1, 2, 3)'), 'arity');
+    // the documented form is not an error at all
+    assert.equal(c.mathErrorReason('moonphase(today, 28, 0)'), '');
+    // an unknown NAME keeps falling through to the caller's own syntax-error fallback: that is a
+    // different mistake and 'bad ref'/syntax already covers it. This is the pair that used to be
+    // indistinguishable, so it is the assertion that proves the fix.
+    assert.equal(c.mathErrorReason('notafunction(1)'), '');
+    assert.notEqual(c.mathErrorReason('moonphase(today)'), c.mathErrorReason('notafunction(1)'));
+    // precedence: a bad ref INSIDE a wrong-arity call stays 'bad ref' (more actionable)
+    assert.equal(c.mathErrorReason('qqq + 1'), 'bad ref');
+    assert.equal(c.mathErrorReason('moonphase(qqq)'), 'bad ref', 'the typo outranks the count');
+    // and the phrase map routes the code
+    assert.match(c.mathReasonPhrase('arity', 'moonphase(today)'), /moonphase given 1 value/);
+  });
+
+  // #1133: a tested core proves NOTHING about whether the callers pass the expression. Without
+  // the second argument every one of these sites would silently render the generic fallback.
+  test('#1169: every mathReasonPhrase call site passes the expression', () => {
+    const calls = nonEmpty([..._src.matchAll(/mathReasonPhrase\(([^;]*?)\)\s*(?:\|\||;|\s*\?)/g)]
+      .map(m => m[1]), 'mathReasonPhrase call sites');
+    assert.ok(calls.length >= 4, `expected the 4 known call sites, found ${calls.length}`);
+    for (const args of calls) {
+      assert.ok(/,/.test(args), `a mathReasonPhrase call passes no expression: mathReasonPhrase(${args})`);
+    }
+  });
 }
 
 // ── unfold/refold + offset translation (UXP-30 / UXP-31) ───────────────────────
