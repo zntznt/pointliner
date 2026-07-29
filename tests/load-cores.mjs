@@ -271,6 +271,7 @@ export function loadCores() {
     'escHtml','escAttr','escQ','safeUrl','ex','toOpml',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
+    'fnArities','fnArityProblem','arityPhrase',   // #1169: a known function at the wrong arity
     'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText','clockAtOrdinal','manualClocksOf','collectPillActions', 'pillTokenFor',   // #1116: a rendered pill can name its own token
     'clockFillFor','completingChildIndex','clockCompletionCue','progressCount','tallyMarkers',
     'parseMeter','resolveMeter','meterBar','formatMeter','meterPool','childPropNumber',

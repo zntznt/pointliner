@@ -8371,14 +8371,81 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
   if (sawDist) return 'estimate';                        // #952: declared, but holds a distribution
   if (sawLater) return 'declared later';
   if (sawNonNumeric) return 'non-numeric';
+  // #1169: LAST, so every more specific arm above still wins - a wrong name inside a wrong-arity
+  // call stays 'bad ref', which is the more actionable fix (the same precedence the #1101 comment
+  // sets out). This arm only fills the gap where the generic "could not be evaluated" used to sit.
+  if (fnArityProblem(s)) return 'arity';
   return '';
+}
+
+// #1169: the argument counts a known math function accepts. FN1/FN2/FN3 are keyed BY arity and one
+// name may live in several (log is 1-arg base-10 in FN1 and 2-arg log(x, base) in FN2), so the
+// answer is a set, not a number. null = not a fixed-arity function: either an unknown name (that
+// is a different mistake, and 'bad ref'/syntax error already covers it) or a variadic.
+// The variadic exclusion is BELT-AND-BRACES today: min/max/avg/and/or are handled in the parser's
+// own dispatch and are in none of FN1/FN2/FN3, so the `want.length` check below would already
+// return null for them. It is kept because the arity dispatch makes exactly the same defensive
+// guard (`&& !(name === 'min' || …)`), and because adding a fixed-arity `min` to a table later
+// must not turn a legal variadic call into a reported error. The test asserts they are absent
+// from the tables, so if that stops being true this line becomes load-bearing and you are told.
+const MATH_VARIADIC_NAMES = new Set(['min', 'max', 'avg', 'and', 'or']);
+function fnArities(name) {
+  const n = String(name || '').toLowerCase();
+  if (MATH_VARIADIC_NAMES.has(n)) return null;
+  const want = [];
+  if (n in FN1) want.push(1);
+  if (n in FN2) want.push(2);
+  if (n in FN3) want.push(3);
+  return want.length ? want : null;
+}
+
+// #1169: a KNOWN function called with the wrong number of values. evalMath's parser already detects
+// exactly this (the #827 arity dispatch falls through to `throw 0`) but the sentinel carries no
+// information, so a real function at the wrong arity reported identically to an invented name.
+// Returns { name, got, want } for the first mismatch, else null. Pure and DOM-free.
+function fnArityProblem(expr) {
+  const s = String(expr || '');
+  const re = /([A-Za-z_]\w*)\s*\(/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const want = fnArities(m[1]);
+    if (!want) continue;
+    // Count TOP-LEVEL commas inside this call's parens, so a nested call's commas don't inflate it.
+    let depth = 0, commas = 0, sawContent = false, i = re.lastIndex - 1;
+    for (; i < s.length; i++) {
+      const c = s[i];
+      if (c === '(') depth++;
+      else if (c === ')') { depth--; if (depth === 0) break; }
+      else if (c === ',' && depth === 1) commas++;
+      else if (depth >= 1 && !/\s/.test(c)) sawContent = true;
+    }
+    if (i >= s.length) return null;          // unbalanced parens is a syntax error, not an arity one
+    const got = sawContent ? commas + 1 : 0;
+    if (!want.includes(got)) return { name: m[1].toLowerCase(), got, want };
+  }
+  return null;
+}
+
+// #1169: name the function and a shape that works, in the #1159 house style ("name the fix, not
+// just the miss"). `expr` is optional so existing mathReasonPhrase callers keep working unchanged;
+// without it the sentence stays true but cannot name the function. The `(a, b, c)` placeholders
+// match what the { picker already shows for these names, so one shape convention, not two.
+function arityPhrase(expr) {
+  const p = expr ? fnArityProblem(expr) : null;
+  if (!p) return 'a function given the wrong number of values; check how many each name needs';
+  const shapes = p.want.map(n => `${p.name}(${['a', 'b', 'c'].slice(0, n).join(', ')})`).join(' or ');
+  // A NOUN phrase, because every caller prefixes it: "This uses …", "This calculation uses …",
+  // "Invalid expression: …", "can't evaluate · …". A sentence would read broken after all four.
+  const desc = MATH_FN_DESC[p.name] ? ` It is ${MATH_FN_DESC[p.name]}, so write` : ' Write';
+  return `${p.name} given ${p.got} value${p.got === 1 ? '' : 's'} where it takes ${p.want.join(' or ')}.${desc} it as ${shapes}`;
 }
 
 // A human phrase for a mathErrorReason code, so the math dialog, the check dialog,
 // and #ERR pills explain a failure the SAME way (P1/P4 — legible, consistent). ''
 // for a generic/unknown code (the caller supplies its own "syntax error" fallback).
-function mathReasonPhrase(why) {
-  return why === 'not-uncertain' ? 'a plain number where an uncertain value was expected; percentile() and chanceover() only work on a variable declared as a range, like cost := 100 to 200'
+function mathReasonPhrase(why, expr) {
+  return why === 'arity' ? arityPhrase(expr)
+       : why === 'not-uncertain' ? 'a plain number where an uncertain value was expected; percentile() and chanceover() only work on a variable declared as a range, like cost := 100 to 200'
        : why === 'estimate'    ? 'an estimate like 5 to 10 (or a variable holding one), which works on its own but not inside a math formula or check. Write it without the = to keep it an estimate, like {cost * 2}'
        : why === 'convert'     ? 'a conversion between two different kinds of units (like a length and a mass), which has no answer'
        : why === 'declared later' ? 'a variable declared later in the document; values resolve top to bottom, so move its declaration above this point'
@@ -14055,7 +14122,7 @@ function openCheckDialog(nodeId, targets = null) {
           if (verdict === 'fail') return `<span style="color:var(--bad)">✗ fails</span> <span style="color:var(--muted)">· ${expanded}</span>`;
           const scope = Object.assign(Object.create(null), globalVarMap, nodePropVars(node));
           const why = mathErrorReason(expandAggExpr(v, node), scope);
-          const reason = mathReasonPhrase(why) || 'a syntax error';
+          const reason = mathReasonPhrase(why, expandAggExpr(v, node)) || 'a syntax error';
           return `<span style="color:var(--warn)">⚠ can’t evaluate</span> <span style="color:var(--muted)">· ${reason}</span>`;
         },
       },
@@ -17993,7 +18060,7 @@ function templateParts(body, rules, vars) {
 function braceAttemptReason(body, rules, vars) {
   body = (body || '').trim();
   if (body[0] === '=') {                                                // {= expr}
-    const phrase = mathReasonPhrase(mathErrorReason(body.slice(1).trim(), vars));
+    const phrase = mathReasonPhrase(mathErrorReason(body.slice(1).trim(), vars), body.slice(1).trim());
     return phrase ? 'This calculation uses ' + phrase + '.'
                   : 'This calculation could not be evaluated. Check the formula.';
   }
@@ -26180,6 +26247,11 @@ const FN3 = Object.assign(Object.create(null), {
   // 0 = new, 0.5 = full. A bare moonphase(…) pill renders as a moon glyph (see isMoonExpr); wrap
   // it in more math (× 8, floor…) to get the raw number. Multiple moons = multiple calls.
   moonphase: (date, period, offset) => {
+    // A zero/NaN period has no cycle to be a fraction of. This returns NaN, but note where that
+    // surfaces: the arity dispatch means moonphase(d, 0, 0) still parses, so NaN reaches evalMath's
+    // final isNaN gate and the whole expression yields null - the pill does not promote and the
+    // brace-attempt cue explains it. It is NOT an #ERR pill, which an earlier version of this
+    // comment claimed (#1169).
     if (!period) return NaN;                                       // period 0/NaN → visible error
     const frac = ((Math.round(date) - Math.round(offset)) / period) % 1;
     return (frac + 1) % 1;                                         // normalize negatives to [0, 1)
@@ -27322,7 +27394,7 @@ function renderMathPill(key, m) {
     // can fix the reference (`math-err`, unlike `math-bad`, keeps the edit affordance).
     const reason = mathErrorReason(expr, scope, _varCycles, globalVarMap);   // agent-review: globalVarMap → distinguish a forward ref ("declared later") from a typo
     const label = reason ? `#ERR (${reason})` : '#ERR';
-    const phrase = mathReasonPhrase(reason);
+    const phrase = mathReasonPhrase(reason, expr);
     const tip = phrase ? `This uses ${phrase}. Click to edit.` : 'This can\'t be computed. Click to edit.';
     return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
       + ` aria-label="Math ${escQ(m.expr)} shows ${escQ(label)}. ${escQ(tip)}">`
@@ -27954,7 +28026,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
           const vars = collectVars();
           const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
           if (r === null) {
-            const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node), vars));
+            const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node), vars), expandAggExpr(v, node));
             return `<span class="io-preview-bad">Invalid expression${phrase ? ': ' + phrase : ''}</span>`;
           }
           const f = fmtOf(all);

@@ -2283,3 +2283,87 @@ entire solid face corrupted, and rasterize-vs-fallback passed 78/78 on that same
 because a missing glyph still renders a notdef box that differs between families. Per-glyph coverage
 is already pinned authoritatively by reading each face's cmap in `#1144`; a decorative second check
 that cannot fail is worse than none (UXP-260).
+
+---
+
+## UXP-273 - a real function at the wrong arity reported as an invented one (#1169)
+
+☐→✓ · 🟡 partial / inconsistent · closed 2026-07-29
+
+### The defect
+
+Found in the persona pass over surfaces the register had never reached (`moonphase` was at **zero**
+mentions). Every wrong-arity call of a known function fell to the generic catch-all, byte-identical
+to the message for a name that does not exist:
+
+| typed | before |
+|---|---|
+| `{= moonphase(today)}` | `This calculation could not be evaluated. Check the formula.` |
+| `{= moonphase(today, 28)}` | same |
+| **`{= notafunction(1)}`** (control) | same |
+
+So the app knew `moonphase` was real - it is in `MATH_DATE_FNS` with a registered description - and
+still reported it as a typo. The one thing the user got wrong, the argument count, was the one thing
+the cue did not mention. `{= moonphase(today)}` is the natural first attempt, because every
+neighbouring date function (`weekday(today)`, `eom(due)`, `year(today)`) takes one value.
+
+This is the same class as UXP-268 / #1159, which fixed the *bad-ref* arm of this same function. The
+`could not be evaluated` catch-all was the arm left generic.
+
+### The information already existed and was being thrown away
+
+`evalMath`'s parser detects this exact case. The #827 arity dispatch ends:
+
+```js
+if ((name in FN1 || name in FN2 || name in FN3) && !(name === 'min' || …)) throw 0;
+```
+
+`throw 0` is an opaque sentinel, so the reason chain never learned why. The fix re-derives it rather
+than plumbing the parser: `fnArities(name)` returns the accepted counts as a **set** (one name may
+live in several tables - `log` is 1-arg base-10 in FN1 *and* 2-arg `log(x, base)` in FN2), and
+`fnArityProblem(expr)` finds the first mismatch, counting **top-level commas only** so a nested
+call's commas do not inflate the outer count.
+
+### After
+
+| typed | after |
+|---|---|
+| `{= moonphase(today)}` | *moonphase given 1 value where it takes 3. It is moon phase 0 to 1 for a date, so write it as `moonphase(a, b, c)`* |
+| `{= log(1, 2, 3)}` | *log given 3 values where it takes 1 or 2 … write it as `log(a)` or `log(a, b)`* |
+| `{= notafunction(1)}` | **unchanged**, still the generic message |
+
+An unknown *name* deliberately stays generic: that is a different mistake and 'bad ref'/syntax
+already covers it. The two being indistinguishable was the defect, so the control staying put is
+what proves the fix.
+
+The arm is checked **last**, so every more specific reason still wins - `moonphase(qqq)` stays
+'bad ref', because the typo is the more actionable fix (the precedence the #1101 comment sets out).
+The phrase is a **noun phrase**, because all four callers prefix it (`This uses …`,
+`This calculation uses …`, `Invalid expression: …`, `can't evaluate · …`), and `(a, b, c)` matches
+what the `{` picker already shows for these names, so there is one shape convention rather than two.
+`MATH_FN_DESC` supplies the meaning, so the description is not copied a second time.
+
+### A stale comment corrected
+
+`moonphase` carried `if (!period) return NaN;  // period 0/NaN → visible error`. There is no visible
+error: `evalMath('moonphase(19000, 0, 0)')` returns **null**, so the expression never promotes and
+the brace-attempt cue explains it. The comment described an intent the code does not deliver, which
+makes it the next reader's false premise - the same class #1155 cleaned up in the font guard.
+
+### Guard-proofed, including one pin that could not fail
+
+Seven mutations, each asserting its target was present first (#1133). Five went red immediately:
+removing the arity arm; unrouting `'arity'` in the phrase map; counting all commas instead of
+top-level; and a call site dropping the expression argument (a tested core proves nothing about
+whether callers pass it).
+
+**One did not, and that was a finding about my own change.** Dropping the `MATH_VARIADIC_NAMES`
+exclusion changed nothing, because min/max/avg/and/or are in none of FN1/FN2/FN3, so the
+`want.length` check returns null for them regardless. The exclusion is belt-and-braces - kept,
+because the parser makes the same defensive guard and because adding a fixed-arity `min` later must
+not turn a legal variadic call into a reported error. The pin was rewritten to assert the
+*redundancy claim itself* (the variadics are absent from the tables) plus a source-pin on the line,
+so deleting it is red **and** the day it becomes load-bearing you are told. Both now bite.
+
+Driven in Chromium: all seven cases above read from the live `title`/`aria-label`, no page errors,
+and following the advice works - `{= moonphase(today, 28, 0)}` promotes and renders its glyph.
