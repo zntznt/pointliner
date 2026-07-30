@@ -1987,6 +1987,13 @@ Two things this measurement settled, both against what #1117 assumed:
 
 ### The fix is framing, not ordering, and IA-2 is left standing
 
+> **Superseded (2026-07-30) by UXP-285.** This section's conclusion no longer holds. The copy-only
+> fix below shipped, and a six-person panel then bounced **6 of 6** on the same screen. The tour is
+> no longer the first screen at all: a fresh boot opens a Welcome chooser, and the tour is one pick
+> inside it. This section asked that any divergence be argued rather than made silently, so the
+> argument is written out in UXP-285. Everything below stays as evidence of what was known in July,
+> and its measurement of the old first screen is still the sharpest record of why it failed.
+
 The tour opens `# Poke this document` then immediately `Click this: {2d6}`. That is **IA-2**, shipped
 as #859 with a test enforcing it, and its recorded measure is seconds/keystrokes from a fresh open to
 a live pill. Neither reader complained about that; both said they could not tell what the app was
@@ -3391,3 +3398,95 @@ the report always singular; and the count off by one. All red.
 One existing pin **rewritten rather than loosened**: `#917`'s wiring assertion named the inline regex
 literal, which moved into the shared constant. The claim is unchanged -- `mdInline` still stamps the
 gate per line -- and it now names the constant.
+
+## UXP-285 -- the front door explained the app instead of opening onto the user's own work (#1192, #1193)
+
+**Status: FIXED.** **P2-2, P4-2.** Supersedes UXP-269's "the fix is framing, not ordering".
+
+### Why this reverses UXP-269 rather than extending it
+
+UXP-269 read two of six personas correctly and prescribed one framing line above the die. That line
+shipped. The 2026-07-30 panel of six briefed laptop users then hit the **same screen** and bounced
+**6 of 6** -- every panelist reported nearly leaving inside the first thirty seconds. That is a
+larger sample, on the fixed build, failing worse. UXP-269 explicitly asked that any divergence from
+its conclusion be argued rather than made silently, so:
+
+**The copy-only fix could not have worked, because the objection was not to the wording.** A framing
+sentence is still the app talking about itself. What every panelist wanted was to see their own kind
+of document. One line of better prose above a die does not supply that; a document in their domain
+does. UXP-269's own measurement is what makes this legible in hindsight: it recorded that the first
+screen held "4 dice/coin, then 9 budget, and nothing else", and correctly noted the researcher was
+describing it *accurately*. The remedy it chose changed the caption on that screen, not the screen.
+
+### What the panel actually converged on
+
+- **Propagation was the moment that landed with everyone,** including the two who never want a
+  number: change one cost, and the total, the remainder and a check all move. It was buried below
+  the meta-explanation and the dice.
+- **"A file you own, offline, no account" was the widest-reaching fact,** and reached the two
+  non-compute panelists hardest. It was barely stated anywhere on the first screen.
+- **Four of six hit "someone has to build the machine first, and that's me."** The `STARTERS` gallery
+  answers exactly that, and it was invisible on first run: reachable only through a button on an
+  onboarding banner. That half is **#1193**.
+
+### The fix: a chooser, not a caption
+
+A fresh boot now opens a **blank document with a Welcome chooser over it**. The chooser is the
+existing starter-gallery modal in a welcome mode -- same `io-card`, same `.tpl-pick` rows, same
+Escape and focus handling -- carrying an identity line, six everyday domain starters, and explicit
+**Start with a blank document** and **Poke a live example** picks. The tour is now one choice among
+several rather than the forced default. No new syntax, no new surface, no new loader (P5): every
+pick routes to `insertStarterSubtree`, `startBlankOutline` or the tour path that already existed.
+
+**§3c holds: it is an invitation, not a gate.** Escape, the backdrop and the Close button share one
+handler, and all three land the user on the blank canvas with the caret in the first point. There is
+no "you must choose", no re-nag, and no value gated behind the pick.
+
+### The bug a source pin would have shipped
+
+The chooser needed a gate meaning "pristine: do not autosave, do not put the caret behind the modal".
+The obvious candidate was `_showingExamples`, the flag UXP-126 already uses for the tour. **Driving
+the running app is the only reason that is not what shipped.** `markDirty` clears that flag on any
+mutation by design, including the internal ones that building a *blank* document performs: `render`
+mints the first empty point through `createChildModel`, and the next render blurs it through
+`commitActiveEdit`. Both fire during boot. The flag was therefore false by the time boot finished,
+so the boot focus pass put the caret in the document *behind* the modal -- which took focus off the
+overlay that owns the Escape listener, and **Escape stopped closing the chooser**.
+
+That is the #1021 dead-handler shape, and every source pin over it was green: the handler was
+present, wired and correct, and simply never received the event. It took two rounds in a headless
+browser to find, one per clearing site. The fix is a dedicated `_welcomeOpen` flag that nothing else
+touches, raised by `openStarterGallery` and lifted by `closeIo`, so every exit path lifts it exactly
+once. It is a hoisted `var` for the #854 reason: `closeIo` and `adoptDoc` are declared thousands of
+lines above it and both run during the boot restore.
+
+A second ordering fact fell out of the same work and is pinned: the chooser must open **before** the
+blank adopt, because `mkRoot` carries `docId: null`, so `adoptDoc` mints one and calls
+`scheduleAutosave` -- and the gate has to already be up to catch it. Otherwise a first run nobody
+touched saves itself, and the chooser never appears again.
+
+### Guard-proofed
+
+Twelve mutations, each asserting its target present first (#1133): the forced-tour first run
+restored; the autosave gate removed; `closeIo` stopped lifting the gate (**twice** -- commented out
+*and* deleted); the boot focus pass stealing focus behind the modal; a starter pick no longer
+clearing the pristine gate; the quick picks turned origin-majority; the picks stripped of their
+accessible name; the boot tail painting the examples banner again; the blank-canvas invite painting
+behind the chooser; an async restore leaving the chooser floating over the restored document; the
+ownership fact dropped from the identity line; and the chooser opening after the adopt. All red.
+
+**One of them initially reported a false pass, and the pin was rewritten rather than the mutation.**
+`closeIo` was pinned with `includes('_welcomeOpen = false;')`, so commenting the statement out still
+satisfied it -- the substring survives inside the comment. Anchored to the line start instead, both
+the commented and the deleted form go red. Same lesson as UXP-269's false pass, one level in: the
+guard on the guard is the part that quietly cannot fail.
+
+### Driven, not just pinned
+
+Headless Chrome, storage cleared per case: the chooser appears on a fresh boot with focus on its
+first pick; a Project tracker pick loads a live document whose total moves `315` to `1,035` and whose
+budget check flips `✓check` to `✗check` when one cost changes (the panel's moment, reproduced);
+Escape and the Close button both land on the blank canvas with the caret in the first point, and
+typing there autosaves; a reload takes the returning-user path with no chooser; the tour pick loads
+the tour with its Start-blank banner unchanged. Layout swept 320 to 1280 with no overflow, both
+themes, and `Tab` reaches the blank door in 12 presses with `Enter` activating it.
