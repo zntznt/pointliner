@@ -87,16 +87,28 @@ The `firstEmptyRollup` work clearly established the right behaviour; these two a
 Tobi could type — tapping a point focuses it, the on-screen keyboard works, and a plain outline fits
 393px exactly with no horizontal scroll. Everything around the typing is desktop-shaped:
 
-- **The shipped welcome tour is 606 CSS px wide on a 393px phone**, so his very first screen scrolls
-  sideways. The overflow is the tour's own pill content (estimate sparklines at 92px, inline icons),
-  not the chrome.
-- **Add one pill to his own document and the toolbar overflows** (445px): the toolbar is a single
-  non-wrapping row that grows as the document gains features, so whether a phone user overflows
-  depends on what they have written.
+- ~~**The shipped welcome tour is 606 CSS px wide on a 393px phone**, so his very first screen scrolls
+  sideways.~~ **FIXED** (#1173 / UXP-276). 606 → **393, no sideways scroll**. The cause was one
+  component, `.est-pill`: `white-space:nowrap` with nothing shrinkable in it, so 421px for one
+  `{2.1 to 2.9}` and 500px for the tour's `(8 to 14) * (2 to 4)`. Below 560px it now drops its
+  sparkline and its expr echo, both of which prose mode already drops, and keeps the result and the
+  pencil.
+- **My toolbar claim below was wrong, and the correction is worth more than the claim.** I wrote that
+  "the toolbar is a single non-wrapping row" that overflows once a document gains a pill, and
+  recommended letting it wrap. Re-measured: `#tbtn-cluster` is a `.scroll-strip` whose box ends at
+  **right 390 inside a 393 viewport** — it contains itself and scrolls internally. My probe compared
+  `getBoundingClientRect().right > innerWidth` **without excluding scrolling ancestors**, so it
+  counted that container's own hidden contents as page overflow. Wrapping had also been tried and
+  deliberately reverted (UXP-258), because a second row makes the toolbar's height a function of the
+  button count. Acting on my recommendation would have reversed a recorded decision to fix a
+  non-problem. **Any future overflow claim in this file should be read as suspect unless it names the
+  scrolling-ancestor exclusion.**
 - **39 of 40 visible controls sit under the app's own 44px touch floor.** The row's "Point actions"
   bullet is **22x30**; a variables-panel close button is **19x14**. Confirmed identical across three
   device configurations, all of which do take the app's touch path
-  (`matchMedia('(hover:none) and (pointer:coarse)')` is true in each).
+  (`matchMedia('(hover:none) and (pointer:coarse)')` is true in each). **This one survives the
+  correction** — it measures *size*, not position, so the scroll-container error does not touch it.
+  Still open as the remaining half of #1173.
 
 The first fleet already named mobile as the platform ceiling and Alex's #1 ask. This is the measured
 version of it: the gap is not sync, it is that the layout and hit targets never had a phone pass.
@@ -142,15 +154,17 @@ about the numbers, not where she would keep them.
   display sinks only, offered by all three fmt dialogs, and mutually exclusive with Decimal places.
   `{= 1/3}` at 3 s.f. reads `0.333`; `{= convert(12.4, mg, g)}` reads `0.0124`. The convert default
   was deliberately left alone (see UXP-275).
-- **Let the toolbar wrap, or collapse into an overflow menu, below some width** (Tobi). The single
-  non-wrapping row is what makes narrow layouts overflow as soon as a document gains features.
+- ~~**Let the toolbar wrap, or collapse into an overflow menu, below some width** (Tobi).~~
+  **WITHDRAWN, not deferred.** The premise was my measurement error (see the correction above), and
+  UXP-258 had already measured wrapping as the worse trade. The overflow it was meant to fix was
+  `.est-pill`, now fixed as UXP-276.
 - **A skip-to-document affordance for keyboard users** (Rosa) — a first tab stop that jumps past the
   toolbar into the outline.
 
 **Frontier (weigh against `product-identity.md` first):**
-- **A phone pass**: a narrow-width layout for the tour and the chrome, and touch targets that meet
-  the app's own 44px floor. Note this is layout work, not the sync/storage question the first fleet
-  raised; they are separable, and this half is entirely within the app.
+- **A phone pass**: the *overflow* half shipped as UXP-276, so what remains is **touch targets that
+  meet the app's own 44px floor**. Note this is layout work, not the sync/storage question the first
+  fleet raised; they are separable, and this half is entirely within the app.
 - **Self-testing / hide-the-answer as a first-class thing** (Adeyemi). The spoiler already does the
   mechanism (`>! Lima` blurs and reveals) but it is framed for spoilers, not revision. She would
   want to hide every answer in a subtree at once and reveal them one at a time.
@@ -177,3 +191,9 @@ Recorded so the next reader can trust or discount the numbers:
   artifacts of `isMobile` and `deviceScaleFactor`, **not** app behaviour — every wide element has
   `min-width: 0` and simply fills whatever it is given. The finding that survives is the 606px
   content floor, which reproduces as sideways scroll whenever the layout viewport is genuinely 393.
+- **A third error of mine, found only when the fix was attempted (UXP-276): my overflow probe did not
+  exclude scrolling ancestors.** `getBoundingClientRect().right > innerWidth` is true for anything
+  scrolled out of view inside an `overflow-x:auto` container, which is normal behaviour, not overflow.
+  That is what made a working scroll-strip look like the cause and sent the recommendation at the one
+  component in the chrome that was behaving correctly. Any overflow measurement is only trustworthy if
+  it walks up the ancestors and skips elements inside a scroll container.
