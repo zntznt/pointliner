@@ -302,6 +302,31 @@ frontier per the research (Alex's #1), but it is architectural, not session-size
 ### ☐ Clocking / time tracking
 Clock in/out on tasks + time reports. **Fit — medium, niche.**
 
+### ☐ Base-to-base relations
+Link a base ROW to another base, so a project row can carry its tasks and a task row can point back.
+From #925 item 3 (planner persona), rehomed here when that grouped issue was closed 2026-07-30.
+**Fit — hard, and it is a direction question before it is a feature.** A relation is a second edge
+type over the tree, and `bases-direction.md` §4 defers typed fields; a row-to-row reference would
+want the same conversation. The in-fence slice that already exists: a cell can hold a `[[#id]]`
+link, which navigates and backlinks like any other. Whether that IS the feature or merely adjacent
+to it is the thing to settle first.
+
+### ☐ Firefox / Safari path for the multi-document workspace
+The folder workspace is Chromium-only (File System Access API); other browsers get an invite, not
+the feature. From #925 item 4 (PKM persona), rehomed here 2026-07-30. **Fit — medium-hard, and
+partly not ours.** #1112 already made the *refusal* honest (a blocked picker no longer reads as a
+user cancelling, and Save falls back to a download), so what remains is a genuine alternative
+transport — OPFS plus explicit import/export, or the directory-picker shim if one lands. Note the
+constraint is the browser's, not the architecture's: single-file, no-backend is unaffected.
+
+### ☐ A browsable tag pane (the residue of "tag power")
+Tag *power* is complete (filtering, autocomplete, saved searches, inheritance — see Tier 1). What is
+still absent is **recognition-based navigation**: a tree or pane listing the tags that exist, so a
+reader can browse rather than recall. From #925 item 2, rehomed here 2026-07-30. **Fit — easy-medium**
+(`collectTags` already produces the data and is already cached), but it is a new always-visible
+surface, so it needs the chrome-budget argument the discoverability work has been making, not just
+the code.
+
 ### ☐ Reference notes (external-resource links)
 Attach a URL/citation to a note so revisiting the source surfaces it (literature-note workflow).
 **Fit — medium, niche.**
