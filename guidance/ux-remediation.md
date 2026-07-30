@@ -2507,5 +2507,124 @@ carries the reason, so a future reader sees a decision.
 Driving a lab-scale estimate showed `{0.00212 to 0.00294}` rendering as **`≈0 (0 – 0)`**. Confirmed
 pre-existing on `main`: `estNumFmt(0.00253, null)` is `"0"` there too, because the adaptive default
 does `String(+x.toFixed(2))`. That is a default change and therefore not this PR's business, but it
-is the same "silent, correct-but-useless" theme, so it is filed. Pinned here in both directions: the
-default still collapses, and `{sigfigs: 3}` recovers `0.00253`.
+is the same "silent, correct-but-useless" theme, so it belongs in its own issue. Pinned here in both
+directions: the default still collapses, and `{sigfigs: 3}` recovers `0.00253`.
+
+**Correction (2026-07-30):** this section originally said "so it is filed", and it was not. No issue
+existed; I wrote the sentence and never opened one. Now filed as **#1177**, with the threshold
+detail the sentence above gets slightly wrong -- `toFixed(2)` starts losing everything at 0.005, not
+at the 0.001 where `estNumFmt`'s existing tiny-magnitude escape fires, and `0.00253` falls in that
+gap. Recorded rather than quietly edited, because "filed separately" in a register is a claim the
+next reader will act on.
+
+---
+
+## UXP-276 -- the estimate pill is what makes a phone scroll sideways (#1173)
+
+**Status: FIXED.** From the second persona fleet: the phone-first persona's very first screen, the
+shipped welcome tour, was **606 CSS px wide at a 393px viewport**, so the app opened scrolling
+sideways.
+
+### The measurement that exonerated the toolbar, and corrected my own issue
+
+`#1173` blamed the toolbar and recommended letting it wrap. All three of its claims were wrong, and
+finding that out was half this change:
+
+- `#tbtn-cluster` is a `.scroll-strip`: `overflow-x:auto`, `min-width:0`, `flex-shrink:1`,
+  `scrollWidth 417 > clientWidth 242`, and its box ends at **right: 390 inside a 393 viewport**. It
+  contains itself and scrolls internally, exactly as designed.
+- Every element the issue's probe flagged was **inside that scroll container**. The probe compared
+  `getBoundingClientRect().right > innerWidth` without excluding scrolling ancestors, so it counted a
+  scroll container's own hidden contents as page overflow. Corrected method: an element counts only
+  if no ancestor has `overflow-x: auto|scroll|hidden`.
+- **Wrapping was tried and deliberately reverted** (UXP-258): a second row makes the toolbar's HEIGHT
+  a function of the button count, which moves every surface below it and reads as breakage. Following
+  the issue's recommendation would have reversed a recorded decision.
+
+Re-measured with scrolling ancestors excluded, the culprit is one component:
+
+| document | page width | true culprits |
+|---|---|---|
+| plain outline | **393**, no scroll | none |
+| one math pill | **393**, no scroll | none |
+| one **estimate** pill | **495** | `.est-pill` **w 421** |
+| the shipped tour | **606** | the same, three times; widest **w 500** |
+
+`.est-pill` is `white-space:nowrap` with nothing shrinkable in it, so it is as wide as
+`ico + expr + ≈ + mean (p5 – p95) + spark + pencil` at every viewport. A math pill has no sparkline
+and fits. **The estimate pill is the whole finding.**
+
+### The fix, and why the plan's single rule was not enough
+
+Two rules in the existing `@media(max-width:560px)` block, the same "drop a decoration on a phone"
+move as its neighbouring `#search-key{display:none}`:
+
+```css
+.est-spark,.est-preview-spark{display:none}
+.est-expr,.est-eq{display:none}
+```
+
+The plan proposed **only** the sparkline, on arithmetic that assumed the tour's widest pill was 398px.
+Measured, it is 500, so dropping the 92px spark left it at **403 -- still past 393**. The plan said to
+verify by measurement rather than trust that arithmetic, and this is what the measurement changed.
+
+An intermediate attempt (`max-width:100%` on the pill plus `text-overflow:ellipsis` on the expr) was
+built, measured and **thrown away**: flexbox squeezed the expr to its floor and rendered `8 to 14` as
+`8 t…`, which reads as breakage rather than as brevity.
+
+What ships instead reuses a decision the app had already made. Prose mode drops the same two elements
+together (`.nt-para .est-expr, .nt-para .est-eq{display:none}`), and the pairing is not stylistic: the
+`≈` is the relation *between* the expr and the result, so leaving it behind prints a dangling operator
+with nothing on its left.
+
+### What stays, and why each is load-bearing
+
+- **The summary.** `31.2 (19 – 46.6)` is recoverable from nowhere else. Hiding it would keep the
+  decoration and drop the information.
+- **The pencil.** On `hover:none` it is a visible 26px chip with a 44px `::before` tap overlay, and it
+  is a phone user's only door into the estimate. **Driven:** tapping it at 393 opens the dialog with
+  `(8 to 14) * (2 to 4)` in the field, so the hidden recipe is one tap away.
+- **The accessible name.** `aria-label="Estimate ${e.expr}: mean …"` already carries the full
+  expression, so a screen reader loses nothing (P3).
+
+### Measured after
+
+| | phone 393 (hasTouch) | desktop 1280 |
+|---|---|---|
+| the shipped tour | **393**, no sideways scroll; pills 208-226 | 1280; pills 355-492, sparks 92px visible |
+| one estimate pill | **393**; pill 217 | 1280; pill 413 |
+| a much longer recipe | **393**; pill 252 | unchanged |
+
+Boundary driven: at **560** both are `display:none`, at **561** both are back. Dark theme identical
+(the rules carry no colour, so the dual-home palette invariant does not apply). No page errors.
+
+The sibling `.var-pill.var-dist` renders the same `.est-spark` and is covered for free. Driven at 393
+it keeps everything that matters: `$ cost ≈ 145.7 (102.2 – 201.5) ✎`, with only the spark hidden --
+its `≈` is its own `.var-eq`, not `.est-eq`, so it is untouched.
+
+### Guard-proofed
+
+Ten mutations, each asserting its target present first (#1133): each rule removed; the breakpoint
+widened so desktop loses its sparkline; the prose-mode precedent deleted; the pencil hidden; the
+summary hidden; the toolbar made to wrap; the full expression stripped from the aria-label; the 44px
+tap overlay dropped; the pencil made invisible on touch. **All ten red, UXP-276 red in every one.**
+
+### Deliberately not in this change
+
+- **The toolbar.** It works, and UXP-258 settled it. The pin asserts the narrow block does *not*
+  make it wrap, so a future change cannot quietly reverse that and call it a phone fix.
+- **Letting the pill wrap.** `white-space:nowrap` is the capsule silhouette the design language
+  specifies; wrapping mid-capsule needs a design-language decision, not a bug fix.
+- **The 44px touch targets.** 39 of 40 visible controls under the app's own floor (the row bullet is
+  22x30) is real and stands. That measurement was about *size*, so the scroll-container error does not
+  touch it, but it moves hit areas on the most-used control in the app. It stays in #1173 as the
+  remaining half.
+
+### Found on the way, filed not fixed
+
+The estimate dialog's live preview has **never rendered anything**. Its callback is
+`preview: v => (v.expr || '').trim()`, but the shared runner calls `f.preview(inp.value, all)` -- so
+`v` is the input *string* and `'4 to 9'.expr` is `undefined`. Driven at both 393 and 1280: the
+`.io-preview` div exists and is empty for a valid expression, identically, so it is pre-existing and
+not caused by this change. Filed. `.est-preview-spark` is hidden here anyway, so that a phone will not
+show a sparkline in the dialog for a pill that has none once the preview works (P1).

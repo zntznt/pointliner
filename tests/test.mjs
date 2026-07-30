@@ -22766,6 +22766,53 @@ test('UXP-258 the toolbar is one strip at every width: it scrolls, it never wrap
     'the focusin reveal is what actually clears the fade — CSS alone did not');
 });
 
+test('UXP-276 the estimate pill sheds its decoration on a phone, and the toolbar is left alone', () => {
+  // The phone persona's first screen was 606 CSS px wide at a 393px viewport. Measured with
+  // scrolling ancestors EXCLUDED (an element inside an overflow-x container is that container's
+  // scroll content, not page overflow), the entire overflow is .est-pill: 421 for one
+  // `{2.1 to 2.9}`, 500 for the tour's `(8 to 14) * (2 to 4)`. It is white-space:nowrap with
+  // nothing shrinkable in it, so it is as wide as its content at every viewport.
+  const NARROW = between(_src, '@media(max-width:560px){\n', '\n}\n');
+  // The block must be the real one, not a few bytes: three ONE-LINE @media(max-width:560px) rules
+  // appear earlier in the file, so an anchor without the newline finds the wrong thing (the trap
+  // UXP-261 recorded). Prove we have the phone declutter block by a neighbour that only it has.
+  assert.ok(/#outline\{padding:20px 14px 140px\}/.test(NARROW),
+    'the extracted block must be the phone declutter block, not an earlier one-liner');
+  assert.ok(NARROW.length > 2000, `the block collapsed to ${NARROW.length} bytes — re-anchor it`);
+
+  // What goes. Both are decoration by a decision the app had already made elsewhere.
+  assert.ok(/\.est-spark,\.est-preview-spark\{display:none\}/.test(NARROW),
+    'the sparkline is block characters restating the summary beside it, and it costs 92px + a gap');
+  assert.ok(/\.est-expr,\.est-eq\{display:none\}/.test(NARROW),
+    'the expr echo and its ≈ go too: dropping only the spark left the tour widest pill at 403px, ' +
+    'still past 393, and ellipsizing the expr instead squeezed `8 to 14` down to `8 t…`');
+  // …and it is the SAME call prose mode already made, which is why it is not a new judgement.
+  assert.ok(/\.nt-para \.est-expr, \.nt-para \.est-eq\{display:none\}/.test(_src),
+    'the prose-mode precedent must still exist — it is this rule\'s entire justification');
+
+  // What stays, and why each one is load-bearing rather than merely surviving.
+  assert.ok(!/\.est-summary\{display:none\}/.test(NARROW),
+    'the summary is the information: `31.2 (19 – 46.6)` is recoverable from nowhere else');
+  assert.ok(!/\.est-edit\{display:none\}/.test(NARROW) && !/\.est-pill \.est-edit\{display:none\}/.test(NARROW),
+    'the pencil is a phone user\'s only door into the estimate — hiding it would strand them');
+  // The pencil is only that door because the touch block makes it visible and 44px-tappable. If
+  // that block ever goes, hiding the expr leaves a phone user with no way to read the recipe.
+  const TOUCH = between(_src, '/* ── touch devices: surface hover-only affordances + grow tap targets ── */', '\n}\n');
+  assert.ok(/\.est-edit[^{]*\{[^}]*opacity:\.7;width:26px/.test(TOUCH),
+    'the pencil must still be a visible 26px chip on touch');
+  assert.ok(/\.est-edit::before[^{]*\{[\s\S]{0,200}width:44px;height:44px/.test(TOUCH),
+    'and still carry the 44px tap overlay');
+  // P3: the recipe is hidden, never lost. The pill speaks it in full.
+  assert.ok(/aria-label="Estimate \$\{escQ\(e\.expr\)\}: mean/.test(_src),
+    'the full expression must stay in the accessible name, since the visible echo is now gone on a phone');
+
+  // The toolbar is NOT the cause and must not be "fixed". #tbtn-cluster is a .scroll-strip that
+  // contains itself at 393 (scrollWidth 417 > clientWidth 242, right edge 390). UXP-258 already
+  // settled that it scrolls rather than wraps; a future change must not quietly reverse that here.
+  assert.ok(!/#toolbar-row\{[^}]*flex-wrap:wrap/.test(NARROW) && !/#tbtn-cluster\{[^}]*flex-wrap:wrap/.test(NARROW),
+    'the narrow block must not make the toolbar wrap — UXP-258 measured that as the worse trade');
+});
+
 test('UXP-259 scrollCueClasses: which edge fades a strip shows, seeded', () => {
   // Pure core. The fade is the only affordance a hidden-scrollbar strip has, so the decision has to
   // be exact in both directions: silent when it fits, and never claiming a side that has nothing.

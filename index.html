@@ -2379,6 +2379,36 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
   #level-ctl .lvl-btn{padding:5px 9px}
   :root{--ind:16px}
   #outline{padding:20px 14px 140px}
+  /* UXP-276: the estimate pill is what makes a phone scroll sideways, not the toolbar
+     (#tbtn-cluster is a scroll-strip and contains itself at 393 — UXP-258 settled that, and the
+     probe that blamed it was counting a scroll container's own contents as page overflow).
+     .est-pill is white-space:nowrap with nothing shrinkable in it, so it is as wide as
+     `ico + expr + ≈ + mean (p5 – p95) + spark + pencil` at every viewport: measured 421 for one
+     `{2.1 to 2.9}` and 500 for the tour's `(8 to 14) * (2 to 4)` on a 393px screen, which is the
+     606px first screen the phone persona met.
+     What goes is what a narrower pill can afford to lose, and the app has already ruled on both:
+       - the SPARKLINE is decoration. `sparkline(samples, 11)` draws block characters while
+         `≈31.2 (19 – 46.6)` beside it carries the same shape as numbers.
+       - the EXPR ECHO and its `≈` are what prose mode already drops (`.nt-para .est-expr`), for
+         the same reason: the recipe is recoverable from the pencil (driven: tapping it opens the
+         dialog with `(8 to 14) * (2 to 4)` in the field) and is spoken in full by the pill's
+         aria-label, while the result is not recoverable from anywhere else. The `≈` goes WITH the
+         expr rather than by its own choice: it is the relation between the two, so leaving it
+         behind would print a dangling operator with nothing on its left. That pairing is why the
+         prose-mode rule lists them together, and this one does too.
+     .est-preview-spark is the same decoration in the estimate DIALOG, hidden here so a phone does
+     not show a sparkline in the dialog for a pill that has none (P1). It renders nothing today for
+     an unrelated reason -- that preview's callback is `v => (v.expr || '')` while the shared runner
+     calls `f.preview(inp.value, all)`, so `v` is the input STRING and the preview has always been
+     blank -- which is filed separately, not fixed here. The rule is here for when it is.
+     What stays is the result and the door to it. The pencil especially: on hover:none it is a
+     visible 26px chip with a 44px tap overlay, and it is a phone user's only way into the estimate.
+     Measured after: 231-313px per pill, 393px page, no ellipsis anywhere. Dropping only the
+     sparkline was NOT enough (the tour's widest pill stayed at 403), and ellipsizing the expr to
+     fit squeezed `8 to 14` down to `8 t…`, which reads as breakage rather than as brevity.
+     Also catches .var-pill.var-dist, which renders the same spark for the same reason. */
+  .est-spark,.est-preview-spark{display:none}
+  .est-expr,.est-eq{display:none}
   .crumb{max-width:120px}
   .zoom-title{--zoom-title-size:22px}
   /* UXP-121: the zoom-title drops to 22px here, but the body.zoomed heading cap is em-against-17px
