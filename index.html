@@ -1692,6 +1692,16 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .tpl-pick{flex:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r-md);padding:8px 11px;cursor:pointer;text-align:left;transition:border-color .12s,background .12s}
 .tpl-pick:hover,.tpl-pick:focus-visible{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 8%,transparent);outline:none}
 .tpl-name{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* #1192 follow-up: the welcome chooser is a wider, sectioned, grid card. Scoped to #io-card.welcome so
+   the menu gallery and the pack editor's own .tpl-list stay one-column and unchanged. */
+#io-card.welcome{width:640px;max-width:calc(100vw - 32px)}
+#io-card.welcome .tpl-list{display:block;max-height:none;overflow:visible;margin-bottom:4px}/* no inner scroll: the card's own 82vh is the single scroll */
+#io-card.welcome .tpl-group-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:14px 0 7px}
+#io-card.welcome .tpl-group-head:first-child{margin-top:2px}
+#io-card.welcome .tpl-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+/* Collapse to one column at the app's own narrow-sheet breakpoint (560px), where #io-card already
+   goes full width; !important lets that shared full-width rule win over this class's 640px. */
+@media(max-width:560px){#io-card.welcome{width:calc(100vw - 16px) !important}#io-card.welcome .tpl-grid{grid-template-columns:1fr}}
 .tpl-count{flex-shrink:0;font-size:11px;color:var(--muted);font-family:var(--mono)}
 .tpl-pack-badge{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:var(--r-xs);padding:1px 5px;vertical-align:middle}/* #583: marks a template that came from a data pack */
 /* refile quick-switcher dialog: search input + filtered, keyboard-navigable list */
@@ -2927,8 +2937,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
       <div class="fm-cat" data-cat="learn">
         <div class="fm-cat-head">Learn &amp; help</div>
         <div class="cmd-item" id="btn-guide"><div class="cmd-icon" data-fa="fa-solid fa-circle-question" data-fb="?">?</div><div class="cmd-info"><span class="cmd-label">Help &amp; guide</span><span class="cmd-desc">Shortcuts and every feature, explained with examples</span></div><span class="cmd-key" id="guide-key"></span></div>
-        <div class="cmd-item" id="btn-examples"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Add the Welcome tour</span><span class="cmd-desc">Insert the examples into this document to explore what pills can do</span></div></div>
-        <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Start from an example</span><span class="cmd-desc">Drop in a live example: an oracle, a tracker, a planner, a dashboard, and more</span></div></div>
+        <div class="cmd-item" id="btn-starters"><div class="cmd-icon" data-fa="fa-solid fa-clone" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Templates &amp; examples</span><span class="cmd-desc">Open the gallery: a tracker, a planner, a dashboard, an oracle, and more, each fully live</span></div></div>
         <a class="cmd-item" href="https://github.com/zntznt/pointliner/blob/main/guide/README.md" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-webguide" hidden><div class="cmd-icon" data-fa="fa-solid fa-book" data-fb="📖">📖</div><div class="cmd-info"><span class="cmd-label">Full guide online</span><span class="cmd-desc">Deep guides and cookbook on the web</span></div></a>
         <a class="cmd-item" href="https://github.com/zntznt/pointliner" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:none" id="btn-github" hidden><div class="cmd-icon" data-fa="fa-brands fa-github" data-fb="⌥">⌥</div><div class="cmd-info"><span class="cmd-label">GitHub</span><span class="cmd-desc">View source</span></div></a>
       </div>
@@ -3069,7 +3078,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 
 <div id="storage-warn" role="alert">
   <span id="storage-warn-msg"></span>
-  <button id="storage-warn-examples" style="display:none">Start from an example</button>
+  <button id="storage-warn-examples" style="display:none">Templates &amp; examples</button>
   <button id="storage-warn-save">Save to file</button>
   <button id="storage-warn-close" class="close-btn" data-fa="fa-solid fa-xmark" data-fb="✕" title="Dismiss" aria-label="Dismiss">✕</button>
 </div>
@@ -36865,7 +36874,6 @@ document.addEventListener('click', closeFileMenu);
 // never touch #io-back), so only this row needed reordering.
 document.getElementById('btn-new').addEventListener('click', () => { closeFileMenu(); newFile(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
-document.getElementById('btn-examples')?.addEventListener('click', () => { openExamples(); });   // UXP-148 (openExamples closes the menu itself, after its confirm)
 document.getElementById('btn-starters')?.addEventListener('click', () => { openStarterGallery(); });   // #565 (closes the menu itself)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-tags')?.addEventListener('click', () => { closeFileMenu(); openTagBrowser(); });   // tag browser
@@ -37621,14 +37629,14 @@ const GUIDE = [
 
   { id:'overview', cat:'getting-around',
     title:'Start here',
-    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nThree keys put everything within reach without memorizing anything. Type `{` and a menu lists every kind of pill you can write, with a scaffold to fill in and a help mark that opens its guide. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table), and `@` anywhere to insert a pill from a dialog. If you are not sure how to write something, type `{` and browse. The rest of this guide tours what those menus hold; if you would rather not read, open the Put it together recipes at the end for finished examples you can copy, or choose Start from an example in the File menu to drop a ready-made, fully live example (a project tracker, a reading log, a solo-RPG oracle, and more) into your document to click through and then delete.",
+    body:"Pointliner is an outliner: your document is a tree of points (bullet points) you nest and reorder as your thinking changes. Everything you write is plain text, so a point is never locked into a special format and the whole document saves as one small file you own. Press Enter for a new point, Tab to nest it under the one above, and click any empty part of a point to start typing.\n\nWhat makes it more than a notepad is the pill. Type something live in curly braces and it becomes a small interactive pill in place: `{2d6}` rolls two dice, `{= 3 * 40}` shows 120 and recomputes if a value changes, `{red | blue | green}` picks one at random. The text in the braces stays the truth, so a pill is never a black box: click it to re-roll or recompute, and edit it by typing. This one idea, live values written inline, is the whole engine behind dice, generators, calculations, dates and more.\n\nThree keys put everything within reach without memorizing anything. Type `{` and a menu lists every kind of pill you can write, with a scaffold to fill in and a help mark that opens its guide. Type `/` at the start of a point to change what the point is (a heading, a to-do, a table), and `@` anywhere to insert a pill from a dialog. If you are not sure how to write something, type `{` and browse. The rest of this guide tours what those menus hold; if you would rather not read, open the Put it together recipes at the end for finished examples you can copy, or choose Templates & examples in the File menu to drop a ready-made, fully live example (a project tracker, a reading log, a solo-RPG oracle, and more) into your document to click through and then delete.",
     related:['brace-picker','point-types','dice','search-ops','shortcuts','appearance-controls'],
     examples:[
       { syn:'Enter / Tab',    desc:'new point, then nest it under the one above' },
       { syn:'{2d6}',          desc:'a live pill: roll two dice, click to re-roll' },
       { syn:'{',              desc:'a menu of every pill you can write' },
       { syn:'/',              desc:'change what a point is (heading, to-do, table)' },
-      { syn:'File → Start from an example', desc:'drop in a ready-made live example to explore' },
+      { syn:'File → Templates & examples', desc:'drop in a ready-made live example to explore' },
     ] },
   { id:'search-ops', cat:'getting-around',
     title:'Searching & filtering',
@@ -40688,7 +40696,7 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
     <outline text="This tour is ordinary points. Rewrite it, reorder it, or delete the whole thing whenever you like."/>
     <outline text="The \`?\` button, bottom right, is the cheat sheet for everything you just met; the \`@\` menu builds any pill with you; a structure you like can be saved as a template and stamped again later."/>
     <outline text="Points can link to each other, too: type \`[[\` and pick one, and every point shows what links back to it. The search bar takes \`has:backlink\` and \`is:orphan\` when you want to find the loose ends."/>
-    <outline text="For a running start, the File menu's &quot;Start from an example&quot; drops in a live starter: a project tracker, a decision helper, a trip planner, and, from the game table Pointliner was born at, oracles and character sheets that play along."/>
+    <outline text="For a running start, the File menu's &quot;Templates &amp; examples&quot; drops in a live starter: a project tracker, a decision helper, a trip planner, and, from the game table Pointliner was born at, oracles and character sheets that play along."/>
     <outline text="Now start a point about the thing actually on your mind, and put one brace in it."/>
   </outline>
 </outline>
@@ -41231,8 +41239,11 @@ function openStarterGallery(opts = {}) {
   closeFileMenu();
   ioCard.innerHTML = '';
   _welcomeOpen = welcome;
+  // #1192 follow-up: welcome mode is a wider, grid + sectioned card; the class scopes those CSS rules
+  // so the menu gallery and the pack editor's own .tpl-list are untouched.
+  ioCard.classList.toggle('welcome', welcome);
 
-  const title = welcome ? 'Welcome to Pointliner' : 'Start from an example';
+  const title = welcome ? 'Welcome to Pointliner' : 'Templates & examples';
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
   setIcon(ic, STARTER_ICON);
@@ -41252,8 +41263,9 @@ function openStarterGallery(opts = {}) {
 
   const tlist = document.createElement('div'); tlist.className = 'tpl-list';
   // One row builder for all three kinds of pick (a starter, blank, the tour) so they keyboard-behave
-  // identically and every row carries an accessible name (P3).
-  const addPick = (name, desc, aria, onPick) => {
+  // identically and every row carries an accessible name (P3). `into` is the container the pick lands
+  // in: the flat list in menu mode, or a specific grid/group in the sectioned welcome layout.
+  const addPick = (name, desc, aria, onPick, into = tlist) => {
     const pick = document.createElement('button');
     pick.className = 'tpl-pick'; pick.type = 'button';
     // align-items:stretch (not flex-start): in a column flex, flex-start sizes each child to its
@@ -41267,7 +41279,7 @@ function openStarterGallery(opts = {}) {
     ds.textContent = desc;
     pick.append(nm, ds);
     pick.addEventListener('click', onPick);
-    tlist.appendChild(pick);
+    into.appendChild(pick);
     return pick;
   };
   // A starter pick clears the pristine first-run gate BEFORE inserting. insertStarterSubtree appends
@@ -41275,18 +41287,35 @@ function openStarterGallery(opts = {}) {
   // _showingExamples and the domain the user just chose would never autosave (#1192). This also fixes
   // the same silent no-persist when the gallery is opened from the File menu during the tour.
   const pickStarter = st => { _showingExamples = false; hideExamplesBanner(); closeIo(); insertStarterSubtree(st.opml, st.name); };
-  // Welcome mode leads with the quick picks, then the rest of the gallery. Normal mode keeps the
-  // gallery's own order, unchanged.
-  const quick = welcome ? WELCOME_QUICK_PICKS.map(id => STARTERS.find(s => s.id === id)).filter(Boolean) : [];
-  const ordered = quick.concat(STARTERS.filter(st => !quick.includes(st)));
-  ordered.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st)));
+
   if (welcome) {
-    // The two non-starter doors, as explicit picks rather than a default nobody chose. Blank keeps
+    // #1192 follow-up: a wider card with three labelled, grid-laid groups instead of 14 rows crammed
+    // into one 260px-tall single-column scroll where only ~3 showed and the two structural doors
+    // (blank / tour) sat buried at the bottom, indistinguishable from templates. A group = an eyebrow
+    // header + a responsive grid (2-col desktop, 1-col mobile via CSS). Returns the grid to fill.
+    const addGroup = label => {
+      const h = document.createElement('div'); h.className = 'tpl-group-head'; h.textContent = label;
+      const g = document.createElement('div'); g.className = 'tpl-grid';
+      tlist.append(h, g);
+      return g;
+    };
+    const quick = WELCOME_QUICK_PICKS.map(id => STARTERS.find(s => s.id === id)).filter(Boolean);
+    const rest = STARTERS.filter(st => !quick.includes(st));
+    const popular = addGroup('Popular');
+    quick.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st), popular));
+    const moreG = addGroup('More templates');
+    rest.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st), moreG));
+    // The two structural doors, set apart from the templates so a user who wants to just start writing
+    // or take the tour finds them at a glance rather than scrolling past twelve templates. Blank keeps
     // the invitation (you can just start writing); the tour is where the old forced first screen went.
+    const doors = addGroup('Or');
     addPick('Start with a blank document', 'An empty page. Write a point, press Enter for the next one.',
-      'Start with a blank document', () => { closeIo(); startBlankOutline(); });
+      'Start with a blank document', () => { closeIo(); startBlankOutline(); }, doors);
     addPick('Poke a live example', 'The guided tour of what a point can do, as a document you can play with.',
-      'Open the Welcome tour as a live example', () => { closeIo(); showExamplesDoc(); });
+      'Open the Welcome tour as a live example', () => { closeIo(); showExamplesDoc(); }, doors);
+  } else {
+    // Menu mode: the plain gallery, one flat list in the gallery's own order, unchanged.
+    STARTERS.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st)));
   }
   ioCard.appendChild(tlist);
 

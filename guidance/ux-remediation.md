@@ -3490,3 +3490,55 @@ Escape and the Close button both land on the blank canvas with the caret in the 
 typing there autosaves; a reload takes the returning-user path with no chooser; the tour pick loads
 the tour with its Start-blank banner unchanged. Layout swept 320 to 1280 with no overflow, both
 themes, and `Tab` reaches the blank door in 12 presses with `Enter` activating it.
+
+## UXP-286 -- the welcome chooser hid its own options and the menu kept two doors to one room (#1192 follow-up)
+
+**Problem (P2 discoverability).** UXP-285 shipped the welcome chooser but its layout did not scale to
+the number of choices, and the File menu was left with two example doors that now overlap.
+
+- **The list did not scale.** All 14 picks (12 starters + blank + tour) rendered into one 400px-wide,
+  single-column `.tpl-list` capped at `max-height:260px`. Driven at 1400px, only ~3-4 rows showed;
+  the other ~10 sat in a hidden inner scroll, and because the "More worked examples online" link sat
+  directly under the truncated list, the list **read as finished at "Reading log"** with no cue more
+  existed. It was also a **double scroll** -- the card at `82vh` and the list at `260px` -- and it
+  wasted most of a wide viewport in a 400px column.
+- **The two structural doors were buried.** "Start with a blank document" and "Poke a live example"
+  were the last two rows of the same undifferentiated scroll, visually identical to the twelve
+  templates. A user who wanted to just start writing or take the tour had to scroll past everything.
+- **The menu had two doors to one room.** `btn-examples` ("Add the Welcome tour") inserted the same
+  FIRST_RUN_EXAMPLES content the chooser now offers as "Poke a live example"; `btn-starters` ("Start
+  from an example") opened the *identical* `openStarterGallery` component the first-run welcome uses.
+
+**Rule.** P2: an option a skimmer cannot see is not discoverable; a truncated list that reads as
+complete is worse than one that shows its scroll. DL §4: use the horizontal space a wide surface
+gives. §3c: the chooser stays an invitation, unchanged in flow.
+
+**Target, shipped in the same PR.** The welcome variant of `openStarterGallery` is now a wider card
+(`#io-card.welcome{width:640px}`, `max-width:calc(100vw - 32px)`) with three labelled groups, each a
+responsive grid (`grid-template-columns:repeat(2,minmax(0,1fr))`, collapsing to one column at the
+app's own 560px narrow-sheet breakpoint): **Popular** (the six `WELCOME_QUICK_PICKS`, IA-8 mix
+preserved), **More templates** (the rest), and a set-apart group for the two structural doors. The
+welcome `.tpl-list` drops the `max-height` cap so the card's own `82vh` is the single scroll -- no
+more false bottom, no double scroll. The menu-mode gallery and the pack editor's own `.tpl-list` are
+untouched (the rules are scoped to `#io-card.welcome`). No new color token: the only palette token
+added is `var(--muted)` for the eyebrow headers, already dual-homed, so the dual-home invariant is
+N/A. The redundant `btn-examples` menu row is retired (its content lives on as the chooser's "Poke a
+live example"; `openExamples()` itself stays -- the blank-canvas invite banner still calls it), and
+`btn-starters` is reworded "Start from an example" to **"Templates & examples"**, reconciled across
+the storage-warn door button, the guide body, the guide synonym, and the tour's own reference.
+
+### Guard-proofed
+
+`#603`'s menu inventory drops `btn-examples` (intentional retirement, noted in the pin). The `#1192`
+chooser pin, which asserted the old flat `quick.concat(STARTERS.filter(` list, now asserts the three
+groups by name and order (`addGroup('Popular')` before `addGroup('More templates')`, the doors group
+after both) and that the two doors land in the doors container (`}, doors)`), not a template grid.
+Proven by revert: renaming `addGroup('Popular')` turns the pin red.
+
+### Driven, not just pinned
+
+Headless Chrome, storage cleared: fresh boot at 1400px shows a two-column grid under **Popular** and
+**More templates** with the blank/tour doors set apart under **Or**, all reachable without an inner
+scroll; a Project tracker pick loads its live document; at 390px the grid collapses to one column,
+full width, no horizontal overflow; the File menu shows only "Help & guide" and "Templates &
+examples". `node --test tests/test.mjs` green at 1831.
