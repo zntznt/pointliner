@@ -3289,3 +3289,81 @@ guard, and it is the one worth keeping.
 One existing pin was **updated rather than loosened**: #1114's call-site assertion named the exact
 4-argument call. It now names the 5-argument one, because the point of that line is that the gate hands
 the core everything it needs to be specific.
+
+---
+
+## UXP-284 -- a mirrored section says it exported as a title line (#1142)
+
+**Status: FIXED.** Owner's call on #1142: **option A** -- keep the title, report the count.
+
+### The loss
+
+A caption-less `[[#id|]]` **alone on a line** transcludes the target's whole subtree on screen, up to
+`MIRROR_ROW_CAP = 40` rows. Every text export ships **one line**: the target's title. So a document
+assembled from mirrors -- a reasonable way to build a manuscript or a review from parts -- exports as a
+table of contents rather than the thing the author was looking at, and says nothing.
+
+Driven on a two-mirror document with three rows behind each:
+
+```
+on screen   [[#chapter3|]]  ->  Chapter 3 / Scene 1 / Scene 2 / Scene 3
+exported                     ->  - [Chapter 3](#jn8miy7i)          (and no Scene rows at all)
+```
+
+#1111 made that reference honest -- it records where it pointed. The **rows** were still gone silently.
+
+### Why report rather than inline
+
+Inlining trades one silent loss for another: the same subtree mirrored twice duplicates in the file,
+and the 40-row cap becomes an **invisible truncation inside a document**. UXP-237 named this shape when
+it refused to settle the footnote question in passing -- *"a content decision about someone else's
+file"* -- and set the precedent used here: do the lossy thing and report it.
+
+> Exported a copy: "notes.md". **2 mirrored sections exported as a title line, not the rows. Export Web
+> page to keep them.**
+
+**Not `flat`-gated, unlike the link sentence.** A mirror flattens in markdown exactly as in plain text,
+because #1111 fixed the link *layer* and not the transcluded rows. Gating it on the plain-text door
+would have left the markdown export silently lossy, which is the whole defect. The Web page export is
+genuinely unaffected -- it round-trips the token and re-transcludes live -- so it is the format named.
+
+### One regex, two users
+
+`MIRROR_LINE_RE` now lives beside `MIRROR_ROW_CAP` and is used by **both** the renderer's
+`_mirrorBlockLine` gate and `countMirrorRefs`. Two copies could drift, and a drifted count would be a
+confident lie about a file the author is about to send someone. A pin asserts exactly four occurrences:
+one declaration, two users, one comment.
+
+The counter mirrors both its siblings' rules: it skips `noexport` subtrees (a mirror that was never
+going to be exported did not change), and it counts only what actually transcludes -- a captioned link
+is a reference, a solo link to a **leaf** is just a link, an unresolvable target costs no rows, and the
+gate is per LINE so a solo token inside a multi-line point counts.
+
+### The hole mutation found, and the fix it forced
+
+**"Drop the report entirely" passed green.** The test asserted the source contained
+`const mr = countMirrorRefs(...)`, and the mutation left that line intact while killing the `if` that
+used it. A textbook pin-that-cannot-fail: it pinned that the count is COMPUTED, never that it REACHES
+the output.
+
+Fixing it properly required a change to the code, not just the test: `exportedNote` now takes an
+optional `findNode`, threaded to `countMirrorRefs`, **solely so the count is testable DOM-free** --
+`nodeById` reads the live index, which does not exist in plain Node. Both app call sites omit it and
+get the real index. With that, the pin asserts the actual output string on a real tree, and the
+mutation goes red.
+
+That is the second time this session that making something properly testable required a small
+production change (the first was `collectVars`' optional `rootNode`). Worth noting as a pattern: when
+the only available pin is a source pin, the function usually has an untestable dependency worth
+injecting.
+
+### Guard-proofed
+
+Eleven mutations, each asserting its target present first (#1133): the count gated on `flat`; the
+report dropped; `noexport` no longer skipped; captioned links counted; leaf targets counted; plural
+agreement dropped; the keep-them format unnamed; the renderer and counter given separate regex copies;
+the report always singular; and the count off by one. All red.
+
+One existing pin **rewritten rather than loosened**: `#917`'s wiring assertion named the inline regex
+literal, which moved into the shared constant. The claim is unchanged -- `mdInline` still stamps the
+gate per line -- and it now names the constant.

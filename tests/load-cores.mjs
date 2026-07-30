@@ -201,6 +201,7 @@ export function loadCores() {
     // UXP-237 message builder, which was never added here — so the sentence CI shows a user has
     // never been tested. That omission is fixed in the same change that gives it a second arm.
     'mdLinkOut', 'countExportLinks', 'exportedNote',
+    'countMirrorRefs',                                            // #1142: mirrors flatten to a title line, and the toast says so
     'imgSizeParts',   // #992: markdown image title -> width mode class + inline width
     'blSectionModel',   // #953: the shared backlinks section model (strip + in-flow zoom footer)
     'nearbyAdjacency', 'nearbyGraphModel', 'qid', 'unqid',   // #898: neighborhood graph (current point +/- N hops, cross-doc)
