@@ -11487,7 +11487,10 @@ function mtRefreshViewSwitcher(node) {
 //
 // Pure + Node-testable: takes the header row, the roles, and the known states; returns the reason
 // and the message. `null` means Board can open.
-function boardBlockReason(headerRow, statusIdx, cells, states) {
+// #1148 adds the 5th parameter, POSITIONAL and optional so the four existing call shapes keep working.
+// `seqs` is the DECLARED sequences (allSequences()); with it the refusal can name the vocabulary the
+// author already has instead of inventing an example they must translate.
+function boardBlockReason(headerRow, statusIdx, cells, states, seqs = []) {
   if (statusIdx >= 0) return null;
   const named = (headerRow || []).findIndex(h => /^(status|state)$/i.test(String(h ?? '').trim()));
   if (named >= 0) {
@@ -11497,9 +11500,30 @@ function boardBlockReason(headerRow, statusIdx, cells, states) {
     // He is the second case: named it, filled it, and every value is outside every sequence. Name
     // the values and the in-fence fix - declaring a sequence makes them first-class, and the
     // matcher folds case and spacing, so `in progress` answers to IN_PROGRESS.
-    if (unknown.length) return { reason: 'unknown-values', samples: unknown.slice(0, 3),
-      msg: `“${headerRow[named]}” holds values that are not states yet: ${unknown.slice(0, 3).map(v => `“${v}”`).join(', ')}. `
-         + `Declare them once, like {seq Flow: TODO IN_PROGRESS | DONE}, then mark the column (Column menu, Show as).` };
+    if (unknown.length) {
+      // #1148: THE SEQUENCE IS THE VOCABULARY. Measured on the planner's own setup: one unknown value
+      // collapses the whole column to no role, so the chip picker -- the affordance that would have
+      // SHOWN him the vocabulary -- never appears. Discovery was gated on having already discovered.
+      //
+      // So name the sequence he is evidently using: the declared one covering the most of his known
+      // values (a measure, not a guess; ties fall to the first declared). Only then does the generic
+      // "declare one" example make sense, and only when nothing is declared at all.
+      //
+      // This OFFERS and never constrains, which is what keeps it inside the base-views-vision §0.5
+      // fence: that defers a role which "offers its known values AND constrains the editor", needing
+      // "a knownStates-style collected cache". No editor is constrained, nothing is rejected, and no
+      // cache is invented -- knownStates and collectSequences already exist and already feed the
+      // inference. Freeform still wins: every value keeps landing, exactly as it does today.
+      const declared = (seqs || []).filter(s => s && s.key !== 'default' && (s.states || []).length);
+      const best = declared
+        .map(s => ({ s, hits: vals.filter(v => (s.states || []).some(st => normStateKey(st) === normStateKey(v))).length }))
+        .sort((a, b) => b.hits - a.hits)[0];
+      const how = best && best.s
+        ? `${best.s.name} offers ${best.s.states.join(', ')}. Use one of those, or add ${unknown.length === 1 ? 'it' : 'them'} to that sequence.`
+        : `Declare them once, like {seq Flow: TODO IN_PROGRESS | DONE}, then mark the column (Column menu, Show as).`;
+      return { reason: 'unknown-values', samples: unknown.slice(0, 3), seqNamed: best ? best.s.name : null,
+        msg: `“${headerRow[named]}” holds values that are not states yet: ${unknown.slice(0, 3).map(v => `“${v}”`).join(', ')}. ${how}` };
+    }
     return { reason: 'named-not-marked',
       msg: `“${headerRow[named]}” is not marked as a Status column yet. Column menu, Show as, Status - or Alt+R on a cell.` };
   }
@@ -11516,7 +11540,9 @@ function mtSetView(node, kind) {
       const m = mtModelRead(node), rows = m.rows || [], hdr = rows[0] || [];
       const nm = hdr.findIndex(h => /^(status|state)$/i.test(String(h ?? '').trim()));
       const cells = nm >= 0 ? rows.slice(1).map(r => (r || [])[nm]) : [];
-      flashHint(boardBlockReason(hdr, gi, cells, knownStates()).msg);
+      // #1148: pass the declared sequences too, so the refusal names the vocabulary this document
+      // already has rather than a generic example the reader has to translate.
+      flashHint(boardBlockReason(hdr, gi, cells, knownStates(), allSequences()).msg);
       return;
     }
     node.view = { kind: 'board', groupBy: gi };
