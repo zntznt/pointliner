@@ -88,7 +88,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Competitive snapshot | `guidance/outliner-frontier-report.md` | Candidate |
 | User research (persona fleet, findings) | `guidance/user-research-2026-07.md` | Candidate |
 | User research, second fleet (keyboard, touch, table, teaching, lab) | `guidance/user-research-2026-07-fleet2.md` | Candidate |
-| User research, third fleet (laptop: trade, freelance, household, coaching, volunteering, music) | `guidance/user-research-2026-07-fleet3.md` | Candidate |
+| User research, "various walks of life" laptop panel (bounce, propagation-is-the-click) | `guidance/user-research-2026-07-c.md` | Candidate |
 | Variable declaration spec (Stage B, positional) | `guidance/typed-var-declaration-proposal.md` | Shipped |
 | Discoverability strategy (verbosity dial) | `guidance/ux.md` | Vision |
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
