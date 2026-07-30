@@ -18568,9 +18568,10 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
 });
 
 // ── The example insert MUST be non-destructive (never adoptDoc/replace the user's document) ──
-// #565 factored the append-and-zoom body out of openExamples into insertStarterSubtree, shared
-// by the Welcome tour AND the starter gallery. openExamples now delegates; the data-loss guard
-// lives on the shared insert function.
+// #565 factored the append-and-zoom body into insertStarterSubtree, the shared insert the starter
+// gallery uses. The data-loss guard lives on this shared function. (openExamples, the old File-menu
+// "Add the Welcome tour" delegate, was retired once the chooser's "Poke a live example" and the
+// blank-canvas gallery door replaced it.)
 test('insertStarterSubtree: appends a fresh-id clone, undo-able, never overwrites the document', () => {
   const fn = _src.match(/function insertStarterSubtree\([^)]*\)\s*\{[\s\S]*?\n\}/);
   assert.ok(fn, 'insertStarterSubtree not found');
@@ -18580,14 +18581,6 @@ test('insertStarterSubtree: appends a fresh-id clone, undo-able, never overwrite
   assert.ok(body.includes('pushUndo()'), 'the insert must be undo-able');
   assert.ok(body.includes('promoteLoadedShorthand('), 'must promote the inserted {…} shorthand or pills render as raw source (#565)');
   assert.ok(!body.includes('adoptDoc('), 'must NOT adoptDoc (that overwrote the user document)');
-});
-test('openExamples: delegates to the non-destructive insert (no direct adoptDoc)', () => {
-  const fn = _src.match(/function openExamples\(\)\s*\{[\s\S]*?\n\}/);
-  assert.ok(fn, 'openExamples not found');
-  const body = fn[0];
-  assert.ok(body.includes('insertStarterSubtree('), 'openExamples routes through the shared insert');
-  assert.ok(!body.includes('adoptDoc('), 'openExamples must NOT adoptDoc (the old data-loss path)');
-  assert.ok(!/Discard unsaved/i.test(body), 'no destructive discard confirm (the insert is non-destructive)');
 });
 
 // ── Backtick code spans are the promotion escape hatch: `{2d6}` stays literal, not a pill ──
@@ -20906,6 +20899,32 @@ test('chrome drift guard: every toolbar-cluster button has a live TB_GUIDE_MAP g
     `these TB_GUIDE_MAP values point at no GUIDE entry: ${broken.map(([b, g]) => b + ' -> ' + g).join(', ')}`);
 });
 
+// Every optional toolbar-cluster icon must be toggleable on/off from the File-menu chooser: its id
+// must appear in TOOLBAR_FEATURES, which drives the checkbox list (buildToolbarChooser), the hidden
+// set, and applyToolbarPrefs. btn-builder ("All commands") was the one cluster icon missing from that
+// list, so a user could not turn it off while all nine siblings could. This guard closes that gap and
+// prevents it reopening: a new cluster button with no toggle turns this red.
+test('every toolbar-cluster icon is toggleable (present in TOOLBAR_FEATURES)', () => {
+  const cStart = GUIDE_SRC.indexOf('<div id="tbtn-cluster"');
+  const cEnd = GUIDE_SRC.indexOf('</div>', cStart);
+  assert.ok(cStart > -1 && cEnd > cStart, 'the #tbtn-cluster markup is findable — did it move/rename?');
+  const btnIds = [...GUIDE_SRC.slice(cStart, cEnd).matchAll(/<button id="([^"]+)"/g)].map(m => m[1]);
+  assert.ok(btnIds.length >= 10, `cluster buttons found (got ${btnIds.length}) — did the cluster move?`);
+
+  const fStart = GUIDE_SRC.indexOf('const TOOLBAR_FEATURES = [');
+  const fEnd = GUIDE_SRC.indexOf('];', fStart);
+  assert.ok(fStart > -1 && fEnd > fStart, 'the TOOLBAR_FEATURES const is findable — did it move/rename?');
+  const featureIds = nonEmpty(
+    [...GUIDE_SRC.slice(fStart, fEnd).matchAll(/id:\s*'([^']+)'/g)].map(m => m[1]), 'TOOLBAR_FEATURES ids');
+
+  const notToggleable = btnIds.filter(id => !featureIds.includes(id));
+  assert.deepEqual(notToggleable, [],
+    `these toolbar icons cannot be toggled off (missing from TOOLBAR_FEATURES): ${notToggleable.join(', ')}`);
+  // The inverse: no stale feature descriptor that names a button no longer in the cluster.
+  const stale = featureIds.filter(id => !btnIds.includes(id));
+  assert.deepEqual(stale, [], `these TOOLBAR_FEATURES entries name no real cluster button: ${stale.join(', ')}`);
+});
+
 test('chrome drift guard: curated chrome features each name a real GUIDE entry', () => {
   // The fleet-B "only found via the guide" set: chrome features with no / or @ command id, so
   // the #596 covers guard can never see them. Each names the GUIDE entry that documents it.
@@ -22881,18 +22900,22 @@ test('blank-canvas door (beginner PR B) — decision gates + wiring', () => {
   assert.equal(d(true, 'guided', true, false, false), false, 'a busy banner surface wins');
   assert.equal(d(true, 'guided', false, true, false), false, 'the pristine first-run tour suppresses it');
   assert.equal(d(true, 'guided', false, false, true), false, 'a session dismissal sticks');
-  // Wiring: render syncs it; the primary action opens the tour; explicit "Start a blank outline"
-  // waives the invite; the banner close waives it; the second door hides ours before the gallery.
+  // Wiring: render syncs it; the primary action opens the templates gallery (NOT the tour, which was
+  // dropped from this banner's wording); explicit "Start a blank outline" waives the invite; the
+  // banner close waives it.
   assert.ok(/syncBlankInvite\(\);\s*\/\/ the blank-canvas door/.test(_src), 'render tail syncs the invite');
-  assert.ok(/if \(_blankInviteReady && _warnAction === 'welcometour'\) syncBlankInvite\(\);/.test(_src),
+  assert.ok(/if \(_blankInviteReady && _warnAction === 'blankexamples'\) syncBlankInvite\(\);/.test(_src),
     'markDirty hides it mid-edit (a full render may not run while typing)');
-  assert.ok(/_warnAction === 'welcometour'\) openExamples\(\)/.test(_src), 'primary action inserts the Welcome tour');
+  assert.ok(/_warnAction === 'blankexamples'\) openStarterGallery\(\)/.test(_src),
+    'primary action opens the templates gallery, not the tour');
+  assert.ok(!/openExamples/.test(_src), 'the retired openExamples tour delegate is gone (dead after the menu row and banner both dropped it)');
   assert.ok(/'startblank'\) \{ _blankInviteDismissed = true; startBlankOutline\(\); \}/.test(_src),
     'choosing a blank outline waives the invite');
-  assert.ok(/if \(_warnAction === 'welcometour'\) _blankInviteDismissed = true;/.test(_src),
+  assert.ok(/if \(_warnAction === 'blankexamples'\) _blankInviteDismissed = true;/.test(_src),
     'the close button waives it');
-  assert.ok(_src.includes('hideExamplesBanner(); hideBlankInviteBanner(); openStarterGallery()'),
-    'the examples door hides the invite before opening the gallery');
+  // The banner offers one door now (the primary IS the gallery), so its second-door element is hidden.
+  assert.ok(/storageWarnExamples\.style\.display = 'none';\s*\/\/ one door now/.test(_src),
+    'the blank-invite banner hides its second door (the primary button is the gallery)');
 });
 
 test('UXP-255 "Markdown" is capitalized in user-facing copy (§6), guarded like the em-dash ban', () => {
