@@ -11,6 +11,14 @@ mark it resolved in place and move it to `ux-remediation-archive.md` (the closed
 this file stays a short view of what is actually open. Verify any named symbol with grep before
 acting (controls drift).
 
+**A "Found on the way, filed not fixed" block owes a forward pointer when the thing it filed ships.**
+Three of them went stale within days of being written (UXP-275, UXP-276, UXP-280), each still
+asserting a live defect that had already been closed -- the #1107 failure mode, where a stale claim
+becomes the next reader's false premise. The convention: **append a dated `**Shipped (date): … as
+UXP-NN**` line, never edit the original paragraph.** The original is evidence of what was known at the
+time; the pointer is what the next reader acts on. Same reasoning as UXP-275's own correction: "filed
+separately" in a register is a claim someone will act on.
+
 **Status:** ☐ open · ◐ in progress · ✓ closed (move to the archive on close)
 **Severity:** 🔴 breaks the unified language · 🟡 partial / inconsistent · 🟢 cosmetic-but-tracked
 
@@ -2517,6 +2525,12 @@ at the 0.001 where `estNumFmt`'s existing tiny-magnitude escape fires, and `0.00
 gap. Recorded rather than quietly edited, because "filed separately" in a register is a claim the
 next reader will act on.
 
+**Shipped (2026-07-30): #1177 is closed, as UXP-279.** The correction above is itself now stale --
+it says "now filed", which was true for about a day. Measured during the fix, the collapse is worse
+than either sentence above: `estNumFmt` printed `"0"` for **every** non-zero value in `[0.001, 0.005)`,
+and the digit loss ran all the way to 1, not to 0.005. The pin here that locks the collapse was
+rewritten there, carrying its reason.
+
 ---
 
 ## UXP-276 -- the estimate pill is what makes a phone scroll sideways (#1173)
@@ -2631,6 +2645,12 @@ The estimate dialog's live preview has **never rendered anything**. Its callback
 `.io-preview` div exists and is empty for a valid expression, identically, so it is pre-existing and
 not caused by this change. Filed. `.est-preview-spark` is hidden here anyway, so that a phone will not
 show a sparkline in the dialog for a pill that has none once the preview works (P1).
+
+**Shipped (2026-07-30): filed as #1178, closed as UXP-277.** The paragraph above is preserved as
+written, but read it as history rather than as a live defect -- the preview renders now, and the
+`.est-preview-spark` rule this entry added has something to hide. Widened on the way: a static audit
+found a second half the report did not know about (the runner's cross-field refresh was gated behind
+`_previewFns.length > 1`, so **none** of the three number-format dialogs had ever had one).
 
 ---
 
@@ -3052,6 +3072,10 @@ an unresolvable *identifier* still throws, which is the case the loud failure ex
   gets no signal that it updated. A naive `aria-live="polite"` is the wrong fix: these previews update on
   **every keystroke**, and a polite region firing per keystroke is a known anti-pattern. Filed with that
   reasoning, so the next reader finds an argument rather than an oversight.
+  **Shipped (2026-07-30): filed as #1184, closed as UXP-281** -- the naming half only. The argument
+  above held on measurement: previews are named (`role="group"` + `aria-label`) and deliberately do
+  **not** announce. A bare `<div>` maps to role `generic`, which prohibits naming, so the role is
+  load-bearing rather than decorative.
 
 ---
 
