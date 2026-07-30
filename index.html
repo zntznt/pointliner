@@ -22140,6 +22140,7 @@ function closeIo() {
   ioCard.innerHTML = ''; ioCancel = null;
   ioCard.removeAttribute('aria-label');
   ioCard.removeAttribute('aria-labelledby');   // UXP-181: prevent leak across dialogs
+  _welcomeOpen = false;   // #1192: whatever closed it, the Welcome chooser is no longer on the card
   const ret = ioReturnFocus; ioReturnFocus = null;
   if (ret) try { ret.focus(); } catch (_) {}
 }
@@ -31270,6 +31271,10 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   if (typeof _showingExamples !== 'undefined' && _showingExamples && !_adoptingExamples) {
     _showingExamples = false;
     if (typeof hideExamplesBanner === 'function') hideExamplesBanner();
+    // #1192: a stored doc rehydrating ASYNC (workspace reopen, single-file reopen) lands here after
+    // first-run already put the Welcome chooser on screen. Take it down, or a returning user meets a
+    // welcome modal floating over their own restored work.
+    if (_welcomeOpen) closeIo();
   }
   root = newRoot;
   fileHandle = fh;
@@ -40147,7 +40152,9 @@ function syncBlankInvite() {
   if (!_blankInviteReady) return;
   const ours = storageWarn.classList.contains('on') && _warnAction === 'welcometour';
   const busy = storageWarn.classList.contains('on') && !ours;
-  const show = blankInviteDecision(docIsBlank(root), verbosity, busy, _showingExamples, _blankInviteDismissed);
+  // #1192: the Welcome chooser counts as "first run" for this decision too, or the blank-canvas
+  // invite paints on the surface behind the modal that is already offering those same two doors.
+  const show = blankInviteDecision(docIsBlank(root), verbosity, busy, _showingExamples || _welcomeOpen, _blankInviteDismissed);
   if (show && !ours) showBlankInviteBanner();
   else if (!show && ours) hideBlankInviteBanner();
 }
@@ -40221,6 +40228,7 @@ function scheduleAutosave() {
   // OPFS AND no folder. With OPFS present, a too-large tree still autosaves to OPFS.
   if (autosaveDisabled && !opfsOk && !workspaceFile) return;   // #1113: capability, not presence
   if (_showingExamples) return;   // UXP-126: the pristine first-run Examples doc never persists as the user's doc
+  if (_welcomeOpen) return;       // #1192: nor does the blank document sitting under the Welcome chooser, until a pick
   // Boot race guard: until the OPFS boot reconcile has run, do NOT autosave at all — a
   // fresh-boot empty doc would clobber the durable OPFS copy before we can restore it.
   // A real user keypress in that tiny window sets _userEdited, so we don't lose it: the
@@ -41102,22 +41110,66 @@ function startBlankOutline() {
   adoptDoc(mkRoot());
   flashHint('New blank document');   // UXP-185: document, not the banned document-sense "outline"
 }
-function maybeShowFirstRun() {
-  // Fresh boot = nothing restored synchronously (no autosave) and not a snapshot. A STORED
-  // workspace/single-file is reopened async by the reopen IIFEs below; if one exists it will
-  // adoptDoc a real doc and clear _showingExamples (adoptDoc does that for any non-examples doc),
-  // so the examples show only until (and unless) a stored doc rehydrates. Do NOT gate on
-  // `hasWorkspace` — that is the FSA *capability*, not a connected folder, and would suppress
-  // examples on every Chromium browser.
-  if (_restoredFromAutosave || loadedFromEmbed) return;   // returning user / snapshot
+// Load the Welcome tour AS the whole document. This was the forced first-run path until #1192;
+// it is now one explicit pick in the Welcome chooser ("Poke a live example"), plus the safety
+// fallback below. Behavior is unchanged from the pre-chooser path: pristine and non-persisting
+// (_showingExamples), with the Start-blank banner beside it. Returns false if the embedded OPML
+// will not parse, so a caller can fall back rather than land the user on nothing.
+function showExamplesDoc() {
   try {
     const parsed = fromOpml(FIRST_RUN_EXAMPLES);
-    if (!parsed) return;
+    if (!parsed) return false;
     _adoptingExamples = true;
     _showingExamples = true;                      // set BEFORE adoptDoc so its scheduleAutosave is suppressed
     adoptDoc(parsed, { fileName: 'unsaved' });   // promotes the {…} to live pills; markClean inside
     _adoptingExamples = false;
-  } catch (_) { _adoptingExamples = false; _showingExamples = false; }
+    showExamplesBanner();                        // UXP-126: the Start-blank door beside the examples
+    return true;
+  } catch (_) { _adoptingExamples = false; _showingExamples = false; return false; }
+}
+function maybeShowFirstRun() {
+  // Fresh boot = nothing restored synchronously (no autosave) and not a snapshot. A STORED
+  // workspace/single-file is reopened async by the reopen IIFEs below; if one exists it will
+  // adoptDoc a real doc, clear _showingExamples and close the chooser, so the welcome shows only
+  // until (and unless) a stored doc rehydrates. Do NOT gate on `hasWorkspace` — that is the FSA
+  // *capability*, not a connected folder, and would suppress the welcome on every Chromium browser.
+  if (_restoredFromAutosave || loadedFromEmbed) return;   // returning user / snapshot
+  // #1192/#1193: a brand-new user used to be dropped INTO the Welcome tour with no choice. Six of
+  // six panelists read that forced demo as the app explaining itself in the abstract and nearly
+  // left inside thirty seconds, and the starter gallery that answers "someone has to build the
+  // machine first" was invisible until they found a banner button. Open on a blank document with
+  // the Welcome chooser over it instead, so the first act is picking a domain you recognize.
+  //
+  // _showingExamples stays TRUE over that blank document, and it is load-bearing three ways: it is
+  // the "pristine, do not persist" gate (scheduleAutosave bails), it suppresses the boot rAF's
+  // focus-the-first-point so the caret cannot sit in the document behind the modal, and it keeps
+  // the blank-canvas invite off the surface the chooser already owns. EVERY exit from the chooser
+  // clears it (dismissWelcome, startBlankOutline, adoptDoc, and the starter picks), so the moment
+  // the user acts, the resulting document is theirs and autosaves.
+  // The chooser opens FIRST, before the blank document is adopted, and that order is load-bearing:
+  // mkRoot carries docId null, so adoptDoc mints one and calls scheduleAutosave, and _welcomeOpen
+  // has to already be up for that gate to catch it.
+  //
+  // _welcomeOpen (set by openStarterGallery, cleared by closeIo on every exit) is what holds BOTH
+  // halves of "pristine": scheduleAutosave bails while it is up, so a first run nobody touched never
+  // becomes a saved document, and the boot rAF skips focusing the point BEHIND the modal.
+  //
+  // It deliberately does NOT reuse _showingExamples. That flag means "the tour document is on
+  // screen", and markDirty clears it on ANY mutation by design, including the internal ones that
+  // building a blank document performs: render mints the first empty point through createChildModel,
+  // and the following render blurs it through commitActiveEdit. DRIVEN, both times: piggy-backing on
+  // that flag left it false by the end of boot, so the caret landed in the document behind the modal
+  // and Escape did nothing, because the keydown listener lives on the overlay the caret had left.
+  // That is the #1021 dead-handler shape, and a source-pin would have called it shipped.
+  try {
+    openStarterGallery({ welcome: true });
+    adoptDoc(mkRoot(), { fileName: 'unsaved' });
+  } catch (_) {
+    // Never strand a first-run user on a blank screen with no door: fall back to the pre-chooser
+    // path (the tour as the document, with its Start-blank banner).
+    closeIo();
+    showExamplesDoc();
+  }
 }
 
 // Bring the Examples ("Welcome to Pointliner") tour into the CURRENT document from the File menu,
@@ -41165,39 +41217,77 @@ function insertStarterSubtree(opml, label) {
 // looks and keyboard-behaves like every other picker. The link is the sanctioned egress that
 // already exists as the File menu's "Full guide online" row.
 const STARTER_ICON = { fa: 'fa-solid fa-dice-d20', fb: '🎲' };
-function openStarterGallery() {
+// #1192: the six starters the Welcome chooser leads with. Everyday domains a stranger recognizes
+// on sight first (IA-3: speak in problems, not in features), with exactly ONE origin starter so
+// the tabletop root stays present but never the majority (IA-8). The rest of STARTERS follows
+// directly underneath, so leading with these hides nothing.
+const WELCOME_QUICK_PICKS = ['project-tracker', 'meal-planner', 'trip-planner', 'reading-log', 'decision-helper', 'campaign-oracle'];
+// var (hoisted, #854's rule): closeIo and adoptDoc are declared thousands of lines ABOVE this and
+// both run during the boot restore, before this line is reached. A `let` would put them in the TDZ
+// and crash the restore; a hoisted var reads `undefined` (falsy) until first-run sets it.
+var _welcomeOpen = false;
+function openStarterGallery(opts = {}) {
+  const welcome = !!opts.welcome;   // #1192: the first-run front door, same card and same rows
   closeFileMenu();
   ioCard.innerHTML = '';
+  _welcomeOpen = welcome;
 
+  const title = welcome ? 'Welcome to Pointliner' : 'Start from an example';
   const head = document.createElement('div'); head.className = 'io-head';
   const ic = document.createElement('div'); ic.className = 'cmd-icon accent';
   setIcon(ic, STARTER_ICON);
   const ttl = document.createElement('div'); ttl.className = 'io-title';
-  ttl.textContent = 'Start from an example';
+  ttl.textContent = title;
   head.append(ic, ttl); ioCard.appendChild(head);
 
   const intro = document.createElement('p');
   intro.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 12px;line-height:1.55';
-  intro.textContent = 'Drop a ready-made, fully live example into this document. Click any pill inside it to play, then delete it when you are done.';
+  // #1192: the identity line. Two facts and an instruction, no pitch (§3c): what the app is, what
+  // to do next, and that the file is yours. The ownership half is what reached the panelists who
+  // never want a number at all, and it was barely stated anywhere on the old first screen.
+  intro.textContent = welcome
+    ? 'Notes that compute. Pick a starting point close to what you are here to do, or start blank. Your file, offline, no account.'
+    : 'Drop a ready-made, fully live example into this document. Click any pill inside it to play, then delete it when you are done.';
   ioCard.appendChild(intro);
 
   const tlist = document.createElement('div'); tlist.className = 'tpl-list';
-  STARTERS.forEach(st => {
+  // One row builder for all three kinds of pick (a starter, blank, the tour) so they keyboard-behave
+  // identically and every row carries an accessible name (P3).
+  const addPick = (name, desc, aria, onPick) => {
     const pick = document.createElement('button');
     pick.className = 'tpl-pick'; pick.type = 'button';
     // align-items:stretch (not flex-start): in a column flex, flex-start sizes each child to its
     // max-content width, so a long description grew past the button's right edge (item 6). Stretch
     // bounds both children to the button width, so the name ellipsizes and the description wraps.
     pick.style.cssText = 'display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%';
-    pick.setAttribute('aria-label', `Insert the ${st.name} example`);
-    const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = st.name;
+    pick.setAttribute('aria-label', aria);
+    const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = name;
     const ds = document.createElement('span');
     ds.style.cssText = 'font-size:12px;color:var(--muted);line-height:1.4;font-weight:400;white-space:normal;overflow-wrap:anywhere';
-    ds.textContent = st.desc;
+    ds.textContent = desc;
     pick.append(nm, ds);
-    pick.addEventListener('click', () => { closeIo(); insertStarterSubtree(st.opml, st.name); });
+    pick.addEventListener('click', onPick);
     tlist.appendChild(pick);
-  });
+    return pick;
+  };
+  // A starter pick clears the pristine first-run gate BEFORE inserting. insertStarterSubtree appends
+  // to the CURRENT root rather than adopting a new document, so nothing downstream would clear
+  // _showingExamples and the domain the user just chose would never autosave (#1192). This also fixes
+  // the same silent no-persist when the gallery is opened from the File menu during the tour.
+  const pickStarter = st => { _showingExamples = false; hideExamplesBanner(); closeIo(); insertStarterSubtree(st.opml, st.name); };
+  // Welcome mode leads with the quick picks, then the rest of the gallery. Normal mode keeps the
+  // gallery's own order, unchanged.
+  const quick = welcome ? WELCOME_QUICK_PICKS.map(id => STARTERS.find(s => s.id === id)).filter(Boolean) : [];
+  const ordered = quick.concat(STARTERS.filter(st => !quick.includes(st)));
+  ordered.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st)));
+  if (welcome) {
+    // The two non-starter doors, as explicit picks rather than a default nobody chose. Blank keeps
+    // the invitation (you can just start writing); the tour is where the old forced first screen went.
+    addPick('Start with a blank document', 'An empty page. Write a point, press Enter for the next one.',
+      'Start with a blank document', () => { closeIo(); startBlankOutline(); });
+    addPick('Poke a live example', 'The guided tour of what a point can do, as a document you can play with.',
+      'Open the Welcome tour as a live example', () => { closeIo(); showExamplesDoc(); });
+  }
   ioCard.appendChild(tlist);
 
   const more = document.createElement('a');
@@ -41209,14 +41299,27 @@ function openStarterGallery() {
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
   const closeBtn = document.createElement('button'); closeBtn.className = 'io-btn'; closeBtn.textContent = 'Close';
-  closeBtn.addEventListener('click', closeIo);
+  // §3c: the welcome is an invitation, never a gate. Escape and the backdrop route through ioCancel,
+  // so pointing all three dismissals at the same handler means none of them can become a wall.
+  const dismiss = welcome ? dismissWelcome : closeIo;
+  closeBtn.addEventListener('click', dismiss);
   foot.append(closeBtn); ioCard.appendChild(foot);
-  ioCancel = closeIo;
+  ioCancel = dismiss;
 
   ioReturnFocus = document.activeElement;
-  ioCard.setAttribute('aria-label', 'Start from an example');
+  ioCard.setAttribute('aria-label', title);
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
+}
+// #1192 (§3c): dismissing the Welcome chooser is a real exit, not a deferral. Clear the pristine
+// gate so the blank document becomes the user's own (and starts autosaving), repaint so the
+// blank-canvas invite offers the tour and the gallery again (P2), and put the caret in the first
+// point so they can simply start writing. Desktop only, matching the boot focus rule: on touch,
+// focusing a contenteditable throws the soft keyboard over half the screen unasked.
+function dismissWelcome() {
+  closeIo();   // clears _welcomeOpen, so the blank document is the user's from here and autosaves
+  render();    // repaints, and syncBlankInvite now offers the tour and the gallery again (P2)
+  if (!IS_TOUCH && flatRows.length) focusNode(flatRows[0].node.id);
 }
 maybeShowFirstRun();
 
@@ -41230,7 +41333,9 @@ render();
 updateTitle();
 refreshIcons();
 handleUrlAppend();   // #465: ?append=<text> / PWA share_target → one point in the inbox (hosted-only, param stripped)
-if (_showingExamples) showExamplesBanner();   // UXP-126: surface the Start-blank door beside the examples
+// UXP-126's Start-blank door now belongs to showExamplesDoc, the one path that puts the tour on
+// screen. It must NOT fire for the #1192 blank first-run: there the chooser is the door, and an
+// "these are live examples" banner over a blank document would be describing nothing.
 // Platform-correct the search box's shortcut chip on load. The HTML hardcodes ⌘F;
 // on Windows/Linux it must read Ctrl+F. (openFileMenu also fixes it, but the search
 // chip is visible immediately, before the File menu is ever opened.)
@@ -41265,6 +41370,7 @@ if (_showingExamples) showExamplesBanner();   // UXP-126: surface the Start-blan
         // so without this the "these are live examples" banner floats over the restored doc AND the
         // _showingExamples gate keeps autosave suppressed. Clear it exactly as adoptDoc does.
         if (_showingExamples) { _showingExamples = false; hideExamplesBanner(); }
+        if (_welcomeOpen) closeIo();   // #1192: nor may the first-run Welcome chooser outlive the real doc
         render(); refreshIcons();
       }
     } else if (localSavedAt > 0) {
@@ -41302,6 +41408,10 @@ requestAnimationFrame(() => {
   // the composed H1, and unfolds its pills. Open it in DISPLAY mode; click-anywhere-to-edit
   // gives "start typing immediately" back with one click. (Issue #402)
   if (_showingExamples) return;
+  // #1192: same rule for the Welcome chooser. The caret must not land in the document BEHIND the
+  // modal: it takes focus off the overlay that owns the Escape and Tab handlers, which is what
+  // makes a dismissible dialog dismissible. openStarterGallery focuses its first pick instead.
+  if (_welcomeOpen) return;
   // Otherwise focus the first node so the user can start typing immediately.
   // Desktop only: on touch, focusing a contenteditable pops the soft keyboard over
   // half the screen before the user has seen the document. They tap when ready.
