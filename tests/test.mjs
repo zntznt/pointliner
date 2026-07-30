@@ -7396,6 +7396,46 @@ test('regression: formula-only variables are untouched by the pick branch', () =
       assert.ok(Number.isFinite(t(m)), `${m} must not produce NaN`);
   });
 
+  test('#1181 a dialog preview never announces an action it cannot perform', () => {
+    // openMathDialog previews by rendering a REAL pill. Driven before the fix, that dragged TWO inert
+    // affordances into the dialog: the .math-edit pencil (role=button, "Edit formula and number
+    // format") and the pill's own title/aria ("Click to edit the formula or number format."), inside
+    // the very dialog a click would have opened. Both did nothing -- a preview is innerHTML from a
+    // string and no handler is ever attached to it -- so this is "claims an action it hasn't got",
+    // which is the P4 case, not a broken action. On hover:none the pencil is a visible 26px chip with
+    // a 44px tap overlay, so the dead target was prominent.
+    const rmp = fnBody(_src, 'renderMathPill');
+    assert.ok(/function renderMathPill\(key, m, opts = \{\}\)/.test(_src),
+      'renderMathPill takes an opts bag; the other three call sites rely on it being optional');
+    assert.ok(/const pencil = opts\.preview \? ''/.test(rmp), 'the pencil is gated on preview mode');
+    // Hoisting settled a drift the five copies had accumulated: three wrote the glyph bare, two wrote
+    // it aria-hidden. The span carries the accessible name, so the glyph is decorative and aria-hidden
+    // is correct -- and this line is why that is a DECISION rather than a comment. Added because a
+    // mutation removing it passed green: the consolidation was claimed and not guarded.
+    assert.ok(/const pencil = [\s\S]{0,220}<i class="fa-solid fa-pen" aria-hidden="true"><\/i>/.test(rmp),
+      'the pen glyph is decorative and must stay aria-hidden — the span already names the control');
+    assert.ok(/const editTip = opts\.preview \? ''/.test(rmp), 'and so is the click invitation');
+    // THE CALL SITE, not only the renderer: a renderer that CAN suppress chrome proves nothing about
+    // whether its one preview caller asks it to (#1133).
+    const omd = fnBody(_src, 'openMathDialog');
+    assert.ok(/renderMathPill\('preview', \{[^}]*\}, \{ preview: true \}\)/.test(omd),
+      "openMathDialog's preview must pass { preview: true }");
+    // THE CLASS, reusing the #1178 walker: which pill renderers do previews call at all? Exactly one
+    // today, and it opts in. A frozen list, so a new preview rendering a pill has to make this choice
+    // deliberately instead of inheriting the chrome by accident.
+    const PILL_RENDERERS = /\b(renderMathPill|renderEstPill|renderDicePill|renderVarPill|renderQueryPill|renderSeqPill|renderGrammarPill)\s*\(/;
+    const withPills = nonEmpty(previewCallbacks(_src), 'preview callbacks')
+      .filter(cb => PILL_RENDERERS.test(cb.body));
+    assert.equal(withPills.length, 1,
+      `exactly one preview renders a pill today; found ${withPills.length}. A new one must pass ` +
+      'a preview flag and be added here, or it ships the same inert chrome.');
+    assert.ok(/\{ preview: true \}/.test(withPills[0].body), 'and that one opts out of the chrome');
+    // No preview may emit interactive chrome DIRECTLY either -- surveyed, none does.
+    for (const cb of previewCallbacks(_src))
+      assert.ok(!/role="button"|<button/.test(cb.body),
+        `a preview callback (via ${cb.via}) emits a button; nothing in a preview is ever wired`);
+  });
+
   test('#1175 every fmt door offers the field, and the two are exclusive (#1133 call sites)', () => {
     // A record with a field one dialog can set and another cannot is a P1 break, so all THREE must
     // offer it. A tested core proves nothing about whether the dialogs pass it.
@@ -9044,17 +9084,35 @@ test('the math pill signposts the number-format door it opens (P2)', () => {
   // but the pill said only "Click to edit" — the word "format" appeared nowhere on the path to it,
   // so the capability was reachable only by already knowing it was there.
   const rmp = fnBody(_src, 'renderMathPill');
-  const titles = [...rmp.matchAll(/title="Click to edit([^"]*)"/g)].map(m => m[1]);
-  assert.ok(titles.length >= 2, `both the chrome and bare branches carry a tip, got ${titles.length}`);
-  for (const t of titles) assert.match(t, /number format/, 'every math-pill tip names the format door');
-  // the two branches are separate string literals and have drifted before: assert they still agree
-  const arias = [...rmp.matchAll(/aria-label="Math [^"]*Click to edit([^"]*)"/g)].map(m => m[1]);
-  assert.equal(arias.length, 2, 'the chrome and bare branches both label their pill');
-  assert.equal(arias[0], arias[1], 'the two branches must say the same thing');
-  for (const a of arias) assert.match(a, /number format/, 'the label names the format door too, not just the tooltip');
-  // the pencil opens the same dialog from every branch, so it carries the same name everywhere
+  // REWRITTEN by #1181, and it is now a STRONGER pin. This used to count the literal
+  // `title="Click to edit…"` and require the aria variant exactly twice, with its own comment saying
+  // "the two branches are separate string literals and have drifted before: assert they still agree".
+  // #1181 hoisted that clause into ONE `editTip` constant so the branches CANNOT drift, which retires
+  // the counting and replaces it with: the constant names the format door, and every branch uses it.
+  const editTip = /const editTip = opts\.preview \? '' : '([^']*)';/.exec(rmp);
+  assert.ok(editTip, 'the click-to-edit clause must live in one hoisted constant');
+  assert.match(editTip[1], /^ Click to edit/,
+    'it carries its own leading separator space, so a preview accessible name does not end in one');
+  assert.match(editTip[1], /number format/,
+    'and still names the format door -- the #946 signpost this test exists for');
+  // Four sites interpolate it: title + aria-label on each of the chrome and bare branches. Counting
+  // the USES is what keeps the signpost on every surface it was on before.
+  assert.equal((rmp.match(/\$\{editTip(?:\.trim\(\))?\}/g) || []).length, 4,
+    'both branches must carry the clause in BOTH their title and their aria-label ' +
+    '(two trimmed, where it leads; two bare, where it follows the query tip)');
+  assert.equal((rmp.match(/title="\$\{editTip\.trim\(\)\}/g) || []).length, 2,
+    'two tooltips, trimmed because the clause leads there');
+  assert.equal((rmp.match(/\$\{escQ\(queryTip\)\}\$\{editTip\}"/g) || []).length, 2,
+    'two accessible names, with no space of their own before the clause');
+  // The pencil opens the same dialog from every branch, so it carries the same name everywhere -- and
+  // since #1181 that is true BY CONSTRUCTION rather than by agreement: there is exactly one string,
+  // interpolated five times. It used to be five copies, which had already drifted (three wrote the pen
+  // glyph bare, two wrote it aria-hidden). Assert the count is one, so a sixth copy reintroducing the
+  // drift this test was written to catch fails here.
   const pencils = [..._src.matchAll(/class="math-edit"[^`]*?aria-label="([^"]*)" title="([^"]*)"/g)];
-  assert.ok(pencils.length >= 3, `found ${pencils.length} math pencils`);
+  assert.equal(pencils.length, 1, `the math pencil must be ONE hoisted string, found ${pencils.length}`);
+  assert.equal((fnBody(_src, 'renderMathPill').match(/\+ pencil/g) || []).length, 5,
+    'and all five branches must interpolate it -- one string nothing uses is not a fix');
   for (const [, aria, title] of pencils) {
     assert.equal(aria, title, 'the pencil label and tooltip agree');
     assert.match(aria, /number format/, 'the pencil names what the dialog actually offers');
@@ -9063,7 +9121,10 @@ test('the math pill signposts the number-format door it opens (P2)', () => {
   const omd = fnBody(_src, 'openMathDialog');
   for (const field of ["key: 'decimals'", "key: 'prefix'", "key: 'suffix'"])
     assert.ok(omd.includes(field), `openMathDialog must actually offer ${field}`);
-  assert.ok(!/—/.test(titles.join('') + arias.join('')), 'no em dash in the new copy');
+  // The em-dash ban still applies to the copy this test guards -- now read off the one constant plus
+  // the pencil's own label, since the per-branch literals it used to join no longer exist.
+  assert.ok(!/—/.test(editTip[1].trim() + pencils.map(([, a, t]) => a + t).join('')),
+    'no em dash in the click-to-edit clause or the pencil label');
 });
 
 test('renderCrossLinkPill: unknown doc or node → broken pill, never silent (P4)', () => {
@@ -12282,7 +12343,13 @@ test('value-only math pill (m.bare): render, dialog toggle, edit round-trip, and
   // the bare pill still names the full expression for assistive tech and keeps click-to-edit
   const bareChunk = windowAfter(rmp, 'if (m.bare)', 600);
   assert.ok(/aria-label="Math \$\{escQ\(m\.expr\)\}/.test(bareChunk), 'the bare pill aria-label must still carry the expression');
-  assert.ok(bareChunk.includes('math-edit'), 'the bare pill keeps its edit affordance');
+  // REWRITTEN by #1181: the branch interpolates the hoisted `pencil` constant instead of a fifth
+  // verbatim copy of the span, so the literal is no longer here to find. The claim is unchanged and
+  // load-bearing -- the bare pill must keep its edit door -- so assert the interpolation AND that the
+  // constant is the math-edit span, which is what makes the two halves add up.
+  assert.ok(/\+ pencil/.test(bareChunk), 'the bare pill keeps its edit affordance, via the shared pencil');
+  assert.ok(/const pencil = opts\.preview \? ''\s*\n?\s*: `<span class="math-edit" role="button"/.test(rmp),
+    'and `pencil` must BE the math-edit span, or the line above proves nothing');
 
   // the math dialog offers the toggle and threads it onto the record only when on (records stay lean)
   const omd = fnBody(_src, 'openMathDialog');
@@ -22999,6 +23066,11 @@ function previewCallbacks(s) {
   let m;
   while ((m = re.exec(s))) {
     let i = m.index + m[0].length, via = 'inline';
+    // #1181 added `{ preview: true }` as an OPTION FLAG on renderMathPill, which this walker read as a
+    // callback declaration and then threw on, unable to resolve `true` to a function. A literal is not
+    // a callback: skip it. Keep throwing for an unresolvable IDENTIFIER, which is the case the loud
+    // failure exists for.
+    if (/^(?:true|false|null|undefined|\d)/.test(s.slice(i, i + 10))) continue;
     const idm = /^([A-Za-z_$][\w$]*)\s*[,}\n]/.exec(s.slice(i, i + 80));
     if (idm) {                                    // `preview: monthsPrev` → follow it to the declaration
       via = idm[1];
@@ -23014,9 +23086,16 @@ function previewCallbacks(s) {
     if (arrow < 0) throw new Error(`previewCallbacks: no arrow for \`preview: ${via}\``);
     let b = arrow + 2;
     while (/\s/.test(s[b])) b++;
-    const body = s[b] === '{' ? s.slice(b, bal(b, '{', '}') + 1) : s.slice(b, s.indexOf('\n', b));
-    if (!body.trim()) throw new Error(`previewCallbacks: empty body for \`preview: ${via}\``);
-    out.push({ param, body, via });
+    const raw = s[b] === '{' ? s.slice(b, bal(b, '{', '}') + 1) : s.slice(b, s.indexOf('\n', b));
+    if (!raw.trim()) throw new Error(`previewCallbacks: empty body for \`preview: ${via}\``);
+    // #1181: the body comes back COMMENT-FREE, and that is a fix for a recurring class rather than a
+    // convenience. FOUR PRs in a row (#1175, #1178, #1177, #1181) had a negative assertion on raw
+    // source turned red by the comment that explained the very fix -- prose quoting the removed code
+    // is indistinguishable from the code. Stripping here fixes every assertion over `body` at once
+    // instead of each one separately. Same `(?<!:)//` guard NC uses, so `https://` survives; a `//`
+    // inside a regex literal would still be eaten, which is the residual limit (#1132's admission).
+    const body = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(?<!:)\/\/[^\n]*/g, '');
+    out.push({ param, body, raw, via });
   }
   return out;
 }
@@ -23073,8 +23152,13 @@ test('#1178 the runner refreshes EVERY preview on ANY field, exactly once', () =
   for (const [dlg, needle] of [['openEstimateDialog', /parseNumFmt\(all\?\.decimals, all\?\.prefix, all\?\.suffix, all\?\.sigfigs\)/],
                                ['openMathDialog', /const f = fmtOf\(all\);/],
                                ['openColFmtDialog', /parseNumFmt\(all\.decimals, all\.prefix, all\.suffix, all\.sigfigs\)/]]) {
-    const d = fnBody(_src, dlg);
-    assert.equal((d.match(/preview:/g) || []).length, 1,
+    // Comment-stripped, for the same reason previewCallbacks now strips: this change's own comment
+    // quotes `{ preview: true }` and was counted as a third declaration.
+    const d = fnBody(NC, dlg);
+    // `preview:` also appears as renderMathPill's OPTION FLAG since #1181, so count declarations only.
+    // The lookahead goes BEFORE the whitespace: `preview:\s*(?!true)` backtracks \s* to empty and
+    // passes anyway, which is how the option flag slipped through the first version of this line.
+    assert.equal((d.match(/preview:(?!\s*(?:true|false))/g) || []).length, 1,
       `${dlg} has exactly one preview — that is why the > 1 gate excluded it`);
     assert.ok(needle.test(d), `${dlg}'s preview must read the format out of \`all\``);
   }

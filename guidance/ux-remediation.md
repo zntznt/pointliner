@@ -2958,3 +2958,97 @@ Writing this change's rationale turned its own negative assertion red again -- t
 an assertion that `NC` still contains the source so they cannot pass by reading an empty string.
 **Three PRs, three recurrences: a negative assertion on raw source is a landmine for the next author's
 comment.** Worth generalising if it happens a fourth time.
+
+---
+
+## UXP-280 -- a dialog preview stops inviting a click it cannot answer (#1181)
+
+**Status: FIXED.** `openMathDialog` previews its expression by rendering a **real pill** through
+`renderMathPill`, which dragged the pill's interactive chrome into a dialog where nothing is wired to it.
+
+### The filed issue named one affordance; driving found two
+
+| element in `.io-preview` | what it announced |
+|---|---|
+| `.math-edit` | `role="button"`, `aria-label="Edit formula and number format"`, matching `title` |
+| `.math-roll` (the preview pill itself) | `title="Click to edit the formula or number format."` and the same clause inside its `aria-label` |
+
+So the preview invited a click **twice**, while the reader was already inside the dialog that click would
+have opened. On touch it was worse: `@media(hover:none)` makes the pencil a visible 26px chip with a 44px
+tap overlay, so the dead target was prominent.
+
+**Both were genuinely inert** -- clicked in a browser: dialog unchanged, document unchanged, no page
+error. Nothing delegates to preview content, because a preview is `innerHTML` from a string and no
+handler is ever attached. So this is "announces an action it has not got", not a broken action.
+
+**Surveyed all 19 `preview:` callbacks** with the walker built for #1178: exactly **one** calls a pill
+renderer, and **none** emits `role="button"` or `<button>` directly. `varBasePreviewHtml` is clean too.
+One call site, and the guard now freezes that count.
+
+### The fix, and the duplication it retires
+
+`renderMathPill(key, m, opts = {})`. Two hoisted constants -- `pencil` and `editTip` -- gated on
+`opts.preview`, interpolated at the 5 and 4 sites that used to carry them verbatim.
+
+**Hoisting rather than adding conditionals is the point.** The pencil span was written out **five times**
+and the click invitation **four** (title + aria on two branches). An existing pin's own comment said
+*"the two branches are separate string literals and have drifted before: assert they still agree"* -- one
+constant makes that drift impossible, so the guard changed from counting occurrences to asserting the
+constant. **A drift-guard replaced by the absence of drift.**
+
+**And the copies had already drifted**, which is why that pin existed: three wrote the pen glyph as
+`<i class="fa-solid fa-pen">` and two as `<i class="fa-solid fa-pen" aria-hidden="true">`. The span
+carries the accessible name, so the glyph is decorative and `aria-hidden` is correct -- now canonical in
+one place.
+
+### Driven, before and after
+
+| | before | after |
+|---|---|---|
+| preview: `[role=button]` count | 1 | **0** |
+| preview: `.math-edit` count | 1 | **0** |
+| preview: any "Click to" | yes | **no** |
+| preview pill's aria-label | `Math 2 + 2 = 4. Click to edit the formula or number format` | `Math 2 + 2 = 4.` |
+| preview still a pill, with the format applied | yes | **yes** -- `£4` after typing £ in Prefix |
+| the REAL pill's title / aria / pencil | -- | **byte-identical**, and the pencil still opens the dialog |
+
+Driven at 1280 and at 393 with `hasTouch`. Also drove the **empty-rollup branch**, which is reachable
+from a preview (`sum(cost)` with no matching props) and also emitted a pencil: 0 buttons, 0 pencils, and
+it still shows *"No cost below this point. Move the pill onto the parent…"*. The preview drops the
+action and keeps the explanation, which is the right split.
+
+### Guard-proofed
+
+Seven mutations, each asserting its target present first (#1133): the flag dropped at the call site;
+`pencil` unconditional; `editTip` unconditional; a **sixth** verbatim copy of the span re-inlined; the
+pencil removed from the **non**-preview path too (fixing the preview by breaking the pill must go red);
+the format-door wording dropped from the clause; and `aria-hidden` dropped from the glyph.
+
+**The last one passed green on the first run**, which is the finding worth recording: I had consolidated
+on `aria-hidden` and asserted it *in a comment* with nothing enforcing it. A claim in a comment is not a
+guard. Added, then re-mutated: red.
+
+### The comment trap, generalised on its fourth occurrence
+
+UXP-279 said this was *"worth generalising if it happens a fourth time."* It happened twice more in this
+change alone -- the call-site comment quotes `role="button"`, which the new class guard forbids in a
+preview body, and quotes `{ preview: true }`, which the #1178 dialog count read as a third declaration.
+
+So it is generalised rather than patched again: **`previewCallbacks` now returns a comment-free `body`**
+(the raw text stays available as `raw`). Every assertion over a preview body is immune at once, instead of
+each one being fixed separately. Residual limit, stated in the code: a `//` inside a regex literal would
+still be stripped, the same trade `NC` makes.
+
+`previewCallbacks` also gained a literal skip: #1181 introduced `{ preview: true }` as an **option flag**,
+which the walker had been reading as a callback declaration and throwing on. A literal is not a callback;
+an unresolvable *identifier* still throws, which is the case the loud failure exists for.
+
+### Found on the way, not fixed
+
+- **The real pill's tooltip has a double period** -- `"…number format.. Right-click for more…"`. Verified
+  pre-existing on `main` (the clause ends in `.` and the right-click hint prepends `. `). Cosmetic, in a
+  tooltip, and outside this change's cause. Left alone deliberately rather than silently tidied.
+- **`.io-preview` is announced to nobody.** It has no label and no live region, so a screen-reader user
+  gets no signal that it updated. A naive `aria-live="polite"` is the wrong fix: these previews update on
+  **every keystroke**, and a polite region firing per keystroke is a known anti-pattern. Filed with that
+  reasoning, so the next reader finds an argument rather than an oversight.
