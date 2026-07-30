@@ -2615,10 +2615,13 @@ tap overlay dropped; the pencil made invisible on touch. **All ten red, UXP-276 
   make it wrap, so a future change cannot quietly reverse that and call it a phone fix.
 - **Letting the pill wrap.** `white-space:nowrap` is the capsule silhouette the design language
   specifies; wrapping mid-capsule needs a design-language decision, not a bug fix.
-- **The 44px touch targets.** 39 of 40 visible controls under the app's own floor (the row bullet is
+- **The 44px touch targets.** ~~39 of 40 visible controls under the app's own floor (the row bullet is
   22x30) is real and stands. That measurement was about *size*, so the scroll-container error does not
-  touch it, but it moves hit areas on the most-used control in the app. It stays in #1173 as the
-  remaining half.
+  touch it.~~ **Wrong, corrected by UXP-278.** It was about size, but it measured the wrong size: a
+  `getBoundingClientRect()` audit cannot see the invisible `::after` overlays this app meets the floor
+  with. Hit-tested, the figure is 12 of 34 rather than 33 of 34, every one already overlaid, and the
+  bullet is **32x46** rather than 22x30. 44 was never the app's stated floor either -- that is WCAG
+  2.2's 24px, which every control clears. #1173 item 3 is invalid.
 
 ### Found on the way, filed not fixed
 
@@ -2732,3 +2735,101 @@ Writing this change's rationale turned two tests red. The #1175 call-site pin sc
 of the count gate, which my comment quoted verbatim. Both fixed properly rather than by loosening the
 guards: the comments no longer embed literal matchable code, and the runner pin now reads the
 comment-stripped `NC` view so future prose about the old form cannot disarm it.
+
+---
+
+## UXP-278 -- the tap floor, computed instead of asserted present (#1173 item 3, INVALID)
+
+**Status: the reported defect does not exist. What ships is a guard and three corrections.**
+
+### The claim, and why it was wrong
+
+I filed #1173 item 3 as *"39 of 40 visible controls sit under the app's own 44px touch floor"*, with the
+row bullet at **22x30** and the variables-panel close button at **19x14** as the examples. Every part
+of that is a measurement artefact.
+
+The probe read `getBoundingClientRect()` on each control. **This app meets the floor with invisible
+`::after` overlays, which that method cannot see.** Re-measured by hit-testing outward from each
+control's centre with `elementFromPoint` (which does resolve an overlay to its owner), at 393x851 with
+`hasTouch`:
+
+| | count |
+|---|---|
+| under 44 by **painted box** | **33 / 34** -- the filed figure, reproduced |
+| under 44 by **hit area** | **12 / 34**, every one already overlaid, every one short on one axis only |
+
+| control | filed as | actual hit area |
+|---|---|---|
+| row bullet | 22 x 30 | **32 x 46** (`.bullet::after{inset:-7px -5px}`) |
+| Close variables panel | 19 x 14 | **65 x 58** (`.close-btn::after{inset:-10px}`) |
+
+The close button was worse than a bad method: I measured it **while the panel was closed**, parked
+off-screen by `transform:translateY(100%)`. Opened properly its hit area is 65x58 and tapping it closes
+the panel, on phone and on desktop.
+
+### The repo had already written down the mistake
+
+`UXP-248` fixed these hit areas and says, in its own words:
+
+> *"Measured by **HIT-TESTING, not by rect**: the guardrail explicitly allows an invisible `::after` to
+> extend a target past its visual box, so a raw-rect audit would have called the conformant `.bullet`
+> and `.cap-go` failures too."*
+
+It names `.bullet` as the control a rect audit would falsely flag. That is precisely the control I used
+as my headline example. **The warning was already in the register and I walked past it.**
+
+### The second wrong premise: 44 was never the app's floor
+
+The issue asserts *"the app uses 44px in 30 places including a min-height:44px, so this is its own
+floor, not an imported guideline."* Read out, most of those 30 are toolbar heights and layout offsets,
+not target-size rules. The floor this app actually **states and pins** is WCAG 2.2 / 2.5.8's **24px**
+(`const GRAPH_TAP_MIN = 24`, pinned as *"the floor must name WCAG 2.2 24px"*), and UXP-248's own title
+is *"the 24px tap floor holds..."*. 44 appears only as *"~44px"* in comments: an aspiration.
+
+Against the real floor, every control clears it. Against the aspiration, most land 26-40.
+
+### What actually was missing, and now ships
+
+Every overlay rule was pinned by a **source-pin** -- it proves the rule is *present*, not that the
+arithmetic *reaches* a floor. That is the "a source-pin proves presence, not behavior" gap `CLAUDE.md`
+names, on accessibility CSS.
+
+So: two test helpers (`parseInsetPx`, `hitExtent`) that expand a CSS `inset` shorthand like margin and
+compute the resulting hit area, plus a **registry** that parses each control's box and overlay out of
+the CSS and asserts the computed result. It carries, per control, the number it reaches and the REASON
+it stops there -- sourced from the code's own comments, not invented:
+
+| control | box | overlay | computed | why it stops there |
+|---|---|---|---|---|
+| `.est-edit` family | 26x26 | fixed 44x44 | **44 x 44** | the only control at 44 on both axes |
+| `.bullet` | h 30 | `inset:-7px -5px` | **h 44** | horizontal growth is modest ON PURPOSE, so it never steals chevron or text taps |
+| `.collapse-btn` | 24x30 | `inset:0 0 0 -6px` | **30 x 30** | grows LEFT and yields to the bullet, which reached back over it |
+| `.md-task-check` | 24x24 | pad 40x40 | **40 x 40** | #439: a native checkbox renders no pseudo-elements, so a sibling pad is the overlay |
+| `.ag-toggle` | h 22 | `inset:-4px 0` | **h 30** | its 22px height is pinned by the canon-chip test; vertical-only growth also stops it stealing a row neighbour |
+| `.bm-help` | 16x16 | `inset:-5px` | **26 x 26** | **no recorded reason** -- flagged, not fixed |
+
+Plus a ratchet on the sub-44 set (may shrink, never grow silently), and `.mt-rowh` at 22px recorded as
+the one control under even 24 -- with the note that it is a `cursor:grab` **drag handle**, so 2.5.8
+target size is arguably not the governing criterion, and it is on the record for a decision rather than
+left out of the audit.
+
+**Guard-proofed by seven mutations**, each asserting its target present first: the bullet overlay
+deleted (the helper throws rather than skipping); the bullet overlay shrunk; the chevron pushed under
+24; the pencil overlay taken off 44; `.ag-toggle` *improved* past 44 (the ratchet must force the count
+to be re-stated, not only catch regressions); the drag handle's width changed; the checkbox pad's size
+dropped. All seven red, and red on this guard specifically.
+
+### Stated limitation
+
+It computes the CSS **intent**, not contention. A neighbour's overlay winning the z-order shortens the
+real reach: driven, `.collapse-btn` measures 26 vertically against the 30 computed. Green here means
+"the rules add up", not "every finger lands". The comment says so.
+
+### Corrections this entry makes
+
+1. **UXP-276 said item 3 "survives the correction"** because it measured *size* not position. Wrong for
+   a different reason -- it measured the wrong size. Corrected there.
+2. **The #1173 comment made the same claim** and is corrected on the issue.
+3. **`user-research-2026-07-fleet2.md`** carried the 39/40 figure as a surviving finding. Corrected,
+   and the scrolling-ancestor error already recorded there now has a sibling: **a rect is not a hit
+   area.** All three items of #1173 were measurement errors of mine, in three different ways.
