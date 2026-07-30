@@ -21964,7 +21964,17 @@ function openInsertDialog(opts) {
     inp.id = _fid; lab.setAttribute('for', _fid);
     if (i === 0) inp.dataset.first = '1';
     inputs[f.key] = inp;
-    inp.addEventListener('input', validate);
+    // #1175: two fields that are ALTERNATIVES, not a pair (Decimal places vs Significant figures).
+    // Typing in one blanks the other, so the saved record only ever carries one and there is no
+    // hidden precedence for a user to discover. Declared on BOTH fields so it works either way.
+    // `inputs` is fully populated by the time any input event fires, so the partner always resolves.
+    inp.addEventListener('input', () => {
+      if (f.exclusiveWith && inp.value.trim() !== '') {
+        const other = inputs[f.exclusiveWith];
+        if (other && other.value !== '') { other.value = ''; }
+      }
+      validate();
+    });
     inp.addEventListener('keydown', e => {
       if (e.key !== 'Tab') e.stopPropagation();
       if (e.key === 'Escape') { e.preventDefault(); cancel(); }
@@ -26716,7 +26726,10 @@ function formatMathDisplay(v, expr, fmt) {
     // #983: the conversion default yields to an explicit per-pill decimals (#946) — that is the user
     // stating a precision. A fmt carrying only a prefix/suffix is not a precision, so it still gets
     // the default, and keeps its affixes.
-    : (isConvertExpr(expr) && !(fmt && Number.isInteger(fmt.decimals)))
+    // #1175: an explicit SIGFIGS is equally the user stating a precision, so it yields to that too.
+    // This is the lab-notebook case: convert(12.4, mg, g) defaults to 0.01240 (exactly 4 s.f.) and an
+    // author who says 3 s.f. gets 0.0124.
+    : (isConvertExpr(expr) && !(fmt && (Number.isInteger(fmt.decimals) || Number.isInteger(fmt.sigfigs))))
       ? (fmt?.prefix || '') + groupThousands(formatConvertResult(v)) + (fmt?.suffix || '')
     : formatNumDisplay(v, fmt);
 }
@@ -26752,6 +26765,12 @@ function formatNumDisplay(n, fmt) {
   let body;
   if (fmt && Number.isInteger(fmt.decimals) && fmt.decimals >= 0 && Math.abs(n) < 1e15) {
     body = n.toFixed(Math.min(fmt.decimals, 20));
+  } else if (fmt && Number.isInteger(fmt.sigfigs)) {
+    // #1175: SIGNIFICANT figures, the scale-independent sibling of decimals. Trailing zeros are KEPT
+    // (2.5 at 3 s.f. is "2.50") for the same reason an explicit decimals keeps them: the author asked
+    // for exactly that many, and in significant figures a trailing zero IS the precision claim.
+    body = n.toPrecision(fmt.sigfigs);
+    if (/e/i.test(body)) body = formatMathResult(n);   // an exponent is never shown to the user
   } else {
     body = formatMathResult(n);
   }
@@ -26759,10 +26778,21 @@ function formatNumDisplay(n, fmt) {
 }
 // Pure: build a lean fmt record from the math dialog's three text fields (or null when all blank),
 // so an ordinary math pill carries no fmt. Decimals must be a non-negative integer 0-20.
-function parseNumFmt(decimals, prefix, suffix) {
+// #1175: `sigfigs` is a 4th POSITIONAL param so the three existing 3-arg call shapes keep working
+// byte-identically. Significant figures and decimal places are alternatives, never a pair: the
+// dialogs blank one when the other is typed (`exclusiveWith`), so a record carries at most one.
+// If both somehow arrive, DECIMALS WINS and sigfigs is dropped, which preserves every record that
+// exists today. That branch is unreachable through the UI; it is belt-and-braces for an imported or
+// hand-edited OPML.
+function parseNumFmt(decimals, prefix, suffix, sigfigs) {
   const fmt = {};
   const d = String(decimals ?? '').trim();
   if (d !== '') { const n = Number(d); if (Number.isInteger(n) && n >= 0 && n <= 20) fmt.decimals = n; }
+  const sf = String(sigfigs ?? '').trim();
+  // 1..15: toPrecision accepts 1..100, but past ~15 digits a double is only reporting float noise.
+  if (sf !== '' && !Number.isInteger(fmt.decimals)) {
+    const n = Number(sf); if (Number.isInteger(n) && n >= 1 && n <= 15) fmt.sigfigs = n;
+  }
   const p = String(prefix ?? ''); if (p) fmt.prefix = p;
   const s = String(suffix ?? ''); if (s) fmt.suffix = s;
   return Object.keys(fmt).length ? fmt : null;
@@ -27175,10 +27205,17 @@ function sparkline(samples, buckets = 20) {
 function estNumFmt(x, fmt) {
   if (!Number.isFinite(x)) return x > 0 ? '∞' : x < 0 ? '-∞' : 'NaN';
   const a = Math.abs(x);
-  if (a !== 0 && a < 0.001) return (fmt?.prefix || '') + x.toPrecision(3) + (fmt?.suffix || '');
+  // #1175: this tiny-magnitude escape was ALREADY a significant-figures formatter with a hardcoded
+  // 3, so an explicit sigfigs simply supplies the number. That matters for the case the field exists
+  // for: a lab notebook lives below 0.001 routinely, and hardcoding 3 there would silently ignore
+  // the author exactly where they most meant it.
+  if (a !== 0 && a < 0.001)
+    return (fmt?.prefix || '') + x.toPrecision(Number.isInteger(fmt?.sigfigs) ? fmt.sigfigs : 3) + (fmt?.suffix || '');
   // An explicit decimals means the author asked for exactly that many, trailing zeros included --
   // that is what a money column wants. Hand it straight to the shared formatter.
-  if (fmt && Number.isInteger(fmt.decimals) && fmt.decimals >= 0) return formatNumDisplay(x, fmt);
+  // An explicit sigfigs is the same statement in the other unit, so it takes the same path (#1175).
+  if (fmt && ((Number.isInteger(fmt.decimals) && fmt.decimals >= 0) || Number.isInteger(fmt.sigfigs)))
+    return formatNumDisplay(x, fmt);
   // Otherwise keep the adaptive default AND its trailing-zero trim: `String(+x.toFixed(2))` is what
   // makes a small estimate read `5 (4.1 – 5.9)` rather than `5.00 (4.10 – 5.90)`. Routing this
   // through formatNumDisplay's decimals path lost the trim -- caught by re-measuring, not by the
@@ -27316,7 +27353,16 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
         label: 'Decimal places',
         value: (curFmt && Number.isInteger(curFmt.decimals)) ? String(curFmt.decimals) : '',
         placeholder: 'auto (e.g. 2 for money)',
+        exclusiveWith: 'sigfigs',
         hint: 'How many digits after the point. Blank rounds automatically; big numbers always group thousands.',
+      },
+      {
+        key: 'sigfigs',
+        label: 'Significant figures',
+        value: (curFmt && Number.isInteger(curFmt.sigfigs)) ? String(curFmt.sigfigs) : '',
+        placeholder: 'e.g. 3',
+        hint: 'Digits that count, ignoring leading zeros. Unlike decimal places it holds across scales: 3 gives 0.0124 and 1,240. An alternative to decimal places, not an addition.',
+        exclusiveWith: 'decimals',
       },
       {
         key: 'prefix',
@@ -27336,7 +27382,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
       const rec = makeEstRoll(v.expr, dlgVars);
       // #1115: attach the format, using the SAME parser the math dialog uses. A lean record or
       // nothing at all, so an ordinary estimate carries no fmt and round-trips unchanged.
-      if (rec) { const f = parseNumFmt(v.decimals, v.prefix, v.suffix); if (f) rec.fmt = f; }
+      if (rec) { const f = parseNumFmt(v.decimals, v.prefix, v.suffix, v.sigfigs); if (f) rec.fmt = f; }
       if (!rec) return;
       if (existing) rec.key = existing;
       onResult(rec);
@@ -28018,7 +28064,7 @@ const MATH_CHIPS = [
 function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, bare = false, fmt = null, onResult }) {
   // #946: assemble a fmt from the dialog's three format fields (or null) — thousands separators are
   // the default, so an ordinary pill needs none of these.
-  const fmtOf = all => all ? parseNumFmt(all.decimals, all.prefix, all.suffix) : null;
+  const fmtOf = all => all ? parseNumFmt(all.decimals, all.prefix, all.suffix, all.sigfigs) : null;
   openInsertDialog({
     icon: { fa:'fa-solid fa-calculator', fb:'🖩' },
     title,
@@ -28060,7 +28106,16 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         label: 'Decimal places',
         value: (fmt && Number.isInteger(fmt.decimals)) ? String(fmt.decimals) : '',
         placeholder: 'auto (e.g. 2 for money)',
+        exclusiveWith: 'sigfigs',
         hint: 'How many digits after the point. Blank rounds automatically; big numbers always group thousands.',
+      },
+      {
+        key: 'sigfigs',
+        label: 'Significant figures',
+        value: (fmt && Number.isInteger(fmt.sigfigs)) ? String(fmt.sigfigs) : '',
+        placeholder: 'e.g. 3',
+        hint: 'Digits that count, ignoring leading zeros. Unlike decimal places it holds across scales: 3 gives 0.0124 and 1,240. An alternative to decimal places, not an addition.',
+        exclusiveWith: 'decimals',
       },
       {
         key: 'prefix',
@@ -28082,7 +28137,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
       if (r === null) return;
       const roll = { key: existing || mathKey(), expr: v.expr, result: formatMathResult(r) };
       if (v.bare) roll.bare = true;   // absent unless on, so ordinary records stay lean
-      const f = parseNumFmt(v.decimals, v.prefix, v.suffix);
+      const f = parseNumFmt(v.decimals, v.prefix, v.suffix, v.sigfigs);
       if (f) roll.fmt = f;            // absent unless the user set a format
       onResult(roll);
     },
@@ -28106,17 +28161,26 @@ function openColFmtDialog(node, colIdx) {
         label: 'Decimal places',
         value: (cur && Number.isInteger(cur.decimals)) ? String(cur.decimals) : '',
         placeholder: 'auto (e.g. 2 for money)',
+        exclusiveWith: 'sigfigs',
         hint: 'How many digits after the point. Blank rounds automatically; numbers always group thousands.',
         // live sample so the format is visible before Apply (reads all three fields via `all`).
         preview: (v, all) => {
-          const f = parseNumFmt(all.decimals, all.prefix, all.suffix);
+          const f = parseNumFmt(all.decimals, all.prefix, all.suffix, all.sigfigs);
           return `<span class="io-preview">1200 reads <strong>${escHtml(formatNumDisplay(1200, f))}</strong></span>`;
         },
+      },
+      {
+        key: 'sigfigs',
+        label: 'Significant figures',
+        value: (cur && Number.isInteger(cur.sigfigs)) ? String(cur.sigfigs) : '',
+        placeholder: 'e.g. 3',
+        hint: 'Digits that count, ignoring leading zeros. Unlike decimal places it holds across scales: 3 gives 0.0124 and 1,240. An alternative to decimal places, not an addition.',
+        exclusiveWith: 'decimals',
       },
       { key: 'prefix', label: 'Prefix', value: (cur && cur.prefix) || '', placeholder: 'e.g. $' },
       { key: 'suffix', label: 'Suffix', value: (cur && cur.suffix) || '', placeholder: 'e.g. kg or %' },
     ],
-    onSubmit: v => mtSetColFmt(node, colIdx, parseNumFmt(v.decimals, v.prefix, v.suffix)),
+    onSubmit: v => mtSetColFmt(node, colIdx, parseNumFmt(v.decimals, v.prefix, v.suffix, v.sigfigs)),
   });
 }
 
@@ -37940,12 +38004,13 @@ const GUIDE = [
     ] },
   { id:'number-format', cat:'compute',
     title:'Formatting numbers',
-    body:"Show a calculation as money, a measurement or a percentage instead of a bare number: render a budget line as `$1,200.00`, a weight as `12 kg` or a rate as `8%`. Open the pill and set a format below the expression: Decimal places (2 for money), a Prefix like `$` and a Suffix like ` kg` or `%`. A live preview shows the result as you type.\n\nIn a base, a whole column can carry the same format. Mark the column as a Number (its menu, Show as, Number), then open the menu again and choose Number format to set decimals, a prefix and a suffix. Every cell in the column, and its Calculate total, reads in that format.\n\nBig numbers group their thousands on their own, so a total reads `840,000` with no setup. The format is display only, so the pill still computes at full precision and the value in your text stays plain; the formatting comes back the next time the pill renders. To hide the formula and show just the value, check Show value only in the same dialog.",
+    body:"Show a calculation as money, a measurement or a percentage instead of a bare number: render a budget line as `$1,200.00`, a weight as `12 kg` or a rate as `8%`. Open the pill and set a format below the expression: Decimal places (2 for money), Significant figures, a Prefix like `$` and a Suffix like ` kg` or `%`. A live preview shows the result as you type.\n\nDecimal places and Significant figures are alternatives, not a pair, so setting one clears the other. Decimal places counts digits after the point, which is what money wants. Significant figures counts the digits that carry meaning, ignoring leading zeros, and holds its meaning at any scale: 3 significant figures shows `0.0124` and `1,240`, where 3 decimal places would show `0.012` and `1,240.000`. Reach for it when your numbers span very different sizes, as measurements usually do.\n\nIn a base, a whole column can carry the same format. Mark the column as a Number (its menu, Show as, Number), then open the menu again and choose Number format to set decimals, a prefix and a suffix. Every cell in the column, and its Calculate total, reads in that format.\n\nBig numbers group their thousands on their own, so a total reads `840,000` with no setup. The format is display only, so the pill still computes at full precision and the value in your text stays plain; the formatting comes back the next time the pill renders. To hide the formula and show just the value, check Show value only in the same dialog.",
     related:['math','units'],
     examples:[
       { syn:'Decimal places: 2, Prefix: $', desc:'money reads $1,200.00' },
       { syn:'Suffix: kg',                   desc:'a measurement reads 12 kg' },
       { syn:'Suffix: %',                    desc:'a rate reads 8%' },
+      { syn:'Significant figures: 3',       desc:'holds across scales: 0.0124 and 1,240' },
     ] },
   { id:'units', cat:'compute', covers:['convert','units'],
     title:'Units & conversion',
