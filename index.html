@@ -4634,14 +4634,26 @@ function mathPrepassErrs(expr) {
   return typeof pre === 'string' && pre.includes('#ERR');
 }
 
-// #557: the prop name of the FIRST sum/avg rollup in `expr` whose scope matched ZERO values, or
-// null. A sum/avg of nothing is 0, pixel-identical to a genuine computed 0, so a pill pointed at
-// the wrong subtree (or a typo'd prop) shows a confident wrong number. count() is excluded (0 is
-// its honest answer) and min/max already return ±∞ (visibly not a plain 0). Pure; mirrors the
-// sum/avg parse in expandAggExpr so the detection and the computation agree on scope/depth.
-function firstEmptyRollup(expr, node) {
-  if (!expr || !/\b(?:sum|avg)\s*\(/.test(String(expr))) return null;
-  const re = /\b(?:sum|avg)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g;
+// #557: the prop name of the FIRST rollup in `expr` whose scope matched ZERO values, or null. A
+// sum/avg of nothing is 0, pixel-identical to a genuine computed 0, so a pill pointed at the wrong
+// subtree (or a typo'd prop) shows a confident wrong number. count() stays excluded in both modes:
+// 0 IS its honest answer.
+//
+// `opts.extrema` (#1171) additionally matches min/max, and exists because the two callers want
+// different answers:
+//   - DISPLAY (the math pill's cue) opts IN. The original reasoning for excluding min/max was that
+//     ±∞ is "visibly not a plain 0", so it needs no cue. Half true: a teacher in the 2026-07-29
+//     persona fleet put {= max(score)} on a sibling of her marks and read "Top mark -∞". It is
+//     visibly odd and tells her nothing to DO, while the cue names both causes. Visible is not the
+//     same as actionable.
+//   - CHECKS keep the default (false), so min/max over an empty scope stay VACUOUSLY TRUE, which is
+//     the standard convention and the recorded intent. Widening this for checks would silently turn
+//     `max(score) <= 100` from a pass into an error state, which is a semantic change, not a cue.
+// Pure; mirrors the parse in expandAggExpr so detection and computation agree on scope/depth.
+function firstEmptyRollup(expr, node, opts = {}) {
+  const fns = opts.extrema ? 'sum|avg|min|max' : 'sum|avg';
+  if (!expr || !new RegExp(`\\b(?:${fns})\\s*\\(`).test(String(expr))) return null;
+  const re = new RegExp(`\\b(?:${fns})\\s*\\(\\s*([A-Za-z_]\\w*)\\s*(?:,\\s*(self|children|subtree|\\d+)\\s*)?\\)`, 'g');
   let m;
   while ((m = re.exec(String(expr)))) {
     const prop = m[1];
@@ -4915,8 +4927,9 @@ function evalCheck(node, vars = {}, ancestors = []) {
   // #887: a sum/avg rollup that matched ZERO qualifying values must not vacuously pass. `sum(cost) <= budget`
   // with the cost line items nested one level too deep sums to 0, and `0 <= budget` reads as a confident green
   // ✓ on a blown budget (a guardrail that passes because it found nothing to check). Reuse the same
-  // firstEmptyRollup guard the math pill uses; it is bare-sum/avg-only, so min/max keep their deliberate ±∞
-  // vacuously-true empty case, count keeps 0 as its honest answer, and query reducers stay silent (SR-8).
+  // firstEmptyRollup guard the math pill uses, deliberately WITHOUT { extrema: true }: min/max keep their
+  // vacuously-true ±∞ empty case here (#1171 widened only the display cue, not check semantics), count
+  // keeps 0 as its honest answer, and query reducers stay silent (SR-8).
   if (firstEmptyRollup(raw, node)) return 'error';
   const expanded = expandAggExpr(raw, node, vars);   // vars: base.col column totals work in checks too
   // #461: own props → nearest ancestor → … → doc vars (resolveNodeScope). Callers that
@@ -27421,7 +27434,7 @@ function renderMathPill(key, m) {
   // (a pill placed as a sibling instead of a parent, or a typo'd prop). Surface it as a muted
   // "nothing matched" state with the prop name, instead of a confident wrong number. Display-only:
   // the computed value is unchanged; count() (honest 0) and min/max (±∞) are excluded by the core.
-  const emptyProp = firstEmptyRollup(m.expr, cookieNode);
+  const emptyProp = firstEmptyRollup(m.expr, cookieNode, { extrema: true });   // #1171: display cue covers min/max too
   if (emptyProp) {
     // If the rollup uses the DEFAULT (direct-children) scope, the props may simply sit deeper; a bare
     // rollup widens by depth (sum(cost, subtree)), NOT the query-only , document/, folder. Only suggest
