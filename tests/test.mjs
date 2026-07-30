@@ -11464,6 +11464,100 @@ test('UXP-237 countUnwrittenFnRefs: counts markers, and skips excluded subtrees'
   assert.equal(c.countUnwrittenFnRefs(null), 0);
 });
 
+test('#1142 countMirrorRefs: a solo caption-less link to a PARENT, and nothing else', () => {
+  // A caption-less [[#id|]] alone on a line transcludes the target's whole subtree on screen (up to
+  // 40 rows); every text export ships ONE line, the target's title. So a document assembled from
+  // mirrors exports as a table of contents, silently. #1111 fixed the link LAYER; this counts what
+  // the rows cost, so the toast can say it. The counter takes an injected lookup so it is testable
+  // DOM-free -- nodeById reads the live index, which does not exist in this realm.
+  const mk = (text, kids = [], extra = {}) => Object.assign(c.mkNode(text), extra, { children: kids });
+  const parent = mk('Chapter 3', [c.mkNode('Scene 1'), c.mkNode('Scene 2')]);
+  const leaf = mk('A leaf', []);
+  const byId = { p1: parent, l1: leaf };
+  const find = (id) => byId[id] || null;
+  const root = c.mkRoot();
+
+  root.children.push(mk('[[#p1|]]'));
+  assert.equal(c.countMirrorRefs(root, find), 1, 'a solo caption-less link to a parent IS a mirror');
+
+  // A LEAF target renders as a plain link, not a block -- counting it would over-report.
+  root.children.push(mk('[[#l1|]]'));
+  assert.equal(c.countMirrorRefs(root, find), 1, 'a caption-less link to a leaf is just a link');
+
+  // A CAPTION means the author wanted a reference, and the renderer agrees: no transclusion.
+  root.children.push(mk('[[#p1|see chapter three]]'));
+  assert.equal(c.countMirrorRefs(root, find), 1, 'a captioned link is a reference, never a mirror');
+
+  // NOT ALONE on the line: the render gate requires the token to be the whole line.
+  root.children.push(mk('as in [[#p1|]] above'));
+  assert.equal(c.countMirrorRefs(root, find), 1, 'a token mid-sentence does not transclude');
+
+  // A DEAD target cannot transclude anything, so it costs no rows.
+  root.children.push(mk('[[#gone|]]'));
+  assert.equal(c.countMirrorRefs(root, find), 1, 'an unresolvable target is not a mirror');
+
+  // Second real mirror, and one on its own line INSIDE a multi-line point (the gate is per LINE).
+  root.children.push(mk('intro\n[[#p1|]]\noutro'));
+  assert.equal(c.countMirrorRefs(root, find), 2, 'the gate is per line, so a solo line inside a point counts');
+
+  // noexport, like both sibling counters: it was never going to be exported, so it did not change.
+  const scaffold = mk('Scaffolding', [mk('[[#p1|]]')], { noexport: true });
+  root.children.push(scaffold);
+  assert.equal(c.countMirrorRefs(root, find), 2, 'a noexport subtree must not inflate the count');
+
+  // nested under a KEPT point does count
+  root.children[0].children = [mk('[[#p1|]]')];
+  assert.equal(c.countMirrorRefs(root, find), 3);
+
+  // a clean tree reports nothing, so the toast keeps its original wording
+  assert.equal(c.countMirrorRefs(c.mkRoot(), find), 0);
+  assert.equal(c.countMirrorRefs(null, find), 0);
+});
+
+test('#1142 exportedNote reports mirrors on BOTH text exports, and the Web page keeps them', () => {
+  // NOT flat-gated, unlike the link sentence. A mirror flattens to its target's title in markdown
+  // exactly as in plain text -- #1111 fixed the link layer, not the transcluded rows -- so gating it
+  // on the plain-text door would leave the markdown export silently lossy, which is the whole defect.
+  const src = _src;
+  const note = fnBody(src, 'exportedNote');
+  assert.ok(/const mr = countMirrorRefs\(rootNode, findNode\);/.test(note),
+    'the note must count mirrors with NO `flat` gate');
+
+  // BEHAVIOURAL, not source. The source pins below were all green against a mutation that computed
+  // the count and then never used it (`if (false)`), which is exactly the pin-that-cannot-fail case.
+  // So assert the OUTPUT, on a real tree, with the lookup injected.
+  const parent = Object.assign(c.mkNode('Chapter 3'), { children: [c.mkNode('Scene 1'), c.mkNode('Scene 2')] });
+  const find = (id) => (id === 'p1' ? parent : null);
+  const tree = c.mkRoot();
+  tree.children.push(c.mkNode('[[#p1|]]'), c.mkNode('[[#p1|]]'));
+  assert.match(c.exportedNote(tree, false, find), /2 mirrored sections exported as a title line, not the rows/,
+    'the MARKDOWN export says it too — gating this on plain text was the defect');
+  assert.match(c.exportedNote(tree, true, find), /2 mirrored sections/, 'and so does plain text');
+  assert.match(c.exportedNote(tree, false, find), /Export Web page to keep them/, 'naming the format that keeps them');
+  // Singular, and silence when there is nothing to report (the common export is untouched).
+  const one = c.mkRoot(); one.children.push(c.mkNode('[[#p1|]]'));
+  assert.match(c.exportedNote(one, false, find), /1 mirrored section exported/, 'singular reads correctly');
+  assert.equal(c.exportedNote(c.mkRoot(), false, find), '', 'a clean tree keeps the toast exactly as it was');
+  assert.equal(c.exportedNote(c.mkRoot(), true, find), '', 'in both formats');
+  assert.ok(!/flat \? countMirrorRefs|countMirrorRefs\(rootNode, flat/.test(note),
+    'gating it on plain text would leave the markdown export silently lossy');
+  assert.ok(/mirrored section\$\{mr === 1 \? '' : 's'\} exported as a title line/.test(note),
+    'it names what was lost: the rows, not the reference');
+  assert.ok(/Export Web page to keep them/.test(note),
+    'and names the format that keeps them — the HTML export round-trips the token and re-transcludes');
+  // The counter is reached from both doors, because both call exportedNote.
+  assert.ok(/exportMarkdown\(\)[\s\S]{0,220}exportedNote\(root\)/.test(src), 'markdown door reports');
+  assert.ok(/exportPlainText\(\)[\s\S]{0,240}exportedNote\(root, true\)/.test(src), 'plain-text door reports');
+  // The regex the counter uses IS the render gate's own test, so the count cannot drift from what
+  // actually transcludes. Both must be the same literal.
+  assert.ok(src.includes(String.raw`const MIRROR_LINE_RE = /^\s*\[\[[a-z0-9]*#[a-z0-9]+\|\]\]\s*$/i;`),
+    'the gate regex is ONE shared constant');
+  assert.equal((src.match(/MIRROR_LINE_RE/g) || []).length, 4,
+    'declared once, used by the renderer and the counter, named in one comment — no fourth copy');
+  assert.ok(/_mirrorBlockLine = !_mirrorBlockSuppress && MIRROR_LINE_RE\.test\(s\)/.test(src),
+    'and the RENDERER uses that same constant — two copies could drift, which is the whole risk');
+});
+
 test('UXP-237 both text exports drop the marker; the definition line still appears', () => {
   const n = Object.assign(c.mkNode('A dangling one[^ghost] and a real one[^ok].'), {
     footnotes: [{ key: 'ok', text: 'the actual note' }, { key: 'ghost', text: '' }],
@@ -12344,7 +12438,12 @@ test('#917 mirrorSubtreeRows — flattens descendants in document order, capped,
 
 test('#917 wiring — solo-line gate, block branch in both pills, ancestor repaint (src pins)', () => {
   // the gate is stamped per line at mdInline entry and suppressed in cell renders
-  assert.ok(_src.includes('_mirrorBlockLine = !_mirrorBlockSuppress && /'), 'mdInline must stamp the block gate per line');
+  // REWRITTEN by #1142: the gate's regex moved into the shared MIRROR_LINE_RE constant, because the
+  // export counter needs the SAME test and two copies could drift -- a drifted count would be a
+  // confident lie about a file the author is about to send someone. The claim is unchanged: mdInline
+  // still stamps the gate per line, and still respects the cell-render suppression.
+  assert.ok(_src.includes('_mirrorBlockLine = !_mirrorBlockSuppress && MIRROR_LINE_RE.test(s)'),
+    'mdInline must stamp the block gate per line, via the shared constant');
   assert.ok(/_mirrorBlockSuppress = true;.*#917/.test(_src), 'mtInline must suppress the block form in cells');
   // both pill renderers read the gate BEFORE rendering (renderNodeInline re-stamps it) and share the body builder
   const rlp = fnBody(_src, 'renderLinkPill');

@@ -7187,6 +7187,11 @@ let _inlineDocId = null;   // non-null only while rendering a FOREIGN doc's node
 // `total` counts every visible-eligible descendant (the walk keeps counting past the cap so
 // the "+N more" footer is honest); `clipped` says the cap bit.
 const MIRROR_ROW_CAP = 40;
+// #1142: the one test for "this line IS a mirror" -- a caption-less link, alone on its line. Shared by
+// the RENDERER (_mirrorBlockLine, below) and by countMirrorRefs, which tells the export toast how many
+// transclusions flattened to a title. Two copies of this could drift, and the count would then be a
+// confident lie about a file the author is about to send someone.
+const MIRROR_LINE_RE = /^\s*\[\[[a-z0-9]*#[a-z0-9]+\|\]\]\s*$/i;
 function mirrorSubtreeRows(node, cap = MIRROR_ROW_CAP) {
   const rows = []; let total = 0;
   const walk = (n, d) => {
@@ -7392,7 +7397,7 @@ function mdInline(s) {
   // [[docId#id|]], nothing else), so the mirror may render the target's subtree as a block.
   // Stamped per mdInline call (each line stamps its own value; the pill renderer reads it
   // before recursing, see renderLinkPill). Suppressed wholesale in cell contexts (mtInline).
-  _mirrorBlockLine = !_mirrorBlockSuppress && /^\s*\[\[[a-z0-9]*#[a-z0-9]+\|\]\]\s*$/i.test(s);
+  _mirrorBlockLine = !_mirrorBlockSuppress && MIRROR_LINE_RE.test(s);
   // Fast-path: the vast majority of table cells are plain text with no special characters.
   // If none of the inline-markdown trigger characters are present, the escaped string is
   // already the correct output — all the substitution passes below would be no-ops.
@@ -33361,12 +33366,23 @@ function downloadText(content, ext, mime, nameOverride) {
 // #1111: `flat` is set by the plain-text door, the one format that still dissolves links, so the
 // sentence is only ever claimed by the export that actually does it. Markdown keeps its links now
 // and says nothing extra.
-function exportedNote(rootNode, flat) {
+// #1142: `findNode` is threaded only so the mirror count is TESTABLE DOM-free -- countMirrorRefs
+// resolves a link target, and nodeById reads the live index, which does not exist in plain Node. Both
+// app call sites omit it and get the real index. Without this the only possible pin was a source pin,
+// and a source pin on this function proved nothing: a mutation that computed the count and then never
+// used it passed green, which is the "pin that cannot fail" case #1133 exists for. Caught by mutation.
+function exportedNote(rootNode, flat, findNode) {
   const parts = [];
   const n = countUnwrittenFnRefs(rootNode);
   if (n) parts.push(`${n} unwritten footnote${n === 1 ? '' : 's'} dropped.`);
   const l = flat ? countExportLinks(rootNode) : 0;
   if (l) parts.push(`${l} link${l === 1 ? '' : 's'} flattened to plain words. Export Markdown or Web page to keep them.`);
+  // #1142: BOTH text exports, unlike the link sentence above. A mirror flattens to its target's title
+  // in markdown exactly as it does in plain text -- #1111 fixed the link LAYER, not the transcluded
+  // rows -- so this is not `flat`-gated. The Web page export is unaffected: it round-trips the token
+  // and re-transcludes live, which is why that is the format named as keeping everything.
+  const mr = countMirrorRefs(rootNode, findNode);
+  if (mr) parts.push(`${mr} mirrored section${mr === 1 ? '' : 's'} exported as a title line, not the rows. Export Web page to keep them.`);
   // the leading period closes the file name: without it the toast runs on as
   // `Exported a copy: “notes.md” 2 unwritten footnotes dropped.`
   return parts.length ? '. ' + parts.join(' ') : '';
@@ -33995,6 +34011,44 @@ function countExportLinks(rootNode) {
       inStr(c.note);
       for (const p of (c.props || [])) inStr(p.val);
       for (const f of (c.footnotes || [])) inStr(f.text);
+      walk(c);
+    }
+  })(rootNode || { children: [] });
+  return n;
+}
+
+// #1142: how many MIRRORS a text export will flatten to a single title line, so the toast can say so.
+//
+// A caption-less `[[#id|]]` alone on a line transcludes the target's whole subtree on screen (up to
+// MIRROR_ROW_CAP = 40 rows). Every text export ships ONE line: the target's title. So a document
+// assembled from mirrors -- a reasonable way to build a manuscript or a review from parts -- exports
+// as a table of contents rather than the thing the author was looking at, silently.
+//
+// The owner's call was NOT to inline the transclusion. Inlining trades one silent loss for another:
+// the same subtree mirrored twice duplicates in the file, and the 40-row cap becomes an INVISIBLE
+// truncation inside a document. #1111 already made the exported reference record where it pointed, so
+// the reference is honest; what was missing is that the rows are gone. Do the lossy thing and report
+// it -- the UXP-237 shape, verbatim, and the same one countExportLinks uses.
+//
+// MIRROR_LINE_RE is the render gate's own test (see renderNodeInline's `_mirrorBlockLine`), kept in
+// one place so the counter cannot drift from what actually transcludes. The `children.length` half
+// matters: a caption-less link to a LEAF is just a link, and counting it would over-report.
+//
+// Skips `noexport` like both siblings: a mirror inside an excluded subtree was never going to be
+// exported, so counting it would over-report what changed.
+function countMirrorRefs(rootNode, findNode) {
+  const find = findNode || ((id) => nodeById(id));
+  let n = 0;
+  (function walk(node) {
+    for (const c of (node?.children || [])) {
+      if (c.noexport) continue;
+      for (const line of String(c.text || '').split('\n')) {
+        const m = MIRROR_LINE_RE.exec(line);
+        if (!m) continue;
+        const id = (line.match(/#([a-z0-9]+)\|/i) || [])[1];
+        const tn = id ? find(id) : null;
+        if (tn && (tn.children || []).length > 0) n++;
+      }
       walk(c);
     }
   })(rootNode || { children: [] });
