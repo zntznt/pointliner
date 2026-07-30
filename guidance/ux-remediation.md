@@ -3052,3 +3052,71 @@ an unresolvable *identifier* still throws, which is the case the loud failure ex
   gets no signal that it updated. A naive `aria-live="polite"` is the wrong fix: these previews update on
   **every keystroke**, and a polite region firing per keystroke is a known anti-pattern. Filed with that
   reasoning, so the next reader finds an argument rather than an oversight.
+
+---
+
+## UXP-281 -- dialog previews are named, and deliberately do not announce (#1184)
+
+**Status: FIXED (the naming half). The announcement half is a recorded decision, not an oversight.**
+
+A preview exists to answer *"what will this do"* before you commit. That answer was delivered visually
+only: `openInsertDialog` built each one as a bare `<div class="io-preview">` with no role and no name,
+so a screen-reader user met it as loose text after the field, across ~12 dialogs.
+
+### The owner's call: label it, do not announce it
+
+The obvious one-line fix -- `aria-live="polite"` -- is **wrong here**, and that is the substance of the
+decision rather than a footnote. These previews re-render on **every keystroke**; #1178 made that the
+point, so a preview tracks the whole form as you type. A polite live region on a per-keystroke target
+produces a stream of interruptions that trained users switch off, trading silence for noise.
+
+So: **naming ships, announcing does not.** Announce-on-settle (debounced, ~700ms) is the better answer
+and remains open, but it is new machinery whose interval is a taste call that wants measuring against
+real screen-reader behaviour rather than picked. Recorded here so the next reader meets an argument.
+
+### `role="group"` is load-bearing, and this is why it was measured
+
+A bare `<div>` maps to role **`generic`**, and ARIA-in-HTML **prohibits naming on generic** -- an
+`aria-label` there is spec-invalid and inconsistently exposed. `group` supports a name and carries no
+live semantics, which is exactly the requirement.
+
+**Measured before assuming, and the measurement argued against the shortcut:** in Chromium a bare
+`<div aria-label="...">` *does* surface as `{role: "generic", name: "..."}`. One engine exposing it is
+not support, and shipping on that would have been a source-pin's worth of confidence in a behaviour
+that varies across AT. `group` resolves correctly and is spec-valid.
+
+### Driven, in the real accessibility tree
+
+Not the DOM attribute -- `page.accessibility.snapshot()`, which is what AT actually consumes:
+
+| dialog | accessible node |
+|---|---|
+| math | `{role: group, name: "Preview: Expression"}` |
+| estimate | `{role: group, name: "Preview: Uncertain value"}` |
+| variables (**hand-built**, not through the runner) | `{role: group, name: "Preview: Value (optional)"}` |
+| calendar (**four previews**) | `"Preview: Months, one per line"`, `"Preview: Week"`, `"Preview: Era, optional"`, `"Preview: Today in this world"` |
+
+The calendar row is why the name includes the **field** rather than a bare "Preview": four identically
+named groups in one dialog would be worse than none. The name says where the preview *sits* -- it may
+reflect sibling fields too (#1178), so it is not a claim about which single input it reads.
+
+**Two creation sites, not one.** `openVarDialog` builds its fields by hand rather than through the
+descriptor runner, so it needed the same treatment or it would have stayed the one silent preview in
+the app. The guard freezes the count at two.
+
+### Also tidied, because the naming made it matter
+
+`openColFmtDialog`'s callback returned `<span class="io-preview">` **inside** the div that already
+carries the class -- so `.io-preview` appeared twice in one subtree. Visually harmless (the div's
+`margin-top`/`min-height` do not apply to an inline span), but it would make the named group ambiguous
+to read and leave a selector-based guard unable to tell the two apart. #1184 flagged it; removed here.
+
+### Guard-proofed
+
+Seven mutations, each asserting its target present first (#1133): the role dropped (leaving a
+spec-invalid name on a generic); the name dropped from the runner; the hand-built dialog left unnamed
+(the partial fix); `aria-live` bolted on; `role="status"` used instead, which *implies* a live region;
+the class re-nested; and a **third** unnamed preview site added. All seven red.
+
+The negative assertions read the comment-stripped `NC` view, per the generalisation UXP-280 made -- this
+change's own comment quotes every attribute it forbids.

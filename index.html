@@ -22012,6 +22012,25 @@ function openInsertDialog(opts) {
     wrap.append(lab, inp);
     if (f.preview) {
       const prev = document.createElement('div'); prev.className = 'io-preview';
+      // #1184: NAMED, not announced. A preview answers "what will this do", and that answer was
+      // delivered visually only -- the div had no name and no role, so a screen-reader user met it as
+      // loose text after the field.
+      //
+      // `role="group"` is load-bearing, not decoration. A bare <div> maps to role `generic`, and
+      // ARIA-in-HTML PROHIBITS naming on generic, so an aria-label there is spec-invalid and
+      // inconsistently exposed. (Chromium happens to surface it -- measured -- which is exactly why
+      // this needed checking rather than assuming.) `group` supports a name and carries no live
+      // semantics, which is the requirement.
+      //
+      // NO aria-live, deliberately. These previews re-render on EVERY keystroke (#1178 made that the
+      // point, so the preview tracks the whole form), and a polite region on a per-keystroke target
+      // is a stream of interruptions users switch off. Announce-on-settle is the better answer and a
+      // separate decision; naming is the free, strictly-better half. Recorded in UXP-281.
+      //
+      // The name says where the preview SITS. It may reflect sibling fields too (#1178), so it is not
+      // a claim about which single input it reads.
+      prev.setAttribute('role', 'group');
+      prev.setAttribute('aria-label', 'Preview: ' + f.label);
       const updatePrev = () => {
         const all = {}; for (const k in inputs) all[k] = inputs[k].type === 'checkbox' ? inputs[k].checked : inputs[k].value;
         prev.innerHTML = f.preview(inp.value, all);
@@ -28270,7 +28289,11 @@ function openColFmtDialog(node, colIdx) {
         // live sample so the format is visible before Apply (reads all three fields via `all`).
         preview: (v, all) => {
           const f = parseNumFmt(all.decimals, all.prefix, all.suffix, all.sigfigs);
-          return `<span class="io-preview">1200 reads <strong>${escHtml(formatNumDisplay(1200, f))}</strong></span>`;
+          // #1184: the class is NOT repeated here. This span renders INSIDE the div that already
+          // carries it, so `.io-preview` appeared twice in one subtree -- visually harmless (the
+          // div's margin-top/min-height do not apply to an inline span) but it would make the named
+          // group above ambiguous to read, and a selector-based guard cannot tell the two apart.
+          return `<span>1200 reads <strong>${escHtml(formatNumDisplay(1200, f))}</strong></span>`;
         },
       },
       {
@@ -28406,7 +28429,11 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   const exprInp  = document.createElement('input'); exprInp.type = 'text';
   exprInp.placeholder = 'e.g. 5, 2*pi, sqrt(16); leave blank to just display';
   exprInp.value = expr; exprInp.spellcheck = false; exprInp.autocomplete = 'off';
+  // #1184: this dialog builds its fields by hand rather than through openInsertDialog's descriptors,
+  // so it needs the same naming applied here or it stays the one unlabelled preview in the app.
   const prev = document.createElement('div'); prev.className = 'io-preview';
+  prev.setAttribute('role', 'group');
+  prev.setAttribute('aria-label', 'Preview: ' + exprLab.textContent);
   const updatePrev = () => {
     const v = exprInp.value.trim(); if (!v) { prev.innerHTML = ''; return; }
     if (mode === 'pick') {

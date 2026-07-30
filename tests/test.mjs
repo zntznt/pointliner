@@ -7436,6 +7436,37 @@ test('regression: formula-only variables are untouched by the pick branch', () =
         `a preview callback (via ${cb.via}) emits a button; nothing in a preview is ever wired`);
   });
 
+  test('#1184 every dialog preview is NAMED, and none of them announces', () => {
+    // A preview answers "what will this do", and that answer was visual only: the div had no role and
+    // no name, so a screen-reader user met it as loose text after the field. Owner's call was to LABEL
+    // it and stop there (UXP-281); announce-on-settle stays a separate decision.
+    const NCsrc = NC;   // comment-stripped: this change's own comment quotes the attributes below
+    const sites = [...NCsrc.matchAll(/className = 'io-preview';/g)];
+    assert.equal(sites.length, 2,
+      `two places create a preview div -- openInsertDialog's shared runner and openVarDialog's ` +
+      `hand-built form. Found ${sites.length}: a new one must be named here too, or it ships silent.`);
+    // Both set the role AND the name. `role="group"` is not decoration: a bare <div> maps to role
+    // `generic`, and ARIA-in-HTML PROHIBITS naming on generic, so aria-label there is spec-invalid and
+    // inconsistently exposed. Measured in Chromium's a11y tree: a bare div DID surface the name, which
+    // is precisely why this was checked rather than assumed -- one engine is not support.
+    assert.equal((NCsrc.match(/prev\.setAttribute\('role', 'group'\)/g) || []).length, 2,
+      'both previews take a role that permits a name');
+    assert.equal((NCsrc.match(/prev\.setAttribute\('aria-label', 'Preview: '/g) || []).length, 2,
+      'and both are named "Preview: <field>" -- the field disambiguates the calendar dialog\'s four');
+    // THE DECISION, pinned as a negative. These previews re-render on EVERY keystroke (#1178), so a
+    // polite live region would be a stream of interruptions rather than help. If a future change wants
+    // announcement it must be debounced-on-settle and must revisit UXP-281, not bolt aria-live on.
+    const runner = fnBody(NCsrc, 'openInsertDialog');
+    assert.ok(!/prev\.setAttribute\('aria-live'|role', 'status'|role', 'alert'/.test(runner),
+      'no live region on a per-keystroke preview -- that is the decision UXP-281 records');
+    assert.ok(!/io-preview[^\n]*aria-live/.test(NCsrc), 'and none is declared in markup either');
+    // The class must not be nested inside itself: openColFmtDialog's callback used to return a
+    // <span class="io-preview"> INSIDE the div that already carries it, which would make the named
+    // group ambiguous to read and a selector-based guard unable to tell the two apart.
+    assert.ok(!/<span class="io-preview">/.test(NCsrc),
+      'a preview callback must not re-declare the class inside the div that already has it');
+  });
+
   test('#1175 every fmt door offers the field, and the two are exclusive (#1133 call sites)', () => {
     // A record with a field one dialog can set and another cannot is a P1 break, so all THREE must
     // offer it. A tested core proves nothing about whether the dialogs pass it.
