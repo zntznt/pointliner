@@ -271,6 +271,23 @@ contents. Generation, computation, live state, and bending structure, all in one
 document that thinks along. (The same demo in its native habitat is the first case in
 `guide/solo-rpg/`.)
 
+**What a brand-new user actually meets first is not this demo (2026-07-30, #1192).** For a while it
+was: a fresh boot loaded the tour, so the thirty-second atom *was* the first screen. Six of six
+panelists nearly left inside those thirty seconds. Reaching a live pill fast is not the problem the
+first screen has to solve; being recognizable is. So the front door is now a **Welcome chooser**: a
+line saying what the app is and that the file is yours, then a handful of everyday domain starters,
+plus explicit blank and "poke a live example" picks. One click lands the user in a working document
+in their own domain, where the atom is everywhere and already doing something they care about.
+
+This section stays exactly as written, because it is still the right demo — it is what to show a
+person, in the order to show it. It is just no longer what the app shows *unasked*. Note which beat
+the panel actually responded to: **propagation** (change one cost, watch the total, the remainder and
+the check all move) landed with everyone, including the two who never want a number. The die did not.
+If the three minutes have to be cut to one, cut to propagation.
+
+Per **§3c**, the chooser is an invitation and not a gate: Escape, the backdrop and Close all land on
+the blank canvas with the caret ready, there is no re-nag, and nothing is held back behind a pick.
+
 ## 8. Questions held honestly (open, resolved, or dissolved — never papered over)
 
 **8a. The chronicle/lore/custom-calendar set — substrate review DONE + RATIFIED (IA-4,

@@ -18101,8 +18101,20 @@ test('DIAL: LEAN is the keyboard canvas — blind menu shows a one-line match ti
   assert.ok(_src.includes('body.v-lean .dice-edit:focus-visible') && _src.includes('opacity:1}   /* keyboard focus still reveals (P3) */'), 'lean must still reveal a pencil on keyboard focus (P3)');
 });
 
-// IA-2 (perception hypothesis): the first cue leads with the atom
-test('first-run atom: the entry hint and the tour intro lead with a live pill (IA-2)', () => {
+// IA-2 (perception hypothesis): the first cue leads with the atom.
+//
+// #1192 SUPERSEDES the first half of this pin's claim, and says so rather than deleting it. UXP-269
+// concluded "the fix is framing, not ordering, and IA-2 is left standing", and asked that any later
+// divergence be argued instead of made silently. This is the argument: the copy-only fix shipped,
+// and the 2026-07-30 panel then bounced 6 of 6 on the SAME screen. So the tour is no longer the
+// first screen at all. A fresh boot opens the Welcome chooser (see the #1192 pins below), and the
+// tour is one pick inside it.
+//
+// What survives unchanged is the claim about the tour DOCUMENT: whenever it is opened, it still
+// leads with framing and then hands over a clickable atom. Both assertions below are therefore
+// still live and still guard the tour's own copy. Only their scope shrank: they no longer describe
+// what a stranger meets first, because the chooser does.
+test('the tour document still frames before it hands over the atom (IA-2, scope narrowed by #1192)', () => {
   // item 2 (modes batch): the Guided entry cue is the owner's simpler four-move wording; it still
   // cues the { pill atom (no longer spelled out as {2d6}; the tour intro below still hands that over).
   assert.ok(_src.includes("isGuided() ? 'Write, format with /, insert with @, or make a live pill with {'"),
@@ -18127,12 +18139,120 @@ test('first-run atom: the entry hint and the tour intro lead with a live pill (I
   const framing = 'Every point here is ordinary text.';
   assert.ok(intro.includes(framing), 'the tour must open by saying what a point is before demonstrating a trick');
   assert.ok(intro.indexOf(framing) < intro.indexOf('Click this: {2d6}'),
-    'the framing line must come BEFORE the die, or the die is still the first thing a stranger reads');
+    'the framing line must come BEFORE the die, or the die is the first thing a reader of the tour meets');
   // it names capabilities that are not tabletop, in the words of what the tour goes on to show
   // (the budget total, the album range, the stuck-project draw) — IA-3: speak in problems a
   // stranger recognizes, never "your text is alive".
   for (const cue of ['total a list', 'hold a range instead of a fake number', 'pick something at random'])
     assert.ok(intro.includes(cue), `the framing line must name a concrete capability: ${cue}`);
+});
+
+// ─── #1192/#1193: the first-run front door is a chooser, not a forced demo ─────────────────────
+//
+// The 2026-07-30 panel bounced 6 of 6 within thirty seconds of the forced tour, and the STARTERS
+// gallery that answers "someone has to build the machine first" was invisible until they found a
+// banner button. A fresh boot now opens a blank document with the Welcome chooser over it.
+test('#1192 first run opens the Welcome chooser over a blank document, not the forced tour', () => {
+  const fn = fnBody(_src, 'maybeShowFirstRun');
+  // returning users are untouched — the early return still comes before any first-run work
+  assert.match(fn, /if \(_restoredFromAutosave \|\| loadedFromEmbed\) return;/,
+    'a restored autosave or a shared snapshot must still short-circuit first-run entirely');
+  assert.ok(fn.includes('openStarterGallery({ welcome: true })'), 'a fresh boot opens the Welcome chooser');
+  assert.ok(fn.includes('adoptDoc(mkRoot('), 'over a BLANK document, not the tour');
+  // The tour is no longer force-adopted here at all. This is the assertion that goes red if anyone
+  // restores the pre-#1192 front door.
+  assert.ok(!fn.includes('fromOpml(FIRST_RUN_EXAMPLES)'),
+    'maybeShowFirstRun must not adopt the tour OPML any more — it is a pick in the chooser now');
+  // ORDER is load-bearing, and was DRIVEN: mkRoot carries docId null, so adoptDoc mints one and
+  // calls scheduleAutosave. _welcomeOpen must already be up for that gate to catch it, otherwise a
+  // first run nobody touched persists itself and the chooser never returns.
+  assert.ok(fn.indexOf('openStarterGallery({ welcome: true })') < fn.indexOf('adoptDoc(mkRoot('),
+    'the chooser must open BEFORE the blank adopt, or that adopt schedules an autosave nothing suppresses');
+  // and a throw can never strand a first-run user on a doorless blank screen
+  assert.ok(fn.includes('showExamplesDoc()'), 'the catch falls back to the pre-chooser tour path');
+});
+
+test('#1192 the chooser gate suppresses autosave and the boot caret, and every exit lifts it', () => {
+  // The gate is _welcomeOpen, deliberately NOT _showingExamples. markDirty clears that one on ANY
+  // mutation by design, including the internal ones building a blank document performs (render mints
+  // the first empty point via createChildModel; the next render blurs it via commitActiveEdit).
+  // DRIVEN both times: piggy-backing on it left the flag false by the end of boot, which put the
+  // caret in the document BEHIND the modal and left Escape dead — the #1021 dead-handler shape,
+  // which a source-pin alone would have called shipped.
+  assert.ok(/var _welcomeOpen = false;/.test(_src),
+    '_welcomeOpen must be a hoisted var: closeIo and adoptDoc are declared far above it and both run during the boot restore (#854 rule)');
+  assert.match(fnBody(_src, 'scheduleAutosave'), /if \(_welcomeOpen\) return;/,
+    'an untouched first run must not persist while the chooser is up');
+  // Anchored to the line start, not a bare includes(): commenting the statement out still contains
+  // the substring, so the loose form stayed green through a revert that genuinely broke the gate.
+  assert.match(fnBody(_src, 'closeIo'), /\n  _welcomeOpen = false;/,
+    'every close lifts the gate, so the document the user picked starts autosaving');
+  assert.ok(fnBody(_src, 'openStarterGallery').includes('_welcomeOpen = welcome;'),
+    'welcome mode raises the gate; the ordinary gallery lowers it');
+  // the boot rAF must not steal focus into the document behind the modal
+  const bootFocus = between(_src, 'if (autosaveRestoreFailed) flashError', 'const blankDoc =');
+  assert.ok(bootFocus.includes('if (_welcomeOpen) return;'),
+    'the boot focus pass must skip the document while the chooser owns focus');
+  // the blank-canvas invite must not paint behind a modal already offering those same two doors
+  assert.ok(_src.includes('_showingExamples || _welcomeOpen, _blankInviteDismissed'),
+    'syncBlankInvite treats an open chooser as first-run');
+  // a saved document rehydrating async takes the chooser down with it
+  assert.ok(fnBody(_src, 'adoptDoc').includes('if (_welcomeOpen) closeIo();'),
+    'adopting a real doc (workspace/single-file reopen) must close the chooser');
+  assert.ok(_src.includes('if (_welcomeOpen) closeIo();   // #1192: nor may the first-run Welcome chooser outlive the real doc'),
+    'the OPFS boot reconcile must close it too (it restores via applyAutosaveData, not adoptDoc)');
+});
+
+test('#1192 the chooser leads with everyday domains, then blank and the tour, every row a named button', () => {
+  const fn = fnBody(_src, 'openStarterGallery');
+  // The identity line: what it is, what to do, and the ownership fact. §3c — show, do not sell.
+  // The ownership half is what reached the two panelists who never want a number at all.
+  assert.ok(fn.includes('Notes that compute.'), 'the welcome leads with what the app is');
+  assert.ok(fn.includes('Your file, offline, no account.'), 'and states the ownership fact');
+  // Quick picks: real starter ids, everyday domains leading, the origin present but never the
+  // majority (IA-8). nonEmpty, or a broken regex would make the whole loop pass vacuously.
+  const ids = nonEmpty(between(_src, 'const WELCOME_QUICK_PICKS = [', '];').match(/'[^']+'/g) || [], 'WELCOME_QUICK_PICKS')
+    .map(s => s.slice(1, -1));
+  for (const id of ids) assert.ok(_fStarters.includes(`id: '${id}'`), `quick pick ${id} must name a real starter`);
+  const origin = ids.filter(id => ['campaign-oracle', 'oracle-play', 'character-sheet'].includes(id));
+  assert.equal(origin.length, 1, 'IA-8: the origin is present among the quick picks...');
+  assert.ok(origin.length * 2 < ids.length, '...and never the majority of them');
+  // leading with them hides nothing: the rest of the gallery follows underneath
+  assert.ok(fn.includes('quick.concat(STARTERS.filter('), 'the quick picks lead, the full gallery follows');
+  // The two non-starter doors, wired to the loaders that already exist (no new loading path).
+  assert.ok(fn.includes('closeIo(); startBlankOutline();'), 'a blank door');
+  assert.ok(fn.includes('closeIo(); showExamplesDoc();'), 'and the tour, as a pick rather than the default');
+  // A starter pick lifts the pristine gate BEFORE the additive insert. insertStarterSubtree appends
+  // to the current root rather than adopting, so nothing downstream would clear _showingExamples and
+  // the domain the user just chose would never autosave.
+  assert.match(fn, /_showingExamples = false; hideExamplesBanner\(\); closeIo\(\); insertStarterSubtree\(/,
+    'a starter pick must clear the first-run gate before inserting');
+  // P3: named rows, a named card, focus in on open and back out on close.
+  assert.ok(fn.includes("pick.setAttribute('aria-label', aria)"), 'every pick carries an accessible name');
+  assert.ok(fn.includes("ioCard.setAttribute('aria-label', title)"), 'the card names itself (welcome vs gallery)');
+  assert.ok(fn.includes('ioReturnFocus = document.activeElement'), 'focus returns to where it came from on close');
+  assert.match(fn, /requestAnimationFrame\(\(\) => \{ \(ioCard\.querySelector\('\.tpl-pick'\) \|\| closeBtn\)\.focus\(\); \}\)/,
+    'focus moves into the chooser on open');
+  // §3c: Escape, the backdrop and the Close button share ONE dismissal, so none can become a wall.
+  assert.ok(fn.includes('const dismiss = welcome ? dismissWelcome : closeIo;') && fn.includes('ioCancel = dismiss;'),
+    'Escape, the backdrop and Close must route through the same handler');
+  const dw = fnBody(_src, 'dismissWelcome');
+  assert.ok(dw.includes('closeIo();') && dw.includes('render();'),
+    'dismissing closes and repaints, so the blank-canvas invite offers the doors again (P2)');
+  assert.ok(dw.includes('if (!IS_TOUCH && flatRows.length) focusNode(flatRows[0].node.id);'),
+    'and lands the caret in the first point on desktop, so the user can simply start writing');
+});
+
+test('#1192 showExamplesDoc keeps the tour path intact (pristine, non-persisting, with its own door)', () => {
+  const fn = fnBody(_src, 'showExamplesDoc');
+  assert.ok(fn.includes('fromOpml(FIRST_RUN_EXAMPLES)'), 'it loads the tour');
+  assert.ok(fn.includes('_showingExamples = true;'), 'as the pristine non-persisting doc (UXP-126)');
+  assert.ok(fn.indexOf('_showingExamples = true;') < fn.indexOf('adoptDoc('),
+    'the gate goes up BEFORE adoptDoc, or the adopt schedules an autosave for a doc nobody chose');
+  assert.ok(fn.includes('showExamplesBanner();'), 'and carries its own Start-blank door');
+  // The boot tail no longer paints that banner: it belongs to the one path that shows the tour.
+  assert.ok(!_src.includes('if (_showingExamples) showExamplesBanner();'),
+    'the boot tail must not paint the examples banner — first run is blank now, and the banner would describe nothing');
 });
 
 // #1117: the tour never mentioned the link layer at all, which is the second persona's actual gap.

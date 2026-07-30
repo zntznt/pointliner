@@ -59,6 +59,19 @@ first live pill; (2) the tour intro described the atom but its first paragraph h
 (the illustrative `{curly-brace}` is not one), so it now carries a real `{2d6}` (`Here is one now,
 click it: {2d6}`). Both browser-verified; source-pinned.
 
+**Restated 2026-07-30 (#1192, UXP-285): the contract is now "a domain in one click, the atom one
+pick in".** The measure IA-2 was written around — seconds and keystrokes to a live pill — turned out
+to be the wrong thing to optimize alone. It was satisfied (the atom was a click away on a forced
+first screen) while a six-person panel bounced 6 of 6 inside thirty seconds, because reaching a live
+pill fast does not help a stranger who cannot see why the pill is for *them*. A fresh boot now opens
+a Welcome chooser; picking a domain lands the user in a document full of live pills, so the atom
+arrives one pick in rather than zero clicks in, and it arrives inside work they recognize.
+
+The atom-forward requirement itself is unchanged and still pinned wherever the tour is shown: its
+intro still frames before it hands over the clickable `{2d6}`, and the blank-canvas entry hint still
+cues `{`. What changed is that the first screen is no longer the tour, so IA-2 no longer describes
+what a stranger meets first. It describes what they meet **after** they have chosen a domain.
+
 **Tested from the other side, 2026-07-29 (#1117 / UXP-269):** a later persona pass hit IA-2's fix
 from the opposite direction. Two of six readers met the atom-first opening and concluded the app was
 tabletop software. Measured on a fresh boot at 1280x800, the first screen held **13 points: four
@@ -200,6 +213,11 @@ the finding, like IA-3 and IA-4, is that the menu is already loyal.
   proposal cites this item and dies.)
 - **IA-8 · The starter gallery stays identity-mixed.** Verified mixed today (7 general /
   3 RPG). New starters keep roughly that shape: the origin present, never the majority.
+  **Extended 2026-07-30 (#1192):** the rule now binds the Welcome chooser's quick-picks row too,
+  and binds it harder, because that row is the whole first screen for a brand-new user. Five
+  everyday domains lead, with exactly **one** origin starter (Campaign oracle) among the six. Pinned
+  as a ratio rather than a list, so adding a starter cannot quietly tip the front door back toward
+  the origin. The full gallery still follows underneath the quick picks, unreordered.
 - **IA-9 · New domain-shaped features pass the substrate test BEFORE shipping** (§9.2) —
   the question is asked in the proposal, not retrofitted like IA-4.
 

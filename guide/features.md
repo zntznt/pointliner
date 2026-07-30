@@ -300,6 +300,11 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   trip planner with a calendar view, a decision helper, a study and flashcards page, a home
   inventory, and a worldbuilding and writing kit). Click any pill inside to play, then delete it when
   you are done. More worked examples live in the [solo RPG guides](solo-rpg/README.md).
+- **A front door on the very first run.** The first time you open Pointliner, a short welcome offers
+  the same examples as one-click starting points, plus a blank document and a live guided tour. Pick
+  one and you land in a working document in that domain, with every pill already live. Close it (or
+  press `Escape`) and you get the blank canvas instead, ready to type. It appears only on a genuinely
+  first run: once you have a document, reopening goes straight back to your work.
 - **All commands.** One searchable window over every point command, generator, calculation and
   pill. Open it from the toolbar (the checklist button), with `Ctrl/Cmd+K`, or by typing `/builder`
   (in Guided mode, `/`, `@` or `{` open it too). Type to filter, arrow to browse, Enter to insert; the
