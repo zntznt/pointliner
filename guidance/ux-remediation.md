@@ -2507,8 +2507,15 @@ carries the reason, so a future reader sees a decision.
 Driving a lab-scale estimate showed `{0.00212 to 0.00294}` rendering as **`≈0 (0 – 0)`**. Confirmed
 pre-existing on `main`: `estNumFmt(0.00253, null)` is `"0"` there too, because the adaptive default
 does `String(+x.toFixed(2))`. That is a default change and therefore not this PR's business, but it
-is the same "silent, correct-but-useless" theme, so it is filed. Pinned here in both directions: the
-default still collapses, and `{sigfigs: 3}` recovers `0.00253`.
+is the same "silent, correct-but-useless" theme, so it belongs in its own issue. Pinned here in both
+directions: the default still collapses, and `{sigfigs: 3}` recovers `0.00253`.
+
+**Correction (2026-07-30):** this section originally said "so it is filed", and it was not. No issue
+existed; I wrote the sentence and never opened one. Now filed as **#1177**, with the threshold
+detail the sentence above gets slightly wrong -- `toFixed(2)` starts losing everything at 0.005, not
+at the 0.001 where `estNumFmt`'s existing tiny-magnitude escape fires, and `0.00253` falls in that
+gap. Recorded rather than quietly edited, because "filed separately" in a register is a claim the
+next reader will act on.
 
 ---
 
