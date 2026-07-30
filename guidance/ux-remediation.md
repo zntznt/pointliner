@@ -3208,3 +3208,84 @@ removed. All red.
   because my assertion matched `tools/build-fa-subset.py` **anywhere in the file** and it also appears
   in the workflow's own header comment. The same comment trap as UXP-280, in a new costume -- a
   file-wide match where a scoped one was meant. Now reads the `paths:` list via `between(...)`.
+
+---
+
+## UXP-283 -- the sequence IS the status vocabulary (#1148)
+
+**Status: FIXED, and the fence stays shut.** Owner's call on #1148: **option A** -- the declared
+sequence is the vocabulary, so the missing piece is discovery, not a value-set.
+
+### The measurement that located the gap
+
+The issue framed this as "nothing tells you which values are intended." Driven on the planner's own
+setup, it is sharper and smaller than that:
+
+| status column holds | inferred role |
+|---|---|
+| `IN_PROGRESS`, `DONE` | `status` |
+| `IN_PROGRESS`, `in progress` | `status` (#1114's `normStateKey` folds it) |
+| `IN_PROGRESS`, **`blocked`** | **`null`** |
+| `blocked`, `stuck` | `null` |
+| `IN_PROGRESS`, `` (empty) | `status` |
+
+**One unknown value collapses the whole column to no role.** And `showCellEditorPop` -- the chip picker
+that lists the sequence's states -- only renders for a column whose role IS `status`. So the affordance
+that would have shown the author the vocabulary appears only once the column is already entirely valid:
+**discovery was gated on having already discovered.**
+
+### What was actually missing
+
+#1114's refusal already named the offending values and taught the fix. What it did not know is **what
+vocabulary already exists**. With `{seq Flow: TODO IN_PROGRESS | DONE}` declared and one stray
+`blocked`, it still said *"Declare them once, like {seq Flow: TODO IN_PROGRESS | DONE}"* -- telling the
+author to do the thing they had already done. The same not-followable shape #1114 was written to fix,
+one layer in.
+
+So `boardBlockReason` takes a 5th **positional, optional** parameter (`seqs`), and when a real sequence
+is declared it names that one instead of the generic example:
+
+> before "Status" holds values that are not states yet: "in progress", "blocked". Declare them once,
+> like {seq Flow: TODO IN_PROGRESS | DONE}, then mark the column.
+>
+> after  "Status" holds values that are not states yet: "blocked". **Flow offers TODO, IN_PROGRESS,
+> DONE. Use one of those, or add it to that sequence.**
+
+Two details that are measurements rather than taste:
+- **Which sequence gets named:** the declared one covering the most of the column's values. A measure,
+  not a guess; ties fall to the first declared.
+- **The DEFAULT `To-do` sequence is never named** as "the vocabulary". Nobody declared it, so pointing
+  at it would be unfollowable advice in a new costume -- the exact failure being fixed. With nothing
+  declared, the generic example is correct and stays.
+
+### Why this stays inside the §0.5 fence
+
+`base-views-vision.md` §0.5 defers a status role that *"offers its known values **and** constrains the
+editor"*, noting its value-set *"needs a `knownStates`-style collected cache."*
+
+This change hits none of that. It **offers and never constrains**: no editor is gated, nothing is
+rejected, every value keeps landing exactly as before. It **invents no cache**: `knownStates()` and
+`collectSequences()` already exist and already feed the inference. And it adds **no data model** -- the
+vocabulary is a sequence the author wrote in their own document.
+
+Freeform still wins (`product-identity.md` §3b): typing a new value works, lands and shows. It just now
+gets told what else is on offer. A pin asserts the message never says *not allowed / invalid / must be
+one of / rejected*, so a future edit cannot quietly turn the offer into a gate.
+
+### Driven, end to end
+
+Acceptance is **following the advice**, not reading it: with `Flow` declared and a stray `blocked`, the
+message names Flow's states; adding `BLOCKED` to the sequence makes the column infer as `status` and
+**Board opens**. The unchanged fallback still fires when nothing is declared.
+
+### Guard-proofed
+
+Seven mutations, each asserting its target present first (#1133): the `seqs` argument dropped at the
+call site; the default sequence allowed to be named; the first declared picked instead of the
+best-covering; the generic example forced always; the state list dropped from the message; the plural
+agreement dropped; and the offer reworded as a constraint. All seven red -- the last one is the fence
+guard, and it is the one worth keeping.
+
+One existing pin was **updated rather than loosened**: #1114's call-site assertion named the exact
+4-argument call. It now names the 5-argument one, because the point of that line is that the gate hands
+the core everything it needs to be specific.

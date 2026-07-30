@@ -17258,6 +17258,43 @@ test('#1114 boardBlockReason — the refusal names WHICH half is missing', () =>
   assert.match(his.msg, /not states yet/);
   assert.match(his.msg, /in progress/, 'it names the values it could not place');
   assert.match(his.msg, /\{seq /, 'and names the in-fence fix: declare them');
+  // #1148: with NO sequence declared, the generic example is right -- there is no vocabulary to name.
+  assert.equal(his.seqNamed, null, 'nothing declared, so nothing to point at');
+
+  // #1148: THE SEQUENCE IS THE VOCABULARY. Once the author HAS declared one, the generic example is
+  // the wrong advice -- it tells them to do a thing they have already done. Measured on the planner's
+  // own setup: one unknown value collapses the column to no role, so the chip picker that would have
+  // shown him the vocabulary never appears. Discovery was gated on having already discovered.
+  const flow = { key: 'flow', name: 'Flow', states: ['TODO', 'IN_PROGRESS', 'DONE'] };
+  const seqs = [{ key: 'default', name: 'To-do', states: ['TODO', 'NEXT', 'WAITING', 'DONE'] }, flow];
+  const wide = new Set([...states, 'IN_PROGRESS']);
+  const withSeq = c.boardBlockReason(['Task', 'Status'], -1, ['in progress', 'blocked'], wide, seqs);
+  assert.equal(withSeq.reason, 'unknown-values');
+  assert.equal(withSeq.seqNamed, 'Flow', 'it names the sequence the author is evidently using');
+  assert.match(withSeq.msg, /“blocked”/, 'still names what it could not place');
+  assert.doesNotMatch(withSeq.msg, /“in progress”/,
+    'and NOT the value that already matches — normStateKey folds it onto IN_PROGRESS (#1114)');
+  assert.match(withSeq.msg, /Flow offers TODO, IN_PROGRESS, DONE/, 'it spells out the vocabulary that exists');
+  assert.match(withSeq.msg, /add it to that sequence/, 'and the way to widen it');
+  assert.doesNotMatch(withSeq.msg, /\{seq /,
+    'the generic example must NOT appear once a real sequence can be named — that is the whole fix');
+  // Plural reads correctly, and the sequence chosen is the one covering the MOST of the column's
+  // values (a measure, not a guess): Ops matches nothing here, Flow matches one, so Flow wins.
+  const ops = { key: 'ops', name: 'Ops', states: ['OPEN', 'SHIPPED'] };
+  const two = c.boardBlockReason(['Task', 'Status'], -1, ['IN_PROGRESS', 'blocked', 'stuck'], wide, [seqs[0], ops, flow]);
+  assert.equal(two.seqNamed, 'Flow', 'the sequence covering the most of the column wins');
+  assert.match(two.msg, /add them to that sequence/, 'plural when more than one value fell outside');
+  // The DEFAULT sequence is never named as "the vocabulary": nobody declared it, so pointing at it
+  // would be the same not-followable advice in a new costume.
+  const onlyDefault = c.boardBlockReason(['Task', 'Status'], -1, ['blocked'], states, [seqs[0]]);
+  assert.equal(onlyDefault.seqNamed, null, 'the built-in To-do sequence is not a declared vocabulary');
+  assert.match(onlyDefault.msg, /\{seq /, 'so it falls back to teaching how to declare one');
+  // Nothing is REJECTED anywhere in here: this offers a vocabulary, it never constrains an editor.
+  // That is what keeps it inside the base-views-vision §0.5 fence (which defers a role that offers
+  // its values AND constrains the editor, needing a new value-set cache -- none of which is here).
+  for (const m of [withSeq.msg, two.msg, onlyDefault.msg])
+    assert.doesNotMatch(m, /not allowed|invalid|must be one of|rejected/i,
+      'the cue offers and never forbids — freeform still wins (product-identity §3b)');
   // named but never marked - the role is what counts, not the header text
   const named = c.boardBlockReason(['Task', 'Status'], -1, ['TODO', 'DONE'], states);
   assert.equal(named.reason, 'named-not-marked');
@@ -17306,8 +17343,11 @@ test('#1114 /TODO selects the STATE, like its three siblings', () => {
 
 test('#1114 the wiring: the gate consults the reason, and the tooltip names its door', () => {
   const sv = fnBody(_src, 'mtSetView');
-  assert.match(sv, /flashHint\(boardBlockReason\(hdr, gi, cells, knownStates\(\)\)\.msg\)/,
-    'the board gate must ask WHICH half is missing, not repeat one message');
+  // #1148 widened this call: the refusal now also receives the DECLARED sequences, so it can name the
+  // vocabulary this document already has instead of a generic example. Updated rather than loosened --
+  // the point of the line is that the gate passes everything the core needs to be specific.
+  assert.match(sv, /flashHint\(boardBlockReason\(hdr, gi, cells, knownStates\(\), allSequences\(\)\)\.msg\)/,
+    'the board gate must ask WHICH half is missing, and hand over the declared sequences to say so');
   assert.match(sv, /\/\^\(status\|state\)\$\/i/, 'and find the named column to ask about');
   // the dimmed button is what a user reads FIRST, and often the only thing they read
   assert.match(fnBody(_src, 'mtViewSwitcherHtml'), /Mark a column as Status to use Board \(Column menu, Show as\)/,
