@@ -19,7 +19,7 @@ is those five.
 | **Rosa** | keyboard-only (RSI, no mouse at all); today Emacs org-mode | **Yes**, and she can reach everything, but the toolbar costs her 12+ tabs before the document |
 | **Lin** | postdoc keeping a lab notebook; today a paper notebook + Excel | **Alongside**, for reasoning and rough numbers; not for recorded results |
 | **Adeyemi** | secondary teacher building revision material; today Word + a worksheet generator | **Maybe.** Hit a wrong number on her first real formula |
-| **Tobi** | phone-first note-taker on the bus; today Google Keep | **No, not on a phone.** Typing works; the app around it is desktop-shaped |
+| **Tobi** | phone-first note-taker on the bus; today Google Keep | ~~**No, not on a phone.**~~ **Verdict retracted.** Both halves of it were my measurement errors (UXP-276 fixed one real 393px overflow; UXP-278 found the touch-target half never existed). The app was more phone-usable than this fleet reported |
 
 ## What they liked
 
@@ -103,12 +103,19 @@ Tobi could type — tapping a point focuses it, the on-screen keyboard works, an
   button count. Acting on my recommendation would have reversed a recorded decision to fix a
   non-problem. **Any future overflow claim in this file should be read as suspect unless it names the
   scrolling-ancestor exclusion.**
-- **39 of 40 visible controls sit under the app's own 44px touch floor.** The row's "Point actions"
-  bullet is **22x30**; a variables-panel close button is **19x14**. Confirmed identical across three
-  device configurations, all of which do take the app's touch path
-  (`matchMedia('(hover:none) and (pointer:coarse)')` is true in each). **This one survives the
-  correction** — it measures *size*, not position, so the scroll-container error does not touch it.
-  Still open as the remaining half of #1173.
+- ~~**39 of 40 visible controls sit under the app's own 44px touch floor.** The row's "Point actions"
+  bullet is **22x30**; a variables-panel close button is **19x14**.~~ **ALSO WRONG** (#1173 item 3,
+  corrected by UXP-278), and I made it worse by writing "this one survives the correction" above.
+  It measures *size*, but the wrong size: `getBoundingClientRect()` cannot see the invisible `::after`
+  overlays this app meets the floor with. Hit-tested with `elementFromPoint`, the bullet is **32x46**
+  and the close button **65x58** — and that second number was taken with the panel **closed**, parked
+  off-screen by `transform:translateY(100%)`, so it was not even the right element state. The real
+  figure is 12 of 34, every one already overlaid and short on one axis only, with the caps documented
+  as deliberate anti-tap-stealing decisions. 44 is not the app's floor either: that is WCAG 2.2's 24px,
+  which every control clears.
+  **`UXP-248` had already written this exact warning down** — *"Measured by HIT-TESTING, not by rect …
+  a raw-rect audit would have called the conformant `.bullet` … failures too"* — naming the very
+  control I used as my example.
 
 The first fleet already named mobile as the platform ceiling and Alex's #1 ask. This is the measured
 version of it: the gap is not sync, it is that the layout and hit targets never had a phone pass.
@@ -162,9 +169,10 @@ about the numbers, not where she would keep them.
   toolbar into the outline.
 
 **Frontier (weigh against `product-identity.md` first):**
-- **A phone pass**: the *overflow* half shipped as UXP-276, so what remains is **touch targets that
-  meet the app's own 44px floor**. Note this is layout work, not the sync/storage question the first
-  fleet raised; they are separable, and this half is entirely within the app.
+- ~~**A phone pass**~~ **DONE, and the rest was never broken.** The overflow half shipped as UXP-276;
+  the touch-target half was a measurement error (UXP-278). Both halves of Tobi's verdict came from my
+  instrument, not the app. What survives is that the app *is* usable on a phone and I could not tell,
+  which is a lesson about the probe rather than a backlog item.
 - **Self-testing / hide-the-answer as a first-class thing** (Adeyemi). The spoiler already does the
   mechanism (`>! Lima` blurs and reveals) but it is framed for spoilers, not revision. She would
   want to hide every answer in a subtree at once and reveal them one at a time.
@@ -191,6 +199,13 @@ Recorded so the next reader can trust or discount the numbers:
   artifacts of `isMobile` and `deviceScaleFactor`, **not** app behaviour — every wide element has
   `min-width: 0` and simply fills whatever it is given. The finding that survives is the 606px
   content floor, which reproduces as sideways scroll whenever the layout viewport is genuinely 393.
+- **A fourth error, and the worst, because the repo had already warned about it (UXP-278): a rect is
+  not a hit area.** `getBoundingClientRect()` cannot see an invisible `::after` overlay, which is how
+  this app meets its tap floor. `UXP-248` says so explicitly and names `.bullet` as the control a rect
+  audit would falsely flag; `.bullet` was my headline example. I also measured the variables-panel close
+  button **while the panel was closed**, parked off-screen by a transform, so that number was not even
+  the right element state. **Measure a tap target by hit-testing, and check the element is in the state
+  you think it is in.**
 - **A third error of mine, found only when the fix was attempted (UXP-276): my overflow probe did not
   exclude scrolling ancestors.** `getBoundingClientRect().right > innerWidth` is true for anything
   scrolled out of view inside an `overflow-x:auto` container, which is normal behaviour, not overflow.

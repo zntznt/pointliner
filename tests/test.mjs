@@ -18934,6 +18934,141 @@ test('UXP-248 the 24px tap floor holds for the shared controls the enlargement p
     'the sibling fix this one was modelled on must still be present');
 });
 
+// ── #1173 / UXP-278: the tap floor, COMPUTED rather than asserted present ────────────────────────
+// UXP-248 fixed the hit areas and pinned each rule's presence. A source-pin proves the rule is
+// there, not that the arithmetic reaches the floor — the gap CLAUDE.md names. These two helpers do
+// the arithmetic, so a future edit that keeps the rule but shrinks the result fails.
+
+// A CSS `inset` shorthand, expanded like margin (1-4 values). A NEGATIVE inset on an absolutely
+// positioned overlay grows it OUTSIDE its host, which is the whole enlargement mechanism.
+function parseInsetPx(s) {
+  const parts = String(s).trim().split(/\s+/).map(v => {
+    const m = /^(-?[\d.]+)px$/.exec(v);
+    if (v === '0') return 0;
+    if (!m) throw new Error(`parseInsetPx: not a px value: ${JSON.stringify(v)} in ${JSON.stringify(s)}`);
+    return parseFloat(m[1]);
+  });
+  if (!parts.length || parts.length > 4) throw new Error(`parseInsetPx: ${parts.length} values in ${JSON.stringify(s)}`);
+  const [a, b = a, c = a, d = b] = parts;
+  return { top: a, right: b, bottom: c, left: d };
+}
+
+// The hit area a control actually offers. `overlay` is either {inset} (grows the host's box) or
+// {w,h} (a fixed-size overlay, which wins on whichever axis it declares). Returns null when the
+// box is unknown on an axis, so a caller can never quietly compare against undefined.
+function hitExtent(box, overlay) {
+  const out = { w: box.w ?? null, h: box.h ?? null };
+  if (overlay && (overlay.w != null || overlay.h != null)) {
+    if (overlay.w != null) out.w = Math.max(out.w ?? 0, overlay.w);
+    if (overlay.h != null) out.h = Math.max(out.h ?? 0, overlay.h);
+    return out;
+  }
+  if (overlay && overlay.inset != null) {
+    const s = parseInsetPx(overlay.inset);
+    if (out.w != null) out.w -= s.left + s.right;     // negative insets grow
+    if (out.h != null) out.h -= s.top + s.bottom;
+  }
+  return out;
+}
+
+test('#1173 the tap floor is COMPUTED from the CSS, and the sub-44 controls are on the record', () => {
+  // First, the arithmetic itself, seeded — a helper that mis-expands the shorthand would make every
+  // assertion below meaningless in the passing direction.
+  assert.deepEqual(parseInsetPx('-10px'), { top: -10, right: -10, bottom: -10, left: -10 });
+  assert.deepEqual(parseInsetPx('-7px -5px'), { top: -7, right: -5, bottom: -7, left: -5 });
+  assert.deepEqual(parseInsetPx('0 0 0 -6px'), { top: 0, right: 0, bottom: 0, left: -6 });
+  assert.deepEqual(parseInsetPx('-8px 0 -8px -4px'), { top: -8, right: 0, bottom: -8, left: -4 });
+  assert.throws(() => parseInsetPx('-8px -4em'), /not a px value/, 'a non-px value must throw, not coerce');
+  assert.deepEqual(hitExtent({ w: 24, h: 30 }, { inset: '0 0 0 -6px' }), { w: 30, h: 30 });
+  assert.deepEqual(hitExtent({ w: 26, h: 26 }, { w: 44, h: 44 }), { w: 44, h: 44 });
+  assert.deepEqual(hitExtent({ w: null, h: 30 }, { inset: '-7px -5px' }), { w: null, h: 44 },
+    'an unknown axis stays null rather than becoming NaN and comparing false');
+
+  const TOUCH = between(_src, '/* ── touch devices: surface hover-only affordances + grow tap targets ── */', '\n}\n');
+  // Pull the box and the overlay out of the CSS rather than hand-copying either, so the numbers
+  // cannot go stale independently of the rules they describe.
+  // `scope` lets a control whose BOX lives in the base CSS (.bm-help, .ag-toggle) be read too,
+  // while its overlay comes from the touch block. Throws when the rule is gone, so a renamed
+  // control fails loudly instead of computing against null.
+  const declared = (sel, prop, scope = TOUCH) => {
+    const re = new RegExp(`(?:^|\\n)\\s*(?:[^\\n{]*,)?${sel.replace(/[.#*+?^$()|[\\]\\\\]/g, '\\\\$&')}(?:,[^\\n{]*)?\\{([^}]*)\\}`);
+    const m = re.exec(scope);
+    if (!m) throw new Error(`no rule declaring ${prop} for ${sel}`);
+    const v = new RegExp(`(?:^|[;\\s])${prop}:(-?[\\d.]+)px`).exec(m[1]);
+    return v ? parseFloat(v[1]) : null;
+  };
+  const overlayInset = (sel) => {
+    const re = new RegExp(`(?:^|\\n|,)\\s*${sel.replace(/[.]/g, '\\.')}::(?:after|before)[^{]*\\{([^}]*)\\}`);
+    const m = re.exec(TOUCH);
+    if (!m) throw new Error(`no overlay rule for ${sel}`);
+    const ins = /inset:([^;}]+)/.exec(m[1]);
+    if (ins) return { inset: ins[1].trim() };
+    const w = /(?:^|[;\s])width:([\d.]+)px/.exec(m[1]), h = /(?:^|[;\s])height:([\d.]+)px/.exec(m[1]);
+    if (w || h) return { w: w ? parseFloat(w[1]) : null, h: h ? parseFloat(h[1]) : null };
+    throw new Error(`overlay for ${sel} declares neither an inset nor a size`);
+  };
+
+  // The registry. `floor` is what this control actually reaches, and every entry under 44 carries
+  // the REASON, sourced from the code's own comments rather than invented. This is a ratchet, not a
+  // proof: it detects a new sub-floor control and a shrinking hit area, and the list may shrink but
+  // never grow silently. Stating that limitation is the #1132 precedent.
+  const R = [
+    { sel: '.bullet', box: { w: null, h: declared('.bullet', 'height') }, ov: overlayInset('.bullet'),
+      want: { h: 44 }, why: 'reaches 44 vertically; horizontal growth stays modest ON PURPOSE so it never steals collapse-chevron or text taps' },
+    { sel: '.est-edit', box: { w: declared('.est-edit', 'width'), h: declared('.est-edit', 'height') }, ov: overlayInset('.est-edit'),
+      want: { w: 44, h: 44 }, why: 'the only control at 44 on BOTH axes: a fixed 44x44 overlay, biased right, away from the re-roll body' },
+    { sel: '.collapse-btn', box: { w: declared('.collapse-btn', 'width'), h: declared('.collapse-btn', 'height') },
+      ov: overlayInset('.collapse-btn'), want: { w: 30, h: 30 },
+      why: 'grows LEFT only and yields to the bullet, which reached back over it; contesting the same pixels is worse than 30' },
+    { sel: '.md-task-check', box: { w: declared('.md-task-check', 'width'), h: declared('.md-task-check', 'height') },
+      ov: { w: declared('.md-task-pad', 'width'), h: declared('.md-task-pad', 'height') }, want: { w: 40, h: 40 },
+      why: '#439: the 24px box was the WHOLE target. A native checkbox renders no pseudo-elements, so a positioned sibling pad is the overlay, sized to sit over the checkbox zone' },
+    { sel: '.ag-toggle', box: { w: null, h: declared('.ag-toggle', 'height', _src) }, ov: overlayInset('.ag-toggle'), want: { h: 30 },
+      why: 'its 22px height is pinned by the canon-chip test, so growing the box would trade an accessibility fix for a design regression; vertical-only growth also stops a wider target stealing its row neighbour' },
+    { sel: '.bm-help', box: { w: declared('.bm-help', 'width', _src), h: declared('.bm-help', 'height', _src) },
+      ov: overlayInset('.bm-help'), want: { w: 26, h: 26 }, why: 'no recorded reason for stopping at 26 — flagged, not fixed here' },
+  ];
+
+  const WCAG_MIN = 24;      // WCAG 2.2 / 2.5.8, the floor this app actually states (GRAPH_TAP_MIN = 24)
+  const ASPIRE = 44;        // the "~44px" the touch block's comments reach for; NOT a stated rule
+  const under44 = [];
+  for (const r of nonEmpty(R, 'the touch hit-area registry')) {
+    const got = hitExtent(r.box, r.ov);
+    for (const ax of ['w', 'h']) {
+      if (r.want[ax] == null) continue;
+      assert.equal(got[ax], r.want[ax],
+        `${r.sel} hit ${ax} computes to ${got[ax]}, registry says ${r.want[ax]} — the CSS moved, so re-measure and update the reason, do not just bump the number`);
+      assert.ok(got[ax] >= WCAG_MIN,
+        `${r.sel} hit ${ax} is ${got[ax]}, under the WCAG 2.2 ${WCAG_MIN}px floor this app pins for the graph`);
+      if (got[ax] < ASPIRE) under44.push(`${r.sel}.${ax}=${got[ax]}`);
+    }
+    assert.ok(r.why && r.why.length > 30, `${r.sel} must carry a reason for the size it lands on`);
+  }
+  // The ratchet. Frozen because it is the honest state, not because it is the desired one.
+  assert.equal(under44.length, 7,
+    `the sub-44 set changed: ${JSON.stringify(under44)}. Shrinking it is the goal, so update this count ` +
+    'and say which control improved. GROWING it means a control regressed or a new one arrived unrecorded.');
+  // The two best cases must not quietly regress into the pack.
+  assert.ok(!under44.some(s => s.startsWith('.est-edit')), 'the 44x44 pill pencil must stay at 44 on both axes');
+  assert.ok(!under44.includes('.bullet.h=44') && under44.every(s => s !== '.bullet.h'),
+    'the bullet must keep its 44px vertical reach');
+
+  // WHAT THIS GUARD DOES NOT SEE, stated rather than implied (the #1132 precedent for admitting a
+  // residual limit in the code). It computes the CSS INTENT. It cannot see CONTENTION: a neighbour's
+  // overlay winning the z-order shortens the reach a finger actually gets. Driven at 393 with
+  // hasTouch, `.collapse-btn` measured 26 vertically against the 30 computed here, because the
+  // adjacent row reaches back over it. So a green here means "the rules add up", not "every finger
+  // lands" — the latter needs a browser, which this suite has not got. Hit-test in one when the
+  // question is contention (that is how UXP-248 was audited, and how #1173's rect-based claim was
+  // finally disproved).
+  // The one control whose CSS width is under the WCAG floor, recorded rather than silently excluded.
+  // It is a DRAG handle (cursor:grab, row reordering), so 2.5.8 target size is arguably not the
+  // governing criterion (2.5.7 Dragging Movements is) — but 22 < 24 either way, so it is on the
+  // record for a decision instead of being left out of the audit.
+  assert.equal(declared('.mt-rowh', 'width'), 22, 'the row drag handle is 22px wide on touch');
+  assert.ok(/cursor:grab/.test(_src), 'and it is a drag handle, not a tap target — which is why it is an exception');
+});
+
 test('first-run banner controls reach the touch tap floor (mobile-neophyte review)', () => {
   // the Save/"Start a blank outline" button and the ✕ were the only first-screen controls
   // the @media(hover:none) enlargement pass never reached (guardrail 5). Both now do.
