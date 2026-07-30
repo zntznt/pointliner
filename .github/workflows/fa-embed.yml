@@ -1,0 +1,54 @@
+# Repo path: .github/workflows/fa-embed.yml
+#
+# Runs tools/build-fa-subset.py FOR REAL and checks index.html still matches what it produces (#1166).
+#
+# Why this is not on `pull_request`:
+#   The script fetches the upstream Font Awesome .ttf sources over the network. The rest of this
+#   repo's CI is offline and fast, and that is worth keeping -- adding a network dependency to every
+#   PR is easy to do and hard to undo. A weekly run plus a manual trigger catches drift long before
+#   anyone needs it, because the icon set changes on the order of once a release, not once a PR.
+#
+# Why it exists at all:
+#   #1144 cross-checks ICONS, FA_GLYPHS and the ::before rules against each other, which is strong --
+#   but the answer key is a file the guarded change edits, so a build script that has stopped working
+#   passes every test until a human rebuilds by hand. Two bugs shipped through that gap: #1144 (the
+#   allow-list edited without a rebuild, painting a blank button) and #1155 (the woff2 flavor silently
+#   ignored for the script's entire life). This job is the missing half: it executes the process
+#   rather than inspecting the artifact.
+#
+# What it asserts, and what it deliberately does NOT:
+#   The payloads are compared by DECODED GLYPH COVERAGE, not by bytes. Measured while writing this:
+#   a rebuild here differs from the shipped bytes by 8-28 bytes per face while every face maps
+#   identical codepoints -- that is woff2/brotli nondeterminism across tool versions, not drift. A
+#   byte-diff job would have been red on day one and every day after, which is worse than no job.
+#   See tools/verify-fa-embed.py for the full reasoning.
+
+name: Font Awesome embed is in sync
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'          # Mondays, 05:17 UTC — off the hour, to avoid the scheduler's peak
+  workflow_dispatch:              # and on demand, which is how you check before touching ICONS
+  pull_request:
+    paths:
+      - 'tools/build-fa-subset.py'
+      - 'tools/verify-fa-embed.py'
+      - '.github/workflows/fa-embed.yml'
+    # A PR that edits the build script or this job DOES get the network check, because that is
+    # exactly the change whose effect nothing else can see.
+
+permissions:
+  contents: read
+
+jobs:
+  fa-embed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install the subsetter
+        run: python -m pip install --quiet fonttools brotli
+      - name: Rebuild and compare
+        run: python3 tools/verify-fa-embed.py
