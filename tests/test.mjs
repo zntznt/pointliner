@@ -21234,6 +21234,53 @@ test('#1109 sidecar-only pill edits sweep their dependents too', () => {
 // These tests parse the patterns out of the workflow and run them, so the guard is proven to bite
 // rather than assumed to. A CI rule nobody has seen reject anything is not yet a guard.
 const _wfHygiene = readFileSync(new URL('../.github/workflows/ux-conformance.yml', import.meta.url), 'utf8');
+
+// ── #1166: the Font Awesome rebuild job ──────────────────────────────────────────────────────────
+// Nothing in CI ran tools/build-fa-subset.py, so a script that had stopped working passed every test
+// until a human rebuilt by hand -- the gap #1144 and #1155 both shipped through. The job that closes
+// it lives on a schedule (its script fetches upstream .ttf sources, and PR CI stays offline), which
+// means NOTHING ELSE WOULD NOTICE IF IT WERE DELETED OR NEUTERED. These assertions are that notice.
+const _wfFa = readFileSync(new URL('../.github/workflows/fa-embed.yml', import.meta.url), 'utf8');
+const _faVerify = readFileSync(new URL('../tools/verify-fa-embed.py', import.meta.url), 'utf8');
+
+test('#1166 the FA rebuild job exists, runs the real script, and is triggerable', () => {
+  assert.ok(/on:\s*\n\s*schedule:\s*\n\s*- cron:/.test(_wfFa), 'it must be scheduled, not only manual');
+  assert.ok(/workflow_dispatch:/.test(_wfFa), 'and runnable on demand, which is how you check before editing ICONS');
+  // The paths filter is the half that makes it bite on the change that matters: a PR editing the
+  // build script gets the network check, because that is the change nothing else can see.
+  // Read the paths LIST, not the whole file: `tools/build-fa-subset.py` also appears in this
+  // workflow's own header comment, so a file-wide match passed with the filter deleted. Caught by
+  // mutation, and it is the same comment trap as UXP-280 in a new costume.
+  const faPaths = between(_wfFa, '  pull_request:\n    paths:\n', '\n\npermissions:');
+  assert.ok(/- 'tools\/build-fa-subset\.py'/.test(faPaths),
+    'a PR touching the build script must run this job — that is the change nothing else can see');
+  assert.ok(/- 'tools\/verify-fa-embed\.py'/.test(faPaths), 'and a PR touching the verifier itself');
+  assert.ok(/python3 tools\/verify-fa-embed\.py/.test(_wfFa), 'the job must actually invoke the verifier');
+  assert.ok(/pip install .*fonttools.*brotli|pip install .*brotli.*fonttools/.test(_wfFa),
+    'and install what the subsetter needs, or it fails for the wrong reason');
+  // It must NOT be on every pull_request: that would put a network fetch on the common path, which
+  // is the tradeoff this design deliberately declined (#1166 option A).
+  assert.ok(!/^on:[\s\S]*?pull_request:\s*\n\s*(types|branches)?\s*\n?\s*jobs:/m.test(_wfFa),
+    'it must not run on every PR — PR CI stays offline by design');
+});
+
+test('#1166 the verifier compares MEANING, not bytes, and says why', () => {
+  // The design decision that measurement forced. A rebuild here differs from the shipped payloads by
+  // 8-28 bytes per face while every face maps identical codepoints: woff2/brotli is not reproducible
+  // across tool versions. A byte-diff job would have been red on day one and every day after, which
+  // is worse than no job. If someone "tightens" this to a byte comparison, they get a permanently
+  // failing check -- so the looseness is pinned, with its reason.
+  assert.ok(/getBestCmap\(\)/.test(_faVerify), 'payloads are compared by decoded codepoint coverage');
+  assert.ok(/base64\.b64decode\(b\)\[:4\] != b"wOF2"/.test(_faVerify),
+    'and each shipped face must still BE woff2 — the #1155 regression, checked directly');
+  assert.ok(/PAYLOAD_RE\.sub\("base64,PAYLOAD"/.test(_faVerify),
+    'the non-payload text is compared verbatim, which is what catches a stale ICONS list');
+  assert.ok(/reproducib/i.test(_faVerify),
+    'the limit must be STATED in the file, not implied away (the #1132 precedent)');
+  // The two bugs it exists to catch are named, so the next reader meets the evidence.
+  for (const ref of ['#1144', '#1155'])
+    assert.ok(_faVerify.includes(ref), `the verifier must cite ${ref} as the bug it would have caught`);
+});
 function hygienePatterns() {
   // BOTH classes: the anywhere-list and the trailer-list. Slicing to the first ']' would silently
   // return only the first list, which is the vacuity trap this file exists to avoid.

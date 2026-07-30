@@ -3120,3 +3120,91 @@ the class re-nested; and a **third** unnamed preview site added. All seven red.
 
 The negative assertions read the comment-stripped `NC` view, per the generalisation UXP-280 made -- this
 change's own comment quotes every attribute it forbids.
+
+---
+
+## UXP-282 -- CI runs the icon build script, and compares meaning rather than bytes (#1166)
+
+**Status: FIXED.** Owner's call on #1166: **option A**, a scheduled job that runs the real script and
+diffs, keeping PR CI offline.
+
+### The gap
+
+`#1144` cross-checks three lists against each other and against the shipped font -- `ICONS` in
+`tools/build-fa-subset.py`, `FA_GLYPHS` in `index.html`, and the `.fa-NAME::before` rules. That is
+strong, and it caught real drift. What it cannot check is whether **the script still produces those
+bytes**, because nothing in CI ever executed it. The guard's answer key is a file the guarded change
+edits, so a script that has stopped working passes every test until a human happens to rebuild.
+
+Two bugs shipped through that gap: **#1144** (the allow-list edited without a rebuild, painting a blank
+button) and **#1155** (`subset.Options(flavor="woff2")` silently ignored for the script's entire life,
+so every payload shipped as uncompressed sfnt under a `format("woff2")` declaration -- found by reading
+fontTools' source, not by any test).
+
+### The measurement that changed the design
+
+The issue proposed "run the script and diff its output". **Measured first, and a byte diff cannot
+work.** Re-running the script here against the shipped tree:
+
+| | generated | shipped | result |
+|---|---|---|---|
+| `FA_GLYPHS` line | 1236 B | 1236 B | **identical** |
+| everything in the block except the payloads | -- | -- | **identical** (78 rules, all CSS) |
+| face 1 payload | 9084 B | 9104 B | differs |
+| face 2 payload | 1400 B | 1372 B | differs |
+| face 3 payload | 904 B | 896 B | differs |
+| face 1 / 2 / 3 **codepoints** | 77 / 6 / 1 | 77 / 6 / 1 | **identical sets** |
+
+That is woff2/brotli compression nondeterminism across tool versions, not drift: same glyphs, same
+rules, different compressed bytes. **A byte-diff job would have been red on day one and every day
+after** -- a permanently failing check that says nothing, which is worse than no check.
+
+So the comparison is SEMANTIC, in `tools/verify-fa-embed.py`:
+
+1. the non-payload text of the `fa-embed` block, **byte-identical** (catches a stale `ICONS`, a changed
+   or lost rule, a hand edit never rebuilt)
+2. the `FA_GLYPHS` line, **byte-identical** (this IS the #1144 bug)
+3. per face: the decoded cmap, **set-equal** (catches a subset that silently dropped or gained a glyph)
+4. per face: still genuinely `wOF2` (this IS the #1155 bug, checked directly)
+
+What it does **not** prove is byte-reproducibility, and the file says so rather than implying it -- the
+#1132 precedent for admitting a residual limit in the code.
+
+### Why scheduled rather than on every PR
+
+The script fetches upstream `.ttf` sources, and the rest of this repo's CI is offline and fast. Adding
+a network dependency to every PR is easy to do and hard to undo. Weekly plus `workflow_dispatch`
+catches drift long before it matters, because the icon set changes about once a release.
+
+**With one exception, which is the half that makes it bite:** a PR that touches
+`tools/build-fa-subset.py` or the verifier **does** run the job on `pull_request`, because that is
+precisely the change whose effect nothing else can see.
+
+### Proven to bite, at both levels
+
+**The verifier, against a throwaway tree** (6 mutations, control green first):
+
+| mutation | result |
+|---|---|
+| `FA_GLYPHS` edited without a rebuild (**#1144**) | caught |
+| a payload reverted to raw sfnt (**#1155**) | caught |
+| a `::before` rule hand-edited | caught |
+| an `ICONS` entry removed | caught |
+| an `ICONS` entry added | caught |
+| the build script itself raises | caught (exit 2, distinct from a mismatch) |
+
+**The job, against the suite** (11 mutations): schedule deleted; verifier not invoked; `workflow_dispatch`
+dropped; fonttools not installed; both `paths:` entries dropped; the cmap decode removed; the wOF2
+assertion removed; the non-payload comparison neutered; the stated limit removed; the bug citations
+removed. All red.
+
+### Two harness errors of mine, recorded because they nearly produced false confidence
+
+- **The first mutation run reported `fail=10` for every mutation with no #1166 test named.** That was
+  the harness failing for unrelated reasons (a partial tree missing files the suite reads), not the
+  guard biting. I had skipped the control run. **Re-done with a full tree and a control asserted green
+  first** -- which is the discipline #1133 exists for, applied to my own scaffolding.
+- **A genuine hole, found only because of that redo:** dropping the `paths:` filter passed green,
+  because my assertion matched `tools/build-fa-subset.py` **anywhere in the file** and it also appears
+  in the workflow's own header comment. The same comment trap as UXP-280, in a new costume -- a
+  file-wide match where a scoped one was meant. Now reads the `paths:` list via `between(...)`.
