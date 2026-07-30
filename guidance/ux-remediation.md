@@ -2833,3 +2833,128 @@ real reach: driven, `.collapse-btn` measures 26 vertically against the 30 comput
 3. **`user-research-2026-07-fleet2.md`** carried the 39/40 figure as a surviving finding. Corrected,
    and the scrolling-ancestor error already recorded there now has a sibling: **a rect is not a hit
    area.** All three items of #1173 were measurement errors of mine, in three different ways.
+
+---
+
+## UXP-279 -- the estimate default printed `0` for real numbers, and handed `NaN` to its own teaching line (#1177)
+
+**Status: FIXED.** Two defects in one function's blast radius, recorded as two causes.
+
+### Cause 1: a cliff at exactly 0.001, not the edge case the issue described
+
+From the second persona fleet, the postdoc keeping a lab notebook: `{0.00212 to 0.00294}` rendered
+**`≈0 (0 – 0)`** -- a spread of zero reported for a measurement that has one. Measured, the whole
+ladder of `estNumFmt(x, null)`:
+
+| x | rendered | sig figs |
+|---|---|---|
+| `0.000999` | `0.000999` | 3 |
+| **`0.001`** | **`0`** | **0** |
+| `0.00253` | `0` | 0 |
+| `0.00499` | `0` | 0 |
+| `0.0124` | `0.01` | 1 |
+| `0.253` | `0.25` | 2 |
+| `0.999` | `1` | 1 |
+| `2.48` and up | `2.48` | 3 ✓ |
+
+Two things #1177's own framing did not have:
+
+- **The discontinuity is exact.** The significant-figures escape fired only below 0.001, so
+  `0.000999` kept three significant figures and `0.001` became a bare `0`. It protected the SMALLER
+  side and abandoned the band immediately above it, which is backwards. The function printed `"0"` for
+  every non-zero value in `[0.001, 0.005)`.
+- **The damage ran to 1, not to 0.005.** `toFixed(2)` only carries three significant figures once
+  |x| >= 1, so the entire band `[0.001, 1)` lost digits.
+
+**And the two formatters disagreed, which makes it a P1 break rather than only a P4 one.**
+`formatNumDisplay` -- what a math pill and a base column use -- never collapsed: it renders `0.00253`
+as `0.00253`. So `{= 0.00253}` was correct while `{0.002 to 0.003}` read `0 (0 – 0)`. The deterministic
+and uncertain sides of the same number disagreed, and the uncertain one was wrong.
+
+### The fix: one rule below 1, and a reorder that is load-bearing
+
+```js
+if (a !== 0 && a < 1) return (fmt?.prefix || '') + String(+x.toPrecision(3)) + (fmt?.suffix || '');
+```
+
+*"Below 1, three significant figures, trailing zeros trimmed."* `String(+…)` is the trim, and it is the
+split this function already recorded: the DEFAULT path trims (`5`, never `5.00`) while an explicit
+decimals/sigfigs keeps its zeros because the author asked for exactly that many (#1115 / #1175).
+Unifying costs one visible change below 0.001 -- `0.00004` now reads `0.00004` rather than `0.0000400`
+-- and buys a rule statable in one sentence instead of two bands disagreeing at their boundary.
+
+**The explicit-format branch moved to the top of the function, and that is not tidying.** The magnitude
+escape used to run ahead of it reading only `sigfigs`, so an author's `decimals` was dropped for
+anything it caught. Survivable at |x| < 0.001 (two decimals on 0.0004 is useless anyway); at the new
+threshold it would have started silently ignoring `decimals: 2` on 0.253. Pinned in both directions.
+
+### Cause 2: a display string parsed back into a number
+
+```js
+const t = Number.isFinite(mid) ? Number(estNumFmt(mid)) : 0;   // before
+```
+
+`estNumFmt` groups thousands, so `Number("700,000")` is **NaN**. That value is interpolated into the
+variables dialog's teaching line -- the #1101 P2 door whose recorded purpose is to be *"copy-pasteable
+rather than an abstract example the reader has to translate."* Driven on `main`, it was broken in **two**
+ways, the second of which I had not predicted:
+
+| declaration | the line taught | pasted into a point |
+|---|---|---|
+| `{cost := 100000 to 200000}` | `chanceover(cost, NaN)` | **stayed raw text**, never promoted to a pill |
+| `{cost := 1200 to 1800}` | `chanceover(cost, NaN)` | stayed raw text |
+| `{cost := 0.002 to 0.003}` | `chanceover(cost, 0)` | `=100` -- valid, and worthless |
+
+So at money scale the reader got literal braces in their document, and at lab scale a threshold of zero
+("100% chance of being above 0"). Now derived from the number:
+
+```js
+const t = Number.isFinite(mid) ? +(+mid.toPrecision(3)) : 0;
+```
+
+Never NaN, never a display string, and rounded to something a reader would type: a median of `149823.4`
+teaches `150000`, not `149823`. **There was no test on that line at all**, which is why it shipped.
+
+### Driven, before and after
+
+| | before | after |
+|---|---|---|
+| `{0.00212 to 0.00294}` | `0 (0 – 0)` | `0.0025 (0.00212 – 0.00292)` |
+| `{0.0124 to 0.0253}` | `0.02 (0.01 – 0.03)` | `0.0181 (0.0125 – 0.0254)` |
+| `{0.253 to 0.999}` | `0.54 (0.25 – 1)` | `0.548 (0.25 – 0.981)` |
+| teaching line, money | `chanceover(cost, NaN)` | `chanceover(cost, 144000)` -> pasted, `=46.1` |
+| teaching line, lab | `chanceover(cost, 0)` -> `=100` | `chanceover(cost, 0.00248)` -> `=45.9` |
+
+**The pasted line is the acceptance test**, not the rendered one: a line whose whole purpose is to be
+pasteable is only fixed once pasting evaluates.
+
+### Two recorded decisions checked rather than assumed
+
+- **The scientific tail is deliberate.** #1115 pins `estNumFmt(0.00000012)` as scientific ("a genuinely
+  tiny number stays scientific"). It survives: `String(+(1.2e-7).toPrecision(3))` is `1.2e-7`. **An
+  earlier draft of this change proposed removing exponentials outright**, before that pin was found.
+- **`estNumFmt` reaches persisted text**, through `formatDist` -> `frozenTokenText`, which freeze-to-text
+  and prose export write into `node.text`. So a freeze produces different bytes now -- more digits, not
+  fewer. #1175's display-only fence names `formatMathResult` and `replaceConvert`, not this, so no
+  constraint moves; but a document frozen before and after will differ, and that is worth knowing.
+
+### Guard-proofed
+
+Eight mutations, each asserting its target present first (#1133): the 0.001 threshold restored; the trim
+dropped; 2 significant figures instead of 3; the escape put back ahead of the explicit-format branch;
+`Number(estNumFmt(mid))` restored; the non-finite fallback allowed to propagate NaN; the scientific tail
+broken; and rounding added to `formatMathResult` -- which the existing **#983** pin caught, confirming the
+lossless fence still bites. All eight red.
+
+**Two existing pins rewritten, not loosened**, both predicted: `estNumFmt(0.00253, null) === '0'` (which
+I wrote in #1175 *to lock the collapse* while noting a default change was not that PR's business) and
+`estNumFmt(0.00004, null)`'s untrimmed form. Each carries the reason.
+
+### The comment trap, third occurrence
+
+Writing this change's rationale turned its own negative assertion red again -- the comment quotes
+`Number(estNumFmt(mid))`, which the guard forbids. Same failure as #1178's runner pin and the #1175
+`parseNumFmt` call-site pin. Fixed the same way: the negatives read the comment-stripped `NC` view, plus
+an assertion that `NC` still contains the source so they cannot pass by reading an empty string.
+**Three PRs, three recurrences: a negative assertion on raw source is a landmine for the next author's
+comment.** Worth generalising if it happens a fourth time.

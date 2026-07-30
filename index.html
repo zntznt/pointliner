@@ -27246,18 +27246,38 @@ function sparkline(samples, buckets = 20) {
 // what makes `5 (4.1 – 5.9)` read well. An explicit fmt.decimals overrides that.
 function estNumFmt(x, fmt) {
   if (!Number.isFinite(x)) return x > 0 ? '∞' : x < 0 ? '-∞' : 'NaN';
-  const a = Math.abs(x);
-  // #1175: this tiny-magnitude escape was ALREADY a significant-figures formatter with a hardcoded
-  // 3, so an explicit sigfigs simply supplies the number. That matters for the case the field exists
-  // for: a lab notebook lives below 0.001 routinely, and hardcoding 3 there would silently ignore
-  // the author exactly where they most meant it.
-  if (a !== 0 && a < 0.001)
-    return (fmt?.prefix || '') + x.toPrecision(Number.isInteger(fmt?.sigfigs) ? fmt.sigfigs : 3) + (fmt?.suffix || '');
-  // An explicit decimals means the author asked for exactly that many, trailing zeros included --
-  // that is what a money column wants. Hand it straight to the shared formatter.
-  // An explicit sigfigs is the same statement in the other unit, so it takes the same path (#1175).
+  // #1177: THE EXPLICIT FORMAT IS CHECKED FIRST, and that ordering is load-bearing rather than tidy.
+  // The magnitude escape below used to run ahead of this and read only `sigfigs`, so an author's
+  // `decimals` was silently dropped for anything it caught. That was survivable while it caught only
+  // |x| < 0.001 (two decimals on 0.0004 is useless anyway); at the < 1 threshold this branch now
+  // needs, it would start ignoring a perfectly reasonable `decimals: 2` on 0.253.
   if (fmt && ((Number.isInteger(fmt.decimals) && fmt.decimals >= 0) || Number.isInteger(fmt.sigfigs)))
     return formatNumDisplay(x, fmt);
+  const a = Math.abs(x);
+  // #1177: ONE rule below 1 -- three significant figures, trailing zeros trimmed.
+  //
+  // This escape used to fire only below 0.001, and the ladder had a cliff at exactly that edge:
+  // 0.000999 rendered `0.000999` (3 s.f.) while 0.001 rendered `0`. It protected the SMALLER side and
+  // abandoned the band immediately above, which is backwards. Measured, the default printed a bare
+  // `0` for every non-zero value in [0.001, 0.005) -- a lab notebook's `{0.00212 to 0.00294}` read
+  // `0 (0 – 0)`, a spread of zero reported for a measurement that has one -- and lost digits all the
+  // way up to 1, because `toFixed(2)` only carries three significant figures once |x| >= 1
+  // (0.0124 -> `0.01`, 0.253 -> `0.25`, 0.999 -> `1`).
+  //
+  // `String(+…)` is the trim, and it is the same split the rest of this function already records: the
+  // DEFAULT path trims (`5`, never `5.00`), while an explicit decimals/sigfigs keeps its zeros because
+  // the author asked for exactly that many (#1115 / #1175). Unifying costs one visible change below
+  // 0.001 -- 0.00004 now reads `0.00004` rather than `0.0000400` -- and buys a rule statable in one
+  // sentence instead of two bands that disagree at their boundary.
+  //
+  // The scientific tail is UNTOUCHED and that is deliberate, not luck: #1115 pins
+  // `estNumFmt(0.00000012)` as scientific ("a genuinely tiny number stays scientific"), and
+  // String(+(1.2e-7).toPrecision(3)) is still `1.2e-7`. Verified, not assumed -- an earlier draft of
+  // this change proposed removing exponentials entirely before that pin was found.
+  if (a !== 0 && a < 1) return (fmt?.prefix || '') + String(+x.toPrecision(3)) + (fmt?.suffix || '');
+  // (The explicit-format branch that used to sit here now runs FIRST -- see the top of the function.
+  // An explicit decimals means the author asked for exactly that many, trailing zeros included, and
+  // an explicit sigfigs is the same statement in the other unit, so both take the shared formatter.)
   // Otherwise keep the adaptive default AND its trailing-zero trim: `String(+x.toFixed(2))` is what
   // makes a small estimate read `5 (4.1 – 5.9)` rather than `5.00 (4.10 – 5.90)`. Routing this
   // through formatNumDisplay's decimals path lost the trim -- caught by re-measuring, not by the
@@ -28384,7 +28404,14 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
       // the line is copy-pasteable rather than an abstract example the reader has to translate.
       const nm = (nameInp.value.trim() || 'name').toLowerCase();
       const mid = distQuantile(draw, 0.5);
-      const t = Number.isFinite(mid) ? Number(estNumFmt(mid)) : 0;
+      // #1177: derived from the NUMBER, never from the formatted string. This read
+      // `Number(estNumFmt(mid))`, and estNumFmt groups thousands -- so `Number("700,000")` was NaN and
+      // the line below, whose whole recorded purpose is to be "copy-pasteable rather than an abstract
+      // example" (#1101), read `{= chanceover(cost, NaN)} is NaN%` for every median at or above 1000,
+      // which is the normal case for anything money-scale. A display string is not a number.
+      // toPrecision(3) matches the precision shown beside it and rounds to something a reader would
+      // actually type: a median of 149823.4 teaches 150000, not 149823.
+      const t = Number.isFinite(mid) ? +(+mid.toPrecision(3)) : 0;
       prev.innerHTML =
           `<span class="var-preview-result">${escHtml(`${estNumFmt(sm.mean)} (${estNumFmt(sm.p5)} – ${estNumFmt(sm.p95)})`)}</span>`
         + ` <span class="io-hint" style="display:inline">(uncertain; every reference to this name shows the same draw)</span>`

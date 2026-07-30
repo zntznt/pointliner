@@ -136,6 +136,14 @@ said so. For anything she would paste into a paper it is not, and there is no si
 control. This is why her verdict is "alongside" rather than "yes": the app is where she would think
 about the numbers, not where she would keep them.
 
+**Both halves now shipped, and the second was worse than she reported.** #1175 gave her the control.
+Then #1177 found the reason she should never have needed it for the estimate family: the default
+printed a bare `0` for every non-zero value in `[0.001, 0.005)` — so a lab-scale estimate read
+`≈0 (0 – 0)` — and lost digits all the way to 1. **She never hit that in her session**, because she
+tested precision on a math pill (`{= 1/3}`), which was always correct. Had she written her measurement
+as an uncertain range, the tool would have told her it was zero. This is the sharpest case in either
+fleet of a defect the persona did not find because they happened to probe the working half.
+
 ## What they would miss
 
 - **Marcus:** the clock and rolling on his own cast, unreservedly. "The clock is the thing I would
@@ -156,6 +164,12 @@ about the numbers, not where she would keep them.
   takes an opt-in `{ extrema: true }` that only the math pill passes. `{= max(score)}` on the wrong
   point now reads `max(score)=-∞ nothing matched` with *"No score below this point. Move the pill
   onto the parent, or check the property name."*
+- ~~**The default itself, which she should not have needed a control for.**~~ **SHIPPED** (#1177 /
+  UXP-279). Her precision complaint had a second half nobody had named: the estimate default printed a
+  bare `0` for every non-zero value in `[0.001, 0.005)` and lost digits all the way up to 1, so
+  `{0.00212 to 0.00294}` read `≈0 (0 – 0)`. A math pill at the same magnitude was always correct, so
+  the deterministic and uncertain sides of one number disagreed. One rule now: below 1, three
+  significant figures, trailing zeros trimmed.
 - ~~**A significant-figures control on math pills**~~ **SHIPPED** (#1175 / UXP-275). It was indeed
   reachable inside the existing model: a 4th positional param on `parseNumFmt`, honoured in the three
   display sinks only, offered by all three fmt dialogs, and mutually exclusive with Decimal places.
