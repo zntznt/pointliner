@@ -7247,6 +7247,100 @@ test('regression: formula-only variables are untouched by the pick branch', () =
   });
 }
 
+// ── #1175: significant figures, the scale-independent sibling of decimal places ──────────────
+// From the 2026-07-29 persona fleet: a postdoc would THINK in Pointliner but not RECORD in it,
+// because `decimals` cannot state precision across scales. Measured on main before the change:
+// decimals:3 turns 0.0124 into 0.012 (loses a real digit) and 1240 into 1,240.000 (invents three).
+{
+  test('#1175 parseNumFmt: sigfigs is additive, and decimals still wins if both arrive', () => {
+    // the three-arg shape every existing caller used must be byte-identical
+    assert.deepEqual({ ...c.parseNumFmt('2', '£', '') }, { decimals: 2, prefix: '£' });
+    assert.equal(c.parseNumFmt('', '', ''), null, 'all blank is still no record at all');
+    assert.deepEqual({ ...c.parseNumFmt('', '', '', 3) }, { sigfigs: 3 });
+    assert.deepEqual({ ...c.parseNumFmt('', '$', '%', 4) }, { sigfigs: 4, prefix: '$', suffix: '%' });
+    // Unreachable through the UI (the fields blank each other), so this is the imported-OPML guard.
+    assert.deepEqual({ ...c.parseNumFmt('2', '', '', 3) }, { decimals: 2 },
+      'decimals wins and sigfigs is DROPPED, so no existing record changes meaning');
+    // 1..15; toPrecision allows more but past ~15 a double only reports float noise
+    for (const bad of [0, -1, 16, 100, 2.5, 'x'])
+      assert.equal(c.parseNumFmt('', '', '', bad), null, `sigfigs ${bad} is rejected`);
+    assert.deepEqual({ ...c.parseNumFmt('', '', '', 1) }, { sigfigs: 1 });
+    assert.deepEqual({ ...c.parseNumFmt('', '', '', 15) }, { sigfigs: 15 });
+  });
+
+  test('#1175 formatNumDisplay: significant figures hold across scales, and keep trailing zeros', () => {
+    // the postdoc's two numbers, which are the acceptance test
+    assert.equal(c.formatNumDisplay(1 / 3, { sigfigs: 3 }), '0.333');
+    assert.equal(c.formatNumDisplay(0.0124, { sigfigs: 3 }), '0.0124');
+    // THE reason the field exists: one setting, same meaning at every magnitude
+    assert.equal(c.formatNumDisplay(0.0124, { sigfigs: 3 }), '0.0124');
+    assert.equal(c.formatNumDisplay(1.24, { sigfigs: 3 }), '1.24');
+    assert.equal(c.formatNumDisplay(1240, { sigfigs: 3 }), '1,240', 'and still groups thousands');
+    // trailing zeros are KEPT: in significant figures that IS the precision claim, and it matches
+    // the recorded rule for the sibling field ("exactly that many, trailing zeros included")
+    assert.equal(c.formatNumDisplay(2.5, { sigfigs: 3 }), '2.50');
+    assert.equal(c.formatNumDisplay(1, { sigfigs: 3 }), '1.00');
+    // affixes still apply
+    assert.equal(c.formatNumDisplay(0.0124, { sigfigs: 2, prefix: '~', suffix: ' g' }), '~0.012 g');
+    // an exponent is never shown to a user: fall back to the full-precision formatter
+    assert.ok(!/e/i.test(c.formatNumDisplay(124000, { sigfigs: 3 })), 'no exponent leaks out');
+    // 1e-9 falls back to formatMathResult, which itself prints an exponent at that magnitude --
+    // pre-existing behaviour the sigfigs branch must not worsen, and cannot fix here.
+    assert.equal(c.formatNumDisplay(1e-9, { sigfigs: 3 }), c.formatMathResult(1e-9),
+      'a magnitude the default cannot express plainly falls back to it, unchanged');
+    // non-finite still routes to the shared formatter
+    assert.equal(c.formatNumDisplay(Infinity, { sigfigs: 3 }), c.formatMathResult(Infinity));
+  });
+
+  test('#1175 the default is untouched — no existing pill changes appearance', () => {
+    // Every one of these is what main printed before the change. A regression here is a silent
+    // reformat of every document in existence, so it is the pin that matters most.
+    for (const [v, want] of [[1 / 3, '0.33333333'], [0.0124, '0.0124'], [289.68192, '289.68192'],
+                             [1000, '1,000'], [700000, '700,000'], [0, '0']])
+      assert.equal(c.formatNumDisplay(v, null), want, `default for ${v}`);
+    assert.equal(c.formatConvertResult(0.0254), '0.02540', 'the #983 deciding case is untouched');
+    assert.equal(c.formatConvertResult(289.68192), '289.7');
+    assert.equal(c.estNumFmt(5, null), '5', 'the estimate trim survives');
+    assert.equal(c.estNumFmt(4.1, null), '4.1');
+  });
+
+  test('#1175 estNumFmt honours sigfigs, including below its tiny-magnitude escape', () => {
+    assert.equal(c.estNumFmt(0.0124, { sigfigs: 3 }), '0.0124');
+    // that escape was ALREADY a sig-figs formatter with a hardcoded 3; an explicit value supplies it.
+    // A lab notebook lives below 0.001 routinely, so ignoring the author there would defeat the field.
+    assert.equal(c.estNumFmt(0.00004, { sigfigs: 2 }), '0.000040');
+    assert.equal(c.estNumFmt(0.00004, null), (0.00004).toPrecision(3), 'unset still uses the old 3');
+    // decimals keeps precedence, matching parseNumFmt
+    assert.equal(c.estNumFmt(1.239, { decimals: 2 }), c.formatNumDisplay(1.239, { decimals: 2 }));
+    // The sharpest demonstration of why this field exists. The adaptive DEFAULT collapses a
+    // lab-scale estimate to "0" (`String(+x.toFixed(2))` on 0.00253), which is pre-existing on main
+    // and filed separately -- a default change is not this PR's business. What IS this PR's business
+    // is that the author can now state the precision and get a real number back.
+    assert.equal(c.estNumFmt(0.00253, null), '0', 'the default still collapses (unchanged here)');
+    assert.equal(c.estNumFmt(0.00253, { sigfigs: 3 }), '0.00253', 'and sigfigs recovers it');
+  });
+
+  test('#1175 every fmt door offers the field, and the two are exclusive (#1133 call sites)', () => {
+    // A record with a field one dialog can set and another cannot is a P1 break, so all THREE must
+    // offer it. A tested core proves nothing about whether the dialogs pass it.
+    const fields = nonEmpty([..._src.matchAll(/key: 'sigfigs',/g)], "the sigfigs dialog fields");
+    assert.equal(fields.length, 3,
+      'the math pill, base column and estimate dialogs each offer Significant figures');
+    const decls = nonEmpty([..._src.matchAll(/exclusiveWith: '(decimals|sigfigs)'/g)].map(m => m[1]),
+      'exclusiveWith declarations');
+    assert.equal(decls.filter(d => d === 'decimals').length, 3, 'each sigfigs field clears decimals');
+    assert.equal(decls.filter(d => d === 'sigfigs').length, 3, 'and each decimals field clears sigfigs');
+    // the runner must actually honour the declaration, or the fields are decoration
+    assert.match(fnBody(_src, 'openInsertDialog'), /f\.exclusiveWith && inp\.value\.trim\(\) !== ''/,
+      'openInsertDialog blanks the partner field on input');
+    // and every parseNumFmt call site must pass the 4th argument
+    const calls = nonEmpty([..._src.matchAll(/parseNumFmt\(([^)]*)\)/g)].map(m => m[1])
+      .filter(a => /decimals/.test(a)), 'parseNumFmt call sites');
+    for (const a of calls)
+      assert.match(a, /sigfigs/, `a parseNumFmt call site drops sigfigs: parseNumFmt(${a})`);
+  });
+}
+
 // ── unfold/refold + offset translation (UXP-30 / UXP-31) ───────────────────────
 // In edit mode, inline-able [[type:key]] tokens unfold to their {…} source; the
 // token form is LONGER, so any offset captured against the edit buffer must be
@@ -20985,8 +21079,12 @@ test('#1115 the format reaches the pill AND the export, not just the pill', () =
   assert.match(_src, /formatDist\(samples, e\.fmt \|\| null\)/, 'the est export arm carries the format');
   assert.match(_src, /formatDist\(samples, dRec\.fmt \|\| null\)/, 'and so does the dist-variable arm');
   assert.match(fnBody(_src, 'renderEstPill'), /const fmt = e\.fmt \|\| null;/, 'the pill reads it off the record');
-  assert.match(_src, /if \(rec\) \{ const f = parseNumFmt\(v\.decimals, v\.prefix, v\.suffix\); if \(f\) rec\.fmt = f; \}/,
-    'the dialog writes it with the SHARED parser, lean-or-absent');
+  // #1175: sigfigs became a 4th positional arg, so this now reads `…v.suffix, v.sigfigs)`. Rewritten
+  // rather than loosened: the point of the pin is that the dialog uses the ONE shared parser, so it
+  // must still name the exact call, and it must name the new argument or a dropped 4th arg would
+  // silently stop the estimate dialog honouring a field its own form offers.
+  assert.match(_src, /if \(rec\) \{ const f = parseNumFmt\(v\.decimals, v\.prefix, v\.suffix, v\.sigfigs\); if \(f\) rec\.fmt = f; \}/,
+    'the dialog writes it with the SHARED parser, lean-or-absent, and passes sigfigs');
 });
 
 test('#1115 searching the catalogue for "format" finds the pills that own one', () => {
@@ -24150,8 +24248,11 @@ test('#983 the display branch: convert rounds, everything else is untouched', ()
   const fmd = fnBody(_src, 'formatMathDisplay');
   assert.ok(/isMoonExpr\(expr\) \? moonGlyph\(v\)/.test(fmd) && /isDateExpr\(expr\) \? formatEpochDays\(v\)/.test(fmd),
     'the moon and date branches are unchanged and still come first');
-  assert.ok(/isConvertExpr\(expr\) && !\(fmt && Number\.isInteger\(fmt\.decimals\)\)/.test(fmd),
-    'an explicit per-pill decimals (#946) wins — that is the user stating a precision');
+  // #1175: the escape now yields to an explicit sigfigs as well, for the SAME stated reason — that is
+  // also the author stating a precision. Both must be named: dropping either one silently returns a
+  // lab notebook to the 4-s.f. default it explicitly overrode.
+  assert.ok(/isConvertExpr\(expr\) && !\(fmt && \(Number\.isInteger\(fmt\.decimals\) \|\| Number\.isInteger\(fmt\.sigfigs\)\)\)/.test(fmd),
+    'an explicit per-pill decimals OR sigfigs wins — that is the user stating a precision');
   assert.ok(/\(fmt\?\.prefix \|\| ''\) \+ groupThousands\(formatConvertResult\(v\)\) \+ \(fmt\?\.suffix \|\| ''\)/.test(fmd),
     'a fmt carrying only affixes still gets the default, and keeps its affixes');
   assert.ok(/: formatNumDisplay\(v, fmt\);/.test(fmd), 'every other expression falls through unchanged');

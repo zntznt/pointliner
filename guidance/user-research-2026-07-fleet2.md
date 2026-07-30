@@ -137,8 +137,11 @@ about the numbers, not where she would keep them.
   takes an opt-in `{ extrema: true }` that only the math pill passes. `{= max(score)}` on the wrong
   point now reads `max(score)=-∞ nothing matched` with *"No score below this point. Move the pill
   onto the parent, or check the property name."*
-- **A significant-figures or decimal-places control on math pills** (Lin). The number-format door
-  already carries prefix/suffix/decimals, so this may be reachable inside the existing model.
+- ~~**A significant-figures control on math pills**~~ **SHIPPED** (#1175 / UXP-275). It was indeed
+  reachable inside the existing model: a 4th positional param on `parseNumFmt`, honoured in the three
+  display sinks only, offered by all three fmt dialogs, and mutually exclusive with Decimal places.
+  `{= 1/3}` at 3 s.f. reads `0.333`; `{= convert(12.4, mg, g)}` reads `0.0124`. The convert default
+  was deliberately left alone (see UXP-275).
 - **Let the toolbar wrap, or collapse into an overflow menu, below some width** (Tobi). The single
   non-wrapping row is what makes narrow layouts overflow as soon as a document gains features.
 - **A skip-to-document affordance for keyboard users** (Rosa) — a first tab stop that jumps past the

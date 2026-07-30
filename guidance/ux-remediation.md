@@ -2429,3 +2429,83 @@ The props sidecar field is `{key, val}`, not `{key, value}` - `childPropNumber` 
 attempts at a control silently produced empty rollups because of it, which made every reducer look
 broken and nearly turned this into a much bigger false finding. The fix is only reported because the
 control was eventually established (`sum(score)` → `130`).
+
+---
+
+## UXP-275 - precision could be stated in decimal places but not in significant figures (#1175)
+
+☐→✓ · 🟡 partial / inconsistent · closed 2026-07-29
+
+### The finding
+
+From the second persona fleet (`user-research-2026-07-fleet2.md`). A postdoc keeping a lab notebook
+was the one persona who would **think** in Pointliner but not **record** in it, and the reason was
+precision: `{= 1/3}` prints `0.33333333`, `{= convert(12.4, mg, g)}` prints `0.01240`. She could ask
+for two decimal places. She could not ask for three significant figures.
+
+Measured, the existing field genuinely cannot express it:
+
+| value | `decimals: 3` | 3 significant figures |
+|---|---|---|
+| `0.0124` | `0.012` - **loses a real digit** | `0.0124` |
+| `1240` | `1,240.000` - **invents three** | `1,240` |
+
+That is the scale-independence argument `formatConvertResult`'s own comment already made ("*Two
+decimals reads fine at 289.68 and destroys `1 in -> m`… Significant figures are scale-independent*").
+The codebase already reasoned in significant figures internally - the default formatter is
+`toPrecision(8)`/`toPrecision(10)`, convert is `toPrecision(4)`, and `estNumFmt`'s tiny-magnitude
+escape was a hardcoded `toPrecision(3)`. The only thing missing was a way for the **author** to say it.
+
+### What deliberately did NOT change
+
+The convert default still pads to exactly 4 significant digits (`0.0124` -> `0.01240`). I first
+proposed stripping that as "arguably a bug", then found it pinned as *"the deciding case"* of #983 -
+the example the 4-s.f. choice was made to protect - and that `1 in = 0.0254 m` is exact by
+definition, so `0.02540` claims nothing false. The owner's call was to leave it and let the new
+control answer the postdoc instead. **No existing default moves**; every default output is pinned
+byte-identical.
+
+### Display-only, and why that forced an opt-in rather than a widen
+
+`firstEmptyRollup`'s sibling problem, again: the natural place to put this gates two callers that
+want different answers. `formatMathDisplay`'s convert escape is display; `formatMathResult` is what
+**table recompute persists into `node.text`**, and `replaceConvert` substitutes into the expression as
+text. Rounding in either would corrupt saved data rather than presentation. Both already carry pins
+asserting exactly that, and both stayed green untouched; the `replaceConvert` pin was re-proved by
+mutation (my first attempt at that mutation put the token in the parameter list, outside `fnBody`'s
+window, and reported a false pass - corrected).
+
+So `sigfigs` is a 4th **positional** param on `parseNumFmt`, leaving the three existing 3-arg call
+shapes byte-identical, and it is honoured only in the display sinks: `formatNumDisplay`,
+`formatMathDisplay`'s convert escape, and `estNumFmt`.
+
+### Exclusive rather than precedent-ranked (P4)
+
+Decimal places and significant figures are alternatives. Hidden precedence would make "set sig figs
+on a pill that already had decimals" a silent no-op, so the dialogs blank one when the other is
+typed, via a declarative `exclusiveWith` handled once in `openInsertDialog` and reused by all three
+fmt dialogs. The core still prefers `decimals` if both somehow arrive, which is unreachable through
+the UI and exists for an imported or hand-edited OPML.
+
+All **three** doors gained the field - math pill, base column, estimate - because a record with a
+field one dialog can set and another cannot is a P1 break.
+
+### Guard-proofed
+
+Nine mutations, each asserting its target present first (#1133): the branch removed from each of the
+three display sinks; the tiny-magnitude escape ignoring the author's value; the runner ignoring
+`exclusiveWith`; `parseNumFmt` letting sigfigs ride alongside decimals; a dialog dropping the 4th
+argument (2 red); a dialog losing the field; and rounding introduced into `replaceConvert`. All red.
+
+Two existing pins were **rewritten rather than loosened**, both predicted in the plan: the `#983`
+convert-escape source-pin (it names the literal regex, which now has two escapes) and the `#1115`
+estimate-dialog pin (it names the literal `parseNumFmt` call, which now has four arguments). Each
+carries the reason, so a future reader sees a decision.
+
+### Found on the way, filed not fixed
+
+Driving a lab-scale estimate showed `{0.00212 to 0.00294}` rendering as **`≈0 (0 – 0)`**. Confirmed
+pre-existing on `main`: `estNumFmt(0.00253, null)` is `"0"` there too, because the adaptive default
+does `String(+x.toFixed(2))`. That is a default change and therefore not this PR's business, but it
+is the same "silent, correct-but-useless" theme, so it is filed. Pinned here in both directions: the
+default still collapses, and `{sigfigs: 3}` recovers `0.00253`.
