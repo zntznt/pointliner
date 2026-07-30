@@ -2397,10 +2397,9 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
          behind would print a dangling operator with nothing on its left. That pairing is why the
          prose-mode rule lists them together, and this one does too.
      .est-preview-spark is the same decoration in the estimate DIALOG, hidden here so a phone does
-     not show a sparkline in the dialog for a pill that has none (P1). It renders nothing today for
-     an unrelated reason -- that preview's callback is `v => (v.expr || '')` while the shared runner
-     calls `f.preview(inp.value, all)`, so `v` is the input STRING and the preview has always been
-     blank -- which is filed separately, not fixed here. The rule is here for when it is.
+     not show a sparkline in the dialog for a pill that has none (P1). When this rule shipped it was
+     guarding output that never appeared, because that preview read its value off the wrong parameter;
+     #1178 fixed that, so the rule is now live and driven at 393 (spark display:none, numbers intact).
      What stays is the result and the door to it. The pencil especially: on hover:none it is a
      visible 26px chip with a 44px tap overlay, and it is a phone user's only way into the estimate.
      Measured after: 231-313px per pill, 393px page, no ellipsis anywhere. Dropping only the
@@ -22018,7 +22017,10 @@ function openInsertDialog(opts) {
         prev.innerHTML = f.preview(inp.value, all);
       };
       _previewFns.push(updatePrev);
-      inp.addEventListener('input', updatePrev);
+      // #1178: NO per-field listener here. Every preview refreshes from the one root-level listener
+      // below, because a preview reads its SIBLINGS through `all` and a per-field listener leaves it
+      // stale. Registering both would also run each preview twice per keystroke, and the query
+      // dialog's previews execute real searches (queryRows / queryRowsFolder).
       updatePrev();
       wrap.appendChild(prev);
     }
@@ -22045,7 +22047,17 @@ function openInsertDialog(opts) {
     renderBuilderPaneInto(_dialogGuideCmd, guideAfter);
   }
 
-  if (_previewFns.length > 1) root.addEventListener('input', () => _previewFns.forEach(fn => fn()));
+  // #1178: UNCONDITIONAL. This used to be gated on the preview COUNT (more than one), and counted
+  // against the real dialogs that gate was never once true where it mattered: all three number-format
+  // dialogs (openEstimateDialog, openMathDialog, openColFmtDialog) declare exactly ONE preview, and
+  // all three read their SIBLING fields through the second argument. So typing £
+  // into Prefix left the math dialog's preview pill reading its old format, and the column-format
+  // sample frozen until Decimal places happened to be touched. Driven before the fix: `1/3=0.33333333`
+  // did not move for either prefix or sigfigs. A preview whose whole job is "what will this do" must
+  // answer for the form as it stands, not for one field of it.
+  // Runs during BUBBLING, so it lands after the target's own handlers — which is what makes `all`
+  // correct in the exclusiveWith case (#1175 blanks the partner field with no input event of its own).
+  root.addEventListener('input', () => _previewFns.forEach(fn => fn()));
 
   const vals = () => { const v = {}; for (const k in inputs) v[k] = inputs[k].type === 'checkbox' ? inputs[k].checked : inputs[k].value.trim(); return v; };
   // UXP-246: untrimmed, stringified, for the draft comparison — `vals()` trims, and comparing a
@@ -27360,8 +27372,14 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
     fields: [
       { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,   // sum/avg are dialog-only (estParts rejects them), which is why they are shown HERE and not on the @ card
         hint:'An uncertain value: a 90% range lo to hi, normal(mean, sd) or uniform(lo, hi). Reference declared variables and combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
-        preview: v => {
-          const ex = (v.expr || '').trim();
+        // #1178: takes the VALUE as its first parameter, like every other preview in the file. It read
+        // `v.expr` off it, and the shared runner passes `f.preview(inp.value, all)` — so `v` was the
+        // string, `'4 to 9'.expr` was undefined, and this returned '' on every keystroke. Driven at two
+        // viewports before the fix: the .io-preview div existed and was empty for a valid expression,
+        // and the two refusals below had never rendered once. `.est-preview` still has no CSS rule,
+        // which is the corroborating detail — nobody had ever seen it.
+        preview: (v, all) => {
+          const ex = (v || '').trim();
           if (!ex) return '';
           if (!parseUncertain(ex, dlgVars)) return `<span class="io-preview-bad">Not a valid uncertain expression</span>`;
           const save = cookieNode; cookieNode = node || null;   // so a sum(prop) preview resolves against this point's children
@@ -27369,8 +27387,19 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
             const samples = sampleUncertain(ex, EST_N, 0x9e3779b9, cookieNode, dlgVars);  // fixed preview seed → stable while typing
             const sm = samples && distSummary(samples);
             if (!sm) return `<span class="io-preview-bad">No finite samples</span>`;
-            return `<span class="est-preview"><b>${escHtml(estNumFmt(sm.mean))}</b> (${escHtml(estNumFmt(sm.p5))} – ${escHtml(estNumFmt(sm.p95))}) `
-              + `<span class="est-preview-spark">${escHtml(sparkline(samples, 16))}</span></span>`;
+            // The format fields sit directly beneath this one, so the preview must honour them or it
+            // previews a number the pill will not show. The second argument is what makes that
+            // possible, and it is the same read openMathDialog's preview already does via fmtOf.
+            const f = parseNumFmt(all?.decimals, all?.prefix, all?.suffix, all?.sigfigs);
+            // distHeadline is renderEstPill's OWN display function, so the preview cannot diverge from
+            // the pill (#1115, one number one display). The hand-rolled `estNumFmt(sm.mean)` string it
+            // replaces was a second display path, and being second is exactly why it ignored the fmt.
+            // Deliberately NOT renderEstPill: openMathDialog previews a real renderMathPill, which
+            // drags in an "Edit formula and number format" pencil that does nothing inside a dialog.
+            // A preview shows the value, not a copy of the chrome. Filed separately.
+            // sparkline at 11, matching the pill and formatDist rather than the old 16.
+            return `<span class="est-preview">${escHtml(distHeadline(sm, f))} `
+              + `<span class="est-preview-spark">${escHtml(sparkline(samples, 11))}</span></span>`;
           } finally { cookieNode = save; }
         } },
       // #1115: the same three fields the math pill and base columns already use, verbatim, so a

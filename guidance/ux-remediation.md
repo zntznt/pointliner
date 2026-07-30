@@ -2628,3 +2628,107 @@ The estimate dialog's live preview has **never rendered anything**. Its callback
 `.io-preview` div exists and is empty for a valid expression, identically, so it is pre-existing and
 not caused by this change. Filed. `.est-preview-spark` is hidden here anyway, so that a phone will not
 show a sparkline in the dialog for a pill that has none once the preview works (P1).
+
+---
+
+## UXP-277 -- the dialog preview contract, unhonoured on both sides (#1178)
+
+**Status: FIXED.** A dialog preview is the app's answer to *"what will this do before I commit it."*
+On the three number-format dialogs it did not answer, for two reasons that are one contract.
+
+### Half 1: a callback that read its value as if it were the form
+
+`openInsertDialog` calls `f.preview(inp.value, all)` -- the value first, the whole form second.
+`openEstimateDialog`'s preview did this:
+
+```js
+preview: v => { const ex = (v.expr || '').trim(); if (!ex) return ''; … }
+```
+
+`v` is the input **string**, so `'4 to 9'.expr` is `undefined`, `ex` is `''`, and it returned `''` on
+every keystroke. **The estimate dialog has never shown a preview**, and neither of its two refusals
+(*"Not a valid uncertain expression"*, *"No finite samples"*) had ever rendered once. It fails with no
+page error, which is why it shipped. The dialog's own hint promises *"Shown as mean ± [p5, p95] with a
+sparkline."* The corroborating detail is that `.est-preview` **has no CSS rule at all** -- nobody had
+ever seen the thing it styles.
+
+**Audited all 19 `preview:` callbacks: this was the only one.** Every other takes the first parameter
+as the value. So half 1 is a single site.
+
+### Half 2: found by counting, not by report
+
+The runner's cross-field refresh was gated on the preview COUNT being greater than one. Counted
+against the real dialogs, that gate was never true where it mattered:
+
+| dialog | previews | reads siblings from the 2nd arg | refreshed when you typed in a sibling? |
+|---|---|---|---|
+| `openEstimateDialog` | 1 | (could not read anything) | no |
+| `openMathDialog` | 1 | `fmtOf` for the preview pill's format | **no** |
+| `openColFmtDialog` | 1 | all four format fields | **no** |
+
+**All three number-format dialogs declare exactly one preview.** So a preview only ever refreshed when
+its *own* field changed. `openMathDialog` looked fine because its `bare` **checkbox** takes a separate
+path; `openColFmtDialog` looked fine only if you happened to touch Decimal places last.
+
+These are coupled, not two bugs bundled: fixing half 1 alone gives the estimate dialog a preview that
+ignores the format fields sitting directly beneath it, which is the same defect again.
+
+### Driven, before and after
+
+| dialog | before | after |
+|---|---|---|
+| estimate, valid expr | `(EMPTY)` | `6.2 (3.93 – 8.86) ▃▄▇▇█▆▅▃▂▁▁` |
+| estimate, then sigfigs 3 | `(EMPTY)` | `6.20 (3.93 – 8.86) …` |
+| estimate, then prefix £ | `(EMPTY)` | `£6.20 (£3.93 – £8.86) …` |
+| estimate, invalid `4 to` | `(EMPTY)` | `Not a valid uncertain expression` |
+| estimate, `(1 to 2) / 0` | never reachable | `No finite samples` |
+| math `1/3`, then prefix £ | `1/3=0.33333333` **frozen** | `1/3=£0.33333333` |
+| math, then sigfigs 3 | `1/3=0.33333333` **frozen** | `1/3=£0.333` |
+| column format, prefix £ alone | `1200 reads 1,200` **frozen** | `1200 reads £1,200` |
+
+### Three deliberate calls inside the estimate fix
+
+- **`distHeadline(sm, f)`, not the hand-rolled `estNumFmt(sm.mean) (p5 – p95)` string.** `distHeadline`
+  is `renderEstPill`'s own display function, so preview and pill cannot diverge (#1115, one number one
+  display) -- and being a *second* display path is precisely why the old string ignored the format. The
+  `<b>` around the mean goes with it; the pill has no bold either.
+- **NOT `renderEstPill`.** `openMathDialog` previews a real `renderMathPill`, which drags in an
+  *"Edit formula and number format"* pencil that does nothing inside a dialog. A preview should show the
+  value, not a copy of the chrome. Filed separately rather than copied.
+- **Sparkline 16 -> 11**, matching the pill and `formatDist`. The one cosmetic call, a one-token revert.
+
+### One refresh path, not two
+
+The per-field listener was **removed**, not kept beside the new root-level one. Two registrations would
+run each preview twice per keystroke, and the query dialog's previews execute real searches. Driven:
+6 keystrokes produce exactly **6** preview renders. Multi-preview dialogs are unaffected because they
+already had the root listener -- the query base (3 previews) and calendar (4) both stay live, and 7
+keystrokes cost 27-31ms over a 300-point document.
+
+**Ordering detail, driven rather than assumed:** the root listener fires during BUBBLING, after the
+target's own handlers, which is what makes the `exclusiveWith` case correct -- #1175 blanks the partner
+field with no input event of its own, and the preview still reflects the blanked value in the same
+keystroke (`decimals: 4` -> type sigfigs 2 -> `6.2 (3.9 – 8.9)` with decimals empty).
+
+### Guard-proofed
+
+**The durable half is a class guard**, since the specific bug is one line: a test walks every
+`preview:` callback in the source, resolves the `preview: monthsPrev` indirection, and asserts none
+dereferences its first parameter as anything but a string member. Verified to catch the real bug by
+running it against pre-fix `main`. It **throws rather than skips** on a callback it cannot resolve, and
+`nonEmpty` guards the harvest -- both proven by mutation (renaming a resolved declaration goes red with
+`previewCallbacks: cannot resolve`; removing every `preview:` goes red with the `nonEmpty` message).
+
+Eight mutations red, each asserting its target present first (#1133): the `v.expr` deref restored; the
+count gate restored; the per-field listener re-added; `all` dropped from the signature; the fmt dropped
+from `distHeadline`; the sparkline reverted to 16; a refusal string deleted; the pill made to stop using
+`distHeadline`. Plus **two negative controls green**, because a guard that fires on legitimate code is
+worse than none: a preview using `v.length`/`v.slice`, and one reading the form through `all`.
+
+### Two of my own comments tripped existing guards, which is the guards working
+
+Writing this change's rationale turned two tests red. The #1175 call-site pin scans raw source for
+`parseNumFmt(` sites and matched a **comment** quoting one; and the new runner pin asserts the absence
+of the count gate, which my comment quoted verbatim. Both fixed properly rather than by loosening the
+guards: the comments no longer embed literal matchable code, and the runner pin now reads the
+comment-stripped `NC` view so future prose about the old form cannot disarm it.

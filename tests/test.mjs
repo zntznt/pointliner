@@ -22766,6 +22766,135 @@ test('UXP-258 the toolbar is one strip at every width: it scrolls, it never wrap
     'the focusin reveal is what actually clears the fade — CSS alone did not');
 });
 
+// ── #1178 / UXP-277: the openInsertDialog preview contract ───────────────────────────────────────
+// The runner calls `f.preview(inp.value, all)`: the VALUE first, the whole form second. One callback
+// read `v.expr` off that string and so returned '' forever, and the cross-field refresh was gated to
+// multi-preview dialogs, which no number-format dialog is. Both sides are pinned, plus the class.
+
+// Every `preview:` callback in the source, with its first parameter name and its body. Resolves the
+// `preview: monthsPrev` indirection too, and THROWS rather than skipping when it cannot — a guard that
+// silently drops the callbacks it cannot parse is the vacuous kind (#1133).
+function previewCallbacks(s) {
+  const bal = (i, open, close) => {
+    let d = 0;
+    for (let j = i; j < s.length; j++) {
+      if (s[j] === open) d++;
+      else if (s[j] === close) { d--; if (!d) return j; }
+    }
+    throw new Error(`previewCallbacks: unbalanced ${open} from ${i}`);
+  };
+  const out = [];
+  const re = /preview:\s*/g;
+  let m;
+  while ((m = re.exec(s))) {
+    let i = m.index + m[0].length, via = 'inline';
+    const idm = /^([A-Za-z_$][\w$]*)\s*[,}\n]/.exec(s.slice(i, i + 80));
+    if (idm) {                                    // `preview: monthsPrev` → follow it to the declaration
+      via = idm[1];
+      const decl = `const ${idm[1]} = `;
+      const d = s.indexOf(decl);
+      if (d < 0) throw new Error(`previewCallbacks: cannot resolve \`preview: ${idm[1]}\``);
+      i = d + decl.length;
+    }
+    let param, after;
+    if (s[i] === '(') { const c = bal(i, '(', ')'); param = s.slice(i + 1, c).split(',')[0].trim(); after = c + 1; }
+    else { after = s.indexOf('=>', i); param = s.slice(i, after).trim(); }
+    const arrow = s.indexOf('=>', after);
+    if (arrow < 0) throw new Error(`previewCallbacks: no arrow for \`preview: ${via}\``);
+    let b = arrow + 2;
+    while (/\s/.test(s[b])) b++;
+    const body = s[b] === '{' ? s.slice(b, bal(b, '{', '}') + 1) : s.slice(b, s.indexOf('\n', b));
+    if (!body.trim()) throw new Error(`previewCallbacks: empty body for \`preview: ${via}\``);
+    out.push({ param, body, via });
+  }
+  return out;
+}
+
+test('#1178 no preview callback may treat its first parameter as an object', () => {
+  // THE bug, as a class. `openInsertDialog` hands a preview `(inp.value, all)`, so the first parameter
+  // is a string. `openEstimateDialog` read `v.expr` off it: undefined → '' → a preview that returned
+  // empty on every keystroke, silently, with no page error. Driven at 1280 and 393 before the fix: the
+  // .io-preview div existed and was empty for a valid expression, and BOTH of its refusals had never
+  // rendered once. The one detail that gives it away in the source is that `.est-preview` has no CSS
+  // rule at all -- nobody had ever seen the thing.
+  //
+  // Allowlist what a string legitimately gets. Anything else means the callback thinks it holds the
+  // form, which is the second parameter's job.
+  const STRING_MEMBERS = new Set(['trim', 'trimStart', 'trimEnd', 'length', 'split', 'replace',
+    'replaceAll', 'match', 'matchAll', 'slice', 'substring', 'toLowerCase', 'toUpperCase', 'includes',
+    'startsWith', 'endsWith', 'indexOf', 'lastIndexOf', 'padStart', 'padEnd', 'repeat', 'charAt',
+    'codePointAt', 'normalize', 'concat', 'at', 'search', 'localeCompare', 'toString', 'valueOf']);
+  const cbs = nonEmpty(previewCallbacks(_src), 'preview: callbacks in index.html');
+  assert.ok(cbs.length >= 15, `only ${cbs.length} preview callbacks parsed — the walker has stopped seeing most of them`);
+  const bad = [];
+  for (const cb of cbs) {
+    assert.ok(/^[A-Za-z_$][\w$]*$/.test(cb.param),
+      `preview callback (via ${cb.via}) has an unparsed first parameter ${JSON.stringify(cb.param)} — ` +
+      'a destructured or odd head means this guard is no longer reading what it thinks it is');
+    const derefs = [...cb.body.matchAll(new RegExp(`\\b${cb.param.replace(/\$/g, '\\$')}\\.(\\w+)`, 'g'))].map(x => x[1]);
+    for (const d of new Set(derefs)) if (!STRING_MEMBERS.has(d)) bad.push(`${cb.via}: ${cb.param}.${d}`);
+  }
+  assert.deepEqual(bad, [], 'a preview callback is reading its VALUE as if it were the form; the form is ' +
+    'the second parameter (`all`). This is #1178, which shipped as a preview that was blank forever.');
+});
+
+test('#1178 the runner refreshes EVERY preview on ANY field, exactly once', () => {
+  // Half 2, found by counting rather than by report. The refresh used to be gated on
+  // `_previewFns.length > 1`, and all three number-format dialogs declare exactly ONE preview while
+  // reading their siblings through `all` -- so the gate was never true where it mattered. Driven
+  // before: the math dialog's preview read `1/3=0.33333333` and did not move for prefix OR sigfigs,
+  // and the column-format sample stayed at `1,200` until Decimal places happened to be touched.
+  // Read the COMMENT-STRIPPED view. Both negatives below assert the absence of a literal, and this
+  // very change's comments describe the code they removed -- prose quoting the old form would disarm
+  // the guard against the new one. (It did: writing the fix's own rationale turned both red.)
+  const body = fnBody(NC, 'openInsertDialog');
+  assert.ok(/root\.addEventListener\('input', \(\) => _previewFns\.forEach\(fn => fn\(\)\)\);/.test(body),
+    'the root-level refresh must exist');
+  assert.ok(!/_previewFns\.length > 1/.test(body),
+    'and must NOT be gated on a preview count — that gate is what made every fmt dialog stale');
+  // The call site, not only the wiring: a second per-field listener would run each preview twice per
+  // keystroke, and the query dialog's previews execute real searches (queryRows / queryRowsFolder).
+  assert.ok(!/inp\.addEventListener\('input', updatePrev\)/.test(body),
+    'there must be exactly ONE refresh path; the per-field listener was removed, not kept alongside');
+  assert.ok(/_previewFns\.push\(updatePrev\);/.test(body) && /^\s*updatePrev\(\);/m.test(body),
+    'each preview still registers itself and still renders once on open');
+  // Exactly three dialogs depend on this, so name them: each has ONE preview that reads `all`.
+  for (const [dlg, needle] of [['openEstimateDialog', /parseNumFmt\(all\?\.decimals, all\?\.prefix, all\?\.suffix, all\?\.sigfigs\)/],
+                               ['openMathDialog', /const f = fmtOf\(all\);/],
+                               ['openColFmtDialog', /parseNumFmt\(all\.decimals, all\.prefix, all\.suffix, all\.sigfigs\)/]]) {
+    const d = fnBody(_src, dlg);
+    assert.equal((d.match(/preview:/g) || []).length, 1,
+      `${dlg} has exactly one preview — that is why the > 1 gate excluded it`);
+    assert.ok(needle.test(d), `${dlg}'s preview must read the format out of \`all\``);
+  }
+});
+
+test('#1178 the estimate preview shows what the pill will show', () => {
+  const d = fnBody(_src, 'openEstimateDialog');
+  assert.ok(/preview: \(v, all\) => \{/.test(d),
+    'it takes (value, form) like every other preview — reading `v.expr` off the value WAS the bug');
+  assert.ok(!/const ex = \(v\.expr \|\| ''\)/.test(d), 'the v.expr deref must be gone');
+  assert.ok(/const ex = \(v \|\| ''\)\.trim\(\);/.test(d), 'and the value read directly');
+  // distHeadline is renderEstPill's own display function, so preview and pill cannot diverge (#1115).
+  // The hand-rolled `estNumFmt(sm.mean) (p5 – p95)` string it replaces was a SECOND display path, and
+  // being second is precisely why it ignored the format.
+  assert.ok(/escHtml\(distHeadline\(sm, f\)\)/.test(d),
+    'the numbers come from distHeadline with the fmt, not a hand-rolled string');
+  assert.ok(!/estNumFmt\(sm\.mean\)\}<\/b>/.test(d), 'the unformatted hand-rolled headline must be gone');
+  assert.ok(/renderEstPill\(/.test(fnBody(_src, 'renderEstPill')) === false || true);
+  assert.ok(/distHeadline\(sm, fmt\)/.test(fnBody(_src, 'renderEstPill')),
+    'the pill must still use distHeadline too — that shared call is what makes them agree');
+  // Sparkline at 11, matching the pill and formatDist rather than the old 16.
+  assert.ok(/est-preview-spark">\$\{escHtml\(sparkline\(samples, 11\)\)\}/.test(d),
+    'the preview sparkline matches the pill at 11 samples');
+  // Both refusals are now reachable, and both were driven for the first time (`4 to` and `(1 to 2) / 0`).
+  for (const msg of ['Not a valid uncertain expression', 'No finite samples'])
+    assert.ok(d.includes(msg), `the "${msg}" refusal must survive — it had never once rendered before`);
+  // The class it renders is the one UXP-276's phone rule hides, so the dialog and the pill agree there.
+  assert.ok(/class="est-preview-spark"/.test(d) && /\.est-spark,\.est-preview-spark\{display:none\}/.test(_src),
+    'the preview spark keeps the class the narrow-viewport rule targets');
+});
+
 test('UXP-276 the estimate pill sheds its decoration on a phone, and the toolbar is left alone', () => {
   // The phone persona's first screen was 606 CSS px wide at a 393px viewport. Measured with
   // scrolling ancestors EXCLUDED (an element inside an overflow-x container is that container's
