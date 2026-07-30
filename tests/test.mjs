@@ -18217,11 +18217,24 @@ test('#1192 the chooser leads with everyday domains, then blank and the tour, ev
   const origin = ids.filter(id => ['campaign-oracle', 'oracle-play', 'character-sheet'].includes(id));
   assert.equal(origin.length, 1, 'IA-8: the origin is present among the quick picks...');
   assert.ok(origin.length * 2 < ids.length, '...and never the majority of them');
-  // leading with them hides nothing: the rest of the gallery follows underneath
-  assert.ok(fn.includes('quick.concat(STARTERS.filter('), 'the quick picks lead, the full gallery follows');
-  // The two non-starter doors, wired to the loaders that already exist (no new loading path).
+  // Three labelled, grid-laid groups instead of 14 rows in one 260px single-column scroll: the quick
+  // picks lead under "Popular", the rest follow under "More templates", and the two structural doors
+  // sit apart in their own group so they are not buried at the bottom of the template list (#1192
+  // follow-up). Order matters: Popular before the rest, both before the doors.
+  assert.ok(fn.includes("addGroup('Popular')"), 'the quick picks lead under a Popular group');
+  assert.ok(fn.includes("addGroup('More templates')"), 'the rest of the gallery follows under More templates');
+  assert.ok(fn.includes('STARTERS.filter(st => !quick.includes(st))'), 'More templates is the gallery minus the quick picks');
+  assert.ok(fn.indexOf("addGroup('Popular')") < fn.indexOf("addGroup('More templates')"),
+    'Popular is rendered before More templates');
+  // The two structural doors live in their OWN group, after both template groups, so a user who wants
+  // to just start writing or take the tour finds them at a glance. Wired to the existing loaders.
+  const doorsAt = fn.indexOf("addGroup('Or')");
+  assert.ok(doorsAt > fn.indexOf("addGroup('More templates')"), 'the blank/tour doors come after the templates');
   assert.ok(fn.includes('closeIo(); startBlankOutline();'), 'a blank door');
   assert.ok(fn.includes('closeIo(); showExamplesDoc();'), 'and the tour, as a pick rather than the default');
+  // The doors land in the doors group, not the template grids: their addPick passes the doors container.
+  assert.match(fn.slice(doorsAt), /startBlankOutline\(\); \}, doors\)/, 'the blank door is in the doors group');
+  assert.match(fn.slice(doorsAt), /showExamplesDoc\(\); \}, doors\)/, 'the tour door is in the doors group');
   // A starter pick lifts the pristine gate BEFORE the additive insert. insertStarterSubtree appends
   // to the current root rather than adopting, so nothing downstream would clear _showingExamples and
   // the domain the user just chose would never autosave.
@@ -20987,9 +21000,12 @@ test('#603 — every menu action survived the restructure (no dropped rows)', ()
     'btn-export-md', 'btn-export-txt', 'btn-export-html',
     'btn-theme', 'accent-row', 'btn-width', 'fm-verbosity-card', 'btn-appearance', 'btn-datapacks',
     'btn-calendar', 'btn-install',
-    'btn-guide', 'btn-examples', 'btn-starters', 'btn-webguide', 'btn-github',
+    'btn-guide', 'btn-starters', 'btn-webguide', 'btn-github',
     'btn-brokenlinks', 'fm-levels-row', 'fm-levels',
   ];
+  // btn-examples ("Add the Welcome tour") was intentionally retired: its content is the same
+  // FIRST_RUN_EXAMPLES tour the welcome chooser now offers as "Poke a live example", so the menu
+  // row was redundant. openExamples() itself stays (the blank-canvas invite banner still calls it).
   const missing = ids.filter(id => !menu.includes(`id="${id}"`));
   assert.deepEqual(missing, [], `these menu actions were lost in the #603 restructure: ${missing.join(', ')}`);
 });
