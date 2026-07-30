@@ -27512,7 +27512,29 @@ function pruneEst(node) {
   node.est = node.est.filter(e => node.text.includes(`[[est:${e.key}]]`));
 }
 
-function renderMathPill(key, m) {
+// #1181: `opts.preview` renders the pill for a DIALOG PREVIEW rather than for the document. A preview
+// is `innerHTML` set from a string and nothing is ever wired to it, so every interactive affordance in
+// it announces an action it cannot perform. Driven before the fix, the math dialog's preview invited a
+// click TWICE -- the .math-edit pencil (role=button, "Edit formula and number format") and the pill's
+// own title/aria ("Click to edit the formula or number format.") -- while the reader was already inside
+// the dialog that click would have opened. Clicking either did nothing, with no page error. On touch it
+// was worse: hover:none makes the pencil a visible 26px chip with a 44px tap overlay.
+//
+// The two strings are hoisted here rather than gated at each of the five/two emission sites, and that
+// removes a real duplication: the pencil span was written out FIVE times verbatim and the click
+// invitation TWICE. An existing pin says of the latter "the two branches are separate string literals
+// and have drifted before: assert they still agree" -- one constant makes that drift impossible, so the
+// guard changes from counting occurrences to asserting the constant.
+function renderMathPill(key, m, opts = {}) {
+  // Hoisting also settles a drift the five copies had already accumulated: three wrote the pen glyph as
+  // `<i class="fa-solid fa-pen">` and two as `<i class="fa-solid fa-pen" aria-hidden="true">`. The span
+  // carries the accessible name, so the glyph is decorative and aria-hidden is the correct spelling --
+  // canonical here, in one place, for all five.
+  const pencil = opts.preview ? ''
+    : `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`;
+  // The format-door signpost (#946): the pill's tip and aria both name what a click reaches. In a
+  // preview there is nothing to reach, so the clause goes and the label states the value alone.
+  const editTip = opts.preview ? '' : ' Click to edit the formula or number format.';   // leading space: with the clause gone, a preview's accessible name must not end in one
   if (!m) return `<span class="math-roll math-bad" data-key="${escQ(key)}" aria-label="Math (missing data)"><span class="math-ico"><i class="fa-solid fa-calculator" aria-hidden="true"></i></span> ?</span>`;
   // Recompute with current vars so math stays live when variables change; expand
   // sum/avg/count(prop) against the point being rendered so subtree aggregation
@@ -27574,7 +27596,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing matched</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
+      + pencil
       + `</span>`;
   }
   // #914: a quoted query reducer on a LEAF point (no descendants) can only return the identity —
@@ -27593,7 +27615,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">0 in scope</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
+      + pencil
       + `</span>`;
   }
   // #950: a words(subtree)/words(children) count on a childless point can only ever count its own
@@ -27608,7 +27630,7 @@ function renderMathPill(key, m) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing below</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen"></i></span>`
+      + pencil
       + `</span>`;
   }
   // Value-only display (opt-in per pill, m.bare): render JUST the computed value, chrome-free, so
@@ -27618,22 +27640,22 @@ function renderMathPill(key, m) {
   // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
   // (which still names the full expr for assistive tech), and click-to-edit.
   if (m.bare) {
-    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}${escQ(queryTip)}"`
-      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)} Click to edit the formula or number format">`
+    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
       + `<span class="math-result">${escHtml(display)}</span>`
-      + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + pencil
       + `</span>`;
   }
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="Click to edit the formula or number format.${escQ(folderTip)}${escQ(queryTip)}"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)} Click to edit the formula or number format">`
+  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
-    + `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+    + pencil
     + `</span>`;
 }
 
@@ -28169,7 +28191,10 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
           }
           const f = fmtOf(all);
           const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
-          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v, f), bare: !!(all && all.bare), fmt: f }); }
+          // #1181: `{ preview: true }` strips the pill's interactive chrome. Without it this preview
+          // carried a role="button" pencil and a "Click to edit the formula or number format." title,
+          // both inert, inside the very dialog that click would have opened.
+          try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v, f), bare: !!(all && all.bare), fmt: f }, { preview: true }); }
           finally { cookieNode = save; }
         },
       },
