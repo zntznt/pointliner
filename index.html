@@ -31035,7 +31035,7 @@ function markDirty() {
   // Beginner PR B: hide the blank-canvas invite the moment typing makes the doc non-blank (a full
   // render may not run mid-edit; markDirty does, via the reconcile). No-op unless the invite is up,
   // and the doc is tiny whenever it is, so the docIsBlank walk inside is cheap.
-  if (_blankInviteReady && _warnAction === 'welcometour') syncBlankInvite();
+  if (_blankInviteReady && _warnAction === 'blankexamples') syncBlankInvite();
   _varsVer++; // invalidate collectVars() cache
   updateDirtyDot();
   scheduleAutosave();
@@ -36958,6 +36958,7 @@ document.getElementById('fm-tier-ind')?.addEventListener('keydown', e => {
 // and applied by toggling .tb-user-hidden (which wins over each button's own display logic); an
 // un-hidden button falls back to its own gate (e.g. Chronicle stays governed by the calendar gate).
 const TOOLBAR_FEATURES = [
+  { id: 'btn-builder',    name: 'All commands' },
   { id: 'btn-capture',    name: 'Capture' },
   { id: 'btn-journal',    name: 'Journal' },
   { id: 'btn-chronicle',  name: 'Chronicle' },
@@ -40067,7 +40068,7 @@ storageWarnBtn.addEventListener('click', () => {
   if (_warnAction === 'reconnect') reconnectWorkspace();
   else if (_warnAction === 'reopenfile') reopenPendingFile();   // UXP-127
   else if (_warnAction === 'startblank') { _blankInviteDismissed = true; startBlankOutline(); }   // UXP-126; an explicit blank choice also waives the blank-canvas invite
-  else if (_warnAction === 'welcometour') openExamples();       // the blank-canvas door's primary action
+  else if (_warnAction === 'blankexamples') openStarterGallery();   // the blank-canvas door: the templates gallery, not the tour
   else saveFile();
 });
 document.getElementById('storage-warn-close').addEventListener('click', hideStorageWarn);
@@ -40139,26 +40140,29 @@ function blankInviteDecision(blank, tier, bannerBusy, firstRun, dismissed) {
   return !!blank && tier !== 'lean' && !bannerBusy && !firstRun && !dismissed;
 }
 function showBlankInviteBanner() {
-  _warnAction = 'welcometour';
-  storageWarnBtn.textContent = 'Add the Welcome tour';
-  storageWarnMsg.textContent = 'Starting fresh? Take the Welcome tour, or drop in a live example.';
+  _warnAction = 'blankexamples';
+  // Drop the tour wording: the primary door is the Templates & examples gallery, the same one the
+  // File menu and the first-run chooser open. The tour lives on inside the chooser ("Poke a live
+  // example"), so this banner no longer names it as its own door.
+  storageWarnBtn.textContent = 'Templates & examples';
+  storageWarnMsg.textContent = 'Starting fresh? Drop in a live example.';
   // the invite greeting lane, polite announce (#404), same as the first-run banner
   storageWarn.classList.remove('soft');
   storageWarn.classList.add('invite');
   storageWarn.setAttribute('role', 'status');
-  storageWarnExamples.style.display = '';   // the second door, the examples gallery
+  storageWarnExamples.style.display = 'none';   // one door now: the primary button is the gallery
   storageWarn.classList.add('on');
   storageWarn.style.top = (document.getElementById('toolbar').offsetHeight + 8) + 'px';
 }
 function hideBlankInviteBanner() {
-  if (_warnAction === 'welcometour') hideStorageWarn();
+  if (_warnAction === 'blankexamples') hideStorageWarn();
 }
 // Re-evaluated on every render (the single repaint point), so the banner appears when a doc goes
 // blank and vanishes the moment it isn't. _blankInviteReady is a hoisted var set only after ALL the
 // state this reads exists (past _showingExamples), so a boot-path render can never hit a TDZ.
 function syncBlankInvite() {
   if (!_blankInviteReady) return;
-  const ours = storageWarn.classList.contains('on') && _warnAction === 'welcometour';
+  const ours = storageWarn.classList.contains('on') && _warnAction === 'blankexamples';
   const busy = storageWarn.classList.contains('on') && !ours;
   // #1192: the Welcome chooser counts as "first run" for this decision too, or the blank-canvas
   // invite paints on the surface behind the modal that is already offering those same two doors.
@@ -40168,7 +40172,7 @@ function syncBlankInvite() {
 }
 // Dismissing the blank-canvas invite with the banner's own close button waives it for the session.
 document.getElementById('storage-warn-close').addEventListener('click', () => {
-  if (_warnAction === 'welcometour') _blankInviteDismissed = true;
+  if (_warnAction === 'blankexamples') _blankInviteDismissed = true;
 });
 async function reopenPendingFile() {
   if (!pendingFile) return;
@@ -40707,7 +40711,7 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
 // "Full guide online" link — leave, browse GitHub, download, File → Open. These embedded
 // starters are the front door: each is a self-contained OPML (plain {…} source that promotes
 // to live pills on load, exactly like FIRST_RUN_EXAMPLES) whose first child is a `# heading`
-// subtree, so openStarter clones + appends it additively the same way openExamples does. Kept
+// subtree, so the gallery clones + appends it additively via insertStarterSubtree. Kept
 // to a small flagship set to respect the single-file constraint; the rest live in guide/solo-rpg/
 // and are linked, not embedded. Each uses ONLY shipped syntax — no new pill, no new delimiter.
 const STARTERS = [
@@ -41180,21 +41184,11 @@ function maybeShowFirstRun() {
   }
 }
 
-// Bring the Examples ("Welcome to Pointliner") tour into the CURRENT document from the File menu,
-// as a new top-level point at the end — NON-DESTRUCTIVELY. It used to adoptDoc (replace the whole
-// document), which overwrote the user's work behind a single confirm (or silently, when the doc was
-// already saved). Inserting instead means the menu can never cost you your document: it just appends
-// the welcome tree so you can explore the live pills, then delete it when done. Undo-able, and it
-// zooms you to the inserted tour so it's obvious where it landed. (First-run still shows the examples
-// AS the empty doc via maybeShowFirstRun; only this menu re-entry inserts.)
-function openExamples() {
-  closeFileMenu();
-  insertStarterSubtree(FIRST_RUN_EXAMPLES, 'the Welcome tour');
-}
-
-// #565: insert one starter's `# heading` subtree additively — the same additive-append-and-zoom
-// path openExamples uses, factored so both share it. Returns false if the OPML won't parse
-// (guarded like openExamples; a malformed embedded starter should no-op, never throw).
+// #565: insert one starter's `# heading` subtree additively — a non-destructive append-and-zoom that
+// never adoptDoc's (the old data-loss path that replaced the whole document). It just appends the
+// subtree so the user can explore the live pills, then delete it when done. Undo-able, and it zooms
+// to the inserted tree so it's obvious where it landed. Returns false if the OPML won't parse (a
+// malformed embedded starter should no-op, never throw).
 function insertStarterSubtree(opml, label) {
   const parsed = fromOpml(opml);
   const top = parsed && parsed.children && parsed.children[0];   // the single "# heading" root subtree
