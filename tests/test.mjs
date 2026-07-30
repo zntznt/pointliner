@@ -7304,20 +7304,96 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     assert.equal(c.estNumFmt(4.1, null), '4.1');
   });
 
-  test('#1175 estNumFmt honours sigfigs, including below its tiny-magnitude escape', () => {
+  test('#1175 estNumFmt honours sigfigs below 1, where the default now also carries 3 (#1177)', () => {
     assert.equal(c.estNumFmt(0.0124, { sigfigs: 3 }), '0.0124');
-    // that escape was ALREADY a sig-figs formatter with a hardcoded 3; an explicit value supplies it.
+    // An explicit sigfigs keeps its trailing zeros: the author asked for exactly that many.
     // A lab notebook lives below 0.001 routinely, so ignoring the author there would defeat the field.
     assert.equal(c.estNumFmt(0.00004, { sigfigs: 2 }), '0.000040');
-    assert.equal(c.estNumFmt(0.00004, null), (0.00004).toPrecision(3), 'unset still uses the old 3');
+    // REWRITTEN by #1177, not loosened. This read `(0.00004).toPrecision(3)` -- i.e. '0.0000400',
+    // untrimmed -- because the sub-0.001 escape returned toPrecision's raw output. #1177 unified the
+    // sub-1 default onto ONE rule with the trim the default path uses everywhere else, so the padding
+    // goes. The PRECISION is unchanged (still 3 s.f.), which is what this line was written to lock.
+    assert.equal(c.estNumFmt(0.00004, null), '0.00004', 'default: 3 s.f. with the trailing zeros trimmed');
+    assert.equal(+c.estNumFmt(0.00004, null), +(0.00004).toPrecision(3), 'the VALUE is still 3 s.f.');
     // decimals keeps precedence, matching parseNumFmt
     assert.equal(c.estNumFmt(1.239, { decimals: 2 }), c.formatNumDisplay(1.239, { decimals: 2 }));
-    // The sharpest demonstration of why this field exists. The adaptive DEFAULT collapses a
-    // lab-scale estimate to "0" (`String(+x.toFixed(2))` on 0.00253), which is pre-existing on main
-    // and filed separately -- a default change is not this PR's business. What IS this PR's business
-    // is that the author can now state the precision and get a real number back.
-    assert.equal(c.estNumFmt(0.00253, null), '0', 'the default still collapses (unchanged here)');
-    assert.equal(c.estNumFmt(0.00253, { sigfigs: 3 }), '0.00253', 'and sigfigs recovers it');
+    // REWRITTEN by #1177. This asserted `'0'` on purpose, to record that #1175 deliberately left the
+    // collapse alone ("a default change is not this PR's business") while proving the new field could
+    // recover the number. #1177 IS that default change: the postdoc should not have needed a format
+    // setting to stop her measurement reading as zero.
+    assert.equal(c.estNumFmt(0.00253, null), '0.00253', 'the default no longer collapses (#1177)');
+    assert.equal(c.estNumFmt(0.00253, { sigfigs: 3 }), '0.00253', 'and sigfigs agrees with it');
+  });
+
+  test('#1177 the sub-1 band keeps its digits, and the ladder has no cliff', () => {
+    // MEASURED on main: the escape fired only below 0.001, so the ladder broke at exactly that edge --
+    // 0.000999 rendered with 3 significant figures and 0.001 rendered as a bare `0`. It protected the
+    // SMALLER side and abandoned the band immediately above, which is backwards.
+    assert.equal(c.estNumFmt(0.000999, null), '0.000999', 'just below the old edge, unchanged');
+    assert.equal(c.estNumFmt(0.001, null), '0.001', 'AT the old edge -- this was "0"');
+    assert.equal(c.estNumFmt(0.0010001, null), '0.001', 'and just above it');
+    // The band that printed a bare zero for a non-zero number: [0.001, 0.005).
+    for (const x of [0.001, 0.00212, 0.00253, 0.00294, 0.00499])
+      assert.notEqual(c.estNumFmt(x, null), '0', `${x} must not render as a bare zero`);
+    // The damage ran all the way to 1, because toFixed(2) only carries 3 s.f. once |x| >= 1.
+    assert.equal(c.estNumFmt(0.0124, null), '0.0124', 'was "0.01" -- the postdoc\'s own number');
+    assert.equal(c.estNumFmt(0.0253, null), '0.0253', 'was "0.03"');
+    assert.equal(c.estNumFmt(0.253, null), '0.253', 'was "0.25"');
+    assert.equal(c.estNumFmt(0.999, null), '0.999', 'was "1", which rounded away a real digit');
+    // The trim is what keeps the common cases clean -- no 0.100 / 0.500 noise.
+    assert.equal(c.estNumFmt(0.1, null), '0.1', 'not 0.100');
+    assert.equal(c.estNumFmt(0.5, null), '0.5', 'not 0.500');
+    // The acceptance case, through the shared headline the pill and the export both use.
+    assert.equal(c.distHeadline({ mean: 0.00253, p5: 0.00212, p95: 0.00294 }, null),
+      '0.00253 (0.00212 – 0.00294)', 'the lab-notebook pill read "0 (0 – 0)" before');
+    // NOTHING at or above 1 moves. These are the #1115 outputs, byte-identical.
+    for (const [x, want] of [[1.005, '1'], [2.48, '2.48'], [5, '5'], [4.1, '4.1'], [9.99, '9.99'],
+                             [12.4, '12.4'], [700, '700'], [1240, '1,240'], [86500, '86,500'], [700000, '700,000']])
+      assert.equal(c.estNumFmt(x, null), want, `${x} is above the band and must not move`);
+    // The explicit-format branch now runs FIRST. Before #1177 the magnitude escape ran ahead of it and
+    // read only `sigfigs`, so raising the threshold to 1 without reordering would have started
+    // silently dropping an author's `decimals` on every value below 1. This is that guard.
+    assert.equal(c.estNumFmt(0.253, { decimals: 2 }), '0.25', 'an explicit decimals still wins below 1');
+    assert.equal(c.estNumFmt(0.253, { decimals: 4 }), '0.2530', 'including its trailing zeros');
+    assert.equal(c.estNumFmt(0.253, { sigfigs: 2 }), '0.25', 'and an explicit sigfigs');
+    assert.equal(c.estNumFmt(0.253, { prefix: '£' }), '£0.253', 'prefix-only is not an explicit format, so the default applies');
+    // #1115's recorded decision, CHECKED not assumed: a genuinely tiny number stays scientific. An
+    // earlier draft of #1177 proposed removing exponentials outright before this pin was found.
+    assert.match(c.estNumFmt(0.00000012, null), /e-/, 'the scientific tail is deliberate and survives');
+  });
+
+  test('#1177 a display string is never parsed back into a number', () => {
+    // The variables dialog teaches percentile()/chanceover() with a threshold taken from the
+    // distribution's own middle, because #1101 wanted the line "copy-pasteable rather than an abstract
+    // example the reader has to translate". It read `Number(estNumFmt(mid))` -- and estNumFmt GROUPS
+    // THOUSANDS, so Number("700,000") is NaN. Measured: every median at or above 1000 produced
+    // `{= chanceover(cost, NaN)} is NaN%`, which for anything money-scale is the normal case. There was
+    // no test on this line at all, which is why it shipped.
+    assert.ok(/const t = Number\.isFinite\(mid\) \? \+\(\+mid\.toPrecision\(3\)\) : 0;/.test(_src),
+      'the threshold must be derived from the NUMBER, not from the formatted string');
+    // The class, not just the instance: a grouped/affixed display string is never numeric input.
+    // Read the COMMENT-STRIPPED view. This change's own comment quotes the call it removed, and that
+    // is the THIRD time in three PRs that writing a fix's rationale turned its own negative assertion
+    // red (#1178's runner pin and the #1175 parseNumFmt call-site pin were the other two). Prose about
+    // the old form must not be able to disarm the guard against it.
+    assert.ok(!/Number\(estNumFmt\(/.test(NC),
+      'no caller may parse estNumFmt output back into a number — grouping makes that NaN');
+    assert.ok(!/parseFloat\(estNumFmt\(|Number\(formatNumDisplay\(|parseFloat\(formatNumDisplay\(/.test(NC),
+      'the same holds for formatNumDisplay, which groups for the same reason');
+    // ...and prove the stripped view still contains the code, so the two negatives above cannot pass
+    // by reading an empty string (the #1132 shrinking-input failure mode).
+    assert.ok(NC.includes('function estNumFmt(') && NC.length > 1e6,
+      'the comment-stripped view must still hold the source for those negatives to mean anything');
+    // And the arithmetic it replaced it with: never NaN, and rounded to something a reader would type.
+    const t = mid => Number.isFinite(mid) ? +(+mid.toPrecision(3)) : 0;
+    assert.equal(t(149823.4), 150000, 'a median of 149823.4 teaches 150000, not 149823');
+    assert.equal(t(1500), 1500);
+    assert.equal(t(700000), 700000, 'the case that was NaN');
+    assert.equal(t(0.253), 0.253, 'and a sub-1 median keeps its digits');
+    assert.equal(t(0.00253), 0.00253);
+    assert.equal(t(NaN), 0, 'a non-finite median falls back to 0 rather than propagating');
+    for (const m of [0.253, 0.00253, 2.48, 1500, 149823.4, 700000])
+      assert.ok(Number.isFinite(t(m)), `${m} must not produce NaN`);
   });
 
   test('#1175 every fmt door offers the field, and the two are exclusive (#1133 call sites)', () => {
