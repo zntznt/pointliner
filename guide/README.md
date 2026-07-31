@@ -59,6 +59,9 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
 - **[Composing pills](composing-pills.md)** shows how to put pills together (side by side,
   through variables, and through the tree) so one pill feeds another.
 - **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
+- **[Pill syntax reference](pill-syntax-reference.md)** is the look-it-up spec: every `{â€¦}` form in
+  one table, the order they are matched, the escape hatches, and the OPML lossless file format that
+  keeps them all. Use it when you want the whole grammar at a glance rather than a tutorial.
 - **[Solo RPG guides](solo-rpg/README.md)** are worked examples for the use Pointliner was born
   from: playing and journaling a tabletop game in one file, each with an importable demo.
 

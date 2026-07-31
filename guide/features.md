@@ -270,6 +270,10 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   the sync. ([saving](files-and-export.md#saving-your-work))
 - **Open formats.** The native save format is a plain, open document file (OPML); export to Markdown or plain text for sharing.
   ([exporting](files-and-export.md#exporting-and-sharing))
+- **Published grammar + lossless format.** Every `{…}` pill form, the order they are matched, the
+  escape hatches, and the OPML lossless round-trip (the format that reopens with every pill live) are
+  documented in one place, so your grammar and your data are portable text you own.
+  ([pill syntax reference](pill-syntax-reference.md))
 - **Exclude from export.** Flag a point (and its subtree) to skip every export format, Markdown,
   plain text and Web page alike, so scaffolding and planning notes stay out of a shared copy. Only
   the OPML save keeps it. Excluding a variable declaration is called out after a Web page export,
