@@ -449,6 +449,24 @@ test('braceAttemptReason — explains why an INVALID {…} did not become a pill
   // prose braces classify 'literal' and are left entirely alone by the cue
   assert.equal(c.classifyBraceBody('note to self', {}, {}), 'literal');
 });
+
+// #1199: braceAttemptReason is good copy, but it lived only in a `title`/`aria-label` on a
+// non-focusable span, so on a laptop it was hover-only (the #1021 dead-element shape). The reason is
+// now stashed at render as `data-reason` and flashed on click, so a keyboard/pointer user who reads
+// the "not recognized" flash and clicks the underlined text sees the full explanation. Driven live
+// (a click flashes the sentence); this pins the wiring, since a source-pin proves presence only.
+test('#1199 wiring: the formula-error reason is stashed and flashed on click, not hover-only', () => {
+  // both render sites (nested + top-level pass) carry the reason in data-reason
+  const stashed = (_src.match(/class="\$\{cls\}" data-reason="\$\{escQ\(why\)\}"|class="brace-attempt" data-reason="\$\{escQ\(why\)\}"/g) || []);
+  assert.ok(stashed.length >= 2, 'both .brace-attempt render sites must stash the reason in data-reason');
+  // the delegated click handler flashes the stashed reason
+  assert.ok(/const ba = e\.target\.closest\('\.brace-attempt'\);\s*\n\s*if \(ba && ba\.dataset\.reason\) flashHint\(ba\.dataset\.reason\);/.test(_src),
+    'a click on .brace-attempt must flash its data-reason (surfacing the hover-only explanation)');
+  // it sits in a CLICK delegate (not mousedown), so it never fights the caret placement / caret invariant
+  const iHandler = _src.indexOf("const ba = e.target.closest('.brace-attempt')");
+  const iDelegate = _src.lastIndexOf("getElementById('outline').addEventListener('click'", iHandler);
+  assert.ok(iDelegate > -1 && iDelegate < iHandler, 'the flash lives in the outline CLICK delegate, so the caret still lands on click');
+});
 test('promoteBraceBody — {markov: …} builds an anonymous, typed markov record', () => {
   const node = { text: '', markov: [] };
   const tok = c.promoteBraceBody(node, 'markov: a→b, b→c');
