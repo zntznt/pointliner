@@ -25538,6 +25538,15 @@ function promoteBraceBodyIn(node, body) {
   // shredded grammar pill. (A quoted PICK-var RHS `{v := "a | b"}` is handled in the varDecl arm via
   // rollPickSource, not here — this only guards a STANDALONE quoted body.)
   if (isQuotedLiteral(body)) return null;
+  // #1213: an EMPTY-bodied keyword pill — a recognized keyword and nothing after it ({roll: }, {= },
+  // {count: }, {query: }, {shuffle: }, {oracle: }…) — is an unfinished pill. Left alone it stays raw
+  // text and its braces leak into the rendered prose, reading as a glitch (six panelists). Consume it
+  // to nothing here, exactly as the empty {date due: } / {prop k: } stubs already do below — one
+  // consistent "an empty pill vanishes" rule. Sniffed BEFORE every keyword parser (they all reject an
+  // empty tail and would otherwise let it fall through to literal). NOT touched: a quoted literal
+  // (handled just above), prose braces (no keyword — the alternation/escape-hatch paths keep them),
+  // and a bare `{`/`{{` while typing (a different, edit-buffer path). `=` with an empty tail counts.
+  if (/^(?:=|(?:roll|count|query|shuffle|cycle|once|stopping|markov|oracle|seq|rule)\s*:)\s*$/i.test(body)) return '';
   // expression: {= expr}
   if (body[0] === '=') {
     // validate against the node's inherited scope (#461) so a pill referencing an own/ancestor
