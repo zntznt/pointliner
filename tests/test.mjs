@@ -18334,14 +18334,23 @@ test('#1192 the chooser leads with everyday domains, then blank and the tour, ev
   // The ownership half is what reached the two panelists who never want a number at all.
   assert.ok(fn.includes('Notes that compute.'), 'the welcome leads with what the app is');
   assert.ok(fn.includes('Your file, offline, no account.'), 'and states the ownership fact');
-  // Quick picks: real starter ids, everyday domains leading, the origin present but never the
-  // majority (IA-8). nonEmpty, or a broken regex would make the whole loop pass vacuously.
+  // Quick picks: real starter ids, everyday domains leading. #1214 REVERSAL (recorded): the LEAD row
+  // is now entirely everyday — three non-RPG panelists read a single oracle in the top row as "wrong
+  // app, this is for D&D." The origin is NOT removed; it stays in "More templates" directly under the
+  // lead, so IA-8 (origin present, never the majority) is enforced over the WHOLE gallery (STARTERS),
+  // not the lead row. nonEmpty, or a broken regex would make the whole loop pass vacuously.
+  const origins = ['campaign-oracle', 'oracle-play', 'character-sheet'];
   const ids = nonEmpty(between(_src, 'const WELCOME_QUICK_PICKS = [', '];').match(/'[^']+'/g) || [], 'WELCOME_QUICK_PICKS')
     .map(s => s.slice(1, -1));
   for (const id of ids) assert.ok(_fStarters.includes(`id: '${id}'`), `quick pick ${id} must name a real starter`);
-  const origin = ids.filter(id => ['campaign-oracle', 'oracle-play', 'character-sheet'].includes(id));
-  assert.equal(origin.length, 1, 'IA-8: the origin is present among the quick picks...');
-  assert.ok(origin.length * 2 < ids.length, '...and never the majority of them');
+  // #1214: the LEAD row leads entirely with everyday domains — no origin starter sets the tone there.
+  assert.equal(ids.filter(id => origins.includes(id)).length, 0,
+    '#1214: the lead (Popular) row is all everyday domains, so RPG framing never sets the tone');
+  // IA-8 still holds over the full gallery: the origin is present but never the majority of STARTERS.
+  const galleryIds = nonEmpty(_fStarters.match(/id: '([^']+)'/g) || [], 'STARTERS ids').map(s => s.slice(5, -1));
+  const galleryOrigins = galleryIds.filter(id => origins.includes(id));
+  assert.ok(galleryOrigins.length >= 1, 'IA-8: the origin is present in the gallery');
+  assert.ok(galleryOrigins.length * 2 < galleryIds.length, 'IA-8: ...and never the majority of it');
   // Three labelled, grid-laid groups instead of 14 rows in one 260px single-column scroll: the quick
   // picks lead under "Popular", the rest follow under "More templates", and the two structural doors
   // sit apart in their own group so they are not buried at the bottom of the template list (#1192
