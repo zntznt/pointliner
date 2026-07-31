@@ -659,6 +659,45 @@ test('#1107 drift guard: every shipped {roll:} has a pool in its own document', 
   assert.ok(checked >= 5, `expected several shipped tag rolls to check, got ${checked}`);
 });
 
+// Sibling guard to #1107, same failure shape via a different pill. A child rollup — {= sum(prop)},
+// avg/count/min/max with a BARE identifier arg — aggregates over the calling point's DIRECT children
+// (index.html "subtree aggregation"). A point that calls one but has NO children in the shipped OPML
+// aggregates over nothing: sum/avg/count render 0 with a "nothing matched" tooltip. That is exactly
+// how the character-sheet starter shipped a `Total carried: {= sum(weight)}` line that read 0 while
+// its six weighted items sat beside it as SIBLINGS, not children. #1107 only guards {roll: #tag};
+// bare-identifier rollups need their own static check, so a total-line-without-children can never
+// ship reading zero again. Query-form count (`count(is:todo)`, `{count: #tag}`) is document-wide and
+// exempt — this only flags a single bare-identifier arg, which is the child-rollup overload.
+test('drift guard: every shipped child rollup ({= sum(prop)} etc.) has children to roll up', () => {
+  const AGG = /\b(sum|avg|count|min|max)\(\s*([A-Za-z_]\w*)\s*\)/g;   // bare single identifier only
+  // Walk the OPML tracking whether each <outline> opens a subtree. A self-closing `<outline .../>`
+  // has no children; an `<outline ...>` that is later closed by `</outline>` before its own close
+  // owns whatever outlines nest between. We only need "does THIS node have ≥1 child outline".
+  const docs = [];
+  for (const m of _src.matchAll(/opml:\s*`([\s\S]*?)`/g)) docs.push(['STARTERS', m[1]]);
+  for (const m of _src.matchAll(/FIRST_RUN_EXAMPLES\s*=\s*`([\s\S]*?)`/g)) docs.push(['first-run', m[1]]);
+  assert.ok(docs.length >= 5, `expected the shipped OPML blocks, found ${docs.length}`);
+  let checked = 0;
+  for (const [where, opml] of docs) {
+    // Tokenize into open (<outline ...>), leaf (<outline .../>) and close (</outline>) events, and
+    // walk them as a tree. A frame counts its children as they close under it; its own rollup is
+    // checked at ITS close, when the child count is final. A leaf (self-closing) has zero children.
+    const toks = [...opml.matchAll(/<outline\b([^>]*?)(\/?)>|<\/outline>/g)];
+    const stack = [];
+    const bump = () => { if (stack.length) stack[stack.length - 1].kids++; };
+    const checkAggs = f => { for (const m of (f.aggs || [])) { checked++;
+      assert.ok(f.kids > 0, `${where}: "${f.text.slice(0, 60)}" calls ${m[1]}(${m[2]}) over its children but has none — it renders 0 (put the rollup on the PARENT that owns the ${m[2]}-bearing points)`); } };
+    for (const t of toks) {
+      if (t[0] === '</outline>') { checkAggs(stack.pop()); bump(); continue; }
+      const text = (t[1].match(/text="([^"]*)"/) || [])[1] || '';
+      const frame = { text, kids: 0, aggs: [...text.matchAll(AGG)] };
+      if (t[2] === '/') { checkAggs(frame); bump(); }   // leaf: 0 kids, checked immediately
+      else stack.push(frame);
+    }
+  }
+  assert.ok(checked >= 3, `expected several shipped child rollups to check, got ${checked}`);
+});
+
 test('#1107: {roll:} draws DOCUMENT-wide, like the {query:}/{count:} siblings it belongs to', () => {
   // REVERSAL, recorded deliberately. This test previously asserted the opposite: that a roll is
   // confined to its host point's descendants. That behaviour was half of DECISION-191b, whose owner
