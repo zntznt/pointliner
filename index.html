@@ -2077,6 +2077,9 @@ body.agg-resizing{cursor:col-resize;user-select:none}
 .agg-bar.ongoing{border-style:dashed}
 .agg-bar.pending{border-style:dotted;opacity:.75}
 .agg-bar.done{opacity:.5}
+/* #1198: an event outside the clamped window, pinned to the edge as a thin marker (the far dates live
+   in the List/Month views; this just shows the row exists in that direction). */
+.agg-bar.agg-off-before,.agg-bar.agg-off-after{opacity:.6;border-style:dashed}
 .agg-bar:hover{filter:brightness(1.08)}
 .agg-bar:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* ── Week pane — the planner spread: 7 day columns (+ optional Earlier) ── */
@@ -5487,17 +5490,29 @@ function parseDueDate(val, cal = activeCalendar()) {
     }
     return null;    // in a fictional calendar, a Gregorian ISO date is not meaningful → not parsed
   }
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  // #1198: any year is a date, not just 1900-2200. The old window was a scheduling typo-guard ("a due
+  // date in 3331 is a typo"), but it also blocked history (a parish record dated 1812) and a
+  // worldbuilder's chronicle (a siege in 1347, a campaign event in 3200) — and the same app is built
+  // for the lore table. A date means a date across every key and every view; the ONLY real limit is
+  // the epoch-day bound the fiction arm already uses (±CAL_EPOCH_MAX — past it, integer math loses
+  // precision and the Gantt axis can't be drawn), so a genuine typo now shows as a visible far-year
+  // chip, never silent corruption. Two JS footguns had to go with the window: the 4-digit-only regex
+  // (blocked years 1-999) and Date.UTC's silent remap of years 0-99 to 1900-1999 (setUTCFullYear does
+  // not remap). The overflow round-trip below still rejects Feb-30 / month-13 unchanged.
+  const iso = s.match(/^(-?\d+)-(\d{1,2})-(\d{1,2})$/);
   if (iso) {
     const y = +iso[1], mo = +iso[2], d = +iso[3];
-    // sane scheduling window — a due date in the year 3331 is a typo, not a plan
-    if (y < 1900 || y > 2200 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    const ms = Date.UTC(y, mo - 1, d);
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+    const dt = new Date(Date.UTC(2000, mo - 1, d));   // a safe year for the m/d validation…
+    dt.setUTCFullYear(y);                             // …then set the real year (no 0-99 → 1900s remap, unlike Date.UTC)
+    const ms = dt.getTime();
     if (isNaN(ms)) return null;
-    const back = new Date(ms);
     // reject overflow-normalized impossibles (Feb 30, Apr 31, …)
-    if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return null;
-    return Math.floor(ms / 86400000);
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+    const ep = Math.floor(ms / 86400000);
+    // The fiction arm's bound: outside ±CAL_EPOCH_MAX the epoch loses precision and a Gantt over the
+    // range can't render. A year that far out is unparseable, visibly — never a garbage epoch.
+    return (Number.isSafeInteger(ep) && Math.abs(ep) <= CAL_EPOCH_MAX) ? ep : null;
   }
   return null;
 }
@@ -6015,8 +6030,11 @@ function calendarMonthGrid(epochDay, cal = activeCalendar()) {
 // The axis range spans every bar plus today (so the "today" line is always in
 // frame), padded one day each side. Offsets/spans are in DAYS (pixels are a
 // render concern). Rows sort by start day. Returns
-// { rangeStart, rangeEnd, rangeDays, rows:[{…item, kind, offsetDays, spanDays}] }.
+// { rangeStart, rangeEnd, rangeDays, rows:[{…item, kind, offsetDays, spanDays}], clamped, offWindow, trueDays }.
 // Node-testable.
+// #1198: the widest a day-per-column Gantt draws before it clamps (see the clamp inside). ~30 years —
+// generous for any real plan, far short of the tab-freezing span two any-year dates can now produce.
+const GANTT_MAX_DAYS = 11000;
 function agendaGantt(items, today = dueDateToday()) {
   const rows = [];
   let lo = Infinity, hi = -Infinity;
@@ -6034,16 +6052,30 @@ function agendaGantt(items, today = dueDateToday()) {
     rows.push({ ...it, kind, _s: s, _e: e });
     lo = Math.min(lo, s); hi = Math.max(hi, e);
   }
-  if (!rows.length) return { rangeStart: today, rangeEnd: today, rangeDays: 1, rows: [] };
+  if (!rows.length) return { rangeStart: today, rangeEnd: today, rangeDays: 1, rows: [], clamped: false, offWindow: 0, trueDays: 1 };
   lo = Math.min(lo, today); hi = Math.max(hi, today);
-  const rangeStart = lo - 1, rangeEnd = hi + 1;     // one day of padding each side
+  // #1198: dates are now any year (a 1347 siege, a 3200 campaign event), so the span between two real
+  // dates can be centuries — and a day-per-column Gantt over ~248k days would spawn thousands of ticks
+  // and a multi-million-px axis, freezing the tab (the exact hazard the old 1900-2200 wall also
+  // prevented). Clamp the DRAWN window to GANTT_MAX_DAYS around today; rows outside it are NOT dropped
+  // (they stay in the List/Month views and are counted here so the render says so, P4). A window that
+  // fits is untouched — this only trips on a genuinely millennium-spanning set.
+  let rangeStart = lo - 1, rangeEnd = hi + 1;       // one day of padding each side
+  let trueDays = rangeEnd - rangeStart + 1;
+  let clamped = false, offWindow = 0;
+  if (trueDays > GANTT_MAX_DAYS) {
+    clamped = true;
+    const half = Math.floor(GANTT_MAX_DAYS / 2);
+    rangeStart = today - half; rangeEnd = today + half;
+    offWindow = rows.filter(r => r._e < rangeStart || r._s > rangeEnd).length;
+  }
   const rangeDays = rangeEnd - rangeStart + 1;
   // Coherent Gantt order: active bars first (done sinks to the bottom), then earliest bar
   // start (its left edge), then earliest end — so bars cascade top-to-bottom by where they
   // begin, with completed work grouped below.
   rows.sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || a._s - b._s || a._e - b._e);
   for (const r of rows) { r.offsetDays = r._s - rangeStart; r.spanDays = r._e - r._s + 1; delete r._s; delete r._e; }
-  return { rangeStart, rangeEnd, rangeDays, rows };
+  return { rangeStart, rangeEnd, rangeDays, rows, clamped, offWindow, trueDays };
 }
 
 // Pure: shift an epoch-day by whole months, clamping the day to the target
@@ -13372,6 +13404,24 @@ function buildPropsArea(node) {
         chip.classList.add('prop-date-bad');
         chip.title = 'Not a date this calendar can read. Click to fix. ' + dateFormsHint();
         chip.setAttribute('aria-label', `${propK}: ${val} (not readable in this calendar). Click to fix`);
+      }
+    }
+    // #1198: the lore/history keys (when/date, the timeline's own keys) never validated their value —
+    // a malformed lore date showed as an ordinary chip while due/start got a bad-date cue, the exact
+    // asymmetry that let "looks dated but the timeline can't read it" pass silently. Give them the same
+    // check. Historical, not scheduled: a valid date renders as a clean formatted chip, NO overdue/ago
+    // urgency (that is deadline language).
+    else if (propK === 'when' || propK === 'date') {
+      const nodeCal = calendarForNode(node);
+      const ep = parseDueDate(val, nodeCal);
+      if (ep !== null) {
+        displayVal = formatDueDate(ep, nodeCal).iso;
+        chip.title = 'A dated event. Click to edit';
+        chip.setAttribute('aria-label', `${propK}: ${displayVal}. Click to edit properties`);
+      } else if (String(val).trim()) {
+        chip.classList.add('prop-date-bad');
+        chip.title = 'Not a date this calendar can read. Click to fix. ' + dateFormsHint();
+        chip.setAttribute('aria-label', `${propK}: ${val} (not a readable date). Click to fix`);
       }
     }
     if (propK === ALIAS_KEY) {
@@ -35592,6 +35642,13 @@ function renderAgendaGantt(host, visible, totalDated) {
   const layout = agendaGantt(visible);
   if (!layout.rows.length) { host.appendChild(agMini('Nothing to show. Adjust the toggles.')); return; }
   const today = dueDateToday();
+  // #1198: a set spanning many centuries can't be charted day-per-column without freezing, so the
+  // window is clamped around today. Say so (P4, never a silent drop) — every event is still in the
+  // List and Month views, and off-window bars show as an edge marker.
+  if (layout.clamped) {
+    const yrs = Math.round(layout.trueDays / 365);
+    host.appendChild(agMini(`These dates span about ${yrs} years, too wide to chart day by day. Showing the years around today; the ${layout.offWindow} event${layout.offWindow === 1 ? '' : 's'} outside this window stay in the List and Month views.`));
+  }
 
   // two-panel layout: fixed names column + scrollable chart
   const outer = document.createElement('div'); outer.className = 'agg-outer';
@@ -35686,8 +35743,18 @@ function renderAgendaGantt(host, visible, totalDated) {
     // ongoing (no deadline) reads neutral; bars with a deadline carry its urgency tint.
     // agendaState collapses a done bar's urgency to 'done', so it's never overdue-red.
     bar.className = 'agg-bar ' + r.kind + ' ' + ((r.kind === 'ongoing' || r.kind === 'pending') && !r.done ? 'none' : agendaState(r)) + (r.done ? ' done' : '');
-    bar.style.left = (r.offsetDays * px) + 'px';
-    bar.style.width = Math.max(6, r.spanDays * px) + 'px';
+    // #1198: when the span was clamped, a bar can start before / end after the drawn window. Pin it to
+    // the nearest edge as a thin marker (never a negative-offset or million-px-wide bar) so the row
+    // still shows and navigates, without breaking the axis. In-window bars are unchanged.
+    const barEndOff = r.offsetDays + r.spanDays - 1;
+    if (barEndOff < 0) { bar.classList.add('agg-off-before'); bar.style.left = '0px'; bar.style.width = '6px'; }
+    else if (r.offsetDays > layout.rangeDays - 1) { bar.classList.add('agg-off-after'); bar.style.left = ((layout.rangeDays - 1) * px) + 'px'; bar.style.width = '6px'; }
+    else {
+      const clampedLeft = Math.max(0, r.offsetDays);
+      const clampedRight = Math.min(layout.rangeDays - 1, barEndOff);
+      bar.style.left = (clampedLeft * px) + 'px';
+      bar.style.width = Math.max(6, (clampedRight - clampedLeft + 1) * px) + 'px';
+    }
     wireAgNav(bar, r, agItemAria(r));
     row.appendChild(bar);
     inner.appendChild(row);

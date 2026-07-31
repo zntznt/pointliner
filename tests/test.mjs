@@ -13395,7 +13395,7 @@ test('auditCalendarSwitch classifies every stored date under the candidate calen
     mkP('a', 'due', '2026-01-15'),        // fits the fiction's ranges → CHANGED (re-dated, not lost)
     mkP('g', 'due', '2026-01-31'),        // day 31 > the 30-day month → BROKEN under the fiction
     mkP('b', 'due', 'today+3'),           // relative → floats, informational only
-    mkP('c', 'start', '1014-11-21'),      // fiction-form → ADOPTED (null under Gregorian's 1900+ window)
+    mkP('c', 'start', '1014-02-30'),      // Feb 30: impossible in Gregorian, valid in HARPTOS's 30-day month → ADOPTED (#1198: any-year Gregorian no longer makes 1014 the distinguisher; an impossible-Gregorian day is)
     mkP('d', 'due', 'someday'),           // garbage under both → ok (unchanged garbage)
     mkP('e', 'repeat', 'every 2 weeks'),  // repeat → its own bucket (reinterprets silently)
     mkP('f', 'due', '2026-13-40'),        // impossible under both → ok
@@ -13404,12 +13404,12 @@ test('auditCalendarSwitch classifies every stored date under the candidate calen
   assert.equal(a.changed.length, 1);  assert.equal(a.changed[0].val, '2026-01-15');
   assert.equal(a.broken.length, 1);   assert.equal(a.broken[0].val, '2026-01-31');
   assert.equal(a.relative.length, 1); assert.equal(a.relative[0].val, 'today+3');
-  assert.equal(a.adopted.length, 1);  assert.equal(a.adopted[0].val, '1014-11-21');
+  assert.equal(a.adopted.length, 1);  assert.equal(a.adopted[0].val, '1014-02-30');
   assert.equal(a.repeats.length, 1);  assert.equal(a.repeats[0].kind, 'interval');
   assert.equal(a.total, 6, 'repeat is not a date prop; the other six count');
   // DEACTIVATION is the same core with the args swapped, mirrored classifications
   const d = c.auditCalendarSwitch(tree, cal, null);
-  assert.equal(d.broken.length, 1);  assert.equal(d.broken[0].val, '1014-11-21', 'the fiction date is unreadable under Gregorian');
+  assert.equal(d.broken.length, 1);  assert.equal(d.broken[0].val, '1014-02-30', 'the fiction date (Feb 30) is unreadable under Gregorian');
   assert.equal(d.changed.length, 1); assert.equal(d.changed[0].val, '2026-01-15', 'parses under BOTH, different day');
   assert.equal(d.adopted.length, 1); assert.equal(d.adopted[0].val, '2026-01-31', 'unreadable now, readable after');
   // CHANGED: a padded string that parses under two different calendars to different days
@@ -13493,8 +13493,11 @@ test('parseDueDate — invalid values return null', () => {
   assert.equal(c.parseDueDate(null),         null);
   assert.equal(c.parseDueDate(''),           null);
   assert.equal(c.parseDueDate('foo'),        null);
-  assert.equal(c.parseDueDate('26-06-13'),   null); // not 4-digit year
-  assert.equal(c.parseDueDate('tomorrow+1'), null); // unsupported form
+  // #1198: '26-06-13' is now a VALID date (year 26), not a rejected non-4-digit year — the year
+  // padding no longer gates the parse. A truly malformed shape (letters, extra parts) still fails.
+  assert.ok(c.parseDueDate('26-06-13') !== null, 'a short year is a real year now, not invalid');
+  assert.equal(c.parseDueDate('2026-6-13-1'), null); // too many parts
+  assert.equal(c.parseDueDate('tomorrow+1'), null);  // unsupported form
 });
 
 test('parseDueDate — impossible calendar dates are rejected (no overflow-normalize)', () => {
@@ -13513,15 +13516,23 @@ test('parseDueDate — impossible calendar dates are rejected (no overflow-norma
   assert.ok(c.parseDueDate('2026-12-31') !== null);
 });
 
-test('parseDueDate — absurd years outside the scheduling window are rejected', () => {
-  assert.equal(c.parseDueDate('3331-07-15'), null); // year 3331 is a typo, not a plan
-  assert.equal(c.parseDueDate('3334-07-15'), null);
-  assert.equal(c.parseDueDate('0349-07-01'), null); // year 349
-  assert.equal(c.parseDueDate('1899-12-31'), null); // just below the floor
-  assert.equal(c.parseDueDate('2201-01-01'), null); // just above the ceiling
-  // boundaries are inclusive
-  assert.ok(c.parseDueDate('1900-01-01') !== null);
-  assert.ok(c.parseDueDate('2200-12-31') !== null);
+test('#1198 parseDueDate — any year is a date; only impossible dates + the epoch bound reject', () => {
+  // #1198 REVERSAL (recorded): the old 1900-2200 window was a scheduling typo-guard, but it also
+  // blocked history (a parish record in 1812) and a worldbuilder's chronicle (a siege in 1347, a
+  // campaign event in 3200), and the same app is built for the lore table. A date is a date across
+  // every key and view now; a genuine typo shows as a visible far-year chip, never silent corruption.
+  for (const v of ['1812-03-04', '1889-11-02', '1347-06-15', '3200-01-01', '3331-07-15', '0349-07-01',
+                    '1899-12-31', '2201-01-01', '0001-01-01', '1-1-1', '50-6-15']) {
+    assert.ok(c.parseDueDate(v) !== null, `${v} is a real date, not a typo to reject`);
+  }
+  // year 0-99 is NOT the Date.UTC 0-99 → 1900s remap: year 1 and year 1901 are distinct epoch-days.
+  assert.notEqual(c.parseDueDate('0001-01-01'), c.parseDueDate('1901-01-01'), 'year 1 is not silently 1901');
+  // still rejected: impossible calendar dates …
+  for (const v of ['1812-02-30', '1812-13-01', '1812-00-05', '1812-01-32']) {
+    assert.equal(c.parseDueDate(v), null, `${v} is an impossible date`);
+  }
+  // … and anything past the epoch bound (±CAL_EPOCH_MAX — the fiction arm's limit, precision/Gantt).
+  assert.equal(c.parseDueDate('99999999-01-01'), null, 'past ±CAL_EPOCH_MAX is unparseable, visibly');
 });
 
 // ─── recurring tasks (#462) — parseRepeat + nextOccurrence ──────────────────────
@@ -13860,6 +13871,26 @@ test('agendaGantt — a future-dated start with no due is a pending marker, not 
   // a FUTURE start is a 1-day 'pending' marker at its start, NOT an in-progress bar (#768)
   assert.equal(byId.soon.kind, 'pending');
   assert.equal(byId.soon.spanDays, 1);         // a single-day marker, not a bar reaching back to today
+});
+
+test('#1198 agendaGantt — a millennium-spanning set clamps the drawn window, never a freeze, never a drop', () => {
+  const today = c.parseDueDate('2026-06-14');
+  const items = [
+    { id: 'now',  start: null, due: today, title: 'Today' },
+    { id: 'past', start: null, due: c.parseDueDate('1347-06-15'), title: 'Siege' },   // ~680 years back
+    { id: 'far',  start: null, due: c.parseDueDate('3200-01-01'), title: 'Campaign' }, // ~1200 years fwd
+  ];
+  const g = host(c.agendaGantt(items, today));
+  // every dated item is still a row (nothing silently dropped — they live in the List/Month too)
+  assert.equal(g.rows.length, 3, 'all three dated items are kept');
+  // but the DRAWN window is clamped so a day-per-column axis can't freeze the tab
+  assert.equal(g.clamped, true, 'a centuries-wide span clamps the drawn window');
+  assert.ok(g.rangeDays <= 11001, `rangeDays stays bounded (was ${g.rangeDays}, true span ${g.trueDays})`);
+  assert.ok(g.trueDays > 500000, 'the true span is recorded so the render can say how wide it really is');
+  assert.equal(g.offWindow, 2, 'the two far events are counted as outside the drawn window');
+  // a set that fits is NOT clamped (the common case is untouched)
+  const near = host(c.agendaGantt([{ id: 'a', start: null, due: c.parseDueDate('2026-08-01'), title: 'A' }], today));
+  assert.equal(near.clamped, false, 'a normal-range plan draws its full window, unclamped');
 });
 
 test('agendaMonthCells — 42 cells, items placed on their day, inMonth/today flags', () => {
@@ -21522,6 +21553,30 @@ test('#647 — timeline collectors: journal (tree position), lore (when/date pro
   // No Journal home → no journal items; a date: prop is also lore.
   assert.equal(c.collectJournalDates({ children: [lore, task] }).length, 0);
   assert.equal(c.collectLoreDates({ children: [ mk('Founded', [{ key: 'date', val: '2020-01-01' }]) ] }).length, 1);
+
+  // #1198: a HISTORICAL lore date (a parish record, a chronicle) must be COLLECTED, not dropped by
+  // the old 1900 scheduling window. Before the fix these three parsed to null and the timeline showed
+  // "No dated points here yet" while the chips sat on screen (the false empty state, auto-fixed here).
+  const history = { children: [
+    mk('Baptism', [{ key: 'date', val: '1812-03-04' }]),
+    mk('Marriage', [{ key: 'date', val: '1831-06-12' }]),
+    mk('Burial',   [{ key: 'when', val: '1889-11-02' }]),
+  ] };
+  assert.equal(c.collectLoreDates(history).length, 3, 'pre-1900 lore dates are collected, not dropped');
+  const tl = c.collectTimelineItems(history, { task: true, journal: true, lore: true });
+  assert.equal(tl.length, 3, 'the timeline total is 3, so the false empty state is gone');
+});
+
+test('#1198 wiring: the when/date chip validates like due/start (no more silent bad lore date)', () => {
+  const fn = fnBody(_src, 'buildPropsArea');
+  // the lore keys now route through parseDueDate + the prop-date-bad cue (they never did before)
+  assert.ok(/propK === 'when' \|\| propK === 'date'/.test(fn), 'when/date get their own chip branch');
+  const iBranch = fn.indexOf("propK === 'when' || propK === 'date'");
+  const after = fn.slice(iBranch, iBranch + 600);
+  assert.ok(/parseDueDate\(val, nodeCal\)/.test(after), 'a lore chip parses its value (any-year, node calendar)');
+  assert.ok(/prop-date-bad/.test(after), 'a malformed lore date gets the same bad-date cue as due/start');
+  // it stays historical, not scheduling: no overdue/ago urgency label on a lore chip
+  assert.ok(!/overdue|d ago/.test(after), 'a lore chip carries no deadline-urgency language');
 });
 
 // #653 — calendar coexistence (two-log slice): a date's calendar is decided by WHERE it lives.
