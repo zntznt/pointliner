@@ -19741,6 +19741,33 @@ document.addEventListener('mousedown', e => {
   if (!e.target.closest('#sel-tb')) hideSelTb();
   if (selectedIds.size > 0 && !e.target.closest('.sel-check') && !e.target.closest('#node-sel-bar') && !e.target.closest('#bpop') && !e.target.closest('.bullet')) clearSelection();
 });
+// #1210: route an empty-canvas click into a point. The document area below the last point (and the
+// wide side margins of a short doc) is bare <body>; a click there focuses <body>, which holds no
+// edit caret, so the next keystroke is silently dropped. Focus the nearest point instead (below all
+// → the last, the classic outliner behavior). Guarded so it ONLY fires on genuine empty space and
+// never fights the working paths: primary button only; nothing already handling the click (a point,
+// any pill/chip, the bullet, the toolbar/menus/dialogs, a scrim); not while an overlay is open, not
+// in search results (rows there are read-only), not inside a zoomed base. preventDefault keeps focus
+// off <body>; it runs at bubble phase so a point/pill mousedown (which stops here first, or is caught
+// by its own listener) is untouched. Added ALONGSIDE the caret-invariant mousedown+preventDefault
+// pattern — <body> is never made contenteditable.
+document.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;                                            // primary click only
+  if (searchQuery) return;                                              // search rows are read-only; a click there is navigation, not edit
+  if (document.body.classList.contains('base-zoom')) return;            // a zoomed base owns its own cell focus
+  if (['io-back', 'graph-back', 'timeline-back'].some(id => document.getElementById(id)?.classList.contains('on'))) return;  // a menu/dialog/overlay is up
+  // Anything that already means something on click is left alone: a point, any pill/chip/control,
+  // the bullet + its popover, and the whole top chrome. If the click hit any of these, bail.
+  if (e.target.closest('.node-content, .prop-chip, .bullet, #bpop, #toolbar, .io-card, #io-card, [role="button"], button, input, textarea, select, a, .zoom-title')) return;
+  const rows = [...document.querySelectorAll('.node-content')].map(el => {
+    const r = el.getBoundingClientRect();
+    return { id: el.dataset.id, top: r.top, bottom: r.bottom };
+  });
+  const id = nearestPointToClick(e.clientY, rows);
+  if (!id) return;
+  e.preventDefault();                                                   // keep focus off <body>
+  focusNode(id);                                                        // enters edit + plants the caret (caret at end for a below-all click)
+});
 
 function applyInlineFormat(fmt) {
   const sel = window.getSelection();
@@ -30611,6 +30638,33 @@ function caretScrollDelta(caretTop, caretBottom, viewTop, viewBottom, margin = 0
   if (t < top) return t - top;                   // above the fold: negative (scroll up)
   if (bm > bot) return bm - bot;                 // below it: positive (scroll down)
   return 0;                                      // already visible: do not move
+}
+
+// #1210: a click on the empty canvas — below the last point, or in the wide margins of a short
+// document — lands on bare <body>, which cannot hold an edit caret, so the browser focuses <body>
+// and the user's typing is silently dropped (the panel's "typed a whole line and nothing landed").
+// Every outliner routes such a click to a point: below all points → the last; above → the first;
+// between two rows → the vertically nearer. Given the click Y and each visible row's {id, top,
+// bottom}, this returns the point id to focus, or null when there are no rows. Pure + Node-testable;
+// the DOM handler (a document mousedown, guarded to only fire on genuine empty space) reads the row
+// rects and calls focusNode on the result. Rows need not be pre-sorted.
+function nearestPointToClick(clickY, rows) {
+  const y = Number(clickY);
+  const list = (rows || []).filter(r => r && r.id != null && Number.isFinite(Number(r.top)) && Number.isFinite(Number(r.bottom)));
+  if (!Number.isFinite(y) || !list.length) return null;
+  const sorted = list.slice().sort((a, b) => Number(a.top) - Number(b.top));
+  if (y <= Number(sorted[0].top)) return sorted[0].id;                              // above everything → first
+  const last = sorted[sorted.length - 1];
+  if (y >= Number(last.bottom)) return last.id;                                     // below everything → last
+  // inside the stack: the row whose band contains y, else the vertically nearest edge
+  let best = sorted[0], bestD = Infinity;
+  for (const r of sorted) {
+    const t = Number(r.top), b = Number(r.bottom);
+    if (y >= t && y <= b) return r.id;                                              // directly on a row's band
+    const d = y < t ? t - y : y - b;
+    if (d < bestD) { bestD = d; best = r; }
+  }
+  return best.id;
 }
 
 // The caret's rect, or the element's as a fallback — a collapsed range yields no rects on an empty
