@@ -2897,6 +2897,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         </div>
         <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh document</span></div></div>
         <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open…</span><span class="cmd-desc">Open a document</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
+        <div class="cmd-item" id="btn-import"><div class="cmd-icon" data-fa="fa-solid fa-inbox" data-fb="📥">📥</div><div class="cmd-info"><span class="cmd-label">Import points…</span><span class="cmd-desc">Add points from another .opml file or pasted text. Nothing here is replaced</span></div></div>
         <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
         <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
         <div class="cmd-item" id="btn-restore" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-clock-rotate-left" data-fb="↺">↺</div><div class="cmd-info"><span class="cmd-label">Restore earlier version</span><span class="cmd-desc">Roll back to the last auto-saved snapshot</span></div></div>
@@ -37056,6 +37057,7 @@ document.addEventListener('click', closeFileMenu);
 // never touch #io-back), so only this row needed reordering.
 document.getElementById('btn-new').addEventListener('click', () => { closeFileMenu(); newFile(); });
 document.getElementById('btn-open').addEventListener('click', () => { openFile(); closeFileMenu(); });
+document.getElementById('btn-import')?.addEventListener('click', () => { closeFileMenu(); openImportDialog(); });   // #518 additive import (opens #io-back, so close the menu first)
 document.getElementById('btn-starters')?.addEventListener('click', () => { openStarterGallery(); });   // #565 (closes the menu itself)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-tags')?.addEventListener('click', () => { closeFileMenu(); openTagBrowser(); });   // tag browser
@@ -38687,6 +38689,18 @@ const GUIDE = [
       { syn:'File → Export a copy → Markdown', desc:'a one-way plain text snapshot for sharing' },
       { syn:'Menu → Exclude from export', desc:'leave a point (and its subtree) out of the prose export' },
       { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable file that reopens as the live app' },
+    ] },
+
+  // #518: chrome-only door (a File-menu button, no / or @ command), so this entry stays covers-less,
+  // like the tag-browser entry. It is tracked by the chrome-feature drift guard in tests/test.mjs.
+  { id:'import', cat:'files',
+    title:'Importing points from a shared file',
+    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points from an .opml file (the app's own format) to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did in the file you imported.\n\nYou can bring one in two ways: choose an .opml file from your disk, or paste the contents of one into the box (handy when a file arrived as text in a chat or email). Either way the whole thing lands below your current points and the view jumps to the first one that arrived, so it is easy to see what was added. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file that is not a real Pointliner .opml, or one with no points in it, is refused with a message rather than doing anything silently.",
+    related:['saving','export','templates'],
+    examples:[
+      { syn:'File → Import points → Choose an .opml file', desc:'add the points from a file on your disk' },
+      { syn:'File → Import points → paste box',            desc:'paste an .opml file you received as text' },
+      { syn:`${MOD}+Z`,                                    desc:'undo removes the whole import in one step' },
     ] },
 
   // ── Put it together (#597): recipes that combine several features. Each uses only verified syntax
@@ -41390,33 +41404,120 @@ function maybeShowFirstRun() {
   }
 }
 
-// #565: insert one starter's `# heading` subtree additively — a non-destructive append-and-zoom that
-// never adoptDoc's (the old data-loss path that replaced the whole document). It just appends the
-// subtree so the user can explore the live pills, then delete it when done. Undo-able, and it zooms
-// to the inserted tree so it's obvious where it landed. Returns false if the OPML won't parse (a
-// malformed embedded starter should no-op, never throw).
-function insertStarterSubtree(opml, label) {
-  const parsed = fromOpml(opml);
-  const top = parsed && parsed.children && parsed.children[0];   // the single "# heading" root subtree
-  if (!top) return false;
+// #565/#518: append OPML subtree(s) additively — a non-destructive append-and-zoom that never
+// adoptDoc's (the old data-loss path that replaced the whole document). It appends the subtree(s)
+// so the user can explore the live pills, then delete them when done. Undo-able, and it zooms to the
+// FIRST inserted tree so it's obvious where it landed. Returns false if the OPML won't parse or
+// carries no points. `opts.all` appends EVERY top-level point (the "Import points" door, where a
+// shared file has many); the starter gallery passes {all:false} to take just the one `# heading`
+// root. `opts.announce` surfaces a malformed/empty message — ON for user input (Import), OFF for the
+// trusted embedded starters (a bad embedded starter must no-op silently, never toast).
+function appendOpmlSubtrees(opml, label, opts = {}) {
+  let parsed;
+  try { parsed = fromOpml(opml); }
+  catch (_) { if (opts.announce) flashError('That does not look like a Pointliner .opml file.'); return false; }
+  const tops = (parsed && parsed.children) || [];
+  const pick = opts.all ? tops : tops.slice(0, 1);
+  if (!pick.length) { if (opts.announce) flashHint('No points found to import.'); return false; }
   if (activeContentId != null) {   // blur a mid-edit point first (a render-time blur must not clobber it)
     const el = document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`);
     if (el) el.blur();
   }
-  const clone = deepCloneNodeNewIds(top);
-  pushUndo();
-  root.children.push(clone);
+  const clones = pick.map(deepCloneNodeNewIds);
+  pushUndo();   // exactly once: one undo reverts the whole import together
+  for (const cl of clones) root.children.push(cl);
   // The OPML source carries typed {…} shorthand ({roll:}, {2d6}, {level := 3}); fromOpml does
-  // NOT promote it (only adoptDoc's load path does, via promoteLoadedShorthand). Promote the
-  // inserted subtree here or its pills render as raw source. Run AFTER append so doc-wide names
-  // resolve against the full tree.
-  promoteLoadedShorthand(clone);
+  // NOT promote it (only adoptDoc's load path does, via promoteLoadedShorthand). Promote each
+  // inserted subtree here or its pills render as raw source. Run AFTER every append so a name
+  // declared in one imported subtree resolves for a reference in another, and so doc-wide names
+  // resolve against the full tree. Idempotent: a live pill is already a brace-free [[type:key]]
+  // token, so re-walking already-promoted content is a no-op.
+  for (const cl of clones) promoteLoadedShorthand(cl);
   buildIndex(root, null);
   markDirty();
   render();
-  focusNode(clone.id);
-  flashHint(`Added "${label}" (${ptsLabel(countPoints(clone))}). Delete it when you are done exploring.`);
+  focusNode(clones[0].id);
+  const total = clones.reduce((n, cl) => n + countPoints(cl), 0);
+  flashHint(opts.all
+    ? `Imported ${ptsLabel(total)} from "${label}". Undo removes it in one step.`
+    : `Added "${label}" (${ptsLabel(total)}). Delete it when you are done exploring.`);
   return true;
+}
+// #565: the starter gallery's additive insert — one `# heading` root subtree, and no toast on a
+// malformed embedded starter (announce off). Delegates so there is ONE promote/undo/focus path.
+function insertStarterSubtree(opml, label) {
+  return appendOpmlSubtrees(opml, label, { all: false });
+}
+
+// #518: the "Import points" door. Bring the points from another Pointliner .opml file (or pasted
+// .opml text) INTO the current document, appended and live, without replacing anything (File → Open
+// REPLACES the document; this ADDS to it). Built on appendOpmlSubtrees (the additive insert the
+// starter gallery uses), so imported {…} pills promote to live exactly like a loaded document.
+// Data-only and inside the plugin gate: fromOpml never runs code, and only the body points
+// (parsed.children) are read — the imported file's own packs/calendar/templates in its head are
+// ignored, so an import can never inject a data pack. One plain file input serves both the
+// File-System-Access and the download tiers (import keeps no file handle), like importDataPacks.
+const IMPORT_ICON = { fa: 'fa-solid fa-inbox', fb: '📥' };
+function openImportDialog() {
+  const _shell = openDialogShell({
+    icon: IMPORT_ICON, title: 'Import points', guideId: 'import',
+    ariaLabel: 'Import points from a file or pasted text',
+  });
+  const intro = document.createElement('p');
+  intro.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 12px;line-height:1.55';
+  intro.textContent = 'Bring points from another Pointliner file into this document. They are added below what you have now, live and editable, and you can undo in one step. Nothing here is replaced.';
+  ioCard.appendChild(intro);
+
+  // Both paths route here. Clear the pristine first-run gate exactly as a starter pick does (#1192),
+  // or an import over the untouched welcome document would never autosave. announce:true surfaces a
+  // malformed/empty file (this is user input, unlike the trusted embedded starters).
+  const doImport = (opml, label) => {
+    if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
+    const ok = appendOpmlSubtrees(opml, label, { all: true, announce: true });
+    if (ok) closeIo();
+    return ok;
+  };
+
+  // ── from a file ──
+  const fileField = document.createElement('div'); fileField.className = 'io-field';
+  const fileBtn = document.createElement('button'); fileBtn.type = 'button'; fileBtn.className = 'io-btn';
+  fileBtn.dataset.first = '1';
+  const fbIc = document.createElement('span'); fbIc.setAttribute('aria-hidden', 'true'); setIcon(fbIc, { fa: 'fa-solid fa-folder-open', fb: '↑' });
+  const fbLbl = document.createElement('span'); fbLbl.textContent = 'Choose an .opml file';
+  fileBtn.append(fbIc, fbLbl);
+  fileBtn.setAttribute('aria-label', 'Choose an .opml file to import points from');
+  fileBtn.addEventListener('click', () => {
+    const inp = document.createElement('input'); inp.type = 'file';
+    inp.accept = '.opml,text/x-opml,application/xml,text/xml';
+    inp.addEventListener('change', () => {
+      const file = inp.files && inp.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => doImport(String(reader.result || ''), file.name);
+      reader.readAsText(file);
+    });
+    inp.click();
+  });
+  fileField.appendChild(fileBtn);
+  ioCard.appendChild(fileField);
+
+  // ── or paste ──
+  const pasteField = document.createElement('div'); pasteField.className = 'io-field'; pasteField.style.marginTop = '10px';
+  const pasteLbl = document.createElement('label'); pasteLbl.textContent = 'Or paste the contents of an .opml file';
+  const ta = document.createElement('textarea'); ta.className = 'io-mono'; ta.rows = 5;
+  ta.placeholder = '<opml>…</opml>'; ta.spellcheck = false; ta.autocomplete = 'off';
+  const _tid = 'io-import-paste'; ta.id = _tid; pasteLbl.setAttribute('for', _tid);
+  pasteField.append(pasteLbl, ta);
+  ioCard.appendChild(pasteField);
+
+  _shell.mountFooter([
+    { key: 'close', role: 'dismiss', label: 'Close' },
+    { key: 'add', role: 'commit', label: 'Add pasted points', onClick: () => {
+        const txt = ta.value.trim();
+        if (!txt) { ta.focus(); flashHint('Paste an .opml file first, or choose a file above.'); return; }
+        doImport(txt, 'pasted points');
+      } },
+  ]);
+  requestAnimationFrame(() => fileBtn.focus());
 }
 
 // #565: the "Start from an example" gallery. A picker over the embedded STARTERS (each inserts

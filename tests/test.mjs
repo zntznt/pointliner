@@ -18802,15 +18802,57 @@ test('FIRST_RUN_EXAMPLES: one well-formed nested tree, every brace body promotes
 // gallery uses. The data-loss guard lives on this shared function. (openExamples, the old File-menu
 // "Add the Welcome tour" delegate, was retired once the chooser's "Poke a live example" and the
 // blank-canvas gallery door replaced it.)
-test('insertStarterSubtree: appends a fresh-id clone, undo-able, never overwrites the document', () => {
-  const fn = _src.match(/function insertStarterSubtree\([^)]*\)\s*\{[\s\S]*?\n\}/);
-  assert.ok(fn, 'insertStarterSubtree not found');
-  const body = fn[0];
-  assert.ok(body.includes('deepCloneNodeNewIds('), 'must clone the subtree with fresh ids');
-  assert.ok(body.includes('root.children.push(clone)'), 'must APPEND the subtree, not replace the document');
-  assert.ok(body.includes('pushUndo()'), 'the insert must be undo-able');
+test('appendOpmlSubtrees: appends fresh-id clones, undo-able once, never overwrites the document', () => {
+  // #565/#518: insertStarterSubtree's behaviour moved into the shared appendOpmlSubtrees core (so the
+  // starter gallery and the Import points door share one promote/undo/focus path). fromOpml needs a
+  // DOMParser, so this is source-pinned, not run headless; the pure clone core (deepCloneNodeNewIds)
+  // is pinned separately (#518 pieces below).
+  const body = fnBody(_src, 'appendOpmlSubtrees');
+  assert.ok(body.includes('pick.map(deepCloneNodeNewIds)'), 'must clone each picked subtree with fresh ids');
+  assert.ok(body.includes('root.children.push(cl)'), 'must APPEND to the document, not replace it');
   assert.ok(body.includes('promoteLoadedShorthand('), 'must promote the inserted {…} shorthand or pills render as raw source (#565)');
   assert.ok(!body.includes('adoptDoc('), 'must NOT adoptDoc (that overwrote the user document)');
+  // Exactly one pushUndo(), so one Undo reverts the whole import together (a multi-subtree import
+  // must not need N undos). The one-undo invariant.
+  assert.equal((body.match(/pushUndo\(\)/g) || []).length, 1, 'exactly one pushUndo() for the whole append');
+  // Run-after-append: the promote loop must sit AFTER the push loop, or a name declared in one
+  // imported subtree cannot resolve for a reference in another (and doc-wide names miss). between()
+  // throws if either marker is gone, so this cannot pass vacuously.
+  const pushIdx = body.indexOf('root.children.push(cl)');
+  const promoteIdx = body.indexOf('promoteLoadedShorthand(cl)');
+  assert.ok(pushIdx > -1 && promoteIdx > pushIdx, 'promote runs AFTER every append (run-after-append invariant)');
+  // opts.all splits the starter (one root) from the import (every top-level point).
+  assert.ok(body.includes('opts.all ? tops : tops.slice(0, 1)'), 'all:false takes one root, all:true takes every top-level point');
+  // P4: malformed / empty input announces (only when opts.announce — the trusted starter path stays
+  // silent), never a bare no-op or an uncaught throw.
+  assert.ok(/catch[\s\S]{0,80}flashError\('That does not look like a Pointliner/.test(body), 'a malformed file is caught and explained (P4)');
+  assert.ok(body.includes("flashHint('No points found to import.')"), 'an empty file says so (P4)');
+  assert.ok(body.includes('opts.announce'), 'the announce gate keeps embedded starters silent on a bad parse');
+});
+
+test('insertStarterSubtree delegates to the shared append core (#518)', () => {
+  const body = fnBody(_src, 'insertStarterSubtree');
+  assert.ok(/appendOpmlSubtrees\(opml, label, \{ all: false \}\)/.test(body),
+    'the well-pinned starter path routes through appendOpmlSubtrees with all:false, so it keeps the same promote/undo/focus');
+});
+
+test('#518 Import points door — File-menu row, wiring, and dialog are present', () => {
+  // The door: a File-menu row with a real label/desc, wired to open the dialog.
+  assert.ok(_src.includes('id="btn-import"'), 'the Import points File-menu row exists');
+  assert.ok(_src.includes('Import points…'), 'the row carries its visible label');
+  assert.ok(/getElementById\('btn-import'\)[\s\S]{0,80}openImportDialog\(\)/.test(_src),
+    'the row is wired to openImportDialog');
+  // The dialog: a file input with the opml accept, a paste textarea, the additive core with
+  // announce on, and the pristine-gate clear so an import over the welcome doc autosaves.
+  const dlg = fnBody(_src, 'openImportDialog');
+  assert.ok(/accept = '\.opml/.test(dlg), 'the file picker accepts .opml');
+  assert.ok(dlg.includes("createElement('textarea')"), 'the paste path (a textarea) is present');
+  assert.ok(/appendOpmlSubtrees\([^)]*\{ all: true, announce: true \}\)/.test(dlg),
+    'import appends every top-level point and announces failures');
+  assert.ok(dlg.includes('_showingExamples = false'), 'clears the pristine first-run gate so the import autosaves (#1192)');
+  // Only body points are read: the dialog must NOT ingest the imported file head (no data-pack
+  // injection — the locked plugin gate). appendOpmlSubtrees reads parsed.children only.
+  assert.ok(!/root\.plugins|installPack|parsePackImport/.test(dlg), 'the import never touches the pack registry (data-only, gate-safe)');
 });
 
 // ── Backtick code spans are the promotion escape hatch: `{2d6}` stays literal, not a pill ──
@@ -21168,6 +21210,7 @@ test('chrome drift guard: curated chrome features each name a real GUIDE entry',
     'chronicle': 'chronicle',
     'per-pill format': 'number-format',
     'agenda': 'agenda',
+    'import points': 'import',   // #518 File-menu import door (chrome-only, covers-less entry)
   };
   const entryIds = guideEntryIds(GUIDE_SRC);
   assert.ok(entryIds.size > 30, `GUIDE entry ids found (got ${entryIds.size}) — did the GUIDE block move?`);
@@ -24444,9 +24487,11 @@ test('UXP-247 ratchet: hand-rolled dialog shells may only ever decrease', () => 
   assert.ok(assigns.length <= MAX,
     `a new dialog is hand-rolling its shell (${assigns.length} > ${MAX}). Use openDialogShell: ` +
     'a dialog that assigns ioCancel itself will miss every fix made at the shell, which is UXP-247.');
-  // And the five that HAVE migrated must stay migrated.
-  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 5,
-    'openInsertDialog and the four named dialogs must keep using the shell');
+  // And the ones that use the shell must keep using it. #518's import dialog is the sixth shell user
+  // (a NEW dialog built on the shell, the correct direction — the ratchet only blocks new HAND-ROLLED
+  // shells, counted via `ioCancel =` above, which the import dialog does not add).
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 6,
+    'openInsertDialog, the four named dialogs, and the #518 import dialog must keep using the shell');
 });
 
 test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL', () => {
@@ -24466,8 +24511,10 @@ test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL'
   // Per-subject keys: a half-typed schedule or property set comes back to the SAME point.
   assert.ok(/const _pKey = 'props-dialog:' \+ \(targets \?/.test(_src), 'the props draft is keyed by its target point(s)');
   // All four now take head/footer/cancel/globals from the shell rather than assigning their own.
-  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 5,
-    'openInsertDialog + the four migrated dialogs each construct exactly one shell');
+  // #518 added a sixth shell caller: the Import points dialog (built on the shell from the start,
+  // not a migration) — the shell being the default for a new dialog is the property working.
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 6,
+    'openInsertDialog + the four migrated dialogs + the #518 import dialog each construct exactly one shell');
   // The appearance dialog's private in-place signal became a shell option.
   assert.ok(/freshOnly: true,/.test(_src), 'the appearance dialog restores on a FRESH open only');
   assert.ok(/const _apprFresh = _shell\.fresh;/.test(_src), 'and takes that signal from the shell');
