@@ -41317,11 +41317,15 @@ function insertStarterSubtree(opml, label) {
 // looks and keyboard-behaves like every other picker. The link is the sanctioned egress that
 // already exists as the File menu's "Full guide online" row.
 const STARTER_ICON = { fa: 'fa-solid fa-dice-d20', fb: '🎲' };
-// #1192: the six starters the Welcome chooser leads with. Everyday domains a stranger recognizes
-// on sight first (IA-3: speak in problems, not in features), with exactly ONE origin starter so
-// the tabletop root stays present but never the majority (IA-8). The rest of STARTERS follows
-// directly underneath, so leading with these hides nothing.
-const WELCOME_QUICK_PICKS = ['project-tracker', 'meal-planner', 'trip-planner', 'reading-log', 'decision-helper', 'campaign-oracle'];
+// #1192/#1214: the six starters the Welcome chooser leads with. Everyday domains a stranger
+// recognizes on sight (IA-3: speak in problems, not in features). #1214 makes the LEAD row entirely
+// everyday — three non-RPG panelists read a single oracle in the top row plus the RPG footer as
+// "wrong app, this is for D&D players," and the two starters they actually wanted (Study & flashcards,
+// Home inventory) sat below the fold. The origin is NOT removed or down-weighted in the gallery — it
+// still shows in "More templates" directly under this row (IA-8's ratio is unchanged; this is
+// ordering only). Leading with these hides nothing; it just stops RPG framing from setting the tone
+// for someone here to plan dinner.
+const WELCOME_QUICK_PICKS = ['project-tracker', 'meal-planner', 'trip-planner', 'reading-log', 'flashcards', 'home-inventory'];
 // var (hoisted, #854's rule): closeIo and adoptDoc are declared thousands of lines ABOVE this and
 // both run during the boot restore, before this line is reached. A `let` would put them in the TDZ
 // and crash the restore; a hoisted var reads `undefined` (falsy) until first-run sets it.
@@ -41363,7 +41367,12 @@ function openStarterGallery(opts = {}) {
     // align-items:stretch (not flex-start): in a column flex, flex-start sizes each child to its
     // max-content width, so a long description grew past the button's right edge (item 6). Stretch
     // bounds both children to the button width, so the name ellipsizes and the description wraps.
-    pick.style.cssText = 'display:flex;flex-direction:column;align-items:stretch;gap:2px;width:100%';
+    // justify-content:flex-start (#1214): the base .tpl-pick rule sets space-between (correct for the
+    // flat-list ROW layout); left on this COLUMN card it pushed the name to the top and the description
+    // to the bottom, so a card with a shorter (fewer-line) description than its grid row-mate showed a
+    // gap between title and text (Home inventory's 2-line desc beside a 3-line neighbor). Packing from
+    // the top puts the slack harmlessly below the description instead.
+    pick.style.cssText = 'display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;gap:2px;width:100%';
     pick.setAttribute('aria-label', aria);
     const nm = document.createElement('span'); nm.className = 'tpl-name'; nm.textContent = name;
     const ds = document.createElement('span');
@@ -41415,7 +41424,12 @@ function openStarterGallery(opts = {}) {
   more.href = 'https://github.com/zntznt/pointliner/tree/main/guide/solo-rpg';
   more.target = '_blank'; more.rel = 'noopener';
   more.style.cssText = 'display:block;font-size:12px;color:var(--muted);margin:12px 0 2px;line-height:1.5;text-decoration:none';
-  more.textContent = 'More worked examples online: Ironsworn, Maze Rats, hex crawls, campaign clocks, and more ↗';
+  // #1214: the link goes to guide/solo-rpg/ (solo-RPG worked examples only), so the copy must not
+  // promise non-RPG content that isn't there. But leading with "Ironsworn, Maze Rats, hex crawls,
+  // campaign clocks" made three non-RPG panelists read the whole gallery as "wrong app, this is for
+  // D&D." Frame it truthfully as ONE specialized corner for enthusiasts, not the app's identity: name
+  // solo-RPG plainly, drop the jargon roll-call as the tone-setter.
+  more.textContent = 'Going deeper with solo tabletop RPGs? See the in-depth worked examples ↗';
   ioCard.appendChild(more);
 
   const foot = document.createElement('div'); foot.className = 'io-foot';
