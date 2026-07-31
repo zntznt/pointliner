@@ -9300,9 +9300,9 @@ const INSERT_CMDS = [
   { id:'deck',     icon:'🃏', fa:'fa-solid fa-clone',       keys:['draw','shuffle','cards','cycle'], label:'Deck', desc:'Draw without replacement (shuffle), or cycle through in order; click the pill to advance.', ex:'shuffle: a | b | c', section:'Generate' },
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
   // Compute — live numbers and values
-  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation','format','currency','decimals','thousands','percent'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
+  { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation','format','currency','decimals','thousands','percent','money','budget'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
   { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. The operator is :=, so type {r := 5}. Reference it {name} anywhere.', ex:'{r := 5} · {beast := dragon | wyrm}', section:'Compute' },
-  { id:'est',      icon:'≈',  fa:'fa-solid fa-wave-square',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess','format','currency','decimals','thousands','percent'], label:'Estimate / uncertain', desc:'An uncertain value: a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample. Type the range forms directly; the sum and avg roll-ups are built here in the dialog.', ex:'{5 to 10} · {normal(8,2)} · {uniform(1,6)}', section:'Compute' },
+  { id:'est',      icon:'≈',  fa:'fa-solid fa-wave-square',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess','format','currency','decimals','thousands','percent','money','budget'], label:'Estimate / uncertain', desc:'An uncertain value: a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample. Type the range forms directly; the sum and avg roll-ups are built here in the dialog.', ex:'{5 to 10} · {normal(8,2)} · {uniform(1,6)}', section:'Compute' },
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
   { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', keys:['tension','segment','pie','timer'], label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
@@ -39076,11 +39076,24 @@ function builderCmdPool(trigger) {
     // reason to re-learn this.
     cmds.push({ id: c.name, icon, fa: '', label: c.name, desc: String(c.hint || c.val || ''), trigger: '{', type: 'callable', _section: 'Your names', _brace: { name: c.name, group: c.group, insert: '{' + c.name + '}', sel: [c.name.length + 1, c.name.length + 1] } });
   }
-  // Reorder sections so the summoning trigger's section appears first
-  const order = [
-    ...new Set(cmds.filter(c => c.trigger === trigger).map(c => c._section)),
-    ...new Set(cmds.filter(c => c.trigger !== trigger).map(c => c._section)),
-  ];
+  // Reorder sections so the summoning trigger's section appears first. #1202: at the FRONT DOOR
+  // (trigger === null — the toolbar "All commands", the /builder verb, Ctrl/Cmd+K) no command's
+  // trigger matches, so this used to collapse to insertion order (BLOCK_CMDS first) and open on twelve
+  // formatting rows with the engine below the fold — the one "everything" door presenting the app as a
+  // text formatter (product-identity §1/§8b: the {…} engine IS the product). Lead the front door with
+  // the generative + computational sections, the same thesis the @ menu already opens on (#915); block
+  // types are one short scroll down, unchanged and still cheap to reach (/h2 resolves the same). The /,
+  // @ and { menus keep hoisting their own summoning section (their filter still matches), untouched.
+  const FRONT = trigger == null ? ['Generate', 'Compute', 'Trackers'] : [];
+  // One Set over the whole sequence so the FIRST occurrence of each section sets its rank: a section
+  // named in FRONT (or in the summoning-trigger group) must not have its rank overwritten by a later
+  // appearance in the trigger!==trigger tail (Object.fromEntries keeps the LAST index, so a per-spread
+  // Set would let the tail win and undo the lead — the #1202 bug that hid Generate at rank 32).
+  const order = [...new Set([
+    ...FRONT,
+    ...cmds.filter(c => c.trigger === trigger).map(c => c._section),
+    ...cmds.filter(c => c.trigger !== trigger).map(c => c._section),
+  ])];
   const secRank = Object.fromEntries(order.map((s, i) => [s, i]));
   cmds.sort((a, b) => (secRank[a._section] ?? 99) - (secRank[b._section] ?? 99) || a._section.localeCompare(b._section));
   return cmds;
