@@ -12442,6 +12442,37 @@ test('#557 firstEmptyRollup — flags a sum/avg over an empty prop scope; exclud
     'an explicit scope is still honoured with extrema on');
 });
 
+// #1200: an empty rollup has two causes; only one is a typo. When the children COMPUTE their values
+// with pills but stored no matching property, the honest cause is "a rollup reads properties, not
+// pill results" — a dead end right after the per-row computation succeeded (3 personas hit it). The
+// pure predicate lets renderMathPill name that state instead of the generic "check the property name."
+test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
+  // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
+  const dmitri = c.mkNode('jobs');
+  for (let i = 0; i < 2; i++) { const ch = c.mkNode('job'); ch.math = [{ key: 'm' + i, expr: 'words * rate' }]; dmitri.children.push(ch); }
+  assert.equal(c.childrenComputePillsNotProp(dmitri, 'fee'), true, 'children compute pills but have no `fee` property → flag it');
+  // A plain name typo: children carry properties but no pills → keep the generic "check the name" tip
+  const typo = c.mkNode('p'); const t = c.mkNode('c'); t.props.push({ key: 'cost', val: '5' }); typo.children.push(t);
+  assert.equal(c.childrenComputePillsNotProp(typo, 'fee'), false, 'no pills → not the pills-vs-property case');
+  // If the children DO carry the property, the rollup would have matched → never the pills case
+  const has = c.mkNode('p'); const h = c.mkNode('c'); h.math = [{ key: 'm', expr: 'x' }]; h.props.push({ key: 'fee', val: '5' }); has.children.push(h);
+  assert.equal(c.childrenComputePillsNotProp(has, 'fee'), false, 'a child that stores `fee` is not the empty-pills case');
+  // vars and est also count as "computes"
+  const withVar = c.mkNode('p'); const v = c.mkNode('c'); v.vars = [{ key: 'v', name: 'x', expr: '1' }]; withVar.children.push(v);
+  assert.equal(c.childrenComputePillsNotProp(withVar, 'fee'), true, 'a declared var is a computed value too');
+  assert.equal(c.childrenComputePillsNotProp(c.mkNode('empty'), 'fee'), false, 'no children → not flagged');
+});
+
+test('#1200 wiring: renderMathPill names the pills-vs-property cause on an empty rollup', () => {
+  const fn = fnBody(_src, 'renderMathPill');
+  assert.ok(/childrenComputePillsNotProp\(cookieNode, emptyProp\)/.test(fn),
+    'the empty-rollup branch must branch on the pills-vs-property predicate');
+  assert.ok(/compute their values with pills[\s\S]{0,120}not pill results/.test(fn),
+    'the differentiated tip names that a rollup reads properties, not pill results');
+  // the generic tip is still there for the plain name-typo case
+  assert.ok(/check the property name/.test(fn), 'the generic name-typo tip remains for the non-pills case');
+});
+
 test('#557 renderMathPill wires the empty-rollup "nothing matched" state (src pin)', () => {
   // #1171: must require the opt-in. `includes('firstEmptyRollup(m.expr, cookieNode)')` alone is a
   // SUBSTRING of the new call, so it stayed green through the change and could not detect a revert.
