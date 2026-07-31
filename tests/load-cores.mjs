@@ -264,7 +264,7 @@ export function loadCores() {
     'blankInviteDecision',   // blank-canvas door: the pure show-decision (beginner PR B)
     'mathCompletions','mathFragmentAt','mathFnGroup',
     'searchTokenAt','searchCompletions','oracleCompletions','meterTokenAt','meterCompletions',
-    'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','defaultBraceChoice','tokenLeftOfCaret',
+    'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','capturePayloadOf','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
     'classifyBraceBody','braceAttemptReason','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',

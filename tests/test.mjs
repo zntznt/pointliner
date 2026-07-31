@@ -15749,6 +15749,49 @@ test('rekeyPayloadDocId — rewrites the embedded identity, preserving everythin
   assert.equal(c.rekeyPayloadDocId(payload, null), null);
 });
 
+// #1208: the first-run reopen race. A brand-new user boots (no autosave), the Welcome chooser +
+// blank doc appear, they start typing — and the ASYNC workspace reopen (reopenStoredWorkspace) then
+// resolves and adoptDoc's the folder's doc over their words, wiping the undo stack too. The fix
+// captures the typed first-run content BEFORE the adopt and stashes it as a restore point, keyed to
+// the doc now on screen. Two arms: the pure capture core, and the wiring that calls it in order.
+test('#1208 capturePayloadOf: captures a rooted doc from memory (autosave slot may be empty at first run)', () => {
+  // The whole point of a dedicated capture (vs. reading AUTOSAVE_KEY like every other losing-copy
+  // path) is that a first-run typed doc never reached AUTOSAVE_KEY — autosave is suppressed under
+  // the Welcome chooser. So it must serialize `root` itself.
+  const p = c.capturePayloadOf({ docId: 'fr1', children: [{ id: 'a', text: 'my first sentence' }] });
+  assert.ok(typeof p === 'string', 'a rooted doc captures to a payload string');
+  const d = JSON.parse(p);
+  assert.equal(d.root.docId, 'fr1', 'the payload embeds the doc identity (so it can be rekeyed + stashed)');
+  assert.equal(d.root.children[0].text, 'my first sentence', 'the typed content is preserved verbatim');
+  assert.equal(typeof d.savedAt, 'number', 'shaped like an autosave payload so applyAutosaveData/restore read it back');
+  // fails closed: a doc with no identity cannot be keyed into the per-doc restore store, so no payload.
+  assert.equal(c.capturePayloadOf({ children: [{ text: 'x' }] }), null, 'no docId → null, never an unkeyable payload');
+  assert.equal(c.capturePayloadOf(null), null);
+});
+
+test('#1208 reopenStoredWorkspace preserves first-run typed text before adopting the folder doc (src pin)', () => {
+  const fn = fnBody(_src, 'reopenStoredWorkspace');
+  // (a) the guard fires only when there is real typed content to lose — docIsBlank, not `dirty`
+  //     (a pristine first-run canvas has nothing to lose and must stay frictionless).
+  assert.ok(/!docIsBlank\(root\)\s*\?\s*capturePayloadOf\(root\)\s*:\s*null/.test(fn),
+    'the first-run content is captured (from memory) only when the doc is not blank');
+  // (b) capture BEFORE the adopt, stash AFTER — the newFile/#729 ordering. adoptDoc replaces root
+  //     and wipes undo, so a capture after it would read the folder doc, not the user\'s words.
+  const iCap   = fn.indexOf('capturePayloadOf(root)');
+  const iAdopt = fn.indexOf('reopenWorkspaceDoc(dir, name)');
+  const iStash = fn.indexOf('stashPayloadAsPrev(');
+  assert.ok(iCap > -1 && iAdopt > -1 && iStash > -1, 'capture, adopt, and stash are all present');
+  assert.ok(iCap < iAdopt, 'capture BEFORE reopenWorkspaceDoc → adoptDoc replaces root');
+  assert.ok(iAdopt < iStash, 'stash AFTER the adopt, so root.docId is the folder doc now on screen');
+  // (c) rekeyed to the doc now on screen, or earlierVersionForCurrentDoc\'s mis-key guard rejects it
+  assert.ok(/rekeyPayloadDocId\(firstRunTyped, root\.docId\)/.test(fn),
+    'the captured payload is rekeyed to the adopted doc so Restore earlier version surfaces it');
+  // (d) never silent (#845 doctrine): the user is told where their words went, and the storage-full
+  //     variant is honest that the copy could NOT be kept.
+  assert.ok(fn.includes('Restore earlier version'), 'the notice names the recovery door');
+  assert.ok(/could not be kept as a restore point/.test(fn), 'a failed stash says so (never a silent loss)');
+});
+
 // ── workspace file-op data-safety (#839 / #841 / #843 / #848 — src pins) ──────
 // The FSA paths aren't reachable from the vm sandbox; the pure decisions are pinned
 // above (docIsBlank / connectWriteDecision), these pin the wiring + ordering.

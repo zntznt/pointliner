@@ -39919,6 +39919,18 @@ function withPrevStoreLock(fn) {
 // loss, #729). Best-effort like every prev-store write; resolves to whether it stuck.
 // #846: async — the read-modify-write runs under the cross-tab prev-store lock, and the
 // callers (reopenWorkspaceDoc's stash sites) await it, so "did it stick" stays truthful.
+// #1208: capture a doc as a restore-point payload directly from memory, WITHOUT going through
+// localStorage. The boot-time reopen race needs this: a fresh first-run doc the user just typed
+// into never reaches AUTOSAVE_KEY (the _welcomeOpen / _showingExamples gate suppresses autosave),
+// so `localStorage.getItem(AUTOSAVE_KEY)` — the payload every OTHER losing-copy path stashes — is
+// empty for exactly the content we must not lose. Serialize `root` itself, shaped like the autosave
+// payload (writeLocalAutosave) so earlierVersionForCurrentDoc/applyAutosaveData read it back. Pure
+// enough to test: given a root with a docId it returns a JSON string embedding that root.
+function capturePayloadOf(rootNode) {
+  if (!rootNode || !rootNode.docId) return null;
+  try { return withFoldedActive(() => JSON.stringify({ root: rootNode, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: 0 })); }
+  catch (_) { return null; }
+}
 async function stashPayloadAsPrev(prev, docId) {
   if (!prev || !docId) return false;
   let ok = false;
@@ -41463,7 +41475,24 @@ if (hasWorkspace) (async function reopenStoredWorkspace() {
     const { dir, name } = stored;
     const perm = await dir.queryPermission({ mode: 'readwrite' });   // no gesture needed
     if (perm === 'granted') {
+      // #1208: this async reopen resolves AFTER first-run put a blank doc (+ the Welcome chooser)
+      // on screen, and reopenWorkspaceDoc → adoptDoc replaces `root` wholesale and wipes the undo
+      // stack. If the user started typing into that blank canvas in the meantime, their words would
+      // vanish with no undo and no restore point (the #1192 panel bounce). The folder doc is still
+      // authoritative for a RETURNING user (you connected this folder), but the fresh typing must be
+      // recoverable — the same "never silent, never unrecoverable" doctrine as every other losing-copy
+      // path here (#729/#845). Capture BEFORE the adopt; stash AFTER, rekeyed to the doc now on screen
+      // so File → Restore earlier version surfaces it (the newFile/reopenWorkspaceDoc unknownIdentity
+      // precedent). docIsBlank, not `dirty`: a pristine first-run canvas has nothing to lose.
+      const firstRunTyped = !docIsBlank(root) ? capturePayloadOf(root) : null;
       workspaceDir = dir; await reopenWorkspaceDoc(dir, name);
+      if (firstRunTyped) {
+        const rekeyed = rekeyPayloadDocId(firstRunTyped, root.docId);   // root.docId is now the folder doc's
+        const stashed = rekeyed && await stashPayloadAsPrev(rekeyed, root.docId);
+        flashHint(stashed
+          ? 'Reopened your connected folder. The text you just started is kept: File menu, Restore earlier version.'
+          : 'Reopened your connected folder. The text you just started could not be kept as a restore point; storage may be full.');
+      }
       await restoreOpenTabs(dir);    // rehydrate the saved tab list (drops vanished files, P4)
     }
     else { pendingDir = dir; showReconnectBanner(); }   // needs a gesture: surface a one-click Reconnect banner (P4 — not silent)
