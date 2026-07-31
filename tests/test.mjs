@@ -15040,6 +15040,26 @@ test('LEAN-FLOOR: {date due: VALUE} promotes to the date prop (valid), clears (e
   assert.equal(c.classifyBraceBody('date due: tomorrow', {}, {}), 'artifact');
 });
 
+// #1213: an empty-bodied keyword pill ({roll: }, {= }, {count: }…) used to fall through every parser
+// and stay RAW, leaking its braces into the rendered prose (read as a glitch by six panelists). It is
+// now consumed to nothing (returns ''), the same "an empty pill vanishes" rule the empty {date due: }
+// / {prop k: } stubs already follow. Verified in the browser: the stripped cases no longer render any
+// `{`/`}`; valid pills and literal/prose braces are untouched.
+test('#1213: an empty-bodied keyword pill is consumed, not left as raw leaking braces', () => {
+  const mk = () => ({ text: '', props: [], grammar: [], math: [], query: [], dice: [], est: [], vars: [] });
+  // STRIP: a recognized keyword with an empty tail (and bare {= }) → consumed ('')
+  for (const body of ['roll:', 'roll: ', '=', '= ', 'count:', 'query:', 'shuffle:', 'cycle:', 'once:', 'stopping:', 'markov:', 'oracle:']) {
+    assert.equal(c.promoteBraceBody(mk(), body), '', `empty {${body}} must be consumed, never left as raw braces`);
+  }
+  // PRESERVE valid pills — the guard only fires on an EMPTY tail
+  assert.match(c.promoteBraceBody(mk(), '= 2 + 2') || '', /^\[\[math:/, 'a real math body still promotes');
+  assert.match(c.promoteBraceBody(mk(), 'oracle: likely') || '', /^\[\[grammar:/, 'a real oracle body still promotes');
+  // PRESERVE genuine literal / prose braces (no keyword+colon, no bare =) → stay literal (null), never stripped
+  for (const body of ['"literal"', 'note to self', 'a, b', 'file.name']) {
+    assert.equal(c.promoteBraceBody(mk(), body), null, `{${body}} is prose/literal and must stay, not be consumed`);
+  }
+});
+
 test('LEAN-FLOOR: the /due bare-stub and /note DOM wiring is present (slashApply is DOM-bound)', () => {
   assert.ok(_src.includes("applyInlineInsertion(nodeId, slashOffset, '{date due: }')"), 'bare /due must write the {date due: } stub, not open the dialog');
   assert.ok(_src.includes("cmd.id === 'note'") && _src.includes('openNoteEditor(nodeId)'), 'the /note verb must open the inline note editor');
