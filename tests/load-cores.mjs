@@ -213,6 +213,7 @@ export function loadCores() {
     'dueItemOrder',   // #1099: the one agenda ordering rule, shared by the document and folder scopes
     'agendaScopeMessage',   // #1099: the folder agenda's staleness line (pure, like overlayCountMessage)
     'caretScrollDelta',   // outline scroll: how far to move so the caret is visible, 0 when it already is
+    'nearestPointToClick',   // #1210: which point an empty-canvas click routes the caret to
     'varDistsOf', 'varDistRec', 'attachVarDists', 'usesDistVar',   // #952: the sibling lane that carries it alongside `resolved`
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
     'parseRulesLoose',   // #582 pack-tolerant rule parser

@@ -22233,6 +22233,56 @@ test('#809 wiring: evalCheck consults aggHasSkippedValues before evaluating', ()
   assert.match(_fix2, /function evalCheck[\s\S]{0,900}aggHasSkippedValues\(node, raw\)\) return 'error'/, 'skipped-value guard missing from evalCheck');
 });
 
+// #1210: an empty-canvas click (below the last point / in the wide margins of a short doc) landed on
+// bare <body>, which holds no edit caret, so typing was silently dropped. nearestPointToClick picks
+// which point that click routes the caret to; the document-mousedown handler focuses it.
+test('#1210 nearestPointToClick — routes an empty-canvas click to a point (below → last, above → first)', () => {
+  const rows = [
+    { id: 'a', top: 100, bottom: 130 },
+    { id: 'b', top: 130, bottom: 160 },
+    { id: 'c', top: 160, bottom: 190 },
+  ];
+  assert.equal(c.nearestPointToClick(400, rows), 'c', 'below every point → the LAST (the click-below-the-list outliner rule)');
+  assert.equal(c.nearestPointToClick(10, rows), 'a', 'above every point → the first');
+  assert.equal(c.nearestPointToClick(145, rows), 'b', 'inside a row band → that row');
+  assert.equal(c.nearestPointToClick(190, rows), 'c', "on the last row's bottom edge → the last (>= bottom counts as below-all)");
+  // between two bands with a gap → the vertically nearer edge
+  const gap = [{ id: 'x', top: 0, bottom: 20 }, { id: 'y', top: 100, bottom: 120 }];
+  assert.equal(c.nearestPointToClick(30, gap), 'x', 'just below x is nearer x than y');
+  assert.equal(c.nearestPointToClick(90, gap), 'y', 'just above y is nearer y than x');
+  // order-independent (rows arrive in DOM order but the core must not rely on it)
+  assert.equal(c.nearestPointToClick(400, rows.slice().reverse()), 'c', 'unsorted input still resolves the last');
+  // degenerate inputs fail closed (no focus rather than a wrong one)
+  assert.equal(c.nearestPointToClick(100, []), null, 'no rows → null');
+  assert.equal(c.nearestPointToClick(NaN, rows), null, 'a non-finite click Y → null');
+  assert.equal(c.nearestPointToClick(100, [{ id: 'z', top: 'x', bottom: 'y' }]), null, 'rows with non-finite rects are dropped');
+});
+
+test('#1210 wiring: a document mousedown routes an empty-canvas click into the nearest point', () => {
+  // The handler lives among the document-level mousedown listeners. Pin the guards + the call, since
+  // the ACTUAL focus landing was driven in a headless browser (a source-pin proves presence only).
+  // Extract by the unique call site outward to the enclosing listener, so a nested `});` (the inner
+  // .map) can't truncate the window the way a non-greedy regex would.
+  const iCall = _fix2.indexOf('nearestPointToClick(e.clientY, rows)');
+  assert.ok(iCall > -1, 'the empty-canvas routing handler must call nearestPointToClick');
+  const iStart = _fix2.lastIndexOf("document.addEventListener('mousedown', e => {", iCall);
+  const iEnd = _fix2.indexOf('focusNode(id)', iCall);
+  assert.ok(iStart > -1 && iEnd > iCall, 'the handler brackets the call');
+  const h = _fix2.slice(iStart, iEnd + 'focusNode(id)'.length);
+  // stands down where a click already means something / an overlay owns focus (never fights a working path)
+  assert.ok(/if \(searchQuery\) return/.test(h), 'search rows are read-only: no re-routing there');
+  assert.ok(/base-zoom'\)\) return/.test(h), 'a zoomed base owns its own cell focus');
+  assert.ok(/io-back'[\s\S]*?classList\.contains\('on'\)\)[\s\S]*?return/.test(h), 'an open menu/dialog/overlay suppresses routing');
+  // the bail list keeps clicks on real targets (points, pills, chrome) with their own handlers
+  assert.ok(/\.node-content/.test(h) && /#toolbar/.test(h) && /\.prop-chip/.test(h) && /\.bullet/.test(h),
+    'a click on a point/pill/bullet/toolbar is left to its own handler');
+  // preventDefault keeps focus off <body> before focusNode plants the caret; primary button only
+  assert.ok(/e\.button !== 0\) return/.test(h), 'primary click only');
+  const iPrevent = h.indexOf('e.preventDefault()');
+  const iFocus = h.indexOf('focusNode(id)');
+  assert.ok(iPrevent > -1 && iFocus > -1 && iPrevent < iFocus, 'preventDefault BEFORE focusNode, so <body> never steals focus');
+});
+
 // ─── test-user review fix batch 3 (#805/#810/#813) ────────────────────────────
 const _fix3 = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 test('#946 groupThousands — inserts separators, keeps decimals + sign, leaves non-numeric', () => {
