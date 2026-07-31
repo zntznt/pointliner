@@ -211,13 +211,16 @@ the finding, like IA-3 and IA-4, is that the menu is already loyal.
   Analytics would violate §3b and the storage model in one stroke. Validation is manual;
   this is a feature of the identity, not a limitation. (Guard: any "usage insights"
   proposal cites this item and dies.)
-- **IA-8 · The starter gallery stays identity-mixed.** Verified mixed today (7 general /
-  3 RPG). New starters keep roughly that shape: the origin present, never the majority.
+- **IA-8 · The starter gallery stays identity-mixed.** Verified mixed today (10 general /
+  3 RPG; #1196 added the research-notes starter, a general one). New starters keep roughly that
+  shape: the origin present, never the majority.
   **Extended 2026-07-30 (#1192):** the rule now binds the Welcome chooser's quick-picks row too,
-  and binds it harder, because that row is the whole first screen for a brand-new user. Five
-  everyday domains lead, with exactly **one** origin starter (Campaign oracle) among the six. Pinned
-  as a ratio rather than a list, so adding a starter cannot quietly tip the front door back toward
-  the origin. The full gallery still follows underneath the quick picks, unreordered.
+  and binds it harder, because that row is the whole first screen for a brand-new user. The six
+  quick-picks are everyday domains with **no** origin starter in the lead row (#1214: an origin in
+  the top row read as "wrong app" to the non-RPG panelists); the origin shows only in the full
+  gallery below. Pinned as a ratio rather than a list, so adding a starter cannot quietly tip the
+  front door back toward the origin. The full gallery still follows underneath the quick picks,
+  unreordered.
 - **IA-9 · New domain-shaped features pass the substrate test BEFORE shipping** (§9.2) —
   the question is asked in the proposal, not retrofitted like IA-4.
 

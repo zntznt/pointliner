@@ -22668,12 +22668,49 @@ test('starters (#565) — gallery entries present, heading-rooted, em-dash-free'
   const start = _fStarters.indexOf('const STARTERS = [');
   const block = _fStarters.slice(start, _fStarters.indexOf('\n];', start));
   assert.ok(start > -1, 'STARTERS array present');
-  for (const id of ['campaign-oracle', 'oracle-play', 'character-sheet', 'project-tracker', 'reading-log', 'life-dashboard', 'meal-planner', 'trip-planner', 'decision-helper', 'flashcards', 'home-inventory', 'worldbuilding'])
+  for (const id of ['campaign-oracle', 'oracle-play', 'character-sheet', 'project-tracker', 'reading-log', 'life-dashboard', 'meal-planner', 'trip-planner', 'decision-helper', 'flashcards', 'home-inventory', 'worldbuilding', 'research-notes'])
     assert.ok(block.includes(`id: '${id}'`), `starter ${id} present`);
   const opmls = block.split('opml: `').slice(1);
-  assert.equal(opmls.length, 12, 'one embedded OPML per starter');
+  assert.equal(opmls.length, 13, 'one embedded OPML per starter');   // #1196 added research-notes
   for (const o of opmls) assert.match(o, /<outline text="# /, 'each starter roots in a # heading subtree');
   assert.ok(!block.includes('—'), 'no em dashes in starter copy (user-facing)');
+});
+
+test('#1196 research-notes starter surfaces {roll:#tag} + written footnotes, and leads the quick-picks', () => {
+  // The #1196 deliverable: the two prose lead features (roll on your OWN tagged notes; a written
+  // footnote carrying a source) are now LIVE in a starter a first-run user reaches, not palette-only.
+  const rn = between(_fStarters, "id: 'research-notes'", "id: 'oracle-play'");
+  assert.match(rn, /\{roll:\s*#openq\}/, 'draws a live question from the user\'s own #openq notes');
+  assert.match(rn, /\[\^\w+\]/, 'carries a footnote marker (the prose citation)');
+  assert.match(rn, /_footnotes="/, 'and ships the WRITTEN footnote text (first starter to do so)');
+  // It is one of the six Welcome quick-picks, so a prose/research user meets it on the first screen.
+  const qp = between(_fStarters, 'const WELCOME_QUICK_PICKS = [', '];');
+  assert.ok(qp.includes("'research-notes'"), 'research-notes is a Welcome quick-pick (default first-run path)');
+});
+
+test('#1196 drift guard: every [^footnote] shipped in a starter is WRITTEN (has _footnotes text)', () => {
+  // Sibling of #1107 (which guards {roll:} pools). A starter that ships a bare [^ref] marker with no
+  // matching _footnotes text renders "Nothing written here yet", a dead demo of the very feature we
+  // are surfacing. This asserts every marker has a written footnote, so that can never ship.
+  const start = _fStarters.indexOf('const STARTERS = [');
+  const block = _fStarters.slice(start, _fStarters.indexOf('\n];', start));
+  // Scan only rendered text (text="…"), not comments/attribute names, since a [^key] in a code comment is
+  // documentation, not a shipped marker.
+  const texts = [...block.matchAll(/text="([^"]*)"/g)].map(m => m[1]);
+  const markers = nonEmpty(texts.flatMap(t => [...t.matchAll(/\[\^(\w+)\]/g)].map(m => m[1])), 'shipped starter footnote markers');
+  // _footnotes attributes are &quot;-escaped JSON in source; a written entry has non-empty text.
+  const written = new Set();
+  for (const m of block.matchAll(/&quot;key&quot;:&quot;(\w+)&quot;,&quot;text&quot;:&quot;([^&]+)&quot;/g))
+    if (m[2].trim()) written.add(m[1]);
+  for (const k of markers)
+    assert.ok(written.has(k), `starter footnote [^${k}] has no written _footnotes text, so it would render "Nothing written here yet"`);
+});
+
+test('#1196 the prose recipe pairs a roll on your notes with a footnote (guide surfacing)', () => {
+  const rec = between(_src, "id:'recipe-research'", '] }');
+  assert.match(rec, /cat:'recipes'/, 'recipe-research is a Put-it-together recipe');
+  assert.match(rec, /\{roll:\s*#openq\}/, 'pairs a roll on your own tagged notes');
+  assert.match(rec, /\[\^ref\]/, 'with a footnote that pins the source');
 });
 
 // ─── workspace sync-safety batch (#840/#842/#845 items 1+2) ───────────────────

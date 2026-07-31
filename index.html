@@ -38746,6 +38746,17 @@ const GUIDE = [
       { syn:'feature: a {monster} | {treasure}', desc:'each feature is its own rule' },
       { syn:'treasure: {2d6} silver | a {gem}',  desc:'a rule can roll dice or call another' },
     ] },
+  // #1196: the prose-audience recipe that was missing. Pairs the two features a writer or researcher
+  // leads with: roll on your own tagged questions (a live prompt from your notes) and a footnote that
+  // keeps a citation attached to the sentence. Uses only shipped forms.
+  { id:'recipe-research', cat:'recipes', related:['roll-query','footnotes','hashtags'],
+    title:'Question your own notes, with sources',
+    body:"Turn a pile of open questions into a thinking prompt, and keep every claim next to the source that backs it. Tag your open questions, then roll on that tag to draw one at random when you are stuck, live from your own notes. On a claim, add a footnote from the @ menu to pin its citation to the sentence itself, so the source travels with the argument instead of sitting in a separate file. The Research notes starter is this recipe already laid out.",
+    examples:[
+      { syn:'a question #openq',  desc:'tag an open question and the roll learns it' },
+      { syn:'{roll: #openq}',     desc:'draw a random open question from your own notes' },
+      { syn:'a claim here [^ref]', desc:'add a footnote from @ to pin its source to the sentence' },
+    ] },
   { id:'builder', cat:'getting-around',
     title:'All commands',
     body:"Every command in one place. Open All commands and search across every point type, generator, calculation and pill, then insert the one you want without memorizing its syntax. Open it from the toolbar (the checklist icon), by pressing Ctrl/Cmd+K, or by typing /builder. In Guided mode, typing /, @ or { opens it too.\n\nType to filter, arrow keys to browse, Enter to insert. The right pane shows what each command does as you move through the list, so browsing is also how you learn what the app can do.",
@@ -41035,6 +41046,44 @@ const STARTERS = [
 </outline>
 </body></opml>`,
   },
+  // #1196: the prose/research seat (Théo, the humanities panelist). Surfaces the two prose LEAD
+  // features that were palette/guide-only and never demoed: {roll: #tag} pointed at your own open
+  // questions (a thinking prompt, not an RPG oracle) and WRITTEN footnotes carrying a source (the
+  // "citation"). The instructional lines say "tag" without a literal #, or the count/roll would pick
+  // up the how-to text as data (reading-log's idiom). Only shipped syntax: {roll:}, {count:}, [^key].
+  { id: 'research-notes',
+    name: 'Research notes',
+    desc: 'Draw a live question from your own open ones, and keep every claim beside its source with a footnote.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Research notes</title></head><body>
+<outline text="# Research notes">
+  <outline text="Your reading and your open questions in one live document. Draw a question when you are stuck, keep every claim next to its source, and let the notes count themselves. Every {…} is a live pill."/>
+  <outline text="## Stuck? Ask your own notes">
+    <outline text="Draw an open question to sit with: {roll: #openq}"/>
+    <outline text="Still open: {count: #openq}"/>
+  </outline>
+  <outline text="## Open questions (tag a question and the draw learns it)">
+    <outline text="Did print culture cause the shift in guild records, or only record it? #openq"/>
+    <outline text="Whose voices does the 1911 reform leave out? #openq"/>
+    <outline text="Is the archive a place here, or an argument? #openq"/>
+    <outline text="What changes if the 1911 dating is wrong? #openq"/>
+  </outline>
+  <outline text="## Claims and their sources (a footnote pins the citation right here)">
+    <outline text="Guild records were centralized under the Crown in 1911. [^ives19]" _footnotes="[{&quot;key&quot;:&quot;ives19&quot;,&quot;text&quot;:&quot;Ives, Administrative Reform in the Late Empire (2019), p. 42.&quot;}]"/>
+    <outline text="The reorganization follows the print boom, it does not precede it. [^chen21]" _footnotes="[{&quot;key&quot;:&quot;chen21&quot;,&quot;text&quot;:&quot;Chen, The Print Boom Reconsidered (2021), ch. 3.&quot;}]"/>
+    <outline text="Sources on file: {count: #source}"/>
+  </outline>
+  <outline text="## Sources (tag a reference and the count keeps up)">
+    <outline text="Ives, Administrative Reform in the Late Empire (2019) #source"/>
+    <outline text="Chen, The Print Boom Reconsidered (2021) #source"/>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="Add a question and tag it the way the others are tagged: the draw above can land on it. Write a claim, then add a footnote from the @ menu (choose Footnote) to keep its source attached to the sentence, not in a separate file. Tag each reference the same way and the count keeps itself."/>
+    <outline text="Nothing here is new syntax: the draw is a roll on a tag, the counts are searches, and a footnote is the @ menu's Footnote."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
   { id: 'oracle-play',
     name: 'Oracle-driven scene play',
     desc: 'A swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck.',
@@ -41534,7 +41583,10 @@ const STARTER_ICON = { fa: 'fa-solid fa-dice-d20', fb: '🎲' };
 // still shows in "More templates" directly under this row (IA-8's ratio is unchanged; this is
 // ordering only). Leading with these hides nothing; it just stops RPG framing from setting the tone
 // for someone here to plan dinner.
-const WELCOME_QUICK_PICKS = ['project-tracker', 'meal-planner', 'trip-planner', 'reading-log', 'flashcards', 'home-inventory'];
+// #1196: research-notes takes trip-planner's lead slot (planner redundancy with meal-planner) so the
+// prose/research audience meets its own lead features ({roll:#tag} on their notes + written footnotes)
+// in the first-run path, not palette-only. Still everyday and general, so IA-3/IA-8 hold.
+const WELCOME_QUICK_PICKS = ['project-tracker', 'meal-planner', 'research-notes', 'reading-log', 'flashcards', 'home-inventory'];
 // var (hoisted, #854's rule): closeIo and adoptDoc are declared thousands of lines ABOVE this and
 // both run during the boot restore, before this line is reached. A `let` would put them in the TDZ
 // and crash the restore; a hoisted var reads `undefined` (falsy) until first-run sets it.
