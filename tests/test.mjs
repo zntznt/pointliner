@@ -344,6 +344,44 @@ test('evalCheck — a compound and(…) check passes the comparison gate and ver
   assert.equal(c.evalCheck(bare, {}), 'error');
 });
 
+// #1195: checkQuery extracts the search query embedded in a check, so a FAILING query-check can reveal
+// the points it flags. Reuses the SAME two patterns expandAggExpr substitutes.
+test('#1195 checkQuery: extracts the embedded query, scope and reducer, null for a pure-numeric check', () => {
+  // Field-by-field, not deepEqual: a load-cores object lives in another realm, so its prototype differs
+  // and deepStrictEqual reports "same structure but not reference-equal".
+  const cq = (e, q, s, f) => { const r = c.checkQuery(e); assert.ok(r, `${e} → non-null`);
+    assert.equal(r.query, q); assert.equal(r.scope, s); assert.equal(r.fn, f); };
+  cq('count("#claim -has:footnote") == 0', '#claim -has:footnote', 'subtree', 'count');
+  cq('sum("is:task", cost) <= budget', 'is:task', 'subtree', 'sum');
+  cq('avg("#risk", severity) < 3', '#risk', 'subtree', 'avg');
+  // wideners
+  assert.equal(c.checkQuery('count("x", document) == 0').scope, 'document');
+  assert.equal(c.checkQuery('count("x", doc) == 0').scope, 'document');
+  assert.equal(c.checkQuery('count("x", folder) == 0').scope, 'folder');
+  // pure-numeric checks (no quoted arg) → null, so the affordance never shows on them
+  assert.equal(c.checkQuery('sum(cost) <= budget'), null, 'a bare child-prop rollup is not a query');
+  assert.equal(c.checkQuery('count(children) == 0'), null, 'bare count(identifier) is not a query');
+  assert.equal(c.checkQuery('hp > 10'), null);
+  assert.equal(c.checkQuery(''), null);
+  assert.equal(c.checkQuery(null), null);
+  // multiple embedded queries → the first in source order (min-index across both regexes)
+  assert.equal(c.checkQuery('count("a") + count("b") == 0').query, 'a', 'first count wins');
+  assert.equal(c.checkQuery('sum("s", c) > count("t")').query, 's', 'the earliest in source order wins across reducers');
+  // an empty query is returned as-is (the call site guards it, nothing to reveal)
+  assert.equal(c.checkQuery('count("") == 0').query, '');
+});
+
+test('#1195 checkQuery stays in sync with expandAggExpr (same query patterns)', () => {
+  // The extractor must read exactly what expandAggExpr substitutes, or the reveal would target a
+  // different set than the pill counted. Pin the shared regex source in BOTH function bodies.
+  const cq = fnBody(_src, 'checkQuery');
+  const ax = fnBody(_src, 'expandAggExpr');
+  const countPat = '\\bcount\\s*\\(\\s*"([^"]*)"';
+  const reducePat = '(sum|avg|min|max)\\s*\\(\\s*"([^"]*)"';
+  assert.ok(cq.includes(countPat) && ax.includes(countPat), 'both use the count("query") pattern');
+  assert.ok(cq.includes(reducePat) && ax.includes(reducePat), 'both use the reduce("query") pattern');
+});
+
 test('evalMath — names colliding with Object.prototype fail to null, not the inherited member', () => {
   // On plain-object tables `'constructor' in MATH_CONSTS` was true via the prototype, so
   // `constructor*2` resolved to the Object function (NaN) and `constructor(5)`
@@ -22686,6 +22724,46 @@ test('#1196 research-notes starter surfaces {roll:#tag} + written footnotes, and
   // It is one of the six Welcome quick-picks, so a prose/research user meets it on the first screen.
   const qp = between(_fStarters, 'const WELCOME_QUICK_PICKS = [', '];');
   assert.ok(qp.includes("'research-notes'"), 'research-notes is a Welcome quick-pick (default first-run path)');
+  // #1195: it also ships a LIVE prose CHECK (every claim cited) + the #claim tags it asserts over.
+  assert.ok((rn.match(/\[\^\w+\] #claim/g) || []).length >= 2,
+    '#1195: BOTH footnoted claim lines are tagged #claim, so the check is non-vacuous');
+  assert.match(rn, /&quot;key&quot;:&quot;check&quot;/, '#1195: the Claims section ships a check property');
+  assert.match(rn, /count\(\\\\&quot;#claim -has:footnote\\\\&quot;\) == 0/,
+    '#1195: the check asserts every claim carries a source (double-backslash survives the template literal)');
+});
+
+test('#1195 the reveal-offenders affordance is wired (chip + both seams, edit preserved)', () => {
+  // The magnifier appears ONLY on a failing query-check and reveals its offenders; a source-pin proves
+  // presence, the live-drive proves it works (a handler on an unfocusable node still passes a pin, #1021).
+  const chip = fnBody(_src, 'buildCheckChip');
+  // Pin the GATE specifically (fail + checkQuery together), not the pre-existing verdict ternaries.
+  assert.match(chip, /if \(verdict === 'fail'\) \{\s*\n\s*const q = checkQuery\(expr\);/,
+    'the reveal is gated on a FAILING check that embeds a query');
+  assert.match(chip, /prop-check-reveal/, 'it builds the reveal control');
+  assert.match(chip, /Show the \$\{nn\} this check flags/, 'named for AT (P3)');
+  assert.ok(/queryCountIn\(q\.query, node\)/.test(chip) && /queryReduceFolder\('count'/.test(chip),
+    'N is counted with the same reducer the pill uses');
+
+  // Props-area chips sit OUTSIDE the .node-content keydown delegate, so the reveal wires its OWN
+  // click + keydown (the base-view sub-button pattern). click stopPropagation keeps the chip's edit
+  // delegate from also firing; keydown is the Enter/Space twin beside mousedown (P3-2, caret invariant).
+  assert.match(chip, /reveal\.addEventListener\('mousedown', e => \{ e\.preventDefault\(\); e\.stopPropagation\(\); \}\)/,
+    'mousedown keeps focus put');
+  assert.match(chip, /reveal\.addEventListener\('click', e => \{ e\.stopPropagation\(\); revealCheckOffenders\(reveal\); \}\)/,
+    'click reveals, and stops the edit delegate from also firing');
+  assert.ok(/reveal\.addEventListener\('keydown'[\s\S]{0,160}Enter[\s\S]{0,120}revealCheckOffenders\(reveal\)/.test(chip),
+    'Enter/Space is the keyboard twin (P3)');
+
+  // Edit-click regression guard: the chip body still opens the check editor (the outline delegate is
+  // unchanged, and a reveal click stops propagation so only the BODY reaches it).
+  assert.match(_src, /const chip = e\.target\.closest\('\.prop-chip'\);\n\s*if \(chip\) openPropChip\(chip\)/,
+    'the chip body still opens the editor (P1 preserved)');
+
+  // The reveal runs the query in the search box, zooming first for a subtree-scoped check.
+  const rc = fnBody(_src, 'revealCheckOffenders');
+  assert.ok(rc.includes('applySearch(q)') && rc.includes("getElementById('search-box')") && rc.includes('sb.focus()'),
+    'reveal runs the embedded query in the search box (tag-browser precedent)');
+  assert.match(rc, /revealScope === 'subtree'[\s\S]{0,80}zoomTo\(id\)/, 'a subtree-scoped check zooms in so the search scopes to it');
 });
 
 test('#1196 drift guard: every [^footnote] shipped in a starter is WRITTEN (has _footnotes text)', () => {
