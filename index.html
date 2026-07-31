@@ -1407,6 +1407,12 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .prop-chip.prop-check-fail .prop-check-glyph,.prop-chip.prop-check-fail .prop-val{color:var(--bad);font-weight:600}
 .prop-chip.prop-check-error{background:color-mix(in srgb,var(--warn) 16%,transparent)}
 .prop-chip.prop-check-error .prop-check-glyph,.prop-chip.prop-check-error .prop-val{color:var(--warn)}
+/* #1195: reveal-offenders magnifier on a FAILING query-check, a distinct sub-button that runs the
+   check's embedded query so the failure is a door to its offenders. Inherits the fail --bad tone; a
+   keyboard focus ring makes it operable (P3). */
+.prop-check-reveal{display:inline-flex;align-items:center;margin-left:5px;padding:0 1px;color:var(--bad);opacity:.72;cursor:pointer;font-size:.9em}
+.prop-check-reveal:hover{opacity:1}
+.prop-check-reveal:focus-visible{outline:2px solid var(--acc);outline-offset:1px;border-radius:var(--r-xs);opacity:1}
 /* #527: a due/start value the ACTIVE calendar can't read — the check-error warn recipe (a
    permanent truth-teller after a calendar switch, not a one-time dialog warning) */
 .prop-chip.prop-date-bad{background:color-mix(in srgb,var(--warn) 16%,transparent)}
@@ -4524,6 +4530,24 @@ function replaceConvert(str, evalFn, table) {
     s = s.slice(0, start) + repl + s.slice(close + 1);
   }
   return s;
+}
+
+// #1195: extract the search query embedded in a check's count("q") or sum|avg|min|max("q", prop),
+// so a FAILING check can reveal the points that query flags (a prose/structural check "points at
+// words"). Mirrors the SAME two patterns expandAggExpr substitutes to a number (kept in sync by a
+// source test), but NON-global so it reads only the first match without touching a shared lastIndex.
+// Returns { query, scope:'subtree'|'document'|'folder', fn } for the earliest embedded query in source
+// order, or null for a pure-numeric check (no quoted query arg). Pure / DOM-free (returns null on no
+// match, never throws). An empty query ("") is returned as-is; the caller guards it (nothing to reveal).
+function checkQuery(expr) {
+  if (!expr) return null;
+  const s = String(expr);
+  const cm = /\bcount\s*\(\s*"([^"]*)"\s*(?:,\s*(folder|document|doc)\s*)?\)/.exec(s);
+  const rm = /\b(sum|avg|min|max)\s*\(\s*"([^"]*)"\s*,\s*[A-Za-z_]\w*\s*(?:,\s*(folder|document|doc)\s*)?\)/.exec(s);
+  const normScope = w => w === 'folder' ? 'folder' : (w === 'document' || w === 'doc') ? 'document' : 'subtree';
+  if (cm && (!rm || cm.index <= rm.index)) return { query: cm[1], scope: normScope(cm[2]), fn: 'count' };
+  if (rm) return { query: rm[2], scope: normScope(rm[3]), fn: rm[1] };
+  return null;
 }
 
 function expandAggExpr(expr, node, vars = null) {
@@ -9207,7 +9231,7 @@ const BLOCK_CMDS = [
   { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         keys:['stamp','insert'], label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-stamp',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  keys:['date','deadline','when','remind'], label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or bare /due to open the Schedule dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
-  { id:'check',   icon:'✓',    fa:'fa-solid fa-clipboard-check',  keys:['constraint','assert','lint','validate','budget'], label:'Check',      desc:'A pass/fail constraint over this point and its children, such as sum(cost) ≤ budget. Type /check:expr to set it inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
+  { id:'check',   icon:'✓',    fa:'fa-solid fa-clipboard-check',  keys:['constraint','assert','lint','validate','budget','prose','words'], label:'Check',      desc:'A pass/fail constraint over this point and its children. Point it at numbers (sum(cost) ≤ budget) or at your own words and structure (count("#claim -has:footnote") == 0 flags a claim with no source; words(subtree) ≥ 500). Type /check:expr inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           keys:['aka','synonym'], label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
   { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          keys:['property','field','attribute','meta'], label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
   { id:'note',    icon:'≡',    fa:'fa-solid fa-pen',           label:'Note',       desc:'Add a plain-text note under this point for context that does not belong on the line. Opens the note editor right below the point, no dialog.', ex:'/note', section:'Organize' },
@@ -13489,6 +13513,41 @@ function buildCheckChip(node) {
     const lbl = (textForDisplay(node) || '').split('\n')[0].trim().slice(0, 40);
     announce(`Check ${word}${lbl ? ' on ' + lbl : ''}`);
   }
+  // #1195: a FAILING check whose expression embeds a search query (count("q") / sum("q", prop) …) gains
+  // a magnifier that reveals the points it flags, so a prose/structural check is a door to its offenders
+  // instead of a dead-end red mark. The chip body still opens the editor (delegated); this is a distinct,
+  // separately-named control. N is counted with the SAME reducer the pill uses, so the two never disagree.
+  if (verdict === 'fail') {
+    const q = checkQuery(expr);
+    if (q && q.query.trim()) {
+      const n = q.scope === 'folder' ? queryReduceFolder('count', q.query, null)
+              : q.scope === 'document' ? queryCountIn(q.query, root)
+              : queryCountIn(q.query, node);
+      const nn = n === 1 ? '1 point' : n + ' points';
+      const reveal = document.createElement('span');
+      reveal.className = 'prop-check-reveal';
+      reveal.setAttribute('role', 'button');
+      reveal.setAttribute('tabindex', '-1');
+      reveal.dataset.revealQuery = q.query;
+      reveal.dataset.revealScope = q.scope;
+      reveal.dataset.propsId = node.id;
+      reveal.setAttribute('aria-label', `Show the ${nn} this check flags`);
+      reveal.title = `Show the ${nn} this check flags`;
+      const ic = document.createElement('span'); ic.setAttribute('aria-hidden', 'true');
+      setIcon(ic, { fa: 'fa-solid fa-magnifying-glass', fb: '🔍' });
+      reveal.appendChild(ic);
+      // Self-contained handlers (the base-view sub-button pattern), because props-area chips sit outside
+      // the .node-content keydown delegate. mousedown keeps focus put; click stopPropagation keeps the
+      // chip's own edit-click (the outline delegate) from ALSO firing on a reveal press; keydown is the
+      // Enter/Space twin (P3-2, added beside mousedown, never a <button>/click conversion).
+      reveal.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+      reveal.addEventListener('click', e => { e.stopPropagation(); revealCheckOffenders(reveal); });
+      reveal.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); revealCheckOffenders(reveal); }
+      });
+      chip.appendChild(reveal);
+    }
+  }
   return chip;
 }
 
@@ -14258,8 +14317,9 @@ function openCheckDialog(nodeId, targets = null) {
           { label: '==',       insert: ' == ' },
           { label: 'and( )',   insert: el => insertAndSelect(el, 'and(', 'test, test', ')') },
           { label: 'count("")', insert: el => insertAndSelect(el, 'count("', 'is:todo', '")') },
+          { label: 'words( )',  insert: el => insertAndSelect(el, 'words(', 'subtree', ')') },
         ],
-        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Roll up children and combine with and/or/not, see the concept guide. e.g. sum(cost) <= budget',
+        hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Point it at numbers or at your words: count("#claim -has:footnote") == 0 flags a claim with no source, words(subtree) >= 500 checks length. Combine with and/or/not, see the concept guide. e.g. sum(cost) <= budget',
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
@@ -34113,6 +34173,21 @@ function openPropChip(chip) {
   else openPropsDialog(chip.dataset.propsId);
 }
 
+// #1195: reveal the points a failing check flags. For a subtree-scoped check, zoom to the check's own
+// point first so the search (which scopes its filter/count to focusedId) matches the check's own domain;
+// a `, document` widener reveals doc-wide; `, folder` reveals this document's matches only (v1 limit).
+// Runs the embedded query in the search box, mirroring the tag browser's onPick reveal.
+function revealCheckOffenders(revEl) {
+  const q = revEl.dataset.revealQuery;
+  if (!q) return;
+  if (revEl.dataset.revealScope === 'subtree') {
+    const id = revEl.dataset.propsId;
+    if (id && nodeById(id)) zoomTo(id);
+  }
+  const sb = document.getElementById('search-box');
+  sb.value = q; applySearch(q); sb.focus();
+}
+
 // ─── footnotes ────────────────────────────────────────────────────────────────
 
 function getFnRefs(text) {
@@ -38543,14 +38618,15 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'], related:['rollups','properties','recipe-budget'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough points, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog.\n\nWrite the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property; sum, avg, min and max take the same quoted-search form with a property, so sum(\"#task\", cost) <= budget caps a live query's total. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough points, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog.\n\nWrite the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property; sum, avg, min and max take the same quoted-search form with a property, so sum(\"#task\", cost) <= budget caps a live query's total. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.\n\nA check points at your PROSE, not just numbers. count(\"#claim -has:footnote\") == 0 asserts every point tagged #claim carries a footnote, so a claim with no source fails; words(subtree) >= 500 sets a section's minimum length. When a check like these fails, its red badge shows a magnifying glass: click it (or focus it and press Enter) to run that query and jump straight to the points it flags. A check scoped to this point's subtree zooms in first; a check widened with , document searches the whole document.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
       { syn:'count(score) >= 3',   desc:'at least 3 scored children' },
       { syn:'and(hours <= 8, cost <= cap)', desc:'two tests in one check' },
       { syn:'count("-has:hp") == 0', desc:'structure: every point below needs an hp' },
-      { syn:'count("is:todo") <= 5', desc:'cap the open tasks in this section' },
+      { syn:'count("#claim -has:footnote") == 0', desc:'prose: every claim carries a source' },
+      { syn:'words(subtree) >= 500', desc:"a section's minimum length" },
       { syn:'is:failing',          desc:'find everything that fails' },
     ] },
   { id:'datapacks', cat:'compute',
@@ -41068,9 +41144,9 @@ const STARTERS = [
     <outline text="Is the archive a place here, or an argument? #openq"/>
     <outline text="What changes if the 1911 dating is wrong? #openq"/>
   </outline>
-  <outline text="## Claims and their sources (a footnote pins the citation right here)">
-    <outline text="Guild records were centralized under the Crown in 1911. [^ives19]" _footnotes="[{&quot;key&quot;:&quot;ives19&quot;,&quot;text&quot;:&quot;Ives, Administrative Reform in the Late Empire (2019), p. 42.&quot;}]"/>
-    <outline text="The reorganization follows the print boom, it does not precede it. [^chen21]" _footnotes="[{&quot;key&quot;:&quot;chen21&quot;,&quot;text&quot;:&quot;Chen, The Print Boom Reconsidered (2021), ch. 3.&quot;}]"/>
+  <outline text="## Claims and their sources (the check goes green when every claim is cited)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;count(\\&quot;#claim -has:footnote\\&quot;) == 0&quot;}]">
+    <outline text="Guild records were centralized under the Crown in 1911. [^ives19] #claim" _footnotes="[{&quot;key&quot;:&quot;ives19&quot;,&quot;text&quot;:&quot;Ives, Administrative Reform in the Late Empire (2019), p. 42.&quot;}]"/>
+    <outline text="The reorganization follows the print boom, it does not precede it. [^chen21] #claim" _footnotes="[{&quot;key&quot;:&quot;chen21&quot;,&quot;text&quot;:&quot;Chen, The Print Boom Reconsidered (2021), ch. 3.&quot;}]"/>
     <outline text="Sources on file: {count: #source}"/>
   </outline>
   <outline text="## Sources (tag a reference and the count keeps up)">
