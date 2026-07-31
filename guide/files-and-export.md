@@ -95,11 +95,14 @@ point you are keeping, or leave it out on purpose.
 Your work is never trapped here. Whatever you write stays plain text you own, and there are three
 ways out depending on what you want to keep:
 
-- **OPML is the full-fidelity form.** It is Pointliner's native save format, and it is the only
-  export you can open **back into the app** with everything intact: every pill still live, every
-  property, date, note, link and base exactly as you left them. If you want to move your whole
-  document to another machine or keep a true archive, use the OPML file (it is what a connected
-  folder saves, and what **File, Open** reads).
+- **OPML is the full-fidelity form, and it is the lossless format you own.** It is Pointliner's
+  native save format, and it is the only export you can open **back into the app** with everything
+  intact: every pill still live, every property, date, note, link and base exactly as you left them.
+  If you want to move your whole document to another machine or keep a true archive, use the OPML file
+  (it is what a connected folder saves, and what **File, Open** reads). OPML is plain, open XML, and
+  each pill's record rides along as a small underscore-prefixed attribute, so your document is
+  readable and portable text that outlives the app. The
+  [Pill syntax reference](pill-syntax-reference.md) documents both the `{…}` grammar and this format.
 - **Markdown and plain text are readable snapshots.** They are meant for posting, sharing, or
   pasting into another app, so they are **one-way**: each pill is frozen to the value it is showing
   at export time. A `{2d6}` becomes the number it last rolled, `{= sum(cost)}` becomes the total,

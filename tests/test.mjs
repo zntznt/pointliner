@@ -10050,6 +10050,22 @@ test('user-guide drift: computing-numbers.md only names math functions that exis
     `(a typo or a renamed/removed function — fix the **Math:** line in guide/computing-numbers.md)`);
 });
 
+// #1215: the published pill-syntax reference is only useful if it stays honest against the code. The
+// empty-keyword guard in promoteBraceBodyIn (my #1213 fix) is the code's own list of the keyword pill
+// forms; every one of them must be documented in the reference, or a reader trusts a spec that has
+// drifted from the app. Canonical source = that guard's alternation, parsed from index.html.
+test('#1215: the pill-syntax reference documents every keyword pill form the code recognizes', () => {
+  const m = _src.match(/if \(\/\^\(\?:=\|\(\?:([a-z|]+)\)\\s\*:\)\\s\*\$\/i\.test\(body\)\) return '';/);
+  assert.ok(m, "the promoteBraceBodyIn empty-keyword guard alternation was not found (did #1213's regex change?)");
+  const keywords = m[1].split('|');
+  assert.ok(keywords.length >= 8, `parsed too few keyword pills (${keywords.length}); the guard regex changed shape?`);
+  const ref = readFileSync(_guidePath('pill-syntax-reference.md'), 'utf8');
+  const missing = keywords.filter(kw => !new RegExp(`\\{${kw}\\b`).test(ref));
+  assert.deepEqual(missing, [],
+    `guide/pill-syntax-reference.md does not document these keyword pills the code recognizes: ${missing.join(', ')}\n` +
+    `Add a {${missing[0] || 'keyword'}: …} row to the reference table so the published spec matches the app.`);
+});
+
 // ── User-guide ANCHOR integrity guard ─────────────────────────────────────────
 // The repo has no markdown link-checker, so a broken in-page anchor ships silently
 // to GitHub Pages. This resolves EVERY `](...#fragment)` link across the user guide
