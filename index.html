@@ -4703,6 +4703,20 @@ function firstEmptyRollup(expr, node, opts = {}) {
   return null;
 }
 
+// #1200: an empty rollup ({= sum(fee)} that matched no `fee` property) has two distinguishable
+// causes, and only one is a typo. "No child has a `fee` property" is a name/scope mistake. But if the
+// children COMPUTE their values with pills (a `{= words * rate}` on each row) and simply never stored
+// a `fee` PROPERTY, the cause is that a rollup reads stored properties, not pill results — a real
+// dead-end after the engine just did the per-row work. Detect that second state so the cue can name
+// it: the scoped children have at least one computed pill (math / declared var / estimate) AND none
+// carries the rolled-up property. Pure; same collectScoped scope as firstEmptyRollup so they agree.
+function childrenComputePillsNotProp(node, prop, depth = 1) {
+  const kids = collectScoped(node || {}, depth);
+  if (!kids.length) return false;
+  const computes = c => (c.math?.length) || (c.vars?.length) || (c.est?.length);
+  return kids.some(computes) && kids.every(c => childPropNumber(c, prop) === null);
+}
+
 // #914: a QUOTED query reducer ({= count("q")} / {= sum("q", prop)}) that is subtree-scoped (no
 // `, folder` / `, document` widener) on a point with NO descendants can only ever return the
 // identity, because there is nothing below it to search — almost always a "dashboard" pill dropped
@@ -27708,7 +27722,13 @@ function renderMathPill(key, m, opts = {}) {
     // it for the no-scope-word form, so a sum(cost, subtree) that is genuinely empty gets no redundant tip.
     const bareScoped = new RegExp('\\b(?:sum|avg)\\s*\\(\\s*' + emptyProp + '\\s*\\)').test(m.expr);
     const widen = bareScoped ? ` Add ", subtree" to include every level below (like sum(${emptyProp}, subtree)).` : '';
-    const tip = `No ${emptyProp} below this point. Move the pill onto the parent, or check the property name.${widen}`;
+    // #1200: distinguish the two empty causes. If the children COMPUTE their values with pills but
+    // never stored a matching property, the honest cause is that a rollup adds up stored properties,
+    // not pill results (a dead end right after the engine did the per-row work). Name that, instead of
+    // the generic "check the property name," so a numbers person is not left retyping their own totals.
+    const tip = childrenComputePillsNotProp(cookieNode, emptyProp)
+      ? `The points below compute their values with pills, but a rollup adds up stored ${emptyProp} properties, not pill results. Store the value as ${emptyProp}: a number on each, or declare a variable`
+      : `No ${emptyProp} below this point. Move the pill onto the parent, or check the property name.${widen}`;
     return `<span class="math-roll math-empty" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
       + ` aria-label="Math ${escQ(m.expr)}: nothing matched. ${escQ(tip)}">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
