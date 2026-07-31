@@ -19851,7 +19851,15 @@ let bpopShowTimer = null;   // dwell-before-show timer for the bullet hover
 let bpopExpanded = false;
 bpop.addEventListener('mouseenter', () => clearTimeout(bpopTimer));
 bpop.addEventListener('mouseleave', scheduleBpopHide);
-bpop.addEventListener('mousedown', e => e.preventDefault());
+// #1211: the bullet menu's items ACT on mousedown and call hideBpop() there, so by the time the
+// trailing click/mouseup fires the menu is gone and that click lands on whatever is now underneath
+// (the toolbar's roll-log button, a canvas point) — firing an action the user never asked for
+// ("the tool is doing things behind my back"). #bpop floats with no covering backdrop, so nothing
+// swallows it. Arm a one-shot guard on any mousedown inside the menu; a capture-phase click handler
+// (below, beside hideBpop) consumes exactly that trailing click. Mirrors the caret-picker guard
+// (armPickerGuard), which solves the same down/up seam for the {…}/# menus. preventDefault stays —
+// the menu must not blur the editor (caret invariant).
+bpop.addEventListener('mousedown', e => { e.preventDefault(); _bpopSwallowClick = true; });
 // Keyboard nav (UXP-14): same §7 menu pattern as the Column panel. Items are the
 // type-switcher buttons + the action rows; Enter/Space fire their mousedown handler.
 bpop.addEventListener('keydown', e => {
@@ -20401,6 +20409,22 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
 }
 function scheduleBpopHide() { bpopTimer = setTimeout(hideBpop, 300); }
 function hideBpop() { bpop.classList.remove('on'); }
+// #1211: set by a mousedown inside #bpop (whose items act + hideBpop on the down-press). The trailing
+// click then has no menu under it and would fall through to the toolbar/canvas; swallow exactly that
+// one click in the capture phase, before any target handler (roll-log toggle, a point) can run. A
+// one-shot flag, cleared on the click it consumes and by a timeout backstop for a mousedown that
+// never produces a click (a drag off the menu).
+let _bpopSwallowClick = false;
+let _bpopSwallowTimer = 0;
+document.addEventListener('mousedown', () => { clearTimeout(_bpopSwallowTimer); _bpopSwallowTimer = setTimeout(() => { _bpopSwallowClick = false; }, 800); }, true);
+document.addEventListener('click', e => {
+  if (_bpopSwallowClick && !e.target.closest('#bpop')) {   // the fall-through click from a just-acted menu item
+    _bpopSwallowClick = false;
+    e.preventDefault(); e.stopPropagation();
+    return;
+  }
+  _bpopSwallowClick = false;   // a legitimate click inside #bpop (or any other) ends the one-shot
+}, true);
 document.addEventListener('click', e => {
   // .todo-state/.todo-prio open the picker on mousedown; ignore the trailing click
   // so it doesn't immediately dismiss the popover it just opened.

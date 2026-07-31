@@ -1717,6 +1717,29 @@ test('picker click: the blur guard spans the pointer sequence and sits in the re
     'openBraceHelp commits the draft explicitly instead of racing the guide’s rAF focus');
 });
 
+// #1211: the bullet menu (#bpop) has no covering backdrop and its items ACT on mousedown, calling
+// hideBpop() on the down-press — so the trailing click falls through to whatever is now underneath
+// (the toolbar roll-log button, a canvas point) and fires an unrequested action. A one-shot guard,
+// armed by any mousedown inside #bpop and consumed by a capture-phase click handler, swallows that
+// fall-through click. (The actual swallow was driven in a headless browser: fall-through toggled the
+// roll-log with the guard off, did not with it on, and a legit menu action + a later normal click
+// were untouched — a source-pin proves presence only.)
+test('#1211 wiring: the bullet menu swallows its fall-through click (arm on mousedown, consume on capture click)', () => {
+  // armed by any mousedown inside #bpop — the anchor is bpop's own caret-invariant mousedown
+  assert.ok(/bpop\.addEventListener\('mousedown', e => \{ e\.preventDefault\(\); _bpopSwallowClick = true; \}\)/.test(_src),
+    'a mousedown inside #bpop must arm the swallow guard (and keep preventDefault — the caret invariant)');
+  // consumed in the CAPTURE phase, before any target handler (roll-log toggle / a point) can run
+  const consumer = _src.match(/document\.addEventListener\('click', e => \{\s*\n\s*if \(_bpopSwallowClick[\s\S]*?\}, true\);/);
+  assert.ok(consumer, 'a capture-phase click handler must consume the fall-through');
+  const h = consumer[0];
+  assert.ok(/!e\.target\.closest\('#bpop'\)/.test(h), 'a legit click INSIDE #bpop is never swallowed — only the fall-through');
+  assert.ok(/e\.preventDefault\(\); e\.stopPropagation\(\)/.test(h), 'the fall-through click is fully cancelled');
+  assert.ok(/_bpopSwallowClick = false/.test(h), 'the guard is one-shot: consumed clears it, so no later click is swallowed');
+  // a mousedown that never yields a click (a drag off the menu) still clears the flag via a timeout backstop
+  assert.ok(/_bpopSwallowTimer = setTimeout\(\(\) => \{ _bpopSwallowClick = false; \}, \d+\)/.test(_src),
+    'a timeout backstop clears the flag when a mousedown produces no click');
+});
+
 test('filterBraceForms — each scaffold selects the intended placeholder (sel offsets pinned)', () => {
   const want = {
     'math': '', 'roll-up': 'prop', 'word count': 'subtree', 'dice': '2d6',
