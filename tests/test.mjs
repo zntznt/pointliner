@@ -4308,6 +4308,81 @@ test('sampleUncertain — (5 to 10)+(5 to 10) zips to ≈2× the mean (independe
   assert.ok(Math.abs(two.mean - 2 * one.mean) < 0.6, `sum mean ≈ 2× single (${two.mean} vs ${2 * one.mean})`);
 });
 
+// ── distribution peek (2026-08 panel): run a generator N times, read the odds ──
+test('distReadout: NUMERIC: discrete per-value bars, stats, and inclusive chance helpers', () => {
+  // a fixed, hand-countable sample so the reduction is deterministic (the sampler is random; the
+  // REDUCER is the real logic and is pinned here).
+  const xs = [2, 3, 3, 3, 4, 4];             // n=6
+  const r = c.distReadout(xs);
+  assert.equal(r.kind, 'numeric');
+  assert.equal(r.n, 6);
+  assert.ok(r.discrete && Array.isArray(r.bars), 'few distinct values → discrete bars');
+  // JSON compare, not deepEqual: a load-cores array lives in another realm (different Array.prototype).
+  assert.equal(JSON.stringify(r.bars.map(b => [b.value, b.count])), JSON.stringify([[2, 1], [3, 3], [4, 2]]), 'one row per value, ascending');
+  assert.ok(Math.abs(r.bars.find(b => b.value === 3).pct - 50) < 1e-9, '3 is 50%');
+  assert.equal(r.min, 2); assert.equal(r.max, 4);
+  assert.ok(Math.abs(r.mean - (2 + 9 + 8) / 6) < 1e-9);
+  // inclusive tails: at least 3 = 5/6, at most 3 = 4/6
+  assert.ok(Math.abs(c.distChanceAtLeast(xs, 3) - 500 / 6) < 1e-9, 'P(>=3) inclusive');
+  assert.ok(Math.abs(c.distChanceAtMost(xs, 3) - 400 / 6) < 1e-9, 'P(<=3) inclusive');
+  // a WIDE numeric range drops to the bucketed sparkline (no discrete bars)
+  const wide = c.distReadout(Array.from({ length: 200 }, (_, i) => i));
+  assert.equal(wide.discrete, false, '> DIST_BAR_MAX distinct values → not discrete');
+  assert.equal(wide.bars, null);
+});
+
+test('distReadout: CATEGORICAL: frequency rows sorted by count, capped, with a remainder count', () => {
+  const r = c.distReadout(['a', 'a', 'a', 'b', 'b', 'c']);
+  assert.equal(r.kind, 'categorical');
+  assert.equal(JSON.stringify(r.rows.map(x => [x.outcome, x.count])), JSON.stringify([['a', 3], ['b', 2], ['c', 1]]), 'sorted by count desc');
+  assert.ok(Math.abs(r.rows[0].pct - 50) < 1e-9, 'a is 50% of 6');
+  // cap: 30 distinct outcomes → top DIST_BAR_MAX rows + a remainder
+  const many = c.distReadout(Array.from({ length: 30 }, (_, i) => 'x' + i));
+  assert.ok(many.rows.length <= 24 && many.moreKinds === 30 - many.rows.length, 'capped with a remainder count');
+  assert.equal(c.distReadout([]).kind, 'empty');
+});
+
+test('sampleGenerator: dice is numeric (2d6 mean ≈ 7), deck is categorical from a FRESH bag, bad kind → null', () => {
+  const dice = c.sampleGenerator('dice', { expr: '2d6' }, 3000);
+  assert.equal(dice.length, 3000);
+  const dm = c.distReadout(dice);
+  assert.equal(dm.kind, 'numeric');
+  assert.ok(dm.mean > 6.4 && dm.mean < 7.6, `2d6 mean near 7 (got ${dm.mean.toFixed(2)})`);   // wide tolerance, N=3000
+  assert.ok(dm.min >= 2 && dm.max <= 12, 'within 2d6 bounds');
+  // a success pool is a success-COUNT (numeric), 0..6
+  const pool = c.sampleGenerator('dice', { expr: '6d10>=7' }, 3000);
+  assert.ok(c.distReadout(pool).max <= 6, 'success count never exceeds the pool size');
+  // deck: each trial deals from a FRESH bag (never a shared/exhausting one), so ~uniform over items
+  const deck = c.sampleGenerator('deck', { mode: 'shuffle', items: ['a', 'b', 'c'] }, 3000);
+  const dr = c.distReadout(deck);
+  assert.equal(dr.kind, 'categorical');
+  assert.equal(dr.rows.length, 3, 'all three items appear');
+  assert.ok(dr.rows.every(row => row.pct > 25 && row.pct < 42), 'roughly uniform (a fresh single draw)');
+  assert.equal(c.sampleGenerator('nope', {}, 10), null, 'an unknown kind returns null, never throws');
+  assert.equal(c.sampleGenerator('dice', { expr: 'not dice' }, 10), null, 'malformed dice → null');
+});
+
+test('#dist the distribution peek is wired (menu row + panel + fresh-deck sampling + host scope)', () => {
+  // Menu row: dice and grammar/deck pills each get a "Show distribution" row opening the panel.
+  const cpa = fnBody(_src, 'collectPillActions');
+  assert.ok(/Show distribution[\s\S]{0,80}openDistributionPanel\(node, 'dice', d\.key\)/.test(cpa), 'dice pill gets the row');
+  assert.ok(/Show distribution[\s\S]{0,120}openDistributionPanel\(node, g\.mode \? 'deck' : 'grammar', g\.key\)/.test(cpa),
+    'grammar/deck pill gets the row (deck when g.mode is set)');
+  // Panel: samples via the pure core UNDER withHostScope, reduces via distReadout, renders the shell.
+  const panel = fnBody(_src, 'openDistributionPanel');
+  assert.ok(/withHostScope\(node, \(\) => sampleGenerator\(kind, info\.def, N/.test(panel), 'samples under the host scope, like a live re-roll');
+  assert.ok(panel.includes('distReadout(outcomes)') && panel.includes('openDialogShell'), 'reduces + renders in the shell');
+  assert.ok(panel.includes('distChanceAtLeast(outcomes') && panel.includes('distChanceAtMost(outcomes'), 'the numeric chance field');
+  // Deck sampling uses a FRESH throwaway record, never the live pill's bag.
+  const sg = fnBody(_src, 'sampleGenerator');
+  assert.ok(/makeSeqGen\(def\.mode, def\.items, undefined, def\.count\)/.test(sg), 'deck samples a fresh record (undefined key)');
+  assert.ok(/queryHits\(def\.expr, ctx\.root, def\.hostId\)/.test(sg), 'roll caches the pool (hoisted queryHits)');
+  // Insert-as-points persists nothing until asked (it is the only writer).
+  const ins = fnBody(_src, 'insertDistAsPoints');
+  assert.ok(ins.includes('pushUndo();') && ins.includes('par.children.splice'),
+    'Insert as points is the only persistence, and it inserts a sibling subtree');
+});
+
 test('sampleUncertain — Phase 2: sum(prop)/avg(prop) over children’s uncertain props', () => {
   const parent = c.mkNode('');
   const mkChild = (expr) => { const n = c.mkNode(''); n.props = [{ key: 'cost', val: expr }]; return n; };
@@ -6936,7 +7011,7 @@ test('#1116 collectPillActions scopes to ONE pill when the menu is opened from i
   const all = c.collectPillActions(node);
   assert.ok(all.length >= 8, `the unscoped menu lists every pill (got ${all.length})`);
   const scoped = c.collectPillActions(node, '[[dice:d1]]');
-  assert.equal(scoped.length, 3, 'one dice pill contributes re-roll + edit + freeze');
+  assert.equal(scoped.length, 4, 'one dice pill contributes re-roll + show distribution + edit + freeze');
   assert.ok(scoped.every(r => /2d6/.test(r.label) || r.label === 'Freeze to text'),
     'and they are THAT pill\'s rows: ' + JSON.stringify(scoped.map(r => r.label)));
 });

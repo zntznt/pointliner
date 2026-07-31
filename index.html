@@ -20084,9 +20084,11 @@ function collectPillActions(node, scopeText = null) {
   const tag = s => { s = String(s ?? '').trim(); return s ? ` (${s.length > 24 ? s.slice(0, 23) + '…' : s})` : ''; };
   const PEN = { fa:'fa-solid fa-pen', fb:'✎' };
   const FRZ = { fa:'fa-solid fa-snowflake', fb:'❄' };   // UXP-137: freeze-to-text (degrades to ❄)
+  const DIST = { fa:'fa-solid fa-wave-square', fb:'📊' };   // "Show distribution" (reuses the estimate glyph)
   const freeze = (type, key) => ({ icon:FRZ, label:'Freeze to text', fn:() => freezePillToText(node, type, key) });
   for (const d of node.dice || []) if (has('dice', d.key)) {
     rows.push({ icon:{ fa:'fa-solid fa-dice-d20', fb:'🎲' }, label:'Re-roll dice' + tag(d.expr), fn:() => rerollDice(node, d.key) });
+    rows.push({ icon:DIST, label:'Show distribution' + tag(d.expr), fn:() => openDistributionPanel(node, 'dice', d.key) });
     rows.push({ icon:PEN, label:'Edit dice' + tag(d.expr), fn:() => editDice(node, d.key) });
     rows.push(freeze('dice', d.key));
   }
@@ -20096,6 +20098,7 @@ function collectPillActions(node, scopeText = null) {
     // both use it), a plain grammar as fa-shuffle. The keyboard pill-action row must agree.
     const genIcon = g.mode ? { fa:'fa-solid fa-clone', fb:'🃏' } : { fa:'fa-solid fa-shuffle', fb:'❖' };
     rows.push({ icon:genIcon, label:verb + tag(g.mode ? g.mode : (g.origin || g.result)), fn:() => rerollGrammar(node, g.key) });
+    rows.push({ icon:DIST, label:'Show distribution' + tag(g.mode ? g.mode : (g.origin || g.result)), fn:() => openDistributionPanel(node, g.mode ? 'deck' : 'grammar', g.key) });
     rows.push({ icon:PEN, label:(g.mode ? 'Edit deck' : 'Edit grammar') + tag(g.mode ? g.mode : g.origin), fn:() => editGrammar(node, g.key) });
     rows.push(freeze('grammar', g.key));
   }
@@ -20146,6 +20149,100 @@ function manualClocksOf(text) {
   });
   return out;
 }
+// ─── distribution peek (the 2026-08 panel: "show me the odds of this pill") ───────────────────────
+// A read-only panel that runs a generator pill N=1000 times and shows the distribution: a histogram for
+// dice (numeric), a frequency table for a deck/grammar (categorical). Nothing persists unless the user
+// hits "Insert as points" (static text). Reuses the estimate lane's sampler viz + the pure distReadout
+// core. Sampling runs under withHostScope so a nested {roll:}/var resolves against the pill's own point,
+// exactly as a live re-roll does.
+const DIST_PANEL_ICON = { fa:'fa-solid fa-wave-square', fb:'📊' };
+function distPillDef(node, kind, key) {
+  if (kind === 'dice')    { const d = (node.dice || []).find(x => x.key === key);    return d && { def:{ expr:d.expr }, label:d.expr }; }
+  if (kind === 'grammar') { const g = (node.grammar || []).find(x => x.key === key); return g && { def:{ def:g.def, origin:g.origin }, label:g.origin || 'this generator' }; }
+  if (kind === 'deck')    { const g = (node.grammar || []).find(x => x.key === key); return g && { def:{ mode:g.mode, items:g.items, count:g.count }, label:(g.items || []).join(' | ') }; }
+  return null;
+}
+function insertDistAsPoints(node, label, outcomes) {
+  const r = distReadout(outcomes);
+  const lines = [];
+  if (r.kind === 'numeric') {
+    lines.push(`mean ${estNumFmt(r.mean)}, range ${estNumFmt(r.min)} to ${estNumFmt(r.max)}`);
+    if (r.discrete && r.bars) for (const b of r.bars) lines.push(`${b.value}: ${b.pct.toFixed(1)}%`);
+  } else if (r.kind === 'categorical') {
+    for (const row of r.rows) lines.push(`${row.outcome || '(empty)'}: ${row.pct.toFixed(1)}% (${row.count})`);
+    if (r.moreKinds > 0) lines.push(`and ${r.moreKinds} more`);
+  } else return;
+  pushUndo();
+  const parent = mkNode(`Odds of ${label} (${outcomes.length} trials)`); parent.type = 'ul';
+  for (const l of lines) { const cn = mkNode(l); cn.type = 'ul'; parent.children.push(cn); }
+  const par = parentMap.get(node.id) || root;
+  const idx = (par.children || []).indexOf(node);
+  par.children.splice(idx < 0 ? par.children.length : idx + 1, 0, parent);
+  buildIndex(root, null); markDirty(); render();
+  focusNode(parent.id);
+  flashHint(`Inserted the odds as ${ptsLabel(countPoints(parent))}.`);
+}
+function openDistributionPanel(node, kind, key) {
+  const info = distPillDef(node, kind, key);
+  if (!info) return;
+  const N = EST_N;
+  let outcomes = [];
+  const resample = () => { outcomes = withHostScope(node, () => sampleGenerator(kind, info.def, N, { vars: collectVars() })) || []; };
+  resample();
+  const shell = openDialogShell({ icon: DIST_PANEL_ICON, title: 'Distribution', ariaLabel: 'Distribution of ' + info.label });
+  const sub = document.createElement('p');
+  sub.style.cssText = 'font-size:12px;color:var(--muted);margin:-2px 0 12px;overflow-wrap:anywhere';
+  sub.textContent = `${info.label} · ${N.toLocaleString()} trials`;
+  ioCard.appendChild(sub);
+  const area = document.createElement('div'); area.setAttribute('aria-live', 'off'); ioCard.appendChild(area);
+  const barRow = (label, fillPct, extra) => {
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;align-items:center;gap:8px;margin:3px 0;font-size:13px';
+    const lb = document.createElement('span'); lb.textContent = label;
+    lb.style.cssText = 'flex:0 0 auto;min-width:52px;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums';
+    const track = document.createElement('div'); track.style.cssText = 'flex:1 1 auto;height:14px;background:color-mix(in srgb,var(--fg) 8%,transparent);border-radius:var(--r-xs);overflow:hidden';
+    const fill = document.createElement('div'); fill.style.cssText = `height:100%;width:${Math.max(1, fillPct).toFixed(1)}%;background:var(--acc)`;
+    track.appendChild(fill);
+    const pc = document.createElement('span'); pc.textContent = extra;
+    pc.style.cssText = 'flex:0 0 auto;min-width:78px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums';
+    row.append(lb, track, pc); return row;
+  };
+  const paint = () => {
+    area.innerHTML = '';
+    const r = distReadout(outcomes);
+    if (r.kind === 'empty') { const p = document.createElement('p'); p.style.cssText = 'color:var(--muted)'; p.textContent = 'Nothing to sample here yet.'; area.appendChild(p); return; }
+    if (r.kind === 'numeric') {
+      const head = document.createElement('div'); head.style.cssText = 'font-weight:600;margin-bottom:8px;font-variant-numeric:tabular-nums';
+      head.textContent = `mean ${estNumFmt(r.mean)} · range ${estNumFmt(r.min)}–${estNumFmt(r.max)} · p5–p95 ${estNumFmt(r.p5)}–${estNumFmt(r.p95)}`;
+      area.appendChild(head);
+      if (r.discrete && r.bars) {
+        const maxPct = Math.max(...r.bars.map(b => b.pct), 1);
+        for (const b of r.bars) area.appendChild(barRow(String(b.value), b.pct / maxPct * 100, `${b.pct.toFixed(1)}%`));
+      } else {
+        const sp = document.createElement('div'); sp.style.cssText = 'font-family:var(--mono,monospace);font-size:16px;letter-spacing:-1px'; sp.textContent = sparkline(outcomes, 11); area.appendChild(sp);
+      }
+      const cf = document.createElement('div'); cf.style.cssText = 'margin-top:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px';
+      const lbl = document.createElement('label'); lbl.textContent = 'Chance vs threshold'; lbl.setAttribute('for', 'dist-chance');
+      const inp = document.createElement('input'); inp.type = 'number'; inp.id = 'dist-chance'; inp.value = String(Math.round(r.p50));
+      inp.style.cssText = 'width:64px'; inp.spellcheck = false;
+      const outEl = document.createElement('span'); outEl.style.cssText = 'font-weight:600;color:var(--acc);font-variant-numeric:tabular-nums';
+      const upd = () => { const t = Number(inp.value); const ge = distChanceAtLeast(outcomes, t), le = distChanceAtMost(outcomes, t);
+        outEl.textContent = (ge == null) ? '' : `at least ${inp.value}: ${ge.toFixed(1)}%   ·   at most ${inp.value}: ${le.toFixed(1)}%`; };
+      inp.addEventListener('input', upd);
+      cf.append(lbl, inp, outEl); area.appendChild(cf); upd();
+    } else {
+      const maxPct = Math.max(...r.rows.map(x => x.pct), 1);
+      for (const row of r.rows) area.appendChild(barRow(row.outcome || '(empty)', row.pct / maxPct * 100, `${row.pct.toFixed(1)}% (${row.count})`));
+      if (r.moreKinds > 0) { const mo = document.createElement('p'); mo.style.cssText = 'color:var(--muted);font-size:12px;margin-top:8px'; mo.textContent = `and ${r.moreKinds} more outcome${r.moreKinds === 1 ? '' : 's'} below the top ${DIST_BAR_MAX}`; area.appendChild(mo); }
+    }
+  };
+  paint();
+  shell.mountFooter([
+    { key:'close', role:'dismiss', label:'Close' },
+    { key:'resample', role:'neutral', label:'Re-sample', onClick: () => { resample(); paint(); } },
+    { key:'insert', role:'commit', label:'Insert as points', onClick: () => { const o = outcomes; closeIo(); insertDistAsPoints(node, info.label, o); } },
+  ]);
+}
+
 // Toggle every spoiler block rendered under a node — the keyboard twin of clicking one. A
 // node's `>!` groups may render as more than one block; the menu reveals/hides them together
 // (a single "read the hidden text on this point" action). Display-state only, like a click.
@@ -27436,6 +27533,82 @@ function distChanceUnder(samples, t) {
   if (!xs.length) return null;
   let n = 0; for (const x of xs) if (x < t) n++;
   return n / xs.length * 100;
+}
+
+// ─── distribution readout (the 2026-08 panel: "run this pill N times, show the odds") ───
+// Extends the estimate lane's Monte-Carlo idea to the categorical/discrete generators (dice pool, deck,
+// grammar, roll). distReadout is the pure, deterministic reducer the peek renders and the tests pin:
+// N sampled outcomes → a NUMERIC histogram (per-value bars, or bucket via sparkline when wide) or a
+// CATEGORICAL frequency table. sampleGenerator re-runs the SAME cores the live pill rolls with, never
+// mutating it. Inclusive chance helpers (>= / <=) power "P(2+ successes)". Pure / DOM-free.
+const DIST_BAR_MAX = 24;   // discrete numeric rows (or top categorical rows) before bucketing / capping
+function distReadout(outcomes) {
+  const arr = Array.isArray(outcomes) ? outcomes : [];
+  const n = arr.length;
+  if (!n) return { kind: 'empty', n: 0 };
+  const nums = arr.filter(x => typeof x === 'number' && Number.isFinite(x));
+  if (nums.length === n) {                                  // NUMERIC (dice sum / success count)
+    const sm = distSummary(nums);
+    const distinct = new Set(nums);
+    let bars = null, discrete = false;
+    if (distinct.size <= DIST_BAR_MAX) {                    // one row per value, ascending
+      const counts = new Map();
+      for (const v of nums) counts.set(v, (counts.get(v) || 0) + 1);
+      bars = [...counts.keys()].sort((a, b) => a - b).map(v => ({ value: v, count: counts.get(v), pct: counts.get(v) / n * 100 }));
+      discrete = true;
+    }                                                       // else: caller falls back to sparkline(nums, 11)
+    return { kind: 'numeric', n, mean: sm.mean, min: Math.min(...nums), max: Math.max(...nums),
+             p5: sm.p5, p50: sm.p50, p95: sm.p95, discrete, bars };
+  }
+  const counts = new Map();                                 // CATEGORICAL (deck / grammar / roll)
+  for (const x of arr) { const k = String(x); counts.set(k, (counts.get(k) || 0) + 1); }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  const rows = sorted.slice(0, DIST_BAR_MAX).map(([outcome, count]) => ({ outcome, count, pct: count / n * 100 }));
+  return { kind: 'categorical', n, distinct: sorted.length, rows, moreKinds: sorted.length - rows.length };
+}
+// Inclusive tail probabilities as a PERCENTAGE (0..100), for the peek's "chance >= N" / "<= N" field.
+// Inclusive (not the estimate lane's strict distChanceOver) because a game question is "2 OR MORE".
+function distChanceAtLeast(outcomes, t) {
+  const xs = (outcomes || []).filter(x => typeof x === 'number' && Number.isFinite(x));
+  if (!xs.length || !Number.isFinite(Number(t))) return null;
+  let n = 0; for (const x of xs) if (x >= t) n++;
+  return n / xs.length * 100;
+}
+function distChanceAtMost(outcomes, t) {
+  const xs = (outcomes || []).filter(x => typeof x === 'number' && Number.isFinite(x));
+  if (!xs.length || !Number.isFinite(Number(t))) return null;
+  let n = 0; for (const x of xs) if (x <= t) n++;
+  return n / xs.length * 100;
+}
+// Sample a generator N times → an outcome array (numbers for dice, strings otherwise). Uses the same
+// pure cores the live pill rolls with, but never touches its state: dice/grammar re-run purely; a deck
+// samples a THROWAWAY fresh record per trial (never the live pill's bag); roll picks from a cached pool.
+function sampleGenerator(kind, def, N, ctx = {}) {
+  const n = (N | 0) || EST_N;
+  const out = new Array(n);
+  if (kind === 'dice') {
+    const terms = parseDice(def.expr, ctx.vars || {});
+    if (!terms) return null;
+    for (let i = 0; i < n; i++) out[i] = rollParsed(terms).total;
+    return out;
+  }
+  if (kind === 'grammar') {
+    for (let i = 0; i < n; i++) { const s = runGrammar(def.def, def.origin, ctx.rules || null, ctx.vars || null); if (s == null) return null; out[i] = s; }
+    return out;
+  }
+  if (kind === 'deck') {
+    for (let i = 0; i < n; i++) { const rec = makeSeqGen(def.mode, def.items, undefined, def.count); out[i] = rec ? rec.result : ''; }
+    if (out[0] == null) return null;
+    return out;
+  }
+  if (kind === 'roll') {
+    const hits = ctx.hits || (ctx.root ? queryHits(def.expr, ctx.root, def.hostId) : null);
+    if (!hits) return null;
+    if (!hits.length) return [];
+    for (let i = 0; i < n; i++) out[i] = pickOneHit(hits);
+    return out;
+  }
+  return null;
 }
 
 // {mean, p5, p50, p95} of a sample array (non-finite values dropped), or null.
