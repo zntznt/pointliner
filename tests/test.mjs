@@ -21997,7 +21997,9 @@ test('#1115 searching the catalogue for "format" finds the pills that own one', 
   // So the fix is not a new command, it is making those two answer to the word people type.
   const pool = c.builderCmdPool(null);
   assert.ok(pool.length > 0, 'the pool must be non-empty or every assertion below is vacuous');
-  for (const q of ['format', 'currency', 'decimals', 'thousands']) {
+  // #1202 adds the plain-language money words: /money surfaced NOTHING and /budget only reached a
+  // check block cmd; both now find the pills that actually do money math, alongside the format words.
+  for (const q of ['format', 'currency', 'decimals', 'thousands', 'money', 'budget']) {
     const ids = c.builderFilterCmds(pool, q, '@').map(x => x.id);
     assert.ok(ids.includes('est'), `searching ${q} must find the estimate pill`);
     assert.ok(ids.includes('math'), `searching ${q} must find the math pill`);
@@ -22932,7 +22934,16 @@ test('builder front door (UXP-178) — launcher wiring + all-commands pool', () 
   assert.ok(pool.length > 0, 'builderCmdPool(null) returns the full pool');
   const trigs = new Set(pool.map(cmd => cmd.trigger));
   assert.ok(trigs.has('/') && trigs.has('@') && trigs.has('{'), 'all three trigger families present');
-  assert.equal(pool[0].trigger, '/', 'point (/) commands lead when no trigger summoned it');
+  // #1202 (was: `/` commands lead): the front door now OPENS ON THE ENGINE. The one "everything" door
+  // used to open on twelve formatting rows with dice/math/oracle below the fold, presenting the app as
+  // a text formatter (product-identity §1/§8b: the {…} engine IS the product). Lead with the
+  // generative + computational sections, the same thesis the @ menu opens on (#915).
+  assert.equal(pool[0]._section, 'Generate', '#1202: the front door leads with the engine (Generate), not formatting');
+  const frontSecs = [...new Set(pool.map(c => c._section))];
+  assert.deepEqual(frontSecs.slice(0, 3), ['Generate', 'Compute', 'Trackers'], '#1202: engine sections lead the front door');
+  assert.ok(frontSecs.indexOf('Generate') < frontSecs.indexOf('Lists'), 'the engine is above the block/formatting sections');
+  // block types are NOT demoted — still present, one short scroll down, and still resolve by search
+  assert.ok(pool.some(c => c.id === 'h2') && pool.some(c => c.id === 'ul'), 'block types stay in the pool (reachable, not removed)');
   // Door B: /builder verb — a BLOCK_CMDS action entry (no `turn`) + a slashApply branch that
   // launches and returns before the applyBlockCmd fallthrough (writes nothing).
   assert.ok(/id:'builder',[^}]*label:'All commands'/.test(_src), 'BLOCK_CMDS has a builder entry');
