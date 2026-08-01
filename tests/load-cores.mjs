@@ -163,6 +163,7 @@ export function loadCores() {
   const need = [
     'parseDice', 'rollParsed', 'diceExprStr',
     'checkQuery',           // #1195: the query embedded in a check, for the reveal-offenders affordance
+    'deepCloneNodeNewIds', '_cloneNodeNewIds', 'remapClonedLinks', 'uid',   // clone + internal-link remap
     'distReadout', 'sampleGenerator', 'distChanceAtLeast', 'distChanceAtMost', 'pickOneHit',   // distribution peek
     'tapFloorCandidates',   // UXP-249: the static tap-floor guard
     'scrollCueClasses',     // UXP-259: which edge fades a .scroll-strip shows

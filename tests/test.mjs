@@ -12034,9 +12034,33 @@ test('#583 pack templates: reads use mergedTemplates, writes stay doc-only, pack
   // the pure cores: packTemplateDefs flags _pack, mergedTemplates lets the doc win
   const mt = fnBody(_src, 'mergedTemplates');
   assert.ok(mt.includes('packTemplateDefs(plugins)') && mt.includes('document wins'), 'mergedTemplates unions pack + doc with doc winning');
-  // deepClone now copies est + query (a pack template may carry them)
-  const dc = fnBody(_src, 'deepCloneNodeNewIds');
+  // deepClone now copies est + query (a pack template may carry them). The deep-copy body lives in the
+  // inner _cloneNodeNewIds now (deepCloneNodeNewIds is the link-remapping wrapper).
+  const dc = fnBody(_src, '_cloneNodeNewIds');
   assert.ok(dc.includes('est:') && dc.includes('query:'), 'the clone must deep-copy est and query');
+});
+
+test('deepCloneNodeNewIds remaps INTERNAL [[#id]] links to the new ids (stamped embeds survive)', () => {
+  // The bug: a stamped subtree (starter / template / pack / paste) regenerates every id, so an internal
+  // [[#id|]] mirror/embed dangled to plain text because it still named the SOURCE's id. The clone now
+  // rewrites same-doc links whose target was INSIDE the subtree, and leaves external + cross-doc alone.
+  const src = { id: 'aaa', text: 'see [[#bbb|]] and [[#xxx|keep]] and [[zzz#bbb|cross]]',
+    children: [{ id: 'bbb', text: 'target', children: [] }] };
+  const cl = c.deepCloneNodeNewIds(src);
+  const newB = cl.children[0].id;
+  assert.notEqual(cl.id, 'aaa'); assert.notEqual(newB, 'bbb');
+  assert.ok(cl.text.includes(`[[#${newB}|]]`), 'the internal embed remaps to the new target id');
+  assert.ok(cl.text.includes('[[#xxx|keep]]'), 'a link OUT of the subtree (id not cloned) is left as-is');
+  assert.ok(cl.text.includes('[[zzz#bbb|cross]]'), 'a cross-doc link is never remapped');
+});
+
+test('deepCloneNodeNewIds is the remapping wrapper over _cloneNodeNewIds (src pin)', () => {
+  const wrap = fnBody(_src, 'deepCloneNodeNewIds');
+  assert.ok(/_cloneNodeNewIds\(node, idMap\)/.test(wrap) && /remapClonedLinks\(clone, idMap\)/.test(wrap),
+    'the public clone builds an id map, clones through _cloneNodeNewIds, then remaps links');
+  const rm = fnBody(_src, 'remapClonedLinks');
+  assert.ok(rm.includes('WLINK_RE') && /!docId && idMap\.has\(id\)/.test(rm),
+    'remap uses the shared WLINK_RE and only rewrites same-doc links whose target was in the clone');
 });
 
 test('#634 pack editor: mkField associates each label with its control (src pin)', () => {
