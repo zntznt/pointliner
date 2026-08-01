@@ -252,6 +252,42 @@ test('#1243 rollVersus — margin = left - right, deterministic under a seed, at
   assert.equal(c.rollVersus('foo', '2d6'), null);
 });
 
+// ── #1243 (deferred): the document session seed ─────────────────────────────
+test('#1243 session seed — the same seed reproduces the same roll sequence; null is Math.random', () => {
+  const rollN = () => [c.rollParsed(c.parseDice('3d6')).total, c.rollParsed(c.parseDice('2d10')).total, c.rollParsed(c.parseDice('4d6')).total];
+  try {
+    vm.runInContext('root.seed = 987654321; applyDocSeed();', c._context);
+    const a = rollN();
+    vm.runInContext('root.seed = 987654321; applyDocSeed();', c._context);   // SAME seed, fresh stream
+    const b = rollN();
+    assert.deepEqual(a, b, 'the same seed replays the same rolls');
+    vm.runInContext('root.seed = 111; applyDocSeed();', c._context);         // a different seed diverges
+    assert.notDeepEqual(a, rollN(), 'a different seed gives a different sequence');
+  } finally {
+    vm.runInContext('root.seed = null; applyDocSeed();', c._context);        // back to Math.random for the rest of the suite
+  }
+  // with no seed set, srand falls back to Math.random, so the harness hook still governs
+  c.seedSequence([0]);
+  try { assert.equal(c.rollParsed(c.parseDice('3d6')).total, 3, 'no seed -> Math.random -> seedSequence still governs'); }
+  finally { c.resetRandom(); }
+});
+
+test('#1243 session seed — round-trips in the head; a seed-free doc stays byte-clean', () => {
+  const r = c.mkRoot(); r.seed = 424242;
+  assert.match(c.toOpml(r), /<_seed>424242<\/_seed>/, 'the seed serializes as a <head> element');
+  assert.ok(!/_seed/.test(c.toOpml(c.mkRoot())), 'no seed means no _seed element (default docs unchanged)');
+});
+
+test('#1243 session seed — wiring (routing, load reset, File-menu door)', () => {
+  assert.ok(/function srand\(\) \{ return _sessionRng \? _sessionRng\(\) : Math\.random\(\); \}/.test(_src), 'srand falls back to Math.random when no seed is set');
+  assert.ok(/function rnd\(sides\) \{ return 1 \+ Math\.floor\(srand\(\) \* sides\); \}/.test(_src), 'dice route through srand');
+  assert.ok(/shuffledIndices\(n, srand\)/.test(_src), 'a stateful deck draw routes through srand (the stateless render-time shuffle does not)');
+  assert.ok(/hits\[Math\.floor\(srand\(\) \* hits\.length\)\]/.test(_src), 'a roll pick routes through srand');
+  assert.ok((_src.match(/applyDocSeed\(\)/g) || []).length >= 4, 'the session RNG is re-seeded at every doc-load site (def + 3 loads)');
+  assert.ok(/id="btn-seed"/.test(_src) && /getElementById\('btn-seed'\)[\s\S]{0,90}openSeedDialog\(\)/.test(_src), 'a Random seed File-menu door opens the dialog');
+  assert.ok(/function setDocSeed\(seed\)[\s\S]{0,140}applyDocSeed\(\); markDirty\(\)/.test(_src), 'setDocSeed re-seeds and dirties');
+});
+
 test('#1243 contest wiring — a pick var whose frozen margin feeds evalMath (src pins)', () => {
   assert.ok(/function rollPickRecord\(source[\s\S]{0,260}parseVersus\(source\)[\s\S]{0,220}rollVersus/.test(_src),
     'rollPickRecord rolls a contest source and freezes it');
