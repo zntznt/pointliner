@@ -9365,6 +9365,7 @@ const INSERT_CMDS = [
   { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health','goal','words','target'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Wrap a name in braces to read a declared variable instead, like {meter: {done}/{goal}}. Either side can be a live calculation, so {meter: words(subtree)/1000} is a writing goal that fills as you write. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: words(subtree)/1000}  ·  {meter: 5/5 hearts}', section:'Trackers' },
   // Insert — basic inline elements
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  keys:['fn'], label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
+  { id:'cite',     icon:'†',  fa:'fa-solid fa-superscript',  keys:['reuse','again','same','existing','citation'], label:'Cite footnote', desc:'Reference a footnote you already wrote, so one source can be cited more than once.', ex:'[^ref]', section:'Insert' },
   { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      keys:['img','picture','photo'], label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         keys:['url','hyperlink'], label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  keys:['grid'], label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
@@ -15325,6 +15326,50 @@ function showFootnotesReport() {
   }
 
   _shell.mountFooter([{ label: 'Close', role: 'dismiss' }]);
+  requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || ioCard.querySelector('.io-btn')).focus(); });
+}
+
+// Phase C: the "cite an existing footnote" picker — a P2 front door for reuse from the @ menu. Lists
+// every WRITTEN footnote (an empty one is not worth citing) and, on pick, drops a [^id] marker at the
+// caret so the SAME store footnote is cited again. Built on the shared shell (like the manager). The
+// caret splice point is captured before the dialog opens (offset), exactly as the link/image dialogs do.
+function openCitePicker(nodeId, offset) {
+  const rows = footnoteReport(root).filter(r => r.text.trim());
+  if (!rows.length) { flashHint('No footnotes to cite yet. Choose Footnote to write one first.'); return; }
+  const _shell = openDialogShell({
+    icon: { fa: 'fa-solid fa-superscript', fb: '†' },
+    title: 'Cite a footnote',
+    ariaLabel: 'Cite an existing footnote',
+    guideId: 'footnotes',
+  });
+  const sub = document.createElement('p');
+  sub.style.cssText = 'font-size:12px;color:var(--muted);margin:-2px 0 12px;line-height:1.5';
+  sub.textContent = 'Pick a footnote to cite here. The same source can be cited more than once.';
+  _shell.body.appendChild(sub);
+
+  const list = document.createElement('div'); list.className = 'tpl-list';
+  rows.forEach(r => {
+    const row = document.createElement('div'); row.className = 'tpl-row';
+    const pick = document.createElement('button'); pick.className = 'tpl-pick'; pick.type = 'button';
+    const nm = document.createElement('span'); nm.className = 'tpl-name';
+    nm.textContent = (r.number != null ? `[${r.number}] ` : '') + r.text;
+    const tag = document.createElement('span'); tag.className = 'tpl-count';
+    tag.textContent = r.refCount === 0 ? 'unreferenced' : `${r.refCount} use${r.refCount === 1 ? '' : 's'}`;
+    pick.append(nm, tag);
+    pick.setAttribute('aria-label', `Cite footnote ${r.number != null ? r.number : '(unreferenced)'}: ${r.text}`);
+    pick.addEventListener('click', () => { closeIo(); applyInlineInsertion(nodeId, offset, `[^${r.id}]`); });
+    row.append(pick);
+    list.appendChild(row);
+  });
+  list.addEventListener('keydown', e => {
+    const picks = [...list.querySelectorAll('.tpl-pick')];
+    const i = picks.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); picks[Math.min(i + 1, picks.length - 1)]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); picks[Math.max(i - 1, 0)]?.focus(); }
+  });
+  _shell.body.appendChild(list);
+
+  _shell.mountFooter([{ label: 'Cancel', role: 'dismiss' }]);
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || ioCard.querySelector('.io-btn')).focus(); });
 }
 
@@ -21871,13 +21916,16 @@ function insertInlineArtifact(id, nodeId, content) {
       if (el) el.focus();
     }, 50);
     return;
+  } else if (id === 'cite') {
+    openCitePicker(nodeId, offset);   // Phase C: reference a footnote you already wrote
+    return;
   }
 }
 
 // ─── "@" insert menu inside base cells ───────────────────────────────────────
 // Same INSERT_CMDS pool minus table (no table-in-base) and footnote (footnotes
 // are node-level, not per-cell); block commands ("/") stay node-only.
-const CELL_INSERT_EXCLUDE = new Set(['table', 'footnote']);
+const CELL_INSERT_EXCLUDE = new Set(['table', 'footnote', 'cite']);
 function checkCellSlash(cell, node) {
   const pos = getCaretOffset(cell);
   const before = (cell.textContent || '').slice(0, pos);
@@ -38567,13 +38615,14 @@ const GUIDE = [
       { syn:'Rows: all',      desc:'cap the rows shown in the document; zoom in to see the rest' },
       { syn:'Menu → View & rows shown', desc:'the view and rows settings from the point menu' },
     ] },
-  { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
+  { id:'footnotes', cat:'writing', covers:['footnote','cite','link','image'],
     title:'Footnotes, links & images',
-    body:"Annotate a claim without cluttering the main text, link out to a source or a website or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.\n\nFootnotes are numbered automatically in the order they appear, so the same source can be cited more than once. Open the File menu and choose Footnotes to see every footnote in the document: copy a footnote's link and paste it into another point to cite the same source again, jump to where a footnote is used, or delete one you no longer need. A footnote you have stopped citing is kept, not thrown away, and shows as unreferenced there until you delete it.",
+    body:"Annotate a claim without cluttering the main text, link out to a source or a website or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.\n\nFootnotes are numbered automatically in the order they appear, so the same source can be cited more than once. To cite one you already wrote, type @ where you are and choose Cite footnote, then pick it from the list. Open the File menu and choose Footnotes to see every footnote in the document: copy a footnote's link and paste it into another point to cite the same source again, jump to where a footnote is used, or delete one you no longer need. A footnote you have stopped citing is kept, not thrown away, and shows as unreferenced there until you delete it.",
     related:['point-links','inline-md'],
     examples:[
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
+      { syn:'@ → Cite footnote',  desc:'cite a footnote you already wrote' },
       { syn:'File → Footnotes',   desc:'list, copy a link to cite again, or delete' },
       { syn:'[text](url)',       desc:'link (type it, or @ → Link)' },
       { syn:'![alt](url)',       desc:'image (type it, or @ → Image)' },
@@ -41865,6 +41914,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Add a question and tag it the way the others are tagged: the draw above can land on it. Write a claim, then add a footnote from the @ menu (choose Footnote) to keep its source attached to the sentence, not in a separate file. Tag each reference the same way and the count keeps itself."/>
+    <outline text="Citing the same source twice? You do not need to retype it. Type @ and choose Cite footnote to reuse one you already wrote, or open the File menu, choose Footnotes, and copy a footnote's link to paste wherever you cite it again."/>
     <outline text="Nothing here is new syntax: the draw is a roll on a tag, the counts are searches, and a footnote is the @ menu's Footnote."/>
   </outline>
 </outline>
