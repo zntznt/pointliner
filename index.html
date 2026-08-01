@@ -24062,6 +24062,7 @@ const BRACE_FORMS = [
   { label:'roll-up',     keys:['rollup','sum','avg','min','max','count','total'],      insert:'{= sum(prop)}',        ph:'prop', guide:'rollups',       desc:"total a property over this point's children" },
   { label:'word count',  keys:['words','wordcount','readtime'],                        insert:'{= words(subtree)}',   ph:'subtree', guide:'rollups',       desc:'count words in this point and below' },
   { label:'dice',        keys:['dice','roll'],                                         insert:'{2d6}',                ph:'2d6',  guide:'dice',          desc:'roll dice, click to re-roll' },
+  { label:'contest',     keys:['contest','opposed','versus','vs','margin','attack','defend'], insert:'{hit := 2d6 vs 2d6}', ph:'hit', guide:'contest',       desc:'pit two rolls, read the margin' },
   { label:'pick',        keys:['pick','alt','choice','weighted'],                      insert:'{a | b | c}',          ph:'a',  guide:'grammar',       desc:'pick one at random from a list' },
   { label:'conditional', keys:['cond','conditional','if'],                             insert:'{cond: then | else}',  ph:'cond',  guide:'gen-conditions',desc:'show one text or another by a test' },
   { label:'deck',        keys:['deck','shuffle','cycle','once','stopping','sequence'], insert:'{shuffle: a | b | c}', ph:'a | b | c',guide:'deck',          desc:'draw without repeats, or cycle in order' },
@@ -38934,6 +38935,14 @@ const GUIDE = [
       { syn:'{dF}',       desc:'Fate dice (−1, 0 or +1)' },
       { syn:'{2d6>=4}',   desc:'count how many roll 4 or more' },
     ] },
+  { id:'contest', cat:'generators', related:['dice','variables'],
+    title:'Contested rolls',
+    body:"Pit two rolls against each other and read the margin: the most common tabletop resolution, an attack against a defence or a contest against a contest. Declare it as a variable with vs between the two sides, like {hit := 2d6+str vs 2d6+def}. Clicking rolls both sides at once and freezes them together; the pill shows each total and the margin, the winner's lead. That margin is a number you can compute with: {= hit} is the margin, {= hit > 0} is true when the first side wins, {= hit * 5} scales damage by how decisively it did. It works at every level, from a simple 2d6 vs 2d6 up to a success pool against a success pool ({tussle := 6d10>=7 vs 5d10>=7}), where the margin is the net successes. Compare like with like: a sum against a success pool mixes pips and successes, so the pill flags that with a dashed edge.",
+    examples:[
+      { syn:'{hit := 2d6+str vs 2d6+def}', desc:'attack vs defence; the margin is the lead' },
+      { syn:'{= hit > 0}',                 desc:'read the margin in math: did the first side win' },
+      { syn:'{clash := 6d10>=7 vs 5d10>=7}', desc:'success pool vs pool: the margin is net successes' },
+    ] },
   { id:'grammar', cat:'generators', covers:['grammar','rolltable'], related:['gen-rules','dice','deck','recipe-npc'],
     title:'Random picks & tables',
     body:"Build a random-anything picker. Choose a random lunch spot from a short list, run a loot drop that favors common items, generate story prompts or make a raffle picker. Write choices in CURLY braces and one is picked at random each click: {red|blue|green}. Square brackets [red|blue] are not a pill, they stay plain text, so use { } not [ ]. Add a number after a choice to make it more likely, or mix in a dice roll or calculation. Type @ and choose Grammar or Roll table to start.",
@@ -42371,6 +42380,9 @@ const STARTERS = [
     <outline text="Right-click that pool and choose Show distribution to see how often five dice clear a 3-cost before you lock the number in."/>
     <outline text="Big summon, a Focus-7 pool: {7d10&gt;=7}"/>
     <outline text="Ember burst damage, explodes on a 6: {2d6!}"/>
+    <outline text="A clash: both summoners empty a Focus-5 pool at once, and the lead in successes decides it: {clash := 5d10&gt;=7 vs 5d10&gt;=7}"/>
+    <outline text="Wounds carried to the loser, the margin never below zero: {= max(clash, 0)}"/>
+    <outline text="Click the clash to roll both pools together and freeze them; the number it leaves is the winner's lead, so anywhere you name it in a calculation, the wounds or the check scale with how decisively the duel went."/>
   </outline>
   <outline text="## Opening hand">
     <outline text="Deal a 5-card test hand: {shuffle 5: Cinderfang Wyrm | Hollow Warden | Frostbound Revenant | Ashborn Sprite | Radiant Seraph | Gloamroot Toad | Stormcrash Djinn | Pale Widow}"/>
