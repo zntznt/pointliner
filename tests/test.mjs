@@ -22869,6 +22869,44 @@ test('starter overhaul: each new/rewritten starter surfaces its assigned hidden 
   assert.match(mp, /count: #dinner -is:done/, 'meal: nights-left-to-cook is a filtered count, not a deck deal');
 });
 
+test('starter level-ups: each keeper surfaces its assigned hidden power (source pin)', () => {
+  // PR-2 leveled the seven keepers to the same bar as the rebuilt roster, each weaving in one power.
+  // Source-pins prove the power is present; the browser drive proved each computes. evalMath query-count
+  // and query-sum default to SUBTREE scope, so a cross-section total carries the `, document` widener.
+  const slice = (a, b) => between(_fStarters, `id: '${a}'`, `id: '${b}'`);
+  // project-tracker: the overdue watch is a doc-scoped query count, mirrored by a doc-scoped check.
+  const pt = slice('project-tracker', 'campaign-oracle');
+  assert.match(pt, /count\(&quot;is:todo is:overdue&quot;, document\)/, 'project: the overdue watch (doc-scoped query count)');
+  assert.match(pt, /count\(\\\\&quot;is:todo is:overdue\\\\&quot;, document\) == 0/, 'project: the all-dates-safe check (doc-scoped)');
+  // campaign-oracle: the cross-folder roll. Kept to ONE roll per tag (plain #npc, folder #thread) so the
+  // promotion-order race that pollutes a co-located plain+folder roll on the SAME tag cannot occur.
+  const co = slice('campaign-oracle', 'reading-log');
+  assert.match(co, /\{roll folder: #thread\}/, 'campaign: the cross-folder thread roll');
+  assert.ok(!/\{roll folder: #npc\}/.test(co) || !/\{roll: #npc\}/.test(co),
+    'campaign: no tag carries both a plain and a folder roll (avoids the promotion-order race)');
+  // reading-log: the this-year total is a doc-scoped sum over a year tag, separate from the all-time rollup.
+  const rl = slice('reading-log', 'research-notes');
+  assert.match(rl, /sum\(&quot;#2026&quot;, pages, document\)/, 'reading: this-year pages (doc-scoped year sum)');
+  assert.match(rl, /\{= sum\(pages\)\}/, 'reading: the all-time rollup is a bare child sum');
+  // life-dashboard: the today list mirrored to the top via a live embed.
+  const ld = slice('life-dashboard', 'character-sheet');
+  assert.ok(ld.includes('_id="today"') && ld.includes('[[#today|]]'), 'life: today is mirrored to the top');
+  // character-sheet: two derived checks (downed at zero HP; overloaded pack).
+  const cs = slice('character-sheet', 'decision-helper');
+  assert.match(cs, /hp &gt; 0/, 'character: the downed-at-zero check');
+  assert.match(cs, /sum\(weight\) &lt;= might \* 5/, 'character: the encumbrance check reads a stat');
+  // home-inventory: doc-scoped category sub-limits and per-room sums, with two written footnotes.
+  const hi = slice('home-inventory', 'household-budget');
+  assert.match(hi, /sum\(&quot;#jewelry&quot;, value, document\)/, 'home: the jewelry sub-limit sum (doc-scoped)');
+  assert.match(hi, /sum\(\\\\&quot;#jewelry\\\\&quot;, value, document\) &lt;= 1500/, 'home: the jewelry sub-limit check');
+  assert.match(hi, /sum\(&quot;#bedroom&quot;, value, document\)/, 'home: a per-room sum');
+  assert.ok((hi.match(/_footnotes="/g) || []).length >= 2, 'home: both footnotes are written');
+  // flashcards: mastery is a pair of filtered counts over the syllabus topics.
+  const fc = between(_fStarters, "id: 'flashcards'", '\n];');
+  assert.match(fc, /count: #topic is:done/, 'flashcards: mastered count (done topics)');
+  assert.match(fc, /count: #topic -is:done/, 'flashcards: still-to-master count (undone topics)');
+});
+
 test('#1195 the reveal-offenders affordance is wired (chip + both seams, edit preserved)', () => {
   // The magnifier appears ONLY on a failing query-check and reveals its offenders; a source-pin proves
   // presence, the live-drive proves it works (a handler on an unfocusable node still passes a pin, #1021).
