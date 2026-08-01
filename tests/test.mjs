@@ -836,6 +836,27 @@ test('#1240 phase 2: the "+ Add" routes structured lists to the stamp path (sour
   assert.match(stamp, /focusNode\(clone\.id\)/, 'and lands the caret on the new page');
 });
 
+test('#1240 phase 3: deck-card cores (findDeckRecord / deckCardText)', () => {
+  // a {shuffle:} deck lives in node.grammar as { mode, items }; adding a card appends to items.
+  const node = { grammar: [{ key: 'k', mode: 'shuffle', items: ['a', 'b'] }] };
+  assert.equal(c.findDeckRecord(node).key, 'k', 'finds the shuffle deck record');
+  assert.equal(c.findDeckRecord({ grammar: [{ key: 'g', mode: 'origin', def: 'x' }] }), null, 'a non-deck grammar rule is not a deck');
+  assert.equal(c.findDeckRecord({ grammar: [] }), null, 'no deck → null');
+  // deckCardText: answer → "card (answer)"; strips | { } that would break the shuffle shorthand.
+  assert.equal(c.deckCardText('How many chambers?', 'four'), 'How many chambers? (four)');
+  assert.equal(c.deckCardText('Just a card', ''), 'Just a card', 'no answer → the bare card');
+  assert.equal(c.deckCardText('a | b {c}', 'x } y'), 'a b c (x y)', 'pipes/braces are stripped so the deck stays valid');
+});
+
+test('#1240 phase 3: the "+ Card" affordance + append are wired (source pin)', () => {
+  const aff = fnBody(_src, 'maybeAddCardAffordance');
+  assert.match(aff, /findDeckRecord\(node\)/, 'only on a line that carries a deck');
+  assert.match(aff, /openAddCardForm\(node\.id\)/, 'opens the add-card form');
+  assert.match(aff, /addEventListener\('mousedown', e => e\.preventDefault\(\)\)/, 'caret invariant (P3-3)');
+  assert.match(fnBody(_src, 'addDeckCard'), /rec\.items\.push\(text\)/, 'appends to the deck record items (round-trips to shorthand)');
+  assert.match(fnBody(_src, 'renderRow'), /maybeAddCardAffordance\(node, row\)/, 'renderRow appends it');
+});
+
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
   // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
   // production cookieNode is the live render node." BOTH were false, and the second one is why the
