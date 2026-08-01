@@ -650,6 +650,33 @@ test('pickFromQuery — picks one matching point title from the tree, uncapped +
   finally { c.resetRandom(); }
 });
 
+test('#1237 a roll skips tag-inherited detail lines nested under a matched point', () => {
+  const kid = (id, text, children = []) => ({ id, text, children, props: [], seq: [] });
+  // A cast: each #character page hangs trait/debt detail children, which inherit #character.
+  const cast = { id: 'r', text: '', children: [
+    kid('alpha', 'ALPHA the mapmaker #character', [ kid('a1', 'trait: reads a coastline'), kid('a2', 'debt: owes the guild') ]),
+    kid('beta', 'BETA the keeper #character', [ kid('b1', 'trait: never lies') ]),
+  ] };
+  // The pool is the two CHARACTERS, never their detail children (those matched only by inheritance).
+  // (queryHits returns a sandbox-realm array, so compare joined strings, not deepEqual across realms.)
+  const pool = (expr, r) => c.queryHits(expr, r, null).slice().sort().join(' | ');
+  assert.equal(pool('#character', cast), 'ALPHA the mapmaker | BETA the keeper',
+    'a #character roll draws the tagged pages, not the trait/debt lines nested under them');
+  // A nested todo under a todo is KEPT: it matches on its OWN state, not by inheritance.
+  const todos = { id: 'r', text: '', children: [
+    kid('t1', '#TODO plan the trip', [ kid('t2', '#TODO book the flights') ]),
+  ] };
+  assert.equal(pool('is:todo', todos), 'book the flights | plan the trip',
+    'a nested todo matches on its own state, so it stays in the pool');
+  // {roll: #project is:todo}: the #project heading is not is:todo (not a hit), so its todo children are
+  // KEPT even though they match #project only by inheritance — inherited cross-tag rolls still work.
+  const proj = { id: 'r', text: '', children: [
+    kid('p', 'Website #project', [ kid('p1', '#TODO write copy'), kid('p2', '#TODO pick a host') ]),
+  ] };
+  assert.equal(pool('#project is:todo', proj), 'pick a host | write copy',
+    'a container tag inherited by a differently-filtered child still rolls (the container is not itself a hit)');
+});
+
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
   // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
   // production cookieNode is the live render node." BOTH were false, and the second one is why the

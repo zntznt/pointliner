@@ -17294,14 +17294,21 @@ function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
   const links = needsLinks ? collectLinks(ctxRoot) : undefined;
   const hits = [];
   const tagStates = knownStates(rootNode);
-  (function walk(n, anc) {
+  // #1237: a roll picks tagged POINTS, not the detail lines nested under them. Tag inheritance (a
+  // container's tag reaching its subtree) is right for search/count, but for a draw it would put a
+  // character's "debt: ..." child in the {roll: #character} pool. So skip a match that is BOTH nested
+  // under another match AND matched only by inheritance (it fails the same query with no ancestor
+  // tags — a container's own tag echoing into its contents). A match on the point's OWN text is kept
+  // (a nested todo under a todo), and a match whose container is NOT itself a hit is kept
+  // ({roll: #project is:todo} — the heading is not is:todo), so inherited cross-tag rolls still work.
+  (function walk(n, anc, underHit) {
     for (const c of (n.children || [])) {
-      if (c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc)) {
-        hits.push(stripQueryTags(stripMd(textForDisplay(c)), terms) || '(untitled)');
-      }
-      walk(c, extendAncTagText(anc, c.text, tagStates));
+      let hit = c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc);
+      if (hit && underHit && !queryMatchesNode(terms, c, seqs, vars, links, '')) hit = false;
+      if (hit) hits.push(stripQueryTags(stripMd(textForDisplay(c)), terms) || '(untitled)');
+      walk(c, extendAncTagText(anc, c.text, tagStates), underHit || hit);
     }
-  })(rootNode, '');
+  })(rootNode, '', false);
   return hits;
 }
 function pickOneHit(hits) {
