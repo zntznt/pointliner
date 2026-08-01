@@ -39603,6 +39603,37 @@ function buildRow(shape, values, textValue) {
   return s;
 }
 
+// #1240 phase 2: the STRUCTURED path. When a list's rows are PAGES (they have their own children — a
+// series-bible character with trait/debt/wants, a scene), a flat row can't reproduce them, so "+ Add"
+// STAMPS a fresh copy instead. The structure comes from the richest sibling as an implicit template,
+// blanked to a scaffold: the title keeps only its tags (drops the specific name), a "label: value" child
+// keeps its label and blanks the value, everything else empties. Pure; the clone/insert is the DOM half.
+function _descCount(n) { let c = 0; for (const k of (n && n.children) || []) c += 1 + _descCount(k); return c; }
+function richestStructuredSibling(children) {
+  let best = null, bestN = 0;
+  for (const c of (children || [])) {
+    if (!c || !c.children || !c.children.length) continue;    // a "page" has children of its own
+    if (/^\s*#{1,6}\s/.test(String(c.text || ''))) continue;  // a markdown-heading child is a SECTION, not a list-item page
+    const n = _descCount(c);
+    if (n > bestN) { bestN = n; best = c; }
+  }
+  return best;                                                 // null → the list is flat (or sections), use the values form / no door
+}
+function blankScaffoldText(text, isRoot) {
+  const t = String(text == null ? '' : text);
+  if (isRoot) return rowContentTags(t).map(x => '#' + x).join(' ');   // keep the tags, drop the specific name
+  const m = t.match(/^\s*([^{[:\n]{1,40}:)/);                          // a "label:" prefix (trait:, debt:, who is here:)
+  return m ? m[1] + ' ' : '';                                          // keep the label, blank the value; else empty
+}
+function blankScaffoldNode(node, isRoot) {
+  node.text = blankScaffoldText(node.text, isRoot);
+  // a blanked scaffold references no pills/props — clear the sidecars the cloned template carried
+  for (const k of ['props', 'dice', 'markov', 'math', 'vars', 'grammar', 'est', 'rolltable', 'query', 'footnotes', 'seq']) if (Array.isArray(node[k])) node[k] = [];
+  node.checked = false;
+  for (const c of (node.children || [])) blankScaffoldNode(c, false);
+  return node;
+}
+
 // #1240 the DOM half (phase 1): a focused "Add another" dialog. Opened for a shaped list (a heading whose
 // children share a template), it shows a values-only form — a description field plus one field per shared
 // prop — and on submit assembles the row via buildRow and inserts it as a PROMOTED point (so its tags and
@@ -39627,6 +39658,22 @@ function createPromotedRow(parentNode, text) {
   render();
   focusNode(n.id);
   return n;
+}
+// #1240 phase 2 DOM half: stamp a blank scaffold of a structured sibling under its heading. Clones the
+// implicit template (deepCloneNodeNewIds — new ids, internal [[#id|]] links remapped), blanks it to a
+// fill-in scaffold, appends it, and lands the caret on the new title. Reuses the same insert path as
+// createPromotedRow / stampTemplate.
+function stampScaffold(headingNode, template) {
+  if (!headingNode || !template) return null;
+  const clone = deepCloneNodeNewIds(template);   // fresh ids + link remap (the #1233 clone fix)
+  blankScaffoldNode(clone, true);
+  headingNode.children.push(clone);
+  promoteInlineShorthand(clone);                 // blanked text carries no pills; kept for parity/safety
+  buildIndex(root, null);
+  markDirty();
+  render();
+  focusNode(clone.id);
+  return clone;
 }
 // Built on openInsertDialog (the shared dialog shell, UXP-247) so it inherits the draft-save, focus,
 // escape/backdrop and button-order discipline every dialog shares — never a hand-rolled shell.
@@ -39663,9 +39710,12 @@ function maybeAddRowAffordance(node, row) {
   // the content markdown while its node.type stays 'ul', so deriveTypeFromText is the reliable check.
   if (!/^h[1-6]$/.test(deriveTypeFromText(node.text) || '')) return;
   if (!node.children || node.children.length < 2) return;  // inferRowShape needs 2+ rows; cheap early out
-  const shape = inferRowShape(node.children, knownStates(root));
-  if (!shape) return;                                       // no shared shape → no door
-  const noun = rowNoun(node, shape);
+  const template = richestStructuredSibling(node.children);            // structured rows (pages) → stamp a scaffold
+  const shape = template ? null : inferRowShape(node.children, knownStates(root));  // flat rows → the values form
+  if (!template && !shape) return;                                     // no usable shape either way → no door
+  const noun = rowNoun(node, shape || { sharedTags: rowContentTags(template.text) });
+  const onAdd = template ? () => { if (stampScaffold(node, template)) flashHint('Added to ' + noun); }
+                         : () => openAddRowForm(node.id);
   const btn = document.createElement('span');
   btn.className = 'addrow-affordance';
   btn.setAttribute('role', 'button');
@@ -39674,8 +39724,8 @@ function maybeAddRowAffordance(node, row) {
   if (isGuided()) btn.title = 'Add to ' + noun;            // the tooltip is Guided-only (Standard/Lean strip it)
   btn.textContent = '+ Add';
   btn.addEventListener('mousedown', e => e.preventDefault());          // caret invariant: never steal focus on press
-  btn.addEventListener('click', e => { e.stopPropagation(); openAddRowForm(node.id); });
-  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAddRowForm(node.id); } });
+  btn.addEventListener('click', e => { e.stopPropagation(); onAdd(); });
+  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(); } });
   row.appendChild(btn);
   fireNudge('addrow-affordance', 'Tip: the + Add on a section grows the list without typing tags or braces');
 }
