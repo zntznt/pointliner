@@ -39514,6 +39514,81 @@ function renderBuilderPaneInto(cmd, container) {
     });
   });
 }
+// ─── #1240 guided authoring: "Add another like this" — the pure shape core ────
+// The panel's headline: reading a starter is delightful; authoring one means typing the brace language.
+// The fix (guidance/guided-authoring-proposal.md) infers a list row's TEMPLATE from its siblings so the
+// Builder can offer a values-only form (fill values, we write the braces). This half is DOM-free +
+// Node-tested — the shape inference and the row builder — the risky, testable heart of the feature.
+//
+// Tags live as literal `#tag` in node.text; props live in node.props as {key, val} (a `{date due:}`
+// lands as a prop whose val is an ISO date, a number as a numeric string). These mirrors of the app's
+// own tag/state rules keep the core self-contained (a leading ALL-CAPS #WORD is the status marker, never
+// a content tag — same shape as LEAD_WORD_RE; the optional `states` set makes it exact when a caller has one).
+// Intentionally MORE lenient than collectTags' TAG_RE (which needs a letter, so it skips a bare `#2026`):
+// a row must re-apply whatever makes it behave like its siblings, and search/sum match `#2026` by text
+// even though the render index skips it (that is how the reading-log this-year total works). The `[`
+// exclusion keeps `[#A]` priority markers and `[[#id]]` links out of the tag set.
+const ROW_TAG_RE = /(?<![a-zA-Z0-9\[])#([\w-]+(?:\/[\w-]+)*)/g;
+const ROW_LEAD_STATE_RE = /^\s*#([A-Z][A-Z0-9_-]*)(?=[\s\[]|$)/;                   // mirror LEAD_WORD_RE
+const ROW_CHECKBOX_RE = /^\s*(?:[-*+] )?\[[ xX/\-]\]/;                             // - [ ] / [x] / [/] / [-]
+const ROW_ISODATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+function rowLeadState(text, states) {
+  const m = ROW_LEAD_STATE_RE.exec(String(text || ''));
+  if (!m) return null;
+  return (!states || states.has(m[1])) ? m[1] : null;   // a leading #WORD counts as state iff states is absent or lists it
+}
+function rowContentTags(text, states) {
+  const lead = rowLeadState(text, states);
+  const out = []; let m; ROW_TAG_RE.lastIndex = 0;
+  while ((m = ROW_TAG_RE.exec(String(text || '')))) if (m[1] !== lead) out.push(m[1]);
+  return out;
+}
+function rowIsTodo(text, states) {
+  return ROW_CHECKBOX_RE.test(String(text || '')) || rowLeadState(text, states) != null;
+}
+function inferPropType(vals) {
+  const v = (vals || []).map(x => String(x == null ? '' : x).trim()).filter(x => x !== '');
+  if (!v.length) return 'text';
+  if (v.every(x => ROW_ISODATE_RE.test(x))) return 'date';
+  if (v.every(x => isFinite(Number(x)))) return 'number';
+  return 'text';
+}
+// inferRowShape(siblings, states?) → { sharedTags:[...], props:[{key,type}], todo } | null. A tag/prop is
+// part of the shape only when it is on EVERY row (the reliable template; a one-off is not the shape). Type
+// is guessed from the values across rows. Returns null with under 2 rows or when nothing is shared.
+function inferRowShape(siblings, states) {
+  const rows = (siblings || []).filter(n => n && typeof n.text === 'string');
+  if (rows.length < 2) return null;
+  const tagSets = rows.map(n => new Set(rowContentTags(n.text, states)));
+  const sharedTags = [...tagSets[0]].filter(t => tagSets.every(s => s.has(t)));
+  const vals = new Map();   // prop key → the value seen on each row (one entry per row that carries it)
+  for (const n of rows) {
+    const here = new Map();
+    for (const p of (n.props || [])) if (p && p.key && !here.has(p.key)) here.set(p.key, String(p.val == null ? '' : p.val));
+    for (const [k, v] of here) { if (!vals.has(k)) vals.set(k, []); vals.get(k).push(v); }
+  }
+  const props = [];
+  for (const [key, vs] of vals) if (vs.length === rows.length) props.push({ key, type: inferPropType(vs) });
+  const todo = rows.every(n => rowIsTodo(n.text, states));
+  if (!sharedTags.length && !props.length && !todo) return null;
+  return { sharedTags, props, todo };
+}
+// buildRow(shape, values, textValue) → the bullet text a filled form produces, in the authored order the
+// starters use: [todo prefix] text [content tags] [props]. Dates emit `{date KEY: v}`, everything else
+// `{prop KEY: v}`. Pure string assembly — no DOM, no promotion (the caller inserts this into a point).
+function buildRow(shape, values, textValue) {
+  const text = String(textValue == null ? '' : textValue).trim();
+  if (!shape) return text;
+  const vals = values || {};
+  let s = (shape.todo ? '- [ ] ' : '') + text;
+  for (const t of (shape.sharedTags || [])) s += ' #' + t;
+  for (const p of (shape.props || [])) {
+    const v = String(vals[p.key] == null ? '' : vals[p.key]).trim();
+    s += p.type === 'date' ? ` {date ${p.key}: ${v}}` : ` {prop ${p.key}: ${v}}`;
+  }
+  return s;
+}
+
 // ─── builder embedded forms ──────────────────────────────────────────────────
 // Commands that need a dialog get a mini-form rendered in the builder's right
 // pane instead. The form replaces the GUIDE entry. On submit: strips the trigger

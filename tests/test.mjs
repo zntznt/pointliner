@@ -677,6 +677,89 @@ test('#1237 a roll skips tag-inherited detail lines nested under a matched point
     'a container tag inherited by a differently-filtered child still rolls (the container is not itself a hit)');
 });
 
+test('#1240 inferRowShape — reads the shared template from a list of sibling rows', () => {
+  // node model (verified live): tags are literal #tag in .text; props are .props=[{key,val}] (a date lands
+  // as a prop with an ISO-date val, a number as a numeric string). Shape returns a sandbox-realm object, so
+  // compare via JSON string, not deepEqual across realms (the #1237 lesson).
+  const row = (text, props = []) => ({ id: 'x', text, props, children: [] });
+  const j = o => JSON.stringify(o);
+
+  // Expenses: every row shares #august #groceries and a numeric `cost`.
+  const expenses = [
+    row('Aldi weekly shop #august #groceries', [{ key: 'cost', val: '92.4' }]),
+    row('Costco run #august #groceries', [{ key: 'cost', val: '118.75' }]),
+    row('Farmers market #august #groceries', [{ key: 'cost', val: '34.2' }]),
+  ];
+  assert.equal(j(c.inferRowShape(expenses)),
+    j({ sharedTags: ['august', 'groceries'], props: [{ key: 'cost', type: 'number' }], todo: false }),
+    'expenses: shared tags + a numeric cost prop, not a to-do');
+
+  // Books: two numeric props + a year tag.
+  const books = [
+    row('Klara and the Sun #2026', [{ key: 'pages', val: '320' }, { key: 'rating', val: '4' }]),
+    row('The Fifth Season #2026', [{ key: 'pages', val: '450' }, { key: 'rating', val: '5' }]),
+  ];
+  assert.equal(j(c.inferRowShape(books)),
+    j({ sharedTags: ['2026'], props: [{ key: 'pages', type: 'number' }, { key: 'rating', type: 'number' }], todo: false }));
+
+  // Tasks: checkbox to-dos with a shared date prop (ISO val → 'date' type).
+  const tasks = [
+    row('- [ ] Recruit fixers #chore', [{ key: 'due', val: '2026-08-06' }]),
+    row('- [x] Book the hall #chore', [{ key: 'due', val: '2026-08-01' }]),
+  ];
+  assert.equal(j(c.inferRowShape(tasks)),
+    j({ sharedTags: ['chore'], props: [{ key: 'due', type: 'date' }], todo: true }),
+    'tasks: to-do detected, the date prop typed as date');
+
+  // Cast: a tag, no props.
+  const cast = [row('Sereth Vale, cartographer #character'), row('Marn Oakhollow #character')];
+  assert.equal(j(c.inferRowShape(cast)), j({ sharedTags: ['character'], props: [], todo: false }));
+
+  // A one-off tag/prop is NOT part of the shape (must be on EVERY row).
+  const mixed = [
+    row('Apples #shop', [{ key: 'cost', val: '3' }]),
+    row('Bread #shop #urgent', [{ key: 'cost', val: '2' }, { key: 'note', val: 'wholegrain' }]),
+  ];
+  assert.equal(j(c.inferRowShape(mixed)),
+    j({ sharedTags: ['shop'], props: [{ key: 'cost', type: 'number' }], todo: false }),
+    'only #shop and cost are shared; #urgent and note are one-offs and excluded');
+
+  // A leading ALL-CAPS #WORD is the status marker (→ to-do), never a content tag.
+  const statusTodos = [row('#TODO Call the dentist #errand'), row('#TODO Renew the passport #errand')];
+  assert.equal(j(c.inferRowShape(statusTodos)),
+    j({ sharedTags: ['errand'], props: [], todo: true }),
+    '#TODO is the status marker (to-do), #errand is the content tag');
+
+  // No usable shape → null (under 2 rows, or nothing shared).
+  assert.equal(c.inferRowShape([row('lonely #x')]), null, 'under 2 rows → null');
+  assert.equal(c.inferRowShape([row('plain text'), row('other text')]), null, 'nothing shared → null');
+});
+
+test('#1240 buildRow — assembles the bullet a filled form produces (fill values, we write the braces)', () => {
+  const shape = t => c.inferRowShape(t);
+  // expenses
+  const exp = shape([
+    { text: 'a #august #groceries', props: [{ key: 'cost', val: '1' }] },
+    { text: 'b #august #groceries', props: [{ key: 'cost', val: '2' }] },
+  ]);
+  assert.equal(c.buildRow(exp, { cost: '92.40' }, 'Aldi weekly shop'),
+    'Aldi weekly shop #august #groceries {prop cost: 92.40}',
+    'the nurse types text + amount; we write the tags and the cost pill');
+  // to-do with a date → checkbox prefix + {date …}
+  const task = shape([
+    { text: '- [ ] a #chore', props: [{ key: 'due', val: '2026-08-06' }] },
+    { text: '- [x] b #chore', props: [{ key: 'due', val: '2026-08-01' }] },
+  ]);
+  assert.equal(c.buildRow(task, { due: '2026-08-10' }, 'Call the plumber'),
+    '- [ ] Call the plumber #chore {date due: 2026-08-10}',
+    'a to-do row gets the checkbox prefix and the date pill');
+  // tag-only shape (cast)
+  const cast = shape([{ text: 'A #character' }, { text: 'B #character' }]);
+  assert.equal(c.buildRow(cast, {}, 'Lady Ysolde Crane'), 'Lady Ysolde Crane #character');
+  // null shape → just the text (fail safe)
+  assert.equal(c.buildRow(null, {}, 'just text'), 'just text');
+});
+
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
   // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
   // production cookieNode is the live render node." BOTH were false, and the second one is why the
