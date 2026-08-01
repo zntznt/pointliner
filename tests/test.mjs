@@ -18572,7 +18572,7 @@ test('#1192 the chooser leads with everyday domains, then blank and the tour, ev
   // app, this is for D&D." The origin is NOT removed; it stays in "More templates" directly under the
   // lead, so IA-8 (origin present, never the majority) is enforced over the WHOLE gallery (STARTERS),
   // not the lead row. nonEmpty, or a broken regex would make the whole loop pass vacuously.
-  const origins = ['campaign-oracle', 'oracle-play', 'character-sheet'];
+  const origins = ['campaign-oracle', 'character-sheet'];
   const ids = nonEmpty(between(_src, 'const WELCOME_QUICK_PICKS = [', '];').match(/'[^']+'/g) || [], 'WELCOME_QUICK_PICKS')
     .map(s => s.slice(1, -1));
   for (const id of ids) assert.ok(_fStarters.includes(`id: '${id}'`), `quick pick ${id} must name a real starter`);
@@ -22805,10 +22805,10 @@ test('starters (#565) — gallery entries present, heading-rooted, em-dash-free'
   const start = _fStarters.indexOf('const STARTERS = [');
   const block = _fStarters.slice(start, _fStarters.indexOf('\n];', start));
   assert.ok(start > -1, 'STARTERS array present');
-  for (const id of ['campaign-oracle', 'oracle-play', 'character-sheet', 'project-tracker', 'reading-log', 'life-dashboard', 'meal-planner', 'trip-planner', 'decision-helper', 'flashcards', 'home-inventory', 'worldbuilding', 'research-notes'])
+  for (const id of ['campaign-oracle', 'character-sheet', 'project-tracker', 'reading-log', 'life-dashboard', 'meal-planner', 'decision-helper', 'flashcards', 'home-inventory', 'research-notes', 'series-bible', 'household-budget', 'freelance-costing', 'game-workbench'])
     assert.ok(block.includes(`id: '${id}'`), `starter ${id} present`);
   const opmls = block.split('opml: `').slice(1);
-  assert.equal(opmls.length, 13, 'one embedded OPML per starter');   // #1196 added research-notes
+  assert.equal(opmls.length, 14, 'one embedded OPML per starter');   // starter overhaul: cut oracle-play/worldbuilding/trip-planner, added series-bible/household-budget/freelance-costing/game-workbench
   for (const o of opmls) assert.match(o, /<outline text="# /, 'each starter roots in a # heading subtree');
   assert.ok(!block.includes('—'), 'no em dashes in starter copy (user-facing)');
 });
@@ -22816,7 +22816,7 @@ test('starters (#565) — gallery entries present, heading-rooted, em-dash-free'
 test('#1196 research-notes starter surfaces {roll:#tag} + written footnotes, and leads the quick-picks', () => {
   // The #1196 deliverable: the two prose lead features (roll on your OWN tagged notes; a written
   // footnote carrying a source) are now LIVE in a starter a first-run user reaches, not palette-only.
-  const rn = between(_fStarters, "id: 'research-notes'", "id: 'oracle-play'");
+  const rn = between(_fStarters, "id: 'research-notes'", "id: 'life-dashboard'");
   assert.match(rn, /\{roll:\s*#openq\}/, 'draws a live question from the user\'s own #openq notes');
   assert.match(rn, /\[\^\w+\]/, 'carries a footnote marker (the prose citation)');
   assert.match(rn, /_footnotes="/, 'and ships the WRITTEN footnote text (first starter to do so)');
@@ -22829,6 +22829,44 @@ test('#1196 research-notes starter surfaces {roll:#tag} + written footnotes, and
   assert.match(rn, /&quot;key&quot;:&quot;check&quot;/, '#1195: the Claims section ships a check property');
   assert.match(rn, /count\(\\\\&quot;#claim -has:footnote\\\\&quot;\) == 0/,
     '#1195: the check asserts every claim carries a source (double-backslash survives the template literal)');
+});
+
+test('starter overhaul: each new/rewritten starter surfaces its assigned hidden power (source pin)', () => {
+  // The overhaul thesis: a starter is a finished document that WEAVES IN one engine power by doing a real
+  // job, not a feature tour. Each slice below pins that power in source. A source-pin proves the syntax is
+  // present, not that it renders live (that is the browser drive) — but a dropped power fails here.
+  const slice = (a, b) => between(_fStarters, `id: '${a}'`, `id: '${b}'`);
+  // household-budget: THE scoped rollup — a monthly total pointed at a tag, over the whole document, vs a cap check.
+  const hh = slice('household-budget', 'freelance-costing');
+  assert.match(hh, /sum\(&quot;#august&quot;, cost, document\)/, 'household: scoped month sum over the document');
+  assert.match(hh, /sum\(\\\\&quot;#august\\\\&quot;, cost, document\) &lt;= cap/, 'household: the cap check (double-backslash survives the template literal)');
+  // freelance-costing: an honest estimate (percentile + chanceover), an hours*rate check, and a written footnote.
+  const fc = slice('freelance-costing', 'game-workbench');
+  assert.match(fc, /percentile\(estq, 90\)/, 'freelance: the 90th-percentile safe number');
+  assert.match(fc, /chanceover\(estq, 25\)/, 'freelance: the odds-of-overrun estimate');
+  assert.match(fc, /sum\(\\\\&quot;#task\\\\&quot;, hours, document\) \* rate &lt;= quote/, 'freelance: the over-quote check (double-backslash survives the template literal)');
+  assert.match(fc, /_footnotes="/, 'freelance: the rate footnote is written');
+  // game-workbench: a dice pool with the distribution peek, a scoped card count, and a live embed of the set.
+  const gw = slice('game-workbench', 'flashcards');
+  assert.match(gw, /\{5d10&gt;=7\}/, 'game: a keep-successes dice pool (the distribution-peek target)');
+  assert.match(gw, /count\(&quot;#card cost:&gt;=4&quot;, document\)/, 'game: a scoped card-set count');
+  assert.ok(gw.includes('_id="prototypecards"') && gw.includes('[[#prototypecards|]]'), 'game: the card set is mirrored live into the session log');
+  // series-bible: the cross-folder roll reaching every note, and a live character embed in a scene.
+  const sb = slice('series-bible', 'meal-planner');
+  assert.match(sb, /roll folder: #character/, 'series: the cross-folder cast roll');
+  assert.ok(sb.includes('_id="sereth"') && sb.includes('[[#sereth|]]'), 'series: a character mirrored into a scene');
+  // decision-helper: the estimate lane (percentile + chanceover) and the verdict embed. The acost variable
+  // MUST be declared before it is read (the #ERR-declared-later fix) — pin the order so a regression bites.
+  const dh = slice('decision-helper', 'series-bible');
+  assert.match(dh, /percentile\(acost, 90\)/, 'decision: the 90th-percentile safe cost');
+  assert.match(dh, /chanceover\(acost, 33000\)/, 'decision: the odds-of-overrun estimate');
+  assert.ok(dh.includes('_id="theverdict"') && dh.includes('[[#theverdict|]]'), 'decision: the verdict is mirrored to the top');
+  assert.ok(dh.indexOf('{acost :=') > -1 && dh.indexOf('{acost :=') < dh.indexOf('percentile(acost'),
+    'decision: acost is declared BEFORE it is read (else evalMath surfaces #ERR declared-later)');
+  // meal-planner: a constraint-aware plan — a scoped week total and filtered night counts, not a slot machine.
+  const mp = slice('meal-planner', 'home-inventory');
+  assert.match(mp, /sum\(&quot;#thisweek&quot;, cost, document\)/, 'meal: the scoped weekly grocery total');
+  assert.match(mp, /count: #dinner -is:done/, 'meal: nights-left-to-cook is a filtered count, not a deck deal');
 });
 
 test('#1195 the reveal-offenders affordance is wired (chip + both seams, edit preserved)', () => {

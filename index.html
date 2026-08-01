@@ -41352,34 +41352,6 @@ const STARTERS = [
 </outline>
 </body></opml>`,
   },
-  { id: 'oracle-play',
-    name: 'Oracle-driven scene play',
-    desc: 'A swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck.',
-    opml: `<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0"><head><title>Oracle-driven scene play</title></head><body>
-<outline text="# Oracle-driven scene play">
-  <outline text="The solo-play loop in one page: a swing oracle, a chaos-weighted interrupt check, a meaning table, and a thread deck. Every {…} pill is live, click one to run it."/>
-  <outline text="## Generators">
-    <outline text="Chaos factor (1 calm to 5 chaos): {chaos := 3}"/>
-    <outline text="Interrupt check (click to roll): {proceed | interrupted {= chaos}}"/>
-    <outline text="Meaning table (click each for a word): {hide | reveal | pursue | abandon | protect | betray} {a secret | an ally | a debt | a route | a rumor | a relic}">
-      <outline text="Prefer a named table you can call from anywhere? Define rules with @ then Grammar, or tag points and roll on the tag (see the Campaign oracle example)."/>
-    </outline>
-    <outline text="Thread deck (click to pull one): {shuffle: the torn letter | the missing sister | the merchant's debt}"/>
-  </outline>
-  <outline text="## Scene: a yes with a catch">
-    <outline text="Will the merchant help me? (likely, with a swing)"/>
-    <outline text="Answer: {Yes, and 3 | Yes 9 | Yes, but 3 | No, but 3 | No 3 | No, and 1}"/>
-    <outline text="If it needs a spark, pull two words from the meaning table above."/>
-    <outline text="Result: he will help, but only to settle a debt he owes someone worse. #thread"/>
-  </outline>
-  <outline text="## How to use it">
-    <outline text="Click any pill to run it. The interrupt check reads {= chaos} live, so edit chaos above and the odds shift. The thread deck draws each thread once, then reshuffles (it says when)."/>
-    <outline text="Nothing here is new syntax: the swing oracle is a weighted list, the interrupt is dynamic odds, the meaning table is a two-rule grammar, and the thread deck is a shuffle deck."/>
-  </outline>
-</outline>
-</body></opml>`,
-  },
   { id: 'life-dashboard',
     name: 'Life dashboard',
     desc: 'A document that watches itself: live counts, a today list, and a habit nudge.',
@@ -41462,99 +41434,134 @@ const STARTERS = [
   },
   { id: 'decision-helper',
     name: 'Decision helper',
-    desc: 'A weighted oracle for the call, a pros-minus-cons tally, and a back-of-envelope estimate.',
+    desc: 'Weigh a real call: tally your pros against your cons, cost it with honest uncertainty, and mirror your verdict up top.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0"><head><title>Decision helper</title></head><body>
-<outline text="# Decision helper">
-  <outline text="A page for a real decision (here: should I take the new job?). It nudges with a weighted oracle, tallies your pros against your cons, and runs a back-of-envelope estimate with honest uncertainty. Every {…} is a live pill."/>
-  <outline text="## The question: take the new job?">
-    <outline text="A gut-check oracle, click to consult (it is only a nudge, not the decision): {Yes 5 | Lean yes 3 | Too close to call 2 | Lean no 3 | No 5}"/>
+<opml version="2.0"><head><title>Car decision</title></head><body>
+<outline text="# Car decision: replace the 2011 Civic, or not">
+  <outline text="A page for a real decision. Tally the pros against the cons, cost each option with a range instead of a fake-precise number, and keep your current verdict mirrored at the top so it is the first thing you see. Every {…} is a live pill."/>
+  <outline text="## The call">
+    <outline text="Out-the-door budget: {budget := 21000}."/>
+    <outline text="Where I am leaning right now:"/>
+    <outline text="[[#theverdict|]]"/>
   </outline>
-  <outline text="## Weigh it">
-    <outline text="Pros minus cons: {= count(pro) - count(con)} (positive leans yes)">
-      <outline text="Higher salary {prop pro: 1}"/>
-      <outline text="Work I care about more {prop pro: 1}"/>
-      <outline text="Better title {prop pro: 1}"/>
-      <outline text="Longer commute {prop con: 1}"/>
-      <outline text="Leaving a good team {prop con: 1}"/>
+  <outline text="## Option A: 2018 Subaru Outback">
+    <outline text="Pros minus cons: {= count(pro) - count(con)} (positive leans buy)">
+      <outline text="AWD handles the winter pass without chains {prop pro: 1}"/>
+      <outline text="Cargo bay swallows the dog crate and camping bins {prop pro: 1}"/>
+      <outline text="One owner, clean history {prop pro: 1}"/>
+      <outline text="Thirstier than the Civic {prop con: 1}"/>
+      <outline text="19,500 sits at the top of what I want to spend {prop con: 1}"/>
     </outline>
-    <outline text="Add your own line with {prop pro: 1} or {prop con: 1} and the tally moves. Weight one that matters more as {prop pro: 2}."/>
+    <outline text="3-year cost estimate: {acost := (18900 to 19500) + (1800 to 5200) + (3900 to 4500) + (5400 to 6600)}"/>
+    <outline text="Likely {= percentile(acost, 50)}, my 90 percent safe number {= percentile(acost, 90)}."/>
+    <outline text="Odds the 3-year total tops 33k: {= chanceover(acost, 33000)}"/>
   </outline>
-  <outline text="## Back of the envelope">
-    <outline text="Extra take-home per year, roughly: {3000 to 8000} (a range, click to re-sample)."/>
-    <outline text="Extra commuting per year: about {150 to 250} hours."/>
-    <outline text="So each extra hour of commute is worth, very roughly, {= 3000 / 250} to {= 8000 / 150} in pay. Numbers you can argue with beat a number you cannot."/>
+  <outline text="## The money, honestly">
+    <outline text="The Outback tallies best and its 90 percent safe cost is what I would budget for. Leaning Outback, pending the mechanic inspection." _id="theverdict"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="Replace the question and the pros and cons with your own. The oracle is just a weighted list, so edit the odds to match your gut. The estimates are ranges sampled behind the scenes, shown as a middle value with a low-to-high spread and a little sparkline."/>
-    <outline text="Nothing here is new syntax: the oracle picks with the odds you set, the tally counts two properties, and the estimates are ranges you re-sample."/>
+    <outline text="Tag a line as a pro or a con and each option's tally updates itself. Under an option, add a cost line with a range like eighteen hundred to five thousand; the likely total, the safe number, and the odds of overrun recompute. Write your verdict once at the bottom and it mirrors to the top."/>
+    <outline text="Nothing here is new syntax: the tally counts your pros and cons, the ranges sample themselves, the safe number is the ninetieth percentile of the totals you typed, and the verdict up top is a live embed of the line below."/>
   </outline>
 </outline>
 </body></opml>`,
   },
-  { id: 'worldbuilding',
-    name: 'Worldbuilding and writing',
-    desc: 'A name generator, a cast you roll for a spark, and a plot-thread deck. For fiction, not just games.',
+  { id: 'series-bible',
+    name: 'Series bible',
+    desc: 'A novelist living reference: roll the cast for a spark, reach every note with a folder roll, and mirror a character straight into a scene.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0"><head><title>Worldbuilding and writing</title></head><body>
-<outline text="# Worldbuilding and writing">
-  <outline text="A writer's back pocket: a name generator, a cast you can roll for a scene spark, and a deck of plot threads to pull when you are stuck. Not a game sheet, a tool for fiction. Every {…} is a live pill."/>
-  <outline text="## Name generator (click for a new one)">
-    <outline text="Person: {Bram | Isolde | Cael | Mira | Tomas | Wren}{ Ashford | Vane | Holloway | Reed | Marsh}"/>
-    <outline text="Place: {North | Salt | Raven | Ash | Gray}{crook | mere | fell | hollow | reach}"/>
-    <outline text="These are two lists glued together, so the pieces recombine. Swap in syllables that fit your world."/>
+<opml version="2.0"><head><title>Series bible</title></head><body>
+<outline text="# Series bible: The Salt Ledger cycle">
+  <outline text="A living reference. One page per character, one per place, one per open thread. Keep the pages honest and the draft can lean on them. Every {…} is a live pill."/>
+  <outline text="## Cast">
+    <outline text="Sereth Vale, cartographer, once a salt-smuggler out of Greywharbor #character" _id="sereth">
+      <outline text="trait: reads a coastline the way other people read a face"/>
+      <outline text="debt: her name sits in the Salt Ledger; the Guild owns a cargo she sank"/>
+      <outline text="wants: the Ledger burned before anyone reads page nine"/>
+    </outline>
+    <outline text="Marn Oakhollow, hearth-keeper at the Drowned Lamp #character">
+      <outline text="debt: deserted the Fen Watch; his discharge papers are a forgery"/>
+    </outline>
+    <outline text="Lady Ysolde Crane, spymistress who holds favors like coin #character">
+      <outline text="debt: owes Sereth one true favor from the winter of the wreck"/>
+    </outline>
+    <outline text="Bramwell Tind, temple courier bonded to a truth-bell #character">
+      <outline text="trait: the bell rings when he lies, so he has stopped lying"/>
+    </outline>
   </outline>
-  <outline text="## Your cast (tag a name as a character and the spark learns it)">
-    <outline text="Mira Holloway, a cartographer who forges maps #character"/>
-    <outline text="Cael Reed, a ferryman who owes the wrong people #character"/>
-    <outline text="Wren Vane, a child who remembers a life not theirs #character"/>
+  <outline text="## Open threads">
+    <outline text="The Salt Ledger, the guild debt-book has gone missing #thread"/>
+    <outline text="The Silent Bell, the temple bells stopped at midwinter, all but one #thread"/>
+    <outline text="Open threads right now: {count: #thread}"/>
   </outline>
-  <outline text="## Scene spark (click each pill)">
-    <outline text="Bring someone on: {roll: #character}"/>
-    <outline text="They want: {to confess | to escape | to bargain | to protect a secret | to find someone}"/>
-    <outline text="But: {a debt comes due | the weather turns | an old face returns | a lie unravels}"/>
+  <outline text="## When I am stuck">
+    <outline text="Pull a face from the cast: {roll: #character}"/>
+    <outline text="When the series outgrows one file, draw from every note: {roll folder: #character}"/>
+    <outline text="Draw a thread to tug: {shuffle: The Salt Ledger changes hands | The Silent Bell rings twice | Ysolde calls in her favor | Marn's papers are questioned | Bram is asked to lie}"/>
   </outline>
-  <outline text="## Plot threads (pull one from the deck)">
-    <outline text="Next thread: {shuffle: the map that shows a place that is not there | the ferry that never reaches the far shore | the child who speaks a dead language | the letter addressed to someone not yet born}"/>
+  <outline text="## Scene planner">
+    <outline text="Scene 12, the Ledger changes hands, dockside at low tide">
+      <outline text="who is here:"/>
+      <outline text="[[#sereth|]]"/>
+      <outline text="beat: Sereth is offered page nine and cannot tell if the seller has read it"/>
+    </outline>
   </outline>
   <outline text="## How to run it">
-    <outline text="Tag your cast #character and the scene spark rolls one at random. The name generator glues two lists; the plot deck draws each thread once, then reshuffles. Use these to break a blank page, then delete what you do not need."/>
-    <outline text="Nothing here is new syntax: the name generator is joined alternation, the cast spark is a roll on a tag, the wants and buts are alternation, and the plot threads are a shuffle deck."/>
+    <outline text="Add a character and tag the bullet as a character; the stuck-day roll learns the new face. A bible outgrows one file fast: keep book two's cast in its own note, connect the folder, and the folder roll reaches every character across every note at once. To pin a character into a scene, drop an empty-label link to their page; the scene card shows their current traits and updates itself when you edit the page."/>
+    <outline text="Nothing here is new syntax: the picker is a roll on a tag, the scene block is a live embed, and the thread number is a count."/>
   </outline>
 </outline>
 </body></opml>`,
   },
   { id: 'meal-planner',
     name: 'Weekly meal planner',
-    desc: 'A meal generator from your own lists, a seven-day deck, and a grocery total.',
+    desc: 'A real week of dinners that count themselves down, a use-it-first list, and a grocery total against your budget.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Weekly meal planner</title></head><body>
 <outline text="# Weekly meal planner">
-  <outline text="Stuck on what to cook? Let the document build a plan from your own lists, deal a different meal to each night, and total the shopping. Every {…} is a live pill, click it to run it again."/>
-  <outline text="## Idea generator (click for a fresh combo)">
-    <outline text="Tonight: {Italian | Mexican | Thai | Japanese | Greek} {chicken | tofu | chickpeas | beef | salmon} with {rice | noodles | flatbread | roast veg | a big salad}"/>
-    <outline text="Edit any list by clicking the text next to the pill: add a cuisine, drop one you never make. It is three lists separated by bars, nothing more."/>
+  <outline text="Week of the 3rd. Two of us plus the kid. The counts at the top read the week below them and tick down as you fill nights in. Every {…} is a live pill.">
+    <outline text="Cooking budget this week: {budget := 120}"/>
+    <outline text="Nights still needing a plan: {count: #open}"/>
+    <outline text="Nights left to cook: {count: #dinner -is:done}"/>
+    <outline text="Ingredients to use before they turn: {count: #usefirst}"/>
+    <outline text="Grocery spend so far this week: {= sum(&quot;#thisweek&quot;, cost, document)} of {budget}" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(\\&quot;#thisweek\\&quot;, cost, document) &lt;= budget&quot;}]"/>
   </outline>
-  <outline text="## This week (the deck deals each night once)">
-    <outline text="Monday: {shuffle: pasta night | stir fry | tacos | soup and bread | sheet-pan roast | curry | leftovers}"/>
-    <outline text="Tuesday: {shuffle: pasta night | stir fry | tacos | soup and bread | sheet-pan roast | curry | leftovers}"/>
-    <outline text="Wednesday: {shuffle: pasta night | stir fry | tacos | soup and bread | sheet-pan roast | curry | leftovers}"/>
-    <outline text="Thursday: {shuffle: pasta night | stir fry | tacos | soup and bread | sheet-pan roast | curry | leftovers}"/>
-    <outline text="Friday: {shuffle: pasta night | stir fry | tacos | soup and bread | sheet-pan roast | curry | leftovers}"/>
-    <outline text="One shuffle deck shared across the nights would repeat; here each night draws from its own copy, so click them in order for a no-repeat week."/>
+  <outline text="## Use it first">
+    <outline text="Half a bag of baby spinach, going limp #usefirst"/>
+    <outline text="One head of broccoli, a few days left #usefirst"/>
+    <outline text="Cremini mushrooms, opened Tuesday #usefirst"/>
   </outline>
-  <outline text="## Shopping list">
-    <outline text="Estimated total: {= sum(cost)}">
-      <outline text="Vegetables and fruit {prop cost: 18}"/>
-      <outline text="Chicken and tofu {prop cost: 14}"/>
-      <outline text="Rice, noodles, bread {prop cost: 9}"/>
-      <outline text="Sauces and spices {prop cost: 7}"/>
-      <outline text="Snacks {prop cost: 6}"/>
-    </outline>
+  <outline text="## The week">
+    <outline text="- [x] Mon: Sheet-pan chicken thighs with the broccoli #dinner"/>
+    <outline text="- [x] Tue: Chicken tacos from Monday leftovers, uses the cilantro #dinner"/>
+    <outline text="- [ ] Wed: Pantry garlic pasta, someone is home late so keep it fast #dinner"/>
+    <outline text="- [ ] Thu: Salmon from the freezer with rice and the spinach #dinner"/>
+    <outline text="- [ ] Fri: No plan yet, kid has practice so we eat late #dinner #open"/>
+    <outline text="- [ ] Sat: No plan yet #dinner #open"/>
+    <outline text="- [ ] Sun: Big-batch turkey chili, covers Monday lunch too #dinner"/>
   </outline>
-  <outline text="## How it works">
-    <outline text="The idea generator is three lists of choices; the app picks one from each and joins them. The weekly plan uses shuffle decks, which draw without repeating until the list is used up. The shopping total adds up the cost on each line below it."/>
-    <outline text="Nothing here is new syntax: the generator is a weighted random pick, the nights are shuffle decks, and the total adds up a cost property."/>
+  <outline text="## Stuck? Pull one">
+    <outline text="When a night is blank, roll one of our own go-to dinners: {roll: #idea}"/>
+  </outline>
+  <outline text="## Our go-to dinners">
+    <outline text="Stir-fry with whatever veg is left plus rice #idea"/>
+    <outline text="Breakfast for dinner: eggs, toast, fruit #idea"/>
+    <outline text="Black bean quesadillas #idea"/>
+    <outline text="Pesto pasta with peas #idea"/>
+    <outline text="Grilled cheese and tomato soup #idea"/>
+  </outline>
+  <outline text="## Grocery list">
+    <outline text="Chicken thighs, family pack #thisweek {prop cost: 9}"/>
+    <outline text="Ground turkey, two pounds #thisweek {prop cost: 8}"/>
+    <outline text="Salmon fillets, on sale #thisweek {prop cost: 12}"/>
+    <outline text="Rice, five-pound bag #thisweek {prop cost: 6}"/>
+    <outline text="Tortillas #thisweek {prop cost: 4}"/>
+    <outline text="Eggs, dozen #thisweek {prop cost: 4}"/>
+    <outline text="Cheese block #thisweek {prop cost: 6}"/>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="Slot a meal on each night and tag it as a dinner. Leave a night open by tagging it open, and the count at the top ticks down as you fill them in."/>
+    <outline text="Nothing here is new syntax: the picker is a roll on a tag, the counts are filtered tallies, and the totals add themselves up."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -41588,34 +41595,127 @@ const STARTERS = [
 </outline>
 </body></opml>`,
   },
-  { id: 'trip-planner',
-    name: 'Trip planner',
-    desc: 'A day-by-day itinerary as a table you can flip to a calendar, a packing list, and a budget check.',
+  { id: 'household-budget',
+    name: 'Household budget',
+    desc: 'A month of spending tagged by category, totaled against a cap with a live check. No child lists required.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0"><head><title>Trip planner</title></head><body>
-<outline text="# Trip planner">
-  <outline text="A whole trip on one page: the itinerary is an interactive table you can flip to a calendar, the packing list checks itself off, and the costs total live against your budget. Click a pill to run it; click a table cell to edit it."/>
-  <outline text="## Itinerary (the table below flips to a calendar)">
-    <outline text="| Date | Place | Activity | Cost |&#10;| --- | --- | --- | --- |&#10;| today+14 | Lisbon | Land, tram to the old town, pastel de nata | 40 |&#10;| today+15 | Sintra | Pena Palace and the Moorish castle | 55 |&#10;| today+16 | Cascais | Train to the coast, a slow beach day | 25 |&#10;| today+17 | Lisbon | Time out market, fado in the evening | 60 |&#10;| today+18 | Lisbon | Fly home | 30 |" _type="base" _colrole="[&quot;date&quot;,null,null,&quot;number&quot;]" _view="{&quot;kind&quot;:&quot;calendar&quot;,&quot;dateBy&quot;:0}"/>
-    <outline text="The Date column is marked as a date and the Cost column as a number, so the calendar view lays each day on a month grid and the totals below can add the costs. Click the switcher at the base's top-left to try Table, Calendar, Board, or Cards."/>
-  </outline>
-  <outline text="## Budget">
-    <outline text="Spent so far: {= sum(cost)} of {budget := 300} (the chip turns red past the budget)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(cost) &lt;= budget&quot;}]">
-      <outline text="Flights {prop cost: 140}"/>
-      <outline text="Hotel, four nights {prop cost: 120}"/>
-      <outline text="Transit pass {prop cost: 20}"/>
+<opml version="2.0"><head><title>Household budget</title></head><body>
+<outline text="# Household budget">
+  <outline text="This month at a glance, then the spending below it, tagged by month and category. The totals point at a tag instead of a child list, so they see every expense wherever it sits. Every {…} is a live pill.">
+    <outline text="Monthly cap: {cap := 800}"/>
+    <outline text="Spent this month: {= sum(&quot;#august&quot;, cost, document)} of {cap}"/>
+    <outline text="Left to spend: {= cap - sum(&quot;#august&quot;, cost, document)}"/>
+    <outline text="Still within the cap?" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(\\&quot;#august\\&quot;, cost, document) &lt;= cap&quot;}]"/>
+    <outline text="Where it is going this month:">
+      <outline text="Groceries: {= sum(&quot;#groceries&quot;, cost, document)}"/>
+      <outline text="Utilities: {= sum(&quot;#utilities&quot;, cost, document)}"/>
+      <outline text="Kids: {= sum(&quot;#kids&quot;, cost, document)}"/>
     </outline>
-    <outline text="Add a line with a cost, like Museum passes {prop cost: 45}, and watch the check flip red when the total crosses the budget."/>
   </outline>
-  <outline text="## Packing [/]">
-    <outline text="- [ ] Passport and boarding passes"/>
-    <outline text="- [ ] Chargers and adapter"/>
-    <outline text="- [x] Sunscreen"/>
-    <outline text="- [ ] Light jacket"/>
+  <outline text="## Groceries">
+    <outline text="Aldi weekly shop #august #groceries {prop cost: 92.4}"/>
+    <outline text="Costco run, bulk diapers and paper towels #august #groceries {prop cost: 118.75}"/>
+    <outline text="Saturday farmers market produce #august #groceries {prop cost: 34.2}"/>
+    <outline text="Midweek milk and bread top-up #august #groceries {prop cost: 21.6}"/>
+  </outline>
+  <outline text="## Utilities">
+    <outline text="Electric bill #august #utilities {prop cost: 96}"/>
+    <outline text="Water and sewer #august #utilities {prop cost: 48.3}"/>
+    <outline text="Home internet #august #utilities {prop cost: 65}"/>
+  </outline>
+  <outline text="## Kids">
+    <outline text="School supplies, backpack and notebooks #august #kids {prop cost: 54.99}"/>
+    <outline text="Fall soccer registration #august #kids {prop cost: 75}"/>
+    <outline text="Pediatric dentist copay #august #kids {prop cost: 40}"/>
+  </outline>
+  <outline text="## Health and transport">
+    <outline text="Pharmacy, allergy refill #august #health {prop cost: 27.5}"/>
+    <outline text="Gas fill-up for the commute #august #transport {prop cost: 44.8}"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="A table like the itinerary is a base: type /base on a blank point to make your own, mark a column as Date or Number from its column menu, then flip to the calendar view. The dates read today+N, so they always land a couple of weeks out from whenever you open this."/>
-    <outline text="Nothing here is new syntax: the itinerary is an interactive base with a calendar view, the budget adds up the costs with a check, and the packing bar counts its checkboxes."/>
+    <outline text="Add an expense under its category, write its amount as a cost, then tag it with the month it belongs to and the category it falls under. The month total and the category total both pick it up on their own."/>
+    <outline text="Nothing here is new syntax: the totals are ordinary sums pointed at a tag instead of at a child list, the cap is a plain variable, and the red flag is a check comparing the two."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+  { id: 'freelance-costing',
+    name: 'Freelance costing',
+    desc: 'Cost a job by the hour against your quote, flag the moment it goes over, and price the next one from an honest estimate.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Client work</title></head><body>
+<outline text="# Client work: Meridian Roasters">
+  <outline text="Cafe rebrand: logo, guidelines, a 3-page site, one coffee-bag label. Kickoff early June, deadline mid August. Every {…} is a live pill."/>
+  <outline text="## The deal">
+    <outline text="My rate this job: {rate := 65} an hour [^rate]" _footnotes="[{&quot;key&quot;:&quot;rate&quot;,&quot;text&quot;:&quot;From my 2026 rate card, revised January. Branding tier, half-day minimum.&quot;}]"/>
+    <outline text="What I quoted: {quote := 2600}, which buys about {= quote / rate} hours."/>
+  </outline>
+  <outline text="## Hours logged so far">
+    <outline text="Logged: {= sum(&quot;#task&quot;, hours, document)} hrs, billed at {= sum(&quot;#task&quot;, hours, document) * rate}"/>
+    <outline text="Am I still inside the quote?" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(\\&quot;#task\\&quot;, hours, document) * rate &lt;= quote&quot;}]"/>
+    <outline text="Headroom left: {= quote - (sum(&quot;#task&quot;, hours, document) * rate)} of the quote."/>
+    <outline text="Logo concepts, 3 routes #task {prop hours: 9}"/>
+    <outline text="Brand guidelines PDF, 8 pages #task {prop hours: 6}"/>
+    <outline text="Web mockups: home, menu, about #task {prop hours: 7}"/>
+    <outline text="Coffee-bag label, front and back #task {prop hours: 4}"/>
+    <outline text="Revisions, round one #task {prop hours: 3}"/>
+  </outline>
+  <outline text="## Next quote: Ridgeline Tea, rough">
+    <outline text="Total hours if I take it: {estq := (8 to 14) + (4 to 7) + (5 to 9) + (2 to 5)}"/>
+    <outline text="My 90 percent safe number: {= percentile(estq, 90)} hrs; odds it runs past 25 hrs: {= chanceover(estq, 25)}"/>
+    <outline text="So I would quote near {= percentile(estq, 90) * rate}, not the midpoint. The tail is where I lose money."/>
+    <outline text="Logo concepts, 3 routes: about {8 to 14} hrs"/>
+    <outline text="Brand mini-guide, 4 pages: about {4 to 7} hrs"/>
+    <outline text="Two web mockups: about {5 to 9} hrs"/>
+    <outline text="Packaging, one tea box: about {2 to 5} hrs"/>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="Add a task under Hours logged and give it the hours you worked; the total and the billed figure add themselves up. The rate lives in one place at the top; change it once and every money line follows. The health badge sits green while you have headroom and flips red the hour the job goes over the quote. For the next job, list the tasks with an hours range each; the 90 percent safe number and the odds of overrun read straight off the total."/>
+    <outline text="Nothing here is new syntax: the rate is a variable, the totals are a sum times that variable, the flag is a check, and the range is a low-to-high estimate the sheet samples."/>
+  </outline>
+</outline>
+</body></opml>`,
+  },
+  { id: 'game-workbench',
+    name: 'Game design workbench',
+    desc: 'Prototype a card game: dice pools you can peek the true odds on, a draw deck, a name forge, and a card set that tallies itself.',
+    opml: `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0"><head><title>Emberwake Workbench</title></head><body>
+<outline text="# Emberwake Workbench">
+  <outline text="A two-summoner duel in progress. Bind creatures, spend their Focus rolling d10s. A die of 7 or higher is a success; land at least the spell Cost in successes and it resolves. Every {…} is a live pill."/>
+  <outline text="## Resolution bench">
+    <outline text="Cast test, a Focus-5 pool: {5d10&gt;=7}"/>
+    <outline text="Right-click that pool and choose Show distribution to see how often five dice clear a 3-cost before you lock the number in."/>
+    <outline text="Big summon, a Focus-7 pool: {7d10&gt;=7}"/>
+    <outline text="Ember burst damage, explodes on a 6: {2d6!}"/>
+  </outline>
+  <outline text="## Opening hand">
+    <outline text="Deal a 5-card test hand: {shuffle 5: Cinderfang Wyrm | Hollow Warden | Frostbound Revenant | Ashborn Sprite | Radiant Seraph | Gloamroot Toad | Stormcrash Djinn | Pale Widow}"/>
+  </outline>
+  <outline text="## Card name forge">
+    <outline text="{rule element: ember | frost | gloam | storm | radiant}"/>
+    <outline text="{rule beast: Wyrm | Warden | Revenant | Sprite | Seraph}"/>
+    <outline text="New card seed: {{Cinder|Ash|Bram|Pale|Storm}{fang|root|wing|crash|born}} the {element} {beast}"/>
+  </outline>
+  <outline text="## Prototype card set" _id="prototypecards">
+    <outline text="Pull a random card to test its pool: {roll: #card}"/>
+    <outline text="Cards in the set: {count: #card}"/>
+    <outline text="Average Focus across the set: {= avg(&quot;#card&quot;, focus, document)}"/>
+    <outline text="Cards costing 4 or more: {= count(&quot;#card cost:&gt;=4&quot;, document)}"/>
+    <outline text="Cinderfang Wyrm #card {prop cost: 4} {prop focus: 5}"/>
+    <outline text="Hollow Warden #card {prop cost: 2} {prop focus: 3}"/>
+    <outline text="Frostbound Revenant #card {prop cost: 3} {prop focus: 4}"/>
+    <outline text="Ashborn Sprite #card {prop cost: 1} {prop focus: 2}"/>
+    <outline text="Radiant Seraph #card {prop cost: 5} {prop focus: 6}"/>
+    <outline text="Gloamroot Toad #card {prop cost: 2} {prop focus: 2}"/>
+  </outline>
+  <outline text="## Session log">
+    <outline text="Today's card set, mirrored live so it updates as I tune costs:"/>
+    <outline text="[[#prototypecards|]]"/>
+  </outline>
+  <outline text="## How to run it">
+    <outline text="Add a card in the prototype set, tag it as a card, and give it a cost and a focus: the count, the average, and the random test-draw all pick it up. To feel a spell's true odds, right-click a dice pool and choose Show distribution to see the odds over a thousand trials."/>
+    <outline text="Nothing here is new syntax: the hand is a deck you draw without repeats, the spotlight is a roll on your card tag, the name forge is a two-rule grammar, and the numbers add themselves up."/>
   </outline>
 </outline>
 </body></opml>`,
