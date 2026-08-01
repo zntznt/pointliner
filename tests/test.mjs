@@ -22851,9 +22851,14 @@ test('starter overhaul: each new/rewritten starter surfaces its assigned hidden 
   assert.match(gw, /\{5d10&gt;=7\}/, 'game: a keep-successes dice pool (the distribution-peek target)');
   assert.match(gw, /count\(&quot;#card cost:&gt;=4&quot;, document\)/, 'game: a scoped card-set count');
   assert.ok(gw.includes('_id="prototypecards"') && gw.includes('[[#prototypecards|]]'), 'game: the card set is mirrored live into the session log');
-  // series-bible: the cross-folder roll reaching every note, and a live character embed in a scene.
+  // series-bible: a plain cast roll and a live character embed in a scene. The cast pages have children
+  // (traits, debts, wants), so the draw MUST be a plain roll: a folder roll reaches descendants and would
+  // pick a trait line, and a co-located plain+folder roll on #character also races on promotion. The
+  // cross-folder showcase lives in campaign-oracle, whose nodes are childless leaves.
   const sb = slice('series-bible', 'meal-planner');
-  assert.match(sb, /roll folder: #character/, 'series: the cross-folder cast roll');
+  assert.match(sb, /\{roll: #character\}/, 'series: the cast draw is a plain roll (picks a whole character page)');
+  assert.ok(!/roll folder: #character/.test(sb),
+    'series: NO folder roll on #character (it would reach into the trait/debt children, and race the plain roll)');
   assert.ok(sb.includes('_id="sereth"') && sb.includes('[[#sereth|]]'), 'series: a character mirrored into a scene');
   // decision-helper: the estimate lane (percentile + chanceover) and the verdict embed. The acost variable
   // MUST be declared before it is read (the #ERR-declared-later fix) — pin the order so a regression bites.
