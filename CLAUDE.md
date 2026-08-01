@@ -94,6 +94,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
 | Contextual `{` body completion | `guidance/brace-completion-proposal.md` | Shipped |
 | Guided authoring (no-syntax "Add another") | `guidance/guided-authoring-proposal.md` | Proposed |
+| Document footnote store + Footnotes manager | `guidance/footnote-store-proposal.md` | Proposed |
 
 ## Working notes
 
