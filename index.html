@@ -41223,7 +41223,7 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
 // and are linked, not embedded. Each uses ONLY shipped syntax — no new pill, no new delimiter.
 const STARTERS = [
   { id: 'project-tracker',
-    name: 'Repair Café day',
+    name: 'Project planner',
     desc: 'Tasks that tally into a progress bar, costs that total against a budget check, and a live watch that flags any date you have let slip.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Repair Café day</title></head><body>
@@ -41506,7 +41506,7 @@ const STARTERS = [
   },
   { id: 'series-bible',
     name: 'Series bible',
-    desc: 'A novelist living reference: rich character pages, roll the cast for a spark, and mirror a character straight into a scene.',
+    desc: 'A living reference for a novel: rich character pages, roll the cast for a spark, and mirror a character into a scene.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Series bible</title></head><body>
 <outline text="# Series bible: The Salt Ledger cycle">
@@ -41656,7 +41656,7 @@ const STARTERS = [
   },
   { id: 'household-budget',
     name: 'Household budget',
-    desc: 'A month of spending tagged by category, totaled against a cap with a live check. No child lists required.',
+    desc: 'A month of spending tagged by category, with live per-category totals and a monthly cap check.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Household budget</title></head><body>
 <outline text="# Household budget">
@@ -42018,7 +42018,7 @@ const STARTER_ICON = { fa: 'fa-solid fa-dice-d20', fb: '🎲' };
 // #1196: research-notes takes trip-planner's lead slot (planner redundancy with meal-planner) so the
 // prose/research audience meets its own lead features ({roll:#tag} on their notes + written footnotes)
 // in the first-run path, not palette-only. Still everyday and general, so IA-3/IA-8 hold.
-const WELCOME_QUICK_PICKS = ['project-tracker', 'meal-planner', 'research-notes', 'reading-log', 'flashcards', 'home-inventory'];
+const WELCOME_QUICK_PICKS = ['life-dashboard', 'project-tracker', 'meal-planner', 'research-notes', 'reading-log', 'flashcards'];
 // var (hoisted, #854's rule): closeIo and adoptDoc are declared thousands of lines ABOVE this and
 // both run during the boot restore, before this line is reached. A `let` would put them in the TDZ
 // and crash the restore; a hoisted var reads `undefined` (falsy) until first-run sets it.
