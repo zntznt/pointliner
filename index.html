@@ -42368,11 +42368,27 @@ function openStarterGallery(opts = {}) {
       return g;
     };
     const quick = WELCOME_QUICK_PICKS.map(id => STARTERS.find(s => s.id === id)).filter(Boolean);
-    const rest = STARTERS.filter(st => !quick.includes(st));
     const popular = addGroup('Popular');
     quick.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st), popular));
-    const moreG = addGroup('More templates');
-    rest.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st), moreG));
+    // #1241: the rest is grouped BY LIFE-AREA (not one flat "More templates"), so a work/money or creative
+    // person scans straight to their starter instead of digging a flat list — two panelists bounced because
+    // they never saw the starter built for them. Popular stays the everyday lead (IA-8/#1214: no origin sets
+    // the tone there); the origins live under "Creative & games", a minority of the whole gallery.
+    const placed = new Set(WELCOME_QUICK_PICKS);
+    const CHOOSER_GROUPS = [
+      ['Money & work', ['household-budget', 'home-inventory', 'freelance-costing', 'decision-helper']],
+      ['Creative & games', ['series-bible', 'game-workbench', 'campaign-oracle', 'character-sheet']],
+    ];
+    for (const [label, ids] of CHOOSER_GROUPS) {
+      const g = addGroup(label);
+      for (const id of ids) {
+        const st = STARTERS.find(s => s.id === id);
+        if (st && !placed.has(id)) { addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st), g); placed.add(id); }
+      }
+    }
+    // Safety net: any starter not in Popular or a named group still shows — a new starter is never dropped.
+    const leftover = STARTERS.filter(st => !placed.has(st.id));
+    if (leftover.length) { const moreG = addGroup('More'); leftover.forEach(st => addPick(st.name, st.desc, `Insert the ${st.name} example`, () => pickStarter(st), moreG)); }
     // The two structural doors, set apart from the templates so a user who wants to just start writing
     // or take the tour finds them at a glance rather than scrolling past twelve templates. Blank keeps
     // the invitation (you can just start writing); the tour is where the old forced first screen went.
