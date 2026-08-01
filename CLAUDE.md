@@ -93,6 +93,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Discoverability strategy (verbosity dial) | `guidance/ux.md` | Vision |
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
 | Contextual `{` body completion | `guidance/brace-completion-proposal.md` | Shipped |
+| Guided authoring (no-syntax "Add another") | `guidance/guided-authoring-proposal.md` | Proposed |
 
 ## Working notes
 
