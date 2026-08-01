@@ -2980,6 +2980,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="fm-cat-head">Tools</div>
         <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
         <div class="cmd-item" id="btn-footnotes"><div class="cmd-icon" data-fa="fa-solid fa-superscript" data-fb="†">†</div><div class="cmd-info"><span class="cmd-label">Footnotes</span><span class="cmd-desc">List every footnote; copy one to cite again, or delete an unused one</span></div></div>
+        <div class="cmd-item" id="btn-seed"><div class="cmd-icon" data-fa="fa-solid fa-dice-d20" data-fb="🎲">🎲</div><div class="cmd-info"><span class="cmd-label">Random seed</span><span class="cmd-desc">Fix this document's rolls to a seed so a shared copy draws the same</span></div></div>
         <div class="cmd-item" id="btn-tags"><div class="cmd-icon" data-fa="fa-solid fa-tag" data-fb="#">#</div><div class="cmd-info"><span class="cmd-label">Browse tags</span><span class="cmd-desc">See every hashtag as a tree; pick one to filter the document</span></div></div>
         <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
              version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels-row). -->
@@ -3214,7 +3215,7 @@ let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', children: [], checked: false, collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, journal: { mode: 'append', targetId: null }, rollLog: { on: false, targetId: null }, appearance: { tags: {}, props: {} }, calendar: null, calendars: {}, gamelog: null };
+  return { id: uid(), text: '', note: '', type: 'ul', children: [], checked: false, collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, seed: null, journal: { mode: 'append', targetId: null }, rollLog: { on: false, targetId: null }, appearance: { tags: {}, props: {} }, calendar: null, calendars: {}, gamelog: null };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -7841,7 +7842,22 @@ function parseDice(input, vars = {}) {
   return terms;
 }
 
-function rnd(sides) { return 1 + Math.floor(Math.random() * sides); }
+// #1243 (deferred): the document session RNG. When a doc carries a seed, the FROZEN/on-action draws
+// (dice, deck shuffles, a roll's pick) come from a mulberry32 stream seeded by root.seed, so opening a
+// shared doc with the same seed reproduces the same session. `srand` falls back to Math.random when no
+// seed is set, so default docs behave exactly as before and the test harness's Math.random hook still
+// works. It is NOT used for keys/ids (those must stay unique) or for LIVE render-time re-rolls (a bare
+// alternation), which would make the frozen stream depend on render count.
+let _sessionRng = null;
+function srand() { return _sessionRng ? _sessionRng() : Math.random(); }
+// (Re)seed the session RNG from the current doc. Called on every doc load and whenever the seed is
+// set, so a fresh session (of on-action re-rolls) starts from the doc's seed and is reproducible.
+function applyDocSeed() { _sessionRng = (typeof root !== 'undefined' && root && root.seed != null) ? rngFromSeed(root.seed) : null; }
+// Set or clear the document session seed and re-seed the RNG. A number activates reproducible draws;
+// null returns the doc to fresh Math.random randomness. Dirties for autosave/round-trip.
+function setDocSeed(seed) { root.seed = (seed == null) ? null : (Number(seed) >>> 0); applyDocSeed(); markDirty(); }
+
+function rnd(sides) { return 1 + Math.floor(srand() * sides); }
 
 // Roll a parsed term list into {total, parts} — parts keep individual roll chains.
 function rollParsed(terms) {
@@ -7855,7 +7871,7 @@ function rollParsed(terms) {
     const rerolledFrom = [];
     for (let i = 0; i < count; i++) {
       if (sides === 'F') {
-        rolls.push([Math.floor(Math.random() * 3) - 1]); rerolledFrom.push(null);  // Fate: −1 / 0 / +1
+        rolls.push([Math.floor(srand() * 3) - 1]); rerolledFrom.push(null);  // Fate: −1 / 0 / +1 (session-seeded)
       } else if (exploding) {
         const chain = [rnd(sides)];
         while (chain[chain.length - 1] === sides && chain.length < 100) chain.push(rnd(sides));
@@ -9018,7 +9034,7 @@ function toOpml(r) {
   const calsHas = r.calendars && Object.keys(r.calendars).length;
   const gamelogHas = r.gamelog && r.gamelog.targetId != null;
   const unitsHas = r.units && typeof r.units === 'object' && Object.keys(r.units).length;   // #875: declared units only, built-ins never serialized
-  const headCfg = headEl('_footnotes', r.footnotes) + headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '');
+  const headCfg = headEl('_footnotes', r.footnotes) + headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (r.seed != null ? headEl('_seed', String(r.seed >>> 0)) : '') + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -9245,6 +9261,9 @@ function fromOpml(xml) {
   const rollLogRaw    = doc.querySelector('head > _rolllog')?.textContent?.trim();
   const rollLog       = (() => { try { const j = JSON.parse(rollLogRaw || 'null'); return (j && typeof j === 'object') ? { on: !!j.on, targetId: typeof j.targetId === 'string' ? j.targetId : null } : { on: false, targetId: null }; } catch(_) { return { on: false, targetId: null }; } })();
   const docId         = doc.querySelector('head > _docid')?.textContent?.trim() || null;
+  // #1243: the document session seed (a 32-bit uint) or null. Null/blank/garbage keeps the doc on
+  // Math.random (default behavior); a valid seed makes dice/deck/roll draws reproducible.
+  const seed          = (() => { const s = doc.querySelector('head > _seed')?.textContent?.trim(); if (!s) return null; const n = parseInt(s, 10); return Number.isFinite(n) ? (n >>> 0) : null; })();
   // data packs (plugins): the validator drops shape-invalid packs (no string id);
   // bad rules/vars inside a kept pack are neutralized defensively at collect time.
   const plugins       = headJSONArray(doc, '_plugins', validPluginPack);
@@ -9273,7 +9292,7 @@ function fromOpml(xml) {
   // legacy doc loads unchanged and convert() still works off the built-ins.
   const unitsRaw      = doc.querySelector('head > _units')?.textContent?.trim();
   const units         = (() => { try { return normalizeUnits(JSON.parse(unitsRaw || 'null')) || undefined; } catch(_) { return undefined; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, footnotes, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, journal, rollLog,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, footnotes, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, seed, journal, rollLog,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -15206,6 +15225,30 @@ async function openWorkspaceSwitcher() {
 }
 
 // Broken-links report (backlog #4): a maintenance view of every dangling link — same-doc AND, when a
+// #1243: view/set the document session seed. A seed makes on-action draws (dice, deck shuffles, a
+// roll's pick) reproducible, so a shared copy on the same seed reproduces the session. Blank turns it
+// off (back to fresh Math.random). Rides the shared openInsertDialog harness; prefills a fresh seed
+// when off, so a click-through activates reproducible play.
+function openSeedDialog() {
+  const cur = root.seed;
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-dice-d20', fb: '🎲' },
+    title: 'Random seed',
+    submitLabel: cur != null ? 'Update seed' : 'Set seed',
+    fields: [
+      { key: 'seed', label: 'Seed number', placeholder: 'A whole number, or blank to turn off',
+        value: cur != null ? String(cur) : String(estNewSeed()) },
+    ],
+    validate: v => { const s = String(v.seed || '').trim(); return s === '' || /^\d+$/.test(s); },
+    onSubmit: v => {
+      const s = String(v.seed || '').trim();
+      if (!s) { setDocSeed(null); flashHint('Random seed off. Rolls in this document use fresh randomness again.'); return; }
+      setDocSeed(parseInt(s, 10));
+      flashHint('Seed set. Dice, decks and rolls in this document now follow it, so a shared copy on the same seed reproduces the session.');
+    },
+  });
+}
+
 // folder is connected, cross-doc — the first consumer of the pure collectBrokenLinks. Mirrors the
 // openWorkspaceSwitcher io-card list idiom (same .tpl-* rows + keyboard nav). A row navigates to the
 // SOURCE point (where the broken link lives, so you can fix it): zoomInto same-doc, followLinkTarget
@@ -17513,7 +17556,7 @@ function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
   return hits;
 }
 function pickOneHit(hits) {
-  return hits.length ? hits[Math.floor(Math.random() * hits.length)] : '';
+  return hits.length ? hits[Math.floor(srand() * hits.length)] : '';   // #1243: a roll picks on-action -> session-seeded
 }
 
 // #899: the FOLDER-scoped pool behind {roll folder: <query>} — the generative member of the 4c
@@ -23416,12 +23459,13 @@ function seqParts(body) {
   return items.length ? { mode, items, count } : null;
 }
 
-// A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests
-// can seed it).
-function shuffledIndices(n) {
+// A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests can seed it). `rng`
+// lets an on-action caller (a stateful deck draw) route through the session RNG for reproducibility;
+// the stateless render-time shuffle keeps the default Math.random so it stays live.
+function shuffledIndices(n, rng = Math.random) {
   const a = Array.from({ length: n }, (_, i) => i);
   for (let i = n - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rng() * (i + 1));
     const t = a[i]; a[i] = a[j]; a[j] = t;
   }
   return a;
@@ -23454,9 +23498,9 @@ function nextSeqIndex(rec) {
   // never the item that just ended the previous round). `rec.last` round-trips on
   // the record like `pos`/`bag`.
   if (!Array.isArray(rec.bag) || rec.bag.length === 0) {
-    rec.bag = shuffledIndices(n);
+    rec.bag = shuffledIndices(n, srand);   // #1243: a stateful deck draw is on-action -> session-seeded
     if (n > 1 && rec.bag[0] === rec.last) {       // would repeat the last drawn item
-      const j = 1 + Math.floor(Math.random() * (n - 1));
+      const j = 1 + Math.floor(srand() * (n - 1));
       const t = rec.bag[0]; rec.bag[0] = rec.bag[j]; rec.bag[j] = t;
     }
   }
@@ -31974,6 +32018,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   resetDocCaches();
   migrateNodePrefixes(root);
   migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
+  applyDocSeed();              // #1243: seed the session RNG from this doc's seed (or Math.random if none)
   normalizeCalendarBindings(root); // #653: every adopted doc gets the {calendars, gamelog} shape (mkRoot has it, but a legacy import / self-contained HTML may not)
   promoteLoadedShorthand(root);   // typed-but-unpromoted {…} from an imported/loaded doc → fresh pills
   buildIndex(root, null);
@@ -37695,6 +37740,7 @@ document.getElementById('btn-import')?.addEventListener('click', () => { closeFi
 document.getElementById('btn-starters')?.addEventListener('click', () => { openStarterGallery(); });   // #565 (closes the menu itself)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
 document.getElementById('btn-footnotes')?.addEventListener('click', () => { closeFileMenu(); showFootnotesReport(); });   // Phase B: the footnotes manager
+document.getElementById('btn-seed')?.addEventListener('click', () => { closeFileMenu(); openSeedDialog(); });   // #1243: the document session seed
 document.getElementById('btn-tags')?.addEventListener('click', () => { closeFileMenu(); openTagBrowser(); });   // tag browser
 document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
@@ -38942,6 +38988,12 @@ const GUIDE = [
       { syn:'{hit := 2d6+str vs 2d6+def}', desc:'attack vs defence; the margin is the lead' },
       { syn:'{= hit > 0}',                 desc:'read the margin in math: did the first side win' },
       { syn:'{clash := 6d10>=7 vs 5d10>=7}', desc:'success pool vs pool: the margin is net successes' },
+    ] },
+  { id:'random-seed', cat:'generators', related:['dice','deck'],
+    title:'Reproducible rolls (random seed)',
+    body:"Every roll in a document is normally fresh randomness, so two people opening the same file and re-rolling get different results. If you want a document's dice, decks and rolls to come out the same for everyone, give it a seed: open the File menu and choose Random seed, then enter a number. From then on the rolls you make follow that seed, so sharing the file on the same seed reproduces the same session, which is useful for a scripted encounter or a shared table. Leave the field blank to turn it back off. A seed changes future rolls, not ones already frozen on the page, so re-roll a pill to draw the next value in the seeded sequence.",
+    examples:[
+      { syn:'File → Random seed', desc:'fix the document to a seed number' },
     ] },
   { id:'grammar', cat:'generators', covers:['grammar','rolltable'], related:['gen-rules','dice','deck','recipe-npc'],
     title:'Random picks & tables',
@@ -41640,6 +41692,7 @@ function applyAutosaveData(data) {
   normalizeCalendarBindings(root); // #653: guarantee {calendars, gamelog} shape + re-validate each named calendar (a pre-feature or tampered autosave has none / could be broken)
   migrateNodePrefixes(root);
   migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
+  applyDocSeed();              // #1243: seed the session RNG from this doc's seed (or Math.random if none)
   buildIndex(root, null); resetDocCaches();
   focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
   if (data.fileName) {
@@ -42810,6 +42863,7 @@ maybeShowFirstRun();
 
 migrateNodePrefixes(root);
 migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
+applyDocSeed();              // #1243: seed the session RNG from this doc's seed (or Math.random if none)
 buildIndex(root, null); resetDocCaches();
 ensureDocId(root);
 syncVerbosityClass();   // #586: paint the default (guided) verbosity class at boot — a fresh boot has no
