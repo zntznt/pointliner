@@ -777,6 +777,25 @@ test('#1240 phase 1: the add-row dialog wires the cores to a promoted row (sourc
   assert.match(createRow, /buildIndex\(/, 'and re-indexes so rollups/searches see the new point');
 });
 
+test('#1240 phase 1b: the "+ Add" affordance is wired + verbosity-gated (source pin)', () => {
+  // The DOM render cannot run headless; the LIVE three-tier drive is the real proof (Lean must read
+  // pixel-identical at rest). This pins the wiring's shape so a regression bites — it never proves it renders.
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.match(aff, /deriveTypeFromText\(node\.text\)/, 'only on a section heading (derived from text, not node.type)');
+  assert.match(aff, /inferRowShape\(node\.children/, 'only when the children share a shape');
+  assert.match(aff, /openAddRowForm\(node\.id\)/, 'opens the values-only dialog');
+  assert.match(aff, /addEventListener\('mousedown', e => e\.preventDefault\(\)\)/,
+    'caret invariant (P3-3): never steals focus on press');
+  assert.match(aff, /'keydown'/, 'a keyboard path sits alongside the pointer one');
+  assert.match(aff, /if \(isGuided\(\)\)[\s\S]{0,24}\.title =/, 'the tooltip is Guided-only (Standard/Lean strip it)');
+  assert.match(aff, /setAttribute\('aria-label'/, 'the accessible name is kept in every tier');
+  assert.match(aff, /fireNudge\(/, 'a Guided-only once-ever nudge points at it (#519)');
+  assert.match(fnBody(_src, 'renderRow'), /maybeAddRowAffordance\(node, row\)/, 'renderRow appends it (non-search)');
+  // CSS gating: the edit-pencil rule — Lean hides at rest and reveals on keyboard focus, always clickable.
+  assert.match(_src, /body\.v-lean \.addrow-affordance\{opacity:0\}/, 'Lean: no at-rest chrome');
+  assert.match(_src, /body\.v-lean \.addrow-affordance:focus-visible\{opacity:1\}/, 'Lean: focus reveals it, still clickable');
+});
+
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
   // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
   // production cookieNode is the live render node." BOTH were false, and the second one is why the
