@@ -52,12 +52,60 @@ The recurring authoring moment is a user looking at a list of sibling points tha
 
 ### The front door (owner decision, 2026-08): a VISIBLE "+ Add another" affordance
 
-The primary door is a persistent **"+ Add [noun]"** control at the end of a shaped list, always visible in
-Guided mode — because the people who bounced will never type `/`. It opens the inferred form inline. The
-Builder route (typing `/` on a new bullet offers the same inferred "Add …" as its top suggestion) is a
-secondary door for keyboard users and comes for free from the same computed form; it is not the v1 focus.
-The inferred noun comes from the parent heading or the shared tag ("expense", "card", "character",
-"book"), falling back to "item".
+The primary door is a **"+ Add [noun]"** control at the end of a shaped list — because the people who
+bounced will never type `/`. It opens the inferred form inline. The inferred noun comes from the parent
+heading or the shared tag ("expense", "card", "character", "book"), falling back to "item".
+
+**But "primary" is not "only," and it must NOT be a guided-only feature** — that would make a *capability*
+depend on the tier, which violates the dial's first law (`ux.md`: "Lean = less guidance, never fewer
+features"). See the verbosity-conformance section below for the exact model. In short: the capability rides
+the SAME three-tier surface `/` and `@` already use (Builder form → slash-menu item → one-line lean tip),
+and the "+ Add" control is an edit-pencil-class *convenience* (present at every tier, chrome receding in
+Lean), not a guided-only bolt-on.
+
+## Verbosity conformance (guided / standard / lean) — the part that must not introduce garbage
+
+`ux.md` is binding here, and its model is "one UI, conditional helpers; build lean-first; the dial strips
+what EXPLAINS and how much it AFFORDS, never WHAT you can do." The plan conforms as follows. The base
+(Lean) interaction is built first; each richer tier only *adds* a removable layer.
+
+**The capability (add a shaped row) is reachable at every tier — three surfaces of one thing:**
+
+- **Always, all tiers — typing.** Any user can type the row directly (`Aldi #august #groceries {prop cost:
+  92.40}`). This is the bare interaction and it is unchanged. A Lean user already knows the syntax; this is
+  their fast path and it is never taken away.
+- **Via `/` — riding the existing three-tier menu surface**, exactly like every other command (`index.html`
+  branches this already): **Guided** → the Builder renders the computed form; **Standard** → the slash menu
+  lists "Add [noun]" with its description (menus are conveniences, kept); **Lean** → `renderLeanSlashTip`
+  shows the one-line caret tip, blind-typing-plus-confirm — no proactive menu. So the row-add is
+  lean-compatible *by construction*, not by a special case.
+
+**The "+ Add [noun]" affordance is an edit-pencil-class convenience, gated like the pencil, not like a hint:**
+
+- The dial table already sets the precedent: inline pill **edit pencils** are "visible on hover" in Guided
+  and Standard, and in Lean "hidden until keyboard focus (still clickable)". The "+ Add" control takes the
+  **identical** rule — **Guided/Standard: visible at rest / on hover; Lean: hidden until keyboard focus, but
+  always still clickable** (P3, "every clickable widget stays clickable at all levels"). At-rest Lean stays
+  a clean keyboard-first canvas with zero new chrome; the capability is still one keystroke away.
+- Its explanatory chrome — a `title=` tooltip like "add another expense" — follows the **tooltip rule**:
+  present in Guided, **stripped in Standard and Lean** (`isStandardOrLean()` sweep), with the `aria-label`
+  twin always kept (P3). Standard's charter is "stop explaining, keep the conveniences": the control stays,
+  the sales pitch for it goes.
+
+**The form itself is a dialog-class convenience, not tier-gated** (the dial table: modal chips/dialogs are
+"full set — not tier-gated"). When explicitly invoked — clicking "+ Add", or the `/` command — the form
+opens at any tier; the dial governs what is shown *proactively/at rest*, never what an explicit action
+produces. A Lean user who clicks "+ Add" gets the form; the dial just never *pushes* it at them.
+
+**Any teaching is a nudge, and nudges are Guided-only, once-ever** (the #519 precedent): the single
+allowed teaching aid is a one-time `fireNudge` toast the first time a shaped list appears ("Tip: use + Add
+to grow this list without typing tags"), which `fireNudge` already suppresses in Standard/Lean and persists
+as seen. No persistent hint text, no re-nag.
+
+**Net effect per tier:** Lean gains nothing at rest (no chrome, no hint, tooltip stripped) and loses
+nothing (type it, or `/` → one-line tip, or focus-reveal the still-clickable control). Standard gains the
+clickable "+ Add" convenience and the slash-menu item, minus the tooltip and the nudge. Guided gets the
+full teaching surface. That is the dial working as designed, not a fourth variant bolted on.
 
 ## Phased plan
 
@@ -66,11 +114,18 @@ The inferred noun comes from the parent heading or the shared tag ("expense", "c
   reliably detect the shared shape without over- or under-including (e.g. a tag on only one sibling is not
   "shared"; a prop's type is inferred number vs text from its values)? Also a pure `buildRow(shape, values)`
   → the bullet text string, pinned. Prove both by reverting.
-- **Phase 1 (v1) — "Add a row like this."** The visible "+ Add [noun]" affordance at the end of a shaped
-  sibling list; clicking it opens a computed form (fed to `showBuilderForm` via `cfgOverride`) with one
-  field per prop plus a text field; tags and to-do/date markers applied automatically; `insert` calls
-  `buildRow`. Guided-tier only (standard/lean untouched). Covers expenses, books, cast, inventory, tasks,
-  syllabus lines — the majority of the panel's pain. **Decision: rows first; decks are Phase 2.**
+- **Phase 1 (v1) — "Add a row like this," built lean-first in two layers.**
+  - **1a (the bare interaction, all tiers).** A `/`-invokable "add row" command that reads `inferRowShape`
+    and produces the computed form via `showBuilderForm(cmd, pane, cfgOverride)` — so it flows through the
+    existing three-tier surface for free (Builder form in Guided, slash-menu item in Standard, one-line tip
+    in Lean). This is the lean-compatible base; nothing about it is guided-only.
+  - **1b (the affordance-reveal overlay).** The visible **"+ Add [noun]"** control at the end of a shaped
+    list, wired to the SAME command/form as 1a. Gated with the **edit-pencil rule** (visible in
+    Guided/Standard, hidden-until-keyboard-focus in Lean, always clickable); its `title=` tooltip stripped
+    in Standard/Lean; `aria-label` kept. Plus the Guided-only first-time `fireNudge`.
+  The form has one field per inferred prop plus a text field; tags and to-do/date markers are applied
+  automatically; `insert` calls `buildRow`. Covers expenses, books, cast, inventory, tasks, syllabus lines
+  — the majority of the panel's pain. **Decision: rows first; decks are Phase 2.**
 - **Phase 2 — "Add a card"** for `{shuffle:}` decks (structurally different — cards live inside one pill):
   a form (card text / optional answer) that appends to the deck body without the user touching the raw
   pipe-delimited line. The teacher's exact ask.
@@ -84,8 +139,12 @@ The inferred noun comes from the parent heading or the shared tag ("expense", "c
 - **P5 — no new syntax.** Every form writes existing braces; the syntax inventory is unchanged.
 - **P2 — additive front door.** The form sits ALONGSIDE typing; power users keep `/prop:owner=zeo` etc.
   Nothing is removed.
-- **Verbosity-gated.** Guided tier only by default (the teaching tier); standard/lean are unaffected,
-  matching the dial's philosophy.
+- **Verbosity-conformant (not "guided-only").** See the verbosity-conformance section: the CAPABILITY is
+  reachable at every tier (type it, or `/` → the three-tier menu surface), the "+ Add" control is an
+  edit-pencil-class convenience (Lean = hidden-until-focus, still clickable), its tooltip is stripped in
+  Standard/Lean, the form is dialog-class (not tier-gated on explicit invoke), and the only teaching aid is
+  a Guided-only once-ever nudge. Lean gains no at-rest chrome and loses no capability — the dial's first
+  law ("less guidance, never fewer features") holds. Built lean-first (1a before 1b).
 - **Caret invariant (P3-3).** Any affordance is wired mousedown + preventDefault with keyboard added
   alongside; never converted to `click`/`<button>` in a way that breaks the caret.
 - **Both-arms discipline.** Pure cores (`inferRowShape`, `buildRow`) extracted, in `load-cores`, seeded and
@@ -103,6 +162,10 @@ The inferred noun comes from the parent heading or the shared tag ("expense", "c
    field so totals/checks keep working (the whole point).
 5. **Empty-list case** — a starter section a user starts from scratch has no siblings to infer from; v1 can
    require one example row (the starters all ship with examples), with the from-scratch path deferred.
+6. **At-rest chrome density (the look-and-react loop, `ux.md` caveat).** Even in Guided, a "+ Add" at the
+   end of every shaped list could read as clutter. Tune on the running app: on-hover-of-the-list vs
+   always-visible, weight/placement, and whether Standard should hover-reveal it (like the pencil) rather
+   than show it at rest. This is visual tuning, not a spec decision — decide with eyes on it.
 
 ## Verification plan
 
@@ -110,4 +173,12 @@ The inferred noun comes from the parent heading or the shared tag ("expense", "c
 - Live-drive in Chrome: on the Household budget starter, use "+ Add expense", fill "Aldi / 92.40", and
   confirm the new bullet reads `Aldi #august #groceries {prop cost: 92.40}` AND the month total, the
   category total, and the cap check all move — the payoff the nurse and shop owner never reached.
-- UX Conformance Statement (P2 door added, P5 no new syntax, P3 caret invariant), per the UI-change process.
+- **Drive all three tiers** (the point of this whole review): **Guided** shows the "+ Add" control at rest,
+  its tooltip, and the once-ever nudge; **Standard** shows the control (clickable) but no tooltip and no
+  nudge; **Lean** shows NO at-rest chrome — the control is hidden until keyboard focus yet still fires, and
+  `/` gives the one-line tip. Confirm the same "Aldi / 92.40" row can be produced in each tier (via type,
+  `/`, or focus-revealed control) — capability constant, guidance variable.
+- Cross-tier regression: toggling the dial (`⌘⇧.`) must not leave the control stranded or double-rendered;
+  Lean at rest must read exactly as it did before this feature (no new pixels).
+- UX Conformance Statement (P2 door added, P5 no new syntax, P3 caret invariant + every-widget-clickable),
+  per the UI-change process.
