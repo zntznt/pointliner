@@ -857,6 +857,15 @@ test('#1240 phase 3: the "+ Card" affordance + append are wired (source pin)', (
   assert.match(fnBody(_src, 'renderRow'), /maybeAddCardAffordance\(node, row\)/, 'renderRow appends it');
 });
 
+test('#1245 phase 4: the add-row/card affordance is a real tap target on touch (source pin)', () => {
+  // On touch there is no hover to reveal or brighten, and a thumb needs ~30px. The @media(hover:none) rule
+  // shows the door fully and as a tap target at EVERY tier (touch has no Lean at-rest floor to keep, same as
+  // the edit pencils). The form dialog is already responsive (#io-card max-width + full-width inputs) — shared
+  // infra, unchanged. This is the phone-first entry the everyday-admin user needs (#1245).
+  assert.match(_src, /@media\(hover:none\)\{\s*\.addrow-affordance,body\.v-lean \.addrow-affordance\{opacity:1;min-height:30px/,
+    'touch: fully visible + a ~30px tap target at every tier');
+});
+
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
   // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
   // production cookieNode is the live render node." BOTH were false, and the second one is why the

@@ -571,7 +571,12 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .addrow-affordance:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px}
 body.v-lean .addrow-affordance{opacity:0}
 body.v-lean .addrow-affordance:focus-visible{opacity:1}
-@media(hover:none){.addrow-affordance{opacity:.6}body.v-lean .addrow-affordance{opacity:.6}}
+/* #1245 mobile rail: on touch there is no hover to reveal or brighten, and a thumb needs a real target.
+   So the "+ Add"/"+ Card" door is fully visible and a ~30px tap target at every tier (touch has no Lean
+   at-rest floor to keep, same as the edit pencils) — the phone-first entry the everyday-admin user needs. */
+@media(hover:none){
+  .addrow-affordance,body.v-lean .addrow-affordance{opacity:1;min-height:30px;height:auto;padding:5px 13px;font-size:12.5px}
+}
 /* V6: pill edit-pencils are a verbose-tier affordance. Hidden AT REST (opacity 0 in
    each `*-edit` rule below) so pill-dense lines stay calm; revealed on pill-hover
    (the `*-roll:hover .*-edit` rules). Touch has no hover, so this block keeps them
