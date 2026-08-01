@@ -559,6 +559,19 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
    confirms instantly — no dwell on the inner :hover */
 .dice-edit:hover,.mk-edit:hover,.gr-edit:hover,.math-edit:hover,.est-edit:hover,
 .var-edit:hover,.mt-promote:hover{transition-delay:0s}
+/* #1240 guided authoring: the "+ Add" affordance on a heading whose children share a shape. A CONVENIENCE
+   (the edit-pencil class), not a hint: visible at rest in Guided/Standard, hidden-until-keyboard-focus in
+   Lean, always clickable. Tooltip is Guided-only (set in JS, the isStandardOrLean strip rule); the
+   aria-label is kept every tier (P3). Lean gains no at-rest chrome — the first law of the dial. */
+.addrow-affordance{display:inline-flex;align-items:center;align-self:center;gap:3px;margin-left:10px;
+  padding:0 8px;height:18px;font-size:11px;font-weight:500;line-height:1;color:var(--muted);
+  background:transparent;border:1px solid var(--bdr-ui);border-radius:999px;cursor:pointer;user-select:none;
+  flex:0 0 auto;opacity:.6;transition:opacity .12s,background .12s,color .12s,border-color .12s}
+.addrow-affordance:hover{opacity:1;background:var(--row-hover);color:var(--fg);border-color:var(--acc)}
+.addrow-affordance:focus-visible{opacity:1;outline:2px solid var(--acc);outline-offset:1px}
+body.v-lean .addrow-affordance{opacity:0}
+body.v-lean .addrow-affordance:focus-visible{opacity:1}
+@media(hover:none){.addrow-affordance{opacity:.6}body.v-lean .addrow-affordance{opacity:.6}}
 /* V6: pill edit-pencils are a verbose-tier affordance. Hidden AT REST (opacity 0 in
    each `*-edit` rule below) so pill-dense lines stay calm; revealed on pill-hover
    (the `*-roll:hover .*-edit` rules). Touch has no hover, so this block keeps them
@@ -13241,6 +13254,7 @@ function renderRow(r) {
   if (hasVisibleProps(node)) { // #494: not just props?.length — timestamp-only props render nothing
     div.appendChild(buildPropsRow(node, opts));
   }
+  if (!opts.searchCtx) maybeAddRowAffordance(node, row);   // #1240: the "+ Add" door on a shaped-list heading
   return div;
 }
 
@@ -39638,6 +39652,32 @@ function openAddRowForm(contextNodeId) {
       if (createPromotedRow(ctx, rowText)) flashHint('Added to ' + noun);   // openInsertDialog closes itself after onSubmit
     },
   });
+}
+// #1240 phase 1b: the VISIBLE front door. On a heading whose children share a shape, append a "+ Add"
+// convenience that opens the values-only dialog — so a non-syntax user grows the list by pointing, never
+// typing tags. The edit-pencil gating lives in CSS (.addrow-affordance; Lean hides it at rest, keyboard
+// focus reveals it, always clickable); the tooltip is Guided-only; the caret is never stolen (mousedown
+// preventDefault + a keyboard path alongside, P3-3). A Guided-only once-ever nudge points at it (#519).
+function maybeAddRowAffordance(node, row) {
+  // A section heading — derived from the TEXT, not node.type: a `## Groceries` point renders as an H2 via
+  // the content markdown while its node.type stays 'ul', so deriveTypeFromText is the reliable check.
+  if (!/^h[1-6]$/.test(deriveTypeFromText(node.text) || '')) return;
+  if (!node.children || node.children.length < 2) return;  // inferRowShape needs 2+ rows; cheap early out
+  const shape = inferRowShape(node.children, knownStates(root));
+  if (!shape) return;                                       // no shared shape → no door
+  const noun = rowNoun(node, shape);
+  const btn = document.createElement('span');
+  btn.className = 'addrow-affordance';
+  btn.setAttribute('role', 'button');
+  btn.setAttribute('tabindex', '-1');
+  btn.setAttribute('aria-label', 'Add to ' + noun);        // the accessible name is kept in every tier
+  if (isGuided()) btn.title = 'Add to ' + noun;            // the tooltip is Guided-only (Standard/Lean strip it)
+  btn.textContent = '+ Add';
+  btn.addEventListener('mousedown', e => e.preventDefault());          // caret invariant: never steal focus on press
+  btn.addEventListener('click', e => { e.stopPropagation(); openAddRowForm(node.id); });
+  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAddRowForm(node.id); } });
+  row.appendChild(btn);
+  fireNudge('addrow-affordance', 'Tip: the + Add on a section grows the list without typing tags or braces');
 }
 
 // ─── builder embedded forms ──────────────────────────────────────────────────
