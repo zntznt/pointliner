@@ -796,6 +796,46 @@ test('#1240 phase 1b: the "+ Add" affordance is wired + verbosity-gated (source 
   assert.match(_src, /body\.v-lean \.addrow-affordance:focus-visible\{opacity:1\}/, 'Lean: focus reveals it, still clickable');
 });
 
+test('#1240 phase 2: blank-scaffold cores for the structured "Add another" (stamp path)', () => {
+  const kid = (id, text, children = []) => ({ id, text, children, props: [], seq: [] });
+  // richestStructuredSibling: the page with the MOST descendants is the implicit template; null if flat.
+  const cast = [
+    kid('a', 'Sereth #character', [ kid('a1', 'trait: reads coastlines'), kid('a2', 'debt: owes the guild') ]),
+    kid('b', 'Marn #character', [ kid('b1', 'debt: forged papers') ]),
+  ];
+  assert.equal(c.richestStructuredSibling(cast).id, 'a', 'the richest page (most children) is the template');
+  const flat = [ kid('x', 'Aldi #groceries'), kid('y', 'Costco #groceries') ];
+  assert.equal(c.richestStructuredSibling(flat), null, 'a flat list has no structured template (→ values form)');
+  // A markdown-heading child is a SECTION, not a list-item page — never a stamp template (so "+ Add" on a
+  // doc title never offers to stamp a whole section).
+  const sections = [ kid('s1', '## Cast', [ kid('s1a', 'a'), kid('s1b', 'b') ]), kid('s2', '## Threads', [ kid('s2a', 'c') ]) ];
+  assert.equal(c.richestStructuredSibling(sections), null, 'section headings are excluded from stamp templates');
+  // blankScaffoldText: the title keeps only its tags; a "label:" child keeps the label and blanks the value.
+  assert.equal(c.blankScaffoldText('Sereth Vale, cartographer #character', true), '#character',
+    'the title keeps its tags and drops the specific name');
+  assert.equal(c.blankScaffoldText('trait: reads a coastline', false), 'trait: ', 'a label child keeps the label, blanks the value');
+  assert.equal(c.blankScaffoldText('who is here:', false), 'who is here: ', 'a bare label ending in a colon is kept');
+  assert.equal(c.blankScaffoldText('[[#sereth|]]', false), '', 'a non-label leaf empties');
+  // blankScaffoldNode: mutates the whole subtree and clears the sidecars the clone carried.
+  const page = kid('p', 'Sereth Vale #character', [ kid('p1', 'trait: reads coastlines') ]);
+  page.props = [{ key: 'x', val: '1' }];
+  c.blankScaffoldNode(page, true);
+  assert.equal(page.text, '#character');
+  assert.equal(page.children[0].text, 'trait: ');
+  assert.equal(page.props.length, 0, 'sidecars are cleared on the scaffold');
+});
+
+test('#1240 phase 2: the "+ Add" routes structured lists to the stamp path (source pin)', () => {
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.match(aff, /richestStructuredSibling\(node\.children\)/, 'a structured list routes to the stamp path');
+  assert.match(aff, /stampScaffold\(node, template\)/, 'and stamps a blanked scaffold');
+  assert.match(aff, /openAddRowForm\(node\.id\)/, 'a flat list still opens the values form');
+  const stamp = fnBody(_src, 'stampScaffold');
+  assert.match(stamp, /deepCloneNodeNewIds\(template\)/, 'the stamp reuses the link-safe clone (deepCloneNodeNewIds)');
+  assert.match(stamp, /blankScaffoldNode\(clone/, 'and blanks the clone to a fill-in scaffold');
+  assert.match(stamp, /focusNode\(clone\.id\)/, 'and lands the caret on the new page');
+});
+
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
   // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
   // production cookieNode is the live render node." BOTH were false, and the second one is why the
