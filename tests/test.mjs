@@ -760,6 +760,23 @@ test('#1240 buildRow — assembles the bullet a filled form produces (fill value
   assert.equal(c.buildRow(null, {}, 'just text'), 'just text');
 });
 
+test('#1240 phase 1: the add-row dialog wires the cores to a promoted row (source pin)', () => {
+  // The DOM half cannot run headless (it opens a dialog and mutates the live tree), so source-pin the
+  // wiring — the pure cores it rides are unit-tested above, and the whole flow was live-driven (a 2-field
+  // form produced `Corner shop milk run #august #groceries {prop cost: 13.46}` and moved the month total
+  // 718.54 → 732.00). A pin proves the seams are connected; it never proves they run (that was the drive).
+  const openForm = fnBody(_src, 'openAddRowForm');
+  assert.match(openForm, /inferRowShape\(/, 'reads the shape from the context children');
+  assert.match(openForm, /buildRow\(/, 'assembles the row via the pure builder');
+  assert.match(openForm, /createPromotedRow\(/, 'and inserts it as a promoted point');
+  assert.match(openForm, /openInsertDialog\(/,
+    'built on the shared dialog shell (UXP-247), never a hand-rolled shell');
+  const createRow = fnBody(_src, 'createPromotedRow');
+  assert.match(createRow, /mkNode\(/, 'creates a canonical fresh point');
+  assert.match(createRow, /promoteInlineShorthand\(/, 'promotes its {prop}/{date} shorthand to live pills');
+  assert.match(createRow, /buildIndex\(/, 'and re-indexes so rollups/searches see the new point');
+});
+
 test('resolveBrace {roll:} — the branch is wired and fails safe (P4 marker on no match)', () => {
   // This comment used to claim the module `let`s were unreachable from the vm sandbox and that "in
   // production cookieNode is the live render node." BOTH were false, and the second one is why the

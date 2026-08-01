@@ -39589,6 +39589,57 @@ function buildRow(shape, values, textValue) {
   return s;
 }
 
+// #1240 the DOM half (phase 1): a focused "Add another" dialog. Opened for a shaped list (a heading whose
+// children share a template), it shows a values-only form — a description field plus one field per shared
+// prop — and on submit assembles the row via buildRow and inserts it as a PROMOTED point (so its tags and
+// {prop}/{date} pills go live and the totals move). Reuses the io-card modal + the .builder-form field
+// styles; it is dialog-class per the verbosity plan (shown on explicit invoke at any tier, adding no
+// at-rest chrome). The visible "+ Add" affordance (phase 1b) and a /-verb call straight into this; here it
+// is reachable via openAddRowForm(headingId) for the live-drive. No new syntax — buildRow emits existing forms.
+function rowNoun(contextNode, shape) {
+  let t = String((contextNode && contextNode.text) || '').replace(/^#+\s*/, '');
+  t = t.replace(ROW_TAG_RE, '').replace(/\s*\[[\/%xX \-]\]\s*$/, '').trim();
+  if (t) return t;
+  const tags = (shape && shape.sharedTags) || [];
+  return tags.length ? tags[tags.length - 1] : 'item';
+}
+function createPromotedRow(parentNode, text) {
+  if (!parentNode) return null;
+  const n = mkNode(text);                 // canonical fresh point carrying the built shorthand text
+  parentNode.children.push(n);            // append to the end of the shaped list
+  promoteInlineShorthand(n);              // {prop}/{date} → live props (tags stay as #text); mirrors the load path
+  buildIndex(root, null);                 // re-index so searches/rollups see the new point (like stampTemplate)
+  markDirty();
+  render();
+  focusNode(n.id);
+  return n;
+}
+// Built on openInsertDialog (the shared dialog shell, UXP-247) so it inherits the draft-save, focus,
+// escape/backdrop and button-order discipline every dialog shares — never a hand-rolled shell.
+function openAddRowForm(contextNodeId) {
+  const ctx = nodeById(contextNodeId);
+  if (!ctx) return;
+  const shape = inferRowShape(ctx.children || [], knownStates(root));
+  if (!shape) { flashHint('These points do not share a shape to copy yet'); return; }
+  const noun = rowNoun(ctx, shape);
+  const ph = t => t === 'number' ? 'a number' : (t === 'date' ? 'YYYY-MM-DD or today+3' : '');
+  const fields = [{ key: '__text', label: 'Description', required: true }];
+  for (const p of shape.props) fields.push({ key: p.key, label: p.key.charAt(0).toUpperCase() + p.key.slice(1), placeholder: ph(p.type) });
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-plus', fb: '＋' },
+    title: 'Add to “' + noun + '”',
+    draftKey: 'addrow:' + contextNodeId,
+    submitLabel: 'Add',
+    fields,
+    onSubmit: vals => {
+      const propVals = {};
+      for (const p of shape.props) propVals[p.key] = String(vals[p.key] || '').trim();
+      const rowText = buildRow(shape, propVals, String(vals.__text || '').trim());
+      if (createPromotedRow(ctx, rowText)) flashHint('Added to ' + noun);   // openInsertDialog closes itself after onSubmit
+    },
+  });
+}
+
 // ─── builder embedded forms ──────────────────────────────────────────────────
 // Commands that need a dialog get a mini-form rendered in the builder's right
 // pane instead. The form replaces the GUIDE entry. On submit: strips the trigger
