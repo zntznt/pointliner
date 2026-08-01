@@ -1161,6 +1161,12 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .var-pill.var-bad{color:var(--del);border-style:dashed;cursor:default}
 .var-pill.var-bad:hover{box-shadow:none;border-color:var(--bdr)}
 .var-pill.var-cycle{border-color:var(--warn);border-style:dashed}
+/* #1243 contest pill: "9 vs 7 +2" reuses the var pill; the margin is emphasised (it feeds math),
+   the "vs" is quiet, and a sum-vs-pool mismatch reads as a dashed warn with a muted margin (P4). */
+.var-pill .vs-op{color:var(--muted)}
+.var-pill .vs-margin{margin-left:5px;font-weight:600;color:var(--acc)}
+.var-pill.var-versus-mismatch{border-style:dashed}
+.var-pill.var-versus-mismatch .vs-margin{color:var(--muted)}
 .var-pill.var-cycle .var-val{color:var(--warn)}
 .var-pill.var-shadowed{opacity:.38;border-style:dashed}
 .var-pill.var-shadowed .var-val{text-decoration:line-through}
@@ -7906,6 +7912,38 @@ function diceExprStr(terms) {
 
 function diceKey() { return 'r' + Math.random().toString(36).slice(2, 9); }
 
+// #1243 opposed rolls. Split "A vs B" into its two dice-expression sides at the top level. Exactly
+// two non-empty sides, split on a whitespace-delimited `vs` (so "2d6+strvs" never splits and a lone
+// "vs" inside a name is safe). Returns {left, right} strings, or null when it is not a contest.
+function parseVersus(input) {
+  const parts = String(input || '').split(/\s+vs\s+/i);
+  if (parts.length !== 2) return null;
+  const left = parts[0].trim(), right = parts[1].trim();
+  if (!left || !right) return null;
+  return { left, right };
+}
+
+// A parsed dice term list is a success POOL when any term counts successes, else a SUM.
+function versusKind(terms) { return (terms || []).some(t => t.success) ? 'pool' : 'sum'; }
+
+// Roll one contest: parse and roll each side (rollParsed collapses each to a single total, a pip sum
+// OR a success count), and read the MARGIN = left - right. `vars` resolves modifiers like str/def.
+// Returns a record, or null if either side is not a valid dice expression. `mismatch` flags a
+// sum-vs-pool contest, whose margin (pips minus successes) is meaningless, so the caller can warn (P4).
+function rollVersus(left, right, vars = {}) {
+  const lt = parseDice(left, vars), rt = parseDice(right, vars);
+  if (!lt || !rt) return null;
+  const lr = rollParsed(lt), rr = rollParsed(rt);
+  const leftKind = versusKind(lt), rightKind = versusKind(rt);
+  return {
+    left, right,
+    leftTotal: lr.total, rightTotal: rr.total,
+    leftParts: lr.parts, rightParts: rr.parts,
+    margin: lr.total - rr.total,
+    leftKind, rightKind, mismatch: leftKind !== rightKind,
+  };
+}
+
 // Build a fresh roll record from raw user input; null if the formula is invalid.
 function makeDiceRoll(input) {
   const vars = collectVars();
@@ -9357,7 +9395,7 @@ const INSERT_CMDS = [
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
   // Compute — live numbers and values
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation','format','currency','decimals','thousands','percent','money','budget'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. The operator is :=, so type {r := 5}. Reference it {name} anywhere.', ex:'{r := 5} · {beast := dragon | wyrm}', section:'Compute' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. The operator is :=, so type {r := 5}. Reference it {name} anywhere. Pit two rolls with vs and the frozen margin feeds math: {hit := 2d6+str vs 2d6+def}, then {= hit > 0}.', ex:'{r := 5} · {beast := dragon | wyrm} · {hit := 2d6 vs 2d6}', section:'Compute' },
   { id:'est',      icon:'≈',  fa:'fa-solid fa-wave-square',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess','format','currency','decimals','thousands','percent','money','budget'], label:'Estimate / uncertain', desc:'An uncertain value: a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample. Type the range forms directly; the sum and avg roll-ups are built here in the dialog.', ex:'{5 to 10} · {normal(8,2)} · {uniform(1,6)}', section:'Compute' },
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
@@ -18283,6 +18321,10 @@ function classifyBraceBody(body, rules, vars) {
     // #952: lockstep with promoteBraceBodyIn's varDecl arm through the shared varDeclKind — a
     // formula (live, self-heals) and a distribution (a seeded uncertain value) are both valid.
     if (varDeclKind(decl.expr, vars) !== 'pick') return 'artifact';
+    // #1243: a contest source ("A vs B") is a valid pick when BOTH sides parse as dice — the exact
+    // condition rollPickRecord promotes on, so classify and promote stay in lockstep (#952).
+    const vs = parseVersus(decl.expr);
+    if (vs) return (parseDice(vs.left, vars) && parseDice(vs.right, vars)) ? 'artifact' : 'invalid';
     const c = classifyBraceBody(decl.expr, rules, vars);
     // A quoted-string RHS classifies 'literal' (a fixed text value) — it IS a usable pick source,
     // exactly what rollPickSource accepts (#522: classify said 'invalid' while promote built a pill).
@@ -23762,6 +23804,24 @@ function rollPickSource(source, rules = collectRules(), vars = collectVars()) {
   return isBody ? resolveBrace(source, ctx) : expandTemplate(source, ctx);
 }
 
+// #1243: roll a pick var's source into its stored shape. A contest source ("A vs B") rolls both
+// sides and freezes the MARGIN as `rolled` (so it feeds evalMath through the var channel like any
+// captured die), plus a `versus` record for the two-sided display. Any other source rolls through
+// rollPickSource unchanged. Returns { rolled, versus? } or null when the source cannot roll.
+function rollPickRecord(source, rules = collectRules(), vars = collectVars()) {
+  const vs = parseVersus(source);
+  if (vs) {
+    const r = rollVersus(vs.left, vs.right, vars);
+    if (!r) return null;
+    return { rolled: String(r.margin), versus: {
+      left: r.left, right: r.right, leftTotal: r.leftTotal, rightTotal: r.rightTotal,
+      margin: r.margin, leftKind: r.leftKind, rightKind: r.rightKind, mismatch: r.mismatch,
+    } };
+  }
+  const rolled = rollPickSource(source, rules, vars);
+  return rolled === null ? null : { rolled: String(rolled) };
+}
+
 // Document-wide rule map: walk the whole tree and merge into one namespace
 // (later declarations win) every grammar pill's named rules — a named roll
 // table IS a one-rule grammar since the June 2026 collapse (migrateRolltables).
@@ -25999,9 +26059,9 @@ function promoteBraceBodyIn(node, body) {
       resetDocCaches();   // a later brace in this same promotion pass may read the fresh name
       return `[[var:${rec.key}]]`;
     }
-    const rolled = rollPickSource(decl.expr);
-    if (rolled !== null) {
-      const rec = { key: varKey(), name: decl.name, kind: 'pick', expr: decl.expr, rolled, typed: true };
+    const pr = rollPickRecord(decl.expr);
+    if (pr !== null) {
+      const rec = { key: varKey(), name: decl.name, kind: 'pick', expr: decl.expr, rolled: pr.rolled, versus: pr.versus, typed: true };
       (node.vars ||= []).push(rec);
       // Without this, a conditional/grammar promoted right after ({r := 1d20} {r == 20: …})
       // expands against the stale collectVars cache and freezes the unresolved marker.
@@ -28287,16 +28347,30 @@ function renderVarPill(key, v) {
   if (v.kind === 'pick') {
     const shadowed = _varShadowedKeys.has(key);
     const rolled = String(v.rolled ?? '');
+    const vs = v.versus;   // #1243: a contest pick carries its two-sided display record
+    const signed = (n) => (n >= 0 ? '+' : '') + n;
     let cls = 'var-pill var-pick';
+    if (vs) cls += ' var-versus';
+    if (vs && vs.mismatch) cls += ' var-versus-mismatch';
     if (shadowed) cls += ' var-shadowed';
     const title = shadowed ? 'Shadowed by a later declaration of this name'
+      : vs && vs.mismatch ? 'A sum versus a success pool: the margin mixes pips and successes. Click to re-roll'
+      : vs ? 'Contest: the margin feeds math. Click to re-roll · pencil to edit'
       : 'Click to re-roll · pencil to edit';
+    // The value cell: a plain frozen pick shows its value; a contest shows both totals and the margin,
+    // which is the number the var feeds to evalMath.
+    const valHtml = vs
+      ? `${escHtml(String(vs.leftTotal))}<span class="vs-op"> vs </span>${escHtml(String(vs.rightTotal))}<span class="vs-margin">${escHtml(signed(vs.margin))}</span>`
+      : escHtml(rolled);
+    const aria = vs
+      ? `Contest ${escQ(v.name)}: ${vs.leftTotal} versus ${vs.rightTotal}, margin ${signed(vs.margin)}${vs.mismatch ? ', mixed dice kinds' : ''}. Click to re-roll`
+      : `Random variable ${escQ(v.name)} = ${escQ(rolled)}. Click to re-roll`;
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
-      + ` aria-label="Random variable ${escQ(v.name)} = ${escQ(rolled)}. Click to re-roll">`
+      + ` aria-label="${aria}">`
       + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
       + `<span class="var-name">${escHtml(v.name)}</span>`
       + `<span class="var-eq">=</span>`
-      + `<span class="var-val">${escHtml(rolled)}</span>`
+      + `<span class="var-val">${valHtml}</span>`
       + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit random variable" title="Edit random variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
@@ -29129,10 +29203,10 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
     delete _insertDrafts['var-dialog'];   // UXP-246: committed, so the kept draft has served its purpose
     const nm = nameInp.value.trim(), ex = exprInp.value.trim();
     if (mode === 'pick') {
-      const rolled = rollPickSource(ex);                    // THE roll — once, here
-      if (rolled === null) return;
+      const pr = rollPickRecord(ex);                        // THE roll — once, here (contest-aware)
+      if (pr === null) return;
       closeIo();
-      onResult({ key: existing || varKey(), name: nm, kind: 'pick', expr: ex, rolled });
+      onResult({ key: existing || varKey(), name: nm, kind: 'pick', expr: ex, rolled: pr.rolled, versus: pr.versus });
       return;
     }
     closeIo();
@@ -29196,13 +29270,15 @@ function editVar(node, key) {
 function rerollPickVar(node, key, opts) {
   const v = node?.vars?.find(x => x.key === key);
   if (!v || v.kind !== 'pick') return;
-  const rolled = rollPickSource(v.expr);
-  if (rolled === null) return;
+  const pr = rollPickRecord(v.expr);
+  if (pr === null) return;
   if (activeContentId == null) pushUndo();   // undoable in display mode (E2; see rerollDice)
-  v.rolled = rolled;
+  v.rolled = pr.rolled;
+  v.versus = pr.versus;   // #1243: carry (or clear) the contest's two-sided display record
+  const shown = v.versus ? `${v.versus.leftTotal} vs ${v.versus.rightTotal} = ${pr.rolled}` : pr.rolled;
   markDirty();
-  announce(`${v.name} re-rolled: ${rolled}`);
-  logRoll(node, v.name, rolled);   // #918
+  announce(`${v.name} re-rolled: ${shown}`);
+  logRoll(node, v.name, shown);   // #918
   if (opts?.repaintAll === false) return; // edit-mode caller swaps its own buffer
   render();
   document.querySelector(`.var-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('var-rolled');

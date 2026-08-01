@@ -212,6 +212,61 @@ test('rollParsed — exploding chains on a max die', () => {
   } finally { c.resetRandom(); }
 });
 
+// ── #1243 contest / opposed rolls (margin = one side minus the other, at any level) ──────────
+test('#1243 parseVersus — splits A vs B at the top level, rejects non-contests', () => {
+  assert.equal(JSON.stringify(c.parseVersus('2d6+str vs 2d6+def')), JSON.stringify({ left: '2d6+str', right: '2d6+def' }));
+  assert.equal(JSON.stringify(c.parseVersus('6d10>=7 vs 5d10>=7')), JSON.stringify({ left: '6d10>=7', right: '5d10>=7' }));
+  assert.equal(c.parseVersus('2d6'), null, 'no vs is not a contest');
+  assert.equal(c.parseVersus('2d6 vs'), null, 'a missing side is not a contest');
+  assert.equal(c.parseVersus('2d6 vs 1d6 vs 1d8'), null, 'three sides is not a v1 contest');
+  assert.equal(c.parseVersus('levs 2d6'), null, 'vs must be a whole word, not a substring');
+});
+
+test('#1243 versusKind — a success pool vs a pip sum', () => {
+  assert.equal(c.versusKind(c.parseDice('2d6+3')), 'sum');
+  assert.equal(c.versusKind(c.parseDice('6d10>=7')), 'pool');
+});
+
+test('#1243 rollVersus — margin = left - right, deterministic under a seed, at any level', () => {
+  c.seedSequence([0.99]);   // every die shows its max
+  try {
+    // sum vs sum with variable modifiers: 6+6+3=15 vs 6+6+1=13 -> +2
+    const r = c.rollVersus('2d6+str', '2d6+def', { str: 3, def: 1 });
+    assert.equal(r.leftTotal, 15); assert.equal(r.rightTotal, 13); assert.equal(r.margin, 2);
+    assert.equal(r.leftKind, 'sum'); assert.equal(r.mismatch, false);
+    // success pool vs pool: every d10 = 10 (>=7) so all count -> 6 vs 5 -> +1 net success
+    const p = c.rollVersus('6d10>=7', '5d10>=7');
+    assert.equal(p.leftTotal, 6); assert.equal(p.rightTotal, 5); assert.equal(p.margin, 1);
+    assert.equal(p.leftKind, 'pool'); assert.equal(p.rightKind, 'pool'); assert.equal(p.mismatch, false);
+  } finally { c.resetRandom(); }
+  // the margin is ALWAYS left - right, whatever the dice do
+  c.seedSequence([0]);
+  try {
+    const r = c.rollVersus('3d6', '1d6');   // 3 vs 1
+    assert.equal(r.margin, r.leftTotal - r.rightTotal);
+    assert.equal(r.margin, 2);
+  } finally { c.resetRandom(); }
+  // a sum against a pool is flagged (the margin mixes pips and successes) but still computes
+  assert.equal(c.rollVersus('2d6', '6d10>=7').mismatch, true);
+  // a non-dice side rejects the whole contest
+  assert.equal(c.rollVersus('foo', '2d6'), null);
+});
+
+test('#1243 contest wiring — a pick var whose frozen margin feeds evalMath (src pins)', () => {
+  assert.ok(/function rollPickRecord\(source[\s\S]{0,260}parseVersus\(source\)[\s\S]{0,220}rollVersus/.test(_src),
+    'rollPickRecord rolls a contest source and freezes it');
+  assert.ok(/rolled: String\(r\.margin\)/.test(_src),
+    'the frozen value IS the margin, so the existing var channel feeds it to evalMath');
+  assert.ok(/versus: \{[\s\S]{0,160}margin: r\.margin/.test(_src),
+    'the versus display record carries the margin too, or the pill renders undefined (caught live)');
+  assert.ok((_src.match(/rollPickRecord\(/g) || []).length >= 4,
+    'the definition plus all three pick-roll sites (promote, dialog, reroll) go through it');
+  assert.ok(/const vs = v\.versus;/.test(_src) && /vs-margin/.test(_src) && /vs-op/.test(_src),
+    'renderVarPill draws both sides (vs-op) and the emphasised margin (vs-margin) for a contest');
+  assert.ok(/v\.versus = pr\.versus;[\s\S]{0,300}logRoll\(node, v\.name, shown\)/.test(_src),
+    'reroll refreshes both sides together and logs the contest (#918)');
+});
+
 test('parseDice — reroll rK parses and validates its combinations', () => {
   assert.equal(c.parseDice('4d6r1')[0].reroll, 1);
   const t = c.parseDice('4d6r1kh3')[0];           // canonical: reroll then keep
@@ -26232,8 +26287,8 @@ test('#952 classify and promote agree about a distribution RHS (the #407/#522 lo
   const cbb = fnBody(_src, 'classifyBraceBody'), pbb = fnBody(_src, 'promoteBraceBodyIn');
   assert.ok(/varDeclKind\(decl\.expr, vars\) !== 'pick'/.test(cbb), 'classify asks varDeclKind');
   assert.ok(/varDeclKind\(decl\.expr, collectVars\(\)\)/.test(pbb), 'promote asks varDeclKind');
-  assert.ok(pbb.indexOf("declKind === 'dist'") < pbb.indexOf('rollPickSource(decl.expr)'),
-    'the dist arm is claimed BEFORE the pick branch, or the freeze comes back');
+  assert.ok(pbb.indexOf("declKind === 'dist'") < pbb.indexOf('rollPickRecord(decl.expr)'),
+    'the dist arm is claimed BEFORE the pick branch, or the freeze comes back');   // #1243: pick roll now goes through rollPickRecord (contest-aware)
   assert.ok(/kind: 'dist', expr: decl\.expr, seed: estNewSeed\(\)/.test(pbb),
     'the record stores a SEED and never a sample array');
 });
