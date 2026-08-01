@@ -11959,6 +11959,40 @@ test('Phase A: footnotes are NOT auto-pruned — pruneFootnotes and its call sit
     'pruneFootnotes must be fully removed (the function AND the exitEdit call), so orphans persist');
 });
 
+// ── Phase B: the Footnotes manager (list, copy-link, delete-orphans) ─────────────────────────
+test('Phase B footnoteReport: numbered rows first, orphans last, ref counts + first reference', () => {
+  const r = c.mkRoot();
+  r.footnotes = [
+    { id: 'A', text: 'Ives 2019' },
+    { id: 'B', text: 'Smith 2020' },
+    { id: 'ORPH', text: 'never cited' },   // no marker references it -> an orphan
+  ];
+  const p1 = c.mkNode('claim one[^A]'); p1.id = 'p1';
+  const p2 = c.mkNode('claim two[^B] and again[^A]'); p2.id = 'p2';
+  r.children.push(p1, p2);
+  const rep = c.footnoteReport(r);
+  assert.equal(rep.length, 3);
+  // A appears first (number 1), cited twice, first in p1
+  assert.equal(rep[0].id, 'A'); assert.equal(rep[0].number, 1);
+  assert.equal(rep[0].refCount, 2); assert.equal(rep[0].firstRefId, 'p1');
+  // B is number 2, cited once, first in p2
+  assert.equal(rep[1].id, 'B'); assert.equal(rep[1].number, 2);
+  assert.equal(rep[1].refCount, 1); assert.equal(rep[1].firstRefId, 'p2');
+  // the orphan sorts LAST, has no number, no references, nowhere to jump
+  assert.equal(rep[2].id, 'ORPH'); assert.equal(rep[2].number, null);
+  assert.equal(rep[2].refCount, 0); assert.equal(rep[2].firstRefId, null);
+});
+
+test('Phase B: the Footnotes manager is wired (File-menu door, shared shell, copy-link, undoable delete)', () => {
+  assert.ok(/id="btn-footnotes"/.test(_src), 'a Footnotes item exists in the File menu');
+  assert.ok(/getElementById\('btn-footnotes'\)[\s\S]{0,90}showFootnotesReport\(\)/.test(_src), 'the button opens the report');
+  // built on the shared shell (not hand-rolled) — the ratchet counts it as the 7th shell user
+  assert.ok(/function showFootnotesReport\(\)[\s\S]{0,500}openDialogShell\(\{/.test(_src), 'the manager is built on openDialogShell');
+  assert.ok(/copyTextToClipboard\(`\[\^\$\{r\.id\}\]`/.test(_src), 'Copy puts the [^id] link on the clipboard, for paste-to-cite reuse');
+  assert.ok(/function deleteFootnote\(id\)[\s\S]{0,260}pushUndo\(\)[\s\S]{0,120}root\.footnotes\.splice/.test(_src),
+    'delete is undoable (pushUndo) and removes the store entry — the only place footnotes are deleted');
+});
+
 test('#1142 countMirrorRefs: a solo caption-less link to a PARENT, and nothing else', () => {
   // A caption-less [[#id|]] alone on a line transcludes the target's whole subtree on screen (up to
   // 40 rows); every text export ships ONE line, the target's title. So a document assembled from
@@ -25086,8 +25120,8 @@ test('UXP-247 ratchet: hand-rolled dialog shells may only ever decrease', () => 
   // And the ones that use the shell must keep using it. #518's import dialog is the sixth shell user
   // (a NEW dialog built on the shell, the correct direction — the ratchet only blocks new HAND-ROLLED
   // shells, counted via `ioCancel =` above, which the import dialog does not add).
-  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 6,
-    'openInsertDialog, the four named dialogs, and the #518 import dialog must keep using the shell');
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 7,
+    'openInsertDialog, the four named dialogs, the #518 import dialog, and the Phase B footnotes manager must keep using the shell');
 });
 
 test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL', () => {
@@ -25109,8 +25143,8 @@ test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL'
   // All four now take head/footer/cancel/globals from the shell rather than assigning their own.
   // #518 added a sixth shell caller: the Import points dialog (built on the shell from the start,
   // not a migration) — the shell being the default for a new dialog is the property working.
-  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 6,
-    'openInsertDialog + the four migrated dialogs + the #518 import dialog each construct exactly one shell');
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 7,
+    'openInsertDialog + the four migrated dialogs + the #518 import dialog + the Phase B footnotes manager each construct exactly one shell');
   // The appearance dialog's private in-place signal became a shell option.
   assert.ok(/freshOnly: true,/.test(_src), 'the appearance dialog restores on a FRESH open only');
   assert.ok(/const _apprFresh = _shell\.fresh;/.test(_src), 'and takes that signal from the shell');
