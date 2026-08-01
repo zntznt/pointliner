@@ -63,6 +63,31 @@ the SAME three-tier surface `/` and `@` already use (Builder form → slash-menu
 and the "+ Add" control is an edit-pencil-class *convenience* (present at every tier, chrome receding in
 Lean), not a guided-only bolt-on.
 
+### The "Add another" family: ONE door, TWO engines (the template tie-in)
+
+A list row is not always flat. In the Series bible each `#character` is a *page* — a bullet with
+trait/debt/wants children; a scene is a structured block. A flat `inferRowShape` + `buildRow` cannot
+reproduce that. But the app already has the other engine: **template stamping.** `/template` (stamp a
+saved subtree), `/savetemplate` (capture this point + its children as a named template), the template
+picker, pack-provided templates, and `stampTemplate(nodeId, name)` → `deepCloneNodeNewIds` (the clone path
+whose internal-link remap we just fixed, #1237-adjacent). So "+ Add another" is one front door with **two
+engines, routed by the sibling's shape**:
+
+- **Flat siblings** (tags + props, no children — expenses, books, tasks) → the inferred **values form**
+  (`inferRowShape` + `buildRow`, Phase 0). Fill values, we write the row.
+- **Structured siblings** (children — a character page, a scene) → **stamp** a fresh copy and drop the user
+  in to fill it. The structure comes from either (a) a sibling treated as an *implicit template* — infer
+  the subtree the same way we infer a flat row's shape, blanking the fillable leaves — or (b) a named
+  `/savetemplate` / pack template for that kind. Either way it reuses `stampTemplate` /
+  `deepCloneNodeNewIds` wholesale, so a stamped character page keeps its structure and any internal
+  `[[#id|]]` links remap correctly.
+
+This is DRY (no new stamp mechanism — the machinery exists and is now link-safe), and it closes the exact
+gap flat inference left: the structured kinds. It also connects the user's own `/savetemplate` "kinds" to
+the affordance — a captured template becomes a "+ Add [that kind]" the moment it exists. The affordance's
+routing is designed for both engines from the start (Phase 1 implements the flat engine; Phase 2 the
+stamp engine), so "+ Add" is never rebuilt, only extended.
+
 ## Verbosity conformance (guided / standard / lean) — the part that must not introduce garbage
 
 `ux.md` is binding here, and its model is "one UI, conditional helpers; build lean-first; the dial strips
@@ -125,11 +150,18 @@ full teaching surface. That is the dial working as designed, not a fourth varian
     in Standard/Lean; `aria-label` kept. Plus the Guided-only first-time `fireNudge`.
   The form has one field per inferred prop plus a text field; tags and to-do/date markers are applied
   automatically; `insert` calls `buildRow`. Covers expenses, books, cast, inventory, tasks, syllabus lines
-  — the majority of the panel's pain. **Decision: rows first; decks are Phase 2.**
-- **Phase 2 — "Add a card"** for `{shuffle:}` decks (structurally different — cards live inside one pill):
+  — the majority of the panel's pain. The "+ Add" routing is designed for BOTH engines here (flat now,
+  stamp in Phase 2), so the door is extended, never rebuilt. **Decision: flat rows first.**
+- **Phase 2 — the STAMP engine for structured kinds (the template tie-in).** When the siblings are
+  structured (children — a Series-bible character page, a scene), "+ Add [noun]" stamps a fresh copy
+  instead of opening the flat form, reusing `stampTemplate` / `deepCloneNodeNewIds` wholesale (internal
+  `[[#id|]]` links remap correctly). The structure source is a sibling as an *implicit template* (infer +
+  blank the fillable leaves) or a named `/savetemplate` / pack template. Closes the structured-item gap
+  flat inference left, and wires a user's own captured templates into the affordance.
+- **Phase 3 — "Add a card"** for `{shuffle:}` decks (a third micro-engine — cards live inside one pill):
   a form (card text / optional answer) that appends to the deck body without the user touching the raw
   pipe-delimited line. The teacher's exact ask.
-- **Phase 3 — discoverability & mobile rails.** Refine where the affordance appears so a non-syntax user
+- **Phase 4 — discoverability & mobile rails.** Refine where the affordance appears so a non-syntax user
   never needs `/`; onboarding nudge on first landing in a starter. These same forms become the tap targets
   that unlock #1245 (mobile / phone-first quick entry) — the same "fill values, we write the braces" forms
   are what make one-handed phone entry possible.
@@ -166,6 +198,11 @@ full teaching surface. That is the dial working as designed, not a fourth varian
    end of every shaped list could read as clutter. Tune on the running app: on-hover-of-the-list vs
    always-visible, weight/placement, and whether Standard should hover-reveal it (like the pencil) rather
    than show it at rest. This is visual tuning, not a spec decision — decide with eyes on it.
+7. **Flat-vs-structured routing + implicit-template blanking (Phase 2).** When is a sibling "structured"
+   enough to stamp rather than open the flat form — any children at all, or children-that-are-not-just-
+   pills? And for the sibling-as-implicit-template path, which leaves get blanked for the user to fill vs
+   kept as scaffolding prompts (e.g. keep the `trait:`/`debt:` labels, blank their values)? Decide with the
+   real Series-bible / scene structures in front of us.
 
 ## Verification plan
 
