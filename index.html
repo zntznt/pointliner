@@ -19264,10 +19264,29 @@ function getTopLevelSelected() {
     .map(r => r.node);
 }
 
+// An internal [[#id|...]] link (a mirror/embed, or a same-doc jump) points at a node id, which the clone
+// regenerates. Without remapping, a STAMPED subtree (a starter, a captured template, a pasted copy) has
+// its internal embeds dangle to plain text, because they still name the SOURCE's ids. So the public clone
+// records an old->new id map and rewrites same-doc links whose target was INSIDE the cloned subtree; a
+// cross-doc link ([[doc#id]]) or a link OUT of the subtree is left untouched (it still points where it
+// did). WLINK_RE is the same matcher render/index use, so the rewrite and the resolver agree.
 function deepCloneNodeNewIds(node) {
+  const idMap = new Map();
+  const clone = _cloneNodeNewIds(node, idMap);
+  remapClonedLinks(clone, idMap);
+  return clone;
+}
+function remapClonedLinks(node, idMap) {
+  if (node.text) node.text = node.text.replace(WLINK_RE, (m, docId, id, label) =>
+    (!docId && idMap.has(id)) ? `[[#${idMap.get(id)}${label !== undefined ? '|' + label : ''}]]` : m);
+  for (const c of (node.children || [])) remapClonedLinks(c, idMap);
+}
+function _cloneNodeNewIds(node, idMap) {
+  const newId = uid();
+  idMap.set(node.id, newId);
   return {
     ...node,
-    id: uid(),
+    id: newId,
     // deep-copy per-node data so the clone doesn't share mutable arrays
     footnotes: (node.footnotes || []).map(f => ({ ...f })),
     dice: (node.dice || []).map(d => ({ ...d, parts: (d.parts || []).map(p => ({ ...p, rolls: p.rolls ? [...p.rolls] : undefined })) })),
@@ -19297,7 +19316,7 @@ function deepCloneNodeNewIds(node) {
     ...(node.colFmt  ? { colFmt:  node.colFmt.map(f => f ? { ...f } : f) } : {}), // ε: deep-copy per-column format records too
     ...(node.view    ? { view:    { ...node.view } }  : {}),
     ...(node.qbase   ? { qbase:   { ...node.qbase, ...(node.qbase.cols ? { cols: node.qbase.cols.map(c => ({ ...c })) } : {}) } } : {}),
-    children: (node.children   || []).map(c => deepCloneNodeNewIds(c)),
+    children: (node.children   || []).map(c => _cloneNodeNewIds(c, idMap)),
   };
 }
 
