@@ -23066,6 +23066,8 @@ test('starter overhaul: each new/rewritten starter surfaces its assigned hidden 
   assert.match(fc, /chanceover\(estq, 25\)/, 'freelance: the odds-of-overrun estimate');
   assert.match(fc, /sum\(\\\\&quot;#task\\\\&quot;, hours, document\) \* rate &lt;= quote/, 'freelance: the over-quote check (double-backslash survives the template literal)');
   assert.match(fc, /_footnotes="/, 'freelance: the rate footnote is written');
+  assert.match(fc, /sum\(&quot;#task&quot;, hours, folder\)/,
+    '#1242: surfaces the cross-doc rollup (the across-all-jobs total widens the same sum to the folder)');
   // game-workbench: a dice pool with the distribution peek, a scoped card count, and a live embed of the set.
   const gw = slice('game-workbench', 'flashcards');
   assert.match(gw, /\{5d10&gt;=7\}/, 'game: a keep-successes dice pool (the distribution-peek target)');
