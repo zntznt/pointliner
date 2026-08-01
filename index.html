@@ -41216,36 +41216,45 @@ const FIRST_RUN_EXAMPLES = `<?xml version="1.0" encoding="UTF-8"?>
 // and are linked, not embedded. Each uses ONLY shipped syntax — no new pill, no new delimiter.
 const STARTERS = [
   { id: 'project-tracker',
-    name: 'Project tracker',
-    desc: 'Tasks that tally themselves, costs that total against a budget check, dates on the agenda.',
+    name: 'Repair Café day',
+    desc: 'Tasks that tally into a progress bar, costs that total against a budget check, and a live watch that flags any date you have let slip.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0"><head><title>Project tracker</title></head><body>
-<outline text="# Project tracker">
-  <outline text="A small project that adds itself up: the task list tallies into a progress bar, the materials total live against a budget, and every dated point shows up in the agenda (the toolbar calendar button). Every {…} is a live pill."/>
-  <outline text="## The build: a garden shed [/]">
-    <outline text="- [x] Clear and level the corner"/>
-    <outline text="#TODO [#A] Pour the base {date due: today+2}"/>
-    <outline text="#TODO Frame the walls {date due: today+7}"/>
-    <outline text="- [ ] Felt the roof"/>
-    <outline text="- [ ] Paint and tidy up"/>
+<opml version="2.0"><head><title>Repair Café day</title></head><body>
+<outline text="# Repair Café day">
+  <outline text="Planning a community repair afternoon: volunteers fix what people bring, instead of binning it. The panel up top reads the plan and the budget below it, live. Every {…} is a live pill.">
+    <outline text="Open tasks left: {count: is:todo}"/>
+    <outline text="Overdue right now: {= count(&quot;is:todo is:overdue&quot;, document)}"/>
+    <outline text="All dates still safe" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;count(\\&quot;is:todo is:overdue\\&quot;, document) == 0&quot;}]"/>
+    <outline text="Days to go: the event is {date due: today+21}"/>
   </outline>
-  <outline text="## Materials">
-    <outline text="Budget: {budget := 400}"/>
-    <outline text="Materials so far: {= sum(cost)} of {budget} (the chip turns red past the budget)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(cost) &lt;= budget&quot;}]">
-      <outline text="Timber {prop cost: 180}"/>
-      <outline text="Roof felt {prop cost: 60}"/>
-      <outline text="Screws and brackets {prop cost: 35}"/>
-      <outline text="Paint {prop cost: 40}"/>
+  <outline text="## The plan [/]">
+    <outline text="- [x] Confirm the hall booking"/>
+    <outline text="- [ ] Recruit six fixers {date due: today+3}"/>
+    <outline text="- [ ] Order spare parts and fuses {date due: today+7}"/>
+    <outline text="- [ ] Print and post flyers {date due: today+12}"/>
+    <outline text="- [ ] Line up the tea rota {date due: today+10}"/>
+    <outline text="- [ ] Brief the fixers on safety {date due: today+14}"/>
+    <outline text="- [ ] Set up tables the night before {date due: today+18}"/>
+    <outline text="- [ ] Send the thank-you notes {date due: today+21}"/>
+  </outline>
+  <outline text="## Budget">
+    <outline text="Spent so far: {= sum(cost)} of {budget := 350}" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(cost) &lt;= budget&quot;}]">
+      <outline text="Hall hire {prop cost: 60} #paid"/>
+      <outline text="Public liability insurance {prop cost: 85} #paid"/>
+      <outline text="Flyers and posters {prop cost: 30}"/>
+      <outline text="Spare parts and fuses {prop cost: 40}"/>
+      <outline text="Tea, coffee and biscuits {prop cost: 45}"/>
+      <outline text="Volunteer badges {prop cost: 20}"/>
     </outline>
-    <outline text="Add a child with a cost, like Hinges {prop cost: 90}, and watch the check flip red the moment the total crosses the budget."/>
+    <outline text="Already paid out: {= sum(&quot;#paid&quot;, cost, document)} of the {budget} budget."/>
   </outline>
   <outline text="## Honest estimates">
-    <outline text="Framing the walls: about {6 to 10} hours."/>
-    <outline text="The whole build: {2 to 4} weekends. Click an estimate to re-sample it."/>
+    <outline text="Setup time on the day: about {2 to 4} hours."/>
+    <outline text="Turnout, on past years: somewhere near {30 to 70} visitors."/>
   </outline>
   <outline text="## How to run it">
-    <outline text="Check a task off and the progress bar on the section title moves. The due dates surface in the agenda and read as urgent when they slip. Search is:failing to find every check that is currently red."/>
-    <outline text="Nothing here is new syntax: the progress bar counts the tasks beneath it, the total adds up the costs, the budget rule flags an overspend, and the estimates are ranges you re-sample with a click."/>
+    <outline text="Tick a task off and the progress bar on the heading moves. Give a task a due date and the watch up top counts anything you have let slip; the safe badge stays green until a date passes, then flips. Put a cost on a line and the budget total adds it up against your cap; tag the ones you have already paid and the paid total keeps itself."/>
+    <outline text="Nothing here is new syntax: the counts and the overdue watch are live searches, the budget is a sum with a check, and the estimates are low-to-high ranges the sheet samples."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -41272,44 +41281,53 @@ const STARTERS = [
   </outline>
   <outline text="## Draw from your world (click any pill)">
     <outline text="Who walks into the scene? {roll: #npc}"/>
-    <outline text="What complication surfaces? {roll: #thread}"/>
-    <outline text="Advance a random thread instead: {roll: #thread}"/>
     <outline text="A yes/no oracle for the in-between, weighted toward yes: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}"/>
   </outline>
+  <outline text="## When the campaign spans many notes">
+    <outline text="Keep each session or region in its own note, connect the folder, and advance a plot thread drawn from every note at once: {roll folder: #thread}"/>
+    <outline text="This one reaches past the current page, so every open thread in the whole campaign is in the pool, not only the three above."/>
+  </outline>
   <outline text="## How it works">
-    <outline text="A roll pill takes a normal search and picks one random point that matches it. The cast above is tagged with the npc label and the threads with the thread label, so a roll aimed at either draws from that list. Add a fifth NPC above and the next roll can land on it, no setup."/>
-    <outline text="Nothing here is new syntax: a roll is just a search, and the yes/no oracle is a weighted list. Edit any list by clicking the text next to a pill; delete a line you do not want and keep the rest."/>
+    <outline text="A roll pill takes a normal search and picks one random point that matches it. The cast above is tagged with the npc label and the threads with the thread label, so a roll aimed at either draws from that list. Add a fifth NPC above and the next roll can land on it, no setup. Add the word folder to a roll and it draws from every connected note, not only this one, which is how the thread draw reaches your whole campaign."/>
+    <outline text="Nothing here is new syntax: a roll is just a search, the folder roll is that same search widened to the folder, and the yes/no oracle is a weighted list. Edit any list by clicking the text next to a pill; delete a line you do not want and keep the rest."/>
   </outline>
 </outline>
 </body></opml>`,
   },
   { id: 'reading-log',
     name: 'Reading log',
-    desc: 'Your shelf as data: live counts, page totals, an average rating, and a roll to pick the next book.',
+    desc: 'Your shelf as data: a roll to pick the next book, live counts, all-time page and rating totals, and a this-year total that resets when the calendar does.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Reading log</title></head><body>
 <outline text="# Reading log">
-  <outline text="Your shelf as data. The log counts itself, totals the pages, averages your ratings, and picks your next book when you cannot decide. Every {…} is a live pill."/>
+  <outline text="Your shelf, as something that counts itself. Roll for what to read next, keep the finished pile with its pages and ratings, and let this year total itself separately from all-time. Every {…} is a live pill."/>
   <outline text="## Up next">
-    <outline text="Cannot decide? Let the shelf choose: {roll: #toread}"/>
+    <outline text="Can't decide? Let the shelf pick: {roll: #toread}"/>
     <outline text="Waiting on the shelf: {count: #toread}"/>
   </outline>
-  <outline text="## The shelf (tag a book to-read and the picker learns it)">
+  <outline text="## The shelf (tag a book to-read and the pick learns it)">
     <outline text="The Dispossessed, Ursula K. Le Guin #toread"/>
     <outline text="Piranesi, Susanna Clarke #toread"/>
     <outline text="The Name of the Rose, Umberto Eco #toread"/>
     <outline text="The Fifth Season, N. K. Jemisin #toread"/>
+    <outline text="Babel, R. F. Kuang #toread"/>
+  </outline>
+  <outline text="## This year">
+    <outline text="Finished this year: {count: #2026} books, {= sum(&quot;#2026&quot;, pages, document)} pages."/>
+    <outline text="On track: {= count(&quot;#2026&quot;, document)} of my 30-book goal."/>
   </outline>
   <outline text="## Finished">
-    <outline text="Read so far: {= sum(pages)} pages, rated {= avg(rating)} on average.">
-      <outline text="- [x] The Left Hand of Darkness {prop pages: 304} {prop rating: 5}"/>
-      <outline text="- [x] Annihilation {prop pages: 195} {prop rating: 3}"/>
-      <outline text="- [x] The Hobbit {prop pages: 310} {prop rating: 4}"/>
+    <outline text="Read all-time: {= sum(pages)} pages, rated {= avg(rating)} on average.">
+      <outline text="- [x] The Left Hand of Darkness {prop pages: 304} {prop rating: 5} #2026"/>
+      <outline text="- [x] Klara and the Sun {prop pages: 320} {prop rating: 4} #2026"/>
+      <outline text="- [x] The Fifth Head of Cerberus {prop pages: 250} {prop rating: 4} #2026"/>
+      <outline text="- [x] Annihilation {prop pages: 195} {prop rating: 3} #2025"/>
+      <outline text="- [x] The Hobbit {prop pages: 310} {prop rating: 4} #2025"/>
     </outline>
   </outline>
   <outline text="## How to run it">
-    <outline text="Finish a book? Move it under Finished (drag its bullet, or Refile from the bullet menu), check it off, and give it pages and a rating: the totals recompute on their own. Add any book to the shelf with the toread tag and the next roll can land on it."/>
-    <outline text="Nothing here is new syntax: the picker is a roll on a tag, the shelf counter is a search, and the totals add themselves up from ordinary properties."/>
+    <outline text="Add a book you want to read and tag it to-read; the pick above can land on it. When you finish one, move it under Finished, give it a page count and a rating, and tag it with the year. The all-time totals add every finished book, while the this-year lines only see the books tagged with this year, so they start fresh in January without you clearing anything."/>
+    <outline text="Nothing here is new syntax: the pick is a roll on a tag, the counts are live searches, and the totals are sums and an average pointed at a property."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -41353,81 +41371,94 @@ const STARTERS = [
 </body></opml>`,
   },
   { id: 'life-dashboard',
-    name: 'Life dashboard',
-    desc: 'A document that watches itself: live counts, a today list, and a habit nudge.',
+    name: 'My week',
+    desc: 'A page you reopen every morning: the today list mirrored up top, live task counts, a habit nudge, and dated errands.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
-<opml version="2.0"><head><title>Life dashboard</title></head><body>
-<outline text="# Life dashboard">
-  <outline text="A document that watches itself. The counters and the today list at the top read every point below them, live: check something off anywhere and the numbers move. Every {…} is a live pill."/>
-  <outline text="## At a glance">
-    <outline text="Open tasks right now: {count: is:todo}"/>
-    <outline text="Due today: {count: due:today}"/>
-    <outline text="On today's plate: {query: due:today}"/>
-    <outline text="One small win, picked for you: {roll: #habit}"/>
+<opml version="2.0"><head><title>My week</title></head><body>
+<outline text="# My week">
+  <outline text="The page you reopen every morning. Today's list is mirrored right at the top, so it is the first thing you see; the counts and the rest of the week sit below it. Every {…} is a live pill.">
+    <outline text="Today at a glance:"/>
+    <outline text="[[#today|]]"/>
+    <outline text="Open right now: {count: is:todo} to do, {count: due:today} due today."/>
   </outline>
-  <outline text="## Tasks">
-    <outline text="#TODO [#A] Renew the passport {date due: today+7}"/>
-    <outline text="#TODO Call the dentist {date due: today}"/>
-    <outline text="- [ ] Clear the email backlog"/>
-    <outline text="- [x] Water the plants"/>
+  <outline text="## Today" _id="today">
+    <outline text="- [ ] Call the landlord about the leak {date due: today}"/>
+    <outline text="- [ ] Pick up the prescription {date due: today}"/>
+    <outline text="- [ ] Send the Q3 invoice {date due: today}"/>
+    <outline text="- [x] Move the laundry over"/>
   </outline>
   <outline text="## Habits (tag one as a habit and the nudge learns it)">
+    <outline text="One small win, picked for me: {roll: #habit}"/>
     <outline text="Stretch for five minutes #habit"/>
     <outline text="Read ten pages #habit"/>
-    <outline text="Step outside before noon #habit"/>
+    <outline text="Walk after lunch #habit"/>
+    <outline text="No screens for the first hour #habit"/>
   </outline>
   <outline text="## This week [%]">
-    <outline text="- [ ] Plan Saturday's hike"/>
-    <outline text="- [x] Book the car service"/>
-    <outline text="- [ ] Finish the library book"/>
+    <outline text="- [ ] Book the dentist {date due: today+2}"/>
+    <outline text="- [ ] Draft the team update {date due: today+5}"/>
+    <outline text="- [ ] Return the library books {date due: today+1}"/>
+    <outline text="- [x] Pay the credit card"/>
+    <outline text="- [ ] Plan the weekend trip {date due: today+4}"/>
+  </outline>
+  <outline text="## Errands (no date, just when you get to them)">
+    <outline text="- [ ] Replace the kitchen bulb"/>
+    <outline text="- [ ] Drop off the charity bag"/>
+    <outline text="- [ ] Back up the laptop"/>
+    <outline text="- [ ] Cancel the unused subscription"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="The agenda (the toolbar calendar button) lays every dated point on a timeline. The counters are ordinary searches, so they see the whole document, including everything you add after this example."/>
-    <outline text="Nothing here is new syntax: the counters are live searches, the today list is a live search too, the nudge is a roll on a tag, and the weekly bar counts its checkboxes."/>
+    <outline text="Keep everything for today under the Today heading; the mirror at the top shows it live, so ticking a task off there updates both places at once. The counts are ordinary searches, so they see the whole page including anything you add. The agenda button on the toolbar lays every dated errand on a timeline."/>
+    <outline text="Nothing here is new syntax: the top block is a live embed of the Today section, the counts are live searches, and the nudge is a roll on a tag."/>
   </outline>
 </outline>
 </body></opml>`,
   },
   { id: 'character-sheet',
     name: 'Living character sheet',
-    desc: 'Stats are variables, derived rows read them, and a check flags an overloaded pack.',
+    desc: 'Stats are variables, hit points and defense derive themselves, and two live checks flag an overloaded pack and a downed character.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Living character sheet</title></head><body>
 <outline text="# Living character sheet">
-  <outline text="A character whose numbers compute themselves. Stats are variables, derived rows read those variables, the pack total adds up its own contents, and the encumbrance check flags overload the moment you carry too much. Every {…} is a live pill."/>
-  <outline text="## Kestrel Vane, hedge-scout">
-    <outline text="A wary tracker who works the forest edge. Change a number below and watch the rows that depend on it move."/>
+  <outline text="A character whose numbers compute themselves. Stats are variables, the derived rows read them, the pack totals its own contents, and two checks flag trouble: an overloaded pack and a character at zero hit points. Every {…} is a live pill."/>
+  <outline text="## Doran Ashfell, mountain warden">
+    <outline text="A weathered warden of the high passes. Change a number below and watch every row that depends on it move."/>
     <outline text="## Core stats (edit these)">
-      <outline text="Level: {level := 3}"/>
-      <outline text="Might: {might := 2}"/>
-      <outline text="Grace: {grace := 3}"/>
-      <outline text="Wits: {wits := 1}"/>
+      <outline text="Level: {level := 4}"/>
+      <outline text="Might: {might := 3}"/>
+      <outline text="Grace: {grace := 2}"/>
+      <outline text="Wits: {wits := 2}"/>
     </outline>
     <outline text="## Derived numbers (these compute themselves)">
-      <outline text="Hit points, eight per level: {= level * 8}"/>
+      <outline text="Max hit points, eight per level plus might: {= level * 8 + might}"/>
       <outline text="Defense, ten plus grace: {= 10 + grace}"/>
       <outline text="Proficiency, half your level rounded up: {= ceil(level / 2)}"/>
     </outline>
-    <outline text="## Rolls that read the sheet">
-      <outline text="Attack (2d6 plus might): {2d6+might}"/>
-      <outline text="Sneak (2d6 plus grace): {2d6+grace}"/>
-      <outline text="Study a clue (2d6 plus wits): {2d6+wits}"/>
+    <outline text="## Health">
+      <outline text="Current hit points: {hp := 35}"/>
+      <outline text="Still standing? {hp} of {= level * 8 + might} (the chip turns red at zero)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;hp &gt; 0&quot;}]"/>
+      <outline text="Take a wound by editing {hp := 35} down. Set it to 0 and the Still standing chip flips red."/>
     </outline>
-    <outline text="## Pack (the total adds itself, load ten or under)">
-      <outline text="Carried load: {= sum(weight)} of 10 (the chip stays green while the total is ten or under)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(weight) &lt;= 10&quot;}]">
-        <outline text="Short bow {prop weight: 2}"/>
-        <outline text="Quiver, twenty arrows {prop weight: 1}"/>
-        <outline text="Hunting knife {prop weight: 1}"/>
-        <outline text="Leather jerkin {prop weight: 3}"/>
-        <outline text="Bedroll and cloak {prop weight: 2}"/>
-        <outline text="Rations, three days {prop weight: 1}"/>
+    <outline text="## Rolls that read the sheet">
+      <outline text="Axe attack (2d6 plus might): {2d6+might}"/>
+      <outline text="Climb a rockface (2d6 plus grace): {2d6+grace}"/>
+      <outline text="Read the land (2d6 plus wits): {2d6+wits}"/>
+    </outline>
+    <outline text="## Pack (the total adds itself; carry your might times five or under)">
+      <outline text="Carried load: {= sum(weight)} of {= might * 5} (the chip stays green while you are at or under the limit)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(weight) &lt;= might * 5&quot;}]">
+        <outline text="Bearded axe {prop weight: 4}"/>
+        <outline text="Climbing rope and irons {prop weight: 2}"/>
+        <outline text="Waterskin {prop weight: 1}"/>
+        <outline text="Furs and bedroll {prop weight: 3}"/>
+        <outline text="Rations, four days {prop weight: 2}"/>
+        <outline text="Signal horn {prop weight: 1}"/>
       </outline>
-      <outline text="Add a heavy item to see the check flip: type a new child here, like Iron cook pot {prop weight: 2}. The sum crosses ten and the Carried load chip turns red."/>
+      <outline text="Add a heavy item to see the check flip: type a new child here, like Iron cook pot {prop weight: 3}. The load crosses your limit and the chip turns red."/>
     </outline>
   </outline>
   <outline text="## How to run it">
-    <outline text="Change a stat and the sheet moves: set Level to 5 and the hit points row ({= level * 8}) jumps to forty on its own. Search is:failing to find every check that is currently red."/>
-    <outline text="Nothing here is new syntax: stats are variables, derived rows are math that reads them, the pack total adds up the weights, and the encumbrance rule is a check on the Carried load point."/>
+    <outline text="Change a stat and the sheet moves: raise Might and both your max hit points and your carry limit go up at once. The pack total adds its own contents and the check flips red when you are over your limit. Take a wound by lowering the hit points, and the Still standing check flips red at zero."/>
+    <outline text="Nothing here is new syntax: stats are variables, the derived rows are math that reads them, the pack total adds up the weights, and each rule is a check on a point."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -41568,29 +41599,51 @@ const STARTERS = [
   },
   { id: 'home-inventory',
     name: 'Home inventory',
-    desc: 'A table of what you own with a total value, an insurance-cap check, and a per-category count.',
+    desc: 'What you own by room, as a table you can flip to cards, totaled against your coverage cap with live per-room and per-category values.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Home inventory</title></head><body>
 <outline text="# Home inventory">
-  <outline text="What you own, two ways: an interactive table you can flip to cards or a board, and a tagged item list that totals its value against an insurance cap and counts by category. Click a table cell to edit it; click a pill to run it."/>
-  <outline text="## Belongings at a glance (click a cell to edit; the switcher changes views)">
-    <outline text="| Item | Category | Value |&#10;| --- | --- | --- |&#10;| Laptop | electronics | 1200 |&#10;| Television | electronics | 700 |&#10;| Road bike | outdoors | 900 |&#10;| Espresso machine | kitchen | 450 |&#10;| Wristwatch | jewelry | 600 |&#10;| Camera | electronics | 800 |" _type="base" _colrole="[null,null,&quot;number&quot;]" _view="{&quot;kind&quot;:&quot;cards&quot;}"/>
-    <outline text="The Value column is marked as a number, so its own Calculate row can total it. The table is showing its Cards view; use the switcher at the base's top-left for the grid, or a Board grouped by category."/>
+  <outline text="What you own, valued for insurance. A grid of the big-ticket things up top, then the full record below it that totals against your coverage, watches a jewelry sub-limit, and breaks down by room and category. Click a table cell to edit it; click a pill to run it."/>
+  <outline text="## Big-ticket items at a glance (click a cell to edit; the switcher changes views)">
+    <outline text="| Item | Room | Category | Value |&#10;| --- | --- | --- | --- |&#10;| Wedding ring | Bedroom | jewelry | 4200 |&#10;| Watch | Bedroom | jewelry | 2600 |&#10;| Necklace | Bedroom | jewelry | 1500 |&#10;| Laptop | Office | electronics | 1400 |&#10;| Television | Living room | electronics | 900 |&#10;| Sofa | Living room | furniture | 1200 |&#10;| Mountain bike | Garage | outdoors | 1200 |&#10;| Refrigerator | Kitchen | kitchengear | 1100 |" _type="base" _colrole="[null,null,null,&quot;number&quot;]" _view="{&quot;kind&quot;:&quot;cards&quot;}"/>
+    <outline text="The Value column is marked as a number, so a view can total it. Use the switcher at the base's top-left for the grid, cards, or a Board grouped by room."/>
   </outline>
-  <outline text="## Itemized (each line is a point, so it totals and searches)">
-    <outline text="Total value on record: {= sum(value)} of {cap := 6000} insured" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(value) &lt;= cap&quot;}]">
-      <outline text="Laptop {prop category: electronics} {prop value: 1200}"/>
-      <outline text="Television {prop category: electronics} {prop value: 700}"/>
-      <outline text="Camera {prop category: electronics} {prop value: 800}"/>
-      <outline text="Road bike {prop category: outdoors} {prop value: 900}"/>
-      <outline text="Espresso machine {prop category: kitchen} {prop value: 450}"/>
-      <outline text="Wristwatch {prop category: jewelry} {prop value: 600}"/>
+  <outline text="## The full record (each line is a point, so it totals and searches)">
+    <outline text="Total on record: {= sum(value)} of {cap := 25000} covered [^cap]" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(value) &lt;= cap&quot;}]" _footnotes="[{&quot;key&quot;:&quot;cap&quot;,&quot;text&quot;:&quot;Contents coverage on my renters policy. Raise it here if I add a big-ticket item.&quot;}]">
+      <outline text="Television #livingroom #electronics {prop value: 900}"/>
+      <outline text="Sound system #livingroom #electronics {prop value: 600}"/>
+      <outline text="Sofa #livingroom #furniture {prop value: 1200}"/>
+      <outline text="Wedding ring #bedroom #jewelry {prop value: 4200}"/>
+      <outline text="Watch #bedroom #jewelry {prop value: 2600}"/>
+      <outline text="Necklace #bedroom #jewelry {prop value: 1500}"/>
+      <outline text="Bed frame #bedroom #furniture {prop value: 800}"/>
+      <outline text="Laptop #office #electronics {prop value: 1400}"/>
+      <outline text="Monitor #office #electronics {prop value: 500}"/>
+      <outline text="Desk #office #furniture {prop value: 350}"/>
+      <outline text="Espresso machine #kitchen #kitchengear {prop value: 650}"/>
+      <outline text="Stand mixer #kitchen #kitchengear {prop value: 400}"/>
+      <outline text="Refrigerator #kitchen #kitchengear {prop value: 1100}"/>
+      <outline text="Power drill set #garage #tools {prop value: 300}"/>
+      <outline text="Lawn mower #garage #tools {prop value: 550}"/>
+      <outline text="Mountain bike #garage #outdoors {prop value: 1200}"/>
+      <outline text="Camping gear #garage #outdoors {prop value: 800}"/>
     </outline>
-    <outline text="Electronics on record: {count: category:electronics}. Raise the insurance cap by editing {cap := 6000}."/>
+  </outline>
+  <outline text="## Sub-limits and categories">
+    <outline text="Jewelry on record: {= sum(&quot;#jewelry&quot;, value, document)}, across {count: #jewelry} pieces [^sublimit]" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(\\&quot;#jewelry\\&quot;, value, document) &lt;= 1500&quot;}]" _footnotes="[{&quot;key&quot;:&quot;sublimit&quot;,&quot;text&quot;:&quot;Most policies cap jewelry and watches at a low sub-limit unless scheduled. This flags when I am over it.&quot;}]"/>
+    <outline text="Electronics on record: {= sum(&quot;#electronics&quot;, value, document)}"/>
+    <outline text="Tools on record: {= sum(&quot;#tools&quot;, value, document)}"/>
+  </outline>
+  <outline text="## By room">
+    <outline text="Living room: {= sum(&quot;#livingroom&quot;, value, document)}"/>
+    <outline text="Bedroom: {= sum(&quot;#bedroom&quot;, value, document)}"/>
+    <outline text="Office: {= sum(&quot;#office&quot;, value, document)}"/>
+    <outline text="Kitchen: {= sum(&quot;#kitchen&quot;, value, document)}"/>
+    <outline text="Garage: {= sum(&quot;#garage&quot;, value, document)}"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="Two shapes for the same idea. The base is a spreadsheet-style grid you can flip between views. The itemized list gives each thing its own point with a category and a value property, so the total rolls up, the cap check flips red when you cross it, and a search like category:electronics can count a slice. Pick whichever fits how you think."/>
-    <outline text="Nothing here is new syntax: the grid is an interactive base, the total adds up the values with a check for the insurance cap, and the category tally is a live search."/>
+    <outline text="Add an item to the full record, tag it with its room and its category, and give it a value; the grand total, the category sub-limits, and the room breakdown all pick it up. The coverage check flips red if your total passes the cap, and the jewelry line has its own sub-limit check, since most policies cap jewelry low unless you schedule it separately. That one ships red on purpose, to show what an over-limit looks like."/>
+    <outline text="Nothing here is new syntax: the grid is an interactive base, the total is a sum with a check, and the sub-limits and room breakdowns are the same sum pointed at a tag."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -41722,29 +41775,34 @@ const STARTERS = [
   },
   { id: 'flashcards',
     name: 'Study and flashcards',
-    desc: 'A deck of cards you draw without repeats, a topic to review at random, and a syllabus that tracks itself.',
+    desc: 'Draw flashcards without repeats, roll a topic to review at random, and watch your syllabus count how many topics you have mastered.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Study and flashcards</title></head><body>
 <outline text="# Study and flashcards">
-  <outline text="A study page that quizzes you: a deck deals cards without repeating, a roll picks what to review, and the syllabus tracks its own progress. Every {…} is a live pill, click to draw or roll."/>
-  <outline text="## Review next (roll for a topic)">
-    <outline text="Study this now: {roll: #topic}"/>
-    <outline text="Topics left to master: {count: #topic -is:done}"/>
+  <outline text="A study page that keeps score. Draw cards without repeats, let it pick a topic to review, and mark a topic done when it sticks: the mastery line up top counts how far you have got. Every {…} is a live pill."/>
+  <outline text="## Mastery so far">
+    <outline text="Mastered: {count: #topic is:done} of {count: #topic} topics."/>
+    <outline text="Still to master: {count: #topic -is:done}."/>
   </outline>
-  <outline text="## Flashcards (click to deal the next card)">
-    <outline text="Card: {shuffle: What year did WWII end? (1945) | Capital of Australia? (Canberra) | What is the powerhouse of the cell? (mitochondria) | Square root of 144? (12) | Who wrote Hamlet? (Shakespeare) | What gas do plants breathe in? (carbon dioxide)}"/>
-    <outline text="The deck draws each card once, then reshuffles and tells you when. Rewrite these as your own question (answer) pairs; the answer in parentheses is just text, so you read the question, guess, then look."/>
+  <outline text="## Review next">
+    <outline text="Not sure where to start? Study this now: {roll: #topic}"/>
   </outline>
-  <outline text="## Syllabus [/]">
-    <outline text="- [x] Fractions and decimals #topic"/>
-    <outline text="- [x] The water cycle #topic"/>
-    <outline text="#TODO World War II #topic"/>
-    <outline text="#TODO Cell biology #topic"/>
-    <outline text="- [ ] Shakespeare's plays #topic"/>
+  <outline text="## Flashcards (draw one, it will not repeat until the deck is used up)">
+    <outline text="Next card: {shuffle: How many chambers does the heart have? (four) | Which valve sits between the left atrium and ventricle? (the mitral valve) | What vessel carries blood from the heart to the lungs? (the pulmonary artery) | Where does the SA node sit? (the right atrium) | What are the layers of a vessel wall? (intima, media, adventitia) | Which side of the heart pumps to the body? (the left) | What does the coronary artery supply? (the heart muscle itself) | In the fetus, what bypasses the lungs? (the ductus arteriosus)}"/>
+  </outline>
+  <outline text="## Syllabus [/] (tag a line as a topic and check it off when it sticks)">
+    <outline text="- [x] Heart chambers #topic"/>
+    <outline text="- [x] Heart valves #topic"/>
+    <outline text="- [x] Great vessels #topic"/>
+    <outline text="- [ ] Coronary arteries #topic"/>
+    <outline text="- [ ] Conduction system #topic"/>
+    <outline text="- [ ] Circulation, systemic and pulmonary #topic"/>
+    <outline text="- [ ] Vessel wall layers #topic"/>
+    <outline text="- [ ] Fetal circulation #topic"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="Tag each syllabus line as a topic and the roll and the counter learn it. Check a topic off (or mark it DONE) and the progress bar on the Syllabus heading moves; the topics-left counter drops. The flashcard deck is one point you can grow to as many cards as you like."/>
-    <outline text="Nothing here is new syntax: the card dealer is a shuffle deck, the review picker is a roll on a tag, the counter is a search, and the syllabus bar counts its checkboxes."/>
+    <outline text="Write a card as a question with its answer in brackets, and the deck deals them one at a time without repeating. Tag each syllabus line as a topic; the review pick lands on one at random, and checking a topic off moves the mastery count. Add your own subject by replacing the cards and the syllabus with yours."/>
+    <outline text="Nothing here is new syntax: the deck is a shuffle that draws without repeats, the review pick is a roll on a tag, and the mastery numbers are live searches over your checked and unchecked topics."/>
   </outline>
 </outline>
 </body></opml>`,
