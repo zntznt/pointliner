@@ -201,6 +201,7 @@ export function loadCores() {
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'fnIsWritten', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
     'footnoteOrder', 'migrateNodeFootnotes', 'migrateFootnotesToStore', 'renumberFnMarkers', 'fnId',   // Phase A: doc-level footnote store (numbering, migration, export renumber)
+    'footnoteReport',   // Phase B: the Footnotes manager model (numbered rows + orphans)
     // #1111: markdown keeps the link layer; plain text cannot, so it reports. `exportedNote` is the
     // UXP-237 message builder, which was never added here — so the sentence CI shows a user has
     // never been tested. That omission is fixed in the same change that gives it a second arm.

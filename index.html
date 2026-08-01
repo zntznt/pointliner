@@ -2973,6 +2973,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
       <div class="fm-cat" data-cat="tools">
         <div class="fm-cat-head">Tools</div>
         <div class="cmd-item" id="btn-brokenlinks"><div class="cmd-icon" data-fa="fa-solid fa-triangle-exclamation" data-fb="⚠">⚠</div><div class="cmd-info"><span class="cmd-label">Broken links</span><span class="cmd-desc">Find links whose target point or note is gone</span></div></div>
+        <div class="cmd-item" id="btn-footnotes"><div class="cmd-icon" data-fa="fa-solid fa-superscript" data-fb="†">†</div><div class="cmd-info"><span class="cmd-label">Footnotes</span><span class="cmd-desc">List every footnote; copy one to cite again, or delete an unused one</span></div></div>
         <div class="cmd-item" id="btn-tags"><div class="cmd-icon" data-fa="fa-solid fa-tag" data-fb="#">#</div><div class="cmd-info"><span class="cmd-label">Browse tags</span><span class="cmd-desc">See every hashtag as a tree; pick one to filter the document</span></div></div>
         <!-- Outline levels: mirrors the toolbar level control for phones, where the toolbar
              version is hidden (no room). Shown only on narrow screens via CSS (#fm-levels-row). -->
@@ -15239,6 +15240,92 @@ function showBrokenLinksReport() {
   ioCard.setAttribute('aria-label', 'Broken links report');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
+}
+
+// Phase B: remove a footnote from the doc store. Undoable (pushUndo). Deleting a REFERENCED footnote
+// leaves its [^id] markers, which then render as the unwritten cue (recoverable by undo) — the manager
+// highlights unreferenced ones because those are the intended cleanup target.
+function deleteFootnote(id) {
+  if (!Array.isArray(root.footnotes)) return false;
+  const i = root.footnotes.findIndex(f => f.id === id);
+  if (i < 0) return false;
+  pushUndo();
+  root.footnotes.splice(i, 1);
+  markDirty();
+  render();
+  return true;
+}
+
+// Phase B: the Footnotes manager. A File-menu report (the Broken-links family), built on the shared
+// dialog shell so it inherits every shell fix. Lists every footnote with its document-order number
+// (orphans last), jumps to a footnote's first reference (and opens its editor), copies a footnote's
+// link to paste and cite it again, and deletes one (orphans highlighted). This is where footnotes are
+// deleted — nothing prunes them automatically (Phase A).
+function showFootnotesReport() {
+  const rows = footnoteReport(root);
+  const orphans = rows.filter(r => r.number == null).length;
+  const _shell = openDialogShell({
+    icon: { fa: 'fa-solid fa-superscript', fb: '†' },
+    title: 'Footnotes',
+    ariaLabel: 'Footnotes manager',
+    guideId: 'footnotes',
+  });
+
+  const sub = document.createElement('p');
+  sub.style.cssText = 'font-size:12px;color:var(--muted);margin:-2px 0 12px;line-height:1.5';
+  sub.textContent = rows.length
+    ? `${rows.length} footnote${rows.length === 1 ? '' : 's'} in this document${orphans ? `, ${orphans} unreferenced` : ''}. Copy a link to cite one again; delete an unreferenced one.`
+    : 'No footnotes yet. Select some text in a point and choose Footnote to add one.';
+  _shell.body.appendChild(sub);
+
+  if (rows.length) {
+    const list = document.createElement('div'); list.className = 'tpl-list';
+    rows.forEach(r => {
+      const row = document.createElement('div'); row.className = 'tpl-row';
+      const pick = document.createElement('button'); pick.className = 'tpl-pick'; pick.type = 'button';
+      const nm = document.createElement('span'); nm.className = 'tpl-name';
+      nm.textContent = (r.number != null ? `[${r.number}] ` : '') + (r.text || '(empty)');
+      const tag = document.createElement('span'); tag.className = 'tpl-count';
+      tag.textContent = r.refCount === 0 ? 'unreferenced' : `${r.refCount} use${r.refCount === 1 ? '' : 's'}`;
+      pick.append(nm, tag);
+      pick.setAttribute('aria-label', r.firstRefId
+        ? `Footnote ${r.number}: ${r.text || 'empty'}. ${r.refCount} reference${r.refCount === 1 ? '' : 's'}. Jump to the first and edit it.`
+        : `Unreferenced footnote: ${r.text || 'empty'}. Copy its link to cite it, or delete it.`);
+      pick.addEventListener('click', () => {
+        if (!r.firstRefId) { flashHint('This footnote is not cited anywhere. Copy its link to cite it, or delete it.'); return; }
+        closeIo();
+        focusNode(r.firstRefId);      // land the caret in the citing point, scrolled into view
+        showFnPanel(r.firstRefId);    // open the footnote editor on it
+      });
+
+      const copy = document.createElement('button'); copy.className = 'io-btn xsm'; copy.type = 'button';
+      copy.textContent = 'Copy';
+      copy.title = 'Copy this footnote’s link';
+      copy.setAttribute('aria-label', `Copy the link for footnote ${r.number != null ? r.number : '(unreferenced)'} to paste and cite it again`);
+      copy.addEventListener('click', () => copyTextToClipboard(`[^${r.id}]`, 'Footnote link copied. Paste it into a point to cite this footnote again.'));
+
+      const del = document.createElement('button'); del.className = 'io-btn xsm' + (r.number == null ? ' danger' : ''); del.type = 'button';
+      setIcon(del, { fa: 'fa-solid fa-trash-can', fb: '🗑' });
+      del.title = 'Delete this footnote';
+      del.setAttribute('aria-label', `Delete footnote ${r.number != null ? r.number : '(unreferenced)'}`);
+      del.addEventListener('click', () => { if (deleteFootnote(r.id)) showFootnotesReport(); });
+
+      row.append(pick, copy, del);
+      list.appendChild(row);
+    });
+    // ↑/↓ move between rows; Delete removes the focused row's footnote (mirrors openWorkspaceSwitcher).
+    list.addEventListener('keydown', e => {
+      const picks = [...list.querySelectorAll('.tpl-pick')];
+      const i = picks.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); picks[Math.min(i + 1, picks.length - 1)]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); picks[Math.max(i - 1, 0)]?.focus(); }
+      else if (e.key === 'Delete' && i >= 0) { e.preventDefault(); document.activeElement.closest('.tpl-row')?.querySelector('.io-btn:last-child')?.click(); }
+    });
+    _shell.body.appendChild(list);
+  }
+
+  _shell.mountFooter([{ label: 'Close', role: 'dismiss' }]);
+  requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || ioCard.querySelector('.io-btn')).focus(); });
 }
 
 // Stamp a fresh copy of a saved template as a new point. Replaces the invoking
@@ -34505,6 +34592,37 @@ const footnoteOrder = makeDocCache('footnoteOrder', (rootNode) => {
   return map;
 });
 
+// Phase B: the Footnotes manager model (pure). Every store entry with its document-order number (null
+// when unreferenced -> an orphan), its text, how many markers reference it, and the first referencing
+// point (to jump to). Sorted numbered-first (document order) then orphans, so the list reads like the
+// document with the loose ends gathered at the end.
+function footnoteReport(rootNode) {
+  const store = (rootNode && rootNode.footnotes) || [];
+  const order = footnoteOrder(rootNode);
+  const refCount = new Map(), firstRef = new Map();
+  (function walk(node) {
+    for (const c of (node.children || [])) {
+      for (const id of getFnRefs(c.text)) {
+        refCount.set(id, (refCount.get(id) || 0) + 1);
+        if (!firstRef.has(id)) firstRef.set(id, c.id);
+      }
+      walk(c);
+    }
+  })(rootNode || { children: [] });
+  return store.map(f => ({
+    id: f.id,
+    number: order.has(f.id) ? order.get(f.id) : null,
+    text: String(f.text || ''),
+    refCount: refCount.get(f.id) || 0,
+    firstRefId: firstRef.get(f.id) || null,
+  })).sort((a, b) => {
+    if (a.number != null && b.number != null) return a.number - b.number;
+    if (a.number != null) return -1;   // referenced (numbered) rows first
+    if (b.number != null) return 1;
+    return 0;                          // orphans keep store order among themselves
+  });
+}
+
 // UXP-237: is this footnote actually written? The ONE definition, shared by the render cue
 // (.fn-ref-empty), the export definition lines, and the marker strip below. Opening the footnote
 // editor creates {key, text:''} before anything is typed, so a record-existence test is not enough —
@@ -37451,6 +37569,7 @@ document.getElementById('btn-open').addEventListener('click', () => { openFile()
 document.getElementById('btn-import')?.addEventListener('click', () => { closeFileMenu(); openImportDialog(); });   // #518 additive import (opens #io-back, so close the menu first)
 document.getElementById('btn-starters')?.addEventListener('click', () => { openStarterGallery(); });   // #565 (closes the menu itself)
 document.getElementById('btn-brokenlinks')?.addEventListener('click', () => { closeFileMenu(); showBrokenLinksReport(); });   // backlog #4
+document.getElementById('btn-footnotes')?.addEventListener('click', () => { closeFileMenu(); showFootnotesReport(); });   // Phase B: the footnotes manager
 document.getElementById('btn-tags')?.addEventListener('click', () => { closeFileMenu(); openTagBrowser(); });   // tag browser
 document.getElementById('btn-datapacks')?.addEventListener('click', () => { closeFileMenu(); _packEditId = null; openDataPackManager(); });   // #487
 document.getElementById('btn-appearance')?.addEventListener('click', () => { closeFileMenu(); openAppearanceDialog(); });   // #464
@@ -38450,11 +38569,12 @@ const GUIDE = [
     ] },
   { id:'footnotes', cat:'writing', covers:['footnote','link','image'],
     title:'Footnotes, links & images',
-    body:"Annotate a claim without cluttering the main text, link out to a source or a website or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.",
+    body:"Annotate a claim without cluttering the main text, link out to a source or a website or embed an image. Footnotes are useful for research notes and annotated reading: the mark stays small while the note stays out of the way. Type @ and choose Footnote, Link or Image.\n\nFootnotes are numbered automatically in the order they appear, so the same source can be cited more than once. Open the File menu and choose Footnotes to see every footnote in the document: copy a footnote's link and paste it into another point to cite the same source again, jump to where a footnote is used, or delete one you no longer need. A footnote you have stopped citing is kept, not thrown away, and shows as unreferenced there until you delete it.",
     related:['point-links','inline-md'],
     examples:[
       { syn:'[^key]',            desc:'footnote mark' },
       { syn:'@ → Footnote',       desc:'add the footnote text' },
+      { syn:'File → Footnotes',   desc:'list, copy a link to cite again, or delete' },
       { syn:'[text](url)',       desc:'link (type it, or @ → Link)' },
       { syn:'![alt](url)',       desc:'image (type it, or @ → Image)' },
     ] },
