@@ -2701,38 +2701,43 @@ test('mdToHtml — ATX heading becomes a real <h1>', () => {
 // (same class, same accent ink, no tooltip), so the only way to tell was to click. It was the one
 // dangling reference in the app with no cue, while a broken link, a propless meter and an
 // undefined name all announce themselves.
-function withCookieNode(node, fn) {
-  c._context.__fnNode = node;
-  vm.runInContext('cookieNode = __fnNode;', c._context);
-  try { return fn(); } finally { vm.runInContext('cookieNode = null;', c._context); }
+
+// Phase A: footnotes live in the doc-level store (root.footnotes = [{id, text}]); the marker carries a
+// store id. A render is "in a real doc" when cookieNode is set, and written-ness is read from the
+// store. withFn installs the store + a cookieNode for one render, then clears both. Standalone render
+// text is not in the root tree, so footnoteOrder cannot number it and the marker shows its raw id —
+// which is why these tests still key on `a`/`b`.
+function withFn(store, fn) {
+  c._context.__fnStore = store;
+  c._context.__fnNode = { id: 'n1', text: '', children: [], props: [], seq: [] };
+  vm.runInContext('root.footnotes = __fnStore; cookieNode = __fnNode; _varsVer++;', c._context);
+  try { return fn(); } finally { vm.runInContext('cookieNode = null; root.footnotes = []; _varsVer++;', c._context); }
 }
-const fnNode = footnotes => ({ id: 'n1', text: '', children: [], props: [], seq: [], footnotes });
 
 test('a footnote marker whose note was never written is marked; a written one is untouched', () => {
-  // WRITTEN: byte-identical to before. The common case must never acquire a warning — that is the
-  // regression this pair exists to catch.
-  const ok = withCookieNode(fnNode([{ key: 'a', text: 'the actual note' }]), () => c.mdToHtml('See[^a]'));
+  // WRITTEN: the common case must never acquire a warning — that is the regression this pair catches.
+  const ok = withFn([{ id: 'a', text: 'the actual note' }], () => c.mdToHtml('See[^a]'));
   assert.ok(ok.includes('class="fn-ref"'), 'a written footnote keeps the plain class');
   assert.ok(!ok.includes('fn-ref-empty'), 'and gains no modifier');
   assert.ok(!ok.includes('title='), 'and no tooltip');
 
-  // UNWRITTEN: the cue, plus a tooltip that names the ACTION rather than the failure.
-  const bad = withCookieNode(fnNode([]), () => c.mdToHtml('See[^a]'));
+  // UNWRITTEN: the store has no written entry for the id -> the cue + an action-named tooltip.
+  const bad = withFn([], () => c.mdToHtml('See[^a]'));
   assert.ok(bad.includes('fn-ref fn-ref-empty'), 'an unwritten footnote is marked');
   assert.match(bad, /title="Nothing written here yet\. Click to write this footnote\."/);
   assert.match(bad, /aria-label="Footnote a, not written yet\. Click to write it\."/);
 });
 
-test('footnote written-ness is text.trim(), not whether a record exists', () => {
-  // THE SUBTLE ONE. Opening the footnote editor creates {key, text:''} BEFORE anything is typed,
+test('footnote written-ness is text.trim(), not whether a store entry exists', () => {
+  // THE SUBTLE ONE. Opening the footnote editor creates {id, text:''} BEFORE anything is typed,
   // so a record-existence test would drop the cue the moment a user clicked the marker and closed
   // without writing — exactly when nothing had changed. toMarkdown already tests fn.text.trim().
-  const empty = withCookieNode(fnNode([{ key: 'a', text: '' }]), () => c.mdToHtml('See[^a]'));
-  assert.ok(empty.includes('fn-ref-empty'), 'an empty record still counts as unwritten');
-  const blank = withCookieNode(fnNode([{ key: 'a', text: '   \n ' }]), () => c.mdToHtml('See[^a]'));
+  const empty = withFn([{ id: 'a', text: '' }], () => c.mdToHtml('See[^a]'));
+  assert.ok(empty.includes('fn-ref-empty'), 'an empty store entry still counts as unwritten');
+  const blank = withFn([{ id: 'a', text: '   \n ' }], () => c.mdToHtml('See[^a]'));
   assert.ok(blank.includes('fn-ref-empty'), 'whitespace-only counts as unwritten too, like the export');
-  // one key written, a second not: only the second is marked
-  const mixed = withCookieNode(fnNode([{ key: 'a', text: 'here' }]), () => c.mdToHtml('One[^a] two[^b]'));
+  // one id written, a second absent from the store: only the second is marked
+  const mixed = withFn([{ id: 'a', text: 'here' }], () => c.mdToHtml('One[^a] two[^b]'));
   assert.equal((mixed.match(/fn-ref-empty/g) || []).length, 1, 'exactly the unwritten one is marked');
   assert.match(mixed, /data-key="b"[^>]*title=/, 'and it is the one with no note');
 });
@@ -11838,16 +11843,17 @@ test('UXP-239/241 overlay toggles: refocus after re-render + announce the new co
 // already skipped the DEFINITION line for a note with no text, which is exactly what left the
 // marker dangling; a real CommonMark renderer then prints `[^ghost]` as raw brackets mid-sentence.
 test('UXP-237 fnIsWritten: blank text and a missing record both mean unwritten', () => {
-  assert.equal(c.fnIsWritten([{ key: 'a', text: 'the note' }], 'a'), true);
-  assert.equal(c.fnIsWritten([{ key: 'a', text: '' }], 'a'), false);      // the editor-opened case
-  assert.equal(c.fnIsWritten([{ key: 'a', text: '  \n ' }], 'a'), false);
-  assert.equal(c.fnIsWritten([], 'a'), false);                            // no record at all
+  // Phase A: fnIsWritten(store, id) — the store is [{id, text}] and written means non-blank text.
+  assert.equal(c.fnIsWritten([{ id: 'a', text: 'the note' }], 'a'), true);
+  assert.equal(c.fnIsWritten([{ id: 'a', text: '' }], 'a'), false);      // the editor-opened case
+  assert.equal(c.fnIsWritten([{ id: 'a', text: '  \n ' }], 'a'), false);
+  assert.equal(c.fnIsWritten([], 'a'), false);                          // no record at all
   assert.equal(c.fnIsWritten(null, 'a'), false);
-  assert.equal(c.fnIsWritten([{ key: 'b', text: 'other' }], 'a'), false);
+  assert.equal(c.fnIsWritten([{ id: 'b', text: 'other' }], 'a'), false);
 });
 
 test('UXP-237 stripUnwrittenFnRefs: drops the marker, keeps the written one, leaves no double space', () => {
-  const written = [{ key: 'ok', text: 'the actual note' }];
+  const written = [{ id: 'ok', text: 'the actual note' }];   // Phase A: store = [{id, text}]
   // a written marker is untouched
   assert.equal(c.stripUnwrittenFnRefs('A real one[^ok].', written), 'A real one[^ok].');
   // an unwritten one goes, and the sentence still reads
@@ -11861,7 +11867,7 @@ test('UXP-237 stripUnwrittenFnRefs: drops the marker, keeps the written one, lea
   // two in a row
   assert.equal(c.stripUnwrittenFnRefs('both[^a][^b] gone', []), 'both gone');
   // the editor-opened empty record drops too (the subtle one the render cue also pins)
-  assert.equal(c.stripUnwrittenFnRefs('See[^a]', [{ key: 'a', text: '' }]), 'See');
+  assert.equal(c.stripUnwrittenFnRefs('See[^a]', [{ id: 'a', text: '' }]), 'See');
   // untouched when there is nothing to do
   assert.equal(c.stripUnwrittenFnRefs('no markers here', []), 'no markers here');
   assert.equal(c.stripUnwrittenFnRefs('', []), '');
@@ -11869,24 +11875,88 @@ test('UXP-237 stripUnwrittenFnRefs: drops the marker, keeps the written one, lea
 });
 
 test('UXP-237 countUnwrittenFnRefs: counts markers, and skips excluded subtrees', () => {
-  const mk = (text, footnotes = [], extra = {}) => Object.assign(c.mkNode(text), { footnotes }, extra);
+  // Phase A: written-ness lives in the doc store (root.footnotes), not per node; markers reference by id.
+  const mk = (text, extra = {}) => Object.assign(c.mkNode(text), extra);
   const root = c.mkRoot();
-  root.children.push(mk('One[^a] two[^b]', [{ key: 'a', text: 'written' }]));   // b unwritten -> 1
-  root.children.push(mk('Three[^c]', []));                                       // -> 2
+  root.footnotes = [{ id: 'a', text: 'written' }];   // only 'a' is written; b/c/d/e/f have no store entry
+  root.children.push(mk('One[^a] two[^b]'));   // b unwritten -> 1
+  root.children.push(mk('Three[^c]'));         // -> 2
   assert.equal(c.countUnwrittenFnRefs(root), 2);
   // a marker inside an excluded subtree was never going to be exported, so it is not "dropped"
-  const scaffold = mk('Scaffolding[^d]', [], { noexport: true });
-  scaffold.children.push(mk('Nested[^e]', []));
+  const scaffold = mk('Scaffolding[^d]', { noexport: true });
+  scaffold.children.push(mk('Nested[^e]'));
   root.children.push(scaffold);
   assert.equal(c.countUnwrittenFnRefs(root), 2, 'a noexport subtree must not inflate the count');
   // nested markers under a KEPT point do count
-  root.children[0].children.push(mk('Child[^f]', []));
+  root.children[0].children.push(mk('Child[^f]'));
   assert.equal(c.countUnwrittenFnRefs(root), 3);
   // a clean tree reports nothing, so the toast keeps its original wording
   const clean = c.mkRoot();
-  clean.children.push(mk('All good[^a]', [{ key: 'a', text: 'here' }]));
+  clean.footnotes = [{ id: 'a', text: 'here' }];
+  clean.children.push(mk('All good[^a]'));
   assert.equal(c.countUnwrittenFnRefs(clean), 0);
   assert.equal(c.countUnwrittenFnRefs(null), 0);
+});
+
+// ── Phase A: the doc-level footnote store (numbering, migration, export renumber) ─────────────
+test('Phase A footnoteOrder: document order, shared ids counted once, reuse does not renumber', () => {
+  const r = c.mkRoot();
+  const a = c.mkNode('first[^x] then[^y]');
+  a.children.push(c.mkNode('nested[^y] again'));   // y already seen -> no renumber
+  const b = c.mkNode('reuse[^x] and new[^z]');      // x reused, z new
+  r.children.push(a, b);
+  const ord = c.footnoteOrder(r);
+  assert.equal(ord.get('x'), 1, 'x is the first marker in document order');
+  assert.equal(ord.get('y'), 2, 'y second; its reuse in the child does not renumber it');
+  assert.equal(ord.get('z'), 3, 'z third, in document order across points');
+  assert.equal(ord.size, 3, 'each id is numbered exactly once');
+});
+
+test('Phase A migrateNodeFootnotes: lifts to store, remaps markers, persists orphans, diverges collisions', () => {
+  let n = 0; const mint = () => 'F' + (++n);   // deterministic id minter
+  const store = [];
+  const nodeA = { text: 'a claim[^1] here', footnotes: [{ key: '1', text: 'Ives 2019' }] };
+  c.migrateNodeFootnotes(nodeA, store, mint);
+  assert.equal(nodeA.text, 'a claim[^F1] here', 'the [^key] marker remaps to the store id');
+  // cross-realm: objects pushed by the VM-realm function fail deepEqual on prototype, so compare fields.
+  assert.equal(JSON.stringify(store), JSON.stringify([{ id: 'F1', text: 'Ives 2019' }]), 'the footnote lifts into the store');
+  assert.equal(nodeA.footnotes.length, 0, 'the legacy per-node array is cleared');
+  // THE COLLISION FIX: a second point that also used [^1] must diverge to its own id.
+  const nodeB = { text: 'other[^1]', footnotes: [{ key: '1', text: 'Smith 2020' }] };
+  c.migrateNodeFootnotes(nodeB, store, mint);
+  assert.equal(nodeB.text, 'other[^F2]', 'a second [^1] on another point becomes a DISTINCT id');
+  assert.equal(store.length, 2, 'two once-colliding footnotes are now two store entries');
+  // NO auto-prune: an unreferenced legacy footnote (no marker in the text) still lifts and persists.
+  const nodeC = { text: 'no marker here', footnotes: [{ key: '9', text: 'orphan ref' }] };
+  c.migrateNodeFootnotes(nodeC, store, mint);
+  assert.ok(store.some(f => f.text === 'orphan ref'), 'an unreferenced legacy footnote persists as an orphan');
+  // idempotent: a second pass over an already-migrated node lifts nothing.
+  c.migrateNodeFootnotes(nodeA, store, mint);
+  assert.equal(store.length, 3, 'a second pass is a no-op');
+});
+
+test('Phase A migrateFootnotesToStore: lifts across every depth using the real id minter', () => {
+  const store = [];
+  const root = { text: 'x[^1]', footnotes: [{ key: '1', text: 'top' }],
+    children: [{ text: 'y[^2]', footnotes: [{ key: '2', text: 'child' }], children: [] }] };
+  c.migrateFootnotesToStore(root, store);
+  assert.equal(store.length, 2, 'both the root and the nested footnote lifted');
+  assert.ok(store.every(f => /^f/.test(f.id)), 'store ids use the fnId (f…) shape');
+  assert.ok(/\[\^f/.test(root.text) && /\[\^f/.test(root.children[0].text), 'markers remapped at every depth');
+  assert.deepEqual(store.map(f => f.text).sort(), ['child', 'top']);
+});
+
+test('Phase A renumberFnMarkers: [^id] -> [^number] via the order map; unknown ids untouched', () => {
+  const order = new Map([['abc', 1], ['xyz', 2]]);
+  assert.equal(c.renumberFnMarkers('see[^abc] and[^xyz]', order), 'see[^1] and[^2]');
+  assert.equal(c.renumberFnMarkers('unknown[^zzz] stays', order), 'unknown[^zzz] stays');
+  assert.equal(c.renumberFnMarkers('', order), '');
+  assert.equal(c.renumberFnMarkers(null, null), '');
+});
+
+test('Phase A: footnotes are NOT auto-pruned — pruneFootnotes and its call site are gone', () => {
+  assert.ok(!/pruneFootnotes\(/.test(_src),
+    'pruneFootnotes must be fully removed (the function AND the exitEdit call), so orphans persist');
 });
 
 test('#1142 countMirrorRefs: a solo caption-less link to a PARENT, and nothing else', () => {
@@ -11984,19 +12054,21 @@ test('#1142 exportedNote reports mirrors on BOTH text exports, and the Web page 
 });
 
 test('UXP-237 both text exports drop the marker; the definition line still appears', () => {
-  const n = Object.assign(c.mkNode('A dangling one[^ghost] and a real one[^ok].'), {
-    footnotes: [{ key: 'ok', text: 'the actual note' }, { key: 'ghost', text: '' }],
-  });
-  const root = c.mkRoot(); root.children.push(n);
+  // Phase A: footnotes live in the doc store and export as document-order NUMBERS. 'ok' is the first
+  // marker (id -> [^1]); 'ghost' is unwritten and is stripped, marker and all.
+  const n = c.mkNode('A real one[^ok] and a dangling one[^ghost].');
+  const root = c.mkRoot();
+  root.footnotes = [{ id: 'ok', text: 'the actual note' }, { id: 'ghost', text: '' }];
+  root.children.push(n);
   const md = c.toMarkdown(root);
   assert.ok(!md.includes('[^ghost]'), 'the unwritten marker must not reach the .md file: ' + md);
-  assert.ok(md.includes('[^ok]'), 'the written marker survives');
-  assert.ok(md.includes('[^ok]: the actual note'), 'and its definition line is still emitted');
-  assert.ok(md.includes('A dangling one and a real one[^ok].'), 'the sentence reads cleanly: ' + md);
+  assert.ok(md.includes('[^1]'), 'the written marker survives, numbered in document order');
+  assert.ok(md.includes('[^1]: the actual note'), 'and its definition line is still emitted');
+  assert.ok(md.includes('A real one[^1] and a dangling one.'), 'the sentence reads cleanly: ' + md);
   // the plain-text export has TWO body branches and both must strip
   const txt = c.toPlainText(root);
   assert.ok(!txt.includes('[^ghost]'), 'the unwritten marker must not reach the .txt file: ' + txt);
-  assert.ok(txt.includes('[^ok]'), 'the written marker survives in plain text too');
+  assert.ok(txt.includes('[^1]'), 'the written marker survives in plain text too');
 });
 
 // UXP-243 pure cores: the graph's tap-target floor. A node's hit area can only grow as far as its
@@ -16519,10 +16591,13 @@ test('toMarkdown — a blank line separates blocks, and NEVER two list items', (
 });
 
 test('toMarkdown — the footnote definition run is its own block', () => {
-  const md = _mdOf(_mdN('Prose with a ref[^a]', 'para', { footnotes: [{ key: 'a', text: 'the body' }] }),
-                   _mdN('after'));
-  assert.match(md, /Prose with a ref\[\^a\]\n\n {2}\[\^a\]: the body/, 'a blank line before the definition');
-  assert.match(md, /\[\^a\]: the body\n\n- after/, 'and the next point is separated from it');
+  // Phase A: footnotes come from the doc store (root.footnotes) and export as document-order numbers.
+  const r = c.mkRoot();
+  r.footnotes = [{ id: 'a', text: 'the body' }];
+  r.children.push(_mdN('Prose with a ref[^a]', 'para'), _mdN('after'));
+  const md = c.toMarkdown(r);
+  assert.match(md, /Prose with a ref\[\^1\]\n\n {2}\[\^1\]: the body/, 'a blank line before the definition');
+  assert.match(md, /\[\^1\]: the body\n\n- after/, 'and the next point is separated from it');
 });
 
 test('toMarkdown — a blockquote keeps its > even when the point is not typed as a quote', () => {
@@ -17376,8 +17451,8 @@ test('QX-1 has:<sidecar> and has:children / has:footnote, with props fall-throug
   assert.equal(hasM('dice', { dice: [] }), false);             // empty sidecar
   assert.equal(hasM('children', { children: [{ id: '1' }] }), true);
   assert.equal(hasM('children', { children: [] }), false);
-  assert.equal(hasM('footnote', { footnotes: [{ key: 'a' }] }), true);
-  assert.equal(hasM('footnote', { footnotes: [] }), false);
+  assert.equal(hasM('footnote', { text: 'a claim with a ref[^a]' }), true);   // Phase A: "has a footnote" = carries a [^id] marker (doc-store model)
+  assert.equal(hasM('footnote', { text: 'no footnote here' }), false);
   // the has:<propkey> contract survives: a user property keyed 'dice' still matches
   // (empty sidecar, so the fall-through property scan runs)
   assert.equal(hasM('dice', { dice: [], props: [{ key: 'dice', val: 'yes' }] }), true);
@@ -22729,7 +22804,7 @@ test('#1111 countExportLinks — WLINK_RE, every sink, and the noexport skip', (
     mk('text link [[#a1|]]'),
     mk('plain', { note: 'a note link [[#a2|]]' }),
     mk('plain', { props: [{ key: 'src', val: 'a prop link [[#a3|]]' }] }),
-    mk('plain[^k]', { footnotes: [{ key: 'k', text: 'a footnote link [[#a4|]]' }] }),
+    mk('plain[^k]'),   // Phase A: the footnote link lives in the doc store, referenced by [^k]
     // WLINK_RE, not LINK_RE. collectLinks uses LINK_RE, which is SAME-DOC ONLY, so a counter built
     // on it would silently under-report exactly the links a workspace user cares about — and this
     // counter exists to stop under-reporting.
@@ -22737,6 +22812,7 @@ test('#1111 countExportLinks — WLINK_RE, every sink, and the noexport skip', (
     // mirrors countUnwrittenFnRefs: a link in an excluded subtree was never going to be exported
     mk('excluded [[#a6|]]', { noexport: true }),
   ];
+  r.footnotes = [{ id: 'k', text: 'a footnote link [[#a4|]]' }];   // referenced + written -> its link counts once
   assert.equal(c.countExportLinks(r), 5, 'four sinks plus the cross-doc form; the excluded one is not counted');
   assert.equal(c.countExportLinks(null), 0, 'no tree, no count');
   assert.equal(c.countExportLinks({ children: [c.mkNode('no links at all')] }), 0);
@@ -22771,8 +22847,9 @@ test('#1111 the four sinks that leaked a RAW token into both exports', () => {
   r.children = [
     mk('point', { note: 'aside: [[#a1|]] here' }),
     mk('point', { props: [{ key: 'src', val: 'see [[#a2|]]' }] }),
-    mk('point[^k]', { footnotes: [{ key: 'k', text: 'per [[#a3|]]' }] }),
+    mk('point[^k]'),   // Phase A: footnote text lives in the doc store (below)
   ];
+  r.footnotes = [{ id: 'k', text: 'per [[#a3|]]' }];
   const div = c.mkNode('divider label [[#a4|]]'); div.type = 'divider';
   r.children.push(div);
   for (const [name, text] of [['markdown', c.toMarkdown(r)], ['plain text', c.toPlainText(r)]]) {
@@ -24726,7 +24803,7 @@ test('toOpml golden: byte-identical serialization across the perf rewrite', () =
   const sink = {
     id: 'sinkid1', text: 'A & B "quoted" <tag>\nline2\ttab', type: 'h1', checked: true, collapsed: true,
     folded: true, noexport: true,
-    footnotes: [{ id: 'f1', text: 'note & so' }], dice: [{ key: 'd1', expr: '2d6' }],
+    dice: [{ key: 'd1', expr: '2d6' }],   // Phase A: footnotes are doc-level now (on `tree` below), not a per-node attr
     markov: [{ key: 'm1' }], math: [{ key: 'x1' }], vars: [{ name: 'v', expr: '3' }],
     grammar: [{ key: 'g1' }], est: [{ key: 'e1' }], seq: [{ key: 's1' }], query: [{ key: 'q1' }],
     note: 'a note\nwith newline', props: [{ key: 'due', val: '2026-08-01' }],
@@ -24736,9 +24813,11 @@ test('toOpml golden: byte-identical serialization across the perf rewrite', () =
   };
   const plain = { id: 'plainid2', text: 'just words', type: 'ul', children: [] };
   const parent = { id: 'par3', text: 'parent', type: 'ul', children: [plain] };
-  const tree = { text: 'Doc', children: [sink, parent], savedSearches: [], templates: [], inboxes: [], plugins: [] };
+  const tree = { text: 'Doc', children: [sink, parent], footnotes: [{ id: 'f1', text: 'note & so' }], savedSearches: [], templates: [], inboxes: [], plugins: [] };
   const body = c.toOpml(tree).split('<body>')[1].split('</body>')[0];
-  assert.equal(body, "\n    <outline text=\"A &amp; B &quot;quoted&quot; &lt;tag&gt;&#10;line2&#9;tab\" _type=\"h1\" _checked=\"true\" _collapsed=\"true\" _folded=\"true\" _noexport=\"true\" _footnotes=\"[{&quot;id&quot;:&quot;f1&quot;,&quot;text&quot;:&quot;note &amp; so&quot;}]\" _dice=\"[{&quot;key&quot;:&quot;d1&quot;,&quot;expr&quot;:&quot;2d6&quot;}]\" _markov=\"[{&quot;key&quot;:&quot;m1&quot;}]\" _math=\"[{&quot;key&quot;:&quot;x1&quot;}]\" _vars=\"[{&quot;name&quot;:&quot;v&quot;,&quot;expr&quot;:&quot;3&quot;}]\" _grammar=\"[{&quot;key&quot;:&quot;g1&quot;}]\" _est=\"[{&quot;key&quot;:&quot;e1&quot;}]\" _seq=\"[{&quot;key&quot;:&quot;s1&quot;}]\" _query=\"[{&quot;key&quot;:&quot;q1&quot;}]\" _note=\"a note&#10;with newline\" _props=\"[{&quot;key&quot;:&quot;due&quot;,&quot;val&quot;:&quot;2026-08-01&quot;}]\" _colw=\"[120,null]\" _qbase=\"{&quot;q&quot;:&quot;is:todo&quot;,&quot;cols&quot;:&quot;Title&quot;}\" _varbase=\"{&quot;name&quot;:&quot;Data&quot;}\" _colrole=\"[&quot;status&quot;,null]\" _colfmt=\"[null,&quot;int&quot;]\" _view=\"{&quot;kind&quot;:&quot;board&quot;}\" _baserows=\"7\" _id=\"sinkid1\"/>\n    <outline text=\"parent\" _id=\"par3\">\n      <outline text=\"just words\" _id=\"plainid2\"/>\n    </outline>\n  ");
+  assert.equal(body, "\n    <outline text=\"A &amp; B &quot;quoted&quot; &lt;tag&gt;&#10;line2&#9;tab\" _type=\"h1\" _checked=\"true\" _collapsed=\"true\" _folded=\"true\" _noexport=\"true\" _dice=\"[{&quot;key&quot;:&quot;d1&quot;,&quot;expr&quot;:&quot;2d6&quot;}]\" _markov=\"[{&quot;key&quot;:&quot;m1&quot;}]\" _math=\"[{&quot;key&quot;:&quot;x1&quot;}]\" _vars=\"[{&quot;name&quot;:&quot;v&quot;,&quot;expr&quot;:&quot;3&quot;}]\" _grammar=\"[{&quot;key&quot;:&quot;g1&quot;}]\" _est=\"[{&quot;key&quot;:&quot;e1&quot;}]\" _seq=\"[{&quot;key&quot;:&quot;s1&quot;}]\" _query=\"[{&quot;key&quot;:&quot;q1&quot;}]\" _note=\"a note&#10;with newline\" _props=\"[{&quot;key&quot;:&quot;due&quot;,&quot;val&quot;:&quot;2026-08-01&quot;}]\" _colw=\"[120,null]\" _qbase=\"{&quot;q&quot;:&quot;is:todo&quot;,&quot;cols&quot;:&quot;Title&quot;}\" _varbase=\"{&quot;name&quot;:&quot;Data&quot;}\" _colrole=\"[&quot;status&quot;,null]\" _colfmt=\"[null,&quot;int&quot;]\" _view=\"{&quot;kind&quot;:&quot;board&quot;}\" _baserows=\"7\" _id=\"sinkid1\"/>\n    <outline text=\"parent\" _id=\"par3\">\n      <outline text=\"just words\" _id=\"plainid2\"/>\n    </outline>\n  ");
+  // Phase A: the footnote store rides the <head> as <_footnotes>, beside _savedSearches et al.
+  assert.match(c.toOpml(tree), /<head>.*<_footnotes>\[\{&quot;id&quot;:&quot;f1&quot;,&quot;text&quot;:&quot;note &amp; so&quot;\}\]<\/_footnotes>.*<\/head>/s, 'the doc-level footnote store serializes into the head');
   // The escape sniff must still fire on every escapable class, and pass plain text through as-is.
   assert.equal(c.ex('plain words 123'), 'plain words 123');
   assert.equal(c.ex('a & b'), 'a &amp; b');

@@ -7526,15 +7526,21 @@ function mdInline(s) {
   // moment a user clicked the marker and closed without writing — when nothing had changed.
   // toMarkdown's export already tests fn.text.trim() for the same reason.
   //
-  // cookieNode null (breadcrumbs, search snippets, the guide — every mdInline caller outside a
-  // node render) means we do not KNOW the footnotes, so it renders exactly as before. An unknown
-  // state must never paint as broken, or every footnote in a search result would be accused.
-  s = s.replace(/\[\^([^\]]+)\]/g, (_, k) => {
+  // Phase A: the marker key is now a stable store id; the DISPLAYED value is the document-order number
+  // (footnoteOrder), so a footnote reads as [1],[2],[3] whatever its id. data-key stays the id so the
+  // fn-panel/hover still match. Written-ness lives in the doc store now. cookieNode null (breadcrumbs,
+  // search snippets, the guide — every mdInline caller outside a node render) means we do not KNOW the
+  // context, so it renders as-before and never paints as broken; a detached context shows the raw id
+  // only when no order number is resolvable.
+  s = s.replace(/\[\^([^\]]+)\]/g, (_, id) => {
     const known = !!cookieNode;
-    const written = !known || (cookieNode.footnotes || []).some(f => f.key === k && (f.text || '').trim());
-    if (written) return stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(k)}" aria-label="Footnote ${escQ(k)}">[${k}]</sup>`);
+    const store = (typeof root !== 'undefined' && root && Array.isArray(root.footnotes)) ? root.footnotes : null;
+    const ord = store ? footnoteOrder() : null;
+    const num = String((ord && ord.has(id)) ? ord.get(id) : id);
+    const written = !known || !store || fnIsWritten(store, id);
+    if (written) return stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(id)}" aria-label="Footnote ${escQ(num)}">[${num}]</sup>`);
     const tip = 'Nothing written here yet. Click to write this footnote.';
-    return stash(`<sup class="fn-ref fn-ref-empty" role="button" tabindex="-1" data-key="${escQ(k)}" title="${escQ(tip)}" aria-label="Footnote ${escQ(k)}, not written yet. Click to write it.">[${k}]</sup>`);
+    return stash(`<sup class="fn-ref fn-ref-empty" role="button" tabindex="-1" data-key="${escQ(id)}" title="${escQ(tip)}" aria-label="Footnote ${escQ(num)}, not written yet. Click to write it.">[${num}]</sup>`);
   });
   // dice rolls — [[dice:KEY]] resolves against the node's stored roll data
   s = s.replace(/\[\[dice:([a-z0-9]+)\]\]/gi, (_, k) =>
@@ -8933,7 +8939,9 @@ function toOpml(r) {
     if (n.folded)    attrs += ` _folded="true"`;               // paragraph collapsed to its first line
     if (n.cards)     attrs += ` _cards="true"`;                // #955: children shown as a corkboard when zoomed in
     if (n.noexport)  attrs += ` _noexport="true"`;             // #954: skipped by the lossy markdown/text export
-    if (n.footnotes?.length) attrs += ` _footnotes="${ex(JSON.stringify(n.footnotes))}"`;
+    // footnotes moved to the doc-level store (r.footnotes, head <_footnotes>); a point holds only
+    // [^id] markers in its text now. Per-node _footnotes is retired from emit; a legacy file's
+    // per-node footnotes lift into the store on load (migrateFootnotesToStore).
     if (n.dice?.length)      attrs += ` _dice="${ex(JSON.stringify(n.dice))}"`;
     if (n.markov?.length)    attrs += ` _markov="${ex(JSON.stringify(n.markov))}"`;
     if (n.math?.length)      attrs += ` _math="${ex(JSON.stringify(n.math))}"`;
@@ -8971,7 +8979,7 @@ function toOpml(r) {
   const calsHas = r.calendars && Object.keys(r.calendars).length;
   const gamelogHas = r.gamelog && r.gamelog.targetId != null;
   const unitsHas = r.units && typeof r.units === 'object' && Object.keys(r.units).length;   // #875: declared units only, built-ins never serialized
-  const headCfg = headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '');
+  const headCfg = headEl('_footnotes', r.footnotes) + headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -9181,6 +9189,10 @@ function fromOpml(xml) {
   }
   const body = doc.querySelector('body');
   const title = doc.querySelector('head > title')?.textContent || '';
+  // Doc-level footnote store (r.footnotes = [{id, text}]). Points reference entries via [^id]
+  // markers. A legacy file has no head store and per-node _footnotes attrs instead; those lift
+  // into the store on load (migrateFootnotesToStore), so this is empty for legacy files.
+  const footnotes = headJSONArray(doc, '_footnotes', f => f && typeof f.id === 'string' && typeof f.text === 'string');
   const savedSearches = headJSONArray(doc, '_savedSearches', s => typeof s === 'string');
   const templates     = headJSONArray(doc, '_templates', t => t && typeof t.name === 'string' && t.node);
   // Multi-inbox: an ordered list of up to 10 point ids (slot N = inboxes[N-1]). Migrate the
@@ -9222,7 +9234,7 @@ function fromOpml(xml) {
   // legacy doc loads unchanged and convert() still works off the built-ins.
   const unitsRaw      = doc.querySelector('head > _units')?.textContent?.trim();
   const units         = (() => { try { return normalizeUnits(JSON.parse(unitsRaw || 'null')) || undefined; } catch(_) { return undefined; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, journal, rollLog,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, footnotes, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, journal, rollLog,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -17021,7 +17033,7 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
     const sidecar = HAS_SIDECAR_FIELD[term.value];   // e.g. 'var' -> 'vars'
     if (sidecar && (node[sidecar] || []).length) return true;
     if (term.value === 'children' && (node.children || []).length) return true;
-    if (term.value === 'footnote' && (node.footnotes || []).length) return true;
+    if (term.value === 'footnote' && getFnRefs(node.text).length) return true;   // Phase A: a point "has a footnote" when it carries a [^id] marker (store model)
     // QX-6: link/tag presence. has:link and has:tag are PURE node reads (the deferral
     // over-generalized): a link is any [[#id|..]] or [[docId#id|..]] token in the text
     // (parseLinkToken's shape, unanchored); a tag is any hashtag sigil in the
@@ -19313,7 +19325,10 @@ function _cloneNodeNewIds(node, idMap) {
   return {
     ...node,
     id: newId,
-    // deep-copy per-node data so the clone doesn't share mutable arrays
+    // deep-copy per-node data so the clone doesn't share mutable arrays. Footnotes are doc-level now
+    // (Phase A), but a clone still carries any LEGACY per-node footnotes so the import path
+    // (appendOpmlSubtrees -> migrateFootnotesToStore) can lift them into the live store; a live
+    // store-based node has an empty array here, so this is a harmless copy for stamping.
     footnotes: (node.footnotes || []).map(f => ({ ...f })),
     dice: (node.dice || []).map(d => ({ ...d, parts: (d.parts || []).map(p => ({ ...p, rolls: p.rolls ? [...p.rolls] : undefined })) })),
     markov: (node.markov || []).map(m => ({ ...m, path: [...(m.path || [])] })),
@@ -21760,14 +21775,12 @@ function insertInlineArtifact(id, nodeId, content) {
     // edit in place — the same dual pattern as meter above. Built-in units work out of the box.
     applyInlineInsertion(nodeId, offset, '{= convert(10, km, mi)}');
   } else if (id === 'footnote') {
-    const key = nextFnKey(node);
-    if (!node.footnotes) node.footnotes = [];
-    node.footnotes.push({ key, text: '' });
-    document.execCommand('insertText', false, `[^${key}]`);
+    const fid = newFootnote('');   // Phase A: mint a doc-store footnote; the marker carries its id
+    document.execCommand('insertText', false, `[^${fid}]`);
     node.text = editableText(content); markDirty();
     showFnPanel(node.id);
     setTimeout(() => {
-      const el = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(key)}"] .fn-content`);
+      const el = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(fid)}"] .fn-content`);
       if (el) el.focus();
     }, 50);
     return;
@@ -30469,7 +30482,7 @@ function editDice(node, key) {
 // half's orphaned artifact records.
 function pruneArtifacts(node) {
   pruneDice(node); pruneMarkov(node); pruneMath(node); pruneEst(node);
-  pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneQueries(node); pruneFootnotes(node);
+  pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneQueries(node);   // Phase A: footnotes are NOT pruned (doc store; orphans persist, deleted only via the manager)
 }
 // Drop dice records whose [[dice:KEY]] token no longer appears in the text.
 function pruneDice(node) {
@@ -31748,6 +31761,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   // caches mid-run with half-migrated data; that final bump re-clears them.)
   resetDocCaches();
   migrateNodePrefixes(root);
+  migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
   normalizeCalendarBindings(root); // #653: every adopted doc gets the {calendars, gamelog} shape (mkRoot has it, but a legacy import / self-contained HTML may not)
   promoteLoadedShorthand(root);   // typed-but-unpromoted {…} from an imported/loaded doc → fresh pills
   buildIndex(root, null);
@@ -33641,6 +33655,9 @@ function toMarkdown(rootNode) {
   const varMap = collectVars();
   const out = [];
   let lastWasBlock = false;
+  const fnStore = (rootNode && rootNode.footnotes) || [];   // Phase A: doc-level footnote store
+  const fnOrder = footnoteOrder(rootNode);                  // id -> document-order number
+  const fnEmitted = new Set();                              // a reused footnote defines once, at first reference
   // #1111: markdown KEEPS the link layer. `mdLinkOut` is pure; resolving a foreign docId to its
   // file name needs workspaceIndex, so that lookup lives here, at the impure call site.
   const docFileOf = (docId) => {
@@ -33698,7 +33715,7 @@ function toMarkdown(rootNode) {
       const isTodo = node.type === 'todo';
       // UXP-237: strip markers for notes that were never written, AFTER the flatten/link chain
       // (markers are plain text and pass through it untouched, so this is the one uniform point).
-      let body = stripUnwrittenFnRefs(lt(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)), node.footnotes); // #806: links → titles; #925f: para pills → result-only
+      let body = renumberFnMarkers(stripUnwrittenFnRefs(lt(flattenArtifacts(isTodo ? node.text : textForDisplay(node), node, varMap, true)), fnStore), fnOrder); // #806: links → titles; #925f: para pills → result-only; Phase A: store + document-order numbers
       const hLvl = hLvlPre;
       // EVERY line, not just the first: a multi-line quote otherwise relies on lazy continuation to
       // stay one <blockquote>, which the blank-line policy above is specifically breaking.
@@ -33739,9 +33756,10 @@ function toMarkdown(rootNode) {
     // as literal text and the reference it defines is left undefined. This is the transition that
     // broke the loudest, because the reader sees a dangling [^1] with no footnote.
     const fnLines = [];
-    getFnRefs(node.text).forEach(key => {
-      const fn = (node.footnotes || []).find(f => f.key === key);
-      if (fn && fn.text.trim()) fnLines.push(`${indent}  [^${key}]: ${lt(fn.text.replace(/\n+/g, ' ').trim())}`);
+    getFnRefs(node.text).forEach(id => {
+      if (fnEmitted.has(id)) return;   // Phase A: a reused footnote defines once (doc store), at first reference
+      const fn = fnStore.find(f => f.id === id);
+      if (fn && fn.text.trim()) { fnEmitted.add(id); fnLines.push(`${indent}  [^${fnOrder.get(id)}]: ${lt(fn.text.replace(/\n+/g, ' ').trim())}`); }
     });
     if (fnLines.length) { sep(); out.push(...fnLines); lastWasBlock = true; }
     let olN = 0;
@@ -33756,11 +33774,14 @@ function toMarkdown(rootNode) {
 function toPlainText(rootNode) {
   const varMap = collectVars();
   const out = [];
+  const fnStore = (rootNode && rootNode.footnotes) || [];   // Phase A: doc-level footnote store
+  const fnOrder = footnoteOrder(rootNode);                  // id -> document-order number
+  const fnEmitted = new Set();                              // a reused footnote defines once, at first reference
   function emit(node, depth) {
     if (node.noexport) return;   // #954: exclude-from-export skips the point and its subtree
     const indent = '\t'.repeat(depth);
     if (node.type === 'base') {
-      stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))), node.footnotes).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237
+      renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.text, node, varMap))), fnStore), fnOrder).split('\n').forEach(l => out.push(indent + l)); // #806; UXP-237; Phase A: store + numbers
     } else if (node.type === 'divider') {
       out.push(`${indent}----------`);
       const dlabel = stripInlineMd(linkText(textForDisplay(node)));
@@ -33770,7 +33791,7 @@ function toPlainText(rootNode) {
       // `- [ ]` list marker to the bare `[ ]` box, matching the old plain-text shape.
       // UXP-237: both toPlainText branches strip unwritten markers, or the plain-text export is
       // only half fixed (a base point takes the branch above).
-      let body = stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))), node.footnotes); // #806: links → titles; #925f: para pills → result-only
+      let body = renumberFnMarkers(stripUnwrittenFnRefs(stripInlineMd(linkText(flattenArtifacts(node.type === 'todo' ? node.text : textForDisplay(node), node, varMap, true))), fnStore), fnOrder); // #806: links → titles; #925f: para pills → result-only; Phase A: store + numbers
       if (node.type === 'todo') body = body.replace(TASK_KEEP_RE, '$1 ');
       const lines = body.split('\n');
       out.push(`${indent}${lines[0]}`);
@@ -33783,10 +33804,11 @@ function toPlainText(rootNode) {
     // per-node properties as a single continuation line
     const exProps = (node.props || []).filter(p => !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase())); // #813
     if (exProps.length) out.push(`${indent}\t[${exProps.map(p => `${p.key}: ${linkText(p.val)}`).join(' · ')}]`);
-    // footnote text in reference order, indented under the node
-    getFnRefs(node.text).forEach(key => {
-      const fn = (node.footnotes || []).find(f => f.key === key);
-      if (fn && fn.text.trim()) out.push(`${indent}\t[^${key}] ${stripInlineMd(linkText(fn.text)).replace(/\n+/g, ' ').trim()}`);
+    // footnote text in reference order, indented under the node; Phase A: doc store, defined once
+    getFnRefs(node.text).forEach(id => {
+      if (fnEmitted.has(id)) return;
+      const fn = fnStore.find(f => f.id === id);
+      if (fn && fn.text.trim()) { fnEmitted.add(id); out.push(`${indent}\t[^${fnOrder.get(id)}] ${stripInlineMd(linkText(fn.text)).replace(/\n+/g, ' ').trim()}`); }
     });
     for (const c of node.children) emit(c, depth + 1);
   }
@@ -34417,12 +34439,81 @@ function getFnRefs(text) {
   return refs;
 }
 
+// A footnote id: a stable opaque token (the pill-id style), the KEY inside a [^id] marker and the
+// identity in the doc store. It never renumbers — the displayed number is derived (footnoteOrder).
+function fnId() { return 'f' + Math.random().toString(36).slice(2, 9); }
+
+// Create a footnote in the doc store and return its stable id (the key to put in a [^id] marker).
+// The single write door for the @ menu and convert-to-footnote.
+function newFootnote(text) {
+  if (!Array.isArray(root.footnotes)) root.footnotes = [];
+  const id = fnId();
+  root.footnotes.push({ id, text: String(text || '') });
+  return id;
+}
+
+// Lift a node's legacy per-node footnotes into the doc-level store, remapping [^key] -> [^id] in the
+// node's text so the marker now points at the store entry. Pure and idempotent: it clears
+// node.footnotes after lifting, so a second pass is a no-op. `mint` returns a fresh unique id
+// (injected so tests are deterministic). One store entry per legacy record — an unreferenced legacy
+// footnote (no [^key] in the text) still lifts, so it persists as an orphan (no auto-prune). Two
+// points that both used [^1] become two distinct store ids, which fixes the point-local collision.
+function migrateNodeFootnotes(node, store, mint) {
+  const legacy = node && node.footnotes;
+  if (!Array.isArray(legacy) || !legacy.length) return;
+  for (const fn of legacy) {
+    if (!fn || typeof fn.key !== 'string') continue;
+    const id = mint();
+    store.push({ id, text: String(fn.text || '') });
+    node.text = String(node.text || '').split(`[^${fn.key}]`).join(`[^${id}]`);
+  }
+  node.footnotes = [];
+}
+
+// Walk `subtree` (INCLUDING its root) migrating every node's legacy footnotes into `store`. Used at
+// load (per top-level point, store = root.footnotes) and on subtree insert (store = the LIVE
+// root.footnotes, so an inserted doc's footnotes merge into the current store).
+function migrateFootnotesToStore(subtree, store) {
+  (function walk(node) {
+    migrateNodeFootnotes(node, store, fnId);
+    for (const c of (node.children || [])) walk(c);
+  })(subtree);
+}
+
+// Doc-level load hook: lift every point's legacy per-node footnotes into the root store. Skips the
+// root itself (its .footnotes IS the store, not a legacy per-node array). Idempotent — runs after
+// migrateNodePrefixes at each load site; a new-format doc has nothing to lift.
+function migrateDocFootnotes(rootNode) {
+  if (!rootNode) return;
+  if (!Array.isArray(rootNode.footnotes)) rootNode.footnotes = [];
+  for (const c of (rootNode.children || [])) migrateFootnotesToStore(c, rootNode.footnotes);
+}
+
+// doc-cache: footnoteOrder — document-order footnote numbering. Walk points in render order; each
+// [^id] marker's FIRST appearance gets the next number (1-based) -> Map<id, number>. This is what
+// the render marker, the fn-panel and the exports display, so a footnote reads as [1],[2],[3] through
+// the whole document regardless of its stable id, and renumbers for free when points move.
+const footnoteOrder = makeDocCache('footnoteOrder', (rootNode) => {
+  const map = new Map();
+  let n = 0;
+  (function walk(node) {
+    for (const c of (node.children || [])) {
+      for (const id of getFnRefs(c.text)) if (!map.has(id)) map.set(id, ++n);
+      walk(c);
+    }
+  })(rootNode || { children: [] });
+  return map;
+});
+
 // UXP-237: is this footnote actually written? The ONE definition, shared by the render cue
 // (.fn-ref-empty), the export definition lines, and the marker strip below. Opening the footnote
 // editor creates {key, text:''} before anything is typed, so a record-existence test is not enough —
 // a missing record and a blank one both mean "never written".
-function fnIsWritten(footnotes, key) {
-  const fn = (footnotes || []).find(f => f.key === key);
+// Phase A: `store` is the doc-level footnote store (r.footnotes = [{id,text}]); a footnote is written
+// when its store entry has non-blank text. Blank-but-present still means "never written" (the fn-panel
+// creates {id, text:''} the moment you open the editor).
+function fnIsWritten(store, id) {
+  const fn = (store || []).find(f => f.id === id);
   return !!(fn && String(fn.text || '').trim());
 }
 
@@ -34438,10 +34529,19 @@ function fnIsWritten(footnotes, key) {
 //
 // The leading `\s*` matters: "one [^ghost] and" would otherwise export as "one  and" with a
 // doubled space where the marker used to be.
-function stripUnwrittenFnRefs(text, footnotes) {
+function stripUnwrittenFnRefs(text, store) {
   const s = String(text ?? '');
   if (!s || s.indexOf('[^') === -1) return s;
-  return s.replace(/\s*\[\^([^\]]+)\]/g, (whole, key) => (fnIsWritten(footnotes, key) ? whole : ''));
+  return s.replace(/\s*\[\^([^\]]+)\]/g, (whole, id) => (fnIsWritten(store, id) ? whole : ''));
+}
+
+// Phase A: exports display the document-order NUMBER, not the raw store id, so an exported file reads
+// [^1]/[^2]. `order` is footnoteOrder(rootNode). An id with no order entry (should not happen for an
+// exported marker) is left as-is rather than dropped.
+function renumberFnMarkers(text, order) {
+  const s = String(text ?? '');
+  if (!s || !order || s.indexOf('[^') === -1) return s;
+  return s.replace(/\[\^([^\]]+)\]/g, (whole, id) => (order.has(id) ? `[^${order.get(id)}]` : whole));
 }
 
 // How many markers an export will drop, so the toast can say so rather than removing them silently.
@@ -34449,10 +34549,11 @@ function stripUnwrittenFnRefs(text, footnotes) {
 // going to be exported, so counting it would over-report what actually changed.
 function countUnwrittenFnRefs(rootNode) {
   let n = 0;
+  const store = (rootNode && rootNode.footnotes) || [];   // Phase A: written-ness lives in the doc store
   (function walk(node) {
     for (const c of (node?.children || [])) {
       if (c.noexport) continue;
-      for (const key of getFnRefs(c.text)) if (!fnIsWritten(c.footnotes, key)) n++;
+      for (const id of getFnRefs(c.text)) if (!fnIsWritten(store, id)) n++;
       walk(c);
     }
   })(rootNode || { children: [] });
@@ -34477,16 +34578,20 @@ function countExportLinks(rootNode) {
     WLINK_RE.lastIndex = 0;
     while (WLINK_RE.exec(String(s))) n++;
   };
+  const refIds = new Set();
   (function walk(node) {
     for (const c of (node?.children || [])) {
       if (c.noexport) continue;
       inStr(c.text);
       inStr(c.note);
       for (const p of (c.props || [])) inStr(p.val);
-      for (const f of (c.footnotes || [])) inStr(f.text);
+      for (const id of getFnRefs(c.text)) refIds.add(id);
       walk(c);
     }
   })(rootNode || { children: [] });
+  // Phase A: footnote text lives in the doc store; count links once per referenced+written footnote,
+  // which is exactly the set the export emits a definition line for.
+  for (const f of ((rootNode && rootNode.footnotes) || [])) if (refIds.has(f.id) && String(f.text || '').trim()) inStr(f.text);
   return n;
 }
 
@@ -34528,23 +34633,21 @@ function countMirrorRefs(rootNode, findNode) {
   return n;
 }
 
+// Phase A: ensure the doc store has an entry for every [^id] marker this node carries (a blank
+// placeholder if it is a marker the panel has not written yet). The store is doc-level, so this
+// backfills entries for markers that arrived by paste/import without going through newFootnote.
 function syncFnEntries(node) {
-  if (!node.footnotes) node.footnotes = [];
-  getFnRefs(node.text).forEach(key => {
-    if (!node.footnotes.find(f => f.key === key)) node.footnotes.push({ key, text: '' });
+  if (!Array.isArray(root.footnotes)) root.footnotes = [];
+  getFnRefs(node.text).forEach(id => {
+    if (!root.footnotes.find(f => f.id === id)) root.footnotes.push({ id, text: '' });
   });
 }
 
-// Drop footnote records whose [^key] no longer appears in the text — mirrors the
-// pruneXxx() artifact cleanup. Called on exitEdit so deleting a reference also
-// retires its note instead of leaving dead weight in the OPML.
-function pruneFootnotes(node) {
-  if (!node.footnotes || !node.footnotes.length) return;
-  const refs = new Set(getFnRefs(node.text));
-  node.footnotes = node.footnotes.filter(f => refs.has(f.key));
-}
+// Phase A: NO auto-prune. A footnote persists in the doc store even when no marker references it
+// (it becomes an orphan), so it survives deleting the point that hosted it; the Footnotes manager
+// (Phase B) is the only place footnotes are deleted. (pruneFootnotes removed.)
 
-// detect [^key] pattern under a mouse point (for raw-edit-mode hover)
+// detect [^id] pattern under a mouse point (for raw-edit-mode hover)
 function getFnKeyAtPoint(x, y) {
   let range = null;
   try {
@@ -34625,7 +34728,7 @@ function activateFnRef(key, nodeId) {
     item?.querySelector('.fn-key')?.classList.add('hi');
     item?.scrollIntoView({ block: 'nearest' });
   });
-  announce(`Footnote ${key}`);
+  announce(`Footnote ${footnoteOrder().get(key) ?? key}`);   // Phase A: announce the document-order number, not the raw id
 }
 
 // ─── backlinks panel ─────────────────────────────────────────────────────────
@@ -35293,8 +35396,12 @@ function renderFnPanel(node, refs) {
   if (hd) hd.textContent = refs.length === 1 ? 'Footnote' : `Footnotes · ${refs.length}`;
   inner.innerHTML = '';
   refs.forEach(key => {
-    let entry = node.footnotes.find(f => f.key === key);
-    if (!entry) { entry = { key, text: '' }; node.footnotes.push(entry); }
+    // Phase A: `key` is the store id; the entry lives in the doc-level store, and the label shows the
+    // document-order number so the panel reads [^1]/[^2] like the marker does.
+    if (!Array.isArray(root.footnotes)) root.footnotes = [];
+    let entry = root.footnotes.find(f => f.id === key);
+    if (!entry) { entry = { id: key, text: '' }; root.footnotes.push(entry); }
+    const num = footnoteOrder().get(key) ?? key;
 
     const item = document.createElement('div');
     item.className = 'fn-item';
@@ -35304,8 +35411,8 @@ function renderFnPanel(node, refs) {
     keyEl.className = 'fn-key';
     keyEl.setAttribute('role', 'button');
     keyEl.setAttribute('tabindex', '0');
-    keyEl.setAttribute('aria-label', `Footnote [^${key}]. Jump to reference`);
-    keyEl.textContent = `[^${key}]`;
+    keyEl.setAttribute('aria-label', `Footnote [^${num}]. Jump to reference`);
+    keyEl.textContent = `[^${num}]`;
     keyEl.title = 'Hover to highlight · click to jump to reference';
     keyEl.addEventListener('mouseenter', () => {
       // clear stale highlights from any previous hover (fixes bug 2)
@@ -35356,13 +35463,6 @@ function renderFnPanel(node, refs) {
   });
 }
 
-function nextFnKey(node) {
-  const existing = new Set([...getFnRefs(node.text), ...(node.footnotes || []).map(f => f.key)]);
-  let n = 1;
-  while (existing.has(String(n))) n++;
-  return String(n);
-}
-
 function convertToFootnote() {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || !sel.rangeCount) return;
@@ -35374,16 +35474,14 @@ function convertToFootnote() {
   if (!cnt) return;
   const nd = nodeById(cnt.dataset.id);
   if (!nd) return;
-  const key = nextFnKey(nd);
-  if (!nd.footnotes) nd.footnotes = [];
-  nd.footnotes.push({ key, text: selected });
-  document.execCommand('insertText', false, `[^${key}]`);
+  const fid = newFootnote(selected);   // Phase A: the selection becomes a doc-store footnote, cited by id
+  document.execCommand('insertText', false, `[^${fid}]`);
   nd.text = editableText(cnt); // serialize via tokens so artifact pills aren't flattened
   markDirty();
   showFnPanel(nd.id);
   // focus the new footnote content after panel renders
   setTimeout(() => {
-    const contentEl = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(key)}"] .fn-content`);
+    const contentEl = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(fid)}"] .fn-content`);
     if (contentEl) contentEl.focus();
   }, 50);
   hideSelTb();
@@ -41287,6 +41385,7 @@ function applyAutosaveData(data) {
   if (root.units) root.units = normalizeUnits(root.units) || undefined; // #875: same re-validate for a tampered/stale autosave units table
   normalizeCalendarBindings(root); // #653: guarantee {calendars, gamelog} shape + re-validate each named calendar (a pre-feature or tampered autosave has none / could be broken)
   migrateNodePrefixes(root);
+  migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
   buildIndex(root, null); resetDocCaches();
   focusedId = (data.focusedId && nodeById(data.focusedId)) ? data.focusedId : null;
   if (data.fileName) {
@@ -42193,6 +42292,11 @@ function appendOpmlSubtrees(opml, label, opts = {}) {
   // resolve against the full tree. Idempotent: a live pill is already a brace-free [[type:key]]
   // token, so re-walking already-promoted content is a no-op.
   for (const cl of clones) promoteLoadedShorthand(cl);
+  // Phase A: an inserted subtree's legacy per-node footnotes merge into the LIVE doc store, and its
+  // [^key] markers remap to fresh store ids — so a starter/import's footnotes join this document's
+  // footnote set (and never collide with an existing [^1]).
+  if (!Array.isArray(root.footnotes)) root.footnotes = [];
+  for (const cl of clones) migrateFootnotesToStore(cl, root.footnotes);
   buildIndex(root, null);
   markDirty();
   render();
@@ -42447,6 +42551,7 @@ function dismissWelcome() {
 maybeShowFirstRun();
 
 migrateNodePrefixes(root);
+migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
 buildIndex(root, null); resetDocCaches();
 ensureDocId(root);
 syncVerbosityClass();   // #586: paint the default (guided) verbosity class at boot — a fresh boot has no
