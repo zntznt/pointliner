@@ -13254,7 +13254,7 @@ function renderRow(r) {
   if (hasVisibleProps(node)) { // #494: not just props?.length — timestamp-only props render nothing
     div.appendChild(buildPropsRow(node, opts));
   }
-  if (!opts.searchCtx) maybeAddRowAffordance(node, row);   // #1240: the "+ Add" door on a shaped-list heading
+  if (!opts.searchCtx) { maybeAddRowAffordance(node, row); maybeAddCardAffordance(node, row); }   // #1240: "+ Add" / "+ Card" doors
   return div;
 }
 
@@ -39634,6 +39634,19 @@ function blankScaffoldNode(node, isRoot) {
   return node;
 }
 
+// #1240 phase 3: "Add a card" to a {shuffle:}/deck pill. A deck lives in node.grammar as a record
+// { mode, items } (mode ∈ shuffle/cycle/once/stopping); adding a card appends to `items`, which round-trips
+// to the `{shuffle: a | b | c}` shorthand on edit/export. Pure helpers; the append + form are the DOM half.
+const DECK_MODES = ['shuffle', 'cycle', 'once', 'stopping'];
+function findDeckRecord(node) {
+  return ((node && node.grammar) || []).find(g => g && DECK_MODES.includes(g.mode) && Array.isArray(g.items)) || null;
+}
+function deckCardText(card, answer) {
+  const clean = s => String(s == null ? '' : s).replace(/[|{}]/g, ' ').replace(/\s+/g, ' ').trim();  // | { } would break the deck
+  const c = clean(card), a = clean(answer);
+  return a ? c + ' (' + a + ')' : c;
+}
+
 // #1240 the DOM half (phase 1): a focused "Add another" dialog. Opened for a shaped list (a heading whose
 // children share a template), it shows a values-only form — a description field plus one field per shared
 // prop — and on submit assembles the row via buildRow and inserts it as a PROMOTED point (so its tags and
@@ -39728,6 +39741,46 @@ function maybeAddRowAffordance(node, row) {
   btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(); } });
   row.appendChild(btn);
   fireNudge('addrow-affordance', 'Tip: the + Add on a section grows the list without typing tags or braces');
+}
+// #1240 phase 3 DOM half: append a card to a deck record + re-render (round-trips to the shuffle shorthand).
+function addDeckCard(nodeId, card, answer) {
+  const rec = findDeckRecord(nodeById(nodeId));
+  const text = deckCardText(card, answer);
+  if (!rec || !text) return false;
+  rec.items.push(text);
+  markDirty();
+  render();
+  return true;
+}
+function openAddCardForm(nodeId) {
+  if (!findDeckRecord(nodeById(nodeId))) return;
+  openInsertDialog({
+    icon: { fa: 'fa-solid fa-clone', fb: '🃏' },
+    title: 'Add a card',
+    draftKey: 'addcard:' + nodeId,
+    submitLabel: 'Add',
+    fields: [
+      { key: 'card', label: 'Card', required: true },
+      { key: 'answer', label: 'Answer (optional, shown in parentheses)' },
+    ],
+    onSubmit: vals => { if (addDeckCard(nodeId, vals.card, vals.answer)) flashHint('Card added'); },
+  });
+}
+// The "+ Card" door on a line that carries a deck pill — same affordance class + verbosity gating as "+ Add".
+function maybeAddCardAffordance(node, row) {
+  if (!findDeckRecord(node)) return;
+  const btn = document.createElement('span');
+  btn.className = 'addrow-affordance';
+  btn.setAttribute('role', 'button');
+  btn.setAttribute('tabindex', '-1');
+  btn.setAttribute('aria-label', 'Add a card to this deck');
+  if (isGuided()) btn.title = 'Add a card';
+  btn.textContent = '+ Card';
+  btn.addEventListener('mousedown', e => e.preventDefault());          // caret invariant
+  btn.addEventListener('click', e => { e.stopPropagation(); openAddCardForm(node.id); });
+  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAddCardForm(node.id); } });
+  row.appendChild(btn);
+  fireNudge('addcard-affordance', 'Tip: + Card adds to a deck without editing the pipe list');
 }
 
 // ─── builder embedded forms ──────────────────────────────────────────────────
