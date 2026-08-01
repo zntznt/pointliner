@@ -18805,14 +18805,18 @@ test('#1192 the chooser leads with everyday domains, then blank and the tour, ev
   // sit apart in their own group so they are not buried at the bottom of the template list (#1192
   // follow-up). Order matters: Popular before the rest, both before the doors.
   assert.ok(fn.includes("addGroup('Popular')"), 'the quick picks lead under a Popular group');
-  assert.ok(fn.includes("addGroup('More templates')"), 'the rest of the gallery follows under More templates');
-  assert.ok(fn.includes('STARTERS.filter(st => !quick.includes(st))'), 'More templates is the gallery minus the quick picks');
-  assert.ok(fn.indexOf("addGroup('Popular')") < fn.indexOf("addGroup('More templates')"),
-    'Popular is rendered before More templates');
-  // The two structural doors live in their OWN group, after both template groups, so a user who wants
+  // #1241: the rest is grouped by LIFE-AREA so a work/money or creative person finds their starter, instead
+  // of digging one flat "More templates" list (the miss that bounced the freelancer and the shop owner).
+  assert.ok(fn.includes("['Money & work'") && fn.includes("['Creative & games'"),
+    '#1241: the rest is split into life-area groups (Money & work, Creative & games)');
+  assert.ok(fn.includes('const leftover = STARTERS.filter(st => !placed.has(st.id))'),
+    '#1241: a leftover net ensures no starter is ever dropped from the chooser');
+  assert.ok(fn.indexOf("addGroup('Popular')") < fn.indexOf("['Money & work'"),
+    'Popular (everyday) leads, before the life-area groups');
+  // The two structural doors live in their OWN group, after the template groups, so a user who wants
   // to just start writing or take the tour finds them at a glance. Wired to the existing loaders.
   const doorsAt = fn.indexOf("addGroup('Or')");
-  assert.ok(doorsAt > fn.indexOf("addGroup('More templates')"), 'the blank/tour doors come after the templates');
+  assert.ok(doorsAt > fn.indexOf("['Creative & games'"), 'the blank/tour doors come after the templates');
   assert.ok(fn.includes('closeIo(); startBlankOutline();'), 'a blank door');
   assert.ok(fn.includes('closeIo(); showExamplesDoc();'), 'and the tour, as a pick rather than the default');
   // The doors land in the doors group, not the template grids: their addPick passes the doors container.
