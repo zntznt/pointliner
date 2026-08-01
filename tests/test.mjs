@@ -11993,6 +11993,16 @@ test('Phase B: the Footnotes manager is wired (File-menu door, shared shell, cop
     'delete is undoable (pushUndo) and removes the store entry — the only place footnotes are deleted');
 });
 
+test('Phase C: the cite-existing picker is a front door (@ menu item, shared shell, inserts [^id])', () => {
+  assert.ok(/id:'cite',[\s\S]{0,140}label:'Cite footnote'/.test(_src), 'INSERT_CMDS carries a Cite footnote command');
+  assert.ok(/CELL_INSERT_EXCLUDE = new Set\(\['table', 'footnote', 'cite'\]\)/.test(_src), "cite is node-level, excluded in base cells like footnote");
+  assert.ok(/id === 'cite'[\s\S]{0,80}openCitePicker\(nodeId, offset\)/.test(_src), 'the @ command opens the cite picker at the caret');
+  assert.ok(/function openCitePicker\(nodeId, offset\)[\s\S]{0,500}openDialogShell\(\{/.test(_src), 'the picker is built on the shared dialog shell');
+  assert.ok(/applyInlineInsertion\(nodeId, offset, `\[\^\$\{r\.id\}\]`\)/.test(_src), 'picking a footnote drops its [^id] marker at the caret (reuse)');
+  assert.ok(/footnoteReport\(root\)\.filter\(r => r\.text\.trim\(\)\)/.test(_src), 'only written footnotes are offered to cite');
+  assert.ok(/covers:\['footnote','cite','link','image'\]/.test(_src), "the footnotes guide entry covers the 'cite' @ command (drift guard)");
+});
+
 test('#1142 countMirrorRefs: a solo caption-less link to a PARENT, and nothing else', () => {
   // A caption-less [[#id|]] alone on a line transcludes the target's whole subtree on screen (up to
   // 40 rows); every text export ships ONE line, the target's title. So a document assembled from
@@ -25120,8 +25130,8 @@ test('UXP-247 ratchet: hand-rolled dialog shells may only ever decrease', () => 
   // And the ones that use the shell must keep using it. #518's import dialog is the sixth shell user
   // (a NEW dialog built on the shell, the correct direction — the ratchet only blocks new HAND-ROLLED
   // shells, counted via `ioCancel =` above, which the import dialog does not add).
-  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 7,
-    'openInsertDialog, the four named dialogs, the #518 import dialog, and the Phase B footnotes manager must keep using the shell');
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 8,
+    'openInsertDialog, the four named dialogs, the #518 import dialog, the footnotes manager, and the Phase C cite picker must keep using the shell');
 });
 
 test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL', () => {
@@ -25143,8 +25153,8 @@ test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL'
   // All four now take head/footer/cancel/globals from the shell rather than assigning their own.
   // #518 added a sixth shell caller: the Import points dialog (built on the shell from the start,
   // not a migration) — the shell being the default for a new dialog is the property working.
-  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 7,
-    'openInsertDialog + the four migrated dialogs + the #518 import dialog + the Phase B footnotes manager each construct exactly one shell');
+  assert.equal((_src.match(/const _shell = openDialogShell\(\{/g) || []).length, 8,
+    'openInsertDialog + the four migrated dialogs + the #518 import dialog + the footnotes manager + the Phase C cite picker each construct exactly one shell');
   // The appearance dialog's private in-place signal became a shell option.
   assert.ok(/freshOnly: true,/.test(_src), 'the appearance dialog restores on a FRESH open only');
   assert.ok(/const _apprFresh = _shell\.fresh;/.test(_src), 'and takes that signal from the shell');
