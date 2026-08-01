@@ -267,6 +267,19 @@ test('#1243 contest wiring — a pick var whose frozen margin feeds evalMath (sr
     'reroll refreshes both sides together and logs the contest (#918)');
 });
 
+test('#1243 PR 2 — the contest is taught (picker row, guide entry, starter beat)', () => {
+  // the { picker rosters a contest row whose scaffold promotes (parity 2092 checks all rows; pin this one)
+  const contest = c.filterBraceForms('').find(r => r.name === 'contest');
+  assert.ok(contest, 'the { picker carries a contest row');
+  assert.equal(c.classifyBraceBody(contest.insert.slice(1, -1), {}, {}), 'artifact', 'its scaffold promotes');
+  // the concept guide has a Contested rolls entry
+  assert.ok(/id:'contest', cat:'generators'[\s\S]{0,120}title:'Contested rolls'/.test(_src), 'a Contested rolls guide entry exists');
+  // the game-workbench starter shows an opposed-pool clash that feeds math
+  const gw = _src.slice(_src.indexOf("id: 'game-workbench'"), _src.indexOf("id: 'game-workbench'") + 4000);
+  assert.ok(/clash := 5d10&gt;=7 vs 5d10&gt;=7/.test(gw), 'the game-workbench starter has an opposed success-pool clash');
+  assert.ok(/max\(clash, 0\)/.test(gw), 'and reads the contest margin in math');
+});
+
 test('parseDice — reroll rK parses and validates its combinations', () => {
   assert.equal(c.parseDice('4d6r1')[0].reroll, 1);
   const t = c.parseDice('4d6r1kh3')[0];           // canonical: reroll then keep
