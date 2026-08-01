@@ -95,6 +95,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Contextual `{` body completion | `guidance/brace-completion-proposal.md` | Shipped |
 | Guided authoring (no-syntax "Add another") | `guidance/guided-authoring-proposal.md` | Proposed |
 | Document footnote store + Footnotes manager | `guidance/footnote-store-proposal.md` | Proposed |
+| Contested rolls and margins (opposed roll) | `guidance/contested-roll-proposal.md` | Proposed |
 
 ## Working notes
 
