@@ -42364,7 +42364,7 @@ const STARTERS = [
     <outline text="Open tasks left: {count: is:todo}"/>
     <outline text="Overdue right now: {= count(&quot;is:todo is:overdue&quot;, document)}"/>
     <outline text="All dates still safe" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;count(\\&quot;is:todo is:overdue\\&quot;, document) == 0&quot;}]"/>
-    <outline text="Days to go: the event is {date due: today+21}"/>
+    <outline text="Event day: {date due: today+21}"/>
   </outline>
   <outline text="## The plan [/]">
     <outline text="- [x] Confirm the hall booking"/>
@@ -42420,7 +42420,7 @@ const STARTERS = [
   </outline>
   <outline text="## Draw from your world (click any pill)">
     <outline text="Who walks into the scene? {roll: #npc}"/>
-    <outline text="A yes/no oracle for the in-between, weighted toward yes: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}"/>
+    <outline text="A yes/no oracle for the in-between, an even call with shades: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}"/>
   </outline>
   <outline text="## When the campaign spans many notes">
     <outline text="Keep each session or region in its own note, connect the folder, and advance a plot thread drawn from every note at once: {roll folder: #thread}"/>
@@ -42577,7 +42577,7 @@ const STARTERS = [
     <outline text="## Health">
       <outline text="Current hit points: {hp := 35}"/>
       <outline text="Still standing? {hp} of {= level * 8 + might} (the chip turns red at zero)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;hp &gt; 0&quot;}]"/>
-      <outline text="Take a wound by editing {hp := 35} down. Set it to 0 and the Still standing chip flips red."/>
+      <outline text="Take a wound: edit the Current hit points value above down to 0, and the Still standing chip flips red."/>
     </outline>
     <outline text="## Rolls that read the sheet">
       <outline text="Axe attack (2d6 plus might): {2d6+might}"/>
@@ -42593,7 +42593,7 @@ const STARTERS = [
         <outline text="Rations, four days {prop weight: 2}"/>
         <outline text="Signal horn {prop weight: 1}"/>
       </outline>
-      <outline text="Add a heavy item to see the check flip: type a new child here, like Iron cook pot {prop weight: 3}. The load crosses your limit and the chip turns red."/>
+      <outline text="To see the check flip, add another item to the pack list above (a new line beside the others, like Iron cook pot at weight 3). The load crosses your limit and the chip turns red."/>
     </outline>
   </outline>
   <outline text="## How to run it">
@@ -42738,16 +42738,12 @@ const STARTERS = [
   },
   { id: 'home-inventory',
     name: 'Home inventory',
-    desc: 'What you own by room, as a table you can flip to cards, totaled against your coverage cap with live per-room and per-category values.',
+    desc: 'What you own by room, totaled against your coverage cap with live per-room and per-category values.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Home inventory</title></head><body>
 <outline text="# Home inventory">
-  <outline text="What you own, valued for insurance. A grid of the big-ticket things up top, then the full record below it that totals against your coverage, watches a jewelry sub-limit, and breaks down by room and category. Click a table cell to edit it; click a pill to run it."/>
-  <outline text="## Big-ticket items at a glance (click a cell to edit; the switcher changes views)">
-    <outline text="| Item | Room | Category | Value |&#10;| --- | --- | --- | --- |&#10;| Wedding ring | Bedroom | jewelry | 4200 |&#10;| Watch | Bedroom | jewelry | 2600 |&#10;| Necklace | Bedroom | jewelry | 1500 |&#10;| Laptop | Office | electronics | 1400 |&#10;| Television | Living room | electronics | 900 |&#10;| Sofa | Living room | furniture | 1200 |&#10;| Mountain bike | Garage | outdoors | 1200 |&#10;| Refrigerator | Kitchen | kitchengear | 1100 |" _type="base" _colrole="[null,null,null,&quot;number&quot;]" _view="{&quot;kind&quot;:&quot;cards&quot;}"/>
-    <outline text="The Value column is marked as a number, so a view can total it. Use the switcher at the base's top-left for the grid, cards, or a Board grouped by room."/>
-  </outline>
-  <outline text="## The full record (each line is a point, so it totals and searches)">
+  <outline text="What you own, valued for insurance. Each thing is a point that totals against your coverage, watches a jewelry sub-limit, and breaks down by room and category. Click a pill to run it."/>
+  <outline text="## Your belongings (each line is a point, so it totals and searches)">
     <outline text="Total on record: {= sum(value)} of {cap := 25000} covered [^cap]" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(value) &lt;= cap&quot;}]" _footnotes="[{&quot;key&quot;:&quot;cap&quot;,&quot;text&quot;:&quot;Contents coverage on my renters policy. Raise it here if I add a big-ticket item.&quot;}]">
       <outline text="Television #livingroom #electronics {prop value: 900}"/>
       <outline text="Sound system #livingroom #electronics {prop value: 600}"/>
@@ -42782,7 +42778,7 @@ const STARTERS = [
   </outline>
   <outline text="## How to run it">
     <outline text="Add an item to the full record, tag it with its room and its category, and give it a value; the grand total, the category sub-limits, and the room breakdown all pick it up. The coverage check flips red if your total passes the cap, and the jewelry line has its own sub-limit check, since most policies cap jewelry low unless you schedule it separately. That one ships red on purpose, to show what an over-limit looks like."/>
-    <outline text="Nothing here is new syntax: the grid is an interactive base, the total is a sum with a check, and the sub-limits and room breakdowns are the same sum pointed at a tag."/>
+    <outline text="Nothing here is new syntax: the total is a sum with a check, and the sub-limits and room breakdowns are the same sum pointed at a tag."/>
   </outline>
 </outline>
 </body></opml>`,
@@ -42802,6 +42798,7 @@ const STARTERS = [
       <outline text="Groceries: {= sum(&quot;#groceries&quot;, cost, document)}"/>
       <outline text="Utilities: {= sum(&quot;#utilities&quot;, cost, document)}"/>
       <outline text="Kids: {= sum(&quot;#kids&quot;, cost, document)}"/>
+      <outline text="Health and transport: {= sum(&quot;#health&quot;, cost, document) + sum(&quot;#transport&quot;, cost, document)}"/>
     </outline>
   </outline>
   <outline text="## Groceries">
