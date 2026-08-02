@@ -921,6 +921,24 @@ test('#1240 buildRow — assembles the bullet a filled form produces (fill value
   assert.equal(c.buildRow(null, {}, 'just text'), 'just text');
 });
 
+test('#1281 "+ Total" door totals a number column with a child-scoped {= sum(KEY)} (no syntax)', () => {
+  // the gate: inferRowShape must mark a numeric column as type:number so the door knows what to offer
+  const shape = c.inferRowShape([
+    { text: 'Hall hire', props: [{ key: 'cost', val: '60' }] },
+    { text: 'Insurance', props: [{ key: 'cost', val: '85' }] },
+  ]);
+  assert.ok(shape.props.some(p => p.key === 'cost' && p.type === 'number'), 'a shared numeric prop is detected');
+  // the door wiring (DOM can't run in Node — pin the source shape, like the + Add pins above)
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.match(aff, /filter\(p => p\.type === 'number'\)\.map\(p => p\.key\)/, 'it offers only the number columns');
+  assert.match(aff, /node\.text\.replace\(\/\\s\+\$\/, ''\) \+ ' \{= sum\(' \+ key \+ '\)\}'/, 'a + Total appends a child-scoped sum for that column');
+  assert.match(aff, /promoteLoadedShorthand\(node\)/, 'it promotes to a live math pill');
+  assert.match(aff, /if \(summed\(key\)\) continue/, 'a column already totalled gets no duplicate door');
+  // the two supporting doors: property entry surfaced (prim,lean) + a native key datalist
+  assert.match(_src, /prim:true, lean:true, icon: PROPS_ICON/, 'Add property is above the fold');
+  assert.match(_src, /datalist'\); dl\.id = 'propkey-suggest'[\s\S]{0,140}collectPropKeys\(root\)/, 'the props key input suggests keys already in the doc');
+});
+
 test('#1240 phase 1: the add-row dialog wires the cores to a promoted row (source pin)', () => {
   // The DOM half cannot run headless (it opens a dialog and mutates the live tree), so source-pin the
   // wiring — the pure cores it rides are unit-tested above, and the whole flow was live-driven (a 2-field

@@ -13806,12 +13806,18 @@ function openPropsDialog(nodeId, targets = null) {
 
   function renderRows(focusLast = false) {
     list.innerHTML = '';
+    // #1281: native <datalist> of keys already used in the doc, so rows reuse ONE key (`cost`, not
+    // cost/Cost/price) — otherwise a {= sum(cost)} silently misses the odd row.
+    const dl = document.createElement('datalist'); dl.id = 'propkey-suggest';
+    for (const k of collectPropKeys(root)) { const o = document.createElement('option'); o.value = k; dl.appendChild(o); }
+    list.appendChild(dl);
     props.forEach((p, i) => {
       const wrap = document.createElement('div'); wrap.className = 'props-row-wrap';
       const row = document.createElement('div'); row.className = 'props-list-row';
       const keyIn = document.createElement('input');
       keyIn.className = 'props-input key-in'; keyIn.type = 'text';
       keyIn.placeholder = 'key'; keyIn.value = p.key;
+      keyIn.setAttribute('list', 'propkey-suggest');
       keyIn.setAttribute('aria-label', 'Property key');
       keyIn.addEventListener('input', () => { props[i].key = keyIn.value; });
       keyIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); valIn.focus(); } });
@@ -20763,7 +20769,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openCheckDialog(nodeId); } },
     { sec:'Annotate', icon: { fa:'fa-solid fa-tag', fb:'🏷' }, label: aliasesOf(node).length ? 'Edit aliases' : 'Add alias',
       fn: () => { hideBpop(); openAliasDialog(nodeId); } },
-    { sec:'Annotate', icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',
+    { sec:'Annotate', prim:true, lean:true, icon: PROPS_ICON, label: node.props?.length ? 'Edit properties' : 'Add property',   // #1281: above the fold — the no-syntax "put a number on this bullet" door
       fn: () => { hideBpop(); openPropsDialog(nodeId); } },
     { sec:'Organize', icon:{ fa:'fa-solid fa-arrow-right-arrow-left', fb:'⇄' }, label:'Refile…',
       fn: () => { hideBpop(); openRefileDialog(nodeId); } },
@@ -40534,22 +40540,41 @@ function maybeAddRowAffordance(node, row) {
   const shape = template ? null : inferRowShape(node.children, knownStates(root));  // flat rows → the values form
   if (!template && !shape) return;                                     // no usable shape either way → no door
   const noun = rowNoun(node, shape || { sharedTags: rowContentTags(template.text) });
+  // One affordance builder so the caret-invariant guards (mousedown preventDefault+stopPropagation, a
+  // keyboard path alongside) live in ONE place for the + Add and + Total doors alike (the #1278 fix).
+  const mkAff = (label, aria, onClick) => {
+    const b = document.createElement('span');
+    b.className = 'addrow-affordance';
+    b.setAttribute('role', 'button');
+    b.setAttribute('tabindex', '-1');
+    b.setAttribute('aria-label', aria);
+    if (isGuided()) b.title = aria;
+    b.textContent = label;
+    b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    b.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } });
+    row.appendChild(b);
+  };
   const onAdd = template ? () => { if (stampScaffold(node, template)) flashHint('Added to ' + noun); }
                          : () => openAddRowForm(node.id);
-  const btn = document.createElement('span');
-  btn.className = 'addrow-affordance';
-  btn.setAttribute('role', 'button');
-  btn.setAttribute('tabindex', '-1');
-  btn.setAttribute('aria-label', 'Add to ' + noun);        // the accessible name is kept in every tier
-  if (isGuided()) btn.title = 'Add to ' + noun;            // the tooltip is Guided-only (Standard/Lean strip it)
-  btn.textContent = '+ Add';
-  // caret invariant: preventDefault stops the browser stealing focus; stopPropagation stops the press
-  // from bubbling to the point's own mousedown, which would ALSO drop the caret in and enter edit mode.
-  btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
-  btn.addEventListener('click', e => { e.stopPropagation(); onAdd(); });
-  btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(); } });
-  row.appendChild(btn);
+  mkAff('+ Add', 'Add to ' + noun, onAdd);
   fireNudge('addrow-affordance', 'Tip: the + Add on a section grows the list without typing tags or braces');
+  // #1281: "add up a column here" — the panel's #1 wall. When the flat rows carry a number property, a
+  // point-and-click door totals that column with a child-scoped {= sum(KEY)} (correct on THIS heading, no
+  // scope recall, no braces typed). One number column -> "+ Total"; several -> one door each. Skip a
+  // column already summed (checked against the promoted math records, since the text holds a token by then).
+  const numKeys = (shape ? shape.props : []).filter(p => p.type === 'number').map(p => p.key);
+  const summed = k => (node.math || []).some(m => String(m.expr || '').replace(/\s/g, '').toLowerCase().includes('sum(' + k.toLowerCase()));
+  // ponytail: prefix collision (cost vs costume) at worst hides a duplicate door; harmless.
+  for (const key of numKeys) {
+    if (summed(key)) continue;
+    mkAff(numKeys.length === 1 ? '+ Total' : '+ Total ' + key, 'Total the ' + key + ' column', () => {
+      node.text = node.text.replace(/\s+$/, '') + ' {= sum(' + key + ')}';
+      promoteLoadedShorthand(node);      // {= sum(KEY)} -> a live math pill, the load path's promoter
+      buildIndex(root, null); markDirty(); render();
+      flashHint('Totalling ' + key);
+    });
+  }
 }
 // #1240 phase 3 DOM half: append a card to a deck record + re-render (round-trips to the shuffle shorthand).
 function addDeckCard(nodeId, card, answer) {
