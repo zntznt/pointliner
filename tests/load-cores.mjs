@@ -277,7 +277,7 @@ export function loadCores() {
     'searchTokenAt','searchCompletions','oracleCompletions','meterTokenAt','meterCompletions',
     'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','capturePayloadOf','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
-    'classifyBraceBody','braceAttemptReason','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
+    'classifyBraceBody','braceAttemptReason','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteBraceBodyIn','renderVarPill','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl','ex','toOpml',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)

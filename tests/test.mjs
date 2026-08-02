@@ -299,8 +299,32 @@ test('#1243 contest wiring — a pick var whose frozen margin feeds evalMath (sr
     'the definition plus all three pick-roll sites (promote, dialog, reroll) go through it');
   assert.ok(/const vs = v\.versus;/.test(_src) && /vs-margin/.test(_src) && /vs-op/.test(_src),
     'renderVarPill draws both sides (vs-op) and the emphasised margin (vs-margin) for a contest');
-  assert.ok(/v\.versus = pr\.versus;[\s\S]{0,300}logRoll\(node, v\.name, shown\)/.test(_src),
-    'reroll refreshes both sides together and logs the contest (#918)');
+  assert.ok(/v\.versus = pr\.versus;[\s\S]{0,420}logRoll\(node, label, shown\)/.test(_src),
+    'reroll refreshes both sides together and logs the contest, named or bare (#918/#1243)');
+});
+
+test('#1243 bare {A vs B} promotes to a nameless contest pill, and the pill reads the winner', () => {
+  // classify + promote recognise a BARE contest (no `name :=`); collectVars skips a nameless var, so it
+  // does not pollute the namespace; it unfolds back to {A vs B} for inline editing.
+  assert.equal(c.classifyBraceBody('2d6+2 vs 2d6+1', {}, {}), 'artifact', 'a bare contest is a real pill');
+  assert.equal(c.classifyBraceBody('sword vs shield', {}, {}), 'literal', 'a NON-dice "vs" is not a contest (stays prose)');
+  const n = c.mkNode('');
+  const tok = c.promoteBraceBodyIn(n, '2d6+2 vs 2d6+1');
+  assert.match(tok || '', /^\[\[var:/, 'the bare contest promotes to a var pill token');
+  const rec = n.vars[0];
+  assert.equal(rec.name, '', 'the contest var is nameless (feeds no math, skipped by collectVars)');
+  assert.equal(rec.kind, 'pick');
+  assert.ok(rec.versus && typeof rec.versus.margin === 'number', 'it carries a two-sided versus record');
+  assert.equal(c.artifactToShorthand('var', rec), '{2d6+2 vs 2d6+1}', 'it unfolds back to the bare form for editing');
+  // the pill states the winner + a labelled gap, never a bare +/- that reads like a dice modifier
+  const html = c.renderVarPill(rec.key, rec);
+  assert.ok(/vs-win/.test(html), 'the winning total is emphasised');
+  assert.ok(/won by \d+|>tie<|vs-mixed/.test(html), 'the gap is labelled ("won by N" / "tie" / "mixed"), not a bare number');
+  assert.ok(!/var-name/.test(html), 'a bare contest shows no $name = prefix');
+  // a named contest keeps its name and the same clear result
+  const named = { key: 'k9', name: 'hit', kind: 'pick', expr: '2d6 vs 2d6', typed: true, versus: { leftTotal: 9, rightTotal: 7, margin: 2, leftKind: 'sum', rightKind: 'sum', mismatch: false } };
+  const nhtml = c.renderVarPill('k9', named);
+  assert.ok(/var-name/.test(nhtml) && /won by 2/.test(nhtml), 'a named contest keeps $name = and reads "won by 2"');
 });
 
 test('#1243 PR 2 — the contest is taught (picker row, guide entry, starter beat)', () => {

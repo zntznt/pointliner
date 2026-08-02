@@ -1179,9 +1179,14 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* #1243 contest pill: "9 vs 7 +2" reuses the var pill; the margin is emphasised (it feeds math),
    the "vs" is quiet, and a sum-vs-pool mismatch reads as a dashed warn with a muted margin (P4). */
 .var-pill .vs-op{color:var(--muted)}
-.var-pill .vs-margin{margin-left:5px;font-weight:600;color:var(--acc)}
+.var-pill .vs-side{font-variant-numeric:tabular-nums}
+.var-pill .vs-win{font-weight:700;color:var(--fg)}      /* #1243: the winning total, so who won reads at a glance */
+.var-pill .vs-sep{color:var(--muted)}
+.var-pill .vs-margin{font-weight:600;color:var(--acc)}  /* "won by N" / "tie" — a label, never a bare +/- modifier */
+.var-pill .vs-margin.vs-mixed{color:var(--muted);font-weight:500}
 .var-pill.var-versus-mismatch{border-style:dashed}
 .var-pill.var-versus-mismatch .vs-margin{color:var(--muted)}
+.var-pill.var-anon .var-val{margin:0}                   /* a bare contest: no `$name =`, just the result */
 .var-pill.var-cycle .var-val{color:var(--warn)}
 .var-pill.var-shadowed{opacity:.38;border-style:dashed}
 .var-pill.var-shadowed .var-val{text-decoration:line-through}
@@ -18428,6 +18433,10 @@ function classifyBraceBody(body, rules, vars) {
     // exactly what rollPickSource accepts (#522: classify said 'invalid' while promote built a pill).
     return (c === 'artifact' || c === 'literal' || splitTopLevel(decl.expr, '|').length > 1) ? 'artifact' : 'invalid';
   }
+  // #1243: a BARE contest `{A vs B}` (no `name :=`) is an anonymous opposed roll — valid iff both sides
+  // parse as dice, the same test the named form uses. Promotes to a nameless pick pill (promoteBraceBodyIn).
+  const bareVs = parseVersus(body);
+  if (bareVs && parseDice(bareVs.left, vars) && parseDice(bareVs.right, vars)) return 'artifact';
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
@@ -26227,6 +26236,20 @@ function promoteBraceBodyIn(node, body) {
     }
     return null; // RHS resolves as neither math nor a pick source → stays literal (escape hatch)
   }
+  // #1243: a BARE contest `{A vs B}` — an anonymous opposed roll, no name to feed math. Reuses the
+  // pick-var machinery with an EMPTY name: collectVars skips a nameless var (no namespace pollution,
+  // not in the var panel), renderVarPill drops the `$name =` prefix, and it re-rolls / unfolds like the
+  // named form. Sniffed BEFORE dice so `2d6 vs 2d6` never reads as a broken single dice expression.
+  const bareVs = parseVersus(body);
+  if (bareVs && parseDice(bareVs.left, collectVars()) && parseDice(bareVs.right, collectVars())) {
+    const pr = rollPickRecord(body);
+    if (pr !== null && pr.versus) {
+      const rec = { key: varKey(), name: '', kind: 'pick', expr: body.replace(/\s+/g, ' ').trim(), rolled: pr.rolled, versus: pr.versus, typed: true };
+      (node.vars ||= []).push(rec);
+      resetDocCaches();
+      return `[[var:${rec.key}]]`;
+    }
+  }
   // dice: {2d6}, {4d6kh3}, {2d6!}, {4dF}
   if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {
     const roll = makeDiceRoll(body);
@@ -26655,6 +26678,7 @@ function artifactToShorthand(type, rec) {
     return `{markov: ${def.split('\n').map(l => l.trim()).filter(Boolean).join(', ')}}`;
   }
   if (type === 'var') {
+    if (rec.typed && !rec.name && rec.expr && parseVersus(rec.expr)) return `{${rec.expr}}`; // #1243: a bare contest unfolds to {A vs B}
     if (rec.typed && rec.name && rec.expr) return `{${rec.name} := ${rec.expr}}`; // typed decl unfolds (O1)
     return (!rec.expr && rec.name) ? `{${rec.name}}` : null;                       // display-only ref
   }
@@ -28505,30 +28529,42 @@ function renderVarPill(key, v) {
     const shadowed = _varShadowedKeys.has(key);
     const rolled = String(v.rolled ?? '');
     const vs = v.versus;   // #1243: a contest pick carries its two-sided display record
+    const anon = !v.name;  // #1243: a BARE `{A vs B}` contest has no name (feeds no math); drop the `$name =` prefix
     const signed = (n) => (n >= 0 ? '+' : '') + n;
     let cls = 'var-pill var-pick';
     if (vs) cls += ' var-versus';
     if (vs && vs.mismatch) cls += ' var-versus-mismatch';
+    if (anon) cls += ' var-anon';
     if (shadowed) cls += ' var-shadowed';
+    // #1243: state the WINNER and label the gap, so the pill never reads like a bare dice modifier.
+    // The signed margin still lives in the title/aria (and, for a NAMED contest, feeds math).
+    const who = vs && (vs.mismatch ? 'mixed dice kinds, so the margin is unreliable'
+      : vs.margin === 0 ? 'a tie'
+      : (vs.margin > 0 ? 'the left side' : 'the right side') + ' wins by ' + Math.abs(vs.margin));
+    const marginLabel = vs && (vs.mismatch ? 'mixed' : vs.margin === 0 ? 'tie' : 'won by ' + Math.abs(vs.margin));
+    const leftWin = vs && !vs.mismatch && vs.margin > 0, rightWin = vs && !vs.mismatch && vs.margin < 0;
     const title = shadowed ? 'Shadowed by a later declaration of this name'
-      : vs && vs.mismatch ? 'A sum versus a success pool: the margin mixes pips and successes. Click to re-roll'
-      : vs ? 'Contest: the margin feeds math. Click to re-roll · pencil to edit'
+      : vs ? `Contest: ${who}${anon ? '' : ` (margin ${signed(vs.margin)}, which feeds math)`}. Click to re-roll${anon ? '' : ' · pencil to edit'}`
       : 'Click to re-roll · pencil to edit';
-    // The value cell: a plain frozen pick shows its value; a contest shows both totals and the margin,
-    // which is the number the var feeds to evalMath.
+    // The value cell: a plain frozen pick shows its value; a contest shows both totals with the winner
+    // emphasized and the gap spelled out ("won by 2" / "tie" / "mixed").
     const valHtml = vs
-      ? `${escHtml(String(vs.leftTotal))}<span class="vs-op"> vs </span>${escHtml(String(vs.rightTotal))}<span class="vs-margin">${escHtml(signed(vs.margin))}</span>`
+      ? `<span class="vs-side${leftWin ? ' vs-win' : ''}">${escHtml(String(vs.leftTotal))}</span>`
+        + `<span class="vs-op"> vs </span>`
+        + `<span class="vs-side${rightWin ? ' vs-win' : ''}">${escHtml(String(vs.rightTotal))}</span>`
+        + `<span class="vs-sep"> · </span>`
+        + `<span class="vs-margin${vs.mismatch ? ' vs-mixed' : ''}">${escHtml(marginLabel)}</span>`
       : escHtml(rolled);
     const aria = vs
-      ? `Contest ${escQ(v.name)}: ${vs.leftTotal} versus ${vs.rightTotal}, margin ${signed(vs.margin)}${vs.mismatch ? ', mixed dice kinds' : ''}. Click to re-roll`
+      ? `Contest${anon ? '' : ' ' + escQ(v.name)}: ${vs.leftTotal} versus ${vs.rightTotal}, ${who}${anon ? '' : `, margin ${signed(vs.margin)}`}. Click to re-roll`
       : `Random variable ${escQ(v.name)} = ${escQ(rolled)}. Click to re-roll`;
     return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
       + ` aria-label="${aria}">`
-      + `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
-      + `<span class="var-name">${escHtml(v.name)}</span>`
-      + `<span class="var-eq">=</span>`
+      + (anon ? '' : `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
+        + `<span class="var-name">${escHtml(v.name)}</span>`
+        + `<span class="var-eq">=</span>`)
       + `<span class="var-val">${valHtml}</span>`
-      + `<span class="var-edit" role="button" tabindex="-1" aria-label="Edit random variable" title="Edit random variable"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
+      + `<span class="var-edit" role="button" tabindex="-1" aria-label="${anon ? 'Edit contest' : 'Edit random variable'}" title="${anon ? 'Edit contest' : 'Edit random variable'}"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`
       + `</span>`;
   }
   // #952: a DISTRIBUTION declaration renders as an estimate pill, because it is one — the same
@@ -29434,8 +29470,9 @@ function rerollPickVar(node, key, opts) {
   v.versus = pr.versus;   // #1243: carry (or clear) the contest's two-sided display record
   const shown = v.versus ? `${v.versus.leftTotal} vs ${v.versus.rightTotal} = ${pr.rolled}` : pr.rolled;
   markDirty();
-  announce(`${v.name} re-rolled: ${shown}`);
-  logRoll(node, v.name, shown);   // #918
+  const label = v.name || 'Contest';   // #1243: a bare `{A vs B}` contest has no name
+  announce(`${label} re-rolled: ${shown}`);
+  logRoll(node, label, shown);   // #918
   if (opts?.repaintAll === false) return; // edit-mode caller swaps its own buffer
   render();
   document.querySelector(`.var-pill[data-key="${CSS.escape(key)}"]`)?.classList.add('var-rolled');
