@@ -23676,9 +23676,16 @@ function advanceSeq(rec, rules = collectRules(), vars = collectVars()) {
   const want = Math.max(1, rec.count || 1);
   const deal = rec.mode === 'shuffle' && n > 0 ? Math.min(want, n) : want;
   const out = [];
+  const dealt = new Set();   // one shuffle deal never repeats a card, even when it spans a mid-deal reshuffle
   for (let i = 0; i < deal; i++) {
-    const idx = nextSeqIndex(rec);
+    let idx = nextSeqIndex(rec);
     if (idx < 0) break;                    // an exhausted `once` ends the deal
+    // A deal starting with fewer than `deal` cards in the bag reshuffles mid-deal; nextSeqIndex only
+    // blocks an ADJACENT repeat, so skip a card already dealt THIS hand (deal <= n guarantees one exists).
+    if (rec.mode === 'shuffle') {
+      for (let g = 0; dealt.has(idx) && g < n; g++) idx = nextSeqIndex(rec);
+      dealt.add(idx);
+    }
     out.push(expandTemplate(rec.items[idx], { rules, vars, depth: 0, stack: [] }));
   }
   return out.join(' ').trim();
