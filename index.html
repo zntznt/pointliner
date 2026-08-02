@@ -9400,6 +9400,28 @@ const ROLL_TEMPLATES = [
   { ins:'{roll: #tag}',     label:'roll on document', caret:1 },   // after "#tag" to type the real tag/query
   { ins:'{a | b}',          label:'either / or', caret:5 },   // back onto the first option "a"
 ];
+// #1267: ready-to-use {…} recipes for the Builder's "Patterns" section. Each is a COMPLETE, already-
+// working example a person LIFTS and then edits the values in ("lift a working line instead of authoring
+// syntax cold"), so the syntax fear at speed evaporates. A `line` recipe drops one point; a `block`
+// recipe drops a parent pill over two nested example rows so a rollup / roll / check computes a REAL
+// result on arrival (never "no match yet" or 0). No new syntax: every recipe is shipped forms only, and
+// `sel` is the substring the caret selects so the first value is ready to overtype.
+const PATTERN_RECIPES = [
+  { id:'pat-dice',    label:'Dice roll',            keys:['roll','2d6','d20','d100','damage','random'], desc:'A live dice roll; click the pill to re-roll.',                       line:'Damage {2d6}',                      sel:'2d6' },
+  { id:'pat-contest', label:'Contested roll',       keys:['versus','vs','opposed','margin','attack','defend','contest'], desc:'Two rolls compared; the pill shows the winner and the margin.', line:'Attack {swing := 2d6+2 vs 2d6+1}',  sel:'2d6+2' },
+  { id:'pat-oracle',  label:'Yes / no oracle',      keys:['ask','fate','maybe','likely','question'],   desc:'Ask a yes/no question at tunable odds; click to ask again.',         line:'Does it happen? {oracle: even}',    sel:'even' },
+  { id:'pat-either',  label:'Either / or',          keys:['pick','choice','random','weather','table'], desc:'Pick one option at random; click to re-pick.',                       line:'Weather {clear | rain | fog}',      sel:'clear' },
+  { id:'pat-track',   label:'Tracked value',        keys:['hp','health','counter','stat','variable'],  desc:'A named number you can edit or re-roll and reuse with {name}.',      line:'HP {hp := 10}',                     sel:'10' },
+  { id:'pat-range',   label:'Estimate a range',     keys:['uncertain','guess','forecast','between','odds'], desc:'An uncertain value shown as a range with a sparkline.',          line:'Travel days {2 to 5}',              sel:'2 to 5' },
+  { id:'pat-sum',     label:'Running total',        keys:['sum','rollup','total','gold','budget','add'], desc:'A live total of a property on the points nested under it.',
+    block:{ parent:'Party gold {= sum(gold)}', rows:[ { text:'Ari', props:[{ key:'gold', val:'10' }] }, { text:'Bex', props:[{ key:'gold', val:'6' }] } ] }, sel:'gold' },
+  { id:'pat-rollon',  label:'Roll on your own list', keys:['random','table','npc','pick','encounter'],  desc:'Roll a random one of the points you tag; click to re-roll.',
+    block:{ parent:'Random NPC {roll: #npc}', rows:[ { text:'#npc Bandit' }, { text:'#npc Merchant' } ] }, sel:'#npc' },
+  { id:'pat-scoped',  label:'Scoped total',         keys:['sum','query','month','filter','tagged','total'], desc:'A total of only the points that match a tag or search.',
+    block:{ parent:'This month {= sum("#thismonth", cost)}', rows:[ { text:'#thismonth Groceries', props:[{ key:'cost', val:'40' }] }, { text:'#thismonth Fuel', props:[{ key:'cost', val:'25' }] } ] }, sel:'#thismonth' },
+  { id:'pat-check',   label:'Pass / fail check',    keys:['check','budget','under','limit','verdict','pass','fail'], desc:'A green/red verdict that stays honest as the numbers change.',
+    block:{ parent:'Under budget {= sum(cost)}', check:'sum(cost) <= 100', rows:[ { text:'Venue', props:[{ key:'cost', val:'60' }] }, { text:'Snacks', props:[{ key:'cost', val:'25' }] } ] }, sel:null },
+];
 const INSERT_CMDS = [
   // #915: the @ menu LEADS with the generative + computational pills — the app's headline (any point
   // can generate or compute). A curious @ opens on the thesis, not below the basic inserts. The
@@ -19970,6 +19992,63 @@ function pickRollTemplate(ins, caret) {
     const sel = window.getSelection();
     for (let i = 0; i < caret; i++) sel.modify('move', 'backward', 'character');
   }));
+}
+// #1267: turn a PATTERN_RECIPES entry into model node(s). A line recipe is one point; a block recipe
+// is a parent point over its nested example rows (props carried explicitly, so a sum/check reads them).
+function recipeToNodes(recipe) {
+  if (recipe.block) {
+    const p = mkNode(recipe.block.parent);
+    if (recipe.block.check) p.props = [...(p.props || []), { key: CHECK_KEY, val: recipe.block.check }];
+    p.children = (recipe.block.rows || []).map(r => {
+      const n = mkNode(r.text);
+      if (r.props) n.props = r.props.map(x => ({ key: x.key, val: x.val }));
+      return n;
+    });
+    return [p];
+  }
+  return [mkNode(recipe.line)];
+}
+// #1267: drop a recipe as a working line/block. If the current point is empty it fills IN PLACE (no
+// orphan blank line above); otherwise the recipe lands as the next sibling below. The subtree is
+// promoted so its {…} render as live pills, then the caret selects the first value to overtype. One
+// pushUndo, so a single Undo removes the whole drop.
+function insertRecipe(recipe, curId) {
+  const cur = (curId && nodeById(curId)) || (focusedId && nodeById(focusedId)) || null;
+  const nodes = recipeToNodes(recipe);
+  pushUndo();
+  let focusId;
+  const curEmpty = cur && cur !== root && !(cur.text || '').trim() && !(cur.props || []).length && !(cur.children || []).length;
+  if (cur && curEmpty) {
+    const src = nodes[0];
+    cur.text = src.text; cur.props = src.props || []; cur.children = src.children || [];
+    promoteLoadedShorthand(cur);
+    focusId = cur.id;
+  } else if (cur) {
+    const parent = parentOf(cur.id) || root;
+    const idx = parent.children.findIndex(c => c.id === cur.id);
+    parent.children.splice(idx < 0 ? parent.children.length : idx + 1, 0, ...nodes);
+    nodes.forEach(promoteLoadedShorthand);
+    focusId = nodes[0].id;
+  } else {
+    root.children.push(...nodes);
+    nodes.forEach(promoteLoadedShorthand);
+    focusId = nodes[0].id;
+  }
+  buildIndex(root);   // register the spliced/filled node(s) in nodeMap/parentMap, or they render but never respond to edit/click
+  markDirty();
+  render();
+  focusNode(focusId);
+  if (recipe.sel) requestAnimationFrame(() => {
+    try {
+      const el = document.querySelector(`.node-content[data-id="${focusId}"]`);
+      if (!el) return;
+      const raw = editableText(el);
+      const i = raw.indexOf(recipe.sel);
+      if (i < 0) return;
+      const s = domSelectionForChars(el, i, i + recipe.sel.length);
+      if (s) document.getSelection().setBaseAndExtent(s.node, s.off, s.enode, s.eoff);
+    } catch (_) {}
+  });
 }
 qbRoll.addEventListener('click', e => {
   e.stopPropagation();
@@ -39907,6 +39986,12 @@ function builderCmdPool(trigger) {
   for (const c of INSERT_CMDS) {
     cmds.push({ ...c, trigger: '@', type: 'insert', _section: c.section || 'Insert' });
   }
+  // #1267: ready-to-use {…} recipe lines. A pattern drops a COMPLETE working line/block (see
+  // insertRecipe), not a pill to author, so a person lifts syntax instead of typing it cold. Rides
+  // the @ trigger so it also surfaces in the @ menu; applyBuilder routes type:'pattern' to insertRecipe.
+  for (const r of PATTERN_RECIPES) {
+    cmds.push({ id: r.id, icon: '✦', fa: 'fa-solid fa-wand-magic-sparkles', keys: r.keys || [], label: r.label, desc: r.desc || '', ex: r.line || (r.block && r.block.parent) || '', trigger: '@', type: 'pattern', _section: 'Patterns', _recipe: r });
+  }
   // { — brace forms (constant set) + dynamic doc callables (variables, rules, chains)
   for (const f of BRACE_FORM_ROWS) {
     cmds.push({ id: f.name, icon: '{', fa: '', label: f.name, desc: f.desc || '', ex: f.insert, trigger: '{', type: 'brace', _section: 'Grammar', _brace: f });
@@ -39935,7 +40020,7 @@ function builderCmdPool(trigger) {
   // the generative + computational sections, the same thesis the @ menu already opens on (#915); block
   // types are one short scroll down, unchanged and still cheap to reach (/h2 resolves the same). The /,
   // @ and { menus keep hoisting their own summoning section (their filter still matches), untouched.
-  const FRONT = trigger == null ? ['Generate', 'Compute', 'Trackers'] : [];
+  const FRONT = trigger == null ? ['Patterns', 'Generate', 'Compute', 'Trackers'] : [];
   // One Set over the whole sequence so the FIRST occurrence of each section sets its rank: a section
   // named in FRONT (or in the summoning-trigger group) must not have its rank overwritten by a later
   // appearance in the trigger!==trigger tail (Object.fromEntries keeps the LAST index, so a per-spread
@@ -40645,6 +40730,19 @@ function openBuilder(trigger) {
     const formCfg = BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id];
     if (formCfg) {
       showBuilderForm(cmd, pane, formCfg);
+      return;
+    }
+    // #1267: a Patterns recipe drops a whole working line/block below (or into an empty current point),
+    // never a pill spliced at the caret. Strip any typed trigger run first so an "@budget" search does
+    // not survive in the point, then hand off to insertRecipe.
+    if (cmd.type === 'pattern' && cmd._recipe) {
+      const pst = builderState, pnode = nodeById(pst.nodeId);
+      if (pnode && pst.content) {
+        const currentText = editableText(pst.content);
+        pnode.text = stripTriggerRun(currentText, pst.offset, pst.query.length).text;
+      }
+      closeBuilder();
+      insertRecipe(cmd._recipe, pst.nodeId);
       return;
     }
     const st = builderState;

@@ -16879,6 +16879,82 @@ test('#1265 PR2 vault import — wired into the Import door (multi-file -> one l
   assert.ok(/inp\.multiple = true/.test(_src), 'the file picker accepts multiple files');
 });
 
+// ── #1267: snippet / pattern palette (ready-to-use {…} recipes in the Builder) ──────
+// PATTERN_RECIPES is pure data (not a function), so it is parsed straight out of the source rather
+// than loaded as a core. The array runs from its declaration to the next const.
+const _PATTERN_RECIPES = (() => {
+  const m = _src.match(/const PATTERN_RECIPES = (\[[\s\S]*?\n\]);\nconst INSERT_CMDS/);
+  return m ? (new Function('return ' + m[1]))() : null;
+})();
+test('#1267 PATTERN_RECIPES — every recipe is well-formed, unique, and em-dash-free', () => {
+  const R = _PATTERN_RECIPES;
+  assert.ok(Array.isArray(R) && R.length >= 8, 'a real set of recipes ships');
+  const ids = new Set();
+  for (const r of R) {
+    assert.ok(r.id && r.label && r.desc, `${r.id}: has id/label/desc`);
+    assert.ok(Array.isArray(r.keys) && r.keys.length, `${r.id}: carries search synonyms`);
+    assert.ok(!ids.has(r.id), `${r.id}: unique id`); ids.add(r.id);
+    assert.ok(!!r.line !== !!r.block, `${r.id}: is exactly one of line/block`);
+    if (r.block) {
+      assert.ok(r.block.parent && Array.isArray(r.block.rows) && r.block.rows.length >= 2,
+        `${r.id}: a block has a parent pill over >=2 worked rows`);
+    }
+    const blob = JSON.stringify(r);
+    assert.ok(!blob.includes('—'), `${r.id}: no em dash`);
+  }
+});
+
+test('#1267 PATTERN_RECIPES — a {roll: #tag} recipe carries its own tag (never lands reading "no match")', () => {
+  // the #1107 drift-guard shape, applied to the recipe set: a roll must have its table with it.
+  for (const r of nonEmpty(_PATTERN_RECIPES, 'PATTERN_RECIPES')) {
+    const text = r.line || (r.block && r.block.parent) || '';
+    const m = text.match(/\{roll:\s*(#[\w-]+)/);
+    if (!m) continue;
+    const tag = m[1];
+    const rows = (r.block && r.block.rows) || [];
+    assert.ok(rows.some(row => (row.text || '').includes(tag)),
+      `${r.id}: the ${tag} table ships in the recipe's own rows`);
+  }
+});
+
+test('#1267 block recipes are HONEST — the rollup/scoped/check rows compute a real, non-zero result', () => {
+  // Prove the "nothing lands reading 0 / no match yet" promise from the numbers in the rows, without
+  // the render engine: each computational block references a prop its rows actually carry, and the sum
+  // is > 0 (and satisfies the check where present).
+  const sumProp = (rows, prop) => rows.reduce((a, row) => {
+    const p = (row.props || []).find(x => x.key === prop); return a + (p ? Number(p.val) : 0);
+  }, 0);
+  const byId = Object.fromEntries(nonEmpty(_PATTERN_RECIPES, 'PATTERN_RECIPES').map(r => [r.id, r]));
+  assert.equal(sumProp(byId['pat-sum'].block.rows, 'gold'), 16, 'Party gold sums to 16, not 0');
+  assert.equal(sumProp(byId['pat-scoped'].block.rows, 'cost'), 65, 'the scoped total sums the tagged rows');
+  assert.ok(byId['pat-scoped'].block.rows.every(r => r.text.includes('#thismonth')), 'every scoped row carries the query tag');
+  const spent = sumProp(byId['pat-check'].block.rows, 'cost');
+  assert.ok(spent > 0 && spent <= 100, `the check passes on arrival (spent ${spent} <= 100)`);
+  assert.ok(byId['pat-check'].block.check.includes('<= 100'), 'the check is a real constraint prop');
+});
+
+test('#1267 recipeToNodes — a line drops one point; a block drops a parent over prop-carrying rows', () => {
+  const line = c.recipeToNodes({ id:'x', line:'Damage {2d6}' });
+  assert.equal(line.length, 1); assert.equal(line[0].text, 'Damage {2d6}');
+  assert.equal((line[0].children || []).length, 0, 'a line recipe has no children');
+  const block = c.recipeToNodes({ id:'y', block:{ parent:'T {= sum(cost)}', check:'sum(cost) <= 100', rows:[ { text:'A', props:[{ key:'cost', val:'60' }] }, { text:'B', props:[{ key:'cost', val:'25' }] } ] } });
+  assert.equal(block.length, 1);
+  assert.equal(block[0].children.length, 2, 'the two worked rows nest under the parent');
+  assert.equal(block[0].children[0].props[0].key, 'cost', 'row props are carried onto the node');
+  const chk = (block[0].props || []).find(p => p.key === 'check');
+  assert.ok(chk && chk.val === 'sum(cost) <= 100', 'the check becomes a real check prop on the parent');
+});
+
+test('#1267 palette is wired into the Builder (Patterns section, front-door lead, recipe apply path)', () => {
+  assert.ok(/for \(const r of PATTERN_RECIPES\)/.test(_src), 'the Builder pool ingests the recipes');
+  assert.ok(/type: 'pattern', _section: 'Patterns'/.test(_src), 'recipes form their own Patterns section');
+  assert.ok(/trigger == null \? \['Patterns', 'Generate', 'Compute', 'Trackers'\]/.test(_src),
+    'Patterns leads the Builder front door (no search needed to discover it)');
+  assert.ok(/cmd\.type === 'pattern' && cmd\._recipe/.test(_src) && /insertRecipe\(cmd\._recipe/.test(_src),
+    'applyBuilder routes a chosen pattern to insertRecipe (a whole working line, not a pill at the caret)');
+  assert.ok(/function insertRecipe\(/.test(_src), 'the recipe insert exists');
+});
+
 test('UXP-235: a bare block takes a marker only when it has children to hold', () => {
   const kid = p => { const n = _mdN('parent', 'para'); n.text = p; n.children.push(_mdN('the child')); return n; };
   // A para with children becomes a list item, because a list item is Markdown's ONLY native
@@ -23841,9 +23917,12 @@ test('builder front door (UXP-178) — launcher wiring + all-commands pool', () 
   // used to open on twelve formatting rows with dice/math/oracle below the fold, presenting the app as
   // a text formatter (product-identity §1/§8b: the {…} engine IS the product). Lead with the
   // generative + computational sections, the same thesis the @ menu opens on (#915).
-  assert.equal(pool[0]._section, 'Generate', '#1202: the front door leads with the engine (Generate), not formatting');
+  // #1267: the front door now LEADS WITH PATTERNS — the ready-made {…} recipe lines a person lifts
+  // instead of authoring syntax cold. This still honours #1202 (engine first, not formatting): a
+  // pattern IS the engine, pre-assembled, and Generate/Compute/Trackers follow immediately.
+  assert.equal(pool[0]._section, 'Patterns', '#1267: the front door leads with ready-made Patterns');
   const frontSecs = [...new Set(pool.map(c => c._section))];
-  assert.deepEqual(frontSecs.slice(0, 3), ['Generate', 'Compute', 'Trackers'], '#1202: engine sections lead the front door');
+  assert.deepEqual(frontSecs.slice(0, 4), ['Patterns', 'Generate', 'Compute', 'Trackers'], '#1267/#1202: patterns then the engine sections lead the front door');
   assert.ok(frontSecs.indexOf('Generate') < frontSecs.indexOf('Lists'), 'the engine is above the block/formatting sections');
   // block types are NOT demoted — still present, one short scroll down, and still resolve by search
   assert.ok(pool.some(c => c.id === 'h2') && pool.some(c => c.id === 'ul'), 'block types stay in the pool (reachable, not removed)');
