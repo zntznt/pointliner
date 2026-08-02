@@ -16955,6 +16955,63 @@ test('#1267 palette is wired into the Builder (Patterns section, front-door lead
   assert.ok(/function insertRecipe\(/.test(_src), 'the recipe insert exists');
 });
 
+// ── #1268: single-file reassurance (the save-status chip + restore legibility) ──────
+test('#1268 relTimeShort — a compact, human relative time from savedAt', () => {
+  const now = 1_000_000_000_000;
+  assert.equal(c.relTimeShort(0, now), '', 'no timestamp yields no time');
+  assert.equal(c.relTimeShort(now - 5_000, now), 'just now', 'a few seconds is "just now"');
+  assert.equal(c.relTimeShort(now - 44_000, now), 'just now', 'under 45s stays "just now"');
+  assert.equal(c.relTimeShort(now - 90_000, now), '2 min ago', '90s rounds to 2 min');
+  assert.equal(c.relTimeShort(now - 3_600_000, now), '1 hr ago', 'an hour');
+  assert.equal(c.relTimeShort(now - 26 * 3_600_000, now), 'a day ago', 'just over a day');
+  assert.equal(c.relTimeShort(now + 10_000, now), 'just now', 'a future clock skew never goes negative');
+});
+
+test('#1268 saveStatusLabel — the honest chip, in priority order (never a false "Saved")', () => {
+  const base = { hidden:false, noStore:false, unsavedToDisk:false, pending:false, folder:false, savedAt:0, now: 1000 };
+  assert.equal(c.saveStatusLabel({ ...base, hidden:true }).kind, 'hidden', 'nothing shows before the doc is the user’s');
+  // the memory-only tier NEVER reads "Saved", even if other flags look benign
+  const mem = c.saveStatusLabel({ ...base, noStore:true, savedAt:900 });
+  assert.equal(mem.kind, 'memory'); assert.ok(/memory only/i.test(mem.text));
+  // a bound file with unwritten edits keeps the existing "Unsaved changes" meaning, above the "Saving…" pulse
+  assert.equal(c.saveStatusLabel({ ...base, unsavedToDisk:true, pending:true }).text, 'Unsaved changes');
+  assert.equal(c.saveStatusLabel({ ...base, pending:true }).kind, 'saving');
+  assert.equal(c.saveStatusLabel({ ...base, folder:true }).text, 'Saved to folder', 'folder mode says where');
+  const saved = c.saveStatusLabel({ ...base, savedAt: 1000 - 120_000, now: 1000 * 1 + 0 });
+  // recompute with a real now so the relative time is meaningful
+  const s2 = c.saveStatusLabel({ ...base, savedAt: 1_000_000, now: 1_000_000 + 120_000 });
+  assert.equal(s2.kind, 'saved'); assert.equal(s2.text, 'Saved 2 min ago', 'the default tier reassures with when it last saved');
+  assert.equal(c.saveStatusLabel({ ...base, savedAt: 0 }).text, 'Saved', 'no timestamp yet still reassures');
+});
+
+test('#1268 the save-status chip is wired to the real autosave lifecycle (no new storage)', () => {
+  assert.ok(/id="save-status"/.test(_src), 'the toolbar carries the chip');
+  assert.ok(/_savePending = true; updateSaveStatus\(\)/.test(_src), 'scheduling an autosave sets "Saving…"');
+  assert.ok(/_lastSavedAt = Date\.now\(\); _savePending = false; updateSaveStatus\(\)/.test(_src),
+    'a completed write settles the chip to "Saved" with a fresh timestamp');
+  assert.ok(/setInterval\(updateSaveStatus, 20000\)/.test(_src), 'a tick keeps the relative time honest');
+  // the chip is the door to the safety story: it opens the File menu
+  assert.ok(/save-status'\)[\s\S]{0,160}openFileMenu\(\)/.test(_src), 'clicking the chip opens the File menu');
+});
+
+test('#1268 restore safety net is legible BEFORE it is needed (shown disabled with an honest note)', () => {
+  // the row is no longer hidden until a snapshot exists; it shows disabled with a "kept automatically" note,
+  // and only truly hides on the memory-only tier (no snapshot ring at all).
+  assert.ok(/restoreRow\.style\.display = noStore \? 'none' : ''/.test(_src), 'the restore row is visible off the memory-only tier');
+  assert.ok(/restoreRow\.classList\.toggle\('is-disabled', !canRestore\)/.test(_src), 'it is disabled until a version exists');
+  assert.ok(/available once there is an earlier version to restore/.test(_src), 'the disabled note is honest about availability');
+  assert.ok(/is-disabled'\)\) return/.test(_src), 'a disabled restore row does not act on click');
+});
+
+test('#1268 the reassurance copy states all three facts (saves itself, you own it, roll back)', () => {
+  const welcome = between(_src, "welcome\n    ? 'Notes that compute", "'\n    : 'Drop a ready-made");
+  assert.ok(/no account/.test(welcome) && /saves itself/.test(welcome) && /roll back/.test(welcome),
+    'the Welcome intro carries ownership + autosave + restore');
+  const saving = between(_src, "id:'saving', cat:'files'", "related:['export'");
+  assert.ok(/kept for you automatically/.test(saving), 'the guide states versions are kept before you need them');
+  assert.ok(/connect a folder and keep a library/.test(saving), 'the guide names the scaling ceiling and points at the folder model');
+});
+
 test('UXP-235: a bare block takes a marker only when it has children to hold', () => {
   const kid = p => { const n = _mdN('parent', 'para'); n.text = p; n.children.push(_mdN('the child')); return n; };
   // A para with children becomes a list item, because a list item is Markdown's ONLY native
