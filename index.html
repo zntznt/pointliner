@@ -17615,6 +17615,15 @@ function stripQueryTags(text, terms) {
 // (`queryCountIn(expr, scope, seqs = allSequences(), vars = collectVars())`): scope the walk, keep
 // the context document-wide. Without it a subtree-scoped {roll: is:todo} would stop matching the
 // moment its custom sequence or variable was declared outside that subtree.
+// The one-line label a roll shows for a picked point: its TITLE, not its source. stripMd already drops
+// promoted [[…]] pill/prop tokens; also blank RAW {…} pill/prop source (innermost-out) so a result
+// frozen at load time — before the picked point's {prop …}/{2d6} tokenised — reads as the clean title
+// instead of leaking braces (game-workbench's {roll: #card} spotlight showed "Gloamroot Toad {prop cost: 2}").
+function rollLabel(node, terms) {
+  let t = stripMd(textForDisplay(node));
+  let prev; do { prev = t; t = t.replace(/\{[^{}]*\}/g, ''); } while (t !== prev);
+  return stripQueryTags(t, terms).replace(/\s+/g, ' ').trim() || '(untitled)';
+}
 function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
   return pickOneHit(queryHits(expr, rootNode, hostId, ctxRoot));
 }
@@ -17643,7 +17652,7 @@ function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
     for (const c of (n.children || [])) {
       let hit = c.id !== hostId && queryMatchesNode(terms, c, seqs, vars, links, anc);
       if (hit && underHit && !queryMatchesNode(terms, c, seqs, vars, links, '')) hit = false;
-      if (hit) hits.push(stripQueryTags(stripMd(textForDisplay(c)), terms) || '(untitled)');
+      if (hit) hits.push(rollLabel(c, terms));
       walk(c, extendAncTagText(anc, c.text, tagStates), underHit || hit);
     }
   })(rootNode, '', false);

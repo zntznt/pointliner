@@ -814,6 +814,18 @@ test('pickFromQuery — picks one matching point title from the tree, uncapped +
   finally { c.resetRandom(); }
 });
 
+test('a roll shows a picked point\'s clean TITLE, not its pill/prop source', () => {
+  // game-workbench: {roll: #card} froze "Gloamroot Toad {prop cost: 2} {prop focus: 5}" because at the
+  // load promote pass the card's props were still raw {…}. rollLabel blanks raw brace source (and stripMd
+  // already drops promoted [[…]] tokens + the matched tag), so the label is the title either way.
+  const t = c.parseSearchQuery('#card');
+  assert.equal(c.rollLabel({ text: 'Gloamroot Toad #card {prop cost: 2} {prop focus: 5}', type: 'ul', props: [] }, t), 'Gloamroot Toad');
+  assert.equal(c.rollLabel({ text: 'Pale Widow {prop cost: 4} #card', type: 'ul', props: [] }, t), 'Pale Widow');
+  // nested braces (a rule/dice inside) are blanked too; a title with no source is untouched
+  assert.equal(c.rollLabel({ text: 'Cinderfang Wyrm #card', type: 'ul', props: [] }, t), 'Cinderfang Wyrm');
+  assert.equal(c.rollLabel({ text: 'Loot {a {b} c} #card', type: 'ul', props: [] }, t), 'Loot');
+});
+
 test('#1237 a roll skips tag-inherited detail lines nested under a matched point', () => {
   const kid = (id, text, children = []) => ({ id, text, children, props: [], seq: [] });
   // A cast: each #character page hangs trait/debt detail children, which inherit #character.
