@@ -16824,6 +16824,61 @@ test('#1265 Markdown import — wired into the Import door (format-sniffed, reus
   assert.ok(_src.includes('.md,.markdown'), 'the file picker accepts .md/.markdown');
 });
 
+// ── #1265 PR 2: multi-file "vault" import (each file a section, [[wikilinks]] resolved) ──────
+test('#1265 PR2 markdownVaultToPoints — [[Page]] between files resolves to an internal link; unknown stays text', () => {
+  const { points } = c.markdownVaultToPoints([
+    { name: 'Alpha.md', text: '# Alpha\n\nSee [[Beta]] and [[Ghost]].' },
+    { name: 'Beta.md', text: '# Beta\n\nThe other note.' },
+  ]);
+  assert.equal(points.length, 2, 'each file becomes one top-level section');
+  const alpha = points.find(p => /Alpha/.test(p.text));
+  const beta = points.find(p => /Beta/.test(p.text));
+  // the leading H1 IS the section, so its id is what [[Beta]] should point at
+  const body = alpha.children.find(k => /See /.test(k.text));
+  assert.ok(body.text.includes(`[[#${beta.id}|Beta]]`), 'a known [[Page]] becomes an internal link to that section');
+  assert.ok(body.text.includes('[[Ghost]]'), 'an unresolved wikilink stays as literal text');
+});
+
+test('#1265 PR2 markdownVaultToPoints — ![[embed]] becomes a live mirror; [[Page|alias]] keeps the alias', () => {
+  const { points } = c.markdownVaultToPoints([
+    { name: 'Index.md', text: '# Index\n\n![[Detail]] plus [[Detail|the details]].' },
+    { name: 'Detail.md', text: '# Detail\n\nStuff.' },
+  ]);
+  const detail = points.find(p => /Detail/.test(p.text));
+  const body = points.find(p => /Index/.test(p.text)).children.find(k => /plus/.test(k.text));
+  assert.ok(body.text.includes(`[[#${detail.id}|]]`), '![[Page]] becomes an empty-label mirror embed');
+  assert.ok(body.text.includes(`[[#${detail.id}|the details]]`), '[[Page|alias]] links with the alias as the label');
+});
+
+test('#1265 PR2 markdownVaultToPoints — a file with no leading H1 is wrapped in a #filename section', () => {
+  const { points } = c.markdownVaultToPoints([{ name: 'notes/loose.md', text: 'just a paragraph.\n\n- a point' }]);
+  assert.equal(points.length, 1);
+  assert.equal(points[0].type, 'h1', 'wrapper section is a heading');
+  assert.equal(points[0].text, '# loose', 'wrapper is titled by the basename (path + extension stripped)');
+  assert.ok(points[0].children.some(k => /just a paragraph/.test(k.text)), 'the file content nests under the wrapper');
+});
+
+test('#1265 PR2 markdownVaultToPoints — filename resolves even when the leading heading text differs', () => {
+  // Obsidian resolves [[Page]] by FILENAME; the file "kestrel.md" titled "# The Kestrel" resolves both.
+  const { points } = c.markdownVaultToPoints([
+    { name: 'home.md', text: '# Home\n\nlink [[kestrel]] and [[The Kestrel]].' },
+    { name: 'kestrel.md', text: '# The Kestrel\n\nA bird.' },
+  ]);
+  const bird = points.find(p => /Kestrel/.test(p.text));
+  const body = points.find(p => /Home/.test(p.text)).children.find(k => /link/.test(k.text));
+  assert.ok(body.text.includes(`[[#${bird.id}|kestrel]]`), 'resolves by filename');
+  assert.ok(body.text.includes(`[[#${bird.id}|The Kestrel]]`), 'also resolves by the leading-heading text');
+});
+
+test('#1265 PR2 vault import — wired into the Import door (multi-file -> one linked doc, no re-clone)', () => {
+  assert.ok(_src.includes('markdownVaultToPoints(md)'), 'multiple files route through the vault parser');
+  assert.ok(/trees: points, noClone: true/.test(_src),
+    'the vault appends its trees with noClone so cross-section [[#id]] links are not orphaned by a per-clone re-id');
+  assert.ok(/const clones = opts\.noClone \? pick : pick\.map\(deepCloneNodeNewIds\)/.test(_src),
+    'appendOpmlSubtrees honours noClone (append fresh trees as-is)');
+  assert.ok(/inp\.multiple = true/.test(_src), 'the file picker accepts multiple files');
+});
+
 test('UXP-235: a bare block takes a marker only when it has children to hold', () => {
   const kid = p => { const n = _mdN('parent', 'para'); n.text = p; n.children.push(_mdN('the child')); return n; };
   // A para with children becomes a list item, because a list item is Markdown's ONLY native
