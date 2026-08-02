@@ -60,7 +60,7 @@ no network. In charter (`guidance/product-identity.md`).
 - Marker regex is unchanged (`/\[\^([^\]]+)\]/g`); the captured token is now the stable id.
 - **Number = document-sequence position.** A pure `footnoteOrder(rootNode)` walks the tree in render
   order, collecting first-appearance of each id, and returns `Map<id, number>` (1-based). The render
-  (`mdInline`, line ~7535) and both exports display `[number]`, not the raw id. Renumbering is free: it
+  (`mdInline`) and both exports display `[number]`, not the raw id. Renumbering is free: it
   is a recompute, never a text rewrite.
 
 ### Lifecycle
@@ -74,7 +74,7 @@ no network. In charter (`guidance/product-identity.md`).
 
 ## Architecture (touch-points, all mapped)
 
-Serialization (`toOpml`, ~8902-8981):
+Serialization (`toOpml`):
 - New doc-level head element `<_footnotes>` via the existing `headEl` serializer (JSON array, empty-skip),
   parsed back with `headJSONArray` plus an `{id, text}` validator. Sits beside `_savedSearches` and the
   other doc-level elements.
@@ -86,12 +86,12 @@ Serialization (`toOpml`, ~8902-8981):
   re-baselined. This is an intentional format change; note it loudly.)
 
 Resolution, render, and export (all currently read `node.footnotes`, repoint to the store):
-- `mdInline` marker render (~7532): written-cue plus display number from the store via `footnoteOrder`.
+- `mdInline` marker render: written-cue plus display number from the store via `footnoteOrder`.
 - `fnIsWritten`, `stripUnwrittenFnRefs`, `countUnwrittenFnRefs`, `countExportLinks` (reads `f.text`),
   `syncFnEntries`: take the store instead of a node's array.
-- `toMarkdown` / `toPlainText` definition lines (~33742, ~33787): emit from the store, numbered.
-- Search `is:footnote` (~17024): "does this point hold any marker" (text-based), not `node.footnotes`.
-- `deepCloneNodeNewIds` / stamp (~19317): a stamped point keeps its `[^<id>]` markers, which now reference
+- `toMarkdown` / `toPlainText` definition lines: emit from the store, numbered.
+- Search `is:footnote`: "does this point hold any marker" (text-based), not `node.footnotes`.
+- `deepCloneNodeNewIds` / stamp: a stamped point keeps its `[^<id>]` markers, which now reference
   the shared store entry (the desired behavior: a stamped citation cites the same source). No per-node
   footnote array to clone.
 
