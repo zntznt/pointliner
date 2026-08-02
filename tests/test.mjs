@@ -1839,9 +1839,14 @@ test('advanceSeq — a counted shuffle deals N distinct cards per advance (#542)
   assert.equal(dealt.length, 3, 'deals exactly count cards');
   assert.equal(new Set(dealt).size, 3, 'no duplicates within a deal (bag had enough)');
   assert.equal(rec.bag.length, 2, 'the deck is 2 cards lighter');
-  // the next deal spans the reshuffle boundary: 2 remaining + 1 from a fresh bag
-  const dealt2 = c.advanceSeq(rec, {}, {}).split(' ');
-  assert.equal(dealt2.length, 3, 'a deal spanning an empty bag reshuffles and completes');
+  // EVERY subsequent deal must ALSO be all-distinct, including the ones that span a mid-deal reshuffle
+  // (2 left + 1 from a fresh bag). That fresh draw could repeat a card already in the hand — the bug.
+  // Loop so a spanning deal is hit (count 3 over 5 doesn't divide, so ~every other deal spans).
+  for (let i = 0; i < 100; i++) {
+    const d = c.advanceSeq(rec, {}, {}).split(' ');
+    assert.equal(d.length, 3, `deal ${i}: always completes to count`);
+    assert.equal(new Set(d).size, 3, `deal ${i}: repeated a card within one hand (a reshuffle-span dup)`);
+  }
 });
 
 test('advanceSeq — a standalone shuffle deal is capped at the deck size, never repeating within it (#763)', () => {
