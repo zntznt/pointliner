@@ -888,8 +888,10 @@ test('#1240 phase 1b: the "+ Add" affordance is wired + verbosity-gated (source 
   assert.match(aff, /deriveTypeFromText\(node\.text\)/, 'only on a section heading (derived from text, not node.type)');
   assert.match(aff, /inferRowShape\(node\.children/, 'only when the children share a shape');
   assert.match(aff, /openAddRowForm\(node\.id\)/, 'opens the values-only dialog');
-  assert.match(aff, /addEventListener\('mousedown', e => e\.preventDefault\(\)\)/,
-    'caret invariant (P3-3): never steals focus on press');
+  // caret invariant (P3-3): the press must BOTH preventDefault (no focus theft) AND stopPropagation, or
+  // the mousedown bubbles to the point's own edit-entry and drops the caret in (the "+ enters edit" bug).
+  assert.match(aff, /addEventListener\('mousedown', e => \{ e\.preventDefault\(\); e\.stopPropagation\(\); \}\)/,
+    'caret invariant (P3-3): press neither steals focus nor bubbles to the point (no edit-mode on click)');
   assert.match(aff, /'keydown'/, 'a keyboard path sits alongside the pointer one');
   assert.match(aff, /if \(isGuided\(\)\)[\s\S]{0,24}\.title =/, 'the tooltip is Guided-only (Standard/Lean strip it)');
   assert.match(aff, /setAttribute\('aria-label'/, 'the accessible name is kept in every tier');
@@ -956,7 +958,10 @@ test('#1240 phase 3: the "+ Card" affordance + append are wired (source pin)', (
   const aff = fnBody(_src, 'maybeAddCardAffordance');
   assert.match(aff, /findDeckRecord\(node\)/, 'only on a line that carries a deck');
   assert.match(aff, /openAddCardForm\(node\.id\)/, 'opens the add-card form');
-  assert.match(aff, /addEventListener\('mousedown', e => e\.preventDefault\(\)\)/, 'caret invariant (P3-3)');
+  // caret invariant (P3-3): press must preventDefault AND stopPropagation, else the mousedown bubbles to
+  // the deck point's edit-entry and enters edit mode on the {shuffle:…} line instead of opening the dialog.
+  assert.match(aff, /addEventListener\('mousedown', e => \{ e\.preventDefault\(\); e\.stopPropagation\(\); \}\)/,
+    'caret invariant (P3-3): press neither steals focus nor bubbles into edit mode');
   assert.match(fnBody(_src, 'addDeckCard'), /rec\.items\.push\(text\)/, 'appends to the deck record items (round-trips to shorthand)');
   assert.match(fnBody(_src, 'renderRow'), /maybeAddCardAffordance\(node, row\)/, 'renderRow appends it');
 });

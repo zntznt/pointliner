@@ -40476,7 +40476,9 @@ function maybeAddRowAffordance(node, row) {
   btn.setAttribute('aria-label', 'Add to ' + noun);        // the accessible name is kept in every tier
   if (isGuided()) btn.title = 'Add to ' + noun;            // the tooltip is Guided-only (Standard/Lean strip it)
   btn.textContent = '+ Add';
-  btn.addEventListener('mousedown', e => e.preventDefault());          // caret invariant: never steal focus on press
+  // caret invariant: preventDefault stops the browser stealing focus; stopPropagation stops the press
+  // from bubbling to the point's own mousedown, which would ALSO drop the caret in and enter edit mode.
+  btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
   btn.addEventListener('click', e => { e.stopPropagation(); onAdd(); });
   btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAdd(); } });
   row.appendChild(btn);
@@ -40516,7 +40518,9 @@ function maybeAddCardAffordance(node, row) {
   btn.setAttribute('aria-label', 'Add a card to this deck');
   if (isGuided()) btn.title = 'Add a card';
   btn.textContent = '+ Card';
-  btn.addEventListener('mousedown', e => e.preventDefault());          // caret invariant
+  // caret invariant: preventDefault stops focus theft; stopPropagation stops the press bubbling to the
+  // point's own mousedown, which would enter edit mode on the deck line instead of opening the dialog.
+  btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
   btn.addEventListener('click', e => { e.stopPropagation(); openAddCardForm(node.id); });
   btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAddCardForm(node.id); } });
   row.appendChild(btn);
