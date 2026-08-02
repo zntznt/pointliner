@@ -162,7 +162,7 @@ export function loadCores() {
 
   const need = [
     'parseDice', 'rollParsed', 'diceExprStr',
-    'parseVersus', 'versusKind', 'rollVersus',   // #1243 opposed/margin rolls (contest cores)
+    'parseVersus', 'versusKind', 'rollVersus', 'versusSide', 'versusSideKind', 'versusValid', 'rollPickRecord',   // #1243 opposed/margin rolls (contest cores; sides may be a roll, a constant, or a variable)
     'checkQuery',           // #1195: the query embedded in a check, for the reveal-offenders affordance
     'deepCloneNodeNewIds', '_cloneNodeNewIds', 'remapClonedLinks', 'uid',   // clone + internal-link remap
     'distReadout', 'sampleGenerator', 'distChanceAtLeast', 'distChanceAtMost', 'pickOneHit',   // distribution peek
