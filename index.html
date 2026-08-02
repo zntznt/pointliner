@@ -9200,7 +9200,8 @@ function fromOpml(xml) {
     // serialize or render, and re-crash on every reopen. A real document is never this deep; reject at
     // import (callers already catch fromOpml throws and flashError), so the deep tree never enters memory.
     if (depth > MAX_OPML_DEPTH) throw new Error('Document nesting is too deep (over ' + MAX_OPML_DEPTH + ' levels)');
-    const raw = el.getAttribute('_type') || 'ul';
+    const typeAttr = el.getAttribute('_type');
+    const raw = typeAttr || 'ul';
     const n = {
       id: freshId(el.getAttribute('_id')),
       text: el.getAttribute('text') || '',
@@ -9260,6 +9261,17 @@ function fromOpml(xml) {
           n.text = n.text.replace(`[[varref:${vr.key}]]`, `[[var:${vr.key}]]`);
         }
       } catch(_) {}
+    }
+    // Markdown-first: a point saved WITHOUT an explicit _type (a plain 'ul') derives its block type
+    // from its own text on load, exactly as typing that text live does (rederiveFromText's contract:
+    // "every path that replaces node.text must re-derive"). toOpml only omits _type for the 'ul'
+    // default, so an explicit type (para, todo, h2, quote, code, base, …) is always honored here.
+    // Without this, an OPML authored as `- [ ] task` / `## Heading` (a starter, a hand-written or
+    // foreign file) loaded as a bare bullet whose checkbox was only an inline-markdown lookalike —
+    // it rendered but did not behave like a real to-do (toggle, Show-Done, progress, is:todo).
+    if (typeAttr == null) {
+      const dt = deriveTypeFromText(n.text);
+      if (dt) { n.type = dt; if (dt === 'todo') n.checked = todoDoneFromText(n.text); }
     }
     return n;
   }

@@ -6327,6 +6327,24 @@ test('todo derive: deriveTypeFromText knows both to-do forms (and stays strict)'
   assert.equal(c.deriveTypeFromText('> quote'),        'quote');
 });
 
+test('starter/OPML load derives block type from text when _type is absent (checkbox bug)', () => {
+  // A starter (or hand-written/foreign OPML) authored as `- [ ] task` / `## Heading` with NO _type
+  // attribute must load as a NATIVE to-do / heading, not a bare 'ul' whose checkbox is only an
+  // inline-markdown lookalike (rendered but without toggle / Show-Done / is:todo behavior). This is
+  // exactly the shape the STARTERS use, so it is the shape the derivation must cover.
+  assert.equal(c.deriveTypeFromText('- [ ] Recruit six fixers {date due: today+3}'), 'todo', 'a task with a trailing pill still derives to-do');
+  assert.equal(c.deriveTypeFromText('- [x] Confirm the hall booking'), 'todo');
+  assert.equal(c.todoDoneFromText('- [x] Confirm the hall booking', []), true, 'a `[x]` box loads already checked (empty seqs: box form is static)');
+  assert.equal(c.todoDoneFromText('- [ ] Recruit six fixers {date due: today+3}', []), false);
+  assert.equal(c.deriveTypeFromText('## The plan [/]'), 'h2', 'a heading with a progress cookie still derives a heading');
+  // fromOpml wires it: derive only when _type is ABSENT (an explicit type — para, todo, base — is honored)
+  assert.ok(/const typeAttr = el\.getAttribute\('_type'\)/.test(_src), 'fromOpml captures whether _type was present');
+  assert.ok(/if \(typeAttr == null\) \{\s*const dt = deriveTypeFromText\(n\.text\);/.test(_src),
+    'fromOpml derives the block type from text only when no explicit _type was saved');
+  assert.ok(/if \(dt === 'todo'\) n\.checked = todoDoneFromText\(n\.text\)/.test(_src),
+    'a derived to-do also derives its checked state from the text');
+});
+
 test('todo derive: todoDoneFromText — keyword wins; task form completes as a whole', () => {
   assert.equal(c.todoDoneFromText('#DONE shipped'), true);
   assert.equal(c.todoDoneFromText('#TODO open'),    false);
