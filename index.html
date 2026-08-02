@@ -42357,7 +42357,7 @@ const STARTERS = [
     <outline text="Open tasks left: {count: is:todo}"/>
     <outline text="Overdue right now: {= count(&quot;is:todo is:overdue&quot;, document)}"/>
     <outline text="All dates still safe" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;count(\\&quot;is:todo is:overdue\\&quot;, document) == 0&quot;}]"/>
-    <outline text="Days to go: the event is {date due: today+21}"/>
+    <outline text="Event day: {date due: today+21}"/>
   </outline>
   <outline text="## The plan [/]">
     <outline text="- [x] Confirm the hall booking"/>
@@ -42570,7 +42570,7 @@ const STARTERS = [
     <outline text="## Health">
       <outline text="Current hit points: {hp := 35}"/>
       <outline text="Still standing? {hp} of {= level * 8 + might} (the chip turns red at zero)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;hp &gt; 0&quot;}]"/>
-      <outline text="Take a wound by editing {hp := 35} down. Set it to 0 and the Still standing chip flips red."/>
+      <outline text="Take a wound: edit the Current hit points value above down to 0, and the Still standing chip flips red."/>
     </outline>
     <outline text="## Rolls that read the sheet">
       <outline text="Axe attack (2d6 plus might): {2d6+might}"/>
@@ -42586,7 +42586,7 @@ const STARTERS = [
         <outline text="Rations, four days {prop weight: 2}"/>
         <outline text="Signal horn {prop weight: 1}"/>
       </outline>
-      <outline text="Add a heavy item to see the check flip: type a new child here, like Iron cook pot {prop weight: 3}. The load crosses your limit and the chip turns red."/>
+      <outline text="To see the check flip, add another item to the pack list above (a new line beside the others, like Iron cook pot at weight 3). The load crosses your limit and the chip turns red."/>
     </outline>
   </outline>
   <outline text="## How to run it">
