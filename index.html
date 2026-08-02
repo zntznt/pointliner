@@ -17337,7 +17337,10 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
     const sidecar = HAS_SIDECAR_FIELD[term.value];   // e.g. 'var' -> 'vars'
     if (sidecar && (node[sidecar] || []).length) return true;
     if (term.value === 'children' && (node.children || []).length) return true;
-    if (term.value === 'footnote' && getFnRefs(node.text).length) return true;   // Phase A: a point "has a footnote" when it carries a [^id] marker (store model)
+    // "has a footnote" = a marker whose doc-level source is actually WRITTEN, not merely present: an
+    // empty, whitespace, or dangling [^x] is not a source, so `#claim -has:footnote` catches an
+    // unwritten citation and a sourcing check goes red until the note is filled in.
+    if (term.value === 'footnote' && getFnRefs(node.text).some(id => fnIsWritten(root.footnotes, id))) return true;
     // QX-6: link/tag presence. has:link and has:tag are PURE node reads (the deferral
     // over-generalized): a link is any [[#id|..]] or [[docId#id|..]] token in the text
     // (parseLinkToken's shape, unanchored); a tag is any hashtag sigil in the

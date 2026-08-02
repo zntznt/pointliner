@@ -18113,7 +18113,9 @@ test('QX-1 has:<sidecar> and has:children / has:footnote, with props fall-throug
   assert.equal(hasM('dice', { dice: [] }), false);             // empty sidecar
   assert.equal(hasM('children', { children: [{ id: '1' }] }), true);
   assert.equal(hasM('children', { children: [] }), false);
-  assert.equal(hasM('footnote', { text: 'a claim with a ref[^a]' }), true);   // Phase A: "has a footnote" = carries a [^id] marker (doc-store model)
+  // "has a footnote" now means a marker whose source is WRITTEN, not merely present. The harness root
+  // has no store, so a bare marker no longer qualifies; the written-source path is covered just below.
+  assert.equal(hasM('footnote', { text: 'a claim with a ref[^a]' }), false);   // marker present but source unwritten (empty store) → not a footnote
   assert.equal(hasM('footnote', { text: 'no footnote here' }), false);
   // the has:<propkey> contract survives: a user property keyed 'dice' still matches
   // (empty sidecar, so the fall-through property scan runs)
@@ -18121,6 +18123,21 @@ test('QX-1 has:<sidecar> and has:children / has:footnote, with props fall-throug
   // and a plain property still matches as before
   assert.equal(hasM('owner', { props: [{ key: 'owner', val: 'zeo' }] }), true);
   assert.equal(hasM('owner', { props: [] }), false);
+});
+
+test('has:footnote requires a WRITTEN source, so a sourcing check catches an unwritten [^x]', () => {
+  // the fix: has:footnote = getFnRefs(node.text).some(id => fnIsWritten(root.footnotes, id)). Test that
+  // composition against an explicit store (a written one, a blank one, and a dangling ref), then pin the
+  // wiring in termMatchesNode. So `count("#claim -has:footnote") == 0` (research-notes) stays red until a
+  // claim's marker actually has a written source, not just a bracket.
+  const store = [{ id: 'a', text: 'Ives 2020, p.4' }, { id: 'b', text: '   ' }];
+  assert.ok(c.getFnRefs('a claim[^a] and[^b]').length === 2, 'getFnRefs pulls each distinct marker');
+  const written = text => c.getFnRefs(text).some(id => c.fnIsWritten(store, id));
+  assert.equal(written('a claim[^a]'), true,  'a marker with a written source qualifies');
+  assert.equal(written('a claim[^b]'), false, 'a marker whose source is blank does NOT');
+  assert.equal(written('a claim[^ghost]'), false, 'a dangling marker (no store entry) does NOT');
+  assert.match(_src, /getFnRefs\(node\.text\)\.some\(id => fnIsWritten\(root\.footnotes, id\)\)/,
+    'has:footnote wires the written-source requirement, not mere marker presence');
 });
 
 // ── QX-2/147: relative date windows + var: declaration lookup ─────────────
