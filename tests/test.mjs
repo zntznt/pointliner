@@ -327,6 +327,39 @@ test('#1243 bare {A vs B} promotes to a nameless contest pill, and the pill read
   assert.ok(/var-name/.test(nhtml) && /won by 2/.test(nhtml), 'a named contest keeps $name = and reads "won by 2"');
 });
 
+test('#1243 vs compares a roll against a fixed target, a variable, or another value', () => {
+  const V = { str: 3, def: 1, ac: 12 };
+  // each SIDE resolves to a number: a roll, a constant, or a variable/formula
+  assert.equal(c.versusSideKind('2d6+str', V), 'roll');
+  assert.equal(c.versusSideKind('15', V), 'fixed');
+  assert.equal(c.versusSideKind('ac+2', V), 'fixed');
+  assert.equal(c.versusSideKind('cats', V), null, 'prose is not a number, so not a side');
+  // validity: both sides must be numbers; prose stays literal
+  assert.ok(c.versusValid('2d6+str', '15', V), 'roll vs a fixed DC is a valid contest');
+  assert.ok(c.versusValid('ac', '10', V), 'a variable vs a constant');
+  assert.ok(c.versusValid('5', '3', V), 'two constants');
+  assert.ok(!c.versusValid('cats', 'dogs', V), 'prose vs prose is NOT a contest');
+  assert.equal(c.classifyBraceBody('2d6 vs 15', {}, V), 'artifact', 'roll vs DC promotes (used to be invalid)');
+  assert.equal(c.classifyBraceBody('cats vs dogs', {}, V), 'literal', 'prose stays prose');
+  // roll vs a fixed DC: the fixed side is not rolled, the margin is roll - DC, and no sum/pool mismatch
+  const r = c.rollVersus('2d6+str', '15', V);
+  assert.ok(r && r.rightFixed === true && r.leftFixed === false, 'the DC side is marked fixed');
+  assert.equal(r.rightTotal, 15, 'the DC total is its literal value');
+  assert.equal(r.margin, r.leftTotal - 15, 'margin = roll - DC');
+  assert.equal(r.mismatch, false, 'a fixed target never mismatches a pool');
+  // two fixed sides compare deterministically
+  const cst = c.rollVersus('str', 'def', V);
+  assert.deepEqual([cst.leftTotal, cst.rightTotal, cst.margin], [3, 1, 2], 'str(3) vs def(1) reads a margin of 2');
+  // rollPickRecord carries the fixed flags through to the display record...
+  const pr = c.rollPickRecord('2d6+str vs 15', {}, V);
+  assert.ok(pr && pr.versus.rightFixed === true && pr.versus.leftFixed === false, 'the DC flag reaches the pill record');
+  // ...so a roll-vs-target pill reads from the ROLL's view ("beat by"/"short by"/"met it"), not "won by"
+  const short = c.renderVarPill('x1', { key:'x1', name:'', kind:'pick', expr:'2d6 vs 15', typed:true, versus:{ leftTotal:9, rightTotal:15, margin:-6, leftKind:'sum', rightKind:'fixed', mismatch:false, leftFixed:false, rightFixed:true } });
+  assert.ok(/short by 6/.test(short) && !/won by/.test(short), 'a missed DC reads "short by N"');
+  const beat = c.renderVarPill('x2', { key:'x2', name:'', kind:'pick', expr:'2d6 vs 8', typed:true, versus:{ leftTotal:11, rightTotal:8, margin:3, leftKind:'sum', rightKind:'fixed', mismatch:false, leftFixed:false, rightFixed:true } });
+  assert.ok(/beat by 3/.test(beat), 'a met DC reads "beat by N"');
+});
+
 test('#1243 PR 2 — the contest is taught (picker row, guide entry, starter beat)', () => {
   // the { picker rosters a contest row whose scaffold promotes (parity 2092 checks all rows; pin this one)
   const contest = c.filterBraceForms('').find(r => r.name === 'contest');

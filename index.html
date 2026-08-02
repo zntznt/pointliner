@@ -7968,21 +7968,43 @@ function parseVersus(input) {
 // A parsed dice term list is a success POOL when any term counts successes, else a SUM.
 function versusKind(terms) { return (terms || []).some(t => t.success) ? 'pool' : 'sum'; }
 
-// Roll one contest: parse and roll each side (rollParsed collapses each to a single total, a pip sum
-// OR a success count), and read the MARGIN = left - right. `vars` resolves modifiers like str/def.
-// Returns a record, or null if either side is not a valid dice expression. `mismatch` flags a
-// sum-vs-pool contest, whose margin (pips minus successes) is meaningless, so the caller can warn (P4).
+// Resolve ONE side of a contest to a total. A dice expression (with any +modifiers) ROLLS; a plain
+// number or a variable/formula (a fixed target like a DC, or `str`, or `ac+2`) is evaluated once. `vars`
+// resolves references. Returns { total, parts, kind, roll } or null when the side is neither.
+function versusSide(expr, vars = {}) {
+  const terms = parseDice(expr, vars);
+  if (terms) { const r = rollParsed(terms); return { total: r.total, parts: r.parts, kind: versusKind(terms), roll: true }; }
+  const val = evalMath(expr, vars);
+  return (val !== null && Number.isFinite(val)) ? { total: val, parts: null, kind: 'fixed', roll: false } : null;
+}
+// The kind of one side WITHOUT rolling — 'roll' | 'fixed' | null — for classify/promote validity checks
+// (which must stay pure: no dice consumed, no seed advanced).
+function versusSideKind(expr, vars = {}) {
+  if (parseDice(expr, vars)) return 'roll';
+  const v = evalMath(expr, vars);
+  return (v !== null && Number.isFinite(v)) ? 'fixed' : null;
+}
+// A contest is valid iff BOTH sides resolve to a number — a roll, a constant, or a variable/formula. So
+// `2d6+str vs 15` (roll vs a DC), `ac vs 10`, and `str vs def` all compare; prose like `cats vs dogs`
+// stays literal because neither side is a number.
+function versusValid(left, right, vars = {}) {
+  return !!versusSideKind(left, vars) && !!versusSideKind(right, vars);
+}
+// Roll one contest: resolve each side (a roll collapses to a pip sum or success count; a fixed side is
+// a constant/variable), and read the MARGIN = left - right. Returns a record, or null if either side is
+// not a number. `mismatch` flags a sum-vs-pool contest (meaningless margin) — only meaningful between
+// two ROLLS, so a fixed target never mismatches. `leftFixed`/`rightFixed` mark the non-rolled sides.
 function rollVersus(left, right, vars = {}) {
-  const lt = parseDice(left, vars), rt = parseDice(right, vars);
-  if (!lt || !rt) return null;
-  const lr = rollParsed(lt), rr = rollParsed(rt);
-  const leftKind = versusKind(lt), rightKind = versusKind(rt);
+  const ls = versusSide(left, vars), rs = versusSide(right, vars);
+  if (!ls || !rs) return null;
   return {
     left, right,
-    leftTotal: lr.total, rightTotal: rr.total,
-    leftParts: lr.parts, rightParts: rr.parts,
-    margin: lr.total - rr.total,
-    leftKind, rightKind, mismatch: leftKind !== rightKind,
+    leftTotal: ls.total, rightTotal: rs.total,
+    leftParts: ls.parts, rightParts: rs.parts,
+    margin: ls.total - rs.total,
+    leftKind: ls.kind, rightKind: rs.kind,
+    mismatch: ls.roll && rs.roll && ls.kind !== rs.kind,
+    leftFixed: !ls.roll, rightFixed: !rs.roll,
   };
 }
 
@@ -9474,7 +9496,7 @@ const INSERT_CMDS = [
   { id:'oracle',   icon:'🔮', fa:'fa-solid fa-circle-question',                         keys:['yesno','yes','fate','ask','likely','even'], label:'Oracle (yes/no)', desc:'Ask a yes/no question at tunable odds; click to ask again. Type {oracle: likely} with any of certain, likely, even, unlikely, impossible, or a percentage like {oracle: 70}. Add + swing for a six-way answer with a twist.', ex:'{oracle: likely} · {oracle: 70} · {oracle: even + swing}', section:'Generate' },
   // Compute — live numbers and values
   { id:'math',     icon:'=',  fa:'fa-solid fa-calculator',   keys:['calc','calculate','compute','sum','avg','average','words','formula','equation','format','currency','decimals','thousands','percent','money','budget'], label:'Math',         desc:'Live calculator; recomputes with variables. Also sum/avg/min/max/count over child properties, convert() between units (see @convert), and words() over the subtree.', ex:'sqrt(16) · 2*pi*r · sum(cost) · convert(10, km, mi)', section:'Compute' },
-  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. The operator is :=, so type {r := 5}. Reference it {name} anywhere. Pit two rolls with vs and the frozen margin feeds math: {hit := 2d6+str vs 2d6+def}, then {= hit > 0}.', ex:'{r := 5} · {beast := dragon | wyrm} · {hit := 2d6 vs 2d6}', section:'Compute' },
+  { id:'var',      icon:'$',  fa:'fa-solid fa-dollar-sign', keys:['variable','value','let','define'], label:'Variable',     desc:'Declare a named value: a formula, or a random pick frozen until re-rolled. The operator is :=, so type {r := 5}. Reference it {name} anywhere. Pit two rolls (or a roll against a fixed target) with vs and the frozen margin feeds math: {hit := 2d6+str vs 2d6+def} or {check := 2d6 vs 15}, then {= hit > 0}.', ex:'{r := 5} · {beast := dragon | wyrm} · {hit := 2d6 vs 2d6} · {check := 2d6 vs 15}', section:'Compute' },
   { id:'est',      icon:'≈',  fa:'fa-solid fa-wave-square',  keys:['estimate','uncertain','range','montecarlo','probability','forecast','guess','format','currency','decimals','thousands','percent','money','budget'], label:'Estimate / uncertain', desc:'An uncertain value: a 90% range, normal/uniform, or a sum over child points. Shows mean ± range plus a sparkline. Click to re-sample. Type the range forms directly; the sum and avg roll-ups are built here in the dialog.', ex:'{5 to 10} · {normal(8,2)} · {uniform(1,6)}', section:'Compute' },
   // Trackers — state gauges (#951: lifted out of Insert so the clock/meter aren't below the fold)
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
@@ -18427,16 +18449,16 @@ function classifyBraceBody(body, rules, vars) {
     // #1243: a contest source ("A vs B") is a valid pick when BOTH sides parse as dice — the exact
     // condition rollPickRecord promotes on, so classify and promote stay in lockstep (#952).
     const vs = parseVersus(decl.expr);
-    if (vs) return (parseDice(vs.left, vars) && parseDice(vs.right, vars)) ? 'artifact' : 'invalid';
+    if (vs) return versusValid(vs.left, vs.right, vars) ? 'artifact' : 'invalid';
     const c = classifyBraceBody(decl.expr, rules, vars);
     // A quoted-string RHS classifies 'literal' (a fixed text value) — it IS a usable pick source,
     // exactly what rollPickSource accepts (#522: classify said 'invalid' while promote built a pill).
     return (c === 'artifact' || c === 'literal' || splitTopLevel(decl.expr, '|').length > 1) ? 'artifact' : 'invalid';
   }
-  // #1243: a BARE contest `{A vs B}` (no `name :=`) is an anonymous opposed roll — valid iff both sides
-  // parse as dice, the same test the named form uses. Promotes to a nameless pick pill (promoteBraceBodyIn).
+  // #1243: a BARE contest `{A vs B}` (no `name :=`) is an anonymous comparison — valid iff both sides
+  // resolve to a number, the same test the named form uses. Promotes to a nameless pill (promoteBraceBodyIn).
   const bareVs = parseVersus(body);
-  if (bareVs && parseDice(bareVs.left, vars) && parseDice(bareVs.right, vars)) return 'artifact';
+  if (bareVs && versusValid(bareVs.left, bareVs.right, vars)) return 'artifact';
   if (condParts(body)) return 'artifact';                              // {cond: a|b}
   if (seqParts(body)) return 'artifact';                               // {shuffle: a|b|c}
   if (markovParts(body)) return 'artifact';                            // {markov: a→b, b→c}
@@ -23981,6 +24003,7 @@ function rollPickRecord(source, rules = collectRules(), vars = collectVars()) {
     return { rolled: String(r.margin), versus: {
       left: r.left, right: r.right, leftTotal: r.leftTotal, rightTotal: r.rightTotal,
       margin: r.margin, leftKind: r.leftKind, rightKind: r.rightKind, mismatch: r.mismatch,
+      leftFixed: r.leftFixed, rightFixed: r.rightFixed,   // #1243: which side is a fixed target (a DC / a variable), for the "beat by / short by" read
     } };
   }
   const rolled = rollPickSource(source, rules, vars);
@@ -26241,7 +26264,7 @@ function promoteBraceBodyIn(node, body) {
   // not in the var panel), renderVarPill drops the `$name =` prefix, and it re-rolls / unfolds like the
   // named form. Sniffed BEFORE dice so `2d6 vs 2d6` never reads as a broken single dice expression.
   const bareVs = parseVersus(body);
-  if (bareVs && parseDice(bareVs.left, collectVars()) && parseDice(bareVs.right, collectVars())) {
+  if (bareVs && versusValid(bareVs.left, bareVs.right, collectVars())) {
     const pr = rollPickRecord(body);
     if (pr !== null && pr.versus) {
       const rec = { key: varKey(), name: '', kind: 'pick', expr: body.replace(/\s+/g, ' ').trim(), rolled: pr.rolled, versus: pr.versus, typed: true };
@@ -28538,10 +28561,17 @@ function renderVarPill(key, v) {
     if (shadowed) cls += ' var-shadowed';
     // #1243: state the WINNER and label the gap, so the pill never reads like a bare dice modifier.
     // The signed margin still lives in the title/aria (and, for a NAMED contest, feeds math).
-    const who = vs && (vs.mismatch ? 'mixed dice kinds, so the margin is unreliable'
-      : vs.margin === 0 ? 'a tie'
-      : (vs.margin > 0 ? 'the left side' : 'the right side') + ' wins by ' + Math.abs(vs.margin));
-    const marginLabel = vs && (vs.mismatch ? 'mixed' : vs.margin === 0 ? 'tie' : 'won by ' + Math.abs(vs.margin));
+    // A roll against ONE fixed target (a DC / a variable) reads from the ROLL's point of view — "beat by"
+    // / "short by" — since a static target does not "win". Two rolls (or two fixed values) read "won by".
+    const oneFixed = vs && (vs.leftFixed !== vs.rightFixed);
+    const rollTotal = vs && (vs.leftFixed ? vs.rightTotal : vs.leftTotal);
+    const beat = vs && (rollTotal - (vs.leftFixed ? vs.leftTotal : vs.rightTotal));
+    let who, marginLabel;
+    if (vs && vs.mismatch)      { who = 'mixed dice kinds, so the margin is unreliable'; marginLabel = 'mixed'; }
+    else if (vs && oneFixed)    { who = beat === 0 ? 'the roll meets the target' : beat > 0 ? 'the roll beats it by ' + beat : 'the roll is short by ' + (-beat);
+                                  marginLabel = beat === 0 ? 'met it' : beat > 0 ? 'beat by ' + beat : 'short by ' + (-beat); }
+    else if (vs && vs.margin === 0) { who = 'a tie'; marginLabel = 'tie'; }
+    else if (vs)                { who = (vs.margin > 0 ? 'the left side' : 'the right side') + ' wins by ' + Math.abs(vs.margin); marginLabel = 'won by ' + Math.abs(vs.margin); }
     const leftWin = vs && !vs.mismatch && vs.margin > 0, rightWin = vs && !vs.mismatch && vs.margin < 0;
     const title = shadowed ? 'Shadowed by a later declaration of this name'
       : vs ? `Contest: ${who}${anon ? '' : ` (margin ${signed(vs.margin)}, which feeds math)`}. Click to re-roll${anon ? '' : ' · pencil to edit'}`
@@ -39345,7 +39375,7 @@ const GUIDE = [
     ] },
   { id:'contest', cat:'generators', related:['dice','variables'],
     title:'Contested rolls',
-    body:"Pit two rolls against each other and read the margin: the most common tabletop resolution, an attack against a defence or a contest against a contest. Declare it as a variable with vs between the two sides, like {hit := 2d6+str vs 2d6+def}. Clicking rolls both sides at once and freezes them together; the pill shows each total and the margin, the winner's lead. That margin is a number you can compute with: {= hit} is the margin, {= hit > 0} is true when the first side wins, {= hit * 5} scales damage by how decisively it did. It works at every level, from a simple 2d6 vs 2d6 up to a success pool against a success pool ({tussle := 6d10>=7 vs 5d10>=7}), where the margin is the net successes. Compare like with like: a sum against a success pool mixes pips and successes, so the pill flags that with a dashed edge.",
+    body:"Pit two rolls against each other and read the margin: the most common tabletop resolution, an attack against a defence or a contest against a contest. Declare it as a variable with vs between the two sides, like {hit := 2d6+str vs 2d6+def}. Clicking rolls both sides at once and freezes them together; the pill shows each total and the margin, the winner's lead. That margin is a number you can compute with: {= hit} is the margin, {= hit > 0} is true when the first side wins, {= hit * 5} scales damage by how decisively it did. It works at every level, from a simple 2d6 vs 2d6 up to a success pool against a success pool ({tussle := 6d10>=7 vs 5d10>=7}), where the margin is the net successes. Either side can also be a fixed target instead of a roll: a number for a difficulty, like {check := 2d6+str vs 15}, or one of your own variables, like {vs ac}. When one side is a fixed target the pill reads from the roll's point of view, beat by or short by, and the margin is how far over or under you landed. You do not even need a name: type {2d6+2 vs 2d6+1} on its own and it drops a one-off pill that just shows who won, no variable to feed. Compare like with like: a sum against a success pool mixes pips and successes, so the pill flags that with a dashed edge.",
     examples:[
       { syn:'{hit := 2d6+str vs 2d6+def}', desc:'attack vs defence; the margin is the lead' },
       { syn:'{= hit > 0}',                 desc:'read the margin in math: did the first side win' },
