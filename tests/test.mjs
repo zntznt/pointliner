@@ -8310,6 +8310,21 @@ test('collectTags: link tokens, headings, and mid-word # are not tags', () => {
   assert.deepEqual(host(c.collectTags(root)), [{ name: 'real', count: 1 }]);
 });
 
+test('a #tag inside a {…} body is a query arg, not a point tag (closes the roll/count load race)', () => {
+  // tagScanText blanks brace bodies, so neither the tag index nor the #tag matcher sees a #tag that
+  // lives inside {count: #tag} / {roll: #tag} / a rule. This is also what stops a {roll:#tag} from
+  // transiently drawing a {count:#tag} display line during the load promote pass (reading-log).
+  assert.match(c.tagScanText('Piranesi #toread'), /#toread/, 'a real point tag survives');
+  assert.doesNotMatch(c.tagScanText('Waiting on the shelf: {count: #toread}'), /#toread/, 'a tag inside {count:} is blanked');
+  assert.doesNotMatch(c.tagScanText('Who walks in? {roll: #npc}'), /#npc/, 'a tag inside {roll:} is blanked');
+  assert.doesNotMatch(c.tagScanText('{rule x: a {color} gem #shiny}'), /#shiny/, 'a tag inside a NESTED brace body is blanked');
+  assert.match(c.tagScanText('Book #toread {2d6}'), /#toread/, 'a tag adjacent to a brace still survives');
+  // the index agrees: a bare {count:#toread} line is NOT a member of #toread
+  const root = c.mkRoot();
+  root.children.push(c.mkNode('Count line {count: #toread}'), c.mkNode('The Fifth Season #toread'));
+  assert.deepEqual(host(c.collectTags(root)), [{ name: 'toread', count: 1 }], 'only the real tagged book counts');
+});
+
 test('collectTags: status keywords (#TODO) count deliberately; explicit root bypasses the cache', () => {
   const root = c.mkRoot();
   root.children.push(c.mkNode('#TODO ship it'));
