@@ -204,7 +204,7 @@ export function loadCores() {
     'markdownVaultToPoints', 'resolveWikilinks',   // #1265 PR 2: multi-file vault import + wikilink resolution
     'recipeToNodes',   // #1267: snippet/pattern palette (PATTERN_RECIPES data is parsed from _src in the pins)
     'relTimeShort', 'saveStatusLabel',   // #1268: single-file reassurance (save-status chip)
-    'fnIsWritten', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
+    'fnIsWritten', 'getFnRefs', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
     'footnoteOrder', 'migrateNodeFootnotes', 'migrateFootnotesToStore', 'renumberFnMarkers', 'fnId',   // Phase A: doc-level footnote store (numbering, migration, export renumber)
     'footnoteReport',   // Phase B: the Footnotes manager model (numbered rows + orphans)
     // #1111: markdown keeps the link layer; plain text cannot, so it reports. `exportedNote` is the
