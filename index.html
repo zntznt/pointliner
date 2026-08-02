@@ -34027,6 +34027,92 @@ function toMarkdown(rootNode) {
   return out.join('\n') + '\n';
 }
 
+// #1265 v1: parse Markdown into an array of top-level point nodes. THE INVERSE of toMarkdown. Headings
+// nest by their `#` LEVEL (sections); lists / paras / quotes nest by indentation RELATIVE to their
+// section's first-content indent, so BOTH our own indented export and a flat foreign file (Obsidian,
+// Logseq, plain .md) map to the same tree. Foreign extras (frontmatter, tables, wikilinks, raw HTML)
+// are kept as text and never crash. Pure + Node-testable; the round-trip pin (import(export(tree))
+// reproduces the tree) is the spec. Footnote definitions attach to the first point that references
+// them (the doc store lifts + remaps them on insert). Returns { points, skipped } — skipped names what
+// was simplified, for the import toast (the UXP-237 "do the lossy thing and SAY SO" discipline).
+function markdownToPoints(md) {
+  const lines = String(md ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const rootKids = [];
+  const sections = [{ level: 0, kids: rootKids }];   // level-0 root sentinel + open headings
+  const skipped = new Set();
+  let base = null;      // spaces-indent of the current section's first content line
+  let listStack = [];   // {rel, node} within the current section (list nesting)
+  let para = null;      // the paragraph node currently accumulating consecutive lines
+  const fnDefs = [];    // {key, text} footnote definitions, attached at the end
+  const indentOf = (s) => s.length - s.replace(/^ +/, '').length;
+  const newSection = () => { base = null; listStack = []; para = null; };
+  const attach = (ind, node) => {
+    para = null;
+    if (base === null) base = ind;
+    const rel = Math.max(0, ind - base);
+    while (listStack.length && listStack[listStack.length - 1].rel >= rel) listStack.pop();
+    (listStack.length ? listStack[listStack.length - 1].node.children : sections[sections.length - 1].kids).push(node);
+    listStack.push({ rel, node });
+  };
+
+  let i = 0;
+  // a YAML frontmatter block at the very top is dropped (v1)
+  if ((lines[0] || '').trim() === '---') {
+    let j = 1; while (j < lines.length && lines[j].trim() !== '---') j++;
+    if (j < lines.length) { skipped.add('frontmatter'); i = j + 1; }
+  }
+
+  for (; i < lines.length; i++) {
+    const raw = lines[i].replace(/\t/g, '  ');
+    const ind = indentOf(raw);
+    const t = raw.trim();
+    if (t === '') { para = null; continue; }
+
+    const fence = t.match(/^(```|~~~)/);          // fenced code -> one code point holding the block
+    if (fence) {
+      const buf = [raw];
+      let j = i + 1;
+      for (; j < lines.length; j++) { buf.push(lines[j]); if (lines[j].trim().startsWith(fence[1])) break; }
+      i = j;
+      attach(ind, mkNode(buf.join('\n'), 'code'));
+      continue;
+    }
+    const h = t.match(/^(#{1,6})\s+(.*)$/);       // ATX heading -> a section (nest by level)
+    if (h) {
+      para = null;
+      const level = h[1].length;
+      while (sections.length > 1 && sections[sections.length - 1].level >= level) sections.pop();
+      const node = mkNode(`${'#'.repeat(level)} ${h[2].trim()}`, `h${level}`);
+      sections[sections.length - 1].kids.push(node);
+      sections.push({ level, kids: node.children });
+      newSection();
+      continue;
+    }
+    if (HR_RE.test(t)) { attach(ind, mkNode(t, 'divider')); continue; }   // thematic break -> divider
+    const fd = t.match(/^\[\^([^\]]+)\]:\s+(.*)$/);                       // footnote definition
+    if (fd) { fnDefs.push({ key: fd[1], text: fd[2].trim() }); para = null; continue; }
+    const li = t.match(/^([-*+]|\d+[.)])\s+(.*)$/);                       // list item (bullet/ordered/task)
+    if (li) {
+      const rest = li[2];
+      if (HR_RE.test(rest)) attach(ind, mkNode(rest, 'divider'));         // `- ---` is our exported divider
+      else if (/^\[[ xX]\]\s/.test(rest)) attach(ind, mkNode(`- ${rest}`, 'todo'));   // a task keeps its box
+      else attach(ind, mkNode(rest, /^\d/.test(li[1]) ? 'ol' : 'ul'));
+      continue;
+    }
+    if (t.startsWith('> ') || t === '>') { attach(ind, mkNode(t, 'quote')); continue; }   // blockquote
+    if (para) para.text += '\n' + t;                                     // paragraph: coalesce lines
+    else { const node = mkNode(t, 'para'); attach(ind, node); para = node; }
+  }
+
+  for (const def of fnDefs) {   // attach each def to EVERY point that references it, so a source cited
+    const re = new RegExp('\\[\\^' + def.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\]');   // more than once
+    let found = false;          // stays written at each site (the legacy per-node shape can't reuse one
+    (function walk(kids) { for (const n of kids) { if (re.test(n.text)) { (n.footnotes ||= []).push({ key: def.key, text: def.text }); found = true; } walk(n.children); } })(rootKids);   // store id across points, so it duplicates; the manager can dedupe)
+    if (!found) skipped.add('footnotes');
+  }
+  return { points: rootKids, skipped: [...skipped] };
+}
+
 // Plain-text export: tab-indented hierarchy, markdown emphasis stripped.
 function toPlainText(rootNode) {
   const varMap = collectVars();
@@ -39393,12 +39479,12 @@ const GUIDE = [
   // like the tag-browser entry. It is tracked by the chrome-feature drift guard in tests/test.mjs.
   { id:'import', cat:'files',
     title:'Importing points from a shared file',
-    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points from an .opml file (the app's own format) to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did in the file you imported.\n\nYou can bring one in two ways: choose an .opml file from your disk, or paste the contents of one into the box (handy when a file arrived as text in a chat or email). Either way the whole thing lands below your current points and the view jumps to the first one that arrived, so it is easy to see what was added. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file that is not a real Pointliner .opml, or one with no points in it, is refused with a message rather than doing anything silently.",
+    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did.\n\nIt reads two formats, no vendor buttons. A Pointliner .opml file comes in exactly as it left. A Markdown (.md) file is turned into points: headings become the outline's shape, bullets and numbered lists nest by their indentation, checkboxes become to-dos, quotes and footnotes carry over, so notes from any Markdown app come in as a real outline you can then bring to life. The format is detected for you, so you can paste either into the box. Anything Markdown that Pointliner does not model yet (a table, a wiki-link, a page's frontmatter) is kept as plain text and the toast tells you what was simplified, never a silent loss.\n\nEither way the whole thing lands below your current points and the view jumps to the first one that arrived. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file with no points in it is refused with a message rather than doing anything silently.",
     related:['saving','export','templates'],
     examples:[
-      { syn:'File → Import points → Choose an .opml file', desc:'add the points from a file on your disk' },
-      { syn:'File → Import points → paste box',            desc:'paste an .opml file you received as text' },
-      { syn:`${MOD}+Z`,                                    desc:'undo removes the whole import in one step' },
+      { syn:'File → Import points → Choose a file', desc:'add points from an .opml or Markdown file on your disk' },
+      { syn:'File → Import points → paste box',     desc:'paste an .opml file or Markdown you received as text' },
+      { syn:`${MOD}+Z`,                             desc:'undo removes the whole import in one step' },
     ] },
 
   // ── Put it together (#597): recipes that combine several features. Each uses only verified syntax
@@ -42584,10 +42670,17 @@ function maybeShowFirstRun() {
 // root. `opts.announce` surfaces a malformed/empty message — ON for user input (Import), OFF for the
 // trusted embedded starters (a bad embedded starter must no-op silently, never toast).
 function appendOpmlSubtrees(opml, label, opts = {}) {
-  let parsed;
-  try { parsed = fromOpml(opml); }
-  catch (_) { if (opts.announce) flashError('That does not look like a Pointliner .opml file.'); return false; }
-  const tops = (parsed && parsed.children) || [];
+  let tops;
+  if (opts.trees) {
+    // #1265: pre-parsed point trees (a Markdown import), skipping the OPML round-trip so legacy
+    // per-node footnotes survive to be lifted below (toOpml no longer emits them, Phase A).
+    tops = opts.trees;
+  } else {
+    let parsed;
+    try { parsed = fromOpml(opml); }
+    catch (_) { if (opts.announce) flashError('That does not look like a Pointliner .opml file.'); return false; }
+    tops = (parsed && parsed.children) || [];
+  }
   const pick = opts.all ? tops : tops.slice(0, 1);
   if (!pick.length) { if (opts.announce) flashHint('No points found to import.'); return false; }
   if (activeContentId != null) {   // blur a mid-edit point first (a render-time blur must not clobber it)
@@ -42641,16 +42734,29 @@ function openImportDialog() {
   });
   const intro = document.createElement('p');
   intro.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 12px;line-height:1.55';
-  intro.textContent = 'Bring points from another Pointliner file into this document. They are added below what you have now, live and editable, and you can undo in one step. Nothing here is replaced.';
+  intro.textContent = 'Bring points into this document from a Pointliner .opml file or a Markdown (.md) file. They are added below what you have now, live and editable, and you can undo in one step. Nothing here is replaced.';
   ioCard.appendChild(intro);
 
   // Both paths route here. Clear the pristine first-run gate exactly as a starter pick does (#1192),
   // or an import over the untouched welcome document would never autosave. announce:true surfaces a
   // malformed/empty file (this is user input, unlike the trusted embedded starters).
-  const doImport = (opml, label) => {
+  // #1265: both paths route here and the FORMAT is sniffed, not asked. OPML (our own file) imports as
+  // before; anything else is parsed as Markdown (markdownToPoints -> a temp root -> toOpml -> the same
+  // appendOpmlSubtrees, so promote/undo/guard/footnote-lift are all reused). A vendor-neutral format,
+  // never a per-product importer.
+  const doImport = (text, label) => {
     if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
-    const ok = appendOpmlSubtrees(opml, label, { all: true, announce: true });
-    if (ok) closeIo();
+    let ok, skippedNote = '';
+    if (/^\s*(<\?xml|<opml\b)/i.test(text)) {
+      ok = appendOpmlSubtrees(text, label, { all: true, announce: true });
+    } else {
+      const { points, skipped } = markdownToPoints(text);
+      if (!points.length) { flashError('Nothing to import: no points found in that Markdown.'); return false; }
+      if (skipped.length) skippedNote = ` (${skipped.join(', ')} simplified)`;
+      // pass the trees straight through so their footnotes survive to the doc store (see appendOpmlSubtrees)
+      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });
+    }
+    if (ok) { closeIo(); if (skippedNote) flashHint(`Imported from Markdown${skippedNote}.`); }
     return ok;
   };
 
@@ -42659,12 +42765,12 @@ function openImportDialog() {
   const fileBtn = document.createElement('button'); fileBtn.type = 'button'; fileBtn.className = 'io-btn';
   fileBtn.dataset.first = '1';
   const fbIc = document.createElement('span'); fbIc.setAttribute('aria-hidden', 'true'); setIcon(fbIc, { fa: 'fa-solid fa-folder-open', fb: '↑' });
-  const fbLbl = document.createElement('span'); fbLbl.textContent = 'Choose an .opml file';
+  const fbLbl = document.createElement('span'); fbLbl.textContent = 'Choose a file (.opml or .md)';
   fileBtn.append(fbIc, fbLbl);
-  fileBtn.setAttribute('aria-label', 'Choose an .opml file to import points from');
+  fileBtn.setAttribute('aria-label', 'Choose an .opml or Markdown file to import points from');
   fileBtn.addEventListener('click', () => {
     const inp = document.createElement('input'); inp.type = 'file';
-    inp.accept = '.opml,text/x-opml,application/xml,text/xml';
+    inp.accept = '.opml,text/x-opml,application/xml,text/xml,.md,.markdown,text/markdown';
     inp.addEventListener('change', () => {
       const file = inp.files && inp.files[0]; if (!file) return;
       const reader = new FileReader();
@@ -42678,9 +42784,9 @@ function openImportDialog() {
 
   // ── or paste ──
   const pasteField = document.createElement('div'); pasteField.className = 'io-field'; pasteField.style.marginTop = '10px';
-  const pasteLbl = document.createElement('label'); pasteLbl.textContent = 'Or paste the contents of an .opml file';
+  const pasteLbl = document.createElement('label'); pasteLbl.textContent = 'Or paste an .opml file or Markdown';
   const ta = document.createElement('textarea'); ta.className = 'io-mono'; ta.rows = 5;
-  ta.placeholder = '<opml>…</opml>'; ta.spellcheck = false; ta.autocomplete = 'off';
+  ta.placeholder = '<opml>…</opml>  or  # Markdown'; ta.spellcheck = false; ta.autocomplete = 'off';
   const _tid = 'io-import-paste'; ta.id = _tid; pasteLbl.setAttribute('for', _tid);
   pasteField.append(pasteLbl, ta);
   ioCard.appendChild(pasteField);
