@@ -96,6 +96,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Guided authoring (no-syntax "Add another") | `guidance/guided-authoring-proposal.md` | Proposed |
 | Document footnote store + Footnotes manager | `guidance/footnote-store-proposal.md` | Proposed |
 | Contested rolls and margins (opposed roll) | `guidance/contested-roll-proposal.md` | Proposed |
+| Markdown import (format-based import bridges) | `guidance/markdown-import-proposal.md` | Proposed |
 
 ## Working notes
 
