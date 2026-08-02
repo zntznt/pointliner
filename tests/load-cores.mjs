@@ -201,6 +201,7 @@ export function loadCores() {
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'markdownToPoints',   // #1265 v1: Markdown import (the inverse of toMarkdown)
+    'markdownVaultToPoints', 'resolveWikilinks',   // #1265 PR 2: multi-file vault import + wikilink resolution
     'fnIsWritten', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
     'footnoteOrder', 'migrateNodeFootnotes', 'migrateFootnotesToStore', 'renumberFnMarkers', 'fnId',   // Phase A: doc-level footnote store (numbering, migration, export renumber)
     'footnoteReport',   // Phase B: the Footnotes manager model (numbered rows + orphans)
