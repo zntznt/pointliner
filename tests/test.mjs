@@ -16761,6 +16761,69 @@ test('toMarkdown — a blockquote keeps its > even when the point is not typed a
   assert.match(multi, /> line one\n> line two/, 'the > is on every line');
 });
 
+// ── #1265 Markdown import (markdownToPoints, the inverse of toMarkdown) ──────
+const _mdStruct = (nodes) => nodes.map(n => ({ text: n.text, type: n.type, kids: _mdStruct(n.children || []) }));
+
+test('#1265 markdownToPoints — headings nest by level, lists by relative indent', () => {
+  const { points } = c.markdownToPoints('# Book\n\nSome intro prose.\n\n- first\n  - nested\n- second\n\n## Chapter One\n\nChapter prose.');
+  const s = _mdStruct(points);
+  assert.equal(s.length, 1, 'one top-level heading holds everything');
+  assert.equal(s[0].text, '# Book'); assert.equal(s[0].type, 'h1');
+  const k = s[0].kids;
+  assert.equal(k[0].text, 'Some intro prose.'); assert.equal(k[0].type, 'para');
+  assert.equal(k[1].text, 'first'); assert.equal(k[1].type, 'ul');
+  assert.equal(k[1].kids[0].text, 'nested', 'a two-space indent nests');
+  assert.equal(k[2].text, 'second', 'a dedent is a sibling');
+  const ch = k.find(x => x.text === '## Chapter One');
+  assert.ok(ch && ch.type === 'h2', 'the ## heading nests under the # heading');
+  assert.equal(ch.kids[0].text, 'Chapter prose.');
+});
+
+test('#1265 markdownToPoints — todos, quotes, dividers, ordered lists', () => {
+  const s = _mdStruct(c.markdownToPoints('- [ ] open task\n- [x] done task\n> a quotation\n1. first\n2. second\n---').points);
+  assert.equal(s[0].type, 'todo'); assert.equal(s[0].text, '- [ ] open task');
+  assert.equal(s[1].type, 'todo');
+  assert.equal(s[2].type, 'quote'); assert.equal(s[2].text, '> a quotation');
+  assert.equal(s[3].type, 'ol'); assert.equal(s[3].text, 'first');
+  assert.equal(s[5].type, 'divider');
+});
+
+test('#1265 markdownToPoints — a FLAT foreign file (no indentation) still nests by heading level', () => {
+  const s = _mdStruct(c.markdownToPoints('# A\n## B\n- x\n## C\n- y').points);
+  assert.equal(s.length, 1, 'one top-level, # A');
+  assert.equal(s[0].kids.length, 2, '## B and ## C both under # A');
+  assert.equal(s[0].kids[0].text, '## B');
+  assert.equal(s[0].kids[0].kids[0].text, 'x', '- x under B');
+  assert.equal(s[0].kids[1].text, '## C');
+  assert.equal(s[0].kids[1].kids[0].text, 'y', '- y under C, not left under B');
+});
+
+test('#1265 markdownToPoints — footnote def attaches to its referencing point; frontmatter dropped', () => {
+  const { points, skipped } = c.markdownToPoints('---\ntitle: X\n---\n# H\n\nA claim.[^1]\n\n[^1]: The source.');
+  assert.ok(skipped.includes('frontmatter'), 'a YAML frontmatter block is dropped and reported');
+  let host = null; (function w(ns){ for (const n of ns){ if (/\[\^1\]/.test(n.text)) host = n; w(n.children || []); } })(points);
+  assert.ok(host, 'the referencing point exists');
+  assert.equal(JSON.stringify(host.footnotes), JSON.stringify([{ key: '1', text: 'The source.' }]),
+    'the def attaches as a per-node footnote (the doc store lifts it on insert)');
+});
+
+test('#1265 markdownToPoints — export then re-import is stable (round-trip fixed point)', () => {
+  const md = '# Book\n\nIntro.\n\n- a\n  - a1\n- b\n\n## Ch\n\nProse.';
+  const p1 = c.markdownToPoints(md).points;
+  const root = Object.assign(c.mkRoot(), { children: p1, footnotes: [] });
+  const p2 = c.markdownToPoints(c.toMarkdown(root)).points;
+  assert.equal(JSON.stringify(_mdStruct(p2)), JSON.stringify(_mdStruct(p1)),
+    'import(export(import(md))) equals import(md): export and import are inverses on our own shape');
+});
+
+test('#1265 Markdown import — wired into the Import door (format-sniffed, reuses appendOpmlSubtrees)', () => {
+  assert.ok(_src.includes('markdownToPoints(text)'), 'the Import door parses non-OPML text as Markdown');
+  assert.ok(/appendOpmlSubtrees\(null, label, \{ all: true, announce: true, trees: points \}\)/.test(_src),
+    'Markdown points append as trees (skips the OPML round-trip so footnotes survive), reusing promote/undo/footnote-lift');
+  assert.ok(/if \(opts\.trees\)/.test(_src), 'appendOpmlSubtrees accepts pre-parsed trees');
+  assert.ok(_src.includes('.md,.markdown'), 'the file picker accepts .md/.markdown');
+});
+
 test('UXP-235: a bare block takes a marker only when it has children to hold', () => {
   const kid = p => { const n = _mdN('parent', 'para'); n.text = p; n.children.push(_mdN('the child')); return n; };
   // A para with children becomes a list item, because a list item is Markdown's ONLY native

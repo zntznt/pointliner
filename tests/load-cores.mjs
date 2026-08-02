@@ -200,6 +200,7 @@ export function loadCores() {
     'roveIndex',   // UXP-240: shared roving-tabindex index math (clamping + group paging)
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
+    'markdownToPoints',   // #1265 v1: Markdown import (the inverse of toMarkdown)
     'fnIsWritten', 'stripUnwrittenFnRefs', 'countUnwrittenFnRefs',   // UXP-237: unwritten footnotes leave the exports
     'footnoteOrder', 'migrateNodeFootnotes', 'migrateFootnotesToStore', 'renumberFnMarkers', 'fnId',   // Phase A: doc-level footnote store (numbering, migration, export renumber)
     'footnoteReport',   // Phase B: the Footnotes manager model (numbered rows + orphans)
