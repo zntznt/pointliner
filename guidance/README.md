@@ -21,13 +21,15 @@ engineering side already had.
 ## The five principles (the whole standard in one breath)
 
 
+Laws copied **verbatim** from `ux-discipline.md` §2, which is canonical; a test pins them equal.
+
 | #      | Principle    | Law                                                                                            |
 | ------ | ------------ | ---------------------------------------------------------------------------------------------- |
-| **P1** | Predictable  | A key, gesture, or word means the same thing everywhere. No context inversions.                |
+| **P1** | Predictable  | A key, gesture, or word means the same thing everywhere.                                       |
 | **P2** | Discoverable | Every capability has a visible front door — never syntax-only at the floor.                    |
-| **P3** | Reachable    | Every interactive element is keyboard-operable, named, and focus-visible — added *additively*. |
+| **P3** | Reachable    | Every interactive element is operable and announced to assistive tech.                         |
 | **P4** | Responsive   | No silent success, no silent failure.                                                          |
-| **P5** | Coherent     | **One authoring language.** Reuse the existing syntax; don't mint a new one.                   |
+| **P5** | Coherent     | One authoring language — reuse the existing syntax, don't mint a new one.                      |
 
 
 P1 and P5 are the consistency pillars and win on conflict. Full detail: `**ux-discipline.md**`.
@@ -111,6 +113,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `bases-direction.md` | Tables/bases doctrine + the shipped-record ledger (§4, §7b) + the recorded structural noes (§7c) |
 | `generation-direction.md` | The Perchance-style generation / random-variable model |
 | `plugins-direction.md` | Extensibility = declarative data packs only; the code-execution gate. Companion: `plugins-data-packs-prerequisites.md` |
+| `cross-document-direction.md` | **ACTIVE direction** (owner-directed) — linking, mirroring, transclusion and graph view across documents; the performance/stability argument is the fence |
 | `concept-guide.md` | How to add/fix an in-app concept-guide entry + the drift-guard contract |
 | `adding-an-artifact.md` | The 12-step new-artifact recipe + the step-13 UX gate |
 
@@ -123,13 +126,20 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `typed-var-declaration-proposal.md` | SHIPPED (Stages A + B) |
 | `brace-completion-proposal.md` | Phases 1 + 2 shipped |
 | `base-views-vision.md` | Delivered; trimmed to the two durable parts — §0 (binding red-team corrections) + §3b (column-type catalogue). The rest moved to `bases-direction.md` §4 / `product-identity.md` |
+| `contested-roll-proposal.md` | PROPOSED (2026-08) — the `vs` operator for contested rolls + margins; from panel finding #1243 |
+| `footnote-store-proposal.md` | PROPOSED (2026-08) — document footnote store + Footnotes manager; supersedes the "citation bridge" framing of #1244 |
+| `guided-authoring-proposal.md` | PROPOSED (2026-08) — no-syntax "Add another like this"; owner-directed to Guided mode. Tracks #1240 |
+| `markdown-import-proposal.md` | PROPOSED (2026-08) — import a FORMAT, never a product; from #1265 |
+| `single-file-reassurance-proposal.md` | PROPOSED (2026-08) — the single-file anxiety (fear of loss + scaling legibility); #1268 |
+| `snippet-palette-proposal.md` | PROPOSED (2026-08) — a palette for USING `{…}` at speed, where guided authoring solved authoring it; #1267 |
 
 **Ledgers & references:**
 
 | File | What it is |
 | --- | --- |
-| `ux-remediation.md` | The **active** UX non-conformance register — the two open items (UXP-20 syntax-sprawl guard, UXP-170 deferred glyph). File new defects here |
+| `ux-remediation.md` | The **active** UX non-conformance register — the one open item (UXP-20, the standing P5 syntax-sprawl guard, which is meant to stay open). File new defects here |
 | `ux-remediation-archive.md` | The frozen record of the ~226 **closed** UX defects (decisions + regression tripwires); not active work |
+| `architecture-reference.md` | **The deep architectural detail behind `CLAUDE.md`** — engine, rendering pipeline, data model, persistence. Read it when a task touches any of those |
 | `identity-alignment.md` | **ACTIVE program** — the gap list between `product-identity.md` and the shipped app (IA-1…9, tiered, each ending in a PR or a recorded decision) |
 | `generative-status.md` | Completion ledger for the generative + computational lane |
 | `backlog.md` | Consolidated feature gaps with status marks |
@@ -138,6 +148,18 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `accessibility.md` | A11y sequencing, complete; retained for the durable guardrails |
 | `ux.md` | Discoverability strategy / verbosity dial (vision; the standard governs where they differ) |
 | `enhancement-research.md` · `outliner-frontier-report.md` | Inspiration catalogue + competitive snapshot (candidate material, not commitments) |
+
+**User research (RECORD — evidence, not commitments):** persona fleets that booted the running app
+headless and built real artifacts in it. Findings feed the proposals above; the records themselves
+bind nothing.
+
+| File | Panel |
+| --- | --- |
+| `user-research-2026-07.md` | Six personas, first fleet |
+| `user-research-2026-07-b.md` | Second panel — six personas across five life domains |
+| `user-research-2026-07-c.md` | Six laptop users, "various walks of life" (2026-07-30) |
+| `user-research-2026-07-fleet2.md` | Five personas, second fleet — audiences the first six did not represent |
+| `user-research-2026-07-fleet3.md` | Six personas, third fleet, laptop — walks of life the first eleven did not cover |
 
 (Deliberately shelved direction lives in the sibling `parked/`, currently the version-control
 pivot. Not stray; don't resurrect without sign-off.)

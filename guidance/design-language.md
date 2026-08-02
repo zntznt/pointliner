@@ -190,7 +190,11 @@ regresses the moment the user touches the in-app theme toggle or accent picker. 
 media-scoped `theme-color` metas carry the `--hbg` pair (System mode picks by media and
 self-updates on an OS flip; `applyTheme` collapses both to the forced theme's value, read
 from the matching meta), and the manifest's static `theme_color` holds the neutral midpoint
-of the pair for pre-boot surfaces. Likewise
+of the pair for pre-boot surfaces. **`manifest.webmanifest` is inside this invariant, not
+beside it**: its `background_color` paints the PWA splash before any CSS loads, so it must be
+the light `--bg` exactly (`#f7f4ed`) — a splash a half-shade off the page it hands over to is
+a visible seam, and a value that matches no palette home is one nobody notices has drifted.
+It shipped as `#f5f1e8`, a tone that existed nowhere else in the app, until 2026-08-02. Likewise
 `color-scheme` is set in CSS *and* mirrored to `documentElement.style.colorScheme` by
 `applyTheme` — native controls (checkboxes, scrollbars) must always follow the active
 theme, and `accent-color:var(--acc)` keeps them on brand.

@@ -69,7 +69,7 @@ This inverts three things the base UI assumes:
    the pill).
 
 **The one clean seam** the map found: `buildTableWidget(node)` reads its model from exactly one call,
-`mtModel(node)` (index.html around line 5969). If a query base synthesizes its `{aligns, rows}` model
+`mtModel(node)`. If a query base synthesizes its `{aligns, rows}` model
 on the fly (project query results into a matrix), the renderer, `colStyle`, and `mtInline` mostly
 work unchanged. The read path forks at one function; the write path is where the design decisions
 live.

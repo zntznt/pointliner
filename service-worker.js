@@ -41,8 +41,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;            // never intercept non-GET (nothing to cache)
-  // Navigations (opening the app, refresh): serve the cached shell so it works offline,
-  // falling back to the network, then to the cached index as a last resort.
+  // Navigations (opening the app, refresh): NETWORK-FIRST — go to the network so an online
+  // open always gets the live build, and fall back to the cached './index.html' (then to the
+  // cached './') only when the fetch fails. This is the freshness model described up top; the
+  // cache is the offline safety net here, not the source of truth. Do not "fix" this into
+  // cache-first: that is what traps an installed copy on a stale build.
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).catch(() => caches.match('./index.html').then((r) => r || caches.match('./')))

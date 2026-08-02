@@ -10183,35 +10183,66 @@ const _htmlPath = process.env.POINTLINER_HTML
   || resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
 const _src = readFileSync(_htmlPath, 'utf8');
 
-test('#716: every command-table fa: glyph is in the embedded FA subset', () => {
+// Glyph names that appear in the source as PROSE, not as a live reference — each one is comment
+// text explaining why the app deliberately wears a DIFFERENT glyph. A name may only join this list
+// with that kind of note beside it at the call site; anything else belongs in ICONS + a rebuild.
+const FA_PROSE_ONLY = new Set([
+  'fa-dice',              // #812: the dice button wears fa-dice-d20; fa-dice itself painted blank
+  'fa-file-circle-plus',  // New-document dialog wears fa-plus; this name only names the rejected one
+]);
+
+test('#716: every fa- glyph the SOURCE references is in the embedded FA subset', () => {
   // The icon-subset invariant (CLAUDE.md): a glyph outside FA_GLYPHS is not in the built font. A
   // MENU icon self-heals to its data-fb unicode fallback, but a toolbar raw <i> paints BLANK — so
-  // this is the failure mode with teeth, and APPEARANCE_ICONS was the only set guarded against it.
-  // All 47 command icons pass today; this is preventive, so a new command with a CDN-only glyph
-  // fails CI instead of shipping an invisible button.
+  // that is the failure mode with teeth. The self-healing case is not harmless either: the {fa, fb}
+  // pair then lies about which glyph the surface wears, silently and forever.
+  //
+  // This censused BLOCK_CMDS/INSERT_CMDS/FORMAT_CMDS by name until 2026-08-02, and three icons
+  // drifted in behind it — a bullet-menu `actions.push`, a dialog spec, and the PATTERN_RECIPES
+  // loop. None is a command table, so none was read. Naming the tables meant the guard only ever
+  // covered the surfaces someone remembered to name. It is source-wide now: every `fa-NAME` token
+  // in the file, minus the two generated regions that legitimately spell out the whole subset,
+  // minus FA's own structural classes. A new surface cannot outrun it by not being a table.
   const subset = new Set(_src.match(/FA_GLYPHS\s*=\s*new Set\(\[([^\]]*)\]/)[1]
     .replace(/'/g, '').split(',').map(s2 => s2.trim()).filter(Boolean));
   assert.ok(subset.size >= 60, `FA_GLYPHS parsed as only ${subset.size} entries — did the literal move?`);
-  // FA_GLYPHS holds BARE glyph names ('fa-dollar-sign'); the command tables hold full class strings
-  // ('fa-solid fa-dollar-sign'). Compare the glyph token, or every icon reads as missing — which is
-  // exactly what a naive first pass reported.
-  const glyphOf = cls => { const parts = String(cls).split(/\s+/)
-    .filter(x => x && !['fa-solid', 'fa-regular', 'fa-brands'].includes(x)); return parts[parts.length - 1] || ''; };
-  let checked = 0;
-  for (const table of ['BLOCK_CMDS', 'INSERT_CMDS', 'FORMAT_CMDS']) {
-    const start = _src.indexOf(`const ${table} = [`);
-    assert.ok(start > -1, `${table} not found — did it move or get renamed?`);
-    const blk = _src.slice(start, _src.indexOf('\n];', start) + 3);
-    const icons = [...blk.matchAll(/fa:\s*'([^']*)'/g)].map(m => m[1]).filter(Boolean);
-    assert.ok(icons.length >= 5, `${table}: parsed only ${icons.length} fa: values — extraction broke`);
-    for (const cls of icons) {
-      checked++;
-      assert.ok(subset.has(glyphOf(cls)),
-        `${table}: '${cls}' is not in the embedded FA subset — a toolbar <i> would paint blank. ` +
-        'Add the glyph to FA_GLYPHS and rebuild: python tools/build-fa-subset.py');
-    }
+
+  // Mask the two regions the BUILD writes: the fa-embed <style> (one ::before rule per icon) and
+  // the FA_GLYPHS literal itself. Both spell out every name in the subset, so leaving them in
+  // would make the census tautological — it would only ever compare the subset to itself.
+  const scanned = _src
+    .replace(/<style id="fa-embed">[\s\S]*?<\/style>/, '')
+    .replace(/const FA_GLYPHS = new Set\(\[[\s\S]*?\]\);/, '');
+  assert.ok(scanned.length < _src.length - 10000, 'the generated FA regions did not mask — census would be vacuous');
+
+  // FA's own class vocabulary: weights, sizing, animation, layout. These are not glyph names and
+  // are never in the subset.
+  const STRUCTURAL = new Set(['solid', 'regular', 'brands', 'fw', 'spin', 'pulse', 'lg', 'sm', 'xs',
+    '2x', '3x', 'stack', 'inverse', 'border', 'li', 'rotate', 'flip', 'beat', 'fade', 'bounce', 'shake']);
+
+  const seen = new Map();
+  for (const m of scanned.matchAll(/fa-([a-z0-9]+(?:-[a-z0-9]+)*)/g)) {
+    if (STRUCTURAL.has(m[1])) continue;
+    if (!seen.has(m[1])) seen.set(m[1], m.index);
   }
-  assert.ok(checked >= 40, `expected the full command-icon census, checked only ${checked}`);
+  assert.ok(seen.size >= 60, `censused only ${seen.size} distinct fa- names — extraction broke`);
+
+  const missing = [...seen.keys()].filter(n => !subset.has(`fa-${n}`) && !FA_PROSE_ONLY.has(`fa-${n}`));
+  assert.deepEqual(missing, [],
+    `referenced in index.html but NOT in the embedded FA subset — these paint their fallback (or ` +
+    `blank, for a raw <i>) and the {fa, fb} pair lies about the glyph. Add to ICONS in ` +
+    `tools/build-fa-subset.py, rerun it, and splice BOTH outputs (the <style id="fa-embed"> block ` +
+    `and the FA_GLYPHS line) into index.html. If the name is only prose in a comment, add it to ` +
+    `FA_PROSE_ONLY with the reason.`);
+
+  // The allow-list is itself a co-edited set: an entry that stops being referenced, or that someone
+  // quietly adds to dodge a real failure, should not sit here unnoticed.
+  for (const name of FA_PROSE_ONLY) {
+    assert.ok(seen.has(name.slice(3)),
+      `${name} is in FA_PROSE_ONLY but no longer appears in index.html — drop the stale entry.`);
+    assert.ok(!subset.has(name),
+      `${name} is in FA_PROSE_ONLY AND in the subset — it is a real icon now, so drop the exemption.`);
+  }
 });
 
 // ── #1144: FA_GLYPHS stops being an allow-list and starts being a proof ────────
@@ -10417,6 +10448,132 @@ test('UXP-36: GUIDE registry declaration is present', () => {
 // 12 commands, `rollpick` among them, which is the very command #596 exists because the hardcoded
 // list let it ship uncovered. Their one advantage over #596 was reading the GUIDE block through
 // the throwing `between` helper; that is absorbed into #596's extractors below rather than lost.
+
+// ── The doc set is co-edited too (2026-08-02 sweep) ───────────────────────────
+// Two indexes claim to list guidance/, and CLAUDE.md's context rule says to route through its
+// index — so a doc missing from it is effectively invisible, however good it is. Four were missing
+// from CLAUDE.md and thirteen from guidance/README.md. Adding a file is the moment nobody
+// remembers to touch two unrelated tables, which is exactly the #1144 co-edited-set shape.
+const _guidanceDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guidance');
+const _repoDoc = (p) => readFileSync(resolve(_guidanceDir, '..', p), 'utf8');
+
+test("CLAUDE.md's staleness floor stays within reach of the actual suite size", () => {
+  // The floor's whole job is to fail on a stale base. It read ~1400 while the suite had grown past
+  // 1900, so a base 500 tests behind sailed through the check meant to catch it — a guard 25% out
+  // of date and silent about it, which is worse than no guard at all. Ratchet it here: the floor
+  // must stay close enough below the real count to bite, and can never exceed it (that would fail
+  // a perfectly fresh base).
+  const m = _repoDoc('CLAUDE.md').match(/fewer than ~(\d+) tests pass/);
+  assert.ok(m, 'CLAUDE.md must state a numeric staleness floor');
+  const floor = Number(m[1]);
+  // Read the suite directly rather than borrowing TEST_SRC, which is declared much further down:
+  // this test then passes only when the whole file has been evaluated first, and fails under
+  // `--test-name-pattern` with a TDZ ReferenceError. A guard that depends on declaration order is
+  // a guard that reports on how it was invoked, not on the thing it checks.
+  const suiteSrc = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8');
+  const blocks = [...suiteSrc.matchAll(/\b(?:l?test)\(\s*(['"])(.*?)\1/g)].length;
+  assert.ok(blocks > 500, 'the test-block scan must find the tests, or this guard is itself vacuous');
+  assert.ok(floor <= blocks,
+    `the documented floor (${floor}) exceeds this suite's ${blocks} test blocks — a fresh base would ` +
+    'read as stale. Lower it.');
+  assert.ok(blocks - floor <= 250,
+    `the documented floor (${floor}) is ${blocks - floor} behind this suite's ${blocks} test blocks — ` +
+    'a badly stale base would still pass it. Raise the number in CLAUDE.md.');
+});
+
+test('every guidance/*.md is indexed in BOTH CLAUDE.md and guidance/README.md', () => {
+  const docs = readdirSync(_guidanceDir).filter(f => f.endsWith('.md') && f !== 'README.md').sort();
+  assert.ok(docs.length >= 30, `found only ${docs.length} guidance docs — did the directory move?`);
+  const claude = _repoDoc('CLAUDE.md'), readme = _repoDoc('guidance/README.md');
+  assert.deepEqual(docs.filter(d => !claude.includes(d)), [],
+    'guidance docs missing from CLAUDE.md "Where to find things" — CLAUDE.md\'s context rule routes ' +
+    'through that table, so an unlisted doc is invisible to every future task. Add a row.');
+  assert.deepEqual(docs.filter(d => !readme.includes(d)), [],
+    'guidance docs missing from the guidance/README.md "File map" — add a row in the right group.');
+});
+
+test('the five-principle table is verbatim identical in all three homes', () => {
+  // ux-discipline.md §2 is canonical; CLAUDE.md and guidance/README.md restate it. The
+  // restatements had drifted on THREE of the five laws. The one that mattered: CLAUDE.md's P2 read
+  // "never syntax-only", dropping "at the floor", so the always-loaded file banned outright what
+  // the standard explicitly permits above the floor. A stricter-but-wrong copy is worse than none.
+  // Parse by CELL COUNT, first-wins. ux-discipline.md carries two P1–P5 tables: the three-column
+  // principles table and a two-column acceptance-test appendix. A looser regex let the appendix
+  // win and compared CLAUDE.md's principle names against acceptance criteria.
+  const laws = (txt, label) => {
+    const out = {};
+    for (const line of nonEmpty(txt.split('\n'), `${label} lines`)) {
+      if (!line.trim().startsWith('|')) continue;
+      const cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+      if (cells.length !== 3) continue;
+      const key = cells[0].replace(/\*\*/g, '').trim();
+      if (!/^P[1-5]$/.test(key) || out[key]) continue;
+      out[key] = cells.slice(1).map(c => c.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim());
+    }
+    return out;
+  };
+  const canon = laws(_repoDoc('guidance/ux-discipline.md'), 'ux-discipline.md');
+  assert.equal(Object.keys(canon).length, 5, 'ux-discipline.md §2 must yield exactly P1–P5');
+  for (const [file, txt] of [['CLAUDE.md', _repoDoc('CLAUDE.md')], ['guidance/README.md', _repoDoc('guidance/README.md')]]) {
+    const copy = laws(txt, file);
+    assert.equal(Object.keys(copy).length, 5, `${file} must carry all five principles`);
+    for (const p of ['P1', 'P2', 'P3', 'P4', 'P5']) {
+      assert.equal(copy[p][0], canon[p][0], `${file} ${p}: principle NAME differs from ux-discipline.md`);
+      assert.equal(copy[p][1], canon[p][1],
+        `${file} ${p}: the law differs from canonical ux-discipline.md §2. Copy it verbatim — a ` +
+        'paraphrase in a more-read file silently becomes the rule people apply.');
+    }
+  }
+});
+
+// ── The companion files (2026-08-02 sweep) ────────────────────────────────────
+// index.html is the app, but three small files ship beside it and none was covered. Both bugs
+// found here were the same shape: a value or a sentence that agreed with nothing, sitting where
+// no reader would think to cross-check it.
+const _rootFile = (name) => readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', name), 'utf8');
+
+test('the service worker keeps navigations NETWORK-first (freshness model, not just its comment)', () => {
+  const sw = _rootFile('service-worker.js');
+  const nav = sw.slice(sw.indexOf("req.mode === 'navigate'"));
+  const handler = nav.slice(0, nav.indexOf('return;'));
+  // The behaviour: fetch() leads, caches.match() is only reachable from its .catch().
+  assert.ok(/event\.respondWith\(\s*fetch\(req\)\.catch\(/.test(handler),
+    'navigations must be fetch()-first with the cache in .catch() — a cache-first navigate handler ' +
+    'traps an installed copy on a stale build, which is the one thing the header promises it does not do');
+  assert.ok(handler.indexOf('fetch(req)') < handler.indexOf('caches.match'),
+    'the network call must precede the cache lookup in the navigate path');
+  // The comment: this contradicted the code until 2026-08-02 — the header said network-first (right),
+  // the inline comment said cache-first (wrong), so whoever read the handler first would "fix" the
+  // correct code in the wrong direction. Pin the words too, since the words are what misled.
+  const comment = sw.slice(sw.lastIndexOf('//', sw.indexOf("req.mode === 'navigate'") - 1) - 400,
+                           sw.indexOf("req.mode === 'navigate'"));
+  assert.ok(/NETWORK-FIRST/i.test(comment),
+    'the comment above the navigate handler must say network-first, matching the code and the file header');
+  assert.ok(!/serve the cached shell so it works offline,\s*\/\/\s*falling back to the network/.test(sw),
+    'the old cache-first comment is back — it describes the opposite of what this handler does');
+});
+
+test('manifest.webmanifest colours are real palette homes, not orphan values', () => {
+  const mf = JSON.parse(_rootFile('manifest.webmanifest'));
+  const lightBg = _src.match(/--bg:\s*(#[0-9a-f]{6})/i)[1].toLowerCase();
+  const metas = [...(_src.matchAll(/<meta name="theme-color" media="\(prefers-color-scheme: (light|dark)\)" content="(#[0-9a-f]{6})">/gi))]
+    .reduce((a, m) => (a[m[1]] = m[2].toLowerCase(), a), {});
+  assert.ok(metas.light && metas.dark, 'both media-scoped theme-color metas must be present');
+
+  // background_color paints the PWA splash BEFORE any CSS loads, so it must be the light --bg
+  // exactly. It shipped as #f5f1e8 — a tone in no palette home, a half-shade off the page it hands
+  // over to — until this was pinned (design-language §3).
+  assert.equal(mf.background_color.toLowerCase(), lightBg,
+    `manifest background_color must equal the light --bg (${lightBg}); an orphan value is a visible ` +
+    'splash-to-page seam that no reader cross-checks');
+
+  // theme_color is the documented neutral midpoint of the --hbg pair (design-language §3).
+  const ch = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const [tl, td, tm] = [ch(metas.light), ch(metas.dark), ch(mf.theme_color.toLowerCase())];
+  tm.forEach((v, i) => assert.ok(Math.abs(v - (tl[i] + td[i]) / 2) <= 0.5,
+    `manifest theme_color channel ${i} (${v}) is not the midpoint of the --hbg pair ` +
+    `(${tl[i]}/${td[i]} -> ${(tl[i] + td[i]) / 2})`));
+});
 
 // #915 (agent-review): the @ menu must LEAD with the generative + compute pills (the app's thesis),
 // not the basic inserts — and the sections are named for the thesis words so the door self-labels.

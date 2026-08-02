@@ -8,7 +8,7 @@ A single-file, offline, vanilla-JS outliner. Every point can generate (`{2d6}`) 
 node --test tests/test.mjs
 ```
 
-No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~1400 tests pass, your base is stale.
+No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~1800 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it.
 
 ## Architecture at a glance
 
@@ -27,13 +27,19 @@ No build, lint, or typecheck — it's one file. The test count serves as a stale
 
 ## UX principles
 
+Laws copied **verbatim** from `guidance/ux-discipline.md` §2, which is canonical; a test pins them
+equal. Do not paraphrase here — this is the always-loaded file, so a tightened restatement becomes
+the rule everyone actually applies. That already happened: this table read "never syntax-only",
+dropping the standard's "**at the floor**", which banned outright what the standard permits above
+the floor (`ux.md`'s verbosity dial).
+
 | # | Principle | Law |
 |---|---|---|
-| P1 | Predictable | A key or word means the same thing everywhere. No context inversions. |
-| P2 | Discoverable | Every capability has a visible front door — never syntax-only. |
-| P3 | Reachable | Every element is keyboard-operable, named, and focus-visible — added additively. |
+| P1 | Predictable | A key, gesture, or word means the same thing everywhere. |
+| P2 | Discoverable | Every capability has a visible front door — never syntax-only at the floor. |
+| P3 | Reachable | Every interactive element is operable and announced to assistive tech. |
 | P4 | Responsive | No silent success, no silent failure. |
-| P5 | Coherent | One authoring language. Reuse `{…}` or `evalMath`; never mint new syntax. |
+| P5 | Coherent | One authoring language — reuse the existing syntax, don't mint a new one. |
 
 **P1 and P5 win on conflict.** P3-3 (accessibility): keyboard is added *alongside* `mousedown`+`preventDefault`, never by converting to `click`/`<button>` — the caret invariant.
 
@@ -87,8 +93,10 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Inspiration catalogue (Tracery, Ink, Squiggle, etc.) | `guidance/enhancement-research.md` | Candidate |
 | Competitive snapshot | `guidance/outliner-frontier-report.md` | Candidate |
 | User research (persona fleet, findings) | `guidance/user-research-2026-07.md` | Candidate |
+| User research, second panel (six personas, five life domains) | `guidance/user-research-2026-07-b.md` | Candidate |
 | User research, second fleet (keyboard, touch, table, teaching, lab) | `guidance/user-research-2026-07-fleet2.md` | Candidate |
 | User research, "various walks of life" laptop panel (bounce, propagation-is-the-click) | `guidance/user-research-2026-07-c.md` | Candidate |
+| User research, third fleet (laptop; hospitality, language services, domestic work) | `guidance/user-research-2026-07-fleet3.md` | Candidate |
 | Variable declaration spec (Stage B, positional) | `guidance/typed-var-declaration-proposal.md` | Shipped |
 | Discoverability strategy (verbosity dial) | `guidance/ux.md` | Vision |
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
@@ -97,6 +105,8 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Document footnote store + Footnotes manager | `guidance/footnote-store-proposal.md` | Proposed |
 | Contested rolls and margins (opposed roll) | `guidance/contested-roll-proposal.md` | Proposed |
 | Markdown import (format-based import bridges) | `guidance/markdown-import-proposal.md` | Proposed |
+| Single-file reassurance + scaling legibility | `guidance/single-file-reassurance-proposal.md` | Proposed |
+| Snippet / pattern palette (using `{…}` at speed) | `guidance/snippet-palette-proposal.md` | Proposed |
 
 ## Working notes
 
