@@ -316,14 +316,17 @@ test('#1243 bare {A vs B} promotes to a nameless contest pill, and the pill read
   assert.equal(rec.kind, 'pick');
   assert.ok(rec.versus && typeof rec.versus.margin === 'number', 'it carries a two-sided versus record');
   assert.equal(c.artifactToShorthand('var', rec), '{2d6+2 vs 2d6+1}', 'it unfolds back to the bare form for editing');
-  // the pill states the winner + a labelled gap, never a bare +/- that reads like a dice modifier
+  // the pill states the winner + a labelled gap, never a bare +/- that reads like a dice modifier. The
+  // LIVE roll can legitimately tie (margin 0 -> no winner), so the live assertion is tie-safe; the
+  // winner-emphasis is pinned on a crafted non-tie record below, deterministically.
   const html = c.renderVarPill(rec.key, rec);
-  assert.ok(/vs-win/.test(html), 'the winning total is emphasised');
+  assert.ok(/vs-win|>tie<|vs-mixed/.test(html), 'the pill emphasises a winner, or reads tie/mixed');
   assert.ok(/won by \d+|>tie<|vs-mixed/.test(html), 'the gap is labelled ("won by N" / "tie" / "mixed"), not a bare number');
   assert.ok(!/var-name/.test(html), 'a bare contest shows no $name = prefix');
-  // a named contest keeps its name and the same clear result
+  // a named contest keeps its name and the same clear result — a fixed margin so the winner is definite
   const named = { key: 'k9', name: 'hit', kind: 'pick', expr: '2d6 vs 2d6', typed: true, versus: { leftTotal: 9, rightTotal: 7, margin: 2, leftKind: 'sum', rightKind: 'sum', mismatch: false } };
   const nhtml = c.renderVarPill('k9', named);
+  assert.ok(/vs-win/.test(nhtml), 'the winning total is emphasised (deterministic non-tie)');
   assert.ok(/var-name/.test(nhtml) && /won by 2/.test(nhtml), 'a named contest keeps $name = and reads "won by 2"');
 });
 
