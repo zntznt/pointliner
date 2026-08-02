@@ -216,6 +216,16 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 .spacer{flex:1}
 .dirty-dot{width:6px;height:6px;border-radius:50%;background:var(--acc);display:none;flex-shrink:0}
 .dirty .dirty-dot{display:block}
+/* #1268: the save-status affordance. Quiet by default (it reassures, it must never nag), a warm check
+   when saved, a warning tint only when the notes truly live in memory alone. One non-wrapping chip. */
+.save-status{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;font-size:11.5px;color:var(--muted);padding:3px 8px;border:1px solid transparent;background:transparent}
+.save-status:hover{background:var(--bdr)}
+.save-status .ss-ic{font-size:11px;line-height:1}
+.save-status[data-kind="saved"] .ss-ic{color:var(--ok,#3a9d5d)}
+.save-status[data-kind="saving"]{color:var(--muted)}
+.save-status[data-kind="unsaved"] .ss-ic,.save-status[data-kind="memory"] .ss-ic{color:var(--acc)}
+.save-status[data-kind="memory"]{color:var(--acc)}
+@media (max-width:560px){.save-status .ss-text{display:none}}   /* on a phone the check alone carries it; tap for the story */
 button{cursor:pointer;border:1px solid transparent;background:transparent;color:var(--fg);font-family:inherit;font-size:12.5px;padding:4px 10px;border-radius:var(--r-sm);transition:background .1s;white-space:nowrap;flex-shrink:0}
 button:hover{background:var(--bdr)}
 button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var(--acc);border-color:color-mix(in srgb,var(--acc) 35%,transparent)}
@@ -321,6 +331,11 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
    advertised as the way you save when auto-save is continuous. */
 #file-menu .cmd-item.is-status{opacity:.62}
 #file-menu .cmd-item.is-status .cmd-icon{color:var(--ok)}
+/* #1268: a disabled safety-net row (Restore before a snapshot exists) reads as present-but-not-yet, and
+   does not take the accent hover that promises a click. */
+#file-menu .cmd-item.is-disabled{opacity:.5;cursor:default}
+#file-menu .cmd-item.is-disabled:hover{background:transparent}
+#file-menu .cmd-item.is-disabled:hover .cmd-icon{color:inherit}
 #file-menu .cmd-sep{margin:5px 8px}
 .cmd-key,#search-key,.guide-sc kbd{margin-left:auto;align-self:center;font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;white-space:nowrap;flex-shrink:0;line-height:1.5}
 /* settings CARDS (verbosity, toolbar-feature chooser): a bordered group of choice rows that
@@ -2826,6 +2841,10 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
          visible on phones where the wordmark hides); one button, same click/keyboard semantics. -->
     <span class="logo" id="logo-btn" role="button" tabindex="0" aria-haspopup="dialog" aria-expanded="false" aria-controls="file-menu" aria-label="File menu"><svg class="logo-mark" viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM160 216a40 40 0 1 1 0 80 40 40 0 0 1 0-80zm104 16h104c13.3 0 24 10.7 24 24s-10.7 24-24 24H264c-13.3 0-24-10.7-24-24s10.7-24 24-24z"/></svg><span class="logo-text">Pointliner</span><span class="logo-file-cue" aria-hidden="true">File ▾</span></span>
     <span class="dirty-dot" id="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
+    <!-- #1268: an always-visible, honest save-status affordance. A nervous single-file user watches
+         their work save itself ("Saved just now" -> "Saved 2 min ago"), and clicks through to the File
+         menu where export and Restore earlier version live. Reads existing state; no new storage. -->
+    <button class="save-status" id="save-status" type="button" aria-label="Saved"><span class="ss-ic" aria-hidden="true">✓</span><span class="ss-text">Saved</span></button>
     <span class="spacer"></span>
     <div id="search-wrap">
       <input id="search-box" type="text" placeholder="Search…" aria-label="Search points" aria-describedby="search-hint" autocomplete="off" spellcheck="false">
@@ -2930,7 +2949,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="cmd-item" id="btn-import"><div class="cmd-icon" data-fa="fa-solid fa-inbox" data-fb="📥">📥</div><div class="cmd-info"><span class="cmd-label">Import points…</span><span class="cmd-desc">Add points from another .opml file or pasted text. Nothing here is replaced</span></div></div>
         <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
         <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
-        <div class="cmd-item" id="btn-restore" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-clock-rotate-left" data-fb="↺">↺</div><div class="cmd-info"><span class="cmd-label">Restore earlier version</span><span class="cmd-desc">Roll back to the last auto-saved snapshot</span></div></div>
+        <div class="cmd-item" id="btn-restore" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-clock-rotate-left" data-fb="↺">↺</div><div class="cmd-info"><span class="cmd-label">Restore earlier version</span><span class="cmd-desc">Kept automatically as you work; available once there is an earlier version to restore</span></div></div>
         <div class="cmd-item" id="btn-workspace" style="display:none"><div class="cmd-icon" id="workspace-icon" data-fa="fa-solid fa-folder-plus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label" id="workspace-label">Connect a folder…</span><span class="cmd-desc" id="workspace-desc">Auto-save every document, switch between them, reopen later</span></div></div>
         <div class="cmd-item" id="btn-workspace-switch" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-table-list" data-fb="▤">▤</div><div class="cmd-info"><span class="cmd-label">Switch document…</span><span class="cmd-desc">List, open and create documents in the folder</span></div></div>
         <div class="cmd-item" id="btn-workspace-disconnect" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-folder-minus" data-fb="▣">▣</div><div class="cmd-info"><span class="cmd-label">Disconnect folder</span><span class="cmd-desc" id="workspace-dc-desc">Stop auto-saving. Your documents stay on disk</span></div></div>
@@ -3203,6 +3222,8 @@ let heightCache = new Map(); // node id → measured px height
 let vlist = null, vTop = null, vBot = null;
 let winStart = 0, winEnd = -1;
 let dirty     = false;
+let _savePending = false;   // #1268: a debounced autosave is scheduled but not yet written ("Saving…")
+let _lastSavedAt = 0;       // #1268: epoch-ms of the last completed autosave write, for the "Saved <time>" chip
 let fileHandle = null;
 let fileName  = 'unsaved';
 let undoStack = [];
@@ -31809,6 +31830,7 @@ function updateDirtyDot() {
   const show = unsavedToDisk();
   document.getElementById('toolbar-row').classList.toggle('dirty', show);
   document.getElementById('fm-dirty-dot').style.display = show ? 'block' : 'none';
+  updateSaveStatus();   // #1268: the same save truth drives the toolbar chip
 }
 function markDirty() {
   dirty = true;
@@ -31956,6 +31978,7 @@ function redo() {
 function markClean() {
   dirty = false;
   updateDirtyDot();
+  updateSaveStatus();   // #1268: a save-to-file clears the unsaved-to-disk chip too
 }
 // Pure: the user-facing name for a stored filename , drop the .opml extension and
 // show the placeholder for the unsaved sentinel. The extension is an implementation
@@ -37760,6 +37783,65 @@ function fmScrollSpy() {
   if (current !== fmActiveCat) fmSetActiveNav(current);
 }
 
+// #1268: a compact relative time for the save chip ("just now", "3 min ago", "2 hr ago"). Pure.
+function relTimeShort(savedAt, now) {
+  const t = Number(savedAt) || 0;
+  if (!t) return '';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return m + ' min ago';
+  const h = Math.round(m / 60);
+  if (h < 24) return h + ' hr ago';
+  const d = Math.round(h / 24);
+  return d === 1 ? 'a day ago' : d + ' days ago';
+}
+// #1268: map the save state to the honest chip label. Pure + testable. The order encodes the truth:
+// nothing to show before the doc is the user's; a genuine no-durable-store tier NEVER reads "Saved";
+// a bound file with unwritten edits keeps the existing "Unsaved changes" meaning; otherwise the doc is
+// safe and the chip reassures with where and when it last saved.
+function saveStatusLabel(st) {
+  if (st.hidden) return { kind: 'hidden', text: '' };
+  if (st.noStore) return { kind: 'memory', text: 'In memory only · save a copy' };
+  if (st.unsavedToDisk) return { kind: 'unsaved', text: 'Unsaved changes' };
+  if (st.pending) return { kind: 'saving', text: 'Saving…' };
+  if (st.folder) return { kind: 'saved', text: 'Saved to folder' };
+  const rel = relTimeShort(st.savedAt, st.now);
+  return { kind: 'saved', text: rel ? 'Saved ' + rel : 'Saved' };
+}
+const SS_GLYPH = { saved: '✓', saving: '↻', unsaved: '•', memory: '⚠' };
+const SS_TITLE = {
+  saved: 'Your work saves itself in this browser. Click for the File menu, to save a copy, or to restore an earlier version.',
+  saving: 'Saving your latest edits…',
+  unsaved: 'You have edits not yet written to your file. Click to save.',
+  memory: 'Your notes live in this browser tab only. Click to save a copy you can reopen.',
+};
+// #1268: read the live save state for the chip. Impure (reads globals); the pure mapping is above.
+function saveStatusState() {
+  return {
+    hidden: (typeof _showingExamples !== 'undefined' && _showingExamples) || (typeof _welcomeOpen !== 'undefined' && _welcomeOpen),
+    noStore: autosaveDisabled && !opfsOk && !workspaceFile,
+    unsavedToDisk: unsavedToDisk(),
+    pending: !!_savePending,
+    folder: !!workspaceFile,
+    savedAt: _lastSavedAt || lastAutosaveSavedAt(),
+    now: Date.now(),
+  };
+}
+function updateSaveStatus() {
+  const el = document.getElementById('save-status');
+  if (!el) return;
+  const { kind, text } = saveStatusLabel(saveStatusState());
+  if (kind === 'hidden') { el.style.display = 'none'; return; }
+  el.style.display = '';
+  el.dataset.kind = kind;
+  el.querySelector('.ss-ic').textContent = SS_GLYPH[kind] || '';
+  el.querySelector('.ss-text').textContent = text;
+  const tip = SS_TITLE[kind] || text;
+  el.title = tip;
+  el.setAttribute('aria-label', text + '. ' + tip);
+}
+
 function updateFmStatus() {
   const status = document.getElementById('fm-status');
   if (!status) return;
@@ -37798,8 +37880,21 @@ function openFileMenu() {
   // (which downloads a copy honestly) remains. Chromium keeps the real Save.
   const saveRow = document.getElementById('btn-save');
   if (saveRow) saveRow.style.display = hasFSA ? '' : 'none';
-  const restoreRow = document.getElementById('btn-restore');   // UXP-147: only when a snapshot exists
-  if (restoreRow) restoreRow.style.display = hasEarlierVersion() ? '' : 'none';
+  // #1268: the restore safety net is legible BEFORE it is needed. Always show the row; until a snapshot
+  // exists it sits disabled with an honest note (reassurance without lying about availability). It only
+  // ever hides on the memory-only tier, where there is no durable snapshot ring to roll back to.
+  const restoreRow = document.getElementById('btn-restore');
+  if (restoreRow) {
+    const canRestore = hasEarlierVersion();
+    const noStore = autosaveDisabled && !opfsOk && !workspaceFile;
+    restoreRow.style.display = noStore ? 'none' : '';
+    restoreRow.classList.toggle('is-disabled', !canRestore);
+    restoreRow.setAttribute('aria-disabled', canRestore ? 'false' : 'true');
+    const desc = restoreRow.querySelector('.cmd-desc');
+    if (desc) desc.textContent = canRestore
+      ? 'Roll back to the last auto-saved snapshot'
+      : 'Kept automatically as you work; available once there is an earlier version to restore';
+  }
   renderWorkspaceAffordance();
   // External links surface only when online, so the offline-first identity (works
   // with the wifi off) is never undercut by a dead network link in the menu.
@@ -37930,6 +38025,17 @@ logoBtn.addEventListener('click', e => {
 logoBtn.addEventListener('keydown', e => {
   if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); fileMenu.classList.contains('on') ? closeFileMenu() : openFileMenu(); }
 });
+// #1268: the save-status chip is the door to the safety story — click it to open the File menu (export,
+// Restore earlier version, folder connect). A refresh tick keeps its relative time honest as it ages.
+const saveStatusEl = document.getElementById('save-status');
+if (saveStatusEl) saveStatusEl.addEventListener('click', e => {
+  e.stopPropagation();
+  fileMenu.classList.contains('on') ? closeFileMenu() : openFileMenu();
+});
+// Both deferred: updateSaveStatus reads autosave state declared later in this script, so the FIRST
+// paint must wait until top-level init has finished (a bare call here is a temporal-dead-zone abort).
+if (typeof setInterval === 'function') setInterval(updateSaveStatus, 20000);
+if (typeof setTimeout === 'function') setTimeout(updateSaveStatus, 0);
 fileMenu.addEventListener('click', e => e.stopPropagation());
 document.addEventListener('click', closeFileMenu);
 
@@ -38227,7 +38333,7 @@ function buildToolbarChooser() {
   renderRows();
 }
 applyToolbarPrefs();   // apply saved prefs on load
-document.getElementById('btn-restore')?.addEventListener('click', async () => { const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147
+document.getElementById('btn-restore')?.addEventListener('click', async (e) => { if (e.currentTarget.classList.contains('is-disabled')) return; const ok = await restoreEarlierVersion(); if (ok) closeFileMenu(); });   // UXP-147 / #1268: no-op while the net is not yet available
 // Inline rename: the menu-header filename edits IN PLACE (no dialog). Click or Enter
 // turns it into an editable field; Enter or blur commits, Escape cancels. Single-file
 // mode only (folder docs rename via the folder). Keydowns are stopped so they don't
@@ -39536,7 +39642,7 @@ const GUIDE = [
   // ── Files & workspace (guide) ─────────────────────────────────────────────
   { id:'saving', cat:'files',
     title:'Saving your work',
-    body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step. Sync is whatever you already use: the file is yours, so keeping it in Dropbox, iCloud or a git repository carries it between machines with no account or server.\n\nIf auto-save has overwritten something you wanted back, open the File menu and choose Restore earlier version to roll back to the last auto-saved snapshot. And when you use Pointliner at its web address, an Install Pointliner row appears in the File menu once your browser offers it: installed, the app opens in its own window and keeps working offline.",
+    body:"You don't need to think about saving: the app stores everything in your browser automatically as you type. To keep a file on disk that you own and can back up, press Ctrl/Cmd+S. Connect a folder (Chromium only) and the file updates on disk every time you make a change, with no manual step. Sync is whatever you already use: the file is yours, so keeping it in Dropbox, iCloud or a git repository carries it between machines with no account or server.\n\nIf auto-save has overwritten something you wanted back, open the File menu and choose Restore earlier version to roll back to the last auto-saved snapshot. Earlier versions are kept for you automatically as you work, so the row is there before you ever need it. And when you use Pointliner at its web address, an Install Pointliner row appears in the File menu once your browser offers it: installed, the app opens in its own window and keeps working offline.\n\nOne document is one file, which is what makes it yours and portable, but it is not meant to hold everything forever. A single document that grows to many years of history in one file gets heavy, and one file is one thing to search rather than a tree you can grep across. When a document starts to feel large, that is the moment to split it: connect a folder and keep a library of documents, each its own file, searchable and linkable together, instead of one document that only grows.",
     related:['export','workspace-documents'],
     examples:[
       { syn:`${MOD}+S`,              desc:'save to your file (or download a copy if your browser can’t write to disk)' },
@@ -41659,6 +41765,7 @@ function scheduleAutosave() {
   if (!_opfsReconciled) { _autosaveDeferred = true; return; }
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(writeAutosavePayloadNow, 800);
+  _savePending = true; updateSaveStatus();   // #1268: the chip reads "Saving…" until the debounced write lands
 }
 // The debounce body, extracted so the pagehide flush below can run it synchronously.
 function writeAutosavePayloadNow() {
@@ -41668,6 +41775,7 @@ function writeAutosavePayloadNow() {
   if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
   if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
   maybeBackupNudge(payload.length);                    // UXP-119: gentle backup reminder on the weakest durability tier
+  _lastSavedAt = Date.now(); _savePending = false; updateSaveStatus();   // #1268: the working copy is written; the chip settles to "Saved just now"
 }
 // #802 (agent-review, UXP-195): text typed in the debounce window must survive a tab
 // close — flush the PENDING autosave synchronously on pagehide/hidden (the localStorage
@@ -43008,8 +43116,10 @@ function openStarterGallery(opts = {}) {
   // #1192: the identity line. Two facts and an instruction, no pitch (§3c): what the app is, what
   // to do next, and that the file is yours. The ownership half is what reached the panelists who
   // never want a number at all, and it was barely stated anywhere on the old first screen.
+  // #1268: the ownership line now carries the whole safety story the nervous single-file panelists
+  // needed: it saves itself, you own the file, and earlier versions are kept so you can roll back.
   intro.textContent = welcome
-    ? 'Notes that compute. Pick a starting point close to what you are here to do, or start blank. Your file, offline, no account.'
+    ? 'Notes that compute. Pick a starting point close to what you are here to do, or start blank. Your file, offline, no account. It saves itself as you type, and keeps earlier versions you can roll back to.'
     : 'Drop a ready-made, fully live example into this document. Click any pill inside it to play, then delete it when you are done.';
   ioCard.appendChild(intro);
 
