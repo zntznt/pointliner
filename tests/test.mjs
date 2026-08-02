@@ -316,14 +316,17 @@ test('#1243 bare {A vs B} promotes to a nameless contest pill, and the pill read
   assert.equal(rec.kind, 'pick');
   assert.ok(rec.versus && typeof rec.versus.margin === 'number', 'it carries a two-sided versus record');
   assert.equal(c.artifactToShorthand('var', rec), '{2d6+2 vs 2d6+1}', 'it unfolds back to the bare form for editing');
-  // the pill states the winner + a labelled gap, never a bare +/- that reads like a dice modifier
+  // the pill states the winner + a labelled gap, never a bare +/- that reads like a dice modifier. The
+  // LIVE roll can legitimately tie (margin 0 -> no winner), so the live assertion is tie-safe; the
+  // winner-emphasis is pinned on a crafted non-tie record below, deterministically.
   const html = c.renderVarPill(rec.key, rec);
-  assert.ok(/vs-win/.test(html), 'the winning total is emphasised');
+  assert.ok(/vs-win|>tie<|vs-mixed/.test(html), 'the pill emphasises a winner, or reads tie/mixed');
   assert.ok(/won by \d+|>tie<|vs-mixed/.test(html), 'the gap is labelled ("won by N" / "tie" / "mixed"), not a bare number');
   assert.ok(!/var-name/.test(html), 'a bare contest shows no $name = prefix');
-  // a named contest keeps its name and the same clear result
+  // a named contest keeps its name and the same clear result — a fixed margin so the winner is definite
   const named = { key: 'k9', name: 'hit', kind: 'pick', expr: '2d6 vs 2d6', typed: true, versus: { leftTotal: 9, rightTotal: 7, margin: 2, leftKind: 'sum', rightKind: 'sum', mismatch: false } };
   const nhtml = c.renderVarPill('k9', named);
+  assert.ok(/vs-win/.test(nhtml), 'the winning total is emphasised (deterministic non-tie)');
   assert.ok(/var-name/.test(nhtml) && /won by 2/.test(nhtml), 'a named contest keeps $name = and reads "won by 2"');
 });
 
@@ -1839,9 +1842,14 @@ test('advanceSeq — a counted shuffle deals N distinct cards per advance (#542)
   assert.equal(dealt.length, 3, 'deals exactly count cards');
   assert.equal(new Set(dealt).size, 3, 'no duplicates within a deal (bag had enough)');
   assert.equal(rec.bag.length, 2, 'the deck is 2 cards lighter');
-  // the next deal spans the reshuffle boundary: 2 remaining + 1 from a fresh bag
-  const dealt2 = c.advanceSeq(rec, {}, {}).split(' ');
-  assert.equal(dealt2.length, 3, 'a deal spanning an empty bag reshuffles and completes');
+  // EVERY subsequent deal must ALSO be all-distinct, including the ones that span a mid-deal reshuffle
+  // (2 left + 1 from a fresh bag). That fresh draw could repeat a card already in the hand — the bug.
+  // Loop so a spanning deal is hit (count 3 over 5 doesn't divide, so ~every other deal spans).
+  for (let i = 0; i < 100; i++) {
+    const d = c.advanceSeq(rec, {}, {}).split(' ');
+    assert.equal(d.length, 3, `deal ${i}: always completes to count`);
+    assert.equal(new Set(d).size, 3, `deal ${i}: repeated a card within one hand (a reshuffle-span dup)`);
+  }
 });
 
 test('advanceSeq — a standalone shuffle deal is capped at the deck size, never repeating within it (#763)', () => {
