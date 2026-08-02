@@ -78,6 +78,12 @@ ICONS = [
     # from the live sparkline the est pill already draws beside it, which is why a chart glyph
     # was NOT chosen (design-language §1 forbids look-alikes in one list).
     "wave-square",
+    # 2026-08-02 sweep: 3 icons referenced from surfaces the #716 census never read — a bullet-menu
+    # actions.push, a dialog spec, and the PATTERN_RECIPES loop, none of which are BLOCK/INSERT/
+    # FORMAT_CMDS. All three self-healed to their `fb` fallback, so nothing painted blank and
+    # nothing caught it. The census is source-wide now (#716), so the next such surface can't
+    # outrun it.
+    "arrow-up-a-z", "hashtag", "wand-magic-sparkles",
 ]
 
 # Some icons are used in BOTH solid and regular in the app. The font subset must
