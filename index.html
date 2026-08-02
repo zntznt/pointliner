@@ -24333,8 +24333,14 @@ function defaultBraceChoice(matches, prefix) {
 // has:tag), keeping the three-place lockstep structural rather than by-hand. Length-
 // preserving on the priority strip (offset-safe); a bare `.test()` consumer is unaffected.
 function tagScanText(text) {
-  return (text || '').replace(/\[\[[^\]]*\]\]/g, ' ')
-    .replace(/^(\s*#\w+\s+)?\[#[A-Za-z]\]/, m => ' '.repeat(m.length));
+  let t = (text || '').replace(/\[\[[^\]]*\]\]/g, ' ');
+  // A #tag inside a {…} body — {count: #tag}, {roll: #tag}, a rule — is a query argument or generator
+  // content, never a tag ON the point. Blank braces (innermost-out) so it is not scanned as one. This
+  // also closes a LOAD-TIME race: before a {count: #tag} / {roll: #tag} line is tokenised, its literal
+  // #tag made that meta line a member of #tag, so a {roll: #tag} promoting first could draw it (the
+  // reading-log "Waiting on the shelf" pill; a known promotion-order gotcha).
+  let prev; do { prev = t; t = t.replace(/\{[^{}]*\}/g, ' '); } while (t !== prev);
+  return t.replace(/^(\s*#\w+\s+)?\[#[A-Za-z]\]/, m => ' '.repeat(m.length));
 }
 // Does `text` carry `value` as a hashtag? Lifted verbatim out of termMatchesNode's tag branch so
 // the rule is pinned on its own before tag inheritance layers on top of it.
