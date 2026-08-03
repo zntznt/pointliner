@@ -13477,48 +13477,10 @@ function renderRow(r) {
     bullet.setAttribute('aria-label', node.type === 'base' ? 'Base actions'
       : isPara ? (node.folded ? 'Show the full paragraph' : 'Collapse paragraph to its first line')
       : 'Point actions');
-    bullet.addEventListener('click', e => {
-      if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
-      if (node.type === 'divider') return;
-      if (isPara) { hideBpop(); toggleFold(node.id); return; }
-      // every other point (incl. a base) zooms in on a bullet click; the hover/long-press menu
-      // carries the per-node ops (dismiss it so it doesn't linger over the zoomed view)
-      hideBpop(); zoomInto(node.id);
-      // #823 (agent-review): the first bullet-click zoom of a session explains itself —
-      // a first-timer reads the view swap as "my list disappeared" (P4). Once per session.
-      if (!_zoomToastShown) { _zoomToastShown = true; flashHint('Zoomed into one point. Esc or the breadcrumb takes you back'); }
-    });
-    // Keyboard: Enter/Space on the focused bullet opens its menu (beside mousedown/hover).
-    bullet.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        showBulletPopup(node.id, bullet, { keyboard: true });
-      }
-    });
-    if (IS_TOUCH) {
-      // No hover on touch: hold the bullet to open the node menu, or drag it sideways to
-      // reorder + change nesting depth (the touch indent/outdent front door).
-      attachBulletTouchGestures(bullet, node);
-    } else {
-      // dwell before showing: sweeping the cursor across bullets shouldn't pop the menu
-      // on each one. Only open after the cursor rests ~200ms; a mouseleave cancels it.
-      // Never hover-open while a point is being edited (#455): the menu positions over the
-      // content, so a cursor drifting into the gutter mid-type would cover your text and
-      // the "New point" row. The menu stays reachable by clicking the bullet or Shift+F10.
-      bullet.addEventListener('mouseenter', () => {
-        clearTimeout(bpopShowTimer);
-        // Gate on the LIVE DOM editing state, not the activeContentId module var (that var goes stale when an
-        // edit ends without exitEdit — a full render() from an affordance/door click leaves it set — which
-        // once blocked hover-open for the whole session). Block ONLY when the point being edited is THIS one:
-        // its menu would cover the text you are typing (#455). Hovering ANOTHER point's bullet while you edit
-        // still opens that point's menu (mouse-open never steals focus, so the edit survives).
-        bpopShowTimer = setTimeout(() => {
-          const editingEl = document.querySelector('.node-content[data-editing]');
-          if (!dragId && editingEl?.dataset.id !== node.id) showBulletPopup(node.id, bullet);
-        }, 200);
-      });
-      bullet.addEventListener('mouseleave', () => { clearTimeout(bpopShowTimer); scheduleBpopHide(); });
-    }
+    // #1343: click(zoom) / Enter-Space(menu) / 200ms-hover(menu) — extracted so the corkboard cards reuse the
+    // identical gestures. Touch long-press + drag are still wired here.
+    attachBulletMenuGestures(bullet, node);
+    if (IS_TOUCH) attachBulletTouchGestures(bullet, node);
     attachDragHandlers(bullet, row, node);
   }
 
@@ -32260,6 +32222,32 @@ function clearAllDrag() {
   document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
 }
 
+// #1343: the bullet's "usual operations" — click zooms into the point (a paragraph folds instead), Enter/Space
+// opens the point menu, and a 200ms hover dwell opens it too (blocked only while THIS point is the one being
+// edited, so the menu never covers the text you are typing — #455). Extracted from the outline row so the
+// CORKBOARD cards get the identical behavior (owner: "on card view, zoom on click + menu on hover"). The
+// caller still wires drag (attachDragHandlers) and, on touch, attachBulletTouchGestures.
+function attachBulletMenuGestures(bullet, node) {
+  bullet.addEventListener('click', () => {
+    if (bulletDragMoved || bulletLongPressed) { bulletLongPressed = false; return; }
+    if (node.type === 'divider') return;
+    if (node.type === 'para') { hideBpop(); toggleFold(node.id); return; }
+    hideBpop(); zoomInto(node.id);
+    if (!_zoomToastShown) { _zoomToastShown = true; flashHint('Zoomed into one point. Esc or the breadcrumb takes you back'); }
+  });
+  bullet.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showBulletPopup(node.id, bullet, { keyboard: true }); }
+  });
+  if (IS_TOUCH) return;   // touch opens the menu via attachBulletTouchGestures (long-press), wired by the caller
+  bullet.addEventListener('mouseenter', () => {
+    clearTimeout(bpopShowTimer);
+    bpopShowTimer = setTimeout(() => {
+      const editingEl = document.querySelector('.node-content[data-editing]');
+      if (!dragId && editingEl?.dataset.id !== node.id) showBulletPopup(node.id, bullet);
+    }, 200);
+  });
+  bullet.addEventListener('mouseleave', () => { clearTimeout(bpopShowTimer); scheduleBpopHide(); });
+}
 function attachDragHandlers(bullet, row, node) {
   // HTML5 drag-and-drop never fires on touch; skip it there (long-press menu covers
   // reordering via Move up/down) so a touch-hold doesn't trigger native drag artifacts.
@@ -36494,6 +36482,9 @@ function buildCorkboard(vp) {
     bullet.className = 'bullet cork-bullet';
     const dot = document.createElement('div'); dot.className = 'bullet-dot';
     bullet.appendChild(dot);
+    bullet.setAttribute('role', 'button');            // #1343: parity with the outline bullet (menu target)
+    bullet.setAttribute('tabindex', '-1');
+    bullet.setAttribute('aria-haspopup', 'menu');
     bullet.setAttribute('aria-label', 'Point actions');
     card.appendChild(bullet);
 
@@ -36518,6 +36509,7 @@ function buildCorkboard(vp) {
       cnt.textContent = cd.childCount + (cd.childCount === 1 ? ' point inside' : ' points inside');
       card.appendChild(cnt);
     }
+    attachBulletMenuGestures(bullet, node);              // #1343: click zooms in, hover / Enter opens the menu
     attachDragHandlers(bullet, card, node);              // desktop drag, the outline's own
     if (IS_TOUCH) attachBulletTouchGestures(bullet, node);
     wrap.appendChild(card);
