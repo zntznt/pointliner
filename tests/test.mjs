@@ -10028,6 +10028,17 @@ test('4c wiring: the query dialog folder checkbox, the pill folder branch, and t
   assert.ok(rmp.includes('Folder totals count other documents as saved'), 'folder-scoped math pills carry the as-saved tip');
 });
 
+test('#1332 a comparison/boolean math pill renders a pass/fail glyph, not bare 1/0', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('const isBoolPill ='), 'a boolean pill is detected');
+  assert.ok(/\(fresh === 0 \|\| fresh === 1\)/.test(rmp), 'only a 0/1 result qualifies — a numeric 2 (e.g. (a>b)+2) stays a number');
+  assert.ok(rmp.includes('/(?:[<>]=?|[=!]=)/.test(m.expr)') && rmp.includes('and|or|not|xor'), 'the expression must be a comparison or a boolean function');
+  assert.ok(rmp.includes("fresh === 1 ? '✓' : '✗'"), 'true → ✓, false → ✗');
+  assert.ok(rmp.includes("fresh === 1 ? 'true' : 'false'") && rmp.includes('ariaVal'), 'assistive tech gets the words, not the glyph');
+  assert.ok(rmp.includes('!isMoonExpr(m.expr) && !isDateExpr(m.expr)'), 'a moon/date display is never turned into a pass/fail');
+  assert.ok(_src.includes('.math-bool-true .math-result') && _src.includes('.math-bool-false .math-result'), 'pass/fail colored to the check palette (ok/bad)');
+});
+
 test('the math pill signposts the number-format door it opens (P2)', () => {
   // A math pill can do money, units and percent (openMathDialog's Decimal places / Prefix / Suffix),
   // but the pill said only "Click to edit" — the word "format" appeared nowhere on the path to it,
