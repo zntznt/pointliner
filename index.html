@@ -29090,18 +29090,29 @@ function renderMathPill(key, m, opts = {}) {
   // almost always a dashboard pill dropped on a leaf. Name it (P4, reusing the math-empty chrome)
   // and point at the two fixes, instead of a silent number that reads as broken.
   if (queryReducerLeaf(m.expr, cookieNode)) {
+    // #1331 (driven panel #7): the faint "0 in scope" let a caseworker's weekly briefing silently read 0 open
+    // cases — "worse than no tool." Make the cue LOUD and specific: run the SAME reducer over the whole
+    // document (expandAggExpr against root), and when it would find matches, show that number and the one-word
+    // fix right in the mark, so a silent 0 becomes "0 here · N in document". A search reducer on a leaf is
+    // almost certainly a misplaced dashboard pill, so this never fires on a real subtree total.
+    const docVal = evalMath(expandAggExpr(m.expr, root, vmap), scope);
+    const hasDoc = Number.isFinite(docVal) && docVal !== 0 && docVal !== fresh;
+    const docStr = hasDoc ? formatMathResult(docVal) : '';
     // UXP-232: an unreadable filter LEADS, because "no points below this one" is itself the wrong
     // explanation when the query could not be read — the scope is not what went wrong. Same
     // precedence the roll pill applies to its "nothing matched yet".
     const tip = (queryTip ? queryTip.trim() + ' ' : '')
-      + 'No points below this one to search. Move the pill onto a parent, or add ", document" to search the whole document (", folder" for the notebook).';
+      + (hasDoc
+        ? `This counts only the points BELOW this one (none). Add ", document" inside the search to count all ${docStr} across the document (", folder" for the notebook).`
+        : 'No points below this one to search. Move the pill onto a parent, or add ", document" to search the whole document (", folder" for the notebook).');
+    const mark = hasDoc ? `0 here · ${docStr} in document` : '0 in scope';
     return `<span class="math-roll math-empty" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
-      + ` aria-label="Math ${escQ(m.expr)}: nothing in scope. ${escQ(tip)}">`
+      + ` aria-label="Math ${escQ(m.expr)}: ${hasDoc ? `0 below this point, ${escQ(docStr)} in the document` : 'nothing in scope'}. ${escQ(tip)}">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
       + `<span class="math-expr">${escHtml(m.expr)}</span>`
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
-      + `<span class="math-empty-mark" aria-hidden="true">0 in scope</span>`
+      + `<span class="math-empty-mark" aria-hidden="true">${escHtml(mark)}</span>`
       + pencil
       + `</span>`;
   }
