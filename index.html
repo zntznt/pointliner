@@ -14514,11 +14514,14 @@ const CHECK_ICON = { fa: 'fa-solid fa-clipboard-check', fb: '✓' };   // #413: 
 // removes the check. Reached by /check, the bullet menu, or clicking the chip —
 // mirrors the dates feature. Zero new syntax: the value is the existing evalMath
 // language + B1 aggregation.
-function openCheckDialog(nodeId, targets = null) {
+function openCheckDialog(nodeId, targets = null, prefill = '') {
   const node = targets ? targets[0] : nodeById(nodeId);
   if (!node) return;
   const applyList = targets || [node];   // captured in onSubmit's closure — no global race with closeIo
-  const cur = checkExprOf(node) || '';
+  // #1281 check door: a caller may seed a fresh check (the + Check affordance prefills `sum(KEY) <= `,
+  // so the user supplies only the threshold). An EXISTING check always wins, so the door never
+  // overwrites one the user already wrote.
+  const cur = checkExprOf(node) || prefill;
   // a node mirror whose `check` is the typed expr, for the live preview
   const previewNode = expr => ({
     props: [...(node.props || []).filter(p => p.key.trim().toLowerCase() !== CHECK_KEY), { key: CHECK_KEY, val: expr }],
@@ -39862,7 +39865,7 @@ const GUIDE = [
     ] },
   { id:'check', cat:'compute', covers:['check'], related:['rollups','properties','recipe-budget'],
     title:'Checks & rules',
-    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough points, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog.\n\nWrite the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property; sum, avg, min and max take the same quoted-search form with a property, so sum(\"#task\", cost) <= budget caps a live query's total. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.\n\nA check points at your PROSE, not just numbers. count(\"#claim -has:footnote\") == 0 asserts every point tagged #claim carries a footnote, so a claim with no source fails; words(subtree) >= 500 sets a section's minimum length. When a check like these fails, its red badge shows a magnifying glass: click it (or focus it and press Enter) to run that query and jump straight to the points it flags. A check scoped to this point's subtree zooms in first; a check widened with , document searches the whole document.",
+    body:"Automatically flag when a constraint breaks: a task over its time budget, a list that doesn't have enough points, a total that exceeds a cap. The badge on the point turns red the moment numbers go out of range, and is:failing in search finds every violation at once. Type /check:sum(cost) <= budget to set it inline, or /check on its own for the dialog.\n\nNo need to recall the syntax: on a section heading whose rows carry a number (a budget, a set of costs), a + Check door appears beside + Total. It opens the dialog with the hard part already written, sum(KEY) <= , so you fill in only the limit and the heading flags itself when the column crosses it.\n\nWrite the condition with a comparison like <= or >=; combine several into one check with and(…) or or(…). count(\"query\") counts the matching points below this one, so a check can test STRUCTURE: count(\"-has:hp\") == 0 means every point below carries an hp property; sum, avg, min and max take the same quoted-search form with a property, so sum(\"#task\", cost) <= budget caps a live query's total. A check reads numeric properties as named values, from the point itself or any ancestor (nearest wins), so budget above can live on a parent point as budget: 12 and every check below sees it.\n\nA check points at your PROSE, not just numbers. count(\"#claim -has:footnote\") == 0 asserts every point tagged #claim carries a footnote, so a claim with no source fails; words(subtree) >= 500 sets a section's minimum length. When a check like these fails, its red badge shows a magnifying glass: click it (or focus it and press Enter) to run that query and jump straight to the points it flags. A check scoped to this point's subtree zooms in first; a check widened with , document searches the whole document.",
     examples:[
       { syn:'/check:sum(cost) <= budget', desc:'set it inline, stay within budget' },
       { syn:'hours <= 8',          desc:"a point's own limit" },
@@ -40799,6 +40802,13 @@ function maybeAddRowAffordance(node, row) {
       buildIndex(root, null); markDirty(); render();
       flashHint('Totalling ' + key);
     });
+  }
+  // #1281 check door — the sum/CHECK half of the wall (panel #1284, "trust the numbers"). One "+ Check"
+  // on the first number column opens the check dialog with the scary part already written (sum(KEY) <= ),
+  // so the user supplies only the limit; the check then flags the heading when the column crosses it.
+  // Skipped when the heading already carries a check, so the door never fights an existing one.
+  if (numKeys.length && !checkExprOf(node)) {
+    mkAff('+ Check', 'Add a check on the ' + numKeys[0] + ' column', () => openCheckDialog(node.id, null, 'sum(' + numKeys[0] + ') <= '));
   }
 }
 // #1240 phase 3 DOM half: append a card to a deck record + re-render (round-trips to the shuffle shorthand).
