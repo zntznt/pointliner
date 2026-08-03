@@ -18551,6 +18551,13 @@ function classifyBraceBody(body, rules, vars) {
     const expr = body.slice(1).trim();
     if (!expr) return 'invalid';
     if (evalMath(expandAggExpr(expr, null), vars) !== null) return 'artifact';
+    // #1319 (driven panel): a rollup/word aggregate returns 0 with the null node used here, so an
+    // expression that COMBINES them ({= round(100*sum(a)/sum(b))}, a division by a sum) can go NaN and
+    // read as null AT CLASSIFY TIME while it computes fine against the live node at render (or errors
+    // loudly as #ERR). A bare {= sum(a)} already passes because 0 is non-null; the composed form was the
+    // gap. Recognize any node-dependent aggregate as a real compute pill, so it promotes instead of
+    // silently staying prose.
+    if (/\b(?:sum|avg|count|min|max|words)\s*\(/i.test(expr)) return 'artifact';
     // #889: a deterministic conversion error (cross-dimension convert → #ERR from the pre-pass) is a
     // real calculation that errors → promote to a loud #ERR pill, not raw-braces prose on load.
     return mathPrepassErrs(expr) ? 'artifact' : 'invalid';
@@ -27970,6 +27977,12 @@ function makeMathResult(expr, scope = null) {
     // a plain parse failure (prose like {= not math}) returns null and stays literal. Lockstep with
     // classifyBraceBody's {= } arm via the shared mathPrepassErrs.
     if (mathPrepassErrs(expr)) return { key: mathKey(), expr, result: '#ERR', fmt: undefined };
+    // #1319: a COMPOSED rollup ({= round(100*sum(a)/sum(b))}) evaluates to NaN → null HERE (no render node,
+    // so its aggregates are empty → 0, and dividing by that 0 sum poisons the whole expression) yet computes
+    // fine against the live node in renderMathPill. A bare {= sum(a)} already promotes because 0 is non-null;
+    // only the composed form was silently staying prose. Create the pill so render recomputes it against the
+    // real children (or surfaces a loud #ERR). Lockstep with classifyBraceBody's {= } arm.
+    if (/\b(?:sum|avg|count|min|max|words)\s*\(/i.test(expr)) return { key: mathKey(), expr, result: '#ERR', fmt: undefined };
     return null;
   }
   return { key: mathKey(), expr, result: formatMathDisplay(v, expr), fmt: isMoonExpr(expr) ? 'moon' : isDateExpr(expr) ? 'date' : undefined };
