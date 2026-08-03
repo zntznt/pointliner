@@ -11746,8 +11746,10 @@ test('UXP-232: the roll pill and the math pill carry the reason too', () => {
   // ...and the empty-SCOPE branch returns before those, so it needs the reason too, LEADING:
   // "no points below this one" is the wrong explanation when the query could not be read, and
   // that branch is the one a bare count("…") actually lands on. Found by driving, not by reading.
-  assert.match(mp, /const tip = \(queryTip \? queryTip\.trim\(\) \+ ' ' : ''\)\s*\n\s*\+ 'No points below this one to search/,
-    'the unreadable-filter reason must lead the empty-scope tip, not be unreachable behind it');
+  assert.match(mp, /const tip = \(queryTip \? queryTip\.trim\(\) \+ ' ' : ''\)/,
+    'the unreadable-filter reason must LEAD the empty-scope tip, not be unreachable behind it');
+  // #1331 restructured the tail into a hasDoc ternary, but the no-scope fallback copy is still present
+  assert.ok(mp.includes("'No points below this one to search"), 'the empty-scope fallback tip is still there for the truly-empty case');
 });
 
 test('searchTermProblems — opts.typing separates "still typing" from "wrong"', () => {
@@ -13791,6 +13793,14 @@ test('#914 renderMathPill + expandAggExpr wire the leaf cue and the document wid
   assert.ok(/folder\|document\|doc/.test(eae), 'the reducer arms must accept the document/doc scope word');
   assert.ok(eae.includes('queryCountIn(q, root)'), 'a document-scoped count must search the doc root');
   assert.ok(eae.includes('queryReduce(fn, q, prop, root)'), 'a document-scoped reducer must search the doc root');
+});
+
+test('#1331 the leaf cue is loud + actionable: it names the document count and the one-word fix', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('evalMath(expandAggExpr(m.expr, root, vmap), scope)'), 'it runs the SAME reducer over the whole document (root)');
+  assert.ok(/hasDoc = Number\.isFinite\(docVal\) && docVal !== 0 && docVal !== fresh/.test(rmp), 'only when the document has matches the subtree did not');
+  assert.ok(rmp.includes('`0 here · ${docStr} in document`'), 'the mark shows "0 here · N in document", not a faint "0 in scope"');
+  assert.ok(rmp.includes('Add ", document" inside the search to count all'), 'the tip names the one-word fix with the real number');
 });
 
 test('#917 mirrorSubtreeRows — flattens descendants in document order, capped, collapse-aware', () => {
