@@ -2968,6 +2968,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="fm-cat-head">Export a copy</div>
         <div class="cmd-item" id="btn-export-md"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="M">M</div><div class="cmd-info"><span class="cmd-label">Markdown</span><span class="cmd-desc">One-way snapshot. Keeps links, freezes pills to text</span></div></div>
         <div class="cmd-item" id="btn-export-txt"><div class="cmd-icon" data-fa="fa-regular fa-file-lines" data-fb="T">T</div><div class="cmd-info"><span class="cmd-label">Plain text</span><span class="cmd-desc">One-way snapshot. Links become plain words</span></div></div>
+        <div class="cmd-item" id="btn-export-share"><div class="cmd-icon" data-fa="fa-solid fa-file-export" data-fb="↗">↗</div><div class="cmd-info"><span class="cmd-label">Shareable page</span><span class="cmd-desc">One-way. A read-only web page anyone opens in a browser, no app</span></div></div>
         <div class="cmd-item" id="btn-export-html"><div class="cmd-icon" data-fa="fa-solid fa-code" data-fb="H">H</div><div class="cmd-info"><span class="cmd-label">Web page (HTML)</span><span class="cmd-desc">Keeps everything. Reopens as the live app</span></div></div>
       </div>
 
@@ -34659,6 +34660,70 @@ function markdownVaultToPoints(files) {
   return { points: sections, skipped: [...skipped] };
 }
 
+// ─── #1282: read-only shareable web page — the OUT seam (mirror of Markdown import, the IN seam) ───
+// Panel #3/#4, 3-4 of 7, a dealbreaker for two. The existing HTML export packs the whole app and
+// "reopens as the live app"; a client can't just READ it. This renders a STATIC page: every pill
+// frozen to its shown value (via the SAME flattenArtifacts the Markdown export uses, so the two never
+// diverge), a check shown as its verdict, no script, no editing, opens in any browser. Marcus: "a clean
+// shareable timeline and budget a bride opens with no app." Respects Exclude-from-export (the caller
+// prunes first). Pure string builders — Node-testable.
+function checkVerdictHtml(v) {
+  if (v === 'pass')  return ' <span class="ro-chk ro-pass" title="check passes">✓</span>';
+  if (v === 'fail')  return ' <span class="ro-chk ro-fail" title="check fails">✗</span>';
+  if (v === 'error') return ' <span class="ro-chk ro-err" title="check cannot be evaluated">⚠</span>';
+  return '';
+}
+function nodeToReadonlyHtml(node, varMap) {
+  if (!node || node.noexport) return '';
+  const type = deriveTypeFromText(node.text) || node.type || 'ul';
+  // Same two-step the Markdown export uses so the two never diverge: pills → their shown values, then
+  // internal [[wiki-links]] → CommonMark [label](#id) (external [text](url) links pass through as-is).
+  // mdToHtml then renders headings / quotes / tasks / emphasis / links to HTML.
+  // A reader-facing page wants the RESULT ONLY ("6", "98.6 (79–118)"), never the recipe ("2d6 = 6") —
+  // frozenTokenText emits result-only for a `para`, so present a para-typed VIEW of the node (its pill
+  // sidecars are shared by reference, so every pill still resolves) to force clean values for any type.
+  const proseView = node.type === 'para' ? node : { ...node, type: 'para' };
+  const flat = linkText(flattenArtifacts(node.text, proseView, varMap, true), 0, (t, _d, id) => mdLinkOut(t, id, ''));
+  let inner = mdToHtml(flat, type === 'code');
+  const chk = checkExprOf(node);
+  if (chk) inner += checkVerdictHtml(evalCheck(node, varMap));
+  if (node.note) inner += '<div class="ro-note">' + mdToHtml(node.note) + '</div>';
+  let kids = '';
+  for (const c of node.children || []) kids += nodeToReadonlyHtml(c, varMap);
+  if (kids) kids = '<div class="ro-kids">' + kids + '</div>';
+  return '<div class="ro-pt">' + inner + kids + '</div>';
+}
+// A page title: the first heading point's cleaned text, else a neutral fallback (there is no doc-name
+// primitive; the first H is what a reader sees at the top anyway). Pure.
+function readonlyDocTitle(rootNode) {
+  for (const n of (rootNode?.children || [])) if (/^h[1-6]$/.test(deriveTypeFromText(n.text) || '')) return auditTitle(n.text);
+  return 'Shared document';
+}
+const RO_EXPORT_CSS =
+  ':root{--ro-fg:#1a1a1a;--ro-bg:#fff;--ro-muted:#6b7280;--ro-line:#e5e7eb;--ro-ok:#15803d;--ro-bad:#b91c1c;--ro-warn:#b45309}' +
+  '@media(prefers-color-scheme:dark){:root{--ro-fg:#e5e7eb;--ro-bg:#16181d;--ro-muted:#9ca3af;--ro-line:#2b2f36;--ro-ok:#4ade80;--ro-bad:#f87171;--ro-warn:#fbbf24}}' +
+  '*{box-sizing:border-box}body{margin:0;background:var(--ro-bg);color:var(--ro-fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
+  '.ro-doc{max-width:44rem;margin:0 auto;padding:2.5rem 1.25rem 1rem}' +
+  '.ro-pt{margin:.15rem 0}.ro-kids{margin-left:1.25rem;padding-left:.75rem;border-left:1px solid var(--ro-line)}' +
+  'h1,h2,h3,h4,h5,h6{line-height:1.25;margin:1.1em 0 .3em}h1{font-size:1.9rem}h2{font-size:1.5rem}h3{font-size:1.25rem}' +
+  'p{margin:.25rem 0}a{color:inherit;text-decoration:underline}code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em;background:color-mix(in srgb,var(--ro-fg) 8%,transparent);padding:.05em .3em;border-radius:4px}' +
+  'blockquote{margin:.4rem 0;padding:.1rem 0 .1rem .9rem;border-left:3px solid var(--ro-line);color:var(--ro-muted)}' +
+  'ul.md-list{margin:.2rem 0;padding-left:1.2rem}.md-task{list-style:none}' +
+  '.ro-note{color:var(--ro-muted);font-size:.92em;margin:.15rem 0 .35rem;padding-left:.75rem;border-left:2px solid var(--ro-line)}' +
+  '.ro-chk{font-weight:700}.ro-pass{color:var(--ro-ok)}.ro-fail{color:var(--ro-bad)}.ro-err{color:var(--ro-warn)}' +
+  '.ro-foot{max-width:44rem;margin:2rem auto 0;padding:1rem 1.25rem;border-top:1px solid var(--ro-line);color:var(--ro-muted);font-size:.85rem}' +
+  '.ro-empty{color:var(--ro-muted)}';
+function docToReadonlyHtml(rootNode) {
+  const varMap = collectVars(rootNode);
+  const title = escHtml(readonlyDocTitle(rootNode));
+  const body = (rootNode?.children || []).map(n => nodeToReadonlyHtml(n, varMap)).join('');
+  return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>' + title + '</title><style>' + RO_EXPORT_CSS + '</style></head>' +
+    '<body><main class="ro-doc">' + (body || '<p class="ro-empty">This document has no points to share.</p>') + '</main>' +
+    '<footer class="ro-foot">A read-only copy shared from Pointliner. Numbers, rolls and checks show the values they had when it was saved.</footer></body></html>';
+}
+
 // Plain-text export: tab-indented hierarchy, markdown emphasis stripped.
 function toPlainText(rootNode) {
   const varMap = collectVars();
@@ -34750,6 +34815,9 @@ function exportedNote(rootNode, flat, findNode) {
 }
 function exportMarkdown() { const n = downloadText(withFoldedActive(() => toMarkdown(root)), '.md', 'text/markdown'); flashHint('Exported a copy: “' + n + '”' + exportedNote(root)); }
 function exportPlainText() { const n = downloadText(withFoldedActive(() => toPlainText(root)), '.txt', 'text/plain'); flashHint('Exported a copy: “' + n + '”' + exportedNote(root, true)); }
+// #1282: the read-only shareable page. Frozen like the .md/.txt exports (values, not the live app), so
+// exportedNote's frozen-copy wording applies; a client opens it in any browser with no Pointliner.
+function exportReadonlyHtml() { const n = downloadText(withFoldedActive(() => docToReadonlyHtml(root)), '.html', 'text/html'); flashHint('Saved a read-only page anyone can open in a browser: “' + n + '”' + exportedNote(root, true)); }
 
 // Export a point (or a set of selected points) to Markdown. Reuses toMarkdown by wrapping
 // the nodes in a throwaway root, so a point exports as itself + its subtree, and pills
@@ -38805,6 +38873,7 @@ document.getElementById('workspace-invite').addEventListener('click', () => {
 });
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
 document.getElementById('btn-export-txt').addEventListener('click', () => { exportPlainText(); closeFileMenu(); });
+document.getElementById('btn-export-share').addEventListener('click', () => { exportReadonlyHtml(); closeFileMenu(); });
 document.getElementById('btn-export-html').addEventListener('click', () => { exportSelfContainedHtml(); closeFileMenu(); });
 document.getElementById('btn-guide').addEventListener('click', () => { closeFileMenu(); openGuide('shortcuts'); });
 
@@ -40106,12 +40175,13 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing, and they differ in what they keep. Markdown freezes the pills to their shown text and keeps your links, writing each one as a real markdown link so the connections survive in a blog post or a README. Plain text has no way to write a link, so links become the words they point at, and the message after the export tells you how many. Web page (HTML) keeps everything: it packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice, calculations and links still live (it reopens as the running app, not a static page). If you are not sure which to send, send the Web page. All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the three Export a copy formats skips that point and everything under it, Markdown, plain text and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing, and they differ in what they keep. Markdown freezes the pills to their shown text and keeps your links, writing each one as a real markdown link so the connections survive in a blog post or a README. Plain text has no way to write a link, so links become the words they point at, and the message after the export tells you how many. Shareable page is a read-only web page: a clean, static page anyone opens in any browser with no app, where every pill shows the value it had when you saved (a total is its number, a roll its result, an estimate its range, a check its ✓ or ✗). This is the one to hand to a client, a stakeholder or anyone who just needs to READ your work, dice and formulas rendered as plain results rather than live controls. Web page (HTML) is the opposite choice: it packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice, calculations and links still live (it reopens as the running app, not a static page). Send the Shareable page when someone should read it, the Web page when they should use it. All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the Export a copy formats skips that point and everything under it, Markdown, plain text, Shareable page and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
     related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },
       { syn:'File → Export a copy → Markdown', desc:'a one-way plain text snapshot for sharing' },
       { syn:'Menu → Exclude from export', desc:'leave a point (and its subtree) out of the prose export' },
+      { syn:'File → Export a copy → Shareable page', desc:'a read-only web page anyone reads in a browser; pills show their values' },
       { syn:'File → Export a copy → Web page (HTML)', desc:'a shareable file that reopens as the live app' },
     ] },
 

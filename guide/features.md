@@ -294,6 +294,10 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   the OPML save keeps it. Excluding a variable declaration is called out after a Web page export,
   since that format stays live and recomputes.
   ([exporting](files-and-export.md#exporting-and-sharing))
+- **Shareable page (read-only).** Export a single static `.html` page anyone opens in any browser with
+  no app, where every pill shows the value it had when you saved: a total is its number, a roll its
+  result, an estimate its range, a check its ✓ or ✗. The one to hand to a client or stakeholder who
+  just needs to read your work. ([exporting](files-and-export.md#exporting-and-sharing))
 - **Web page (HTML).** Export a single `.html` that *is* the app plus your document. Hand it to
   someone and it re-rolls and recomputes on their machine, no install, no account.
   ([exporting](files-and-export.md#exporting-and-sharing))
