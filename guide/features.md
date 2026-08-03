@@ -131,6 +131,8 @@ A live calculator that can see your document. Math pills recompute on their own.
   answer the dice engine (which rolls with replacement) cannot give. `{= simulate(2000, 2d6+3, >= 10)}`
   rolls a dice expression N times and returns the percentage that clear a bar, for the messy rolls with
   no tidy formula. Both are plain percentages that compose: `{= round(hypergeom(60, 12, 7, 3))}%`.
+  And `{= wilsonlow(wins, games)}` / `{= wilsonhigh(wins, games)}` give the honest 95% range around a
+  rate from a small sample, so 12 wins in 20 games reads "60% (39 to 78%)" instead of a false-flat 60%.
 - **Self-checking documents.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
   ([constraints](computing-numbers.md#make-the-document-check-itself-constraints))

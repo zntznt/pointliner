@@ -27356,6 +27356,8 @@ const FN2 = Object.assign(Object.create(null), {
   daysbetween: (a, b) => Math.abs(Math.round(b) - Math.round(a)),  // whole days between two dates
   pctof: (part, whole) => part / whole * 100,                      // part as a percentage of whole (÷0 → ∞)
   pctchange: (from, to) => (to - from) / from * 100,               // percent change from→to (÷0 → ∞)
+  wilsonlow:  (wins, games) => wilsonBound(wins, games, false),    // #1311: Wilson 95% CI low bound of wins/games, as a %
+  wilsonhigh: (wins, games) => wilsonBound(wins, games, true),     // #1311: ...and the high bound, so 12/20 reads 60% (39-78%)
   // #544 numeric additions (units-adjacent, B4 lane): all pure, calendar-independent.
   gcd: (a, b) => intGcd(a, b),                                     // greatest common divisor (integers)
   lcm: (a, b) => { const g = intGcd(a, b); return g === 0 ? 0 : Math.abs(Math.round(a) * Math.round(b)) / g; }, // least common multiple
@@ -27458,6 +27460,7 @@ const MATH_FN_DESC = {
   deg:'radians to degrees', rad:'degrees to radians', pow:'a raised to the power b', hypot:'length of the hypotenuse',
   gcd:'greatest common divisor', lcm:'least common multiple', roundto:'round to the nearest step',
   clamp:'keep a value within a low and high', pctof:'a as a percent of b', pctchange:'percent change from a to b',
+  wilsonlow:'low bound of a wins/games rate (95%)', wilsonhigh:'high bound of a wins/games rate (95%)',
   min:'the smallest of the values', max:'the largest of the values', and:'1 if all are true, else 0',
   or:'1 if any is true, else 0', not:'flip a true/false (1/0)',
   // aggregates over children
@@ -28363,6 +28366,22 @@ function hypergeomAtLeast(pop, successes, draws, atleast) {
   let p = 0;
   for (let k = lo; k <= hi; k++) p += Math.exp(lnChoose(K, k) + lnChoose(N - K, n - k) - lnDen);
   return Math.min(100, Math.max(0, p * 100));
+}
+
+// #1311: a Wilson score confidence-interval bound for an empirical proportion wins/games, as a
+// PERCENTAGE at 95% confidence — so a matchup win rate reads "55% (39-78%)" instead of a bare
+// percentage that can't tell a real edge from noise at small n (panel re-run, Kwame). Closed form,
+// the trustworthy small-sample interval (unlike the naive Wald, it never runs past 0 or 100 and
+// behaves at k=0/k=n). NaN on nonsense (n<=0, k out of [0,n]) so evalMath surfaces #ERR, not a wrong
+// number. `hi` picks the upper bound. Wired as the FN2 pair wilsonlow(k,n)/wilsonhigh(k,n).
+function wilsonBound(k, n, hi) {
+  const wins = Math.round(k), games = Math.round(n);
+  if (!Number.isFinite(wins) || !Number.isFinite(games) || games <= 0 || wins < 0 || wins > games) return NaN;
+  const z = 1.959963984540054;                                         // two-sided 95%
+  const p = wins / games, z2 = z * z, denom = 1 + z2 / games;
+  const center = (p + z2 / (2 * games)) / denom;
+  const margin = (z / denom) * Math.sqrt(p * (1 - p) / games + z2 / (4 * games * games));
+  return Math.min(100, Math.max(0, (hi ? center + margin : center - margin) * 100));
 }
 
 // The share of a Monte-Carlo outcome array satisfying `value <op> t`, as a PERCENTAGE — the reducer
@@ -40167,7 +40186,7 @@ const GUIDE = [
     ] },
   { id:'odds', cat:'compute',
     title:'Odds & simulation',
-    body:"Two questions the dice and rollups do not answer on their own: the odds of a draw WITHOUT replacement, and the odds a random roll clears a bar. Both are ordinary numbers, so they live in a `{= …}` pill beside your other math and read as a percentage.\n\n`{= hypergeom(pop, successes, draws, atleast)}` is the chance of drawing AT LEAST `atleast` of the good things when you take `draws` from a pile of `pop` of which `successes` are good, and put none back. \"Odds I see at least three of my twelve key cards in an opening seven from a sixty-card deck\" is `hypergeom(60, 12, 7, 3)`; \"odds I draw the antidote before three cards are gone\" is the same shape. This is a different calculation from the dice engine, which rolls WITH replacement, so it is the honest answer for anything you deal from a finite pile.\n\n`{= simulate(N, roll, over a bar)}` rolls a dice expression `N` times and reports the percentage that clear the bar: `{= simulate(2000, 2d6+3, >= 10)}` is roughly how often two dice plus three beat a target of ten. It runs the very same dice engine your `{2d6}` pills roll with, so any expression they accept works here, including keep-highest and pools. Reach for it when there is no tidy formula: a messy combination of dice, an unusual keep rule, a threshold you would otherwise work out on scratch paper.\n\nBoth return a plain percentage, so round it and add a sign the way you would any odds: `{= round(hypergeom(60, 12, 7, 3))}%`. The simulation is seeded, so the number holds still between edits rather than flickering, and a larger `N` is a steadier estimate. Give any argument as a declared variable and the question reads as a sentence: `{= simulate(2000, atk, >= ac)}`.",
+    body:"Two questions the dice and rollups do not answer on their own: the odds of a draw WITHOUT replacement, and the odds a random roll clears a bar. Both are ordinary numbers, so they live in a `{= …}` pill beside your other math and read as a percentage.\n\n`{= hypergeom(pop, successes, draws, atleast)}` is the chance of drawing AT LEAST `atleast` of the good things when you take `draws` from a pile of `pop` of which `successes` are good, and put none back. \"Odds I see at least three of my twelve key cards in an opening seven from a sixty-card deck\" is `hypergeom(60, 12, 7, 3)`; \"odds I draw the antidote before three cards are gone\" is the same shape. This is a different calculation from the dice engine, which rolls WITH replacement, so it is the honest answer for anything you deal from a finite pile.\n\n`{= simulate(N, roll, over a bar)}` rolls a dice expression `N` times and reports the percentage that clear the bar: `{= simulate(2000, 2d6+3, >= 10)}` is roughly how often two dice plus three beat a target of ten. It runs the very same dice engine your `{2d6}` pills roll with, so any expression they accept works here, including keep-highest and pools. Reach for it when there is no tidy formula: a messy combination of dice, an unusual keep rule, a threshold you would otherwise work out on scratch paper.\n\nBoth return a plain percentage, so round it and add a sign the way you would any odds: `{= round(hypergeom(60, 12, 7, 3))}%`. The simulation is seeded, so the number holds still between edits rather than flickering, and a larger `N` is a steadier estimate. Give any argument as a declared variable and the question reads as a sentence: `{= simulate(2000, atk, >= ac)}`.\n\nAnd when a rate comes from a SMALL sample of real results, `{= wilsonlow(wins, games)}` and `{= wilsonhigh(wins, games)}` give the honest 95% range around it, so twelve wins in twenty games reads not as a flat 60% but as \"60% (39 to 78%)\", wide, because twenty games is not many. This is the Wilson interval, which stays sane at the edges (a perfect record does not claim 100%). Use it to tell a real edge from noise before you trust a win rate.",
     related:['math','estimates','dice'],
     examples:[
       { syn:'{= hypergeom(60, 12, 7, 3)}', desc:'odds of at least 3 of 12 key cards in an opening 7' },
@@ -40175,6 +40194,7 @@ const GUIDE = [
       { syn:'{= simulate(2000, 2d6+3, >= 10)}', desc:'how often 2d6+3 beats a target of 10' },
       { syn:'{= simulate(5000, 4d6kh3, >= 15)}', desc:'odds a keep-highest stat rolls 15 or more' },
       { syn:'{= simulate(2000, atk, >= ac)}', desc:'thresholds can be declared variables' },
+      { syn:'{= round(wilsonlow(12, 20))}-{= round(wilsonhigh(12, 20))}%', desc:'the honest range around a 12/20 win rate' },
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
