@@ -42,6 +42,8 @@ The everyday outliner. This is the part you use without thinking about it.
   ([per-point notes](writing-and-formatting.md#per-point-notes))
 - **Properties.** Give a point `key: value` data (like `cost: 12` or `owner: me`) you can total
   and search; paste a list of `key: value` lines into the editor to add a whole stat block at once.
+  A value can be a small formula, `{prop cost: 60 * 3.50}` shows `210` and still totals, so a
+  computed line value stays one thing that both reads as its result and rolls up.
   ([properties](tasks-and-organizing.md#properties))
 - **Tag colors and property icons.** File then Tag & property styling: give a `#tag` its own
   on-brand color (nested tags inherit it) and a property key a small icon. Purely visual, stored
