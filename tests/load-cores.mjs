@@ -295,7 +295,7 @@ export function loadCores() {
     'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText','clockAtOrdinal','manualClocksOf','collectPillActions', 'pillTokenFor',   // #1116: a rendered pill can name its own token
     'clockFillFor','completingChildIndex','clockCompletionCue','progressCount','tallyMarkers',
     'parseMeter','resolveMeter','meterBar','formatMeter','meterPool','childPropNumber',
-    'parseActionPill','actionNewValue','formatStatValue',
+    'parseActionPill','actionRhsValue','actionNewValue','formatStatValue',
     'artifactToShorthand','unfoldedPrefixLen','foldedOffsetFor',
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',

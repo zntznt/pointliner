@@ -4451,13 +4451,26 @@ function parseActionPill(body) {
   if (/[{}]/.test(r)) return null;
   return { target, op, rhs: r };
 }
-// The value an action pill writes: `current OP rhs`, evaluated in `scope` (props+vars, via
-// resolveNodeScope). Returns a finite number, or null on an unresolvable/invalid input
-// (missing stat, non-numeric, divide-by-zero) so the caller can flash WHY (P4). Pure —
-// reuses the exact evalMath + aggregate pre-pass every other compute pill uses.
+// The right side of an action, as a number, rolling the GENERATIVE engine when it's there so
+// {HP -= 1d6} rolls fresh on every click (engine-1 feeding engine-2, the contest/pick model). A
+// dice expression (parseDice, incl. modifiers and variable terms like 1d6+str) or a top-level
+// alternation ({gold += 2|4|6}) rolls through rollPickSource; anything else is plain arithmetic
+// over props/vars via evalMath + the aggregate pre-pass. Returns a finite number or null.
+function actionRhsValue(rhs, node, scope) {
+  if (parseDice(rhs, scope) || splitTopLevel(rhs, '|').length > 1) {
+    const rolled = Number(rollPickSource(rhs, collectRules(), scope));   // one fresh roll of the source
+    return Number.isFinite(rolled) ? rolled : null;
+  }
+  const v = evalMath(expandAggExpr(rhs, node, scope), scope);
+  return (v === null || !Number.isFinite(v)) ? null : v;
+}
+// The value an action pill writes: `current OP rhs`, with the right side resolved through
+// actionRhsValue (so a dice/pick rhs rolls). Returns a finite number, or null on an
+// unresolvable/invalid input (missing stat, non-numeric, divide-by-zero) so the caller flashes
+// WHY (P4). Reuses the exact roll + evalMath + aggregate machinery every other pill uses.
 function actionNewValue(act, node, scope) {
   if (!act) return null;
-  const rhsVal = evalMath(expandAggExpr(act.rhs, node, scope), scope);
+  const rhsVal = actionRhsValue(act.rhs, node, scope);
   if (rhsVal === null || !Number.isFinite(rhsVal)) return null;
   if (act.op === '=') return rhsVal;
   const cur = evalMath(act.target, scope);   // the stat's current value, read from scope
@@ -9780,7 +9793,7 @@ const INSERT_CMDS = [
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
   { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', keys:['tension','segment','pie','timer'], label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
   { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health','goal','words','target'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Wrap a name in braces to read a declared variable instead, like {meter: {done}/{goal}}. Either side can be a live calculation, so {meter: words(subtree)/1000} is a writing goal that fills as you write. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: words(subtree)/1000}  ·  {meter: 5/5 hearts}', section:'Trackers' },
-  { id:'action',   icon:'▸',  fa:'', keys:['action','apply','button','damage','spend','hp'], label:'Action button', desc:'A button that changes a stat when clicked, so a live playthrough can spend, take damage or reset without retyping. Write a stat name, an operator and an amount: {hp -= 1} subtracts 1 on each click, {gold += 50} adds, {hp = hpmax} refills. The amount can read other values, so roll {damage := 1d6} then click {hp -= damage} to apply it. It changes the nearest hp property (this point or a point above it), or a variable of that name. One click, one Undo.', ex:'{hp -= 1}  ·  {gold += 50}  ·  {hp = hpmax}  ·  {hp -= damage}', section:'Trackers' },
+  { id:'action',   icon:'▸',  fa:'', keys:['action','apply','button','damage','spend','hp'], label:'Action button', desc:'A button that changes a stat when clicked, so a live playthrough can spend, take damage or reset without retyping. Write a stat name, an operator and an amount: {hp -= 1d6} rolls a fresh hit on each click, {gold += 50} adds, {hp = hpmax} refills. The amount is a live expression, so dice, stats and lists all work: {hp -= 1d6+str}, {gold += 2d6*10}, {hp -= 2|4|6}. It changes the nearest hp property (this point or a point above it), or a variable of that name. One click, one Undo.', ex:'{hp -= 1d6}  ·  {gold += 50}  ·  {hp = hpmax}  ·  {hp -= 1d6+str}', section:'Trackers' },
   // Insert — basic inline elements
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  keys:['fn'], label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'cite',     icon:'†',  fa:'fa-solid fa-superscript',  keys:['reuse','again','same','existing','citation'], label:'Cite footnote', desc:'Reference a footnote you already wrote, so one source can be cited more than once.', ex:'[^ref]', section:'Insert' },
@@ -24787,7 +24800,7 @@ const BRACE_FORMS = [
   { label:'count',       keys:['count','tally','number','howmany','tag'],              insert:'{count: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live count of points matching a #tag or search' },
   { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      ph:'is:todo', guide:'roll-query',    desc:'pick one random matching point' },
   { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: 10/100}',      ph:'10/100', guide:'meter',         desc:'a bar of a value against its max' },
-  { label:'action',      keys:['action','apply','button','damage','spend','subtract','increment','decrement'], insert:'{hp -= 1}', ph:'hp', guide:'action', desc:'a button that changes a stat when clicked' },
+  { label:'action',      keys:['action','apply','button','damage','spend','subtract','increment','decrement','roll'], insert:'{hp -= 1d6}', ph:'hp', guide:'action', desc:'a button that changes a stat when clicked (the amount can roll, {hp -= 1d6})' },
   { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   ph:'a→b, b→c', guide:'markov',        desc:'generate text in a style you seed' },
   { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     ph:'likely', guide:'oracle',        desc:'a weighted yes/no answer' },
   { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', ph:'Flow', guide:'sequences', desc:'define a custom to-do workflow' },
@@ -40256,13 +40269,14 @@ const GUIDE = [
     ] },
   { id:'action', cat:'todos', covers:['action'],
     title:'Action buttons',
-    body:"A button that changes a stat when you click it. Where a meter or a rollup READS a number, an action WRITES one, so a live playthrough can spend, take damage, count down ammo or reset between scenes without you retyping the value. Write the stat's name, an operator and an amount in braces: {hp -= 1} draws a small button, and each click subtracts 1 from the point's hp. The operators are += to add, -= to subtract, *= to multiply, /= to divide and a plain = to set: {gold += 50}, {ammo -= 1}, {stress *= 2}, {hp = hpmax} to refill.\n\nThe amount can be any calculation, and it can read other values, which is where it earns its keep. Roll damage into a variable, {damage := 1d6 + str}, then give the target a button {hp -= damage}: click the roll to get a number, click the button to apply it. The button finds the stat the same way a calculation does. It looks for a property called hp on the point itself, then on the points above it, and changes the nearest one; if no point carries that property it changes a variable of that name declared with := instead. So a character point with an hp: 20 property gets a personal button, while {gold += 50} under a party ledger can adjust one shared gold variable for the whole table.\n\nEach click is one document change, so a single Undo puts the stat back. If there is no stat by that name to change, or the amount does not work out to a number, the button says so instead of changing anything silently. An action is a control, not a value, so it is not frozen and does not export a number, it exports as its own text.",
-    related:['variables','meter','math','recipe-crit','clock'],
+    body:"A button that changes a stat when you click it. Where a meter or a rollup READS a number, an action WRITES one, so a live playthrough can spend, take damage, count down ammo or reset between scenes without you retyping the value. Write the stat's name, an operator and an amount in braces: {hp -= 1} draws a small button, and each click subtracts 1 from the point's hp. The operators are += to add, -= to subtract, *= to multiply, /= to divide and a plain = to set: {gold += 50}, {ammo -= 1}, {stress *= 2}, {hp = hpmax} to refill.\n\nThe amount is a live expression, so it can roll dice and read other values, which is where it earns its keep. Write the roll straight into the button and it rolls fresh on every click: {hp -= 1d6} takes a random hit, {gold += 2d6*10} pays out a random haul, and modifiers and stats work too, so {hp -= 1d6+str} adds the striker's strength. A list in bars picks one, {hp -= 2|4|6}. Or roll once into a variable and apply it in more than one place: {damage := 1d6+str} then {hp -= damage} on the target and {log += damage} on a tally, so the same number lands everywhere. Plain sums work as well, {gold -= price * qty}.\n\nThe button finds the stat the same way a calculation does. It looks for a property called hp on the point itself, then on the points above it, and changes the nearest one; if no point carries that property it changes a variable of that name declared with := instead. So a character point with an hp: 20 property gets a personal button, while {gold += 50} under a party ledger adjusts one shared gold variable for the whole table.\n\nEach click is one document change, so a single Undo puts the stat back. If there is no stat by that name to change, or the amount does not work out to a number, the button says so instead of changing anything silently. An action is a control, not a value, so it is not frozen and does not export a number, it exports as its own text.",
+    related:['variables','meter','math','dice','recipe-crit','clock'],
     examples:[
-      { syn:'{hp -= 1}',         desc:'click to subtract 1 from this point’s hp' },
-      { syn:'{gold += 50}',      desc:'add to a gold property or variable' },
+      { syn:'{hp -= 1d6}',       desc:'roll a random hit and apply it, fresh each click' },
+      { syn:'{gold += 50}',      desc:'add a fixed amount to a gold property or variable' },
       { syn:'{hp = hpmax}',      desc:'set one stat to another (a full heal)' },
-      { syn:'{damage := 1d6+str} then {hp -= damage}', desc:'roll damage, then a button applies it' },
+      { syn:'{hp -= 1d6+str}',   desc:'a roll plus a stat, rolled on each click' },
+      { syn:'{damage := 1d6+str} then {hp -= damage}', desc:'roll once, apply the same number in several places' },
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
