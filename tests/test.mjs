@@ -7837,6 +7837,16 @@ test('#1116 the pill door is wired, scoped, and does not hijack ordinary prose',
   assert.match(sbp, /!isBase && !leanCollapsed && !opts\.pillScope/, 'no type switcher on a pill menu');
 });
 
+test('the hover point-menu gates on LIVE dom editing state, not the stale activeContentId var', () => {
+  // Regression ("the hover menu became unreliable"): activeContentId went stale when a render() ended an edit
+  // without exitEdit (an affordance/door click destroys the editor but leaves the module var set), which then
+  // blocked hover-open for the rest of the session. The 200ms hover-open now reads the DOM, which can't drift.
+  assert.ok(_src.includes("if (!dragId && !document.querySelector('.node-content[data-editing]')) showBulletPopup(node.id, bullet)"),
+    'the 200ms bullet hover-open checks .node-content[data-editing], the ground truth');
+  assert.ok(!_src.includes('if (!dragId && activeContentId == null) showBulletPopup'),
+    'the stale-prone activeContentId guard is gone from the hover path');
+});
+
 test('the Shift+F10 pill rows are collected from FOLDED text, or the keyboard door is empty', () => {
   // Found by driving, after a source pin said the "Re-sample value" row existed. Reaching a point
   // with the keyboard means FOCUSING it, and focus unfolds its pills — node.text goes from
