@@ -3047,6 +3047,45 @@ test('mdInline — a URL/link char class never swallows an adjacent stashed plac
   assert.ok(!h2.includes('\u0000'), 'no raw NUL sentinel leaks');
 });
 
+test('#1325 web-image opt-in cores: isRemoteUrl / urlHost / the blocked placeholder', () => {
+  assert.equal(c.isRemoteUrl('https://x.com/a.png'), true);
+  assert.equal(c.isRemoteUrl('http://x.com/a.png'), true);
+  assert.equal(c.isRemoteUrl('photo.jpg'), false, 'a relative local ref is not remote');
+  assert.equal(c.isRemoteUrl('data:image/png;base64,AAAA'), false, 'a data: ref is not remote');
+  assert.equal(c.isRemoteUrl('file:///Users/me/p.png'), false, 'a file:// local ref is not remote');
+  assert.equal(c.urlHost('https://example.com/pics/a.png'), 'example.com');
+  const ph = c.webImageBlockedHtml('https://example.com/a.png', 'a diagram');
+  assert.ok(ph.includes('web-img-blocked') && ph.includes('data-webimg="https://example.com/a.png"'), 'the placeholder carries the url for the consent click');
+  assert.ok(ph.includes('example.com') && /click to allow/i.test(ph), 'it names the host and the action');
+});
+
+test('#1325 mdInline gates a REMOTE image behind the per-document opt-in; local/data always render', () => {
+  vm.runInContext('root = { allowWebImages: false };', c._context);
+  try {
+    const off = c.mdInline('![alt](https://example.com/a.png)');
+    assert.ok(off.includes('web-img-blocked') && !off.includes('<img'), 'a remote image is a placeholder when the doc has not opted in');
+    assert.ok(c.mdInline('![alt](photo.jpg)').includes('<img'), 'a local/relative image always renders (no network)');
+    assert.ok(c.mdInline('![alt](data:image/png;base64,AAAA)').includes('<img'), 'a data: image always renders');
+    vm.runInContext('root = { allowWebImages: true };', c._context);
+    const on = c.mdInline('![alt](https://example.com/a.png)');
+    assert.ok(on.includes('<img') && on.includes('https://example.com/a.png') && !on.includes('web-img-blocked'), 'a remote image renders once the doc opts in');
+  } finally {
+    vm.runInContext('root = mkRoot();', c._context);
+  }
+});
+
+test('#1325 the opt-in flag round-trips through the head, defaults off, and the consent flow is wired', () => {
+  assert.ok(_src.includes("(r.allowWebImages ? headEl('_allowwebimages', '1') : '')"), 'the flag serializes to the head only when on');
+  assert.ok(_src.includes("doc.querySelector('head > _allowwebimages')?.textContent?.trim() === '1'"), 'and parses back strictly as 1');
+  assert.ok(_src.includes('rollLog, allowWebImages,'), 'the parsed flag is assigned onto the loaded root');
+  assert.ok(fnBody(_src, 'mkRoot').includes('allowWebImages: false'), 'a fresh document defaults to off (private)');
+  assert.ok(fnBody(_src, 'mdInline').includes('isRemoteUrl(u) && !webImagesAllowed()'), 'mdInline gates a remote image on the opt-in');
+  assert.ok(_src.includes('openWebImageConsent(wib.dataset.webimg)') && _src.includes('openWebImageConsent(wibk.dataset.webimg)'), 'placeholder click AND keyboard open the consent');
+  assert.ok(fnBody(_src, 'openWebImageConsent').includes('root.allowWebImages = true'), 'granting sets the per-document flag');
+  assert.ok(fnBody(_src, 'maybeOfferWebImageConsent').includes('isRemoteUrl(url) && !webImagesAllowed()'), 'adding a remote image offers the opt-in');
+  assert.ok(_src.includes("img-src 'self' data: blob: https:"), 'the CSP permits https images for the opt-in');
+});
+
 // Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
 // backspaced its label and the space) must still render a checkbox, not a literal
 // `[ ]`. The bug was TASK_RE requiring `\s+` after the bracket; the fix makes the
@@ -26391,26 +26430,26 @@ test('#992 imgSizeParts: the percentage is bounded, and junk that looks numeric 
 });
 
 test('#992 mdInline renders the width modes, and leaves a prose title as a tooltip', () => {
-  const full = c.mdInline('![a](https://x.test/a.png "full")');
+  const full = c.mdInline('![a](a.png "full")');
   assert.ok(full.includes('class="md-img md-img-full"'), 'full gets the full-width class');
   assert.ok(!/ title=/.test(full), 'and the consumed title does not also become a tooltip');
 
-  const wide = c.mdInline('![a](https://x.test/a.png "3/4")');
+  const wide = c.mdInline('![a](a.png "3/4")');
   assert.ok(wide.includes('class="md-img md-img-wide"'), '3/4 is a synonym for wide');
 
-  const scaled = c.mdInline('![a](https://x.test/a.png "wide 150%")');
+  const scaled = c.mdInline('![a](a.png "wide 150%")');
   assert.ok(scaled.includes('class="md-img md-img-wide"') && scaled.includes('style="width:150%"'),
     'mode and scale compose into a class plus an inline width');
 
   // Backward compatibility: an ordinary caption renders exactly as it did before #992 —
   // the bare .md-img class, the title as a tooltip, no style attribute.
-  const prose = c.mdInline('![a](https://x.test/a.png "My vacation photo")');
+  const prose = c.mdInline('![a](a.png "My vacation photo")');
   assert.ok(prose.includes('class="md-img"'), 'a prose title leaves the class alone');
   assert.ok(prose.includes('title="My vacation photo"'), 'and keeps the tooltip');
   assert.ok(!/ style=/.test(prose), 'and adds no inline width');
 
   // No title at all is unchanged too.
-  const plain = c.mdInline('![a](https://x.test/a.png)');
+  const plain = c.mdInline('![a](a.png)');
   assert.ok(plain.includes('class="md-img"') && !/ title=/.test(plain) && !/ style=/.test(plain),
     'a titleless image is byte-for-byte what it always was');
 });

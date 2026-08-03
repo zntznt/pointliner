@@ -20,8 +20,16 @@
        style-src 'self' 'unsafe-inline'   — inline <style>, runtime-injected theme/accent <style>
          elements, and per-element .style/.cssText all require inline styles; can't tighten
          without breaking theming.
-       img-src 'self' data: blob:         — inline SVG favicon + canvas-rasterized icons (data:/
-         blob:) + user markdown images.
+       img-src 'self' data: blob: https:  — inline SVG favicon + canvas-rasterized icons (data:/
+         blob:) + user markdown images. `https:` was added for the per-document web-image opt-in (#1325):
+         a remote ![](https://…) is a NETWORK REQUEST that leaks the reader's IP + activity to the image
+         host, so the app never EMITS a remote <img src> unless the document has explicitly opted in
+         (root.allowWebImages, default off, asked for with a consent prompt the first time a web image is
+         added). That gate is APP-LEVEL, so the residual this directive still allows is a raw <img> GET
+         beacon reaching an https host (e.g. from a hypothetical missed-escape XSS building its own <img>).
+         connect-src 'none' is unchanged, so fetch/XHR/WebSocket exfil stays fully blocked; only an
+         image GET is now reachable, and only to https (never a chosen exfil endpoint the app itself calls).
+         A local/relative/data:/blob: image never touches the network and always renders.
        font-src 'self' data:              — the embedded Font Awesome woff2 subset is a data: font.
        connect-src 'none'                 — the app makes ZERO network requests (no fetch/XHR/WS).
          This is the load-bearing directive and it IS enforced from a meta tag: even if inline
@@ -33,7 +41,7 @@
      file:// (CSP parsed, app boots, FA data: font loads, favicon data: URL renders, theme <style>
      injects; connect-src 'none' confirmed blocking fetch). The manifest is skipped under file://
      (CORS on a null origin, unrelated to CSP) exactly as the PWA-optional design intends. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Pointliner</title>
 <!-- PWA install (hosted copy only): the manifest + companion files make the app
@@ -974,6 +982,11 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-total-blank::before{content:none!important}
 .mt-total-cell::before{content:attr(data-agg) '\00a0';font-size:.72em;font-weight:600;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:var(--r-sm);margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
+/* #1325: a not-yet-allowed remote image renders as this click-to-allow chip instead of an <img> (privacy). */
+.web-img-blocked{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px dashed var(--bdr-ui);border-radius:var(--r-md);background:var(--bg-2,var(--bg));color:var(--muted);font-size:12.5px;cursor:pointer;max-width:100%;transition:border-color .12s,color .12s}
+.web-img-blocked:hover,.web-img-blocked:focus-visible{border-color:var(--acc);color:var(--fg);outline:none}
+.web-img-blocked:focus-visible{box-shadow:0 0 0 3px var(--ring)}
+.web-img-blocked i{font-size:.95em}
 /* #992 image width modes. The mode raises the CEILING; an inline width:N% (also from the title)
    sets the width WITHIN it.
    The issue's negative-margin full-bleed recipe (half a viewport left, half a container right,
@@ -3246,7 +3259,7 @@ let selFocusId   = null;  // keyboard cursor (moveable selection end), UXP-57
 let nodeClipboard = null;
 
 function mkRoot() {
-  return { id: uid(), text: '', note: '', type: 'ul', children: [], checked: false, collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, seed: null, journal: { mode: 'append', targetId: null }, rollLog: { on: false, targetId: null }, appearance: { tags: {}, props: {} }, calendar: null, calendars: {}, gamelog: null };
+  return { id: uid(), text: '', note: '', type: 'ul', children: [], checked: false, collapsed: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], savedSearches: [], templates: [], inboxes: [], plugins: [], docId: null, seed: null, journal: { mode: 'append', targetId: null }, rollLog: { on: false, targetId: null }, appearance: { tags: {}, props: {} }, calendar: null, calendars: {}, gamelog: null, allowWebImages: false };
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 function ensureDocId(root, gen) {
@@ -7230,6 +7243,45 @@ function safeUrl(u, allowDataImage) {
   if (/^data:/i.test(t) && !(allowDataImage && /^data:image\//i.test(t))) return '';
   return t;
 }
+// #1325: a REMOTE image reference (http/https) makes a network request when it renders — it leaks the
+// reader's IP + activity to the host. Local/relative/data:/blob: references never touch the network.
+function isRemoteUrl(u) { return /^https?:\/\//i.test(String(u || '').trim()); }
+// Whether THIS document has opted in to loading web images (default off — the zero-network promise). A
+// per-document flag, so one shared doc's choice never changes another's. Read at render + insert time.
+function webImagesAllowed() { return !!(typeof root !== 'undefined' && root && root.allowWebImages); }
+// The host of a URL for the consent copy ("load pictures from example.com"); the bare string on a miss.
+// A regex, not new URL(), so it is pure (no realm dependency) and works identically under file://.
+function urlHost(u) { const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(u || '')); return m ? m[1] : String(u || ''); }
+// #1325: the stand-in for a not-yet-allowed remote image. Clickable (and keyboard-operable) — it opens the
+// consent prompt for THIS document. `u` is already &<>-escaped by mdInline; escQ closes the attribute quote.
+function webImageBlockedHtml(u, alt) {
+  const host = urlHost(u);
+  const name = alt ? String(alt) : 'Web image';
+  return `<span class="web-img-blocked" role="button" tabindex="0" data-webimg="${escQ(u)}"`
+    + ` title="This document keeps your reading private and does not load web images yet. Click to allow images from ${escQ(host)}."`
+    + ` aria-label="Blocked web image ${escQ(name)} from ${escQ(host)}. Activate to allow web images in this document.">`
+    + `<i class="fa-regular fa-image" aria-hidden="true"></i> ${escHtml(name)}. Click to allow web images</span>`;
+}
+// #1325: the consent prompt. Shown the first time a web image is added, or when a blocked placeholder is
+// activated. Granting sets the per-document flag (saved with the document) so every remote image in THIS
+// document renders. Returns whether it was granted. No-op-returns-true if already allowed.
+async function openWebImageConsent(url) {
+  if (webImagesAllowed()) return true;
+  const host = urlHost(url);
+  const ok = await openConfirmDialog({
+    title: 'Show web images in this document?',
+    message: `Pointliner loads nothing from the network by default, so your reading stays private. Allowing web images lets this document load pictures from ${host} and other sites, which means your device requests them from their host every time the document is opened. This choice applies to this document only.`,
+    confirmLabel: 'Allow web images',
+    cancelLabel: 'Keep private',
+  });
+  if (ok) { root.allowWebImages = true; markDirty(); render(); flashHint('Web images are now shown in this document.'); }
+  return ok;
+}
+// #1325: after a remote image is added, offer the opt-in right then (the "first time you add a web image"
+// moment). Deferred a frame so the insert dialog finishes closing before the consent prompt opens.
+function maybeOfferWebImageConsent(url) {
+  if (isRemoteUrl(url) && !webImagesAllowed()) requestAnimationFrame(() => openWebImageConsent(url));
+}
 // url/alt/title arrive already &<>-escaped from the caller; only quotes remain
 // Escape raw data for HTML text content / attributes (state names, etc.)
 /* UXP-262: `String(s || '')`, not `(s || '')`. A truthy non-string used to throw here
@@ -7648,6 +7700,11 @@ function mdInline(s) {
   // images first: ![alt](url "title") — superset of link syntax
   s = s.replace(/!\[([^\]]*)\]\(([^)\s\x00]+)(?:\s+"([^"]*?)")?\)/g, (_, alt, url, title) => {
     const u = safeUrl(url, true); if (!u) return '';
+    // #1325: a remote image is only EMITTED as an <img> once this document has opted in (default off — the
+    // zero-network promise). Until then render a click-to-allow placeholder, so a web image is visible and
+    // fixable (P4), never a silent broken box, and the consent prompt is one click away. Local/relative/
+    // data:/blob: images never touch the network and always render.
+    if (isRemoteUrl(u) && !webImagesAllowed()) return stash(webImageBlockedHtml(u, alt));
     const sz = imgSizeParts(title);
     return stash(`<img src="${escQ(u)}" alt="${escQ(alt)}"${sz.title?` title="${escQ(sz.title)}"`:''} class="md-img${sz.cls?' '+sz.cls:''}"${sz.style?` style="${escQ(sz.style)}"`:''} loading="lazy">`);
   });
@@ -9188,7 +9245,7 @@ function toOpml(r) {
   const calsHas = r.calendars && Object.keys(r.calendars).length;
   const gamelogHas = r.gamelog && r.gamelog.targetId != null;
   const unitsHas = r.units && typeof r.units === 'object' && Object.keys(r.units).length;   // #875: declared units only, built-ins never serialized
-  const headCfg = headEl('_footnotes', r.footnotes) + headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (r.seed != null ? headEl('_seed', String(r.seed >>> 0)) : '') + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '');
+  const headCfg = headEl('_footnotes', r.footnotes) + headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (r.seed != null ? headEl('_seed', String(r.seed >>> 0)) : '') + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '') + (r.allowWebImages ? headEl('_allowwebimages', '1') : '');   // #1325: per-doc web-image opt-in
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -9427,6 +9484,8 @@ function fromOpml(xml) {
   const rollLogRaw    = doc.querySelector('head > _rolllog')?.textContent?.trim();
   const rollLog       = (() => { try { const j = JSON.parse(rollLogRaw || 'null'); return (j && typeof j === 'object') ? { on: !!j.on, targetId: typeof j.targetId === 'string' ? j.targetId : null } : { on: false, targetId: null }; } catch(_) { return { on: false, targetId: null }; } })();
   const docId         = doc.querySelector('head > _docid')?.textContent?.trim() || null;
+  // #1325: the per-document web-image opt-in. Absent/anything-but-1 = off (the private default).
+  const allowWebImages = doc.querySelector('head > _allowwebimages')?.textContent?.trim() === '1';
   // #1243: the document session seed (a 32-bit uint) or null. Null/blank/garbage keeps the doc on
   // Math.random (default behavior); a valid seed makes dice/deck/roll draws reproducible.
   const seed          = (() => { const s = doc.querySelector('head > _seed')?.textContent?.trim(); if (!s) return null; const n = parseInt(s, 10); return Number.isFinite(n) ? (n >>> 0) : null; })();
@@ -9458,7 +9517,7 @@ function fromOpml(xml) {
   // legacy doc loads unchanged and convert() still works off the built-ins.
   const unitsRaw      = doc.querySelector('head > _units')?.textContent?.trim();
   const units         = (() => { try { return normalizeUnits(JSON.parse(unitsRaw || 'null')) || undefined; } catch(_) { return undefined; } })();
-  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, footnotes, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, seed, journal, rollLog,
+  return { id: uid(), text: title, note: '', type: 'ul', checked: false, collapsed: false, footnotes, savedSearches, templates, inboxes, plugins, appearance, calendar, calendars, gamelog, units, docId, seed, journal, rollLog, allowWebImages,
     children: body ? Array.from(body.children).filter(c=>c.tagName==='outline').map(po) : [] };
 }
 
@@ -9611,7 +9670,7 @@ const INSERT_CMDS = [
   // Insert — basic inline elements
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  keys:['fn'], label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'cite',     icon:'†',  fa:'fa-solid fa-superscript',  keys:['reuse','again','same','existing','citation'], label:'Cite footnote', desc:'Reference a footnote you already wrote, so one source can be cited more than once.', ex:'[^ref]', section:'Insert' },
-  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      keys:['img','picture','photo'], label:'Image',    desc:'Embed an image from a URL.',                    ex:'![alt](url)',   section:'Insert' },
+  { id:'image',    icon:'🖼',  fa:'fa-regular fa-image',      keys:['img','picture','photo'], label:'Image',    desc:'Reference an image by its location (never stored in the file). A file beside your saved document shows at once; a web address is loaded only after you allow web images for the document, so your reading stays private by default.', ex:'![alt](photo.jpg)', section:'Insert' },
   { id:'link',     icon:'⌘',  fa:'fa-solid fa-link',         keys:['url','hyperlink'], label:'Link',     desc:'Hyperlink with custom display text.',           ex:'[text](url)',   section:'Insert' },
   { id:'table',    icon:'▦',  fa:'fa-solid fa-table-cells',  keys:['grid'], label:'Table',    desc:'Insert a static Markdown table at the caret.',  ex:'| a | b |',     section:'Insert' },
   // Organize — document-wide state sets and live searches
@@ -18244,6 +18303,10 @@ function attachContentEvents(content, node) {
         return;
       }
     }
+    // #1325: a blocked web-image placeholder opens the per-document consent prompt (display mode only —
+    // in edit mode the raw ![](url) markdown shows instead, so there is no placeholder to click).
+    const wib = e.target.closest?.('.web-img-blocked');
+    if (wib) { e.preventDefault(); e.stopPropagation(); openWebImageConsent(wib.dataset.webimg); return; }
     // math pill: click anywhere opens the editor (no re-roll — result is deterministic)
     const mp = e.target.closest?.('.math-roll');
     if (mp && !mp.classList.contains('math-bad')) {
@@ -19483,6 +19546,9 @@ function onKeyDown(e, id, content) {
     // hidden-note indicator: Enter/Space reveals the note (the keyboard twin of its click)
     const nind = e.target.closest?.('.note-ind');
     if (nind) { e.preventDefault(); openNoteEditor(nind.dataset.noteId); return; }
+    // #1325: blocked web-image placeholder — Enter/Space opens the consent prompt (keyboard twin of click)
+    const wibk = e.target.closest?.('.web-img-blocked');
+    if (wibk) { e.preventDefault(); openWebImageConsent(wibk.dataset.webimg); return; }
     // spoiler block: Enter/Space reveals/re-conceals it (the keyboard twin of its click)
     const spoil = e.target.closest?.('.md-spoiler');
     if (spoil && e.target === spoil) { e.preventDefault(); toggleSpoiler(spoil); return; }
@@ -22301,7 +22367,7 @@ function insertInlineArtifact(id, nodeId, content) {
         { key:'url', label:'Image URL', placeholder:'https://…/picture.png', required:true },
         { key:'alt', label:'Alt text', placeholder:'Describe the image (optional)', value:selected },
       ],
-      onSubmit: v => applyInlineInsertion(nodeId, offset, `![${v.alt || 'image'}](${v.url})`),
+      onSubmit: v => { applyInlineInsertion(nodeId, offset, `![${v.alt || 'image'}](${v.url})`); maybeOfferWebImageConsent(v.url); },
     });
   } else if (id === 'dice') {
     openDiceDialog({
@@ -22564,7 +22630,7 @@ function insertCellArtifact(id, node, r, c, offset) {
         { key:'url', label:'Image URL', placeholder:'https://…/picture.png', required:true },
         { key:'alt', label:'Alt text', placeholder:'Describe the image (optional)' },
       ],
-      onSubmit: v => splice(`![${v.alt || 'image'}](${v.url})`),
+      onSubmit: v => { splice(`![${v.alt || 'image'}](${v.url})`); maybeOfferWebImageConsent(v.url); },
     });
   } else if (id === 'dice') {
     openDiceDialog({
@@ -39781,7 +39847,7 @@ const GUIDE = [
   // and adding it here would double-cover a single command id.
   { id:'image-size', cat:'writing',
     title:'Image size',
-    body:"An image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
+    body:"An image is a REFERENCE to where the file lives, never a copy stored inside your document, so the document stays small and portable. A picture saved beside your document (or in a folder next to it) shows straight away and needs no network. A web address, https://…, is different: loading it is a request to that host every time the document opens, which can reveal your reading to them, so the app loads no web images by default. The first time you add one it asks whether to Allow web images for this document; until you do, the picture shows as a click-to-allow placeholder rather than a silent broken box.\n\nAn image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
     related:['inline-md','point-types'],
     examples:[
       { syn:'![map](map.png "wide")',      desc:'three quarters of the window' },
