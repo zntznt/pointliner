@@ -964,6 +964,18 @@ test('#1281 "+ Check" door opens the check dialog with sum(KEY) <= prefilled (th
   assert.match(fnBody(_src, 'openCheckDialog'), /checkExprOf\(node\) \|\| prefill/, 'an existing check wins; the prefill only seeds a fresh one');
 });
 
+test('#1281 residual: reducer chips (avg/count/min/max) + property-key chips build a total by clicking', () => {
+  // The five reducers are click chips, not just sum, each inserting fn(prop) with prop selected.
+  assert.match(_src, /const REDUCER_CHIPS = \['sum', 'avg', 'count', 'min', 'max'\]\.map/, 'avg/count/min/max join sum as clickable reducers');
+  // Property keys come from the document, so a key is picked, never typed; capped so the row never floods.
+  assert.match(_src, /function propKeyChips\(\)[\s\S]{0,120}collectPropKeys\(root\)\.slice\(0, 8\)/, 'propKeyChips offers the doc\'s own property keys, capped');
+  assert.match(fnBody(_src, 'propKeyChips'), /insertAndSelect\(el, '', k, ''\)/, 'a key chip replaces the selected prop placeholder with the real key');
+  // Wired into all three compute dialogs.
+  assert.ok(_src.includes('[...MATH_CHIPS, ...REDUCER_CHIPS, ...propKeyChips()]'), 'the math dialog gains the reducers and the keys');
+  assert.ok(fnBody(_src, 'openCheckDialog').includes('...propKeyChips()'), 'the check dialog gains the key chips');
+  assert.ok(_src.includes('[...EST_CHIPS, ...propKeyChips()]'), 'the estimate dialog gains the key chips');
+});
+
 test('#1240 phase 1: the add-row dialog wires the cores to a promoted row (source pin)', () => {
   // The DOM half cannot run headless (it opens a dialog and mutates the live tree), so source-pin the
   // wiring — the pure cores it rides are unit-tested above, and the whole flow was live-driven (a 2-field
