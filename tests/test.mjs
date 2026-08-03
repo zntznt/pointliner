@@ -16040,7 +16040,7 @@ test('#1111 the export menu describes each format by what it KEEPS, not only by 
   // the guide entry carries the same three facts, and points at the safe default
   assert.match(_src, /Markdown freezes the pills to their shown text and keeps your links/);
   assert.match(_src, /Plain text has no way to write a link/);
-  assert.match(_src, /If you are not sure which to send, send the Web page\./);
+  assert.match(_src, /Send the Shareable page when someone should read it, the Web page when they should use it\./);
   // The plain-text toast names a way OUT, not only a loss (P2 inside a P4 message). Matched on the
   // source template literal, ternary and all — the assembled sentence itself is pinned by the
   // exportedNote core test, which is where a rendered-string assertion belongs.
@@ -17500,6 +17500,52 @@ test('toMarkdown — quote is a bare block; divider and code stay list items', (
   // structure. Pinned so the decision is not silently re-opened.
   assert.match(_mdOf(_mdN('---\nSection', 'divider')), /- ---/, 'a divider is still a list item');
   assert.match(_mdOf(_mdN('```\ncode here', 'code')), /- `/, 'so is a code point');
+});
+
+// ── #1282 read-only shareable web page (the OUT seam: a static page anyone opens in a browser) ──
+test('#1282 checkVerdictHtml: each verdict renders its own mark; nothing when there is no check', () => {
+  assert.match(c.checkVerdictHtml('pass'), /ro-pass[^>]*>✓/, 'a pass is a check mark');
+  assert.match(c.checkVerdictHtml('fail'), /ro-fail[^>]*>✗/, 'a fail is a cross');
+  assert.match(c.checkVerdictHtml('error'), /ro-err[^>]*>⚠/, 'an unevaluable check warns');
+  assert.equal(c.checkVerdictHtml(null), '', 'no check → nothing appended');
+});
+
+test('#1282 readonlyDocTitle: the first heading names the page, else a neutral fallback', () => {
+  const r = c.mkNode(''); r.children.push(c.mkNode('intro'), c.mkNode('## The Big Day'));
+  assert.equal(c.readonlyDocTitle(r), 'The Big Day', 'the first heading titles it, marker stripped');
+  const r2 = c.mkNode(''); r2.children.push(c.mkNode('just a bullet'));
+  assert.equal(c.readonlyDocTitle(r2), 'Shared document', 'no heading → a neutral fallback');
+});
+
+test('#1282 nodeToReadonlyHtml: nesting, heading render, a check verdict, and excluded points drop', () => {
+  const head = c.mkNode('## Budget');
+  const a = c.mkNode('Hall'); a.props.push({ key: 'cost', val: '600' });
+  const b = c.mkNode('Food'); b.props.push({ key: 'cost', val: '500' });
+  head.children.push(a, b);
+  head.props.push({ key: 'check', val: 'sum(cost) <= 1000' });   // 1100 > 1000 → fail
+  const html = c.nodeToReadonlyHtml(head, {});
+  assert.match(html, /<div class="ro-pt"><h2[^>]*>Budget/, 'a heading point becomes an <h2> inside a point wrapper');
+  assert.match(html, /ro-fail[^>]*>✗/, 'its failing check shows a verdict, right in the shared page');
+  assert.match(html, /<div class="ro-kids">[\s\S]*Hall[\s\S]*Food/, 'children nest under it, in order');
+  const ex = c.mkNode('scaffolding'); ex.noexport = true;
+  assert.equal(c.nodeToReadonlyHtml(ex, {}), '', 'an Exclude-from-export point contributes nothing');
+});
+
+test('#1282 docToReadonlyHtml: a self-contained STATIC page — styled, titled, and NOT the live app', () => {
+  const r = c.mkNode(''); r.children.push(c.mkNode('## Plan'), c.mkNode('a point'));
+  const page = c.docToReadonlyHtml(r);
+  assert.match(page, /^<!DOCTYPE html>/, 'a complete HTML document');
+  assert.match(page, /<title>Plan<\/title>/, 'titled from the first heading');
+  assert.ok(page.includes('<style>') && page.includes('ro-doc'), 'styling is inlined — self-contained, no external CSS');
+  assert.ok(!/<script/i.test(page), 'the read-only page carries NO script, so it can never reopen as the app');
+  assert.ok(page.includes('prefers-color-scheme:dark'), 'readable in both light and dark');
+});
+
+test('#1282 the shareable page is wired into the File menu (its own one-way export)', () => {
+  assert.ok(_src.includes('id="btn-export-share"'), 'a Shareable page item exists in the Export a copy menu');
+  assert.match(_src, /getElementById\('btn-export-share'\)[\s\S]{0,90}exportReadonlyHtml\(\)/, 'the menu item runs the read-only export');
+  const fn = fnBody(_src, 'exportReadonlyHtml');
+  assert.ok(fn.includes('docToReadonlyHtml(root)') && fn.includes("'.html'"), 'it downloads the static page as .html');
 });
 
 // ── point/selection export (toMarkdown on a synthetic {children:[…]} root) ────
