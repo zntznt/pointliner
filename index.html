@@ -21043,6 +21043,9 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openAddToPackDialog(nodeId); } },
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
       fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
+    // #1310: on a section whose rows carry properties, offer a .csv export (the grid an accountant opens).
+    ...(sectionToCsvRows(node, knownStates(root)) ? [{ sec:'More', icon:{ fa:'fa-solid fa-table-cells', fb:'⇥' }, label:'Export table to CSV',
+      fn: () => { hideBpop(); exportSectionCsv(nodeId); } }] : []),
     // #954: keep scaffolding (variable declarations, planning notes) out of a SHARED copy. The flag
     // skips this point AND its subtree in all three lossy exports — Markdown and text skip inside
     // their own emit walks, the self-contained HTML export prunes the tree before toOpml sees it.
@@ -34747,6 +34750,39 @@ function tableToPoints(text, delim) {
   return heading.children.length ? { points: [heading], skipped: [] } : { points: [], skipped: [] };
 }
 
+// ─── #1310: CSV export, the OUT-seam mirror of the spreadsheet paste (#1296) ───
+// Panel re-run: Yuki's accountant and Diane want a grid, not the read-only HTML page. A section of
+// rows becomes a .csv an accountant or a spreadsheet opens: columns are the properties, one row per
+// point, values frozen. The exact inverse of importSplitRow, so an exported file round-trips back
+// through the paste importer. Pure string builders, Node-testable.
+function csvCell(v) {
+  const s = String(v == null ? '' : v);
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;   // quote + double-up, like sheet CSV
+}
+function rowsToCsv(rows) {
+  return (rows || []).map(r => (r || []).map(csvCell).join(',')).join('\r\n');   // CRLF: the convention Excel expects
+}
+// A point's child rows → [headerRow, ...dataRows], or null when there is no table to export (fewer than
+// two rows, or no properties). Columns are the UNION of every property key seen across the rows (so a row
+// missing one gets an empty cell), preceded by a `name` column holding each point's title cleaned of
+// pills, props and markdown markers. Row order is document order; column order is first-seen.
+function sectionToCsvRows(node, states) {
+  const kids = ((node && node.children) || []).filter(c => c && typeof c.text === 'string');
+  if (kids.length < 2) return null;
+  const keys = [], seen = new Set();
+  for (const c of kids) for (const p of (c.props || [])) {
+    const k = (p.key || '').trim(); const lk = k.toLowerCase();
+    if (k && !seen.has(lk)) { seen.add(lk); keys.push(k); }
+  }
+  if (!keys.length) return null;
+  const rows = [['name', ...keys]];
+  for (const c of kids) {
+    const val = k => { const p = (c.props || []).find(x => (x.key || '').trim().toLowerCase() === k.toLowerCase()); return p ? p.val : ''; };
+    rows.push([auditTitle(c.text), ...keys.map(val)]);
+  }
+  return rows;
+}
+
 // #1265 PR 2: import a set of Markdown files (a "vault") into ONE document. Each file becomes a
 // top-level section (its own leading `# H1`, or a `# <filename>` wrapper), and [[wikilinks]] between
 // the files resolve to internal links / mirrors, so a note wiki comes in with its cross-references
@@ -34780,7 +34816,7 @@ function markdownVaultToPoints(files) {
 // frozen to its shown value (via the SAME flattenArtifacts the Markdown export uses, so the two never
 // diverge), a check shown as its verdict, no script, no editing, opens in any browser. Marcus: "a clean
 // shareable timeline and budget a bride opens with no app." Respects Exclude-from-export (the caller
-// prunes first). Pure string builders — Node-testable.
+// prunes first). Pure string builders, Node-testable.
 function checkVerdictHtml(v) {
   if (v === 'pass')  return ' <span class="ro-chk ro-pass" title="check passes">✓</span>';
   if (v === 'fail')  return ' <span class="ro-chk ro-fail" title="check fails">✗</span>';
@@ -34932,6 +34968,14 @@ function exportPlainText() { const n = downloadText(withFoldedActive(() => toPla
 // #1282: the read-only shareable page. Frozen like the .md/.txt exports (values, not the live app), so
 // exportedNote's frozen-copy wording applies; a client opens it in any browser with no Pointliner.
 function exportReadonlyHtml() { const n = downloadText(withFoldedActive(() => docToReadonlyHtml(root)), '.html', 'text/html'); flashHint('Saved a read-only page anyone can open in a browser: “' + n + '”' + exportedNote(root, true)); }
+// #1310: export a section's rows as a .csv an accountant or spreadsheet opens (the OUT mirror of paste).
+function exportSectionCsv(nodeId) {
+  const node = nodeById(nodeId); if (!node) return;
+  const rows = sectionToCsvRows(node, knownStates(root));
+  if (!rows) { flashHint('No table to export here. This point needs at least two rows that carry properties.'); return; }
+  const n = downloadText(rowsToCsv(rows), '.csv', 'text/csv');
+  flashHint(`Exported ${ptsLabel(rows.length - 1)} as a spreadsheet: “${n}”.`);
+}
 
 // Export a point (or a set of selected points) to Markdown. Reuses toMarkdown by wrapping
 // the nodes in a throwaway root, so a point exports as itself + its subtree, and pills
@@ -40292,7 +40336,7 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing, and they differ in what they keep. Markdown freezes the pills to their shown text and keeps your links, writing each one as a real markdown link so the connections survive in a blog post or a README. Plain text has no way to write a link, so links become the words they point at, and the message after the export tells you how many. Shareable page is a read-only web page: a clean, static page anyone opens in any browser with no app, where every pill shows the value it had when you saved (a total is its number, a roll its result, an estimate its range, a check its ✓ or ✗). This is the one to hand to a client, a stakeholder or anyone who just needs to READ your work, dice and formulas rendered as plain results rather than live controls. Web page (HTML) is the opposite choice: it packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice, calculations and links still live (it reopens as the running app, not a static page). Send the Shareable page when someone should read it, the Web page when they should use it. All in the File menu.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the Export a copy formats skips that point and everything under it, Markdown, plain text, Shareable page and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing, and they differ in what they keep. Markdown freezes the pills to their shown text and keeps your links, writing each one as a real markdown link so the connections survive in a blog post or a README. Plain text has no way to write a link, so links become the words they point at, and the message after the export tells you how many. Shareable page is a read-only web page: a clean, static page anyone opens in any browser with no app, where every pill shows the value it had when you saved (a total is its number, a roll its result, an estimate its range, a check its ✓ or ✗). This is the one to hand to a client, a stakeholder or anyone who just needs to READ your work, dice and formulas rendered as plain results rather than live controls. Web page (HTML) is the opposite choice: it packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice, calculations and links still live (it reopens as the running app, not a static page). Send the Shareable page when someone should read it, the Web page when they should use it. All in the File menu.\n\nWhen a point holds a list of same-shaped rows with properties (a budget, an inventory, a set of costs), its menu also offers Export table to CSV: a spreadsheet file an accountant or Excel opens, one row per point and a column per property, values frozen. It is the exact reverse of pasting a spreadsheet in, so a table can round-trip out and back.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the Export a copy formats skips that point and everything under it, Markdown, plain text, Shareable page and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
     related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },
