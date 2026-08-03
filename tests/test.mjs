@@ -978,7 +978,7 @@ test('#1281 residual: reducer chips (avg/count/min/max) + property-key chips bui
   assert.match(_src, /function propKeyChips\(\)[\s\S]{0,120}collectPropKeys\(root\)\.slice\(0, 8\)/, 'propKeyChips offers the doc\'s own property keys, capped');
   assert.match(fnBody(_src, 'propKeyChips'), /insertAndSelect\(el, '', k, ''\)/, 'a key chip replaces the selected prop placeholder with the real key');
   // Wired into all three compute dialogs.
-  assert.ok(_src.includes('[...MATH_CHIPS, ...REDUCER_CHIPS, ...propKeyChips()]'), 'the math dialog gains the reducers and the keys');
+  assert.ok(_src.includes('...MATH_CHIPS, ...REDUCER_CHIPS,') && _src.includes('...propKeyChips()]'), 'the math dialog gains the reducers and the keys');
   assert.ok(fnBody(_src, 'openCheckDialog').includes('...propKeyChips()'), 'the check dialog gains the key chips');
   assert.ok(_src.includes('[...EST_CHIPS, ...propKeyChips()]'), 'the estimate dialog gains the key chips');
 });
@@ -995,6 +995,24 @@ test('#1322 a chip field opens caret-at-end so the first chip does not wipe a pr
   // the chip inserters splice at the caret (so caret-at-end => append, not replace)
   assert.match(fnBody(_src, 'insertAtCaret'), /el\.value\.slice\(0, s\) \+ text \+ el\.value\.slice\(e\)/, 'insertAtCaret splices at the selection');
   assert.match(fnBody(_src, 'insertAndSelect'), /el\.value\.slice\(0, s\) \+ before/, 'insertAndSelect splices at the selection too');
+});
+
+test('#1323 date math gets a visible door: date chips in the @ Math dialog', () => {
+  // date computation was syntax-only (the only date door being /due for scheduling). The @ Math dialog now
+  // offers today / asdate / daysbetween / addmonths as click chips, beside the reducers, reusing the
+  // existing functions (no new syntax).
+  assert.ok(_src.includes('const DATE_CHIPS = ['), 'DATE_CHIPS is defined');
+  const dc = between(_src, 'const DATE_CHIPS = [', '];');
+  for (const fn of ['today', 'asdate(', 'daysbetween(', 'addmonths(']) {
+    assert.ok(dc.includes(fn), `the date chips offer ${fn}`);
+  }
+  assert.ok(dc.includes("insertAndSelect(el, 'asdate(', 'today + 30', ')')"), 'asdate seeds a selected placeholder to replace');
+  // wired into the math dialog, after the reducers, before the property keys
+  assert.ok(_src.includes('[...MATH_CHIPS, ...REDUCER_CHIPS, ...DATE_CHIPS, ...propKeyChips()]'), 'the math dialog gains the date chips');
+  // the functions the chips insert are real evalMath date functions (so a clicked chip computes, not #ERR)
+  for (const fn of ['asdate', 'daysbetween', 'addmonths']) {
+    assert.ok(c.evalMath(`${fn === 'asdate' ? 'asdate(today)' : fn === 'daysbetween' ? 'daysbetween(today, today)' : 'addmonths(today, 1)'}`, {}) !== null, `${fn} evaluates`);
+  }
 });
 
 test('#1312 "+ Variance" door writes a per-row over/under and a total variance on a two-column section', () => {

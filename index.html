@@ -29523,6 +29523,18 @@ const MATH_CHIPS = [
 // property-key chip to replace it — click sum, then click cost, and you have sum(cost), no keyboard.
 const REDUCER_CHIPS = ['sum', 'avg', 'count', 'min', 'max'].map(fn =>
   ({ label: fn + '( )', title: 'Roll up a number property over the children', insert: el => insertAndSelect(el, fn + '(', 'prop', ')') }));
+
+// #1323: date computation had no visible door — computing a date ("30 days from today", "days until the
+// deadline") was syntax-only, the only date door being /due (task scheduling). These clickable chips give
+// date math the same front door the reducers have (P2), reusing the existing functions, no new syntax (P5).
+// asdate() wraps a number as a calendar date; the rest read as their question. Each seeds a selected
+// placeholder so the next click/keystroke replaces it, exactly like the reducer + property chips.
+const DATE_CHIPS = [
+  { label: 'today',          title: 'Insert today (dates are numbers, so today does date math)', insert: 'today' },
+  { label: 'asdate( )',      title: 'Show a number as a calendar date', insert: el => insertAndSelect(el, 'asdate(', 'today + 30', ')') },
+  { label: 'daysbetween( )', title: 'Count the days from one date to another', insert: el => insertAndSelect(el, 'daysbetween(', 'today, due', ')') },
+  { label: 'addmonths( )',   title: 'Shift a date by whole months', insert: el => insertAndSelect(el, 'addmonths(', 'today, 1', ')') },
+];
 // #1281 residual: the document's own property keys as chips, so a key is PICKED, never typed — the last
 // mile of "put a number on this bullet, then total it." Replaces the `prop` placeholder a reducer chip
 // leaves selected. Capped so the row never floods; empty (no chips) when the doc has no properties yet.
@@ -29546,7 +29558,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         label: 'Expression',
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
-        chips: [...MATH_CHIPS, ...REDUCER_CHIPS, ...propKeyChips()],
+        chips: [...MATH_CHIPS, ...REDUCER_CHIPS, ...DATE_CHIPS, ...propKeyChips()],
         hint: 'A live calculation over variables and child points. Full reference in the concept guide.',
         // live preview rendered right below the input as the user types. Reads the other fields
         // (second arg) so the preview pill matches how it will render (value-only + number format).
@@ -40198,7 +40210,7 @@ const GUIDE = [
     ] },
   { id:'math-dates', cat:'compute',
     title:'Dates & units in math',
-    body:"Calculate how many days until a deadline, show what date is 30 days from today, find someone's age in years, shift a date by whole months, land on the last day of a month, count the working days to a deadline or convert between units for a recipe or a travel plan. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date. The month and year functions follow a custom calendar when one is set; weeknum and workdaysbetween use the ordinary Mon-Sun week.",
+    body:"Calculate how many days until a deadline, show what date is 30 days from today, find someone's age in years, shift a date by whole months, land on the last day of a month, count the working days to a deadline or convert between units for a recipe or a travel plan. Dates are just numbers in math, so all the usual arithmetic works; wrap the result in asdate(…) to display it as a calendar date. You do not have to remember the names: the @ Math dialog offers today, asdate, days-between and add-months as click chips, beside the reducers. The month and year functions follow a custom calendar when one is set; weeknum and workdaysbetween use the ordinary Mon-Sun week.",
     related:['math','dates','custom-calendars'],
     examples:[
       { syn:'{= today + 30}',      desc:'30 days from today' },
