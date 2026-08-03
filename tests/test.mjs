@@ -3342,8 +3342,22 @@ test('paragraph fold: node.folded round-trips via _folded; only emitted when set
   assert.match(_src, /function setFolded\(id, val\) \{[\s\S]*?node\.type !== 'para'/, 'setFolded gates on para type');
   assert.match(_src, /function toggleFold\(id\)[^\n]*type === 'para'/, 'toggleFold gates on para type');
   assert.match(_src, /node\.folded && node\.type === 'para' \? 'folded' : ''/, 'renderRow only folds a para');
-  assert.match(_src, /if \(isPara\) \{ hideBpop\(\); toggleFold\(node\.id\); return; \}/, 'a paragraph bullet folds instead of zooming');
+  assert.match(_src, /if \(node\.type === 'para'\) \{ hideBpop\(\); toggleFold\(node\.id\); return; \}/, 'a paragraph bullet folds instead of zooming (in the shared attachBulletMenuGestures)');
   assert.match(_src, /\.nt-para\.folded>\.node-row>\.node-content:not\(\[data-editing\]\)/, 'the clamp is disabled while editing');
+});
+
+test('#1343 corkboard cards get the usual bullet gestures (click zooms, hover opens the menu)', () => {
+  // The outline bullet's click(zoom)/keyboard/hover(menu) is extracted into attachBulletMenuGestures and reused
+  // by BOTH the outline row and the corkboard card, so a card behaves like a point (owner: card-view zoom+menu).
+  assert.ok(_src.includes('function attachBulletMenuGestures(bullet, node)'), 'the shared bullet-gesture helper exists');
+  const g = fnBody(_src, 'attachBulletMenuGestures');
+  assert.ok(g.includes('hideBpop(); zoomInto(node.id)'), 'a bullet click zooms into the point');
+  assert.ok(g.includes("addEventListener('mouseenter'") && g.includes('showBulletPopup(node.id, bullet)'), 'a 200ms hover dwell opens the menu');
+  assert.ok(g.includes('editingEl?.dataset.id !== node.id'), 'the hover is blocked only while THIS point is being edited (#455)');
+  assert.ok((_src.match(/attachBulletMenuGestures\(bullet, node\)/g) || []).length >= 2, 'wired on BOTH the outline row and the corkboard card');
+  const cb = fnBody(_src, 'buildCorkboard');
+  assert.ok(cb.includes('attachBulletMenuGestures(bullet, node)') && cb.includes("bullet.setAttribute('aria-haspopup', 'menu')"),
+    'the cork bullet gets the gestures + the menu-target a11y role');
 });
 
 // #919 (agent-review): a `/`/`@` typed right after an unfolded pill's closing brace
