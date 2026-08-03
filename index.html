@@ -4705,9 +4705,15 @@ function expandAggExpr(expr, node, vars = null) {
   // sum(cost, subtree) = whole subtree, sum(cost, 2) = two levels. An UNRECOGNIZED scope leaves
   // the call literal so evalMath surfaces #ERR (never a silent wrong depth).
   if (/\b(?:sum|avg|count)\s*\(/.test(e)) {
-    e = e.replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:,\s*(self|children|subtree|\d+)\s*)?\)/g,
+    e = e.replace(/\b(sum|avg|count)\s*\(\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:,\s*(self|children|subtree|document|doc|\d+)\s*)?\)/g,
       (m, fn, prop, scope) => {
         if (prop.includes('.')) return dottedArm(m, fn, prop, scope);   // base.col column total
+        // #1320: `document`/`doc` widens a bare rollup to the WHOLE document (root's subtree), the same
+        // widener word the query rollups above already take (count("q", document), sum("q", cost, document)).
+        // A doc-wide total was the natural ask that silently stayed prose because the bare form only knew
+        // depths off the render node. P1: one scope word, one meaning across both rollup families.
+        const sc = scope && String(scope).toLowerCase();
+        if (sc === 'document' || sc === 'doc') return '(' + aggregateChildren(root, fn, prop, Infinity) + ')';
         const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
         if (depth === null) return m;   // bad scope → literal → #ERR downstream
         return '(' + aggregateChildren(node, fn, prop, depth) + ')';
@@ -4719,9 +4725,12 @@ function expandAggExpr(expr, node, vars = null) {
   // falls through to evalMath. `max(cost)` (1 arg) and `max(cost, subtree)` still roll up;
   // `max(hp, 10)` / `min(x, 5)` compute the numeric max/min the user intends.
   if (/\b(?:min|max)\s*\(/.test(e)) {
-    e = e.replace(/\b(min|max)\s*\(\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:,\s*(self|children|subtree)\s*)?\)/g,
+    e = e.replace(/\b(min|max)\s*\(\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:,\s*(self|children|subtree|document|doc)\s*)?\)/g,
       (m, fn, prop, scope) => {
         if (prop.includes('.')) return dottedArm(m, fn, prop, scope);   // base.col column extremal
+        // #1320: `document`/`doc` widens to the whole document, same as the sum/avg/count arm above (P1).
+        const sc = scope && String(scope).toLowerCase();
+        if (sc === 'document' || sc === 'doc') return '(' + aggregateChildren(root, fn, prop, Infinity) + ')';
         const depth = scope === undefined ? 1 : resolveScopeDepth(scope);
         if (depth === null) return m;
         return '(' + aggregateChildren(node, fn, prop, depth) + ')';
@@ -40237,12 +40246,13 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nYou do not have to type any of it. On a heading whose rows carry a number, a + Total door totals the column in one click; and in the @ Math or @ Check dialog, sum, avg, count, min and max are click chips, and so are your own property keys, so a total is built by clicking the reducer and then the key, never spelling either out. When the rows carry exactly TWO number columns (a quote and an actual, an estimate and an invoice), a + Variance door writes the over-or-under for you: the difference on every row and the total on the heading, so a budget-vs-actual reads its variance without you authoring a single formula.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, open the pill's actions (right-click it, or focus it and press the menu key) and choose Explain this number. It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nYou do not have to type any of it. On a heading whose rows carry a number, a + Total door totals the column in one click; and in the @ Math or @ Check dialog, sum, avg, count, min and max are click chips, and so are your own property keys, so a total is built by clicking the reducer and then the key, never spelling either out. When the rows carry exactly TWO number columns (a quote and an actual, an estimate and an invoice), a + Variance door writes the over-or-under for you: the difference on every row and the total on the heading, so a budget-vs-actual reads its variance without you authoring a single formula.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. Widen it all the way with sum(cost, document), which totals the property across the WHOLE document from any point, the same widener word a search reducer takes. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, open the pill's actions (right-click it, or focus it and press the menu key) and choose Explain this number. It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
       { syn:'{= sum(cost, subtree)}', desc:'total the cost of every descendant, all the way down' },
       { syn:'{= sum(cost, 2)}', desc:'reach two levels down (children + grandchildren)' },
+      { syn:'{= sum(cost, document)}', desc:'total the property across the whole document, from any point' },
       { syn:'{= avg(score)}', desc:'average the scores' },
       { syn:'{= count(cost)}',desc:'how many children have a cost' },
       { syn:'{= sum("#task", cost)}', desc:'total a property over everything matching a search' },
