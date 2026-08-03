@@ -983,6 +983,20 @@ test('#1281 residual: reducer chips (avg/count/min/max) + property-key chips bui
   assert.ok(_src.includes('[...EST_CHIPS, ...propKeyChips()]'), 'the estimate dialog gains the key chips');
 });
 
+test('#1322 a chip field opens caret-at-end so the first chip does not wipe a prefill', () => {
+  // The dialog select-alls the first field on open (good for a name/alias you replace). A chip field is
+  // BUILT incrementally, and a chip inserts over the current selection, so a full select-all made the
+  // first chip click erase the door's `sum(KEY) <= ` prefill. A chip field must open caret-at-end instead.
+  const io = fnBody(_src, 'openInsertDialog');
+  assert.ok(io.includes("if (i === 0 && f.chips && f.chips.length) inp.dataset.caretEnd = '1'"),
+    'the first field is marked caret-at-end when it carries chips');
+  assert.ok(/if \(f\.dataset\.caretEnd\) \{ const p = f\.value\.length; f\.setSelectionRange\(p, p\); \} else f\.select\(\)/.test(io),
+    'the focus pass honors the flag: caret-at-end for chip fields, select-all otherwise');
+  // the chip inserters splice at the caret (so caret-at-end => append, not replace)
+  assert.match(fnBody(_src, 'insertAtCaret'), /el\.value\.slice\(0, s\) \+ text \+ el\.value\.slice\(e\)/, 'insertAtCaret splices at the selection');
+  assert.match(fnBody(_src, 'insertAndSelect'), /el\.value\.slice\(0, s\) \+ before/, 'insertAndSelect splices at the selection too');
+});
+
 test('#1312 "+ Variance" door writes a per-row over/under and a total variance on a two-column section', () => {
   const aff = fnBody(_src, 'maybeAddRowAffordance');
   assert.match(aff, /if \(numKeys\.length === 2 && /, 'the door appears only on a section with exactly two number columns');
