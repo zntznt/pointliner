@@ -17097,6 +17097,57 @@ test('toMarkdown — a blockquote keeps its > even when the point is not typed a
   assert.match(multi, /> line one\n> line two/, 'the > is on every line');
 });
 
+// ── #1296 spreadsheet paste → points with tagged number properties ──────────
+test('#1296 importCellValue: currency/thousands/percent reduce to a bare number; other cells stay text', () => {
+  assert.equal(c.importCellValue('$3,200.00'), '3200.00', 'a currency-and-thousands cell becomes a number a sum can read');
+  assert.equal(c.importCellValue('1,234'), '1234', 'thousands separators dropped');
+  assert.equal(c.importCellValue('45%'), '45', 'a percent becomes its number');
+  assert.equal(c.importCellValue('-5'), '-5', 'a negative keeps its sign');
+  assert.equal(c.importCellValue('  "quoted"  '), 'quoted', 'surrounding quotes stripped');
+  assert.equal(c.importCellValue('3 apples'), '3 apples', 'a number with text stays text (not 3)');
+  assert.equal(c.importCellValue('v2'), 'v2', 'a label with a digit stays text');
+  assert.equal(c.importCellValue(''), '', 'an empty cell is empty');
+});
+
+test('#1296 importKeyName: a header becomes an engine-safe property key', () => {
+  assert.equal(c.importKeyName('Unit Cost'), 'unit_cost', 'spaces become underscores, lowercased');
+  assert.equal(c.importKeyName('Cost ($)'), 'cost', 'punctuation trimmed to a clean key');
+  assert.equal(c.importKeyName('  Qty  '), 'qty');
+  assert.equal(c.importKeyName('($)'), '', 'a key with no word characters is empty');
+});
+
+test('#1296 importSplitRow: tab is a plain split; comma is quote-aware', () => {
+  assert.deepEqual(host(c.importSplitRow('a\tb\tc', '\t')), ['a', 'b', 'c'], 'tab split');
+  assert.deepEqual(host(c.importSplitRow('a,b,c', ',')), ['a', 'b', 'c'], 'comma split');
+  assert.deepEqual(host(c.importSplitRow('a,"b, c",d', ',')), ['a', 'b, c', 'd'], 'a quoted comma stays inside its cell');
+  assert.deepEqual(host(c.importSplitRow('a,"he said ""hi""",b', ',')), ['a', 'he said "hi"', 'b'], 'a doubled quote is one literal quote');
+});
+
+test('#1296 sniffDelimited: rectangular tab/comma tables detected; prose and Markdown are not', () => {
+  assert.equal(c.sniffDelimited('Item\tCost\nCabinets\t3200\nSink\t540'), '\t', 'a TSV paste is a table');
+  assert.equal(c.sniffDelimited('Item,Cost\nCabinets,3200\nSink,540'), ',', 'a CSV paste is a table');
+  assert.equal(c.sniffDelimited('Hello, world. This is prose, with commas.'), null, 'one line of prose is not a table');
+  assert.equal(c.sniffDelimited('# A heading\n- a list item\n- another'), null, 'Markdown is not a delimited table');
+  assert.equal(c.sniffDelimited('just one column\nsecond row\nthird row'), null, 'a single column is not a table');
+});
+
+test('#1296 tableToPoints: rows become points under one heading; number columns emit numeric {prop} tokens', () => {
+  const src = 'Item\tCost\tQty\tRoom\nCabinets\t$3,200\t2\tKitchen\nCountertop\t1800\t1\tKitchen\nSink\t540\t1\tBath';
+  const { points } = c.tableToPoints(src, '\t');
+  assert.equal(points.length, 1, 'the whole table lands under ONE heading');
+  const head = points[0];
+  assert.match(head.text, /^##\s/, 'the parent is a heading, so the + Total door can appear on it (deriveTypeFromText → h2)');
+  assert.equal(nonEmpty(head.children, 'table rows').length, 3, 'one point per data row (header row excluded)');
+  // First column is the point text; each later column is a {prop key: value} promoteLoadedShorthand
+  // turns into a real prop. A numeric cell is normalized to a bare number (so a sum reads it); a text
+  // cell stays text (so it gets no + Total door). Header cells become engine-safe keys.
+  assert.equal(head.children[0].text, 'Cabinets {prop cost: 3200} {prop qty: 2} {prop room: Kitchen}',
+    'currency normalized to a number, qty numeric, Room kept as text; keys lowercased');
+  // The header row is never a data point, and an empty cell contributes no token.
+  const { points: p2 } = c.tableToPoints('Item,Cost\nOnly,\n', ',');
+  assert.equal(p2[0].children[0].text, 'Only', 'an empty cost cell adds no {prop} token');
+});
+
 // ── #1265 Markdown import (markdownToPoints, the inverse of toMarkdown) ──────
 const _mdStruct = (nodes) => nodes.map(n => ({ text: n.text, type: n.type, kids: _mdStruct(n.children || []) }));
 
@@ -17158,6 +17209,17 @@ test('#1265 Markdown import — wired into the Import door (format-sniffed, reus
     'Markdown points append as trees (skips the OPML round-trip so footnotes survive), reusing promote/undo/footnote-lift');
   assert.ok(/if \(opts\.trees\)/.test(_src), 'appendOpmlSubtrees accepts pre-parsed trees');
   assert.ok(_src.includes('.md,.markdown'), 'the file picker accepts .md/.markdown');
+});
+
+test('#1296 spreadsheet import — wired into the Import door (sniffed before Markdown, same append path, .csv accepted)', () => {
+  assert.ok(_src.includes('(tblDelim = sniffDelimited(text))'), 'the Import door sniffs a delimited table before falling back to Markdown');
+  assert.ok(_src.includes('tableToPoints(text, tblDelim)'), 'a detected table parses into heading+row trees');
+  assert.ok(/tableNote = ok/.test(_src) && _src.includes('click + Total to sum'), 'a successful table import nudges the user toward the + Total door');
+  assert.ok(/inp\.accept = '[^']*\.csv/.test(_src), 'the file picker accepts .csv');
+  // Order guard: the OPML sniff and the table sniff both precede the Markdown fallback, so a CSV never
+  // reaches markdownToPoints (a comma-heavy sentence would otherwise import as one prose point).
+  const di = between(_src, 'const doImport = (text, label) =>', 'const doVaultImport');
+  assert.ok(di.indexOf('sniffDelimited') < di.indexOf('markdownToPoints'), 'table is tried before Markdown');
 });
 
 // ── #1265 PR 2: multi-file "vault" import (each file a section, [[wikilinks]] resolved) ──────
