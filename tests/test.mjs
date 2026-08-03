@@ -17202,6 +17202,28 @@ test('#1296 tableToPoints: rows become points under one heading; number columns 
   assert.equal(p2[0].children[0].text, 'Only', 'an empty cost cell adds no {prop} token');
 });
 
+// ── #1297 date-series generator (batch dated points at a fixed interval) ─────
+test('#1297 dateSeries: evenly-spaced dates from start to end, inclusive, capped, invalid → empty', () => {
+  // 2026-04-01 is epoch day 20544; every 14 days through 2026-05-01 (20574) → Apr 1, 15, 29.
+  const start = c.parseDueDate('2026-04-01'), end = c.parseDueDate('2026-05-01');
+  const s = c.dateSeries(start, 14, end);
+  assert.deepEqual(host(s), [start, start + 14, start + 28], 'three dates, 14 apart, the last on or before the end');
+  assert.equal(c.dateSeries(start, 14, start)[0], start, 'a single-day range yields just the start');
+  assert.deepEqual(host(c.dateSeries(end, 14, start)), [], 'end before start → no dates');
+  assert.deepEqual(host(c.dateSeries(start, 0, end)), [], 'a zero/blank step makes no series (no infinite loop)');
+  assert.deepEqual(host(c.dateSeries(start, -5, end)), [], 'a negative step is rejected');
+  assert.equal(c.dateSeries(start, 1, start + 10000, 366).length, 366, 'the count is capped so a huge range never runs away');
+});
+
+test('#1297 the date-series generator is wired (bullet-menu door, dated to-do children, parseDueDate inputs)', () => {
+  assert.ok(_src.includes("label:'Repeating dates…'") && _src.includes('openDateSeriesDialog(nodeId)'), 'a bullet-menu door opens the generator');
+  const ins = fnBody(_src, 'insertDateSeriesPoints');
+  assert.ok(ins.includes("mkNode('- [ ] ' + label)") && ins.includes("setDateProp(cn, 'due'"), 'each generated point is a to-do with a real due date, so it lands in the Agenda');
+  const dlg = fnBody(_src, 'openDateSeriesDialog');
+  assert.ok(dlg.includes('parseDueDate') && dlg.includes('dateSeries('), 'the dialog parses the dates and calls the pure series core');
+  assert.ok(dlg.includes('flashError'), 'bad input is rejected visibly, never a silent empty insert');
+});
+
 // ── #1265 Markdown import (markdownToPoints, the inverse of toMarkdown) ──────
 const _mdStruct = (nodes) => nodes.map(n => ({ text: n.text, type: n.type, kids: _mdStruct(n.children || []) }));
 
