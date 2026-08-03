@@ -2,7 +2,7 @@
 
 *Part of the [generative & computational guide](README.md). This is the **Compute** family:
 pills that do math, including arithmetic, dates, sums that roll up your document, uncertain
-estimates and pass/fail checks.*
+estimates, odds and simulation, and pass/fail checks.*
 
 The core is one syntax: **`{= expression}`**. The leading `=` says "compute this." Type it, click
 away, and you get a math pill showing the result. Unlike a dice roll, **a math pill is live**: it
@@ -496,6 +496,58 @@ promote to an estimate pill, so the roll-up is dialog-made.
 
 > Estimates are a **separate engine** from `{= …}` math (a distribution isn't a single number), so
 > you can't put an estimate inside a `{= …}` expression; it fails visibly if you try.
+
+---
+
+## Odds and simulation
+
+Two probability questions the dice and rollups don't answer on their own. Both live in a `{= …}`
+pill and return a plain **percentage**, so they compose with everything else like any other number.
+Reach for either from the `{` menu (**odds** and **simulate**).
+
+### Drawing without replacement (`hypergeom`)
+
+`{= hypergeom(pop, successes, draws, atleast)}` is the chance of drawing **at least** `atleast` of
+the good things when you take `draws` from a pile of `pop` of which `successes` are good, and put
+none back:
+
+```
+{= hypergeom(60, 12, 7, 3)}      odds of at least 3 of 12 key cards in an opening hand of 7
+{= hypergeom(60, 24, 10, 3)}     the land-count question: 3+ of 24 lands in your first 10 cards
+{= hypergeom(40, 3, 5, 1)}       odds you draw at least 1 of 3 antidotes in a 5-card deal
+```
+
+This is a **different calculation** from the dice engine, which rolls *with* replacement. Whenever
+you deal from a finite pile that shrinks as you go (a deck, a bag, a hand), this is the honest
+answer and dice are not.
+
+### Simulating a roll (`simulate`)
+
+`{= simulate(N, roll, over a bar)}` rolls a dice expression `N` times and reports the percentage of
+rolls that clear the bar. It runs the **same dice engine** your `{2d6}` pills roll with, so any
+expression they accept works here, keep-highest and pools included:
+
+```
+{= simulate(2000, 2d6+3, >= 10)}     how often 2d6+3 beats a target of 10
+{= simulate(5000, 4d6kh3, >= 15)}    odds a keep-highest stat rolls 15 or more
+{= simulate(2000, 3d6, < 6)}         how often three dice come up under 6
+```
+
+Reach for it when there's no tidy formula: a messy combination of dice, an unusual keep rule, or a
+threshold you'd otherwise work out on scratch paper. The comparator can be `>=`, `>`, `<=`, `<`,
+`==` or `!=`, and the threshold can be a declared variable, so `{= simulate(2000, atk, >= ac)}`
+reads as the question it is. The simulation is **seeded**, so the number holds still between edits
+rather than flickering; a larger `N` is a steadier estimate.
+
+Both are ordinary numbers, so round them and add a sign the way you would any odds:
+
+```
+{= round(hypergeom(60, 12, 7, 3))}%     a clean percentage in a sentence
+```
+
+> Nonsense in (more successes than the population, an expression that isn't dice, an unresolvable
+> argument) leaves the pill as plain text rather than inventing a number, the same as any other
+> `{= …}` that can't resolve.
 
 ---
 
