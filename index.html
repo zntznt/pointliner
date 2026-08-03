@@ -4731,6 +4731,47 @@ function expandAggExpr(expr, node, vars = null) {
         return v === null ? m : '(' + v + ')';
       });
   }
+  // #1298: hypergeom(pop, successes, draws, atleast) → the PERCENTAGE odds of drawing at least
+  // `atleast` successes WITHOUT replacement. A scalar substitution like percentile, so it composes
+  // ({= round(hypergeom(60, 24, 10, 3))}% reads as a sentence). Each arg is a literal or a resolved
+  // variable/expression; anything unresolvable leaves the call literal so evalMath surfaces #ERR (P4).
+  if (/\bhypergeom\s*\(/.test(e)) {
+    e = e.replace(/\bhypergeom\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*,\s*([^,()]+?)\s*,\s*([^,()]+?)\s*\)/g,
+      (m, a, b, c, d) => {
+        const vars = varsMap();
+        const nums = [a, b, c, d].map(x => /^-?\d+(?:\.\d+)?$/.test(x.trim()) ? Number(x) : evalMath(x, vars));
+        if (nums.some(v => v === null || !Number.isFinite(v))) return m;   // unresolvable arg → #ERR
+        const v = hypergeomAtLeast(nums[0], nums[1], nums[2], nums[3]);
+        return v === null ? m : '(' + v + ')';
+      });
+  }
+  // #1298: simulate(N, diceExpr, <op> threshold) → the PERCENTAGE of N rolls of diceExpr satisfying
+  // the comparison. Reuses the generative engine (parseDice/rollParsed via sampleGenerator) the dice
+  // pill and the distribution peek already roll with — engine-1 feeding engine-2 as a composable
+  // number. Seeded from the call text so the answer is STABLE across renders and decorrelated per
+  // call; the session RNG is saved and restored so nothing else is touched. Not a dice expression,
+  // an unresolvable N/threshold, or N < 1 → literal → #ERR (P4).
+  // ponytail: dice only (the peek covers deck/grammar sims); N capped at SIM_MAX so a per-render
+  // recompute stays cheap.
+  if (/\bsimulate\s*\(/.test(e)) {
+    e = e.replace(/\bsimulate\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*,\s*(>=|<=|==|!=|>|<|=)\s*([^,()]+?)\s*\)/g,
+      (m, nExpr, dice, op, thExpr) => {
+        const vars = varsMap();
+        const N  = /^\d+$/.test(nExpr.trim()) ? Number(nExpr) : evalMath(nExpr, vars);
+        const th = /^-?\d+(?:\.\d+)?$/.test(thExpr.trim()) ? Number(thExpr) : evalMath(thExpr, vars);
+        if (N === null || !Number.isFinite(N) || N < 1) return m;
+        if (th === null || !Number.isFinite(th)) return m;
+        if (!parseDice(dice, vars)) return m;                             // not a dice expression → #ERR
+        const trials = Math.min(SIM_MAX, Math.max(1, Math.round(N)));
+        const saved = _sessionRng;
+        _sessionRng = rngFromSeed(hashSeedStr(dice + '|' + op + th + '|' + trials));
+        let outcomes;
+        try { outcomes = sampleGenerator('dice', { expr: dice }, trials, { vars }); }
+        finally { _sessionRng = saved; }
+        const v = simulateChance(outcomes, op, th);
+        return v === null ? m : '(' + v + ')';
+      });
+  }
   // convert(valueExpr, from, to) — unit conversion over the doc's table (built-ins + declared
   // units), substituted to a number before evalMath (the rollup model, so units stay function-
   // shaped and evalMath stays number-only). The value arg is itself evaluated, so it composes
@@ -24286,6 +24327,8 @@ const BRACE_FORMS = [
   { label:'modifier',    keys:['modifier','mod','cap','title','upper','lower'],        insert:'{name.cap}',           ph:'name',  guide:'gen-modifiers', desc:'reshape output: capitalize, a/an, plural' },
   { label:'item field',  keys:['item','field'],                                        insert:'{item.field}',         ph:'item',  guide:'gen-rules',     desc:'read a field off a picked item' },
   { label:'estimate',    keys:['estimate','uncertain','normal','uniform'],             insert:'{5 to 10}',            ph:'5 to 10',  guide:'estimates',     desc:'an uncertain value with a range' },
+  { label:'odds',        keys:['odds','hypergeom','draw','probability','chance'],       insert:'{= hypergeom(60, 24, 10, 3)}', ph:'60, 24, 10, 3', guide:'odds', desc:'odds of drawing at least N of something, no replacement' },
+  { label:'simulate',    keys:['simulate','montecarlo','simulation','oddsroll'],       insert:'{= simulate(2000, 2d6, >= 8)}', ph:'2000, 2d6, >= 8', guide:'odds', desc:'the percent of N rolls that clear a bar' },
   { label:'query',       keys:['query','search','list','embed'],                       insert:'{query: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live list of matching points' },
   { label:'count',       keys:['count','tally','number','howmany'],                    insert:'{count: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live count of matching points' },
   { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      ph:'is:todo', guide:'roll-query',    desc:'pick one random matching point' },
@@ -28071,6 +28114,67 @@ function distChanceAtMost(outcomes, t) {
   let n = 0; for (const x of xs) if (x <= t) n++;
   return n / xs.length * 100;
 }
+
+// ─── #1298: combinatorial probability + Monte-Carlo, as COMPOSABLE evalMath scalars ───
+// Panel #4's two most-numerate users walked because the engine's probability is uniform-dice (WITH
+// replacement) and their real questions were draw-WITHOUT-replacement (a land count by turn N) and
+// simulate-a-condition. Both are pure and slot into {= …} beside chanceover as a number you keep in
+// the text and compute with (engine-2); simulate reuses the generative dice engine (engine-1).
+
+// Natural log of Γ(x) via the Lanczos approximation (g=7). Overflow-safe: hypergeom over a 60-card
+// deck already needs C(60,10) ≈ 7.5e10, and larger populations overflow a direct factorial, so the
+// probabilities are summed in log space. Accurate to ~1e-13 for x > 0, all hypergeomAtLeast needs.
+function lgamma(x) {
+  const g = 7, c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);  // reflection
+  x -= 1;
+  let a = c[0]; const t = x + g + 0.5;
+  for (let i = 1; i < g + 2; i++) a += c[i] / (x + i);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+// ln C(n, k) in log space; -Infinity (→ exp = 0, an impossible term) when k is out of [0, n].
+function lnChoose(n, k) { return (k < 0 || k > n) ? -Infinity : lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1); }
+
+// P(X >= atleast) as a PERCENTAGE (0..100) for X ~ Hypergeometric(pop, successes, draws): the odds of
+// drawing AT LEAST `atleast` of the `successes` good items when you take `draws` from a `pop` without
+// replacement (lands by turn N, the antidote before the poison). Args rounded to ints and validated;
+// null on nonsense (K>N, negatives, draws>pop) so the call stays literal → #ERR, never a confidently
+// wrong number (P4). PERCENTAGE to match chanceover, so the two odds functions read the same way.
+function hypergeomAtLeast(pop, successes, draws, atleast) {
+  const N = Math.round(pop), K = Math.round(successes), n = Math.round(draws), k0 = Math.round(atleast);
+  if (![N, K, n, k0].every(Number.isFinite)) return null;
+  if (N < 0 || K < 0 || n < 0 || K > N || n > N) return null;         // impossible draw
+  const lo = Math.max(k0, 0, n - (N - K));                            // smallest achievable count >= atleast
+  const hi = Math.min(K, n);                                          // largest achievable count
+  if (lo > hi) return 0;                                              // atleast beyond the max achievable
+  const lnDen = lnChoose(N, n);
+  let p = 0;
+  for (let k = lo; k <= hi; k++) p += Math.exp(lnChoose(K, k) + lnChoose(N - K, n - k) - lnDen);
+  return Math.min(100, Math.max(0, p * 100));
+}
+
+// The share of a Monte-Carlo outcome array satisfying `value <op> t`, as a PERCENTAGE — the reducer
+// behind simulate(). General over the six comparators (the same set the dice-pool success test uses),
+// so a simulate can ask any of them; non-finite outcomes dropped, null on an empty sample / bad t.
+function simulateChance(outcomes, op, t) {
+  const xs = (outcomes || []).filter(x => typeof x === 'number' && Number.isFinite(x));
+  const th = Number(t);
+  if (!xs.length || !Number.isFinite(th)) return null;
+  const test = op === '>=' ? v => v >= th : op === '>' ? v => v > th
+             : op === '<=' ? v => v <= th : op === '<' ? v => v < th
+             : op === '!=' ? v => v !== th : v => v === th;          // '==' and '=' → equality
+  let n = 0; for (const x of xs) if (test(x)) n++;
+  return n / xs.length * 100;
+}
+const SIM_MAX = 20000;   // Monte-Carlo trials cap: ~±0.35% std error at p=.5, cheap enough per render.
+                         // ponytail: raise if a bigger sample is shown to be needed; memoize only if it lags.
+// FNV-1a of a string → uint32, to seed a simulate() from its own call text so the answer is STABLE
+// across renders (a probability in your doc must not flicker) and decorrelated per distinct call.
+function hashSeedStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+
 // Sample a generator N times → an outcome array (numbers for dice, strings otherwise). Uses the same
 // pure cores the live pill rolls with, but never touches its state: dice/grammar re-run purely; a deck
 // samples a THROWAWAY fresh record per trial (never the live pill's bag); roll picks from a cached pool.
@@ -39645,6 +39749,17 @@ const GUIDE = [
       { syn:'{cost_low to cost_high}', desc:'a range driven by declared variables' },
       { syn:'{(5 to 10) + (2 to 4)}', desc:'combine two ranges in one estimate' },
       { syn:'Click the pill', desc:'re-sample it, like re-rolling dice' },
+    ] },
+  { id:'odds', cat:'compute',
+    title:'Odds & simulation',
+    body:"Two questions the dice and rollups do not answer on their own: the odds of a draw WITHOUT replacement, and the odds a random roll clears a bar. Both are ordinary numbers, so they live in a `{= …}` pill beside your other math and read as a percentage.\n\n`{= hypergeom(pop, successes, draws, atleast)}` is the chance of drawing AT LEAST `atleast` of the good things when you take `draws` from a pile of `pop` of which `successes` are good, and put none back. \"Odds I see at least three of my twelve key cards in an opening seven from a sixty-card deck\" is `hypergeom(60, 12, 7, 3)`; \"odds I draw the antidote before three cards are gone\" is the same shape. This is a different calculation from the dice engine, which rolls WITH replacement, so it is the honest answer for anything you deal from a finite pile.\n\n`{= simulate(N, roll, over a bar)}` rolls a dice expression `N` times and reports the percentage that clear the bar: `{= simulate(2000, 2d6+3, >= 10)}` is roughly how often two dice plus three beat a target of ten. It runs the very same dice engine your `{2d6}` pills roll with, so any expression they accept works here, including keep-highest and pools. Reach for it when there is no tidy formula: a messy combination of dice, an unusual keep rule, a threshold you would otherwise work out on scratch paper.\n\nBoth return a plain percentage, so round it and add a sign the way you would any odds: `{= round(hypergeom(60, 12, 7, 3))}%`. The simulation is seeded, so the number holds still between edits rather than flickering, and a larger `N` is a steadier estimate. Give any argument as a declared variable and the question reads as a sentence: `{= simulate(2000, atk, >= ac)}`.",
+    related:['math','estimates','dice'],
+    examples:[
+      { syn:'{= hypergeom(60, 12, 7, 3)}', desc:'odds of at least 3 of 12 key cards in an opening 7' },
+      { syn:'{= round(hypergeom(60, 24, 10, 3))}%', desc:'the land-count question, rounded with a percent sign' },
+      { syn:'{= simulate(2000, 2d6+3, >= 10)}', desc:'how often 2d6+3 beats a target of 10' },
+      { syn:'{= simulate(5000, 4d6kh3, >= 15)}', desc:'odds a keep-highest stat rolls 15 or more' },
+      { syn:'{= simulate(2000, atk, >= ac)}', desc:'thresholds can be declared variables' },
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
