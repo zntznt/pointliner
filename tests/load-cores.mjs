@@ -288,6 +288,7 @@ export function loadCores() {
     'isRemoteUrl','urlHost','webImagesAllowed','webImageBlockedHtml',   // #1325: web-image opt-in cores
     'imageDialogFields',   // #1326: the shared Insert-image fields + opt-in-aware preview
     'isImageUrl','imgSrcFromHtml',   // #1327: smart image paste detection
+    'externalDropContent',   // #1329: resolve a dropped image/text payload
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'fnArities','fnArityProblem','arityPhrase',   // #1169: a known function at the wrong arity
