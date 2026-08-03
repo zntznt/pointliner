@@ -961,6 +961,14 @@ test('#1281 "+ Total" door totals a number column with a child-scoped {= sum(KEY
   assert.match(_src, /datalist'\); dl\.id = 'propkey-suggest'[\s\S]{0,140}collectPropKeys\(root\)/, 'the props key input suggests keys already in the doc');
 });
 
+test('#1330 row-affordance doors fire on a plain-bullet parent with a number column, not only headings', () => {
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.ok(aff.includes('const isHeading = /^h[1-6]$/.test(deriveTypeFromText(node.text)'), 'heading is a FLAG now, not a hard gate');
+  assert.ok(!aff.includes("if (!/^h[1-6]$/.test(deriveTypeFromText(node.text) || '')) return"), 'the heading-only early return is gone (the panel #7 blocker)');
+  assert.ok(aff.includes('if (!isHeading && !numKeys.length) return'), 'a non-heading earns a door only when there is a number column to total');
+  assert.ok(aff.includes("!node.children.some(c => (c.props || []).length || (c.math || []).length)"), 'a prose/tag outline (no props/math on children) bails cheaply — no door spam');
+});
+
 test('#1281 "+ Check" door opens the check dialog with sum(KEY) <= prefilled (the sum/check half)', () => {
   const aff = fnBody(_src, 'maybeAddRowAffordance');
   // A single + Check door on the first number column, only when the heading has no check yet.
