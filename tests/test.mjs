@@ -7837,6 +7837,17 @@ test('#1116 the pill door is wired, scoped, and does not hijack ordinary prose',
   assert.match(sbp, /!isBase && !leanCollapsed && !opts\.pillScope/, 'no type switcher on a pill menu');
 });
 
+test('edit-on-click is scoped to the content box — the row-level gutter/margin edit fallback is removed', () => {
+  // Owner report: clicking away from a point (bullet gutter / left margin / inter-row padding) entered edit on
+  // that row's point. .node-content is flex:1 and its OWN mousedown handles clicks on the whole text box, so
+  // the row-level "click anywhere in the row → edit" fallback is removed: you enter edit only inside the accent box.
+  assert.ok(!_src.includes('.md-task-check,.node-link,.dice-roll,.mk-roll,.gr-roll,.math-roll,.est-pill,'),
+    'the row-level INTERACTIVE allow-list (the click-anywhere-in-row edit fallback) is gone');
+  // but the content box still enters edit AND places the caret where you clicked
+  assert.ok(_src.includes('const r = caretFromPoint(rAfter.left + dx, rAfter.top + dy)'),
+    'clicking the content box still enters edit and places the caret at the click point');
+});
+
 test('the hover point-menu gates on LIVE dom editing state, not the stale activeContentId var', () => {
   // Regression ("the hover menu became unreliable"): activeContentId went stale when a render() ended an edit
   // without exitEdit (an affordance/door click destroys the editor but leaves the module var set), which then

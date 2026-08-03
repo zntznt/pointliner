@@ -13567,34 +13567,12 @@ function renderRow(r) {
 
   if (!opts.searchCtx) attachContentEvents(content, node);
 
-  // Click anywhere non-interactive in the row (empty space right of / below the
-  // text, row padding) enters edit mode — a node should always be editable by
-  // clicking it, not just its text glyphs. Clicks inside .node-content defer to
-  // its own handler (which also enters edit + places the caret); clicks on the
-  // listed interactive elements keep their own behavior; modifier clicks (shift =
-  // range select) are left untouched so multi-select still works.
-  if (!opts.searchCtx && !isDivider && !isTable) {
-    const INTERACTIVE = '.node-content,.node-note,.bullet,.collapse-btn,'
-      + '.md-task-check,.node-link,.dice-roll,.mk-roll,.gr-roll,.math-roll,.est-pill,'
-      + '.var-pill,.dice-edit,.mk-edit,.gr-edit,.math-edit,.var-edit,.est-edit,'
-      + '.hashtag,.fn-ref,.md-table-host,.todo-state';
-    row.addEventListener('mousedown', e => {
-      if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (content.dataset.editing) return;
-      if (e.target.closest?.(INTERACTIVE)) return; // let interactive el / content handle it
-      e.preventDefault();
-      enterEdit(content, node);
-      content.focus();
-      // Do NOT call caretFromPoint here — it returns an unconstrained range anywhere in
-      // the document, and setting it as the selection while content is focused triggers
-      // the focus handler on the wrong node (the one whose DOM the range lands in).
-      // Instead, place the caret at the end of content, which is always the correct
-      // fallback for a click in empty space (right of / below the text).
-      const s = window.getSelection(), rng = document.createRange();
-      rng.selectNodeContents(content); rng.collapse(false);
-      s.removeAllRanges(); s.addRange(rng);
-    });
-  }
+  // Edit-on-click is the CONTENT BOX's job, not the whole row's. `.node-content` is flex:1, so it already
+  // fills the column to the right of the bullet gutter — a click anywhere on the point's text box (including
+  // the empty space past a short line) lands on it and enters edit via its own handler. The row used to ALSO
+  // enter edit for a click in the bullet gutter / left margin / inter-row padding (owner report: "clicking
+  // away from a point enters edit on that row's point"). That row-level handler is removed: you now enter edit
+  // only by clicking inside the point's accent box, never its surrounding gutter/margin.
 
   if (isDivider && !opts.searchCtx) {
     row.addEventListener('mouseenter', () => { if (node.text) div.classList.add('div-reveal'); });
