@@ -14576,6 +14576,7 @@ function openCheckDialog(nodeId, targets = null, prefill = '') {
           { label: 'and( )',   insert: el => insertAndSelect(el, 'and(', 'test, test', ')') },
           { label: 'count("")', insert: el => insertAndSelect(el, 'count("', 'is:todo', '")') },
           { label: 'words( )',  insert: el => insertAndSelect(el, 'words(', 'subtree', ')') },
+          ...propKeyChips(),   // #1281 residual: pick a property key, never type it
         ],
         hint: 'A true/false test over this point and its children. Must contain a comparison (> >= < <= == !=); a bare value is not a test. Point it at numbers or at your words: count("#claim -has:footnote") == 0 flags a claim with no source, words(subtree) >= 500 checks length. Combine with and/or/not, see the concept guide. e.g. sum(cost) <= budget',
         preview: expr => {
@@ -28608,7 +28609,7 @@ function openEstimateDialog({ title, submitLabel, expr = '', existing = null, no
     title: title || 'Estimate (uncertain value)',
     submitLabel: submitLabel || 'Add',
     fields: [
-      { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: EST_CHIPS,   // sum/avg are dialog-only (estParts rejects them), which is why they are shown HERE and not on the @ card
+      { key:'expr', label:'Uncertain value', placeholder:'e.g. 5 to 10  ·  normal(8, 2)  ·  sum(cost)', value: expr, chips: [...EST_CHIPS, ...propKeyChips()],   // #1281 residual: pick a property key; sum/avg are dialog-only (estParts rejects them), which is why they are shown HERE and not on the @ card
         hint:'An uncertain value: a 90% range lo to hi, normal(mean, sd) or uniform(lo, hi). Reference declared variables and combine with + − × ÷. Shown as mean ± [p5, p95] with a sparkline; click to re-sample. The concept guide covers how estimates combine.',
         // #1178: takes the VALUE as its first parameter, like every other preview in the file. It read
         // `v.expr` off it, and the shared runner passes `f.preview(inp.value, all)` — so `v` was the
@@ -29419,6 +29420,19 @@ const MATH_CHIPS = [
   { label:'round', insert: el => insertAndSelect(el, 'round(', 'x', ')') },
 ];
 
+// #1281 residual: the rollup reducers as click chips, so a total is built without typing a function
+// name (avg/count/min/max, not just sum). Each inserts fn(prop) with `prop` selected, ready for a
+// property-key chip to replace it — click sum, then click cost, and you have sum(cost), no keyboard.
+const REDUCER_CHIPS = ['sum', 'avg', 'count', 'min', 'max'].map(fn =>
+  ({ label: fn + '( )', title: 'Roll up a number property over the children', insert: el => insertAndSelect(el, fn + '(', 'prop', ')') }));
+// #1281 residual: the document's own property keys as chips, so a key is PICKED, never typed — the last
+// mile of "put a number on this bullet, then total it." Replaces the `prop` placeholder a reducer chip
+// leaves selected. Capped so the row never floods; empty (no chips) when the doc has no properties yet.
+function propKeyChips() {
+  return collectPropKeys(root).slice(0, 8).map(k =>
+    ({ label: k, title: 'Insert the property ' + k, insert: el => insertAndSelect(el, '', k, '') }));
+}
+
 function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, bare = false, fmt = null, onResult }) {
   // #946: assemble a fmt from the dialog's three format fields (or null) — thousands separators are
   // the default, so an ordinary pill needs none of these.
@@ -29434,7 +29448,7 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         label: 'Expression',
         placeholder: 'e.g. 2+2, sqrt(16), 2*pi*r, x > 0 ? x : 0, c2f(20), sum(cost), words(subtree)',
         value: expr,
-        chips: MATH_CHIPS,
+        chips: [...MATH_CHIPS, ...REDUCER_CHIPS, ...propKeyChips()],
         hint: 'A live calculation over variables and child points. Full reference in the concept guide.',
         // live preview rendered right below the input as the user types. Reads the other fields
         // (second arg) so the preview pill matches how it will render (value-only + number format).
@@ -40120,7 +40134,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, open the pill's actions (right-click it, or focus it and press the menu key) and choose Explain this number. It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nYou do not have to type any of it. On a heading whose rows carry a number, a + Total door totals the column in one click; and in the @ Math or @ Check dialog, sum, avg, count, min and max are click chips, and so are your own property keys, so a total is built by clicking the reducer and then the key, never spelling either out.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, open the pill's actions (right-click it, or focus it and press the menu key) and choose Explain this number. It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
