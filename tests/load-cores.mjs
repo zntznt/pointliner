@@ -286,6 +286,7 @@ export function loadCores() {
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl','ex','toOpml',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
     'isRemoteUrl','urlHost','webImagesAllowed','webImageBlockedHtml',   // #1325: web-image opt-in cores
+    'imageDialogFields',   // #1326: the shared Insert-image fields + opt-in-aware preview
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'fnArities','fnArityProblem','arityPhrase',   // #1169: a known function at the wrong arity

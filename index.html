@@ -7282,6 +7282,26 @@ async function openWebImageConsent(url) {
 function maybeOfferWebImageConsent(url) {
   if (isRemoteUrl(url) && !webImagesAllowed()) requestAnimationFrame(() => openWebImageConsent(url));
 }
+// #1326: the shared fields for both Insert-image dialogs — an address, alt text, and a live thumbnail that
+// respects the opt-in: a local/relative/data reference previews at once (no network); a remote address
+// previews only once the document allows web images, so the dialog itself never makes a request behind the
+// privacy default. The hint names the local-file path so "attach a photo" has an honest, documented route.
+function imageDialogFields(selected = '') {
+  return [
+    { key: 'url', label: 'Image address', placeholder: 'picture.png, or https://…/picture.png', required: true,
+      hint: 'A file kept beside your saved document shows with no network: picture.png, or photos/build.jpg. A web address (https://…) loads only after you allow web images for this document.',
+      preview: v => {
+        const u = String(v || '').trim();
+        if (!u) return '';
+        const safe = safeUrl(u, true);
+        if (!safe) return '<span class="io-preview-bad">That address can’t be shown.</span>';
+        if (isRemoteUrl(safe) && !webImagesAllowed())
+          return '<span style="color:var(--muted)">Web images are off for this document. You will be asked to allow them after you insert.</span>';
+        return `<img src="${escQ(safe)}" alt="" style="max-width:100%;max-height:150px;border-radius:var(--r-sm);display:block">`;
+      } },
+    { key: 'alt', label: 'Alt text', placeholder: 'Describe the image (optional)', value: selected },
+  ];
+}
 // url/alt/title arrive already &<>-escaped from the caller; only quotes remain
 // Escape raw data for HTML text content / attributes (state names, etc.)
 /* UXP-262: `String(s || '')`, not `(s || '')`. A truthy non-string used to throw here
@@ -22363,10 +22383,7 @@ function insertInlineArtifact(id, nodeId, content) {
       icon: { fa:'fa-regular fa-image', fb:'🖼' },
       title: 'Insert image',
       submitLabel: 'Insert image',
-      fields: [
-        { key:'url', label:'Image URL', placeholder:'https://…/picture.png', required:true },
-        { key:'alt', label:'Alt text', placeholder:'Describe the image (optional)', value:selected },
-      ],
+      fields: imageDialogFields(selected),
       onSubmit: v => { applyInlineInsertion(nodeId, offset, `![${v.alt || 'image'}](${v.url})`); maybeOfferWebImageConsent(v.url); },
     });
   } else if (id === 'dice') {
@@ -22626,10 +22643,7 @@ function insertCellArtifact(id, node, r, c, offset) {
       icon: { fa:'fa-regular fa-image', fb:'🖼' },
       title: 'Insert image',
       submitLabel: 'Insert image',
-      fields: [
-        { key:'url', label:'Image URL', placeholder:'https://…/picture.png', required:true },
-        { key:'alt', label:'Alt text', placeholder:'Describe the image (optional)' },
-      ],
+      fields: imageDialogFields(),
       onSubmit: v => { splice(`![${v.alt || 'image'}](${v.url})`); maybeOfferWebImageConsent(v.url); },
     });
   } else if (id === 'dice') {

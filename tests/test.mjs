@@ -3086,6 +3086,29 @@ test('#1325 the opt-in flag round-trips through the head, defaults off, and the 
   assert.ok(_src.includes("img-src 'self' data: blob: https:"), 'the CSP permits https images for the opt-in');
 });
 
+test('#1326 the Insert-image dialog preview respects the opt-in (never requests a remote image while private)', () => {
+  const fields = c.imageDialogFields();
+  const urlField = fields.find(f => f.key === 'url');
+  assert.ok(urlField && typeof urlField.preview === 'function', 'the URL field carries a live preview');
+  assert.ok(/beside your saved document/i.test(urlField.hint), 'the hint documents the local-file route');
+  const prev = urlField.preview;
+  assert.equal(prev(''), '', 'empty address, no preview');
+  assert.ok(prev('photo.jpg').includes('<img'), 'a local/relative address previews at once');
+  assert.ok(prev('data:image/png;base64,AAAA').includes('<img'), 'a data: address previews at once');
+  // a remote address is NOT rendered as an <img> while the doc is private (so the dialog makes no request)
+  vm.runInContext('root = { allowWebImages: false };', c._context);
+  try {
+    const off = prev('https://example.com/a.png');
+    assert.ok(!off.includes('<img') && /off for this document/i.test(off), 'a remote address only notes the opt-in, no <img> request, while private');
+    vm.runInContext('root = { allowWebImages: true };', c._context);
+    assert.ok(c.imageDialogFields()[0].preview('https://example.com/a.png').includes('<img'), 'once allowed, the remote address previews');
+  } finally {
+    vm.runInContext('root = mkRoot();', c._context);
+  }
+  // both @ Insert-image dialogs use the shared fields (no divergent duplicate)
+  assert.ok((_src.match(/fields: imageDialogFields\(/g) || []).length >= 2, 'both image dialogs share imageDialogFields');
+});
+
 // Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
 // backspaced its label and the space) must still render a checkbox, not a literal
 // `[ ]`. The bug was TASK_RE requiring `\s+` after the bracket; the fix makes the
