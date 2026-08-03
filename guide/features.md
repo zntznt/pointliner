@@ -189,6 +189,10 @@ Turn the document into a lightweight planner.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 - **Browse tags.** File then Browse tags shows every hashtag as a tree with a count on each (nested
   tags under their parent); pick one to filter the document to it. ([hashtags](getting-around.md#hashtags))
+- **Bulk-tag by search.** Run a search, `Ctrl/Cmd+A` to select every match, then Tag on the selection
+  bar adds one `#tag` to all of them at once. The migration on-ramp: make a freshly-imported wall of
+  text queryable in minutes instead of hand-tagging one bullet at a time.
+  ([selecting many](getting-around.md#selecting-many-points))
 - **Embedded queries.** Drop `{query: is:todo | due:week}` into a point for a live, self-updating
   list of matching points; reuses every search operator, click a result to jump. `{count: is:todo}`
   shows just the live number instead. With a folder connected, a **Search the whole folder**

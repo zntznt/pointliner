@@ -18131,6 +18131,26 @@ test('collectActions — live actions sort before done, higher priority first', 
   assert.deepEqual(items.map(i => i.id), ['hiPri', 'noPri', 'doneItem']);
 });
 
+// ── #1285 bulk-tag-by-search (the migration on-ramp) ─────────────────────────
+test('#1285 addTagToText: append a tag once, sanitized, never duplicating', () => {
+  assert.equal(c.addTagToText('Buy milk', 'grocery'), 'Buy milk #grocery', 'appends the tag');
+  assert.equal(c.addTagToText('Buy milk', '#grocery'), 'Buy milk #grocery', 'a leading # is stripped, not doubled');
+  assert.equal(c.addTagToText('Buy milk #grocery', 'grocery'), 'Buy milk #grocery', 'already tagged → unchanged');
+  assert.equal(c.addTagToText('Buy milk #grocery', 'GROCERY'), 'Buy milk #grocery', 'dedup is case-insensitive');
+  assert.equal(c.addTagToText('note', 'venue/outdoor'), 'note #venue/outdoor', 'a nested tag keeps its slash');
+  assert.equal(c.addTagToText('x', 'bad tag!'), 'x #badtag', 'spaces and punctuation are stripped from the tag');
+  assert.equal(c.addTagToText('x', '  '), 'x', 'an empty tag is a no-op, not a bare #');
+  assert.equal(c.addTagToText('## Heading', 'sec'), '## Heading #sec', 'a heading keeps its marker');
+});
+
+test('#1285 the Tag button is wired (multi-select bar → bulk tag every selected point, one undo, reindexed)', () => {
+  assert.ok(_src.includes('id="nsb-tag"'), 'a Tag button sits in the multi-select bar');
+  assert.ok(_src.includes("getElementById('nsb-tag')") && _src.includes('openBulkTagDialog(t)'), 'it opens the bulk-tag dialog for the selection');
+  const b = fnBody(_src, 'bulkAddTag');
+  assert.ok(b.includes('addTagToText(node.text') && b.includes('buildIndex(root'), 'it appends the tag to each selected point and reindexes so the tag becomes queryable');
+  assert.ok(b.includes('pushUndo()'), 'one undo reverts the whole bulk tag');
+});
+
 // ── bulk-refile selection roots (UXP-133) ────────────────────────────────────
 test('selectionRoots — drops a selected node that has a selected ancestor', () => {
   // tree: A > B > C ; D (sibling). parentMap: A→null, B→A, C→B, D→null
