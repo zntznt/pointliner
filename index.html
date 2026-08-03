@@ -3005,6 +3005,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="cmd-item" id="btn-calendar"><div class="cmd-icon" data-fa="fa-solid fa-calendar-days" data-fb="📅">📅</div><div class="cmd-info"><span class="cmd-label">Custom calendar</span><span class="cmd-desc">Give this document your world's months, weeks, and eras</span></div></div>
         <div class="cmd-item" id="btn-units"><div class="cmd-icon" data-fa="fa-solid fa-arrow-right-arrow-left" data-fb="⇄">⇄</div><div class="cmd-info"><span class="cmd-label">Custom units</span><span class="cmd-desc">Define your own units, then convert with {= convert(x, from, to)}</span></div></div>
         <div class="cmd-item" id="btn-rolllog" role="button" aria-pressed="false"><div class="cmd-icon" data-fa="" data-fb="⚄">⚄</div><div class="cmd-info"><span class="cmd-label" id="rolllog-label">Log random results: Off</span><span class="cmd-desc">Record every roll, generator, oracle and pick to a dated log. Set a home with the bullet menu.</span></div></div>
+        <div class="cmd-item" id="btn-webimages" role="button" aria-pressed="false"><div class="cmd-icon" data-fa="fa-regular fa-image" data-fb="🖼">🖼</div><div class="cmd-info"><span class="cmd-label" id="webimages-label">Web images: Off</span><span class="cmd-desc" id="webimages-desc">Loading a picture from the web reveals your reading to its host. Off keeps this document private; local files always show.</span></div></div>
         <div class="cmd-item" id="btn-rolllog-goto" role="button" style="display:none"><div class="cmd-icon" data-fa="fa-solid fa-arrow-up-right-from-square" data-fb="↗">↗</div><div class="cmd-info"><span class="cmd-label">Go to your random results</span><span class="cmd-desc">Jump to the point your rolls are recorded under</span></div></div>
         <button class="cmd-item" type="button" id="btn-install" style="display:none;width:100%;text-align:left;background:none;border:0;font:inherit;color:inherit;cursor:pointer" aria-label="Install Pointliner as an app" hidden><div class="cmd-icon" data-fa="fa-solid fa-download" data-fb="⤓">⤓</div><div class="cmd-info"><span class="cmd-label">Install Pointliner</span><span class="cmd-desc">Keep it on your machine, works offline</span></div></button>
       </div>
@@ -7288,9 +7289,10 @@ function webImageBlockedHtml(u, alt) {
 async function openWebImageConsent(url) {
   if (webImagesAllowed()) return true;
   const host = urlHost(url);
+  const fromClause = host ? `pictures from ${host} and other sites` : 'pictures from the web';   // #1328: no host when toggled from Settings
   const ok = await openConfirmDialog({
     title: 'Show web images in this document?',
-    message: `Pointliner loads nothing from the network by default, so your reading stays private. Allowing web images lets this document load pictures from ${host} and other sites, which means your device requests them from their host every time the document is opened. This choice applies to this document only.`,
+    message: `Pointliner loads nothing from the network by default, so your reading stays private. Allowing web images lets this document load ${fromClause}, which means your device requests them from their host every time the document is opened. This choice applies to this document only.`,
     confirmLabel: 'Allow web images',
     cancelLabel: 'Keep private',
   });
@@ -38758,6 +38760,7 @@ function openFileMenu() {
   syncVerbosityStrip();      // highlight the current tier in the header strip
   buildToolbarChooser();     // modes batch item 5: (re)build the toolbar-feature toggles, reflecting current prefs
   syncRollLogLabel();        // #918: reflect the roll-log on/off state
+  syncWebImagesToggle();     // #1328: reflect this document's web-image opt-in (per-doc, so refresh on open)
   // platform-correct shortcut chips (⌘K on Mac, Ctrl+K elsewhere)
   const keySave = document.getElementById('key-save');
   if (keySave) keySave.textContent = fmtKey('S');
@@ -38987,6 +38990,30 @@ function toggleRollLog() {
   flashHint(rollLogToggleMessage(root.rollLog.on, home ? crumbLabel(home) : null));
 }
 document.getElementById('btn-rolllog')?.addEventListener('click', toggleRollLog);
+// #1328: the per-document web-image control — the revocation half of the #1325 opt-in. The label names the
+// current state (like Width / Log random results); the desc names what a click does. Synced on menu open.
+function syncWebImagesToggle() {
+  const on = webImagesAllowed();
+  const lbl = document.getElementById('webimages-label');
+  if (lbl) lbl.textContent = 'Web images: ' + (on ? 'On' : 'Off');
+  const desc = document.getElementById('webimages-desc');
+  if (desc) desc.textContent = on
+    ? 'This document loads pictures from the web, so their hosts can see your reading. Click to turn off and keep it private.'
+    : 'Loading a picture from the web reveals your reading to its host. Off keeps this document private; local files always show.';
+  document.getElementById('btn-webimages')?.setAttribute('aria-pressed', on ? 'true' : 'false');
+}
+document.getElementById('btn-webimages')?.addEventListener('click', () => {
+  if (webImagesAllowed()) {
+    // revoke — becoming MORE private needs no consent; re-render so web pictures fall back to placeholders
+    root.allowWebImages = false; markDirty(); render(); syncWebImagesToggle();
+    flashHint('Web images are off. This document is private again; a web picture shows a click-to-allow placeholder.');
+  } else {
+    // grant — reuse the consent prompt (it explains the tradeoff and sets the flag); close the menu so the
+    // dialog is not stacked behind it. The label refreshes the next time the menu opens.
+    closeFileMenu();
+    openWebImageConsent(null);
+  }
+});
 document.getElementById('btn-rolllog-tb')?.addEventListener('click', toggleRollLog);   // #951: first-class toolbar toggle
 // Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
 // leaves the menu open, so the user can try each tier and watch the app change behind the dialog.
@@ -39899,7 +39926,7 @@ const GUIDE = [
   // and adding it here would double-cover a single command id.
   { id:'image-size', cat:'writing',
     title:'Image size',
-    body:"An image is a REFERENCE to where the file lives, never a copy stored inside your document, so the document stays small and portable. A picture saved beside your document (or in a folder next to it) shows straight away and needs no network. A web address, https://…, is different: loading it is a request to that host every time the document opens, which can reveal your reading to them, so the app loads no web images by default. The first time you add one it asks whether to Allow web images for this document; until you do, the picture shows as a click-to-allow placeholder rather than a silent broken box.\n\nAn image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
+    body:"An image is a REFERENCE to where the file lives, never a copy stored inside your document, so the document stays small and portable. A picture saved beside your document (or in a folder next to it) shows straight away and needs no network. A web address, https://…, is different: loading it is a request to that host every time the document opens, which can reveal your reading to them, so the app loads no web images by default. The first time you add one it asks whether to Allow web images for this document; until you do, the picture shows as a click-to-allow placeholder rather than a silent broken box. You can turn the choice on or off any time from File, Settings, Web images.\n\nAn image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
     related:['inline-md','point-types'],
     examples:[
       { syn:'![map](map.png "wide")',      desc:'three quarters of the window' },

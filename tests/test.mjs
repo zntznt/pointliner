@@ -3134,6 +3134,20 @@ test('#1327 handlePaste turns a pasted image URL / copied image into an image re
   assert.ok(hp.indexOf("closest('.mt-cell')") < hp.indexOf('imgSrcFromHtml('), 'the base-cell guard runs first');
 });
 
+test('#1328 the web-image opt-in is revocable from File → Settings', () => {
+  assert.ok(_src.includes('id="btn-webimages"') && _src.includes('id="webimages-label"'), 'a Settings toggle row exists');
+  const sync = fnBody(_src, 'syncWebImagesToggle');
+  assert.ok(sync.includes("'Web images: ' + (on ? 'On' : 'Off')"), 'the label names the current state (not the next action)');
+  assert.ok(sync.includes('webImagesAllowed()'), 'it reads the per-document flag');
+  assert.ok(fnBody(_src, 'openFileMenu').includes('syncWebImagesToggle()'), 'the per-doc toggle refreshes each time the menu opens');
+  // the click: ON -> revoke directly (no consent needed to become MORE private); OFF -> the consent prompt
+  const click = between(_src, "getElementById('btn-webimages')?.addEventListener('click'", '});');
+  assert.ok(click.includes('root.allowWebImages = false'), 'ON revokes the flag directly');
+  assert.ok(/openWebImageConsent\(null\)/.test(click), 'OFF opens the consent prompt (host-less copy)');
+  // the consent copy degrades gracefully with no specific host
+  assert.ok(fnBody(_src, 'openWebImageConsent').includes("host ? `pictures from ${host} and other sites` : 'pictures from the web'"), 'the consent names a host when it has one, the web otherwise');
+});
+
 // Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
 // backspaced its label and the space) must still render a checkbox, not a literal
 // `[ ]`. The bug was TASK_RE requiring `\s+` after the bracket; the fix makes the
