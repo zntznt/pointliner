@@ -112,6 +112,9 @@ A live calculator that can see your document. Math pills recompute on their own.
   spreadsheet column, and `{= sum("#task", cost)}` totals it over everything matching a live search.
   Add `, document` (or `, folder`) to search the whole document or folder from any point.
   ([aggregation](computing-numbers.md#roll-a-number-up-your-document-aggregation))
+- **Explain a total.** Open a roll-up pill's actions and choose Explain this number to see every row
+  that went into it with its value, plus every row silently left out because it has no number for that
+  property, so a point you forgot to price can't hide inside a total that looks complete.
 - **Word counts.** `{= words(subtree)}` counts the prose under a heading; per-point notes stay out
   of the count unless you write `{= words(subtree, notes)}`.
   ([word counts](computing-numbers.md#roll-a-number-up-your-document-aggregation))
