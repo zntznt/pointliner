@@ -41438,8 +41438,14 @@ function openAddRowForm(contextNodeId) {
 function maybeAddRowAffordance(node, row) {
   // A section heading — derived from the TEXT, not node.type: a `## Groceries` point renders as an H2 via
   // the content markdown while its node.type stays 'ul', so deriveTypeFromText is the reliable check.
-  if (!/^h[1-6]$/.test(deriveTypeFromText(node.text) || '')) return;
+  const isHeading = /^h[1-6]$/.test(deriveTypeFromText(node.text) || '');
   if (!node.children || node.children.length < 2) return;  // inferRowShape needs 2+ rows; cheap early out
+  // #1330 (driven panel #7): the doors used to be heading-ONLY, so the plain-BULLET parents users actually make
+  // as a section container never showed a + Total — the panel's #1 conversion blocker (4 of 6 personas typed
+  // their rows under a plain bullet and never found totals). A plain bullet now earns the doors too, but only
+  // when its rows form a real NUMBER column (gated below); this cheap pre-filter skips the shape walk for an
+  // ordinary prose outline (no propertied/computed child), so a normal outline never sprouts a door.
+  if (!isHeading && !node.children.some(c => (c.props || []).length || (c.math || []).length)) return;
   const template = richestStructuredSibling(node.children);            // structured rows (pages) → stamp a scaffold
   const shape = template ? null : inferRowShape(node.children, knownStates(root));  // flat rows → the values form
   // #1317: the panel's "two number systems" nudge. If the rows carry a MATH PILL but no numeric property
@@ -41448,6 +41454,12 @@ function maybeAddRowAffordance(node, row) {
   if (!template && (!shape || !shape.props.some(p => p.type === 'number')) && node.children.every(c => (c.math || []).length))
     fireNudge('formula-prop', 'Tip: to total a column of computed values, write each line as a property, {prop cost: 60 * 3.50}, and a + Total door appears.');
   if (!template && !shape) return;                                     // no usable shape either way → no door
+  const numKeys = (shape ? shape.props : []).filter(p => p.type === 'number').map(p => p.key);
+  // #1330: a heading earns the doors on ANY shape (a tag-only / to-do list still gets the + Add helper); a
+  // plain bullet earns them only when there is a NUMBER column to total, so a tagged/checkbox outline stays
+  // door-free unless the user deliberately made it a heading. (A structured-template list stays heading-only
+  // too — template stamping is the #1240 heading behavior, unchanged.)
+  if (!isHeading && !numKeys.length) return;
   const noun = rowNoun(node, shape || { sharedTags: rowContentTags(template.text) });
   // One affordance builder so the caret-invariant guards (mousedown preventDefault+stopPropagation, a
   // keyboard path alongside) live in ONE place for the + Add and + Total doors alike (the #1278 fix).
@@ -41472,7 +41484,7 @@ function maybeAddRowAffordance(node, row) {
   // point-and-click door totals that column with a child-scoped {= sum(KEY)} (correct on THIS heading, no
   // scope recall, no braces typed). One number column -> "+ Total"; several -> one door each. Skip a
   // column already summed (checked against the promoted math records, since the text holds a token by then).
-  const numKeys = (shape ? shape.props : []).filter(p => p.type === 'number').map(p => p.key);
+  // (numKeys computed above, since #1330 gates the plain-bullet case on it.)
   const summed = k => (node.math || []).some(m => String(m.expr || '').replace(/\s/g, '').toLowerCase().includes('sum(' + k.toLowerCase()));
   // ponytail: prefix collision (cost vs costume) at worst hides a duplicate door; harmless.
   for (const key of numKeys) {
