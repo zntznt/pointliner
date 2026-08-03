@@ -624,6 +624,13 @@ test('braceAttemptReason — explains why an INVALID {…} did not become a pill
   assert.match(c.braceAttemptReason('d', {}, {}), /No rule or variable named "d"/);
   // a broken calculation ({= badname + 1}) borrows mathReasonPhrase (bad ref)
   assert.equal(c.classifyBraceBody('= badname + 1', {}, {}), 'invalid');
+  // #1319: a COMPOSED aggregate ({= round(100*sum(a)/sum(b))}) is classified with a null node, so its
+  // empty sums make 100*0/0 -> NaN -> null; it must still promote (it computes on the live node at render).
+  assert.equal(c.classifyBraceBody('= round(100*sum(wins)/sum(games))', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('= sum(a)/sum(b)', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('= avg(cost) * 1.2', {}, {}), 'artifact');
+  // but a genuinely-broken expr with no node-aggregate stays invalid (the fallback is aggregate-gated)
+  assert.equal(c.classifyBraceBody('= nofunc(x) + 1', {}, {}), 'invalid');
   // #1159: "no value here" survives the reword, so this alone could not detect the fix either.
   const badRefCue = c.braceAttemptReason('= badname + 1', {}, {});
   assert.match(badRefCue, /calculation uses .*no value here/i);
@@ -13830,6 +13837,18 @@ test('makeMathResult: an ancestor-prop expr promotes when given the inherited sc
   assert.equal(c.makeMathResult('STR + 2', {}), null, 'STR unknown → not promotable');
   const rec = c.makeMathResult('STR + 2', { str: 14 });
   assert.ok(rec && rec.expr === 'STR + 2', 'inherited str:14 makes {= STR + 2} a valid pill at creation');
+});
+
+test('#1319 makeMathResult: a COMPOSED rollup promotes even though it evals to NaN with no render node', () => {
+  // The real promote gate, not classifyBraceBody. With no node, sum()/avg() are 0, so a division by a
+  // sum ({= round(100*sum(a)/sum(b))}) goes 100*0/0 -> NaN -> null and USED to stay prose. It must still
+  // create a record (renderMathPill recomputes it against the live children, or shows a loud #ERR).
+  const composed = c.makeMathResult('round(100*sum(wins)/sum(games))');
+  assert.ok(composed && composed.expr === 'round(100*sum(wins)/sum(games))', 'composed rollup promotes to a pill');
+  assert.ok(c.makeMathResult('sum(a)/sum(b)'), 'a bare ratio of two rollups promotes');
+  assert.ok(c.makeMathResult('avg(cost) * 1.2'), 'avg scaled by a factor promotes');
+  // the fallback is aggregate-gated: a genuinely-broken expr with no node-aggregate still returns null
+  assert.equal(c.makeMathResult('nofunc(x) + 1'), null, 'a non-aggregate garbage expr stays unpromotable');
 });
 
 test('checkExprOf: returns the trimmed assertion or null', () => {
