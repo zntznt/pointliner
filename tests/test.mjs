@@ -16129,6 +16129,23 @@ test('#948 parsePropLines — a multi-line key:value block → props; skips sepa
   assert.ok(_src.includes('paste a list of "key: value" lines'), 'the batch-paste tip is shown');
 });
 
+test('#1333 isLongDecimal + the round-it nudge: a long ugly decimal teaches the format door, once, Guided-only', () => {
+  assert.ok(c.isLongDecimal('86.333333'), 'a 6-decimal division is long');
+  assert.ok(c.isLongDecimal('77.777778'), 'so is 77.777778');
+  assert.ok(c.isLongDecimal('1,234.5678'), 'a grouped thousands value still matches on the trailing decimals');
+  assert.ok(!c.isLongDecimal('19.99'), 'money-shaped 2dp is not long');
+  assert.ok(!c.isLongDecimal('86.3'), '1dp is not long');
+  assert.ok(!c.isLongDecimal('42'), 'an integer is not long');
+  // wiring: the nudge is Guided/once, reads the pure predicate, and fires the format-door tip
+  const mnd = fnBody(_src, 'maybeNudgeDecimals');
+  assert.ok(mnd.includes("!isGuided() || nudgeSeen('decimals')") && mnd.includes('isLongDecimal(display)') && mnd.includes("fireNudge('decimals'"),
+    'maybeNudgeDecimals guards Guided/once, reads isLongDecimal, and fires the format nudge');
+  assert.ok(/Decimal places/.test(_src), 'the nudge names the Decimal places field it opens');
+  // it runs only on the SUCCESSFUL number path, and never for a boolean or an author-formatted pill
+  assert.ok(fnBody(_src, 'renderMathPill').includes('if (!isBoolPill && !m.fmt) maybeNudgeDecimals(display)'),
+    'fired only for a successful, unformatted, non-boolean pill');
+});
+
 test('fieldNudgeKey — a bare word:number tail is a field cue; prose / times / non-numeric are not', () => {
   assert.deepEqual(host(c.fieldNudgeKey('cost: 120')), { key: 'cost', val: '120' });
   assert.deepEqual(host(c.fieldNudgeKey('Design mockups cost: 120')), { key: 'cost', val: '120' }, 'keys off the trailing token, not the whole line');

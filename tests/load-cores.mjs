@@ -329,7 +329,7 @@ export function loadCores() {
     'calendarMonthGrid','addMonths','agendaGantt','agendaMonthCells','agendaWeekCells','addWeeks','agendaDayStats','urgencyMark','agendaState','agendaLabel',
     'todayISO','journalFileName','isoParts','findOrCreateChild','findOrCreateDatedEntry',
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
-    'propDeclParts','setProp','parsePropSlash','parsePropArg','propWriteRoute','parsePropLines','fieldNudgeKey','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC (parsePropArg: #1119, the case-preserving payload half)
+    'propDeclParts','setProp','parsePropSlash','parsePropArg','propWriteRoute','parsePropLines','fieldNudgeKey','isLongDecimal','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC (parsePropArg: #1119, the case-preserving payload half)
     'splitForSibling', 'inFence', 'mergeUpText', 'mergeBodyText', 'aggHasSkippedValues', 'setDateProp',
     'auditAgg', 'auditTitle', 'isAuditableAgg',   // #1284/#1321: explain-this-number audit + its cheap shape gate
     'dateSeries',   // #1297: the pure date-series generator (start, step, end → epochs, capped)

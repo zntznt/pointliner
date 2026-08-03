@@ -29126,6 +29126,9 @@ function renderMathPill(key, m, opts = {}) {
   // rollup above already returned its loud state, so a failure can never hide behind a bare number.
   // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
   // (which still names the full expr for assistive tech), and click-to-edit.
+  // #1333: this is the successful-number path (the #ERR / empty branches returned above). If it is showing a
+  // long ugly decimal and the author set no format, teach the round-it door once (Guided-only).
+  if (!isBoolPill && !m.fmt) maybeNudgeDecimals(display);
   if (m.bare) {
     return `<span class="math-roll math-bare${boolCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
       + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
@@ -42930,6 +42933,16 @@ function maybeNudgeField(node) {
   if (!isGuided() || nudgeSeen('field')) return;
   const f = fieldNudgeKey(node.text);
   if (f) fireNudge('field', `Tip: to total or check ${f.key} later, add it as a number: click the + property beside this point, or type /prop:${f.key}=${f.val}.`);
+}
+// #1333 (driven panel #7): a division renders at 8 significant figures by default (91.666667), which a teacher
+// called "unusable on a printed roster." The precision is deliberate (a scientific result needs it) and the
+// per-pill number format (decimals / prefix / suffix) already lives behind the pill — but he never found it.
+// Rather than change the global default (which would break the calculator use), teach the door ONCE, Guided-
+// only, the first time a pill shows a long ugly decimal and the author has set no format. Pure predicate.
+function isLongDecimal(s) { const m = /\.(\d{4,})$/.exec(String(s == null ? '' : s)); return !!m; }
+function maybeNudgeDecimals(display) {
+  if (!isGuided() || nudgeSeen('decimals')) return;
+  if (isLongDecimal(display)) fireNudge('decimals', 'Tip: to round this number, click the pill and set Decimal places (you can also add a $, %, or unit there).');
 }
 // #1334 (driven panel #7): typing a bare `key: number` (hp: 15, cost: 120) is a beginner reaching for a
 // trackable field, but a colon in prose is not a property — three personas hit dead text here and could not
