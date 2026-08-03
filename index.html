@@ -1159,6 +1159,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .math-empty-mark{font-size:11px;color:var(--muted);font-style:normal}
 @keyframes math-pop{0%{opacity:.35;transform:scale(.88)}60%{transform:scale(1.05)}100%{opacity:1;transform:scale(1)}}
 .math-roll.math-edited .math-result{display:inline-block;animation:math-pop .25s cubic-bezier(.2,.8,.3,1)}
+/* #1332: a comparison / boolean math pill shows a pass/fail glyph (matching the check-chip palette). */
+.math-bool-true .math-result{color:var(--ok)}
+.math-bool-false .math-result{color:var(--bad);font-weight:600}
 /* estimate pill (B2 — uncertain value: mean ± range + a unicode sparkline) */
 .est-pill{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
 .est-pill:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
@@ -29032,6 +29035,16 @@ function renderMathPill(key, m, opts = {}) {
       + `</span>`;
   }
   const display = formatMathDisplay(fresh, m.expr, m.fmt);   // #946: grouping + optional per-pill format
+  // #1332 (driven panel #7): a comparison / boolean pill ({= score >= 60}) computed 1 or 0 and rendered a bare
+  // "1"/"0" — a teacher: "0 is not something I'd hand a parent." When the expression is a TEST (a comparison
+  // or and/or/not/xor) AND the value is exactly 1 or 0, show a pass/fail glyph instead of the number. A numeric
+  // result that merely passes through a comparison sub-term (e.g. (a>b)+2 → 2) is not 0/1, so it stays a number;
+  // moon/date displays are excluded. Assistive tech gets the words, not the glyph.
+  const isBoolPill = (fresh === 0 || fresh === 1) && !isMoonExpr(m.expr) && !isDateExpr(m.expr)
+    && (/(?:[<>]=?|[=!]=)/.test(m.expr) || /\b(?:and|or|not|xor)\s*\(/i.test(m.expr));
+  const dispVal = isBoolPill ? (fresh === 1 ? '✓' : '✗') : display;
+  const ariaVal = isBoolPill ? (fresh === 1 ? 'true' : 'false') : display;
+  const boolCls = isBoolPill ? (fresh === 1 ? ' math-bool-true' : ' math-bool-false') : '';
   // 4c: a folder-scoped reducer (`…, folder)` after a quoted query) mixes the live doc with
   // other documents AS SAVED — say so in the tooltip/aria so the staleness is visible (P4).
   const folderTip = /"[^"]*"\s*,[^)]*\bfolder\s*\)/.test(m.expr)
@@ -29114,9 +29127,9 @@ function renderMathPill(key, m, opts = {}) {
   // The recipe stays in node.text and shows again on edit; the pill keeps its key, focus, aria
   // (which still names the full expr for assistive tech), and click-to-edit.
   if (m.bare) {
-    return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
-      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
-      + `<span class="math-result">${escHtml(display)}</span>`
+    return `<span class="math-roll math-bare${boolCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
+      + `<span class="math-result">${escHtml(dispVal)}</span>`
       + explain
       + pencil
       + `</span>`;
@@ -29124,12 +29137,12 @@ function renderMathPill(key, m, opts = {}) {
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
-  return `<span class="math-roll" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
+  return `<span class="math-roll${boolCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
-    + `<span class="math-result">${escHtml(display)}</span>`
+    + `<span class="math-result">${escHtml(dispVal)}</span>`
     + explain
     + pencil
     + `</span>`;
