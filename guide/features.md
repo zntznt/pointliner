@@ -275,10 +275,13 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   the sync. ([saving](files-and-export.md#saving-your-work))
 - **Open formats.** The native save format is a plain, open document file (OPML); export to Markdown or plain text for sharing.
   ([exporting](files-and-export.md#exporting-and-sharing))
-- **Import points (additive).** File then Import points adds the points from another `.opml` file, or
-  from pasted `.opml` text, to the end of your current document, live and undo-able, without replacing
-  anything. This is how you pull a piece of one document (or an outline someone shared) into another;
-  Open replaces the whole document, Import only ever adds.
+- **Import points (additive).** File then Import points adds the points from another `.opml` file, a
+  Markdown file, or a spreadsheet (paste rows from Excel or Sheets, or open a `.csv`), to the end of
+  your current document, live and undo-able, without replacing anything. A spreadsheet lands as a
+  section of rows with each column after the first attached as a property, numbers kept as numbers
+  (a `$` or thousands comma and all), so you can click `+ Total` on the heading to sum a column with no
+  formula typed. This is how you pull a piece of one document (or an outline someone shared) into
+  another; Open replaces the whole document, Import only ever adds.
 - **Published grammar + lossless format.** Every `{…}` pill form, the order they are matched, the
   escape hatches, and the OPML lossless round-trip (the format that reopens with every pill live) are
   documented in one place, so your grammar and your data are portable text you own.

@@ -34447,6 +34447,87 @@ function resolveWikilinks(text, nameToId) {
   });
 }
 
+// ─── #1296: spreadsheet paste → points with tagged number properties ───
+// Panel #4's top new lever: the data these people HAVE is a table (a budget sheet, a CSA list, a
+// decklist), and #1265 imports Markdown TEXT, not columns. Pasting a TSV/CSV lands each row as a
+// point under a heading, with each column attached as a {prop key: value}, so the shipped + Total
+// door (#1281) totals a number column on the spot — the import bridge and the property wall solved
+// in one gesture. Pure + Node-testable; the DOM half is one branch in doImport.
+
+// A cell's value: strip surrounding quotes, and reduce a currency/thousands/percent-formatted number
+// to a bare numeric string ("$3,200.00" → "3200.00", "45%" → "45") so a {prop} sum reads it; anything
+// else is kept as trimmed text. The regex gate is strict so "3 apples" or "v2" stay text, not 3 / 2.
+function importCellValue(v) {
+  const s = String(v == null ? '' : v).trim().replace(/^"(.*)"$/s, '$1').trim();
+  if (/^[-+]?[$€£¥]?\s*(\d{1,3}(,\d{3})+|\d+)(\.\d+)?\s*%?$/.test(s)) return s.replace(/[^\d.\-]/g, '');
+  return s;
+}
+// A header cell → a property key the engine can reference (evalMath idents are [a-z0-9_], and
+// sum(key) must resolve). "Unit Cost" → "unit_cost", "Cost ($)" → "cost". Empty → ''.
+function importKeyName(h) {
+  return String(h == null ? '' : h).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+// Split one delimited line. Tab-separated is a plain split (Excel/Sheets clipboard is TSV and never
+// quotes); comma-separated is quote-aware so a "a, b" cell survives, matching how sheets export CSV.
+function importSplitRow(line, delim) {
+  if (delim === '\t') return String(line).split('\t').map(c => c.trim());
+  const out = []; let cur = '', q = false;
+  const s = String(line);
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (q) { if (ch === '"') { if (s[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === ',') { out.push(cur.trim()); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+// Does this text look like a delimited table? Returns the delimiter ('\t' or ',') or null. Strict on
+// purpose: 2+ non-blank lines, 2+ columns, and a column count the FIRST row shares with all but at
+// most one other row (a real table is rectangular; prose with commas is not). Tab wins over comma
+// (a paste with tabs is unambiguously a sheet). Runs only inside the Import dialog, after the OPML
+// sniff and BEFORE Markdown, so a `#`/`-`/`|` Markdown doc (1 column under these delimiters) is untouched.
+function sniffDelimited(text) {
+  const lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length < 2) return null;
+  for (const delim of ['\t', ',']) {
+    const counts = lines.map(l => importSplitRow(l, delim).length);
+    const cols = counts[0];
+    if (cols >= 2 && counts.filter(c => c === cols).length >= Math.max(2, lines.length - 1)) return delim;
+  }
+  return null;
+}
+// Parse a delimited table into ONE heading subtree: row 1 is the header (its columns name the props),
+// each later row becomes a child point whose text is the first column and whose other columns are
+// {prop key: value} tokens (promoteLoadedShorthand turns those into real props on insert). Numeric
+// columns thus become number properties a + Total / check reads. Returns { points, skipped } to match
+// markdownToPoints so it rides the same appendOpmlSubtrees path. delim from sniffDelimited.
+function tableToPoints(text, delim) {
+  const lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length < 2) return { points: [], skipped: [] };
+  const rows = lines.map(l => importSplitRow(l, delim));
+  const ncol = rows[0].length;
+  const used = new Set();
+  const keys = rows[0].map((h, i) => {
+    if (i === 0) return null;                                   // column 0 is the point text, not a prop
+    let k = importKeyName(h) || ('col' + (i + 1));
+    let base = k, n = 2; while (used.has(k)) k = base + '_' + n++;  // de-dupe collided keys
+    used.add(k); return k;
+  });
+  const heading = mkNode('## Imported table', 'h2');
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    let t = (cells[0] || '').trim() || ('Row ' + r);
+    for (let c = 1; c < ncol; c++) {
+      const v = importCellValue(cells[c] || '');
+      if (v !== '') t += ' {prop ' + keys[c] + ': ' + v + '}';
+    }
+    heading.children.push(mkNode(t, 'ul'));
+  }
+  return heading.children.length ? { points: [heading], skipped: [] } : { points: [], skipped: [] };
+}
+
 // #1265 PR 2: import a set of Markdown files (a "vault") into ONE document. Each file becomes a
 // top-level section (its own leading `# H1`, or a `# <filename>` wrapper), and [[wikilinks]] between
 // the files resolve to internal links / mirrors, so a note wiki comes in with its cross-references
@@ -39934,11 +40015,12 @@ const GUIDE = [
   // like the tag-browser entry. It is tracked by the chrome-feature drift guard in tests/test.mjs.
   { id:'import', cat:'files',
     title:'Importing points from a shared file',
-    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did.\n\nIt reads two formats, no vendor buttons. A Pointliner .opml file comes in exactly as it left. A Markdown (.md) file is turned into points: headings become the outline's shape, bullets and numbered lists nest by their indentation, checkboxes become to-dos, quotes and footnotes carry over, so notes from any Markdown app come in as a real outline you can then bring to life. The format is detected for you, so you can paste either into the box. Anything Markdown that Pointliner does not model yet (a table, a page's frontmatter) is kept as plain text and the toast tells you what was simplified, never a silent loss.\n\nYou can also choose several Markdown files at once, which brings in a whole set of linked notes as one document. Each file becomes its own section, and the wiki-links between them are wired up: a [[Page]] link becomes a live link to that section, and a ![[Page]] embed becomes a live mirror of it, so a linked note collection arrives with its connections intact rather than as loose text. A link to a page that was not among the files you chose is left as plain text. This works in any browser and writes nothing to your disk; it is all one document you can save as usual.\n\nEither way the whole thing lands below your current points and the view jumps to the first one that arrived. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file with no points in it is refused with a message rather than doing anything silently.",
-    related:['saving','export','templates'],
+    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did.\n\nIt reads three formats, no vendor buttons. A Pointliner .opml file comes in exactly as it left. A Markdown (.md) file is turned into points: headings become the outline's shape, bullets and numbered lists nest by their indentation, checkboxes become to-dos, quotes and footnotes carry over, so notes from any Markdown app come in as a real outline you can then bring to life. A spreadsheet comes in as data: paste rows straight from Excel or Google Sheets, or open a .csv, and each row becomes a point under one heading, with every column after the first attached as a property. Numbers keep being numbers even with a dollar sign or thousands commas, so the moment it lands you can click + Total on the heading to sum a column, with no formula typed. The format is detected for you, so you can paste any of the three into the box. Anything Markdown that Pointliner does not model yet (a page's frontmatter) is kept as plain text and the toast tells you what was simplified, never a silent loss.\n\nYou can also choose several Markdown files at once, which brings in a whole set of linked notes as one document. Each file becomes its own section, and the wiki-links between them are wired up: a [[Page]] link becomes a live link to that section, and a ![[Page]] embed becomes a live mirror of it, so a linked note collection arrives with its connections intact rather than as loose text. A link to a page that was not among the files you chose is left as plain text. This works in any browser and writes nothing to your disk; it is all one document you can save as usual.\n\nWhatever the format, the whole thing lands below your current points and the view jumps to the first one that arrived. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file with no points in it is refused with a message rather than doing anything silently.",
+    related:['saving','export','templates','rollups'],
     examples:[
-      { syn:'File → Import points → Choose a file', desc:'add points from an .opml or Markdown file on your disk, or several Markdown files as one linked document' },
-      { syn:'File → Import points → paste box',     desc:'paste an .opml file or Markdown you received as text' },
+      { syn:'File → Import points → Choose a file', desc:'add points from an .opml, Markdown, or .csv file, or several Markdown files as one linked document' },
+      { syn:'Paste spreadsheet rows',               desc:'rows from Excel or Sheets become points with each number column ready to + Total' },
+      { syn:'File → Import points → paste box',     desc:'paste an .opml file, Markdown, or a table you copied' },
       { syn:`${MOD}+Z`,                             desc:'undo removes the whole import in one step' },
     ] },
 
@@ -43233,7 +43315,7 @@ function openImportDialog() {
   });
   const intro = document.createElement('p');
   intro.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 12px;line-height:1.55';
-  intro.textContent = 'Bring points into this document from a Pointliner .opml file or a Markdown (.md) file. Pick several Markdown files at once and each becomes a section, with the links between them wired up live. They are added below what you have now, live and editable, and you can undo in one step. Nothing here is replaced.';
+  intro.textContent = 'Bring points into this document from a Pointliner .opml file, a Markdown (.md) file, or a spreadsheet (paste from Excel or Sheets, or a .csv). A spreadsheet comes in as a section of rows with each number column ready to total. Pick several Markdown files at once and each becomes a section, with the links between them wired up live. They are added below what you have now, live and editable, and you can undo in one step. Nothing here is replaced.';
   ioCard.appendChild(intro);
 
   // Both paths route here. Clear the pristine first-run gate exactly as a starter pick does (#1192),
@@ -43245,9 +43327,16 @@ function openImportDialog() {
   // never a per-product importer.
   const doImport = (text, label) => {
     if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
-    let ok, skippedNote = '';
+    let ok, skippedNote = '', tableNote = false, tblDelim;
     if (/^\s*(<\?xml|<opml\b)/i.test(text)) {
       ok = appendOpmlSubtrees(text, label, { all: true, announce: true });
+    } else if ((tblDelim = sniffDelimited(text))) {
+      // #1296: a pasted/opened spreadsheet — rows become points with number columns as properties,
+      // under one heading so the + Total door can total a column. Rides the same append path.
+      const { points } = tableToPoints(text, tblDelim);
+      if (!points.length) { flashError('Nothing to import: no rows found in that table.'); return false; }
+      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });
+      tableNote = ok;
     } else {
       const { points, skipped } = markdownToPoints(text);
       if (!points.length) { flashError('Nothing to import: no points found in that Markdown.'); return false; }
@@ -43255,7 +43344,11 @@ function openImportDialog() {
       // pass the trees straight through so their footnotes survive to the doc store (see appendOpmlSubtrees)
       ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });
     }
-    if (ok) { closeIo(); if (skippedNote) flashHint(`Imported from Markdown${skippedNote}.`); }
+    if (ok) {
+      closeIo();
+      if (tableNote) flashHint('Imported the table. Open the section and click + Total to sum a number column.');
+      else if (skippedNote) flashHint(`Imported from Markdown${skippedNote}.`);
+    }
     return ok;
   };
 
@@ -43277,12 +43370,12 @@ function openImportDialog() {
   const fileBtn = document.createElement('button'); fileBtn.type = 'button'; fileBtn.className = 'io-btn';
   fileBtn.dataset.first = '1';
   const fbIc = document.createElement('span'); fbIc.setAttribute('aria-hidden', 'true'); setIcon(fbIc, { fa: 'fa-solid fa-folder-open', fb: '↑' });
-  const fbLbl = document.createElement('span'); fbLbl.textContent = 'Choose a file (.opml or .md, or several .md at once)';
+  const fbLbl = document.createElement('span'); fbLbl.textContent = 'Choose a file (.opml, .md, or .csv; or several .md at once)';
   fileBtn.append(fbIc, fbLbl);
-  fileBtn.setAttribute('aria-label', 'Choose an .opml or Markdown file to import points from; pick several Markdown files to bring in a linked note set');
+  fileBtn.setAttribute('aria-label', 'Choose an .opml, Markdown, or .csv file to import points from; pick several Markdown files to bring in a linked note set');
   fileBtn.addEventListener('click', () => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true;
-    inp.accept = '.opml,text/x-opml,application/xml,text/xml,.md,.markdown,text/markdown';
+    inp.accept = '.opml,text/x-opml,application/xml,text/xml,.md,.markdown,text/markdown,.csv,.tsv,text/csv,text/tab-separated-values';
     inp.addEventListener('change', () => {
       const files = [...(inp.files || [])]; if (!files.length) return;
       // several files -> a linked vault (each a section, wikilinks resolved); one file -> the sniffed path
@@ -43302,9 +43395,9 @@ function openImportDialog() {
 
   // ── or paste ──
   const pasteField = document.createElement('div'); pasteField.className = 'io-field'; pasteField.style.marginTop = '10px';
-  const pasteLbl = document.createElement('label'); pasteLbl.textContent = 'Or paste an .opml file or Markdown';
+  const pasteLbl = document.createElement('label'); pasteLbl.textContent = 'Or paste an .opml file, Markdown, or spreadsheet rows';
   const ta = document.createElement('textarea'); ta.className = 'io-mono'; ta.rows = 5;
-  ta.placeholder = '<opml>…</opml>  or  # Markdown'; ta.spellcheck = false; ta.autocomplete = 'off';
+  ta.placeholder = '<opml>…</opml>   #·Markdown   or   Item⇥Cost  (paste from a sheet)'; ta.spellcheck = false; ta.autocomplete = 'off';
   const _tid = 'io-import-paste'; ta.id = _tid; pasteLbl.setAttribute('for', _tid);
   pasteField.append(pasteLbl, ta);
   ioCard.appendChild(pasteField);
