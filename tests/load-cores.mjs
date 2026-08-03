@@ -325,6 +325,7 @@ export function loadCores() {
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
     'propDeclParts','setProp','parsePropSlash','parsePropArg','propWriteRoute','parsePropLines','fieldNudgeKey','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC (parsePropArg: #1119, the case-preserving payload half)
     'splitForSibling', 'inFence', 'mergeUpText', 'mergeBodyText', 'aggHasSkippedValues', 'setDateProp',
+    'auditAgg', 'auditTitle',   // #1284: explain-this-number audit of a child-rollup pill
     'flatRowStep',
     'splitTopLevel', 'olNum',   // #452 boundary coverage
     'duplicateTitleIds',        // #468 is:duplicate-title

@@ -12953,6 +12953,50 @@ test('subtree aggregation: a blank property value is skipped, not counted as 0 (
   assert.equal(c.aggregateChildren(p, 'avg', 'cost'), 10, 'avg over the one real value, not (10+0+0)/3');
 });
 
+test('#1284 auditAgg: the breakdown behind a rollup — contributors, the silent-wrong-total, and the reduce', () => {
+  const head = c.mkNode('## Kitchen budget');
+  const mk = (t, cost) => { const n = c.mkNode(t); if (cost != null) n.props.push({ key: 'cost', val: String(cost) }); return n; };
+  const cab = mk('Cabinets', 3200), cnt = mk('Countertop', 1800), sink = mk('Sink', 540);
+  const labor = mk('Labor (TBD)', '');      // has cost, but blank → not a number
+  const permit = mk('Permit', null);        // no cost property at all → silently excluded
+  head.children.push(cab, cnt, sink, labor, permit);
+
+  const a = c.auditAgg(head, 'sum(cost)');
+  assert.equal(a.fn, 'sum'); assert.equal(a.prop, 'cost'); assert.equal(a.depth, 1);
+  assert.equal(a.result, 5540, 'the total matches sum(cost)');
+  assert.deepEqual(host(a.contributors.map(x => [x.title, x.value])),
+    [['Cabinets', 3200], ['Countertop', 1800], ['Sink', 540]], 'each counted row with its value, title cleaned of the ## marker and pill tokens');
+  // The panel's headline: the rows silently left out, WHY, so a wrong total can't hide.
+  assert.deepEqual(host(a.missing.map(x => [x.title, x.reason])),
+    [['Labor (TBD)', 'not a number'], ['Permit', 'no cost']], 'a blank value and a missing property are both surfaced, distinctly');
+
+  // avg/min/max/count reduce the SAME contributor set; count has no "value" column but still audits misses.
+  assert.equal(c.auditAgg(head, 'avg(cost)').result, 5540 / 3, 'avg over the three real values');
+  assert.equal(c.auditAgg(head, 'min(cost)').result, 540);
+  assert.equal(c.auditAgg(head, 'count(cost)').contributors.length, 3, 'count audits the three that carry a number');
+  // Not a child rollup → nothing to audit (a plain arithmetic pill).
+  assert.equal(c.auditAgg(head, '2 * 19'), null, 'a plain calculation has no rollup to explain');
+  assert.equal(c.auditAgg(head, 'percentile(cost, 90)'), null, 'a non-rollup function is not audited here');
+});
+
+test('#1284 auditTitle: a row title is cleaned of markdown markers and pill/prop tokens', () => {
+  assert.equal(c.auditTitle('## Kitchen budget'), 'Kitchen budget', 'heading marker dropped');
+  assert.equal(c.auditTitle('- [x] Cabinets [[prop:cost]]'), 'Cabinets', 'checkbox marker + pill token dropped');
+  assert.equal(c.auditTitle('Sink {prop cost: 540}'), 'Sink', 'a {…} body is dropped');
+  assert.equal(c.auditTitle('   '), '(untitled)', 'an empty title has a stable fallback');
+});
+
+test('#1284 the audit is wired: a rollup pill offers "Explain this number", the panel shows the misses', () => {
+  const cpa = fnBody(_src, 'collectPillActions');
+  assert.ok(cpa.includes('if (auditAgg(node, m.expr))') && cpa.includes('Explain this number'), 'a child-rollup math pill gets an Explain action, gated on auditAgg');
+  assert.ok(cpa.includes('openPillAudit(node, m.key)'), 'the action opens the audit for that pill');
+  const pa = fnBody(_src, 'openPillAudit');
+  assert.ok(pa.includes('auditAgg(node, m.expr)'), 'the panel runs the same audit core');
+  assert.ok(pa.includes('a.contributors') && pa.includes('a.missing'), 'it renders both the contributors and the silently-excluded rows');
+  assert.ok(pa.includes('not counted'), 'the silent-wrong-total warning is worded for the reader');
+  assert.ok(pa.includes("mountFooter"), 'the dialog has a close footer');
+});
+
 test('subtree aggregation: date properties aggregate (min/max/count, the F2 date-range unlock)', () => {
   const p = c.mkNode('Project');
   const k1 = c.mkNode('A'); k1.props.push({ key: 'due', val: '2026-01-10' }); k1.props.push({ key: 'start', val: '2026-01-01' });

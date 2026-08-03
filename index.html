@@ -4258,6 +4258,37 @@ function aggHasSkippedValues(node, expr) {
   return bad;
 }
 
+// #1284 "explain this number": the audit behind a child-rollup pill (the panel's "trust the numbers").
+// Given a point and a math expression, if the expression is a bare sum|avg|count|min|max(prop[, scope])
+// child rollup, return every row that CONTRIBUTES (title + value) AND every row silently LEFT OUT (a
+// point in scope with no numeric value for that property — the silent-wrong-total Sam feared: a row
+// with no `cost`, or a `cost` that is not a number). null when the expression is not a simple rollup
+// (a plain arithmetic pill has nothing to audit). Pure; mirrors aggregateChildren's own scope/read.
+function auditAgg(node, expr) {
+  const m = /\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(subtree|\d+))?\s*\)/.exec(String(expr || ''));
+  if (!m || !node) return null;
+  const fn = m[1].toLowerCase(), prop = m[2];
+  const depth = m[3] === 'subtree' ? Infinity : m[3] ? Number(m[3]) : 1;
+  const contributors = [], missing = [];
+  for (const c of collectScoped(node, depth)) {
+    const v = childPropNumber(c, prop);
+    const title = auditTitle(c.text);
+    if (v !== null) contributors.push({ title, value: v });
+    else {
+      const has = (c.props || []).some(p => (p.key || '').trim().toLowerCase() === prop.toLowerCase());
+      missing.push({ title, reason: has ? 'not a number' : 'no ' + prop });
+    }
+  }
+  return { fn, prop, depth, contributors, missing, result: reduceAgg(fn, contributors.map(x => x.value)) };
+}
+// A point's plain title for the audit rows: drop pill tokens ([[type:key]]) and any {…} bodies, then a
+// leading markdown marker (heading / checkbox / bullet / quote). Pure; parity with rollLabel's cleanup.
+function auditTitle(text) {
+  let t = String(text == null ? '' : text).replace(/\[\[[^\]]*\]\]/g, '').replace(/\{[^{}]*\}/g, '');
+  t = t.replace(/^#{1,6}\s+/, '').replace(/^[-*]\s+\[[ xX]\]\s+/, '').replace(/^[-*>]\s+/, '');
+  return t.replace(/\s+/g, ' ').trim() || '(untitled)';
+}
+
 // ── meter pills: {meter: value/max} → a segmented bar of a numeric property ──────
 // LegendKeeper's Meter Block, for HP / spell slots / stress. A COMPUTED display (like the
 // [/] cookie): it reads the render node's properties live, holds no state, is not clickable,
@@ -20588,6 +20619,9 @@ function collectPillActions(node, scopeText = null) {
     rows.push(freeze('grammar', g.key));
   }
   for (const m of node.math || []) if (has('math', m.key)) {
+    // #1284: a child-rollup pill (sum/avg/count/min/max of a property) can explain itself — the rows it
+    // added and the ones it silently left out. Only offered when auditAgg has a breakdown to show.
+    if (auditAgg(node, m.expr)) rows.push({ icon:{ fa:'fa-solid fa-magnifying-glass', fb:'🔎' }, label:'Explain this number' + tag(m.expr), fn:() => openPillAudit(node, m.key) });
     rows.push({ icon:PEN, label:'Edit expression' + tag(m.expr), fn:() => editMath(node, m.key) });
     rows.push(freeze('math', m.key));
   }
@@ -20726,6 +20760,73 @@ function openDistributionPanel(node, kind, key) {
     { key:'resample', role:'neutral', label:'Re-sample', onClick: () => { resample(); paint(); } },
     { key:'insert', role:'commit', label:'Insert as points', onClick: () => { const o = outcomes; closeIo(); insertDistAsPoints(node, info.label, o); } },
   ]);
+}
+
+const AUDIT_ICON = { fa:'fa-solid fa-magnifying-glass', fb:'🔎' };
+// #1284 "explain this number": the read-only audit for a child-rollup math pill (panel: "trust the
+// numbers"). Shows the formula and result, every row that contributed with its value, and LOUDLY every
+// row in scope silently left out because it has no numeric value for the property — the silent-wrong-
+// total. No state; reuses the shared dialog shell like the distribution panel. Offered only when
+// auditAgg returns a breakdown (a bare sum|avg|count|min|max rollup), so a plain math pill never shows it.
+function openPillAudit(node, key) {
+  const m = (node.math || []).find(x => x.key === key);
+  if (!m) return;
+  const a = auditAgg(node, m.expr);
+  if (!a) return;
+  const shell = openDialogShell({ icon: AUDIT_ICON, title: 'Explain this number', ariaLabel: `What ${a.fn}(${a.prop}) is counting` });
+  const fmtN = v => Number(v).toLocaleString(undefined, { maximumFractionDigits: 6 });
+
+  const head = document.createElement('div');
+  head.style.cssText = 'font-weight:600;margin:-2px 0 8px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere';
+  head.textContent = `${a.fn}(${a.prop}) = ${formatMathDisplay(a.result, m.expr, m.fmt)}`;
+  ioCard.appendChild(head);
+
+  const scopeWord = a.depth === Infinity ? 'the whole subtree' : a.depth === 1 ? 'the rows directly below' : `${a.depth} levels down`;
+  const sub = document.createElement('p');
+  sub.style.cssText = 'font-size:12px;color:var(--muted);margin:0 0 10px';
+  sub.textContent = a.fn === 'count'
+    ? `Counting the points in ${scopeWord} that carry a numeric ${a.prop}.`
+    : `${a.fn} over the ${a.prop} of ${scopeWord}.`;
+  ioCard.appendChild(sub);
+
+  const list = document.createElement('div');
+  list.style.cssText = 'display:flex;flex-direction:column;max-height:44vh;overflow:auto';
+  const line = (title, val, cls) => {
+    const r = document.createElement('div');
+    r.style.cssText = 'display:flex;gap:10px;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px solid color-mix(in srgb,var(--fg) 6%,transparent)';
+    const t = document.createElement('span'); t.textContent = title;
+    t.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' + (cls === 'muted' ? ';color:var(--muted)' : '');
+    const v = document.createElement('span'); v.textContent = val;
+    v.style.cssText = 'flex:0 0 auto;font-variant-numeric:tabular-nums' + (cls === 'bad' ? ';color:var(--bad)' : '');
+    r.append(t, v); return r;
+  };
+  for (const c of a.contributors) list.appendChild(line(c.title, a.fn === 'count' ? '✓' : fmtN(c.value)));
+  if (!a.contributors.length) { const p = document.createElement('p'); p.style.cssText = 'color:var(--muted);font-size:13px'; p.textContent = `No point below carries a numeric ${a.prop} yet.`; list.appendChild(p); }
+  ioCard.appendChild(list);
+
+  if (a.fn !== 'count' && a.contributors.length) {
+    const foot = document.createElement('div');
+    foot.style.cssText = 'display:flex;justify-content:space-between;font-weight:600;margin-top:8px;font-variant-numeric:tabular-nums';
+    const lbl = document.createElement('span'); lbl.textContent = a.fn === 'avg' ? 'Average' : a.fn === 'min' ? 'Lowest' : a.fn === 'max' ? 'Highest' : 'Total';
+    const val = document.createElement('span'); val.textContent = formatMathDisplay(a.result, m.expr, m.fmt);
+    foot.append(lbl, val); ioCard.appendChild(foot);
+  }
+
+  if (a.missing.length) {
+    const warn = document.createElement('div');
+    warn.style.cssText = 'margin-top:14px;padding:9px 12px;border-radius:var(--r-sm);background:color-mix(in srgb,var(--bad) 12%,transparent);font-size:13px';
+    const h = document.createElement('div'); h.style.cssText = 'font-weight:600;margin-bottom:3px;color:var(--bad)';
+    h.textContent = `${a.missing.length} point${a.missing.length === 1 ? '' : 's'} here ${a.missing.length === 1 ? 'is' : 'are'} not counted`;
+    warn.appendChild(h);
+    for (const mr of a.missing) {
+      const l = document.createElement('div'); l.style.cssText = 'display:flex;justify-content:space-between;gap:10px;color:var(--muted);padding:1px 0';
+      const t = document.createElement('span'); t.textContent = mr.title; t.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      const w = document.createElement('span'); w.textContent = mr.reason; w.style.cssText = 'flex:0 0 auto';
+      l.append(t, w); warn.appendChild(l);
+    }
+    ioCard.appendChild(warn);
+  }
+  shell.mountFooter([{ key:'close', role:'dismiss', label:'Close' }]);
 }
 
 // Toggle every spoiler block rendered under a node — the keyboard twin of clicking one. A
@@ -39847,7 +39948,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, open the pill's actions (right-click it, or focus it and press the menu key) and choose Explain this number. It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },
