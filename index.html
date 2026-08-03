@@ -38372,7 +38372,7 @@ function relTimeShort(savedAt, now) {
 // safe and the chip reassures with where and when it last saved.
 function saveStatusLabel(st) {
   if (st.hidden) return { kind: 'hidden', text: '' };
-  if (st.noStore) return { kind: 'memory', text: 'In memory only · save a copy' };
+  if (st.noStore) return { kind: 'memory', text: 'Not saved to a file · save one' };
   if (st.unsavedToDisk) return { kind: 'unsaved', text: 'Unsaved changes' };
   if (st.pending) return { kind: 'saving', text: 'Saving…' };
   if (st.folder) return { kind: 'saved', text: 'Saved to folder' };
@@ -38380,11 +38380,14 @@ function saveStatusLabel(st) {
   return { kind: 'saved', text: rel ? 'Saved ' + rel : 'Saved' };
 }
 const SS_GLYPH = { saved: '✓', saving: '↻', unsaved: '•', memory: '⚠' };
+// #1286: lead with the OWNED FILE, not "the browser." The nervous single-file user (Walter) read
+// "saves to your browser" as LESS safe than a file. So the reassurance is: nothing is lost as you type,
+// and the copy you truly keep is the file on your computer — save it from the File menu.
 const SS_TITLE = {
-  saved: 'Your work saves itself in this browser. Click for the File menu, to save a copy, or to restore an earlier version.',
+  saved: 'Saved. Nothing is lost as you type. The copy you fully own is a file on your computer: use the File menu to save it, restore an earlier version, or open the menu.',
   saving: 'Saving your latest edits…',
-  unsaved: 'You have edits not yet written to your file. Click to save.',
-  memory: 'Your notes live in this browser tab only. Click to save a copy you can reopen.',
+  unsaved: 'You have edits not yet written to your file. Click to save your file.',
+  memory: 'Not saved to a file yet. The copy you keep is a file on your computer, yours to reopen anytime. Click to save one.',
 };
 // #1268: read the live save state for the chip. Impure (reads globals); the pure mapping is above.
 function saveStatusState() {
@@ -43711,7 +43714,12 @@ const STARTER_ICON = { fa: 'fa-solid fa-dice-d20', fb: '🎲' };
 // #1196: research-notes takes trip-planner's lead slot (planner redundancy with meal-planner) so the
 // prose/research audience meets its own lead features ({roll:#tag} on their notes + written footnotes)
 // in the first-run path, not palette-only. Still everyday and general, so IA-3/IA-8 hold.
-const WELCOME_QUICK_PICKS = ['life-dashboard', 'project-tracker', 'meal-planner', 'research-notes', 'reading-log', 'flashcards'];
+// #1283: the lead row is the FIRST thing a non-game first-timer meets, and the panel's compute half
+// (costing, decisions, sources, plans) is what won every persona while the dice made them doubt fit.
+// So Popular now opens with the money/decision/sources starters Nadia and Lena named as "the real
+// convincing," not a generic planner. Still zero origin starters here (the #1214 rule); games keep
+// their own labelled group below. reading-log/flashcards drop to the life-area groups / More.
+const WELCOME_QUICK_PICKS = ['freelance-costing', 'decision-helper', 'research-notes', 'project-tracker', 'life-dashboard', 'meal-planner'];
 // var (hoisted, #854's rule): closeIo and adoptDoc are declared thousands of lines ABOVE this and
 // both run during the boot restore, before this line is reached. A `let` would put them in the TDZ
 // and crash the restore; a hoisted var reads `undefined` (falsy) until first-run sets it.

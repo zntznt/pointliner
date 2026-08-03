@@ -17444,9 +17444,9 @@ test('#1268 relTimeShort — a compact, human relative time from savedAt', () =>
 test('#1268 saveStatusLabel — the honest chip, in priority order (never a false "Saved")', () => {
   const base = { hidden:false, noStore:false, unsavedToDisk:false, pending:false, folder:false, savedAt:0, now: 1000 };
   assert.equal(c.saveStatusLabel({ ...base, hidden:true }).kind, 'hidden', 'nothing shows before the doc is the user’s');
-  // the memory-only tier NEVER reads "Saved", even if other flags look benign
+  // the memory-only tier NEVER falsely reads "Saved"; #1286: it points at the OWNED FILE, not "memory"
   const mem = c.saveStatusLabel({ ...base, noStore:true, savedAt:900 });
-  assert.equal(mem.kind, 'memory'); assert.ok(/memory only/i.test(mem.text));
+  assert.equal(mem.kind, 'memory'); assert.ok(/not saved to a file/i.test(mem.text));
   // a bound file with unwritten edits keeps the existing "Unsaved changes" meaning, above the "Saving…" pulse
   assert.equal(c.saveStatusLabel({ ...base, unsavedToDisk:true, pending:true }).text, 'Unsaved changes');
   assert.equal(c.saveStatusLabel({ ...base, pending:true }).kind, 'saving');
@@ -19826,6 +19826,13 @@ test('#1192 the chooser leads with everyday domains, then blank and the tour, ev
   // #1214: the LEAD row leads entirely with everyday domains — no origin starter sets the tone there.
   assert.equal(ids.filter(id => origins.includes(id)).length, 0,
     '#1214: the lead (Popular) row is all everyday domains, so RPG framing never sets the tone');
+  // #1283: and the lead OPENS with the compute thesis (money/decisions/sources), the half that won every
+  // panel persona — not a generic planner. The first two picks must be from that set, so a budget-or-
+  // sources first-timer sees their own job first. (Games stay present, in their own group below.)
+  assert.ok(['freelance-costing', 'decision-helper', 'household-budget', 'research-notes'].includes(ids[0]),
+    '#1283: the very first quick pick is a compute-thesis starter (costing / decision / budget / sources)');
+  assert.ok(ids.slice(0, 3).filter(id => ['freelance-costing', 'decision-helper', 'household-budget', 'research-notes'].includes(id)).length >= 2,
+    '#1283: the lead is dominated by the compute starters that convinced the non-game personas');
   // IA-8 still holds over the full gallery: the origin is present but never the majority of STARTERS.
   const galleryIds = nonEmpty(_fStarters.match(/id: '([^']+)'/g) || [], 'STARTERS ids').map(s => s.slice(5, -1));
   const galleryOrigins = galleryIds.filter(id => origins.includes(id));
