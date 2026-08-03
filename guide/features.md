@@ -120,6 +120,11 @@ A live calculator that can see your document. Math pills recompute on their own.
   and a variable can hold the uncertain value itself: `{cost := 100 to 200}` makes every later
   `{cost}` and `{cost * 2}` the same draw, so a model moves as one piece.
   ([estimates](computing-numbers.md#uncertain-values-estimates))
+- **Odds and simulation.** `{= hypergeom(60, 12, 7, 3)}` is the chance of drawing at least three of
+  twelve good cards in a seven-card hand from a sixty-card deck, the honest draw-without-replacement
+  answer the dice engine (which rolls with replacement) cannot give. `{= simulate(2000, 2d6+3, >= 10)}`
+  rolls a dice expression N times and returns the percentage that clear a bar, for the messy rolls with
+  no tidy formula. Both are plain percentages that compose: `{= round(hypergeom(60, 12, 7, 3))}%`.
 - **Self-checking documents.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
   ([constraints](computing-numbers.md#make-the-document-check-itself-constraints))

@@ -4787,6 +4787,52 @@ test('sampleGenerator: dice is numeric (2d6 mean ≈ 7), deck is categorical fro
   assert.equal(c.sampleGenerator('dice', { expr: 'not dice' }, 10), null, 'malformed dice → null');
 });
 
+test('#1298 hypergeomAtLeast: exact odds of AT LEAST k successes drawn without replacement', () => {
+  const H = c.hypergeomAtLeast;
+  // pop 4, 2 successes, draw 2: P(>=1) = 1 - C(2,0)C(2,2)/C(4,2) = 1 - 1/6 = 5/6; P(>=2) = 1/6.
+  assert.ok(Math.abs(H(4, 2, 2, 1) - 500 / 6) < 1e-6, 'P(>=1) = 5/6 as a percentage');
+  assert.ok(Math.abs(H(4, 2, 2, 2) - 100 / 6) < 1e-6, 'P(>=2) = 1/6 as a percentage');
+  assert.equal(H(4, 2, 2, 0), 100, 'at least zero is certain');
+  assert.equal(H(4, 2, 2, 3), 0, 'at least more than you can draw is impossible');
+  // Overflow-safe on a real deck size (log space), and monotone decreasing in the threshold.
+  const a = H(60, 24, 10, 3), b = H(60, 24, 10, 4);
+  assert.ok(Number.isFinite(a) && a > 0 && a < 100, 'a 60-card draw stays a finite percentage, no overflow');
+  assert.ok(a > b, 'raising the required count lowers the odds');
+  // Nonsense → null so the call stays literal → #ERR, never a confidently wrong number.
+  assert.equal(H(4, 5, 2, 1), null, 'more successes than the population is invalid');
+  assert.equal(H(4, 2, 5, 1), null, 'drawing more than the population is invalid');
+  assert.equal(H(-1, 2, 2, 1), null, 'a negative population is invalid');
+});
+
+test('#1298 simulateChance: the share of outcomes passing each comparator, as a percentage', () => {
+  const S = c.simulateChance, xs = [1, 2, 3, 4];
+  assert.equal(S(xs, '>=', 3), 50, '>= counts 3 and 4');
+  assert.equal(S(xs, '>', 3), 25, '> counts only 4');
+  assert.equal(S(xs, '<=', 2), 50, '<= counts 1 and 2');
+  assert.equal(S(xs, '<', 2), 25, '< counts only 1');
+  assert.equal(S(xs, '==', 2), 25, '== is exact equality');
+  assert.equal(S(xs, '!=', 2), 75, '!= is the complement');
+  assert.equal(S([], '>=', 1), null, 'an empty sample → null');
+  assert.equal(S(xs, '>=', NaN), null, 'a non-finite threshold → null');
+});
+
+test('#1298 simulate end-to-end: N rolls of a dice expr reduce to the true probability', () => {
+  // The exact cores simulate() composes: sampleGenerator('dice', …) then simulateChance.
+  const outcomes = c.sampleGenerator('dice', { expr: '2d6' }, 4000);
+  assert.ok(outcomes && outcomes.length === 4000, 'the dice engine produced the sample');
+  // True P(2d6 >= 8) = 15/36 = 41.67%. Monte-Carlo over 4000 lands within a few points (~6σ margin).
+  assert.ok(Math.abs(c.simulateChance(outcomes, '>=', 8) - 41.67) < 5, 'simulate over 2d6 approximates P(>=8)');
+});
+
+test('#1298 hypergeom + simulate are wired into the math pre-pass (scalar substitution, RNG restored)', () => {
+  const agg = fnBody(_src, 'expandAggExpr');
+  assert.ok(agg.includes('hypergeomAtLeast('), 'hypergeom substitutes a scalar before evalMath, like percentile');
+  assert.ok(agg.includes("sampleGenerator('dice', { expr: dice }"), 'simulate rolls the generative dice engine');
+  assert.ok(agg.includes('_sessionRng = saved'), 'simulate restores the session RNG in finally — no global leak');
+  assert.ok(agg.includes('Math.min(SIM_MAX'), 'simulate caps the trial count for a cheap per-render recompute');
+  assert.ok(agg.includes('return m;'), 'an unresolvable arg leaves the call literal → #ERR');
+});
+
 test('#dist the distribution peek is wired (menu row + panel + fresh-deck sampling + host scope)', () => {
   // Menu row: dice and grammar/deck pills each get a "Show distribution" row opening the panel.
   const cpa = fnBody(_src, 'collectPillActions');
