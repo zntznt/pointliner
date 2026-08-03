@@ -13524,6 +13524,33 @@ test('#914 expandAggExpr — a ", document" / ", doc" widener reaches the whole 
   }
 });
 
+test('#1320 expandAggExpr — a BARE prop rollup takes the same ", document" widener the query rollups do', () => {
+  // Two points carry a cost prop (10 and 5) at different depths, plus a childless leaf. A bare rollup on
+  // the leaf sees nothing (subtree is empty); the doc widener must reach every cost in the document.
+  const live = c.mkRoot(); live.docId = 'ee';
+  const a = c.mkNode('alpha'); a.id = 'a'; a.props = [{ key: 'cost', val: '10' }];
+  const b = c.mkNode('branch'); b.id = 'b';
+  const b1 = c.mkNode('beta'); b1.id = 'b1'; b1.props = [{ key: 'cost', val: '5' }];
+  b.children.push(b1);
+  const leaf = c.mkNode('a leaf point'); leaf.id = 'lf';
+  live.children.push(a, b, leaf);
+  c._context.__live = live;
+  vm.runInContext('root = __live; resetDocCaches();', c._context);
+  try {
+    assert.equal(c.expandAggExpr('sum(cost)', leaf), '(0)', 'default (children) scope on a leaf is empty');
+    assert.equal(c.expandAggExpr('sum(cost, document)', leaf), '(15)', '", document" sums every cost in the doc');
+    assert.equal(c.expandAggExpr('sum(cost, doc)', leaf), '(15)', '", doc" is the same widener');
+    assert.equal(c.expandAggExpr('avg(cost, document)', leaf), '(7.5)', 'avg over the whole doc');
+    assert.equal(c.expandAggExpr('count(cost, doc)', leaf), '(2)', 'count of points carrying cost, doc-wide');
+    assert.equal(c.expandAggExpr('max(cost, document)', leaf), '(10)', 'max widens too (P1 — same word)');
+    assert.equal(c.expandAggExpr('min(cost, doc)', leaf), '(5)', 'min widens too');
+    // an unknown scope word still stays literal → visible #ERR (P4)
+    assert.ok(c.expandAggExpr('sum(cost, everywhere)', leaf).includes('sum(cost'), 'an unknown scope word stays literal');
+  } finally {
+    vm.runInContext('root = mkRoot(); resetDocCaches();', c._context);
+  }
+});
+
 test('#914 queryReducerLeaf — flags a subtree-scoped quoted reducer on a childless point; excludes widened / bare / non-reducers', () => {
   const leaf = c.mkNode('leaf');                       // no children
   const parent = c.mkNode('p'); parent.children.push(c.mkNode('kid'));
