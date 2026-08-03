@@ -976,6 +976,14 @@ test('#1281 residual: reducer chips (avg/count/min/max) + property-key chips bui
   assert.ok(_src.includes('[...EST_CHIPS, ...propKeyChips()]'), 'the estimate dialog gains the key chips');
 });
 
+test('#1312 "+ Variance" door writes a per-row over/under and a total variance on a two-column section', () => {
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.match(aff, /if \(numKeys\.length === 2 && /, 'the door appears only on a section with exactly two number columns');
+  assert.ok(aff.includes("+ b + ' - ' + a + '}'"), 'each row gets a {= B - A} over/under (a property is a variable, so it reads its own two numbers)');
+  assert.ok(aff.includes("sum(' + b + ') - sum(' + a + ')}'"), 'the heading gets the total variance');
+  assert.ok(aff.includes('/-\\s*sum\\(/.test'), 'a section that already has a variance (a `- sum(` on the heading) gets no duplicate door');
+});
+
 test('#1240 phase 1: the add-row dialog wires the cores to a promoted row (source pin)', () => {
   // The DOM half cannot run headless (it opens a dialog and mutates the live tree), so source-pin the
   // wiring — the pure cores it rides are unit-tested above, and the whole flow was live-driven (a 2-field
