@@ -13507,7 +13507,11 @@ function renderRow(r) {
       // the "New point" row. The menu stays reachable by clicking the bullet or Shift+F10.
       bullet.addEventListener('mouseenter', () => {
         clearTimeout(bpopShowTimer);
-        bpopShowTimer = setTimeout(() => { if (!dragId && activeContentId == null) showBulletPopup(node.id, bullet); }, 200);
+        // Gate on the LIVE DOM editing state, not the activeContentId module var: that var goes stale when an
+        // edit ends without exitEdit (a full render() from an affordance/door click destroys the editor but
+        // leaves activeContentId set), which then blocked hover-open for the rest of the session — the
+        // "hover menu became unreliable" bug. `.node-content[data-editing]` is ground truth and can't drift.
+        bpopShowTimer = setTimeout(() => { if (!dragId && !document.querySelector('.node-content[data-editing]')) showBulletPopup(node.id, bullet); }, 200);
       });
       bullet.addEventListener('mouseleave', () => { clearTimeout(bpopShowTimer); scheduleBpopHide(); });
     }
