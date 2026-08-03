@@ -7877,7 +7877,7 @@ test('a click on an interactive pill/link never falls through to entering edit (
   // Owner: "a link, or a roll, should be interactable always when clicking over them." The content mousedown
   // enters edit only after an explicit bail for any interactive token, so no pill/link click can drop into
   // raw-text edit even if its own branch misses an edge target.
-  const guard = ".dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.seq-pill,.query-pill,.node-link,.hashtag,.fn-ref,.web-img-blocked,.md-task-check,.todo-state,.note-ind,.md-spoiler,a";
+  const guard = ".dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.seq-pill,.query-pill,.act-pill,.node-link,.hashtag,.fn-ref,.web-img-blocked,.md-task-check,.todo-state,.note-ind,.md-spoiler,a";
   assert.ok(_src.includes("if (e.target.closest?.('" + guard + "')) return;"),
     'the edit-entering mousedown bails when the click is inside an interactive pill/link/token');
   // it sits right before the enterEdit call, after the editing-guard
@@ -13520,6 +13520,65 @@ test('#648 meterBar / formatMeter — filled = round(value/max*cells), clamped',
   assert.equal(c.meterBar(20, 12), '██████████', 'over max clamps to full');
   assert.equal(c.meterBar(-5, 12), '░░░░░░░░░░', 'negative clamps to empty');
   assert.equal(c.formatMeter(8, 12), '███████░░░ 8/12', 'bar + exact count');
+});
+
+// ── action pills {HP -= damage}: click-to-apply a mutation ───────────────────
+test('action: parseActionPill — the five operators, and the := / == / prose rejects', () => {
+  assert.deepEqual(host(c.parseActionPill('hp -= damage')), { target: 'hp', op: '-=', rhs: 'damage' });
+  assert.deepEqual(host(c.parseActionPill('gold += 50')),   { target: 'gold', op: '+=', rhs: '50' });
+  assert.deepEqual(host(c.parseActionPill('stress *= 2')),  { target: 'stress', op: '*=', rhs: '2' });
+  assert.deepEqual(host(c.parseActionPill('mp /= 2')),      { target: 'mp', op: '/=', rhs: '2' });
+  assert.deepEqual(host(c.parseActionPill('hp = hpmax')),   { target: 'hp', op: '=', rhs: 'hpmax' });
+  // a declaration is NOT an action (the := operator stays a variable), a comparison is NOT an action
+  assert.equal(c.parseActionPill('r := 1d20'), null, ':= is a declaration, not an assignment');
+  assert.equal(c.parseActionPill('hp == hpmax'), null, '== is a comparison, not an assignment');
+  // prose / other pills never look like actions
+  assert.equal(c.parseActionPill('= sum(cost)'), null, 'a {= } math pill has no target name');
+  assert.equal(c.parseActionPill('meter: hp/hpmax'), null);
+  assert.equal(c.parseActionPill('note to self'), null);
+  assert.equal(c.parseActionPill('2d6'), null, 'a dice body has no leading identifier');
+  assert.equal(c.parseActionPill('hp -= {dmg}'), null, 'a braced rhs is out of scope (bare names only)');
+  assert.equal(c.parseActionPill('hp -='), null, 'an empty rhs is not an action');
+});
+test('action: actionNewValue — current OP rhs, resolved in scope; divide-by-zero and bad refs → null', () => {
+  const n = c.mkNode('Goblin');
+  const scope = { hp: 20, damage: 5, hpmax: 20 };
+  assert.equal(c.actionNewValue({ target: 'hp', op: '-=', rhs: 'damage' }, n, scope), 15, 'subtract a variable');
+  assert.equal(c.actionNewValue({ target: 'hp', op: '+=', rhs: '3' }, n, scope), 23, 'add a literal');
+  assert.equal(c.actionNewValue({ target: 'hp', op: '*=', rhs: '2' }, n, scope), 40);
+  assert.equal(c.actionNewValue({ target: 'hp', op: '/=', rhs: '4' }, n, scope), 5);
+  assert.equal(c.actionNewValue({ target: 'hp', op: '=', rhs: 'hpmax' }, n, scope), 20, 'set to another stat');
+  // precedence: `hp -= a + b` is hp - (a+b), never (hp-a)+b — evalMath parenthesizes the rhs as a whole
+  assert.equal(c.actionNewValue({ target: 'hp', op: '-=', rhs: 'damage + 5' }, n, scope), 10);
+  assert.equal(c.actionNewValue({ target: 'hp', op: '/=', rhs: '0' }, n, scope), null, 'divide by zero → null (flashes, no write)');
+  assert.equal(c.actionNewValue({ target: 'hp', op: '-=', rhs: 'nope' }, n, scope), null, 'an unresolvable rhs → null');
+  assert.equal(c.actionNewValue({ target: 'missing', op: '-=', rhs: '1' }, n, scope), null, 'no current value for the stat → null');
+});
+test('action: formatStatValue — a whole result stays whole, float dust collapses', () => {
+  assert.equal(c.formatStatValue(15), '15');
+  assert.equal(c.formatStatValue(4.5), '4.5');
+  assert.equal(c.formatStatValue(0.1 + 0.2), '0.3', 'binary float dust collapses');
+  assert.equal(c.formatStatValue(-3), '-3');
+});
+test('action: classifyBraceBody / braceTypeLabel — a valid action body is a recognized live form', () => {
+  const rules = host(c.collectRules ? c.collectRules() : {}), vars = {};
+  assert.equal(c.classifyBraceBody('hp -= damage', rules, vars), 'artifact', 'styles as a real pill, not an invalid squiggle');
+  assert.equal(c.classifyBraceBody('gold += 50', rules, vars), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('hp -= 1', rules, vars)), ['action', null]);
+  // it must NOT poach a declaration or a comparison
+  assert.notEqual(host(c.braceTypeLabel('r := 1d20', rules, vars))[0], 'action', ':= is never labelled an action');
+  assert.notDeepEqual(host(c.braceTypeLabel('hp == hpmax', rules, vars)), ['action', null]);
+});
+test('action: an action body stays LITERAL text — promoteBraceBodyIn never tokenizes it (src pins)', () => {
+  // the render branch is display-only (cookieNode) and reads data-act-body; the mousedown swallows the
+  // caret and the click/keydown twin both call runActionPill; the writeback resolves a prop or a var.
+  assert.ok(_src.includes('parseActionPill(m.slice(1, -1))'), 'mdInline recognizes an action body live');
+  assert.ok(_src.includes('class="act-pill"') && _src.includes('data-act-body='), 'renders a button carrying its body');
+  assert.ok(_src.includes("e.target.closest('.act-pill')") && _src.includes('runActionPill(ap)'), 'click runs the action');
+  assert.ok(_src.includes("e.target.closest?.('.act-pill')") && _src.includes('runActionPill(apk)'), 'Enter/Space twin (P3-3 keyboard)');
+  assert.ok(between(_src, 'function runActionPill', 'setProp(tgt.node, act.target, val)').includes('pushUndo()'), 'a prop write is one undoable change');
+  assert.ok(between(_src, 'function runActionPill', 'announce(').includes("tgt.rec.expr = val"), 'a var write rewrites the declaration expr');
+  assert.ok(fnBody(_src, 'resolveStatTarget').includes('ancestorsOf(node)'), 'a stat resolves own→ancestor like a read');
 });
 
 // ── #645 secret/spoiler blocks: lock the parse regex (src pin, it is a const) ──
