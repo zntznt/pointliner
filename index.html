@@ -35641,6 +35641,56 @@ document.getElementById('search-box').addEventListener('keydown', e => {
 document.getElementById('outline').addEventListener('mousedown', e => {
   if (e.target.closest('.hashtag')) { e.preventDefault(); e.stopPropagation(); }
 }, true);
+// #1329: drag an image from a web page onto the outline → a new point that references it. A LOCAL image
+// FILE has no durable path in a browser, so it gets guidance, not a dead blob:. The claim is deliberately
+// narrow: `Files`, or a web payload (uri-list/html) that is NOT over the point you are editing — so it never
+// steals the internal bullet-reorder drag (text/plain only) or a native text-drop into an editing caret.
+function externalDropContent(dt) {
+  const fromHtml = imgSrcFromHtml(dt.getData('text/html'));
+  if (fromHtml && fromHtml.src) return { url: fromHtml.src, alt: fromHtml.alt || 'image' };
+  const uri = (dt.getData('text/uri-list') || '').split(/\r?\n/).map(s => s.trim()).find(s => s && !s.startsWith('#'));
+  if (uri && isImageUrl(uri)) return { url: uri, alt: 'image' };
+  const plain = (dt.getData('text/plain') || '').trim();
+  if (isImageUrl(plain)) return { url: plain, alt: 'image' };
+  const text = uri || plain;                      // a non-image URL/text we claimed — keep it, don't lose it
+  return text ? { text } : null;
+}
+function dragCarriesExternal(e) {
+  const types = [...(e.dataTransfer?.types || [])];
+  const hasFile = types.includes('Files');
+  const hasWeb = types.includes('text/uri-list') || types.includes('text/html');
+  // a point's content is contenteditable in BOTH display and edit mode; only [data-editing] marks the point
+  // whose caret is live, so gate on that (not isContentEditable, which is always true here).
+  const editing = !!e.target.closest?.('[data-editing]');
+  return hasFile || (hasWeb && !editing);
+}
+function handleExternalDrop(e) {
+  if (!dragCarriesExternal(e)) return;            // not ours — let native / internal reorder handle it
+  const dt = e.dataTransfer;
+  if ([...(dt.files || [])].some(f => /^image\//i.test(f.type))) {
+    e.preventDefault();
+    flashHint('To add a local image, save it beside your document and reference it, like ![](photo.jpg). A drag cannot pass a file\'s location to the app.');
+    return;
+  }
+  const got = externalDropContent(dt);
+  if (!got) return;
+  const url = got.url && safeUrl(got.url, true) ? got.url : null;
+  e.preventDefault();
+  const md = url ? `![${got.alt}](${url})` : got.text;
+  const target = (() => { const id = e.target.closest?.('.node-content')?.dataset.id; return id ? nodeById(id) : null; })();
+  const parent = target ? (parentOf(target.id) || root) : root;
+  pushUndo();
+  const nn = mkNode(md);
+  if (target) { const i = parent.children.findIndex(c => c.id === target.id); parent.children.splice(i < 0 ? parent.children.length : i + 1, 0, nn); }
+  else root.children.push(nn);
+  buildIndex(root, null); markDirty(); render();
+  focusNode(nn.id);
+  if (url) maybeOfferWebImageConsent(url);
+}
+document.getElementById('outline').addEventListener('dragover', e => {
+  if (dragCarriesExternal(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+});
+document.getElementById('outline').addEventListener('drop', handleExternalDrop);
 // Apply a tag chip's filter — shared by the click handler and the Enter/Space
 // keyboard twin in the node-content keydown (the caret-invariant pattern: the
 // chip is tabindex="-1", reached via AT, and acts without a mousedown→click).
@@ -39926,7 +39976,7 @@ const GUIDE = [
   // and adding it here would double-cover a single command id.
   { id:'image-size', cat:'writing',
     title:'Image size',
-    body:"An image is a REFERENCE to where the file lives, never a copy stored inside your document, so the document stays small and portable. A picture saved beside your document (or in a folder next to it) shows straight away and needs no network. A web address, https://…, is different: loading it is a request to that host every time the document opens, which can reveal your reading to them, so the app loads no web images by default. The first time you add one it asks whether to Allow web images for this document; until you do, the picture shows as a click-to-allow placeholder rather than a silent broken box. You can turn the choice on or off any time from File, Settings, Web images.\n\nAn image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
+    body:"An image is a REFERENCE to where the file lives, never a copy stored inside your document, so the document stays small and portable. A picture saved beside your document (or in a folder next to it) shows straight away and needs no network. A web address, https://…, is different: loading it is a request to that host every time the document opens, which can reveal your reading to them, so the app loads no web images by default. The first time you add one it asks whether to Allow web images for this document; until you do, the picture shows as a click-to-allow placeholder rather than a silent broken box. You can turn the choice on or off any time from File, Settings, Web images. Besides the @ image menu you can paste an image address or a copied image, or drag a picture from a web page onto the outline, and it lands as a reference the same way; a local image file dragged in cannot be referenced (the browser hides its location), so save it beside your document and point at it instead.\n\nAn image sits inside the reading column by default, which is right for a diagram in the middle of a note and too small for a map or a piece of art you want to look at. Put a size in quotes after the image address to change that: wide for three quarters of the window, full to run edge to edge, point to stay in the column. The @image menu has a Width picker that writes it for you. Whichever you pick, the image is centred on the window, at any indent level.\n\nYou can also give a percentage, which is a percentage of the point's own width: 50% is half as wide as the text, 150% is half again as wide. The size word sets how far the image is allowed to grow and the percentage sets how wide it actually is, so 150% on its own is capped by the column and looks unchanged; pair it with wide or full to see it. Anything up to 100% always works.\n\nThe size is read only when everything inside the quotes is size words, so an ordinary caption is left alone: \"full\" resizes, \"full moon\" stays a caption and shows as a tooltip. Capitals are a caption too, so \"Full\" is a label, not a size. Cards and table cells keep their own sizing and ignore all of this.",
     related:['inline-md','point-types'],
     examples:[
       { syn:'![map](map.png "wide")',      desc:'three quarters of the window' },

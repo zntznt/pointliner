@@ -3148,6 +3148,30 @@ test('#1328 the web-image opt-in is revocable from File → Settings', () => {
   assert.ok(fnBody(_src, 'openWebImageConsent').includes("host ? `pictures from ${host} and other sites` : 'pictures from the web'"), 'the consent names a host when it has one, the web otherwise');
 });
 
+test('#1329 externalDropContent resolves a dropped image (html img / image uri / plain), else keeps the text', () => {
+  const dt = m => ({ getData: k => m[k] || '' });
+  assert.deepEqual(host(c.externalDropContent(dt({ 'text/html': '<meta><img src="https://x.com/p.png" alt="Pic">' }))), { url: 'https://x.com/p.png', alt: 'Pic' });
+  assert.deepEqual(host(c.externalDropContent(dt({ 'text/uri-list': 'https://x.com/a.jpg' }))), { url: 'https://x.com/a.jpg', alt: 'image' });
+  assert.deepEqual(host(c.externalDropContent(dt({ 'text/plain': 'https://x.com/b.gif' }))), { url: 'https://x.com/b.gif', alt: 'image' });
+  // a non-image link is KEPT as text (never lost, never a navigate-away)
+  assert.deepEqual(host(c.externalDropContent(dt({ 'text/uri-list': 'https://x.com/article' }))), { text: 'https://x.com/article' });
+  // uri-list comment lines (#…) are skipped
+  assert.deepEqual(host(c.externalDropContent(dt({ 'text/uri-list': '# a comment\nhttps://x.com/c.webp' }))), { url: 'https://x.com/c.webp', alt: 'image' });
+  assert.equal(c.externalDropContent(dt({})), null, 'nothing droppable → null');
+});
+
+test('#1329 the drag claim is narrow (no reorder/text-drop regression); a local file gets guidance', () => {
+  const dc = fnBody(_src, 'dragCarriesExternal');
+  assert.ok(dc.includes("types.includes('Files')"), 'a file drag is claimed (unambiguous, avoids navigate-away)');
+  assert.ok(dc.includes('text/uri-list') && dc.includes('text/html'), 'a web payload is claimed');
+  assert.ok(dc.includes('data-editing') && dc.includes('!editing'), 'but NOT over the point being edited ([data-editing]) — native text-drop wins there');
+  const hd = fnBody(_src, 'handleExternalDrop');
+  assert.ok(/^\s*if \(!dragCarriesExternal\(e\)\) return;/m.test(hd), 'a non-claimed drop is left to native / internal reorder');
+  assert.ok(/image\\?\//.test(hd) && hd.includes('flashHint'), 'a local image FILE gets guidance, not a broken blob:');
+  assert.ok(hd.includes('maybeOfferWebImageConsent(url)'), 'a dropped remote image offers the per-document opt-in');
+  assert.ok(_src.includes("getElementById('outline').addEventListener('dragover'") && _src.includes("getElementById('outline').addEventListener('drop', handleExternalDrop)"), 'dragover + drop are wired on the outline');
+});
+
 // Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
 // backspaced its label and the space) must still render a checkbox, not a literal
 // `[ ]`. The bug was TASK_RE requiring `\s+` after the bracket; the fix makes the
