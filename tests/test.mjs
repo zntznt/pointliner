@@ -17350,6 +17350,20 @@ test('#1296 tableToPoints: rows become points under one heading; number columns 
   assert.equal(p2[0].children[0].text, 'Only', 'an empty cost cell adds no {prop} token');
 });
 
+test('#1324 pasting a spreadsheet into the OUTLINE runs the same conversion (not just the Import dialog)', () => {
+  // handlePaste sniffs a delimited paste and converts it to the table-of-points, promotes the {prop} tokens,
+  // and tells the user with an undoable toast. Before, this ran ONLY inside the Import dialog, so a paste
+  // into the outline split each row into a plain point and the CSV->properties feature stayed hidden.
+  const hp = fnBody(_src, 'handlePaste');
+  assert.ok(hp.includes('const delim = sniffDelimited(text)'), 'the paste handler sniffs for a delimited table');
+  assert.ok(hp.includes('tableToPoints(text, delim).points'), 'a delimited paste is converted to the table-of-points');
+  assert.ok(/\.forEach\(promoteLoadedShorthand\)/.test(hp) && hp.includes('promoteLoadedShorthand)'), 'the {prop} tokens are promoted to real props');
+  assert.ok(/as a table with columns\. Undo to remove\./.test(hp), 'a loud, undoable toast reports the conversion (P4)');
+  // the sniff placement matters: it runs AFTER the single-line and para early-returns, so it never
+  // hijacks a one-line paste or a prose block.
+  assert.ok(hp.indexOf("node.type === 'para'") < hp.indexOf('sniffDelimited(text)'), 'the table sniff runs after the prose/para branch, not before');
+});
+
 test('#1310 CSV export: csvCell escaping and rowsToCsv are the inverse of the paste importer', () => {
   assert.equal(c.csvCell('plain'), 'plain', 'a clean cell is bare');
   assert.equal(c.csvCell('a,b'), '"a,b"', 'a comma forces quotes');
