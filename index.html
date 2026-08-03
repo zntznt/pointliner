@@ -3069,6 +3069,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
   <button class="nsb-btn" id="nsb-dates">Dates</button>
   <button class="nsb-btn" id="nsb-check">Check</button>
   <button class="nsb-btn" id="nsb-props">Properties</button>
+  <button class="nsb-btn" id="nsb-tag">Tag</button>
   <button class="nsb-btn" id="nsb-type">Turn into</button>
   <button class="nsb-btn" id="nsb-refile">Refile</button>
   <span class="nsb-sep"></span>
@@ -20291,6 +20292,42 @@ document.getElementById('nsb-type').addEventListener('click', () => {
 document.getElementById('nsb-refile').addEventListener('click', () => {   // UXP-133: bulk refile
   openBulkRefileDialog();
 });
+document.getElementById('nsb-tag').addEventListener('click', () => {   // #1285: bulk-tag-by-search
+  const t = selectedNodes().filter(n => n.type !== 'base'); if (!t.length) return;
+  openBulkTagDialog(t);
+});
+
+// #1285: bulk-tag-by-search — the migration on-ramp (Jules: "a bulk-tag-by-search is the difference
+// between adoption and abandonment"). #1265 gets imported text IN; this makes it QUERYABLE without
+// hand-tagging one bullet at a time: run a search (or select a range), Select all, then Tag. Adds a
+// #tag to every selected point at once. addTagToText is the pure core (append, deduped, sanitized).
+function addTagToText(text, tag) {
+  const t = String(tag == null ? '' : tag).replace(/^#+/, '').replace(/[^\w/-]/g, '');
+  if (!t) return String(text == null ? '' : text);
+  const s = String(text == null ? '' : text);
+  const re = new RegExp('(^|\\s)#' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[\\s/]|$)', 'i');
+  if (re.test(s)) return s;                                  // already carries this tag (or a nested child of it)
+  return (s.replace(/\s+$/, '') + ' #' + t).replace(/^\s+/, '');
+}
+function bulkAddTag(nodes, tag) {
+  const t = String(tag == null ? '' : tag).replace(/^#+/, '').replace(/[^\w/-]/g, '');
+  if (!t || !nodes.length) return;
+  pushUndo();
+  let n = 0;
+  for (const node of nodes) { const next = addTagToText(node.text, t); if (next !== node.text) { node.text = next; n++; } }
+  buildIndex(root, null); markDirty(); render();
+  flashHint(n ? `Tagged ${ptsLabel(n)} #${t}.` : `Every selected point already had #${t}.`);
+}
+function openBulkTagDialog(nodes) {
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-tag', fb:'🏷' },
+    title: `Tag ${nodes.length} point${nodes.length === 1 ? '' : 's'}`,
+    guideId: 'query',
+    submitLabel: 'Add tag',
+    fields: [{ key: 'tag', label: 'Tag to add to every selected point', required: true, placeholder: 'e.g. bit or venue/outdoor' }],
+    onSubmit: vals => bulkAddTag(nodes, vals.tag),
+  });
+}
 
 // A compact "turn into" menu for the selection — the same type-switcher row the
 // bullet popup shows, but each pick loops applyBlockCmd over every selected point.
@@ -39438,7 +39475,7 @@ const GUIDE = [
     ] },
   { id:'multi-select', cat:'getting-around',
     title:'Selecting many points',
-    body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete the lot. Start a selection by Shift+clicking a point (a contiguous range) or Ctrl/Cmd+clicking points to pick them out of order, or press Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.",
+    body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete the lot. Start a selection by Shift+clicking a point (a contiguous range) or Ctrl/Cmd+clicking points to pick them out of order, or press Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Tag, Turn into and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.\n\nTag is the fast way to make a lot of points queryable at once, which matters most right after importing a wall of text: run a search for the points that belong together, press Ctrl/Cmd+A to select every match, then Tag adds one #tag to all of them, so a fresh document becomes something the roll, count and query pills can work on in minutes instead of an evening of hand-tagging.",
     related:['move-nest','refile'],
     examples:[
       { syn:'Shift+Click',            desc:'select a range of points' },
