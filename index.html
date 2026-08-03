@@ -13622,7 +13622,7 @@ function renderRow(r) {
   if (hasVisibleProps(node)) { // #494: not just props?.length — timestamp-only props render nothing
     div.appendChild(buildPropsRow(node, opts));
   }
-  if (!opts.searchCtx) { maybeAddRowAffordance(node, row); maybeAddCardAffordance(node, row); }   // #1240: "+ Add" / "+ Card" doors
+  if (!opts.searchCtx) { maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row); maybeAddCardAffordance(node, row); }   // #1240/#1334: "+ Add" / "+ property" / "+ Card" doors
   return div;
 }
 
@@ -42929,7 +42929,37 @@ function fieldNudgeKey(text) {
 function maybeNudgeField(node) {
   if (!isGuided() || nudgeSeen('field')) return;
   const f = fieldNudgeKey(node.text);
-  if (f) fireNudge('field', `Tip: to total or check ${f.key} later, add it as a number: type /prop:${f.key}=${f.val}, or use the point menu, Add property.`);
+  if (f) fireNudge('field', `Tip: to total or check ${f.key} later, add it as a number: click the + property beside this point, or type /prop:${f.key}=${f.val}.`);
+}
+// #1334 (driven panel #7): typing a bare `key: number` (hp: 15, cost: 120) is a beginner reaching for a
+// trackable field, but a colon in prose is not a property — three personas hit dead text here and could not
+// find the way to make one. Beside the teach-once toast above, a PERSISTENT one-click door: on a point whose
+// text ends in `key: number`, a "+ property" chip promotes it to a real {prop} in place — no syntax, no menu
+// hunt. Guided-only (a fluent user who knows {prop k: v} does not need it); a no-op when the shape does not fit.
+function maybeAddFieldAffordance(node, row) {
+  if (!isGuided()) return;
+  const f = fieldNudgeKey(node.text);
+  if (!f) return;
+  const b = document.createElement('span');
+  b.className = 'addrow-affordance';
+  b.setAttribute('role', 'button');
+  b.setAttribute('tabindex', '-1');
+  const aria = `Make ${f.key} a number property you can total or check`;
+  b.setAttribute('aria-label', aria);
+  b.title = aria;
+  b.textContent = '+ property';
+  const convert = () => {
+    if (!fieldNudgeKey(node.text)) return;   // re-check: text may have changed since render
+    node.text = node.text.replace(/((?:^|\s))([a-z][\w-]*)\s*:\s*(-?\d+(?:\.\d+)?)\s*$/i, '$1{prop $2: $3}');
+    promoteLoadedShorthand(node); buildIndex(root, null); markDirty(); render();
+    flashHint(`${f.key} is now a number you can total or check.`);
+  };
+  // caret invariant (#1278): mousedown preventDefault+stopPropagation so the press never enters edit or
+  // drops the caret; the click does the work; Enter/Space is the keyboard twin.
+  b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+  b.addEventListener('click', e => { e.stopPropagation(); convert(); });
+  b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); convert(); } });
+  row.appendChild(b);
 }
 // A hand-typed `[[Name]]` that resolveTypedLinks could NOT turn into a link (no point by that
 // name, or two points share it) leaves the text literal. Point once at the `[[` picker, which

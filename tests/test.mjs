@@ -12994,6 +12994,14 @@ test('#519 depth nudges: Guided-only, once-ever, toast channel, wired at trigger
     'maybeNudgeField must guard (Guided/once-ever), read the pure predicate, and fire the field nudge');
   assert.ok(/\/prop:\$\{f\.key\}=\$\{f\.val\}/.test(_src), 'the field nudge names the /prop door with the typed key and value');
   assert.match(_src, /maybeNudgeFirstPill\(\);[\s\S]{0,120}?maybeNudgeField\(node\);/, 'the field nudge runs in exitEdit beside the other post-commit nudges');
+  // #1334: the PERSISTENT one-click twin of the toast — a "+ property" door on a bare `key: number` point.
+  const faf = fnBody(_src, 'maybeAddFieldAffordance');
+  assert.ok(faf.includes('if (!isGuided()) return') && faf.includes('fieldNudgeKey(node.text)'), 'Guided-only, gated on the same bare-field predicate as the toast');
+  assert.ok(faf.includes("b.textContent = '+ property'"), 'it is a visible + property door');
+  assert.ok(faf.includes("'$1{prop $2: $3}'"), 'a click promotes the trailing key: number to a {prop …} in place');
+  assert.ok(faf.includes('promoteLoadedShorthand(node)'), 'and promotes it to a real property chip');
+  assert.ok(faf.includes("e.preventDefault(); e.stopPropagation();"), 'caret invariant: mousedown never drops the caret');
+  assert.ok(_src.includes('maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row);'), 'wired into the render affordance pass');
   // Trigger 5 (δ): a hand-typed [[Name]] resolves to a [[#id]] token on an unambiguous match; on
   // zero/many it stays literal and points once at the [[ picker (Guided, once-ever).
   const mtl = fnBody(_src, 'maybeNudgeTypedLink');
