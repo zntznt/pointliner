@@ -1444,6 +1444,15 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .meter-pool{display:inline-flex;align-items:center;gap:2px;vertical-align:-1px}
 .meter-pool .fa-solid{font-size:.9em}
 .meter-icon-empty{opacity:.28}
+/* action pill {HP -= damage}: a CLICKABLE button that APPLIES a mutation to a stat (unlike the
+   accent-tinted read pills, it writes). A bordered button look + a leading ▸ says "this runs",
+   distinguishing it from the clock's counter and the meter's display bar. */
+.act-pill{display:inline-flex;align-items:baseline;gap:4px;font-family:var(--mono);font-size:.82em;font-weight:600;padding:0 7px;border:1px solid color-mix(in srgb,var(--acc) 45%,transparent);border-radius:999px;vertical-align:baseline;line-height:1.5;cursor:pointer;user-select:none;color:var(--acc);background:transparent;transition:background .12s,box-shadow .12s}
+.act-pill::before{content:"\25B8";font-size:.9em;opacity:.7}   /* ▸ play triangle: no FA subset dependency */
+.act-pill:hover{background:color-mix(in srgb,var(--acc) 14%,transparent)}
+.act-pill:active{transform:translateY(.5px)}
+.act-pill:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.act-pill{transition:none}}
 /* per-node properties — a row of key:value chips below the content */
 .props-area{display:flex;flex-wrap:wrap;gap:4px;padding:1px 3px 3px;flex:1;min-width:0}
 .prop-chip{display:inline-flex;align-items:baseline;font-size:.82em;border-radius:var(--r-badge);padding:0 5px;line-height:1.5;background:color-mix(in srgb,var(--muted) 12%,transparent);cursor:pointer;user-select:none}
@@ -4418,6 +4427,52 @@ function meterBar(value, max, cells = METER_CELLS) {
 // 8.5/12 reads cleanly and a whole number stays whole.
 function formatMeter(value, max) {
   return meterBar(value, max) + ' ' + formatMathResult(value) + '/' + formatMathResult(max);
+}
+// ── action pills: {HP -= damage} → click-to-apply a mutation to a named stat ──
+// The generative/compute engines READ; an action pill WRITES. Unlike a declaration
+// ({name := expr}, re-rolled on click) an action MUTATES an existing stat: click
+// evaluates the right side against the live scope and writes `target OP rhs` back to
+// the stat (a numeric property on this point / an ancestor, else a declared variable).
+// A text-recipe pill like {meter: …} — the {…} stays literal in node.text, rendered
+// and run live; nothing is frozen. Pure parse; null = not an action body.
+//   {HP -= damage} · {gold += 50} · {ammo -= 1} · {HP = HPmax}
+const ACTION_RE = /^([A-Za-z_][\w-]*)\s*(\+=|-=|\*=|\/=|=)\s*(\S[\s\S]*)$/;
+function parseActionPill(body) {
+  const m = ACTION_RE.exec(String(body == null ? '' : body).trim());
+  if (!m) return null;
+  const [, target, op, rhs] = m;
+  // a bare `=` that is really the head of `==` is a comparison, never an assignment.
+  if (op === '=' && rhs[0] === '=') return null;
+  const r = rhs.trim();
+  if (!r) return null;
+  // an rhs with its own braces ({HP -= {dmg}}) is out of scope — the inline matcher only
+  // catches a brace with no nested braces. Bare names resolve in evalMath, so {HP -= dmg}
+  // is the shape; reject a nested-brace rhs so it never half-matches. // ponytail: bare-name rhs only.
+  if (/[{}]/.test(r)) return null;
+  return { target, op, rhs: r };
+}
+// The value an action pill writes: `current OP rhs`, evaluated in `scope` (props+vars, via
+// resolveNodeScope). Returns a finite number, or null on an unresolvable/invalid input
+// (missing stat, non-numeric, divide-by-zero) so the caller can flash WHY (P4). Pure —
+// reuses the exact evalMath + aggregate pre-pass every other compute pill uses.
+function actionNewValue(act, node, scope) {
+  if (!act) return null;
+  const rhsVal = evalMath(expandAggExpr(act.rhs, node, scope), scope);
+  if (rhsVal === null || !Number.isFinite(rhsVal)) return null;
+  if (act.op === '=') return rhsVal;
+  const cur = evalMath(act.target, scope);   // the stat's current value, read from scope
+  if (cur === null || !Number.isFinite(cur)) return null;
+  if (act.op === '+=') return cur + rhsVal;
+  if (act.op === '-=') return cur - rhsVal;
+  if (act.op === '*=') return cur * rhsVal;
+  if (act.op === '/=') return rhsVal === 0 ? null : cur / rhsVal;
+  return null;
+}
+// A mutated stat should read cleanly: a whole result stays whole (14, not 14.0000000),
+// a fraction collapses float dust (4.5, not 4.4999999998). Reused for a property write
+// and a variable-expr rewrite alike. Pure.
+function formatStatValue(n) {
+  return String(+Number(n).toPrecision(10));
 }
 // ── depth nudges (#519): point-of-relevance discovery ────────────────────────
 // The pure PREDICATE half — decides IF a nudge is warranted, given plain data. The
@@ -7898,6 +7953,19 @@ function mdInline(s) {
     // beside it is exact, so "8.5 of 12" matches what the pill shows).
     return stash(`<span class="meter${full}" aria-label="Meter, ${formatMathResult(r.value)} of ${formatMathResult(r.max)}">${formatMeter(r.value, r.max)}</span>`);
   });
+  // action pill: {HP -= damage} → a clickable button that APPLIES the mutation on click (like the
+  // clock, it acts and does not display a result). A text-recipe (the {…} stays in node.text, no
+  // sidecar); the click handler reads data-act-body and writes the new stat value back. role=button
+  // + tabindex=-1 + an Enter/Space twin keep the caret invariant (P3-3). Only fires in display mode
+  // (a computed context, cookieNode present) so a bare preview never renders a live control.
+  if (cookieNode) s = s.replace(/\{[^{}]+\}/g, (m) => {
+    const act = parseActionPill(m.slice(1, -1));
+    if (!act) return m;
+    const arith = act.op === '=' ? '' : ' ' + act.op[0];   // "-=", "+=" → the bare arithmetic sign for the label
+    const desc = act.op === '=' ? `set ${act.target} to ${act.rhs}` : `change ${act.target} by${arith} ${act.rhs}`;
+    const label = `${act.target} ${act.op} ${act.rhs}`;
+    return stash(`<span class="act-pill" role="button" tabindex="-1" data-act-body="${escQ(m.slice(1, -1))}" title="Click to apply: ${escQ(desc)}" aria-label="Action, ${escQ(desc)}. Click to apply.">${escHtml(label)}</span>`);
+  });
   // "Did not become a pill" cue (P4). Any {…} still literal HERE never promoted: every valid
   // artifact was rewritten to a [[type:key]] token (and stashed) on exit/load before this render.
   // Flag only the bodies that CLASSIFY 'invalid' (an attempted-but-broken pill: {rumor}, {2d6x},
@@ -9712,6 +9780,7 @@ const INSERT_CMDS = [
   { id:'progress', icon:'◐',  fa:'fa-solid fa-bars-progress', keys:['tally','cookie','checklist','percent'], label:'Progress', desc:'Live tally of this point’s checkboxes and its direct sub-points. Type [%] instead for a percentage, or [/subtree] / [/2] to count deeper than the direct children.', ex:'[/]  ·  [%]  ·  [/subtree]', section:'Trackers' },
   { id:'clock',    icon:'◔',  fa:'fa-solid fa-circle-half-stroke', keys:['tension','segment','pie','timer'], label:'Clock', desc:'A tension clock in segments: click to advance, Shift+click to step back (press and hold on a touch screen). Or write [o /6] with the count empty to fill it from your checked sub-points. Edit the 6 for a bigger or smaller clock.', ex:'[o 0/6]  ·  [o /6]', section:'Trackers' },
   { id:'meter',    icon:'▰',  fa:'',   keys:['meter','bar','gauge','hp','health','goal','words','target'], label:'Meter', desc:'A bar showing a number against its maximum, for HP, spell slots or any gauge. Write literal numbers {meter: 8/12}, or read the point’s own properties {meter: hp/hpmax}, a fixed max {meter: hp/20}, or bare {meter: hp} for a percentage. Wrap a name in braces to read a declared variable instead, like {meter: {done}/{goal}}. Either side can be a live calculation, so {meter: words(subtree)/1000} is a writing goal that fills as you write. Add a style word for a row of icons: {meter: 5/5 hearts} (also dots, boxes, skulls, stars, shields, droplets).', ex:'{meter: 8/12}  ·  {meter: hp/hpmax}  ·  {meter: words(subtree)/1000}  ·  {meter: 5/5 hearts}', section:'Trackers' },
+  { id:'action',   icon:'▸',  fa:'', keys:['action','apply','button','damage','spend','hp'], label:'Action button', desc:'A button that changes a stat when clicked, so a live playthrough can spend, take damage or reset without retyping. Write a stat name, an operator and an amount: {hp -= 1} subtracts 1 on each click, {gold += 50} adds, {hp = hpmax} refills. The amount can read other values, so roll {damage := 1d6} then click {hp -= damage} to apply it. It changes the nearest hp property (this point or a point above it), or a variable of that name. One click, one Undo.', ex:'{hp -= 1}  ·  {gold += 50}  ·  {hp = hpmax}  ·  {hp -= damage}', section:'Trackers' },
   // Insert — basic inline elements
   { id:'footnote', icon:'†',  fa:'fa-solid fa-superscript',  keys:['fn'], label:'Footnote', desc:'Superscript marker linked to a note below.',    ex:'[^ref]',        section:'Insert' },
   { id:'cite',     icon:'†',  fa:'fa-solid fa-superscript',  keys:['reuse','again','same','existing','citation'], label:'Cite footnote', desc:'Reference a footnote you already wrote, so one source can be cited more than once.', ex:'[^ref]', section:'Insert' },
@@ -18377,7 +18446,7 @@ function attachContentEvents(content, node) {
     // to entering edit (owner: "a link or a roll should be interactable always when clicking over them"). The
     // per-element branches above already return; this is the belt-and-braces backstop at the edit sink, so a
     // pill type whose branch does not catch an edge target still can't drop you into raw-text edit.
-    if (e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.seq-pill,.query-pill,.node-link,.hashtag,.fn-ref,.web-img-blocked,.md-task-check,.todo-state,.note-ind,.md-spoiler,a')) return;
+    if (e.target.closest?.('.dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.seq-pill,.query-pill,.act-pill,.node-link,.hashtag,.fn-ref,.web-img-blocked,.md-task-check,.todo-state,.note-ind,.md-spoiler,a')) return;
     e.preventDefault();
     // #820: capture the click position RELATIVE to this content element BEFORE
     // enterEdit swaps innerHTML. On a cold load a heading above can still be
@@ -18704,6 +18773,10 @@ function classifyBraceBody(body, rules, vars) {
   // like {= sum()}). The `meter:` keyword commits to the form, so a malformed body is an ATTEMPT,
   // not prose. Recognizing it here gives it grammar styling in edit mode, matching its render.
   if (/^meter\s*:/i.test(body)) return parseMeter(body) ? 'artifact' : 'invalid';
+  // {HP -= damage} — an action pill (a text-recipe like meter: the {…} stays literal, run live
+  // on click). Recognized here so it styles as a real pill in edit mode and never promotes to a
+  // sidecar. Sniffed before the alternation/template branches (its rhs is a bare expression).
+  if (parseActionPill(body)) return 'artifact';
   if (repeatParts(body)) return 'artifact';                            // {3x: template}
   const mp = modParts(body);                                           // {beast.cap} / {3.ord}
   if (mp) {
@@ -18915,6 +18988,7 @@ function braceTypeLabel(body, rules, vars) {
   if (countParts(body)) return ['query', 'count'];                     // {count: is:todo} (#541)
   if (oracleParts(body)) return ['grammar', 'oracle'];                 // {oracle: likely} (#543)
   if (parseMeter(body)) return ['meter', null];                        // {meter: hp/hpmax} — a text-recipe pill, rendered live like {= sum()}
+  if (parseActionPill(body)) return ['action', null];                  // {HP -= damage} — click-to-apply a mutation
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
@@ -19572,6 +19646,9 @@ function onKeyDown(e, id, content) {
     // click). Only a MANUAL clock is focusable/actionable; a computed [o /M] is a display value.
     const clk = e.target.closest?.('.clock:not(.clock-computed)');
     if (clk && e.target === clk) { e.preventDefault(); advanceClockAt(clk, e.shiftKey ? -1 : 1); return; }
+    // action pill: Enter/Space applies the mutation (the keyboard twin of its click)
+    const apk = e.target.closest?.('.act-pill');
+    if (apk && e.target === apk) { e.preventDefault(); runActionPill(apk); return; }
     const pchip = e.target.closest?.('.prop-chip');
     if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
     // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
@@ -24710,6 +24787,7 @@ const BRACE_FORMS = [
   { label:'count',       keys:['count','tally','number','howmany','tag'],              insert:'{count: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live count of points matching a #tag or search' },
   { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      ph:'is:todo', guide:'roll-query',    desc:'pick one random matching point' },
   { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: 10/100}',      ph:'10/100', guide:'meter',         desc:'a bar of a value against its max' },
+  { label:'action',      keys:['action','apply','button','damage','spend','subtract','increment','decrement'], insert:'{hp -= 1}', ph:'hp', guide:'action', desc:'a button that changes a stat when clicked' },
   { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   ph:'a→b, b→c', guide:'markov',        desc:'generate text in a style you seed' },
   { label:'oracle',      keys:['oracle','yesno','yes','no'],                           insert:'{oracle: likely}',     ph:'likely', guide:'oracle',        desc:'a weighted yes/no answer' },
   { label:'sequence',    keys:['sequence','seq','state','workflow','status'],          insert:'{seq Flow: BACKLOG DOING | SHIPPED}', ph:'Flow', guide:'sequences', desc:'define a custom to-do workflow' },
@@ -35716,7 +35794,7 @@ document.getElementById('outline').addEventListener('click', e => {
 document.getElementById('outline').addEventListener('mousedown', e => {
   // .clock-computed is a display value (like a cookie), not a control — let its mousedown
   // fall through to normal caret placement; only a manual clock swallows it.
-  if (e.target.closest('.note-ind') || e.target.closest('.md-spoiler') || e.target.closest('.clock:not(.clock-computed)')) { e.preventDefault(); e.stopPropagation(); }
+  if (e.target.closest('.note-ind') || e.target.closest('.md-spoiler') || e.target.closest('.clock:not(.clock-computed)') || e.target.closest('.act-pill')) { e.preventDefault(); e.stopPropagation(); }
 }, true);
 document.getElementById('outline').addEventListener('click', e => {
   const ind = e.target.closest('.note-ind');
@@ -35746,6 +35824,8 @@ document.getElementById('outline').addEventListener('click', e => {
   // click also lets you fix the formula. AT keeps the existing aria-label + #a11y-live path.
   const ba = e.target.closest('.brace-attempt');
   if (ba && ba.dataset.reason) flashHint(ba.dataset.reason);
+  const ap = e.target.closest('.act-pill');
+  if (ap) runActionPill(ap);
 });
 // Touch has no Shift, so step-back on a manual clock is a LONG-PRESS (tap still advances) —
 // the bullet's tap-vs-long-press precedent. Timer starts on pointerdown, cancels on movement
@@ -35838,6 +35918,51 @@ function clockAtOrdinal(text, ordinal) {
     return m;
   });
   return out;
+}
+
+// Where a stat NAME lives, so an action pill can write its new value back: a numeric property
+// on this point or its NEAREST ancestor that carries one (the same own→ancestor precedence a
+// {= name} read uses), else the LAST document-order declaration of a variable by that name.
+// Returns {kind:'prop', node} | {kind:'var', rec} | null (no such stat → the caller flashes why).
+function resolveStatTarget(node, name) {
+  const key = String(name || '').toLowerCase();
+  for (const n of [node, ...ancestorsOf(node)]) {
+    const p = (n.props || []).find(p => (p.key || '').trim().toLowerCase() === key);
+    if (p && Number.isFinite(+p.val) && String(p.val).trim() !== '') return { kind: 'prop', node: n };
+  }
+  let rec = null;   // last declaration wins, matching collectVars' document-order last-wins
+  (function walk(n) {
+    for (const r of (n.vars || [])) if ((r.name || '').toLowerCase() === key && r.expr !== undefined) rec = r;
+    for (const c of n.children) walk(c);
+  })(root);
+  return rec ? { kind: 'var', rec } : null;
+}
+
+// Apply an action pill: read its {target OP rhs} from data-act-body, compute the new value in the
+// point's live scope, write it back to the resolved stat, and repaint. A document mutation like a
+// clock advance — pushUndo (so one Undo reverts it), markDirty, announce (P4). Never runs while the
+// host point is being edited (the caret owns the text then). A variable write rewrites its stored
+// expr to the literal number so every {name} reference across the document follows; a property write
+// updates the chip + any reader that inherits it. A missing stat or an unresolvable value flashes WHY.
+function runActionPill(span) {
+  const content = span.closest('.node-content');
+  if (!content || content.dataset.editing) return;
+  const node = nodeById(content.dataset.id);
+  if (!node) return;
+  const act = parseActionPill(span.dataset.actBody || '');
+  if (!act) return;
+  const scope = resolveNodeScope(node, ancestorsOf(node), collectVars());
+  const tgt = resolveStatTarget(node, act.target);
+  if (!tgt) { flashHint(`No stat named ${act.target} to change here. Give this point (or one above it) a ${act.target} property, or declare {${act.target} := 0}.`); return; }
+  const nv = actionNewValue(act, node, scope);
+  if (nv === null) { flashHint(`Could not apply ${act.target} ${act.op} ${act.rhs}. Check the values it uses are numbers.`); return; }
+  const val = formatStatValue(nv);
+  pushUndo();
+  if (tgt.kind === 'prop') setProp(tgt.node, act.target, val);
+  else { tgt.rec.expr = val; tgt.rec.kind = undefined; tgt.rec.rolled = undefined; tgt.rec.versus = undefined; }
+  markDirty();
+  render();   // a stat change ripples to readers across the document — a full repaint is correct here
+  announce(`${act.target} is now ${val}`);
 }
 
 // A property chip opens its editor: a date chip (due/start) → the Schedule
@@ -40128,6 +40253,16 @@ const GUIDE = [
       { syn:'{meter: words(subtree)/1000}', desc:'a writing goal: the bar fills as you write beneath the point' },
       { syn:'{meter: {done}/{goal}}', desc:'read declared variables instead of properties' },
       { syn:'{meter: hp/5 hearts}', desc:'a row of icons (dots, boxes, hearts, skulls, stars, shields, droplets)' },
+    ] },
+  { id:'action', cat:'todos', covers:['action'],
+    title:'Action buttons',
+    body:"A button that changes a stat when you click it. Where a meter or a rollup READS a number, an action WRITES one, so a live playthrough can spend, take damage, count down ammo or reset between scenes without you retyping the value. Write the stat's name, an operator and an amount in braces: {hp -= 1} draws a small button, and each click subtracts 1 from the point's hp. The operators are += to add, -= to subtract, *= to multiply, /= to divide and a plain = to set: {gold += 50}, {ammo -= 1}, {stress *= 2}, {hp = hpmax} to refill.\n\nThe amount can be any calculation, and it can read other values, which is where it earns its keep. Roll damage into a variable, {damage := 1d6 + str}, then give the target a button {hp -= damage}: click the roll to get a number, click the button to apply it. The button finds the stat the same way a calculation does. It looks for a property called hp on the point itself, then on the points above it, and changes the nearest one; if no point carries that property it changes a variable of that name declared with := instead. So a character point with an hp: 20 property gets a personal button, while {gold += 50} under a party ledger can adjust one shared gold variable for the whole table.\n\nEach click is one document change, so a single Undo puts the stat back. If there is no stat by that name to change, or the amount does not work out to a number, the button says so instead of changing anything silently. An action is a control, not a value, so it is not frozen and does not export a number, it exports as its own text.",
+    related:['variables','meter','math','recipe-crit','clock'],
+    examples:[
+      { syn:'{hp -= 1}',         desc:'click to subtract 1 from this point’s hp' },
+      { syn:'{gold += 50}',      desc:'add to a gold property or variable' },
+      { syn:'{hp = hpmax}',      desc:'set one stat to another (a full heal)' },
+      { syn:'{damage := 1d6+str} then {hp -= damage}', desc:'roll damage, then a button applies it' },
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
