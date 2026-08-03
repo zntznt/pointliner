@@ -20682,6 +20682,67 @@ function distPillDef(node, kind, key) {
   if (kind === 'deck')    { const g = (node.grammar || []).find(x => x.key === key); return g && { def:{ mode:g.mode, items:g.items, count:g.count }, label:(g.items || []).join(' | ') }; }
   return null;
 }
+// #1297: generate a run of dated to-do points at a fixed interval; the batch series the recurring-task
+// roll-forward (#462) can't make (that advances ONE task on completion). Hector's succession planting,
+// "plant lettuce every 14 days, Apr–Sep," becomes a real set of dated to-dos that show in the Agenda.
+// Generation feeding dated structure (engine-1): it inserts points, nothing more, no reminders, no
+// backend (the planner half stays out, per product-identity). dateSeries is the pure, capped core.
+function dateSeries(startEp, stepDays, endEp, cap = 366) {
+  const s = Math.round(Number(startEp)), e = Math.round(Number(endEp)), step = Math.round(Number(stepDays));
+  if (![s, e, step].every(Number.isFinite) || step < 1 || e < s) return [];
+  const out = [];
+  for (let d = s; d <= e && out.length < cap; d += step) out.push(d);
+  return out;
+}
+// Insert the schedule: a parent point over one dated to-do per date. Mirrors insertDistAsPoints'
+// insert mechanics (undo / splice after the node / reindex / render); each child's due is a real
+// date prop via setDateProp, so it lands in the Agenda exactly like a hand-set deadline.
+function insertDateSeriesPoints(node, label, stepDays, epochs) {
+  if (!epochs.length) return;
+  pushUndo();
+  const parent = mkNode(`${label} (every ${stepDays} day${stepDays === 1 ? '' : 's'}, ${epochs.length} dates)`); parent.type = 'ul';
+  for (const ep of epochs) {
+    const cn = mkNode('- [ ] ' + label); cn.type = deriveTypeFromText(cn.text) || 'todo';
+    setDateProp(cn, 'due', formatEpochDays(ep));
+    parent.children.push(cn);
+  }
+  const par = parentMap.get(node.id) || root;
+  const idx = (par.children || []).indexOf(node);
+  par.children.splice(idx < 0 ? par.children.length : idx + 1, 0, parent);
+  buildIndex(root, null); markDirty(); render();
+  focusNode(parent.id);
+  flashHint(`Added a schedule of ${ptsLabel(countPoints(parent) - 1)}.`);
+}
+// The dialog: what repeats, from when, how often, until when. Dates parse through parseDueDate (so
+// "today", "today+90", a weekday name and ISO all work); the count is capped in dateSeries. Rejects
+// bad input visibly (P4), never a silent empty insert.
+function openDateSeriesDialog(nodeId) {
+  const node = nodeById(nodeId); if (!node) return;
+  openInsertDialog({
+    icon: { fa:'fa-solid fa-calendar-days', fb:'🗓' },
+    title: 'Repeating dates',
+    guideId: 'dates',
+    draftKey: 'series:' + nodeId,
+    submitLabel: 'Generate',
+    fields: [
+      { key: 'label', label: 'What repeats', required: true, placeholder: 'e.g. Plant lettuce' },
+      { key: 'start', label: 'Start date', required: true, value: formatEpochDays(dueDateToday()), placeholder: 'today or 2026-04-01' },
+      { key: 'every', label: 'Every (days)', required: true, value: '14' },
+      { key: 'until', label: 'Until (last date on or before)', required: true, placeholder: '2026-09-01' },
+    ],
+    onSubmit: vals => {
+      const start = parseDueDate((vals.start || '').trim());
+      const end = parseDueDate((vals.until || '').trim());
+      const step = Math.round(Number(vals.every));
+      if (start === null) { flashError('Start date not understood: ' + (vals.start || '')); return; }
+      if (end === null) { flashError('End date not understood: ' + (vals.until || '')); return; }
+      if (!Number.isFinite(step) || step < 1) { flashError('“Every” must be a whole number of days (1 or more).'); return; }
+      const eps = dateSeries(start, step, end);
+      if (!eps.length) { flashError('That makes no dates. Is the end date before the start?'); return; }
+      insertDateSeriesPoints(node, (vals.label || 'Task').trim() || 'Task', step, eps);
+    },
+  });
+}
 function insertDistAsPoints(node, label, outcomes) {
   const r = distReadout(outcomes);
   const lines = [];
@@ -20926,6 +20987,8 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
       fn: () => { hideBpop(); openNoteEditor(nodeId); } },
     { sec:'Annotate', prim:true, lean:true, icon: DUE_ICON, label: (node.props || []).some(p => { const k = p.key.toLowerCase(); return k === 'due' || k === 'start'; }) ? 'Edit dates' : 'Set dates',
       fn: () => { hideBpop(); openDueDateDialog(nodeId); } },
+    { sec:'Annotate', icon:{ fa:'fa-solid fa-calendar-days', fb:'🗓' }, label:'Repeating dates…',   // #1297: generate a dated series (succession planting, recurring deadlines)
+      fn: () => { hideBpop(); openDateSeriesDialog(nodeId); } },
     { sec:'Annotate', icon: CHECK_ICON, label: (node.props || []).some(p => p.key.trim().toLowerCase() === CHECK_KEY) ? 'Edit check' : 'Add check',
       fn: () => { hideBpop(); openCheckDialog(nodeId); } },
     { sec:'Annotate', icon: { fa:'fa-solid fa-tag', fb:'🏷' }, label: aliasesOf(node).length ? 'Edit aliases' : 'Add alias',
@@ -39670,7 +39733,7 @@ const GUIDE = [
   // ── Dates & agenda (guide) ────────────────────────────────────────────────
   { id:'dates', cat:'dates', covers:['due'],
     title:'Scheduling dates',
-    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.",
+    body:"Track when things need to happen. Set a deadline on a deliverable, a start date on a project phase or both on a running task. Once a point has a date it shows up in the agenda, turns red when overdue and you can filter to it in search. Type /due:tomorrow (or /start:2026-07-01) to set a date inline without leaving the keyboard, or /due on its own to open the Schedule dialog. Dates can be exact or relative like today+7. The Schedule dialog also has a Repeat field for recurring tasks: type a phrase like every week, every Monday or monthly on the 1st, and when you complete the task its date rolls forward to the next occurrence and it re-opens, so the one point keeps recurring. The cadence is fixed off the due date, so finishing late does not drift the schedule.\n\nThat Repeat field is for ONE task that recurs. To lay down a whole SERIES of separate dated to-dos at once, a planting every two weeks through the season or a filing on a fixed cadence, open a point's menu and choose Repeating dates. Give it what repeats, a start, an interval in days and an end, and it generates a dated to-do for each occurrence, all sitting in the agenda. It only makes points, so you edit, reschedule or delete any of them like anything else you typed.",
     related:['agenda','timeline','custom-calendars'],
     examples:[
       { syn:'/due:tomorrow',    desc:'set the due date inline' },

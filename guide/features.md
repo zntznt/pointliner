@@ -155,6 +155,10 @@ Turn the document into a lightweight planner.
 - **Recurring tasks.** Give a task a Repeat schedule (`every week`, `every Monday`, `monthly on the
   1st`); completing it rolls the date forward and re-opens it.
   ([recurring](dates-and-planning.md#recurring-tasks))
+- **Repeating dates (a whole series).** A point's menu then Repeating dates generates a run of separate
+  dated to-dos at a fixed interval between two dates (a planting every 14 days through the season, a
+  filing on a cadence). It only makes points, all landing in the agenda, so you edit or reschedule any
+  of them freely.
 - **Agenda.** A built-in calendar, timeline (Gantt) and due-list view of your dated points.
   ([agenda](dates-and-planning.md#agenda-and-calendar))
 - **Timeline.** Browse every dated point in chronological order, grouped by month, as the history of
