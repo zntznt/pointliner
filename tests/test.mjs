@@ -23772,6 +23772,27 @@ test('#809: childPropNumber accepts strictly-grouped thousands separators', () =
   assert.equal(c.childPropNumber(kid('12o'), 'cost'), null);
 });
 
+test('#1317 propExprValue: a formula-valued property computes, so a math-style line totals like a property', () => {
+  // The seam fix: a property value can be a self-contained arithmetic expression.
+  assert.equal(c.propExprValue('60 * 3.50'), 210, 'a qty*price line value computes');
+  assert.equal(c.propExprValue('(100 - 20) / 2'), 40, 'parens and division work');
+  assert.equal(c.propExprValue('5'), null, 'a plain number is not a formula (handled the normal way)');
+  assert.equal(c.propExprValue('hello world'), null, 'plain text is not a formula');
+  assert.equal(c.propExprValue('-5'), null, 'a bare negative number is not a formula');
+  assert.equal(c.propExprValue('2026-01-15'), null, 'an ISO date is not arithmetic (its dashes are not minus)');
+  assert.equal(c.propExprValue('me'), null, 'a bare identifier with no operator stays text (no accidental variable pickup)');
+  // childPropNumber returns the computed value, so it flows into the rollup like any number.
+  const kid = (val) => { const n = c.mkNode('Garden roses'); n.props = [{ key: 'cost', val }]; return n; };
+  assert.equal(c.childPropNumber(kid('60 * 3.50'), 'cost'), 210, 'a formula property reads as its computed number');
+  // A section of formula-cost rows sums, and the + Total door sees the column as numeric.
+  const head = c.mkNode('## Flowers');
+  head.children.push(kid('60 * 3.50'), kid('40 * 2.75'), kid('18 * 6.00'));
+  assert.equal(c.aggregateChildren(head, 'sum', 'cost'), 210 + 110 + 108, 'sum(cost) totals the computed line values (428)');
+  const shape = c.inferRowShape(head.children, {});
+  assert.ok(nonEmpty(shape.props, 'shape props').some(p => p.key === 'cost' && p.type === 'number'),
+    'inferRowShape marks the formula column numeric, so the + Total / + Variance door appears');
+});
+
 test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a check errors, never passes', () => {
   const p = c.mkNode('Budget');
   const kid = (val) => { const n = c.mkNode('item'); n.props = [{ key: 'cost', val }]; return n; };
