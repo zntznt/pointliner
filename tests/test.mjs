@@ -7848,14 +7848,28 @@ test('edit-on-click is scoped to the content box — the row-level gutter/margin
     'clicking the content box still enters edit and places the caret at the click point');
 });
 
-test('the hover point-menu gates on LIVE dom editing state, not the stale activeContentId var', () => {
+test('the hover point-menu gates on LIVE dom editing state, blocking ONLY the point being edited', () => {
   // Regression ("the hover menu became unreliable"): activeContentId went stale when a render() ended an edit
-  // without exitEdit (an affordance/door click destroys the editor but leaves the module var set), which then
-  // blocked hover-open for the rest of the session. The 200ms hover-open now reads the DOM, which can't drift.
-  assert.ok(_src.includes("if (!dragId && !document.querySelector('.node-content[data-editing]')) showBulletPopup(node.id, bullet)"),
-    'the 200ms bullet hover-open checks .node-content[data-editing], the ground truth');
+  // without exitEdit, blocking hover-open for the whole session. It now reads the DOM (can't drift), AND blocks
+  // only THIS point when it is the one being edited — hovering another point's bullet mid-edit still opens.
+  assert.ok(_src.includes("const editingEl = document.querySelector('.node-content[data-editing]')") &&
+    _src.includes('if (!dragId && editingEl?.dataset.id !== node.id) showBulletPopup(node.id, bullet)'),
+    'the 200ms hover-open opens unless THIS point is the one being edited (#455 covers its own text only)');
   assert.ok(!_src.includes('if (!dragId && activeContentId == null) showBulletPopup'),
     'the stale-prone activeContentId guard is gone from the hover path');
+});
+
+test('a click on an interactive pill/link never falls through to entering edit (the edit-sink backstop)', () => {
+  // Owner: "a link, or a roll, should be interactable always when clicking over them." The content mousedown
+  // enters edit only after an explicit bail for any interactive token, so no pill/link click can drop into
+  // raw-text edit even if its own branch misses an edge target.
+  const guard = ".dice-roll,.mk-roll,.gr-roll,.math-roll,.var-pill,.est-pill,.seq-pill,.query-pill,.node-link,.hashtag,.fn-ref,.web-img-blocked,.md-task-check,.todo-state,.note-ind,.md-spoiler,a";
+  assert.ok(_src.includes("if (e.target.closest?.('" + guard + "')) return;"),
+    'the edit-entering mousedown bails when the click is inside an interactive pill/link/token');
+  // it sits right before the enterEdit call, after the editing-guard
+  const idxGuard = _src.indexOf("if (e.target.closest?.('" + guard + "')) return;");
+  const idxEnter = _src.indexOf('enterEdit(content, node);\n    content.focus();\n    const rAfter');
+  assert.ok(idxGuard > -1 && idxEnter > idxGuard, 'the backstop precedes the enterEdit sink');
 });
 
 test('the Shift+F10 pill rows are collected from FOLDED text, or the keyboard door is empty', () => {
