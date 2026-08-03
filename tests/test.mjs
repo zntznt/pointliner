@@ -17214,6 +17214,41 @@ test('#1296 tableToPoints: rows become points under one heading; number columns 
   assert.equal(p2[0].children[0].text, 'Only', 'an empty cost cell adds no {prop} token');
 });
 
+test('#1310 CSV export: csvCell escaping and rowsToCsv are the inverse of the paste importer', () => {
+  assert.equal(c.csvCell('plain'), 'plain', 'a clean cell is bare');
+  assert.equal(c.csvCell('a,b'), '"a,b"', 'a comma forces quotes');
+  assert.equal(c.csvCell('he said "hi"'), '"he said ""hi"""', 'internal quotes double');
+  assert.equal(c.csvCell('two\nlines'), '"two\nlines"', 'a newline forces quotes');
+  assert.equal(c.rowsToCsv([['a', 'b'], ['c', 'd']]), 'a,b\r\nc,d', 'rows join with CRLF, cells with commas');
+  // Round-trip: a value with a comma survives export → re-parse by the #1296 importer.
+  const csv = c.rowsToCsv([['name', 'note'], ['Sink', 'a, tricky value']]);
+  assert.deepEqual(host(c.importSplitRow(csv.split('\r\n')[1], ',')), ['Sink', 'a, tricky value'], 'the exported quoting round-trips through importSplitRow');
+});
+
+test('#1310 sectionToCsvRows: rows become a grid (union of property columns, values frozen, empties filled)', () => {
+  const head = c.mkNode('## Budget');
+  const mk = (t, props) => { const n = c.mkNode(t); for (const [k, v] of props) n.props.push({ key: k, val: String(v) }); return n; };
+  head.children.push(
+    mk('Hall {prop cost: 3200}', [['cost', 3200], ['qty', 2]]),   // text carries a pill token; title must clean it
+    mk('Catering', [['cost', 4800]]),                              // no qty → empty cell
+  );
+  const rows = c.sectionToCsvRows(head, {});
+  assert.deepEqual(host(rows[0]), ['name', 'cost', 'qty'], 'header is a name column + the UNION of property keys');
+  assert.deepEqual(host(rows[1]), ['Hall', '3200', '2'], 'the title is cleaned of its pill token; values follow the columns');
+  assert.deepEqual(host(rows[2]), ['Catering', '4800', ''], 'a row missing a column gets an empty cell');
+  // Nothing to export: fewer than two rows, or no properties at all.
+  assert.equal(c.sectionToCsvRows(c.mkNode('lonely'), {}), null, 'no children → null');
+  const plain = c.mkNode('p'); plain.children.push(c.mkNode('a'), c.mkNode('b'));
+  assert.equal(c.sectionToCsvRows(plain, {}), null, 'rows with no properties → nothing to tabulate');
+});
+
+test('#1310 the CSV export is wired (a section with property rows gets a bullet-menu door)', () => {
+  assert.ok(_src.includes("label:'Export table to CSV'"), 'the bullet menu offers a CSV export');
+  assert.ok(_src.includes('sectionToCsvRows(node, knownStates(root)) ?'), 'the door only appears when there is a table to export');
+  const fn = fnBody(_src, 'exportSectionCsv');
+  assert.ok(fn.includes('rowsToCsv(rows)') && fn.includes("'.csv'"), 'it downloads the rows as a .csv');
+});
+
 // ── #1297 date-series generator (batch dated points at a fixed interval) ─────
 test('#1297 dateSeries: evenly-spaced dates from start to end, inclusive, capped, invalid → empty', () => {
   // 2026-04-01 is epoch day 20544; every 14 days through 2026-05-01 (20574) → Apr 1, 15, 29.
