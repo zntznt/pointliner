@@ -4279,6 +4279,13 @@ function aggHasSkippedValues(node, expr) {
 // point in scope with no numeric value for that property — the silent-wrong-total Sam feared: a row
 // with no `cost`, or a `cost` that is not a number). null when the expression is not a simple rollup
 // (a plain arithmetic pill has nothing to audit). Pure; mirrors aggregateChildren's own scope/read.
+// #1321: the cheap shape test behind auditAgg — is there a child-prop rollup here whose total is worth an
+// Explain breakdown? Gates the pill's visible Explain affordance (a magnifier beside the edit pencil)
+// without walking the subtree every render; the full auditAgg still runs when the breakdown is opened.
+// Same shape auditAgg matches, so the visible door and the action-menu row appear in lockstep.
+function isAuditableAgg(expr) {
+  return /\b(?:sum|avg|count|min|max)\s*\(\s*[A-Za-z_]\w*\s*(?:,\s*(?:subtree|\d+))?\s*\)/.test(String(expr || ''));
+}
 function auditAgg(node, expr) {
   const m = /\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(subtree|\d+))?\s*\)/.exec(String(expr || ''));
   if (!m || !node) return null;
@@ -11152,7 +11159,7 @@ function handleCellPill(node, pill, target) {
   } else if (pill.classList.contains('gr-roll') && !pill.classList.contains('gr-bad')) {
     if (target.closest('.gr-edit')) editGrammar(node, key); else rerollGrammar(node, key);
   } else if (pill.classList.contains('math-roll') && !pill.classList.contains('math-bad')) {
-    editMath(node, key);
+    if (target.closest('.math-explain')) openPillAudit(node, key); else editMath(node, key);   // #1321: magnifier → breakdown
   } else if (pill.classList.contains('est-pill') && !pill.classList.contains('est-bad')) {
     if (target.closest('.est-edit')) editEst(node, key); else rerollEst(node, key);
   } else if (pill.classList.contains('var-pill') && !pill.classList.contains('var-bad')) {
@@ -18241,6 +18248,9 @@ function attachContentEvents(content, node) {
     const mp = e.target.closest?.('.math-roll');
     if (mp && !mp.classList.contains('math-bad')) {
       e.preventDefault(); e.stopPropagation();
+      // #1321: the magnifier opens the number's breakdown instead of the format editor (checked before
+      // editMath because it also carries .math-edit for its styling/keyboard).
+      if (e.target.closest('.math-explain')) { openPillAudit(node, mp.dataset.key); return; }
       if (content.dataset.editing) exitEdit(content, node); // commit any in-progress edit first
       editMath(node, mp.dataset.key); // opens a dialog; stays in display mode
       return;
@@ -28816,6 +28826,14 @@ function renderMathPill(key, m, opts = {}) {
   // canonical here, in one place, for all five.
   const pencil = opts.preview ? ''
     : `<span class="math-edit" role="button" tabindex="-1" aria-label="Edit formula and number format" title="Edit formula and number format"><i class="fa-solid fa-pen" aria-hidden="true"></i></span>`;
+  // #1321: Explain this number was reachable only by right-click / menu key, so a mouse user who clicked a
+  // total to understand it landed in the format editor instead (a driven-panel miss). Give a rollup total a
+  // VISIBLE front door (P2): a magnifier beside the pencil that opens the same breakdown. It carries the
+  // .math-edit class so it inherits the hover-reveal, focus and keyboard-activation the pencil already has;
+  // .math-explain is only the click hook. Gated to auditable child-prop rollups (the shape the breakdown
+  // reads), so a plain {= 2*pi*r} keeps just the pencil. Suppressed in a non-interactive preview.
+  const explain = (opts.preview || !isAuditableAgg(m && m.expr)) ? ''
+    : `<span class="math-edit math-explain" role="button" tabindex="-1" aria-label="Explain this number" title="Explain this number: see every point that went into it"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></span>`;
   // The format-door signpost (#946): the pill's tip and aria both name what a click reaches. In a
   // preview there is nothing to reach, so the clause goes and the label states the value alone.
   const editTip = opts.preview ? '' : ' Click to edit the formula or number format.';   // leading space: with the clause gone, a preview's accessible name must not end in one
@@ -28886,6 +28904,7 @@ function renderMathPill(key, m, opts = {}) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing matched</span>`
+      + explain
       + pencil
       + `</span>`;
   }
@@ -28933,6 +28952,7 @@ function renderMathPill(key, m, opts = {}) {
     return `<span class="math-roll math-bare" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
       + ` aria-label="Math ${escQ(m.expr)} = ${escQ(display)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
       + `<span class="math-result">${escHtml(display)}</span>`
+      + explain
       + pencil
       + `</span>`;
   }
@@ -28945,6 +28965,7 @@ function renderMathPill(key, m, opts = {}) {
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
     + `<span class="math-result">${escHtml(display)}</span>`
+    + explain
     + pencil
     + `</span>`;
 }
@@ -40246,7 +40267,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nYou do not have to type any of it. On a heading whose rows carry a number, a + Total door totals the column in one click; and in the @ Math or @ Check dialog, sum, avg, count, min and max are click chips, and so are your own property keys, so a total is built by clicking the reducer and then the key, never spelling either out. When the rows carry exactly TWO number columns (a quote and an actual, an estimate and an invoice), a + Variance door writes the over-or-under for you: the difference on every row and the total on the heading, so a budget-vs-actual reads its variance without you authoring a single formula.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. Widen it all the way with sum(cost, document), which totals the property across the WHOLE document from any point, the same widener word a search reducer takes. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, open the pill's actions (right-click it, or focus it and press the menu key) and choose Explain this number. It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nYou do not have to type any of it. On a heading whose rows carry a number, a + Total door totals the column in one click; and in the @ Math or @ Check dialog, sum, avg, count, min and max are click chips, and so are your own property keys, so a total is built by clicking the reducer and then the key, never spelling either out. When the rows carry exactly TWO number columns (a quote and an actual, an estimate and an invoice), a + Variance door writes the over-or-under for you: the difference on every row and the total on the heading, so a budget-vs-actual reads its variance without you authoring a single formula.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. Widen it all the way with sum(cost, document), which totals the property across the WHOLE document from any point, the same widener word a search reducer takes. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, hover the pill and click the magnifier beside the pencil (or open the pill's actions by right-clicking it, or focusing it and pressing the menu key, and choose Explain this number). It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },

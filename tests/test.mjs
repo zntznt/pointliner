@@ -13043,6 +13043,37 @@ test('#1284 the audit is wired: a rollup pill offers "Explain this number", the 
   assert.ok(pa.includes("mountFooter"), 'the dialog has a close footer');
 });
 
+test('#1321 isAuditableAgg: the cheap shape gate matches exactly the rollups auditAgg can explain', () => {
+  assert.ok(c.isAuditableAgg('sum(cost)'), 'a bare child-prop sum is auditable');
+  assert.ok(c.isAuditableAgg('sum(cost, subtree)'), 'a subtree-scoped rollup too');
+  assert.ok(c.isAuditableAgg('count(score, 2)'), 'a depth-scoped rollup too');
+  assert.ok(c.isAuditableAgg('round(100 * sum(wins) / games)'), 'a rollup embedded in a bigger expr still shows the door');
+  assert.ok(!c.isAuditableAgg('2 * pi * r'), 'a plain calculation has no rollup to explain');
+  assert.ok(!c.isAuditableAgg('sum("#task", cost)'), 'a QUERY reducer is not this breakdown (quoted arg)');
+  assert.ok(!c.isAuditableAgg('percentile(cost, 90)'), 'a non-rollup function is not audited');
+  // it agrees with the full core on the auditable/non-auditable split (a real node with children)
+  const head = c.mkNode('## Roster');
+  const kid = c.mkNode('Ava'); kid.props = [{ key: 'cost', val: '5' }]; head.children.push(kid);
+  assert.equal(c.isAuditableAgg('sum(cost)'), !!c.auditAgg(head, 'sum(cost)'), 'lockstep with auditAgg on a rollup');
+  assert.equal(c.isAuditableAgg('2 * 19'), !!c.auditAgg(head, '2 * 19'), 'lockstep with auditAgg on a plain calc');
+});
+
+test('#1321 the pill shows a VISIBLE Explain door (magnifier) that opens the breakdown, not the editor', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  // the affordance is built, gated on the same shape auditAgg reads, and reuses the pencil chrome
+  assert.ok(rmp.includes('math-explain') && rmp.includes('isAuditableAgg(m && m.expr)'), 'an Explain control is emitted, gated on isAuditableAgg');
+  assert.ok(rmp.includes('Explain this number'), 'the control names the action for hover + assistive tech');
+  assert.ok(rmp.includes('fa-magnifying-glass'), 'it uses the magnifier glyph (same as the menu row / audit dialog)');
+  // it is placed on the real pill, not the non-interactive preview
+  assert.ok(/opts\.preview\s*\|\|\s*!isAuditableAgg/.test(rmp), 'suppressed in a preview, like the pencil');
+  // a click on the magnifier routes to the breakdown, checked BEFORE editMath (it also carries .math-edit)
+  const handler = _src.slice(_src.indexOf("const mp = e.target.closest?.('.math-roll')"));
+  assert.ok(/if \(e\.target\.closest\('\.math-explain'\)\) \{ openPillAudit\(node, mp\.dataset\.key\); return; \}/.test(handler.slice(0, 600)), 'the magnifier opens openPillAudit before the editMath fall-through');
+  // the base-cell pill path routes it too
+  const hcp = fnBody(_src, 'handleCellPill');
+  assert.ok(hcp.includes("target.closest('.math-explain')") && hcp.includes('openPillAudit(node, key)'), 'a base-cell math pill routes the magnifier to the breakdown');
+});
+
 test('subtree aggregation: date properties aggregate (min/max/count, the F2 date-range unlock)', () => {
   const p = c.mkNode('Project');
   const k1 = c.mkNode('A'); k1.props.push({ key: 'due', val: '2026-01-10' }); k1.props.push({ key: 'start', val: '2026-01-01' });
