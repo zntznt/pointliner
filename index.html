@@ -42453,7 +42453,7 @@ const STARTERS = [
   },
   { id: 'reading-log',
     name: 'Reading log',
-    desc: 'Your shelf as data: a roll to pick the next book, live counts, all-time page and rating totals, and a this-year total that resets when the calendar does.',
+    desc: 'Your shelf as data: a roll to pick the next book, live counts, all-time page and rating totals, and a by-year total you keep with a year tag.',
     opml: `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Reading log</title></head><body>
 <outline text="# Reading log">
@@ -42483,7 +42483,7 @@ const STARTERS = [
     </outline>
   </outline>
   <outline text="## How to run it">
-    <outline text="Add a book you want to read and tag it to-read; the pick above can land on it. When you finish one, move it under Finished, give it a page count and a rating, and tag it with the year. The all-time totals add every finished book, while the this-year lines only see the books tagged with this year, so they start fresh in January without you clearing anything."/>
+    <outline text="Add a book you want to read and tag it to-read; the pick above can land on it. When you finish one, move it under Finished, give it a page count and a rating, and tag it with the year. The all-time totals add every finished book, while the this-year lines only total the books you tag with the year, so each year adds up separately as you tag it (tag next year&apos;s reads with the new year and add a line for it)."/>
     <outline text="Nothing here is new syntax: the pick is a roll on a tag, the counts are live searches, and the totals are sums and an average pointed at a property."/>
   </outline>
 </outline>
@@ -42869,8 +42869,8 @@ const STARTERS = [
   </outline>
   <outline text="## Next quote: Ridgeline Tea, rough">
     <outline text="Total hours if I take it: {estq := (8 to 14) + (4 to 7) + (5 to 9) + (2 to 5)}"/>
-    <outline text="My 90 percent safe number: {= percentile(estq, 90)} hrs; odds it runs past 25 hrs: {= chanceover(estq, 25)}"/>
-    <outline text="So I would quote near {= percentile(estq, 90) * rate}, not the midpoint. The tail is where I lose money."/>
+    <outline text="My 90 percent safe number: {= round(percentile(estq, 90))} hrs; odds it runs past 25 hrs: {= round(chanceover(estq, 25))}%"/>
+    <outline text="So I would quote near {= round(percentile(estq, 90) * rate)}, not the midpoint. The tail is where I lose money."/>
     <outline text="Logo concepts, 3 routes: about {8 to 14} hrs"/>
     <outline text="Brand mini-guide, 4 pages: about {4 to 7} hrs"/>
     <outline text="Two web mockups: about {5 to 9} hrs"/>
