@@ -3109,6 +3109,31 @@ test('#1326 the Insert-image dialog preview respects the opt-in (never requests 
   assert.ok((_src.match(/fields: imageDialogFields\(/g) || []).length >= 2, 'both image dialogs share imageDialogFields');
 });
 
+test('#1327 smart image paste: isImageUrl / imgSrcFromHtml detection', () => {
+  assert.ok(c.isImageUrl('https://site.com/photo.jpg'), 'a remote image URL');
+  assert.ok(c.isImageUrl('https://site.com/a/b.png?w=200&h=100'), 'query string tolerated');
+  assert.ok(c.isImageUrl('photos/build.webp'), 'a relative path with a slash');
+  assert.ok(c.isImageUrl('data:image/png;base64,AAAA'), 'a data:image');
+  assert.ok(!c.isImageUrl('cat.jpg'), 'a bare filename (no scheme/slash) is NOT hijacked — could be prose');
+  assert.ok(!c.isImageUrl('https://site.com/article'), 'a non-image URL');
+  assert.ok(!c.isImageUrl('just some pasted words'), 'prose is not an image');
+  // copy-image html (Chrome prepends a <meta>)
+  const got = c.imgSrcFromHtml('<meta charset="utf-8"><img src="https://x.com/p.png" alt="A photo">');
+  assert.deepEqual(host(got), { src: 'https://x.com/p.png', alt: 'A photo' });
+  assert.equal(c.imgSrcFromHtml('<div>rich <b>text</b> with an <img src="x.png"></div>'), null, 'html that merely CONTAINS an image is left as ordinary paste');
+  assert.equal(c.imgSrcFromHtml(''), null, 'empty html');
+});
+
+test('#1327 handlePaste turns a pasted image URL / copied image into an image reference', () => {
+  const hp = fnBody(_src, 'handlePaste');
+  assert.ok(hp.includes('imgSrcFromHtml(e.clipboardData.getData(\'text/html\'))'), 'a copy-image (text/html <img>) paste is recognized');
+  assert.ok(/if \(isImageUrl\(oneUrl\)\)/.test(hp), 'a single-line image URL is recognized');
+  assert.ok((hp.match(/!\[\$\{[^}]*\}\]\(\$\{[^}]*\}\)|!\[image\]\(\$\{oneUrl\}\)/g) || []).length >= 1, 'it inserts ![](…) markdown');
+  assert.ok((hp.match(/maybeOfferWebImageConsent/g) || []).length >= 2, 'a remote pasted image offers the opt-in');
+  // placement: recognized AFTER the base-cell guard (never hijacks a cell paste)
+  assert.ok(hp.indexOf("closest('.mt-cell')") < hp.indexOf('imgSrcFromHtml('), 'the base-cell guard runs first');
+});
+
 // Regression: an EMPTY to-do (`- [ ]` with no trailing space/content — e.g. you
 // backspaced its label and the space) must still render a checkbox, not a literal
 // `[ ]`. The bug was TASK_RE requiring `\s+` after the bracket; the fix makes the

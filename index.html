@@ -7246,6 +7246,26 @@ function safeUrl(u, allowDataImage) {
 // #1325: a REMOTE image reference (http/https) makes a network request when it renders — it leaks the
 // reader's IP + activity to the host. Local/relative/data:/blob: references never touch the network.
 function isRemoteUrl(u) { return /^https?:\/\//i.test(String(u || '').trim()); }
+// #1327: does this reference clearly point at an image? A data:image, or a URL/path (has a scheme or a
+// slash — so a bare "cat.jpg" of prose is NOT hijacked) that ends in a known image extension, query/hash
+// tolerated. Used to turn a pasted or dropped image address into a rendered ![](…).
+function isImageUrl(s) {
+  const t = String(s || '').trim();
+  if (/^data:image\//i.test(t)) return true;
+  if (/\s/.test(t)) return false;
+  if (!/^(https?:|file:)\/\//i.test(t) && !t.includes('/')) return false;
+  return /\.(png|jpe?g|gif|webp|svg|avif|bmp|ico)(?:[?#].*)?$/i.test(t);
+}
+// #1327: the src (+ alt) of a clipboard/drag "copy image" payload — text/html that LEADS with an <img>.
+// Strict on the lead so a rich-text paste that merely contains an image is left as ordinary paste. Pure.
+function imgSrcFromHtml(html) {
+  const body = String(html || '').replace(/<meta[^>]*>/gi, '').trim();
+  if (!/^<img\b/i.test(body)) return null;
+  const src = (body.match(/\bsrc\s*=\s*"([^"]*)"/i) || body.match(/\bsrc\s*=\s*'([^']*)'/i) || [])[1] || '';
+  if (!src) return null;
+  const alt = (body.match(/\balt\s*=\s*"([^"]*)"/i) || body.match(/\balt\s*=\s*'([^']*)'/i) || [])[1] || '';
+  return { src, alt };
+}
 // Whether THIS document has opted in to loading web images (default off — the zero-network promise). A
 // per-document flag, so one shared doc's choice never changes another's. Read at render + insert time.
 function webImagesAllowed() { return !!(typeof root !== 'undefined' && root && root.allowWebImages); }
@@ -19338,9 +19358,27 @@ function handlePaste(e, node, content) {
     document.execCommand('insertText', false, text);
     return;
   }
+  // #1327: a "copy image" from a web page arrives as text/html leading with an <img>; turn it into an
+  // image reference (![](src)) instead of pasting nothing useful. Remote src offers the opt-in after.
+  const imgHtml = imgSrcFromHtml(e.clipboardData.getData('text/html'));
+  if (imgHtml && safeUrl(imgHtml.src, true)) {
+    document.execCommand('insertText', false, `![${imgHtml.alt || 'image'}](${imgHtml.src})`);
+    node.text = editableText(content); markDirty();
+    maybeOfferWebImageConsent(imgHtml.src);
+    return;
+  }
   const lines = text.split('\n').map(l => l.replace(/\r$/,''));
   while (lines.length > 1 && !lines[lines.length-1].trim()) lines.pop();
   if (lines.length === 1) {
+    // #1327: a single pasted image URL becomes a rendered image reference, not a bare link. isImageUrl is
+    // strict (scheme or slash + image extension), so an ordinary word or link is left to the paths below.
+    const oneUrl = text.trim();
+    if (isImageUrl(oneUrl)) {
+      document.execCommand('insertText', false, `![image](${oneUrl})`);
+      node.text = editableText(content); markDirty();
+      maybeOfferWebImageConsent(oneUrl);
+      return;
+    }
     // A lone link token pastes its label slot ready for typing: drop the caret
     // right after the | so the user can type a label immediately (empty → live title).
     const linkOnly = text.match(/^\[\[#[a-z0-9]+\|([^\]\n]*)\]\]$/i);
