@@ -223,6 +223,7 @@ export function loadCores() {
     'varDeclKind', 'varDistDraw', 'varDistHeadline',   // #952: a variable may hold a distribution; readers correlate
     'distQuantile', 'distChanceOver', 'distChanceUnder',   // #1101: ask a distribution for a percentile or a probability
     'lgamma', 'lnChoose', 'hypergeomAtLeast', 'simulateChance',   // #1298: hypergeometric odds + Monte-Carlo reducer
+    'wilsonBound',   // #1311: Wilson score CI bound for a wins/games rate
     'dueItemOrder',   // #1099: the one agenda ordering rule, shared by the document and folder scopes
     'agendaScopeMessage',   // #1099: the folder agenda's staleness line (pure, like overlayCountMessage)
     'caretScrollDelta',   // outline scroll: how far to move so the caret is visible, 0 when it already is

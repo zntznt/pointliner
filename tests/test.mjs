@@ -4817,6 +4817,25 @@ test('sampleGenerator: dice is numeric (2d6 mean ≈ 7), deck is categorical fro
   assert.equal(c.sampleGenerator('dice', { expr: 'not dice' }, 10), null, 'malformed dice → null');
 });
 
+test('#1311 wilsonBound: the 95% Wilson interval for a wins/games rate, as percentages', () => {
+  const W = c.wilsonBound;
+  // 8/10 (p=.8): Wilson 95% is about [49.0%, 94.3%] (textbook), never past 0/100.
+  assert.ok(Math.abs(W(8, 10, false) - 49.0) < 0.5, 'low bound of 8/10 ≈ 49%');
+  assert.ok(Math.abs(W(8, 10, true) - 94.3) < 0.5, 'high bound of 8/10 ≈ 94%');
+  // 12/20 (p=.6): about [38.7%, 78.1%] — the small-sample width Kwame wanted to see.
+  assert.ok(Math.abs(W(12, 20, false) - 38.7) < 0.5 && Math.abs(W(12, 20, true) - 78.1) < 0.5, '12/20 interval ≈ 39-78%');
+  assert.ok(W(12, 20, false) < W(12, 20, true), 'low is below high');
+  // Edge behaviour: k=0 stays >= 0, k=n stays <= 100 (the reason to use Wilson over Wald).
+  assert.ok(W(0, 10, false) >= 0 && W(0, 10, false) < W(0, 10, true), 'a 0/10 rate has a sane interval, low not negative');
+  assert.ok(W(10, 10, true) <= 100, 'a perfect 10/10 high bound never exceeds 100');
+  // Nonsense → NaN so a math pill surfaces #ERR, never a wrong number.
+  assert.ok(Number.isNaN(W(5, 0, false)), 'zero games → NaN');
+  assert.ok(Number.isNaN(W(11, 10, false)), 'more wins than games → NaN');
+  // Reachable from a math pill: the FN2 pair resolves through evalMath.
+  assert.ok(Math.abs(c.evalMath('wilsonlow(12, 20)') - 38.7) < 0.5, 'wilsonlow(wins, games) works in {= …}');
+  assert.ok(Math.abs(c.evalMath('round(wilsonhigh(12, 20))') - 78) < 1, 'wilsonhigh composes with round()');
+});
+
 test('#1298 hypergeomAtLeast: exact odds of AT LEAST k successes drawn without replacement', () => {
   const H = c.hypergeomAtLeast;
   // pop 4, 2 successes, draw 2: P(>=1) = 1 - C(2,0)C(2,2)/C(4,2) = 1 - 1/6 = 5/6; P(>=2) = 1/6.
