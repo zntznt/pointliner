@@ -954,6 +954,16 @@ test('#1281 "+ Total" door totals a number column with a child-scoped {= sum(KEY
   assert.match(_src, /datalist'\); dl\.id = 'propkey-suggest'[\s\S]{0,140}collectPropKeys\(root\)/, 'the props key input suggests keys already in the doc');
 });
 
+test('#1281 "+ Check" door opens the check dialog with sum(KEY) <= prefilled (the sum/check half)', () => {
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  // A single + Check door on the first number column, only when the heading has no check yet.
+  assert.match(aff, /if \(numKeys\.length && !checkExprOf\(node\)\)/, 'the + Check door appears for a number column with no existing check');
+  assert.match(aff, /openCheckDialog\(node\.id, null, 'sum\(' \+ numKeys\[0\] \+ '\) <= '\)/, 'it opens the check dialog with the sum written and only the limit left to fill');
+  // openCheckDialog accepts and uses that prefill, but an EXISTING check always wins.
+  assert.match(_src, /function openCheckDialog\(nodeId, targets = null, prefill = ''\)/, 'openCheckDialog takes a prefill');
+  assert.match(fnBody(_src, 'openCheckDialog'), /checkExprOf\(node\) \|\| prefill/, 'an existing check wins; the prefill only seeds a fresh one');
+});
+
 test('#1240 phase 1: the add-row dialog wires the cores to a promoted row (source pin)', () => {
   // The DOM half cannot run headless (it opens a dialog and mutates the live tree), so source-pin the
   // wiring — the pure cores it rides are unit-tested above, and the whole flow was live-driven (a 2-field
