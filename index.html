@@ -23044,6 +23044,12 @@ function openInsertDialog(opts) {
     const _fid = 'io-fld-' + f.key;
     inp.id = _fid; lab.setAttribute('for', _fid);
     if (i === 0) inp.dataset.first = '1';
+    // #1322: a field with chips is BUILT incrementally (the + Check door prefills `sum(KEY) <= ` and you
+    // click a property chip to finish it), so it must open with the caret at the END, not fully selected.
+    // The default select-all is for replace-oriented fields (a name, an alias); on a chip field it made
+    // the first chip click overwrite the whole prefilled expression, since a chip inserts over the current
+    // selection. Marked here, honored by the focus rAF below.
+    if (i === 0 && f.chips && f.chips.length) inp.dataset.caretEnd = '1';
     inputs[f.key] = inp;
     // #1175: two fields that are ALTERNATIVES, not a pair (Decimal places vs Significant figures).
     // Typing in one blanks the other, so the saved record only ever carries one and there is no
@@ -23152,7 +23158,13 @@ function openInsertDialog(opts) {
   } else {
     validate();   // the rest of the non-nested setup (ioCancel, focus, aria, scrim) is the shell's
   }
-  requestAnimationFrame(() => { const f = root.querySelector('[data-first]'); if (f) { f.focus(); f.select(); } });
+  requestAnimationFrame(() => {
+    const f = root.querySelector('[data-first]');
+    if (!f) return;
+    f.focus();
+    // #1322: a chip field opens caret-at-end (incremental build); everything else select-alls (replace).
+    if (f.dataset.caretEnd) { const p = f.value.length; f.setSelectionRange(p, p); } else f.select();
+  });
 }
 function closeIo() {
   if (ioCard.classList.contains('builder-open')) { closeBuilderWindow(); return; }
