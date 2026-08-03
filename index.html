@@ -9588,7 +9588,7 @@ const INSERT_CMDS = [
   // Organize — document-wide state sets and live searches
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  keys:['state','status','workflow','kanban','stages'], label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
   { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  keys:['search','find','filter'], label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
-  { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  keys:['howmany','number','total'], label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. Type {count: is:todo} to write one inline.', ex:'{count: is:todo}', section:'Organize' },
+  { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  keys:['howmany','number','total','tag','occurrences'], label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. The search can be a #tag, an is:todo flag, or any filter: {count: #idea} counts every point tagged #idea (how many times that theme comes up), {count: is:todo} counts open tasks. Type it inline.', ex:'{count: #idea} · {count: is:todo}', section:'Organize' },
   { id:'convert', icon:'⇄',  fa:'fa-solid fa-arrow-right-arrow-left', keys:['unit','units','measure','km','mi','kg','lb','ml','minutes'], label:'Convert units', desc:'Convert a value between units (length, mass, volume, time, or your own). Inserts a live {= convert()} pill. Define custom units with /units.', ex:'{= convert(10, km, mi)}', section:'Compute' },
 ];
 
@@ -20317,7 +20317,9 @@ function bulkAddTag(nodes, tag) {
   let n = 0;
   for (const node of nodes) { const next = addTagToText(node.text, t); if (next !== node.text) { node.text = next; n++; } }
   buildIndex(root, null); markDirty(); render();
-  flashHint(n ? `Tagged ${ptsLabel(n)} #${t}.` : `Every selected point already had #${t}.`);
+  // #1309: close the loop the tagging user opened — teach that the tag is now COUNTABLE. The panel
+  // re-run showed a user who tags for a living never discovered {count: #tag} counts tag occurrence.
+  flashHint(n ? `Tagged ${ptsLabel(n)} #${t}. Type {count: #${t}} anywhere for a live count.` : `Every selected point already had #${t}.`);
 }
 function openBulkTagDialog(nodes) {
   openInsertDialog({
@@ -24539,7 +24541,7 @@ const BRACE_FORMS = [
   { label:'odds',        keys:['odds','hypergeom','draw','probability','chance'],       insert:'{= hypergeom(60, 24, 10, 3)}', ph:'60, 24, 10, 3', guide:'odds', desc:'odds of drawing at least N of something, no replacement' },
   { label:'simulate',    keys:['simulate','montecarlo','simulation','oddsroll'],       insert:'{= simulate(2000, 2d6, >= 8)}', ph:'2000, 2d6, >= 8', guide:'odds', desc:'the percent of N rolls that clear a bar' },
   { label:'query',       keys:['query','search','list','embed'],                       insert:'{query: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live list of matching points' },
-  { label:'count',       keys:['count','tally','number','howmany'],                    insert:'{count: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live count of matching points' },
+  { label:'count',       keys:['count','tally','number','howmany','tag'],              insert:'{count: is:todo}',     ph:'is:todo', guide:'query',         desc:'a live count of points matching a #tag or search' },
   { label:'roll',        keys:['roll','rollpick','outline','randompoint'],             insert:'{roll: is:todo}',      ph:'is:todo', guide:'roll-query',    desc:'pick one random matching point' },
   { label:'meter',       keys:['meter','gauge','bar','hp','hearts'],                   insert:'{meter: 10/100}',      ph:'10/100', guide:'meter',         desc:'a bar of a value against its max' },
   { label:'markov',      keys:['markov','chain','walk'],                               insert:'{markov: a→b, b→c}',   ph:'a→b, b→c', guide:'markov',        desc:'generate text in a style you seed' },
@@ -40410,6 +40412,7 @@ const GUIDE = [
     title:'A live status line',
     body:"Turn the top of a project into a line that reads itself. A count pill shows how many points match a search, an embedded query lists them and a progress cookie tallies the boxes below. Every piece updates on its own as the work moves. This is composition side by side: different pill forms on the same line each pull from a different part of the document.",
     examples:[
+      { syn:'{count: #idea}',           desc:'how many points carry a tag (count counts tags, not just numbers)' },
       { syn:'{count: is:todo} open',    desc:'just the number, live' },
       { syn:'[/]',                      desc:'a done tally over the child tasks' },
       { syn:'{query: #idea -is:done}',  desc:'the matching points, listed live' },

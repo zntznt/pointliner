@@ -18225,6 +18225,20 @@ test('#1285 the Tag button is wired (multi-select bar → bulk tag every selecte
   assert.ok(b.includes('pushUndo()'), 'one undo reverts the whole bulk tag');
 });
 
+test('#1309 count-of-a-tag is surfaced where the tagging user is (toast nudge + tag-led examples)', () => {
+  // The bulk-tag toast teaches that the tag is now countable (the panel re-run miss).
+  assert.ok(fnBody(_src, 'bulkAddTag').includes('{count: #${t}} anywhere for a live count'),
+    'after tagging, the toast points at counting the tag just applied');
+  // The Count command and the { picker no longer imply "numbers only" — they name the #tag case.
+  assert.ok(/id:'count'[\s\S]{0,400}\{count: #idea\} counts every point tagged/.test(_src),
+    'the Count command explains it counts a tag, not just numeric flags');
+  assert.ok(_src.includes("desc:'a live count of points matching a #tag or search'"),
+    'the { picker count row says a tag counts');
+  // The dashboard recipe leads its count example with a tag occurrence.
+  assert.ok(_src.includes("count counts tags, not just numbers"),
+    'a guide example makes the tag-count explicit');
+});
+
 // ── bulk-refile selection roots (UXP-133) ────────────────────────────────────
 test('selectionRoots — drops a selected node that has a selected ancestor', () => {
   // tree: A > B > C ; D (sibling). parentMap: A→null, B→A, C→B, D→null
