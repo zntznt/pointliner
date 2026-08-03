@@ -19284,6 +19284,39 @@ function handlePaste(e, node, content) {
     markDirty();
     return;
   }
+  // #1324: a pasted spreadsheet (CSV/TSV) becomes a table of points with property columns — the SAME
+  // conversion the Import dialog runs, surfaced at the moment of paste so the feature is discoverable
+  // instead of buried in a dialog. The sniff is strict (2+ rows, 2+ rectangular columns, tab beats comma),
+  // so prose-with-commas is left to the ordinary point-splitting below; a loud hint + one Undo backs it out.
+  const delim = sniffDelimited(text);
+  if (delim) {
+    const built = tableToPoints(text, delim).points;
+    const parent0 = parentOf(node.id) || root;
+    if (built.length && parent0) {
+      pushUndo();
+      const idx0 = parent0.children.findIndex(c => c.id === node.id);
+      // an empty point fills IN PLACE (no orphan blank line above), mirroring insertRecipe/#1267
+      const curEmpty = node !== root && !(node.text || '').trim() && !(node.props || []).length && !(node.children || []).length;
+      let focusId;
+      if (curEmpty) {
+        const src = built[0];
+        node.text = src.text; node.props = src.props || []; node.children = src.children || [];
+        if (built.length > 1) parent0.children.splice(idx0 + 1, 0, ...built.slice(1));
+        [node, ...built.slice(1)].forEach(promoteLoadedShorthand);
+        focusId = node.id;
+      } else {
+        parent0.children.splice(idx0 < 0 ? parent0.children.length : idx0 + 1, 0, ...built);
+        built.forEach(promoteLoadedShorthand);
+        focusId = built[0].id;
+      }
+      buildIndex(root, null);
+      markDirty(); render();
+      const rows = (built[0].children || []).length;
+      focusNode(focusId);
+      flashHint(`Pasted ${rows} row${rows === 1 ? '' : 's'} as a table with columns. Undo to remove.`);
+      return;
+    }
+  }
   const parsed = parseMLlines(lines);
   const parent = parentOf(node.id);
   if (!parent) { document.execCommand('insertText', false, text); return; }
@@ -40464,11 +40497,12 @@ const GUIDE = [
   // like the tag-browser entry. It is tracked by the chrome-feature drift guard in tests/test.mjs.
   { id:'import', cat:'files',
     title:'Importing points from a shared file',
-    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did.\n\nIt reads three formats, no vendor buttons. A Pointliner .opml file comes in exactly as it left. A Markdown (.md) file is turned into points: headings become the outline's shape, bullets and numbered lists nest by their indentation, checkboxes become to-dos, quotes and footnotes carry over, so notes from any Markdown app come in as a real outline you can then bring to life. A spreadsheet comes in as data: paste rows straight from Excel or Google Sheets, or open a .csv, and each row becomes a point under one heading, with every column after the first attached as a property. Numbers keep being numbers even with a dollar sign or thousands commas, so the moment it lands you can click + Total on the heading to sum a column, with no formula typed. The format is detected for you, so you can paste any of the three into the box. Anything Markdown that Pointliner does not model yet (a page's frontmatter) is kept as plain text and the toast tells you what was simplified, never a silent loss.\n\nYou can also choose several Markdown files at once, which brings in a whole set of linked notes as one document. Each file becomes its own section, and the wiki-links between them are wired up: a [[Page]] link becomes a live link to that section, and a ![[Page]] embed becomes a live mirror of it, so a linked note collection arrives with its connections intact rather than as loose text. A link to a page that was not among the files you chose is left as plain text. This works in any browser and writes nothing to your disk; it is all one document you can save as usual.\n\nWhatever the format, the whole thing lands below your current points and the view jumps to the first one that arrived. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file with no points in it is refused with a message rather than doing anything silently.",
+    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did.\n\nIt reads three formats, no vendor buttons. A Pointliner .opml file comes in exactly as it left. A Markdown (.md) file is turned into points: headings become the outline's shape, bullets and numbered lists nest by their indentation, checkboxes become to-dos, quotes and footnotes carry over, so notes from any Markdown app come in as a real outline you can then bring to life. A spreadsheet comes in as data: paste rows straight from Excel or Google Sheets, or open a .csv, and each row becomes a point under one heading, with every column after the first attached as a property. Numbers keep being numbers even with a dollar sign or thousands commas, so the moment it lands you can click + Total on the heading to sum a column, with no formula typed. You do not even need this dialog for a spreadsheet: paste rows straight into the outline and they land the same way, as a heading with a property column per column, and a toast tells you it happened so a single Undo backs it out if you wanted plain text. The format is detected for you, so you can paste any of the three into the box. Anything Markdown that Pointliner does not model yet (a page's frontmatter) is kept as plain text and the toast tells you what was simplified, never a silent loss.\n\nYou can also choose several Markdown files at once, which brings in a whole set of linked notes as one document. Each file becomes its own section, and the wiki-links between them are wired up: a [[Page]] link becomes a live link to that section, and a ![[Page]] embed becomes a live mirror of it, so a linked note collection arrives with its connections intact rather than as loose text. A link to a page that was not among the files you chose is left as plain text. This works in any browser and writes nothing to your disk; it is all one document you can save as usual.\n\nWhatever the format, the whole thing lands below your current points and the view jumps to the first one that arrived. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file with no points in it is refused with a message rather than doing anything silently.",
     related:['saving','export','templates','rollups'],
     examples:[
       { syn:'File → Import points → Choose a file', desc:'add points from an .opml, Markdown, or .csv file, or several Markdown files as one linked document' },
       { syn:'Paste spreadsheet rows',               desc:'rows from Excel or Sheets become points with each number column ready to + Total' },
+      { syn:'Paste a spreadsheet into the outline',  desc:'no dialog needed: rows land as a table with property columns right where you paste' },
       { syn:'File → Import points → paste box',     desc:'paste an .opml file, Markdown, or a table you copied' },
       { syn:`${MOD}+Z`,                             desc:'undo removes the whole import in one step' },
     ] },
