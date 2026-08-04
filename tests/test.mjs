@@ -29339,3 +29339,66 @@ test('#1387 census: no writer to a base model escapes undo by omission', () => {
     assert.ok(fns.some(f => f.name === name), `the exemption ${name} still names a real function`);
   }
 });
+
+// ─── #1389: an unrecognised repeat phrase crashed the renderer ────────────────
+// Found while seeding a harness for something else — the seed used `repeat: week`, which is not a
+// phrase parseRepeat accepts, and the app threw inside render().
+//
+//   chip.classList.add('prop-repeat' + (ok ? '' : ' prop-repeat-bad'));
+//
+// classList.add throws InvalidCharacterError on a token containing whitespace, so the unrecognised
+// branch was fatal. Driven: 1 of 3 points rendered, every later render threw too, and the phrase is
+// persisted so a reload reproduced it. The comment above the line states the intent exactly — a
+// rejected phrase should be "visible not silent" (P4). It was neither: it was fatal.
+//
+// And the class it tried to add had NO CSS RULE, so even once the crash is fixed the flag would be
+// invisible and the only surviving signal is a hover title (#1199: a title is unreachable).
+test('#1389 a rejected repeat phrase is a plausible thing to type, so the branch is reachable', () => {
+  // A pin on the fix is worthless if the failing branch cannot be reached. These are what a user
+  // actually types into a Repeat field, and parseRepeat rejects every one of them.
+  for (const bad of nonEmpty(['week', 'day', 'month', '1w', 'annually', 'fortnightly', 'Tuesdays'],
+                             'plausible phrases parseRepeat rejects'))
+    assert.equal(c.parseRepeat(bad), null, `parseRepeat rejects ${JSON.stringify(bad)}`);
+  // and the near-misses that DO work, so the pin above is about phrasing rather than about repeat
+  // being broken generally
+  for (const good of nonEmpty(['weekly', 'every week', 'daily', 'monthly', 'yearly', 'every 2 weeks'],
+                              'phrases parseRepeat accepts'))
+    assert.notEqual(c.parseRepeat(good), null, `parseRepeat accepts ${JSON.stringify(good)}`);
+});
+
+test('#1389 no classList call can build a token containing whitespace', () => {
+  // The class guard, and the durable half. One bad concatenation was fatal at runtime and invisible
+  // to every existing test, because nothing renders a rejected repeat phrase. Scan every
+  // classList.add/remove/toggle in the source and assert no QUOTED FRAGMENT inside the call carries a
+  // space — that catches the literal form AND the concatenated form this shipped as.
+  const calls = nonEmpty(NC.match(/classList\.(?:add|remove|toggle)\([^)]*\)/g) || [],
+    'classList add/remove/toggle calls');
+  const bad = [];
+  for (const call of calls) {
+    for (const frag of call.match(/'[^']*'|"[^"]*"|`[^`]*`/g) || [])
+      if (/\s/.test(frag.slice(1, -1))) bad.push(call.slice(0, 90));
+  }
+  assert.deepEqual(bad, [], 'a classList token with whitespace throws InvalidCharacterError at runtime');
+
+  // the specific site, pinned as two separate adds rather than one concatenation
+  const area = between(_src, 'if (propK === REPEAT_KEY) {', 'formula-valued property');
+  assert.ok(/chip\.classList\.add\('prop-repeat'\);/.test(area), 'the base class is added on its own');
+  assert.ok(/if \(!ok\) chip\.classList\.add\('prop-repeat-bad'\);/.test(area),
+    'and the bad flag is a SECOND add, so no token can contain a space');
+  assert.ok(!/'prop-repeat' \+ \(ok/.test(area), 'the concatenation that threw is gone');
+});
+
+test('#1389 the rejected-phrase flag is actually visible, not just a hover title', () => {
+  // The class had no rule at all, so the P4 promise rested entirely on a title. Measured after the
+  // fix: 5.92:1 (light) and 7.73:1 (dark) against the page background, both over the 4.5 text floor,
+  // and the signal is not colour alone (P3-4).
+  assert.ok(/\.prop-chip\.prop-repeat-bad \.prop-val\{[^}]*color:var\(--bad\)/.test(NC),
+    'the bad flag has a rule, in the --bad token rather than a hardcoded red');
+  assert.ok(/\.prop-chip\.prop-repeat-bad \.prop-val\{[^}]*text-decoration:underline dotted/.test(NC),
+    'and a non-colour signal beside the colour');
+  // the dual-home palette invariant: --bad must exist in BOTH homes or the rule silently regresses
+  // when the user toggles theme. Reused, not introduced — confirm rather than assume.
+  assert.ok(/:root\{[^}]*--bad:/.test(NC), '--bad is defined in the CSS :root home');
+  const at = fnBody(_src, 'applyTheme');
+  assert.ok(/--bad:#f0928b/.test(at) && /--bad:#b3271f/.test(at), '--bad is defined in both applyTheme palettes');
+});
