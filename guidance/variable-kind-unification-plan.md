@@ -296,7 +296,7 @@ the mechanism behind every distribution refusal.
 
 | phase | what | size | blocked on |
 |---|---|---|---|
-| **1** | Every kind-wall refusal says which wall and how to cross it, on **three** surfaces (`{= }`, conditional, check), **in the announce as well as the tooltip**. Fix the wrong `bad ref` code for a distribution in a conditional. | small | nothing |
+| **1** | ~~Every kind-wall refusal says which wall…~~ **SHIPPED, and much smaller than planned** — see §12. The tooltip was already correct on every surface; only the ANNOUNCE was generic. | small | — |
 | **2** | ~~Make the taught remedy work: the conditional must expand the distribution reducers.~~ **SHIPPED** — see §11. | small | — |
 | **3** | Capture legibility: show the author which kind was inferred, and let them change it. Guided-mode/dialog work. | medium | nothing |
 | — | ~~unify `resolveVarDefs` / the `evalMath` ident boundary / OPML~~ | — | **not required**: B5 shows persistence is done, B3 shows checks already resolve the remedy, A1 shows the math remedy composes |
@@ -381,3 +381,59 @@ which is the guard that keeps a lane from reading as a variable name.
 `node --test tests/test.mjs` green at **2016**. Four mutations red, including attaching an empty lane
 and making it enumerable. My own new pin was caught by the #1133 census guard for iterating
 `Object.keys` without asserting the collection — fixed with `nonEmpty`, which is the guard working.
+
+---
+
+## 12. Phase 1, shipped — and §2 of this document was wrong
+
+**Correcting the measurement this plan was built on.** §2's table claims three cases show the generic
+*"Not recognized, so it stays plain text"*. **They do not.** Driven properly, with the row's edit state
+checked rather than assumed:
+
+| when | `editing` | what the row shows for `{= tone}` on a text pick |
+|---|---|---|
+| while typing | `true` | `gr-src gr-bad` — *"Not recognized, so it stays plain text"* |
+| **after commit** | `false` | `.brace-attempt` — *"…a value that is not a number (a word or random pick can't be used in math)"* |
+| after focusing elsewhere | `false` | the same specific sentence |
+| after a full render | `false` | the same specific sentence |
+
+The §2 measurements were taken from the live DOM **while the row was still in edit mode**, compounded
+by the keystroke race §7/A4 already recorded. `classifyBraceBody` and `braceAttemptReason` were correct
+the whole time, on all three surfaces. **The plan's §2 and §3 Phase 1 both overstated the defect**, and
+that is recorded here rather than quietly rewritten above.
+
+### What was actually wrong, and it is real
+
+The **announcement**. A tooltip is hover-only (#1199), so the announce is the only thing many readers
+receive — and it said nothing useful while the tooltip beside it explained precisely what was wrong:
+
+```
+announced:  "Not recognized, so it stays plain text"
+tooltip:    "This calculation uses a value that is not a number (a word or random pick
+             can't be used in math)."
+```
+
+Same moment, two answers, and **the useless one is the one that speaks**. `braceAttemptAnnounce` now
+routes the reason to the live region, reusing the same rules and scope `classifyBraceBody` just used,
+so the explanation can never disagree with the verdict.
+
+### Driven
+
+| case | announced now |
+|---|---|
+| text pick in math | *"…a value that is not a number (a word or random pick can't be used in math). It stays plain text."* |
+| distribution in math | *"…an estimate like 5 to 10 … Write it without the `=` … It stays plain text."* |
+| `percentile()` on a number | *"…a plain number where an uncertain value was expected; percentile() and chanceover() only work on a variable declared as a range…"* |
+| unknown name | the #1159 scope sentence |
+| genuine prose `{not math at all}` | **silent** — classifies as literal, not a refusal |
+
+### A dead branch removed rather than pinned
+
+The first version had `why ? why + ' It stays plain text.' : 'Not recognized…'`. Mutation testing found
+that **deleting the fallback left the suite green**: `braceAttemptReason` always returns a sentence, so
+the else could never run. An unreachable branch cannot be pinned, which is the #1133 class — so it was
+deleted, not defended, and a pin now asserts the body is the single return.
+
+`node --test tests/test.mjs` green at **2017**. Five mutations red, including announcing the generic
+sentence again, dropping the outcome clause, explaining against a different scope than the one that
+classified, and re-introducing the unreachable fallback.

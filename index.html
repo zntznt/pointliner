@@ -19094,6 +19094,19 @@ function templateParts(body, rules, vars) {
 // for the display-mode .brace-attempt cue (the render-side twin of the edit-mode gr-bad marker).
 // Only ever called on bodies classifyBraceBody already ruled 'invalid', so it explains a known
 // attempt, never prose. AP-style copy (no em dashes). Pure + Node-testable.
+// #1353 Phase 1: what to SAY when a brace will not promote. The reason, plus the OUTCOME — a reason
+// alone ("uses a value that is not a number") does not tell a listener what happened to their text.
+// Kept separate from braceAttemptReason because the tooltip does NOT want the outcome clause: the
+// dotted underline already shows the brace did not promote, and repeating it there is noise.
+//
+// No fallback branch. braceAttemptReason always returns a sentence — its own last resort is "This
+// looks like a pill but could not be created…" — so a `why ? … : …` here would be a branch that can
+// never run and therefore can never be pinned, which is the #1133 class this codebase keeps removing.
+// Pure; no DOM.
+function braceAttemptAnnounce(body, rules, vars) {
+  return braceAttemptReason(body, rules, vars) + ' It stays plain text.';
+}
+
 function braceAttemptReason(body, rules, vars) {
   body = (body || '').trim();
   if (body[0] === '=') {                                                // {= expr}
@@ -28118,10 +28131,19 @@ function checkInlineHighlight(content, node) {
   // closing } lands, not on the next incidental re-render (UXP-6). Validate a `{= }`
   // body against the node's inherited scope (#461) so a pill that resolves via an own /
   // ancestor prop is styled valid (agreeing with what promotion will do on exit).
-  const braceCls = classifyBraceBody(body, collectRules(), resolveNodeScope(node, ancestorsOf(node), collectVars()));
+  const braceRules = collectRules(), braceScope = resolveNodeScope(node, ancestorsOf(node), collectVars());
+  const braceCls = classifyBraceBody(body, braceRules, braceScope);
   if (braceCls === 'literal') { hideBracePreview(); return false; }
-  // the marker's AT twin (UXP-15): the visual signal is also announced
-  if (braceCls === 'invalid') { hideBracePreview(); announce('Not recognized, so it stays plain text'); }
+  // the marker's AT twin (UXP-15): the visual signal is also announced.
+  // #1353 Phase 1: announce the REASON, not the bare fact. The specific sentence already exists and
+  // already reaches the committed row's `.brace-attempt` title — but a title is hover-only (#1199),
+  // so the announcement was the only thing a reader actually received, and it said nothing useful.
+  // Driven: `{= tone}` on a text pick announced "Not recognized, so it stays plain text" while the
+  // committed row's tooltip said "a value that is not a number (a word or random pick can't be used
+  // in math)". Same moment, two different answers, and the useless one is the one that speaks.
+  // braceAttemptReason falls back to its own generic line when it has nothing specific, so this can
+  // never announce an empty string.
+  if (braceCls === 'invalid') { hideBracePreview(); announce(braceAttemptAnnounce(body, braceRules, braceScope)); }
   content.innerHTML = editModeHTML(node);
   // #942 (agent-review): restore the caret SYNCHRONOUSLY, not only in the deferred rAF below.
   // The innerHTML rebuild collapses the selection to offset 0; at very fast typing speed the next
