@@ -218,3 +218,113 @@ is being read as an alternation **weight**: `parseAlt('1 | 2 | 3')` returns
 
 **A pick between numbers is a completely natural thing to write in this app**, and it silently produces
 nothing. Filed as **#1378**; it is not part of #1353 and should not wait for it.
+
+---
+
+## 8. Adversarial pass, round 2 — Phase 1 was too small, and one claim strengthened
+
+### B2 — **Phase 1 as written would have been hover-only. REFUTED.**
+
+Phase 1 routes the specific reason into `braceAttemptReason`, which lands in a `title`. **#1199
+established that a `title` on a non-focusable span is hover-only and effectively unreachable.** What is
+actually *said* when a distribution meets math, captured through a `flashHint`/`announce` spy:
+
+```
+announce: "Not recognized, so it stays plain text"
+```
+
+The transient announcement — the thing a reader actually receives — carries the **generic** sentence.
+Fixing only the tooltip would deliver teaching nobody sees, which is #1199's defect wearing this
+issue's clothes.
+
+**Phase 1 must fix the announce, not just the title.** That is the "low-risk half" identified earlier
+in this session and never built.
+
+### B3 — a third surface the plan omitted, and the headline claim survives
+
+A **check** is numeric-only and has no "drop the `=`" escape, so it looked like a case no message could
+fix. Driven:
+
+| check | verdict |
+|---|---|
+| `cost <= 150` where `cost := 100 to 200` | **error** (no reason surfaced) |
+| `cost <= 150` where `cost := 140` | pass |
+| `tone <= 150` where `tone := warm \| cool` | **error** |
+| `percentile(cost, 90) <= 150` on the same range | **fail** — works |
+
+So a remedy **does** exist for checks (`percentile` / `chanceover` already resolve there); it is simply
+never taught. The headline claim survives — but **Phase 1 covers three surfaces, not two**: `{= }`, the
+conditional, and the check.
+
+### B4 — capture really is the remainder, and it is worse than described
+
+`varDeclKind`'s sniff, driven:
+
+| RHS | kind |
+|---|---|
+| `5` | formula |
+| `1d20` | pick |
+| `100 to 200` | dist |
+| `warm \| cool` | pick |
+| **`2 to 3 people`** | **pick** |
+| **`1 to 10 servings`** | **pick** |
+| `go to market` | pick |
+
+`{servings := 1 to 10 servings}` silently freezes as a **text pick**, not a range. The tie-break is
+defensible (a trailing word breaks the constructor) but it is **invisible**, and the author gets a
+frozen string where they asked for a range. Phase 3's "capture legibility" is confirmed as the real
+remainder.
+
+### B5 — persistence needs nothing. The issue's OPML concern is not supported.
+
+Every kind round-trips today. Records carry `kind`/`rolled`/`seed`, and `_vars` is present on save:
+
+```
+a:formula     b:pick+rolled     c:pick+rolled     d:dist+seed     e2:pick+rolled
+```
+
+**#1353 lists OPML serialization of `kind`/`rolled`/`seed` as part of the rearchitecture. It is already
+done.** One more piece of the "rearchitecture" that measurement removes.
+
+One genuine observation from the same run: a **distribution variable is absent from `collectVars()`
+entirely** (`{"a":40,"b":18,"c":"cool","e2":-1}` — no `d`). That is the kind-wall in one line, and it is
+the mechanism behind every distribution refusal.
+
+---
+
+## 9. The phases, now clear
+
+| phase | what | size | blocked on |
+|---|---|---|---|
+| **1** | Every kind-wall refusal says which wall and how to cross it, on **three** surfaces (`{= }`, conditional, check), **in the announce as well as the tooltip**. Fix the wrong `bad ref` code for a distribution in a conditional. | small | nothing |
+| **2** | Make the taught remedy work where it does not: the **conditional** must expand the distribution reducers the way `{= }` and checks already do. | small | a semantic call (§10) |
+| **3** | Capture legibility: show the author which kind was inferred, and let them change it. Guided-mode/dialog work. | medium | nothing |
+| — | ~~unify `resolveVarDefs` / the `evalMath` ident boundary / OPML~~ | — | **not required**: B5 shows persistence is done, B3 shows checks already resolve the remedy, A1 shows the math remedy composes |
+
+---
+
+## 10. Owner decisions (2026-08-04)
+
+**A range in a yes/no test: refuse, and teach `chanceover`.** Both the conditional and the check keep
+refusing a distribution, and both say why and name the working form. This follows #1127's precedent —
+when a distribution meets a scalar-only surface the app names the form that works rather than
+inventing a coercion — and it preserves the spread the estimate feature exists to carry.
+
+**Consequence, and it is binding:** Phase 2 is a **prerequisite of Phase 1's honesty**, not an optional
+follow-on. `{chanceover(cost, 150) > 50: …}` renders `can't tell yet` today (§7/A2). No cue may name
+that form until the conditional resolves it. The two rejected options are recorded so the decision is
+not silently revisited: answering by probability hides a 51% behind the same word as a 99%, and
+answering on the mean discards the spread — the silent-wrong-answer class.
+
+**Sequencing: #1378 first.** The numeric-pick-rolls-empty bug is unrelated to #1353, small, and a live
+silent-wrong value in the generative engine. It ships before Phase 1 starts, on its own branch, with
+its own cause established rather than assumed (see the issue's note: the `parseAlt` observation is the
+tell, not the diagnosis).
+
+### Resulting order
+
+1. **#1378** — a pick between numbers stops rolling empty.
+2. **Phase 2 first, then Phase 1** — the remedy must work before it is taught. Phase 2 widens the
+   conditional's expander to the distribution reducers; Phase 1 then routes the specific reason to all
+   three surfaces, in the announce as well as the tooltip.
+3. **Phase 3** — capture legibility, separately.
