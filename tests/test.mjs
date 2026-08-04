@@ -29003,3 +29003,43 @@ test('#1353 Phase 2: a node scope carries the distribution lane across', () => {
   assert.ok(/const dists = varDistsOf\(docVars\);\s*\n\s*if \(dists\) attachVarDists\(out, dists\);/.test(b),
     'restored in resolveNodeScope itself, not worked around at one call site');
 });
+
+test('#1353 Phase 1: a refused brace ANNOUNCES the reason, not just the fact', () => {
+  const A = c.braceAttemptAnnounce, rules = {}, vars = { tone: 'warm', n: 4 };
+  // The specific sentence already reached the committed row's `.brace-attempt` TITLE. A title is
+  // hover-only (#1199), so the announcement was the only thing a reader actually received — and it
+  // said "Not recognized, so it stays plain text" while the tooltip beside it explained precisely
+  // what was wrong. Same moment, two answers, and the useless one is the one that speaks.
+  assert.match(A('= tone', rules, vars), /not a number/, 'a text value names its wall');
+  assert.match(A('= nosuchname', rules, vars), /no value here/, 'an unknown name names its wall');
+  // the OUTCOME is still stated: a reason alone does not tell a listener what happened to their text
+  assert.match(A('= tone', rules, vars), /It stays plain text\.$/);
+  // and the bare fact survives as the fallback, so this can never announce an empty string
+  // An empty body still announces a whole sentence, because braceAttemptReason has its own last
+  // resort. That is why this has NO fallback branch of its own: one would be unreachable, and an
+  // unreachable branch cannot be pinned (#1133). Mutation-testing found exactly that — removing a
+  // `why ? … : …` fallback left the suite green, because the else could never run.
+  const noReason = A('', rules, vars);
+  assert.match(noReason, /^This looks like a pill but could not be created/);
+  assert.match(noReason, /It stays plain text\.$/);
+  assert.ok(!/^\s/.test(noReason) && !/undefined|null/.test(noReason));
+  assert.match(fnBody(_src, 'braceAttemptAnnounce').replace(/\s+/g, ' ').trim(),
+    /^\{ return braceAttemptReason\(body, rules, vars\) \+ ' It stays plain text\.'; \}$/,
+    'the body is the one return, with no unreachable fallback branch');
+  for (const b of ['= tone', '= nosuchname', '']) {
+    assert.ok(!/—/.test(A(b, rules, vars)), 'AP punctuation, no em dashes');
+    assert.ok(!/\bnode\b/.test(A(b, rules, vars)), 'user-facing copy says point');
+  }
+  // it is a separate core from braceAttemptReason so the two can differ: the tooltip does not need
+  // the outcome clause (the dotted underline already shows it did not promote).
+  assert.ok(!/It stays plain text/.test(c.braceAttemptReason('= tone', rules, vars)),
+    'the tooltip keeps its own wording');
+
+  // #1133, and the class of miss I have hit four times this session: pin the CALL SITE.
+  const b = fnBody(_src, 'checkInlineHighlight');
+  assert.ok(/announce\(braceAttemptAnnounce\(body, braceRules, braceScope\)\)/.test(b),
+    'the live cue announces the reason');
+  assert.ok(!/announce\('Not recognized/.test(b), 'and the generic sentence is gone from that site');
+  assert.ok(/const braceRules = collectRules\(\), braceScope = resolveNodeScope\(node, ancestorsOf\(node\), collectVars\(\)\);/.test(b),
+    'reusing the SAME rules and scope classifyBraceBody just used, so the reason cannot disagree with the verdict');
+});
