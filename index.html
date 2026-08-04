@@ -2640,6 +2640,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 #var-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 16px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;display:flex;align-items:center;gap:8px}
 #var-panel-list{overflow-y:auto;padding:8px 16px 12px;flex:1;display:flex;flex-wrap:wrap;gap:6px 20px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;align-content:flex-start}
 .vp-row{display:flex;align-items:baseline;gap:5px;font-size:13px}
+.vp-kind{font-size:.82em;color:var(--muted);margin-left:6px;font-style:italic}
 .vp-name{font-weight:500;font-family:var(--mono)}
 .vp-prefix{color:var(--muted);font-weight:400}/* a dotted projection's row/base prefix reads muted */
 /* variable-base panel group header: one collapsible row per projecting base */
@@ -37919,6 +37920,16 @@ function toggleVarPanel() { if (isVarPanelOpen()) closeVarPanel(); else openVarP
 // Variable-base panel groups: a base's ~rows×cols projections collapse under one header so
 // hand-declared variables stay front and center. Session-only expand state (default collapsed).
 let _vpExpandedGroups = new Set();
+// #1353 Phase 3: the word for a variable's KIND in the Variables panel, or '' when it needs none.
+// Measured gap: the panel showed `a = 40` (a formula) and `b = 20` (a frozen 1d20) identically, though
+// one is stable and the other re-rolls on click — same presentation, different behaviour (P1). A
+// distribution was already distinguished by its `≈` separator and headline (#952), and a formula is
+// the unmarked default, so only the PICK needed a word. "Random" is the established user-facing term
+// (the roll log is "Random results"), not a new piece of vocabulary. Pure; no DOM.
+function varKindLabel(kind) {
+  return kind === 'pick' ? 'random' : '';
+}
+
 function vpRow(nm, vars) {
   const row = document.createElement('div');
   row.className = 'vp-row';
@@ -37949,6 +37960,16 @@ function vpRow(nm, vars) {
       : typeof val === 'string' ? val   // random pick — frozen text, not a number
       : Number.isInteger(val) ? String(val) : String(+val.toPrecision(6));
     row.appendChild(valEl);
+    // #1353 Phase 3: name the kind when the value alone cannot. Read from the ACTIVE expression, which
+    // the panel already has — `vars[nm]` is a plain number for a formula and a frozen roll alike.
+    const kindWord = dist ? '' : varKindLabel(varDeclKind(_varActiveExprs[nm] || '', vars));
+    if (kindWord) {
+      const k = document.createElement('span');
+      k.className = 'vp-kind';
+      k.textContent = kindWord;
+      k.title = 'A random pick. Its value stays put until you re-roll the pill.';
+      row.appendChild(k);
+    }
   }
   return row;
 }
@@ -37976,8 +37997,13 @@ function updateVarPanelContent() {
   // screen reader. Includes group membership + expand state so AT hears real changes only.
   // #952: a distribution's value is not in `vars`, so key its row on (expr, seed) — otherwise
   // every dist row signs as '?' and a re-seed leaves a stale summary on screen.
+  // #1353 Phase 3: the row now also shows a KIND word, derived from the active expression — so the
+  // expression joins the signature. Without it, changing `{a := 40}` to `{a := 20 | 40}` and rolling
+  // 40 leaves the value identical, the signature unchanged, and the row saying "formula" for a pick.
+  // The raw string is used rather than varDeclKind: it changes whenever the kind could, and it costs
+  // one compare instead of a sniff (which samples) per name per keystroke.
   const sig = JSON.stringify([names.map(nm =>
-    [nm, _varCycles.has(nm) ? '↻'
+    [nm, _varActiveExprs[nm] || '', _varCycles.has(nm) ? '↻'
        : varDistRec(vars, nm) ? `≈${varDistRec(vars, nm).expr}#${varDistRec(vars, nm).seed}`
        : (vars[nm] === undefined ? '?' : vars[nm])]),
     groups.map(g => [g.key, g.label, g.names.size, _vpExpandedGroups.has(g.key)])]);
