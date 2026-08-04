@@ -1591,6 +1591,30 @@ test('modParts — base + known modifier suffix(es); rejects non-modifiers', () 
   assert.equal(c.modParts('2d6.cap'), null);     // base must be an identifier or pure integer; 2d6 is neither
 });
 
+test('bracedModParts — a modifier chain on an INLINE generator (composability deep pass)', () => {
+  // the base is a whole {…} group; the suffix is .mod chains, all known modifiers
+  assert.deepEqual(host(c.bracedModParts('{a|b}.cap')), { inner: '{a|b}', mods: ['cap'] });
+  assert.deepEqual(host(c.bracedModParts('{roll: #npc}.cap')), { inner: '{roll: #npc}', mods: ['cap'] });
+  assert.deepEqual(host(c.bracedModParts('{fire|ice}.a.cap')), { inner: '{fire|ice}', mods: ['a', 'cap'] });
+  // NOT a braced-mod: a plain field/mod ref, a glue template (no trailing .mod), a bad modifier
+  assert.equal(c.bracedModParts('beast.cap'), null, 'a named base is modParts\'s job, not this');
+  assert.equal(c.bracedModParts('{a|b}'), null, 'no .mod suffix → a plain pick, not a braced-mod');
+  assert.equal(c.bracedModParts('{a|b}{c|d}'), null, 'a glue template is not a braced-mod');
+  assert.equal(c.bracedModParts('{a|b}.txt'), null, 'txt is not a modifier');
+  assert.equal(c.bracedModParts('{a|b}.cap.txt'), null, 'one bad modifier in the chain rejects the whole');
+  // classify/label/promote treat it as a real (grammar) pill, gated on the base resolving
+  assert.equal(c.classifyBraceBody('{a|b}.cap', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('{a|b}.cap', {}, {})), ['grammar', null]);
+  assert.equal(c.classifyBraceBody('{nope}.cap', {}, {}), 'invalid', 'an unresolvable base is an attempt, not a silent promote');
+  // it actually resolves: the inline pick is shaped by the modifier
+  const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
+  for (let i = 0; i < 12; i++) assert.match(c.resolveBrace('{fire|ice}.cap', ctx), /^(Fire|Ice)$/, 'the pick is resolved then Capitalized');
+  c.seedSequence([0]);
+  try { assert.equal(c.resolveBrace('{fire|ice}.cap', ctx), 'Fire'); } finally { c.resetRandom(); }
+  // a var base inside the {…} resolves and is shaped: {{color}.a} → "an azure"
+  assert.equal(c.resolveBrace('{color}.a', { rules: {}, vars: { color: 'azure' }, depth: 0, stack: [] }), 'an azure');
+});
+
 test('pluralize — regular English heuristic', () => {
   assert.equal(c.pluralize('cat'), 'cats');
   assert.equal(c.pluralize('fox'), 'foxes');
