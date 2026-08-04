@@ -17732,7 +17732,17 @@ function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMa
 // to the explicit-root collectors so the core is a pure function of its tree argument.
 // Returns { rows, total, truncated }: rows is the capped slice, total the full count.
 const QUERY_ROW_CAP = 10;
+// Resolve any embedded {…} in a search expr so a query ARGUMENT can be dynamic — {count: {status}},
+// {roll: {tagvar}}, {query: is:{state}} — the same composability the rest of the engine has. The
+// `, document`/`, folder` scope words sit OUTSIDE the braces and stay literal. Cheap guard: a literal
+// expr (the overwhelming majority, and every search-box query) skips the expander entirely. Pure
+// function of its root — collectRules/collectVars take the optional rootNode.
+function resolveSearchExpr(expr, rootNode) {
+  if (!expr || expr.indexOf('{') < 0) return expr;
+  return expandTemplate(expr, { rules: collectRules(rootNode), vars: collectVars(rootNode), depth: 0, stack: [] });
+}
 function queryRows(expr, rootNode, hostId, cap = QUERY_ROW_CAP) {
+  expr = resolveSearchExpr(expr, rootNode);   // a dynamic {…} argument resolves before the search
   const terms = parseSearchQuery(expr || '');
   if (!terms.length) return { rows: [], total: 0, truncated: false };
   const seqs = allSequences(rootNode);
@@ -17904,6 +17914,7 @@ function pickFromQuery(expr, rootNode, hostId, ctxRoot = rootNode) {
 // live inside pickFromQuery keeps its exact semantics (host exclusion, ancestor tag inheritance,
 // stripQueryTags on the payoff). Returns [] on an unreadable/empty query. Pure.
 function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
+  expr = resolveSearchExpr(expr, ctxRoot);   // {roll: {tagvar}} — resolve the dynamic argument first
   const terms = parseSearchQuery(expr || '');
   if (!terms.length || !rootNode) return [];
   const seqs = allSequences(ctxRoot);
