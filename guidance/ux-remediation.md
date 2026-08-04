@@ -4461,3 +4461,59 @@ that has caught it each time.
 `node --test tests/test.mjs` green at **2014**. Seven mutations, all red, including counting in-scope
 descendants (double-reporting), looking only one level down, and offering the widener when nothing is
 hidden.
+
+---
+
+## UXP-301 -- a pick between numbers stops rolling empty (#1378)
+
+**Status: FIXED.** Found while adversarially red-teaming the #1353 plan, unrelated to it, and shipped
+first at the owner's call because it is a live silent-wrong value.
+
+### The defect
+
+```
+{damage := 1 | 2 | 3}   rendered:  damage=        <-- empty
+record:  { kind: 'pick', expr: '1 | 2 | 3', rolled: '' }
+```
+
+100 draws of `1 | 2 | 3` before the fix: **84 empty**, and the only non-empty result was ever `1`. The
+tell was that `1|2|3` with **no spaces** always worked.
+
+### The cause: a one-character asymmetry
+
+`parseAlt` has two weight patterns. The `{= }` dynamic weight requires a **non-empty** template; the
+plain number weight did not:
+
+```js
+em: /^([\s\S]*?\S)\s+\{=\s*([^{}]+?)\s*\}\s*$/     // \S -> template cannot be empty
+wm: /^([\s\S]*?)\s+(\d+)\s*$/                       // no \S  <-- the bug
+```
+
+The splitter hands each alternative with its surrounding space, so ` 2 ` matched `wm` with the lazy
+group empty: **template `''`, weight `2`**. The item became the weight of nothing. Only the first
+alternative escaped, because it has no leading space.
+
+That also explains every case in the measured table: `warm | 1` lost its `1`, `1 | warm` did not,
+`1.5 | 2.5` survived (the dot blocks `\s+(\d+)$`), `-1 | -2` survived (the minus does).
+
+Fixed by giving `wm` the same `\S` the pattern above it already had. **A weight needs something to
+weigh; an alternative that is only a number is an item.**
+
+### Correcting my own issue
+
+#1378 reported `parseAlt('1 | 2 | 3')` returning `{template: "1 | 2 |", weight: 3}` and flagged it as
+*"the tell rather than the diagnosis"* because that call passes a whole body, not one alternative.
+That caution was right and worth keeping: the real path is
+`rollPickRecord -> rollPickSource -> resolveBrace`, which splits first and calls `parseAlt` per
+alternative. The whole-body result was a coincidence of the same missing `\S`.
+
+### Verification
+
+`1 | 2 | 3` now draws 36/35/29 across 100. `10 | 20` draws evenly. The weight feature is untouched:
+`sword 3`, `a b 10`, `hit 1d6 2` and `sword {= 2+1}` all parse as before, and `rare 1 | common 9`
+still biases 256:44 across 300 draws. Driven end to end, `{damage := 1 | 2 | 3}` renders `damage=2`
+and a downstream `{= damage * 10}` promotes.
+
+`node --test tests/test.mjs` green at **2015**. Three mutations red, including reverting the `\S` and
+removing it from the `{= }` arm; dropping the number-weight arm entirely turns **11** tests red, which
+is the evidence that the weight feature is genuinely exercised and was not broken by this change.

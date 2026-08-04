@@ -28949,3 +28949,27 @@ test('#1284: the audit names the value a rollup scope is hiding, not just that a
   // the aggregate the gate reads
   assert.ok(/hiddenTotal: missing\.reduce\(\(t, x\) => t \+ \(x\.hidden \? x\.hidden\.sum : 0\), 0\)/.test(agg));
 });
+
+test('#1378: an alternative that is only a number is an ITEM, not a weight', () => {
+  const P = c.parseAlt;
+  // The weight syntax is `template <space> N`. Its regex allowed an EMPTY template, so the splitter's
+  // ` 2 ` parsed as {template:'', weight:2} and the item vanished. Measured before the fix, 100 draws
+  // of `1 | 2 | 3`: 84 empty strings, and only the FIRST item (no leading space) ever appeared.
+  // `1|2|3` with no spaces always worked, which is the tell that it was the leading whitespace.
+  assert.deepEqual(host(P(' 2 ')), { template: '2', weight: 1 }, 'a lone number keeps itself');
+  assert.deepEqual(host(P('2')), { template: '2', weight: 1 });
+  assert.deepEqual(host(P(' 10 ')), { template: '10', weight: 1 });
+  // the weight feature itself is untouched
+  assert.deepEqual(host(P('sword 3')), { template: 'sword', weight: 3 });
+  assert.deepEqual(host(P(' sword 3 ')), { template: 'sword', weight: 3 });
+  assert.deepEqual(host(P('a b 10')), { template: 'a b', weight: 10 }, 'a multi-word template still weighs');
+  assert.deepEqual(host(P('hit 1d6 2')), { template: 'hit 1d6', weight: 2 }, 'a dice template still weighs');
+  assert.deepEqual(host(P('sword')), { template: 'sword', weight: 1 });
+  // and the `{= }` dynamic weight (#1354) is a separate arm, unaffected
+  assert.equal(host(P('sword {= 2+1}')).weightExpr, '2+1');
+  // the asymmetry that WAS the bug: the two patterns must both require a non-empty template
+  const b = fnBody(_src, 'parseAlt');
+  assert.ok(/\(\[\\s\\S\]\*\?\\S\)\\s\+\\\{=/.test(b), 'the {= } weight pattern requires a non-empty template');
+  assert.ok(/const wm = a\.match\(\/\^\(\[\\s\\S\]\*\?\\S\)\\s\+\(\\d\+\)\\s\*\$\/\)/.test(b),
+    'and so does the NUMBER weight pattern — the missing \\S was the whole bug');
+});

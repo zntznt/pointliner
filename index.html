@@ -23974,7 +23974,14 @@ function parseAlt(a) {
   // templateAttempt carries the MIRROR of this pattern as a guard; the two move together.
   const em = a.match(/^([\s\S]*?\S)\s+\{=\s*([^{}]+?)\s*\}\s*$/);
   if (em) return { template: em[1].trim(), weightExpr: em[2].trim() };
-  const wm = a.match(/^([\s\S]*?)\s+(\d+)\s*$/);
+  // #1378: the template must be NON-EMPTY, exactly as the `{= }` weight pattern above already
+  // requires with its `\S`. Without it a lone integer alternative parses as "empty template, weight
+  // N": the splitter hands this ` 2 `, the lazy group matches nothing, `\s+` eats the leading space
+  // and `2` becomes the weight. So `{damage := 1 | 2 | 3}` rolled EMPTY unless it happened to pick
+  // the first item (which has no leading space) — measured 84 empties in 100 draws. `1|2|3` with no
+  // spaces always worked, which is the tell. A weight needs something to weigh; an alternative that
+  // is only a number is an ITEM.
+  const wm = a.match(/^([\s\S]*?\S)\s+(\d+)\s*$/);
   return { template: (wm ? wm[1] : a).trim(), weight: wm ? parseInt(wm[2], 10) : 1 };
 }
 
