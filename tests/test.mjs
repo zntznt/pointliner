@@ -28837,3 +28837,38 @@ test('#1370: no fnBody pin reads past the end of its own function', () => {
   // unexercised in practice; it stays, and this note stops the next reader from concluding it is
   // dead code because a mutation left the suite green.
 });
+
+test('#1369: undo takes back a property the text cannot carry', () => {
+  const rec = fnBody(_src, 'recordTextEdit');
+  // A `{prop k: v}` / `{date k: v}` brace is CONSUMED into node.props and leaves no inline token, so
+  // restoring the text alone un-typed the brace while the value stayed. Measured on origin/main:
+  // undo took "Scene {prop tension: 7}" back to "Scene" and left props ["tension=7"] behind.
+  assert.ok(/function recordTextEdit\(nodeId, prev, next, propsPrev, propsNext\)/.test(_src),
+    'the entry can carry the props either side of the edit');
+  assert.ok(/const propsMoved = propsPrev !== undefined && propsPrev !== propsNext;/.test(rec),
+    'and only when they actually moved');
+  // the three-arg callers (flushActiveTextEdit, the base path) must behave exactly as before
+  assert.ok(/propsPrev !== undefined/.test(rec), 'an omitted propsPrev is not treated as a change');
+  assert.ok(/if \(prev === next && !propsMoved\) return;/.test(rec),
+    'a no-op focus+blur still records nothing, and a props-only change now does record');
+  assert.ok(/e\.size \+= propsPrev\.length \+ propsNext\.length/.test(rec), 'the stack budget counts what it stores');
+
+  const ap = fnBody(_src, 'applyEntry');
+  assert.ok(/if \(entry\.props\) \{ try \{ node\.props = JSON\.parse\(entry\.props\[dir\]\); \} catch \(_\) \{\} \}/.test(ap),
+    'undo AND redo restore through the same [dir] the text uses, so they stay symmetric');
+  const propsAt = ap.indexOf('node.props = JSON.parse'), rederiveAt = ap.indexOf('rederiveFromText(node)');
+  assert.ok(propsAt > 0 && rederiveAt > propsAt, 'props are restored BEFORE the type is re-derived from state');
+
+  // #1133: the call site, since the entry can only carry what exitEdit captured before promoting.
+  const ee = fnBody(_src, 'exitEdit');
+  assert.ok(/const propsJsonBefore = JSON\.stringify\(node\.props \|\| \[\]\);/.test(ee),
+    'the before-snapshot is taken at the top of exitEdit');
+  assert.ok(/recordTextEdit\(node\.id, prevText, node\.text, propsJsonBefore, JSON\.stringify\(node\.props \|\| \[\]\)\)/.test(ee),
+    'and the after-snapshot is read at record time');
+  const beforeAt = ee.indexOf('const propsJsonBefore'), promoteAt = ee.indexOf('promoteInlineShorthand(node)');
+  assert.ok(beforeAt > 0 && promoteAt > beforeAt, 'captured BEFORE the promotion that consumes the brace');
+
+  // scoped deliberately: every other sidecar is keyed by a token that lives in the text
+  assert.ok(!/node\.(math|vars|est|dice|grammar|query) = JSON\.parse/.test(ap),
+    'only props are restored; the token-keyed sidecars ride the text and pruneArtifacts');
+});

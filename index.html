@@ -19433,6 +19433,7 @@ function exitEdit(content, node) {
   const declsBefore = typedVarDeclSnapshot(node); // for the ripple warning (O1a)
   // #1357: did this edit change what names resolve, and how far does the change reach?
   const varsBefore = nameSetSignature(collectVars()), propsBefore = nameSetSignature(nodePropVars(node));
+  const propsJsonBefore = JSON.stringify(node.props || []);   // #1369: the one sidecar with no inline token
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   maybeNudgeFirstPill(); // #H: greet the user's first self-authored pill once (reads _promotedLit from the promote above)
@@ -19530,7 +19531,7 @@ function exitEdit(content, node) {
   // recordTextEdit uses for undo). Structural moves + child edits never reach here, so they
   // don't stamp — "edited" means "I changed what this point says".
   if (node.text !== prevText) stampEdit(node);
-  recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
+  recordTextEdit(node.id, prevText, node.text, propsJsonBefore, JSON.stringify(node.props || [])); // O(1) undo entry, only if changed
   // #1357: the retry's rewrites are recorded AFTER the user's own edit, so the first undo takes
   // the promotions back off and the second takes the value away. The other order would leave one
   // undo showing live pills whose value had just been removed, which reads as breakage.
@@ -33306,9 +33307,23 @@ function restoreSnapshot(snap) {
 
 // Text edits are recorded as tiny {prev,next} entries instead of full-tree
 // snapshots, so editing a node is O(1) no matter how large the outline is.
-function recordTextEdit(nodeId, prev, next) {
-  if (prev === next) return; // no-op edit (focus + blur, or unchanged)
-  undoStack.push({ kind: 'text', nodeId, prev, next, focusedId, size: prev.length + next.length + 64 });
+// #1369: a text entry may also carry the point's PROPERTY list, because a `{prop k: v}` / `{date k: v}`
+// brace is CONSUMED into node.props and leaves no inline token behind. Restoring the text alone
+// therefore un-typed the brace while the property stayed, so one undo left a point carrying a value
+// with nothing in its text to explain it. Measured on `origin/main` before this: undo took
+// "Scene {prop tension: 7}" back to "Scene" and left `props: ["tension=7"]`. #1374 made that worse in
+// the sense that matters — the orphan is now a visible chip rather than an invisible record.
+//
+// Scoped deliberately to props. Every OTHER sidecar (math, vars, dice, grammar, est, query) is keyed
+// by a `[[type:key]]` token that lives IN the text, so restoring the text restores the token and
+// pruneArtifacts drops whatever is orphaned. Props are the one sidecar with no inline trace, which is
+// exactly why they were the one thing undo could not reach.
+function recordTextEdit(nodeId, prev, next, propsPrev, propsNext) {
+  const propsMoved = propsPrev !== undefined && propsPrev !== propsNext;
+  if (prev === next && !propsMoved) return; // no-op edit (focus + blur, or unchanged)
+  const e = { kind: 'text', nodeId, prev, next, focusedId, size: prev.length + next.length + 64 };
+  if (propsMoved) { e.props = { prev: propsPrev, next: propsNext }; e.size += propsPrev.length + propsNext.length; }
+  undoStack.push(e);
   trimStack(undoStack);
   redoStack.length = 0;
 }
@@ -33368,6 +33383,9 @@ function applyEntry(entry, intoStack, dir) {
     }
     if (node) {
       node.text = entry[dir];
+      // #1369: a consumed `{prop k: v}` leaves no token in the text, so the text alone cannot carry
+      // it back. Restored BEFORE rederiveFromText, which reads the point's state to re-derive.
+      if (entry.props) { try { node.props = JSON.parse(entry.props[dir]); } catch (_) {} }
       rederiveFromText(node);   // type AND checked (audit #2: was type-only, so an undone to-do vanished with Show-Done off)
     }
     markDirty(); render();

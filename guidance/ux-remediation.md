@@ -4292,3 +4292,57 @@ unmatched brace. That arm is correct in principle and unexercised in practice; t
 in the test rather than implied away (the #1132 precedent).
 
 `node --test tests/test.mjs` green at **2011**.
+
+---
+
+## UXP-298 -- undo takes back a property the text cannot carry (#1369)
+
+**Status: FIXED.** Found while driving #1357's undo behaviour, confirmed pre-existing on `origin/main`
+at the time, and filed rather than bundled.
+
+### The defect
+
+A `{prop k: v}` / `{date k: v}` brace is **consumed** into `node.props` and leaves no inline token.
+The `text` undo entry restores `node.text` and nothing else, so one undo un-typed the brace while the
+value stayed:
+
+```
+after : { text: "Scene ", props: ["tension=7"] }
+undo  : { text: "Scene",  props: ["tension=7"] }   <-- the property survived
+```
+
+**#1374 raised the stakes rather than causing them.** Before it, the orphan was an invisible record;
+now it is a visible chip on a point whose text says nothing about it. The same change that made
+attaching a property legible made failing to un-attach it legible too.
+
+### The fix, and why it is scoped to props alone
+
+A text entry may now carry `{ prev, next }` JSON of the point's property list, restored through the
+same `[dir]` the text uses so undo and redo stay symmetric, and **before** `rederiveFromText`, which
+reads the point's state.
+
+Props are the ONE sidecar with no inline trace. Every other one (`math`, `vars`, `dice`, `grammar`,
+`est`, `query`) is keyed by a `[[type:key]]` token that lives in the text, so restoring the text
+restores the token and `pruneArtifacts` drops whatever is orphaned. That asymmetry is exactly why
+props were the one thing undo could not reach, and why widening the fix would be cargo cult.
+
+**Not `pushUndo()`.** Routing a property commit through a whole-tree snapshot would work and is what
+structural ops do, but it turns every `{prop}` into a full-document copy. The O(1) text entry grows by
+the length of one point's property list instead, and `size` counts it so the stack budget stays honest.
+
+### Driven
+
+| | |
+|---|---|
+| add a property, undo | property **and chip** gone |
+| then redo | both back |
+| a plain text edit | exactly **1** undo entry, not 2 |
+| focus + blur with no change | **0** entries |
+
+The three-argument callers (`flushActiveTextEdit`, the base-table path) are unchanged by construction:
+an omitted `propsPrev` is `undefined`, which never counts as a change. Pinned, and the mutation that
+drops that check goes red.
+
+`node --test tests/test.mjs` green at **2012**. Seven mutations, all red, including restoring props
+after the re-derive instead of before, and taking the before-snapshot after the promotion that
+consumes the brace.
