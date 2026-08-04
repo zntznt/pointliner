@@ -18865,6 +18865,11 @@ function classifyBraceBody(body, rules, vars) {
     const low = body.toLowerCase();
     return (rules[low] || Object.prototype.hasOwnProperty.call(vars, low) || varDistRec(vars, low)) ? 'artifact' : 'invalid';
   }
+  // {{a|b}.cap} — a modifier chain on an inline generator. Checked BEFORE templateParts so a trailing
+  // .mod is a modifier, not glued literal text. Valid iff the {…} base itself is a valid pill; an
+  // unresolvable base ({{nope}.cap}) is an ATTEMPT, so it gets a cue rather than silently promoting.
+  const bmc = bracedModParts(body);
+  if (bmc) return classifyBraceBody(bmc.inner.slice(1, -1), rules, vars) === 'artifact' ? 'artifact' : 'invalid';
   if (templateParts(body, rules, vars)) return 'artifact';              // {…}glue{…} template (#916)
   // A body that is template-SHAPED but whose parts don't all resolve is an ATTEMPT, not prose:
   // {{The} {Rusty|Gilded} {Flagon|Crown}} is one word away from working, and calling it 'literal'
@@ -19056,6 +19061,7 @@ function braceTypeLabel(body, rules, vars) {
   if (parseMeter(body)) return ['meter', null];                        // {meter: hp/hpmax} — a text-recipe pill, rendered live like {= sum()}
   if (parseActionPill(body)) return ['action', null];                  // {HP -= damage} — click-to-apply a mutation
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
+  if (bracedModParts(body)) return ['grammar', null];                  // {{a|b}.cap} — modified inline generator
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
   const fp0 = fieldParts(body);                                        // {weapon.damage}
@@ -24061,6 +24067,22 @@ function applyMods(s, mods) {
   return mods.reduce((acc, m) => (m in MODIFIERS ? MODIFIERS[m](acc) : acc), s);
 }
 
+// {{a|b}.cap} — a modifier chain on an INLINE generator, not a named rule/var. Where modParts shapes
+// a named base ({beast.cap}), this shapes the result of ANY balanced {…} base: a pick, a roll, a
+// nested template ({{roll: #npc}.cap}, {{fire|ice}.a}). Parses only when a leading brace group is
+// followed by .mod suffixes that are ALL known modifiers, so a plain {a.b} field ref and a glue
+// template {{x}{y}} (no trailing .mod) are left untouched. Returns { inner (with its braces), mods }
+// or null. Pure. Composability deep pass.
+function bracedModParts(body) {
+  body = (body || '').trim();
+  if (body[0] !== '{') return null;
+  const end = matchBrace(body, 0);
+  if (end < 1 || body[end + 1] !== '.') return null;         // no closing brace, or no .mod suffix
+  const mods = body.slice(end + 2).split('.');
+  if (!mods.length || !mods.every(m => m in MODIFIERS)) return null;
+  return { inner: body.slice(0, end + 1), mods };            // inner keeps its braces, ready for expandTemplate
+}
+
 // ─── hierarchical / property items (A6) ──────────────────────────────────────
 // `{base.field}` reads a *field* of a picked item: with `weapon: sword | axe` and
 // `sword.damage: 1d8`, `{weapon.damage}` picks a weapon then reads its damage
@@ -24334,6 +24356,12 @@ function resolveBrace(body, ctx) {
         .map(i => expandTemplate(sp.items[i], ctx)).join(' ').trim();
     }
     return expandTemplate(sp.items[Math.floor(Math.random() * sp.items.length)], ctx);
+  }
+  const bmp = bracedModParts(body);
+  if (bmp) {
+    // {{a|b}.cap} — shape the result of an inline generator. Resolve the {…} base through the core
+    // (a pick, a roll, a nested template all resolve here), then fold the modifiers over the text.
+    return applyMods(expandTemplate(bmp.inner, ctx), bmp.mods);
   }
   const mp = modParts(body);
   if (mp) {
@@ -27101,6 +27129,15 @@ function promoteBraceBodyIn(node, body) {
   // surfaced at the top level so a syllable name is one re-rollable unit (#916). Placed LAST,
   // mirroring classifyBraceBody: every keyword/alternation form wins first, and the strict
   // templateParts sniff keeps prose braces prose.
+  // {{a|b}.cap} — a modifier chain on an inline generator. Wrap the whole body as one brace group
+  // (origin: {{a|b}.cap}) so resolveBrace's bracedMod arm resolves the base and folds the modifiers,
+  // exactly as {beast.cap} rides `origin: {beast.cap}`. Before templateParts so a trailing .mod is a
+  // modifier, not glued text; gated on the base resolving so a broken base stays a literal attempt.
+  const bmp = bracedModParts(body);
+  if (bmp && classifyBraceBody(bmp.inner.slice(1, -1), collectRules(), collectVars()) === 'artifact') {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
   if (templateParts(body, collectRules(), collectVars())) {
     const roll = makeGrammarRoll(`origin: ${body}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
