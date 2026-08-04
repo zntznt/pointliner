@@ -19497,6 +19497,9 @@ function exitEdit(content, node) {
     // #1357: a point promoted by the retry sweep is not a "computed" point yet as far as the
     // sweep above is concerned (its brace was raw text a moment ago), so repaint it explicitly.
     for (const p of promotedPending) { if (p.id === node.id) continue; const n = nodeById(p.id); if (n) repaintNodeContent(n); }
+    // #1281: the point-and-click doors live on the ROW, which neither repaint above touches, so a
+    // commit that just made a list totalable left no `+ Total` until the next full render.
+    for (const id of affordanceDirtyIds(node, parentOf(node.id) || null)) refreshRowAffordances(id);
   }
   if (activeContentId === node.id) activeContentId = null;
   // #467: stamp created/edited only when the point's own text actually changed (same signal
@@ -42044,14 +42047,25 @@ function inferPropType(vals) {
 // part of the shape only when it is on EVERY row (the reliable template; a one-off is not the shape). Type
 // is guessed from the values across rows. Returns null with under 2 rows or when nothing is shared.
 function inferRowShape(siblings, states) {
-  const rows = (siblings || []).filter(n => n && typeof n.text === 'string');
+  // #1281: a PLACEHOLDER row is not a data row. Pressing Enter after the last item leaves an empty
+  // point, which is where a person stops typing — and because a key only counts as a column when
+  // EVERY row carries it (below), that one blank row took the whole shape to null and every door with
+  // it. Measured: three priced rows gave `cost:number` and a + Total; the same three plus the blank
+  // row the last Enter created gave null and no doors at all. A row with no text and no properties
+  // carries no information either way, so dropping it cannot change a shape that was real.
+  const rows = (siblings || []).filter(n => n && typeof n.text === 'string'
+    && (n.text.trim() !== '' || (n.props || []).some(p => p && p.key && !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase()))));
   if (rows.length < 2) return null;
   const tagSets = rows.map(n => new Set(rowContentTags(n.text, states)));
   const sharedTags = [...tagSets[0]].filter(t => tagSets.every(s => s.has(t)));
   const vals = new Map();   // prop key → the value seen on each row (one entry per row that carries it)
   for (const n of rows) {
     const here = new Map();
-    for (const p of (n.props || [])) if (p && p.key && !here.has(p.key)) here.set(p.key, String(p.val == null ? '' : p.val));
+    // #1281: `created`/`edited` are the app's own bookkeeping, stamped on every point, so they passed
+    // the "on every row" test and became columns. Driven, the + Add form asked a non-technical user to
+    // fill in "Created" and "Edited" beside "Description" and "Cost". They are never a user column.
+    for (const p of (n.props || [])) if (p && p.key && !here.has(p.key)
+        && !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase())) here.set(p.key, String(p.val == null ? '' : p.val));
     for (const [k, v] of here) { if (!vals.has(k)) vals.set(k, []); vals.get(k).push(v); }
   }
   const props = [];
@@ -42191,6 +42205,38 @@ function openAddRowForm(contextNodeId) {
 // typing tags. The edit-pencil gating lives in CSS (.addrow-affordance; Lean hides it at rest, keyboard
 // focus reveals it, always clickable); the tooltip is Guided-only; the caret is never stolen (mousedown
 // preventDefault + a keyboard path alongside, P3-3). A Guided-only once-ever nudge points at it (#519).
+// #1281: the doors are built ONCE, while a row is being built (buildRow's `!opts.searchCtx` line), and
+// a text commit never rebuilds a row — exitEdit repaints `.node-content` innerHTML and repaintComputed
+// Dependents does the same for its worklist, but the affordances live on the ROW, outside both. So
+// typing a priced list and stopping left the parent showing no `+ Total` at all; only a full render()
+// (a reload, a fold toggle, a virtualization remount) ever surfaced it. Measured on `e631e52`: after
+// three `{prop cost: …}` rows were typed and committed, the DOM held zero `.addrow-affordance`, while
+// calling maybeAddRowAffordance by hand on the same parent produced `+ Add`, `+ Total`, `+ Check`.
+//
+// WHICH rows a commit on `node` can change, as a pure rule (no DOM, no globals — the caller supplies
+// the parent). The point itself, because its own `+ property` / `+ Card` doors read its own text; and
+// its PARENT, because the parent's `+ Add` / `+ Total` / `+ Check` / `+ Variance` all read the shape
+// inferred across its children, which this commit just altered. Deduped and null-safe so a point at
+// the top level returns one id rather than a hole.
+function affordanceDirtyIds(node, parent) {
+  const out = [];
+  for (const n of [node, parent]) if (n && n.id && !out.includes(n.id)) out.push(n.id);
+  return out;
+}
+
+// The DOM half: re-run the three door builders against a mounted row. Clears first, or a second commit
+// would append a second `+ Total` beside the first. Silently does nothing for a row that is not mounted
+// (virtualization) — it will get its doors from the row builder when it next mounts, which is the
+// existing path and needs no help.
+function refreshRowAffordances(nodeId) {
+  const node = nodeById(nodeId);
+  if (!node) return;
+  const row = document.querySelector(`.node[data-id="${CSS.escape(nodeId)}"] > .node-row`);
+  if (!row) return;
+  for (const el of row.querySelectorAll(':scope > .addrow-affordance')) el.remove();
+  maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row); maybeAddCardAffordance(node, row);
+}
+
 function maybeAddRowAffordance(node, row) {
   // A section heading — derived from the TEXT, not node.type: a `## Groceries` point renders as an H2 via
   // the content markdown while its node.type stays 'ul', so deriveTypeFromText is the reliable check.
