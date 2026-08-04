@@ -797,6 +797,66 @@ test('#1356: the conditional arm gives the test the SAME scope a {= } on that po
     'the branch is expanded with the widened scope');
 });
 
+test('#1359: a body that reads as an attempted TEST is an attempt, never a coin flip', () => {
+  // condParts requires a real comparison, and a body that misses that gate used to fall through to
+  // the ALTERNATION branch: {COND: THEN | ELSE} froze as a 50/50 pick between the literal strings
+  // "COND: THEN" and "ELSE", with an ordinary pill and a "Click to re-generate" tooltip. Same shape
+  // the typed-rule note already recorded for {loot: sword | shield 2} and closed with a keyword.
+  const attempts = ['and(a, b): both | not both', 'not(a): off | on', 'or(a,b): y | n',
+                    'a ≥ 3: yes | no', 'a ≤ 9: y|n', 'a ≠ 4: y|n',
+                    'danger = 5: yes | no', 'danger > 9 || hp > 5: either | nope', 'a && b: y|n',
+                    'count("is:todo") > 0: some | none'];
+  for (const b of nonEmpty(attempts, 'attempted-test shapes')) {
+    assert.equal(c.condAttempt(b), true, `${b}: reads as an attempted test`);
+    assert.equal(c.classifyBraceBody(b, {}, {}), 'invalid', `${b}: classifies invalid, not artifact`);
+    assert.match(c.resolveBrace(b, { rules:{}, vars:{a:1,b:1,danger:5,hp:9}, depth:0, stack:[] }), /^\{.*\?\}$/,
+      `${b}: nested, degrades to a visible marker rather than a pick`);
+    assert.ok(c.condAttemptReason(b).length > 30, `${b}: the cue says something followable`);
+  }
+});
+
+test('#1359: the shapes it must NOT claim — the rule-definition form above all', () => {
+  // The tells are a closed set of characters a rule NAME can never contain, so {name: a | b} is
+  // untouched by construction and no resolution lookup is involved (P1).
+  for (const b of nonEmpty(['cost > 30: over | under',        // a real conditional
+                            'mood == "angry": shout | drop',  // a real string conditional
+                            'done: finished | still going',   // bare name: ambiguous, deliberately left
+                            'loot: sword | shield 2',         // the inline rule definition
+                            'note: remember the milk',
+                            'name.sub: a | b',                // a dotted rule name
+                            // a rule NAMED and/or/not is the case the rule-name exclusion exists for:
+                            // the tells match its bare name, so without that guard these are claimed.
+                            'and: x | y', 'or: a | b', 'not: p | q',
+                            'roll: cost > 3', 'query: a = b', 'count: is:todo', 'oracle: likely',
+                            'shuffle: a | b', 'markov: a→b', 'meter: hp/max',
+                            'seq Flow: A | B', 'rule loot: a | b', 'prop cost: 5', 'date due: friday',
+                            '3x: t', '2d4x: t', 'a|b', 'plain text'], 'spared shapes'))
+    assert.equal(c.condAttempt(b), false, `${b}: must not be claimed as an attempted test`);
+});
+
+test('#1359: a mistyped test never becomes a data-MUTATING action pill', () => {
+  // {danger = 5: yes | no} parsed as an action (target danger, rhs "5: yes | no") and rendered a
+  // clickable "Click to apply: set danger to 5: yes | no" — a typo that writes to a variable.
+  assert.equal(c.parseActionPill('danger = 5: yes | no'), null, 'a colon in the amount is not an amount');
+  // and every legitimate action still parses, including one embedding a braced colon
+  assert.deepEqual(host(c.parseActionPill('hp -= 3')), { target: 'hp', op: '-=', rhs: '3' });
+  assert.deepEqual(host(c.parseActionPill('danger = 5')), { target: 'danger', op: '=', rhs: '5' });
+  assert.deepEqual(host(c.parseActionPill('hp -= {roll: #trap}')), { target: 'hp', op: '-=', rhs: '{roll: #trap}' });
+});
+
+test('#1359: the guard sits in BOTH walks, and after every keyword form', () => {
+  // classify decides the CUE, promoteBraceBodyIn decides the PILL, and they are separate walks with
+  // separate orders — which is why wiring only classify left the live app still coin-flipping.
+  const cls = fnBody(NC, 'classifyBraceBody'), pro = fnBody(NC, 'promoteBraceBodyIn');
+  assert.ok(cls.includes("if (condAttempt(body)) return 'invalid';"), 'classify refuses an attempt');
+  assert.ok(pro.includes('if (condAttempt(body)) return null;'), 'promotion refuses an attempt');
+  for (const [name, body] of [['classifyBraceBody', cls], ['promoteBraceBodyIn', pro]])
+    assert.ok(body.indexOf('condAttempt(body)') < body.indexOf("splitTopLevel(body, '|')"),
+      `${name}: the guard precedes the alternation fall-through it exists to beat`);
+  assert.match(fnBody(NC, 'braceAttemptReason'), /condAttempt\(body\)\) return condAttemptReason\(body\)/,
+    'and the cue speaks a reason for it');
+});
+
 test('resolveBrace — an unresolvable condition fails visibly (P4), never silently', () => {
   // hp is undefined → evalMath returns null → a `{cond?}` marker, not a blank or a throw.
   assert.equal(c.resolveBrace('hp > 0: a | b', { rules: {}, vars: {}, depth: 0, stack: [] }), '{hp > 0?}');

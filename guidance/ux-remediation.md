@@ -3674,3 +3674,74 @@ plus the driven run above -- and the entry says so, because a source pin proves 
 behaviour. Five mutations, each asserting its target present first against a control asserted green:
 all five go red, and dropping the node-less fallback additionally reddens an existing `depsOut` test,
 which is what makes that arm demonstrably load-bearing rather than defensive.
+
+---
+
+## UXP-289 -- an attempted test stops being a coin flip (#1359)
+
+**Status: FIXED (the unambiguous half).** The worst class in the register: output that looks right
+half the time.
+
+### The defect
+
+`condParts` requires a real comparison so detection stays syntactic. A body that missed that gate did
+not stay put -- it fell through to the ALTERNATION branch, and `{COND: THEN | ELSE}` froze as a 50/50
+pick between the literal strings `"COND: THEN"` and `"ELSE"`, rendered as an ordinary pill with a
+*"Click to re-generate"* tooltip. Measured, 10 renders of `{and(a, b): both | not both}` with
+`a = b = 1`: `and(a, b): both` x6, `not both` x4.
+
+**This is a bug class the repo had already diagnosed and closed once.** The typed-rule note records
+it verbatim: a bare `{loot: sword | shield 2}` promoted to *"a pill that displayed 'loot: sword' half
+the time, with no error."* That was closed for rules by making the `rule ` keyword mandatory. The
+conditional half of the identical hazard was left open.
+
+### The remedy is the recorded one
+
+KEYWORD-COMMIT, the shape `seq`/`rule`/`shuffle`/`markov`/`prop` already carry: once the text commits
+to being a test, a tail that will not parse is an ATTEMPT, never prose. The tells are a **closed set**
+and every one is a character or word a rule NAME can never contain, so `{name: a | b}` is untouched
+**by construction** and no resolution lookup is involved (P1):
+
+| tell | the mistake |
+|---|---|
+| `≥ ≤ ≠` | evalMath maps them; `condParts`' sniff never listed them |
+| `\|\| &&` | the programmer's reflex for the connectives |
+| a single `=` | `==` was meant |
+| `and`/`or`/`not`, or any `fn(` | the logic functions, which DO evaluate; only the sniff blocked them |
+
+### Three sites, not one
+
+1. `classifyBraceBody` -> `'invalid'` (the CUE).
+2. `promoteBraceBodyIn` -> `null` (the PILL). **Wiring only the first left the live app still
+   coin-flipping** -- classify and promotion are separate walks with separate orders, which is
+   exactly the separation that let a body classify one way and promote another. Found by driving.
+3. `parseActionPill` -- and this one is the sharpest. `{danger = 5: yes | no}` parsed as an ACTION
+   (target `danger`, rhs `5: yes | no`) and rendered a **clickable** pill promising *"Click to apply:
+   set danger to 5: yes | no"*. A typo that MUTATES a variable, which is the worst outcome available
+   to a misread body. The fix sits beside the guard already there for its sibling case (*"a bare `=`
+   that is really the head of `==` is a comparison, never an assignment"*) -- the same reasoning, one
+   step further -- and is brace-depth-aware, so `{hp -= {roll: #trap}}` still parses.
+
+### Deliberately NOT closed
+
+- **A bare identifier on the left** (`{done: finished | still going}`) is genuinely ambiguous with the
+  inline rule definition. The record is explicit that ambiguity of this kind is settled by a reserved
+  keyword, not by inference, so closing it needs the truthiness FORM decided and signed off. It stays
+  a coin flip here, named rather than fudged.
+- **A multi-word left side with no tell** (`{mood is angry: yell | calm}`). Widening to "any left side
+  that is not a valid name" would reclassify prose-ish bodies and is its own decision.
+
+### Driven
+
+All five shapes now render one stable outcome with a specific, followable cue (typed symbols, `||`,
+single `=`, logic-fn-without-comparison, and a colon inside a quoted search). Unchanged: real
+conditionals, real string conditionals, plain alternations, the inline rule definition, prose, and
+every legitimate action pill including one embedding a braced colon. Zero page errors.
+`node --test tests/test.mjs` green at **1995**.
+
+### A pin the mutation harness corrected
+
+Six mutations; five bit immediately and one did not -- dropping the rule-name exclusion changed
+nothing, because none of my "must not claim" strings actually needed it. It exists for a rule
+literally *named* `and`, `or` or `not`, whose bare name matches the tells. Those three cases were
+added and the mutation now goes red. A guard nobody can break is a guard nobody is testing.

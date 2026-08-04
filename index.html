@@ -4449,6 +4449,13 @@ function parseActionPill(body) {
   if (op === '=' && rhs[0] === '=') return null;
   const r = rhs.trim();
   if (!r) return null;
+  // #1359, the same reasoning one step further: a TOP-LEVEL `:` in the amount is a conditional's
+  // answers, not an amount. `{danger = 5: yes | no}` is a mistyped test (`==` meant), and reading it
+  // as an action produced a live, clickable pill promising "Click to apply: set danger to 5: yes |
+  // no" — a typo that MUTATES a variable, which is the worst outcome available to a misread body.
+  // Brace-depth-aware, so an amount that legitimately embeds a colon inside a brace is untouched:
+  // `{hp -= {roll: #trap}}` still parses. Refusing here covers all three parseActionPill callers.
+  if (splitTopLevel(r, ':').length > 1) return null;
   // the amount may embed balanced {…} (a roll, a pick, a query) that resolves at click, like the
   // rest of the engine composes. Reject only an UNBALANCED brace (a stray { or }), so a half-typed
   // amount never renders a live button. // ponytail: depth counter, not a full parser.
@@ -18887,6 +18894,10 @@ function classifyBraceBody(body, rules, vars) {
   // on purpose: an existing pin records that `{2days}` is prose, and a looser `\d+d[a-z]` broke it.
   if (/^\d+d[a-z]$/i.test(body)) return 'invalid';
   if (estParts(body, vars)) return 'artifact';                         // {5 to 10} / {lo to hi}
+  // #1359: a body that reads as an attempted TEST is an attempt, not a two-way pick. Placed HERE,
+  // last before the alternation fall-through, so every legitimate colon form above (roll/query/
+  // count/oracle/prop/date/seq/rule/markov/shuffle/meter/action) has already claimed its body.
+  if (condAttempt(body)) return 'invalid';
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
@@ -18970,6 +18981,7 @@ function braceAttemptReason(body, rules, vars) {
     return phrase ? 'This calculation uses ' + phrase + '.'
                   : 'This calculation could not be evaluated. Check the formula.';
   }
+  if (condAttempt(body)) return condAttemptReason(body);               // #1359: an attempted test, not a pick
   const mp = modParts(body);                                           // {beast.cap} with no such rule/var
   if (mp && !/^\d+$/.test(mp.base)) {
     // Name the fix, not just the miss (fleet-A research: "declare it" alone left users stranded).
@@ -23924,6 +23936,67 @@ function condParts(body) {
   return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
 }
 
+// condAttempt(body) — TRUE when a body reads as an attempted TEST that condParts refused.
+//
+// #1359. condParts requires a real comparison (`==`/`!=`/`<`/`>`) so detection stays syntactic. A
+// body that misses that gate does not stay put: it falls through to the ALTERNATION branch, and
+// `{COND: THEN | ELSE}` becomes a 50/50 coin flip between the literal strings "COND: THEN" and
+// "ELSE" — frozen, with an ordinary pill and a "Click to re-generate" tooltip. Measured, 10 renders
+// of `{and(a, b): both | not both}` with a=b=1: "and(a, b): both" ×6, "not both" ×4.
+//
+// This is not a new failure mode; it is the one the typed-rule note already recorded, verbatim:
+// a bare `{loot: sword | shield 2}` promoted to "a pill that displayed 'loot: sword' half the time,
+// with no error". That was closed for rules by making the `rule ` keyword mandatory. The remedy here
+// is the same KEYWORD-COMMIT shape `seq`/`rule`/`shuffle`/`markov`/`prop` already carry: once the
+// text commits to being a test, a tail that will not parse is an ATTEMPT, never prose.
+//
+// The tells are a CLOSED SET, and every one of them is a character or word a rule NAME can never
+// contain — so the inline rule-definition form `{name: a | b}` is untouched by construction, and no
+// resolution lookup is involved (P1: meaning never depends on whether something happens to exist).
+//   ≥ ≤ ≠   the typographic comparisons — evalMath maps them, condParts' sniff never listed them
+//   || &&   the programmer's reflex for the connectives
+//   = alone a single equals where == was meant
+//   and/or/not, or any fn( — the logic functions, which DO evaluate; only the sniff blocked them
+//
+// DELIBERATELY OUT: a bare identifier on the left (`{done: finished | still going}`). That is
+// genuinely ambiguous with the inline rule definition, and the record is explicit that ambiguity of
+// this kind is settled by a reserved keyword rather than by inference. Closing it needs the
+// truthiness FORM decided and signed off, so it stays a coin flip here and is filed, not fudged.
+// Also out: a multi-word left side with no tell (`{mood is angry: yell | calm}`) — widening to "any
+// left side that is not a valid name" would reclassify prose-ish bodies and is its own decision.
+function condAttempt(body) {
+  body = (body || '').trim();
+  if (!body || body[0] === '=') return false;
+  const segs = splitTopLevel(body, ':');
+  if (segs.length < 2) return false;                 // no top-level `:` → not this shape at all
+  const left = segs[0].trim();
+  if (!left) return false;
+  if (condParts(body)) return false;                 // a real conditional, not an attempt
+  if (/^[a-z_]\w*(\.[a-z_]\w*)*$/i.test(left)) return false;   // a valid rule NAME → the rule form
+  return /≥|≤|≠|\|\||&&|\band\b|\bor\b|\bnot\b|[a-z_]\w*\s*\(|(^|[^<>!=])=([^=]|$)/i.test(left);
+}
+
+// condAttemptReason(body) — the P4 half of condAttempt: name the fix, not just the miss (the house
+// rule the fleet-A research set). Each arm answers the tell that made it an attempt, and shows the
+// working form, because a cue that is not followable is the defect it was written to close. Pure.
+function condAttemptReason(body) {
+  const left = splitTopLevel((body || '').trim(), ':')[0] || '';
+  // A `:` INSIDE quotes still splits — splitTopLevel tracks brace depth only, which strCondVerdict's
+  // own comment already records ("Quotes do NOT protect : or | from splitTopLevel"). The visible
+  // consequence was never foreseen: `count("is:todo") > 0: …` splits at the colon in the search, so
+  // the test loses its comparison and the whole body became a coin flip. The marker shows the split
+  // point (`{count("is?}`), which is the diagnosis; this sentence is what makes it readable.
+  if ((left.match(/"/g) || []).length % 2 === 1)
+    return 'A search inside a test cannot contain a colon, because the colon is what separates the test from its answers. Try a tag: {count("#todo") > 0: still going | all done}.';
+  if (/≥|≤|≠/.test(left))
+    return 'A test compares with >=, <= and != rather than the typed symbols. Try {score >= 70: pass | resit}.';
+  if (/\|\||&&/.test(left))
+    return 'A test joins conditions with or(…) and and(…) rather than || and &&. Try {or(hp < 5, cursed > 0): rest | press on}.';
+  if (/(^|[^<>!=])=([^=]|$)/.test(left))
+    return 'A test compares with == rather than a single =. Try {danger == 5: yes | no}.';
+  return 'A test needs a comparison, so and(…), or(…) and not(…) take comparisons of their own. Try {and(cost > 30, qty < 5): both | not both}.';
+}
+
 // String-equality conditional arm (#540). A conditional's test is normally an evalMath
 // comparison — number-only, so a TEXT pick var ({mood := {angry|calm}}) could never drive
 // a branch (#429 fixed the numeric half; this is the text half). A condition qualifies
@@ -24529,6 +24602,11 @@ function resolveBrace(body, ctx) {
   // estimate nested in a rule drew the same numbers, in every document, forever. A fresh seed per
   // expansion is what the standalone pill has always done.
   if (ep) { const s = sampleUncertain(ep, 400, estNewSeed(), cookieNode || null, ctx.vars); return s ? formatDist(s) : `{est?}`; }
+  // #1359: same rule as classifyBraceBody's, applied to the NESTED path so a conditional attempt
+  // inside a rule degrades the same way it does at the top level — visibly, naming the term it
+  // could not read, instead of a silent coin flip between "COND: THEN" and "ELSE" (P1: one
+  // meaning everywhere). Placed immediately before the alternation split, its only competitor.
+  if (condAttempt(body)) return `{${splitTopLevel(body, ':')[0].trim()}?}`;
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
   if (body[0] === '=') {
@@ -27184,6 +27262,11 @@ function promoteBraceBodyIn(node, body) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
+  // #1359: an attempted TEST is not a two-way pick. classifyBraceBody carries the same guard for the
+  // CUE; this is the half that decides the pill, and the two are separate walks with separate orders
+  // (that separation is exactly why a body could classify one way and promote another). Placed
+  // immediately before the alternation arm, so every keyword form above still claims its own body.
+  if (condAttempt(body)) return null;   // stays literal text; the .brace-attempt cue says why
   // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
   // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
   // never declared `origin`, so it must not become a callable `{origin}` elsewhere.
