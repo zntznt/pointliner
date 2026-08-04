@@ -813,6 +813,19 @@ test('resolveBrace — a text pick var drives a conditional branch (#540, the #4
   assert.equal(c.resolveBrace('r == 20: crit | miss', ctx({ r: 20 })), 'crit');
 });
 
+test('resolveBrace — a roll can drive the conditional test (deep pass, the two-engine seam)', () => {
+  const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
+  // a braced roll in the test: over many rolls the result is always one of the two branches
+  for (let i = 0; i < 24; i++) assert.match(c.resolveBrace('{2d6} > 3: hit | miss', ctx), /^(hit|miss)$/);
+  // a BARE die in the test freezes and resolves too
+  for (let i = 0; i < 24; i++) assert.match(c.resolveBrace('1d6 >= 4: high | low', ctx), /^(high|low)$/);
+  // deterministic: seed so each d6 rolls its minimum (1) → 2d6 = 2, and 2 > 3 is false → the else branch
+  c.seedSequence([0, 0, 0, 0]);
+  try { assert.equal(c.resolveBrace('{2d6} > 3: hit | miss', ctx), 'miss', 'the min roll (2) fails 2 > 3 → else'); } finally { c.resetRandom(); }
+  // a die combined with a stat in the test: {1d6 + str >= 5}
+  for (let i = 0; i < 24; i++) assert.match(c.resolveBrace('1d6 + str >= 5: strong | weak', { rules: {}, vars: { str: 2 }, depth: 0, stack: [] }), /^(strong|weak)$/);
+});
+
 // ── {roll: query} — pick a random point from the live outline (the tree-reference generator) ──
 test('rollParts — sniffs the reserved roll: keyword, keeps the query tail verbatim', () => {
   // assert on .expr (not the whole object) — cores run in a vm realm, so deepEqual trips on the
