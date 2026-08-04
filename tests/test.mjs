@@ -28872,3 +28872,31 @@ test('#1369: undo takes back a property the text cannot carry', () => {
   assert.ok(!/node\.(math|vars|est|dice|grammar|query) = JSON\.parse/.test(ap),
     'only props are restored; the token-keyed sidecars ride the text and pruneArtifacts');
 });
+
+test('#1375: a point edited out of the active search says so, and is not removed', () => {
+  const M = c.offSearchMessage;
+  // The row STAYS. Dropping it the moment it stops matching would remove the point out from under
+  // the caret editing it — a worse failure than the one it fixes, and a collision with the caret
+  // invariant. So this is a P4 report, not a filtering change.
+  assert.match(M(true, false, '#urgent'), /^That point no longer matches #urgent\./);
+  assert.match(M(true, false, '#urgent'), /stays until the search runs again/, 'and says what happens next');
+  assert.equal(M(true, true, '#urgent'), '', 'still matching after the edit says nothing');
+  assert.equal(M(false, false, '#urgent'), '', 'a row that never matched is context, not a lost hit');
+  assert.equal(M(true, false, ''), '', 'no active search, nothing to say');
+  assert.equal(M(true, false, '   '), '', 'and whitespace is not a search');
+  assert.ok(!/—/.test(M(true, false, '#urgent')), 'AP punctuation, no em dashes');
+  assert.ok(!/\bnode\b/.test(M(true, false, '#urgent')), 'user-facing copy says point');
+
+  const ee = fnBody(_src, 'exitEdit');
+  // The before-test must read prevText, not the live node: exitEdit assigns node.text near the top,
+  // so asking the node directly answers for the POST-edit text and before/after can never differ.
+  // Driven: with the live node the message never fired at all.
+  assert.ok(/const matchedSearchBefore = searchTerms\.length \? nodeMatchesSearch\(\{ \.\.\.node, text: prevText \}\) : false;/.test(ee),
+    'the before-state is probed against prevText');
+  // the whole statement, not just the call: a version that computed the message and threw it away
+  // passed a laxer form of this (the same weakness caught in #1357's gate pin).
+  assert.ok(/\{ const m = offSearchMessage\(matchedSearchBefore, searchTerms\.length \? nodeMatchesSearch\(node\) : true, searchQuery\); if \(m\) flashHint\(m\); \}/.test(ee),
+    'the after-state is read from the committed node AND the result is actually reported');
+  // no removal anywhere: the fix must not start filtering rows out mid-edit
+  assert.ok(!/nodeMatchesSearch[\s\S]{0,120}remove\(\)/.test(ee), 'nothing is removed from the list on a commit');
+});

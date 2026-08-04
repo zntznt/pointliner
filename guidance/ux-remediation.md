@@ -4346,3 +4346,57 @@ drops that check goes red.
 `node --test tests/test.mjs` green at **2012**. Seven mutations, all red, including restoring props
 after the re-derive instead of before, and taking the before-snapshot after the promotion that
 consumes the brace.
+
+---
+
+## UXP-299 -- a point edited out of the active search says so, instead of quietly lingering (#1375)
+
+**Status: FIXED.** Found by the wave-3 driving pass, filed rather than fixed at the time **with an
+argument against the obvious fix**, and fixed here along that argument rather than against it.
+
+### The defect
+
+With `#urgent` searched, removing the tag from a listed point leaves it in the filtered list:
+
+```
+results for #urgent    : ["Alpha point #urgent", "Beta point #urgent"]
+after removing the tag : ["Alpha point", "Beta point #urgent"]   <-- no longer matches, still listed
+after re-running       : ["Beta point #urgent"]
+```
+
+The other direction is fine: a point that starts matching is picked up as soon as the query re-runs.
+
+### What was NOT done, and why that is the decision
+
+**The row still stays.** Dropping it the moment it stops matching would remove the point out from
+under the caret that is editing it -- a worse failure than the one being fixed, and a collision with
+the caret invariant this codebase guards hardest. Nothing in this change filters, hides or removes a
+row; a pin asserts that.
+
+So the fix is P4, not filtering: **say it.** `offSearchMessage` reports "That point no longer matches
+#urgent. It stays until the search runs again." -- naming the query, and naming what happens next so
+the lingering row reads as expected rather than broken. Same shape as #1357's "One point was waiting
+for that value", through the same `flashHint`. No new visual language, no new CSS, no tab stop.
+
+It fires only on a true -> false move. A row that never matched is on screen as an ancestor for
+context, not as a lost hit, and stays silent.
+
+### The bug inside the fix, which the driving caught
+
+`exitEdit` assigns `node.text = editableText(content)` near its top, so the first version -- which
+asked `nodeMatchesSearch(node)` for the "before" state -- was reading the POST-edit text. Before and
+after could never differ and **the message never fired at all**. The before-state is now probed
+against `prevText` on a shallow copy. (Props are still safe to read live at that line: promotion has
+not run yet.) The mutation that restores the live-node probe is red.
+
+### Driven
+
+| | |
+|---|---|
+| edit a listed point out of the filter | row stays, message fires once |
+| edit it, still matching | silent |
+| no search active | silent |
+
+`node --test tests/test.mjs` green at **2013**. Six mutations, all red, including saying it when the
+point still matches, saying it for a never-matching ancestor, and computing the message without
+reporting it.

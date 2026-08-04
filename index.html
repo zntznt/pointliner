@@ -19434,6 +19434,13 @@ function exitEdit(content, node) {
   // #1357: did this edit change what names resolve, and how far does the change reach?
   const varsBefore = nameSetSignature(collectVars()), propsBefore = nameSetSignature(nodePropVars(node));
   const propsJsonBefore = JSON.stringify(node.props || []);   // #1369: the one sidecar with no inline token
+  // #1375: did this point match the ACTIVE search before the commit? Only a true -> false move is
+  // worth saying; a row that never matched is on screen as an ancestor for context, not as a hit.
+  // Tested against prevText on a shallow probe, NOT against the live node: exitEdit has already
+  // assigned `node.text = editableText(content)` by this line, so asking the node directly answers
+  // for the post-edit text and the before/after comparison can never differ. (Props are safe to read
+  // live here — promoteInlineShorthand has not run yet, so they are still the pre-commit ones.)
+  const matchedSearchBefore = searchTerms.length ? nodeMatchesSearch({ ...node, text: prevText }) : false;
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   maybeNudgeFirstPill(); // #H: greet the user's first self-authored pill once (reads _promotedLit from the promote above)
@@ -19539,6 +19546,7 @@ function exitEdit(content, node) {
   // post-sweep text, so recording it twice would need two undos to take back one edit.
   for (const p of promotedPending) { if (p.id === node.id) continue; const n = nodeById(p.id); if (n) recordTextEdit(n.id, p.before, n.text); }
   { const msg = pendingBraceMessage(promotedPending.length); if (msg) flashHint(msg); }
+  { const m = offSearchMessage(matchedSearchBefore, searchTerms.length ? nodeMatchesSearch(node) : true, searchQuery); if (m) flashHint(m); }
   delete content.dataset.prevText;
   hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
 }
@@ -27612,6 +27620,17 @@ function pendingBraceMessage(n) {
   return n === 1
     ? 'One point was waiting for that value. It works now.'
     : `${n} points were waiting for that value. They work now.`;
+}
+
+// #1375: the point you just edited no longer matches the search it is listed under. Said, not acted
+// on. The obvious fix — drop the row the moment it stops matching — would remove the point out from
+// under the caret that is editing it, which is a worse failure than the one it fixes and collides
+// with the caret invariant. So the row stays (correct) and the app says what happened (P4), exactly
+// as it does when a value arrives and other points start working. The next keystroke in the search
+// box re-runs the filter and the row leaves on its own. Pure; no DOM.
+function offSearchMessage(matchedBefore, matchesNow, query) {
+  if (!matchedBefore || matchesNow || !String(query || '').trim()) return '';
+  return `That point no longer matches ${String(query).trim()}. It stays until the search runs again.`;
 }
 
 // #1357: promotion is ONE-SHOT. A `{…}` whose names were not resolvable when its point was
