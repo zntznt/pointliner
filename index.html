@@ -38161,18 +38161,45 @@ let agendaWeek = null;          // Week view: any epoch-day in the shown week (s
 let ganttNamesW = null;         // Timeline: pinned width (px) of the titles column, null = CSS clamp default
 let ganttResize = null;         // in-flight names-column resize gesture { startX, startW }
 
-function mkAgToggle(label, on, onToggle) {
+// #1385: the identity a chip keeps across a renderAgenda() rebuild. The LABEL is the default and is
+// stable for most chips ('Week', 'Done'), but three of them relabel themselves as they toggle -- Sort
+// flips date/priority, Scope flips document/folder, the clock shows a date -- so those pass an
+// explicit key. Pure + Node-testable: a label-only identity would silently lose exactly the chips
+// whose label is the thing that changed.
+function agToggleKey(label, key) { return String(key || label || ''); }
+// #1385: `key` is POSITIONAL and optional, so the six call sites that are happy with their label keep
+// working untouched (the parseNumFmt / boardBlockReason precedent).
+function mkAgToggle(label, on, onToggle, key) {
   const b = document.createElement('span');
   b.className = 'ag-toggle' + (on ? ' on' : '');
   b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0');
   b.setAttribute('aria-pressed', String(on));
+  b.dataset.ag = agToggleKey(label, key);
   b.textContent = label;
   // mousedown + preventDefault (caret invariant) so toggling doesn't blur an
   // active edit and rebuild the strip out from under the click; keydown is the
   // keyboard path (a role=button span has no native Enter/Space activation).
   b.addEventListener('mousedown', e => { e.preventDefault(); onToggle(); });
-  b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } });
+  // #1385: the comment above already knew the toggle "rebuilds the strip out from under the click"
+  // and protected the POINTER path by never taking focus in the first place. The keyboard path was
+  // left: every onToggle calls renderAgenda(), which replaces the strip, so the span that was focused
+  // is destroyed and focus falls to <body>. Driven, seven of the eight chips did this, and a keyboard
+  // user switching Week to Month had to tab back through the whole toolbar to get where they were.
+  //
+  // Re-find the same chip in the fresh strip. This is also the P4 half with no new string: those same
+  // seven were SILENT (zero announce/flashHint calls), and the fresh chip carries aria-pressed, so
+  // landing on it is what tells a screen reader the toggle took. The one chip that already got this
+  // right is Scope, which announces its own success -- and it is the precedent, not the exception.
+  b.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); agRefocusToggle(b.dataset.ag); }
+  });
   return b;
+}
+// Only on the keyboard path: on the pointer path focus was deliberately never moved here, and pulling
+// it into the strip would take the caret out of a point someone is editing (the caret invariant).
+function agRefocusToggle(key) {
+  if (!key) return;
+  document.getElementById('agenda-strip')?.querySelector(`.ag-toggle[data-ag="${CSS.escape(key)}"]`)?.focus();
 }
 
 // A calendar/week nav arrow button (‹ › ‹‹ ››). onFire is wired by the caller (mousedown
@@ -38355,7 +38382,7 @@ function renderAgenda() {
   const sortByPri = agendaSort === 'priority';
   const sortT = mkAgToggle(sortByPri ? 'Sort: priority' : 'Sort: date', sortByPri, () => {
     agendaSort = sortByPri ? 'date' : 'priority'; renderAgenda(); scheduleAutosave();
-  });
+  }, 'sort');   // #1385: the LABEL is what this chip changes, so it cannot also be its identity
   sortT.title = 'Order the List by date or by priority';
   filters.append(mkGrpLbl('Filters'), doneT, runT, overdueT);
   const sortRow = document.createElement('div'); sortRow.className = 'ag-filters ag-sortrow';
@@ -38369,7 +38396,7 @@ function renderAgenda() {
     if (!folderReady) { flashHint(agendaFolderUnavailableMessage()); return; }
     agendaFolderScope = !agendaFolderScope; renderAgenda(); scheduleAutosave();
     announce(agendaFolderScope ? 'Agenda scope: whole folder' : 'Agenda scope: this document');
-  });
+  }, 'scope');   // #1385: relabels itself document/folder, same as Sort
   scopeT.title = folderReady
     ? 'Read dated points from this document only, or from every document in the folder'
     : agendaFolderUnavailableMessage();
@@ -38408,7 +38435,7 @@ function renderAgenda() {
     // NEUTRAL chip, not the active-toggle tint: `on` means "this toggle is pressed" everywhere
     // else in the strip, and the clock has no pressed state — it opens a menu. The visible ▾ is
     // the menu door (the #416 precedent), aria-hidden so the accessible name stays the date.
-    const clock = mkAgToggle(calDayShort(calClk.current) + ', ' + cc.year, false, () => showAdvanceMenu(clock));
+    const clock = mkAgToggle(calDayShort(calClk.current) + ', ' + cc.year, false, () => showAdvanceMenu(clock), 'clock');   // #1385: its label IS a date
     clock.removeAttribute('aria-pressed');            // it opens a menu; it is not a pressed-state toggle
     clock.setAttribute('aria-haspopup', 'menu');
     const caret = document.createElement('span'); caret.textContent = ' ▾'; caret.setAttribute('aria-hidden', 'true');

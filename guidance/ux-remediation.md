@@ -4585,3 +4585,65 @@ base); and the **query-base row link** still lands on the same source row across
 first, all red -- including one that caught a vacuous pin of mine: asserting
 `fresh.querySelector(sel)?.focus()` without its `if (sel)` guard stayed green through `if (false)`.
 The condition is part of the pin now (#1133).
+
+## UXP-303 -- an agenda toggle stops throwing focus away (#1385)
+
+**P3 / P4. The same class as UXP-302, on a second surface, found by sweeping for it rather than
+waiting for the next report.** Every chip in the agenda strip is `role="button"`, `tabindex="0"`,
+`aria-pressed` and Tab-reachable -- the accessibility work landed. What was missing is what happens
+*after* you press it: each `onToggle` calls `renderAgenda()`, which replaces the strip, so the focused
+span is destroyed.
+
+| chip | focus after Enter, before | announced, before |
+|---|---|---|
+| Week / Month / Timeline | **`document.body`** | nothing |
+| Done / Running / Overdue | **`document.body`** | nothing |
+| Sort: date | **`document.body`** | nothing |
+| Scope: document | itself | "Open a folder first ..." |
+
+**Scope is the precedent, not the exception.** It is the one chip that announces its own success
+(`announce('Agenda scope: whole folder')`) and the one that keeps focus -- and it keeps focus only
+because, with no folder open, it *refuses* and never rebuilds. So the agenda got this right exactly
+where it says no, and wrong in all seven places where it says yes.
+
+**`mkAgToggle` already knew.** Its own comment reads *"mousedown + preventDefault (caret invariant) so
+toggling doesn't blur an active edit and rebuild the strip out from under the click."* The author saw
+the rebuild and protected the pointer path by never taking focus at all. The keyboard path, which by
+definition *does* have focus on the chip, was left.
+
+**The fix is UXP-302's, applied here**: re-find the same chip in the fresh strip, on the keyboard path
+only. `aria-pressed` on the restored chip is the confirmation, so the P4 half needs no new string
+(P5, and it matches what Scope already does).
+
+**One wrinkle that a label-based identity would have got wrong.** Three chips *relabel themselves as
+they toggle* -- Sort flips `date`/`priority`, Scope flips `document`/`folder`, the calendar clock shows
+a date. For those the label is precisely the thing that changed, so they pass an explicit key.
+`agToggleKey(label, key)` is the pure core, and reverting any one of the three keys turns a pin red.
+
+### The lesson about the sweep itself
+
+The first pass of this sweep **reported the agenda clean**, because its selector was `#agenda-pane ...`
+and the strip is `#agenda-strip`. It found 2 controls and printed no failures. That is the vacuous-guard
+failure mode in a probe rather than a test, and what caught it was checking the sample against the
+standard's own description of the surface (`ux-discipline.md` §3 lists Week/Month/Timeline plus four
+filter chips, so 2 was obviously wrong). **A sweep that finds nothing is a claim about the selector
+until the count is checked.**
+
+Two suspicions were also wrong on the way and are recorded so the next reader does not repeat them:
+the agenda chips looked like unfocusable `div`s in an enumeration that was simply truncated at 30, and
+an activation probe reported "nothing changed" because it read only the strip's header text.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2023**. Nine mutations, each asserting its target present
+first, all red -- including one that mutates *toward* the bug in the other direction: adding the
+refocus to the **pointer** path must go red, because that would pull the caret out of a point being
+edited.
+
+Driven: all eight chips keep focus and land on the correct fresh chip; Sort survives its own relabel
+in both directions; five keyboard toggles in a row keep working (`Done:true/false/true/false/true`);
+and a pointer toggle made while editing a point leaves that caret exactly where it was.
+
+The other surfaces swept in the same pass -- toolbar (15 controls), graph (3), timeline (6), the
+focus-shown search panel (24) -- were **clean**, so this class is now closed on every chrome surface
+that rebuilds itself.
