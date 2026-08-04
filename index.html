@@ -18934,7 +18934,7 @@ function classifyBraceBody(body, rules, vars) {
 function templateAttempt(body) {
   body = (body || '').trim();
   if (!body || body.indexOf('{') < 0 || body.indexOf('\n') >= 0) return null;
-  if (/\S\s+\{=\s*[\s\S]*\}\s*$/.test(body)) return null;   // trailing {= …} = parseAlt's weight form
+  if (/\S\s+\{=\s*[^{}]*\}\s*$/.test(body)) return null;    // trailing {= …} = parseAlt's weight form (#1354: same [^{}] fence, kept in lockstep)
   const bodies = [];
   let i = 0;
   while (i < body.length) {
@@ -23787,7 +23787,20 @@ function inCodeSpan(ranges, i) {
 // it, so a bare computed-value alt (`{= 2d6}`) stays content, not a zero-template
 // weight. Same trailing-token convention as the numeric weight it extends.
 function parseAlt(a) {
-  const em = a.match(/^([\s\S]*?\S)\s+\{=\s*([\s\S]+?)\s*\}\s*$/);
+  // #1354: the weight EXPRESSION may not span a brace. `[\s\S]+?` used to let it, and a conditional
+  // or repeat is promoted as `origin: {BODY}` — so the body's OWN closing `}` sits at the end of the
+  // string and the lazy capture swallowed everything from the first ` {=` to it:
+  //   {cost > budget: OVER by {= cost - budget} | under}
+  //     → template "{cost > budget: OVER by",  weightExpr "cost - budget} | under"
+  // which rendered as a well-formed pill showing that truncated, brace-unbalanced fragment, with a
+  // "Click to re-generate" tooltip and no cue (P4, silent-wrong). A5's dynamic-odds note argued the
+  // trailing-`{= }`-is-a-weight rule was "the same accepted-ambiguity class" as the trailing-number
+  // weight it extends; it was never tested against a conditional body, which always ends in `}`.
+  // A weight is a math expression and evalMath is number-only by contract, so a legitimate weight
+  // never contains a brace — [^{}] is the whole fence, and it is what lets ` {=` inside a branch
+  // mean "a computed value here" instead of "a weight for this alternative".
+  // templateAttempt carries the MIRROR of this pattern as a guard; the two move together.
+  const em = a.match(/^([\s\S]*?\S)\s+\{=\s*([^{}]+?)\s*\}\s*$/);
   if (em) return { template: em[1].trim(), weightExpr: em[2].trim() };
   const wm = a.match(/^([\s\S]*?)\s+(\d+)\s*$/);
   return { template: (wm ? wm[1] : a).trim(), weight: wm ? parseInt(wm[2], 10) : 1 };
