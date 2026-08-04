@@ -20033,7 +20033,19 @@ function onKeyDown(e, id, content) {
     // progress clock: Enter/Space advances it, Shift+Enter steps back (the keyboard twin of its
     // click). Only a MANUAL clock is focusable/actionable; a computed [o /M] is a display value.
     const clk = e.target.closest?.('.clock:not(.clock-computed)');
-    if (clk && e.target === clk) { e.preventDefault(); advanceClockAt(clk, e.shiftKey ? -1 : 1); return; }
+    if (clk && e.target === clk) {
+      e.preventDefault();
+      // #1391: a clock has no data-key — advanceClockAt targets it by its ORDINAL among the manual
+      // clocks in this point, so that same ordinal is its identity across the repaint. Captured
+      // BEFORE the advance, while the old pill is still in the document.
+      const ordinal = [...content.querySelectorAll('.clock:not(.clock-computed)')].indexOf(clk);
+      advanceClockAt(clk, e.shiftKey ? -1 : 1);
+      // The sibling pill branch below has restored focus since UXP-19, for exactly the reason its
+      // comment gives; the clock advances the same way, repaints the same way, and was left out.
+      // Driven: click, Shift+click, Enter and Space all advanced correctly and all dropped focus.
+      if (ordinal >= 0) refocusAfterRepaint(id, c => c.querySelectorAll('.clock:not(.clock-computed)')[ordinal]);
+      return;
+    }
     // action pill: Enter/Space applies the mutation (the keyboard twin of its click)
     const apk = e.target.closest?.('.act-pill');
     if (apk && e.target === apk) { e.preventDefault(); runActionPill(apk); return; }
@@ -20064,11 +20076,7 @@ function onKeyDown(e, id, content) {
       // a re-roll repaints the content (innerHTML), destroying the focused pill —
       // restore focus to its re-rendered self so keyboard re-rolls can chain. Only
       // when focus actually fell to body: an opened edit dialog keeps its own focus.
-      requestAnimationFrame(() => {
-        const fresh = content.querySelector(`[data-key="${CSS.escape(k)}"]`);
-        const ae = document.activeElement;
-        if (fresh && (ae === document.body || ae === null)) try { fresh.focus(); } catch (_) {}
-      });
+      refocusAfterRepaint(id, c => c.querySelector(`[data-key="${CSS.escape(k)}"]`));
       return;
     }
   }
@@ -36745,6 +36753,32 @@ function toggleSpoiler(sp) {
 // to the Nth manual [o N/M] token in node.text via the pure advanceClockInText. Writes text,
 // saves, and repaints the one node's content IN DISPLAY MODE (repaintNodeContent, the dice-
 // reroll path) — NOT rerenderNode, which would focus the node into edit mode on every click.
+// #1391: put focus back on an in-content control that its own activation destroyed.
+//
+// Two things this gets right that the inline version it replaces did not:
+//
+//  1. It re-finds the point's content element in the LIVE document. The old code closed over the
+//     `content` it was wired to, and an action that triggers a full render() (a var pick, a logged
+//     roll, a varbase) DETACHES that element. querySelector on a detached subtree does not fail --
+//     it cheerfully returns the STALE pill, and focus() on a detached node is silently ignored. So
+//     the restore looked present and did nothing. Driven with `{who := a | b}`: content.isConnected
+//     was false, the stale pill was found, and focus sat on <body>.
+//  2. It takes a FINDER rather than a key, because not every control has a data-key: a clock is
+//     identified by its ordinal among the manual clocks in the point, the same way advanceClockAt
+//     targets it.
+//
+// Only when focus actually fell to body -- an activation that opens a dialog keeps its own focus.
+function refocusAfterRepaint(nodeId, finder) {
+  requestAnimationFrame(() => {
+    const ae = document.activeElement;
+    if (ae && ae !== document.body) return;
+    const live = document.querySelector(`.node-content[data-id="${CSS.escape(String(nodeId))}"]`);
+    if (!live) return;
+    let fresh; try { fresh = finder(live); } catch (_) { return; }
+    if (fresh && fresh.isConnected) try { fresh.focus(); } catch (_) {}
+  });
+}
+
 function advanceClockAt(clk, dir) {
   const content = clk.closest('.node-content');
   if (!content || content.dataset.editing) return;   // never advance while the node is being edited

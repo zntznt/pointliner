@@ -4787,3 +4787,69 @@ colour-only; hardcode the red instead of the token; and sneak a spaced token int
 **On how this was found.** It was not on any list. It surfaced because a harness seed used a plausible
 value and the app threw. Worth recording: the undo audit that was running at the time found its own
 findings, and this one came free from *using the app like a user who does not know the vocabulary*.
+
+## UXP-306 -- a pill keeps the focus its own activation destroys (#1391)
+
+**P3. The fourth instance of the UXP-302 / UXP-303 class, on the pill family — and this time the fix
+was already HALF present.** UXP-19 restores focus after a pill re-roll, and its comment states the
+reason exactly: *"a re-roll repaints the content (innerHTML), destroying the focused pill — restore
+focus to its re-rendered self so keyboard re-rolls can chain."*
+
+Driven by **node identity** rather than by class name (mark the old element, then ask whether the
+focused one is the fresh twin), because "focus is on a `.dice-roll`" cannot tell a survivor from a
+replacement:
+
+| pill | replaced | focus after Enter, before |
+|---|---|---|
+| dice / grammar / estimate | yes | the fresh pill ✅ |
+| **clock** | yes | **`document.body`** ❌ |
+| **var pick** | yes | **`document.body`** ❌ |
+
+### Two distinct causes, both measured
+
+1. **`.clock` is not in the pill-body selector list.** It has its own keydown branch, which advances
+   and returns without restoring. All four doors were driven — click, Shift+click, Enter, Space — and
+   all four advanced correctly, announced correctly, recorded undo, and dropped focus.
+2. **The restore re-found inside the CAPTURED `content`.** A var pick triggers a full `render()`,
+   which detaches that element. `querySelector` on a detached subtree does not fail — it cheerfully
+   returns the **stale** pill, and `focus()` on a detached node is silently ignored. So the restore
+   looked present and did nothing. Driven: `content.isConnected` false, the stale pill found, focus
+   on `<body>`.
+
+Cause 2 is the more interesting one: it is a guard that reads as working, which is the same shape as
+the vacuous pins #1133 is about, expressed in product code instead of a test.
+
+### The change
+
+`refocusAfterRepaint(nodeId, finder)` re-finds the point's content **in the live document by node
+id**, takes a *finder* rather than a key (a clock has no `data-key` — it is identified by its ordinal
+among the manual clocks, the same way `advanceClockAt` targets it), refuses to focus a detached node,
+and only acts when focus actually fell to body so an activation that opens a dialog keeps its own.
+
+The clock's ordinal is captured **before** the advance, while the old pill is still in the document.
+Reversing that order turns a pin red.
+
+### Scope, stated rather than implied
+
+The fix is on the **keyboard** path only, matching the sibling pill branch. A pointer click never
+focuses these pills in the first place, and pulling focus there would break the caret invariant.
+**Driven:** mouse-clicking a clock while editing a *different* point advances the clock and leaves
+that caret exactly where it was.
+
+**Not measured, so not claimed:** the action-pill and spoiler branches also activate-and-return in the
+same handler. Two attempts to render them used the wrong syntax and produced no pill, so nothing is
+asserted about them either way. The shared helper is there if they turn out to need it.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2031**. Six mutations, each asserting its target present
+first, all red — including three that mutate toward the *wrong shape* rather than toward absence:
+capturing the ordinal after the advance, re-finding in the captured element again, and focusing a
+detached node.
+
+**A method note.** Five separate probe errors preceded this finding: the meter and clock syntaxes
+(`{meter: 8/12}`, `[o 0/6]` — not the brace forms I guessed), a `mousedown` dispatch where the clock
+listens on `click`, a selector matching a Font Awesome icon instead of a clock pill, and a corkboard
+test run outside the zoom view where it does not render. Each initially looked like a defect. The
+habit that caught them all is the same one UXP-303 recorded: **check the sample against what the
+surface should contain before believing a null result.**

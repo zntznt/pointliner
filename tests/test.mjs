@@ -29402,3 +29402,49 @@ test('#1389 the rejected-phrase flag is actually visible, not just a hover title
   const at = fnBody(_src, 'applyTheme');
   assert.ok(/--bad:#f0928b/.test(at) && /--bad:#b3271f/.test(at), '--bad is defined in both applyTheme palettes');
 });
+
+// ─── #1391: an in-content control keeps focus its own activation destroyed ────
+// The fourth instance of the class #1383 and #1385 found, on the pill family, and this time the fix
+// was already HALF present. UXP-19 restores focus after a pill re-roll, with a comment giving the
+// exact reason ("a re-roll repaints the content (innerHTML), destroying the focused pill"). Driven
+// by node identity, marking the old element and asking whether the focused one is the fresh twin:
+//
+//   pill        replaced   focus after Enter, before
+//   dice        yes        the fresh pill  ✅
+//   grammar     yes        the fresh pill  ✅
+//   estimate    yes        the fresh pill  ✅
+//   clock       yes        <body>          ❌  not in the pill-body selector list at all
+//   var pick    yes        <body>          ❌  in the list, and the re-find still failed
+//
+// Two distinct causes, both measured rather than inferred:
+//  1. `.clock` has its own keydown branch, which advances and returns without restoring.
+//  2. the restore re-found inside the CAPTURED `content`, and a var pick triggers a full render()
+//     that detaches it. querySelector on a detached subtree does not fail — it returns the STALE
+//     pill, and focus() on a detached node is silently ignored. Driven: content.isConnected false,
+//     the stale pill found, focus on <body>.
+test('#1391 refocusAfterRepaint re-finds in the live document, not a captured element', () => {
+  const fn = fnBody(_src, 'refocusAfterRepaint');
+  assert.ok(/document\.querySelector\(`\.node-content\[data-id="\$\{CSS\.escape\(String\(nodeId\)\)\}"\]`\)/.test(fn),
+    'the content element is re-found live, by node id — never closed over');
+  assert.ok(/if \(ae && ae !== document\.body\) return;/.test(fn),
+    'only when focus actually fell to body, so an opened dialog keeps its own focus');
+  assert.ok(/if \(fresh && fresh\.isConnected\)/.test(fn),
+    'and never focuses a detached node — the silent no-op that made the old restore look present');
+  assert.ok(/finder\(live\)/.test(fn), 'takes a FINDER, because a clock has no data-key');
+});
+
+test('#1391 both keyboard branches restore, and the clock uses its ordinal', () => {
+  const h = between(_src, 'progress clock: Enter/Space advances it', 'Point-actions menu');
+  // the clock branch: ordinal captured BEFORE the advance, while the old pill is still in the DOM
+  assert.ok(/const ordinal = \[\.\.\.content\.querySelectorAll\('\.clock:not\(\.clock-computed\)'\)\]\.indexOf\(clk\);/.test(h),
+    'the clock is identified by its ordinal among the manual clocks');
+  assert.ok(h.indexOf('const ordinal') < h.indexOf('advanceClockAt(clk'),
+    'captured before the advance, or the old pill is already gone');
+  assert.ok(/if \(ordinal >= 0\) refocusAfterRepaint\(id, c => c\.querySelectorAll\('\.clock:not\(\.clock-computed\)'\)\[ordinal\]\)/.test(h),
+    'and the clock restores through the shared helper');
+  // the sibling pill branch now uses the same helper rather than its own inline re-find
+  assert.ok(/refocusAfterRepaint\(id, c => c\.querySelector\(`\[data-key="\$\{CSS\.escape\(k\)\}"\]`\)\)/.test(h),
+    'the pill branch routes through the same helper');
+  assert.ok(!/const fresh = content\.querySelector\(`\[data-key/.test(h),
+    'the old capture-and-search-a-possibly-detached-element form is gone');
+});
