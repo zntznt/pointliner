@@ -13554,6 +13554,28 @@ test('action: actionNewValue — current OP rhs, resolved in scope; divide-by-ze
   assert.equal(c.actionNewValue({ target: 'hp', op: '-=', rhs: 'nope' }, n, scope), null, 'an unresolvable rhs → null');
   assert.equal(c.actionNewValue({ target: 'missing', op: '-=', rhs: '1' }, n, scope), null, 'no current value for the stat → null');
 });
+test('action: the amount ROLLS the generative engine — {hp -= 1d6} lands in range, fresh each click', () => {
+  const n = c.mkNode('Goblin');
+  const scope = { hp: 100, str: 3 };
+  // 1d6 subtracted from 100 → 94..99, and it varies across clicks (a fresh roll, not frozen)
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) {
+    const v = c.actionNewValue({ target: 'hp', op: '-=', rhs: '1d6' }, n, scope);
+    assert.ok(Number.isFinite(v) && v >= 94 && v <= 99, `1d6 hit stays in range, got ${v}`);
+    seen.add(v);
+  }
+  assert.ok(seen.size > 1, 'the roll is fresh each call, not a frozen constant');
+  // dice + a stat modifier resolves the variable too: 1d6+str (str=3) → 4..9 off 100 → 91..96
+  for (let i = 0; i < 20; i++) {
+    const v = c.actionNewValue({ target: 'hp', op: '-=', rhs: '1d6+str' }, n, scope);
+    assert.ok(v >= 91 && v <= 96, `1d6+str stays in range, got ${v}`);
+  }
+  // an inline pick (top-level |) draws one of the listed amounts
+  for (let i = 0; i < 20; i++) {
+    const v = c.actionNewValue({ target: 'hp', op: '-=', rhs: '2|4|6' }, n, scope);
+    assert.ok([94, 96, 98].includes(v), `2|4|6 draws one listed amount, got ${v}`);
+  }
+});
 test('action: formatStatValue — a whole result stays whole, float dust collapses', () => {
   assert.equal(c.formatStatValue(15), '15');
   assert.equal(c.formatStatValue(4.5), '4.5');
