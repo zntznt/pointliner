@@ -4445,10 +4445,12 @@ function parseActionPill(body) {
   if (op === '=' && rhs[0] === '=') return null;
   const r = rhs.trim();
   if (!r) return null;
-  // an rhs with its own braces ({HP -= {dmg}}) is out of scope — the inline matcher only
-  // catches a brace with no nested braces. Bare names resolve in evalMath, so {HP -= dmg}
-  // is the shape; reject a nested-brace rhs so it never half-matches. // ponytail: bare-name rhs only.
-  if (/[{}]/.test(r)) return null;
+  // the amount may embed balanced {…} (a roll, a pick, a query) that resolves at click, like the
+  // rest of the engine composes. Reject only an UNBALANCED brace (a stray { or }), so a half-typed
+  // amount never renders a live button. // ponytail: depth counter, not a full parser.
+  let depth = 0;
+  for (const ch of r) { if (ch === '{') depth++; else if (ch === '}' && --depth < 0) return null; }
+  if (depth !== 0) return null;
   return { target, op, rhs: r };
 }
 // The right side of an action, as a number, rolling the GENERATIVE engine when it's there so
@@ -4457,11 +4459,15 @@ function parseActionPill(body) {
 // alternation ({gold += 2|4|6}) rolls through rollPickSource; anything else is plain arithmetic
 // over props/vars via evalMath + the aggregate pre-pass. Returns a finite number or null.
 function actionRhsValue(rhs, node, scope) {
-  if (parseDice(rhs, scope) || splitTopLevel(rhs, '|').length > 1) {
-    const rolled = Number(rollPickSource(rhs, collectRules(), scope));   // one fresh roll of the source
+  let expr = rhs;
+  // resolve any embedded {…} first (a roll, a pick, a query, a {var} ref) → a brace-free expression,
+  // the way {meter: {done}/{goal}} and template glue compose. Rolls happen here, once per click.
+  if (expr.includes('{')) expr = expandTemplate(expr, { rules: collectRules(), vars: scope, depth: 0, stack: [] });
+  if (parseDice(expr, scope) || splitTopLevel(expr, '|').length > 1) {
+    const rolled = Number(rollPickSource(expr, collectRules(), scope));   // one fresh roll of the source
     return Number.isFinite(rolled) ? rolled : null;
   }
-  const v = evalMath(expandAggExpr(rhs, node, scope), scope);
+  const v = evalMath(expandAggExpr(expr, node, scope), scope);
   return (v === null || !Number.isFinite(v)) ? null : v;
 }
 // The value an action pill writes: `current OP rhs`, with the right side resolved through
@@ -7971,14 +7977,33 @@ function mdInline(s) {
   // sidecar); the click handler reads data-act-body and writes the new stat value back. role=button
   // + tabindex=-1 + an Enter/Space twin keep the caret invariant (P3-3). Only fires in display mode
   // (a computed context, cookieNode present) so a bare preview never renders a live control.
-  if (cookieNode) s = s.replace(/\{[^{}]+\}/g, (m) => {
-    const act = parseActionPill(m.slice(1, -1));
-    if (!act) return m;
-    const arith = act.op === '=' ? '' : ' ' + act.op[0];   // "-=", "+=" → the bare arithmetic sign for the label
-    const desc = act.op === '=' ? `set ${act.target} to ${act.rhs}` : `change ${act.target} by${arith} ${act.rhs}`;
-    const label = `${act.target} ${act.op} ${act.rhs}`;
-    return stash(`<span class="act-pill" role="button" tabindex="-1" data-act-body="${escQ(m.slice(1, -1))}" title="Click to apply: ${escQ(desc)}" aria-label="Action, ${escQ(desc)}. Click to apply.">${escHtml(label)}</span>`);
-  });
+  // A brace-WALK (matchBrace), not a flat regex, so the amount may embed its own {…} the way the
+  // rest of the engine composes — {HP -= {1d6}}, {gold += {roll: #treasure}} — resolved at click.
+  if (cookieNode && s.indexOf('{') >= 0) {
+    let out = '', i = 0;
+    while (i < s.length) {
+      if (s[i] === '{') {
+        const end = matchBrace(s, i);
+        if (end > i) {
+          const body = s.slice(i + 1, end);
+          const act = parseActionPill(body);
+          if (act) {
+            const arith = act.op === '=' ? '' : ' ' + act.op[0];   // "-=","+=" → the bare arithmetic sign for the label
+            const desc = act.op === '=' ? `set ${act.target} to ${act.rhs}` : `change ${act.target} by${arith} ${act.rhs}`;
+            const label = `${act.target} ${act.op} ${act.rhs}`;
+            out += stash(`<span class="act-pill" role="button" tabindex="-1" data-act-body="${escQ(body)}" title="Click to apply: ${escQ(desc)}" aria-label="Action, ${escQ(desc)}. Click to apply.">${escHtml(label)}</span>`);
+            i = end + 1;
+            continue;
+          }
+          out += s.slice(i, end + 1);   // a non-action {…} passes through whole (the invalid cue below still sees it)
+          i = end + 1;
+          continue;
+        }
+      }
+      out += s[i++];
+    }
+    s = out;
+  }
   // "Did not become a pill" cue (P4). Any {…} still literal HERE never promoted: every valid
   // artifact was rewritten to a [[type:key]] token (and stashed) on exit/load before this render.
   // Flag only the bodies that CLASSIFY 'invalid' (an attempted-but-broken pill: {rumor}, {2d6x},
