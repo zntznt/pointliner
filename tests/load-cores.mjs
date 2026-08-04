@@ -282,6 +282,7 @@ export function loadCores() {
     'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','capturePayloadOf','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
     'classifyBraceBody','braceAttemptReason','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteBraceBodyIn','renderVarPill','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
+    'nameSetSignature','pendingBraceMessage',   // #1357: the retry-promotion gate + its report
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl','ex','toOpml',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)

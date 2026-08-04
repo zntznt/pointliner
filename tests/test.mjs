@@ -28533,3 +28533,83 @@ test('the edited row is PARKED off-window, not chased by widening the window', (
   assert.match(_src, /#vlist>\.node\.vl-parked\{position:absolute/);
   assert.ok(!/\.vl-parked\{[^}]*display:none/.test(_src));
 });
+
+test('#1357: the scope-change gate reads NAMES, never values', () => {
+  const S = c.nameSetSignature;
+  // The gate exists so ordinary typing does not pay for a document sweep. It fires on a name
+  // appearing or leaving, which is the only thing that can turn a refused brace into a pill:
+  // `{= tension}` promotes just as happily against tension=0 as against tension=7.
+  assert.equal(S({ a: 1, b: 2 }), S({ a: 99, b: -3 }), 'a value change is not a scope change');
+  assert.notEqual(S({ a: 1 }), S({ a: 1, cost: 2 }), 'a new name IS');
+  assert.notEqual(S({ hp: 3 }), S({}), 'and a name going away IS');
+  // sorted, so insertion order cannot produce a phantom change (which would sweep on every keystroke)
+  assert.equal(S({ b: 1, a: 1 }), S({ a: 1, b: 1 }));
+  assert.equal(S(null), S(undefined), 'degenerate input is stable, not a false trigger');
+  assert.equal(S(null), S({}), 'and agrees with the empty map');
+});
+
+test('#1357: the retry reports what it promoted, in points', () => {
+  const M = c.pendingBraceMessage;
+  assert.equal(M(0), '', 'nothing promoted says nothing');
+  assert.equal(M(null), '');
+  assert.equal(M(-1), '');
+  assert.match(M(1), /^One point was waiting/, 'singular');
+  assert.match(M(3), /^3 points were waiting/, 'plural, with the count');
+  for (const n of [1, 2, 7]) {
+    // P4: the promotion happens away from the caret, so a silent success reads as nothing having
+    // happened — which is the very bug this closes, one step later.
+    assert.ok(/works? now\./.test(M(n)), 'and says the outcome, not the mechanism');
+    assert.ok(!/—/.test(M(n)), 'AP punctuation, no em dashes');
+    assert.ok(!/\bnode\b/.test(M(n)), 'user-facing copy says point, never node');
+  }
+});
+
+test('#1357: promotion is retried when a value arrives, by REUSING the one promoter', () => {
+  const b = fnBody(_src, 'retryPendingBraces');
+  // The whole safety argument: a retry calls the same walker the commit path calls, so the code-span
+  // escape hatch, the #916 anti-shred guards and the quoted-literal rule hold by construction. A
+  // re-derived "is this promotable now" test could drift from them, and silently.
+  assert.ok(/promoteInlineShorthand\(n\)/.test(b), 'reuses promoteInlineShorthand verbatim');
+  assert.ok(!/classifyBraceBody|promoteBraceBody\(/.test(b), 'and does not re-derive what is promotable');
+  // the committed point is IN the sweep: its own walk is left to right, so `{= hp} {prop hp: 3}`
+  // refused the formula before reaching the property that would have fed it.
+  assert.ok(/function retryPendingBraces\(from\)/.test(_src),
+    'the parameter BOUNDS the sweep; it is not an except-id that would skip the committed point');
+  assert.ok(/visit\(from \|\| root\)/.test(b), 'and defaults to the whole document');
+  assert.ok(/for \(const c of \(n\.children \|\| \[\]\)\) visit\(c\)/.test(b), 'walking the subtree, not the flat index');
+  assert.ok(/n\.type !== 'base'/.test(b), 'bases keep their own per-cell promoter (#788)');
+  assert.ok(/data-editing/.test(b), 'never rewrites text under a live caret');
+  // No brace pre-test: promoteInlineShorthand short-circuits a brace-free point itself, and a
+  // duplicate here would be a second place to keep in step (and a `'{'` literal defeats fnBody).
+  assert.ok(!/indexOf\('/.test(b), 'leans on the promoter\u2019s own short-circuit');
+  // _promotedLit is the caret-translation map for the point just promoted (#766). This sweep
+  // promotes OTHER points, so leaving their widths behind would mistranslate the committed one.
+  assert.ok(/const savedLit = _promotedLit;[\s\S]*finally \{ _promotedLit = savedLit; \}/.test(b),
+    'saves and restores the caret-width map');
+});
+
+test('#1357: the retry is wired at the commit chokepoint, gated, undoable and reported', () => {
+  const b = fnBody(_src, 'exitEdit');
+  // #1133: a tested sweep proves nothing about whether anything calls it, or with what.
+  assert.ok(/const varsBefore = nameSetSignature\(collectVars\(\)\), propsBefore = nameSetSignature\(nodePropVars\(node\)\)/.test(b),
+    'both before-signatures are taken BEFORE the commit promotes anything');
+  // The assignment is part of the pin, not just the expression: a version that computed the gate
+  // and threw the sweep's result away passed a laxer form of this, and every downstream assertion
+  // below still matched (they only look at what the empty list is then fed to).
+  // The two arms are the reach rule: a doc variable is visible document-wide, a property only down
+  // its own subtree. Swapping them would either miss points or sweep the document for nothing.
+  assert.ok(/const promotedPending =\s*\n?\s*nameSetSignature\(collectVars\(\)\) !== varsBefore \? retryPendingBraces\(root\)\s*\n?\s*: nameSetSignature\(nodePropVars\(node\)\) !== propsBefore \? retryPendingBraces\(node\)\s*\n?\s*: \[\];/.test(b),
+    'the sweep runs only when names changed, scoped to their reach, into the list the rest of exitEdit reads');
+  assert.ok(/if \(promotedPending\.length\) markDirty\(\)/.test(b), 'the sweep wrote text and sidecars');
+  // the promoted points are repainted: they were raw text a moment ago, so repaintComputedDependents
+  // does not consider them computed and skips them.
+  assert.ok(/for \(const p of promotedPending\) \{ if \(p\.id === node\.id\) continue; const n = nodeById\(p\.id\); if \(n\) repaintNodeContent\(n\); \}/.test(b));
+  // undo order is load-bearing: the promotions are recorded AFTER the user's own edit, so the first
+  // undo takes the pills back off and the second takes the value away. The other order would leave
+  // one undo showing live pills whose value had just been removed.
+  const userRec = b.indexOf('recordTextEdit(node.id, prevText, node.text)');
+  const sweepRec = b.indexOf('recordTextEdit(n.id, p.before, n.text)');
+  assert.ok(userRec > 0 && sweepRec > userRec, 'the sweep records after the committed point');
+  assert.ok(/flashHint\(msg\)/.test(b) && /pendingBraceMessage\(promotedPending\.length\)/.test(b),
+    'and the count is reported (P4)');
+});
