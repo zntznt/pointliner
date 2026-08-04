@@ -17458,7 +17458,34 @@ function searchTermProblems(terms, opts) {
   opts = opts || {};
   const states = (opts.states || []).map(s => String(s).toLowerCase());
   const out = [], seen = new Set();
+  let saidBracket = false;
+  // While TYPING, an unclosed `(` is probably a group still being written, so say nothing yet — the
+  // same courtesy the is:/due: arms extend to a value still growing toward a real one. Once the
+  // brackets balance ACROSS the query while a single term is still unbalanced, the whitespace split
+  // has happened and it is a finished grouping attempt: `(has:owner | #x)` balances overall and
+  // leaves `(has:owner` and `#x)` behind. A committed pill passes no `typing` flag and is told at once.
+  const bracketText = (terms || []).filter(t => t.kind === 'text').map(t => String(t.value || '')).join(' ');
+  const groupStillOpen = (bracketText.match(/\(/g) || []).length !== (bracketText.match(/\)/g) || []).length;
   for (const t of terms || []) {
+    // #1367: a GROUPING attempt. Brackets carry no meaning in a search, so the whitespace split turns
+    // `(has:owner | #x)` into the TEXT terms `(has:owner` and `#x)` and searches for those literally
+    // — a confident 0 where the writer meant 3. The tell is an UNBALANCED paren inside one term,
+    // which is exactly what that split leaves behind; a BALANCED `(a)` stays one term and is a
+    // legitimate literal search for that text, so it is left alone. Advisory like every entry here:
+    // callers surface these only when the query matched nothing, so a bracket search that DOES match
+    // is never second-guessed. There is no expressive gap being papered over — a negated compound is
+    // already writable by distributing (`is:todo -has:owner | is:todo -#x`), which is what this says.
+    if (t.kind === 'text' && !saidBracket) {
+      const v0 = String(t.value || '');
+      if ((v0.match(/\(/g) || []).length !== (v0.match(/\)/g) || []).length) {
+        if (opts.typing && groupStillOpen) continue;
+        saidBracket = true;
+        out.push({ raw: v0, value: v0, field: 'group',
+          message: 'Round brackets do not group a search, so “' + v0 + '” was looked for as plain text. '
+            + 'Write each alternative out in full instead, like is:todo -has:owner | is:todo -#x.' });
+      }
+      continue;
+    }
     if (t.kind !== 'invalid') continue;
     const v = t.value || '';
     // UXP-233: the date fields answer the same two questions with their own vocabulary. Same
@@ -35925,7 +35952,11 @@ function renderSearchProblems(terms) {
   // Only pay knownStates() when there is something to explain. It is _varsVer-cached, so the cost
   // is a miss at most once per edit, but the overwhelmingly common query has nothing invalid in it
   // and should walk nothing at all (guidance/performance.md: the keystroke path stays cheap).
-  const problems = (terms || []).some(t => t.kind === 'invalid')
+  // #1367: the gate also has to admit a GROUPING attempt, whose terms are kind:'text', not
+  // 'invalid' — otherwise the search box is the one surface that never explains a bracket while the
+  // roll and the query pill both do (P1: one explanation everywhere). The added test is a paren scan
+  // over already-parsed term values, so a query with no bracket in it still walks nothing.
+  const problems = (terms || []).some(t => t.kind === 'invalid' || (t.kind === 'text' && /[()]/.test(t.value || '')))
     ? searchTermProblems(terms, { states: [...knownStates()], typing: true }) : [];
   const el = document.getElementById('sh-invalid');
   if (el) { el.textContent = problems.map(p => p.message).join(' '); el.hidden = !problems.length; }

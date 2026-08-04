@@ -355,7 +355,10 @@ any depth below, instead of the direct children:
 
 The quoted search takes all the usual [operators](links-and-references.md) (`is:todo`, `#tag`,
 `-has:owner`, `due:overdue`, and so on), so the query is the filter and the property is what you
-add up. A bare name stays the child-position rollup (`sum(cost)`), so the two never collide. An
+add up. **Round brackets do not group a search.** Write each alternative out in
+full instead. `is:todo -(is:done | has:owner)` looks for the literal text `(is:done`; the form that
+works is `is:todo -is:done -has:owner`, and for the other shape, `is:todo -has:owner | is:todo -#x`.
+A search that carries a bracket says so rather than quietly returning nothing. A bare name stays the child-position rollup (`sum(cost)`), so the two never collide. An
 empty match reduces to zero (or nothing for `min`/`max`), the same as `count("...")`, since a
 search matching nothing right now is a valid, changing answer.
 

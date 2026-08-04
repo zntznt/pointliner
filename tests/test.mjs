@@ -851,6 +851,24 @@ test('#1363: a quoted query keeps its colon and its pipe, so predicates reach th
     'an unclosed quote with no other tell is still an attempt');
 });
 
+test('#1367: a bracket in a search says so, instead of quietly searching for the bracket', () => {
+  // Brackets carry no meaning in a search, so the whitespace split turns `(has:owner | #x)` into the
+  // TEXT terms `(has:owner` and `#x)` and looks for those literally — a confident 0 where the writer
+  // meant 3. searchTermProblems only inspected kind:'invalid' terms, so nothing complained.
+  const P = q => c.searchTermProblems(c.parseSearchQuery(q), { states: [] });
+  for (const q of nonEmpty(['(has:owner | #x)', 'is:todo -(has:owner #x)', '(a b)'], 'grouping attempts')) {
+    const probs = P(q);
+    assert.equal(probs.length, 1, `${q}: says it once, not once per split fragment`);
+    assert.match(probs[0].message, /Round brackets do not group a search/, `${q}: names the cause`);
+    assert.match(probs[0].message, /is:todo -has:owner \| is:todo -#x/, `${q}: and shows the form that works`);
+  }
+  // a BALANCED bracket term is a legitimate literal search and must be left alone
+  for (const q of nonEmpty(['(a)', 'plain words', 'has:owner | #x', '#tag is:todo'], 'spared queries'))
+    assert.equal(P(q).length, 0, `${q}: no bracket complaint`);
+  // and the existing is: reason is untouched
+  assert.match(P('is:bogus')[0].message, /is not a filter this app knows/, 'the invalid-filter arm still fires');
+});
+
 test('#1365: here("query") asks the search language about THIS point', () => {
   // The per-node matcher already existed (queryMatchesNode, which nodeMatchesSearch already calls for
   // a one-off check on a live node). here() is the door onto it from the expression layer, so the
@@ -12205,7 +12223,17 @@ test('the invalid-filter reason is WIRED, in the search box and in the pills', (
   const rsp = fnBody(_src, 'renderSearchProblems');
   assert.ok(rsp.includes('typing: true'), 'the search box is a LIVE input, so a still-growing value stays quiet');
   assert.ok(rsp.includes('el.hidden = !problems.length'), 'the island hides itself when there is nothing to say');
-  assert.ok(/some\(t => t\.kind === 'invalid'\)/.test(rsp), 'knownStates() is only paid for when there IS a problem');
+  // The gate's INTENT is that knownStates() is not paid for on every keystroke. #1367 widened it to
+  // admit a grouping attempt as well, whose terms are kind:'text' rather than 'invalid' — without
+  // that, the search box would be the one surface that never explains a bracket while the roll and
+  // the query pill both do. Rewritten to assert the intent (a gate, still cheap, still not
+  // unconditional) rather than the old literal, per the record-the-reversal rule.
+  assert.ok(/some\(t => t\.kind === 'invalid'/.test(rsp), 'the gate still leads with the invalid-term test');
+  assert.ok(/t\.kind === 'text' && \/\[\(\)\]\/\.test/.test(rsp), 'and admits a bracket, the grouping attempt');
+  assert.ok(!/^\s*searchTermProblems\(terms/m.test(rsp), 'but never calls it unconditionally');
+  // the typing courtesy lives in searchTermProblems, which is where the terms are inspected
+  assert.ok(fnBody(_src, 'searchTermProblems').includes('opts.typing && groupStillOpen'),
+    'and an unclosed group stays quiet while it is still being typed');
 
   const pill = fnBody(_src, 'renderQueryPill');
   assert.ok(pill.includes('searchTermProblems(parseSearchQuery(expr)'), 'the query/count pill must explain itself too');

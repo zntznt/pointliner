@@ -3942,3 +3942,71 @@ a plain VARIABLE still works. Zero page errors. `node --test tests/test.mjs` gre
   for an empty term list. Rather than keep a line nobody can break, the guard is removed and the
   CONTRACT (`here("")` is 0, never vacuously true) lives in the test, so a future change to the
   matcher fails loudly instead of being absorbed.
+
+---
+
+## UXP-293 -- a bracket in a search stops returning a confident zero (#1367)
+
+**Status: FIXED.** Found while checking whether quantifier names were worth adding. They were not,
+and this is what the measurement turned up instead.
+
+### The defect
+
+```
+has:owner | #x            ->  3   correct
+(has:owner | #x)          ->  0
+is:todo -(has:owner #x)   ->  0   (the correct answer is 3)
+```
+
+Brackets carry no meaning in the search language, so the whitespace split turns `(has:owner | #x)`
+into the TEXT terms `"(has:owner"` and `"#x)"`, which are searched for literally and match nothing.
+`searchTermProblems` said nothing, because it only inspected terms of `kind:'invalid'`.
+
+### What the measurement killed, and what it found
+
+The plan was `every`/`some`/`none`, justified by "a negated compound is inexpressible". **That
+justification did not survive contact.** Measured:
+
+```
+NOT(B AND C):  is:todo -has:owner | is:todo -#x    ->  3   correct
+NOT(B OR  C):  is:todo -is:done -has:owner         ->  1   correct (De Morgan)
+```
+
+Propositional logic over predicates is **already complete** -- juxtaposition is AND, `|` is OR, `-`
+is NOT, and distributing by hand covers the rest. Quantifier names would have been pure sugar over a
+spelling that works, so they are not built. Brackets are convenience too; the only harm they did was
+failing silently, which is what this closes.
+
+### The fix, and why it is a refusal rather than a parser
+
+A grouping parser would touch the query parser shared by the search box, query pills, rolls, counts
+and the folder scope -- real risk for an ergonomic gain, in a language that can already express
+everything. So: a visible reason that names the working form. If grouping is ever wanted, this
+refusal is the thing to replace and nothing about it forecloses that.
+
+Detection is an **unbalanced** paren inside one term, which is exactly what the whitespace split
+leaves behind. A BALANCED `(a)` stays one term and is a legitimate literal search for that text --
+spared, and pinned as spared.
+
+### Three surfaces, and the gate that hid one
+
+The roll and the query/count pill picked the reason up immediately. The **search box did not**, and
+driving is what found it: `renderSearchProblems` has a fast-path gate that only calls
+`searchTermProblems` when a term is `kind:'invalid'` -- a performance guard, with its own pin. So the
+box explained `is:bogusstate` and stayed silent about a bracket, which would have made it the one
+surface that never says (P1). The gate now admits a bracket as well, and stays cheap: the added test
+is a paren scan over already-parsed term values, so a bracket-free query still walks nothing.
+
+**Its pin was rewritten, not loosened.** It asserted the literal `some(t => t.kind === 'invalid')`;
+it now asserts the INTENT -- the gate still leads with the invalid test, admits a bracket, and is
+never unconditional.
+
+### The typing courtesy
+
+While typing, an unclosed `(` is probably a group still being written, so nothing is said until the
+brackets balance ACROSS the query while a single term stays unbalanced -- which is precisely the
+finished grouping attempt. Driven: `(`, `(has:owner`, `(has:owner |` are all silent; `(has:owner | #x)`
+speaks. A committed pill passes no `typing` flag and is told at once.
+
+`node --test tests/test.mjs` green at **2001**. Five mutations, all red against an asserted-green
+control, including flagging balanced parens (over-reach) and narrowing the search-box gate back.
