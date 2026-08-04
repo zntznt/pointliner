@@ -28973,3 +28973,33 @@ test('#1378: an alternative that is only a number is an ITEM, not a weight', () 
   assert.ok(/const wm = a\.match\(\/\^\(\[\\s\\S\]\*\?\\S\)\\s\+\(\\d\+\)\\s\*\$\/\)/.test(b),
     'and so does the NUMBER weight pattern — the missing \\S was the whole bug');
 });
+
+test('#1353 Phase 2: a node scope carries the distribution lane across', () => {
+  // #952 attaches the lane with `enumerable: false`, and resolveNodeScope rebuilds the map with
+  // Object.assign — which copies only ENUMERABLE own properties. So every scope built there silently
+  // dropped it. Measured: expandAggExpr('chanceover(cost, 150) > 50', node, vars) expanded to
+  // "(40.8) > 50", and the same call with the node scope came back untouched.
+  const rec = { key: 'k1', name: 'cost', kind: 'dist', expr: '100 to 200', seed: 7 };
+  const base = c.attachVarDists(Object.assign(Object.create(null), { hp: 5 }), { cost: rec });
+  assert.ok(c.varDistRec(base, 'cost'), 'the lane is on the map we start from');
+
+  const node = { id: 'n', text: 'a point', props: [{ key: 'tension', val: '7' }], children: [] };
+  const scope = c.resolveNodeScope(node, [], base);
+  assert.ok(c.varDistRec(scope, 'cost'), 'and survives the narrowing');
+  assert.equal(host(c.varDistRec(scope, 'cost')).seed, 7, 'as the SAME record, not a copy that lost its seed');
+  // the narrowing itself still works
+  assert.equal(scope.tension, 7, 'own props still win');
+  assert.equal(scope.hp, 5, 'doc vars still reach through');
+  // a scope built from a map with NO lane must not invent one
+  const plain = c.resolveNodeScope(node, [], { hp: 5 });
+  assert.equal(c.varDistRec(plain, 'cost'), null);
+  assert.equal(c.varDistsOf(plain) || null, null, 'no empty lane is attached');
+  // and the lane stays non-enumerable, so nothing downstream starts iterating it as a variable
+  const keys = nonEmpty(Object.keys(scope), 'enumerable keys on the narrowed scope');
+  assert.ok(!keys.some(k => k.toLowerCase().includes('dist')),
+    'the lane never becomes an enumerable key that reads as a variable name');
+
+  const b = fnBody(_src, 'resolveNodeScope');
+  assert.ok(/const dists = varDistsOf\(docVars\);\s*\n\s*if \(dists\) attachVarDists\(out, dists\);/.test(b),
+    'restored in resolveNodeScope itself, not worked around at one call site');
+});
