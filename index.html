@@ -24362,11 +24362,19 @@ function resolveBrace(body, ctx) {
   }
   const cp = condParts(body);
   if (cp) {
+    // A roll can drive the branch: {{2d6} > 3: hit | miss} rolls the test each time the conditional
+    // rolls (a conditional is a generative pill — its chosen branch freezes and re-rolls on click, so
+    // the die inside it rides that same freeze). Resolve an embedded {…} (a {roll}/{var}/{2d6}) and
+    // freeze a BARE die before evaluating. A brace-free, die-free test (danger > 3) is untouched, so
+    // the existing numeric/text paths are byte-identical. Deep pass, compose the conditional test edge.
+    let cond = cp.cond;
+    if (cond.indexOf('{') >= 0) cond = expandTemplate(cond, ctx);
+    if (mathHasDice(cond)) cond = freezeDiceInExpr(cond);
     // #540: try the string-equality arm first — a quoted side makes it a TEXT comparison
     // (the missing half of #429: text pick vars driving a branch). Not applicable → the
     // numeric evalMath path, unchanged. NaN = a string condition whose ref can't resolve.
-    const sv = strCondVerdict(cp.cond, ctx.vars);
-    const v = sv !== null ? (isNaN(sv) ? null : sv) : evalMath(cp.cond, ctx.vars);
+    const sv = strCondVerdict(cond, ctx.vars);
+    const v = sv !== null ? (isNaN(sv) ? null : sv) : evalMath(cond, ctx.vars);
     if (v === null) return `{${cp.cond}?}`;             // condition couldn't resolve → visible marker (P4)
     return expandTemplate(v ? cp.then : cp.else, ctx);
   }
