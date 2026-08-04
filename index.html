@@ -36670,8 +36670,20 @@ document.getElementById('outline').addEventListener('drop', handleExternalDrop);
 // chip is tabindex="-1", reached via AT, and acts without a mousedown→click).
 function searchHashtag(tag) {
   const q = tag.dataset.tag;
-  document.getElementById('search-box').value = q;
+  const sb = document.getElementById('search-box');
+  sb.value = q;
   applySearch(q);
+  // #1394: land in the search box, like every other control that sets a query. Four siblings run
+  // this exact three-line idiom -- the tags-panel row, applySavedChip, the search-legend chip and
+  // revealCheckOffenders -- and this was the one missing its third line, so filtering by an inline
+  // tag dropped focus to <body>.
+  //
+  // NOT a caret-invariant concern, which is why this covers the pointer path too and not only the
+  // keyboard (contrast #1391). The mousedown handler swallows its event so the CLICK never moves the
+  // caret, but applySearch() re-renders, which destroys the edited row anyway: driven, the caret was
+  // already gone to <body> on both paths before this change. Landing in the box is strictly better
+  // than <body>, and it is where the query the user just applied now lives (P1).
+  sb.focus();
 }
 document.getElementById('outline').addEventListener('click', e => {
   const tag = e.target.closest('.hashtag');
