@@ -10163,14 +10163,17 @@ test('the math pill signposts the number-format door it opens (P2)', () => {
     'it carries its own leading separator space, so a preview accessible name does not end in one');
   assert.match(editTip[1], /number format/,
     'and still names the format door -- the #946 signpost this test exists for');
-  // Four sites interpolate it: title + aria-label on each of the chrome and bare branches. Counting
-  // the USES is what keeps the signpost on every surface it was on before.
-  assert.equal((rmp.match(/\$\{editTip(?:\.trim\(\))?\}/g) || []).length, 4,
+  // deep-pass Slice 3: the four success-branch interpolations now go through gTip, which is editTip for
+  // a normal pill and a re-roll clause for a generative one ({= 1d6+2} re-rolls on body click; its
+  // number-format door is still signposted by the pencil's own aria). The signpost invariant is that
+  // gTip falls back to editTip for a non-gen pill, and every success branch carries it in title + aria.
+  assert.match(rmp, /const gTip = m\.gen \? '[^']*' : editTip;/, 'gTip falls back to editTip for a normal (non-gen) pill');
+  assert.equal((rmp.match(/\$\{gTip(?:\.trim\(\))?\}/g) || []).length, 4,
     'both branches must carry the clause in BOTH their title and their aria-label ' +
     '(two trimmed, where it leads; two bare, where it follows the query tip)');
-  assert.equal((rmp.match(/title="\$\{editTip\.trim\(\)\}/g) || []).length, 2,
+  assert.equal((rmp.match(/title="\$\{gTip\.trim\(\)\}/g) || []).length, 2,
     'two tooltips, trimmed because the clause leads there');
-  assert.equal((rmp.match(/\$\{escQ\(queryTip\)\}\$\{editTip\}"/g) || []).length, 2,
+  assert.equal((rmp.match(/\$\{escQ\(queryTip\)\}\$\{gTip\}"/g) || []).length, 2,
     'two accessible names, with no space of their own before the clause');
   // The pencil opens the same dialog from every branch, so it carries the same name everywhere -- and
   // since #1181 that is true BY CONSTRUCTION rather than by agreement: there is exactly one string,
@@ -13824,7 +13827,7 @@ test('word count: cores + front door wired (src pins)', () => {
 });
 
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
-  assert.ok(_src.includes('expandAggExpr(m.expr, cookieNode, vmap)'), 'renderMathPill live-aggregation wiring missing (PR D: the positional vmap feeds base.col column totals)');
+  assert.ok(_src.includes('expandAggExpr(evalSrc, cookieNode, vmap)') && _src.includes('const evalSrc = m.gen ? (m.rolled || m.expr) : m.expr;'), 'renderMathPill live-aggregation wiring missing (PR D: the positional vmap feeds base.col column totals; a gen pill evaluates its frozen roll)');
   assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
   assert.ok(_src.includes("id:'rollups'") && _src.includes("syn:'{= sum(cost)}'"), 'GUIDE rollups entry or sum example missing');
   assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
@@ -14302,6 +14305,41 @@ test('#1319 makeMathResult: a COMPOSED rollup promotes even though it evals to N
   assert.ok(c.makeMathResult('avg(cost) * 1.2'), 'avg scaled by a factor promotes');
   // the fallback is aggregate-gated: a genuinely-broken expr with no node-aggregate still returns null
   assert.equal(c.makeMathResult('nofunc(x) + 1'), null, 'a non-aggregate garbage expr stays unpromotable');
+});
+
+test('Slice 3: a roll inside math freezes and re-rolls (the two-engine seam)', () => {
+  // mathHasDice — detects a die anywhere in the expr, but not a variable/word that merely contains d
+  for (const e of ['1d6+2', 'd20', 'max(1d6,1d8)', 'round(2d6/2)', '2d6kh1 + STR']) assert.ok(c.mathHasDice(e), `${e} has a die`);
+  for (const e of ['sum(cost)', 'STR+2', 'width * 3', 'hidden + 1', 'add(2,3)']) assert.ok(!c.mathHasDice(e), `${e} has no die`);
+  // freezeDiceInExpr — substitutes each die with its parenthesized roll, leaves props/vars/ops symbolic
+  // shape: the die is frozen to a parenthesized number, everything else stays symbolic
+  assert.match(c.freezeDiceInExpr('1d6 + STR'), /^\(\d+\) \+ STR$/, 'the die is frozen to a number, STR stays symbolic');
+  assert.equal(c.freezeDiceInExpr('sum(cost) * 2'), 'sum(cost) * 2', 'no die → unchanged');
+  // the roll is in range and FRESH each call (real RNG, not seeded)
+  const totals = new Set();
+  for (let i = 0; i < 40; i++) { const t = c.rollDiceTerm('1d6'); assert.ok(t >= 1 && t <= 6, `1d6 in range: ${t}`); totals.add(t); }
+  assert.ok(totals.size > 1, 'the roll is fresh each call');
+  // makeMathResult builds a GENERATIVE pill (frozen roll stored on the record), evaluated later
+  const gen = c.makeMathResult('1d6 + 2');
+  assert.ok(gen && gen.gen === true, 'a dice-bearing math expr promotes as a generative pill');
+  assert.equal(gen.expr, '1d6 + 2', 'the original expr is kept for display + re-roll');
+  assert.match(gen.rolled, /^\(\d+\) \+ 2$/, 'the frozen roll is stored, evaluated on render');
+  assert.ok(/^\d+$/.test(gen.result) && +gen.result >= 3 && +gen.result <= 8, `the initial result is in 3..8: ${gen.result}`);
+  // a plain formula pill is NOT generative (stays live, click-to-edit)
+  assert.ok(!c.makeMathResult('2 + 2').gen, 'no die → not a generative pill');
+  // classifyBraceBody: a dice-bearing {= } is a valid artifact
+  assert.equal(c.classifyBraceBody('= 1d6 + 2', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('= max(1d6, 1d8)', {}, {}), 'artifact');
+});
+
+test('Slice 3: the gen math pill freezes on render and re-rolls on click (src pins)', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('const evalSrc = m.gen ? (m.rolled || m.expr) : m.expr;'), 'render evaluates the FROZEN roll, never re-rolls on paint');
+  assert.ok(rmp.includes("m.gen ? ' math-gen'") , 'a gen pill is marked for the re-roll cursor/gesture');
+  // click branch: a gen pill re-rolls on the body, edits on the pencil (the var-pill gesture)
+  assert.ok(_src.includes("if (mRec?.gen && !e.target.closest('.math-edit'))") && _src.includes('rerollMath(node, mp.dataset.key)'), 'body-click re-rolls a gen math pill, pencil edits');
+  assert.ok(between(_src, 'function rerollMath', 'function editMath').includes('m.rolled = freezeDiceInExpr(m.expr)') , 'rerollMath re-freezes and is undoable');
+  assert.ok(between(_src, 'function rerollMath', 'function editMath').includes('pushUndo()'), 'one Undo reverts a re-roll');
 });
 
 test('checkExprOf: returns the trimmed assertion or null', () => {
