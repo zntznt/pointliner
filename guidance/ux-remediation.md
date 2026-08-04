@@ -4517,3 +4517,71 @@ and a downstream `{= damage * 10}` promotes.
 `node --test tests/test.mjs` green at **2015**. Three mutations red, including reverting the `\S` and
 removing it from the `{= }` arm; dropping the number-weight arm entirely turns **11** tests red, which
 is the evidence that the weight feature is genuinely exercised and was not broken by this change.
+
+## UXP-302 -- focus survives a base rebuild, on every control instead of one (#1383)
+
+**P3 / P4. Found by driving the base view switcher, not by a report.** The finding is the session's
+recurring shape one more time: not an absent capability, an existing one applied unevenly.
+
+`refreshTable` replaces the whole widget with a fresh one, so every focused element inside it is
+destroyed. Exactly **one** case was ever re-found -- a query base's row link, by source id -- and the
+collapse chevron survives only because its own handler re-queries itself by class after the refresh.
+Every other control dropped focus to `<body>`, which for a keyboard user means tabbing back from the
+top of the document to get where they were.
+
+| control | before | after |
+|---|---|---|
+| `.mt-view-btn` Board / Cards / Calendar / Table | **`<body>`** | the pressed button |
+| `.mt-base-rows`, cap applied from its menu | **`<body>`** | the rows button |
+| a focused `.mt-cell` on any rebuild | **`<body>`** | the same cell |
+| `.mt-base-collapse` | itself | itself (unchanged) |
+| a query base's `tr[data-nid] .node-link` | its row | its row (unchanged) |
+
+**The second half, same driving run: all four view switches were silent.** Patching `announce` and
+`flashHint` recorded **zero** calls on every switch, while the *promote* path one function away
+announces `"Base added. A grid of cells; ..."`. So the app announced the smaller event and not the
+larger one -- replacing a table with a kanban board.
+
+**The P4 fix is the P3 fix, with no new string.** The fresh view button carries `aria-pressed="true"`,
+so landing focus on it is what tells a screen reader the switch happened. That is exactly how the
+collapse chevron already works (`aria-expanded` on a self-refocusing button), so this reuses the
+house pattern rather than minting a `announce('Board view')` copy string (P5).
+
+### The third defect, which had to be fixed for the second one to land
+
+The rows-cap fix did not work at first, and driving said why rather than guesswork. A menu item runs
+`onApply(); hideColPanel()`, and the apply rebuilds the base **in between**, so `mtPanelReturn` held a
+detached node and focusing it fell back to `<body>`. Fixed by remembering the opener's *key* as well
+as its node.
+
+It still did not work. Instrumenting `focusNode` showed the **#1210 empty-canvas router** firing on
+every rows-cap pick: its bail list enumerates `#bpop` and **not** `#mt-colpanel`, so choosing any item
+from a base's Column / Row / rows menu counted as a click on empty canvas and yanked focus into the
+nearest point. That is a pre-existing defect in its own right, affecting every item in that menu
+(Calculate, Alignment, Width, Insert column, Delete row, Show as), not only the rows cap.
+
+Fixed by matching on the **role** -- `[role="menu"]`, `menuitem`, `listbox`, `option`, `dialog` --
+alongside the kept id list. A click inside an open popover already means something by definition, and
+the enumeration is what let `#mt-colpanel` be missed silently in the first place.
+
+### Deliberately not done
+
+- **No `announce()` on a view switch.** `aria-pressed` on the restored button is the confirmation, and
+  a redundant live-region string would double-speak for a screen-reader user (P4-4: reuse the pattern,
+  do not invent a second one). If a future measurement shows the pressed state is not enough, the
+  string is a one-line addition; the focus restore is the load-bearing half either way.
+- **No focus restore for a control with no stable key.** `baseRefocusSelector` returns `null`, which
+  is today's behavior, rather than guessing at a nearby element and landing somewhere surprising.
+
+### Verification
+
+Driven headless before and after, both input paths. Regressions driven too, because two of them would
+make this change worse than the bug: the **#1210 router still routes** an empty-canvas click into the
+nearest point; the **caret invariant holds** -- mouse-switching a base's view while editing a *different*
+point leaves the caret in that point untouched (the restore is gated on focus having been inside the
+base); and the **query-base row link** still lands on the same source row across a rebuild.
+
+`node --test tests/test.mjs` green at **2021**. Twelve mutations, each asserting its target present
+first, all red -- including one that caught a vacuous pin of mine: asserting
+`fresh.querySelector(sel)?.focus()` without its `if (sel)` guard stayed green through `if (false)`.
+The condition is part of the pin now (#1133).

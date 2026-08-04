@@ -11401,18 +11401,64 @@ function mtPatchCells(node, exceptCell, onlyTokenCells = false) {
   });
 }
 
+// #1383: put focus back on the SAME control after a base rebuild. refreshTable replaces the whole
+// widget, so every focused element inside it is destroyed. Only ONE case was ever re-found — a query
+// base's row link — and the collapse chevron survives only because its own handler re-queries itself
+// by class afterwards. Everything else dropped focus to <body>: driven, the four view buttons, the
+// rows cap and a focused cell all did, which for a keyboard user means tabbing back from the top of
+// the document to get where they were.
+//
+// Pure + Node-testable: takes a descriptor of what had focus, returns the selector that finds its twin
+// in the rebuilt widget, or null when it has no stable identity (no restore — today's behavior). The
+// arms are ordered so the row-link case stays first and unchanged. Every interpolated value is from a
+// fixed set or a non-negative integer, so this can never assemble a selector out of arbitrary text;
+// `nid` is the one caller-supplied value and arrives ALREADY ESCAPED, because CSS.escape is a DOM API
+// and does not belong in a pure core.
+const BASE_VIEW_KINDS = ['table', 'board', 'cards', 'calendar'];
+const BASE_CHROME_CLASSES = ['mt-base-collapse', 'mt-base-rows', 'mt-base-more'];
+const BASE_CARD_CLASSES = ['bv-card', 'gv-card'];
+function baseRefocusSelector(d) {
+  if (!d) return null;
+  if (d.nid) return `tr[data-nid="${d.nid}"] .node-link`;
+  if (BASE_VIEW_KINDS.includes(d.view)) return `.mt-view-btn[data-view="${d.view}"]`;
+  if (BASE_CHROME_CLASSES.includes(d.chrome)) return `.${d.chrome}`;
+  const int = v => Number.isInteger(v) && v >= 0;
+  if (int(d.r) && int(d.c)) return `.mt-cell[data-r="${d.r}"][data-c="${d.c}"]`;
+  if (int(d.r) && BASE_CARD_CLASSES.includes(d.card)) return `.${d.card}[data-r="${d.r}"]`;
+  return null;
+}
+// The DOM half: read the descriptor off the element that has focus. Escapes `nid` here so the core
+// above stays DOM-free, and preserves the pre-existing rule that ANY element inside a stamped row
+// counts (the old code took the row's id without checking what inside it held focus).
+function baseFocusDescriptor(el) {
+  if (!el || !el.closest) return null;
+  const row = el.closest('tr[data-nid]');
+  if (row && row.dataset.nid) return { nid: CSS.escape(row.dataset.nid) };
+  const vb = el.closest('.mt-view-btn');
+  if (vb && vb.dataset.view) return { view: vb.dataset.view };
+  for (const c of BASE_CHROME_CLASSES) if (el.closest('.' + c)) return { chrome: c };
+  const cell = el.closest('.mt-cell[data-r][data-c]');
+  if (cell) return { r: +cell.dataset.r, c: +cell.dataset.c };
+  for (const c of BASE_CARD_CLASSES) {
+    const card = el.closest('.' + c + '[data-r]');
+    if (card) return { r: +card.dataset.r, card: c };
+  }
+  return null;
+}
+
 function refreshTable(node) {
   mtRecompute(node); // computed cells reflect the latest source values
   const host = mtHost(node.id);
   if (!host) { render(); return; }
   // Phase B row identity: if focus is inside this widget on a row stamped with its
   // source node id (a query base's link), restore it to the SAME source row after the
-  // rebuild — result order may have shifted, so re-find by id, not by index.
-  const focusNid = host.contains(document.activeElement)
-    ? document.activeElement.closest('tr[data-nid]')?.dataset.nid : null;
+  // rebuild — result order may have shifted, so re-find by id, not by index. #1383
+  // generalises that to every control the widget already stamps with a stable key.
+  const sel = host.contains(document.activeElement)
+    ? baseRefocusSelector(baseFocusDescriptor(document.activeElement)) : null;
   const fresh = buildTableWidget(node, isQueryBase(node));
   host.replaceWith(fresh);
-  if (focusNid) fresh.querySelector(`tr[data-nid="${CSS.escape(focusNid)}"] .node-link`)?.focus();
+  if (sel) fresh.querySelector(sel)?.focus();
   scheduleReconcile();
 }
 
@@ -11714,12 +11760,18 @@ function mtDeleteRow(node, rowIdx) {
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
 
-let mtPanelReturn = null;
+let mtPanelReturn = null, mtPanelReturnSel = null;
 function hideColPanel() {
   const p = document.getElementById('mt-colpanel');
   if (p) p.classList.remove('on');
-  const ret = mtPanelReturn; mtPanelReturn = null;
-  if (ret) try { ret.focus(); } catch (_) {}
+  const ret = mtPanelReturn, sel = mtPanelReturnSel;
+  mtPanelReturn = null; mtPanelReturnSel = null;
+  // #1383: a menu item runs `onApply(); hideColPanel()`, and an apply that rebuilds the base (the
+  // rows cap, a column op) DETACHES the opener in between — so focusing the stored element put focus
+  // on a node no longer in the document and the browser fell back to <body>. Driven: choosing "5" from
+  // the rows menu lost focus every time. Re-find the twin by the same key refreshTable restores with.
+  const live = ret && ret.isConnected ? ret : (sel ? document.querySelector(sel) : null);
+  if (live) try { live.focus(); } catch (_) {}
 }
 // One-shot dismissal guard (#811). Menus opened from a MOUSEDOWN-activated control
 // (a bullet-menu row via mkCmdItem, the chrome Rows button, a Column-options list
@@ -11761,6 +11813,8 @@ function mtMenuBuilder(panel) {
 }
 function mtOpenMenu(panel, anchorEl) {
   mtPanelReturn = document.activeElement;
+  // #1383: remember WHAT it was, not only WHICH node, so a rebuild between open and close is survivable.
+  mtPanelReturnSel = baseRefocusSelector(baseFocusDescriptor(mtPanelReturn));
   const rect = anchorEl.getBoundingClientRect();
   panel.style.maxHeight = '';   // reset a previous open's clamp so the CSS 72vh default applies first
   panel.style.left = rect.left + 'px';
@@ -12193,7 +12247,22 @@ function mtSetView(node, kind) {
     if (di < 0) { flashHint('Mark a column as Date first (Column menu, Show as); its dates place the rows on the calendar.'); return; }
     node.view = { kind: 'calendar', dateBy: di };
   } else node.view = undefined;   // absent = table, so untouched bases serialize clean
-  markDirty(); refreshTable(node);
+  markDirty();
+  // #1383: land on the button for the view just chosen. A switch legitimately destroys whatever was
+  // focused (a cell has no twin in a board), so the generic restore in refreshTable cannot help here
+  // and the control the user just acted on is the right place to be. Same move the collapse chevron
+  // already makes for the same reason, three lines of chrome away.
+  //
+  // Gated on focus having been INSIDE this base: the pointer path is mousedown+preventDefault, which
+  // deliberately leaves the caret wherever it was, and pulling it into the strip would break the caret
+  // invariant for someone who clicked a view button while editing a point elsewhere.
+  //
+  // This is also the P4 half, with no new string: the fresh button carries aria-pressed="true", so
+  // focus landing on it is what tells a screen reader the switch happened. Before, all four switches
+  // announced nothing at all and dropped focus to <body>.
+  const inside = mtHost(node.id)?.contains(document.activeElement);
+  refreshTable(node);
+  if (inside) mtHost(node.id)?.querySelector(`.mt-view-btn[data-view="${kind}"]`)?.focus();
 }
 
 // The strip(s) above a base's grid or board: the query strip (query bases) and the
@@ -20960,7 +21029,14 @@ document.addEventListener('mousedown', e => {
   if (['io-back', 'graph-back', 'timeline-back'].some(id => document.getElementById(id)?.classList.contains('on'))) return;  // a menu/dialog/overlay is up
   // Anything that already means something on click is left alone: a point, any pill/chip/control,
   // the bullet + its popover, and the whole top chrome. If the click hit any of these, bail.
-  if (e.target.closest('.node-content, .prop-chip, .bullet, #bpop, #toolbar, .io-card, #io-card, [role="button"], button, input, textarea, select, a, .zoom-title')) return;
+  //
+  // #1383: the roles are here because the id list MISSED ONE and the miss was invisible. `#bpop` was
+  // enumerated and `#mt-colpanel` was not, so choosing any item from a base's Column/Row/rows menu
+  // counted as an empty-canvas click: the item applied, and then this handler yanked focus into the
+  // nearest point. Driven, `focusNode` was called every time a rows cap was picked. An open menu,
+  // listbox or dialog is by definition a click that already means something, so match on that rather
+  // than on a list of ids that the next popover will also be absent from.
+  if (e.target.closest('.node-content, .prop-chip, .bullet, #bpop, #toolbar, .io-card, #io-card, [role="button"], [role="menu"], [role="menuitem"], [role="listbox"], [role="option"], [role="dialog"], button, input, textarea, select, a, .zoom-title')) return;
   const rows = [...document.querySelectorAll('.node-content')].map(el => {
     const r = el.getBoundingClientRect();
     return { id: el.dataset.id, top: r.top, bottom: r.bottom };

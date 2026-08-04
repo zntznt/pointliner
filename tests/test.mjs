@@ -20240,9 +20240,21 @@ test('Phase B — queryTableRows uncapped; qbaseModel wiring (pins)', () => {
   assert.ok(/Show all \$\{escHtml\(String\(qm\.total\)\)\}/.test(_src) && /Cap at \$\{QBASE_ROW_CAP\}/.test(_src), 'the strip toggle names both states');
   assert.ok(/node\.qbase\.showAll = !node\.qbase\.showAll/.test(_src), 'the toggle flips the persisted flag');
   assert.ok(/\.\.\.\(node\.qbase\.showAll \? \{ showAll: true \} : \{\}\)/.test(_src), 'editing the query preserves showAll');
-  // focus restore across the widget rebuild re-finds the SAME source row by id
+  // focus restore across the widget rebuild re-finds the SAME source row by id.
+  // REWRITTEN for #1383, not loosened: the restore moved out of refreshTable's own body into the
+  // baseRefocusSelector / baseFocusDescriptor pair, which handles the row link AND every other
+  // control the widget stamps (the view buttons, the chrome, a cell, a card) — refreshTable used to
+  // restore exactly one of them and drop the rest to <body>. What Phase B needs guarded is unchanged
+  // and is asserted here directly: the row is still found by SOURCE ID, not by index, because result
+  // order may have shifted; and the id is still CSS.escape'd.
   const rt = fnBody(_src, 'refreshTable');
-  assert.ok(/closest\('tr\[data-nid\]'\)/.test(rt) && /CSS\.escape\(focusNid\)/.test(rt), 'refreshTable restores focus by source id');
+  const bfd = fnBody(_src, 'baseFocusDescriptor');
+  assert.ok(/baseRefocusSelector\(baseFocusDescriptor\(document\.activeElement\)\)/.test(rt),
+    'refreshTable still resolves a restore target before the rebuild');
+  assert.ok(/closest\('tr\[data-nid\]'\)/.test(bfd) && /CSS\.escape\(row\.dataset\.nid\)/.test(bfd),
+    'refreshTable restores focus by source id');
+  assert.equal(c.baseRefocusSelector({ nid: 'n7' }), 'tr[data-nid="n7"] .node-link',
+    'and the id resolves to the same row link it always did');
 });
 
 // ── QP-2 Phase C: write-through cells ────────────────────────────────────────
@@ -29071,4 +29083,103 @@ test('#1353 Phase 3: the Variables panel names a kind the value cannot show', ()
   const upd = fnBody(_src, 'updateVarPanelContent');
   assert.ok(/\[nm, _varActiveExprs\[nm\] \|\| '', _varCycles\.has\(nm\)/.test(upd),
     'the active expression is part of the content signature');
+});
+
+// ─── #1383: focus survives a base rebuild ─────────────────────────────────────
+// Driven on main first, and the finding is uneven application rather than an absent capability.
+// refreshTable replaces the whole widget, so anything focused inside it is destroyed. Exactly ONE
+// case was re-found (a query base's row link); the collapse chevron survives only because its own
+// handler re-queries itself afterwards. Measured, every other control dropped focus to <body>:
+//
+//   control                       before        after
+//   .mt-view-btn Board/Cards/…    <body>        the pressed button
+//   .mt-base-rows (cap applied)   <body>        the rows button
+//   a focused .mt-cell            <body>        the same cell
+//   .mt-base-collapse             itself        itself (unchanged)
+//
+// All four view switches were ALSO silent: zero announce/flashHint calls. Restoring focus fixes that
+// too, with no new string — the fresh button carries aria-pressed="true", so landing on it is what
+// tells a screen reader the switch happened. Same shape as the collapse chevron's aria-expanded.
+test('#1383 baseRefocusSelector — a stable key for every control the base widget stamps', () => {
+  // the row-link arm is FIRST and unchanged: it is the pre-existing behaviour and a reorder would
+  // silently retarget every query-base rebuild.
+  assert.equal(c.baseRefocusSelector({ nid: 'n7' }), 'tr[data-nid="n7"] .node-link');
+  assert.equal(c.baseRefocusSelector({ nid: 'n7', view: 'board', r: 2, c: 1 }), 'tr[data-nid="n7"] .node-link',
+    'the row link outranks every other key');
+
+  for (const v of nonEmpty(['table', 'board', 'cards', 'calendar'], 'the four view kinds'))
+    assert.equal(c.baseRefocusSelector({ view: v }), `.mt-view-btn[data-view="${v}"]`);
+  for (const k of nonEmpty(['mt-base-collapse', 'mt-base-rows', 'mt-base-more'], 'the chrome controls'))
+    assert.equal(c.baseRefocusSelector({ chrome: k }), `.${k}`);
+
+  assert.equal(c.baseRefocusSelector({ r: 2, c: 1 }), '.mt-cell[data-r="2"][data-c="1"]');
+  assert.equal(c.baseRefocusSelector({ r: 0, c: 0 }), '.mt-cell[data-r="0"][data-c="0"]', 'the header cell is a real target');
+  assert.equal(c.baseRefocusSelector({ r: 3, card: 'bv-card' }), '.bv-card[data-r="3"]');
+  assert.equal(c.baseRefocusSelector({ r: 3, card: 'gv-card' }), '.gv-card[data-r="3"]');
+
+  // null means "no restore", which is exactly today's behaviour — never a broken selector.
+  assert.equal(c.baseRefocusSelector(null), null);
+  assert.equal(c.baseRefocusSelector({}), null);
+  assert.equal(c.baseRefocusSelector({ view: 'gallery' }), null, 'an unknown view kind is refused, not interpolated');
+  assert.equal(c.baseRefocusSelector({ chrome: 'mt-base-evil' }), null, 'an unknown chrome class is refused');
+  assert.equal(c.baseRefocusSelector({ r: 3, card: 'x-card' }), null, 'an unknown card class is refused');
+  // the injection guard: nothing that is not from a fixed set or a non-negative integer gets through.
+  assert.equal(c.baseRefocusSelector({ view: '"] , [x="' }), null);
+  assert.equal(c.baseRefocusSelector({ r: '2"]', c: 1 }), null, 'a string row index is not an integer');
+  assert.equal(c.baseRefocusSelector({ r: -1, c: 0 }), null, 'a negative index is refused');
+  assert.equal(c.baseRefocusSelector({ r: 1.5, c: 0 }), null, 'a fractional index is refused');
+  assert.equal(c.baseRefocusSelector({ r: 2 }), null, 'a row with no column and no card class is not a target');
+});
+
+test('#1383 wiring: every call site that rebuilds a base re-anchors focus', () => {
+  // A tested core proves nothing about whether anything calls it (#1133), so pin the four call sites.
+  const rt = fnBody(_src, 'refreshTable');
+  assert.ok(/host\.contains\(document\.activeElement\)/.test(rt),
+    'still gated on focus being INSIDE this widget, so a rebuild never steals it from elsewhere');
+  assert.ok(/baseRefocusSelector\(baseFocusDescriptor\(document\.activeElement\)\)/.test(rt),
+    'refreshTable asks the core where to go back to');
+  // the CONDITION is part of the pin: asserting the call alone stayed green through `if (false)`,
+  // caught by mutation (#1133 — a pin that cannot fail is not a pin).
+  assert.ok(/if \(sel\) fresh\.querySelector\(sel\)\?\.focus\(\);/.test(rt),
+    'and focuses the twin in the REBUILT widget, guarded on having resolved one');
+
+  // the DOM half keeps the escaping, because CSS.escape does not belong in a pure core
+  const bfd = fnBody(_src, 'baseFocusDescriptor');
+  assert.ok(/CSS\.escape\(row\.dataset\.nid\)/.test(bfd), 'nid is escaped at the DOM boundary');
+  assert.ok(bfd.indexOf("closest('tr[data-nid]')") < bfd.indexOf("closest('.mt-view-btn')"),
+    'the row-link arm is read first, matching the core order');
+
+  // the view switcher: land on the button for the view just chosen (the collapse chevron's move)
+  const sv = fnBody(_src, 'mtSetView');
+  assert.ok(/const inside = mtHost\(node\.id\)\?\.contains\(document\.activeElement\)/.test(sv),
+    'captures whether focus was inside BEFORE the rebuild');
+  assert.ok(sv.indexOf('const inside') < sv.indexOf('refreshTable(node)'),
+    'captured before the rebuild, or the answer is always false');
+  assert.ok(/if \(inside\) mtHost\(node\.id\)\?\.querySelector\(`\.mt-view-btn\[data-view="\$\{kind\}"\]`\)\?\.focus\(\)/.test(sv),
+    'and lands on the chosen view button — the aria-pressed the screen reader hears');
+  // the gate is the caret invariant: a pointer switch is mousedown+preventDefault, so someone editing
+  // a point elsewhere keeps their caret. Driven, not just pinned.
+  assert.ok(/mousedown\+preventDefault/.test(sv), 'and says why the gate is there');
+
+  // the menu return: an apply that rebuilds detaches the opener between open and close
+  const om = fnBody(_src, 'mtOpenMenu');
+  assert.ok(/mtPanelReturnSel = baseRefocusSelector\(baseFocusDescriptor\(mtPanelReturn\)\)/.test(om),
+    'the opener is remembered by KEY as well as by node');
+  const hcp = fnBody(_src, 'hideColPanel');
+  assert.ok(/ret && ret\.isConnected \? ret : \(sel \? document\.querySelector\(sel\) : null\)/.test(hcp),
+    'a detached opener falls back to its twin instead of focusing a node out of the document');
+});
+
+test('#1383 the empty-canvas router stops treating a menu click as empty canvas', () => {
+  // The id list missed #mt-colpanel, so choosing any item from a base Column/Row/rows menu ran the
+  // #1210 router and called focusNode on the nearest point. Driven: focusNode fired on every rows-cap
+  // pick. Match on the ROLE, so the next popover is covered without being enumerated.
+  const iCall = _fix2.indexOf('nearestPointToClick(e.clientY, rows)');
+  assert.ok(iCall > -1, 'the empty-canvas routing handler must call nearestPointToClick');
+  const iStart = _fix2.lastIndexOf("document.addEventListener('mousedown', e => {", iCall);
+  const h = _fix2.slice(iStart, iCall);
+  for (const role of nonEmpty(['menu', 'menuitem', 'listbox', 'option', 'dialog'], 'the popover roles'))
+    assert.ok(h.includes(`[role="${role}"]`), `a click inside a ${role} already means something`);
+  assert.ok(h.includes('[role="button"]') && h.includes('.node-content') && h.includes('#bpop'),
+    'and the original bail list is kept, not replaced');
 });
