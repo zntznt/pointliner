@@ -10239,7 +10239,7 @@ function render() {
     te.className = 'zoom-title';
     te.contentEditable = 'true';
     te.dataset.id = vp.id;
-    te.innerHTML = renderContentHTML(vp); // display mode: rendered HTML
+    te.innerHTML = renderContentHTML(vp); applyPillTitlePolicy(te);   // display mode: rendered HTML
 
     let zpPrevText = '', zpUndoDepth = 0;
     const enterZoomEdit = () => {
@@ -10257,7 +10257,7 @@ function render() {
       vp.text = editableText(te);
       rederiveFromText(vp);   // type AND checked (audit #3: same drop as applyEntry — toggling done in the zoom title left checked stale)
       delete te.dataset.editing;
-      te.innerHTML = renderContentHTML(vp);
+      te.innerHTML = renderContentHTML(vp); applyPillTitlePolicy(te);
       if (!showNotes && vp.note && noteEditId !== vp.id) appendNoteIndicator(te, vp);
       markDirty();
       renderBreadcrumb();
@@ -10625,22 +10625,7 @@ function renderWindow(force) {
   // (line ~3864 cross-doc = the target doc name; an external link = the URL) is FUNCTIONAL, not a helper, so
   // it's left. Each pill keeps its aria-label twin, so nothing accessible is lost — only the redundant native
   // hover-tooltip goes. One central post-render sweep (title lives in the HTML string; no single chokepoint).
-  const PILL_TITLE_SEL = '.node-content .dice-roll[title], .node-content .mk-roll[title], .node-content .gr-roll[title], .node-content .math-roll[title], .node-content .seq-pill[title], .node-content .est-pill[title], .node-content .var-pill[title], .node-content [class$="-edit"][title]';
-  if (isStandardOrLean()) {
-    vlist.querySelectorAll(PILL_TITLE_SEL).forEach(el => el.removeAttribute('title'));
-  } else {
-    // #1116: in GUIDED (the teaching tier), the tooltip also names the pill's other door. The
-    // novelist's complaint was that a pill's only affordance re-rolls, so the one thing worth
-    // teaching beside "click re-rolls" is that there is somewhere else to go. Added in the same
-    // central sweep that strips these titles at the quieter tiers, for the same reason recorded
-    // there: the title lives in each renderer's HTML string, so this is the only chokepoint.
-    // Skipped for the `-edit` pencils (they are their own door already) and for pills whose
-    // menu would be empty.
-    vlist.querySelectorAll(PILL_TITLE_SEL).forEach(el => {
-      if (/-edit$/.test(el.className) || el.title.includes(PILL_MENU_TIP)) return;
-      el.title = el.title + PILL_MENU_TIP;
-    });
-  }
+  applyPillTitlePolicy(vlist);
   // MOBILE-2: keep the "N done hidden" count current — but only on a real re-render (force),
   // not on scroll-driven window shifts (#451 item 3). The count changes only when a to-do
   // toggles done-ness or Show-done flips, both of which go through render() → force=true;
@@ -11393,7 +11378,7 @@ function repaintNodeContent(node) {
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
   if (!el || el.dataset.editing) return null;
   if (node.type === 'base') { refreshTable(node); return el; }
-  el.innerHTML = renderContentHTML(node);
+  el.innerHTML = renderContentHTML(node); applyPillTitlePolicy(el);
   return el;
 }
 
@@ -13659,7 +13644,7 @@ function renderRow(r) {
     // not as a separate button under the grid.
     content.appendChild(buildTableWidget(node, !!opts.searchCtx || isQueryBase(node)));
   } else {
-    content.innerHTML = renderContentHTML(node);
+    content.innerHTML = renderContentHTML(node); applyPillTitlePolicy(content);
     // completion cue (#646): if this row's parent owns a COMPUTED clock ([o /M]) and this
     // point's done-ness is what fills it, append a muted ● — "this is the one that finished
     // it." Render-only (a relationship, never in node.text), so it is not exported. Cheap:
@@ -18294,6 +18279,44 @@ function pillTokenFor(classes, key) {
 // #1116: the second half of the pill's tooltip in Guided. AP punctuation, no em dash.
 const PILL_MENU_TIP = '. Right-click for more, including Freeze to text';
 
+// #1373: join a pill's own tooltip to the menu tip WITHOUT doubling the sentence break. The tip opens
+// with its own '. ', and several base titles already end in a period ("…or number format.", and the
+// empty-rollup tip's "…))."), so a bare concatenation printed "format.. Right-click" on screen. Pure;
+// idempotent, so re-applying the policy to an element that already carries the tip is a no-op.
+function pillTitleWithMenu(title) {
+  const t = String(title == null ? '' : title);
+  if (!t || t.includes(PILL_MENU_TIP)) return t;
+  return t.replace(/\s*\.\s*$/, '') + PILL_MENU_TIP;
+}
+
+// The pill-tooltip policy for a DOM subtree. Standard and Lean strip the "Click to re-roll/edit"
+// teaching (ux.md's dial: Pill tooltips → minimal); Guided keeps it and adds the #1116 pointer to the
+// pill's other door. Scoped to the PILL classes only — a link's title (a cross-doc target name, an
+// external URL) is FUNCTIONAL, not a helper, so it is left alone. Each pill keeps its aria-label twin,
+// so nothing accessible is lost, only the redundant native hover tooltip.
+//
+// `scope` is what makes this correct rather than merely tidy. It used to be a post-render sweep over
+// vlist, and the title lives in each renderer's HTML string, so EVERY incremental repaint escaped it
+// and shipped raw titles. Driven, both directions were wrong: in Guided a repainted pill LOST the
+// Right-click teaching, and in Lean — reading mode, where these tooltips are deliberately removed —
+// editing any point brought them BACK until the next reload. So the same pill behaved differently
+// depending on whether you happened to have edited nearby, which is the P1 break.
+const PILL_TITLE_SEL = '.node-content .dice-roll[title], .node-content .mk-roll[title], .node-content .gr-roll[title], .node-content .math-roll[title], .node-content .seq-pill[title], .node-content .est-pill[title], .node-content .var-pill[title], .node-content [class$="-edit"][title]';
+function applyPillTitlePolicy(scope) {
+  if (!scope) return;
+  // a repaint hands us the .node-content itself, which the selector expects as an ANCESTOR
+  const roots = scope.matches && scope.matches('.node-content') ? [scope.parentElement || scope] : [scope];
+  for (const r of roots) {
+    if (!r || !r.querySelectorAll) continue;
+    for (const el of r.querySelectorAll(PILL_TITLE_SEL)) {
+      if (isStandardOrLean()) { el.removeAttribute('title'); continue; }
+      // the `-edit` pencils are their own door already, so they never gain the pointer
+      if (/-edit$/.test(el.className)) continue;
+      el.title = pillTitleWithMenu(el.title);
+    }
+  }
+}
+
 // The generative re-rollable pills, data-driving the four identical mousedown branches (#450).
 // sel = pill hit-target, bad = its error class (a bad pill is inert), editSel = the pencil,
 // edit/reroll = the pill's two actions. Order is dice → est → markov → grammar (unchanged).
@@ -19467,7 +19490,7 @@ function exitEdit(content, node) {
     _pendingVarBaseRender = false;
     render();
   } else {
-    content.innerHTML = renderContentHTML(node);
+    content.innerHTML = renderContentHTML(node); applyPillTitlePolicy(content);
     // Live-title links and mirrors pointing here re-render NOW, not at the next
     // full render() — an edit must not leave stale captions/transclusions on
     // screen (UXP-4). Off-screen sources have no DOM and render fresh on scroll.
@@ -19497,9 +19520,10 @@ function exitEdit(content, node) {
     // #1357: a point promoted by the retry sweep is not a "computed" point yet as far as the
     // sweep above is concerned (its brace was raw text a moment ago), so repaint it explicitly.
     for (const p of promotedPending) { if (p.id === node.id) continue; const n = nodeById(p.id); if (n) repaintNodeContent(n); }
-    // #1281: the point-and-click doors live on the ROW, which neither repaint above touches, so a
-    // commit that just made a list totalable left no `+ Total` until the next full render.
-    for (const id of affordanceDirtyIds(node, parentOf(node.id) || null)) refreshRowAffordances(id);
+    // #1281/#1373: the property chips and the point-and-click doors live OUTSIDE `.node-content`,
+    // which is the only thing the repaints above touch, so a commit that attached a property or made
+    // a list totalable showed neither until the next full render.
+    for (const id of affordanceDirtyIds(node, parentOf(node.id) || null)) refreshRowChrome(id);
   }
   if (activeContentId === node.id) activeContentId = null;
   // #467: stamp created/edited only when the point's own text actually changed (same signal
@@ -19549,7 +19573,7 @@ function repaintComputedDependents(exceptId) {
     if (nid === exceptId || el.dataset.editing) continue;
     const n = nodeById(nid);
     if (!n || n.type === 'base' || !isComputedNode(n)) continue;
-    el.innerHTML = renderContentHTML(n);
+    el.innerHTML = renderContentHTML(n); applyPillTitlePolicy(el);
   }
   document.querySelectorAll('.prop-check[data-props-id]').forEach(chip => {
     const n = nodeById(chip.dataset.propsId);
@@ -32075,7 +32099,7 @@ function toggleTaskInNode(node, taskIndex) {
   }
   // done-ness unchanged → targeted repaint of this node (skips a full render)…
   const el = document.querySelector(`.node-content[data-id="${node.id}"]`);
-  if (el && !el.dataset.editing) el.innerHTML = renderContentHTML(node);
+  if (el && !el.dataset.editing) { el.innerHTML = renderContentHTML(node); applyPillTitlePolicy(el); }
   // …plus any ANCESTOR carrying a progress cookie that counts this child, so the tally stays live
   // when a multi-marker child only partly completes (P4). UXP-159: a bare [/] only counts direct
   // children (so just the parent matters), but a scoped [/subtree] / [/N] can count a deep
@@ -32089,7 +32113,7 @@ function toggleTaskInNode(node, taskIndex) {
     // deep-scoped cookie whose reach includes this node (bounded loosely by "has a deep cookie").
     if ((depthUp === 1 && COOKIE_ANY.test(text)) || (depthUp > 1 && COOKIE_DEEP.test(text))) {
       const ael = document.querySelector(`.node-content[data-id="${anc.id}"]`);
-      if (ael && !ael.dataset.editing) ael.innerHTML = renderContentHTML(anc);
+      if (ael && !ael.dataset.editing) { ael.innerHTML = renderContentHTML(anc); applyPillTitlePolicy(ael); }
     }
     anc = parentOf(anc.id); depthUp++;
     if (depthUp > 64) break;   // guard against a pathological cycle
@@ -37231,7 +37255,7 @@ function buildCorkboard(vp) {
     content.dataset.id = cd.id;
     content.contentEditable = 'true';
     content.spellcheck = true;
-    content.innerHTML = renderContentHTML(node);
+    content.innerHTML = renderContentHTML(node); applyPillTitlePolicy(content);
     attachContentEvents(content, node);   // the SAME editor the outline rows use
     card.appendChild(content);
 
@@ -42224,15 +42248,31 @@ function affordanceDirtyIds(node, parent) {
   return out;
 }
 
-// The DOM half: re-run the three door builders against a mounted row. Clears first, or a second commit
-// would append a second `+ Total` beside the first. Silently does nothing for a row that is not mounted
-// (virtualization) — it will get its doors from the row builder when it next mounts, which is the
-// existing path and needs no help.
-function refreshRowAffordances(nodeId) {
+// The DOM half. Everything buildRow puts on a point OUTSIDE `.node-content` goes stale after a commit,
+// because the only incremental repaints are `content.innerHTML = renderContentHTML(node)` in exitEdit
+// and the same line in repaintComputedDependents. That is two whole SIBLING ROWS plus the doors:
+//
+//   .node-props-row   the property chips  — #1373. Driven: typing `Olive oil {prop cost: 6.20}` and
+//                     committing left the screen reading "Olive oil". The brace is consumed into
+//                     node.props, so the text the user typed vanishes and NOTHING takes its place
+//                     until a reload. Attaching a property is the mechanism the whole compute story
+//                     rests on, and it read as if the typing had been eaten. A point that already had
+//                     a chip was no better: the row survived and simply never gained the second one.
+//   .node-props-row   a `{date due: …}` rides the same row, so a due date was invisible too.
+//   .addrow-affordance  the + Add / + Total / + Check / + Variance doors — #1281.
+//
+// Rebuilt from the node in the same order buildRow uses, so one point cannot render two ways. Clears
+// each piece first: a second commit would otherwise append a second props row and a second `+ Total`.
+// Silently does nothing for a row that is not mounted (virtualization) — it will be built the normal
+// way when it next mounts, which is the existing path and needs no help.
+function refreshRowChrome(nodeId) {
   const node = nodeById(nodeId);
   if (!node) return;
-  const row = document.querySelector(`.node[data-id="${CSS.escape(nodeId)}"] > .node-row`);
+  const div = document.querySelector(`.node[data-id="${CSS.escape(nodeId)}"]`);
+  const row = div && div.querySelector(':scope > .node-row');
   if (!row) return;
+  for (const el of div.querySelectorAll(':scope > .node-props-row')) el.remove();
+  if (hasVisibleProps(node)) div.appendChild(buildPropsRow(node));   // #494: timestamp-only props render nothing
   for (const el of row.querySelectorAll(':scope > .addrow-affordance')) el.remove();
   maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row); maybeAddCardAffordance(node, row);
 }
