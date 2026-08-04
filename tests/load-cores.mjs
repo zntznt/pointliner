@@ -226,6 +226,7 @@ export function loadCores() {
     'wilsonBound',   // #1311: Wilson score CI bound for a wins/games rate
     'dueItemOrder',   // #1099: the one agenda ordering rule, shared by the document and folder scopes
     'agendaScopeMessage',   // #1099: the folder agenda's staleness line (pure, like overlayCountMessage)
+    'agToggleKey',   // #1385: the identity an agenda chip keeps across a strip rebuild
     'caretScrollDelta',   // outline scroll: how far to move so the caret is visible, 0 when it already is
     'nearestPointToClick',   // #1210: which point an empty-canvas click routes the caret to
     'varDistsOf', 'varDistRec', 'attachVarDists', 'usesDistVar',   // #952: the sibling lane that carries it alongside `resolved`

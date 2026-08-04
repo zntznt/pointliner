@@ -29183,3 +29183,59 @@ test('#1383 the empty-canvas router stops treating a menu click as empty canvas'
   assert.ok(h.includes('[role="button"]') && h.includes('.node-content') && h.includes('#bpop'),
     'and the original bail list is kept, not replaced');
 });
+
+// ─── #1385: an agenda toggle stops throwing focus away ────────────────────────
+// The same class #1383 found in the base chrome, on a second surface, and found the same way: drive
+// every control and watch `activeElement`. Every agenda chip's onToggle calls renderAgenda(), which
+// replaces the strip, so the focused span is destroyed. mkAgToggle's own comment already knew this --
+// it protects the POINTER path by never taking focus at all -- and the keyboard path was left out.
+//
+//   chip              focus after Enter, before    announced, before
+//   Week/Month/Timeline   <body>                   nothing
+//   Done/Running/Overdue  <body>                   nothing
+//   Sort: date            <body>                   nothing
+//   Scope: document       itself (it REFUSES,      "Open a folder first ..."
+//                         so nothing rebuilds)
+//
+// Scope is the precedent, not the exception: it is the one chip that announces its own success, and
+// the one that keeps focus. The other seven now do both, and the announcement needs no new string --
+// the fresh chip carries aria-pressed, so landing on it is what a screen reader hears.
+test('#1385 agToggleKey — a chip that relabels itself keeps its identity', () => {
+  // the default: most chips are stable enough to be their own key
+  for (const l of nonEmpty(['Week', 'Month', 'Timeline', 'Done', 'Running', 'Overdue', 'Titles'], 'the label-stable chips'))
+    assert.equal(c.agToggleKey(l), l);
+  // the three that relabel as they toggle MUST pass a key, or the rebuild loses them: the label is
+  // precisely the thing that changed.
+  assert.equal(c.agToggleKey('Sort: date', 'sort'), 'sort');
+  assert.equal(c.agToggleKey('Sort: priority', 'sort'), 'sort', 'the same key on both faces of the flip');
+  assert.equal(c.agToggleKey('Scope: document', 'scope'), 'scope');
+  assert.equal(c.agToggleKey('Scope: folder', 'scope'), 'scope');
+  assert.equal(c.agToggleKey('Mon, 2026', 'clock'), 'clock');
+  // never returns a non-string, so the caller's CSS.escape can't be handed undefined
+  assert.equal(c.agToggleKey('', ''), '');
+  assert.equal(c.agToggleKey(undefined, undefined), '');
+});
+
+test('#1385 wiring: the keyboard path re-anchors, the pointer path deliberately does not', () => {
+  const mk = fnBody(_src, 'mkAgToggle');
+  assert.ok(/b\.dataset\.ag = agToggleKey\(label, key\)/.test(mk), 'every chip is stamped with its identity');
+  // the keyboard arm restores; the mousedown arm must NOT, or a pointer toggle would pull the caret
+  // out of a point being edited. Driven both ways.
+  assert.ok(/if \(e\.key === 'Enter' \|\| e\.key === ' '\) \{ e\.preventDefault\(\); onToggle\(\); agRefocusToggle\(b\.dataset\.ag\); \}/.test(mk),
+    'Enter/Space toggles and then lands on the fresh chip');
+  const md = mk.slice(mk.indexOf("addEventListener('mousedown'"), mk.indexOf("addEventListener('keydown'"));
+  assert.ok(md.length > 0 && !/agRefocusToggle/.test(md),
+    'the pointer path does NOT refocus — the caret invariant');
+
+  const rf = fnBody(_src, 'agRefocusToggle');
+  assert.ok(/if \(!key\) return;/.test(rf), 'an empty key is a no-op, never a bare .ag-toggle match');
+  assert.ok(/agenda-strip'\)\?\.querySelector\(`\.ag-toggle\[data-ag="\$\{CSS\.escape\(key\)\}"\]`\)\?\.focus\(\)/.test(rf),
+    'scoped to the strip, escaped, and optional at every step');
+
+  // CALL SITES (#1133): a tested factory proves nothing about whether the three relabelling chips
+  // actually pass a key. Revert any one of these and its chip loses focus again.
+  const ra = between(_src, 'const filters = document.createElement', 'const sortRow = document.createElement');
+  assert.ok(/\}, 'sort'\);/.test(ra), 'the Sort chip passes an explicit key');
+  assert.ok(/\}, 'scope'\);/.test(_src), 'the Scope chip passes an explicit key');
+  assert.ok(/showAdvanceMenu\(clock\), 'clock'\)/.test(_src), 'the calendar clock chip passes an explicit key');
+});
