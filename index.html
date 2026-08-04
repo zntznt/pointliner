@@ -11336,6 +11336,7 @@ function mtModel(node) { return node.qbase ? qbaseModel(node) : mtModelText(node
 let _mtModelReadCacheVer = -1, _mtModelReadCache = new Map(); // doc-cache: mtModelRead (per-node; see DOC_CACHES)
 regDocCache('mtModelRead', {});
 let _mtEditSession = null;   // {id, model, text} — the cell input handler's last-commit parse (self-invalidating via the text key)
+let _mtCellEditStart = null; // #1387: {id, text} — the base's text when the current cell edit began
 function mtModelRead(node) {
   if (node.qbase) return qbaseModel(node);   // already generation+config memoized
   if (node.id == null) return mtModelText(node.text);
@@ -11559,6 +11560,7 @@ function aggKindLabel(kind) {
 // Apply an aggregate function to colIdx (0-based). Adds/removes the footer row
 // as needed; calls mtRecompute + refreshTable to show computed values.
 function mtApplyAggregate(node, colIdx, fn) {
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   const col1 = colIdx + 1;
   const tblfm = extractTblfm(node.text);
   const newTblfm = mtBuildAggFormula(tblfm, col1, fn);
@@ -11582,6 +11584,7 @@ function mtApplyAggregate(node, colIdx, fn) {
 // Part B apply path). lhs is the canonical Org target ('$3' column, '@2$3' cell).
 // Footer-row management stays with Calculate — this path never adds/removes rows.
 function mtSetFormula(node, lhs, expr) {
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   const tblfm = extractTblfm(node.text);
   const newTblfm = tblfmSetAssign(tblfm, lhs, expr);
   const model = mtModel(node);
@@ -11638,12 +11641,14 @@ function openFormulaDialog(node, lhs, kindLabel, disp) {
 // exposed as explicit, keyboard-reachable panel actions) ───────────────────
 function mtSetAlign(node, colIdx, align) {
   const m = mtModel(node);
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.aligns[colIdx] = align;            // 'left' is stored explicitly (:--- round-trips)
   mtCommit(node, m); refreshTable(node);
 }
 function mtInsertCol(node, colIdx, side) {
   const m = mtModel(node);
   const at = side === 'left' ? colIdx : colIdx + 1;
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.aligns.splice(at, 0, null);
   m.rows.forEach(r => r.splice(at, 0, ''));
   if (node.colW) node.colW.splice(at, 0, null); // keep widths aligned to columns
@@ -11682,6 +11687,7 @@ function mtMoveCol(node, colIdx, dir) {
   const m = mtModel(node);
   const to = colIdx + dir;
   if (to < 0 || to >= m.aligns.length) return;
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   mtMoveItem(m.aligns, colIdx, to);
   m.rows.forEach(r => mtMoveItem(r, colIdx, to));
   if (node.colW) mtMoveItem(node.colW, colIdx, to);
@@ -11693,6 +11699,7 @@ function mtMoveCol(node, colIdx, dir) {
 function mtDeleteCol(node, colIdx) {
   const m = mtModel(node);
   if (m.aligns.length <= 1) return;
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.aligns.splice(colIdx, 1);
   m.rows.forEach(r => r.splice(colIdx, 1));
   if (node.colW) node.colW.splice(colIdx, 1);
@@ -11742,6 +11749,7 @@ function mtMoveRow(node, rowIdx, dir) {
   const m = mtModel(node);
   const to = rowIdx + dir;
   if (to < 1 || to > mtLastDataRow(node, m)) return; // row 0 is the header; the footer stays pinned last
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   mtMoveItem(m.rows, rowIdx, to);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
@@ -11749,6 +11757,7 @@ function mtInsertRow(node, rowIdx, side) {
   const m = mtModel(node);
   // clamp 'below' so a new row never lands after the footer (rowIdx is always a data row)
   const at = side === 'above' ? rowIdx : Math.min(rowIdx + 1, mtLastDataRow(node, m) + 1);
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.rows.splice(at, 0, Array(m.aligns.length).fill(''));
   mtCommit(node, m); refreshTable(node);
 }
@@ -11756,6 +11765,7 @@ function mtDeleteRow(node, rowIdx) {
   const m = mtModel(node);
   const minRows = mtHasFooter(extractTblfm(node.text)) ? 3 : 2; // keep header + ≥1 data (+ footer)
   if (m.rows.length <= minRows || rowIdx < 1) return;
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.rows.splice(rowIdx, 1);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
 }
@@ -12721,6 +12731,7 @@ function bvMoveCard(node, rowIdx, groupBy, kw) {
   const m = mtModel(node);
   if (!m.rows[rowIdx]) return;
   const title = stripMd(String(m.rows[rowIdx][0] || '')) || 'Card';
+  pushUndo();   // #1387: dragging a card to another lane REWRITES its status value; it was unrecoverable
   m.rows[rowIdx][groupBy] = kw;
   mtCommit(node, m);
   refreshTable(node);   // rebuilds the widget, so focus + announce must be restored after
@@ -12994,6 +13005,7 @@ function mtMoveRowTo(node, from, to) {
   const m = mtModel(node);
   const last = mtLastDataRow(node, m);
   if (from < 1 || from > last || to < 1 || to > last || to === from) return;
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   mtMoveItem(m.rows, from, to);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
   requestAnimationFrame(() => {
@@ -13232,6 +13244,11 @@ function mtWireCells(host, node) {
     const m = mtModelRead(node);
     cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
     cell.dataset.enterVal = cell.textContent;   // value on entry — for the focusout formula-signpost diff
+    // #1387: the base's text as the edit BEGINS. It has to be captured here, not at focusout: the
+    // per-keystroke input handler mtCommit()s into node.text on every character, so by focusout the
+    // "before" is long gone. One entry per finished cell, not per keystroke — the same granularity
+    // as a point's enterEdit/exitEdit pair.
+    _mtCellEditStart = { id: node.id, text: node.text };
     // Keyboard-driven focus (Tab into the grid, arrow/Tab/Enter cell nav): select the
     // whole cell for type-to-overwrite. Pointer focus keeps the browser's click caret.
     if (!mtPointerFocus) mtSelectCellContents(cell);
@@ -13305,6 +13322,13 @@ function mtWireCells(host, node) {
     // B1: and referencing points ELSEWHERE repaint via a deferred, focus-aware render —
     // only when the value actually changed on a projecting base.
     if (raw !== enteredWith && isVarBase(node)) scheduleVarBaseRender(host);
+    // #1387: the edit is fully settled (commit, promote, epilogue) — record it as ONE text entry.
+    // Before this, typing in a base cell was unrecoverable: Ctrl+Z left the new value in place and
+    // reached past it to undo whatever the user did BEFORE opening the base.
+    if (_mtCellEditStart && _mtCellEditStart.id === node.id) {
+      recordTextEdit(node.id, _mtCellEditStart.text, node.text);
+      _mtCellEditStart = null;
+    }
     scheduleReconcile();
   });
 

@@ -4647,3 +4647,82 @@ and a pointer toggle made while editing a point leaves that caret exactly where 
 The other surfaces swept in the same pass -- toolbar (15 controls), graph (3), timeline (6), the
 focus-shown search panel (24) -- were **clean**, so this class is now closed on every chrome surface
 that rebuilds itself.
+
+## UXP-304 -- the base widget records undo (#1387)
+
+**P4, the severest case: silent, unrecoverable data loss.** A new seam this time, found by auditing
+which functions mutate persisted state without recording undo, then DRIVING the candidates -- the
+static list alone was 52 entries and most were false positives.
+
+**The exact user sequence, measured on main:**
+
+1. Type into a point. Undo depth 2.
+2. Delete a base column -- three rows of real data. Undo depth **still 2**.
+3. `Ctrl+Z`. It **undoes the typing**. The column is still gone.
+4. A second `Ctrl+Z` brings the column back, but only by reaching past to an earlier snapshot, taking
+   whatever else that step covered with it.
+
+So it was worse than a no-op: it destroyed a second thing while failing to restore the first. Every
+base op behaved this way -- insert/delete/move a column or row, alignment, aggregate, formula, and a
+board card dragged to another lane. **A cell edit too**: type in a cell, blur, `Ctrl+Z`, and the new
+value stays.
+
+**The pattern is uneven application, a third time this session, and `mtSortBase` is the proof.** It
+already called `pushUndo()`, and its own flash *promises* the user `"Undo restores the old order."`
+Its neighbours in the same file did not.
+
+### Two entry kinds, matching the two the app already has
+
+| what changed | how it records |
+|---|---|
+| structural (insert/delete/move/align/aggregate/formula/card drag) | `pushUndo()` snapshot |
+| a cell edit | ONE `recordTextEdit` across the focus session |
+
+**The cell "before" has to be captured at focusin, not focusout.** The per-keystroke input handler
+`mtCommit()`s into `node.text` on *every character*, so by focusout the pre-edit text is long gone.
+And the record must not live in `mtCommit` itself for the same reason: that would be one undo step
+per keystroke. A twelve-character edit is one step, driven.
+
+### The ordering detail that is not cosmetic
+
+Several of these ops **refuse and return early** -- the last column, the last data row, a move with
+nowhere to go. `pushUndo()` ahead of the guard would push a phantom step, so `Ctrl+Z` would appear to
+do nothing at all. Every call sits AFTER its guard, that ordering is pinned per op, and five refused
+ops were driven: the stack stays at 0.
+
+### Deliberately not covered, with the reason
+
+**Column width, role and number format.** They are display settings rather than content, re-set from
+the same menu in one gesture, and a width is committed from a drag. Losing one costs a second click,
+not data. Stated here rather than left silent (the "no silent caps" rule).
+
+**Four in-session writers are exempt and named in the census** -- `mtSpliceCell`, `cellSlashApply`,
+`mtWireCells`, `mtInitGlobal`. They write while a cell holds focus, so the focus-session record
+already covers them. **Driven, not assumed:** a splice-style write mid-session, then blur, then
+`Ctrl+Z`, restores the pre-session value. My first version of that probe was unfaithful (it set the
+model but not the cell's DOM text, so focusout wrote the old value back and the claim looked false);
+the real path sets both, and the corrected probe holds.
+
+### The guard that makes this a class fix
+
+A **census ratchet**: every top-level function calling `mtCommit` must either record undo itself or be
+one of the four named exemptions, and each exemption must still name a real function so a rename
+cannot quietly empty the list. A new base op that forgets now fails a test instead of shipping
+silently, which is exactly how these eleven shipped.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2026**. **Fifteen mutations**, each asserting its target
+present first, all red -- including two that mutate toward the *wrong shape* rather than toward
+absence: moving a `pushUndo()` ahead of its guard, and putting the record in `mtCommit` where it would
+fire per keystroke.
+
+Driven: the acceptance case (type, delete the column, `Ctrl+Z`) now brings the column back **and**
+keeps the typing; a twelve-keystroke cell edit is one step; two cells are two steps undone one at a
+time with redo returning them; and the widget survives an undo through the text path (still a base,
+12 cells, 4 view buttons).
+
+**A harness lesson worth keeping.** One mutation reported GREEN and was actually inert -- I had
+written identical find and replace strings. The harness checked that the target was *present* but not
+that the mutation *changed anything*. It now reports an inert mutation as a problem rather than
+counting it as proof. That is the #1133 rule applied to the tool that enforces #1133.

@@ -29239,3 +29239,103 @@ test('#1385 wiring: the keyboard path re-anchors, the pointer path deliberately 
   assert.ok(/\}, 'scope'\);/.test(_src), 'the Scope chip passes an explicit key');
   assert.ok(/showAdvanceMenu\(clock\), 'clock'\)/.test(_src), 'the calendar clock chip passes an explicit key');
 });
+
+// ─── #1387: the base widget records undo ──────────────────────────────────────
+// Found by auditing which functions mutate persisted state without recording, then DRIVING the
+// candidates — the static list alone was 52 entries and most were false positives.
+//
+// Measured on main, the exact user sequence: type into a point, delete a base column (three rows of
+// real data), press Ctrl+Z. The undo stack never grew, so Ctrl+Z undid THE TYPING and left the column
+// deleted. Worse than a no-op: it destroyed a second thing while failing to restore the first. A cell
+// edit was the same — type in a cell, blur, Ctrl+Z, and the new value stayed.
+//
+// The pattern is uneven application again, and mtSortBase is the proof: it already called pushUndo(),
+// and its own flash says "Undo restores the old order." Its neighbours in the same file did not.
+//
+// Two entry KINDS, matching the two the app already has:
+//   structural (insert/delete/move/align/aggregate/formula/card-drag) -> pushUndo() snapshot
+//   a cell edit -> ONE recordTextEdit across the focus session, never one per keystroke
+//     (the input handler mtCommit()s on EVERY character, so the "before" must be captured at
+//      focusin; by focusout it is long gone)
+test('#1387 every base op that reshapes or destroys data records undo', () => {
+  const OPS = [
+    'mtDeleteCol', 'mtDeleteRow', 'mtInsertCol', 'mtInsertRow',
+    'mtMoveCol', 'mtMoveRow', 'mtMoveRowTo', 'mtSetAlign',
+    'mtApplyAggregate', 'mtSetFormula', 'bvMoveCard',
+  ];
+  for (const name of nonEmpty(OPS, 'the base ops that must record undo')) {
+    const body = fnBody(_src, name);
+    assert.ok(/\bpushUndo\(\);/.test(body), `${name} records undo`);
+  }
+  // mtSortBase was already correct and must stay correct — it is the in-file precedent this change
+  // applies to its neighbours, and its flash PROMISES undo works.
+  const sort = fnBody(_src, 'mtSortBase');
+  assert.ok(/\bpushUndo\(\);/.test(sort) && /Undo restores the old order/.test(sort),
+    'mtSortBase keeps both the call and the promise it makes to the user');
+
+  // ORDERING, and it is not cosmetic: several of these refuse and return early (the last column, the
+  // last data row, a move with nowhere to go). pushUndo() ahead of the guard would push a phantom
+  // step, so Ctrl+Z would appear to do nothing. Driven: five refused ops leave the stack at 0.
+  for (const [name, guard] of nonEmpty([
+    ['mtDeleteCol', 'if (m.aligns.length <= 1) return;'],
+    ['mtDeleteRow', 'if (m.rows.length <= minRows || rowIdx < 1) return;'],
+    ['mtMoveCol',   'if (to < 0 || to >= m.aligns.length) return;'],
+    ['mtMoveRowTo', 'if (from < 1 || from > last || to < 1 || to > last || to === from) return;'],
+    ['bvMoveCard',  'if (!m.rows[rowIdx]) return;'],
+  ], 'the ops with a refusal guard')) {
+    const body = fnBody(_src, name);
+    assert.ok(body.includes(guard), `${name} still has its refusal guard`);
+    assert.ok(body.indexOf(guard) < body.indexOf('pushUndo();'),
+      `${name} records AFTER its guard, so a refused op pushes no phantom step`);
+  }
+});
+
+test('#1387 a cell edit is one undo step, taken across the focus session', () => {
+  const wire = between(_src, 'function mtWireCells', 'column menu toggle; row menu toggle');
+  // captured at focusin, because the per-keystroke input handler has already overwritten node.text
+  // by the time focusout runs
+  assert.ok(/_mtCellEditStart = \{ id: node\.id, text: node\.text \};/.test(wire),
+    'the base text is captured as the edit BEGINS');
+  const iIn = wire.indexOf('_mtCellEditStart = { id:');
+  const iOut = wire.indexOf('recordTextEdit(node.id, _mtCellEditStart.text, node.text)');
+  assert.ok(iIn > -1 && iOut > iIn, 'captured on focusin, recorded on focusout, in that order');
+  assert.ok(/if \(_mtCellEditStart && _mtCellEditStart\.id === node\.id\) \{/.test(wire),
+    'and only for the base it was captured on');
+  assert.ok(/_mtCellEditStart = null;/.test(wire), 'consumed once, so a second focusout cannot re-record');
+  // the record must NOT live in mtCommit: the input handler calls it on every character, so that
+  // would be one undo step per keystroke.
+  assert.ok(!/recordTextEdit|pushUndo/.test(fnBody(_src, 'mtCommit')),
+    'mtCommit stays record-free — it runs per keystroke');
+});
+
+test('#1387 census: no writer to a base model escapes undo by omission', () => {
+  // The ratchet (#1133): every top-level function that calls mtCommit either records undo itself, or
+  // is named here with the reason it does not need to. A new base op that forgets fails this test
+  // instead of shipping silently — which is exactly how these ten shipped.
+  const fns = [];
+  const re = /^function ([A-Za-z_$][\w$]*)\s*\(/gm;
+  let m;
+  while ((m = re.exec(_src))) {
+    let i = _src.indexOf('{', m.index), d = 0, j = i;
+    if (i < 0) continue;
+    for (; j < _src.length; j++) { const ch = _src[j]; if (ch === '{') d++; else if (ch === '}') { d--; if (!d) break; } }
+    fns.push({ name: m[1], body: _src.slice(m.index, j + 1) });
+  }
+  const callers = nonEmpty(fns.filter(f => f.name !== 'mtCommit' && /\bmtCommit\s*\(/.test(f.body)),
+    'functions that call mtCommit');
+  // Exempt, each for a reason that was DRIVEN rather than assumed: these write while a cell holds
+  // focus, so the focus-session record above already covers them (proved by driving a splice-style
+  // write mid-session, blurring, and watching Ctrl+Z restore the pre-session value).
+  const EXEMPT = new Set([
+    'mtSpliceCell',      // the inline splice used by the cell slash/artifact inserts — in-session
+    'cellSlashApply',    // sets the cell text then commits, still focused — in-session
+    'mtWireCells',       // the handlers THEMSELVES, which is where the session record lives
+    'mtInitGlobal',      // one-time wiring, no user mutation
+  ]);
+  const missing = callers.filter(f => !EXEMPT.has(f.name) && !/\bpushUndo\(\)/.test(f.body)).map(f => f.name);
+  assert.deepEqual(missing, [], 'every base writer records undo or is a named in-session exemption');
+  // and the exemptions must still exist, so a rename cannot quietly empty the list
+  for (const name of nonEmpty([...EXEMPT], 'the exemptions')) {
+    assert.ok(fns.some(f => f.name === name), `the exemption ${name} still names a real function`);
+  }
+});
