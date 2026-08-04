@@ -263,6 +263,12 @@ is the natural way to keep a character sheet, a per-section config or any set of
 subtree should share. (Only numbers inherit, and only *down* the tree; a value on a sibling or a
 child is not in scope.)
 
+**Order does not matter.** You can write the formula first and supply the value afterwards. A
+`{= STR + 2}` typed before anything is called `STR` stays plain text and says why, and the moment you
+add the property (or declare the variable), it becomes a live pill on its own and the app tells you
+how many points started working. So following the advice in that message is enough; you never have to
+go back and retype the formula.
+
 ---
 
 ## Variable bases (a table of variables)

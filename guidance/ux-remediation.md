@@ -4010,3 +4010,88 @@ speaks. A committed pill passes no `typing` flag and is told at once.
 
 `node --test tests/test.mjs` green at **2001**. Five mutations, all red against an asserted-green
 control, including flagging balanced parens (over-reach) and narrowing the search-box gate back.
+
+---
+
+## UXP-294 -- a formula written before its value stops being refused forever (#1357)
+
+**Status: FIXED.** The last open finding from the third laptop fleet, and my own issue got the cause
+wrong. #1357 said an ancestor's property "does not reach a child's `{= }` pill" and suspected the
+promotion path. Driven, ancestor scope works perfectly. What is broken is **when**, not **where**.
+
+### The defect: promotion is one-shot
+
+`promoteInlineShorthand` runs once, at commit. A `{…}` whose names were not resolvable at that moment
+stays raw text and nothing ever retries it. Measured on `bcf6890`, each case typed through the real
+editor on a fresh page:
+
+| the reader types | then supplies the value | before | after |
+|---|---|---|---|
+| `{= tension}` under a parent | `tension: 7` on the parent | `{= tension}` forever | `tension=7` |
+| `{= hp}` then `{prop hp: 3}` on the same point | (same commit, left to right) | `{= hp}` forever | `hp=3` |
+| `{= cost}` under a point | `{cost := 40}` declared above | `{= cost}` forever | `cost=40` |
+
+The same three, typed in the other order, all worked already. So the engine was never the problem.
+
+**This is the sharpest shape a cue can fail in: the app's own coaching, followed exactly, does
+nothing.** The `.brace-attempt` sentence #1159 wrote says *"move it here or to a parent, or declare it
+as a variable"*. A reader does that and the text does not change. Nkechi, the bistro owner, in the
+fleet record: *"It said it was not recognised. I assumed I had the wrong app for this and moved on."*
+The only recovery was to re-enter the point and blur it again, which nobody has a reason to do.
+
+### The fix
+
+`retryPendingBraces(from)` re-runs **`promoteInlineShorthand` verbatim**, rather than re-deriving what
+is promotable. That is the whole safety argument: the code-span escape hatch, the #916 anti-shred
+guards and the quoted-literal rule hold by construction, and a retry can never promote something the
+original commit would not have. Driven and confirmed unchanged: prose braces stay prose, `` `{2d6}` ``
+in inline code stays literal, `{"a | b"}` stays literal, and a frozen dice pill keeps its number.
+
+Called from `exitEdit`, gated on the **names** changing (`nameSetSignature`), never the values --
+`{= tension}` promotes just as happily against `tension=0`, so a value edit must not cost a sweep.
+
+**Scoped to how far each kind of name reaches**, which is the same rule `resolveNodeScope` already
+applies when reading: a doc variable is visible document-wide, a property only down its own subtree.
+That is not tidiness, it is the whole cost story. On a 3,200-point document holding 200 unpromotable
+braces:
+
+| commit | whole-document sweep | scoped sweep |
+|---|---|---|
+| changes no names (ordinary typing) | 2.4 ms | **2.4 ms** (never sweeps) |
+| adds a property | 43 ms | **1.7 ms** |
+| declares a variable | 48 ms | 48 ms (a doc-wide name genuinely needs the document) |
+
+Scanning all 3,202 points costs 0.26 ms; the sweep costs ~0.2 ms per *unpromotable brace*. So the
+price is per dead brace, not per point, and a brace pre-test would buy nothing. 200 dead braces is a
+deliberately harsh fixture; a realistic document has a handful.
+
+**Undo order is load-bearing.** The retry's rewrites are recorded AFTER the user's own edit, so the
+first undo takes the pills back off and the second takes the value away. The other order would leave
+one undo showing live pills whose value had just been removed, which reads as breakage.
+
+**P4:** the promotion happens away from the caret, so it reports -- *"One point was waiting for that
+value. It works now."* Driven: fires exactly once per commit, and not at all when nothing promotes.
+
+### Two things deliberately NOT fixed here, both measured
+
+- **A conditional does not un-freeze on its own.** `{tension > 5: tense | calm}` promotes at once
+  (`condParts` needs no resolvable name), renders `can't tell yet`, and still reads `can't tell yet`
+  after the property arrives. **Clicking it gives `tense`** -- so it is following the recorded P1
+  sign-off that a generative pill changes on click, not failing. Not touched.
+- **Undoing a `{prop k: v}` promotion leaves the property behind.** Measured on `origin/main` before
+  this change: undo restores `node.text` to `"Scene"` and `props` still holds `tension=7`. A text
+  undo entry restores text; the props sidecar is not in it. Pre-existing, orthogonal, filed.
+
+### A harness trap this found
+
+`fnBody` slices a function by counting braces, so a `'{'` **string literal** in the body defeats it
+and the pin silently reads a much larger region. My first version had one, and a pin asserting the
+function does *not* call `promoteBraceBody` passed against a window that included the next function's
+comment. Removed the literal here; the general case is filed.
+
+`node --test tests/test.mjs` green at **2005**. Twelve mutations, each with a uniqueness-checked
+anchor, all red -- including swapping the reach rule, dropping the recursion, dropping the live-editor
+guard, dropping the caret-map restore, and discarding the sweep's result while keeping its gate. Two
+of my own pins were vacuous until mutation caught them: one anchor appeared twice in the file so the
+mutation edited a different site, and one pinned the gate expression without pinning that its result
+was assigned.

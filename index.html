@@ -19408,6 +19408,8 @@ function exitEdit(content, node) {
   }
 
   const declsBefore = typedVarDeclSnapshot(node); // for the ripple warning (O1a)
+  // #1357: did this edit change what names resolve, and how far does the change reach?
+  const varsBefore = nameSetSignature(collectVars()), propsBefore = nameSetSignature(nodePropVars(node));
   refoldArtifacts(node); // restore untouched unfolded {…} to their original pills (keeps frozen state)
   promoteInlineShorthand(node); // promote any new/edited {…} shorthand to fresh pills
   maybeNudgeFirstPill(); // #H: greet the user's first self-authored pill once (reads _promotedLit from the promote above)
@@ -19444,6 +19446,16 @@ function exitEdit(content, node) {
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   markDirty();
+  // #1357: this edit may have supplied a name that other points' braces were waiting on (a
+  // property on this point, which its descendants inherit, or a doc variable). Gated on the NAMES
+  // changing, so ordinary typing never pays for the sweep, and SCOPED to how far each kind of name
+  // reaches: a doc variable document-wide, a property down its own subtree only. markDirty() above
+  // already bumped _varsVer, so collectVars() here is the post-edit map.
+  const promotedPending =
+      nameSetSignature(collectVars()) !== varsBefore ? retryPendingBraces(root)
+    : nameSetSignature(nodePropVars(node)) !== propsBefore ? retryPendingBraces(node)
+    : [];
+  if (promotedPending.length) markDirty();   // the sweep wrote text + sidecars
   if (_pendingFullRender || _pendingVarBaseRender) {
     // A structural change during this edit (link-and-create added a point) needs
     // the WHOLE tree repainted, not just this node — safe now that edit is ending
@@ -19482,6 +19494,9 @@ function exitEdit(content, node) {
       // recompute per render; only this repaint was missing after the partial-repaint work).
       repaintComputedDependents(node.id);
     }
+    // #1357: a point promoted by the retry sweep is not a "computed" point yet as far as the
+    // sweep above is concerned (its brace was raw text a moment ago), so repaint it explicitly.
+    for (const p of promotedPending) { if (p.id === node.id) continue; const n = nodeById(p.id); if (n) repaintNodeContent(n); }
   }
   if (activeContentId === node.id) activeContentId = null;
   // #467: stamp created/edited only when the point's own text actually changed (same signal
@@ -19489,6 +19504,13 @@ function exitEdit(content, node) {
   // don't stamp — "edited" means "I changed what this point says".
   if (node.text !== prevText) stampEdit(node);
   recordTextEdit(node.id, prevText, node.text); // O(1) undo entry, only if changed
+  // #1357: the retry's rewrites are recorded AFTER the user's own edit, so the first undo takes
+  // the promotions back off and the second takes the value away. The other order would leave one
+  // undo showing live pills whose value had just been removed, which reads as breakage.
+  // The committed point is skipped here: the recordTextEdit above already spans prevText → its
+  // post-sweep text, so recording it twice would need two undos to take back one edit.
+  for (const p of promotedPending) { if (p.id === node.id) continue; const n = nodeById(p.id); if (n) recordTextEdit(n.id, p.before, n.text); }
+  { const msg = pendingBraceMessage(promotedPending.length); if (msg) flashHint(msg); }
   delete content.dataset.prevText;
   hideSlashMenu(); hideBraceMenu(); hideTagMenu(); hideEmojiMenu(); hideBracePreview(); updateSelToolbar(); scheduleReconcile();
 }
@@ -27540,6 +27562,77 @@ function promoteInlineShorthand(node) {
   }
   if (changed) node.text = out;
   return changed;
+}
+
+// #1357: the set of NAMES in a { name: value } map, as a comparable string. Only the names
+// matter, never their values: `{= tension}` promotes just as happily against tension=0 as against
+// tension=7, so a value edit is not a promotion trigger and must not cost a sweep. Keys are sorted
+// so insertion order cannot manufacture a phantom change. Taken once for the doc variables and
+// once for the committed point's own properties, because the two reach different distances:
+// a doc variable is visible document-wide, a property only down its own subtree (resolveNodeScope).
+// Pure; no DOM.
+function nameSetSignature(obj) {
+  return Object.keys(obj || {}).sort().join(',');
+}
+
+// #1357: how many points were waiting on the value this edit just supplied. P4 — the promotion
+// happens away from the caret, on points the reader may not be looking at, so a silent success
+// reads as nothing having happened (which is the bug this closes, one step later). Empty string
+// for zero, so the caller can branch on falsiness. Pure; no DOM.
+function pendingBraceMessage(n) {
+  if (!n || n < 1) return '';
+  return n === 1
+    ? 'One point was waiting for that value. It works now.'
+    : `${n} points were waiting for that value. They work now.`;
+}
+
+// #1357: promotion is ONE-SHOT. A `{…}` whose names were not resolvable when its point was
+// committed stays raw text forever, and nothing retries it when the value later arrives. So the
+// app's own coaching — "move it here or to a parent, or declare it as a variable" — produces no
+// visible change when a reader follows it exactly, which is the worst shape a cue can have.
+// Measured: `{= tension}` typed before the parent carries `tension: 7` never promotes; the same
+// text typed after promotes immediately. Same for own properties and for doc variables declared
+// above. The only recovery today is re-entering the point and blurring it again, which a reader
+// has no reason to do.
+//
+// Retry by calling promoteInlineShorthand VERBATIM rather than re-deriving what is promotable:
+// a retry can then never promote something the original commit would not have, so the code-span
+// escape hatch, the #916 anti-shred guards and the quoted-literal rule all hold by construction.
+// A brace that is prose stays prose (every parser refuses it again, cheaply).
+//
+// `from` bounds the sweep to what the change can actually reach, which is the same rule
+// resolveNodeScope already applies when reading: a NEW DOC VARIABLE is visible document-wide, so
+// pass root; a NEW PROPERTY is read from its own point and the points below it, so pass that point.
+// Measured on a 3,200-point document holding 200 unpromotable braces: the whole-document sweep
+// costs 43ms while scanning every point costs 0.26ms, so the price is per retried brace, not per
+// point. Narrowing is therefore the only lever that matters, and it happens to be the honest one.
+//
+// The point `from` is IN the sweep, not excluded: promoteInlineShorthand walks a point's braces
+// left to right, so `m {= hp} {prop hp: 3}` refuses the formula before reaching the property that
+// would have fed it. Its own first pass is exactly as one-shot as everyone else's.
+//
+// Skips bases (their own per-cell promoter, #788) and any live editor (never rewrite text under a
+// caret). Returns [{ id, before }] so the caller can repaint, record undo and report — this
+// function itself does none of those.
+function retryPendingBraces(from) {
+  const done = [];
+  // _promotedLit is the caret-translation map for the point that was JUST promoted (#766); this
+  // sweep promotes OTHER points, so save and restore it rather than leaving another node's widths
+  // where foldedOffsetFor will read them for the committed one.
+  const savedLit = _promotedLit;
+  const visit = n => {
+    if (!n) return;
+    if (n !== root && n.type !== 'base'
+        && !document.querySelector(`.node-content[data-id="${n.id}"][data-editing]`)) {
+      // No brace pre-test here: promoteInlineShorthand's own first line short-circuits a
+      // brace-free point, so duplicating it would only add a second place to keep in step.
+      const before = n.text;
+      if (promoteInlineShorthand(n) && n.text !== before) done.push({ id: n.id, before });
+    }
+    for (const c of (n.children || [])) visit(c);
+  };
+  try { visit(from || root); } finally { _promotedLit = savedLit; }
+  return done;
 }
 
 // Promote {…} shorthand inside ONE base cell string. The promoteInlineShorthand walk,
