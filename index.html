@@ -1474,6 +1474,11 @@ body.zoomed .node-content h2.md-h{font-size:1.25em;font-variation-settings:'opsz
 .prop-chip.prop-start-future .prop-val{color:var(--muted)}
 /* a DONE point's date is met, not urgent: muted ink, never overdue-red (mirrors the agenda) */
 .prop-chip.prop-due-done .prop-val,.prop-chip.prop-start-done .prop-val{color:var(--muted)}
+/* #1389: an unrecognised repeat phrase. The class was never styled, so even once the crash above is
+   fixed the flag would be invisible and the only signal left would be a hover title (#1199: a title
+   is unreachable). Dotted underline + --bad ink is the house "this reference is broken" language,
+   the same one .node-link-broken and .gr-src.gr-bad already speak. Both palette homes carry --bad. */
+.prop-chip.prop-repeat-bad .prop-val{color:var(--bad);text-decoration:underline dotted;text-underline-offset:2px}
 /* constraint / check chip (F2) — pass is a muted ✓ (P4: not silent), fail is bad,
    error is a distinct "can't evaluate" warn treatment */
 .prop-chip.prop-check .prop-check-glyph{font-weight:600;margin-right:3px}
@@ -14057,7 +14062,14 @@ function buildPropsArea(node) {
       // A phrase parseRepeat rejects is shown but flagged, so a typo is visible not silent (P4).
       const ok = parseRepeat(val) !== null;
       displayVal = '⟳ ' + val;
-      chip.classList.add('prop-repeat' + (ok ? '' : ' prop-repeat-bad'));
+      // #1389: TWO tokens, not one string with a space in it. classList.add throws
+      // InvalidCharacterError on a token containing whitespace, so this line CRASHED render() for
+      // any repeat phrase parseRepeat rejects — `week`, `day`, `month`, `1w` are all rejected while
+      // `weekly` is fine. The throw left the outline half-drawn and every later render threw too,
+      // and the phrase is persisted, so a reload reproduced it. The comment above states the intent
+      // exactly: a rejected phrase should be "visible not silent". It was neither: it was fatal.
+      chip.classList.add('prop-repeat');
+      if (!ok) chip.classList.add('prop-repeat-bad');
       chip.title = ok ? 'Recurring. Click to edit the schedule' : 'Unrecognized repeat phrase. Click to fix';
       chip.setAttribute('aria-label', `repeats ${val}${ok ? '' : ' (unrecognized)'}. Click to edit the schedule`);
     }

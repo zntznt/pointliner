@@ -4726,3 +4726,64 @@ time with redo returning them; and the widget survives an undo through the text 
 written identical find and replace strings. The harness checked that the target was *present* but not
 that the mutation *changed anything*. It now reports an inert mutation as a problem rather than
 counting it as proof. That is the #1133 rule applied to the tool that enforces #1133.
+
+## UXP-305 -- an unrecognised repeat phrase crashed the renderer (#1389)
+
+**P4, and the sharpest version of it yet: the guard against a silent failure WAS the failure.** Found
+by accident while seeding a harness for the rest of the undo audit -- my seed used `repeat: week`, and
+the app threw inside `render()`.
+
+```js
+chip.classList.add('prop-repeat' + (ok ? '' : ' prop-repeat-bad'));
+```
+
+`classList.add` throws `InvalidCharacterError` on a token containing whitespace, so the *unrecognised*
+branch was fatal. The comment directly above it states the intent exactly:
+
+> *"A phrase parseRepeat rejects is shown but flagged, so a typo is visible not silent (P4)."*
+
+It was neither visible nor silent. It was fatal.
+
+**Measured.** With one such point in a three-point document: `render()` throws, **1 of 3 points
+appears**, every later render throws too, and the phrase is persisted, so a reload reproduces it. The
+document is effectively unusable below the offending point.
+
+**The trigger is ordinary typing, not an edge case.** `parseRepeat` accepts `weekly`, `every week`,
+`daily`, `monthly`, `yearly`, `every 2 weeks` -- and rejects `week`, `day`, `month`, `1w`, `annually`,
+`fortnightly`, `Tuesdays`. `weekly` works and `week` bricks the view.
+
+### The second half: the flag had no style
+
+`.prop-repeat-bad` had **no CSS rule at all**. So even once the crash is fixed, the flag would be
+invisible and the whole P4 promise would rest on a hover `title` -- which #1199 already established is
+unreachable. It now carries the house "this reference is broken" language (`--bad` ink plus a dotted
+underline, the same pair `.node-link-broken` and `.gr-src.gr-bad` speak), measured at **5.92:1 light
+and 7.73:1 dark** against the page background, both over the 4.5 text floor, with a non-colour signal
+beside the colour (P3-4). `--bad` is reused rather than introduced, and it is present in **both**
+palette homes -- confirmed rather than assumed.
+
+### The other candidate, checked and cleared
+
+The audit found one more `classList.add` building a token by concatenation:
+`chip.classList.add('prop-' + propK + '-' + state)`, where `propK` is a property key. Driven with a
+spaced key: **it does not crash**, because that line only runs for keys in `DATE_KEYS` (a fixed set
+with no spaces) and the property parser will not produce a spaced key at all. Recorded as checked
+rather than "fixed" speculatively.
+
+### The guard
+
+A class ratchet: scan every `classList.add/remove/toggle` in the source and assert no **quoted
+fragment** inside the call carries whitespace. That catches the literal form and the concatenated form
+this shipped as. Paired with a reachability pin -- the seven plausible phrases `parseRepeat` rejects --
+because a pin on the fix is worthless if the failing branch cannot be reached by real input.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2029**. Six mutations, each asserting its target present
+first, all red: restore the concatenation; drop the flag add; drop the CSS rule; make the flag
+colour-only; hardcode the red instead of the token; and sneak a spaced token into a *different*
+`classList` call, which the class guard must catch rather than only the one site.
+
+**On how this was found.** It was not on any list. It surfaced because a harness seed used a plausible
+value and the app threw. Worth recording: the undo audit that was running at the time found its own
+findings, and this one came free from *using the app like a user who does not know the vocabulary*.
