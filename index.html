@@ -18796,6 +18796,10 @@ function classifyBraceBody(body, rules, vars) {
   // classifies 'literal' and the walk descends to promote its inner braces as orphan pills.
   if (/^rule\s/i.test(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';
   if (propDeclParts(body)) return 'artifact';                          // {prop owner: zeo} (LEAN FLOOR)
+  // {prop …} committed to the keyword but has no `key: value` → an ATTEMPT, not prose (the same
+  // keyword-commit shuffle/markov/seq/rule/oracle/meter already carry, UXP-253). Without it a
+  // `{prop hp}` (no colon) or `{prop : 5}` (no key) fell through to 'literal' and leaked raw braces.
+  if (/^prop\s/i.test(body)) return 'invalid';
   const dd0 = dateDeclParts(body);                                     // {date due: friday} (LEAN FLOOR)
   // lockstep with promoteBraceBody (#407): an unparseable value stays literal on exit,
   // so the edit surface must say so LIVE (gr-bad) instead of promising a promotion.
@@ -18804,6 +18808,10 @@ function classifyBraceBody(body, rules, vars) {
   if (queryParts(body)) return 'artifact';                             // {query: is:todo}
   if (countParts(body)) return 'artifact';                             // {count: is:todo} — a live inline count (#541)
   if (rollParts(body)) return 'artifact';                              // {roll: is:todo} — pick a random matching point
+  // UXP-253 parity: query/count/roll committed to their keyword (opened with `verb:`) but the tail did
+  // not parse — an ATTEMPT, not prose. Without this a `{count: }` / `{query:}` / `{roll: }` (empty or
+  // malformed tail) fell through to 'literal' and leaked its raw braces into rendered prose with no cue.
+  if (/^(?:query|count|roll)\s*:/i.test(body)) return 'invalid';
   // {oracle: likely} — the band name is a closed set, so an unknown band is an ATTEMPT
   // (typo styling), not prose; the text still stays literal on exit (#543, the #407 model).
   if (/^oracle\s*:/i.test(body)) return oracleParts(body) ? 'artifact' : 'invalid';
@@ -18974,6 +18982,26 @@ function braceAttemptReason(body, rules, vars) {
     if (tail.indexOf('|') < 0) return 'A sequence needs a | to mark where done begins: try {seq ' + name + ': ' + tail.replace(/\s+(\S+)$/, ' | $1') + '}.';
     return 'This sequence could not be read. States are separated by spaces and a | marks where done begins: try {seq ' + name + ': TODO | DONE}.';
   }
+  // query/count/roll committed to their keyword but the tail is empty or unparseable. Name the shape
+  // and the fix, matching the quality the rule/seq arms above already reach (was a generic catch-all).
+  if (/^(?:query|count|roll)\s*:/i.test(body)) {
+    const verb = body.match(/^(query|count|roll)/i)[1].toLowerCase();
+    const had = body.replace(/^(?:query|count|roll)\s*:/i, '').trim() ? 'This ' + verb + ' could not be read. ' : '';
+    if (verb === 'count') return had + 'A count needs a search after the colon: try {count: is:todo} or {count: #tag}.';
+    if (verb === 'roll')  return had + 'A roll needs something to roll on: try {roll: #tag} to pick a random point with that tag.';
+    return had + 'A query needs a search after the colon: try {query: is:todo}.';
+  }
+  // {prop …} with no key: value.
+  if (/^prop\s/i.test(body)) return 'A property needs a key and a value: try {prop hp: 12}.';
+  // {oracle: <bad band>} — the odds words are a closed set; list them (the bare-{oracle} NEAR_MISS
+  // above never fires here because this body carries a tail after the colon).
+  if (/^oracle\s*:/i.test(body)) return 'An oracle takes an odds word: certain, likely, even, unlikely or impossible. Try {oracle: likely}.';
+  // {meter: <bad recipe>}
+  if (/^meter\s*:/i.test(body)) return 'A meter reads a value over its max: try {meter: hp/hpmax} or {meter: 8/12}.';
+  // {shuffle|cycle|once|stopping: <bad list>}
+  if (/^(?:shuffle|cycle|once|stopping)\s*:/i.test(body)) return 'A deck needs a list to deal from: try {shuffle: a | b | c}.';
+  // {markov: <no arrows>}
+  if (/^markov\s*:/i.test(body)) return 'A markov chain links states with arrows: try {markov: a→b, b→c}.';
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
     return 'No rule or variable named "' + body + '" is defined. Type {rule ' + body + ': option | option} to make it a rule, {' + body + ' := 5} to make it a variable, or wrap it in backticks to keep it as text.';
   }
@@ -29153,6 +29181,21 @@ function renderMathPill(key, m, opts = {}) {
       + `<span class="math-empty-mark" aria-hidden="true">nothing matched</span>`
       + explain
       + pencil
+      + `</span>`;
+  }
+  // A finite expression that evaluated to ±Infinity is a divide-by-zero (n/0): evalMath returns it as a
+  // "valid" number, but ∞ tells the user nothing to DO (the same argument #1171 makes for an empty min/max
+  // ±∞, handled just above). Route it to the math-err chrome with a reason instead of a confident ∞. Placed
+  // AFTER the empty-rollup guard so a genuinely-empty min/max keeps its own "nothing matched" cue.
+  if (!Number.isFinite(fresh)) {
+    const label = '#ERR (divide by zero)';
+    const tip = 'This has no number: it divides by zero. Click to edit.';
+    return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} shows ${escQ(label)}. ${escQ(tip)}">`
+      + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
+      + `<span class="math-expr">${escHtml(m.expr)}</span>`
+      + `<span class="math-eq">=</span>`
+      + `<span class="math-result">${escHtml(label)}</span>`
       + `</span>`;
   }
   // #914: a quoted query reducer on a LEAF point (no descendants) can only return the identity —

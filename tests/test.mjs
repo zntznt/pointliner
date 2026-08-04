@@ -657,6 +657,32 @@ test('braceAttemptReason — explains why an INVALID {…} did not become a pill
   assert.equal(c.classifyBraceBody('rumor', { rumor: ['x'] }, {}), 'artifact');
   // prose braces classify 'literal' and are left entirely alone by the cue
   assert.equal(c.classifyBraceBody('note to self', {}, {}), 'literal');
+  // ── Slice 1: query/count/roll/prop committed keyword + empty/bad tail is an ATTEMPT, not a raw-brace
+  // leak. Before this they classified 'literal' and rendered the braces verbatim in prose with no cue.
+  for (const b of ['count: ', 'query:', 'roll: ', 'count:', 'query: ', 'roll:']) {
+    assert.equal(c.classifyBraceBody(b, {}, {}), 'invalid', `"${b}" is a committed keyword attempt, not prose`);
+  }
+  assert.match(c.braceAttemptReason('count: ', {}, {}), /\{count: is:todo\}/, 'a bad count names the search form');
+  assert.match(c.braceAttemptReason('query:', {}, {}), /\{query: is:todo\}/, 'a bad query names the search form');
+  assert.match(c.braceAttemptReason('roll: ', {}, {}), /\{roll: #tag\}/, 'a bad roll names the tag form');
+  // {prop …} with no key:value is an attempt (was a silent literal leak or a mis-taught bad-ref)
+  for (const b of ['prop hp', 'prop : 5', 'prop ']) assert.equal(c.classifyBraceBody(b, {}, {}), 'invalid', `"${b}" is a prop attempt`);
+  assert.match(c.braceAttemptReason('prop hp', {}, {}), /\{prop hp: 12\}/, 'a bad prop names the key:value form');
+  // committed but bad TAIL forms (oracle/meter/shuffle/markov) now get a SPECIFIC message, not the generic catch-all
+  assert.match(c.braceAttemptReason('oracle: definitely', {}, {}), /certain, likely, even, unlikely/i, 'a bad oracle band lists the real odds words');
+  assert.match(c.braceAttemptReason('meter: hp+hpmax', {}, {}), /\{meter: hp\/hpmax\}/, 'a bad meter recipe names value/max');
+  assert.match(c.braceAttemptReason('markov: a b c', {}, {}), /→/, 'a bad markov names the arrow form');
+  assert.match(c.braceAttemptReason('shuffle: ', {}, {}), /\{shuffle: a \| b \| c\}/, 'a bad shuffle names the list form');
+  // none of these fall back to the generic sentence, and none carry an em dash
+  for (const b of ['count: ', 'query:', 'roll: ', 'prop hp', 'oracle: definitely', 'meter: hp+hpmax', 'markov: a b c', 'shuffle: ']) {
+    const r = c.braceAttemptReason(b, {}, {});
+    assert.ok(!/looks like a pill but could not be created/.test(r), `"${b}" gets a specific reason, not the catch-all`);
+    assert.ok(!r.includes('—'), 'no em dash in ' + b);
+  }
+  // a REAL query/count/roll/prop still promotes (the commit only fires when the tail fails)
+  assert.equal(c.classifyBraceBody('count: is:todo', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('roll: #tag', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('prop hp: 12', {}, {}), 'artifact');
 });
 
 // #1199: braceAttemptReason is good copy, but it lived only in a `title`/`aria-label` on a
@@ -10086,6 +10112,15 @@ test('#1332 a comparison/boolean math pill renders a pass/fail glyph, not bare 1
   assert.ok(rmp.includes("fresh === 1 ? 'true' : 'false'") && rmp.includes('ariaVal'), 'assistive tech gets the words, not the glyph');
   assert.ok(rmp.includes('!isMoonExpr(m.expr) && !isDateExpr(m.expr)'), 'a moon/date display is never turned into a pass/fail');
   assert.ok(_src.includes('.math-bool-true .math-result') && _src.includes('.math-bool-false .math-result'), 'pass/fail colored to the check palette (ok/bad)');
+});
+
+test('Slice 1: a divide-by-zero renders an informative #ERR, not a confident ∞ (src pin)', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('if (!Number.isFinite(fresh)) {'), 'a non-finite result is guarded');
+  assert.ok(rmp.includes("'#ERR (divide by zero)'") && /divides by zero/.test(rmp), 'it routes to the math-err chrome with a reason');
+  // the guard must sit AFTER the empty-rollup guard so an empty min/max keeps its own "nothing matched" cue
+  assert.ok(rmp.indexOf('firstEmptyRollup(m.expr, cookieNode, { extrema: true })') < rmp.indexOf('if (!Number.isFinite(fresh)) {'),
+    'the empty min/max ±∞ guard precedes the divide-by-zero guard');
 });
 
 test('the math pill signposts the number-format door it opens (P2)', () => {
