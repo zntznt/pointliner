@@ -181,7 +181,7 @@ export function loadCores() {
     'parseMarkov', 'walkMarkov', 'weightedPick', 'markovParts', 'makeTypedMarkovRoll',
     'parseRules', 'isYesNoOracle', 'runGrammar', 'expandTemplate', 'resolveBrace', 'condParts', 'strCondVerdict',
     'recordVarReads', 'depsChanged',   // #827 item 5: input-dependency snapshot + stale-inputs compare
-    'parseAlt', 'pickWeightedAlt', 'modParts', 'bracedModParts', 'applyMods', 'pluralize', 'pastTense', 'presentParticiple', 'fieldParts', 'fieldModParts',
+    'parseAlt', 'pickWeightedAlt', 'modParts', 'bracedModParts', 'bracedDiceParts', 'applyMods', 'pluralize', 'pastTense', 'presentParticiple', 'fieldParts', 'fieldModParts',
     'dottedVarParts', 'resolveDottedVar', 'varBaseName', 'varBaseDefs', 'varBaseDefsMemo', 'varMapAt', 'varBasePreview',   // variable bases (dotted projections)
     'promoteCellShorthand', 'promoteLoadedShorthand',   // per-cell base promotion (PR C)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
