@@ -327,8 +327,13 @@ Implemented:
   date-shaped value rolls up as **epoch-days**, so `max(due)` / `min(start)` give the latest/earliest
   child date (wrap in `asdate(...)` to display it as a date) and F2 gets real **date-range checks**
   (`max(due) <= deadline`). Only strict date-shaped strings parse; a plain word still → `null`.
-  Works in the math pill (`{= …}`) and F2 `check` constraints, not in a grammar
-  `{cond:…}`/composition (no node context there). **Word count** `{= words(subtree|self|children)}`
+  Works in the math pill (`{= …}`), F2 `check` constraints, and — since #1356 — a grammar
+  `{cond:…}` test, which now resolves against the same `resolveNodeScope` + `expandAggExpr` pair a
+  math pill on that point uses, so `{sum(cost) > budget: OVER | within}` and `{hp > 1: ok | hurt}`
+  read the point's own and inherited numeric properties. *(This line previously read "not in a
+  grammar `{cond:…}`/composition (no node context there)" — the node context was always there,
+  as `cookieNode`; the conditional arm simply never used it.)* Still out: a **text** property
+  driving a string condition, because `nodePropVars` keeps numeric props only. **Word count** `{= words(subtree|self|children)}`
   (`subtreeWords`/`countWords`) is the same family over **prose** instead of a property — it counts
   words in a **scope**: `subtree` = self + all descendants (so it *recurses*, unlike the
   direct-children property rollups), `self`, or `children`. A per-point note is **excluded by
