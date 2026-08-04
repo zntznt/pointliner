@@ -19164,6 +19164,23 @@ test('queryRows — matches across the tree, excludes the host, caps with a tota
   assert.equal(r2.total, 2);
 });
 
+test('resolveSearchExpr / queryRows — a dynamic {var} argument resolves before the search (compose edge)', () => {
+  const root = { children: [
+    { id: 'v', text: '[[var:k1]]', vars: [{ key: 'k1', name: 'state', kind: 'pick', rolled: 'todo', expr: '"todo"' }], children: [] },
+    { id: 'h1', text: '#TODO alpha', children: [] },
+    { id: 'h2', text: '#DONE beta', children: [] },
+  ] };
+  // the search arg is a {var}: it resolves to "todo" and then filters exactly like the literal is:todo
+  assert.equal(c.resolveSearchExpr('is:{state}', root), 'is:todo');
+  const r = host(c.queryRows('is:{state}', root, 'host'));
+  assert.deepEqual(r.rows.map(x => x.id), ['h1'], 'the dynamic query matches the same points as is:todo');
+  // a literal expr (no braces) is returned untouched — the search box path is never expanded
+  assert.equal(c.resolveSearchExpr('is:todo', root), 'is:todo');
+  assert.equal(c.resolveSearchExpr('', root), '');
+  // an undefined var leaves a visible marker (never silently matches everything)
+  assert.match(c.resolveSearchExpr('is:{missing}', root), /\{missing\?\}/);
+});
+
 test('queryRows — an empty or whitespace query returns nothing (never matches everything)', () => {
   const root = { children: [{ id: 'a', text: 'x', children: [] }] };
   assert.deepEqual(host(c.queryRows('', root, null)), { rows: [], total: 0, truncated: false });
