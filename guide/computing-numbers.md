@@ -359,6 +359,21 @@ add up. A bare name stays the child-position rollup (`sum(cost)`), so the two ne
 empty match reduces to zero (or nothing for `min`/`max`), the same as `count("...")`, since a
 search matching nothing right now is a valid, changing answer.
 
+**`here("...")` asks the same question about THIS point.** Where `count("...")` counts the points
+below, `here("...")` answers 1 when the point the pill is written on matches the search, and 0 when
+it does not. It takes the same operators, so anything you can search for you can test:
+
+```
+{here("is:done"): done | still open}          reads differently once it is ticked
+{here("#unverified"): NEEDS SOURCE | checked} flags a record that is not confirmed yet
+{= here("is:overdue")}                        1 or 0, so it adds up and composes
+{and(here("#risk"), cost > 1000): escalate | note it}
+```
+
+Because the answer is a plain 1 or 0, it joins `and(...)`, `or(...)` and `not(...)` like any other
+number, and a nonzero value reads as true, so `{here("#risk"): careful | fine}` needs no comparison.
+The scope is that one point, never its children: `count("#risk")` is how you ask about the subtree.
+
 **Reach across the whole folder.** With a
 [connected folder](files-and-export.md#working-with-a-folder-of-documents), add `folder` as a
 final argument and the quoted-search reducers total across **every document** in it, not just

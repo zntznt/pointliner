@@ -802,8 +802,12 @@ test('#1359: a body that reads as an attempted TEST is an attempt, never a coin 
   // the ALTERNATION branch: {COND: THEN | ELSE} froze as a 50/50 pick between the literal strings
   // "COND: THEN" and "ELSE", with an ordinary pill and a "Click to re-generate" tooltip. Same shape
   // the typed-rule note already recorded for {loot: sword | shield 2} and closed with a keyword.
-  const attempts = ['and(a, b): both | not both', 'not(a): off | on', 'or(a,b): y | n',
-                    'a ≥ 3: yes | no', 'a ≤ 9: y|n', 'a ≠ 4: y|n',
+  // NB the three logic-FUNCTION shapes used to live here as attempts. #1365 widened condParts to
+  // accept a bare function call as a test — a rule name cannot contain a paren, so `{and(a, b): …}`
+  // is unambiguous on its face and needs no marker — and they are REAL conditionals now. Moved to
+  // their own pin below rather than deleted, so the reversal is recorded. What stays here is the set
+  // whose tell is an operator, where no such syntactic escape exists.
+  const attempts = ['a ≥ 3: yes | no', 'a ≤ 9: y|n', 'a ≠ 4: y|n',
                     'danger = 5: yes | no', 'danger > 9 || hp > 5: either | nope', 'a && b: y|n',
                     // NB `count("is:todo") > 0: …` used to live here. #1363 made the conditional's
                     // boundary split quote-aware, so the colon inside the query no longer splits the
@@ -845,6 +849,64 @@ test('#1363: a quoted query keeps its colon and its pipe, so predicates reach th
   // split fallback it stops being an attempt and goes back to being a coin flip. Found by mutation.
   assert.equal(c.condAttempt('mood == "angry: yes | no'), true,
     'an unclosed quote with no other tell is still an attempt');
+});
+
+test('#1365: here("query") asks the search language about THIS point', () => {
+  // The per-node matcher already existed (queryMatchesNode, which nodeMatchesSearch already calls for
+  // a one-off check on a live node). here() is the door onto it from the expression layer, so the
+  // predicate vocabulary is the SAME one — no second set of names to invent or keep in sync.
+  const mk = (text, props) => ({ id: 'n' + text.length, text, children: [],
+    props: Object.entries(props || {}).map(([k, v]) => ({ key: k, val: String(v) })) });
+  const matches = (q, n) => c.queryMatchesNode(c.parseSearchQuery(q), n, [], {}, undefined, '');
+  const tagged = mk('Ellen Marsden #unverified'), plain = mk('Hannah Sowerby #verified');
+  assert.equal(matches('#unverified', tagged), true,  'the matcher answers for the node itself');
+  assert.equal(matches('#unverified', plain),  false, 'and discriminates');
+  assert.equal(matches('has:owner', mk('x', { owner: 'ana' })), true, 'a field predicate too');
+  assert.equal(matches('has:owner', mk('x')), false);
+  // BEHAVIOURAL, not a source pin. The first draft asserted the regex STRING was present in
+  // expandAggExpr, and disabling the arm (`if (false)`) left it green — the replace line still
+  // carried the string. expandAggExpr is drivable here, so drive it (#1133).
+  const at = (q, n) => c.expandAggExpr(q, n, {});
+  assert.equal(at('here("#risk")', mk('x #risk')), '(1)', 'here() substitutes to 1 for a match');
+  assert.equal(at('here("#risk")', mk('x #calm')), '(0)', 'and to 0 for a miss');
+  assert.equal(at('here("has:owner")', mk('x', { owner: 'ana' })), '(1)', 'field predicates work');
+  // This one is the CONTRACT, not a guard-check: the code has no empty-query branch (a mutation
+  // proved one dead, since queryMatchesNode already answers false for an empty term list). If the
+  // matcher ever starts reading an empty query as vacuously true, this is what says so.
+  assert.equal(at('here("")', mk('x #risk')), '(0)', 'an empty query asserts nothing, never everything');
+  assert.equal(at('here("#risk")', null), '(0)', 'a node-less caller answers 0, like the rollups');
+  // it substitutes to a NUMBER, which is what keeps evalMath number-only and lets it compose
+  assert.equal(c.evalMath(at('and(here("#risk"), 1)', mk('x #risk')), {}), 1, 'composes with and()');
+  assert.equal(c.evalMath(at('not(here("#risk"))', mk('x #calm')), {}), 1, 'and with not()');
+  // scope is the host point ALONE — the subtree is count()'s job
+  const parent = mk('Parent'); parent.children = [mk('kid #risk')];
+  assert.equal(at('here("#risk")', parent), '(0)', 'a tagged CHILD does not make the parent match');
+  // the door: the function list a user reads
+  assert.match(NC, /here:'1 when THIS point matches a search, else 0'/, 'here is described beside count');
+});
+
+test('#1365: a bare function call is a legal test, because a rule name cannot contain a paren', () => {
+  // The comparison requirement kept detection syntactic and stayed clear of `{name: a | b}`. That
+  // ambiguity is only real for a BARE IDENTIFIER; a call carries its own tell, so these need no
+  // marker. evalMath already evaluated them correctly — only the sniff was in the way.
+  const V = { a: 1, b: 1 };
+  for (const [body, want, why] of nonEmpty([
+    ['and(a, b): both | not both', 'both',      'the logic functions, which always did evaluate'],
+    ['or(a, 0): some | none',      'some',      'or'],
+    ['not(0): off | on',           'off',       'not'],
+    ['here("#risk"): flag | calm', null,        'a host-point predicate needs a node, so only the PARSE is asserted'],
+  ], 'function-call conditions')) {
+    const cp = c.condParts(body);
+    assert.ok(cp, `${body}: parses as a conditional (${why})`);
+    assert.equal(c.condAttempt(body), false, `${body}: and is no longer an attempt`);
+    if (want !== null)
+      assert.equal(c.resolveBrace(body, { rules:{}, vars:V, depth:0, stack:[] }), want, `${body}: and evaluates`);
+  }
+  // the bare identifier is STILL out — that is the ambiguity a marker would have to settle
+  assert.equal(c.condParts('done: finished | still going'), null, 'a bare name is still the rule form');
+  // and a call that will not evaluate still fails visibly rather than picking a branch
+  assert.match(c.resolveBrace('nosuchfn(1): a | b', { rules:{}, vars:{}, depth:0, stack:[] }), /^\{.*\?\}$/,
+    'an unknown function still shows its marker');
 });
 
 test('#1359: the shapes it must NOT claim — the rule-definition form above all', () => {

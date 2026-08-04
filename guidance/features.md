@@ -274,6 +274,16 @@ Implemented:
   independent (Stage B). Body-click re-seeds and every reference follows (`rerollDistVar`); the
   bare-name reference and a using-expression both resolve through the lane (`usesDistVar` widens
   the `estParts` sniff). Cores: `varDeclKind`, `varDistDraw`, `varDistHeadline`, `usesDistVar`.
+  **Ask about THIS point (#1365)**: `here("query")` answers 1 when the point the pill sits on
+  matches the search, 0 when it does not, through the same `expandAggExpr` pre-pass, so what reaches
+  `evalMath` is a scalar and the number-only contract is untouched. It reuses the search predicate
+  language wholesale (`#tag`, `is:todo`, `has:owner`) rather than inventing a second vocabulary, and
+  because the answer is a plain 1/0 it composes with `and`/`or`/`not`. **`count` asks about the
+  points below; `here` asks about this one** - scope is the host point alone, never its subtree.
+  Alongside it, `condParts` now accepts a bare FUNCTION CALL as a test (`{here("is:done"): ✓ | ☐}`,
+  `{and(a, b): both | not both}`): a rule name cannot contain a paren, so a call is unambiguous with
+  the inline rule form and needs no marker. A bare identifier stays out, which is the ambiguity a
+  marker would have to settle.
   **Ask a distribution for a number (#1101)**: `percentile(name, n)`, `chanceover(name, t)` and
   `chanceunder(name, t)` resolve through the `expandAggExpr` pre-pass, the same one `sum(prop)` and
   `count("query")` use, so what reaches `evalMath` is a **scalar** and the distribution-in-math

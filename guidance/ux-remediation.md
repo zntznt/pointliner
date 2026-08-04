@@ -3874,3 +3874,71 @@ because the test string I chose (`count("is:todo) > 0: …`) also trips the `fn(
 attempt without it. The fallback is load-bearing for a body with an unclosed quote and **no other
 tell** -- `mood == "angry: yes | no`, where `==` is excluded from the single-equals pattern. That case
 was added and the mutation now goes red.
+
+---
+
+## UXP-292 -- a point can be asked what it IS, not only what it counts (#1365)
+
+**Status: FIXED.** The largest measured gap left in the persona research, and the last structural
+seam between the query language and the conditional.
+
+### The defect
+
+The app knows a great deal about every point -- its tags, its state, whether it is done, overdue,
+owned -- and exposes all of it as search predicates. But only ever about OTHER points, through
+`{query:}` / `{roll:}` / `count("...")`. A conditional could test a NUMBER and nothing else:
+
+```
+[x] Bins out {is:done: ✓ | ☐}                            -> "☐"        (it IS done)
+Ellen #unverified {#unverified: NEEDS SOURCE | verified}  -> "verified"  (it IS unverified)
+```
+
+Both were coin flips. Six of seventeen personas asked for this in their own words -- Ruth's *"if this
+record is unverified, say NEEDS SOURCE"*, Rosa's *"if this item is done, show ✓"*, Bea's chore line,
+Marcus's clock, Sam's open question.
+
+### The shape, and why it is a name rather than a form
+
+`here("query")` -> 1 when the host point matches, 0 when it does not.
+
+- **It reuses the search predicate language wholesale.** No second vocabulary to invent or keep in
+  sync; `#tag`, `is:`, `has:` all work because it is the same parser. The per-node matcher already
+  existed (`queryMatchesNode`, which `nodeMatchesSearch` already calls for a one-off live check) --
+  `here` is the door onto it from the expression layer.
+- **It returns 1/0**, so a predicate becomes a first-class proposition: it composes with
+  `and`/`or`/`not` and with arithmetic.
+- **A NAME, not a delimiter** -- the charter's sanctioned growth. It rides `expandAggExpr`, so what
+  reaches `evalMath` is a scalar and the number-only contract is untouched.
+- **`count` asks about the points below; `here` asks about this one.** Scope is the host point alone,
+  pinned so a later edit cannot quietly widen it into a second `count`.
+
+### The half that had to come with it
+
+`{here("is:done"): ✓ | ☐}` still would not promote, because `condParts` required a comparison. That
+requirement exists to keep detection syntactic and to stay clear of the inline rule definition
+`{name: a | b}` -- but **that ambiguity is only real for a BARE IDENTIFIER**. A rule name cannot
+contain a paren, so a call carries its own tell and needs no marker. `condParts` now accepts a bare
+function call as a test, which also turns three shapes that were coin flips (and then, after #1359,
+refusals) into real conditionals: `{and(a, b): …}`, `{or(a, b): …}`, `{not(x): …}`. `evalMath` always
+evaluated them correctly; only the sniff was in the way. It also gives the ∃ form without the
+comparison: `{count("is:todo"): still going | all done}`.
+
+**The bare identifier stays out**, which is exactly the ambiguity a marker would have to settle.
+
+### Driven
+
+Ruth's and Rosa's sentences both answer correctly and discriminate. `here()` composes
+(`{and(here("#risk"), cost > 1000): escalate | note it}` flips on the cost). Scope proved: a tagged
+CHILD gives `here` 0 and `count` 1 on the same parent. Unknown and empty queries answer 0. `here` as
+a plain VARIABLE still works. Zero page errors. `node --test tests/test.mjs` green at **2000**.
+
+### A pin that could not fail, and a guard that could not either
+
+- The first draft asserted the regex STRING was present in `expandAggExpr`. Disabling the arm
+  (`if (false)`) left the suite **green**, because the replace line still carried the string.
+  `expandAggExpr` turns out to be fully drivable in the sandbox, so the pin is BEHAVIOURAL now --
+  it feeds real nodes and reads `(1)` / `(0)`.
+- Mutation also showed the empty-query guard was **dead**: `queryMatchesNode` already answers false
+  for an empty term list. Rather than keep a line nobody can break, the guard is removed and the
+  CONTRACT (`here("")` is 0, never vacuously true) lives in the test, so a future change to the
+  matcher fails loudly instead of being absorbed.

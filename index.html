@@ -4794,6 +4794,33 @@ function expandAggExpr(expr, node, vars = null) {
     e = e.replace(/\bcount\s*\(\s*"([^"]*)"\s*(?:,\s*(folder|document|doc)\s*)?\)/g,
       (_, q, sc) => '(' + (sc === 'folder' ? queryReduceFolder('count', q, null) : sc ? queryCountIn(q, root) : queryCountIn(q, node)) + ')');
   }
+  // here("query") — is THIS point one the query would match? #1365. The app knows a great deal about
+  // every point (its tags, its state, whether it is done, overdue, owned) and exposed all of it as
+  // search predicates — but only ever about OTHER points, through {query:}/{roll:}/count(). A
+  // conditional could test a number and nothing else, so `{here("is:done"): ✓ | ☐}` had no form at
+  // all and `{is:done: …}` fell to the alternation branch as a coin flip. Six of seventeen personas
+  // asked for this in their own words; it was the largest measured gap left.
+  //
+  // Shape follows count("query") exactly, and deliberately: the quoted argument is the SAME search
+  // language (no second predicate vocabulary to invent or keep in sync), it substitutes to a literal
+  // 1/0 here so evalMath's number-only contract is untouched, and being a plain 1/0 it composes with
+  // and()/or()/not() — a predicate becomes a first-class proposition. count asks about the points
+  // BELOW this one; here asks about this one. A node-less caller (a dialog preview) answers 0, the
+  // same empty-scope answer the rollups give.
+  //
+  // Scope is the host point ALONE, never its subtree — the subtree is what count() is for. Tag
+  // inheritance still applies through queryMatchesNode's own ancestor default, so a point inside a
+  // #project section answers to #project the way search says it does.
+  if (/\bhere\s*\(\s*"/.test(e)) {
+    e = e.replace(/\bhere\s*\(\s*"([^"]*)"\s*\)/g, (_, q) => {
+      if (!node) return '(0)';
+      // No empty-query guard: queryMatchesNode already answers false for an empty term list, and a
+      // mutation proved the guard dead. The contract that `here("")` is 0 rather than vacuously true
+      // lives in the test instead, so a future change to the matcher fails loudly rather than being
+      // absorbed by a line nobody could break.
+      return '(' + (queryMatchesNode(parseSearchQuery(q), node, allSequences(root), varsMap(), collectLinks(root)) ? 1 : 0) + ')';
+    });
+  }
   // sum/avg/min/max("query", prop) — REDUCE a property over a live query set (SR-8 / #877), the
   // generalization of count("query"). The quoted 1st arg is the search, the 2nd a property key, so
   // {= sum("is:task", cost)} totals the cost of every point matching the query within the node's
@@ -23932,7 +23959,14 @@ function condParts(body) {
   if (segs.length < 2) return null;                               // no top-level `:`
   const cond = segs[0].trim();
   if (!cond || splitCondTop(cond, '|').length > 1) return null;   // a `|` before the `:` → alternation, not a conditional
-  if (!/==|!=|<|>/.test(cond)) return null;                       // require a comparison so detection stays syntactic
+  // A comparison, OR a bare FUNCTION CALL. #1365: the comparison requirement exists to keep detection
+  // syntactic and to stay clear of the inline rule definition `{name: a | b}` — but that ambiguity is
+  // only real for a BARE IDENTIFIER. A rule name cannot contain a paren, so `{here("is:done"): ✓ | ☐}`
+  // and `{and(a, b): both | not both}` are unambiguous on their face and need no marker to disambiguate
+  // them. Nonzero is true, the same truthiness and()/or()/not() already use, so a predicate or a count
+  // reads as a test directly: `{count("is:todo"): still going | all done}` is the ∃ form without the
+  // `> 0`. A call that will not evaluate still fails visibly through evalMath's null, as before.
+  if (!/==|!=|<|>/.test(cond) && !/^[a-z_]\w*\s*\(/i.test(cond)) return null;
   const rest = body.slice(segs[0].length + 1);
   const alts = splitTopLevel(rest, '|');
   return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
@@ -28089,7 +28123,7 @@ const MATH_FN_DESC = {
   or:'1 if any is true, else 0', not:'flip a true/false (1/0)',
   // aggregates over children
   sum:"add up a property across this point's children", avg:"average a property across children",
-  count:"how many children have the property", words:'count words in a scope (subtree, self, children); words(scope, notes) counts notes too',
+  count:"how many children have the property", here:'1 when THIS point matches a search, else 0', words:'count words in a scope (subtree, self, children); words(scope, notes) counts notes too',
   // dates
   year:'the year of a date', month:'the month of a date (1 to 12)', day:'the day of the month', weekday:'the day of the week',
   quarter:'the quarter of the year (1 to 4)', daysuntil:'days from today until a date', daysbetween:'days between two dates',
