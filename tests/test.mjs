@@ -28613,3 +28613,68 @@ test('#1357: the retry is wired at the commit chokepoint, gated, undoable and re
   assert.ok(/flashHint\(msg\)/.test(b) && /pendingBraceMessage\(promotedPending\.length\)/.test(b),
     'and the count is reported (P4)');
 });
+
+test('#1281: a placeholder row and the app’s own timestamps are not columns', () => {
+  const row = (text, props = []) => ({ id: 'x', text, props, children: [] });
+  const stamp = [{ key: 'created', val: '2026-08-04T06:13' }, { key: 'edited', val: '2026-08-04T06:13' }];
+  const priced = n => row('item ' + n, [{ key: 'cost', val: String(n) }, ...stamp]);
+
+  // Every REAL point carries created/edited, so they passed the "on every row" test and became
+  // columns. Driven before the fix, the + Add form asked for "Created" and "Edited" beside
+  // "Description" and "Cost". The pure pins never caught it because their fixtures had no timestamps.
+  const real = nonEmpty([priced(1), priced(2), priced(3)], 'timestamped rows');
+  const shape = c.inferRowShape(real);
+  assert.equal(JSON.stringify(shape.props), JSON.stringify([{ key: 'cost', type: 'number' }]),
+    'cost is the only column; created and edited are the app’s bookkeeping, never a user field');
+
+  // Pressing Enter after the last item leaves a blank point, which is where a person STOPS typing.
+  // A key is only a column when every row carries it, so that one blank row took the shape to null
+  // and every door with it. Measured: 3 priced rows -> + Total; the same 3 plus the blank -> nothing.
+  const withBlank = c.inferRowShape([...real, row('')]);
+  assert.equal(JSON.stringify(withBlank && withBlank.props), JSON.stringify([{ key: 'cost', type: 'number' }]),
+    'a trailing blank row is a placeholder, not a row that lacks the column');
+  assert.equal(JSON.stringify(withBlank), JSON.stringify(shape), 'and changes the shape in no other way');
+  // whitespace-only counts as blank too (a stray space is the same accident)
+  assert.ok(c.inferRowShape([...real, row('   ')]), 'whitespace-only is a placeholder as well');
+
+  // The dropping is scoped to rows that carry NO information: a blank-texted row with a real
+  // property is still data, and must still be able to break a column that it genuinely lacks.
+  assert.equal(c.inferRowShape([...real, row('', [{ key: 'note', val: 'x' }, ...stamp])]), null,
+    'a propertied row with no text still counts, so cost stops being on every row');
+  // and the under-2 gate counts REAL rows, not placeholders
+  assert.equal(c.inferRowShape([priced(1), row(''), row('')]), null, 'one real row plus blanks is not a list');
+  // timestamps alone are no shape at all — otherwise every ordinary outline would sprout doors
+  assert.equal(c.inferRowShape([row('a', stamp), row('b', stamp)]), null,
+    'two plain points that only carry timestamps share nothing');
+});
+
+test('#1281: which rows a commit can change the doors on', () => {
+  const D = c.affordanceDirtyIds;
+  const n = { id: 'kid' }, p = { id: 'mum' };
+  // the point itself (its own + property / + Card read its own text) AND its parent (whose
+  // + Add / + Total / + Check all read the shape inferred across its children, which just moved).
+  assert.deepEqual(c.host ? c.host(D(n, p)) : JSON.parse(JSON.stringify(D(n, p))), ['kid', 'mum']);
+  assert.equal(JSON.stringify(D(n, null)), JSON.stringify(['kid']), 'a top-level point returns one id, not a hole');
+  assert.equal(JSON.stringify(D(n, n)), JSON.stringify(['kid']), 'deduped');
+  assert.equal(JSON.stringify(D(null, null)), JSON.stringify([]));
+});
+
+test('#1281: the doors are refreshed on commit, not only on a full render', () => {
+  const b = fnBody(_src, 'refreshRowAffordances');
+  // THE bug: the doors are appended while a ROW is built, and a text commit repaints `.node-content`
+  // innerHTML only. Measured on e631e52: after three priced rows were typed and committed the DOM held
+  // zero .addrow-affordance, while calling maybeAddRowAffordance by hand on that parent produced
+  // + Add, + Total and + Check. Only a reload or a fold toggle ever surfaced the panel's #1 door.
+  assert.ok(/maybeAddRowAffordance\(node, row\); maybeAddFieldAffordance\(node, row\); maybeAddCardAffordance\(node, row\);/.test(b),
+    'refreshes all three door families, the same trio the row builder calls');
+  assert.ok(/querySelectorAll\('?:scope > \.addrow-affordance'?\)|:scope > \.addrow-affordance/.test(b),
+    'clears first, scoped to this row, or a second commit appends a second + Total');
+  assert.ok(/if \(!row\) return;/.test(b), 'a row that is not mounted is left to the row builder');
+  // #1133: the call site, since a correct refresher proves nothing about whether anything calls it.
+  const ee = fnBody(_src, 'exitEdit');
+  assert.ok(/for \(const id of affordanceDirtyIds\(node, parentOf\(node\.id\) \|\| null\)\) refreshRowAffordances\(id\);/.test(ee),
+    'exitEdit refreshes the committed point AND its parent');
+  // the row builder must keep its own call: the refresh is an addition, not a replacement
+  assert.ok(/if \(!opts\.searchCtx\) \{ maybeAddRowAffordance\(node, row\); maybeAddFieldAffordance\(node, row\); maybeAddCardAffordance\(node, row\); \}/.test(_src),
+    'the original row-build path is untouched');
+});

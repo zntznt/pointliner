@@ -4095,3 +4095,64 @@ guard, dropping the caret-map restore, and discarding the sweep's result while k
 of my own pins were vacuous until mutation caught them: one anchor appeared twice in the file so the
 mutation edited a different site, and one pinned the gate expression without pinning that its result
 was assigned.
+
+---
+
+## UXP-295 -- the point-and-click doors appear while you are building the list (#1281)
+
+**Status: FIXED.** #1281 is the panel's most-repeated wall (5 of 7, re-flagged at 6 of 7) and four PRs
+have shipped against it: `+ Total` (a04fdd0), `+ Check` (07ad30c), reducer and property-key chips in the
+compute dialogs (16059a8), spreadsheet paste. The owner's own status comment called the door "verified
+working live". Driven on `e631e52`, it is not reachable in the state a person is actually in.
+
+### Three causes, one symptom, all in the same place
+
+**1. The doors are built once, while a ROW is built, and a commit never rebuilds a row.**
+`buildRow`'s `if (!opts.searchCtx) { maybeAddRowAffordance… }` line is the only caller. `exitEdit`
+repaints `.node-content` innerHTML, and `repaintComputedDependents` does the same for its worklist; the
+affordances live on the ROW, outside both. Measured: after three `{prop cost: …}` rows were typed and
+committed, the DOM held **zero** `.addrow-affordance`, while calling `maybeAddRowAffordance` by hand on
+that same parent produced `+ Add`, `+ Total`, `+ Check`. Only a full `render()` ever surfaced them, which
+means a reload or a fold toggle. "Verified working live" was almost certainly verified on a reloaded doc.
+
+**2. A trailing blank row took the shape to null.** `inferRowShape` counts a key as a column only when
+every row carries it. Pressing Enter after the last item leaves an empty point, which is exactly where a
+person stops typing:
+
+| the list | shape | doors |
+|---|---|---|
+| three priced rows | `cost:number` | + Add, + Total, + Check |
+| the same three, plus the blank the last Enter made | **null** | **none** |
+
+**3. `created` and `edited` were columns.** Every real point carries them, so they passed the
+"on every row" test. Driven, the `+ Add` form asked a non-technical user to fill in **"Created"** and
+**"Edited"** beside "Description" and "Cost". The pure pins never caught it because their fixtures are
+hand-built objects with no timestamps -- the exact gap a fixture that is tidier than reality leaves.
+
+### The fix
+
+`refreshRowAffordances(nodeId)` re-runs the same three door builders the row builder calls, clearing
+first so a second commit cannot append a second `+ Total`. Called from `exitEdit` for the ids
+`affordanceDirtyIds(node, parent)` returns: the point itself (its own `+ property` / `+ Card` read its
+own text) and its parent (whose `+ Add` / `+ Total` / `+ Check` / `+ Variance` all read the shape across
+its children, which the commit just moved). A row that is not mounted is left alone -- virtualization
+will build its doors the normal way.
+
+`inferRowShape` drops placeholder rows (no text and no non-timestamp property) and never treats a
+timestamp key as a column.
+
+### Driven
+
+All three realistic endings now open the doors (no trailing blank, one trailing blank, heading parent),
+the `+ Add` form is **Description + Cost**, and clicking `+ Total` still writes `sum(cost)=5.05` on a
+4.10 + 0.55 + 0.40 list. Regressions: four commits in a row do not double the doors; an ordinary prose
+outline stays door-free (the #1330 pre-filter holds); focus stays inside the edited point while typing,
+so the caret invariant is untouched.
+
+**Deliberately not changed:** a list where one row is unpriced still shows no `+ Total`. There is no
+column to total yet, and inventing one would be the silent-wrong-total #1284 asks to prevent. The
+adjacent ask -- flag the rows that are MISSING the property -- is that issue's, not this one's.
+
+`node --test tests/test.mjs` green at **2008**. Seven mutations, uniqueness-checked anchors, all red,
+including letting timestamps be columns, refreshing the point but not its parent, and dropping the clear
+so the doors double.
