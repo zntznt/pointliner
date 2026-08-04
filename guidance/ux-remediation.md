@@ -4238,3 +4238,57 @@ same lesson finding (c) of UXP-295 taught from the other direction.
 `node --test tests/test.mjs` green at **2010**. Eight mutations, uniqueness-checked anchors, all red,
 including unpairing a single repaint site (the class guard catches it), dropping idempotence, and
 restoring the double period.
+
+---
+
+## UXP-297 -- fnBody stops brace-counting through strings, comments and regexes (#1370)
+
+**Status: FIXED.** `UI: none` -- `tests/` only.
+
+`fnBody(src, name)` slices a function by counting `{` and `}`. A brace inside a string, a template
+literal, a comment or a regex is not a brace, so a body containing one never balanced. Measured
+across the 268 functions the suite pins:
+
+| | |
+|---|---|
+| pinned functions | 268 |
+| slices that ran past the next top-level declaration | **10** |
+| of those, slices that swallowed the rest of the file | **8** |
+| worst | `mdInline`, **2,337,234** chars against a real 20,080 |
+
+The causes were brace literals in strings (`'{'`), in regexes (`/[`[!{*_~:^#]/`) and in **comments**
+(`// String literal: {"text"} is literal text`).
+
+### The measured result contradicts what I expected, and that is the finding
+
+The hazard is a POSITIVE assertion: on a runaway slice it can pass by matching text in a completely
+different function. So the expectation was a crop of newly-red vacuous pins. **With the fix in place
+the suite stayed green at 2010.** No existing pin was depending on the overshoot -- authors write
+pins against the code they are looking at, and that code was inside the function. The bug was real
+and benign, and saying so is more useful than implying a save that did not happen.
+
+The value is therefore entirely forward-looking, which is the #1133 rule applied to the helper rather
+than to any one test: a pin can no longer be written against a runaway slice.
+
+### An error of mine that nearly became the record
+
+My first mask handled `${…}` with a flat depth counter instead of a stack, so it ended `mdInline` and
+`renderGraph` **mid-interpolation**. That produced **21 red tests**, and every one of them looked
+exactly like a vacuous pin being caught. It would have been easy, and completely wrong, to "fix" 21
+pins to match a broken helper. What caught it was checking the slice TAILS rather than the red count:
+a correct slice ends `…return s;\n}` at column 0, and those ended `style=\"${escQ(sz.style)}`.
+
+Acceptance is now that check, run over all 268: **260 end on a column-0 closing brace**, and the
+other 8 are legitimately different shapes (2 deliberately-absent names that pin the throw, 3
+one-liners ending `; }`, 3 IIFE tails).
+
+### Guard
+
+A test walks every `fnBody(_src, 'NAME')` in the suite and fails if a slice runs more than 400 chars
+past the next top-level declaration. Four of five mutations are red, including reinstating the naive
+counter. The fifth -- dropping the template-literal arm -- stays green, because a `${…}`
+interpolation's braces balance either way and today's source has no template whose TEXT holds an
+unmatched brace. That arm is correct in principle and unexercised in practice; the residual is stated
+in the test rather than implied away (the #1132 precedent).
+
+`node --test tests/test.mjs` green at **2011**.

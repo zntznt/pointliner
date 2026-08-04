@@ -107,6 +107,73 @@ function between(src, startMarker, endMarker) {
   return src.slice(i, j);
 }
 
+// #1370: which character positions are CODE, as opposed to sitting inside a string, a template
+// literal, a comment or a regex literal. fnBody counts braces, and a brace in any of those is not a
+// brace — measured, 10 of the 268 pinned functions never balanced, and eight of them returned the
+// rest of the document (2.3 MB for `mdInline` against a real ~20 KB). The dangerous direction is a
+// POSITIVE assertion, which can then pass by matching text in a completely different function.
+//
+// Deliberately a mask, not a stripper. #1132 is the precedent: a naive whole-file stripper failed
+// silently and narrowed every guard downstream. Here nothing is removed and no slice is rewritten —
+// the returned text is still the raw source. The mask only decides which `{`/`}` get counted, so the
+// worst a mis-parse can do is mis-balance one function, which the plausibility guard below catches.
+//
+// Regex detection is the one genuinely hard case (`/["']/` looks like a string opener). Uses the
+// standard heuristic: a `/` is a regex only where a VALUE may start, i.e. after one of ( , = : [ ! &
+// | ? { } ; ~ + - * % ^ < > or `return`/`typeof`/`case`, else it is division or a comment opener.
+function codeMask(src) {
+  const mask = new Uint8Array(src.length);        // 1 = a brace here is a real block brace
+  // An explicit stack, because the nesting is genuinely recursive: a template literal holds `${…}`
+  // interpolations that hold code that holds template literals. A flat scanner gets this wrong in a
+  // way that LOOKS fine — my first attempt ended mdInline and renderGraph mid-interpolation, and the
+  // slices still passed a "does it sit inside the function" check because they were merely short.
+  // stack entries: {k:'code', depth} | {k:'tpl'} ; a `}` that closes an interpolation pops to 'tpl'.
+  const st = [{ k: 'code', depth: 0 }];
+  const top = () => st[st.length - 1];
+  const prevSig = (at) => { let j = at - 1; while (j >= 0 && /\s/.test(src[j])) j--; return j >= 0 ? src[j] : ''; };
+  let i = 0;
+  while (i < src.length) {
+    const t = top(), c = src[i], d = src[i + 1];
+    if (t.k === 'tpl') {                              // inside a template literal's TEXT
+      if (c === '\\') { i += 2; continue; }
+      if (c === '`') { st.pop(); i++; continue; }
+      if (c === '$' && d === '{') { st.push({ k: 'code', depth: 0, fromTpl: true }); i += 2; continue; }
+      i++; continue;
+    }
+    // ── code ──
+    if (c === '/' && d === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue; }
+    if (c === '"' || c === "'") { const q = c; i++; while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; } i++; continue; }
+    if (c === '`') { st.push({ k: 'tpl' }); i++; continue; }
+    if (c === '/' && ('(,=:[!&|?{};~+-*%^<>'.includes(prevSig(i)) || prevSig(i) === '')) {
+      i++; let cls = false;
+      while (i < src.length) {
+        if (src[i] === '\\') { i += 2; continue; }
+        if (src[i] === '[') cls = true;
+        else if (src[i] === ']') cls = false;
+        else if (src[i] === '/' && !cls) { i++; break; }
+        else if (src[i] === '\n') break;             // not a regex after all; bail rather than run away
+        i++;
+      }
+      continue;
+    }
+    if (c === '{') { mask[i] = 1; t.depth++; i++; continue; }
+    if (c === '}') {
+      if (t.depth === 0 && t.fromTpl) { st.pop(); i++; continue; }   // closes `${…}`, not a block
+      mask[i] = 1; t.depth--; i++; continue;
+    }
+    i++;
+  }
+  return mask;
+}
+let _maskCache = new WeakMap();
+function maskFor(src) {
+  const key = { };   // WeakMap needs an object; cache on the string via a Map instead
+  if (!maskFor._m) maskFor._m = new Map();
+  if (!maskFor._m.has(src)) maskFor._m.set(src, codeMask(src));
+  return maskFor._m.get(src);
+}
+
 function fnBody(src, name) {
   const start = src.indexOf('function ' + name + '(');
   if (start < 0) throw new Error(
@@ -122,10 +189,13 @@ function fnBody(src, name) {
     if (ch === '(') pdepth++;
     else if (ch === ')') { pdepth--; if (pdepth === 0) { afterParams = i + 1; break; } }
   }
-  const open = src.indexOf('{', afterParams >= 0 ? afterParams : start);
+  const mask = maskFor(src);   // #1370: only count braces that are CODE
+  let open = src.indexOf('{', afterParams >= 0 ? afterParams : start);
+  while (open >= 0 && !mask[open]) open = src.indexOf('{', open + 1);
   if (open < 0) return '';
   let depth = 0;
   for (let i = open; i < src.length; i++) {
+    if (!mask[i]) continue;
     const ch = src[i];
     if (ch === '{') depth++;
     else if (ch === '}') { depth--; if (depth === 0) return src.slice(open, i + 1); }
@@ -28725,4 +28795,45 @@ test('#1373: the pill-tooltip policy is per-repaint, not a post-render sweep', (
   assert.ok(sites.length >= 9, `expected the known repaint sites, found ${sites.length}`);
   const unpaired = sites.filter(l => !/applyPillTitlePolicy\(/.test(l));
   assert.deepEqual(unpaired, [], 'every repaint site re-applies the tooltip policy on the same line');
+});
+
+test('#1370: no fnBody pin reads past the end of its own function', () => {
+  // The helper brace-matches, and a brace inside a string, template, comment or regex is not a brace.
+  // Measured on the naive version: 10 of the pinned functions never balanced and EIGHT returned the
+  // rest of the document (mdInline came back 2,337,234 chars against a real 20,080). A slice that
+  // wide makes a POSITIVE assertion able to pass by matching text in a completely different function.
+  //
+  // Measured honestly, and worth recording because it is the opposite of what I expected: with the
+  // masking fix in place the whole suite stayed green, so NO existing pin was actually depending on
+  // the overshoot. The bug was real and benign. This guard is the durable half — it stops a future
+  // pin from being written against a runaway slice, which is the #1133 rule applied to the helper
+  // rather than to any one test.
+  const names = nonEmpty(
+    [...new Set([...readFileSync(fileURLToPath(import.meta.url), 'utf8')
+      .matchAll(/fnBody\(_src,\s*'([A-Za-z_$][\w$]*)'\)/g)].map(m => m[1]))],
+    'fnBody call sites in this file');
+  const runaway = [];
+  for (const n of names) {
+    const start = _src.indexOf('function ' + n + '(');
+    if (start < 0) continue;                     // the deliberately-absent names that pin the throw
+    let next = _src.length;
+    for (const k of ['\nfunction ', '\nconst ', '\nlet ']) {
+      const j = _src.indexOf(k, start + 10);
+      if (j >= 0 && j < next) next = j;
+    }
+    const body = fnBody(_src, n);
+    const end = _src.indexOf(body, start) + body.length;
+    // a slice may legitimately end just past the marker (a one-liner, an IIFE tail); a RUNAWAY is
+    // one that swallows whole declarations, which is what the naive counter did.
+    if (end > next + 400) runaway.push(`${n}: slice ends ${end - next} chars past the next top-level declaration`);
+  }
+  assert.deepEqual(runaway, [], 'every fnBody slice stays inside its own function');
+  assert.ok(names.length > 200, `expected the suite's ~268 fnBody pins, saw ${names.length}`);
+  // RESIDUAL, stated rather than implied away (the #1132 precedent). Mutation-testing this guard
+  // found four of five arms load-bearing — dropping the mask, line comments, regex literals, or the
+  // interpolation-close rule all turn it (or the suite) red. Dropping the TEMPLATE-literal arm does
+  // not, because a `${…}` interpolation's braces balance either way and today's source happens to
+  // contain no template whose TEXT holds an unmatched `{`. That arm is correct in principle and
+  // unexercised in practice; it stays, and this note stops the next reader from concluding it is
+  // dead code because a mutation left the suite green.
 });
