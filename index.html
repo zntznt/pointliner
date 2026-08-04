@@ -1129,6 +1129,10 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 #tbtn-tooltip .tt-hint{font-weight:500;color:var(--acc)}
 /* math expression pill */
 .math-roll{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;margin:0 1px;padding:1px 8px 1px 6px;border:1px solid var(--bdr);border-radius:999px;background:var(--cbg);font-size:.86em;line-height:1.5;cursor:pointer;user-select:none;white-space:nowrap;transition:border-color .12s,background .12s,box-shadow .12s}
+/* a generative math pill ({= 1d6+2}) re-rolls on click, like a dice pill — press feedback + an accent
+   icon signal it is live/rollable, distinguishing it from a static formula total. Deep pass. */
+.math-gen .math-ico{color:var(--acc)}
+.math-gen:active{transform:translateY(.5px)}
 .math-roll:hover{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 6%,var(--cbg))}
 .math-roll:active{transform:translateY(.5px)}
 .math-roll .math-ico{color:var(--acc);font-size:.88em;display:inline-flex}
@@ -18425,6 +18429,14 @@ function attachContentEvents(content, node) {
       // #1321: the magnifier opens the number's breakdown instead of the format editor (checked before
       // editMath because it also carries .math-edit for its styling/keyboard).
       if (e.target.closest('.math-explain')) { openPillAudit(node, mp.dataset.key); return; }
+      // a generative math pill ({= 1d6+2}) re-rolls on a body click, edits on the pencil — the dice /
+      // pick-var gesture. A plain formula pill keeps click-anywhere = edit.
+      const mRec = node.math?.find(x => x.key === mp.dataset.key);
+      if (mRec?.gen && !e.target.closest('.math-edit')) {
+        if (content.dataset.editing) rerollInEdit(content, node, () => rerollMath(node, mp.dataset.key, { repaintAll: false }));
+        else rerollMath(node, mp.dataset.key);
+        return;
+      }
       if (content.dataset.editing) exitEdit(content, node); // commit any in-progress edit first
       editMath(node, mp.dataset.key); // opens a dialog; stays in display mode
       return;
@@ -18749,6 +18761,10 @@ function classifyBraceBody(body, rules, vars) {
     const expr = body.slice(1).trim();
     if (!expr) return 'invalid';
     if (evalMath(expandAggExpr(expr, null), vars) !== null) return 'artifact';
+    // a roll inside math ({= 1d6+2}) is a generative math pill — evalMath can't see the die, so freeze it
+    // and validate the frozen numeric form. Checked AFTER the normal path so simulate(N, 2d6, …) (whose
+    // dice is a function ARGUMENT, resolved by expandAggExpr) is never mistaken for a raw roll. Deep pass.
+    if (mathHasDice(expr) && evalMath(expandAggExpr(freezeDiceInExpr(expr), null), vars) !== null) return 'artifact';
     // #1319 (driven panel): a rollup/word aggregate returns 0 with the null node used here, so an
     // expression that COMBINES them ({= round(100*sum(a)/sum(b))}, a division by a sum) can go NaN and
     // read as null AT CLASSIFY TIME while it computes fine against the live node at render (or errors
@@ -28295,7 +28311,43 @@ function formatVarValue(v) { return typeof v === 'string' ? v : formatNumDisplay
 
 function mathKey() { return 'x' + Math.random().toString(36).slice(2, 9); }
 
+// ── a roll inside math: {= 1d6 + 2} ────────────────────────────────────────────
+// evalMath speaks only numbers, so a dice term is invisible to it. FREEZE the roll (engine-1 feeds
+// engine-2): substitute each dice term with its rolled total, leaving props/vars/rollups symbolic so
+// they stay LIVE. The frozen expression is stored on the math record, so a re-render never re-rolls
+// (a math pill recomputes every paint) — only a click re-rolls, exactly like a dice pill. Owner
+// decision: a math pill that contains a roll behaves like a dice pill (freeze + click to re-roll);
+// {= sum(cost)} with no roll stays live. Deep pass, the two-engine seam.
+// A dice term (1d6, d20, 2d6!, 4d6kh3), anchored so a variable named d6 or a word ...d6 is not eaten.
+const MATH_DICE_RE = /(?<![\w.])\d*d(?:\d+|[fF])(?:(?:kh|kl|dh|dl|!|rr?|ro|min|max)\d*)*/;
+function mathHasDice(expr) { return new RegExp(MATH_DICE_RE.source, 'i').test(String(expr == null ? '' : expr)); }
+// One roll of a single dice term → its total, or null if it doesn't parse.
+function rollDiceTerm(term) {
+  const parsed = parseDice(term, collectVars());
+  return parsed ? rollParsed(parsed).total : null;
+}
+// Substitute every dice term with its parenthesized rolled total; non-dice text (props, vars, sum(),
+// operators) is untouched, so {= 1d6 + STR} freezes only the die and STR stays live. Pure-ish (rolls
+// via the session RNG, seedable in tests).
+function freezeDiceInExpr(expr) {
+  return String(expr == null ? '' : expr).replace(new RegExp(MATH_DICE_RE.source, 'gi'), (m) => {
+    const total = rollDiceTerm(m);
+    return total === null ? m : '(' + total + ')';
+  });
+}
 function makeMathResult(expr, scope = null) {
+  // A dice-bearing math expr that evalMath cannot parse ({= 1d6+2}) is a GENERATIVE math pill: freeze
+  // the roll, store the frozen expression, evaluate that. Built only when the NORMAL parse below fails
+  // (so simulate(N, 2d6, …), whose dice is a resolved function argument, stays a normal pill). Promotes
+  // iff the frozen form evaluates or carries a render-recomputable aggregate — lockstep with classify.
+  const genPill = () => {
+    if (!mathHasDice(expr)) return null;
+    const rolled = freezeDiceInExpr(expr);
+    const gv = evalMath(expandAggExpr(rolled, null), scope || collectVars());
+    if (gv !== null) return { key: mathKey(), expr, gen: true, rolled, result: formatMathDisplay(gv, expr), fmt: undefined };
+    if (/\b(?:sum|avg|count|min|max|words)\s*\(/i.test(expr)) return { key: mathKey(), expr, gen: true, rolled, result: '#ERR', fmt: undefined };
+    return null;
+  };
   // expandAggExpr keeps {= sum(prop)} valid at creation (no render node → empty
   // children → 0); renderMathPill recomputes against the real children on render.
   // `scope` is the variable map to VALIDATE against at creation. Default = doc vars, but the
@@ -28304,6 +28356,8 @@ function makeMathResult(expr, scope = null) {
   // instead of staying raw text — parity with how renderMathPill will evaluate it.
   const v = evalMath(expandAggExpr(expr, null), scope || collectVars());
   if (v === null) {
+    const gen = genPill();
+    if (gen) return gen;
     // #889: a deterministic conversion error (cross-dimension convert) still creates the pill so it
     // renders a loud #ERR on every path (renderMathPill recomputes and surfaces #ERR with its reason);
     // a plain parse failure (prose like {= not math}) returns null and stays literal. Lockstep with
@@ -29159,7 +29213,11 @@ function renderMathPill(key, m, opts = {}) {
   // So a `{= STR + 2}` pill on a scene under a `STR:14` character point reads 16, and its own
   // `STR:` (if any) still wins. A no-prop node + no-prop ancestors yields renderVarMap unchanged.
   const vmap = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap;   // #767: vars visible AT this pill's position
-  const expr = expandAggExpr(m.expr, cookieNode, vmap);   // vmap: base.col column totals read the positional map
+  // a generative math pill ({= 1d6+2}) evaluates its FROZEN roll (m.rolled), never the raw m.expr — so a
+  // re-render is stable and only a click re-rolls. Props/vars in the frozen form stay live (only the die
+  // was substituted). A gen pill with no frozen form (corrupt/old) falls back to m.expr → a loud #ERR.
+  const evalSrc = m.gen ? (m.rolled || m.expr) : m.expr;
+  const expr = expandAggExpr(evalSrc, cookieNode, vmap);   // vmap: base.col column totals read the positional map
   const scope = resolveNodeScope(cookieNode, ancestorsOf(cookieNode), vmap);
   const fresh = evalMath(expr, scope);          // positional: vars visible at this node, own props on top
   if (fresh === null) {
@@ -29300,9 +29358,13 @@ function renderMathPill(key, m, opts = {}) {
   // #1333: this is the successful-number path (the #ERR / empty branches returned above). If it is showing a
   // long ugly decimal and the author set no format, teach the round-it door once (Guided-only).
   if (!isBoolPill && !m.fmt) maybeNudgeDecimals(display);
+  // a generative math pill re-rolls on a body click (the pencil still edits) — the dice/pick-var
+  // gesture. Its class drives the re-roll cursor; its tip names the gesture instead of "click to edit".
+  const genCls = m.gen ? ' math-gen' : '';
+  const gTip = m.gen ? ' Click to re-roll; edit with the pencil.' : editTip;
   if (m.bare) {
-    return `<span class="math-roll math-bare${boolCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
-      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
+    return `<span class="math-roll math-bare${boolCls}${genCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${gTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}.${escQ(folderTip)}${escQ(queryTip)}${gTip}">`
       + `<span class="math-result">${escHtml(dispVal)}</span>`
       + explain
       + pencil
@@ -29311,8 +29373,8 @@ function renderMathPill(key, m, opts = {}) {
   // Edit pencil for visual consistency with every other pill. Math is single-gesture
   // (body-click also edits), so the pencil routes to the same editMath via the .math-roll
   // click handler — a consistent affordance, not a new gesture. Hover-revealed like the rest.
-  return `<span class="math-roll${boolCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${editTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
-    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}.${escQ(folderTip)}${escQ(queryTip)}${editTip}">`
+  return `<span class="math-roll${boolCls}${genCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${gTip.trim()}${escQ(folderTip)}${escQ(queryTip)}"`
+    + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}.${escQ(folderTip)}${escQ(queryTip)}${gTip}">`
     + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
     + `<span class="math-expr">${escHtml(m.expr)}</span>`
     + `<span class="math-eq">=</span>`
@@ -30014,6 +30076,19 @@ function openColFmtDialog(node, colIdx) {
 }
 
 // Edit an existing math expression in-place; re-evaluates and updates the pill.
+// Re-roll a generative math pill ({= 1d6+2}): re-freeze its dice, recompute, repaint. A document edit
+// like a dice re-roll — pushUndo (one Undo reverts it), markDirty, announce the new value (P4). Local
+// repaint (a math pill's value is not referenced by name, so only its own point changes).
+function rerollMath(node, key, _opts = {}) {
+  const m = node?.math?.find(x => x.key === key);
+  if (!m || !m.gen) return;
+  pushUndo();
+  m.rolled = freezeDiceInExpr(m.expr);
+  markDirty();
+  repaintNodeContent(node);
+  const v = evalMath(expandAggExpr(m.rolled, node), resolveNodeScope(node, ancestorsOf(node), collectVars()));
+  if (v !== null && Number.isFinite(v)) announce(m.expr + ' is now ' + formatMathResult(v));
+}
 function editMath(node, key) {
   const m = node?.math?.find(x => x.key === key);
   if (!m) return;
