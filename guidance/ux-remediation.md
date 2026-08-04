@@ -3745,3 +3745,62 @@ Six mutations; five bit immediately and one did not -- dropping the rule-name ex
 nothing, because none of my "must not claim" strings actually needed it. It exists for a rule
 literally *named* `and`, `or` or `not`, whose bare name matches the tells. Those three cases were
 added and the mutation now goes red. A guard nobody can break is a guard nobody is testing.
+
+---
+
+## UXP-290 -- a conditional stops borrowing the roll family's "no match yet" (#1361)
+
+**Status: FIXED.** The reason already existed one function away; only the wiring was missing.
+
+### The defect
+
+Any conditional whose test would not resolve rendered **`no match yet`**, tooltip *"Nothing matched
+yet. Click to try again, or add points that fit."* Every clause is wrong for a conditional: nothing
+was being MATCHED (a name failed to resolve); adding points cannot help; a conditional is not random,
+so "try again" re-judges to the same answer; and the failing term was never named although
+`resolveBrace` had already computed it into the `{hp > 0?}` marker.
+
+Cause: `renderGrammarPill` funnels every `{…?}` marker through one branch shared with `{roll:}` --
+the CSS comment says so outright, *"a roll/cond that matched nothing"*. There was a `badFilter` arm
+that sniffs `g.def` for a `{roll:}` and swaps in a specific reason; there was no conditional arm.
+
+### The fix borrows rather than mints
+
+`condEmptyMessage(cond, vars)` answers in the conditional's own terms and takes its explanation from
+**`mathReasonPhrase`** -- the same phrase the `#ERR` pill and the `/check` dialog already speak -- so
+an unresolvable name reads one way everywhere (P1). Four branches, each measured:
+
+| case | what it says |
+|---|---|
+| numeric, name missing | *Could not read the test "hp > 0": a name with no value here. A property is read from this point and the points above it…* |
+| numeric, reads now | *"hp > 0" has a value now, but this was judged before it did. Click to re-judge* |
+| text, name missing | *…A text test compares a name with a quoted word, so the name needs a value.* |
+| text, reads now | the re-judge message |
+
+**The "reads now" case is the one the shared branch could never explain.** A conditional written
+ABOVE the variable it reads freezes unresolved on load (promotion walks top-down) and ONE CLICK fixes
+it. It is derived from whether the test reads *now*, deliberately NOT from the `stale` flag: a pill
+that never resolved recorded no deps and is therefore never stale, which is exactly why the old
+branch suppressed the "inputs changed" tail and left that user with advice to add a value that
+already existed.
+
+### Two bugs of mine, both caught by checking rather than reading
+
+1. **An HTML-attribute break, and a latent hole it exposed.** The `cta` reached `title=` and
+   `aria-label=` **unescaped**. That was safe only while no cta could contain a quote; mine
+   interpolates the test text, so `{mood == "angry": …}` broke the title attribute outright. The
+   roll's `badFilter` already interpolated user query text, so the hole was latent, not new. Both
+   sites now `escQ` the cta -- identity for every quote-free cta, so nothing else moves. `escQ`'s own
+   comment invites exactly this: *"a correct attribute escape is never wrong here."*
+2. **`mathErrorReason` returns `''`, not `null`,** for an expression it finds nothing wrong with.
+   Testing `=== null` inverted every branch and produced a confident, plausible, wrong sentence -- a
+   numeric condition explained as a text test. Found by walking all four cases, not by reading the
+   code. The comment now says which test is correct and why.
+
+### Driven
+
+A failed numeric condition, a failed text condition, a condition declared after its variable, a
+working conditional (untouched), a `{roll:}` that matched nothing (keeps its own copy), and a
+`{roll:}` with an unreadable filter (keeps its specific UXP-232 reason -- the ordering that protects
+it is pinned, and reversing it reddens that test too). Zero page errors.
+`node --test tests/test.mjs` green at **1997**.

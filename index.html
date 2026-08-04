@@ -23997,6 +23997,49 @@ function condAttemptReason(body) {
   return 'A test needs a comparison, so and(…), or(…) and not(…) take comparisons of their own. Try {and(cost > 30, qty < 5): both | not both}.';
 }
 
+// condEmptyMessage(cond, vars) — what a conditional whose TEST could not be read should say.
+//
+// #1361. `resolveBrace` returns `{COND?}` when a condition will not resolve, and renderGrammarPill
+// funnels every `{…?}` marker through one branch shared with `{roll:}` — the CSS comment says so
+// ("a roll/cond that matched nothing"). For a roll the copy is right. For a conditional every clause
+// of it was wrong: nothing was being MATCHED (a name failed to resolve), "add points that fit"
+// cannot help, "Click to try again" is advice for something random when a conditional re-judges to
+// the same answer, and the term that actually failed was never named even though the core knew it.
+//
+// No new copy is minted here: the reason comes from mathReasonPhrase, the same phrase the #ERR pill
+// and the /check dialog already speak, so a name that will not resolve is explained one way
+// everywhere (P1). Returns { shown, cta }. Pure — vars are explicit.
+function condEmptyMessage(cond, vars) {
+  const c = String(cond || '').trim();
+  const v = vars || {};
+  // Which arm judged it decides how to explain it. strCondVerdict answers null when the condition is
+  // not a text comparison at all, NaN when it is one whose reference will not resolve.
+  const sv = strCondVerdict(c, v);
+  const isText = sv !== null;
+  // NB mathErrorReason returns '' (not null) for an expression it finds nothing wrong with, so this
+  // is a FALSY test. Checking `=== null` inverted every branch and produced a confident, plausible,
+  // wrong sentence — caught by walking the four cases rather than by reading.
+  const reason = isText ? '' : mathErrorReason(c, v);
+  const readsNow = isText ? !isNaN(sv) : !reason;
+  // A conditional written ABOVE the variable it reads freezes unresolved on load (promotion walks
+  // top-down) and ONE CLICK fixes it. Telling that user to "give the name a value" is wrong twice:
+  // the value exists, and the fix is a click. Derived from whether the test reads NOW rather than
+  // from the stale flag, because a pill that never resolved recorded no deps and so is never
+  // "stale" — which is exactly why the shared empty branch never explained this case.
+  if (readsNow)
+    return { shown: 'can’t tell yet',
+             cta: `“${c}” has a value now, but this was judged before it did. Click to re-judge` };
+  if (isText)
+    return { shown: 'can’t tell yet',
+             cta: `Could not read the test “${c}”. A text test compares a name with a quoted word, so the name needs a value. Click to edit` };
+  const phrase = mathReasonPhrase(reason, c);
+  return {
+    shown: 'can’t tell yet',
+    cta: phrase ? `Could not read the test “${c}”: ${phrase}. Click to edit`
+                : `Could not read the test “${c}”. Check the names it uses. Click to edit`,
+  };
+}
+
 // String-equality conditional arm (#540). A conditional's test is normally an evalMath
 // comparison — number-only, so a TEXT pick var ({mood := {angry|calm}}) could never drive
 // a branch (#429 fixed the numeric half; this is the text half). A condition qualifies
@@ -26595,6 +26638,16 @@ function renderGrammarPill(key, g) {
       if (probs.length) badFilter = probs[0].message;
     }
   }
+  // #1361: a conditional's empty marker is not a roll's. Sniff the def the same way the roll arm
+  // above does, and answer in the conditional's own terms, naming the term that failed. The reason
+  // comes from mathReasonPhrase, so an unresolvable name is explained the same way here as in the
+  // #ERR pill and the /check dialog (P1: one explanation, one place).
+  let condEmpty = null;
+  if (emptyMark && !badFilter) {
+    const cm = /^origin:\s*\{([\s\S]*)\}\s*$/.exec((g.def || '').trim());
+    const cp = cm && condParts(cm[1]);
+    if (cp) condEmpty = condEmptyMessage(cp.cond, collectVars());
+  }
   // #899 (P4): a folder roll drawn with no folder connected quietly becomes a document roll — the
   // reading set is a folder of one. Say so, the way the query pill does (query-folder-off): sniff
   // the SOURCE (the isYesNoOracle content-sniff pattern, so typed and dialog-made rolls read alike)
@@ -26606,12 +26659,18 @@ function renderGrammarPill(key, g) {
     ? ' Rolls across the whole folder; other documents count as saved.'
     : ' Folder roll: no folder is connected, so this rolled on the current document only.';
   const cta = (badFilter ? badFilter + ' Click to edit'
+            : condEmpty ? condEmpty.cta
             : emptyMark ? 'Nothing matched yet. Click to try again, or add points that fit'
             : stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate') + scopeTip;
-  const shownResult = emptyMark ? 'no match yet' : g.result;
+  const shownResult = condEmpty ? condEmpty.shown : emptyMark ? 'no match yet' : g.result;
   const scopeCls = folderRoll ? (folderLive ? ' gr-folder' : ' gr-folder-off') : '';
-  return `<span class="gr-roll${stale ? ' gr-stale' : ''}${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${cta}` : cta}"`
-    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(shownResult)}. ${cta}">`
+  // #1361: escQ the cta at BOTH attribute sites. It was raw, which was safe only while no cta could
+  // contain a quote — the conditional reason interpolates the test text (`mood == "angry"`) and broke
+  // the title attribute outright, and the roll's badFilter already interpolated user query text, so
+  // the hole was latent rather than new. escQ's own comment invites this: "a correct attribute
+  // escape is never wrong here." Identity for every cta that carries no quote, so nothing else moves.
+  return `<span class="gr-roll${stale ? ' gr-stale' : ''}${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${escQ(cta)}` : escQ(cta)}"`
+    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(shownResult)}. ${escQ(cta)}">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
     + `<span class="gr-result${valence}${emptyMark ? ' gr-empty' : ''}">${escHtml(shownResult)}</span>`

@@ -857,6 +857,44 @@ test('#1359: the guard sits in BOTH walks, and after every keyword form', () => 
     'and the cue speaks a reason for it');
 });
 
+test('#1361: a conditional that cannot read its test answers in its OWN terms, not the roll family’s', () => {
+  // Every {…?} marker funnelled through one branch shared with {roll:} (the CSS comment says so),
+  // so a failed CONDITION read "no match yet" / "Nothing matched yet. Click to try again, or add
+  // points that fit" — nothing was being matched, adding points cannot help, a conditional is not
+  // random, and the term that failed was never named although the core had computed it.
+  const cases = [
+    ['hp > 0',            {},                 /Could not read the test .hp > 0.:/, 'names the failing test'],
+    ['hp > 0',            { hp: 5 },          /has a value now.*Click to re-judge/, 'the declared-later case'],
+    ['mood == "angry"',   {},                 /A text test compares a name with a quoted word/, 'the text arm'],
+    ['mood == "angry"',   { mood: 'angry' },  /has a value now.*Click to re-judge/, 'text, declared later'],
+  ];
+  for (const [cond, vars, re, why] of nonEmpty(cases, 'condEmptyMessage cases')) {
+    const m = c.condEmptyMessage(cond, vars);
+    assert.equal(m.shown, 'can’t tell yet', `${cond}: stops claiming a match was attempted`);
+    assert.match(m.cta, re, `${cond}: ${why}`);
+    assert.doesNotMatch(m.cta, /Nothing matched|add points that fit|try again/, `${cond}: no roll copy`);
+    assert.doesNotMatch(m.cta, /—/, `${cond}: AP punctuation, no em dash`);
+  }
+  // The reason is BORROWED, not minted: the same phrase the #ERR pill speaks for the same cause.
+  assert.ok(c.condEmptyMessage('hp > 0', {}).cta.includes(c.mathReasonPhrase(c.mathErrorReason('hp > 0', {}), 'hp > 0')),
+    'the explanation comes from mathReasonPhrase, so one cause reads one way everywhere');
+});
+
+test('#1361: the pill wires the conditional arm, and a roll keeps its own', () => {
+  // CALL-SITE pin (#1133): condEmptyMessage is pure and pinned above; this is the half that proves
+  // renderGrammarPill asks it, and asks it only for a conditional.
+  const body = fnBody(NC, 'renderGrammarPill');
+  assert.match(body, /condEmpty = condEmptyMessage\(cp\.cond, collectVars\(\)\)/, 'the pill computes a conditional reason');
+  assert.match(body, /condEmpty \? condEmpty\.cta/, 'and it reaches the tooltip');
+  assert.match(body, /condEmpty \? condEmpty\.shown/, 'and the shown text');
+  assert.ok(body.indexOf('badFilter ?') < body.indexOf('condEmpty ? condEmpty.cta'),
+    'a roll with an unreadable filter still wins, so its specific reason is not lost');
+  assert.match(body, /emptyMark \? .Nothing matched yet/, 'and a plain empty ROLL keeps its own copy');
+  // #1361: the cta reaches two ATTRIBUTES and now carries a quoted condition, so it must be escaped.
+  assert.match(body, /title="\$\{name \? `\{\$\{escQ\(name\)\}\}\. \$\{escQ\(cta\)\}` : escQ\(cta\)\}"/, 'title escapes the cta');
+  assert.match(body, /aria-label="Grammar[^"]*\$\{escQ\(cta\)\}/, 'aria-label escapes it too');
+});
+
 test('resolveBrace — an unresolvable condition fails visibly (P4), never silently', () => {
   // hp is undefined → evalMath returns null → a `{cond?}` marker, not a blank or a throw.
   assert.equal(c.resolveBrace('hp > 0: a | b', { rules: {}, vars: {}, depth: 0, stack: [] }), '{hp > 0?}');
