@@ -18897,6 +18897,8 @@ function classifyBraceBody(body, rules, vars) {
   // unresolvable base ({{nope}.cap}) is an ATTEMPT, so it gets a cue rather than silently promoting.
   const bmc = bracedModParts(body);
   if (bmc) return classifyBraceBody(bmc.inner.slice(1, -1), rules, vars) === 'artifact' ? 'artifact' : 'invalid';
+  // {{a}d{b}} / {2d{sides}} — a parametrized die. Before templateParts so it is a die, not glued text.
+  if (bracedDiceParts(body)) return 'artifact';
   if (templateParts(body, rules, vars)) return 'artifact';              // {…}glue{…} template (#916)
   // A body that is template-SHAPED but whose parts don't all resolve is an ATTEMPT, not prose:
   // {{The} {Rusty|Gilded} {Flagon|Crown}} is one word away from working, and calling it 'literal'
@@ -19089,6 +19091,7 @@ function braceTypeLabel(body, rules, vars) {
   if (parseActionPill(body)) return ['action', null];                  // {HP -= damage} — click-to-apply a mutation
   if (repeatParts(body)) return ['grammar', null];                     // {3x: template}
   if (bracedModParts(body)) return ['grammar', null];                  // {{a|b}.cap} — modified inline generator
+  if (bracedDiceParts(body)) return ['dice', null];                    // {{a}d{b}} — parametrized die
   if (modParts(body)) return ['grammar', null];                        // {beast.cap}
   rules = rules || {}; vars = vars || {};
   const fp0 = fieldParts(body);                                        // {weapon.damage}
@@ -24110,6 +24113,18 @@ function bracedModParts(body) {
   return { inner: body.slice(0, end + 1), mods };            // inner keeps its braces, ready for expandTemplate
 }
 
+// {{a}d{b}} / {2d{sides}} / {{n}d6} — a die whose COUNT and/or FACES come from a {…} (a variable or a
+// calculation). Recognized by skeleton: replace each {…} with a digit and test the result against the
+// dice grammar, so a real parametrized die matches but a glue name ({first}{last}) or prose ({c} bolt)
+// does not. Requires at least one brace (a plain 2d6 stays on the normal dice path). Pure — resolution
+// (expand the braces, then roll) happens in resolveBrace. Composability deep pass.
+function bracedDiceParts(body) {
+  body = (body || '').trim();
+  if (body.indexOf('{') < 0) return null;
+  const skeleton = body.replace(/\{[^{}]*\}/g, '2').replace(/\s/g, '');
+  return (DICE_SNIFF.test(skeleton) && parseDice(skeleton)) ? body : null;
+}
+
 // ─── hierarchical / property items (A6) ──────────────────────────────────────
 // `{base.field}` reads a *field* of a picked item: with `weapon: sword | axe` and
 // `sword.damage: 1d8`, `{weapon.damage}` picks a weapon then reads its damage
@@ -24490,6 +24505,13 @@ function resolveBrace(body, ctx) {
   if (body[0] === '=') {
     const r = evalMath(body.slice(1), ctx.vars);
     return r === null ? '?' : formatMathResult(r);
+  }
+  // {{a}d{b}} / {2d{sides}} — a die whose count/faces come from a {…}. Resolve the embedded braces to
+  // numbers first (live vars / a calculation), THEN roll the resulting dice expression. Before the plain
+  // dice arm, whose sniff cannot see through braces. Params re-resolve each roll (a live pool size).
+  if (bracedDiceParts(body)) {
+    const terms = parseDice(expandTemplate(body, ctx), ctx.vars);
+    return terms ? String(rollParsed(terms).total) : `{${body}?}`;   // params didn't make a valid die → visible marker (P4)
   }
   if (DICE_SNIFF.test(body.replace(/\s/g, ''))) {
     const terms = parseDice(body, ctx.vars);
@@ -27170,6 +27192,13 @@ function promoteBraceBodyIn(node, body) {
   // modifier, not glued text; gated on the base resolving so a broken base stays a literal attempt.
   const bmp = bracedModParts(body);
   if (bmp && classifyBraceBody(bmp.inner.slice(1, -1), collectRules(), collectVars()) === 'artifact') {
+    const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
+    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+  }
+  // {{a}d{b}} / {2d{sides}} — a parametrized die. Wrap the whole body as one brace group so resolveBrace's
+  // braced-dice arm resolves the {…} params and rolls; rides the grammar machinery (live params, re-rolls
+  // on click) like the braced modifier above. Before templateParts so it is a die, not glued "2d6" text.
+  if (bracedDiceParts(body)) {
     const roll = makeGrammarRoll(`origin: {${body}}`, 'origin');
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }

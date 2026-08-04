@@ -1628,6 +1628,30 @@ test('bracedModParts — a modifier chain on an INLINE generator (composability 
   assert.equal(c.resolveBrace('{color}.a', { rules: {}, vars: { color: 'azure' }, depth: 0, stack: [] }), 'an azure');
 });
 
+test('bracedDiceParts — a die whose count/faces come from {…} (deep pass, {{a}d{b}})', () => {
+  // recognized: count and/or faces as a {…}, with an optional +mod
+  for (const b of ['{a}d{b}', '2d{sides}', '{n}d6', '{a}d{b}+2', '{count}d{faces}']) assert.ok(c.bracedDiceParts(b), `${b} is a parametrized die`);
+  // NOT a parametrized die: a plain die (normal path), a glue name, prose, an alternation
+  assert.equal(c.bracedDiceParts('2d6'), null, 'a plain die stays on the normal dice path');
+  assert.equal(c.bracedDiceParts('{first}{last}'), null, 'a glue name is not a die');
+  assert.equal(c.bracedDiceParts('{color} bolt'), null, 'prose is not a die');
+  assert.equal(c.bracedDiceParts('{a|b}'), null, 'an alternation is not a die');
+  // classify / label treat it as a real (dice) pill, before the glue-template arm
+  assert.equal(c.classifyBraceBody('{a}d{b}', {}, {}), 'artifact');
+  assert.deepEqual(host(c.braceTypeLabel('2d{sides}', {}, {})), ['dice', null]);
+  // it RESOLVES: both params from variables → a real roll in range. {{a}d{b}} with a=2,b=6 → 2..12
+  const ctx = { rules: {}, vars: { a: 2, b: 6 }, depth: 0, stack: [] };
+  for (let i = 0; i < 30; i++) { const v = +c.resolveBrace('{a}d{b}', ctx); assert.ok(v >= 2 && v <= 12, `2d6 in range: ${v}`); }
+  // faces from a variable only: {2d{sides}} with sides=4 → 2..8
+  const ctx2 = { rules: {}, vars: { sides: 4 }, depth: 0, stack: [] };
+  for (let i = 0; i < 30; i++) { const v = +c.resolveBrace('2d{sides}', ctx2); assert.ok(v >= 2 && v <= 8, `2d4 in range: ${v}`); }
+  // faces from a CALCULATION: {1d{= base * 2}} with base=3 → 1d6 → 1..6
+  const ctx3 = { rules: {}, vars: { base: 3 }, depth: 0, stack: [] };
+  for (let i = 0; i < 30; i++) { const v = +c.resolveBrace('1d{= base * 2}', ctx3); assert.ok(v >= 1 && v <= 6, `1d6 in range: ${v}`); }
+  // unresolvable params → a visible marker, never a silent wrong roll
+  assert.match(c.resolveBrace('{missing}d{gone}', { rules: {}, vars: {}, depth: 0, stack: [] }), /\{.*\?\}/);
+});
+
 test('pluralize — regular English heuristic', () => {
   assert.equal(c.pluralize('cat'), 'cats');
   assert.equal(c.pluralize('fox'), 'foxes');
