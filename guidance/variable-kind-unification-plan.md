@@ -94,10 +94,10 @@ would ask. It needs a **semantic decision before any code**, and the options are
 | probability threshold | *"more likely than not"* | needs a stated rule; `chanceover` already computes it |
 | refuse, and teach `chanceover` | Phase 1's message, plus a worked form | free; arguably correct |
 
-**My recommendation is the third**, because #1127 already set the precedent for exactly this shape:
-when a distribution meets a scalar-only surface, the app names the form that *does* work rather than
-inventing a coercion. `{chanceover(cost, 150) > 50: tense | calm}` is already legal today and reads
-honestly. If that is right, Phase 2 collapses into Phase 1 and this section closes.
+**My recommendation is the third** — but see §7/A2: the form it would teach **does not work today**,
+so Phase 2 is *prerequisite work*, not a message. The conditional must first expand the distribution
+reducers the way `{= }` does, and only then may any cue name that form. I recommended teaching a
+broken remedy; the adversarial pass caught it.
 
 ### Phase 3 — capture UX, and what is NOT unifiable
 
@@ -147,3 +147,74 @@ Phase 2's semantic call — **refuse and teach `chanceover`**, versus answering 
 distribution by probability. Everything else in this plan follows from evidence; that one is a product
 decision about what a range *means* in a yes/no test, and it should be made deliberately rather than
 discovered in a diff.
+
+---
+
+## 7. Adversarial pass (2026-08-04) — one claim survived, one was refuted
+
+Each attack below tried to **refute** something this plan asserts. Two changed it.
+
+### A1 — Phase 1's honesty. SURVIVED.
+
+Phase 1 shows a message telling the reader to "write it without the `=`". If that remedy did not work,
+the message would be the very defect this session has spent its time removing. Driven:
+
+```
+{cost := 100 to 200}  +  {cost * 1.2}   ->  ≈172.6 (119.1 – 240.2) ▃▄▇█▇▅▄▃▂▂▁   WORKS
+{cost := 100 to 200}  +  {2 * cost}     ->  ≈290.1 (195.8 – 394.3) ▃▄▆▇█▆▅▄▃▂▁   WORKS
+```
+
+Phase 1 stands.
+
+### A2 — my Phase 2 recommendation. **REFUTED.**
+
+§3 recommended refusing a distribution in a conditional and teaching
+`{chanceover(cost, 150) > 50: likely | unlikely}` instead. Driven in the real editor:
+
+```
+D  {cost := 100 to 200}                                -> ≈143.6 (96.9 – 201.6) ▃▅▇██▇▄▃▂▂▁
+u  {chanceover(cost, 150) > 50: likely | unlikely}     -> "can't tell yet"
+```
+
+**The form I recommended teaching does not work.** `{= chanceover(cost, 150)}` on its own resolves
+fine (`41.3`), so the reducer works; the CONDITIONAL cannot resolve it. Recommending it would have
+shipped exactly the defect #1159 and #1357 were about: a cue naming a remedy that does nothing.
+
+**Phase 2 is therefore reordered.** Before any message teaches that form, the conditional must expand
+the distribution reducers the way `{= }` already does through `expandAggExpr`. That is a small, precise
+change with a clear precedent (#1356 widened the same arm's *scope*; this widens its *expander*), and
+it is a prerequisite, not an alternative.
+
+### A3 — "text is not a number and never will be". SURVIVED, but narrower than written.
+
+Text cannot enter arithmetic, which is correct. But text **comparison** in a conditional already works
+and needed no unification:
+
+```
+{tone := warm | cool}  +  {tone == "warm": y | n}  ->  n     (tone rolled "cool")
+```
+
+So §3's Phase 3 must not claim text comparison as missing. It is shipped.
+
+### A4 — a harness lesson, recorded so it is not repeated
+
+Driving the same input six times gave **3 refused / 3 worked** for `{cost := 1d20}` + `{= cost * 2}`,
+which read exactly like a real race in promotion order. It was not. Re-run with the keystroke timing
+removed — build the tree, promote the declaration, then promote the use — it is **deterministic and
+correct**. The non-determinism was my own harness typing the second row before the first had
+committed. A driven result that varies run to run is a fact about the harness until proven otherwise.
+
+Second lesson from the same pass: my controlled probe asked whether the use **promoted**, and A2
+promoted while displaying "can't tell yet". **Promoted is not the same as works**, and a probe that
+checks the former while reporting the latter is a vacuous test in a new costume.
+
+### A5 — an unrelated bug the pass turned up
+
+`{cost := 1 | 2 | 3}` renders as **`cost=`** — an empty value — and the record is
+`{kind:'pick', expr:'1 | 2 | 3', rolled:''}`. Confirmed twice: controlled, and typed in the real
+editor. `warm | cool` works, `x1 | x2` works, `10 | 20` fails. The tell is that a trailing bare number
+is being read as an alternation **weight**: `parseAlt('1 | 2 | 3')` returns
+`{template: "1 | 2 |", weight: 3}`.
+
+**A pick between numbers is a completely natural thing to write in this app**, and it silently produces
+nothing. Filed as **#1378**; it is not part of #1353 and should not wait for it.
