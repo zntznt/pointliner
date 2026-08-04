@@ -4238,3 +4238,165 @@ same lesson finding (c) of UXP-295 taught from the other direction.
 `node --test tests/test.mjs` green at **2010**. Eight mutations, uniqueness-checked anchors, all red,
 including unpairing a single repaint site (the class guard catches it), dropping idempotence, and
 restoring the double period.
+
+---
+
+## UXP-297 -- fnBody stops brace-counting through strings, comments and regexes (#1370)
+
+**Status: FIXED.** `UI: none` -- `tests/` only.
+
+`fnBody(src, name)` slices a function by counting `{` and `}`. A brace inside a string, a template
+literal, a comment or a regex is not a brace, so a body containing one never balanced. Measured
+across the 268 functions the suite pins:
+
+| | |
+|---|---|
+| pinned functions | 268 |
+| slices that ran past the next top-level declaration | **10** |
+| of those, slices that swallowed the rest of the file | **8** |
+| worst | `mdInline`, **2,337,234** chars against a real 20,080 |
+
+The causes were brace literals in strings (`'{'`), in regexes (`/[`[!{*_~:^#]/`) and in **comments**
+(`// String literal: {"text"} is literal text`).
+
+### The measured result contradicts what I expected, and that is the finding
+
+The hazard is a POSITIVE assertion: on a runaway slice it can pass by matching text in a completely
+different function. So the expectation was a crop of newly-red vacuous pins. **With the fix in place
+the suite stayed green at 2010.** No existing pin was depending on the overshoot -- authors write
+pins against the code they are looking at, and that code was inside the function. The bug was real
+and benign, and saying so is more useful than implying a save that did not happen.
+
+The value is therefore entirely forward-looking, which is the #1133 rule applied to the helper rather
+than to any one test: a pin can no longer be written against a runaway slice.
+
+### An error of mine that nearly became the record
+
+My first mask handled `${…}` with a flat depth counter instead of a stack, so it ended `mdInline` and
+`renderGraph` **mid-interpolation**. That produced **21 red tests**, and every one of them looked
+exactly like a vacuous pin being caught. It would have been easy, and completely wrong, to "fix" 21
+pins to match a broken helper. What caught it was checking the slice TAILS rather than the red count:
+a correct slice ends `…return s;\n}` at column 0, and those ended `style=\"${escQ(sz.style)}`.
+
+Acceptance is now that check, run over all 268: **260 end on a column-0 closing brace**, and the
+other 8 are legitimately different shapes (2 deliberately-absent names that pin the throw, 3
+one-liners ending `; }`, 3 IIFE tails).
+
+### Guard
+
+A test walks every `fnBody(_src, 'NAME')` in the suite and fails if a slice runs more than 400 chars
+past the next top-level declaration. Four of five mutations are red, including reinstating the naive
+counter. The fifth -- dropping the template-literal arm -- stays green, because a `${…}`
+interpolation's braces balance either way and today's source has no template whose TEXT holds an
+unmatched brace. That arm is correct in principle and unexercised in practice; the residual is stated
+in the test rather than implied away (the #1132 precedent).
+
+`node --test tests/test.mjs` green at **2011**.
+
+---
+
+## UXP-298 -- undo takes back a property the text cannot carry (#1369)
+
+**Status: FIXED.** Found while driving #1357's undo behaviour, confirmed pre-existing on `origin/main`
+at the time, and filed rather than bundled.
+
+### The defect
+
+A `{prop k: v}` / `{date k: v}` brace is **consumed** into `node.props` and leaves no inline token.
+The `text` undo entry restores `node.text` and nothing else, so one undo un-typed the brace while the
+value stayed:
+
+```
+after : { text: "Scene ", props: ["tension=7"] }
+undo  : { text: "Scene",  props: ["tension=7"] }   <-- the property survived
+```
+
+**#1374 raised the stakes rather than causing them.** Before it, the orphan was an invisible record;
+now it is a visible chip on a point whose text says nothing about it. The same change that made
+attaching a property legible made failing to un-attach it legible too.
+
+### The fix, and why it is scoped to props alone
+
+A text entry may now carry `{ prev, next }` JSON of the point's property list, restored through the
+same `[dir]` the text uses so undo and redo stay symmetric, and **before** `rederiveFromText`, which
+reads the point's state.
+
+Props are the ONE sidecar with no inline trace. Every other one (`math`, `vars`, `dice`, `grammar`,
+`est`, `query`) is keyed by a `[[type:key]]` token that lives in the text, so restoring the text
+restores the token and `pruneArtifacts` drops whatever is orphaned. That asymmetry is exactly why
+props were the one thing undo could not reach, and why widening the fix would be cargo cult.
+
+**Not `pushUndo()`.** Routing a property commit through a whole-tree snapshot would work and is what
+structural ops do, but it turns every `{prop}` into a full-document copy. The O(1) text entry grows by
+the length of one point's property list instead, and `size` counts it so the stack budget stays honest.
+
+### Driven
+
+| | |
+|---|---|
+| add a property, undo | property **and chip** gone |
+| then redo | both back |
+| a plain text edit | exactly **1** undo entry, not 2 |
+| focus + blur with no change | **0** entries |
+
+The three-argument callers (`flushActiveTextEdit`, the base-table path) are unchanged by construction:
+an omitted `propsPrev` is `undefined`, which never counts as a change. Pinned, and the mutation that
+drops that check goes red.
+
+`node --test tests/test.mjs` green at **2012**. Seven mutations, all red, including restoring props
+after the re-derive instead of before, and taking the before-snapshot after the promotion that
+consumes the brace.
+
+---
+
+## UXP-299 -- a point edited out of the active search says so, instead of quietly lingering (#1375)
+
+**Status: FIXED.** Found by the wave-3 driving pass, filed rather than fixed at the time **with an
+argument against the obvious fix**, and fixed here along that argument rather than against it.
+
+### The defect
+
+With `#urgent` searched, removing the tag from a listed point leaves it in the filtered list:
+
+```
+results for #urgent    : ["Alpha point #urgent", "Beta point #urgent"]
+after removing the tag : ["Alpha point", "Beta point #urgent"]   <-- no longer matches, still listed
+after re-running       : ["Beta point #urgent"]
+```
+
+The other direction is fine: a point that starts matching is picked up as soon as the query re-runs.
+
+### What was NOT done, and why that is the decision
+
+**The row still stays.** Dropping it the moment it stops matching would remove the point out from
+under the caret that is editing it -- a worse failure than the one being fixed, and a collision with
+the caret invariant this codebase guards hardest. Nothing in this change filters, hides or removes a
+row; a pin asserts that.
+
+So the fix is P4, not filtering: **say it.** `offSearchMessage` reports "That point no longer matches
+#urgent. It stays until the search runs again." -- naming the query, and naming what happens next so
+the lingering row reads as expected rather than broken. Same shape as #1357's "One point was waiting
+for that value", through the same `flashHint`. No new visual language, no new CSS, no tab stop.
+
+It fires only on a true -> false move. A row that never matched is on screen as an ancestor for
+context, not as a lost hit, and stays silent.
+
+### The bug inside the fix, which the driving caught
+
+`exitEdit` assigns `node.text = editableText(content)` near its top, so the first version -- which
+asked `nodeMatchesSearch(node)` for the "before" state -- was reading the POST-edit text. Before and
+after could never differ and **the message never fired at all**. The before-state is now probed
+against `prevText` on a shallow copy. (Props are still safe to read live at that line: promotion has
+not run yet.) The mutation that restores the live-node probe is red.
+
+### Driven
+
+| | |
+|---|---|
+| edit a listed point out of the filter | row stays, message fires once |
+| edit it, still matching | silent |
+| no search active | silent |
+
+`node --test tests/test.mjs` green at **2013**. Six mutations, all red, including saying it when the
+point still matches, saying it for a never-matching ancestor, and computing the message without
+reporting it.
