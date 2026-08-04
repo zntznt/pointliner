@@ -288,6 +288,7 @@ export function loadCores() {
     'offSearchMessage',                         // #1375: a point edited out of the active search
     'hiddenBelowScope','auditHiddenNote',        // #1284: value a rollup's scope excludes
     'braceAttemptAnnounce',                     // #1353 Phase 1: what a refused brace SAYS
+    'varKindLabel',                             // #1353 Phase 3: naming a variable's kind
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl','ex','toOpml',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)

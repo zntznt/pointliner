@@ -29043,3 +29043,32 @@ test('#1353 Phase 1: a refused brace ANNOUNCES the reason, not just the fact', (
   assert.ok(/const braceRules = collectRules\(\), braceScope = resolveNodeScope\(node, ancestorsOf\(node\), collectVars\(\)\);/.test(b),
     'reusing the SAME rules and scope classifyBraceBody just used, so the reason cannot disagree with the verdict');
 });
+
+test('#1353 Phase 3: the Variables panel names a kind the value cannot show', () => {
+  const L = c.varKindLabel;
+  // Measured gap: the panel showed `a = 40` (formula) and `b = 20` (a frozen 1d20) identically,
+  // though one is stable and the other re-rolls on click. Same presentation, different behaviour.
+  assert.equal(L('pick'), 'random', 'a frozen pick is named');
+  assert.equal(L('formula'), '', 'a formula is the unmarked default');
+  assert.equal(L('dist'), '', 'a distribution already carries its own ≈ separator and headline (#952)');
+  assert.equal(L(undefined), '');
+  assert.equal(L(''), '');
+  // "random" is the app's established user-facing word (the roll log is "Random results"), not new
+  // vocabulary — P5. A new word here would have to earn a row in ux-discipline §1.
+  assert.ok(!/pick|kind|variable/i.test(L('pick')), 'and it is not internal vocabulary');
+
+  const row = fnBody(_src, 'vpRow');
+  // read from the ACTIVE EXPRESSION, because vars[nm] is a plain number for a formula and a frozen
+  // roll alike — the value genuinely cannot tell them apart.
+  assert.ok(/varKindLabel\(varDeclKind\(_varActiveExprs\[nm\] \|\| '', vars\)\)/.test(row),
+    'the kind is derived from the expression, not the value');
+  assert.ok(/const kindWord = dist \? '' :/.test(row), 'a distribution is skipped, not double-marked');
+  assert.ok(/k\.title = 'A random pick\./.test(row), 'and the word carries an explanation');
+
+  // the panel skips rebuilds on an unchanged signature, so the expression must be IN that signature
+  // or a kind change with an unchanged value leaves a stale word. Driven: `{a := 40}` -> `{a := 40 | 40}`
+  // keeps the value at 40 and must still start saying "random".
+  const upd = fnBody(_src, 'updateVarPanelContent');
+  assert.ok(/\[nm, _varActiveExprs\[nm\] \|\| '', _varCycles\.has\(nm\)/.test(upd),
+    'the active expression is part of the content signature');
+});

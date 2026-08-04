@@ -298,7 +298,7 @@ the mechanism behind every distribution refusal.
 |---|---|---|---|
 | **1** | ~~Every kind-wall refusal says which wall…~~ **SHIPPED, and much smaller than planned** — see §12. The tooltip was already correct on every surface; only the ANNOUNCE was generic. | small | — |
 | **2** | ~~Make the taught remedy work: the conditional must expand the distribution reducers.~~ **SHIPPED** — see §11. | small | — |
-| **3** | Capture legibility: show the author which kind was inferred, and let them change it. Guided-mode/dialog work. | medium | nothing |
+| **3** | ~~Capture legibility…~~ **SHIPPED, and narrower than planned** — see §13. The pill already distinguished every kind; only the Variables panel conflated two. | small | — |
 | — | ~~unify `resolveVarDefs` / the `evalMath` ident boundary / OPML~~ | — | **not required**: B5 shows persistence is done, B3 shows checks already resolve the remedy, A1 shows the math remedy composes |
 
 ---
@@ -437,3 +437,68 @@ deleted, not defended, and a pin now asserts the body is the single return.
 `node --test tests/test.mjs` green at **2017**. Five mutations red, including announcing the generic
 sentence again, dropping the outcome clause, explaining against a different scope than the one that
 classified, and re-introducing the unreachable fallback.
+
+---
+
+## 13. Phase 3, shipped — and §3's premise was overstated too
+
+Phase 3 was written as *"the author picks a kind implicitly and `varDeclKind`'s sniff is invisible,"*
+needing *"a capture door that shows which kind was inferred and lets it be changed."* Measured, the
+sniff is **not invisible**. Every kind already presents differently on the pill:
+
+| kind | pill shows | pill title |
+|---|---|---|
+| formula | `cost=40` | *Click to edit* |
+| pick | `cost=16` | *Click to re-roll · pencil to edit* |
+| distribution | `cost≈144.4 (98.7 – 197.3)` + sparkline | ***Uncertain value.** Click to re-sample…* |
+
+So a reader can already tell them apart — the fourth time in this issue that measurement found the
+capability present and the plan overstating its absence.
+
+### What was genuinely wrong: one surface, one conflation
+
+The **Variables panel**, the only surface that lists every variable at once:
+
+```
+a  = 40                            a formula      — stable
+b  = 20                            a frozen 1d20  — re-rolls on click
+c  = cool
+d  ≈ 145.9 (101.9 – 200.3)         distinguished by ≈ (#952)
+e2 = 1 to 10 servings
+```
+
+`a` and `b` are **identical in presentation and different in behaviour** — one is stable, the other
+re-rolls. That is a P1 break, and the panel is exactly where a reader goes to compare variables.
+
+It also explains the "surprise" capture case from §8/B4 without any new machinery:
+`{e2 := 1 to 10 servings}` now reads **`1 to 10 servings  random`**, which tells the author it froze as
+a pick rather than becoming a range.
+
+### The fix
+
+A muted kind word on the row, from `varKindLabel`. Only the **pick** is named: a distribution already
+carries its `≈` and headline (a recorded #952 decision, not re-litigated here), and a formula is the
+unmarked default. **"Random" is the app's existing user-facing word** — the roll log is "Random
+results" — so no new vocabulary was minted (P5); a new word would owe a row in `ux-discipline` §1.
+
+Derived from the **active expression**, not the value: `vars[nm]` is a plain number for a formula and a
+frozen roll alike, so the value genuinely cannot tell them apart. A mutation that derives it from the
+value instead is red.
+
+**The panel's rebuild signature had to widen with it.** It skips a rebuild when the signature is
+unchanged, and the signature carried only names and values — so changing `{a := 40}` to `{a := 40 | 40}`
+kept the value at 40, kept the signature, and would have left the row saying nothing while the variable
+had become a pick. Driven, that exact case now flips to `random`. The raw expression is used rather
+than `varDeclKind`, because it changes whenever the kind could and costs one string compare instead of
+a sniff that samples, per name per keystroke.
+
+`node --test tests/test.mjs` green at **2018**. Six mutations red, including labelling a formula,
+double-marking a distribution, deriving the kind from the value, and dropping the expression from the
+signature.
+
+### #1353 is now complete on the evidence
+
+Every phase shipped, and the rearchitecture the issue proposed was **not required for any of them**:
+persistence already round-trips (§8/B5), checks already resolve the remedy (§8/B3), the math remedy
+composes (§7/A1), and the pill already showed the kind (§13). What the issue correctly identified was a
+set of gaps; what measurement changed was where they were and how large.
