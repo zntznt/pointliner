@@ -28900,3 +28900,52 @@ test('#1375: a point edited out of the active search says so, and is not removed
   // no removal anywhere: the fix must not start filtering rows out mid-edit
   assert.ok(!/nodeMatchesSearch[\s\S]{0,120}remove\(\)/.test(ee), 'nothing is removed from the list on a commit');
 });
+
+test('#1284: the audit names the value a rollup scope is hiding, not just that a row has none', () => {
+  const H = c.hiddenBelowScope, N = c.auditHiddenNote;
+  const p = (k, v) => [{ key: k, val: String(v) }];
+  const kid = { id: 'oven', text: 'Oven', props: p('cost', 900), children: [] };
+  const app = { id: 'app', text: 'Appliances', props: [], children: [kid] };
+  const bare = { id: 'handles', text: 'Handles', props: [], children: [] };
+
+  // Driven before this: a 1,200 + 300 kitchen budget with a 900 oven ONE LEVEL DEEPER rendered
+  // sum(cost) = 1,500 and the audit said only "Appliances - no cost". A reader concludes that row
+  // is unpriced, not that the total is short by 900 — the exact silent-wrong-total the audit exists
+  // to prevent, surviving inside it.
+  assert.deepEqual(host(H(app, 'cost', new Set())), { count: 1, sum: 900 });
+  assert.equal(H(bare, 'cost', new Set()), null, 'a genuinely unpriced leaf hides nothing');
+  // a descendant the rollup ALREADY counted is never double-reported
+  assert.equal(H(app, 'cost', new Set([kid])), null, 'in-scope descendants are excluded');
+  // depth, not just direct children: value two levels down still counts as hidden
+  const deep = { id: 'd', text: 'Deep', props: [], children: [{ id: 'm', text: 'Mid', props: [], children: [kid] }] };
+  assert.deepEqual(host(H(deep, 'cost', new Set())), { count: 1, sum: 900 });
+  // several hidden points aggregate
+  const two = { id: 't', text: 'Two', props: [], children: [kid, { id: 'hob', text: 'Hob', props: p('cost', 250), children: [] }] };
+  assert.deepEqual(host(H(two, 'cost', new Set())), { count: 2, sum: 1150 });
+  assert.deepEqual(host(H(app, 'cost', null)), { count: 1, sum: 900 },
+    'a missing scope set is treated as "nothing counted", not a crash');
+
+  // the copy must carry the AMOUNT — that is the entire difference between the two readings
+  assert.equal(N({ count: 1, sum: 900 }), '900 in 1 point below');
+  assert.equal(N({ count: 3, sum: 1150 }), '1,150 in 3 points below', 'grouped, and pluralised');
+  assert.equal(N(null), '');
+  assert.equal(N({ count: 0, sum: 0 }), '');
+  assert.ok(!/—/.test(N({ count: 1, sum: 900 })), 'AP punctuation');
+
+  // wiring: the row shows it, and the widener is offered ONLY when something is hidden
+  const dlg = fnBody(_src, 'openPillAudit');
+  assert.ok(/const note = auditHiddenNote\(mr\.hidden\);/.test(dlg), 'each missing row asks for its hidden note');
+  assert.ok(/note \? mr\.reason \+ ', ' \+ note : mr\.reason/.test(dlg), 'and appends it to the reason');
+  assert.ok(/if \(a\.hiddenTotal\) \{/.test(dlg),
+    'the widener line is gated on something actually being hidden — an unpriced row needs a value, not a wider scope');
+  assert.ok(/Add ", subtree" to include every level below/.test(dlg),
+    'and uses the same words the empty-rollup tip uses (P1: one widener, one phrasing)');
+  // #1133, and the third time this session I wrote a core pin without a CALL-SITE pin: mutation
+  // testing caught that replacing this whole call with `null` left the suite green.
+  const agg = fnBody(_src, 'auditAgg');
+  assert.ok(/const hidden = hiddenBelowScope\(c, prop, inScope\);/.test(agg),
+    'auditAgg actually asks for the hidden value, per missing row');
+  assert.ok(/const inScope = new Set\(scoped\);/.test(agg), 'and hands it the set it already computed');
+  // the aggregate the gate reads
+  assert.ok(/hiddenTotal: missing\.reduce\(\(t, x\) => t \+ \(x\.hidden \? x\.hidden\.sum : 0\), 0\)/.test(agg));
+});

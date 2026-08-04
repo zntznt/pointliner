@@ -4400,3 +4400,64 @@ not run yet.) The mutation that restores the live-node probe is red.
 `node --test tests/test.mjs` green at **2013**. Six mutations, all red, including saying it when the
 point still matches, saying it for a never-matching ancestor, and computing the message without
 reporting it.
+
+---
+
+## UXP-300 -- the audit names the value the scope is hiding, not just that a row has none (#1284)
+
+**Status: FIXED (the residual half).** Both halves of #1284 had already shipped -- Explain this number
+(`ea6fefe`, `85826f0`) and the missing-input list. Driving the shipped feature against the persona's
+actual sentence found the gap inside it.
+
+### The defect
+
+Fiona's fear was specific: *"the scope gotcha will silently give me a wrong budget total and I won't
+notice until it matters."* A kitchen budget with two priced rows and a third priced ONE LEVEL DEEPER:
+
+```
+Kitchen budget  sum(cost) = 1,500        <-- the true subtree total is 2,400
+  Worktop     cost 1,200
+  Splashback  cost 300
+  Appliances                              <-- no cost of its own
+    Oven      cost 900                    <-- silently excluded
+```
+
+The audit correctly listed the contributors and flagged `1 point here is not counted / Appliances /
+no cost`. **True, and misleading.** A reader concludes that Appliances is unpriced, not that the
+total is short by 900. The silent-wrong-total survived inside the feature built to prevent it.
+
+### The fix
+
+`hiddenBelowScope(node, prop, inScope)` walks an uncounted point's whole subtree and returns
+`{ count, sum }` for the descendants the rollup did **not** already see, so a row that is itself a
+contributor is never double-reported. `auditHiddenNote` turns that into the amount:
+
+```
+before : Appliances    no cost
+after  : Appliances    no cost, 900 in 1 point below
+         Add ", subtree" to include every level below (like sum(cost, subtree)).
+```
+
+The amount is the entire difference between the two readings. The widener line reuses the
+empty-rollup tip's exact words (P1: one widener, one phrasing) and is gated on something actually
+being hidden -- **a genuinely unpriced row needs a value, not a wider scope**, and offering the
+widener there would teach the wrong fix.
+
+### Driven negatives
+
+| | |
+|---|---|
+| an unpriced leaf with no descendants | `no cost`, no widener offered |
+| a rollup already written `sum(cost, subtree)` | total 2,100, nothing hidden, no widener offered |
+
+### A recurrence in my own testing worth recording
+
+Mutation testing found that replacing the whole `hiddenBelowScope(...)` call with `null` left the
+suite **green**: the core was pinned, the call site was not. That is the **third** time in this
+session (after #1357's gate and #1375's report) that I pinned a value's computation without pinning
+its use. It is not an accident, it is my default failure mode, and mutation testing is the only thing
+that has caught it each time.
+
+`node --test tests/test.mjs` green at **2014**. Seven mutations, all red, including counting in-scope
+descendants (double-reporting), looking only one level down, and offering the widener when nothing is
+hidden.
