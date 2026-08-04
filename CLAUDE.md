@@ -98,6 +98,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | User research, "various walks of life" laptop panel (bounce, propagation-is-the-click) | `guidance/user-research-2026-07-c.md` | Candidate |
 | User research, third fleet (laptop; hospitality, language services, domestic work) | `guidance/user-research-2026-07-fleet3.md` | Candidate |
 | Variable declaration spec (Stage B, positional) | `guidance/typed-var-declaration-proposal.md` | Shipped |
+| Variable-kind unification, measured plan (#1353) | `guidance/variable-kind-unification-plan.md` | Proposed |
 | Discoverability strategy (verbosity dial) | `guidance/ux.md` | Vision |
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
 | Contextual `{` body completion | `guidance/brace-completion-proposal.md` | Shipped |

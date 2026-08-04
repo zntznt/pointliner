@@ -130,6 +130,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `footnote-store-proposal.md` | PROPOSED (2026-08) — document footnote store + Footnotes manager; supersedes the "citation bridge" framing of #1244 |
 | `guided-authoring-proposal.md` | PROPOSED (2026-08) — no-syntax "Add another like this"; owner-directed to Guided mode. Tracks #1240 |
 | `markdown-import-proposal.md` | PROPOSED (2026-08) — import a FORMAT, never a product; from #1265 |
+| `variable-kind-unification-plan.md` | PROPOSED (2026-08) — measured plan for #1353; the kind-wall is narrower than filed and the reasons already exist |
 | `single-file-reassurance-proposal.md` | PROPOSED (2026-08) — the single-file anxiety (fear of loss + scaling legibility); #1268 |
 | `snippet-palette-proposal.md` | PROPOSED (2026-08) — a palette for USING `{…}` at speed, where guided authoring solved authoring it; #1267 |
 
