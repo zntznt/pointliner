@@ -3804,3 +3804,73 @@ working conditional (untouched), a `{roll:}` that matched nothing (keeps its own
 `{roll:}` with an unreadable filter (keeps its specific UXP-232 reason -- the ordering that protects
 it is pinned, and reversing it reddens that test too). Zero page errors.
 `node --test tests/test.mjs` green at **1997**.
+
+---
+
+## UXP-291 -- a quoted query keeps its colon, so predicates reach the test (#1363)
+
+**Status: FIXED.** The lexical collision that capped the whole predicate area.
+
+### The defect
+
+`splitTopLevel` tracks brace depth alone, and the conditional used it to find the boundary between
+its test and its answers. A `:` inside a quoted search therefore split first:
+
+```
+splitTopLevel('count("is:todo") > 0: yes | no', ':')
+  -> ['count("is', 'todo") > 0', ' yes | no']
+```
+
+The test lost its comparison and the body was refused (a coin flip before #1359, a visible refusal
+after). `#tag` queries have no colon and were fine, so the gap was invisible until you reached for a
+FIELD filter -- and `is:` / `has:` / `tag:` are exactly the predicates worth testing. The same applied
+to `|`: `condParts` rejects a condition carrying a top-level pipe, which is how it tells a conditional
+from an alternation, so `count("#a | #b") > 0` was out too.
+
+### Why it mattered more than its size
+
+The app is already a predicate language: points are the domain, `#tag`/`is:todo`/`has:owner` are unary
+predicates, juxtaposition is AND, `|` is OR, `-` is NOT, and `count("q")` is a counting quantifier.
+What it could not do was combine that layer with the conditional, because the two use the same
+character for different jobs and one did not respect quoting. Anything built on top -- quantifier
+names, a host-point predicate, any function taking a quoted query -- would have hit the same wall.
+
+### The fix is scoped, deliberately
+
+`splitCondTop` is quote-aware and is used by **only the two splits that decide what the CONDITION
+is**: the `:` boundary and the `|` check. `splitTopLevel` itself is untouched -- it is shared by
+templates, alternations, decks and rule bodies, where a quote is ordinary prose and protecting it
+would change unrelated behaviour.
+
+**The ARM split stays plain, and that is recorded rather than accidental.** Arms are grammar
+templates; `{c: he said "a | b" | none}` is genuinely ambiguous, and a quote there is prose. Pinned as
+such, so a later reader does not "finish the job" by mistake.
+
+### Driven
+
+`{count("is:todo") > 0: …}` discriminates (`yes, still some` with an open item, `all clear` without).
+The forall spelling `{count("is:todo -has:owner") == 0: …}` discriminates (`every one` / `some are
+not`). A pipe inside a quoted query discriminates. A colon inside a compared value (`code == "a:b"`)
+matches. Unchanged: plain `#tag` counts, numeric and text conditionals, the inline rule form, prose
+with a colon, a `{roll:}`, and an unclosed quote still refusing. Zero page errors.
+`node --test tests/test.mjs` green at **1998**.
+
+### Two measurement errors of mine, both caught by a control
+
+The first acceptance run showed the new capability parsing but answering wrongly. Both were fixtures,
+not the app:
+
+1. `mkNode('[ ] write copy')` leaves `type: 'ul'` -- the type is derived at adopt/edit, not by
+   `mkNode`. Exonerated by a control: a plain `{= count("is:todo")}` on the same document also
+   returned 0, and `queryHits` returned 0 directly.
+2. Even typed, `[ ] x` is not what `is:todo` matches. **`is:todo` means the `#TODO` STATE keyword**,
+   not a markdown checkbox (`deriveTypeFromText('[ ] x')` returns falsy here; `#TODO x` returns
+   `todo`). Measured across the filter set: `is:todo` 1, `is:done` 0, `#x` 1 on a mixed document.
+
+### A pin the mutation harness corrected, again
+
+Five mutations; four bit immediately. Dropping the unbalanced-quote fallback left the suite green,
+because the test string I chose (`count("is:todo) > 0: …`) also trips the `fn(` tell and stays an
+attempt without it. The fallback is load-bearing for a body with an unclosed quote and **no other
+tell** -- `mood == "angry: yes | no`, where `==` is excluded from the single-equals pattern. That case
+was added and the mutation now goes red.

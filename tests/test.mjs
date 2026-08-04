@@ -805,7 +805,11 @@ test('#1359: a body that reads as an attempted TEST is an attempt, never a coin 
   const attempts = ['and(a, b): both | not both', 'not(a): off | on', 'or(a,b): y | n',
                     'a ≥ 3: yes | no', 'a ≤ 9: y|n', 'a ≠ 4: y|n',
                     'danger = 5: yes | no', 'danger > 9 || hp > 5: either | nope', 'a && b: y|n',
-                    'count("is:todo") > 0: some | none'];
+                    // NB `count("is:todo") > 0: …` used to live here. #1363 made the conditional's
+                    // boundary split quote-aware, so the colon inside the query no longer splits the
+                    // body and it is a REAL conditional now — moved to its own pin below rather than
+                    // deleted, so the reversal is recorded rather than silently lost.
+                    'count("is:todo) > 0: some | none'];   // still an attempt: the quote is unclosed
   for (const b of nonEmpty(attempts, 'attempted-test shapes')) {
     assert.equal(c.condAttempt(b), true, `${b}: reads as an attempted test`);
     assert.equal(c.classifyBraceBody(b, {}, {}), 'invalid', `${b}: classifies invalid, not artifact`);
@@ -813,6 +817,34 @@ test('#1359: a body that reads as an attempted TEST is an attempt, never a coin 
       `${b}: nested, degrades to a visible marker rather than a pick`);
     assert.ok(c.condAttemptReason(b).length > 30, `${b}: the cue says something followable`);
   }
+});
+
+test('#1363: a quoted query keeps its colon and its pipe, so predicates reach the test', () => {
+  // splitTopLevel tracks brace depth alone, so `:` inside a quoted search split the conditional
+  // before its own separator did — `#tag` queries were fine and every is:/has:/tag: filter was not.
+  for (const [body, why] of nonEmpty([
+    ['count("is:todo") > 0: some | none',   'a colon inside the query'],
+    ['count("has:owner") == 0: all | some', 'another field filter'],
+    ['count("#a | #b") > 0: yes | no',      'a pipe inside the query, which used to read as alternation'],
+    ['mood == "a:b": yes | no',             'a colon inside a compared value'],
+  ], 'quoted-query conditions')) {
+    const cp = c.condParts(body);
+    assert.ok(cp, `${body}: parses as a conditional (${why})`);
+    assert.ok(cp.cond.includes('"'), `${body}: the quoted run survives into the test`);
+    assert.equal(c.condAttempt(body), false, `${body}: and is not mistaken for an attempt`);
+  }
+  // the ARM split is deliberately NOT quote-aware: a quote in a branch is prose, not a delimiter
+  assert.deepEqual(host(c.condParts('x > 1: he said "a | b" | none')),
+    { cond: 'x > 1', then: 'he said "a', else: 'b" | none' },
+    'arms still split on a top-level pipe, quoted or not (recorded, not accidental)');
+  // and an UNBALANCED quote must still read as an attempt, or #1359 regresses
+  assert.equal(c.condAttempt('count("is:todo) > 0: some | none'), true, 'an unclosed quote is still an attempt');
+  // …and the case the fallback is actually LOAD-BEARING for. The string above also trips the `fn(`
+  // tell, so removing the fallback left it green — a guard nobody can break. This one has an unclosed
+  // quote and NO other tell (`==` is excluded from the single-equals pattern), so without the plain-
+  // split fallback it stops being an attempt and goes back to being a coin flip. Found by mutation.
+  assert.equal(c.condAttempt('mood == "angry: yes | no'), true,
+    'an unclosed quote with no other tell is still an attempt');
 });
 
 test('#1359: the shapes it must NOT claim — the rule-definition form above all', () => {
