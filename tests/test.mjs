@@ -29467,3 +29467,59 @@ test('#1391 both keyboard branches restore, and the clock uses its ordinal', () 
   assert.ok(/if \(spoil && e\.target === spoil\) \{ e\.preventDefault\(\); toggleSpoiler\(spoil\); return; \}/.test(h),
     'the spoiler stays a plain toggle: it is not replaced, so it keeps its own focus');
 });
+
+// ─── #1394: filtering by an inline tag lands in the search box ────────────────
+// The first find made by APPLYING the sibling rule shipped in the previous change rather than by
+// stumbling on it, and the evidence is unusually literal: five controls set a search query, four run
+// the same three-line idiom, and one is missing its third line.
+//
+//   member                                     sets sb.value  applySearch  sb.focus()
+//   the tags-panel row                              yes           yes         yes
+//   applySavedChip (a saved-search chip)            yes           yes         yes
+//   the search-legend chip (stacks a token)         yes           yes         yes
+//   revealCheckOffenders                            yes           yes         yes
+//   searchHashtag (an inline #tag in a point)       yes           yes         NO  <-- focus to <body>
+//
+// Driven before: both the pointer and keyboard paths landed on <body>. This is NOT a caret-invariant
+// case (contrast #1391, which is keyboard-only): the mousedown handler stops the CLICK moving the
+// caret, but applySearch() re-renders and destroys the edited row anyway, so the caret was already
+// gone on both paths. Landing in the box is strictly better, and it is where the query now lives.
+test('#1394 searchHashtag lands in the search box, like its four siblings', () => {
+  const fn = fnBody(_src, 'searchHashtag');
+  assert.ok(/const sb = document\.getElementById\('search-box'\);/.test(fn), 'it takes the box');
+  assert.ok(/sb\.value = q;/.test(fn) && /applySearch\(q\);/.test(fn), 'sets the query and applies it');
+  assert.ok(/sb\.focus\(\);/.test(fn), 'and lands there — the line that was missing');
+  assert.ok(fn.indexOf('applySearch(q)') < fn.indexOf('sb.focus()'),
+    'focus AFTER the apply, since the apply re-renders');
+});
+
+test('#1394 census: every control that SETS a query lands the user in the box', () => {
+  // The ratchet the sibling rule asks for: this family is enumerable from source, so the next member
+  // that forgets fails a test instead of shipping. A call site that sets a non-empty query into the
+  // box must also focus it, or be named below with the reason it does something else.
+  const fns = [];
+  const re = /^function ([A-Za-z_$][\w$]*)\s*\(/gm;
+  let m;
+  while ((m = re.exec(_src))) {
+    let i = _src.indexOf('{', m.index), d = 0, j = i;
+    if (i < 0) continue;
+    for (; j < _src.length; j++) { const ch = _src[j]; if (ch === '{') d++; else if (ch === '}') { d--; if (!d) break; } }
+    fns.push({ name: m[1], body: _src.slice(m.index, j + 1) });
+  }
+  // a SETTER assigns a non-empty query and applies it; a CLEARER applies '' and is a different act
+  const setters = nonEmpty(
+    fns.filter(f => f.name !== 'applySearch'
+      && /applySearch\((?!''\))/.test(f.body)
+      && /(search-box'\)\.value = |sb\.value = )/.test(f.body)),
+    'functions that set a search query');
+  // Exempt, each for a reason that was read rather than assumed:
+  const EXEMPT = new Set([
+    'applySearch',           // the applier itself
+    'handleSearchInput',     // the debounced typing path — the caret is already in the box
+  ]);
+  const missing = setters.filter(f => !EXEMPT.has(f.name) && !/\.focus\(\)/.test(f.body)).map(f => f.name);
+  assert.deepEqual(missing, [], 'a control that sets a query must land the user where the query is');
+  // and the family must not be silently empty: searchHashtag is the member this test was written for
+  assert.ok(setters.some(f => f.name === 'searchHashtag'), 'searchHashtag is in the census');
+  assert.ok(setters.length >= 2, `the census found ${setters.length} setters, expected several`);
+});

@@ -4866,3 +4866,49 @@ listens on `click`, a selector matching a Font Awesome icon instead of a clock p
 test run outside the zoom view where it does not render. Each initially looked like a defect. The
 habit that caught them all is the same one UXP-303 recorded: **check the sample against what the
 surface should contain before believing a null result.**
+
+## UXP-307 -- filtering by an inline tag lands in the search box (#1394)
+
+**P3/P1. The first find made by APPLYING the sibling rule rather than stumbling on it**, and the
+evidence is unusually literal: five controls set a search query, four run the same three-line idiom,
+and one is missing its third line.
+
+| member | sets `sb.value` | `applySearch` | `sb.focus()` |
+|---|---|---|---|
+| the tags-panel row | yes | yes | yes |
+| `applySavedChip` (a saved-search chip) | yes | yes | yes |
+| the search-legend chip (stacks a token) | yes | yes | yes |
+| `revealCheckOffenders` | yes | yes | yes |
+| **`searchHashtag`** (an inline `#tag` in a point) | yes | yes | **NO** |
+
+Driven before: clicking or Enter-ing an inline tag filtered correctly and announced correctly
+("2 matching points"), and dropped focus to `<body>` on **both** paths.
+
+### Why this one covers the pointer path, when #1391 did not
+
+The hashtag's `mousedown` handler swallows its event, and its comment says that is the caret
+invariant. It is -- for the *click*. But `applySearch()` **re-renders**, which destroys the edited row
+regardless, so the caret was already gone before this change. **Measured, not assumed:** with the
+caret in a point, a mouse click on a tag left `document.activeElement` on `<body>`. Landing in the
+search box is therefore strictly better than the status quo on both paths, and it is where the query
+the user just applied now lives (P1). Contrast UXP-306, where the pointer path genuinely preserved
+something and the fix had to stay keyboard-only -- the difference is measurable, and was measured.
+
+### The two clearers are deliberately different, and were read rather than lumped in
+
+`applySearch('')` from the Escape key **blurs** the box explicitly; the clear-then-zoom path sends
+focus to the zoomed point. Both are doing something considered, so neither is a member of this family.
+
+### The ratchet
+
+The family is enumerable from source, so per the sibling rule it gets a census: any function that
+assigns a non-empty query into the search box and applies it must also focus it, or be a named
+exemption (the applier itself, and the debounced typing path where the caret is already in the box).
+**A mutation that removes the focus from a SIBLING turns it red**, which is the point -- the guard
+generalises rather than pinning the one site that happened to be broken.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2033**. Three mutations, each asserting its target present
+first, all red: drop the focus from `searchHashtag`; move it *before* the apply (where the re-render
+would discard it); and drop it from `applySavedChip`, which the census must catch.
