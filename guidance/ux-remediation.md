@@ -3608,3 +3608,69 @@ were re-run and go red -- with the control asserted green first.
 persona research (~9 of 17 personas want a sentence shaped like *"OVER by `{= sum(cost) - budget}`"*).
 It also explains why the documented crit-check example survived -- `Success ({= r + mod})` is
 parenthesised, so no whitespace precedes `{=` -- while every natural money sentence died.
+
+---
+
+## UXP-288 -- a conditional could not read what a math pill on the same point read fine (#1356)
+
+**Status: FIXED.** The most-wanted conditional capability in the persona research, and a P1 inversion:
+the same name meant one thing in `{= }` and nothing in `{cond: }`, on one point.
+
+### The defect
+
+```
+Math reads it: {= hp}                ->  hp = 3
+Cond reads it: {hp > 1: ok | hurt}   ->  no match yet        (same point, prop hp: 3)
+```
+
+Same for a rollup and a query. Nkechi's *"if the plate cost goes over a third of the menu price, say
+REPRICE"*, Devin's over-budget flag, Adeyemi's grade bands on a `score` property, Kofi's
+`chanceover` threshold -- **8 of 17 personas** wanted a threshold on a rolled-up or property-backed
+number, and in every case the number was already computable one pill to the left.
+
+### The cause: a scope asymmetry, not a missing engine
+
+`{= }` resolves against `resolveNodeScope(node, ancestorsOf(node), collectVars())` and pre-passes the
+expression through `expandAggExpr(expr, node, vars)`. The conditional arm called
+`evalMath(cond, ctx.vars)` -- document variables only. `resolveNodeScope` had nine call sites and
+none was the grammar path. There was no workaround: `{spent := sum(cost)}` also renders unresolved.
+
+### The fix
+
+Both halves of the math pill's scope, applied at the one site, in its order. `cookieNode` was
+already in scope three lines above.
+
+**And the BRANCH gets the same scope, not just the test.** Widening only the test shipped a new
+inconsistency in place of the old one -- driven, `{hp > 1: {= hp * 2} left | none}` took the correct
+branch and then rendered `? left`, because the branch's own `{= }` still resolved through `ctx.vars`.
+Same scope on both sides of the colon, or the form is half-alive. That was caught by driving, not by
+reading.
+
+### Driven
+
+Own numeric property, own prop beating a same-named doc variable, `sum()`, `avg()`, `count("query")`,
+Nkechi's REPRICE sentence, Adeyemi's nested grade bands, a computed value inside a branch. Unchanged:
+document variables, a text condition on a text variable, an undefined name still showing its marker, a
+roll still driving the test, and #1354's computed-value-in-a-branch. Click-to-re-judge re-runs and
+returns the same verdict (a conditional is not random). Zero page errors. Suite green at **1991**.
+
+### Stated, not claimed
+
+- **A TEXT property still cannot drive a string condition.** `nodePropVars` keeps numeric props only,
+  so `{mood == "angry": …}` on a point with `mood: angry` still refuses. Verified, and deliberately
+  not papered over.
+- **An ANCESTOR property does not reach a child's conditional -- and does not reach a child's `{= }`
+  either.** Measured both: `resolveNodeScope`/`ancestorsOf` return the right scope when called
+  directly, but a child's `{= tension}` reading a parent's property does not promote in the first
+  place. So this change reaches PARITY with the math pill rather than falling short of it; the
+  remaining gap is older, shared, and filed separately.
+
+### Why it could not be pinned purely
+
+`cookieNode` is a render-time module `let`, not a ctx field, so the vm sandbox cannot set it and
+`resolveBrace` cannot be driven into the widened path from Node. The pins are therefore a CALL-SITE
+source pin (resolveNodeScope + expandAggExpr + the string arm + the branch + the node-less fallback)
+plus the driven run above -- and the entry says so, because a source pin proves presence, not
+behaviour. Five mutations, each asserting its target present first against a control asserted green:
+all five go red, and dropping the node-less fallback additionally reddens an existing `depsOut` test,
+which is what makes that arm demonstrably load-bearing rather than defensive.

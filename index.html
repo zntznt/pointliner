@@ -24401,10 +24401,26 @@ function resolveBrace(body, ctx) {
     // #540: try the string-equality arm first — a quoted side makes it a TEXT comparison
     // (the missing half of #429: text pick vars driving a branch). Not applicable → the
     // numeric evalMath path, unchanged. NaN = a string condition whose ref can't resolve.
-    const sv = strCondVerdict(cond, ctx.vars);
-    const v = sv !== null ? (isNaN(sv) ? null : sv) : evalMath(cond, ctx.vars);
+    // #1356: a condition gets the SAME scope a `{= }` on this point gets. It used to see only
+    // ctx.vars (= collectVars(), document variables), so `{hp > 1: ok | hurt}` on a point carrying
+    // `hp: 3` refused while `{= hp}` beside it read 3 — one name, two meanings, on one point (P1),
+    // refused with the roll family's "no match yet" (P4). Both halves of the math pill's scope are
+    // applied here, in its order: resolveNodeScope layers own props over ancestors over doc vars,
+    // and expandAggExpr pre-substitutes sum()/count("…") to literal numbers so evalMath's
+    // number-only contract is untouched (the same translation model every rollup already uses).
+    // cookieNode is the render node and is already in scope above; a node-less caller keeps the
+    // old document-only scope, which is what the dialog previews want.
+    // NOTE, deliberately NOT claimed: nodePropVars keeps NUMERIC props only, so a TEXT property
+    // still cannot drive a string condition. Different question, filed separately.
+    const _scope = cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), ctx.vars) : ctx.vars;
+    const sv = strCondVerdict(cond, _scope);
+    const v = sv !== null ? (isNaN(sv) ? null : sv) : evalMath(expandAggExpr(cond, cookieNode, _scope), _scope);
     if (v === null) return `{${cp.cond}?}`;             // condition couldn't resolve → visible marker (P4)
-    return expandTemplate(v ? cp.then : cp.else, ctx);
+    // The chosen BRANCH gets the same widened scope as the test. Widening only the test would ship a
+    // new inconsistency in place of the old one: `{hp > 1: {= hp * 2} left | none}` on a point with
+    // `hp: 3` would take the right branch and then render `? left`, because the branch's own `{= }`
+    // resolves through ctx.vars. Same scope on both sides of the colon, or the form is half-alive.
+    return expandTemplate(v ? cp.then : cp.else, _scope === ctx.vars ? ctx : { ...ctx, vars: _scope });
   }
   const sp = seqParts(body);
   if (sp) {

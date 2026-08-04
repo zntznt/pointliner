@@ -777,6 +777,26 @@ test('resolveBrace — conditional emits THEN when the comparison holds, else EL
   assert.equal(c.resolveBrace('hp > 0: alive', ctx({ hp: 0 })), ''); // no else → empty
 });
 
+test('#1356: the conditional arm gives the test the SAME scope a {= } on that point gets', () => {
+  // CALL-SITE pin (#1133). resolveNodeScope has its own pure pins; they prove the layering, not that
+  // the conditional calls it. This behaviour cannot be pinned purely: `cookieNode` is a render-time
+  // module `let`, not on the ctx, so the vm sandbox cannot set it — hence a source pin here PLUS the
+  // driven run recorded in UXP-288. A source pin proves presence, never behaviour.
+  const arm = between(NC, 'const cp = condParts(body);', 'const sp = seqParts(body);');
+  assert.ok(nonEmpty(arm.split('\n'), 'the conditional arm of resolveBrace').length > 4);
+  assert.match(arm, /resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), ctx\.vars\)/,
+    'the test resolves against own props over ancestors over doc vars, like a math pill');
+  assert.match(arm, /evalMath\(expandAggExpr\(cond, cookieNode, _scope\), _scope\)/,
+    'and rollups/queries are pre-substituted, so evalMath stays number-only');
+  assert.match(arm, /strCondVerdict\(cond, _scope\)/, 'the string arm reads the same scope');
+  assert.doesNotMatch(arm, /evalMath\(cond, ctx\.vars\)/, 'the old document-only evaluation is gone');
+  // a node-less caller (dialog preview) keeps the document-only scope
+  assert.match(arm, /cookieNode \?[\s\S]{0,90}: ctx\.vars/, 'no node → the old scope, not a throw');
+  // and the chosen BRANCH gets the widened scope too, or the form is half-alive
+  assert.match(arm, /expandTemplate\(v \? cp\.then : cp\.else,[\s\S]{0,60}vars: _scope/,
+    'the branch is expanded with the widened scope');
+});
+
 test('resolveBrace — an unresolvable condition fails visibly (P4), never silently', () => {
   // hp is undefined → evalMath returns null → a `{cond?}` marker, not a blank or a throw.
   assert.equal(c.resolveBrace('hp > 0: a | b', { rules: {}, vars: {}, depth: 0, stack: [] }), '{hp > 0?}');
