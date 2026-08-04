@@ -29434,7 +29434,9 @@ test('#1391 refocusAfterRepaint re-finds in the live document, not a captured el
 });
 
 test('#1391 both keyboard branches restore, and the clock uses its ordinal', () => {
-  const h = between(_src, 'progress clock: Enter/Space advances it', 'Point-actions menu');
+  // the window starts at the SPOILER branch, which sits above the clock — the negative assertion
+  // below is about that branch, and a window starting at the clock would have excluded it.
+  const h = between(_src, 'spoiler block: Enter/Space reveals', 'Point-actions menu');
   // the clock branch: ordinal captured BEFORE the advance, while the old pill is still in the DOM
   assert.ok(/const ordinal = \[\.\.\.content\.querySelectorAll\('\.clock:not\(\.clock-computed\)'\)\]\.indexOf\(clk\);/.test(h),
     'the clock is identified by its ordinal among the manual clocks');
@@ -29447,4 +29449,21 @@ test('#1391 both keyboard branches restore, and the clock uses its ordinal', () 
     'the pill branch routes through the same helper');
   assert.ok(!/const fresh = content\.querySelector\(`\[data-key/.test(h),
     'the old capture-and-search-a-possibly-detached-element form is gone');
+
+  // the action pill: measured after the first pass, once the right syntax ({hp -= 1}) was found.
+  // It applies, announces "hp is now 9", is REPLACED, and dropped focus — the clock's defect exactly.
+  // Also keyless (its data-act-body is arbitrary author text), so it is re-found by ordinal too.
+  assert.ok(/const ordinal = \[\.\.\.content\.querySelectorAll\('\.act-pill'\)\]\.indexOf\(apk\);/.test(h),
+    'the action pill is identified by its ordinal');
+  assert.ok(h.indexOf("querySelectorAll('.act-pill')].indexOf(apk)") < h.indexOf('runActionPill(apk)'),
+    'captured before the apply, or the old pill is already gone');
+  assert.ok(/if \(ordinal >= 0\) refocusAfterRepaint\(id, c => c\.querySelectorAll\('\.act-pill'\)\[ordinal\]\)/.test(h),
+    'and the action pill restores through the same helper');
+
+  // The SPOILER deliberately does not, and this is the negative half of the finding: toggleSpoiler
+  // only adds a class, so the element is never replaced and focus never leaves it. Driven:
+  // replaced=false, focus stayed on `.md-spoiler.revealed`. Adding a restore there would be cargo
+  // cult — pin the absence so nobody "completes the set" without measuring.
+  assert.ok(/if \(spoil && e\.target === spoil\) \{ e\.preventDefault\(\); toggleSpoiler\(spoil\); return; \}/.test(h),
+    'the spoiler stays a plain toggle: it is not replaced, so it keeps its own focus');
 });

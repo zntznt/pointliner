@@ -4836,16 +4836,29 @@ focuses these pills in the first place, and pulling focus there would break the 
 **Driven:** mouse-clicking a clock while editing a *different* point advances the clock and leaves
 that caret exactly where it was.
 
-**Not measured, so not claimed:** the action-pill and spoiler branches also activate-and-return in the
-same handler. Two attempts to render them used the wrong syntax and produced no pill, so nothing is
-asserted about them either way. The shared helper is there if they turn out to need it.
+### The remainder, measured after the first pass
+
+The action-pill and spoiler branches activate-and-return in the same handler, and the first pass could
+not measure them: two attempts used the wrong syntax and rendered no pill. Looking the forms up in the
+parser rather than guessing (`{hp -= 1}`, and a `>! ` line) settled both, and they land on **opposite**
+answers:
+
+| branch | replaced by its own activation? | verdict |
+|---|---|---|
+| action pill | **yes** — applies, announces "hp is now 9", drops focus to `<body>` | **fixed**, by ordinal like the clock (its `data-act-body` is arbitrary author text, not a key) |
+| spoiler | **no** — `toggleSpoiler` only adds a class | **correct as it stands**; focus stayed on `.md-spoiler.revealed` |
+
+**The spoiler's absence is pinned, not just left out.** Adding a restore there would be cargo cult, so
+a mutation that adds one turns a pin red. That is the point of measuring the negative case rather than
+"completing the set": two branches that look identical in the source needed opposite treatment, and
+only driving them told them apart.
 
 ### Verification
 
-`node --test tests/test.mjs` green at **2031**. Six mutations, each asserting its target present
-first, all red — including three that mutate toward the *wrong shape* rather than toward absence:
-capturing the ordinal after the advance, re-finding in the captured element again, and focusing a
-detached node.
+`node --test tests/test.mjs` green at **2031**. Nine mutations, each asserting its target present
+first, all red — including four that mutate toward the *wrong shape* rather than toward absence:
+capturing either ordinal after its action, re-finding in the captured element again, focusing a
+detached node, and adding the cargo-cult restore to the spoiler.
 
 **A method note.** Five separate probe errors preceded this finding: the meter and clock syntaxes
 (`{meter: 8/12}`, `[o 0/6]` — not the brace forms I guessed), a `mousedown` dispatch where the clock

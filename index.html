@@ -20048,7 +20048,17 @@ function onKeyDown(e, id, content) {
     }
     // action pill: Enter/Space applies the mutation (the keyboard twin of its click)
     const apk = e.target.closest?.('.act-pill');
-    if (apk && e.target === apk) { e.preventDefault(); runActionPill(apk); return; }
+    if (apk && e.target === apk) {
+      e.preventDefault();
+      // #1391: like the clock, an action pill carries no data-key (its identity is data-act-body,
+      // which is arbitrary author text), so it is re-found by ORDINAL among this point's action
+      // pills. Captured before the apply, while the old pill is still in the document.
+      // Driven: applying announces "hp is now 9" and replaced the pill, dropping focus to <body>.
+      const ordinal = [...content.querySelectorAll('.act-pill')].indexOf(apk);
+      runActionPill(apk);
+      if (ordinal >= 0) refocusAfterRepaint(id, c => c.querySelectorAll('.act-pill')[ordinal]);
+      return;
+    }
     const pchip = e.target.closest?.('.prop-chip');
     if (pchip) { e.preventDefault(); openPropChip(pchip); return; }
     // hashtag chip: Enter/Space applies its filter (the keyboard twin of its click)
