@@ -7490,6 +7490,52 @@ test('pickWeightedAlt: an unresolved weight expr falls back to neutral 1 (alt no
   finally { c.resetRandom(); }
 });
 
+test('#1354: a weight expression may not span a brace, so a computed value inside a branch survives', () => {
+  // The bug: `[\s\S]+?` let the weight capture cross `}`. A conditional/repeat is promoted as
+  // `origin: {BODY}`, so the body's OWN closing brace sits at the end of the string and the lazy
+  // capture swallowed everything from the first ` {=` to it, truncating the template — which then
+  // rendered as a well-formed pill showing a brace-unbalanced fragment, silently (P4).
+  const one = s => c.parseRules('origin: ' + s).rules.origin;
+  for (const body of [
+    '{cost > budget: OVER by {= cost - budget} | under}',   // the persona sentence
+    '{1 > 0: {= 1+1} | x}',
+    '{1 > 0: x | {= 1+1}}',                                  // the ELSE arm too
+    '{2x: {= 1+1}}',                                         // repeat, not just conditional
+    '{1 > 0: {= sum(cost)} | x}',
+  ]) {
+    const alts = one(body);
+    assert.equal(alts.length, 1, `${body}: one whole alternative`);
+    assert.equal(alts[0].template, body, `${body}: template is the WHOLE body, not a truncated head`);
+    assert.equal(alts[0].weightExpr, undefined, `${body}: the inner {= } is a value, not a weight`);
+  }
+  // The whitespace sensitivity that made it so odd to diagnose: these already worked and must stay working.
+  assert.equal(one('{1 > 0:{= 1+1}|x}')[0].template, '{1 > 0:{= 1+1}|x}');
+  assert.equal(one('{1 > 0: ({= 1+1}) | x}')[0].template, '{1 > 0: ({= 1+1}) | x}');
+});
+
+test('#1354: the A5 dynamic weight itself is untouched — this narrows the capture, it does not remove it', () => {
+  // If this goes red the fix has over-reached and killed dynamic odds.
+  assert.deepEqual(host(c.parseAlt('shield {= str}')), { template: 'shield', weightExpr: 'str' });
+  assert.deepEqual(host(c.parseAlt('The {beast} {= hp}')), { template: 'The {beast}', weightExpr: 'hp' });
+  const p = c.parseRules('origin: aa {= hp}|bb 2');   // NB a `0` weight is filtered out by parseRules
+  assert.deepEqual(host(p.rules.origin[0]), { template: 'aa', weightExpr: 'hp' });
+  assert.deepEqual(host(p.rules.origin[1]), { template: 'bb', weight: 2 });
+});
+
+test('#1354: parseAlt and templateAttempt keep the same [^{}] fence (two sites, one rule)', () => {
+  // templateAttempt guards the SAME pattern ("trailing {= …} = parseAlt's weight form"). If one
+  // site is narrowed and the other is not they disagree about what a weight is, so pin the pair.
+  // Assert the WHOLE regex fragment at each site, not just `[^{}]`. A bare `[^{}]` is a string my
+  // own explanatory comment also contains, so the first draft of this pin stayed green while the
+  // code was reverted — a pin that cannot fail (#1133). Caught by mutation; both arms now bite.
+  const body = between(NC, 'function parseAlt(', 'function parseRules(');
+  assert.ok(body.includes('{=\\s*([^{}]+?)\\s*\\}'), 'parseAlt fences the weight expression with [^{}]');
+  assert.ok(!body.includes('{=\\s*([\\s\\S]+?)'), 'the old brace-spanning capture is gone from parseAlt');
+  const ta = fnBody(NC, 'templateAttempt');
+  assert.ok(ta.includes('{=\\s*[^{}]*\\}'), 'templateAttempt mirrors the same [^{}] fence');
+  assert.ok(!ta.includes('{=\\s*[\\s\\S]*\\}'), 'and does not keep the brace-spanning form');
+});
+
 test('parseRules: a rule-level {= expr} dynamic weight is KEPT, not silently dropped', () => {
   // Regression: the filter `a.weight >= 1` dropped dynamic-weight alts (which carry
   // weightExpr, not weight), so `p: peace | war {= w}` lost the war alt entirely.

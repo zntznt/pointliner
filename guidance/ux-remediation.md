@@ -3542,3 +3542,69 @@ Headless Chrome, storage cleared: fresh boot at 1400px shows a two-column grid u
 scroll; a Project tracker pick loads its live document; at 390px the grid collapses to one column,
 full width, no horizontal overflow; the File menu shows only "Help & guide" and "Templates &
 examples". `node --test tests/test.mjs` green at 1831.
+
+---
+
+## UXP-287 -- a computed value inside a branch truncated the pill, unless you left out the space (#1354)
+
+**Status: FIXED.** Found in a deep evaluation of the grammar engine's composition surface. Three
+independent investigations reached the same root cause, and the parse was read directly before any
+code moved.
+
+### The defect
+
+```
+{cost := 2400}{budget := 2000}
+Total {cost > budget: OVER by {= cost - budget} | under}
+```
+
+rendered **`Total {cost > budget: OVER by`** -- a well-formed grammar pill showing a truncated,
+brace-unbalanced fragment of its own condition, tooltip *"Click to re-generate"*, no cue. Same in a
+repeat: `{2x: {= 1+1}}` -> `{2x:`. **Deleting the space fixed it**: `{1 > 0:{= 1+1}|x}` -> `2`.
+
+### The cause: two recorded decisions colliding
+
+`parseAlt`'s dynamic-weight capture was `([\s\S]+?)`, which may span `}`. A conditional or repeat is
+promoted as `origin: {BODY}`, so the body's OWN closing brace is the last character of the string and
+the lazy capture ran to it:
+
+```
+parseRules('origin: {cost > budget: OVER by {= cost - budget} | under}')
+  -> { template: "{cost > budget: OVER by",  weightExpr: "cost - budget} | under" }
+```
+
+A5 (dynamic odds, 2026-06-14) made a trailing `{= expr}` a weight; A3 (conditional text, same day)
+made `{cond: then | else}` a brace body. A5's note argued its ambiguity was *"the same
+accepted-ambiguity class as the trailing-number weight it extends"* -- true of the weighted
+alternation it was written for, and never tested against a conditional body.
+
+**The hazard was already known and defended in exactly one place.** `templateAttempt` carries a
+guard whose comment names it: *"the body must not end in a whitespace-separated `{= …}` group
+(parseAlt reads that as a dynamic WEIGHT, **which would silently truncate the template**)."* Glue
+templates were protected; the conditional and repeat paths were not.
+
+### The fix
+
+A weight is a math expression and `evalMath` is number-only by contract, so a legitimate weight never
+contains a brace. Fencing the capture to `[^{}]+?` is the whole change. The mirroring guard in
+`templateAttempt` is narrowed identically and the two are pinned as a pair -- one rule, two sites.
+
+Driven in the running app: `Total OVER by 400` / `Total under`, `{2x: {= 1+1}}` -> `2 2`, a computed
+value in the else arm (`only 4 left`), the A5 dynamic weight still weighting (hp=9 favoured its alt
+12/12), a plain alternation still varying, a glue template still one pill, zero page errors.
+`node --test tests/test.mjs` green at **1990**.
+
+### A pin of mine that could not fail, caught by mutation
+
+The first draft of the lockstep pin asserted `[^{}]` appeared in each function. Reverting
+`templateAttempt` left the suite **green**: the string `[^{}]` also appears in the explanatory comment
+I had just written beside the code. The same comment trap this register has recorded before. Both arms
+now assert the whole regex fragment (`{=\s*[^{}]*\}`), which prose cannot satisfy, and both mutations
+were re-run and go red -- with the control asserted green first.
+
+### Why it mattered
+
+"Compute a number, then say it in the branch" is the second most-wanted conditional capability in the
+persona research (~9 of 17 personas want a sentence shaped like *"OVER by `{= sum(cost) - budget}`"*).
+It also explains why the documented crit-check example survived -- `Success ({= r + mod})` is
+parenthesised, so no whitespace precedes `{=` -- while every natural money sentence died.
