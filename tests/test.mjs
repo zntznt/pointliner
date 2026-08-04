@@ -28659,8 +28659,16 @@ test('#1281: which rows a commit can change the doors on', () => {
   assert.equal(JSON.stringify(D(null, null)), JSON.stringify([]));
 });
 
-test('#1281: the doors are refreshed on commit, not only on a full render', () => {
-  const b = fnBody(_src, 'refreshRowAffordances');
+test('#1281/#1373: the row chrome is refreshed on commit, not only on a full render', () => {
+  const b = fnBody(_src, 'refreshRowChrome');
+  // #1373: the property CHIPS live on a sibling row, outside `.node-content`, so committing
+  // `Olive oil {prop cost: 6.20}` consumed the brace into node.props and left the screen reading
+  // "Olive oil" — the typed text gone and nothing in its place until a reload. A point that already
+  // had a chip was no better: the row survived and never gained the second one.
+  assert.ok(/for \(const el of div\.querySelectorAll\(':scope > \.node-props-row'\)\) el\.remove\(\);/.test(b),
+    'clears the props row first, or a second commit stacks a second one');
+  assert.ok(/if \(hasVisibleProps\(node\)\) div\.appendChild\(buildPropsRow\(node\)\);/.test(b),
+    'and rebuilds it through the same gate and builder buildRow uses (#494)');
   // THE bug: the doors are appended while a ROW is built, and a text commit repaints `.node-content`
   // innerHTML only. Measured on e631e52: after three priced rows were typed and committed the DOM held
   // zero .addrow-affordance, while calling maybeAddRowAffordance by hand on that parent produced
@@ -28672,9 +28680,49 @@ test('#1281: the doors are refreshed on commit, not only on a full render', () =
   assert.ok(/if \(!row\) return;/.test(b), 'a row that is not mounted is left to the row builder');
   // #1133: the call site, since a correct refresher proves nothing about whether anything calls it.
   const ee = fnBody(_src, 'exitEdit');
-  assert.ok(/for \(const id of affordanceDirtyIds\(node, parentOf\(node\.id\) \|\| null\)\) refreshRowAffordances\(id\);/.test(ee),
+  assert.ok(/for \(const id of affordanceDirtyIds\(node, parentOf\(node\.id\) \|\| null\)\) refreshRowChrome\(id\);/.test(ee),
     'exitEdit refreshes the committed point AND its parent');
   // the row builder must keep its own call: the refresh is an addition, not a replacement
   assert.ok(/if \(!opts\.searchCtx\) \{ maybeAddRowAffordance\(node, row\); maybeAddFieldAffordance\(node, row\); maybeAddCardAffordance\(node, row\); \}/.test(_src),
     'the original row-build path is untouched');
+});
+
+test('#1373: a pill tooltip joins the menu tip without doubling the sentence break', () => {
+  const J = c.pillTitleWithMenu, TIP = '. Right-click for more, including Freeze to text';
+  // The tip opens with its own '. ', and several base titles already end in a period, so a bare
+  // concatenation printed "format.. Right-click" and "))..  Right-click" on screen. Measured on
+  // two different pill types before the fix, which is what made it systemic rather than a one-off.
+  assert.equal(J('Click to re-roll'), 'Click to re-roll' + TIP, 'no trailing period: joined as-is');
+  assert.equal(J('Click to edit the formula or number format.'), 'Click to edit the formula or number format' + TIP,
+    'a trailing period is absorbed, never doubled');
+  assert.equal(J('Add ", subtree" to include every level below (like sum(cost, subtree)).'),
+    'Add ", subtree" to include every level below (like sum(cost, subtree))' + TIP);
+  assert.ok(!/\.\.\s*Right-click/.test(J('ends with a period.')), 'and never emits two periods');
+  // idempotent: the policy is re-applied on every repaint now, so applying it twice must be a no-op
+  assert.equal(J(J('Click to re-roll')), J('Click to re-roll'), 'idempotent');
+  assert.equal(J(''), '', 'an empty title stays empty rather than becoming a bare tip');
+  assert.equal(J(null), '');
+});
+
+test('#1373: the pill-tooltip policy is per-repaint, not a post-render sweep', () => {
+  const b = fnBody(_src, 'applyPillTitlePolicy');
+  // It used to be one sweep over vlist AFTER a render, and the title lives in each renderer's HTML
+  // string, so every incremental repaint shipped raw titles. Driven, both directions were wrong: in
+  // Guided a repainted pill LOST the #1116 Right-click teaching, and in Lean — reading mode, which
+  // deliberately strips these tooltips — editing any point brought them BACK until the next reload.
+  assert.ok(/isStandardOrLean\(\)/.test(b) && /removeAttribute\('title'\)/.test(b),
+    'the quieter tiers still strip the teaching tooltips (the ux.md dial)');
+  assert.ok(/pillTitleWithMenu\(el\.title\)/.test(b), 'and Guided adds the menu pointer through the shared join');
+  assert.ok(/-edit\$\/\.test\(el\.className\)\) continue;/.test(b), 'the -edit pencils are their own door already');
+  assert.ok(/function applyPillTitlePolicy\(scope\)/.test(_src), 'takes a scope, so a single repainted point can be treated');
+  // the selector expects an ANCESTOR of the pill, and a repaint hands us the .node-content itself
+  assert.ok(/matches\('\.node-content'\)/.test(b), 'a .node-content scope is lifted to its parent');
+
+  // THE class guard, and the durable half: every incremental repaint must re-apply the policy.
+  // This is the shape that let it drift — nine repaint sites, one sweep, no chokepoint.
+  const sites = nonEmpty(_src.split('\n').filter(l => /\.innerHTML = renderContentHTML\(/.test(l) && !l.trim().startsWith('//')),
+    'renderContentHTML repaint sites');
+  assert.ok(sites.length >= 9, `expected the known repaint sites, found ${sites.length}`);
+  const unpaired = sites.filter(l => !/applyPillTitlePolicy\(/.test(l));
+  assert.deepEqual(unpaired, [], 'every repaint site re-applies the tooltip policy on the same line');
 });

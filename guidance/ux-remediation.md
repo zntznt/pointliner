@@ -4156,3 +4156,85 @@ adjacent ask -- flag the rows that are MISSING the property -- is that issue's, 
 `node --test tests/test.mjs` green at **2008**. Seven mutations, uniqueness-checked anchors, all red,
 including letting timestamps be columns, refreshing the point but not its parent, and dropping the clear
 so the doors double.
+
+---
+
+## UXP-296 -- what an edit repaints, and what it silently leaves behind (#1373)
+
+**Status: FIXED.** Found by a driving pass rather than a report. The two previous fixes (UXP-294,
+UXP-295) were both "built once, never refreshed", so instead of guessing at more instances the whole
+class was hunted mechanically: perform a real action, commit it, snapshot the outline DOM, force the
+`render()` a reload would do, and diff. **Anything that differs is something the user is looking at
+that a reload would change.** Twenty actions driven across two waves.
+
+### Finding 1, the severe one: a property you attach is invisible
+
+Typing `Olive oil {prop cost: 6.20}` and committing left the screen reading **"Olive oil"**:
+
+```
+mid-typing  : "Olive oil {prop cost: 6.20}"
+AFTER COMMIT: "Olive oil"                       props: ["cost=6.20"]     <-- the screen
+after reload: "Olive oil  | cost | : | 6.20"    props: ["cost=6.20"]
+```
+
+The brace is consumed into `node.props`, so the text the user typed vanishes and **nothing takes its
+place** until a reload. It does not read as a silent success; it reads as if the typing had been
+eaten. A point that already had a chip was no better: the row survived and simply never gained the
+second one. A `{date due: …}` rides the same row, so a due date was invisible too.
+
+Attaching a property is the mechanism the entire compute story rests on (#1281, the panel's most
+repeated wall, 6 of 7). This is a strong candidate for why it kept being reported as "fiddly" no
+matter how many doors shipped: Fiona's *"MORE fiddly than a spreadsheet cell"*, Ruth's *"pick a row,
+type a number, and it just labels it as cost"*. You could not see the label appear.
+
+**Cause:** `buildRow` puts the chips on a SIBLING row (`.node-props-row`), and the only incremental
+repaints in the app are `content.innerHTML = renderContentHTML(node)`. Everything outside
+`.node-content` was unreachable. UXP-295 had already found the doors; the chips are the same gap,
+one row over. `refreshRowAffordances` is generalised to `refreshRowChrome` and rebuilds both.
+
+### Finding 2: the pill-tooltip policy escaped every incremental repaint, in both directions
+
+The tier policy (Standard/Lean strip the teaching tooltips; Guided adds the #1116 pointer to the
+pill's other door) was **one post-render sweep over `vlist`**, and its own comment conceded the
+reason: *"the title lives in each renderer's HTML string; no single chokepoint."* Driven:
+
+| tier | after render | after an edit | after reload |
+|---|---|---|---|
+| guided | `Click to re-roll. Right-click for more…` | **`Click to re-roll`** | `Click to re-roll. Right-click for more…` |
+| lean | *(no title)* | **`Click to re-roll`** | *(no title)* |
+
+Guided loses the teaching; **Lean, which is reading mode and strips these deliberately, gets them
+BACK** until the next reload. So the same pill behaves differently depending on whether you happened
+to edit nearby, which is the P1 break. Fixed by making the sweep a scoped
+`applyPillTitlePolicy(scope)` and calling it at all **nine** repaint sites.
+
+**The durable half is the class guard**, because nine sites and one sweep is exactly the shape that
+drifts: a test collects every `.innerHTML = renderContentHTML(` line in the source and fails unless
+each one re-applies the policy on the same line.
+
+### Finding 3: the double period, now explained
+
+`PILL_MENU_TIP` opens with its own `'. '` and was concatenated blind, so a title already ending in a
+period printed `format.. Right-click` and `)).. Right-click`. Spotted twice earlier in the session on
+two different pill types and never chased; it is one shared join, now `pillTitleWithMenu`, which
+absorbs the trailing period and is idempotent (required, since the policy is now re-applied per
+repaint).
+
+### What the pass cleared
+
+18 of 20 driven actions match a reload exactly: indent, outdent, move, delete, tick a to-do, add a
+tag, add a footnote ref, add an image, flip a check, change a value another point totals, gain a
+child, lose a child, remove the last property. **The two non-matches were my own harness**, and both
+are recorded rather than filed: the "note" action set `node.note` in JS instead of using the editor
+(the real `commitNote` calls `render()`), and the "heading" one differed only in class-attribute
+ORDER (`has-children nt-h2` vs `nt-h2 has-children`), verified identical once sorted.
+
+**A method note worth keeping:** the first run of the probe used `TAB` without a preceding `ENTER` in
+several fixtures, which indents the point itself instead of making a child. The documents were not
+what the case names claimed, so some "clean" results were not evidence of anything. Corrected and
+re-run before any of the above was believed. A detector is only as good as its fixtures, which is the
+same lesson finding (c) of UXP-295 taught from the other direction.
+
+`node --test tests/test.mjs` green at **2010**. Eight mutations, uniqueness-checked anchors, all red,
+including unpairing a single repaint site (the class guard catches it), dropping idempotence, and
+restoring the double period.
