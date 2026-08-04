@@ -5305,6 +5305,14 @@ function resolveNodeScope(node, ancestors, docVars = {}) {
   // apply ancestors farthest → nearest so a nearer ancestor overwrites a farther one
   for (let i = (ancestors?.length || 0) - 1; i >= 0; i--) Object.assign(out, nodePropVars(ancestors[i]));
   Object.assign(out, nodePropVars(node)); // own props win last
+  // #1353 Phase 2: carry the DISTRIBUTION lane across. #952 attaches it with `enumerable: false`
+  // (attachVarDists), and Object.assign copies only enumerable own properties — so every scope built
+  // here silently lost it. That is why a conditional could not resolve chanceover/percentile while a
+  // check could: evalCheck expands BEFORE it narrows, the conditional (#1356) expands after. Losing
+  // the lane was an accident of Object.assign, never a decision, so it is restored here rather than
+  // worked around at one call site.
+  const dists = varDistsOf(docVars);
+  if (dists) attachVarDists(out, dists);
   return out;
 }
 

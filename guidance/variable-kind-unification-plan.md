@@ -297,7 +297,7 @@ the mechanism behind every distribution refusal.
 | phase | what | size | blocked on |
 |---|---|---|---|
 | **1** | Every kind-wall refusal says which wall and how to cross it, on **three** surfaces (`{= }`, conditional, check), **in the announce as well as the tooltip**. Fix the wrong `bad ref` code for a distribution in a conditional. | small | nothing |
-| **2** | Make the taught remedy work where it does not: the **conditional** must expand the distribution reducers the way `{= }` and checks already do. | small | a semantic call (§10) |
+| **2** | ~~Make the taught remedy work: the conditional must expand the distribution reducers.~~ **SHIPPED** — see §11. | small | — |
 | **3** | Capture legibility: show the author which kind was inferred, and let them change it. Guided-mode/dialog work. | medium | nothing |
 | — | ~~unify `resolveVarDefs` / the `evalMath` ident boundary / OPML~~ | — | **not required**: B5 shows persistence is done, B3 shows checks already resolve the remedy, A1 shows the math remedy composes |
 
@@ -328,3 +328,56 @@ tell, not the diagnosis).
    conditional's expander to the distribution reducers; Phase 1 then routes the specific reason to all
    three surfaces, in the announce as well as the tooltip.
 3. **Phase 3** — capture legibility, separately.
+
+---
+
+## 11. Phase 2, shipped — and the cause was mine
+
+**The bug was introduced by #1356**, and the adversarial pass (§7/A2) is what surfaced it.
+
+`{chanceover(cost, 150) > 50: likely | unlikely}` rendered `can't tell yet`. Traced:
+
+```
+expandAggExpr('chanceover(cost, 150) > 50', node, vars )  ->  "(40.8) > 50"    expands
+expandAggExpr('chanceover(cost, 150) > 50', node, scope)  ->  unchanged        does not
+```
+
+The `> 50` was a red herring; the difference is the third argument. `scope` comes from
+`resolveNodeScope`, which rebuilds the map with `Object.assign` — and #952 attaches the distribution
+lane with **`enumerable: false`** (`attachVarDists`). `Object.assign` copies only enumerable own
+properties, so **every scope built by `resolveNodeScope` silently lost the lane.**
+
+That is why a **check** could resolve `percentile(cost, 90) <= 150` while a **conditional** could not:
+`evalCheck` expands *before* it narrows; the conditional arm I added in #1356 expands *after*.
+
+### The fix, and why it is in `resolveNodeScope` rather than the conditional
+
+Losing the lane was an accident of `Object.assign` semantics, never a decision — so it is restored
+where it was lost, in one place, for every caller. Fixing the conditional's call order instead would
+have left the same trap set for the next caller of `resolveNodeScope`.
+
+```js
+const dists = varDistsOf(docVars);
+if (dists) attachVarDists(out, dists);
+```
+
+Attached only when there is one (an empty lane is not attached), and still non-enumerable — a mutation
+making it enumerable turns the #952 "the sibling lane never leaks into the resolved map" pin red,
+which is the guard that keeps a lane from reading as a variable name.
+
+### Driven
+
+| | |
+|---|---|
+| `{chanceover(cost, 150) > 50: likely \| unlikely}` | **likely / unlikely** — the taught form works |
+| `{percentile(cost, 90) > 150: risky \| safe}` | risky |
+| `{chanceunder(cost, 120) > 10: cheap \| not}` | cheap |
+| `{cost > 150: over \| under}` on a bare range | **still `can't tell yet`** — the owner's decision holds |
+| `{hp > 5: alive \| dead}` | alive (regression) |
+| `{tension > 5: tense \| calm}` on a node property | tense (#1356 regression) |
+
+**Phase 1 is now unblocked**: the remedy its message will name is real.
+
+`node --test tests/test.mjs` green at **2016**. Four mutations red, including attaching an empty lane
+and making it enumerable. My own new pin was caught by the #1133 census guard for iterating
+`Object.keys` without asserting the collection — fixed with `nonEmpty`, which is the guard working.
