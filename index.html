@@ -23926,14 +23926,46 @@ function expandTemplate(tpl, ctx) {
 function condParts(body) {
   body = (body || '').trim();
   if (!body || body[0] === '=') return null;
-  const segs = splitTopLevel(body, ':');
+  // #1363: quote-aware for the two splits that decide what the CONDITION is, so a quoted query
+  // carrying a `:` or a `|` (count("is:todo"), count("#a | #b")) reaches the test intact.
+  const segs = splitCondTop(body, ':');
   if (segs.length < 2) return null;                               // no top-level `:`
   const cond = segs[0].trim();
-  if (!cond || splitTopLevel(cond, '|').length > 1) return null;  // a `|` before the `:` → alternation, not a conditional
+  if (!cond || splitCondTop(cond, '|').length > 1) return null;   // a `|` before the `:` → alternation, not a conditional
   if (!/==|!=|<|>/.test(cond)) return null;                       // require a comparison so detection stays syntactic
   const rest = body.slice(segs[0].length + 1);
   const alts = splitTopLevel(rest, '|');
   return { cond, then: alts[0].trim(), else: alts.length > 1 ? alts.slice(1).join('|').trim() : '' };
+}
+
+// splitCondTop(str, sep) — splitTopLevel plus QUOTE awareness, for the conditional only. #1363.
+//
+// splitTopLevel tracks brace depth alone, so a `:` inside a quoted search split the conditional
+// before its own separator did:
+//   splitTopLevel('count("is:todo") > 0: yes | no', ':') → ['count("is', 'todo") > 0', ' yes | no']
+// The test lost its comparison and the body was refused. `#tag` queries have no colon and were fine,
+// so every `is:` / `has:` / `tag:` filter — exactly the predicates worth testing — was unusable
+// inside a condition. The same applied to `|`: condParts rejects a condition carrying a top-level
+// pipe (that is how it tells a conditional from an alternation), so `count("#a | #b") > 0` was out.
+//
+// DELIBERATELY NOT a change to splitTopLevel itself. That function is shared by templates,
+// alternations, decks and rule bodies, where a quote is ordinary prose and protecting it would
+// change unrelated behaviour. Only the two splits that decide what the CONDITION is use this.
+// The ARM split keeps splitTopLevel: arms are grammar templates, and `{c: he said "a | b" | none}`
+// is genuinely ambiguous — a quote there is prose, not a delimiter.
+function splitCondTop(str, sep) {
+  const out = []; let depth = 0, q = '', cur = '';
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (q) { cur += ch; if (ch === q) q = ''; continue; }   // inside a quoted run: nothing separates
+    if (ch === '"' || ch === "'") { q = ch; cur += ch; }
+    else if (ch === '{') { depth++; cur += ch; }
+    else if (ch === '}') { depth = Math.max(0, depth - 1); cur += ch; }
+    else if (ch === sep && depth === 0) { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
 }
 
 // condAttempt(body) — TRUE when a body reads as an attempted TEST that condParts refused.
@@ -23967,12 +23999,17 @@ function condParts(body) {
 function condAttempt(body) {
   body = (body || '').trim();
   if (!body || body[0] === '=') return false;
-  const segs = splitTopLevel(body, ':');
-  if (segs.length < 2) return false;                 // no top-level `:` → not this shape at all
-  const left = segs[0].trim();
+  // #1363: read the boundary the quote-aware way, but fall back to the plain split when an
+  // UNBALANCED quote means the quote-aware one never finds a boundary. Without that fallback a
+  // half-typed `{count("is:todo) > 0: yes | no}` would stop being an attempt and go back to being a
+  // coin flip — losing exactly what #1359 closed.
+  const segs = splitCondTop(body, ':'), plain = splitTopLevel(body, ':');
+  if (plain.length < 2) return false;                // no top-level `:` under either reading
+  const left = (segs.length > 1 ? segs[0] : plain[0]).trim();
   if (!left) return false;
   if (condParts(body)) return false;                 // a real conditional, not an attempt
   if (/^[a-z_]\w*(\.[a-z_]\w*)*$/i.test(left)) return false;   // a valid rule NAME → the rule form
+  if ((body.match(/"/g) || []).length % 2 === 1) return true;    // an unclosed quote is an attempt
   return /≥|≤|≠|\|\||&&|\band\b|\bor\b|\bnot\b|[a-z_]\w*\s*\(|(^|[^<>!=])=([^=]|$)/i.test(left);
 }
 
@@ -23980,7 +24017,7 @@ function condAttempt(body) {
 // rule the fleet-A research set). Each arm answers the tell that made it an attempt, and shows the
 // working form, because a cue that is not followable is the defect it was written to close. Pure.
 function condAttemptReason(body) {
-  const left = splitTopLevel((body || '').trim(), ':')[0] || '';
+  const left = splitCondTop((body || '').trim(), ':')[0] || '';
   // A `:` INSIDE quotes still splits — splitTopLevel tracks brace depth only, which strCondVerdict's
   // own comment already records ("Quotes do NOT protect : or | from splitTopLevel"). The visible
   // consequence was never foreseen: `count("is:todo") > 0: …` splits at the colon in the search, so
@@ -24049,8 +24086,11 @@ function condEmptyMessage(cond, vars) {
 // bare identifier resolving through the VARS map (rules are re-rolled per evaluation, so
 // comparing one would be a coin flip, not a test — deliberately out). Comparison is
 // trimmed + case-insensitive, matching the engine's lowercased-identifier conventions.
-// Quotes do NOT protect : or | from splitTopLevel (same as every template), so compared
-// values should be simple words. evalMath never sees any of this — its number-only
+// Quotes did NOT protect : or | from splitTopLevel, so compared values had to be simple
+// words. AMENDED #1363: the conditional's own splits (the `:` boundary and the `|` check
+// that tells a conditional from an alternation) are quote-aware now, so `mood == "a:b"`
+// and `count("is:todo") > 0` reach the test intact. The ARM split is deliberately still
+// plain: a quote in a branch is prose, not a delimiter. evalMath never sees any of this — its number-only
 // contract is untouched. Returns 1/0 (verdict), null (not a string condition — caller
 // falls through to evalMath), or NaN (string condition, unresolvable ref → {cond?}).
 function strCondVerdict(cond, vars) {
@@ -24649,7 +24689,7 @@ function resolveBrace(body, ctx) {
   // inside a rule degrades the same way it does at the top level — visibly, naming the term it
   // could not read, instead of a silent coin flip between "COND: THEN" and "ELSE" (P1: one
   // meaning everywhere). Placed immediately before the alternation split, its only competitor.
-  if (condAttempt(body)) return `{${splitTopLevel(body, ':')[0].trim()}?}`;
+  if (condAttempt(body)) return `{${splitCondTop(body, ':')[0].trim()}?}`;
   const alts = splitTopLevel(body, '|');
   if (alts.length > 1) return expandTemplate(pickWeightedAlt(alts.map(parseAlt), ctx.vars).template, ctx);
   if (body[0] === '=') {
