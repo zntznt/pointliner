@@ -13537,8 +13537,12 @@ test('action: parseActionPill — the five operators, and the := / == / prose re
   assert.equal(c.parseActionPill('meter: hp/hpmax'), null);
   assert.equal(c.parseActionPill('note to self'), null);
   assert.equal(c.parseActionPill('2d6'), null, 'a dice body has no leading identifier');
-  assert.equal(c.parseActionPill('hp -= {dmg}'), null, 'a braced rhs is out of scope (bare names only)');
   assert.equal(c.parseActionPill('hp -='), null, 'an empty rhs is not an action');
+  // a BALANCED embedded {…} amount is accepted (resolves generatively at click); an UNBALANCED one is not
+  assert.deepEqual(host(c.parseActionPill('hp -= {1d6}')), { target: 'hp', op: '-=', rhs: '{1d6}' });
+  assert.deepEqual(host(c.parseActionPill('gold += {roll: #loot}')), { target: 'gold', op: '+=', rhs: '{roll: #loot}' });
+  assert.equal(c.parseActionPill('hp -= {1d6'), null, 'an unbalanced { in the amount is not an action');
+  assert.equal(c.parseActionPill('hp -= 1d6}'), null, 'an unbalanced } in the amount is not an action');
 });
 test('action: actionNewValue — current OP rhs, resolved in scope; divide-by-zero and bad refs → null', () => {
   const n = c.mkNode('Goblin');
@@ -13575,6 +13579,14 @@ test('action: the amount ROLLS the generative engine — {hp -= 1d6} lands in ra
     const v = c.actionNewValue({ target: 'hp', op: '-=', rhs: '2|4|6' }, n, scope);
     assert.ok([94, 96, 98].includes(v), `2|4|6 draws one listed amount, got ${v}`);
   }
+  // an EMBEDDED {…} amount resolves generatively too — {HP -= {1d6}} rolls the inner brace
+  for (let i = 0; i < 20; i++) {
+    const v = c.actionNewValue({ target: 'hp', op: '-=', rhs: '{1d6}' }, n, scope);
+    assert.ok(Number.isFinite(v) && v >= 94 && v <= 99, `{1d6} inner roll stays in range, got ${v}`);
+  }
+  const pick = new Set();
+  for (let i = 0; i < 20; i++) pick.add(c.actionNewValue({ target: 'hp', op: '-=', rhs: '{2|4|6}' }, n, scope));
+  assert.ok([...pick].every(v => [94, 96, 98].includes(v)), 'a braced {2|4|6} draws one listed amount');
 });
 test('action: formatStatValue — a whole result stays whole, float dust collapses', () => {
   assert.equal(c.formatStatValue(15), '15');
@@ -13594,7 +13606,7 @@ test('action: classifyBraceBody / braceTypeLabel — a valid action body is a re
 test('action: an action body stays LITERAL text — promoteBraceBodyIn never tokenizes it (src pins)', () => {
   // the render branch is display-only (cookieNode) and reads data-act-body; the mousedown swallows the
   // caret and the click/keydown twin both call runActionPill; the writeback resolves a prop or a var.
-  assert.ok(_src.includes('parseActionPill(m.slice(1, -1))'), 'mdInline recognizes an action body live');
+  assert.ok(_src.includes('const act = parseActionPill(body);') && between(_src, 'action pill: {HP', 'act-pill').includes('matchBrace(s, i)'), 'mdInline brace-walks so an embedded {…} amount is caught');
   assert.ok(_src.includes('class="act-pill"') && _src.includes('data-act-body='), 'renders a button carrying its body');
   assert.ok(_src.includes("e.target.closest('.act-pill')") && _src.includes('runActionPill(ap)'), 'click runs the action');
   assert.ok(_src.includes("e.target.closest?.('.act-pill')") && _src.includes('runActionPill(apk)'), 'Enter/Space twin (P3-3 keyboard)');
