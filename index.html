@@ -4322,17 +4322,52 @@ function auditAgg(node, expr) {
   const fn = m[1].toLowerCase(), prop = m[2];
   const depth = m[3] === 'subtree' ? Infinity : m[3] ? Number(m[3]) : 1;
   const contributors = [], missing = [];
-  for (const c of collectScoped(node, depth)) {
+  const scoped = collectScoped(node, depth);
+  const inScope = new Set(scoped);
+  for (const c of scoped) {
     const v = childPropNumber(c, prop);
     const title = auditTitle(c.text);
     if (v !== null) contributors.push({ title, value: v });
     else {
       const has = (c.props || []).some(p => (p.key || '').trim().toLowerCase() === prop.toLowerCase());
-      missing.push({ title, reason: has ? 'not a number' : 'no ' + prop });
+      // #1284: "no cost" is true and misleading when the point CONTAINS priced descendants the
+      // scope excludes. Driven: a kitchen budget of 1,200 + 300 with a 900 oven one level deeper
+      // showed sum(cost) = 1,500 and the audit said only "Appliances - no cost", so the reader
+      // concludes that row is unpriced rather than that the total is missing 900. That is the exact
+      // silent-wrong-total this audit exists to prevent, surviving inside it.
+      const hidden = hiddenBelowScope(c, prop, inScope);
+      missing.push({ title, reason: has ? 'not a number' : 'no ' + prop, hidden });
     }
   }
-  return { fn, prop, depth, contributors, missing, result: reduceAgg(fn, contributors.map(x => x.value)) };
+  return { fn, prop, depth, contributors, missing, hiddenTotal: missing.reduce((t, x) => t + (x.hidden ? x.hidden.sum : 0), 0),
+           result: reduceAgg(fn, contributors.map(x => x.value)) };
 }
+// #1284: the value a scope-excluded point is HIDING, as { count, sum } or null. Walks the point's
+// whole subtree and counts only descendants the rollup did NOT already see, so a row that is itself
+// a contributor is never double-reported. Pure; no DOM (the caller supplies the in-scope set).
+function hiddenBelowScope(node, prop, inScope) {
+  let count = 0, sum = 0;
+  const walk = n => {
+    for (const c of (n.children || [])) {
+      if (!inScope || !inScope.has(c)) {
+        const v = childPropNumber(c, prop);
+        if (v !== null) { count++; sum += v; }
+      }
+      walk(c);
+    }
+  };
+  walk(node);
+  return count ? { count, sum } : null;
+}
+
+// #1284: how a hidden-value row reads. Named separately so the copy is pinnable and says the AMOUNT,
+// which is the whole point: "no cost" sends a reader looking for an unpriced row, "900 below" tells
+// them the total is wrong and by how much. Pure.
+function auditHiddenNote(hidden) {
+  if (!hidden || !hidden.count) return '';
+  return `${groupThousands(String(hidden.sum))} in ${hidden.count} point${hidden.count === 1 ? '' : 's'} below`;
+}
+
 // A point's plain title for the audit rows: drop pill tokens ([[type:key]]) and any {…} bodies, then a
 // leading markdown marker (heading / checkbox / bullet / quote). Pure; parity with rollLabel's cleanup.
 function auditTitle(text) {
@@ -21386,8 +21421,21 @@ function openPillAudit(node, key) {
     for (const mr of a.missing) {
       const l = document.createElement('div'); l.style.cssText = 'display:flex;justify-content:space-between;gap:10px;color:var(--muted);padding:1px 0';
       const t = document.createElement('span'); t.textContent = mr.title; t.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
-      const w = document.createElement('span'); w.textContent = mr.reason; w.style.cssText = 'flex:0 0 auto';
+      // #1284: name the AMOUNT a scope-excluded point is hiding, not just that it has none itself.
+      const note = auditHiddenNote(mr.hidden);
+      const w = document.createElement('span'); w.textContent = note ? mr.reason + ', ' + note : mr.reason;
+      w.style.cssText = 'flex:0 0 auto';
+      if (note) w.style.color = 'var(--bad)';   // the misleading half is the one worth the loud colour
       l.append(t, w); warn.appendChild(l);
+    }
+    // #1284: and name the fix, in the same words the empty-rollup tip uses (P1: one widener, one
+    // phrasing). Only when something is actually hidden — a genuinely unpriced row needs a value,
+    // not a wider scope.
+    if (a.hiddenTotal) {
+      const fix = document.createElement('div');
+      fix.style.cssText = 'margin-top:6px;color:var(--muted)';
+      fix.textContent = `Add ", subtree" to include every level below (like ${a.fn}(${a.prop}, subtree)).`;
+      warn.appendChild(fix);
     }
     ioCard.appendChild(warn);
   }

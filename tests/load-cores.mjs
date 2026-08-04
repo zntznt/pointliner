@@ -286,6 +286,7 @@ export function loadCores() {
     'affordanceDirtyIds',                       // #1281: which rows a commit can change the doors on
     'pillTitleWithMenu',                        // #1373: joining a pill tooltip to the menu tip
     'offSearchMessage',                         // #1375: a point edited out of the active search
+    'hiddenBelowScope','auditHiddenNote',        // #1284: value a rollup's scope excludes
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
     'escHtml','escAttr','escQ','safeUrl','ex','toOpml',       // const-arrow escapers + URL scheme sanitizer (reached via the const pass)
