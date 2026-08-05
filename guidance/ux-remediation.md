@@ -5031,3 +5031,60 @@ sibling guard the fix was modelled on.
 
 Acceptance driven: the novelist's own loop, six iterations of right-click then Freeze to text, now
 **6/6 freeze the value on screen** (was 5/6 losing it).
+
+## UXP-310 -- an editable surface outside the outline keeps its own clicks (#1398)
+
+**Data loss, and a hole in my own UXP-302 fix.** Found by the novelist persona in a multi-agent
+live-drive pass, reproduced exactly by an independent verifier.
+
+Clicking the footnote body focused the **prose line**. Everything typed then went into the novel:
+
+```
+root.footnotes   [{"id":"river","text":""}]                                    <- unchanged
+point text       "...nobody spoke. [^river]The river gave the car back in 1974."
+```
+
+Nothing announced, nothing flashed. Not occlusion -- `elementFromPoint` at the click coordinates
+returned `DIV.fn-content`.
+
+### Why the previous fix missed it, and what that teaches
+
+UXP-302 widened this same bail list from an id list to **ARIA roles**, precisely so `#mt-colpanel`
+would be covered by construction rather than by enumeration. That was the right instinct and the
+**wrong net**: the footnote body is a plain editable `div` with no role at all, so the role match
+sailed straight past it.
+
+The property that actually distinguishes "a click that already means something" here is
+`[contenteditable]:not([contenteditable="false"])`. An editable surface is the strongest possible
+case -- the user is aiming a caret at it. That one selector also covers the note editor and the table
+markdown editor, and covers the next panel that ships a bare editable div. The `:not(false)` arm is
+load-bearing: pills and links carry `contenteditable="false"` so the caret skips them, and they must
+keep falling through to the branches that handle them.
+
+Generalising twice and still missing a case is worth recording plainly: **a generalisation is only as
+good as the property it picks**, and "has a role" was a property of the examples in front of me rather
+than of the thing being protected.
+
+### The marker's own promise, closed in the same change
+
+`activateFnRef` revealed, highlighted, scrolled and announced -- and left focus on `<body>`. The
+marker's accessible name is *"Footnote 1, not written yet. Click to write it."*, so the one thing it
+promised was the one thing it did not do. It now lands the caret in the footnote body. Nothing is
+stolen: the mousedown is already `preventDefault`ed and focus was going to `<body>` either way.
+
+### A vacuous pin of my own, caught by mutation
+
+The first version of the bail-list pin asserted against the RAW source and matched **the comment above
+the fix**, which quotes the selector verbatim -- so it passed with the code removed. Rewritten against
+the comment-stripped `NC` view (which #1132 exists for). **A comment documenting a guard can satisfy a
+pin on that guard**, and the mutation harness is the only reason that surfaced.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2037**. Five mutations, each asserting its target present
+first, all red -- including two toward the *wrong shape*: bailing on ALL `contenteditable` (which
+would break pills and links), and focusing before the panel is populated.
+
+Driven before and after: the footnote text now lands in `root.footnotes` with the prose untouched, the
+marker leaves the caret in the footnote body, and the #1210 empty-canvas router still routes an
+ordinary background click into the nearest point.

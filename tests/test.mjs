@@ -29606,3 +29606,47 @@ test('#1397 a secondary-button mousedown reaches no generative branch', () => {
   // the click gesture itself is a recorded P1 sign-off and must NOT be what got fixed
   assert.ok(/for \(const p of REROLL_PILLS\)/.test(h), 'left-click re-roll still routes through REROLL_PILLS');
 });
+
+// ─── #1398: an editable surface outside the outline keeps its own clicks ──────
+// Found by the novelist persona in a multi-agent live-drive pass. **This is a hole in the #1383 fix,
+// and the hole is instructive.** That change replaced an id list with ARIA ROLES so `#mt-colpanel`
+// would be covered by construction — but the footnote body is a plain editable `div` with NO role,
+// so the role net sailed straight past it.
+//
+// Clicking the footnote body focused the PROSE line instead. Everything typed went into the novel:
+//   root.footnotes   [{"id":"river","text":""}]                                   <- unchanged
+//   point text       "...nobody spoke. [^river]The river gave the car back in 1974."
+// Nothing announced, nothing flashed. Not occlusion: elementFromPoint returned DIV.fn-content.
+test('#1398 the empty-canvas router stands down on any editable surface', () => {
+  // NC, not the raw source: my FIRST version of this pin asserted against _fix2 and matched the
+  // COMMENT above the fix, which quotes the selector verbatim — so it passed with the code removed.
+  // Caught by mutation. A comment that documents a guard can satisfy a pin on that guard (#1132's
+  // comment-stripped view exists for exactly this).
+  const iCall = NC.indexOf('nearestPointToClick(e.clientY, rows)');
+  assert.ok(iCall > -1, 'the empty-canvas routing handler must call nearestPointToClick');
+  const h = NC.slice(NC.lastIndexOf("document.addEventListener('mousedown', e => {", iCall), iCall);
+  assert.ok(nonEmpty(h, 'the handler window').length > 40, 'the window is real');
+  // the PROPERTY, not another role or id — that is the whole point of this change
+  assert.ok(h.includes('[contenteditable]:not([contenteditable="false"])'),
+    'an editable surface is the strongest "this click already means something" there is');
+  // the :not(false) arm is load-bearing: pills and links carry contenteditable="false" so the caret
+  // skips them, and they must keep falling through to the branches that handle them
+  assert.ok(!/\[contenteditable\](?!:not)/.test(h.replace('[contenteditable]:not([contenteditable="false"])', '')),
+    'the exclusion for contenteditable="false" is kept');
+  // the two earlier widenings must survive — this is the third, not a replacement
+  for (const keep of nonEmpty(['.node-content', '#bpop', '[role="menu"]', '[role="dialog"]', '#toolbar'],
+                              'what the earlier passes added'))  // NC-based, so comments cannot satisfy these either
+    assert.ok(h.includes(keep), `the bail list still covers ${keep}`);
+});
+
+test('#1398 the footnote marker lands the caret where its own label promises', () => {
+  const fn = fnBody(_src, 'activateFnRef');
+  assert.ok(/item\?\.querySelector\('\.fn-content'\)\?\.focus\(\);/.test(fn),
+    'the marker focuses the footnote body');
+  // it revealed, highlighted, scrolled and announced already — focus was the one missing step, and
+  // it is the one the accessible name promises ("Footnote 1, not written yet. Click to write it.")
+  assert.ok(/scrollIntoView/.test(fn) && /announce\(/.test(fn),
+    'the reveal/scroll/announce it already did are untouched');
+  assert.ok(fn.indexOf('scrollIntoView') < fn.indexOf(".querySelector('.fn-content')?.focus()"),
+    'focus comes after the panel has been populated and scrolled');
+});

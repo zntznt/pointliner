@@ -21105,7 +21105,19 @@ document.addEventListener('mousedown', e => {
   // nearest point. Driven, `focusNode` was called every time a rows cap was picked. An open menu,
   // listbox or dialog is by definition a click that already means something, so match on that rather
   // than on a list of ids that the next popover will also be absent from.
-  if (e.target.closest('.node-content, .prop-chip, .bullet, #bpop, #toolbar, .io-card, #io-card, [role="button"], [role="menu"], [role="menuitem"], [role="listbox"], [role="option"], [role="dialog"], button, input, textarea, select, a, .zoom-title')) return;
+  // #1398: `[contenteditable]:not([contenteditable="false"])` is the third widening of this list, and
+  // it is the one that should have been here from the start. #1383 replaced an id list with ARIA
+  // ROLES so `#mt-colpanel` would be covered by construction -- but the footnote body is a plain
+  // editable `div` with NO role, so the role net sailed straight past it. Clicking it focused the
+  // PROSE line instead: `root.footnotes` stayed `[{"id":"river","text":""}]` while the point became
+  // "...nobody spoke. [^river]The river gave the car back in 1974." -- the footnote typed into the novel.
+  //
+  // An editable surface is the strongest possible "this click already means something": the user is
+  // aiming a caret. Matching on the PROPERTY rather than on a role or an id covers the note editor and
+  // the table markdown editor too, and covers the next panel that ships a bare editable div.
+  // The `:not(false)` arm matters -- pills and links carry contenteditable="false" precisely so the
+  // caret skips them, and they must keep falling through to the branches that handle them.
+  if (e.target.closest('.node-content, .prop-chip, .bullet, #bpop, #toolbar, .io-card, #io-card, [role="button"], [role="menu"], [role="menuitem"], [role="listbox"], [role="option"], [role="dialog"], [contenteditable]:not([contenteditable="false"]), button, input, textarea, select, a, .zoom-title')) return;
   const rows = [...document.querySelectorAll('.node-content')].map(el => {
     const r = el.getBoundingClientRect();
     return { id: el.dataset.id, top: r.top, bottom: r.bottom };
@@ -37262,6 +37274,13 @@ function activateFnRef(key, nodeId) {
     const item = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(key)}"]`);
     item?.querySelector('.fn-key')?.classList.add('hi');
     item?.scrollIntoView({ block: 'nearest' });
+    // #1398: land the caret in the footnote body. The marker's own accessible name is "Footnote 1,
+    // not written yet. Click to write it." -- it revealed, highlighted, scrolled and announced, and
+    // then left focus on <body>, so the one thing it promised was the one thing it did not do.
+    // Nothing is stolen by this: the mousedown is already preventDefault'd, and focus was landing on
+    // <body> either way, so this is strictly better than the status quo on both the empty and the
+    // written case (where it is still "take me to this note").
+    item?.querySelector('.fn-content')?.focus();
   });
   announce(`Footnote ${footnoteOrder().get(key) ?? key}`);   // Phase A: announce the document-order number, not the raw id
 }
