@@ -22588,15 +22588,22 @@ function slashApply() {
   // on the inline path (the verb was typed into the point), but differ when the builder delegates
   // here: there the query was typed into the builder's search box, so the point holds only the
   // trigger char. Absent (every pre-existing caller), it falls back to query.length — unchanged.
-  const currentText = editableText(content);
-  const { text: newText } = stripTriggerRun(currentText, slashOffset, stripLen ?? query.length, tailInsert || '');
+  // #1396: node.text at the FOLDED offset, never editableText(content). The builder delegates here
+  // for every `/` block command, and by then it has taken focus, so the row refolded and rendered:
+  // editableText returned the pill's glyphs and slashOffset pointed into a string that no longer
+  // existed. `Damage [[dice:k]]` came back as `- [ ] Damage 2d641=` with the record pruned. The
+  // INLINE door (non-Guided, caret never leaves the point) reaches the same line, and there the node
+  // is still unfolded, where foldedOffsetFor is the identity -- one rule, both doors.
   const node = nodeById(nodeId);
+  const currentText = node ? builderSpliceText(node) : editableText(content);
+  const spliceAt = node ? builderSpliceOffset(node, slashOffset) : slashOffset;
+  const { text: newText } = stripTriggerRun(currentText, spliceAt, stripLen ?? query.length, tailInsert || '');
   if (node) {
     node.text = newText;
     content.innerHTML = editModeHTML(node);
   }
   // restore the caret where the trigger char was
-  try { setCaretByOffset(content, slashOffset); } catch(_) {}
+  try { setCaretByOffset(content, spliceAt); } catch(_) {}
   // /base and @table both open the SHARED grid size picker (swapped into this same
   // popup) before creating anything; the confirm callback does the actual work.
   if (trigger !== '@' && cmd.id === 'base') {
@@ -43200,9 +43207,10 @@ function builderFormApply(cmd, pane) {
   const node = nodeById(st.nodeId);
   if (!node || !st.content) { closeBuilder(); return; }
   const result = cfg.insert(vals);
-  // Strip trigger text and insert the result (shared strip math — stripTriggerRun)
-  const currentText = editableText(st.content);
-  const strip = stripTriggerRun(currentText, st.offset, st.query.length, result);
+  // Strip trigger text and insert the result (shared strip math — stripTriggerRun).
+  // #1396: from node.text at the folded offset, never from the DOM (see builderSpliceText).
+  const currentText = builderSpliceText(node);
+  const strip = stripTriggerRun(currentText, builderSpliceOffset(node, st.offset), st.query.length, result);
   node.text = strip.text;
   st.content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(st.content, strip.caret); } catch (_) {}
@@ -43228,16 +43236,34 @@ function builderRestoreTrigger() {
   _restoreState = null;
 }
 
+// #1396: the text a builder apply must splice, and the offset in ITS coordinate space.
+//
+// The builder TAKES FOCUS, so the row it was opened from has already left edit mode and REFOLDED by
+// the time a command applies. Two faults compound there: editableText(content) returns the pill's
+// RENDERED glyphs (display-mode HTML carries no data-token for it to read), and st.offset was
+// measured in the unfolded edit-mode space -- so the splice cut a different string at a meaningless
+// index and wrote the glyphs back as the point's text. MEASURED: `Damage [[dice:k]]` plus a typed
+// `/todo` became `- [ ] Damage 2d641=` with the dice record pruned -- at the START of the point as
+// well as mid-line, and only through this door: the bullet menu applying the same command keeps the
+// pill.
+//
+// node.text is the truth on both sides of that boundary, and foldedOffsetFor is the translator this
+// file already has. It is the IDENTITY while the node is still unfolded (no [[type:key]] tokens to
+// walk), so this is ONE rule for both states rather than a branch on whether the row still edits.
+function builderSpliceText(node) { return node.text; }
+function builderSpliceOffset(node, offset) { return foldedOffsetFor(node, offset); }
+
 function showNestedDialog(cmd, pane) {
   if (!builderState) return;
   const st = builderState;
   const node = nodeById(st.nodeId);
   if (!node || !st.content) return;
-  const currentText = editableText(st.content);
-  _restoreState = { text: currentText, node, content: st.content, offset: st.offset, queryLen: st.query.length };
-  node.text = stripTriggerRun(currentText, st.offset, st.query.length).text;
+  const currentText = builderSpliceText(node);                       // #1396
+  const off = builderSpliceOffset(node, st.offset);
+  _restoreState = { text: currentText, node, content: st.content, offset: off, queryLen: st.query.length };
+  node.text = stripTriggerRun(currentText, off, st.query.length).text;
   st.content.innerHTML = editModeHTML(node);
-  try { setCaretByOffset(st.content, st.offset); } catch (_) {}
+  try { setCaretByOffset(st.content, off); } catch (_) {}
   markDirty();
   _dialogRoot = pane;
   _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };
@@ -43420,8 +43446,8 @@ function openBuilder(trigger) {
     if (cmd.type === 'pattern' && cmd._recipe) {
       const pst = builderState, pnode = nodeById(pst.nodeId);
       if (pnode && pst.content) {
-        const currentText = editableText(pst.content);
-        pnode.text = stripTriggerRun(currentText, pst.offset, pst.query.length).text;
+        pnode.text = stripTriggerRun(builderSpliceText(pnode),        // #1396
+          builderSpliceOffset(pnode, pst.offset), pst.query.length).text;
       }
       closeBuilder();
       insertRecipe(cmd._recipe, pst.nodeId);
@@ -43436,11 +43462,12 @@ function openBuilder(trigger) {
       // If form is already showing from browse, just submit it
       if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); return; }
       // Otherwise strip trigger text and open the form
-      const currentText = editableText(st.content);
-      _restoreState = { text: currentText, node, content: st.content, offset: st.offset, queryLen: st.query.length };
-      node.text = stripTriggerRun(currentText, st.offset, st.query.length).text;
+      const currentText = builderSpliceText(node);                   // #1396
+      const dOff = builderSpliceOffset(node, st.offset);
+      _restoreState = { text: currentText, node, content: st.content, offset: dOff, queryLen: st.query.length };
+      node.text = stripTriggerRun(currentText, dOff, st.query.length).text;
       st.content.innerHTML = editModeHTML(node);
-      try { setCaretByOffset(st.content, st.offset); } catch (_) {}
+      try { setCaretByOffset(st.content, dOff); } catch (_) {}
       markDirty();
       _dialogRoot = pane;
       _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };
@@ -43469,11 +43496,14 @@ function openBuilder(trigger) {
       slashState.matches = [cmd]; slashState.activeIdx = 0;
       slashApply(); return;
     }
-    // Strip the trigger text from the node (non-dialog commands) — shared strip math
-    const currentText = editableText(st.content);
-    node.text = stripTriggerRun(currentText, st.offset, st.query.length).text;
+    // Strip the trigger text from the node (non-dialog commands) — shared strip math.
+    // #1396: node.text at the folded offset (see builderSpliceText), or a pill on this point is
+    // overwritten by its own rendered glyphs.
+    const currentText = builderSpliceText(node);
+    const spliceOff = builderSpliceOffset(node, st.offset);
+    node.text = stripTriggerRun(currentText, spliceOff, st.query.length).text;
     st.content.innerHTML = editModeHTML(node);
-    try { setCaretByOffset(st.content, st.offset); } catch (_) {}
+    try { setCaretByOffset(st.content, spliceOff); } catch (_) {}
     markDirty();
     // Commands that fall through to the / block-command path (non-@{</>) or
     // brace-forms also close the builder before applying.
@@ -43489,13 +43519,13 @@ function openBuilder(trigger) {
       // Insert the brace scaffold — fall through to blink in content
       const cur = nodeById(st.nodeId);
       if (cur) {
-        cur.text = stripTriggerRun(currentText, st.offset, st.query.length, cmd._brace.insert).text;
+        cur.text = stripTriggerRun(currentText, spliceOff, st.query.length, cmd._brace.insert).text;
         st.content.innerHTML = editModeHTML(cur);
         try {
-          const caret = st.offset + cmd._brace.sel[0];
+          const caret = spliceOff + cmd._brace.sel[0];
           setCaretByOffset(st.content, caret);
           if (cmd._brace.sel[1] > cmd._brace.sel[0]) {
-            const [s, e] = [st.offset + cmd._brace.sel[0], st.offset + cmd._brace.sel[1]];
+            const [s, e] = [spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]];
             const sel = domSelectionForChars(st.content, s, e);
             if (sel) { const r = new Range(); r.setStart(sel.node, sel.off); r.setEnd(sel.enode, sel.eoff); document.getSelection().setBaseAndExtent(sel.node, sel.off, sel.enode, sel.eoff); }
           }
@@ -43715,7 +43745,10 @@ function builderReturnTypedText() {
   if (!typed) return;
   const node = nodeById(st.nodeId);
   if (!node || !st.content) return;
-  const r = restoreTypedRun(editableText(st.content), st.offset, st.query.length, typed);
+  // #1396: the DISMISSAL half of the same defect. This splices too, so it needs the same text and
+  // the same coordinate space -- reading the refolded row's DOM here destroyed a pill on the way
+  // OUT of the palette, on the path #1108 added precisely so nothing typed is ever lost.
+  const r = restoreTypedRun(builderSpliceText(node), builderSpliceOffset(node, st.offset), st.query.length, typed);
   node.text = r.text;
   st.content.innerHTML = editModeHTML(node);
   try { setCaretByOffset(st.content, r.caret); } catch (_) {}
