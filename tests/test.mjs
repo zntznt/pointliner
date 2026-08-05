@@ -7449,6 +7449,35 @@ test('seqDeclParts: NOT a sequence declaration (no false positives)', () => {
   assert.equal(c.seqDeclParts('seq Flow: TODO DONE'), null);  // no pipe → not a valid states def
   assert.equal(c.seqDeclParts('seq Flow:'), null);            // empty states
 });
+test('#1404 both seq doors store the SAME record — spread, never enumerate', () => {
+  // Two doors onto one authoring language: `{seq Flow: A | B | C}` typed inline, and the same
+  // states entered in the @sequence dialog. The typed door LISTED the parser's fields and so lost
+  // heldFrom, while the dialog door spread them and kept it. Driven, before: the typed record had
+  // {key,name,states,doneFrom} and the dialog's had those plus heldFrom, and seqDefString handed the
+  // author back `CALM WAITING | BROKEN` for a `Calm | Waiting | Broken` they had just typed.
+  //
+  // This is UXP-160 recurring on the untouched door, so the guard is structural rather than a
+  // field list: BOTH builders spread, which makes drift impossible and carries any field the
+  // parser gains later.
+  const typed = between(NC, 'const sd = seqDeclParts(body);', 'return `[[seq:${rec.key}]]`;');
+  assert.ok(/const rec = \{ key: seqKey\(\), \.\.\.sd \};/.test(typed),
+    'the typed door spreads the parser record whole');
+  assert.ok(!/name: sd\.name/.test(typed), 'and does NOT enumerate its fields, which is how heldFrom was lost');
+  assert.ok(/const rec = \{ key: seqKey\(\), \.\.\.r \};/.test(NC),
+    'the dialog door still spreads its result too');
+  // the parser has carried heldFrom since UXP-158; the record must therefore have it
+  const p3 = host(c.seqDeclParts('seq Flow: Calm | Waiting | Broken'));
+  assert.equal(p3.heldFrom, 1, 'a two-pipe declaration has a held band');
+  assert.equal(p3.doneFrom, 2);
+  const p1 = host(c.seqDeclParts('seq Simple: Backlog Doing | Shipped'));
+  assert.equal(p1.heldFrom, p1.doneFrom, 'a one-pipe declaration has no held band, and says so structurally');
+  // the visible cost: the round trip back to the author's own text
+  assert.equal(c.seqDefString({ name: 'Flow', states: ['CALM','WAITING','BROKEN'], doneFrom: 2, heldFrom: 1 }),
+    'CALM | WAITING | BROKEN', 'three bands round-trip as three bands');
+  assert.equal(c.seqDefString({ name: 'Flow', states: ['CALM','WAITING','BROKEN'], doneFrom: 2 }),
+    'CALM WAITING | BROKEN', 'and a record with heldFrom missing is exactly what the author got back before');
+});
+
 test('classifyBraceBody / braceTypeLabel — a typed seq decl is a valid seq artifact', () => {
   assert.equal(c.classifyBraceBody('seq Flow: BACKLOG DOING | SHIPPED', {}, {}), 'artifact');
   assert.deepEqual(host(c.braceTypeLabel('seq Flow: BACKLOG DOING | SHIPPED', {}, {})), ['seq', null]);
