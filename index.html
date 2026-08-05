@@ -21425,15 +21425,29 @@ bpop.addEventListener('keydown', e => {
   else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
   else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus(); }
   else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
-  else if (e.key === 'Escape') {
-    e.preventDefault(); e.stopPropagation();
-    const id = bpopReturnFocus; hideBpop();
-    // refocus by id (the row may have been rebuilt while the menu was open)
-    if (id) document.querySelector(`.node-content[data-id="${id}"]`)?.focus();
-  }
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideBpop(); bpopRestoreFocus(); }
 });
-// The node id to restore focus to when the popup is closed by keyboard (Escape).
+// The node id to restore focus to when the popup gives focus back.
 let bpopReturnFocus = null;
+// #1411: ONE restore, and it is deliberately NOT inside hideBpop -- an outside-click dismissal must
+// leave the caret wherever the user just clicked. The Escape branch had this and the to-do picker's
+// APPLY branch did not, so cancelling the picker kept your place and succeeding dropped you on
+// <body>: backwards, and on the surface that takes focus onto a chip the moment it opens. The old
+// comment on bpopReturnFocus said "when the popup is closed by keyboard (Escape)" -- the omission,
+// written down. Refocus by id, because an apply re-renders the row it is about.
+function bpopRestoreFocus(fallbackIdx = null) {
+  const id = bpopReturnFocus; bpopReturnFocus = null;
+  if (!id) return;
+  const live = document.querySelector(`.node-content[data-id="${CSS.escape(String(id))}"]`);
+  if (live) { live.focus(); return; }
+  // #1411: the row can be GONE, and by the user's own doing -- choosing DONE with "Show done" off
+  // hides it. Landing on <body> there is the #1400 dead end again, so take the point that now
+  // occupies its place, the same "surviving neighbour" rule the delete ops use. The flash still
+  // explains where the row went; this just stops the next Tab restarting from the top of the page.
+  if (fallbackIdx == null) return;
+  const rows = [...document.querySelectorAll('.node-content[data-id]')];
+  if (rows.length) rows[Math.min(fallbackIdx, rows.length - 1)]?.focus();
+}
 
 // ── column panel one-time init ────────────────────────────────────────────
 const _mtColPanel = document.getElementById('mt-colpanel');
@@ -22265,7 +22279,15 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
       t.checked = todoDoneFromText(t.text);
       if (!wasDone && t.checked && !isVisible(t)) hiddenCount++;
     }
+    // #1411: where the row SITS, read before the render that may remove it (see bpopRestoreFocus).
+    const rowIdx = [...document.querySelectorAll('.node-content[data-id]')]
+      .findIndex(el => el.dataset.id === (targets ? node.id : nodeId));
     markDirty(); render(); hideBpop();
+    // #1411: give focus back to the point, exactly as Escape does. The picker TOOK focus onto a
+    // chip when it opened (both doors), so returning it is not a steal -- and landing in the point
+    // is also what reports the change to a screen reader, since the row now reads "#TODO Buy the
+    // tickets". Ordered after render(), which rebuilt the row this is looking for.
+    bpopRestoreFocus(rowIdx < 0 ? null : rowIdx);
     // P4: a state that just hid one or more rows must say so, never vanish silently.
     if (hiddenCount === 1) flashHint('Done, now hidden. Turn on Show done to view it.');
     else if (hiddenCount > 1) flashHint(hiddenCount + ' done, now hidden. Turn on Show done to view them.');
