@@ -24731,6 +24731,70 @@ test('#1109 sidecar-only pill edits sweep their dependents too', () => {
 // rather than assumed to. A CI rule nobody has seen reject anything is not yet a guard.
 const _wfHygiene = readFileSync(new URL('../.github/workflows/ux-conformance.yml', import.meta.url), 'utf8');
 
+// ── #1427: the browser smoke, and the two ways it could quietly stop being a gate ───────────────
+// tests/browser.mjs drives the real index.html in a real browser, because every DOM pin in THIS
+// file proves presence and not behaviour: #1021 shipped a keyboard handler that passed its pin and
+// did nothing, since the element it sat on could not take focus.
+//
+// It can fail open in two directions, and both are silent, so both are pinned here:
+//   - CI stops running it at all (nothing else in the repo would notice)
+//   - CI runs it and every check SKIPS, because playwright did not resolve, and the job goes green
+// The fence against the second is POINTLINER_REQUIRE_BROWSER, and it only works if the workflow
+// SETS it and the test file READS it. Pinning either alone is the #1133 vacuity: a tested core
+// proves nothing about its call site. Both are asserted below, against the two real files.
+const _wfTests = readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8');
+const _browserSrc = readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
+
+test('#1427 CI runs the browser smoke, and installs what it needs', () => {
+  assert.ok(/node --test tests\/browser\.mjs/.test(_wfTests),
+    'the browser smoke must actually be invoked by CI, or it rots like any unrun guard');
+  assert.ok(/npm install .*playwright@\d+\.\d+\.\d+/.test(_wfTests),
+    'playwright is installed at job time and PINNED — .gitignore keeps it out of source, and an ' +
+    'unpinned install lets an upstream release turn the gate red with no change here');
+  assert.ok(/playwright install .*chromium/.test(_wfTests),
+    'and the browser binary too: the module alone launches nothing');
+  // The offline job must stay offline. tests/test.mjs is the gate that works with no network, and
+  // folding the browser checks into it would put a download on the common path.
+  assert.ok(/^  node-tests:$/m.test(_wfTests), 'the offline job still exists');
+  const offline = between(_wfTests, '  node-tests:', '  browser-smoke:');
+  assert.ok(!/npm install|playwright/.test(offline),
+    'and carries no network dependency — that separation is the reason there are two jobs');
+});
+
+test('#1427 a skipped browser smoke cannot pass in CI', () => {
+  // Half one: the workflow sets the fence, on the step that runs the smoke rather than anywhere.
+  const smokeStep = between(_wfTests, 'node --test tests/browser.mjs', 'POINTLINER_REQUIRE_BROWSER');
+  assert.ok(smokeStep.length < 60,
+    'POINTLINER_REQUIRE_BROWSER must be set on the step that RUNS the smoke, not elsewhere in the file');
+  assert.ok(/POINTLINER_REQUIRE_BROWSER: '1'/.test(_wfTests), 'and set to a truthy value');
+  // Half two: the test file reads it, and reading it must DEFEAT the skip rather than merely
+  // being mentioned. Revert `REQUIRE_BROWSER ? false : …` to a bare `launchErr || false` and this
+  // goes red — proved by mutation, which is the only reason to trust it (#1133).
+  assert.ok(/process\.env\.POINTLINER_REQUIRE_BROWSER/.test(_browserSrc),
+    'the smoke must read the fence — a workflow setting an env nobody reads is decoration');
+  assert.match(_browserSrc, /const skip = \(\) => \(REQUIRE_BROWSER \? false : \(launchErr \|\| false\)\);/,
+    'and the fence must override the skip, not sit beside it');
+  // A launch failure is never a skip, in either environment: `skip:` is evaluated when a test is
+  // DEFINED, so before()'s launch error can never reach it, and failing loudly is what we want.
+  assert.ok(/if \(!browser\) assert\.fail\(/.test(_browserSrc),
+    'and a browser that never launched must fail the run, not slip through as a skip');
+});
+
+test('#1427 the browser smoke still covers every defect class it was built for', () => {
+  const checks = nonEmpty(_browserSrc.match(/^test\('[^']+'/gm) || [], 'browser smoke checks');
+  // A census ratchet, not a proof. It may shrink deliberately (delete a check and lower the floor,
+  // carrying the reason) but it cannot shrink SILENTLY, which is how coverage usually leaves.
+  assert.ok(checks.length >= 6,
+    `the smoke covers 6 shipped defect classes; found ${checks.length}: ${checks.join(' | ')}`);
+  // Every check must route through the shared skip, or a developer without playwright gets a red
+  // suite for a dependency this repo deliberately does not commit.
+  const guarded = (_browserSrc.match(/\{ skip: skip\(\) \}/g) || []).length;
+  assert.equal(guarded, checks.length, 'every check carries { skip: skip() }');
+  // The classes themselves, named so a rename that guts one is visible in the diff.
+  for (const want of [/boot/, /pill/i, /re-roll/, /Shift\+F10/, /Escape/, /command/])
+    assert.ok(checks.some(c => want.test(c)), 'a check still covers ' + want);
+});
+
 // ── #1166: the Font Awesome rebuild job ──────────────────────────────────────────────────────────
 // Nothing in CI ran tools/build-fa-subset.py, so a script that had stopped working passed every test
 // until a human rebuilt by hand -- the gap #1144 and #1155 both shipped through. The job that closes
