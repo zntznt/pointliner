@@ -11720,6 +11720,17 @@ function mtSetColRole(node, colIdx, role) {
   arr[colIdx] = role;
   node.colRole = arr.every(x => x == null) ? undefined : arr;
   markDirty(); refreshTable(node);
+  // #1401: P4 on BOTH doors, for every role. Alt+R flashed its own confirmation and the Column
+  // menu said nothing at all, so the confirmation moves here and the keyboard door's duplicate goes.
+  // And when the column is marked Status but holds values no sequence declares, say THAT instead:
+  // the app already computed that exact sentence and only ever showed it on the other door, so
+  // Board opened with every card in one "No state" lane and no explanation anywhere.
+  const rows = mtModelRead(node).rows || [];
+  const w = role === 'status'
+    ? statusColWarning(String(rows[0]?.[colIdx] ?? '').trim() || 'This column',
+        rows.slice(1).map(r => (r || [])[colIdx]), knownStates(), allSequences(), { marked: true })
+    : null;
+  flashHint(w ? w.msg : 'Column shown as: ' + (role ? role[0].toUpperCase() + role.slice(1) : 'Plain text'));
 }
 
 function mtMoveCol(node, colIdx, dir) {
@@ -12233,40 +12244,55 @@ function mtRefreshViewSwitcher(node) {
 // #1148 adds the 5th parameter, POSITIONAL and optional so the four existing call shapes keep working.
 // `seqs` is the DECLARED sequences (allSequences()); with it the refusal can name the vocabulary the
 // author already has instead of inventing an example they must translate.
+// #1401: the unknown-values diagnostic, lifted out of boardBlockReason so BOTH doors can fire it.
+// It used to live inside the "board is blocked" path only, which meant the app computed the exactly
+// right sentence and withheld it on the door the user actually took: marking the column by hand was
+// accepted in silence and Board then opened with every card in one "No state" lane.
+//
+// `marked` picks the tail. Telling someone who has just marked the column to "mark the column" is
+// the #1114 defect over again -- an instruction they believe they have already followed.
+// Returns null when every value IS a state, which is the whole point: it is a predicate as well as
+// a message. Pure; no DOM.
+function statusColWarning(headerName, cells, states, seqs = [], { marked = false } = {}) {
+  const vals = [...new Set((cells || []).map(v => String(v ?? '').trim()).filter(Boolean))];
+  const known = new Set([...(states || [])].map(normStateKey));
+  const unknown = vals.filter(v => !known.has(normStateKey(v)));
+  if (!unknown.length) return null;
+  // #1148: THE SEQUENCE IS THE VOCABULARY. Measured on the planner's own setup: one unknown value
+  // collapses the whole column to no role, so the chip picker -- the affordance that would have
+  // SHOWN him the vocabulary -- never appears. Discovery was gated on having already discovered.
+  //
+  // So name the sequence he is evidently using: the declared one covering the most of his known
+  // values (a measure, not a guess; ties fall to the first declared). Only then does the generic
+  // "declare one" example make sense, and only when nothing is declared at all.
+  //
+  // This OFFERS and never constrains, which is what keeps it inside the base-views-vision §0.5
+  // fence: that defers a role which "offers its known values AND constrains the editor", needing
+  // "a knownStates-style collected cache". No editor is constrained, nothing is rejected, and no
+  // cache is invented -- knownStates and collectSequences already exist and already feed the
+  // inference. Freeform still wins: every value keeps landing, exactly as it does today.
+  const declared = (seqs || []).filter(s => s && s.key !== 'default' && (s.states || []).length);
+  const best = declared
+    .map(s => ({ s, hits: vals.filter(v => (s.states || []).some(st => normStateKey(st) === normStateKey(v))).length }))
+    .sort((a, b) => b.hits - a.hits)[0];
+  const how = best && best.s
+    ? `${best.s.name} offers ${best.s.states.join(', ')}. Use one of those, or add ${unknown.length === 1 ? 'it' : 'them'} to that sequence.`
+    : marked
+      ? `Declare them once, like {seq Flow: TODO IN_PROGRESS | DONE}, and Board groups by them.`
+      : `Declare them once, like {seq Flow: TODO IN_PROGRESS | DONE}, then mark the column (Column menu, Show as).`;
+  return { reason: 'unknown-values', samples: unknown.slice(0, 3), seqNamed: best ? best.s.name : null,
+    msg: `\u201c${headerName}\u201d holds values that are not states yet: ${unknown.slice(0, 3).map(v => `\u201c${v}\u201d`).join(', ')}. ${how}` };
+}
+
 function boardBlockReason(headerRow, statusIdx, cells, states, seqs = []) {
   if (statusIdx >= 0) return null;
   const named = (headerRow || []).findIndex(h => /^(status|state)$/i.test(String(h ?? '').trim()));
   if (named >= 0) {
-    const vals = [...new Set((cells || []).map(v => String(v ?? '').trim()).filter(Boolean))];
-    const known = new Set([...(states || [])].map(normStateKey));
-    const unknown = vals.filter(v => !known.has(normStateKey(v)));
     // He is the second case: named it, filled it, and every value is outside every sequence. Name
     // the values and the in-fence fix - declaring a sequence makes them first-class, and the
     // matcher folds case and spacing, so `in progress` answers to IN_PROGRESS.
-    if (unknown.length) {
-      // #1148: THE SEQUENCE IS THE VOCABULARY. Measured on the planner's own setup: one unknown value
-      // collapses the whole column to no role, so the chip picker -- the affordance that would have
-      // SHOWN him the vocabulary -- never appears. Discovery was gated on having already discovered.
-      //
-      // So name the sequence he is evidently using: the declared one covering the most of his known
-      // values (a measure, not a guess; ties fall to the first declared). Only then does the generic
-      // "declare one" example make sense, and only when nothing is declared at all.
-      //
-      // This OFFERS and never constrains, which is what keeps it inside the base-views-vision §0.5
-      // fence: that defers a role which "offers its known values AND constrains the editor", needing
-      // "a knownStates-style collected cache". No editor is constrained, nothing is rejected, and no
-      // cache is invented -- knownStates and collectSequences already exist and already feed the
-      // inference. Freeform still wins: every value keeps landing, exactly as it does today.
-      const declared = (seqs || []).filter(s => s && s.key !== 'default' && (s.states || []).length);
-      const best = declared
-        .map(s => ({ s, hits: vals.filter(v => (s.states || []).some(st => normStateKey(st) === normStateKey(v))).length }))
-        .sort((a, b) => b.hits - a.hits)[0];
-      const how = best && best.s
-        ? `${best.s.name} offers ${best.s.states.join(', ')}. Use one of those, or add ${unknown.length === 1 ? 'it' : 'them'} to that sequence.`
-        : `Declare them once, like {seq Flow: TODO IN_PROGRESS | DONE}, then mark the column (Column menu, Show as).`;
-      return { reason: 'unknown-values', samples: unknown.slice(0, 3), seqNamed: best ? best.s.name : null,
-        msg: `“${headerRow[named]}” holds values that are not states yet: ${unknown.slice(0, 3).map(v => `“${v}”`).join(', ')}. ${how}` };
-    }
+    const w = statusColWarning(headerRow[named], cells, states, seqs);
+    if (w) return w;
     return { reason: 'named-not-marked',
       msg: `“${headerRow[named]}” is not marked as a Status column yet. Column menu, Show as, Status - or Alt+R on a cell.` };
   }
@@ -12819,7 +12845,11 @@ function buildBoardWidget(node, model, readOnly) {
         + ` aria-label="${escQ(stripMd(titleRaw) || 'card')}${readOnly ? '' : '. Press Enter to move it to another lane'}">`
         + `<div class="bv-card-title">${mtCellHtml(node, titleRaw, 0)}</div>`;
       for (let c = 1; c < model.aligns.length; c++) {
-        if (c === gb) continue;
+        // #1401: the groupBy column is normally redundant with the lane heading -- except in the
+        // "No state" lane, where the heading is actively WRONG. The row DOES have a status; it is
+        // just not one this document declares. Hiding it there made the real values invisible on
+        // every card, which is how a useless board looked like an empty one.
+        if (c === gb && lane.kw !== null) continue;
         const v = model.rows[r]?.[c];
         if (!String(v || '').trim()) continue;
         h += `<div class="bv-field"><span class="bv-k">${escHtml(String(model.rows[0]?.[c] || '').trim())}</span>${mtCellHtml(node, v, c)}</div>`;
@@ -13511,7 +13541,8 @@ function mtWireCells(host, node) {
       const next = cycleColRole((mtColRoles(node) || [])[c] || null, e.shiftKey ? -1 : 1);   // #922: cycle from the EFFECTIVE role
       mtSetColRole(node, c, next);
       mtFocusCell(node, r, c);
-      flashHint('Column shown as: ' + (next ? next[0].toUpperCase() + next.slice(1) : 'Plain text'));
+      // #1401: the flash moved INTO mtSetColRole so the Column menu gets it too. Keeping it here as
+      // well would fire twice on this door and, worse, would talk over the status warning.
       return;
     }
     // LEAN FLOOR phase 3: Alt+Shift+Arrow INSERTS a column (←/→ = left/right of this cell) or a row

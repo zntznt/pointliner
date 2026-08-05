@@ -21239,7 +21239,59 @@ test('cycleColRole — the same set + order as the Show-as menu, wrapping both w
 test('LEAN-FLOOR p3: the Alt+R column-role-cycle wiring is present (DOM-bound keydown)', () => {
   assert.ok(_src.includes("(e.key === 'r' || e.key === 'R')"), 'the Alt+R role-cycle branch is missing');
   assert.ok(_src.includes('cycleColRole((mtColRoles(node) || [])[c] || null, e.shiftKey ? -1 : 1)'), 'Alt+R must cycle via cycleColRole from the EFFECTIVE role (#922), Shift = backward');
-  assert.ok(_src.includes("flashHint('Column shown as: "), 'the role-cycle must flash the new role (P4, no menu)');
+  // REWRITTEN for #1401, not loosened. The flash moved INTO mtSetColRole, because the Column menu
+  // -- the other door onto the same write -- said nothing at all, for any role. Keeping a copy in
+  // this branch would fire twice here and would talk over the status warning.
+  assert.ok(fnBody(_src, 'mtSetColRole').includes("'Column shown as: "),
+    'the role write flashes the new role (P4, no menu), now on BOTH doors');
+  const altR = between(NC, "e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'r' || e.key === 'R')", 'e.altKey && e.shiftKey');
+  assert.ok(!/flashHint\('Column shown as/.test(altR),
+    'and the keyboard door no longer keeps its own duplicate');
+});
+
+test('#1401 statusColWarning — the same diagnostic, now available to both doors', () => {
+  const seqs = [{ key: 'flow', name: 'Flow', states: ['DOING', 'BLOCKED', 'SHIPPED'] }];
+  const known = new Set(['TODO', 'NEXT', 'WAITING', 'DONE']);
+  // it is a PREDICATE as well as a message: null when every value really is a state
+  assert.equal(c.statusColWarning('Status', ['TODO', 'DONE', ''], known, []), null,
+    'all values are states → no warning at all');
+  assert.equal(c.statusColWarning('Status', [], known, []), null, 'an empty column is not a complaint');
+  const w = c.statusColWarning('Status', ['Doing', 'Blocked', 'Shipped'], known, []);
+  assert.ok(w, 'values outside every sequence → a warning');
+  assert.match(w.msg, /holds values that are not states yet/);
+  assert.deepEqual([...w.samples], ['Doing', 'Blocked', 'Shipped'], 'it names the values, at most three');   // spread: the core runs in the vm realm
+  assert.equal(w.reason, 'unknown-values', 'the same reason code boardBlockReason returned');
+  // the `marked` tail: telling someone who has just marked the column to mark the column is the
+  // #1114 defect over again — an instruction they believe they have already followed.
+  assert.match(c.statusColWarning('Status', ['Doing'], known, []).msg, /then mark the column/);
+  assert.doesNotMatch(c.statusColWarning('Status', ['Doing'], known, [], { marked: true }).msg, /then mark the column/);
+  assert.match(c.statusColWarning('Status', ['Doing'], known, [], { marked: true }).msg, /Board groups by them/);
+  // #1148's measured "name the sequence they are evidently using" arm survives the move
+  const named = c.statusColWarning('Status', ['DOING', 'Blocked', 'nope'], known, seqs);
+  assert.equal(named.seqNamed, 'Flow');
+  assert.match(named.msg, /Flow offers DOING, BLOCKED, SHIPPED/);
+  // ONE implementation: boardBlockReason delegates rather than keeping a second copy
+  const bb = fnBody(_src, 'boardBlockReason');
+  assert.ok(/const w = statusColWarning\(headerRow\[named\], cells, states, seqs\);/.test(bb),
+    'boardBlockReason calls the shared core');
+  assert.ok(!/holds values that are not states yet/.test(bb),
+    'and does NOT keep a forked copy of the sentence');
+});
+
+test('#1401 marking a column as Status fires the diagnostic, and the degraded board shows the value', () => {
+  const set = fnBody(_src, 'mtSetColRole');
+  assert.ok(/statusColWarning\(/.test(set) && /\{ marked: true \}/.test(set),
+    'the mark path asks the same question the Board button asks, with the marked tail');
+  // pin the GATE, not just the call. Caught by mutation: swapping the condition for `false` leaves
+  // the call sitting there in source and every other assertion here still passed.
+  assert.ok(/const w = role === 'status'/.test(set),
+    'and it asks exactly when the role being set is Status');
+  assert.ok(/flashHint\(w \? w\.msg : 'Column shown as: '/.test(set),
+    'the warning replaces the plain confirmation rather than firing after it');
+  // and the "No state" lane stops hiding the real value: the heading is WRONG there, the row does
+  // have a status, it is just not one this document declares.
+  assert.ok(NC.includes('if (c === gb && lane.kw !== null) continue;'),
+    'the board card renders the groupBy value in the no-state lane only');
 });
 
 test('LEAN-FLOOR p3: the Alt+Shift+Arrow column/row INSERT wiring is present (DOM-bound keydown)', () => {
