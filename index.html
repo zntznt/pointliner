@@ -11617,6 +11617,7 @@ function mtApplyAggregate(node, colIdx, fn) {
   markDirty();
   mtRecompute(node);
   refreshTable(node);
+  mtFocusCell(node, 0, colIdx);   // #1400: stay on the column you totalled
 }
 
 // Set (or clear, when expr is empty) one TBLFM assignment and recompute (UXP-3
@@ -11683,7 +11684,40 @@ function mtSetAlign(node, colIdx, align) {
   pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.aligns[colIdx] = align;            // 'left' is stored explicitly (:--- round-trips)
   mtCommit(node, m); refreshTable(node);
+  mtFocusCell(node, 0, colIdx);   // #1400: stay on the column you formatted (it did not move)
 }
+// #1400: what a structural base op says when it lands. Pure, so the six sentences are pinned as
+// data instead of being scattered through six DOM functions -- which is how five of them came to
+// say nothing at all while their sibling mtSortBase said everything, including its undo promise.
+// That promise is honest here: #1387 gave every one of these a pushUndo.
+function baseStructMessage(op, opts = {}) {
+  const of = opts.label ? `\u201c${opts.label}\u201d` : `column ${opts.n}`;   // left of "Owner" / left of column 3
+  const subj = opts.label ? `\u201c${opts.label}\u201d` : String(opts.n);      // Column "Owner"  / Column 3
+  const held = opts.values ? `, with ${opts.values} value${opts.values === 1 ? '' : 's'}` : '';
+  switch (op) {
+    case 'col-insert': return `Column inserted to the ${opts.side} of ${of}. Undo removes it.`;
+    case 'col-move':   return `Column ${subj} moved ${opts.dir < 0 ? 'left' : 'right'}. Undo restores the order.`;
+    case 'col-delete': return `Column ${subj} deleted${held}. Undo restores it.`;
+    case 'row-insert': return `Row inserted ${opts.side} row ${opts.n}. Undo removes it.`;
+    case 'row-move':   return `Row ${opts.n} moved ${opts.dir < 0 ? 'up' : 'down'}. Undo restores the order.`;
+    case 'row-delete': return `Row ${opts.n} deleted${held}. Undo restores it.`;
+  }
+  return '';
+}
+
+// #1400: the header name a message should use for a column, or '' when it has none.
+function mtColLabel(model, colIdx) { return String(model.rows?.[0]?.[colIdx] ?? '').trim(); }
+// How many non-empty DATA cells a column or row carries -- said out loud before a delete, so a
+// destructive edit reports its size instead of happening in silence.
+function mtColValueCount(model, colIdx, lastRow) {
+  let k = 0;
+  for (let r = 1; r <= lastRow; r++) if (String(model.rows[r]?.[colIdx] ?? '').trim()) k++;
+  return k;
+}
+function mtRowValueCount(model, rowIdx) {
+  return (model.rows[rowIdx] || []).filter(v => String(v ?? '').trim()).length;
+}
+
 function mtInsertCol(node, colIdx, side) {
   const m = mtModel(node);
   const at = side === 'left' ? colIdx : colIdx + 1;
@@ -11695,6 +11729,9 @@ function mtInsertCol(node, colIdx, side) {
   if (node.colFmt) node.colFmt.splice(at, 0, null); // number formats stay aligned too (ε)
   remapNodeColumns(node, { kind: 'insert', at }); // view.groupBy/dateBy + #+TBLFM refs follow the shift
   mtCommit(node, m); refreshTable(node);
+  // #1400: land on the NEW column's name cell, so the next keystroke names it, and say what happened.
+  mtFocusCell(node, 0, at);
+  flashHint(baseStructMessage('col-insert', { side, label: mtColLabel(m, side === 'left' ? at + 1 : at - 1), n: colIdx + 1 }));
 }
 // Set/clear a column's display role (FR-1). Lazily sized like colW; an all-null
 // array drops back to undefined so untouched bases serialize clean.
@@ -11733,7 +11770,7 @@ function mtSetColRole(node, colIdx, role) {
   flashHint(w ? w.msg : 'Column shown as: ' + (role ? role[0].toUpperCase() + role.slice(1) : 'Plain text'));
 }
 
-function mtMoveCol(node, colIdx, dir) {
+function mtMoveCol(node, colIdx, dir, focusRow = 0) {
   const m = mtModel(node);
   const to = colIdx + dir;
   if (to < 0 || to >= m.aligns.length) return;
@@ -11745,10 +11782,18 @@ function mtMoveCol(node, colIdx, dir) {
   if (node.colFmt) mtMoveItem(node.colFmt, colIdx, to); // number formats follow the move (ε)
   remapNodeColumns(node, { kind: 'move', from: colIdx, to }); // view + #+TBLFM refs follow the move
   mtCommit(node, m); refreshTable(node);
+  // #1400: follow the column you moved rather than staying on its old index, where a different
+  // column now sits. Focus that lands by index looks stable and points at the wrong data.
+  mtFocusCell(node, focusRow, to);
+  flashHint(baseStructMessage('col-move', { dir, label: mtColLabel(m, to), n: to + 1 }));
 }
 function mtDeleteCol(node, colIdx) {
   const m = mtModel(node);
   if (m.aligns.length <= 1) return;
+  // #1400: read the name and the size BEFORE the splice removes them. This is the destructive
+  // member of the family and it was the quietest one.
+  const msg = baseStructMessage('col-delete', { label: mtColLabel(m, colIdx), n: colIdx + 1,
+    values: mtColValueCount(m, colIdx, mtLastDataRow(node, m)) });
   pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.aligns.splice(colIdx, 1);
   m.rows.forEach(r => r.splice(colIdx, 1));
@@ -11757,6 +11802,8 @@ function mtDeleteCol(node, colIdx) {
   if (node.colFmt) { node.colFmt.splice(colIdx, 1); if (node.colFmt.every(x => x == null)) node.colFmt = undefined; } // number formats follow delete (ε)
   remapNodeColumns(node, { kind: 'delete', at: colIdx }); // drop view/#+TBLFM refs to the removed column
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
+  mtFocusCell(node, 0, Math.min(colIdx, m.aligns.length - 1));   // #1400: the surviving neighbour
+  flashHint(msg);
 }
 // Set (or clear, with w=null) a column's pinned width and re-render the grid.
 function mtSetColWidth(node, colIdx, w) {
@@ -11765,6 +11812,7 @@ function mtSetColWidth(node, colIdx, w) {
   node.colW[colIdx] = cw;
   if (node.colW.every(x => x == null)) node.colW = undefined; // all auto → drop it
   markDirty(); refreshTable(node);
+  mtFocusCell(node, 0, colIdx);   // #1400: stay on the column you formatted
 }
 // Set (or clear, with f=null) a column's number format (ε). A parseNumFmt record
 // {decimals?,prefix?,suffix?} formats a Number column's cells (and its footer total)
@@ -11795,29 +11843,36 @@ function mtApplyColWidthLive(host, c, w) {
 function mtLastDataRow(node, m) {
   return mtHasFooter(extractTblfm(node.text)) ? m.rows.length - 2 : m.rows.length - 1;
 }
-function mtMoveRow(node, rowIdx, dir) {
+function mtMoveRow(node, rowIdx, dir, focusCol = 0) {
   const m = mtModel(node);
   const to = rowIdx + dir;
   if (to < 1 || to > mtLastDataRow(node, m)) return; // row 0 is the header; the footer stays pinned last
   pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   mtMoveItem(m.rows, rowIdx, to);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
+  mtFocusCell(node, to, focusCol);   // #1400: follow the row you moved
+  flashHint(baseStructMessage('row-move', { dir, n: to }));
 }
-function mtInsertRow(node, rowIdx, side) {
+function mtInsertRow(node, rowIdx, side, focusCol = 0) {
   const m = mtModel(node);
   // clamp 'below' so a new row never lands after the footer (rowIdx is always a data row)
   const at = side === 'above' ? rowIdx : Math.min(rowIdx + 1, mtLastDataRow(node, m) + 1);
   pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
   m.rows.splice(at, 0, Array(m.aligns.length).fill(''));
   mtCommit(node, m); refreshTable(node);
+  mtFocusCell(node, at, focusCol);   // #1400: the new row's own cell, ready to type
+  flashHint(baseStructMessage('row-insert', { side, n: rowIdx }));
 }
-function mtDeleteRow(node, rowIdx) {
+function mtDeleteRow(node, rowIdx, focusCol = 0) {
   const m = mtModel(node);
   const minRows = mtHasFooter(extractTblfm(node.text)) ? 3 : 2; // keep header + ≥1 data (+ footer)
   if (m.rows.length <= minRows || rowIdx < 1) return;
   pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
+  const msg = baseStructMessage('row-delete', { n: rowIdx, values: mtRowValueCount(m, rowIdx) });   // before the splice (#1400)
   m.rows.splice(rowIdx, 1);
   mtCommit(node, m); mtClearSelection(); refreshTable(node);
+  mtFocusCell(node, Math.min(rowIdx, mtLastDataRow(node, m)), focusCol);   // #1400: the surviving neighbour
+  flashHint(msg);
 }
 
 let mtPanelReturn = null, mtPanelReturnSel = null;
@@ -11830,6 +11885,13 @@ function hideColPanel() {
   // rows cap, a column op) DETACHES the opener in between — so focusing the stored element put focus
   // on a node no longer in the document and the browser fell back to <body>. Driven: choosing "5" from
   // the rows menu lost focus every time. Re-find the twin by the same key refreshTable restores with.
+  // #1400: an apply that DELIBERATELY relocated focus (a structural op landing on the column it just
+  // moved, or on the survivor of a delete) must not have it yanked back to a stale opener. The
+  // restore below only ever had a target on the KEYBOARD path anyway: on the mouse path nothing in
+  // the base held focus when the menu opened, which is why the reported <body> landing reproduces
+  // through the header menu and not through Shift+F10.
+  const ae = document.activeElement;
+  if (ae && ae !== document.body && ae.closest && ae.closest('.md-table-host')) return;
   const live = ret && ret.isConnected ? ret : (sel ? document.querySelector(sel) : null);
   if (live) try { live.focus(); } catch (_) {}
 }
@@ -12042,14 +12104,14 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   if (rowOps) {
     const minRows = mtHasFooter(tblfm) ? 3 : 2;
     addSection('Insert row', true);
-    addItem('Insert above', { onApply: () => mtInsertRow(node, rowIdx, 'above') });
-    addItem('Insert below', { onApply: () => mtInsertRow(node, rowIdx, 'below') });
+    addItem('Insert above', { onApply: () => mtInsertRow(node, rowIdx, 'above', colIdx) });
+    addItem('Insert below', { onApply: () => mtInsertRow(node, rowIdx, 'below', colIdx) });
     addSection('Move row', true);
-    addItem('Move up',   { disabled: rowIdx <= 1,           onApply: () => mtMoveRow(node, rowIdx, -1) });
-    addItem('Move down', { disabled: rowIdx >= lastDataRow, onApply: () => mtMoveRow(node, rowIdx,  1) });
+    addItem('Move up',   { disabled: rowIdx <= 1,           onApply: () => mtMoveRow(node, rowIdx, -1, colIdx) });
+    addItem('Move down', { disabled: rowIdx >= lastDataRow, onApply: () => mtMoveRow(node, rowIdx,  1, colIdx) });
     addSection('Delete', true);
     addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
-    addItem('Delete row',    { danger: true, disabled: model.rows.length <= minRows, onApply: () => mtDeleteRow(node, rowIdx) });
+    addItem('Delete row',    { danger: true, disabled: model.rows.length <= minRows, onApply: () => mtDeleteRow(node, rowIdx, colIdx) });   // #1400: land in the column this menu was opened from
   } else {
     addSection('Delete', true);
     addItem('Delete column', { danger: true, disabled: ncols <= 1, onApply: () => mtDeleteCol(node, colIdx) });
@@ -12454,6 +12516,7 @@ function mtSortBase(node, colIdx, dir) {
   mtCommitEpilogue(node);   // recompute the recipe over the new order; projections re-bump
   refreshTable(node);
   const colName = String(m.rows[0]?.[colIdx] || 'column ' + (colIdx + 1)).trim() || 'column ' + (colIdx + 1);
+  mtFocusCell(node, 0, colIdx);   // #1400: it announced and then dropped focus on <body> like the rest
   flashHint(`Sorted rows by ${colName}, ${dir === 'desc' ? 'descending' : 'ascending'}. Undo restores the old order.`);
 }
 
@@ -13525,10 +13588,10 @@ function mtWireCells(host, node) {
     if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.startsWith('Arrow')) {
       const r = +cell.dataset.r, c = +cell.dataset.c;
       const m = mtModel(node);
-      if (e.key === 'ArrowLeft' && c > 0)                       { e.preventDefault(); mtMoveCol(node, c, -1); mtFocusCell(node, r, c - 1); return; }
-      if (e.key === 'ArrowRight' && c < m.aligns.length - 1)    { e.preventDefault(); mtMoveCol(node, c, 1);  mtFocusCell(node, r, c + 1); return; }
-      if (e.key === 'ArrowUp' && r > 1)                         { e.preventDefault(); mtMoveRow(node, r, -1); mtFocusCell(node, r - 1, c); return; }
-      if (e.key === 'ArrowDown' && r > 0 && r < mtLastDataRow(node, m)) { e.preventDefault(); mtMoveRow(node, r, 1); mtFocusCell(node, r + 1, c); return; }
+      if (e.key === 'ArrowLeft' && c > 0)                       { e.preventDefault(); mtMoveCol(node, c, -1, r); return; }   // #1400: the op lands + says it
+      if (e.key === 'ArrowRight' && c < m.aligns.length - 1)    { e.preventDefault(); mtMoveCol(node, c, 1, r);  return; }
+      if (e.key === 'ArrowUp' && r > 1)                         { e.preventDefault(); mtMoveRow(node, r, -1, c); return; }   // #1400: the op lands + says it
+      if (e.key === 'ArrowDown' && r > 0 && r < mtLastDataRow(node, m)) { e.preventDefault(); mtMoveRow(node, r, 1, c); return; }
       return;   // an out-of-range Alt+Arrow is a no-op (don't fall through to caret nav)
     }
     // LEAN FLOOR phase 3: Alt+R cycles the focused COLUMN's display role (Plain → Status → Date →
@@ -13552,10 +13615,13 @@ function mtWireCells(host, node) {
     if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.startsWith('Arrow')) {
       e.preventDefault();
       const r = +cell.dataset.r, c = +cell.dataset.c;
-      if (e.key === 'ArrowLeft')  { mtInsertCol(node, c, 'left');  mtFocusCell(node, r, c);     flashHint('Column inserted.'); return; }
-      if (e.key === 'ArrowRight') { mtInsertCol(node, c, 'right'); mtFocusCell(node, r, c + 1); flashHint('Column inserted.'); return; }
-      if (r > 0 && e.key === 'ArrowUp')   { mtInsertRow(node, r, 'above'); mtFocusCell(node, r, c);     flashHint('Row inserted.'); return; }
-      if (r > 0 && e.key === 'ArrowDown') { mtInsertRow(node, r, 'below'); mtFocusCell(node, r + 1, c); flashHint('Row inserted.'); return; }
+      // #1400: the landing and the sentence moved INTO the ops, so both doors get them and cannot
+      // drift apart. The row ops take the column to land in, which is the one this cell is already
+      // in -- the keyboard door knows it and the menu doors do not.
+      if (e.key === 'ArrowLeft')  { mtInsertCol(node, c, 'left');  return; }
+      if (e.key === 'ArrowRight') { mtInsertCol(node, c, 'right'); return; }
+      if (r > 0 && e.key === 'ArrowUp')   { mtInsertRow(node, r, 'above', c); return; }
+      if (r > 0 && e.key === 'ArrowDown') { mtInsertRow(node, r, 'below', c); return; }
       return;   // header row +Up/Down, or any other case → no-op (don't fall through)
     }
     // LEAN FLOOR phase 3: Alt+, / Alt+. steps the focused COLUMN narrower / wider (the < / > keys) — the

@@ -5379,3 +5379,63 @@ heading) -- and one negative control green.
 
 **A pin that could not fail, caught by mutation:** disabling the gate (`role === 'status'` -> `false`)
 left the call sitting in source and every assertion still passed. The gate itself is now pinned.
+
+## UXP-315 -- a structural base op stops being silent and stops dumping you on <body> (#1400)
+
+**The census in this same menu was the argument, and it was bigger than the report.** Driven through
+the header menu with nothing focused first (the ordinary mouse path):
+
+| command | focus after, before | announced, before | after |
+|---|---|---|---|
+| Insert left / right | **`<body>`** | **nothing** | the new column's name cell · *"Column inserted to the left of “Owner”. Undo removes it."* |
+| Move left / right | **`<body>`** | **nothing** | the column at its new index · *"Column “Owner” moved left. Undo restores the order."* |
+| Delete column | **`<body>`** | **nothing** | the surviving neighbour · *"Column “Status” deleted, with 3 values. Undo restores it."* |
+| Insert / Move / Delete row (x5) | **`<body>`** | **nothing** | the row's own cell · the matching sentence |
+| *Ascending* (the control) | `<body>` | the full sentence | unchanged, plus it now lands too |
+
+The issue names five column commands. The five **row** commands are the same shape in the same menu,
+so the family is ten, and all ten were silent.
+
+### Why the focus half nearly did not reproduce
+
+My first probe focused a cell before opening the menu and reported focus landing correctly every
+time -- I was one step from filing a premise correction saying the `<body>` landing was already fixed
+by #1383. It is not. `hideColPanel`'s restore only has a target when something in the base held focus
+**before** the menu opened, which is true of the Shift+F10 keyboard door and never of the pointer
+path. Removing the pre-focus from the probe reproduced `<body>` on all ten, exactly as reported.
+
+**A probe that makes the defect disappear is a probe that is not the user path.**
+
+### The shape
+
+`baseStructMessage` is a pure core holding all six sentences as data, so they cannot drift apart --
+which is precisely how five of them came to say nothing while their sibling `mtSortBase` said
+everything. The two deletes read the name and the **size** before the splice removes them, so the
+destructive member reports what went rather than happening quietly.
+
+The landing moved INTO the ops, so both doors get it and neither keeps a copy. Each op takes the
+cross-axis coordinate it should land on (`focusCol` for row ops, `focusRow` for the column move), so
+the keyboard door still leaves you in your own row or column while the menus default to the header.
+`hideColPanel` stands down when an apply has already placed focus inside the base, or it would yank
+it straight back to a stale opener.
+
+**One deliberate behaviour change on the keyboard door:** `Alt+Shift+Left/Right` used to leave you in
+your data row and now lands on the new column's name cell, both doors alike. That is the issue's
+explicit ask, and an unnamed column is the thing you have to deal with next.
+
+### The siblings the report does not mention
+
+The four formatting commands in the same menu (Sort, Alignment, Width, Calculate) had the identical
+`<body>` landing. They stay on their column now. Their **announcement** gap is real too -- one of the
+four speaks -- but it needs three new sentences rather than a reuse of this change's core, so it is
+filed as its own issue with the measurement rather than bundled.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2048**. Two existing pins rewritten, not loosened. Twelve
+mutations, each asserting its target present first, eleven red at the named pin -- including two
+toward the wrong shape (an em dash in a message; a delete count that stops excluding blanks and
+over-reports what went) -- and one negative control green.
+
+Driven after: all ten menu commands from the mouse door, all six keyboard doors (each firing exactly
+one flash and keeping its cross-axis coordinate), and the four formatting siblings.
