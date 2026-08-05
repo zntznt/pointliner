@@ -5088,3 +5088,85 @@ would break pills and links), and focusing before the panel is populated.
 Driven before and after: the footnote text now lands in `root.footnotes` with the prose untouched, the
 marker leaves the caret in the footnote body, and the #1210 empty-canvas router still routes an
 ordinary background click into the nearest point.
+
+## UXP-311 -- a dismissed panel stops being a live surface (#1399)
+
+**The only crash-severity finding of the multi-agent batch, and it is two defects sharing one cause:
+a panel that is dismissed is not gone.**
+
+Dismiss the Linked-from strip, put focus on the "Link this mention to ..." control it left behind,
+press Enter. Measured on `origin/main`:
+
+| | before | after |
+|---|---|---|
+| page errors | `TypeError: Cannot read properties of null (reading 'text')` | none |
+| the mention | linked anyway (the mutation ran) | linked |
+| announced | **nothing** | `Linked mention` |
+| named controls in the a11y tree, dismissed | **2** | **0** |
+| programmatic focus lands on them, dismissed | **yes** | no |
+
+### Cause 1: a callback that closed over a global its own dismissal nulls
+
+`hideBlPanel()` sets `blNodeId = null`. `renderBlPanel` hung `afterLink: () => showBlPanel(blNodeId)`
+on every row, so the refresh asked a dismissed panel who it was about and got `null`, which threw
+inside `blGather`'s document walk. The rows are built for **one** subject; the fix is to capture that
+subject once and let both the renderer and its callbacks read the capture.
+
+The announcement sat *after* that call, so the throw ate it: the mention **was** linked and the app
+said nothing (P4). It now announces before the repaint that can swallow it. Ordering, not copy.
+
+### Cause 2: hiding by sliding off-screen leaves the controls live -- in all three panels
+
+`#bl-panel` hides with `transform:translateY(100%)`. An off-screen element is a present element: still
+focusable, still named in the accessibility tree. **The family is enumerable from source** -- exactly
+three rules hide this way (`#fn-panel`, `#bl-panel`, `#var-panel`) -- and driving each one with real
+content showed **all three** leaking their controls when dismissed. Each now carries
+`visibility:hidden` with a `0s .22s` delay, so the slide-out animation is unchanged and the controls
+leave the tree the moment it finishes. The census is pinned: a fourth docked panel has to opt in.
+
+The reduced-motion override named only `#var-panel`, and only its closed state. Since the `.on` rules
+now declare a transition of their own (which outranks a plain-id override), it had to be widened, and
+widening it to the siblings that never had one was the same one-line edit.
+
+### Two probes that measured nothing, and were not reported as findings
+
+- **A Tab-ring traversal.** 45 presses never left `.node-content` -- **Tab indents** in an outliner,
+  so the browser tab ring is not what exposes a dismissed panel here. Replaced with
+  `page.accessibility.snapshot()` plus programmatic focus, which is what actually leaks.
+- **A family sweep run on unopened panels.** `fn-panel` and `var-panel` reported 0 focusable controls
+  while dismissed -- because they had never been filled. Re-run after opening each with real content,
+  all three reported 2, 2 and 1. A null result is a claim about the probe until the count is checked
+  against what the surface should contain.
+
+### The focus half, found by driving rather than by the report
+
+With the crash fixed, a keyboard user who pressed Enter on Link was dropped on `<body>` (the strip) or
+on the outline **container** (the in-flow section). The Link button destroys itself -- its row is
+rebuilt as a "Linked from" row -- so focus now follows the row it became, addressed by a new
+`data-bl-src`. Two details that only measurement gives:
+
+- The gate is `hadFocus` at activation, **not** "is `activeElement` `<body>`". The in-flow path leaves
+  focus on a container, so a vacuum test that only knows about `<body>` never fires. `hadFocus` is also
+  what keeps the mouse path untouched: the `mousedown` is `preventDefault`ed, so it is false there by
+  construction.
+- The retry is bounded at 12 frames because the two surfaces repaint at different times -- the strip
+  has its row on frame 1, the in-flow section on frame 2, since `scheduleZoomBlFill` runs on an idle
+  callback. One frame fixed one surface and silently missed the other.
+
+### The sibling that already had the guard
+
+`showFnPanel` has always opened with `const node = nodeById(nodeId); if (!node) return hideFnPanel();`.
+`showBlPanel` never did, and it is the one whose gather walks the whole document dereferencing that
+node. Same family, same shape, one member missing it -- the sixth instance this session of a
+capability the code already had, applied to some siblings and not others.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2040**. Fifteen mutations, each asserting its target present
+first, all red at the named pin -- including toward the wrong shape (making the refocus unconditional,
+so it would steal from the mouse path; removing `visibility:visible` from a `.on` rule, so a panel
+could never be used at all). Three negative controls green.
+
+Driven before and after in both themes, at 1280 and at 393 with `hasTouch`: the strip still slides,
+still renders, its controls are still focusable while it is open, and the accessibility exposure while
+dismissed goes 2 -> 0.

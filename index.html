@@ -1250,8 +1250,12 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    No new token, so the dual-home palette invariant is untouched. */
 .fn-ref-empty{color:var(--muted);text-decoration:underline dotted;text-underline-offset:2px;cursor:help}
 .fn-ref-empty:hover,.fn-ref-empty.hi{color:var(--fg)}
-#fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:50;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:240px;display:flex;flex-direction:column}
-#fn-panel.on{transform:translateY(0)}
+/* #1399: a docked panel hides by sliding off-screen, and an off-screen element is still focusable
+   and still in the accessibility tree, so a dismissed panel kept every control it had in the tab
+   order (P3). visibility:hidden takes them out; the 0s delay holds it visible for the length of the
+   slide, so the animation is unchanged. All three docked panels carry the same pair. */
+#fn-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:50;transform:translateY(100%);visibility:hidden;transition:transform .22s cubic-bezier(.4,0,.2,1),visibility 0s .22s;max-height:240px;display:flex;flex-direction:column}
+#fn-panel.on{transform:translateY(0);visibility:visible;transition:transform .22s cubic-bezier(.4,0,.2,1),visibility 0s 0s}
 .fn-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 20px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0}
 #fn-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 #fn-list::-webkit-scrollbar{width:4px}
@@ -2572,8 +2576,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
 /* cross-doc link (CF-2): same as a same-doc link plus a muted trailing arrow so a jump to another note reads distinctly */
 .node-link-cross::after{content:"\2197";font-size:.78em;color:var(--muted);margin-left:1px;vertical-align:baseline}
 /* ── backlinks panel ── */
-#bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:51;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:180px;display:flex;flex-direction:column}
-#bl-panel.on{transform:translateY(0)}
+#bl-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:51;transform:translateY(100%);visibility:hidden;transition:transform .22s cubic-bezier(.4,0,.2,1),visibility 0s .22s;max-height:180px;display:flex;flex-direction:column}   /* #1399: see the fn-panel note */
+#bl-panel.on{transform:translateY(0);visibility:visible;transition:transform .22s cubic-bezier(.4,0,.2,1),visibility 0s 0s}
 #bl-list{overflow-y:auto;padding:8px 18px 12px;flex:1;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent}
 .bl-item{padding:3px 0;cursor:pointer;font-size:13px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 4d: the context line under a backlink row — what the source point says around the link */
@@ -2640,8 +2644,8 @@ body:not(.v-guided) .logo-file-cue{display:none}
    The verbosity strip's own tier descriptions are never gated — always visible. */
 body:not(.v-guided) #file-menu .cmd-desc{display:none}
 /* ── variables overview panel ── */
-#var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:52;transform:translateY(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);max-height:260px;display:flex;flex-direction:column}
-#var-panel.on{transform:translateY(0)}
+#var-panel{position:fixed;bottom:0;left:0;right:0;background:var(--hbg);border-top:1px solid var(--bdr);z-index:52;transform:translateY(100%);visibility:hidden;transition:transform .22s cubic-bezier(.4,0,.2,1),visibility 0s .22s;max-height:260px;display:flex;flex-direction:column}   /* #1399: see the fn-panel note */
+#var-panel.on{transform:translateY(0);visibility:visible;transition:transform .22s cubic-bezier(.4,0,.2,1),visibility 0s 0s}
 #var-panel-hd{font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;padding:8px 16px 6px;border-bottom:1px solid var(--bdr);flex-shrink:0;display:flex;align-items:center;gap:8px}
 #var-panel-list{overflow-y:auto;padding:8px 16px 12px;flex:1;display:flex;flex-wrap:wrap;gap:6px 20px;scrollbar-width:thin;scrollbar-color:var(--bdr) transparent;align-content:flex-start}
 .vp-row{display:flex;align-items:baseline;gap:5px;font-size:13px}
@@ -2658,7 +2662,10 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 .vp-val{font-family:var(--mono);font-size:12px;color:var(--acc)}
 .vp-cycle{color:var(--bad);font-size:11px}
 #var-panel-close{margin-left:auto;font-size:14px;padding:0 4px;flex-shrink:0}
-@media(prefers-reduced-motion:reduce){#var-panel{transition:none}}
+/* #1399: the .on rules now declare a transition of their own (see the visibility note on #fn-panel),
+   which outranks a plain #var-panel override, so the reduce rule has to name both states. It also
+   only ever covered one of the three docked panels; the siblings slide under reduce today. */
+@media(prefers-reduced-motion:reduce){#fn-panel,#fn-panel.on,#bl-panel,#bl-panel.on,#var-panel,#var-panel.on{transition:none}}
 @media(prefers-reduced-motion:reduce){#outline{transition:none}}
 
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
@@ -37717,6 +37724,10 @@ function blShowWith(nodeId, d) {
   syncBodyPadBottom();
 }
 function showBlPanel(nodeId) {
+  // #1399: the same guard showFnPanel has always had, and this sibling never did. A gathered
+  // answer about a point that is not there is not an empty panel, it is a walk of the document
+  // dereferencing null. Dismiss instead, exactly as the footnote panel does.
+  if (!nodeById(nodeId)) { hideBlPanel(); return false; }
   const d = blGather(nodeId);
   blShowWith(nodeId, d);
   return d.has;
@@ -37732,9 +37743,13 @@ function hideBlPanel() {
 
 // The bottom strip: the original caller, now a thin wrapper over the shared renderer.
 function renderBlPanel(sources, unlinked, cross, crossUnlinked) {
-  renderBlRows(document.getElementById('bl-list'), document.getElementById('bl-panel-hd'), blNodeId,
+  // #1399: capture the subject, do NOT close over the global. hideBlPanel nulls blNodeId, so a
+  // callback that read it at fire time was asking a dismissed panel who it was about. The rows
+  // are already built for one subjectId; every callback on them must agree with that one.
+  const subjectId = blNodeId;
+  renderBlRows(document.getElementById('bl-list'), document.getElementById('bl-panel-hd'), subjectId,
     { sources, unlinked, cross, crossUnlinked },
-    { beforeNavigate: hideBlPanel, afterLink: () => showBlPanel(blNodeId) });
+    { beforeNavigate: hideBlPanel, afterLink: () => showBlPanel(subjectId) });
 }
 
 // #953: the shared row renderer. This was renderBlPanel's body, with three things parameterised so
@@ -37757,6 +37772,7 @@ function renderBlRows(inner, hd, subjectId, d, opts) {
   sources.forEach(src => {
     const item = document.createElement('div');
     item.className = 'bl-item';
+    item.dataset.blSrc = src.id;   // #1399: so a Link that promotes a mention can land on the row it became
     const t = stripCaptionTags(displayText(src)) || '(untitled)';   // #943: keep the row title tag-free
     item.textContent = t;
     item.title = 'Open this point';
@@ -37847,6 +37863,7 @@ function renderBlRows(inner, hd, subjectId, d, opts) {
     btn.setAttribute('aria-label', `Link this mention to "${focusedTitle}"`);
     const doLink = () => {
       const mentionNode = nodeById(id); if (!mentionNode) return;
+      const hadFocus = document.activeElement === btn;   // #1399: keyboard path only, see below
       // The matched name may be an alias, not the title (§8): try each name the
       // focus point answers to and link whichever actually appears in this text.
       const target = nodeById(subjectId);
@@ -37859,8 +37876,34 @@ function renderBlRows(inner, hd, subjectId, d, opts) {
       if (next == null) return;
       pushUndo();
       mentionNode.text = next; markDirty(); render();
-      afterLink();
+      // #1399: say it BEFORE repainting. The refresh rebuilds this whole surface, so anything that
+      // throws in it used to swallow the one response the user gets for an edit that already
+      // happened (P4): the mention was linked and the app said nothing.
       announce('Linked mention');
+      afterLink();
+      // #1399: the Link button destroys itself -- its row is rebuilt as a "Linked from" row. Land
+      // on that row, so a keyboard user stays where they were working and the move IS the
+      // confirmation. Gated on hadFocus rather than on "is activeElement <body>": the two surfaces
+      // repaint differently (the strip re-renders inside afterLink, the in-flow section is rebuilt
+      // by the render() above, which drops focus onto the outline CONTAINER, not <body>), and a
+      // vacuum test that only knows about <body> misses that. hadFocus is also what keeps the mouse
+      // path untouched -- the mousedown is preventDefault'd, so it is false there by construction.
+      // Deferred a frame so the repaint has happened whichever path ran.
+      // The retry is not belt-and-braces: MEASURED, the strip has its new row on the first frame
+      // and the in-flow section on the second, because that one is filled by scheduleZoomBlFill's
+      // idle callback. It gives up after 12 frames (~200ms) and after the user starts typing, so
+      // the worst case is today's behaviour rather than a focus grab arriving late.
+      if (hadFocus) {
+        let tries = 12;
+        const land = () => {
+          const ae = document.activeElement;
+          if (ae && (ae.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) return;
+          const fresh = document.querySelector(`.bl-item[data-bl-src="${CSS.escape(String(id))}"]`);
+          if (fresh && fresh.isConnected) { try { fresh.focus(); } catch (_) {} return; }
+          if (--tries > 0) requestAnimationFrame(land);
+        };
+        requestAnimationFrame(land);
+      }
     };
     btn.addEventListener('mousedown', e => { e.preventDefault(); doLink(); });
     btn.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doLink(); } });

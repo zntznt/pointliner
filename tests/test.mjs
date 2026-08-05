@@ -16380,7 +16380,10 @@ test('breadcrumb + backlinks render link-legible titles (displayTitle/linkText w
     'displayTitle must flatten artifacts (F1) then wrap in linkText');
   assert.match(_src, /function crumbLabel[\s\S]{0,160}displayTitle\(n\)/,
     'crumbLabel must use displayTitle');
-  assert.match(_src, /bl-item['"];\s*\n\s*const t = stripCaptionTags\(displayText\(src\)\)/,
+  // #1399 widened the window: the row now also stamps data-bl-src between the class and the caption,
+  // so the two lines are no longer adjacent. The claim is unchanged (this row's caption comes from
+  // displayText, tag-stripped); only the adjacency assumption was ever incidental.
+  assert.match(_src, /bl-item['"];[\s\S]{0,220}const t = stripCaptionTags\(displayText\(src\)\)/,
     'same-doc backlink rows must use displayText (resolves markdown/pills to shown text), tag-stripped for the caption (#943)');
   assert.ok(!/function textForDisplay\([^)]*\)\s*\{[\s\S]{0,400}linkText/.test(_src),
     'textForDisplay must NOT call linkText (keeps the workspace titles index raw)');
@@ -27442,8 +27445,16 @@ test('#953 one renderer, two containers: the strip is a wrapper, not a copy', ()
   // A forked renderer would drift. renderBlPanel must be a thin adapter over renderBlRows, and
   // renderBlRows must take its subject as a PARAMETER rather than reading the strip's global.
   const rp = between(_src, 'function renderBlPanel(', 'function renderBlRows(');
-  assert.ok(/renderBlRows\(document\.getElementById\('bl-list'\), document\.getElementById\('bl-panel-hd'\), blNodeId,/.test(rp),
-    'the strip passes its own container and its own subject');
+  // REWRITTEN for #1399, not loosened. This used to assert the strip passed `blNodeId` here, and
+  // it also closed over that same global for afterLink. hideBlPanel() nulls blNodeId, so once the
+  // panel was dismissed its still-focusable Link button asked "which point am I about?" and got
+  // null, which threw inside blGather and swallowed the success announcement with it. The rows are
+  // built for ONE subject; every callback hung on them has to agree with that one. Capture it.
+  assert.ok(/const subjectId = blNodeId;/.test(rp), 'the strip captures its subject ONCE, up front');
+  assert.ok(/renderBlRows\(document\.getElementById\('bl-list'\), document\.getElementById\('bl-panel-hd'\), subjectId,/.test(rp),
+    'the strip passes its own container and its own captured subject');
+  assert.ok(/afterLink: \(\) => showBlPanel\(subjectId\)/.test(rp) && !/showBlPanel\(blNodeId\)/.test(rp),
+    'and the post-Link refresh reads the capture, never the global hideBlPanel nulls');
   assert.ok(!rp.includes('createElement') && !rp.includes('innerHTML'),
     'and builds no rows of its own — a second row-builder is exactly the drift this prevents');
   const rr = between(_src, 'function renderBlRows(', 'function updateBlPanel(');
@@ -27459,6 +27470,66 @@ test('#953 one renderer, two containers: the strip is a wrapper, not a copy', ()
     'the in-flow section renders the same rows from the memoised gather');
   assert.ok(/sec\.setAttribute\('role', 'region'\)/.test(bz) && /aria-labelledby/.test(bz),
     'and is a named region (P3), which the bottom strip never was');
+});
+
+test('#1399 a dismissed docked panel takes its controls out of the tree — all three of them', () => {
+  // Driven on origin/main: dismiss the Linked-from strip and its "Link this mention to ..." button
+  // is STILL focusable and still named in the accessibility tree, because the panel hides by
+  // sliding off-screen and an off-screen element is a present element. Measured with
+  // page.accessibility.snapshot: 2 named controls exposed while dismissed -> 0 after.
+  // A Tab-ring probe proves nothing here and was discarded: Tab INDENTS in the outline, so
+  // traversal never leaves .node-content. The exposure is the a11y tree and programmatic focus.
+  //
+  // The family is enumerable from source — a rule that hides by this transform IS a docked panel —
+  // so this is a census: a fourth one has to opt in here before it can ship.
+  const rules = nonEmpty([...NC.matchAll(/#([a-z-]+)\{[^}]*transform:translateY\(100%\)[^}]*\}/g)],
+    'docked panels (rules hiding by translateY(100%))');
+  assert.equal(rules.length, 3, 'fn-panel, bl-panel, var-panel — no more, no fewer');
+  for (const m of rules) {
+    const id = m[1];
+    assert.ok(/visibility:hidden/.test(m[0]), `#${id} must be visibility:hidden while it is off-screen`);
+    assert.ok(/visibility 0s \.22s/.test(m[0]),
+      `#${id} holds visibility for the length of the slide, so the animation is unchanged`);
+    const on = between(NC, `#${id}.on{`, '}');
+    assert.ok(/visibility:visible/.test(on), `#${id}.on restores it, or the panel could never be used at all`);
+    assert.ok(/visibility 0s 0s/.test(on), `#${id}.on shows immediately rather than inheriting the delay`);
+  }
+  // The .on rules now declare a transition of their own, which outranks a plain-id override, so the
+  // reduce rule has to name both states. It also only ever covered ONE of the three panels.
+  const reduce = between(NC, '@media(prefers-reduced-motion:reduce){#fn-panel', '}');
+  for (const id of ['fn-panel', 'bl-panel', 'var-panel'])
+    assert.ok(reduce.includes(`#${id},#${id}.on`), `#${id} and its open state both stand down under reduce`);
+});
+
+test('#1399 the Link button says what it did, and follows the row it turned into', () => {
+  const rr = between(_src, 'function renderBlRows(', 'function updateBlPanel(');
+  // P4: the announce moved ABOVE the refresh. It used to sit after afterLink(), so when that threw
+  // the user got a mutation with no response at all — the mention WAS linked and nothing said so.
+  const say = rr.indexOf("announce('Linked mention')"), refresh = rr.indexOf('afterLink();');
+  assert.ok(say > 0 && refresh > 0 && say < refresh,
+    'the response is emitted before the repaint that could swallow it');
+  assert.ok(/item\.dataset\.blSrc = src\.id;/.test(rr),
+    'a Linked-from row is addressable by the point it came from');
+  assert.ok(/const hadFocus = document\.activeElement === btn;/.test(rr),
+    'the refocus is gated on the KEYBOARD path — mousedown is preventDefault-ed, so this is false there');
+  assert.ok(/if \(hadFocus\) \{/.test(rr), 'gated, never unconditional');
+  assert.ok(/\.bl-item\[data-bl-src="\$\{CSS\.escape\(String\(id\)\)\}"\]/.test(rr),
+    'and it seeks the row the linked mention became');
+  // Both surfaces renderBlRows serves are covered by the retry: MEASURED, the strip has its row on
+  // frame 1 and the in-flow section on frame 2 (scheduleZoomBlFill runs on an idle callback).
+  assert.ok(/let tries = 12;/.test(rr) && /if \(--tries > 0\) requestAnimationFrame\(land\);/.test(rr),
+    'the retry is bounded, so a late arrival cannot become a late focus grab');
+  assert.ok(/ae\.isContentEditable \|\| \/\^\(INPUT\|TEXTAREA\|SELECT\)\$\/\.test\(ae\.tagName\)/.test(rr),
+    'and it stands down the moment the user has started typing somewhere');
+});
+
+test('#1399 showBlPanel refuses a point that is not there, exactly as showFnPanel always has', () => {
+  // The sibling had the guard from the start; this one never did, and blGather walks the whole
+  // document dereferencing that node. Same family, same shape, one member missing it.
+  assert.match(fnBody(_src, 'showFnPanel'), /if \(!node\) return hideFnPanel\(\);/,
+    'the sibling that had the guard still has it');
+  assert.match(fnBody(_src, 'showBlPanel'), /if \(!nodeById\(nodeId\)\) \{ hideBlPanel\(\); return false; \}/,
+    'and the one that did not, now does');
 });
 
 test('#953 a zoom-in starts with the strip down (its landing focus is not the reader\u2019s choice)', () => {
