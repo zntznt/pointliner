@@ -21406,6 +21406,28 @@ test('#1400 baseStructMessage — six sentences, one shape, each promising the u
   assert.equal(m('row-insert', { side: 'above', n: 2 }), 'Row inserted above row 2. Undo removes it.');
   assert.equal(m('row-move', { dir: -1, n: 2 }), 'Row 2 moved up. Undo restores the order.');
   assert.equal(m('row-delete', { n: 2, values: 2 }), 'Row 2 deleted, with 2 values. Undo restores it.');
+  // #1415: the formatting half of the same menu. Sort spoke; Alignment, Width and Calculate wrote
+  // to the document and said nothing at all -- one of four sections speaking.
+  assert.equal(m('col-align', { label: 'Owner', align: 'center' }),
+    'Column \u201cOwner\u201d aligned center. Undo restores it.');
+  assert.equal(m('col-width', { label: 'Owner', width: 'Narrow' }), 'Column \u201cOwner\u201d set to Narrow.');
+  assert.equal(m('col-width', { label: 'Owner', width: null }), 'Column \u201cOwner\u201d fits its content.');
+  assert.equal(m('col-agg', { label: 'Owner', agg: 'Count' }), 'Column \u201cOwner\u201d totals with Count. Undo restores it.');
+  assert.equal(m('col-agg', { label: 'Owner', agg: '' }), 'Column \u201cOwner\u201d stops totalling. Undo restores it.',
+    'None reads as stopping, not as totalling with nothing');
+  // the undo promise is PER-OP and honest: align and totals push undo (#1387), width does not, so
+  // width does not claim it. Driven: setting a width and pressing Ctrl+Z reverts the width AND the
+  // edit before it, because the change has no snapshot of its own.
+  assert.doesNotMatch(m('col-width', { label: 'Owner', width: 'Wide' }), /Undo/,
+    'width must not promise an undo it does not record');
+  // the preset names have ONE home, shared with the menu that offers them
+  assert.equal(c.colWidthLabel(96), 'Narrow');
+  assert.equal(c.colWidthLabel(160), 'Medium');
+  assert.equal(c.colWidthLabel(260), 'Wide');
+  assert.equal(c.colWidthLabel(null), null, 'auto is the caller\'s phrasing, not a preset name');
+  assert.equal(c.colWidthLabel(184), '184px', 'a drag or a keyboard step reports its pixels');
+  assert.ok(/COL_W_PRESETS\.forEach\(\(\[label, w\]\) => addItem\(label/.test(NC),
+    'the Column menu builds its width rows from the same constant the message reads');
   assert.equal(m('nope'), '', 'an unknown op says nothing rather than something wrong');
   // house rules: AP punctuation, no em dashes, and every one promises the undo
   for (const op of ['col-insert', 'col-move', 'col-delete', 'row-insert', 'row-move', 'row-delete']) {
@@ -21445,9 +21467,28 @@ test('#1400 every structural base op lands somewhere real and says what it did',
   assert.ok(fnBody(_src, 'hideColPanel').includes("ae.closest('.md-table-host')"),
     'hideColPanel stands down when an apply already landed focus inside the base');
   // the four formatting siblings in the same menu had the same <body> landing; they stay put now
-  for (const fn of ['mtSetAlign', 'mtSetColWidth', 'mtApplyAggregate', 'mtSortBase'])
+  for (const fn of ['mtSetAlign', 'mtApplyAggregate', 'mtSortBase'])
     assert.ok(/mtFocusCell\(node, 0, colIdx\)/.test(fnBody(_src, fn)),
       fn + ' stays on the column it acted on (it did not move)');
+  // #1415: mtSetColWidth is the exception and it is load-bearing. It has FIVE callers and one is
+  // the mouse resize DRAG, so a landing here fired on mouse-up and yanked the caret out of the cell
+  // being edited -- measured r1c1 -> r0c0, the caret invariant broken by the fix meant to protect
+  // focus. Its three DELIBERATE doors land for themselves.
+  assert.ok(!/mtFocusCell\(/.test(fnBody(_src, 'mtSetColWidth')),
+    'mtSetColWidth must NOT land focus: a mouse resize drag calls it');
+  assert.ok(!/flashHint\(/.test(fnBody(_src, 'mtSetColWidth')),
+    'nor speak, for the same reason -- a drag would narrate itself');
+  // #1415 CALL SITES. Caught by mutation: the three sentences were pinned as data and NOTHING
+  // asserted anything called them, so deleting each flashHint left every assertion green -- the
+  // #1133 rule, met again in the same session.
+  assert.ok(/flashHint\(baseStructMessage\('col-align'/.test(fnBody(_src, 'mtSetAlign')),
+    'Alignment says what it did');
+  assert.ok(/flashHint\(baseStructMessage\('col-agg'/.test(fnBody(_src, 'mtApplyAggregate')),
+    'Calculate says what it did');
+  assert.ok(/flashHint\(baseStructMessage\('col-width'/.test(fnBody(_src, 'showColPanel')),
+    'the Width menu rows say what they did, from the deliberate door rather than from the op');
+  assert.ok(/const setW = \(w\) => \{ mtSetColWidth\(node, colIdx, w\); mtFocusCell\(node, 0, colIdx\);/.test(NC),
+    'and that door lands focus too, which the op can no longer do for them');
 });
 
 test('cycleColRole — the same set + order as the Show-as menu, wrapping both ways', () => {
@@ -21549,7 +21590,11 @@ test('LEAN-FLOOR p3: the Alt+,/. column-resize step wiring is present (DOM-bound
   assert.ok(_src.includes('stepColW(base, wider ? 1 : -1)'), 'the resize must step via stepColW');
   // base = the pinned width, else the measured rendered header width (so the first press feels natural)
   assert.ok(_src.includes('getBoundingClientRect().width'), 'the resize must measure the rendered width when the column is unpinned');
-  assert.ok(_src.includes("flashHint('Column width: "), 'the resize must flash the new width (P4, no menu)');
+  // REWRITTEN for #1415, not loosened. The keyboard door had its own copy ("Column width: 184px")
+  // while the MENU door onto the same write said nothing at all. Both use the shared sentence now.
+  const step = between(NC, "e.key === ',' || e.key === '.' || e.key === '<' || e.key === '>'", 'return;\n    }');
+  assert.ok(/baseStructMessage\('col-width'/.test(step), 'the resize must say the new width (P4, no menu)');
+  assert.ok(!/flashHint\('Column width: /.test(NC), 'and must not keep its own copy of the sentence');
 });
 
 // ── EX-1: the first-run Examples document — well-formed nesting + every {…} is a LIVE pill ──
