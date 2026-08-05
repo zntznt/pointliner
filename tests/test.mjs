@@ -1333,6 +1333,32 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
 // the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
 // broken form fails here rather than silently removing its door again.
+// ── the staleness floor's second half: what a floor inside the tree cannot do ────────────────
+// The floor ITSELF is already enforced, further down, by "CLAUDE.md's staleness floor stays within
+// reach of the actual suite size": it parses the number out of CLAUDE.md, counts the suite's test
+// blocks, and ratchets both directions. Do not add a second floor constant here — two floors that
+// can disagree is worse than one.
+//
+// What that guard CANNOT do, by construction: notice that this entire checkout is stale. A base 500
+// tests old carries the old CLAUDE.md floor with it, so it compares 1500 against 1400 and passes.
+// The number has to come from OUTSIDE the tree. That is the `staleness-floor` CI job, and this pin
+// is here so the in-tree half is never mistaken for the whole guard.
+test('the CI half of the staleness guard exists and reads a number from outside the tree', () => {
+  // The in-tree floor above is structurally blind to its own checkout being stale. That blindness is
+  // only acceptable because a second check compares against origin/main. Pin that it is wired, or
+  // the limitation quietly becomes the whole story.
+  const wf = readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8');
+  const job = between(wf, 'staleness-floor:', 'browser-smoke:');
+  // Assert on the SHELL LINE, not on prose: the job's own comment says "origin/main" too, so a
+  // looser match would stay green if the comparison itself were deleted and only the rationale left.
+  assert.ok(/git show origin\/main:tests\/test\.mjs/.test(job),
+    'the staleness-floor job must actually read the test count out of origin/main — that external ' +
+    'number is the only thing that can see a stale base');
+  assert.ok(/exit 1/.test(job), 'and it must fail the build, not just print');
+  assert.ok(/fetch-depth:\s*0|fetch --unshallow|git fetch origin main/.test(wf),
+    'and it needs the history to read origin/main from, or the comparison silently degrades');
+});
+
 // ── #1430: the symbol index, and the two ways a generated map goes quietly wrong ────────────────
 // tools/symbol-index.py emits guidance/code-index.md: every top-level declaration grouped by the
 // section marker it sits under. CI regenerates it and fails on drift, so STALENESS is covered there.

@@ -37,6 +37,35 @@ jobs:
       # common path rather than becoming a weekly job nobody watches.
       - run: python3 tools/symbol-index.py --check
 
+  # The other half of the staleness guard. tests/test.mjs enforces a floor, but a floor committed in
+  # the tree is structurally blind to its own checkout being stale: a base 500 tests old carries the
+  # old floor too, compares 1500 against 1400, and passes. That is the documented failure ("it sat at
+  # ~1400 while the suite reached 1915"). Seeing it needs a number from OUTSIDE the tree, so this
+  # compares the branch against origin/main.
+  #
+  # The tolerance is a judgment call, not a measurement: a legitimate PR may consolidate a handful of
+  # tests, while a stale base is behind by hundreds. 25 sits well clear of both.
+  staleness-floor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No fetch-depth: 0 — the step fetches origin/main shallowly itself, so a full-history
+      # clone would buy nothing and cost a slow checkout on every PR.
+      - name: compare this branch's test count against origin/main
+        run: |
+          git fetch origin main --depth=1
+          here=$(grep -cE '^\s*test\(' tests/test.mjs)
+          main=$(git show origin/main:tests/test.mjs | grep -cE '^\s*test\(')
+          echo "this branch: $here declared tests"
+          echo "origin/main: $main declared tests"
+          if [ "$here" -lt "$((main - 25))" ]; then
+            echo "::error::This branch declares $here tests; origin/main has $main. A gap this large"
+            echo "::error::means the base is stale, not that tests were consolidated. Fetch and rebase:"
+            echo "::error::  git fetch origin && git rebase origin/main"
+            exit 1
+          fi
+          echo "base is current (within tolerance of origin/main)"
+
   # #1427: the layer tests/test.mjs cannot reach. Its DOM pins prove a handler is
   # PRESENT; #1021 shipped one that was present and inert, because it sat on an
   # element nothing could focus. These six checks drive the real index.html in a
