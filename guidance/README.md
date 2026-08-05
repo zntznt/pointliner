@@ -141,6 +141,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `ux-remediation.md` | The **active** UX non-conformance register — the one open item (UXP-20, the standing P5 syntax-sprawl guard, which is meant to stay open). File new defects here |
 | `ux-remediation-archive.md` | The frozen record of the ~226 **closed** UX defects (decisions + regression tripwires); not active work |
 | `architecture-reference.md` | **The deep architectural detail behind `CLAUDE.md`** — engine, rendering pipeline, data model, persistence. Read it when a task touches any of those |
+| `code-index.md` | **Generated, do not edit** (`tools/symbol-index.py`; CI fails on drift) — every top-level declaration in `index.html`, grouped by the section marker it sits under, with its one-line purpose. Grep it when you need a name you do not already know |
 | `identity-alignment.md` | **ACTIVE program** — the gap list between `product-identity.md` and the shipped app (IA-1…9, tiered, each ending in a PR or a recorded decision) |
 | `generative-status.md` | Completion ledger for the generative + computational lane |
 | `backlog.md` | Consolidated feature gaps with status marks |

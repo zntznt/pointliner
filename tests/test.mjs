@@ -1333,6 +1333,62 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
 // the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
 // broken form fails here rather than silently removing its door again.
+// ── #1430: the symbol index, and the two ways a generated map goes quietly wrong ────────────────
+// tools/symbol-index.py emits guidance/code-index.md: every top-level declaration grouped by the
+// section marker it sits under. CI regenerates it and fails on drift, so STALENESS is covered there.
+// What CI's byte-compare cannot see is whether the index is meaningful, which fails two ways:
+//   - it silently stops covering things (a registry the index does not know about)
+//   - a section marker is deleted or renamed, and its declarations merge into the section above
+//     with no diff anywhere that says a region of the file lost its name
+// Both are pinned here, against the two real files.
+const _codeIndex = readFileSync(new URL('../guidance/code-index.md', import.meta.url), 'utf8');
+const _loadCoresSrc = readFileSync(new URL('./load-cores.mjs', import.meta.url), 'utf8');
+const _symTool = readFileSync(new URL('../tools/symbol-index.py', import.meta.url), 'utf8');
+
+test('#1430 the symbol index covers every pure core the test suite already knows about', () => {
+  // Cross-registry parity. `need[]` in load-cores.mjs is the OTHER symbol registry in this repo,
+  // and two registries that do not agree are worse than one: a name in `need[]` but absent from the
+  // index means the extractor is missing a declaration FORM, not that the function does not exist.
+  const needBlock = between(_loadCoresSrc, 'const need = [', '\n  ];');
+  const names = nonEmpty([...needBlock.matchAll(/'([A-Za-z_$][\w$]*)'/g)].map(m => m[1]), 'load-cores need[]');
+  const indexed = new Set([...nonEmpty([..._codeIndex.matchAll(/^- `([^`]+)`/gm)], 'index entries')]
+    .map(m => m[1]));
+  const missing = names.filter(n => !indexed.has(n));
+  assert.deepEqual(missing, [],
+    'every pure core in load-cores need[] must appear in the generated index — a gap here means the ' +
+    'extractor cannot see a declaration form, so the map is silently partial');
+});
+
+test('#1430 a section losing its marker cannot pass unnoticed', () => {
+  // A deleted or renamed marker does not fail the byte-compare in any visible way: the declarations
+  // just move under the previous heading and the index still regenerates cleanly. This is the census
+  // ratchet for that. Named, not counted -- a count stays green while the wrong sections pass.
+  const heads = new Set(nonEmpty([..._codeIndex.matchAll(/^## (.+)$/gm)], 'index sections')
+    .map(m => m[1].trim()));
+  assert.ok(heads.size >= 120, `expected the file's section markers, found ${heads.size}`);
+  for (const want of ['model', 'search', 'markdown', 'doc-cache registry', 'backlinks panel'])
+    assert.ok(heads.has(want), `the "${want}" section lost its marker — its declarations have ` +
+      'silently merged into the section above it');
+  // And the index must actually be grouped: one giant section would regenerate and byte-compare
+  // happily while telling a reader nothing.
+  const biggest = Math.max(...[...heads].map(h =>
+    (between(_codeIndex + '\n##  ', `## ${h}\n`, '\n## ').match(/^- `/gm) || []).length));
+  assert.ok(biggest < 200, `one section holds ${biggest} declarations; the index has stopped grouping`);
+});
+
+test('#1430 the index tool reads the same app block as load-cores, and commits no line numbers', () => {
+  // Two tools disagreeing about which <script> is the app is a bug neither would report, so the
+  // block signature is pinned to match load-cores.mjs exactly.
+  assert.ok(/use strict/.test(_symTool) && /function\\s\+mkNode/.test(_symTool),
+    'the extractor must select the app block by the same signature load-cores uses');
+  // The repo's navigation doctrine: names, never line numbers, because line numbers drift and names
+  // do not. `--with-lines` exists for editing and must stay stdout-only.
+  assert.ok(/--with-lines/.test(_symTool), 'the line-number mode exists for local jump-to-symbol');
+  assert.ok(!/\(line \d+\)/.test(_codeIndex),
+    'the COMMITTED index must carry no line numbers — they drift every edit (architecture-reference)');
+  assert.ok(/Do not edit by hand/.test(_codeIndex), 'and it must say it is generated');
+});
+
 // ── #1429: a check chip must not assert an outcome its own icon can contradict ──────────────────
 // A `check` prop renders as the point's text beside a ✓/✗ glyph, so the text is read AS the verdict.
 // "All dates still safe" shipped beside a ✗ the moment a task went overdue: an affirmative claim and

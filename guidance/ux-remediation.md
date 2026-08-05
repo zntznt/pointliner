@@ -6211,3 +6211,78 @@ The fix removes the state-dependence from the copy, and the drift guard is stati
 it reads every shipped check label, not a sample. A driven check would assert the same string twice
 and grow the smoke without covering a new defect class, against the design decision recorded in
 #1427 that it stays small.
+
+---
+
+## UXP-327 -- a generated symbol map, and the banner premise that measurement overturned (#1430, #1431)
+
+**Status: #1430 shipped.** `UI: none` -- `tools/`, `guidance/`, `tests/`, `.github/`. No `index.html` diff.
+
+### What shipped
+
+`tools/symbol-index.py` -> `guidance/code-index.md`: **2,036 top-level declarations in 149 sections**,
+each with the first line of its own comment as its purpose. Names only, no line numbers, per the
+repo's navigation doctrine. `--with-lines` prints them to stdout for jump-to-symbol while editing and
+is never what CI compares. A CI step regenerates and fails on drift, so the map cannot rot -- the
+failure mode this repo has now written down three times (#1129 a rule with no reader, #1166 a build
+script CI never ran, #1427 a driven check nothing preserved).
+
+### The premise #1431 rests on is false, and that changed the design
+
+#1431 asks for a banner spine on the stated grounds that *"the script block has **zero** section
+markers today"* and that declarations *"sit in a flat stream; the only orientation is grep."*
+
+Measured: the block already carries **151 markers**, in the exact style proposed --
+
+```
+// ─── search ──────────────────────────────────────────────────────────────
+```
+
+-- spanning **96% of the block** (lines 3198..44469 of 3196..46184), authored and fine-grained
+(`progress clocks ([o N/M])`, `chrome excursions: caret restore`, `journal / daily-notes pure cores`).
+
+So the index groups by **the marker each declaration actually sits under**, rather than by an
+invented taxonomy. Inserting a second, competing marker convention into the same file is the thing
+P1 and P5 exist to prevent, and it was one measurement away from happening.
+
+**Name prefixes were the other candidate and would have been worse:** #1430's own numbers show ~80%
+of declarations have no clean domain prefix, so prefix grouping would have shrugged most of the file
+into "uncategorized".
+
+### #1431's parity check, as specified, would be vacuous
+
+*"Every top-level declaration must fall inside a bannered region"* is **already true by
+construction**: the first marker precedes the first declaration, so every declaration inherits a
+section. A check that cannot fail is not a check (#1133).
+
+The failure that can actually happen is the opposite one: **a marker is deleted or renamed, its
+declarations silently merge into the section above, and no diff anywhere says a region of the file
+lost its name.** That is what shipped instead -- a named census of section headings, not a count,
+because a count stays green while the wrong sections pass.
+
+### Two findings the tooling produced on its first run
+
+- **The cross-registry parity test caught a real gap immediately.** `stashPayloadAsPrev` is tracked
+  in `load-cores.mjs` `need[]` but was absent from the index: the extractor did not allow the
+  `async function` form. Fixing it surfaced **49 more declarations** (1,987 -> 2,036). Two symbol
+  registries that disagree are worse than one, and this is why that test exists rather than trusting
+  the extractor.
+- **844 of 2,036 declarations (42%) have no comment line above them.** #1430 estimated "~3.7 comment
+  lines per declaration" and that most carry an adjacent note; measured, 58% do. The doc culture is
+  strong but concentrated -- `evalMath` and `toOpml`, two of the largest functions in the file, have
+  no adjacent one-liner at all. Left visible in the index rather than papered over: an empty purpose
+  is data.
+
+### A vacuous mutation, caught by the rule that exists for it
+
+The first mutation run reported the extractor's `async` arm as **unguarded** (0 failures). The `sed`
+had silently failed to match on shell escaping, so nothing was mutated and the green meant nothing.
+Re-run asserting the mutation target was present first, it goes red at the named pin. Fifth instance
+this session; the discipline is load-bearing, not ceremony.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2066**. Four mutations, each asserting its target present
+first: add a function without regenerating (freshness gate fails); rename a section heading (census
+red); drop the `async` form from the extractor (cross-registry parity red); commit the
+`--with-lines` output (no-line-numbers pin red).
