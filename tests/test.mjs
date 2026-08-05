@@ -29523,3 +29523,43 @@ test('#1394 census: every control that SETS a query lands the user in the box', 
   assert.ok(setters.some(f => f.name === 'searchHashtag'), 'searchHashtag is in the census');
   assert.ok(setters.length >= 2, `the census found ${setters.length} setters, expected several`);
 });
+
+// ─── #1396: a mid-line / or @ command keeps its first character ───────────────
+// Found by FOUR of five personas independently in a multi-agent live-drive pass, each on a different
+// task. All four reduce to one cause, and it is a value that was already being passed and thrown away.
+//
+// checkSlash has always handed the builder its query:
+//   builderState = { nodeId, content, trigger, offset: slashOffset, query, rawArg };
+// and openBuilder started with `let filterQ = ''`.
+//
+// At the START of a point the bare `/` opens the builder with query '' and nothing is lost, so the
+// bug is invisible there. MID-LINE the #1108 guard suppresses the bare trigger, so the FIRST word
+// character is what opens the builder — and with filterQ empty that character never reaches the box:
+//
+//   typed          box before   selected before      box after   selected after
+//   /note          "ote"        Quote  <-- WRONG     "note"      Note
+//   /todo          "odo"        To-do                "todo"      To-do
+//   /due:tomorrow  "ue:tomorrow" Query base <-- WRONG "due:tomorrow"  Schedule
+//   /prop:hp=12    "rop:hp=12"  (no match)           "prop:hp=12"    Property
+//
+// Driven end to end: mid-line /note now selects Note (it converted a scene heading to a blockquote
+// before), /todo leaves no `/t` debris, and /prop:hp=12 actually sets hp=12.
+test('#1396 the builder is seeded with the query the trigger already consumed', () => {
+  const ob = fnBody(_src, 'openBuilder');
+  assert.ok(/let filterQ = \(builderState && builderState\.query\) \|\| '';/.test(ob),
+    'filterQ starts from the query checkSlash passed, not empty');
+  assert.ok(!/let filterQ = '';/.test(ob), 'the empty-start form that caused this is gone');
+  assert.ok(/if \(filterQ\) searchEl\.value = filterQ;/.test(ob),
+    'and the box SHOWS it — a filter that disagrees with the visible field is worse than either alone');
+  // the seed must not double the ":value": rawArg rides separately on builderState and the apply
+  // path re-joins it. Seeding filterQ with query+rawArg would insert the argument twice.
+  assert.ok(!/builderState\.query \+ .*rawArg/.test(ob), 'rawArg is not folded into the seed');
+
+  // the producing side must still pass it — this pin is worthless if checkSlash stops supplying it
+  const cs = fnBody(_src, 'checkSlash');
+  assert.ok(/builderState = \{ nodeId, content, trigger, offset: slashOffset, query, rawArg \};/.test(cs),
+    'checkSlash still hands the builder the query and the offset');
+  // and the #1108 guard that makes mid-line different in the first place is intentional; keep it
+  assert.ok(/if \(slashOffset !== 0 && !rawQuery\) \{ hideSlashMenu\(\); return; \}/.test(cs),
+    'the #1108 bare-mid-text-trigger guard stays — it is why the first character is consumed');
+});
