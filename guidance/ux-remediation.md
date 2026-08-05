@@ -5477,3 +5477,59 @@ phantom held band, which turned six pins red).
 Driven after: the consumer (a Board built on the typed sequence marks WAITING held and BROKEN done),
 the OPML round trip (`_seq` carries the whole record as JSON, so the reloaded record is byte-equal),
 and the one-pipe regression (`heldFrom === doneFrom`, no phantom band, `BACKLOG DOING | SHIPPED` back).
+
+## UXP-317 -- the PILLS section stops being a list of the pills that happen to click (#1403)
+
+**The section IS the keyboard door.** Every pill carries `tabindex="-1"`, so its pencil is unreachable
+by keyboard and the bullet menu is the only way to the edit dialog. Driven, one flavour per point:
+
+| pill | rows before | rows after |
+|---|---|---|
+| dice | Re-roll · Show distribution · **Edit** · Freeze | unchanged |
+| grammar / deck | Re-generate · Show distribution · **Edit** · Freeze | unchanged |
+| math | **Edit** · Freeze | unchanged |
+| anonymous estimate | Re-sample · **Edit** · Freeze | unchanged |
+| markov | Re-walk · **Edit** · Freeze | unchanged |
+| named **pick** variable | Re-roll pick · Freeze | + **Edit random variable** |
+| named **uncertain** variable | Re-sample value · Freeze | + **Edit uncertain variable** |
+| named **formula** variable | **nothing at all** | **Edit variable** · Freeze |
+
+### The shape of the omission is the finding
+
+The two variable flavours that had rows had them because they have a **click gesture** -- a pick
+re-rolls, a dist re-samples (#952) -- and each was added with its gesture and stopped there. A formula
+variable has no gesture, so it never got a loop, and therefore had no section at all. The loops were
+gated on `v.kind`; that is exactly how a third kind ends up invisible.
+
+One loop now, gated on the TOKEN (`has('var', v.key)`) with the gesture as a branch inside it. A new
+variable kind gets its edit and freeze rows by construction, and the pin asserts no kind-gated loop
+remains -- so the omission cannot be re-made in the same way.
+
+### Three strings for one dialog
+
+The pill's pencil said *"Edit uncertain variable"*, the dialog it opened was titled *"Edit variable"*,
+and there was no row to disagree with either. `varEditLabel(kind)` is now the single source: the row,
+the dialog title and the pencil all read the same words (P1). "Uncertain" is the app's own user-facing
+word for a distribution elsewhere, so the dialog moved to the pill's word rather than the reverse.
+
+### A probe that reported a false pass
+
+The acceptance probe matched the first menu row starting with `Edit ` and reported success on all
+three flavours -- against **"Edit properties"**, an unrelated row in the same menu, which opens the
+Properties dialog. Only the dialog-title readout gave it away. Re-run matching the exact expected
+label: all three open their own dialog, focus lands inside it, and the row's words match the title.
+
+### Measured the negative case, and did not complete the set onto it
+
+`Freeze to text` on a *declaration* silently breaks every reference to that name: the referencing
+point drops from a live pill to inert raw text with nothing said. That is pre-existing on the two
+flavours that already offered it, so extending the row to the third creates no new hazard -- but it
+does mean three doors now reach it. **Filed with the measurement rather than bundled**, because the
+fix is a decision about what Freeze should mean on a declaration, not a missing row.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2050**. Eight mutations, each asserting its target present
+first, seven red at the named pin -- including two toward the wrong shape (a row that names one
+dialog and opens another; the dialog title going back to its own copy of the strings) and one that
+removes the Edit row from an already-correct sibling (dice), which must also fail.

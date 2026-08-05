@@ -8202,6 +8202,50 @@ test('#1116 collectPillActions scopes to ONE pill when the menu is opened from i
     'and they are THAT pill\'s rows: ' + JSON.stringify(scoped.map(r => r.label)));
 });
 
+test('#1403 every pill flavour with an edit dialog lists it — a census, not a list', () => {
+  // The PILLS section IS the keyboard door (UXP-13/14): every pill carries tabindex="-1", so its
+  // pencil is unreachable by keyboard and this menu is the only way in. Driven on origin/main:
+  //   dice / grammar / math / est  -> Edit row present
+  //   named PICK var               -> "Re-roll pick", "Freeze to text"      <- no Edit
+  //   named UNCERTAIN var          -> "Re-sample value", "Freeze to text"   <- no Edit
+  //   named FORMULA var            -> NO ROWS AT ALL
+  // The two that had rows had them because they have a CLICK gesture, and the rows stopped there.
+  const flavours = [
+    ['dice',      { text: '[[dice:k]]',    dice:    [{ key: 'k', expr: '2d6', total: 7 }] }],
+    ['grammar',   { text: '[[grammar:k]]', grammar: [{ key: 'k', origin: 'a|b', result: 'a' }] }],
+    ['math',      { text: '[[math:k]]',    math:    [{ key: 'k', expr: '2+2' }] }],
+    ['est',       { text: '[[est:k]]',     est:     [{ key: 'k', expr: '4 to 9', seed: 1 }] }],
+    ['markov',    { text: '[[markov:k]]',  markov:  [{ key: 'k', name: 'm', pairs: [] }] }],
+    ['var pick',  { text: '[[var:k]]',     vars:    [{ key: 'k', name: 'who', expr: 'a|b', kind: 'pick' }] }],
+    ['var dist',  { text: '[[var:k]]',     vars:    [{ key: 'k', name: 'cost', expr: '100 to 200', kind: 'dist' }] }],
+    ['var formula', { text: '[[var:k]]',   vars:    [{ key: 'k', name: 'total', expr: '40 * 2' }] }],
+  ];
+  for (const [name, node] of flavours) {
+    const rows = nonEmpty(c.collectPillActions(node), name + ' pill rows');
+    assert.ok(rows.some(r => /^Edit /.test(r.label)),
+      name + ' must offer its edit dialog here: ' + JSON.stringify(rows.map(r => r.label)));
+    assert.ok(rows.some(r => r.label === 'Freeze to text'), name + ' keeps its freeze row');
+  }
+  // the three variable flavours share ONE dialog, and the row must name the dialog it opens (P1) --
+  // there were three different strings for it before ("Edit uncertain variable" on the pencil,
+  // "Edit variable" on the dialog it opened, and no row at all).
+  assert.equal(c.varEditLabel('pick'), 'Edit random variable');
+  assert.equal(c.varEditLabel('dist'), 'Edit uncertain variable');
+  assert.equal(c.varEditLabel(undefined), 'Edit variable');
+  assert.ok(fnBody(_src, 'editVar').includes('title: varEditLabel(v.kind)'),
+    'the dialog title comes from the same core the menu row uses');
+  assert.ok(fnBody(_src, 'collectPillActions').includes('label:varEditLabel(v.kind)')
+         || /varEditLabel\(v\.kind\)/.test(fnBody(_src, 'collectPillActions')),
+    'and so does the row');
+  // ONE loop over node.vars, gated on the token rather than on a kind: gating on kind is exactly
+  // how the formula flavour ended up with no section at all.
+  const cpa = fnBody(_src, 'collectPillActions');
+  assert.ok(/for \(const v of node\.vars \|\| \[\]\) if \(has\('var', v\.key\)\) \{/.test(cpa),
+    'the vars loop admits every flavour, then branches for the gesture');
+  assert.ok(!/for \(const v of node\.vars \|\| \[\]\) if \(v\.kind === /.test(cpa),
+    'and no kind-gated loop remains');
+});
+
 test('#1116 the freeze writes what the pill SHOWS, not a value from a different scope', () => {
   // MEASURED before the fix, by driving: with `{n := 10}` above the reader and `{n := 99}` below,
   // the pill read `n * 2=20` while Freeze to text wrote `198` — a number never on screen. The pills
