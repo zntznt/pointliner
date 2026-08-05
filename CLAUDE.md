@@ -74,6 +74,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Visual standard (type, color, components) | `guidance/design-language.md` | Binding |
 | Plugin code-execution gate | `guidance/plugins-direction.md` | Locked |
 | Architecture deep-dive (data model, engines, persistence) | `guidance/architecture-reference.md` | Reference |
+| Symbol map: every top-level declaration, by section (generated) | `guidance/code-index.md` | Generated |
 | Shipped feature inventory | `guidance/features.md` | Reference |
 | Generative/computational completion ledger | `guidance/generative-status.md` | Reference |
 | Roadmap + phased plan | `guidance/roadmap.md` | Direction |

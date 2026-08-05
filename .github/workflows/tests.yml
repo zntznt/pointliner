@@ -30,6 +30,12 @@ jobs:
       # tests, so CI runs it. It spawns the hook as a subprocess rather than
       # importing it, which is why it lives beside the hook and not in test.mjs.
       - run: node .claude/hooks/check-pr-conformance.test.mjs
+      # #1430: the committed symbol index is a golden file. Regenerating it here and
+      # failing on drift is the only thing that stops the map rotting -- the failure
+      # mode this repo has now written down twice (#1129 a rule with no reader,
+      # #1166 a build script CI never ran). Offline and fast, so it stays on the
+      # common path rather than becoming a weekly job nobody watches.
+      - run: python3 tools/symbol-index.py --check
 
   # #1427: the layer tests/test.mjs cannot reach. Its DOM pins prove a handler is
   # PRESENT; #1021 shipped one that was present and inert, because it sat on an
