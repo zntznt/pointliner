@@ -29563,3 +29563,46 @@ test('#1396 the builder is seeded with the query the trigger already consumed', 
   assert.ok(/if \(slashOffset !== 0 && !rawQuery\) \{ hideSlashMenu\(\); return; \}/.test(cs),
     'the #1108 bare-mid-text-trigger guard stays — it is why the first character is consumed');
 });
+
+// ─── #1397: opening a pill's context menu must not change the pill ────────────
+// Found by the novelist persona in a multi-agent live-drive pass, reproduced from scratch by an
+// independent verifier. A secondary-button mousedown is delivered BEFORE contextmenu, so right-
+// clicking a pill re-rolled it and the menu then painted a value the user had never seen — and
+// "Freeze to text" froze the replacement.
+//
+//   #0 shown=Kestrel      at-menu=Corvid       FROZEN=Corvid       <== LOST
+//   ... 5 of 6 froze a word the user never saw (the 1 match was chance)
+//
+// The pill's own tooltip advertises this exact route ("Right-click for more, including Freeze to
+// text"), and the comment on the contextmenu listener records it as a deliberately NON-destructive
+// door (#1116) — so this was contrary to the code's own stated intent, not documented behaviour.
+//
+// ONE guard, not four. The family census found the re-roll on dice, grammar and estimate (the
+// REROLL_PILLS loop) AND on the var pill, which has its own branch and announced "who re-rolled: b":
+//
+//   pill        right-click re-rolled, before   after
+//   dice        yes                             no
+//   grammar     yes                             no
+//   estimate    yes                             no
+//   var pick    yes                             no
+//   clock       no (its handler is on `click`)  no
+//   math        no                              no
+test('#1397 a secondary-button mousedown reaches no generative branch', () => {
+  const h = between(_src, 'Generative re-rollable pills (dice / estimate / markov / grammar)', 'sequence pill: click anywhere opens the editor');
+  assert.ok(/if \(e\.button !== 0\) return;/.test(h), 'one guard covers the whole generative block');
+  // it must sit BEFORE the loop, or the pills it is meant to protect run first
+  assert.ok(h.indexOf('if (e.button !== 0) return;') < h.indexOf('for (const p of REROLL_PILLS)'),
+    'the guard precedes the re-roll loop');
+  // and before the var/seq branches, which are the members a per-branch fix would have missed
+  assert.ok(h.indexOf('if (e.button !== 0) return;') < h.indexOf(".closest?.('.var-pill')"),
+    'and precedes the var pill, which re-rolled through its own branch');
+  assert.ok(h.indexOf('if (e.button !== 0) return;') < h.indexOf(".closest?.('.math-roll')"),
+    'and precedes the math pill');
+
+  // the SIBLING that already had this guard is why the fix is shaped this way — keep it green
+  assert.ok(/if \(aLink && !aLink\.classList\.contains\('node-link'\) && !content\.dataset\.editing && e\.button === 0\)/.test(_src),
+    'the bare-URL branch keeps its own button guard (the precedent this followed)');
+
+  // the click gesture itself is a recorded P1 sign-off and must NOT be what got fixed
+  assert.ok(/for \(const p of REROLL_PILLS\)/.test(h), 'left-click re-roll still routes through REROLL_PILLS');
+});
