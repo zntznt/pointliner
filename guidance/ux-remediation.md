@@ -5652,3 +5652,59 @@ with no dependents, and a name redeclared below the frozen one.
 
 **Issue corrected rather than silently closed:** the report's "silently" claim is wrong for the two
 reference shapes it did not test, and the entry says so.
+
+## UXP-320 -- the rest of the Column menu speaks, and a regression of my own is undone (#1415)
+
+The completion of UXP-315's set: that fixed the ten **structural** commands and left the four
+formatting ones with one of four speaking. Driven through the header menu:
+
+| section | before | after |
+|---|---|---|
+| Sort rows | *"Sorted rows by Owner, ascending. Undo restores the old order."* | unchanged |
+| Alignment | **nothing** | *"Column “Owner” aligned center. Undo restores it."* |
+| Width | **nothing** | *"Column “Owner” set to Narrow."* / *"…fits its content."* |
+| Calculate | **nothing** | *"Column “Owner” totals with Count. Undo restores it."* / *"…stops totalling."* |
+
+### A regression of mine, found by looking at the callers instead of the function
+
+UXP-315 put a focus landing inside `mtSetColWidth`. That op has **five** callers and one of them is
+the mouse resize **drag**, which commits on mouse-up. Measured: dragging a column edge moved focus
+from `r1c1` to `r0c0` -- the caret yanked out of the cell being edited, by the change that was meant
+to protect focus. Its menu-only siblings (`mtSetAlign`, `mtApplyAggregate`, `mtSortBase`, one caller
+each) are safe and keep theirs.
+
+So `mtSetColWidth` now neither lands nor speaks, and its three **deliberate** doors -- the menu rows,
+`Alt+,`/`Alt+.`, and the double-click auto-fit -- do both for themselves. A drag stays quiet.
+
+**The lesson is the counting.** UXP-315's census asked "which commands are in this menu" and got the
+right answer for nine of ten members; the tenth needed "who else calls this function", which is a
+different question. A pin now asserts `mtSetColWidth` contains neither `mtFocusCell` nor `flashHint`,
+with the reason, so the landing cannot be re-added there.
+
+### Two things the copy had to get right
+
+- **The undo promise is per-op and honest.** Align and Calculate `pushUndo` (#1387) and say so; width
+  does not, and does not claim it. Measured: setting a width then pressing Ctrl+Z reverts the width
+  AND the edit before it, because the change has no snapshot of its own. Recorded as a member of the
+  #1420 list, and as its mirror case -- a genuine reshape that should be undoable and never records,
+  versus a setting that gets swept up in other people's snapshots.
+- **`None` reads as stopping**, not as totalling with nothing.
+
+`COL_W_PRESETS` is one home for the preset names: the menu builds its rows from it and the message
+reads the label back out of it, so a new preset cannot appear under a name the flash does not know.
+
+### Three pins that could not fail
+
+The three sentences were pinned as data and **nothing asserted anything called them** -- deleting each
+`flashHint` left every assertion green. The #1133 rule, met again in the same session, caught by
+mutation. Call-site pins added for all three.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2053**. Eleven mutations, each asserting its target present
+first, ten red at the named pin -- including the restoration of my own regression (the landing back
+inside `mtSetColWidth`), two toward the wrong shape (width claiming an undo it does not record;
+`None` reading as totalling with nothing), and one that forks the preset names back into the menu.
+
+Driven after: all four menu sections, the keyboard width step (which keeps YOUR cell, not the
+header), the double-click auto-fit, and a mouse resize drag that no longer moves the caret.

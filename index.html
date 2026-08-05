@@ -11650,6 +11650,8 @@ function mtApplyAggregate(node, colIdx, fn) {
   mtRecompute(node);
   refreshTable(node);
   mtFocusCell(node, 0, colIdx);   // #1400: stay on the column you totalled
+  flashHint(baseStructMessage('col-agg', { label: mtColLabel(model, colIdx), n: colIdx + 1,
+    agg: fn === 'none' ? '' : fn[0].toUpperCase() + fn.slice(1) }));
 }
 
 // Set (or clear, when expr is empty) one TBLFM assignment and recompute (UXP-3
@@ -11717,6 +11719,7 @@ function mtSetAlign(node, colIdx, align) {
   m.aligns[colIdx] = align;            // 'left' is stored explicitly (:--- round-trips)
   mtCommit(node, m); refreshTable(node);
   mtFocusCell(node, 0, colIdx);   // #1400: stay on the column you formatted (it did not move)
+  flashHint(baseStructMessage('col-align', { label: mtColLabel(m, colIdx), n: colIdx + 1, align }));
 }
 // #1400: what a structural base op says when it lands. Pure, so the six sentences are pinned as
 // data instead of being scattered through six DOM functions -- which is how five of them came to
@@ -11733,8 +11736,26 @@ function baseStructMessage(op, opts = {}) {
     case 'row-insert': return `Row inserted ${opts.side} row ${opts.n}. Undo removes it.`;
     case 'row-move':   return `Row ${opts.n} moved ${opts.dir < 0 ? 'up' : 'down'}. Undo restores the order.`;
     case 'row-delete': return `Row ${opts.n} deleted${held}. Undo restores it.`;
+    // #1415: the formatting half of the same menu. Sort spoke; these three wrote to the document
+    // and said nothing. The undo promise is per-op and honest: align and totals push undo (#1387),
+    // width does not, so width does not claim it.
+    case 'col-align': return `Column ${subj} aligned ${opts.align}. Undo restores it.`;
+    case 'col-width': return `Column ${subj} ${opts.width == null ? 'fits its content' : 'set to ' + opts.width}.`;
+    case 'col-agg':   return opts.agg
+      ? `Column ${subj} totals with ${opts.agg}. Undo restores it.`
+      : `Column ${subj} stops totalling. Undo restores it.`;
   }
   return '';
+}
+
+// #1415: the width presets, ONE home. The Column menu builds its rows from this and the message
+// names the preset from it, so a new preset cannot appear in the menu under a name the flash does
+// not know. A width that matches no preset (a drag, a keyboard step) reports its pixels.
+const COL_W_PRESETS = [['Narrow', 96], ['Medium', 160], ['Wide', 260]];
+function colWidthLabel(w) {
+  if (w == null) return null;                       // 'fits its content' is the caller's phrasing
+  const hit = COL_W_PRESETS.find(([, px]) => px === w);
+  return hit ? hit[0] : w + 'px';
 }
 
 // #1400: the header name a message should use for a column, or '' when it has none.
@@ -11844,7 +11865,11 @@ function mtSetColWidth(node, colIdx, w) {
   node.colW[colIdx] = cw;
   if (node.colW.every(x => x == null)) node.colW = undefined; // all auto → drop it
   markDirty(); refreshTable(node);
-  mtFocusCell(node, 0, colIdx);   // #1400: stay on the column you formatted
+  // #1415: NO landing and NO sentence here, unlike its menu-only siblings. This op has five callers
+  // and one of them is the mouse resize DRAG -- the #1400 landing I put here fired on mouse-up and
+  // yanked the caret out of the cell the user was editing (measured: r1c1 -> r0c0), which is the
+  // caret invariant broken by the fix that was meant to protect focus. The three DELIBERATE doors
+  // (menu, Alt+,/., double-click auto-fit) land and speak for themselves; a drag stays quiet.
 }
 // Set (or clear, with f=null) a column's number format (ε). A parseNumFmt record
 // {decimals?,prefix?,suffix?} formats a Number column's cells (and its footer total)
@@ -12118,9 +12143,12 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
 
   addSection('Width', true);
   const curW = node.colW && node.colW[colIdx];
-  addItem('Fit to content', { active: curW == null, onApply: () => mtSetColWidth(node, colIdx, null) });
-  [['Narrow',96],['Medium',160],['Wide',260]]
-    .forEach(([label, w]) => addItem(label, { active: curW === w, onApply: () => mtSetColWidth(node, colIdx, w) }));
+  // #1415: the deliberate doors land + say it; mtSetColWidth itself stays quiet because a mouse
+  // resize drag also calls it. COL_W_PRESETS is the one home for the preset names.
+  const setW = (w) => { mtSetColWidth(node, colIdx, w); mtFocusCell(node, 0, colIdx);
+    flashHint(baseStructMessage('col-width', { label: mtColLabel(model, colIdx), n: colIdx + 1, width: colWidthLabel(w) })); };
+  addItem('Fit to content', { active: curW == null, onApply: () => setW(null) });
+  COL_W_PRESETS.forEach(([label, w]) => addItem(label, { active: curW === w, onApply: () => setW(w) }));
 
   addSection('Insert column', true);
   addItem('Insert left',  { onApply: () => mtInsertCol(node, colIdx, 'left') });
@@ -13528,7 +13556,9 @@ function mtWireCells(host, node) {
   host.addEventListener('dblclick', e => {
     const grip = e.target.closest('.mt-col-resize'); if (!grip) return;
     e.preventDefault(); e.stopPropagation();
-    mtSetColWidth(node, +grip.dataset.c, null); // auto-fit = clear the pinned width
+    const wc = +grip.dataset.c;
+    mtSetColWidth(node, wc, null); // auto-fit = clear the pinned width
+    flashHint(baseStructMessage('col-width', { label: mtColLabel(mtModelRead(node), wc), n: wc + 1, width: null }));
   });
   // (alignment now lives in the Column panel — the hidden double-click cycle is gone)
   // drag-reorder rows / columns via handle drag. The name pill (text edit) and the
@@ -13669,8 +13699,10 @@ function mtWireCells(host, node) {
       const next = stepColW(base, wider ? 1 : -1);
       if (next == null) { flashHint(wider ? 'Column is at its widest.' : 'Column is at its narrowest.'); return; }
       mtSetColWidth(node, c, next);
-      mtFocusCell(node, r, c);
-      flashHint('Column width: ' + next + 'px');
+      mtFocusCell(node, r, c);   // the keyboard door keeps YOUR cell, not the header
+      // #1415: the same sentence the menu uses, so the two doors onto one write stop having
+      // separate copy ("Column width: 184px" vs the menu saying nothing at all).
+      flashHint(baseStructMessage('col-width', { label: mtColLabel(mtModelRead(node), c), n: c + 1, width: colWidthLabel(next) }));
       return;
     }
     if (e.key.startsWith('Arrow') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
