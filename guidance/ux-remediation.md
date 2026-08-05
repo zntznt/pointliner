@@ -6109,3 +6109,105 @@ The issue's second claim -- that "capture routes to the inbox, not the document"
 -- is **by design**. The capture bar's stated job is to take a thought without leaving where you are;
 routing it into whatever document happens to be open is what it deliberately does not do. Recorded so
 the next reader finds the reason rather than an apparent oversight.
+
+---
+
+## UXP-326 -- a check chip stops asserting an outcome its own icon contradicts (#1429)
+
+**Status: shipped.** UX Conformance: **P4** (an affirmative claim rendered beside a failure state),
+**P1** (the label and the glyph finally agree).
+
+### The defect
+
+A `check` prop renders as the point's own text beside a ✓/✗ glyph, so the text is read AS the
+verdict. The Project planner's top chip shipped reading **"All dates still safe"**, and the moment a
+task went overdue it became:
+
+```
+All dates still safe   ✗
+```
+
+An affirmative claim and a failure icon in the same chip. For a reader scanning the top of the
+document, that is worse than no chip: it says everything is fine at exactly the moment it is not.
+
+### The census is what decided the fix
+
+All 10 shipped check labels, classified:
+
+| label | form | survives its own ✗? |
+|---|---|---|
+| **"All dates still safe"** | **affirmative claim** | **no** |
+| "Still standing? {hp} of {…}" | question | yes |
+| "Still within the cap?" | question | yes |
+| "Am I still inside the quote?" | question | yes |
+| "Spent so far: {= sum(cost)} of {budget := 350}" | quantities | yes |
+| "Grocery spend so far this week: … of {budget}" | quantities | yes |
+| "Carried load: {= sum(weight)} of {= might * 5}" | quantities | yes |
+| "Total on record: {= sum(value)} of {cap := 25000} covered" | quantities | yes |
+| "Jewelry on record: …, across {count: #jewelry} pieces" | quantities | yes |
+| "## Claims and their sources (the check goes green when every claim is cited)" | names both states | yes |
+
+**Nine of ten already do this correctly, in one of three ways.** So the app had a convention and one
+line broke it -- and unlike #1428 (measured immediately before this, where the reported case turned
+out to be five), this one really is a singleton. Worth stating, because the previous two findings
+both widened under measurement and the temptation was to assume this would too.
+
+`"Still on time?"` copies the construction of two of its three siblings verbatim. The check is
+`count("is:todo is:overdue", document) == 0`, so ✓ reads "yes, on time" and ✗ reads "no".
+
+**One near-miss checked rather than swept in:** "…of {cap := 25000} covered" reads as describing the
+policy limit, not asserting the outcome. Left alone. Completing a set onto a member that never needed
+it is its own failure mode.
+
+### Why NOT the issue's first suggestion
+
+The issue proposes the label should flip with the icon ("A date has slipped"). That means two labels
+per check: a new field in the `check` record, new authoring syntax to set it, and a second rendering
+path -- to solve a problem the other nine labels do not have. **P5** says reuse the convention rather
+than mint one. The issue's own second suggestion, that the chip should not keep an affirmative
+assertion beside a failure icon, is the one the codebase already agrees with.
+
+### The guard, and its honest limit
+
+Every shipped check label must ask a **question**, show **quantities**, or **name what each state
+means**. Those three arms are not invented for the test; they are the three shapes the nine correct
+labels already use.
+
+**It detects a shape rather than proving neutrality.** "State-neutral" is not mechanically decidable
+and the guard says so in its own comment (the #1132 precedent for recording a residual limitation in
+code rather than implying it away). What it can do is refuse a bare affirmative declaration, which is
+exactly what shipped.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2063**. **The guard is proved red by the bug itself** --
+restoring "All dates still safe" fails it with the message naming the three shapes. Also proved
+against an empty harvest, so it cannot pass vacuously.
+
+**Driven in both states**, since a chip is the whole change and no static pin can show what a reader
+sees. Loaded the Project planner, read the chip, put a task two days past due, read it again:
+
+| state | chip |
+|---|---|
+| passing | `Still on time?  ✓` |
+| failing | `Still on time?  ✗` |
+
+**Three measurement errors on the way to that table**, all the same class as #1428's -- reaching for
+the wrong representation:
+
+1. Queried `[class*="check"]` inside `.node-content`; the chip is `.prop-check` and sits elsewhere.
+2. Appended `{key:'due'}` to `node.props` to force the failure. The task already carried a `due` from
+   `{date due: today+10}`, so this added a **second** prop and the original future date won. The
+   verdict did not flip and the first run reported both states as passing -- a probe that makes the
+   defect disappear.
+3. Read the label by DOM traversal and got the glyph back instead of the text.
+
+None reached the shipped change, but the pattern is now three findings old: **when a probe reports
+"no difference", suspect the probe before the code.**
+
+### Not added to the browser smoke
+
+The fix removes the state-dependence from the copy, and the drift guard is static and **complete** --
+it reads every shipped check label, not a sample. A driven check would assert the same string twice
+and grow the smoke without covering a new defect class, against the design decision recorded in
+#1427 that it stays small.

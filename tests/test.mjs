@@ -1333,6 +1333,45 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
 // the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
 // broken form fails here rather than silently removing its door again.
+// ── #1429: a check chip must not assert an outcome its own icon can contradict ──────────────────
+// A `check` prop renders as the point's text beside a ✓/✗ glyph, so the text is read AS the verdict.
+// "All dates still safe" shipped beside a ✗ the moment a task went overdue: an affirmative claim and
+// a failure icon in the same chip, which at a glance reads "everything is fine".
+//
+// The census is the argument for the fix being copy rather than machinery. Of the 10 shipped check
+// labels, NINE already avoid this, in one of three ways -- and this guard is those three ways:
+//   a question       "Still standing?"  "Am I still inside the quote?"  "Still within the cap?"
+//   quantities       "Spent so far: {= sum(cost)} of {budget := 350}"
+//   both states named "(the check goes green when every claim is cited)"
+// So the app already had a convention and one line broke it. The issue's other suggestion -- have
+// the label FLIP with the icon -- would mean two labels per check, new data model and new syntax,
+// to solve a problem the other nine do not have. P5: reuse the convention, do not mint one.
+//
+// This DETECTS the shape rather than proving neutrality; "state-neutral" is not mechanically
+// decidable and this guard does not pretend otherwise (the #1132 precedent for saying so in code).
+// What it can do is refuse a bare affirmative declaration, which is exactly what shipped.
+test('#1429 every shipped check label survives its own ✗', () => {
+  const un = s => String(s).replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'");
+  const labels = [];
+  for (const m of nonEmpty([..._src.matchAll(/opml:\s*`([\s\S]*?)`/g)], 'shipped starter OPML')) {
+    for (const o of m[1].matchAll(/<outline\b([^>]*?)\/?>/g)) {
+      const attrs = o[1] || '';
+      if (!/\b_props="[^"]*&quot;key&quot;:&quot;check&quot;/.test(attrs)) continue;
+      labels.push(un((attrs.match(/\btext="([^"]*)"/) || [])[1] || ''));
+    }
+  }
+  assert.ok(labels.length >= 9, `expected the shipped check labels, found ${labels.length}`);
+  for (const t of labels) {
+    const asksAQuestion = /\?/.test(t);
+    const showsQuantities = /\{/.test(t);
+    const namesBothStates = /\b(goes|turns|stays|flips)\s+(green|red)\b/i.test(t);
+    assert.ok(asksAQuestion || showsQuantities || namesBothStates,
+      `check label "${t}" asserts an outcome its own ✗ can contradict. Ask a question, show the ` +
+      `numbers, or say what each state means -- the shape the other shipped checks use.`);
+  }
+});
+
 test('#1428 census: every shipped list section that should have a door still infers a shape', () => {
   const un = s => String(s).replace(/&quot;/g, '"').replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'");
