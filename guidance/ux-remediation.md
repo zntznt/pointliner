@@ -5756,3 +5756,68 @@ half that already worked.
 Driven after: all four exits land on a real point, an outside-click dismissal leaves the caret where
 it was clicked, a bulk selection writes every selected point and still lands, and the hidden-row case
 lands on the neighbour with its flash intact.
+
+## UXP-322 -- the builder spliced one text space into another, and ate the pill (#1396, second half)
+
+The first half of #1396 (the swallowed first character) shipped as #1407. What remained was the row
+the report calls the worst: **a point carrying a pill loses it** when a `/` command is applied.
+
+Driven, per keystroke, with the instrument the code actually uses:
+
+```
+'/'  focus .node-content      node.text "Damage {2d6} /"            editableText "Damage {2d6} /"
+'t'  focus .builder-search    node.text "Damage [[dice:k]] /t"      editableText "Damage 2d653=8 /t"   offset 13
+Enter                          -> "- [ ] Damage 2d653=" , the dice record PRUNED
+```
+
+**Two faults compound.** The builder TAKES FOCUS, so the row it was opened from has already left edit
+mode and refolded by the time a command applies. `editableText(content)` then returns the pill's
+RENDERED glyphs -- display-mode HTML carries no `data-token` for it to read -- and `st.offset` was
+measured in the unfolded edit-mode space. The splice cut a different string at a meaningless index
+and wrote the glyphs back as the point's text.
+
+### The report's framing is wrong in a way worth recording
+
+Two controls settled it:
+
+| control | result |
+|---|---|
+| the same `/todo` typed at the **START** of the point | pill destroyed **too** |
+| the **bullet menu** applying the same command | pill **intact** |
+| mid-line with **no pill** on the point | clean: `- [ ] Damage plain ` |
+
+So it is **not mid-line-specific**, and the #1108 offset guard is not the cause. It is the text
+space, on the builder door only. The issue lists it under the mid-line row; it belongs on its own.
+
+### The translator already existed
+
+`foldedOffsetFor(node, offset)` maps an unfolded-space offset into folded space, and it is the
+**identity** while a node is still unfolded (there are no `[[type:key]]` tokens to walk). So one
+rule serves both states and no caller has to branch on whether the row is still being edited:
+splice `node.text` at `foldedOffsetFor(node, st.offset)`.
+
+`node.text` is a transient edit buffer while a row is unfolded, which briefly made the fix look
+wrong -- the first reading after the fix showed `- [ ] Damage {2d6} `. `foldedTextForSave` is the
+canonical form and a blur is what commits it; read that way, the result is
+`- [ ] Damage [[dice:k]] ` **with the same key**, so the frozen roll survives (5+3=8 before and
+after). Two probes of mine measured the wrong string before this was clear: one read `textContent`
+where the code reads `editableText`, and one read the live buffer where it should have read the
+canonical text.
+
+### The dismissal half, found by the pin rather than the report
+
+A census assertion ("no builder site reads the row's DOM for its splice text") turned up
+`builderReturnTypedText` -- #1108's own "nothing typed is ever lost" path -- splicing the same two
+mismatched spaces on the way OUT of the palette. Same fix. Driven: typing ` /zzz his son` from a
+point with a pill and pressing Escape now returns the typing **and** keeps the pill.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2055**. Two existing pins rewritten, not loosened. Eight
+mutations, each asserting its target present first, seven red at the named pin -- one per door,
+including the dismissal one -- and one negative control green.
+
+Driven after, seven documents: `/todo`, `/quote`, `/due:tomorrow` (sets the date), `/prop:hp=12`
+(sets the property) and `@dice`, each on a point carrying a pill; the same with no pill; and the
+non-Guided tier, which reaches `slashApply` directly and where the node is still unfolded -- the case
+the identity property of `foldedOffsetFor` exists to serve.

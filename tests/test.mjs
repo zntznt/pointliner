@@ -25911,8 +25911,14 @@ test('#1106: the guided builder delegates every / command to slashApply, ungated
   const strip = _src.indexOf('// Strip the trigger text from the node (non-dialog commands)');
   assert.ok(del > 0 && strip > 0 && del < strip, 'delegation precedes the strip (no double-strip)');
   // stripLen decouples how much text to remove from what the query says.
-  assert.ok(_src.includes('stripTriggerRun(currentText, slashOffset, stripLen ?? query.length'),
+  // REWRITTEN for #1396, not loosened. The strip now runs against node.text at the FOLDED offset,
+  // because the builder has taken focus by then and the row refolded: editableText returned the
+  // pill's rendered glyphs and slashOffset indexed a string that no longer existed. stripLen's
+  // decoupling -- what this pin is about -- is unchanged.
+  assert.ok(_src.includes('stripTriggerRun(currentText, spliceAt, stripLen ?? query.length'),
     'slashApply honours an explicit stripLen');
+  assert.ok(_src.includes('const spliceAt = node ? builderSpliceOffset(node, slashOffset) : slashOffset;'),
+    'and takes its offset through the folded translator');
   // The search box feeds its own fields; builderState.query stays the NODE-text query, because it
   // drives the strip math — overwriting it would eat the arg's length out of the user's sentence.
   assert.ok(_src.includes('builderState.argQuery = psq.query'), 'the typed value rides in argQuery');
@@ -25923,8 +25929,40 @@ test('#1106: the guided builder delegates every / command to slashApply, ungated
   assert.ok(_src.includes("builderState.argTail = (!psq.hasArg && colon >= 0) ? filterQ.slice(colon) : ''"),
     'a non-arg colon tail is preserved');
   assert.ok(_src.includes("tailInsert: st.argTail || ''"), 'the tail reaches slashApply');
-  assert.ok(_src.includes("stripTriggerRun(currentText, slashOffset, stripLen ?? query.length, tailInsert || '')"),
-    'the tail is re-inserted at the trigger position');
+  assert.ok(_src.includes("stripTriggerRun(currentText, spliceAt, stripLen ?? query.length, tailInsert || '')"),
+    'the tail is re-inserted at the trigger position (#1396: in FOLDED coordinates)');
+});
+
+test('#1396 a builder apply splices node.text at the FOLDED offset, never the DOM', () => {
+  // The builder TAKES FOCUS, so the row it was opened from has already left edit mode and refolded
+  // by the time a command applies. Two faults compounded there:
+  //   editableText(content) -> the pill's RENDERED glyphs (display HTML carries no data-token)
+  //   st.offset             -> measured in the UNFOLDED edit-mode space
+  // so the splice cut a different string at a meaningless index and wrote the glyphs back as text.
+  // Driven: `Damage [[dice:k]]` + a typed `/todo` became `- [ ] Damage 2d641=`, record pruned.
+  //
+  // CORRECTS THE ISSUE: it is not mid-line-specific. The same thing happened with the trigger at
+  // the START of the point, and ONLY through this door -- the bullet menu applying the same command
+  // kept the pill. So the offset guard (#1108) is not the cause; the text space is.
+  assert.ok(/function builderSpliceText\(node\) \{ return node\.text; \}/.test(_src),
+    'the splice reads the model, not the DOM');
+  assert.ok(/function builderSpliceOffset\(node, offset\) \{ return foldedOffsetFor\(node, offset\); \}/.test(_src),
+    'and translates the offset with the file\'s existing translator');
+  // ONE rule for both states: foldedOffsetFor is the identity while the node is still unfolded
+  // (no [[type:key]] tokens to walk), so no caller has to branch on whether the row still edits.
+  const fo = fnBody(_src, 'foldedOffsetFor');
+  assert.ok(/const RE = \/\\\[\\\[\(dice\|math\|var\|grammar\|est\|markov\|seq\|query\)/.test(fo),
+    'it walks folded tokens, of which an unfolded node has none');
+  // EVERY builder apply path, and the inline one they delegate to. A door left on editableText
+  // would keep destroying pills on that door alone, which is exactly how this shipped.
+  for (const fn of ['builderFormApply', 'showNestedDialog', 'slashApply'])
+    assert.ok(/builderSplice(Text|Offset)\(/.test(fnBody(_src, fn)),
+      fn + ' must splice through the shared reader');
+  // and no builder apply may go back to reading the DOM
+  assert.ok(!/stripTriggerRun\(editableText\(/.test(NC),
+    'no strip may take its text straight from the DOM');
+  assert.equal((NC.match(/editableText\(st\.content\)/g) || []).length, 0,
+    'and no builder site reads the row\'s DOM for its splice text');
 });
 
 test('builderGuideEntry — null/unknown guard; a covered command resolves to its GUIDE entry', () => {
