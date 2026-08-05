@@ -42966,7 +42966,18 @@ function openBuilder(trigger) {
   ioCard.setAttribute('aria-labelledby', 'builder-title');   // UXP-181
   syncBuilderBtn();
   const cmds = builderCmdPool(trigger);
-  let filterQ = '';
+  // #1396: seed the filter with the query the trigger already consumed. checkSlash has ALWAYS passed
+  // it in builderState.query; this function threw it away and started empty, which is the whole
+  // mid-line defect. At the start of a point the bare `/` opens the builder with query '' and nothing
+  // is lost, so the bug is invisible there. MID-LINE the #1108 guard suppresses the bare trigger, so
+  // the FIRST word character is what opens the builder — that character lands in node.text and, with
+  // filterQ starting empty, never reaches the box. `/note` filtered on "ote", which ranks Quote above
+  // Note, and Enter turned a scene heading into a blockquote. Four personas hit this independently on
+  // /note, /todo, /due:tomorrow and /prop:key=value.
+  //
+  // rawArg is deliberately NOT folded in here: it is carried separately on builderState and re-joined
+  // by the apply path, and doubling it would re-introduce the ":value" twice.
+  let filterQ = (builderState && builderState.query) || '';
   // trigger === null is the front-door launch (toolbar / verb / Ctrl+K): show every command.
   const title = trigger === '/' ? 'Point commands' : trigger === '@' ? 'Insert commands'
               : trigger === '{' ? 'Pill picker' : 'All commands';
@@ -42993,6 +43004,10 @@ function openBuilder(trigger) {
   const nav = ioCard.querySelector('.builder-nav');
   const pane = ioCard.querySelector('.builder-pane');
   const insertBtn = ioCard.querySelector('.builder-insert-btn');
+  // #1396: show the seeded query, so the box reads what the user typed. Without this the filter and
+  // the visible field disagree, which is worse than either being wrong on its own: the user sees
+  // "ote", types the rest, and cannot tell why the wrong command is highlighted.
+  if (filterQ) searchEl.value = filterQ;
 
   let activeIdx = 0;
   let liveSuppress = true;   // UXP-173: suppress aria-live announcement on initial render

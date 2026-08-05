@@ -4912,3 +4912,66 @@ generalises rather than pinning the one site that happened to be broken.
 `node --test tests/test.mjs` green at **2033**. Three mutations, each asserting its target present
 first, all red: drop the focus from `searchHashtag`; move it *before* the apply (where the re-render
 would discard it); and drop it from `applySavedChip`, which the census must catch.
+
+## UXP-308 -- a mid-line / or @ command keeps its first character (#1396)
+
+**Found by FOUR of five personas independently** in a multi-agent live-drive pass, each on a different
+task, none aware of the others. That convergence is the strongest signal in the batch. Every report
+was reproduced from scratch by a separate adversarial verifier.
+
+**The cause is a value that was already being passed and thrown away.** `checkSlash` has always handed
+the builder its query:
+
+```js
+builderState = { nodeId, content, trigger, offset: slashOffset, query, rawArg };
+```
+
+and `openBuilder` opened with `let filterQ = '';`.
+
+At the **start** of a point the bare `/` opens the builder with query `''`, so nothing is lost and the
+bug is invisible. **Mid-line** the #1108 guard suppresses the bare trigger deliberately (a lone `/`
+in prose is punctuation, not a command), so the FIRST word character is what opens the builder -- and
+with `filterQ` empty that character lands in `node.text` and never reaches the box.
+
+| typed after text | box before | selected before | box after | selected after |
+|---|---|---|---|---|
+| `/note` | `ote` | **Quote** | `note` | Note |
+| `/todo` | `odo` | To-do | `todo` | To-do |
+| `/due:tomorrow` | `ue:tomorrow` | **Query base** | `due:tomorrow` | Schedule |
+| `/prop:hp=12` | `rop:hp=12` | (no match) | `prop:hp=12` | Property |
+
+`/note` mid-line converted a scene heading into a **blockquote**. `/prop:hp=12` set nothing.
+
+The app advertises these inline forms verbatim -- the Schedule entry says *"Type `/due:tomorrow` to set
+it inline"* -- and #1108's own comment says the mid-text position is supported. P1: a command must
+mean the same thing at the start of a point and after text.
+
+### A SECOND root cause, measured and deliberately not fixed here
+
+`/due:tomorrow` mid-line still strands `/d` and loses the `- [ ] ` to-do prefix, and instrumenting
+`stripTriggerRun` says why -- it is **not** the same bug:
+
+```
+builderState: offset=25, query="d"          (correct for "- [ ] Ship release notes /d")
+STRIP called: offset=25, text="Ship release notes /d"   <- prefix already gone, length 21
+```
+
+The offset is computed against the **full** text including the `- [ ] ` markdown prefix, and applied
+against the **stripped** text without it. Offset 25 lands past the end of a 21-character string, so
+`slice(0,25)` is the whole string and nothing is removed.
+
+That is an **offset-space mismatch**, and it is the same cause behind the GM persona's separate report
+that a `/` or `@` command on a point carrying a pill destroys the pill (`Damage 2d6` became
+`"- [ ] Damage 2d615=/t"`) -- whose own summary put it exactly right: *"the splice offset must be
+resolved against the same text form the splice is applied to."*
+
+One root cause per change, so it stays open on #1396 with this measurement recorded. My first guess
+was that the strip ran at offset 0 (because `1 + 5` is exactly `"- [ ] "`); instrumenting showed the
+offset was right and the TEXT was wrong. Recorded because the plausible-arithmetic explanation was
+wrong and would have sent the next reader to the wrong function.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2034**. Three mutations, all red: drop the seed; seed but
+never show it in the box; fold `rawArg` into the seed (which would insert the `:value` twice, since
+the apply path re-joins it). Driven end to end for all four commands, mid-line versus line-start.
