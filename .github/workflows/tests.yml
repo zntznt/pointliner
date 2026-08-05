@@ -30,3 +30,29 @@ jobs:
       # tests, so CI runs it. It spawns the hook as a subprocess rather than
       # importing it, which is why it lives beside the hook and not in test.mjs.
       - run: node .claude/hooks/check-pr-conformance.test.mjs
+
+  # #1427: the layer tests/test.mjs cannot reach. Its DOM pins prove a handler is
+  # PRESENT; #1021 shipped one that was present and inert, because it sat on an
+  # element nothing could focus. These six checks drive the real index.html in a
+  # real browser and assert on what moved -- where focus went, what the point holds.
+  #
+  # Playwright is installed here rather than committed: this is a no-build,
+  # single-file repo and .gitignore keeps package.json/node_modules out of source
+  # deliberately. The cost is that this job needs the network; the node-tests job
+  # above does not, and stays the offline gate.
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # --no-save / --no-package-lock: nothing is written back into the tree, so a
+      # run cannot leave a package.json behind for someone to commit by accident.
+      - run: npm install --no-save --no-package-lock playwright@1.49.1
+      - run: npx playwright install --with-deps chromium
+      # Without this the job passes on six SKIPS if playwright fails to resolve, which is a green
+      # gate that proved nothing -- the exact shape this file exists to catch.
+      - run: node --test tests/browser.mjs
+        env:
+          POINTLINER_REQUIRE_BROWSER: '1'

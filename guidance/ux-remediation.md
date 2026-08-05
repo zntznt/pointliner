@@ -5889,3 +5889,109 @@ measured and argued per field rather than swept.
 first, seven red at the named pin -- including two toward the wrong shape (authored content joining
 the preserve list, which would put undo out of reach of the units table; and the width's `pushUndo`
 moved ahead of its refusal guard, so a no-op would eat an undo slot) -- and one negative control green.
+
+---
+
+## UXP-324 -- the app is driven in a browser by CI, not only by me (#1427)
+
+**Status: shipped.** `UI: none` -- `tests/` and `.github/` only, no `index.html` diff.
+
+### The gap
+
+`tests/test.mjs` is a strong suite and it proves the wrong thing about one whole layer. Its DOM
+guards assert that code is **present** in the source (`fnBody`, `between`, `windowAfter`). Presence
+is not behaviour, and this repo has the receipt: **#1021** shipped a keyboard handler that passed its
+pin and did nothing, because the element it was attached to could not take focus. **#1396** spliced
+one text space into another and destroyed a pill; no source pin could see it.
+
+The written process already knows this. `CLAUDE.md` and `ux-definition-of-done.md` §7 both say a
+focus/keyboard/caret change is done only once you have **driven the running app**. But driving was a
+thing an author did in a scratch directory and then deleted, per the "verification artifacts stay out
+of the repo" rule. So the standard was honour-system: nothing in the repo could tell whether anyone
+had actually done it, and nothing would notice when a driven behaviour later broke.
+
+That is the same shape as **#1129** (commit hygiene: a rule with no reader) and **#1166** (a build
+script CI never ran). Written-down and unenforced is the recurring failure mode here, not a one-off.
+
+### What shipped
+
+`tests/browser.mjs` -- six checks driving the real `index.html` in real Chromium, each one a defect
+CLASS this repo has actually shipped rather than a feature sweep:
+
+| # | check | the class |
+|---|---|---|
+| 1 | boot renders, no page errors | a load-time throw takes everything with it |
+| 2 | typing `Damage {2d6}` yields a folded token, one sidecar record, a pill showing a digit | IA-2, the 30-second promise |
+| 3 | click re-rolls; text byte-identical, record not duplicated, fresh per-die array | the P1 sign-off, and the point surviving the gesture |
+| 4 | `Shift+F10` opens the bullet menu and focus lands **inside** `#bpop` | **the #1021 class exactly** |
+| 5 | Escape returns focus to the originating point, typing intact | dismissal stranding focus on `<body>` |
+| 6 | `/todo` on a point carrying a pill keeps the token and the record | **#1396** |
+
+Plus a `browser-smoke` job in `.github/workflows/tests.yml`.
+
+### The two ways this could quietly stop being a gate, and the fence for each
+
+A gate that fails open is worse than no gate, because it also reports success. Both directions are
+pinned in `tests/test.mjs`, and pinning either alone would be the #1133 vacuity -- a tested core
+proving nothing about its call site:
+
+1. **CI stops running it.** Nothing else in the repo would notice. Pinned: the workflow must invoke
+   `node --test tests/browser.mjs`, install a **pinned** playwright, and install the chromium binary.
+2. **CI runs it and every check SKIPS**, because playwright did not resolve, and the job goes green
+   having proved nothing. This is the trap the file itself is about, in the file itself.
+
+The fence for (2) is `POINTLINER_REQUIRE_BROWSER`, set by the job. A developer without playwright
+still gets a clean skip -- it is deliberately not a committed dependency, per `.gitignore` -- but in
+CI the install step ran, so an absent module there means the gate stopped running rather than that it
+is unavailable, and the skip becomes a failure. **Both halves are pinned**: the workflow must SET it,
+and `browser.mjs` must READ it in a way that defeats the skip rather than merely mentioning it.
+
+A launch failure is never a skip in either environment. `skip:` is evaluated when a test is DEFINED,
+so a `before()` launch error cannot reach it anyway -- and failing loudly is what a developer who has
+playwright and a broken browser wants.
+
+Measured in all four environments rather than reasoned about:
+
+| environment | result |
+|---|---|
+| playwright + real chromium | 6 pass |
+| playwright, browser binary missing | **6 fail** (never a skip) |
+| playwright unresolvable, no fence | 6 skip (the clean local case) |
+| playwright unresolvable, **fence set** | **6 fail** |
+
+### A constant I did not compute, caught by its own flake
+
+The first draft of check 3 rolled `{20d6}` and asserted the total moved, on the reasoning that a
+repeat was "vanishingly rare." I never computed it. 20d6 has sigma ~7.6, so consecutive totals
+collide about 5% of the time, and it failed once in ten runs -- **an unmeasured constant of exactly
+the kind #1132 banned, inside the guard meant to catch unmeasured things.**
+
+Rewritten so the PROOF is the announcement, which fires on every re-roll whatever the value lands on.
+The value now only has to show that randomness reaches the pill at all, and it does that over ten
+clicks: for 2d6, sum(p^2) = 0.1127, so all ten identical is 0.1127^9 ~ 3e-9. Computed, not asserted.
+
+A second error in the same check: `parts.length === 2` was wrong, because `parts` is per-TERM (one
+term for `2d6`) and the per-die array is `parts[0].rolls`. Checked against `rollParsed` output rather
+than assumed.
+
+### What this deliberately does NOT do
+
+**Not a feature sweep.** Six checks, one defect class each. A browser suite that tries to cover the
+app becomes slow and flaky, and a flaky gate is the one outcome worse than no gate -- it teaches
+people to re-run until green, which is how a real failure gets waved through. Stress-run **12 times
+consecutively: 72 checks, 0 failures** before shipping.
+
+**Not a replacement for the source pins, and not folded into `node-tests`.** That job works with no
+network and stays that way; a pin asserts the offline job carries no playwright, so a future edit
+cannot quietly put a download on the common path. Two jobs, two costs, stated.
+
+**Not a committed dependency.** `.gitignore` keeps `package.json`/`node_modules` out of source
+because this is a no-build single-file repo, and that decision is not reversed here. The cost, stated
+plainly: **this job needs the network, and the offline suite remains the primary gate.**
+
+### Verification
+
+`node --test tests/test.mjs` green at **2059** (+3). Seven mutations, each asserting its target
+present first, all seven red at the named pin: drop the CI invocation; drop the fence env; give the
+offline job a network dependency; unpin the playwright version; make the fence stop beating the skip;
+make a launch failure silent again; delete a defect class from the smoke.
