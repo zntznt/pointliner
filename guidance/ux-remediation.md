@@ -5305,3 +5305,77 @@ census caught) -- and one negative control green.
 Perf, since `renderLinkPill` now calls `linkText` per pill: 800 points with 800 link pills, median of
 nine renders, **6.2ms before / 6.6ms after**, inside the run-to-run spread (before's own max was
 7.8ms).
+
+## UXP-314 -- the two Board doors stop disagreeing (#1401)
+
+**The app already computed the exactly right sentence and withheld it on the door the user took.**
+
+Clicking the **dimmed Board button** gave a specific, followable cue. Marking the same column through
+the **Column menu** was accepted in silence, and Board then opened with four empty lanes, every card
+in one "No state" lane, and the real values invisible. Driven, both doors, on the planner's setup:
+
+| | before | after |
+|---|---|---|
+| dimmed Board button | the full diagnostic | unchanged |
+| Column menu -> Status | **nothing at all** | the same diagnostic |
+| `Alt+R` -> Status | `Column shown as: Status` | the same diagnostic |
+| Column menu -> Date / Number / Plain | **nothing at all** | `Column shown as: …` |
+| a card in the "No state" lane | `Ship the API` | `Ship the API · Status Doing` |
+
+### One cause, three symptoms
+
+`boardBlockReason` opens with `if (statusIdx >= 0) return null` -- it answers "why is Board blocked",
+so once the column IS marked it has, by construction, nothing to say. The unknown-values arm was
+inside it, so the diagnostic was reachable only from the door that refuses.
+
+The unknown-values half is now `statusColWarning`, a pure core that both doors call; `boardBlockReason`
+delegates rather than keeping a second copy of the sentence. It is a **predicate as well as a
+message** -- null when every value really is a state -- which is what lets the mark path use it to
+choose between the warning and the plain confirmation.
+
+**The tail had to change with the door.** The original ends "…then mark the column (Column menu, Show
+as)", which is precisely the #1114 defect if you say it to someone who has just marked the column: an
+instruction they believe they have already followed. `{ marked: true }` swaps it for "…and Board
+groups by them."
+
+### The silence was wider than the report
+
+The Column menu announced **nothing for any role**, not just Status; `Alt+R` announced for all four.
+The confirmation therefore moved into `mtSetColRole`, the single write both doors go through, and the
+keyboard door's now-duplicate flash was removed. One write, one response, either door (P1/P4).
+
+### The card stops hiding the value
+
+`renderBoard` skipped the groupBy column on every card, which is right when the lane heading carries
+the state and wrong in the "No state" lane -- the heading there is *actively false*, since the row does
+have a status. That is why a useless board looked like an empty one. The value now renders on cards in
+that lane only.
+
+### What was deliberately NOT done
+
+The issue's third option -- give each unmatched value **its own lane** -- is rejected, not deferred.
+#1148 recorded the rule that **the sequence is the vocabulary**, and lanes invented from free text
+would make the board's column set depend on typos: "Doing", "doing " and "Dong" would be three lanes.
+The in-fence answer is the one shipped: accept the mark, say what is missing, and keep the data visible.
+
+### Two probes that measured nothing, and were not reported as findings
+
+- **The acceptance test failed at first.** Declaring `{seq Flow: Doing Blocked | Shipped}` by *setting
+  node.text* left `collectSequences` empty -- it reads the `node.seq` sidecar plus a `[[seq:key]]`
+  token, so a raw brace string is not a declaration until it is promoted. Retyped through the UI, the
+  acceptance passes: Flow declares DOING/BLOCKED/SHIPPED, the mark flashes the plain confirmation, and
+  Board opens with three real lanes holding one card each. **Following the advice works** -- which is
+  the whole test, since a cue that is not followable is the defect.
+- **An `Alt+R` probe reported zero flashes** -- and zero role change, so it had measured nothing.
+  Re-driven through `mtFocusCell`: the role goes null -> status and exactly **one** flash fires.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2046**, and the CLAUDE.md staleness floor raised 1800 -> 2000
+(it had drifted 251 behind, which is the drift its own note says to fix). One existing pin rewritten,
+not loosened. Ten mutations, each asserting its target present first, nine red at the named pin --
+including one toward the wrong shape (showing the groupBy value in every lane, duplicating the
+heading) -- and one negative control green.
+
+**A pin that could not fail, caught by mutation:** disabling the gate (`role === 'status'` -> `false`)
+left the call sitting in source and every assertion still passed. The gate itself is now pinned.

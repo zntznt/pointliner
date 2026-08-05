@@ -8,7 +8,7 @@ A single-file, offline, vanilla-JS outliner. Every point can generate (`{2d6}`) 
 node --test tests/test.mjs
 ```
 
-No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~1800 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it.
+No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~2000 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it.
 
 ## Architecture at a glance
 
