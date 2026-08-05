@@ -5533,3 +5533,67 @@ fix is a decision about what Freeze should mean on a declaration, not a missing 
 first, seven red at the named pin -- including two toward the wrong shape (a row that names one
 dialog and opens another; the dialog title going back to its own copy of the strings) and one that
 removes the Edit row from an already-correct sibling (dice), which must also fail.
+
+## UXP-318 -- a toggle that is always on screen, derived only when a menu opens (#1405)
+
+`syncRollLogLabel` was correct and was called from exactly two places: `openFileMenu` and the toggle
+itself. So the File-menu row -- which only exists while the menu is open -- read the document
+correctly, and the **always-visible** toolbar button kept whatever its markup said. Driven, reload:
+
+| | before | after |
+|---|---|---|
+| `root.rollLog.on` | `true` | `true` |
+| File menu row | *"Log random results: On"*, `aria-pressed="true"` | unchanged |
+| toolbar button | **`aria-pressed="false"`, un-lit** | `true`, lit |
+| clicking the toolbar button | turned logging **off** | turns it off, and now says so first |
+
+A screen reader was told "not pressed" for a setting that was on, and the click a user makes to turn
+logging ON turned it off.
+
+### The census is "every path that assigns root", not "boot"
+
+`root.rollLog` is per-DOCUMENT, so the question is not "does boot sync it" but "does every path that
+replaces the document sync it". Four:
+
+| path | what it is | before |
+|---|---|---|
+| the boot tail | a fresh boot, no restore call at all | no |
+| `applyAutosaveData` | the localStorage / OPFS restore -- **the reported one** | no |
+| `adoptDoc` | File > Open, New, workspace switch, reopen | no |
+| `restoreSnapshot` | undo / redo | no |
+
+The fourth was found by driving, not by the report. All four now derive it.
+
+**The siblings are the argument, again.** `applyAutosaveData` has synced `btn-done` and
+`btn-notes` since they shipped -- two of three per-document toggles, in the same function, four lines
+apart. And the boot tail already carries `syncVerbosityClass()` with a comment saying it is there
+because *"a fresh boot has no autosave-restore call"*: the identical hole, identified and fixed for
+one toggle and not the next.
+
+### Two pins of mine that could not fail
+
+- The boot-tail adjacency regex was written for the wrong ORDER after I moved the call, and matched
+  somewhere else entirely: deleting the boot call left it green.
+- Dropping only the `aria-pressed` write from the toolbar button -- **the half the issue is about** --
+  left every assertion green, because the pin checked the `active` tint and the File-menu row's aria
+  but never the toolbar button's aria. Both halves are pinned now.
+
+Both caught by mutation. Neither would have been caught by reading.
+
+### A deeper question, filed rather than decided
+
+`restoreSnapshot` restores `root` wholesale, so `root.rollLog` rides in every undo snapshot even
+though `toggleRollLog` deliberately does not `pushUndo`. An ordinary undo can therefore revert the
+setting. Syncing the button makes that **visible** rather than correct; which document-level settings
+should ride in an undo snapshot is a design question over seven fields, and it is filed with the
+measurement.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2051**. Nine mutations, each asserting its target present
+first, eight red at the named pin -- including one that regresses an already-correct sibling
+(`btn-done`) and one toward the wrong shape (the sync reading a constant instead of the document) --
+and one negative control green.
+
+Driven after: reload (toolbar, File row and `root` all agree), a doc swap in both directions, undo,
+and the negative case (a fresh document with logging off must not light the button).

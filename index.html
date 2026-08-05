@@ -33713,6 +33713,11 @@ function restoreSnapshot(snap) {
   root = JSON.parse(snap.root);
   focusedId = snap.focusedId;
   buildIndex(root, null); resetDocCaches();
+  // #1405: the FOURTH path that replaces root, found by driving rather than by the report. A
+  // snapshot carries root.rollLog, so an undo can move the setting; the toolbar toggle has to
+  // follow, or it goes back to claiming the opposite of the truth. Whether an undo SHOULD revert a
+  // doc-level setting at all is a separate question (filed) -- this at least stops it being silent.
+  syncRollLogLabel();
 }
 
 // Text edits are recorded as tiny {prev,next} entries instead of full-tree
@@ -33976,6 +33981,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   // idea 5: restore a remembered zoom for this doc — but only if that point STILL EXISTS (the file
   // may have changed on disk since we left). Guarded by nodeById; a missing/absent id stays at root.
   if (restoreFocusId && nodeById(restoreFocusId)) focusedId = restoreFocusId;
+  syncRollLogLabel();   // #1405: rollLog belongs to the DOCUMENT, so a swap must re-derive it too
   render();
 }
 
@@ -44565,6 +44571,8 @@ function applyAutosaveData(data) {
     btn.setAttribute('aria-pressed', String(showDone));   // UXP-153: stable name; aria-pressed carries state
   }
   if (typeof data.showNotes === 'boolean') { showNotes = data.showNotes; syncNotesBtn(); }
+  syncRollLogLabel();   // #1405: the third per-document toggle. Its two siblings above have synced
+                        // here since they shipped; this one derived only when the File menu opened.
   if (VERBOSITY_TIERS.includes(data.verbosity)) { verbosity = data.verbosity; syncVerbosityClass(); }   // the 3-position dial: restore the saved tier + sync the body class
   // New: a single active view. Migrate the legacy additive agendaBars (timeline/calendar
   // could both be open) into the one-at-a-time model: timeline wins, else calendar→month.
@@ -45785,6 +45793,10 @@ ensureDocId(root);
 syncVerbosityClass();   // #586: paint the default (guided) verbosity class at boot — a fresh boot has no
                         // autosave-restore call, so without this body carries no v-* class and the guided
                         // search cheatsheet stays hidden until the first edit + autosave + reload.
+syncRollLogLabel();     // #1405: root.rollLog is per-DOCUMENT, and the toolbar toggle is always
+                        // visible, so it must be derived at boot rather than left at its markup
+                        // default. Only openFileMenu called this, which is why the File-menu row
+                        // read correctly and the toolbar button read OFF for a setting that was on.
 render();
 updateTitle();
 refreshIcons();
