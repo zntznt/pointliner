@@ -5170,3 +5170,66 @@ could never be used at all). Three negative controls green.
 Driven before and after in both themes, at 1280 and at 393 with `hasTouch`: the strip still slides,
 still renders, its controls are still focusable while it is open, and the accessibility exposure while
 dismissed goes 2 -> 0.
+
+## UXP-312 -- the caret survives the click and then not the render (#1406)
+
+**The protection was already there and bought nothing.** Both `blPanelEl` and the Link button register
+`mousedown -> e.preventDefault()`, which is the caret invariant, done deliberately. Then the `render()`
+inside the handler rebuilds every `.node-content` and the caret it just protected is gone.
+
+Reproduced on `origin/main`, caret in a point, ordinary visible panel, ordinary mouse click:
+
+| | before | after |
+|---|---|---|
+| `activeElement` | `.node-content` -> **`document.body`** | `.node-content`, same point |
+| caret offset | lost | preserved (7 -> 7) |
+| the strip | **dismissed itself** | still up |
+| a run of two mentions | second one unreachable | both linked, no re-entry |
+
+### The half the report does not have
+
+The strip closing is not a second bug, it is the consequence: `scheduleBlHide` keeps the panel up only
+while a `.node-content` (or `.zoom-title`) holds focus. Focus falling to `<body>` therefore dismissed
+the panel the user was working in, mid-run. Linking mentions is inherently repeated -- a subject with
+four mentions meant four round trips through the point -- so this was the more expensive half.
+
+The fix is one capture and one existing helper: read `activeElement`'s point and
+`caretOffsetIfEditing` before the mutation, and `focusNodeAtOffset` after. No new focus machinery.
+
+### The ordering that a source-pin alone would not have caught
+
+The restore is the **else** of #1399's keyboard landing, and a mutation proved that matters: adding an
+*unconditional* restore ahead of the `hadFocus` branch leaves both fixes present in source, passes the
+two obvious pins, and silently kills the keyboard landing (the retry stands down on its own
+contenteditable check the moment the caret is in a point). The pin now counts the restore -- exactly
+one, after the keyboard branch.
+
+### The sibling census, calibrated
+
+The family the issue points at is `mousedown` + `preventDefault()` handlers that re-render:
+
+| | count |
+|---|---|
+| such listeners | 76 |
+| re-render with no restore, or unresolvable statically | **7** before, **6** after |
+
+**The first version of the probe reported 0** because it resolved only `function NAME(` and the Link
+button's handler is `const doLink = () => {`. A census that cannot find the member you already know
+about is measuring nothing; it was recalibrated against the pre-fix file until it flagged `doLink`.
+
+Driving the six that remain: the brace picker keeps the caret; the bullet popup's ten rows are all
+navigation or dialog-openers, none mutating text in place; the agenda toggles and calendar nav are
+chrome with no caret in a point (and #1385 already fixed their keyboard path). One genuine member is
+left, the **to-do state picker**, whose chips apply correctly and then drop focus to `<body>` -- filed
+as its own issue rather than bundled, since it is a different control on a different surface.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2041**. Seven mutations, each asserting its target present
+first: six red at the named pin -- including two toward the wrong shape (an unconditional restore that
+steals the keyboard landing; converting the `mousedown` to a `click`, which would break the invariant
+the whole fix rests on) -- and one negative control green.
+
+Driven: a run of two mentions linked one after the other without re-entering the point, a mid-line
+caret returned to its own offset, the #1399 keyboard landing unchanged, and undo still restoring the
+mention.

@@ -27523,6 +27523,32 @@ test('#1399 the Link button says what it did, and follows the row it turned into
     'and it stands down the moment the user has started typing somewhere');
 });
 
+test('#1406 the mouse path puts the caret back, so a run of mentions can be linked', () => {
+  const rr = between(_src, 'function renderBlRows(', 'function updateBlPanel(');
+  // Both blPanelEl and this button preventDefault their mousedown -- the caret invariant, done
+  // deliberately -- and then render() threw the caret away anyway, so the protection bought
+  // nothing. Driven on main: activeElement went .node-content -> document.body, AND the strip then
+  // dismissed itself (scheduleBlHide keeps it up only while a .node-content holds focus), so the
+  // second of two mentions was unreachable without re-entering the point.
+  assert.ok(/const caretEl = document\.activeElement\?\.closest\?\.\('\.node-content\[data-id\]'\);/.test(rr),
+    'the caret position is read BEFORE the mutation');
+  assert.ok(/const caretOff = caretId \? caretOffsetIfEditing\(caretId\) : null;/.test(rr),
+    'including the offset, not just the point');
+  assert.ok(/\} else if \(caretId && nodeById\(caretId\)\) \{[\s\S]{0,400}focusNodeAtOffset\(caretId, caretOff\);/.test(rr),
+    'and it is restored through the existing helper, as the ELSE of the keyboard landing (#1399)');
+  // ONE restore, in the else arm. An unconditional one would land the caret in the point and the
+  // #1399 keyboard retry would then stand down on its own contenteditable check, silently undoing
+  // the keyboard landing. Caught by mutation; the two assertions above did not see it.
+  const dl = between(rr, 'const doLink = () => {', "btn.addEventListener('mousedown'");
+  assert.equal((dl.match(/focusNodeAtOffset\(caretId/g) || []).length, 1,
+    'exactly one caret restore in doLink, never a second unconditional one');
+  assert.ok(dl.indexOf('focusNodeAtOffset(caretId') > dl.indexOf('if (hadFocus) {'),
+    'and it sits after the keyboard branch, never ahead of it');
+  // the invariant the fix depends on: this must stay a preventDefault-ed mousedown, never a click
+  assert.ok(/btn\.addEventListener\('mousedown', e => \{ e\.preventDefault\(\); doLink\(\); \}\);/.test(rr),
+    'the caret invariant itself is untouched -- mousedown + preventDefault, never converted to click');
+});
+
 test('#1399 showBlPanel refuses a point that is not there, exactly as showFnPanel always has', () => {
   // The sibling had the guard from the start; this one never did, and blGather walks the whole
   // document dereferencing that node. Same family, same shape, one member missing it.
