@@ -21387,6 +21387,35 @@ test('LEAN-FLOOR p3: the Alt+Arrow column/row move wiring is present in the cell
   assert.ok(_src.includes('r < mtLastDataRow(node, m)'), 'Alt+Down must stop above the footer');
 });
 
+test('#1420 an undo moves CONTENT, and leaves identity, permission and preference alone', () => {
+  // A snapshot is the whole root, so every document-level field rides in it. MEASURED, an undo that
+  // reaches back past a field change reverted ALL EIGHT of them:
+  //   rollLog · allowWebImages · docId · appearance · calendar · units · seed · a base's colW
+  // So the boundary is not "which ones move" -- they all do -- but "which ones should".
+  assert.ok(/const SNAPSHOT_PRESERVE = \['docId', 'allowWebImages', 'rollLog'\];/.test(_src),
+    'three fields are carried across a restore');
+  const rs = fnBody(_src, 'restoreSnapshot');
+  assert.ok(/for \(const k of SNAPSHOT_PRESERVE\) if \(k in root\) keep\[k\] = root\[k\];/.test(rs),
+    'read from the LIVE root, before it is replaced');
+  assert.ok(rs.indexOf('keep[k] = root[k]') < rs.indexOf('root = JSON.parse(snap.root)'),
+    'and read BEFORE the assignment, or it would capture the snapshot it is meant to override');
+  assert.ok(/Object\.assign\(root, keep\);/.test(rs), 'then put back over the restored root');
+  // the three are chosen, not swept: each has a reason no other field has.
+  //   docId          identity; autosave + the earlier-version lookup are keyed by it
+  //   allowWebImages a security opt-in; Ctrl+Z must never silently re-grant a revoked permission
+  //   rollLog        a preference whose toggle deliberately does not pushUndo (#1405)
+  for (const f of ['appearance', 'calendar', 'units', 'seed'])
+    assert.ok(!new RegExp(`SNAPSHOT_PRESERVE = \\[[^\\]]*'${f}'`).test(_src),
+      f + ' is authored CONTENT and must stay undoable');
+  // the other half of the rule: content that reshapes the document has to RECORD an undo of its
+  // own. #1387 gave every reshaping op one and missed this. Driven before: setting a width and
+  // pressing Ctrl+Z took the width AND the edit before it; after, it takes only the width.
+  const w = fnBody(_src, 'mtSetColWidth');
+  assert.ok(/pushUndo\(\);/.test(w), 'a width change records its own undo');
+  assert.ok(w.indexOf('if (!node.colW) { if (cw == null) return; node.colW = []; }') < w.indexOf('pushUndo();'),
+    'AFTER the refusal guard, like every #1387 site -- a no-op must not consume an undo slot');
+});
+
 test('#1411 the picker gives focus back when it SUCCEEDS, not only when it is cancelled', () => {
   // Driven, the four exits of the two #bpop surfaces. The picker takes focus onto a chip the moment
   // it opens (both doors), so it owes focus back:
