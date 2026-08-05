@@ -5821,3 +5821,71 @@ Driven after, seven documents: `/todo`, `/quote`, `/due:tomorrow` (sets the date
 (sets the property) and `@dice`, each on a point carrying a pill; the same with no pill; and the
 non-Guided tier, which reaches `slashApply` directly and where the node is still unfolded -- the case
 the identity property of `foldedOffsetFor` exists to serve.
+
+## UXP-323 -- an undo moves content, and leaves identity, permission and preference alone (#1420)
+
+**The measurement changed the shape of the question.** The issue asked which of seven document-level
+fields actually move under an ordinary undo, guessing the answer would be "much smaller than the
+list". Driven -- change the field through its own door, make an unrelated edit, Ctrl+Z that edit --
+**all eight revert**, including a base's `colW`:
+
+| field | change landed | undo reverted it |
+|---|---|---|
+| `rollLog` · `allowWebImages` · `docId` · `appearance` · `calendar` · `units` · `seed` · `colW` | all yes | **all eight** |
+
+A snapshot is the whole `root`, so nothing document-level was ever excluded. The boundary is
+therefore not *which ones move* but *which ones should*, and that is a judgement, not a measurement.
+
+**The first version of that probe was vacuous.** It took the snapshot AFTER the field change, so the
+restored snapshot already held the new value and nothing could revert. Three of the rows were vacuous
+a second way: `normalizeCalendar`, `normalizeUnits` and `normalizeAppearance` rejected the shapes I
+invented, so those fields never changed at all. The table above is the re-run, with `changeLanded`
+asserted per row before any conclusion is drawn from it.
+
+### The classification, and why each of the three is not content
+
+`SNAPSHOT_PRESERVE = ['docId', 'allowWebImages', 'rollLog']`, carried from the live root onto the
+restored one:
+
+- **`docId`** is IDENTITY. Autosave and the earlier-version lookup are keyed by it. No user path
+  reaches it today (`adoptDoc` clears the undo stack, so a snapshot never crosses documents), so this
+  is stated as **safety rather than a live bug** -- and it costs one word.
+- **`allowWebImages`** is a SECURITY opt-in (#1325/#1328). Ctrl+Z silently re-granting a permission
+  the reader revoked is the worst outcome of the eight and the least expected. This one field is why
+  the answer could not be "make every setting mutation push undo": that would make the re-grant an
+  ordinary, deliberate undo step.
+- **`rollLog`** is a PREFERENCE whose own toggle deliberately does not `pushUndo`, so it never asked
+  to be in a snapshot (#1405).
+
+`appearance`, `calendar`, `units`, `seed` and `colW` are authored CONTENT and stay undoable.
+
+### The other half of the rule
+
+Content that reshapes the document has to RECORD an undo of its own. #1387 gave every reshaping op
+one and missed `mtSetColWidth`. Measured, before and after:
+
+```
+before   set a width, one Ctrl+Z  ->  the width goes back AND the edit before it
+after    set a width, one Ctrl+Z  ->  the width goes back, the edit stays
+```
+
+`pushUndo()` sits AFTER the refusal guard, like every #1387 site, so a no-op cannot consume an undo
+slot. A drag commits once on mouse-up (one entry per completed drag); the `Alt+,`/`Alt+.` step is one
+per keystroke, which is what a discrete step is.
+
+### What this deliberately does NOT do
+
+No rearchitecture of the snapshot into content-plus-settings halves. The three fields are named, each
+for a reason no other field has, and the rest of `root` is content by default -- so a new field is
+undoable unless someone argues it into the list, which is the safer default of the two.
+
+**A one-way door, and named as one:** a preserved field can never be taken back by undo. That is
+correct for a permission and a preference by definition, and it is why the classification was
+measured and argued per field rather than swept.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2056**. Eight mutations, each asserting its target present
+first, seven red at the named pin -- including two toward the wrong shape (authored content joining
+the preserve list, which would put undo out of reach of the units table; and the width's `pushUndo`
+moved ahead of its refusal guard, so a no-op would eat an undo slot) -- and one negative control green.

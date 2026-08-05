@@ -11862,6 +11862,13 @@ function mtDeleteCol(node, colIdx) {
 function mtSetColWidth(node, colIdx, w) {
   const cw = (w == null) ? null : clampColW(w);
   if (!node.colW) { if (cw == null) return; node.colW = []; }
+  // #1420: the content half of the rule. A width is a document reshape, so it must record an undo
+  // of its own -- #1387 gave every other reshaping op one and missed this. MEASURED before: setting
+  // a width and pressing Ctrl+Z took back the width AND the edit before it, because the change rode
+  // in a snapshot it had not created. AFTER the refusal guard above, like every #1387 site: a
+  // no-op must not consume an undo slot. A drag commits once on mouse-up, so it is one entry per
+  // completed drag; the Alt+,/. step is one per keystroke, which is what a discrete step is.
+  pushUndo();
   node.colW[colIdx] = cw;
   if (node.colW.every(x => x == null)) node.colW = undefined; // all auto → drop it
   markDirty(); refreshTable(node);
@@ -33802,14 +33809,31 @@ function trimStack(stack) {
   // keep at least one entry even if a single snapshot exceeds the budget
   while (stack.length > 1 && bytes > UNDO_MAX_BYTES) bytes -= stack.shift().size;
 }
+// #1420: the fields an undo must NOT move. A snapshot is the whole root, so every document-level
+// field rides in it -- MEASURED, all eight of them revert when an undo reaches back past the change.
+// The boundary is therefore not "which ones move" but "which ones should", and these three should
+// not:
+//   docId           IDENTITY. autosave and the earlier-version lookup are keyed by it. No user door
+//                   reaches it today (adoptDoc clears the undo stack, so a snapshot never crosses
+//                   documents), so this is safety rather than a live bug -- and it costs one word.
+//   allowWebImages  a SECURITY opt-in (#1325/#1328). Ctrl+Z silently re-granting a permission the
+//                   reader revoked is the worst outcome of the eight, and the least expected.
+//   rollLog         a PREFERENCE whose own toggle deliberately does not pushUndo, so it never asked
+//                   to be in a snapshot at all (#1405).
+// Everything else -- appearance, calendar, units, seed, and a base's colW -- is authored CONTENT and
+// belongs in the snapshot. The one thing content needed was the other half of the rule: a mutation
+// that reshapes the document has to RECORD an undo of its own, which is why mtSetColWidth now does.
+const SNAPSHOT_PRESERVE = ['docId', 'allowWebImages', 'rollLog'];
 function restoreSnapshot(snap) {
+  const keep = {};
+  for (const k of SNAPSHOT_PRESERVE) if (k in root) keep[k] = root[k];
   root = JSON.parse(snap.root);
+  Object.assign(root, keep);
   focusedId = snap.focusedId;
   buildIndex(root, null); resetDocCaches();
-  // #1405: the FOURTH path that replaces root, found by driving rather than by the report. A
-  // snapshot carries root.rollLog, so an undo can move the setting; the toolbar toggle has to
-  // follow, or it goes back to claiming the opposite of the truth. Whether an undo SHOULD revert a
-  // doc-level setting at all is a separate question (filed) -- this at least stops it being silent.
+  // #1405: the toolbar toggle follows whatever root now holds. With rollLog preserved above it no
+  // longer MOVES on an undo, but this stays: the sync is what makes any path that replaces root
+  // honest, and removing it would only put the drift back the moment another one appears.
   syncRollLogLabel();
 }
 
