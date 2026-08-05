@@ -5597,3 +5597,58 @@ and one negative control green.
 
 Driven after: reload (toolbar, File row and `root` all agree), a doc swap in both directions, undo,
 and the negative case (a fresh document with logging off must not light the button).
+
+## UXP-319 -- the freeze counts what it broke, whichever engine held the reference (#1418)
+
+**I filed this issue and the premise was half wrong.** The report said freezing a variable
+declaration breaks every reference *silently*. It does not: `#1146` already reads the name before the
+prune, counts orphaned references and appends *"1 point using total now shows no value. Undo to put
+it back."* to both the announcement and the flash.
+
+My repro used `{= cost * 2}` over a **distribution**, which refuses to promote (`estimate, not math`)
+and so was never a pill at all. A bad input shape, not a missing warning -- the same class of error
+this session has hit repeatedly, and the reason the first move is always to check the sample against
+what the surface should contain.
+
+### The real gap, re-measured
+
+`orphanedVarRefCount` counts `[[var:key]]` **reference pills** and nothing else. Driven, one
+declaration and one dependent per document:
+
+| the reference | the pill after freezing | reported |
+|---|---|---|
+| `{total}` bare reference pill | shows a dash | *"1 point using total…"* ✅ |
+| `{cost}` reference to a distribution | shows a dash | *"1 point using cost…"* ✅ |
+| `{= total * 2}` math pill | **`#ERR (bad ref)`** | **nothing** |
+| `{lo to 90}` estimate pill | breaks | **nothing** |
+| `{doubled := total * 2}` dependent declaration | breaks | **nothing** |
+
+So the warning existed and was **undercounting**: a reference is a reference whichever engine holds
+it, and only one of the three engines was being asked.
+
+### Reused the identifier rule rather than writing a third one
+
+`exprNamesVar` is the scan `mathErrorReason` already uses, lifted: a dotted name is ONE identifier
+(the variable-base projection rule) and a name followed by `(` is a function call, not a variable.
+Both properties matter here -- without the call skip a `{= sum(cost)}` rollup would report itself as
+a broken dependent, and without the dotted rule `total.count` would. A pin asserts the two sites use
+the same regex and the same skip, because a count and an error message that disagree about what a
+reference IS would be a worse defect than the one being fixed.
+
+**Chose reporting over confirming.** The house rule is P4 (name the cost), the action already pushes
+undo, and the note already says *"Undo to put it back."* A confirm dialog in front of a reversible
+action is heavier than the app's own style anywhere else.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2053**. Ten mutations, each asserting its target present
+first, nine red at the named pin -- including three toward the wrong shape (counting an expression
+below a surviving declaration; counting a record whose token is gone; matching substrings, so
+`subtotal` would report as `total`).
+
+Driven after, six documents: math, estimate and dependent-declaration references now counted; two
+references add up to `2 points`; and three negatives stay at zero -- a `sum(cost)` rollup, a document
+with no dependents, and a name redeclared below the frozen one.
+
+**Issue corrected rather than silently closed:** the report's "silently" claim is wrong for the two
+reference shapes it did not test, and the entry says so.

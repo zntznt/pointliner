@@ -8293,6 +8293,53 @@ test('orphanedVarRefCount: counts POSITIONALLY, because that is how a reference 
   assert.equal(c.orphanedVarRefCount({ children: [ref1, ref2, other] }, 'sky'), 1);
   assert.equal(c.orphanedVarRefCount({ children: [{ id: 'x', text: 'no token here', vars: [{ key: 'k9', name: 'who', expr: '' }], children: [] }] }, 'who'), 0,
     'a dangling record with no [[var:]] token in the text is not a live reference');
+
+  // #1418: a reference is a reference whichever ENGINE holds it. This counted the bare `{total}`
+  // reference pill and not `{= total * 2}`, so freezing a declaration reported "nothing broken"
+  // while a math pill dropped to `#ERR (bad ref)`. Driven, before: the bare form warned about 1
+  // point, the expression form said nothing at all.
+  const mathRef = { id: 'm', text: 'twice [[math:x1]]', math: [{ key: 'x1', expr: 'who * 2' }], children: [] };
+  const estRef  = { id: 'e', text: 'range [[est:u1]]', est: [{ key: 'u1', expr: 'who to 90' }], children: [] };
+  const depDecl = { id: 'p', text: 'dep [[var:k5]]', vars: [{ key: 'k5', name: 'doubled', expr: 'who * 2' }], children: [] };
+  assert.equal(c.orphanedVarRefCount({ children: [mathRef] }, 'who'), 1, 'a math pill naming it counts');
+  assert.equal(c.orphanedVarRefCount({ children: [estRef] }, 'who'), 1, 'an estimate pill naming it counts');
+  assert.equal(c.orphanedVarRefCount({ children: [depDecl] }, 'who'), 1, 'a variable whose expression names it counts');
+  assert.equal(c.orphanedVarRefCount({ children: [ref1, mathRef] }, 'who'), 2, 'both engines add up');
+  // the same positional rule: a declaration above covers an expression below it
+  assert.equal(c.orphanedVarRefCount({ children: [decl, mathRef] }, 'who'), 0,
+    'an expression below a surviving declaration still resolves');
+  // NEGATIVES. A rollup names a PROPERTY, not this variable; a function call is not a reference;
+  // and a record whose token is gone is not live.
+  assert.equal(c.orphanedVarRefCount({ children: [{ id: 'g', text: 'roll [[math:x2]]', math: [{ key: 'x2', expr: 'sum(cost)' }], children: [] }] }, 'who'), 0);
+  assert.equal(c.orphanedVarRefCount({ children: [{ id: 'f', text: 'call [[math:x3]]', math: [{ key: 'x3', expr: 'who(3)' }], children: [] }] }, 'who'), 0,
+    'a name followed by ( is a function call, not a variable reference');
+  assert.equal(c.orphanedVarRefCount({ children: [{ id: 'n', text: 'no token', math: [{ key: 'x4', expr: 'who * 2' }], children: [] }] }, 'who'), 0,
+    'a math record with no token in the text is not a live reference');
+});
+
+test('#1418 exprNamesVar — the same identifier rule mathErrorReason uses', () => {
+  assert.equal(c.exprNamesVar('total * 2', 'total'), true);
+  assert.equal(c.exprNamesVar('TOTAL * 2', 'total'), true, 'case-insensitive, like every var lookup');
+  assert.equal(c.exprNamesVar('subtotal * 2', 'total'), false, 'a substring is not a reference');
+  assert.equal(c.exprNamesVar('total(3)', 'total'), false, 'a call is not a reference');
+  assert.equal(c.exprNamesVar('total.count', 'total'), false,
+    'a dotted name is ONE identifier (the variable-base projection rule), so it is not a bare `total`');
+  assert.equal(c.exprNamesVar('a + total', 'total'), true);
+  assert.equal(c.exprNamesVar('', 'total'), false);
+  assert.equal(c.exprNamesVar('total', ''), false);
+  // it must MATCH mathErrorReason's scan, or the count and the error message would disagree about
+  // what a reference is -- which is the whole reason it was lifted rather than re-written.
+  const mer = fnBody(_src, 'mathErrorReason'), env = fnBody(_src, 'exprNamesVar');
+  const RE = '/[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*)*/g';
+  assert.ok(mer.includes(RE) && env.includes(RE), 'both use the same identifier regex');
+  assert.ok(mer.includes("/^\\s*\\(/.test(s.slice(re.lastIndex))") && env.includes("/^\\s*\\(/.test(s.slice(re.lastIndex))"),
+    'and both skip a name followed by (');
+});
+
+test('orphanedVarRefCount: walks the whole tree, ancestors included', () => {
+  const decl = { id: 'd', text: 'Tonight [[var:k1]]', vars: [{ key: 'k1', name: 'who', kind: 'pick', expr: 'a | b', rolled: 'a' }], children: [] };
+  const ref1 = { id: 'r1', text: 'At the door [[var:k2]]', vars: [{ key: 'k2', name: 'who', expr: '' }], children: [] };
+  const ref2 = { id: 'r2', text: 'Later [[var:k3]]', vars: [{ key: 'k3', name: 'who', expr: '' }], children: [] };
   // it recurses in PRE-ORDER, because a reference is usually not a sibling of the declaration and
   // "above" means earlier in document order, ancestors included
   assert.equal(c.orphanedVarRefCount({ children: [{ id: 'p', text: 'parent', vars: [], children: [ref1, { id: 'q', text: 'mid', vars: [], children: [ref2] }] }] }, 'who'), 2,
