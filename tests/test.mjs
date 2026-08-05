@@ -16370,6 +16370,68 @@ test('linkText — labelled link → label; no token → passthrough; unresolved
   assert.equal(c.linkText('gone [[#zzz|]]'), 'gone zzz', 'empty-label link → id, never [[…]]');
 });
 
+test('#1402 a nested reference resolves, and past the budget it is dropped rather than printed as an id', () => {
+  // The old terminal was `depth > 0 → return id`, and that bare node id was USER-VISIBLE: it reached
+  // the link caption on screen and it reached exported .md and .txt, which #1111 forbids outright.
+  // Driven before/after on the reporter's document: 3 ids in the export -> 0.
+  const lt = fnBody(_src, 'linkText');
+  assert.ok(/if \(depth > LINK_RESOLVE_DEPTH\) return '';/.test(lt),
+    'past the budget the reference is dropped, never printed as an internal id');
+  assert.ok(!/if \(depth > 0\) return id;/.test(lt), 'and the old id terminal is gone, not merely shadowed');
+  assert.match(_src, /const LINK_RESOLVE_DEPTH = 2;/,
+    'the budget is 2: one level was the bug (a title holding a link leaked), a third level is a title inside a title inside a title');
+  // the unresolvable arm is DELIBERATELY still the bare id -- a target that does not exist has no
+  // name to show, and it is marked .node-link-broken and says so in its aria. Different case.
+  assert.ok(/return out\(id, docId \|\| '', id\);\s*\/\/ unresolvable/.test(lt),
+    'an unresolvable target still degrades to its id (the recorded #1111 arm), which the pure pins above cover');
+});
+
+test('#1402 stripCaptionTags never looks inside a [[…]] token', () => {
+  // `[[#vt8cabxe]]` carries an id that matches the hashtag rule exactly, so the strip ate the id and
+  // left a literal `[[]]` on screen. collectTags has had this guard since UXP-109 (tagScanText);
+  // this sibling never did.
+  assert.equal(c.stripCaptionTags('Ecological rationality argued in [[#vt8cabxe]]'),
+    'Ecological rationality argued in [[#vt8cabxe]]', 'the token survives intact — the reported bug');
+  assert.equal(c.stripCaptionTags('[[#a1b2c3|A caption]] and [[da#n7]]'),
+    '[[#a1b2c3|A caption]] and [[da#n7]]', 'captioned and cross-doc tokens too');
+  // and #943 still holds OUTSIDE tokens, including on the same line as one
+  assert.equal(c.stripCaptionTags('Atomic notes #zettelkasten/principle'), 'Atomic notes');
+  assert.equal(c.stripCaptionTags('See [[#n1]] about #reading here'), 'See [[#n1]] about here',
+    'a real tag beside a token still goes');
+  assert.equal(c.stripCaptionTags('#lead [[#n1]] trailing'), '[[#n1]] trailing');
+  // the sibling this was copied from, still guarding its own scan
+  assert.match(fnBody(_src, 'tagScanText'), /replace\(\/\\\[\\\[\[\^\\\]\]\*\\\]\\\]\/g, ' '\)/,
+    'tagScanText still blanks tokens before the tag scan (the guard this one was missing)');
+});
+
+test('#1402 every caption sink resolves BEFORE it strips — a frozen census, not a proof', () => {
+  // The fix changes the failure mode: a token used to be GUTTED to `[[]]`, and now survives intact.
+  // So any sink that strips raw text would show a literal `[[#id]]` instead. Every current call site
+  // was checked by hand and by driving; this freezes the list so a new one has to be justified.
+  // A ratchet, in the #1133 sense: it detects a new sink, it does not prove the new sink is right.
+  const calls = [];
+  let i = 0;
+  while ((i = NC.indexOf('stripCaptionTags(', i)) >= 0) {
+    let j = i + 'stripCaptionTags('.length, d = 1;
+    for (; j < NC.length && d; j++) { if (NC[j] === '(') d++; else if (NC[j] === ')') d--; }
+    calls.push(NC.slice(i + 'stripCaptionTags('.length, j - 1).replace(/\s+/g, ' ').trim());
+    i = j;
+  }
+  nonEmpty(calls, 'stripCaptionTags call sites');
+  // 's' is the function's own body; every other argument is already link-resolved:
+  //   linkText(…)            the two link pills, the cross-doc backlink row, nodeNames
+  //   displayText(…)         resolves links internally (its non-forMatch arm calls linkText)
+  //   backlinkSnippet(…)     ends in stripMd(linkText(line))
+  //   t.replace(/\[\^…/…)    graphNodeLabel, whose input is resolved by its injected resolver (#1110)
+  //   raw                    aliasesOf's raw alias strings, which are user words, not titles
+  const RESOLVED = /^(s|raw|linkText\(|displayText\(|backlinkSnippet\(|t\.replace\()/;
+  const unresolved = calls.filter(a => !RESOLVED.test(a));
+  assert.deepEqual(unresolved, [], 'a new caption sink must resolve its text before stripping tags');
+  // 12 in NC, 13 in the raw source: one is my own comment quoting the call. Scanning the raw source
+  // here would count comments as sinks — the #1398 lesson, met again in the same session.
+  assert.equal(calls.length, 12, 'census: 12 call sites — a new one lands here deliberately');
+});
+
 // The no-pill sinks must route titles through the legible wrapper, not raw
 // textForDisplay (which stays raw so it can build the workspace titles index).
 test('breadcrumb + backlinks render link-legible titles (displayTitle/linkText wiring)', () => {
@@ -16399,9 +16461,16 @@ test('#943 stripCaptionTags — removes hashtags from a caption, keeps the title
   assert.equal(c.stripCaptionTags(null), '');
   // it is NOT applied inside textForDisplay/displayText (search matching must still see the tag word)
   assert.ok(!/function textForDisplay[\s\S]{0,300}stripCaptionTags/.test(_src), 'textForDisplay must not strip tags (feeds search)');
-  // it IS applied at the caption sinks: the live-title link pill + the cross-doc caption
-  assert.ok(/label \|\| stripCaptionTags\(textForDisplay\(tn\)\)/.test(_src), 'renderLinkPill live-title strips caption tags');
-  assert.ok(/label \|\| stripCaptionTags\(title\)/.test(_src), 'renderCrossLinkPill live-title strips caption tags');
+  // it IS applied at the caption sinks: the live-title link pill + the cross-doc caption.
+  // REWRITTEN for #1402, not loosened: both sinks now RESOLVE before they strip. The strip alone
+  // was the bug -- a nested `[[#id]]` has an id that matches the hashtag rule, so stripping first
+  // gutted the token and left a literal `[[]]` on screen. #943's claim is unchanged and still
+  // asserted; what moved is that stripCaptionTags is no longer the outermost thing applied to raw
+  // text at these two sinks.
+  assert.ok(/label \|\| stripCaptionTags\(linkText\(textForDisplay\(tn\)\)\)/.test(_src),
+    'renderLinkPill live-title resolves, then strips caption tags');
+  assert.ok(/label \|\| stripCaptionTags\(linkText\(title\)\)/.test(_src),
+    'renderCrossLinkPill live-title resolves, then strips caption tags');
 });
 
 test('#950 wordsScopeLeaf — flags words(subtree)/words(children) on a childless HEADING; not a paragraph, words(self) or non-words', () => {
