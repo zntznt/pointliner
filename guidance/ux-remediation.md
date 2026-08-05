@@ -4975,3 +4975,59 @@ wrong and would have sent the next reader to the wrong function.
 `node --test tests/test.mjs` green at **2034**. Three mutations, all red: drop the seed; seed but
 never show it in the box; fold `rawArg` into the seed (which would insert the `:value` twice, since
 the apply path re-joins it). Driven end to end for all four commands, mid-line versus line-start.
+
+## UXP-309 -- opening a pill's context menu stops changing the pill (#1397)
+
+**Data loss on the pill's own advertised path.** Found by the novelist persona in a multi-agent
+live-drive pass and reproduced from scratch by an independent verifier.
+
+The pill's tooltip reads *"Click to re-generate. Right-click for more, including Freeze to text"*.
+Following that instruction lost the value the novelist was trying to keep, because a secondary-button
+`mousedown` is delivered BEFORE `contextmenu`: the right-click re-rolled the pill, and the menu then
+painted a value the user had never seen.
+
+```
+#0 shown=Kestrel      at-menu=Corvid       FROZEN=Corvid       <== LOST
+#2 shown=Thistle      at-menu=Bellweather  FROZEN=Bellweather  <== LOST
+#5 shown=Bellweather  at-menu=Bellweather  FROZEN=Bellweather  ok  (chance)
+MISMATCHES: 5/6
+```
+
+It was **contrary to the code's own stated intent**: the comment on the `contextmenu` listener records
+the right-click as a deliberately NON-destructive door (#1116), added so a user could keep a result.
+The keyboard route (`Shift+F10`) never re-rolled and froze correctly, so the broken path was the only
+one the pill advertises.
+
+### One guard, not four, and the census is why
+
+Applying the sibling rule found a member a per-branch fix would have missed:
+
+| pill | right-click re-rolled, before | after |
+|---|---|---|
+| dice | yes | no |
+| grammar | yes | no |
+| estimate | yes | no |
+| **var pick** | **yes** -- its OWN branch, announcing "who re-rolled: b" | no |
+| clock | no (its handler is on `click`, not `mousedown`) | no |
+| math | no | no |
+
+So the guard goes once, before the whole generative block, rather than four times. Everything above it
+already guards itself -- the bare-URL branch carries `e.button === 0`, and that sibling is exactly the
+precedent this followed -- and the context menu rides a separate `contextmenu` listener, so a
+non-primary `mousedown` has nothing to do in that handler at all.
+
+### The regression that would have made this worse than the bug
+
+**A left-click must still re-roll.** That gesture is a recorded P1 sign-off made three separate times
+(dice, clocks, estimates), and "fixing" the freeze by disabling the re-roll would reverse it. Driven
+after the change: dice, grammar, estimate and the var pill all still announce a fresh value on
+left-click, and the mutation that flips the guard to `e.button === 0` turns a pin red.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2035**. Four mutations, each asserting its target present
+first, all red: drop the guard; move it after the loop; flip it to the wrong button; and drop the
+sibling guard the fix was modelled on.
+
+Acceptance driven: the novelist's own loop, six iterations of right-click then Freeze to text, now
+**6/6 freeze the value on screen** (was 5/6 losing it).

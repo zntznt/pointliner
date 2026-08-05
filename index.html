@@ -18637,6 +18637,21 @@ function attachContentEvents(content, node) {
     // mode the re-roll goes through rerollInEdit (repaint + caret restore), in display mode it acts
     // live and stays rendered. Only the selector, bad-class, edit-sub-selector, and the two
     // fns vary — data-drive them. (var/seq pills differ in shape and stay their own branches below.)
+    // #1397: NOTHING below this line may fire on a secondary button. A secondary-button mousedown is
+    // delivered BEFORE contextmenu, so right-clicking a pill re-rolled it and the menu then painted a
+    // value the user had never seen — "Freeze to text" froze the replacement. Measured 5 of 6 across
+    // a document of grammar picks; also confirmed on dice ("2d20 re-rolled: 25") and estimates.
+    //
+    // The pill's own tooltip advertises this exact route ("Right-click for more, including Freeze to
+    // text"), and the comment on the contextmenu listener records it as a deliberately NON-destructive
+    // door (#1116). So this was contrary to the code's own stated intent.
+    //
+    // ONE guard rather than four, deliberately: the census below found the re-roll on dice, grammar,
+    // estimate (this loop) AND the var pill (its own branch, which announced "who re-rolled: b"), and
+    // a per-branch fix would have to be remembered by the next generative pill too. Everything above
+    // here already guards itself (the bare-URL branch carries `e.button === 0`), and the context menu
+    // rides a separate `contextmenu` listener, so a non-primary mousedown has nothing to do here.
+    if (e.button !== 0) return;
     for (const p of REROLL_PILLS) {
       const el = e.target.closest?.(p.sel);
       if (el && !el.classList.contains(p.bad)) {
