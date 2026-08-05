@@ -37864,6 +37864,14 @@ function renderBlRows(inner, hd, subjectId, d, opts) {
     const doLink = () => {
       const mentionNode = nodeById(id); if (!mentionNode) return;
       const hadFocus = document.activeElement === btn;   // #1399: keyboard path only, see below
+      // #1406: and on the MOUSE path, where the caret was in a point. Both blPanelEl and this
+      // button preventDefault their mousedown precisely so the caret survives the click -- and then
+      // the render() below discards it anyway, so that protection bought nothing. Remember where it
+      // was; putting it back is what makes a run of mentions linkable one after another, because the
+      // strip only stays up while a .node-content holds focus (scheduleBlHide).
+      const caretEl = document.activeElement?.closest?.('.node-content[data-id]');
+      const caretId = caretEl ? caretEl.dataset.id : null;
+      const caretOff = caretId ? caretOffsetIfEditing(caretId) : null;
       // The matched name may be an alias, not the title (§8): try each name the
       // focus point answers to and link whichever actually appears in this text.
       const target = nodeById(subjectId);
@@ -37903,6 +37911,12 @@ function renderBlRows(inner, hd, subjectId, d, opts) {
           if (--tries > 0) requestAnimationFrame(land);
         };
         requestAnimationFrame(land);
+      } else if (caretId && nodeById(caretId)) {
+        // #1406: the caret goes back where it was, at the offset it was at. focusNodeAtOffset
+        // re-enters edit and falls back to the end of the line if the offset no longer fits, which
+        // is the only case that can arise here (the linked mention grew, if that WAS the caret's
+        // point). One existing helper, no new focus machinery.
+        focusNodeAtOffset(caretId, caretOff);
       }
     };
     btn.addEventListener('mousedown', e => { e.preventDefault(); doLink(); });
