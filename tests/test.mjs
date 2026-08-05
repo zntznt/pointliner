@@ -21217,13 +21217,82 @@ test('#616 real bugs: platform MOD in verbosity toasts, conjugated rename announ
 test('LEAN-FLOOR p3: the Alt+Arrow column/row move wiring is present in the cell keydown', () => {
   // Alt+Arrow must move the focused column (left/right) or row (up/down) via the existing mtMoveCol/
   // mtMoveRow, then re-focus the moved cell. Bounds are guarded (header row 0 / footer / edges).
-  assert.ok(_src.includes('mtMoveCol(node, c, -1); mtFocusCell(node, r, c - 1)'), 'Alt+Left column-move-left wiring missing');
-  assert.ok(_src.includes('mtMoveCol(node, c, 1);  mtFocusCell(node, r, c + 1)'), 'Alt+Right column-move-right wiring missing');
-  assert.ok(_src.includes('mtMoveRow(node, r, -1); mtFocusCell(node, r - 1, c)'), 'Alt+Up row-move-up wiring missing');
-  assert.ok(_src.includes('mtMoveRow(node, r, 1); mtFocusCell(node, r + 1, c)'), 'Alt+Down row-move-down wiring missing');
+  // REWRITTEN for #1400, not loosened. The landing moved INTO the ops, because the MENU doors --
+  // the other way to reach the same write -- left focus on <body> and said nothing. The keyboard
+  // door keeps its own cross-axis coordinate, so Alt+Arrow still leaves you in your own row/column.
+  assert.ok(_src.includes('mtMoveCol(node, c, -1, r)'), 'Alt+Left column-move-left wiring missing');
+  assert.ok(_src.includes('mtMoveCol(node, c, 1, r)'), 'Alt+Right column-move-right wiring missing');
+  assert.ok(_src.includes('mtMoveRow(node, r, -1, c)'), 'Alt+Up row-move-up wiring missing');
+  assert.ok(_src.includes('mtMoveRow(node, r, 1, c)'), 'Alt+Down row-move-down wiring missing');
+  const kb = between(NC, "e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key.startsWith('Arrow')",
+    "e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'r'");   // stop before Alt+R, which legitimately stays put
+  assert.ok(!/mtFocusCell/.test(kb), 'and the keyboard door keeps no duplicate landing of its own');
   // the guard: Alt+Up only when r > 1 (row 0 is the header, never movable), Alt+Down only below the last data row
   assert.ok(_src.includes("e.key === 'ArrowUp' && r > 1"), 'Alt+Up must protect the header row (r > 1)');
   assert.ok(_src.includes('r < mtLastDataRow(node, m)'), 'Alt+Down must stop above the footer');
+});
+
+test('#1400 baseStructMessage — six sentences, one shape, each promising the undo #1387 records', () => {
+  const m = c.baseStructMessage;
+  assert.equal(m('col-insert', { side: 'left', label: 'Owner', n: 2 }),
+    'Column inserted to the left of \u201cOwner\u201d. Undo removes it.');
+  assert.equal(m('col-insert', { side: 'right', label: '', n: 3 }),
+    'Column inserted to the right of column 3. Undo removes it.', 'an unnamed column falls back to its number');
+  assert.equal(m('col-move', { dir: -1, label: 'Owner', n: 1 }),
+    'Column \u201cOwner\u201d moved left. Undo restores the order.');
+  assert.equal(m('col-move', { dir: 1, label: '', n: 3 }), 'Column 3 moved right. Undo restores the order.');
+  // the destructive member says how big it was -- that is the half a silent delete cost most
+  assert.equal(m('col-delete', { label: 'Status', n: 3, values: 3 }),
+    'Column \u201cStatus\u201d deleted, with 3 values. Undo restores it.');
+  assert.equal(m('col-delete', { label: 'Status', n: 3, values: 1 }),
+    'Column \u201cStatus\u201d deleted, with 1 value. Undo restores it.', 'singular');
+  assert.equal(m('col-delete', { label: 'Status', n: 3, values: 0 }),
+    'Column \u201cStatus\u201d deleted. Undo restores it.', 'an empty column does not claim a count');
+  assert.equal(m('row-insert', { side: 'above', n: 2 }), 'Row inserted above row 2. Undo removes it.');
+  assert.equal(m('row-move', { dir: -1, n: 2 }), 'Row 2 moved up. Undo restores the order.');
+  assert.equal(m('row-delete', { n: 2, values: 2 }), 'Row 2 deleted, with 2 values. Undo restores it.');
+  assert.equal(m('nope'), '', 'an unknown op says nothing rather than something wrong');
+  // house rules: AP punctuation, no em dashes, and every one promises the undo
+  for (const op of ['col-insert', 'col-move', 'col-delete', 'row-insert', 'row-move', 'row-delete']) {
+    const out = m(op, { side: 'left', dir: 1, label: 'X', n: 2, values: 2 });
+    assert.doesNotMatch(out, /\u2014/, op + ' must not use an em dash');
+    assert.match(out, /Undo /, op + ' promises the undo #1387 records');
+  }
+  // the counters the delete messages are built from
+  const model = { rows: [['Task','Owner','Status'], ['Ship','Ana',''], ['Migrate','','Todo'], ['Docs','Cy','Todo']] };
+  assert.equal(c.mtColValueCount(model, 1, 3), 2, 'blank cells do not count');
+  assert.equal(c.mtColValueCount(model, 0, 3), 3);
+  assert.equal(c.mtRowValueCount(model, 1), 2);
+});
+
+test('#1400 every structural base op lands somewhere real and says what it did', () => {
+  // Driven on origin/main through the MOUSE door (the header menu, nothing focused first): all ten
+  // left focus on <body> and announced NOTHING, while their sibling mtSortBase announced everything.
+  // The keyboard door hid it: hideColPanel's #1383 restore only has a target when something in the
+  // base held focus before the menu opened, which the pointer path never does.
+  const OPS = {
+    mtInsertCol: "baseStructMessage('col-insert'", mtMoveCol: "baseStructMessage('col-move'",
+    mtDeleteCol: "baseStructMessage('col-delete'", mtInsertRow: "baseStructMessage('row-insert'",
+    mtMoveRow: "baseStructMessage('row-move'", mtDeleteRow: "baseStructMessage('row-delete'",
+  };
+  for (const [fn, msg] of Object.entries(OPS)) {
+    const body = fnBody(_src, fn);
+    assert.ok(body.includes(msg), fn + ' must build its sentence from the shared core');
+    assert.ok(/mtFocusCell\(node,/.test(body), fn + ' must land focus somewhere real');
+    assert.ok(/flashHint\(/.test(body), fn + ' must say it (flashHint announces too)');
+  }
+  // the two deletes read the name and the size BEFORE the splice removes them
+  assert.ok(fnBody(_src, 'mtDeleteCol').indexOf("baseStructMessage('col-delete'") < fnBody(_src, 'mtDeleteCol').indexOf('m.aligns.splice'),
+    'mtDeleteCol measures the column before deleting it');
+  assert.ok(fnBody(_src, 'mtDeleteRow').indexOf("baseStructMessage('row-delete'") < fnBody(_src, 'mtDeleteRow').indexOf('m.rows.splice'),
+    'mtDeleteRow measures the row before deleting it');
+  // and the menu's close must not yank back focus the op deliberately placed
+  assert.ok(fnBody(_src, 'hideColPanel').includes("ae.closest('.md-table-host')"),
+    'hideColPanel stands down when an apply already landed focus inside the base');
+  // the four formatting siblings in the same menu had the same <body> landing; they stay put now
+  for (const fn of ['mtSetAlign', 'mtSetColWidth', 'mtApplyAggregate', 'mtSortBase'])
+    assert.ok(/mtFocusCell\(node, 0, colIdx\)/.test(fnBody(_src, fn)),
+      fn + ' stays on the column it acted on (it did not move)');
 });
 
 test('cycleColRole — the same set + order as the Show-as menu, wrapping both ways', () => {
@@ -21297,8 +21366,13 @@ test('#1401 marking a column as Status fires the diagnostic, and the degraded bo
 test('LEAN-FLOOR p3: the Alt+Shift+Arrow column/row INSERT wiring is present (DOM-bound keydown)', () => {
   assert.ok(_src.includes('e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.startsWith'), 'the Alt+Shift+Arrow insert branch is missing');
   assert.ok(_src.includes("mtInsertCol(node, c, 'left')") && _src.includes("mtInsertCol(node, c, 'right')"), 'Alt+Shift+Left/Right must insert a column');
-  assert.ok(_src.includes("mtInsertRow(node, r, 'above')") && _src.includes("mtInsertRow(node, r, 'below')"), 'Alt+Shift+Up/Down must insert a row');
-  assert.ok(_src.includes("flashHint('Column inserted.')") && _src.includes("flashHint('Row inserted.')"), 'an insert must flash (P4, no menu)');
+  assert.ok(_src.includes("mtInsertRow(node, r, 'above', c)") && _src.includes("mtInsertRow(node, r, 'below', c)"),
+    'Alt+Shift+Up/Down must insert a row, landing in the column this cell is already in');
+  // REWRITTEN for #1400. The flash moved into mtInsertCol/mtInsertRow so the MENU doors get it too,
+  // and it now names what was inserted and promises the undo #1387 already records.
+  assert.ok(fnBody(_src, 'mtInsertCol').includes("baseStructMessage('col-insert'")
+         && fnBody(_src, 'mtInsertRow').includes("baseStructMessage('row-insert'"),
+    'an insert must say what it did (P4), from the op so both doors get it');
   // the header-row guard: a row insert only fires on a data row (r > 0)
   assert.ok(_src.includes("r > 0 && e.key === 'ArrowUp'") && _src.includes("r > 0 && e.key === 'ArrowDown'"), 'a row insert must skip the header row');
   // the collision fix: the Shift+Arrow cell-selection guard now excludes Alt so Alt+Shift+Arrow reaches insert

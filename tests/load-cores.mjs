@@ -308,7 +308,7 @@ export function loadCores() {
     'unfoldArtifacts','refoldArtifacts','applyRefold','foldedTextForSave',
     'anchorEditInlines','highlightGrammarText','grSrcSpanClean',
     'parseSequence','seqDeclParts','ruleDeclParts','makeGrammarRoll','sequenceLint','collectSequences','sequenceForKeyword','keywordIsDone','keywordIsHeld','seqDefString',
-    'normStateKey','boardBlockReason','statusColWarning','blockCmdsPool','slashActiveIdx',   // #1114: state matching, the Board refusal (#1401: and its now-shared unknown-values half), the slash pool
+    'normStateKey','boardBlockReason','statusColWarning','baseStructMessage','mtColValueCount','mtRowValueCount','blockCmdsPool','slashActiveIdx',   // #1114: state matching, the Board refusal (#1401: and its now-shared unknown-values half), the slash pool
     'baseRefocusSelector',   // #1383: where focus goes back to after a base rebuild
     'knownStates','stateCmds','allSequences', // doc-cache 7/8 collectors (+ allSequences, stateCmds's source)
     'pruneNoexport','exportExclusionImpact','parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
