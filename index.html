@@ -27690,7 +27690,13 @@ function promoteBraceBodyIn(node, body) {
   // like a named markov/grammar.
   const sd = seqDeclParts(body);
   if (sd) {
-    const rec = { key: seqKey(), name: sd.name, states: sd.states, doneFrom: sd.doneFrom };
+    // #1404: SPREAD, do not enumerate. Listing the fields is how this door came to drop heldFrom
+    // while the dialog door (`{ key: seqKey(), ...r }`) kept it -- the same states typed inline and
+    // entered in the dialog stored different records, and the held band silently vanished from the
+    // typed one. seqDeclParts already returns exactly the record's shape, so spreading makes the two
+    // doors agree by construction and carries any field the parser gains later. (UXP-160 fixed this
+    // on the dialog side; the typed twin was never brought along.)
+    const rec = { key: seqKey(), ...sd };
     (node.seq ||= []).push(rec);
     return `[[seq:${rec.key}]]`;
   }

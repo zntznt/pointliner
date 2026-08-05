@@ -5439,3 +5439,41 @@ over-reports what went) -- and one negative control green.
 
 Driven after: all ten menu commands from the mouse door, all six keyboard doors (each firing exactly
 one flash and keeping its cross-axis coordinate), and the four formatting siblings.
+
+## UXP-316 -- one authoring language, two doors, two records (#1404)
+
+**UXP-160 recurring on the door it never reached.** That entry records the dialog dropping `heldFrom`,
+so a dialog-authored `A | B | C` stored `heldFrom: undefined` and its held band vanished. The dialog
+was fixed. The typed twin was not, and the parser has carried `heldFrom` correctly the whole time.
+
+Driven, typing `{seq Flow: Calm | Waiting | Broken}` into a point and letting it promote:
+
+| | before | after |
+|---|---|---|
+| `seqDeclParts` (the parser) | `{name, states, doneFrom: 2, heldFrom: 1}` | unchanged, it was never wrong |
+| the record the TYPED pill stored | `{key, name, states, doneFrom}` | `{…, heldFrom: 1}` |
+| the record the DIALOG stored | `{key, name, states, doneFrom, heldFrom}` | unchanged |
+| `seqDefString` round trip | **`CALM WAITING | BROKEN`** | `CALM | WAITING | BROKEN` |
+| the Board's WAITING lane | not held | held |
+
+**The round trip is the visible cost, and it is not in the report.** An author types a three-band
+declaration and the app hands back a two-band one. The pill's own unfold shows it; so does an export.
+
+### The fix is structural, not a field
+
+The typed door LISTED the parser's fields; the dialog door spread them (`{ key: seqKey(), ...r }`).
+Listing is the defect: it is a copy of a shape that has to be maintained by hand, and it was not.
+The typed door now spreads too, so the two records agree **by construction** and any field the parser
+gains later reaches both. That is also the census guard the issue asks for -- structural, so it
+cannot be satisfied by a builder that merely happens to list `heldFrom` today.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2049**. Seven mutations, each asserting its target present
+first, six red at the named pin -- including one that enumerates the fields *correctly* (still
+banned: it is the shape that drifts) and one toward the wrong shape (a one-pipe sequence gaining a
+phantom held band, which turned six pins red).
+
+Driven after: the consumer (a Board built on the typed sequence marks WAITING held and BROKEN done),
+the OPML round trip (`_seq` carries the whole record as JSON, so the reloaded record is byte-equal),
+and the one-pipe regression (`heldFrom === doneFrom`, no phantom band, `BACKLOG DOING | SHIPPED` back).
