@@ -21387,6 +21387,38 @@ test('LEAN-FLOOR p3: the Alt+Arrow column/row move wiring is present in the cell
   assert.ok(_src.includes('r < mtLastDataRow(node, m)'), 'Alt+Down must stop above the footer');
 });
 
+test('#1411 the picker gives focus back when it SUCCEEDS, not only when it is cancelled', () => {
+  // Driven, the four exits of the two #bpop surfaces. The picker takes focus onto a chip the moment
+  // it opens (both doors), so it owes focus back:
+  //   to-do picker  Escape -> .node-content    apply -> **document.body**
+  //   bullet menu   Escape -> .node-content    apply -> .node-note (the command's own destination)
+  // Cancelling kept your place and succeeding did not, which is backwards. The old comment on
+  // bpopReturnFocus said it restored "when the popup is closed by keyboard (Escape)" -- the
+  // omission, written down beside the variable.
+  const restore = fnBody(_src, 'bpopRestoreFocus');
+  assert.ok(/const id = bpopReturnFocus; bpopReturnFocus = null;/.test(restore),
+    'the restore consumes the armed id, so it can never fire twice');
+  assert.ok(/\.node-content\[data-id="\$\{CSS\.escape\(String\(id\)\)\}"\]/.test(restore),
+    'it refocuses by ID, because an apply re-renders the row it is about');
+  // BOTH exits call it. The apply one is the fix; the Escape one must not regress.
+  const tp = fnBody(_src, 'showTodoPicker');
+  assert.ok(/bpopRestoreFocus\(rowIdx < 0 \? null : rowIdx\);/.test(tp), 'the apply path restores');
+  assert.ok(/render\(\); hideBpop\(\);[\s\S]{0,400}bpopRestoreFocus\(/.test(tp),
+    'and does it AFTER the render that rebuilt the row');
+  assert.ok(/e\.key === 'Escape'[\s\S]{0,120}hideBpop\(\); bpopRestoreFocus\(\);/.test(NC),
+    'the Escape path still restores');
+  // deliberately NOT inside hideBpop: an outside-click dismissal must leave the caret where the
+  // user just clicked. Driven: it does.
+  assert.ok(!/bpopRestoreFocus/.test(fnBody(_src, 'hideBpop')),
+    'the restore must not fire on every dismissal, or an outside click would yank the caret back');
+  // the row can be GONE by the user's own doing (DONE with Show done off). Landing on <body> there
+  // is the #1400 dead end again, so the surviving neighbour takes it.
+  assert.ok(/rows\[Math\.min\(fallbackIdx, rows\.length - 1\)\]/.test(restore),
+    'a hidden row falls back to the point that now occupies its place');
+  assert.ok(/const rowIdx = \[\.\.\.document\.querySelectorAll\('\.node-content\[data-id\]'\)\]/.test(tp),
+    'and the index is read BEFORE the render that removes the row');
+});
+
 test('#1400 baseStructMessage — six sentences, one shape, each promising the undo #1387 records', () => {
   const m = c.baseStructMessage;
   assert.equal(m('col-insert', { side: 'left', label: 'Owner', n: 2 }),

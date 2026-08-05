@@ -5708,3 +5708,51 @@ inside `mtSetColWidth`), two toward the wrong shape (width claiming an undo it d
 
 Driven after: all four menu sections, the keyboard width step (which keeps YOUR cell, not the
 header), the double-click auto-fit, and a mouse resize drag that no longer moves the caret.
+
+## UXP-321 -- cancelling the picker kept your place; succeeding did not (#1411)
+
+Driven, the four exits of the two `#bpop` surfaces:
+
+| surface | exit | focus lands, before |
+|---|---|---|
+| to-do picker | Escape | `.node-content` ✅ |
+| to-do picker | **apply a state** | **`document.body`** |
+| bullet menu | Escape | `.node-content` ✅ |
+| bullet menu | apply a row | `.node-note`, the command's own destination ✅ |
+
+**Backwards, and on the surface that takes focus the moment it opens.** `showTodoPicker` focuses the
+current chip on BOTH doors, so it owes focus back either way -- and the one exit that gave it back
+was the one where nothing happened.
+
+**The omission was written down beside the variable.** `bpopReturnFocus`'s comment read *"The node id
+to restore focus to when the popup is closed by keyboard (Escape)."* One restore now, called from
+both exits.
+
+**Deliberately NOT inside `hideBpop`.** That runs on an outside-click dismissal too, where the caret
+belongs wherever the user just clicked. Driven: it stays there. A mutation that moves the restore
+into `hideBpop` is one of the guards.
+
+### The row can be gone, by the user's own doing
+
+Choosing DONE with "Show done" off hides the row the restore is aiming at, and focus fell to `<body>`
+-- the #1400 dead end again, on a path the report does not mention. The rendered index is read
+BEFORE the render and the surviving neighbour takes focus, the same rule the delete ops use. The
+existing flash still explains where the row went; this only stops the next Tab restarting from the
+top of the page.
+
+### Landing IS the announcement here
+
+No new message was added, deliberately. The state change is written into the point's own text, so
+returning focus to that point is what reports it: the row now reads *"#TODO Buy the tickets"*. A
+separate flash would say the same thing twice.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2054**. Eight mutations, each asserting its target present
+first, seven red at the named pin -- including one toward the wrong shape (the restore moved inside
+`hideBpop`, which would yank the caret back on an outside click) and one that regresses the Escape
+half that already worked.
+
+Driven after: all four exits land on a real point, an outside-click dismissal leaves the caret where
+it was clicked, a bulk selection writes every selected point and still lands, and the hidden-row case
+lands on the neighbour with its flash intact.
