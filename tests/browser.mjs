@@ -233,3 +233,42 @@ test('a / command applied to a point carrying a pill keeps the pill', { skip: sk
   assert.match(r.text, /^- \[ \] /, 'while the command itself applied');
   await pg.close();
 });
+
+test('a shipped list section renders its + Add door, and the door adds a row', { skip: skip() }, async () => {
+  // #1428. The pure core (inferRowShape) says a section HAS a shape; it says nothing about whether
+  // a door reaches the screen, and the reported symptom was measured in the DOM: zero
+  // `.addrow-affordance` in the whole document. So this asserts the DOM, then uses the door.
+  const pg = await fresh();
+  await pg.evaluate(() => { adoptDoc(fromOpml(STARTERS.find(s => s.id === 'freelance-costing').opml));
+    markDirty(); render(); });
+  await pg.waitForTimeout(600);
+  const seen = await pg.evaluate(() => {
+    const sec = [...document.querySelectorAll('.node-row')].find(r =>
+      /Hours logged so far/.test(r.querySelector('.node-content')?.innerText || ''));
+    const doors = [...(sec?.querySelectorAll(':scope > .addrow-affordance') || [])];
+    return { total: document.querySelectorAll('.addrow-affordance').length,
+      here: doors.length, labels: doors.map(d => d.innerText.trim()) };
+  });
+  assert.ok(seen.total > 0, 'the document has add-row doors at all (it shipped with zero)');
+  assert.ok(seen.here > 0, 'and the section the report named has its own: ' + JSON.stringify(seen.labels));
+
+  // Use it. A door that renders and does nothing is the #1021 shape wearing a different hat.
+  const before = await pg.evaluate(() => {
+    const s = root.children.flatMap(function f(n) { return [n, ...(n.children||[]).flatMap(f)]; })
+      .find(n => /Hours logged so far/.test(n.text));
+    return { id: s.id, kids: s.children.length };
+  });
+  await pg.evaluate(() => {
+    const sec = [...document.querySelectorAll('.node-row')].find(r =>
+      /Hours logged so far/.test(r.querySelector('.node-content')?.innerText || ''));
+    sec.querySelector(':scope > .addrow-affordance').click();
+  });
+  await pg.waitForTimeout(600);
+  const after = await pg.evaluate((id) => ({
+    opened: !!document.querySelector('#io-card'),
+    kids: nodeById(id).children.length,
+  }), before.id);
+  assert.ok(after.opened || after.kids > before.kids,
+    'clicking the door opened its form or added a row, rather than doing nothing');
+  await pg.close();
+});

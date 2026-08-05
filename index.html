@@ -42765,6 +42765,21 @@ function inferPropType(vals) {
   if (v.every(x => isFinite(Number(x)) || propExprValue(x) !== null)) return 'number';   // #1317: a formula column ("60*3.50") is numeric
   return 'text';
 }
+// Keys that are never a USER COLUMN, so they can neither become one nor make a row look like data.
+// #1281: `created`/`edited` are the app's own bookkeeping, stamped on every point, so they passed the
+// "on every row" test and became columns. Driven, the + Add form asked a non-technical user to fill in
+// "Created" and "Edited" beside "Description" and "Cost".
+// #1428: `check` is the same thing wearing a different hat. It holds an ASSERTION about the section
+// ("am I still inside the quote?"), not a value of a row, and a + Add form asking someone to fill in
+// "Check" would be as wrong as asking them to fill in "Edited". Measured: this half is load-bearing
+// rather than tidying — with `check` left in, the Freelance costing section in the filed report is
+// still doorless, because its health-badge row survives the commentary filter and then fails the
+// every-row test for `hours`. It is the half that fixes the case #1428 actually reported.
+const SHAPE_SKIP_KEYS = new Set([CREATED_KEY, EDITED_KEY, 'check']);
+function dataPropKeys(n) {
+  return ((n && n.props) || []).filter(p => p && p.key
+    && !SHAPE_SKIP_KEYS.has((p.key || '').trim().toLowerCase())).map(p => p.key);
+}
 // inferRowShape(siblings, states?) → { sharedTags:[...], props:[{key,type}], todo } | null. A tag/prop is
 // part of the shape only when it is on EVERY row (the reliable template; a one-off is not the shape). Type
 // is guessed from the values across rows. Returns null with under 2 rows or when nothing is shared.
@@ -42775,19 +42790,32 @@ function inferRowShape(siblings, states) {
   // it. Measured: three priced rows gave `cost:number` and a + Total; the same three plus the blank
   // row the last Enter created gave null and no doors at all. A row with no text and no properties
   // carries no information either way, so dropping it cannot change a shape that was real.
+  //
+  // #1428: neither is a COMMENTARY row, and that is the same argument one step further. Every starter
+  // we ship writes a section the same way — the total or the note on top, the list beneath:
+  //     ## Habits
+  //       One small win, picked for me: {grammar …}   ← no tags, no data props, no checkbox
+  //       Stretch for five minutes #habit
+  //       Read ten pages #habit
+  // That one prose line took the shape to null and the section's + Add door with it. It is not a rare
+  // shape: measured across ALL 14 starters, 58 of 77 sections had no door, and five of those are real
+  // lists losing it exactly this way (Habits, Claims, Open threads, Hours logged, Prototype card set).
+  // The reported case was Freelance costing; it was never the only one.
+  //
+  // The rule is a KIND test, not a tolerance — no "most rows" fraction, which would be the unmeasured
+  // constant #1132 bans. A row carrying no tags, no data props and no checkbox says nothing about the
+  // shape in either direction, so dropping it cannot invent a shape that was not already there. The
+  // measured census bears that out: 5 sections gained a door, 0 lost one.
   const rows = (siblings || []).filter(n => n && typeof n.text === 'string'
-    && (n.text.trim() !== '' || (n.props || []).some(p => p && p.key && !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase()))));
+    && (rowContentTags(n.text, states).length || dataPropKeys(n).length || rowIsTodo(n.text, states)));
   if (rows.length < 2) return null;
   const tagSets = rows.map(n => new Set(rowContentTags(n.text, states)));
   const sharedTags = [...tagSets[0]].filter(t => tagSets.every(s => s.has(t)));
   const vals = new Map();   // prop key → the value seen on each row (one entry per row that carries it)
   for (const n of rows) {
     const here = new Map();
-    // #1281: `created`/`edited` are the app's own bookkeeping, stamped on every point, so they passed
-    // the "on every row" test and became columns. Driven, the + Add form asked a non-technical user to
-    // fill in "Created" and "Edited" beside "Description" and "Cost". They are never a user column.
-    for (const p of (n.props || [])) if (p && p.key && !here.has(p.key)
-        && !TIMESTAMP_KEYS.has((p.key || '').trim().toLowerCase())) here.set(p.key, String(p.val == null ? '' : p.val));
+    for (const k of dataPropKeys(n)) if (!here.has(k))
+      here.set(k, String((n.props.find(p => p && p.key === k) || {}).val ?? ''));
     for (const [k, v] of here) { if (!vals.has(k)) vals.set(k, []); vals.get(k).push(v); }
   }
   const props = [];

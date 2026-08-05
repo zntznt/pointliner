@@ -5995,3 +5995,117 @@ plainly: **this job needs the network, and the offline suite remains the primary
 present first, all seven red at the named pin: drop the CI invocation; drop the fence env; give the
 offline job a network dependency; unpin the playwright version; make the fence stop beating the skip;
 make a launch failure silent again; delete a defect class from the smoke.
+
+---
+
+## UXP-325 -- a note above a list stops taking the list's door with it (#1428)
+
+**Status: shipped.** UX Conformance: **P2** (a shipped capability with no visible front door),
+**P4** (the only remaining path was an undocumented keystroke).
+
+### The report, and how much bigger it turned out to be
+
+The filed issue: the **Freelance costing** starter renders zero `+ Add` doors in any section, while
+"every other starter does." A user working a live job costing has no visible control to add a task
+row. The reproduction was measured in the DOM (`span.addrow-affordance` count = 0), which is why the
+symptom was unambiguous even though the cause was not.
+
+**The premise that Freelance costing is the odd one out does not survive a census.** Driven across
+**all 14 starters, 77 heading sections**:
+
+| | count |
+|---|---|
+| sections with a shape (and therefore a door) | 19 |
+| **sections with NO door** | **58** |
+
+Freelance costing is simply where the reporter noticed. `My week` -- cited in the issue as a starter
+that *does* show doors -- has the identical defect in its Habits section. So this is not a starter
+authoring quirk; it is a rule that disagrees with the house authoring style everywhere.
+
+### The cause
+
+`inferRowShape` counts a tag or prop as a column only when **every** row carries it. That is correct
+and is what makes a shape reliable. But every starter writes a section the same way -- the total or
+the note on top, the rows beneath:
+
+```
+## Habits
+  One small win, picked for me: {grammar ...}     <- no tags, no props, no checkbox
+  Stretch for five minutes #habit
+  Read ten pages #habit
+  Walk after lunch #habit
+```
+
+That one prose line fails the every-row test and takes the whole shape to `null`, and the section's
+`+ Add` / `+ Total` doors with it.
+
+### The fix, in two halves, and which half does what
+
+Both are extensions of reasoning **#1281 already applied**, not new policy. #1281 established that a
+blank placeholder row left by a trailing Enter is not a data row, and that `created`/`edited` are
+bookkeeping that must never become a user column.
+
+1. **A commentary row is not a member of the list it sits above.** A row carrying no content tags, no
+   data props and no checkbox says nothing about the shape in either direction, so dropping it cannot
+   invent a shape that was not already there.
+2. **`check` joins `created`/`edited` as app machinery.** It holds an assertion about the section
+   ("am I still inside the quote?"), not a value of a row, and a `+ Add` form asking someone to fill
+   in "Check" would be as wrong as asking them to fill in "Edited".
+
+**Measured separately, because bundling them would hide which one matters.** With half 2 reverted,
+the Freelance costing section in the filed report **is still doorless** -- its health-badge row
+survives the commentary filter and then fails the every-row test for `hours`. Half 1 fixes four
+sections; half 2 is the one that fixes the case actually reported.
+
+### Deliberately a KIND test, not a tolerance
+
+The obvious alternative -- "tolerate a minority of non-conforming rows" -- needs a fraction, and a
+fraction here would be exactly the unmeasured constant **#1132** bans. The rule shipped asks what a
+row IS, not how many rows disagree. The census bears out that this does not over-reach:
+
+| | before | after |
+|---|---|---|
+| sections with no shape | 58 | 53 |
+| sections **gaining** a door | | **5** |
+| sections **losing** a door | | **0** |
+
+The five: `Habits`, `Claims and their sources`, `Open threads`, `Hours logged so far`, `Prototype
+card set`. Every one a real data list. The 53 that stay doorless are prose sections ("How to run
+it", "Up next"), which correctly still refuse -- dropping rows that carry nothing cannot manufacture
+a shape out of a section that never had one.
+
+### Two measurement errors of mine, both caught rather than shipped
+
+Both were the **same class**: measuring a text space the running app never has.
+
+1. **The first pin fixture wrote the expression unfolded.** `node.text` holds `[[math:key]]` once a
+   pill exists (rule 1). Written as `{= sum("#task", hours, document)}`, `rowContentTags` read the
+   `#task` **inside the expression** as a tag on that prose row, so the row survived the filter and
+   the pin failed against correct code.
+2. **The census walker folded too much.** It replaced every `{…}` with an opaque token -- but
+   `{prop hours: 9}` becomes an entry in `node.props`, not a token. Eating it silently reduced the
+   ratchet to the tag half, and it went **green** when a mutation stripped `#task` off a shipped row.
+   A pin that cannot fail is not a pin (#1133); caught only by running that mutation. The walker now
+   lifts prop/date declarations into props and folds what is left, and the ratchet asserts the
+   **columns** as well as the tag.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2062**. `node --test tests/browser.mjs` green at **7**.
+
+A driven check was added to the committed browser smoke (#1427) rather than proved privately: the
+pure core says a section HAS a shape and says nothing about whether a door reaches the screen, and
+the reported symptom was a DOM count. It asserts the door renders in the named section **and then
+clicks it**, because a door that renders and does nothing is the #1021 shape in a new costume.
+Confirmed red against pre-fix logic and green after.
+
+Six mutations, each asserting its target present first, all red at the named pin: revert the
+commentary filter; drop `check` from the skip set; bypass the helper at the column call site; strip a
+tag off a shipped starter row; strip a column off one; empty the OPML harvest.
+
+### Also corrected on the issue
+
+The issue's second claim -- that "capture routes to the inbox, not the document" is part of the bug
+-- is **by design**. The capture bar's stated job is to take a thought without leaving where you are;
+routing it into whatever document happens to be open is what it deliberately does not do. Recorded so
+the next reader finds the reason rather than an apparent oversight.

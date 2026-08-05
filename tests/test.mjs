@@ -1257,6 +1257,146 @@ test('#1240 inferRowShape — reads the shared template from a list of sibling r
   assert.equal(c.inferRowShape([row('plain text'), row('other text')]), null, 'nothing shared → null');
 });
 
+// ── #1428: a commentary line above a list stops taking the list's door with it ───────────────────
+// Every starter we ship writes a section the same way: the total or the note on top, the rows under
+// it. A key only counts as a column when EVERY row carries it, so that one prose line took the shape
+// to null and the + Add door with it. Measured across all 14 starters: 58 of 77 sections had no door.
+test('#1428 inferRowShape — a commentary row is not a member of the list it sits above', () => {
+  const j = o => JSON.stringify(o);
+  const row = (text, props) => (props ? { text, props } : { text });
+
+  // These fixtures use the FOLDED text, because that is what `node.text` holds once a pill exists
+  // (rule 1: pills are opaque `[[type:key]]` tokens in text). Written unfolded, the first draft of
+  // this pin put `{= sum("#task", hours, document)}` in a prose row -- and `rowContentTags` read the
+  // `#task` INSIDE the expression as a tag on that row, so the row survived the filter and the pin
+  // failed against correct code. Measuring the wrong text space, in a test about which rows are data.
+
+  // My week / Habits, verbatim in shape: one generated prose line, then four tagged rows.
+  const habits = [
+    row('One small win, picked for me: [[grammar:g1]]'),
+    row('Stretch for five minutes #habit'),
+    row('Read ten pages #habit'),
+    row('Walk after lunch #habit'),
+  ];
+  assert.equal(j(c.inferRowShape(habits)), j({ sharedTags: ['habit'], props: [], todo: false }),
+    'the prose line carries no tags, props or checkbox, so it says nothing about the shape');
+
+  // Freelance costing / Hours logged: prose AND a health-badge `check` row above the data rows.
+  // Both must be dropped, which is why the two halves of this fix are separate (see the next test).
+  const hours = [
+    row('Logged: [[math:x1]] hrs, billed at [[math:x2]]'),
+    row('Am I still inside the quote?', [{ key: 'check', val: 'total <= quote' }]),
+    row('Headroom left: [[math:x3]] of the quote.'),
+    row('Logo concepts, 3 routes #task', [{ key: 'hours', val: '9' }]),
+    row('Brand guidelines PDF #task', [{ key: 'hours', val: '6' }]),
+    row('Web mockups #task', [{ key: 'hours', val: '7' }]),
+  ];
+  assert.equal(j(c.inferRowShape(hours)),
+    j({ sharedTags: ['task'], props: [{ key: 'hours', type: 'number' }], todo: false }),
+    'the case #1428 reported: three non-data rows above three task rows');
+
+  // THE NEGATIVE, which is the half that keeps this a kind test rather than a tolerance. Dropping a
+  // row that carries nothing cannot INVENT a shape, so a section that is all prose still refuses.
+  assert.equal(c.inferRowShape([row('Finished this year: {query}'), row('On track: {= pct}')]), null,
+    'an all-prose section still has no shape, and therefore still no door');
+  assert.equal(c.inferRowShape([row('Apples #shop'), row('a note'), row('another note')]), null,
+    'one real row plus commentary is one row, and one row is never a shape');
+  // #1281 must survive: the blank row a trailing Enter leaves is still dropped, for its own reason.
+  assert.equal(j(c.inferRowShape([row('a #x'), row('b #x'), row('   ')])),
+    j({ sharedTags: ['x'], props: [], todo: false }), '#1281: a placeholder row is still not a data row');
+});
+
+test('#1428 `check` is app machinery, not a user column — and that half is load-bearing', () => {
+  // Reverting ONLY this (dropping 'check' from SHAPE_SKIP_KEYS) leaves the filed report broken: the
+  // health-badge row survives the commentary filter, then fails the every-row test for `hours`.
+  assert.ok(c.dataPropKeys({ props: [{ key: 'check', val: 'x' }] }).length === 0,
+    'a check prop is never a data column');
+  for (const k of ['created', 'edited'])
+    assert.equal(c.dataPropKeys({ props: [{ key: k, val: '1' }] }).length, 0, `#1281: ${k} is bookkeeping`);
+  // JSON, not deepEqual: the cores run in a vm realm, so their arrays fail deepStrictEqual's
+  // prototype check even when the contents match. Same idiom the inferRowShape pins above use.
+  assert.equal(JSON.stringify(c.dataPropKeys({ props: [{ key: 'hours', val: '9' }, { key: 'check', val: 'x' }] })),
+    '["hours"]', 'and a real key beside it still counts');
+  assert.equal(JSON.stringify(c.dataPropKeys({})), '[]', 'a node with no props yields none, not a throw');
+  // A `check` row on its own can never form a shape, so a section of health badges grows no door.
+  assert.equal(c.inferRowShape([{ text: 'A?', props: [{ key: 'check', val: 'a' }] },
+    { text: 'B?', props: [{ key: 'check', val: 'b' }] }]), null, 'two check rows are not a list');
+  // CALL SITE (#1133): a tested helper proves nothing about whether inferRowShape asks it. Both the
+  // row filter and the column collector must go through it, or `check` returns as a column.
+  const body = fnBody(NC, 'inferRowShape');
+  assert.equal((body.match(/dataPropKeys\(/g) || []).length, 2,
+    'both the row filter and the column collector read data props through the one helper');
+  assert.ok(!/TIMESTAMP_KEYS/.test(body),
+    'and neither reads the narrower timestamp set directly, which would let `check` back in');
+});
+
+// The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
+// the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
+// broken form fails here rather than silently removing its door again.
+test('#1428 census: every shipped list section that should have a door still infers a shape', () => {
+  const un = s => String(s).replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'");
+  // OPML holds AUTHORED text; the running app holds FOLDED text plus SIDECARS, because loading
+  // promotes every `{…}`. Both halves matter and the first draft of this walker only did one:
+  //   - `{count: #source}` becomes an opaque token, so its `#source` is NOT a tag on that row.
+  //     Read unfolded, the Claims section infers a different shape than the app has.
+  //   - `{prop hours: 9}` becomes an entry in `node.props`, NOT a token. Eating it (the first
+  //     draft folded everything) silently reduced this ratchet to the tag half, and it went GREEN
+  //     when a mutation stripped `#task` off a shipped row -- caught by mutation, which is the only
+  //     reason to trust any of this (#1133).
+  // So: lift prop/date declarations into props, THEN fold what is left.
+  const promote = (t) => {
+    const props = [];
+    let s = String(t).replace(/\{(prop|date)\s+([^:}]+):\s*([^}]*)\}/gi,
+      (_, __, k, v) => { props.push({ key: k.trim(), val: v.trim() }); return ''; });
+    let p; do { p = s; s = s.replace(/\{[^{}]*\}/g, '[[x:k]]'); } while (s !== p);
+    return { text: s, props };
+  };
+  // Walk the shipped starter OPML into (heading → its direct child rows), the same tokenising walk
+  // the #1107 and child-rollup guards use, so this cannot drift from what ships.
+  const sections = [];
+  for (const m of nonEmpty([..._src.matchAll(/opml:\s*`([\s\S]*?)`/g)], 'shipped starter OPML')) {
+    const toks = [...m[1].matchAll(/<outline\b([^>]*?)(\/?)>|<\/outline>/g)];
+    const stack = [];
+    for (const t of toks) {
+      if (t[0] === '</outline>') { const f = stack.pop(); if (f) sections.push(f); continue; }
+      const attrs = t[1] || '';
+      const pro = promote(un((attrs.match(/\btext="([^"]*)"/) || [])[1] || ''));
+      const text = pro.text;
+      let props = pro.props.slice();
+      const pm = attrs.match(/\b_props="([^"]*)"/);
+      if (pm) { try { props = props.concat(JSON.parse(un(pm[1]))); } catch (_) {} }
+      const node = { text, props, kids: [] };
+      if (stack.length) stack[stack.length - 1].kids.push(node);
+      if (t[2] !== '/') stack.push(node); else if (!stack.length) sections.push(node);
+    }
+    while (stack.length) sections.push(stack.pop());
+  }
+  const byHead = new Map();
+  for (const s of nonEmpty(sections, 'parsed starter sections'))
+    if (/^\s*#{1,6}\s/.test(s.text) && s.kids.length >= 2) byHead.set(s.text.trim(), s.kids);
+  // Named rather than counted: a count would stay green while the wrong five passed.
+  // Tag AND columns, because a section can keep its tag while silently losing the column that makes
+  // its + Total door worth having -- and asserting only the tag is what let the M4 mutation pass.
+  const WANT = [
+    ['## Habits (tag one as a habit and the nudge learns it)', 'habit', []],
+    ['## Claims and their sources (the check goes green when every claim is cited)', 'claim', []],
+    ['## Open threads', 'thread', []],
+    ['## Hours logged so far', 'task', ['hours']],
+    ['## Prototype card set', 'card', ['cost', 'focus']],
+  ];
+  for (const [head, tag, cols] of WANT) {
+    const kids = byHead.get(head);
+    assert.ok(kids, `the shipped section "${head}" must still exist (renamed? update this ratchet)`);
+    const shape = c.inferRowShape(kids.map(k => ({ text: k.text, props: k.props })));
+    assert.ok(shape, `"${head}" is a real list and must infer a shape, or it ships with no + Add door`);
+    assert.ok(shape.sharedTags.includes(tag), `"${head}" should share #${tag}, got [${shape.sharedTags}]`);
+    const got = shape.props.map(p => p.key);
+    for (const col of cols)
+      assert.ok(got.includes(col), `"${head}" should offer a ${col} column, got [${got}]`);
+  }
+});
+
 test('#1240 buildRow — assembles the bullet a filled form produces (fill values, we write the braces)', () => {
   const shape = t => c.inferRowShape(t);
   // expenses
@@ -24784,14 +24924,14 @@ test('#1427 the browser smoke still covers every defect class it was built for',
   const checks = nonEmpty(_browserSrc.match(/^test\('[^']+'/gm) || [], 'browser smoke checks');
   // A census ratchet, not a proof. It may shrink deliberately (delete a check and lower the floor,
   // carrying the reason) but it cannot shrink SILENTLY, which is how coverage usually leaves.
-  assert.ok(checks.length >= 6,
-    `the smoke covers 6 shipped defect classes; found ${checks.length}: ${checks.join(' | ')}`);
+  assert.ok(checks.length >= 7,
+    `the smoke covers 7 shipped defect classes; found ${checks.length}: ${checks.join(' | ')}`);
   // Every check must route through the shared skip, or a developer without playwright gets a red
   // suite for a dependency this repo deliberately does not commit.
   const guarded = (_browserSrc.match(/\{ skip: skip\(\) \}/g) || []).length;
   assert.equal(guarded, checks.length, 'every check carries { skip: skip() }');
   // The classes themselves, named so a rename that guts one is visible in the diff.
-  for (const want of [/boot/, /pill/i, /re-roll/, /Shift\+F10/, /Escape/, /command/])
+  for (const want of [/boot/, /pill/i, /re-roll/, /Shift\+F10/, /Escape/, /command/, /\+ Add door/])
     assert.ok(checks.some(c => want.test(c)), 'a check still covers ' + want);
 });
 
