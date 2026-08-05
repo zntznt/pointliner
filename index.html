@@ -6969,6 +6969,22 @@ function shadowedDeclKeys(events) {
 // reference, the reference reads the dash and the count said nothing was broken. So walk in
 // pre-order and count references that have seen no declaration of the name yet.
 // DOM-free: takes a root, walks the same [[var:key]] + node.vars pairing collectVars does.
+// #1418: does this expression NAME this variable? The same identifier scan mathErrorReason uses --
+// a dotted name is ONE identifier, and a name followed by '(' is a function call, not a variable --
+// lifted here so the orphan count and the error reason agree about what a reference is. Pure.
+function exprNamesVar(expr, name) {
+  const nm = String(name || '').toLowerCase();
+  if (!nm) return false;
+  const s = String(expr || '');
+  const re = /[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    if (/^\s*\(/.test(s.slice(re.lastIndex))) continue;   // a call, not a variable
+    if (m[0].toLowerCase() === nm) return true;
+  }
+  return false;
+}
+
 function orphanedVarRefCount(rootNode, name) {
   const nm = String(name || '').toLowerCase();
   if (!nm) return 0;
@@ -6983,6 +6999,22 @@ function orphanedVarRefCount(rootNode, name) {
       if (v.expr) declaredAbove = true;            // a declaration covers every reference after it
       else if (!declaredAbove) orphans++;          // a reference with nothing above it has no value
     }
+    // #1418: a bare {total} reference pill was counted and `{= total * 2}` was not, so freezing a
+    // declaration reported "nothing broken" while a math pill dropped to #ERR (bad ref). MEASURED:
+    // the bare form warned, the expression form said nothing. A reference is a reference whichever
+    // engine holds it -- count the EXPRESSION pills that name it too.
+    //
+    // Within a single point the var tokens are read before the expressions, so a point that both
+    // declares and uses the name on one line is treated as declaration-first. That is the common
+    // reading order and the count is a warning rather than a contract; it is not worth a second pass.
+    for (const rec of [...(node.math || []), ...(node.est || [])])
+      if (node.text.includes(`[[math:${rec.key}]]`) || node.text.includes(`[[est:${rec.key}]]`))
+        if (!declaredAbove && exprNamesVar(rec.expr, nm)) orphans++;
+    // a variable whose own expression names it breaks too, and its dependents after it -- counted
+    // one level, which is what the sentence can honestly claim.
+    for (const v of node.vars || [])
+      if (v.expr && v.name && v.name.toLowerCase() !== nm && node.text.includes(`[[var:${v.key}]]`)
+          && !declaredAbove && exprNamesVar(v.expr, nm)) orphans++;
     for (const c of node.children || []) walk(c);
   })(rootNode);
   return orphans;
