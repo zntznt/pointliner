@@ -5233,3 +5233,75 @@ the whole fix rests on) -- and one negative control green.
 Driven: a run of two mentions linked one after the other without re-entering the point, a mid-line
 caret returned to its own offset, the #1399 keyboard landing unchanged, and undo still restoring the
 mention.
+
+## UXP-313 -- a raw `[[]]` on screen and a bare node id in the export (#1402)
+
+**Two causes, and neither is the one the issue names.** The report reads it as the `linkText`
+`depth > 0` rule meeting a caption. That is half of it; the `[[]]` on screen is something else
+entirely.
+
+### Cause 1: the caption strip ate the token's id
+
+`stripCaptionTags` applies the hashtag rule to raw text, and a link token is `[[#vt8cabxe]]`. That
+`#vt8cabxe` matches the hashtag pattern **exactly** -- preceded by `[`, so the word-boundary
+lookbehind passes; letters present, so the letter guard passes -- so the strip removed the id and left
+a literal `[[]]`. Measured directly:
+
+```
+stripCaptionTags('Ecological rationality argued in [[#vt8cabxe]]')
+  -> 'Ecological rationality argued in [[]]'
+```
+
+**`collectTags` has had the guard since UXP-109** -- `tagScanText` blanks every `[[…]]` before
+scanning, and its comment names this exact hazard, "so neither the `#id` inside a link nor the `#A`
+inside a priority marker leaks a phantom tag." This sibling never got it. The seventh instance this
+session of a capability the code already had, applied to some members of a family and not others.
+
+### Cause 2: the recursion terminal printed an internal id
+
+`if (depth > 0) return id` made a bare node id **user-visible** -- on screen through the caption, and
+in exported `.md` and `.txt`, which #1111 forbids outright. Two changes, both bounded:
+
+* the budget is **2**, so a title that itself holds a link resolves. Measured on the reporter's
+  document: at 1 the export leaks 3 ids, at 2 it leaks 0 and reads
+  *"Ecological rationality argued in Gigerenzer 1996 On narrow norms"* -- the text the issue asks for.
+* past the budget the reference is **dropped**, never printed as an id. This is not #1110's mistake:
+  that was stripping every link at the top level, which deleted the names. This is the terminal of a
+  recursion that has already carried two levels of names, and it is what makes an A-B title cycle
+  finite (`alpha beta alpha beta`, bounded, no id).
+
+### The fix changes the failure mode, so every sink had to be checked
+
+A token used to be gutted to `[[]]`; now it survives intact. Any sink still stripping RAW text would
+therefore show a literal `[[#id]]`, which is worse. All 12 call sites were enumerated from source and
+checked: `displayText` resolves internally, `backlinkSnippet` ends in `stripMd(linkText(line))`,
+`graphNodeLabel`'s input is resolved by its injected resolver (#1110), `matchableNodeNames` feeds from
+the token-dropping `forMatch` arm. **Three did not:** `renderLinkPill`'s live title, its mirror-depth
+fallback, and `renderCrossLinkPill` -- and `nodeNames`, which answers "what is this point called" for
+mention matching. All four now resolve before they strip, and the census is frozen as a ratchet.
+
+The census had to read `NC`: 13 matches in raw source, 12 in code. The thirteenth is **my own comment
+quoting the call** -- the #1398 lesson, met twice in one session.
+
+### A premise corrected
+
+The issue notes the `.node-link` spans have **no `aria-label`** "so assistive tech reads the empty
+brackets too." The missing label is not the defect and should not be added: for a `role="link"` with
+visible text, the visible text IS the accessible name, and duplicating it in an `aria-label` is the
+anti-pattern. Once the text is right, AT reads the right thing. Verified after the fix.
+
+**Deliberately unchanged:** an *unresolvable* target still degrades to its bare id at the top level.
+That is the recorded #1111 arm -- a target that does not exist has no name to show -- and the pill is
+marked `.node-link-broken` and says "(broken link)" in its accessible name. Different case from an id
+leaking where a name was available.
+
+### Verification
+
+`node --test tests/test.mjs` green at **2044**. Ten mutations, each asserting its target present
+first, nine red at the named pin -- including two toward the wrong shape (dropping the unresolvable
+arm so a dead target shows nothing at all; adding a new caption sink that strips raw text, which the
+census caught) -- and one negative control green.
+
+Perf, since `renderLinkPill` now calls `linkText` per pill: 800 points with 800 link pills, median of
+nine renders, **6.2ms before / 6.6ms after**, inside the run-to-run spread (before's own max was
+7.8ms).

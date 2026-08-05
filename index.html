@@ -3403,13 +3403,25 @@ function textForDisplay(node) {
 // (caption, depth, same-doc, cross-doc, unresolvable) live here once. Note `emit` is deliberately
 // NOT applied to the depth > 0 arm - that is a link inside a title being read for its words, not a
 // link occupying a slot in the exported sentence.
+const LINK_RESOLVE_DEPTH = 2;   // #1402: see the terminal branch below
 function linkText(str, depth = 0, emit) {
   if (!str || str.indexOf('[[') === -1) return str;
   const out = emit || ((text) => text);
   WLINK_RE.lastIndex = 0;
   return str.replace(WLINK_RE, (_, docId, id, label) => {
     if (label) return out(label, docId || '', id);             // explicit caption wins
-    if (depth > 0) return id;                                  // inside a resolved title — don't recurse
+    // #1402: the old rule was `depth > 0 → return id`, and that bare node id was user-visible: it
+    // reached the screen through the link caption and it reached exported .md and .txt files, which
+    // #1111 forbids outright. Two changes, both bounded:
+    //   * the budget is 2, not 1, so a title that itself holds a link resolves ("Ecological
+    //     rationality argued in Gigerenzer 1996"), which is the reported case and the only nesting
+    //     that occurs in practice. Measured: at 1 the reporter's document leaks an id; at 2 it
+    //     resolves fully; a third level is a title inside a title inside a title.
+    //   * past the budget the reference is DROPPED, never printed as an id. This is the one place
+    //     stripping is right, and it is not #1110's mistake: that was stripping every link at the
+    //     top level, which deleted the names. Here it is the terminal of a recursion that has
+    //     already carried two levels of names, and it is what makes an A↔B title cycle finite.
+    if (depth > LINK_RESOLVE_DEPTH) return '';
     if (!docId || docId === (root.docId || '')) {              // same-doc: live title
       const tn = nodeById(id);
       if (tn) return out(linkText(textForDisplay(tn), depth + 1) || id, docId || '', id);
@@ -3447,7 +3459,16 @@ function mdLinkOut(text, id, docFile) {
 // collectTags hashtag rule (nested tags via /), then collapses the whitespace it leaves behind.
 const CAPTION_TAG_RE = /(?<![a-zA-Z0-9])#(?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*/g;
 function stripCaptionTags(s) {
-  return String(s ?? '').replace(CAPTION_TAG_RE, '').replace(/\s{2,}/g, ' ').trim();
+  // #1402: never look INSIDE a [[…]] token. `[[#vt8cabxe]]` has an id that matches the hashtag
+  // rule exactly, so the strip ate the id and left a literal `[[]]` on screen -- the reported bug.
+  // collectTags has had this guard since UXP-109 (tagScanText blanks every token before scanning),
+  // and its comment names this exact hazard; this sibling never got it. Splitting on a capturing
+  // group keeps the tokens as odd-indexed chunks, which pass through untouched.
+  return String(s ?? '')
+    .split(/(\[\[[^\]]*\]\])/)
+    .map((chunk, i) => (i % 2 ? chunk : chunk.replace(CAPTION_TAG_RE, '')))
+    .join('')
+    .replace(/\s{2,}/g, ' ').trim();
 }
 
 // Title for a no-pill display sink: textForDisplay (prefixes/markers stripped) with
@@ -3514,7 +3535,7 @@ function aliasesOf(node) {
 // using the tag-suffixed name never found it, silently no-op'ing the click).
 function nodeNames(node) {
   const out = [];
-  const t = stripCaptionTags(textForDisplay(node) || '');
+  const t = stripCaptionTags(linkText(textForDisplay(node) || ''));   // #1402: a title holding a link answers to its RESOLVED name, which is what prose would contain
   if (t) out.push(t);
   for (const raw of aliasesOf(node)) {
     const a = stripCaptionTags(raw);
@@ -7796,7 +7817,7 @@ function renderLinkPill(target, label) {
   // a transclusion (_inlineDepth > 0) fall back to title-only so A↔B cycles can't recurse.
   if (label === '') {
     if (_inlineDepth > 0) {
-      const title = escHtml(stripCaptionTags(textForDisplay(tn)) || '(untitled)');
+      const title = escHtml(stripCaptionTags(linkText(textForDisplay(tn))) || '(untitled)');   // #1402: resolve a nested link, like the backlink rows already do
       return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
     }
     // #917: read the block gate BEFORE rendering — renderNodeInline recurses into mdInline,
@@ -7812,7 +7833,10 @@ function renderLinkPill(target, label) {
   }
   // #943: a live TITLE reference (label undefined) strips the target's #tags from the caption;
   // a fixed caption (label set) is the user's own words and is left untouched (the `||` short-circuits).
-  const title = escHtml(label || stripCaptionTags(textForDisplay(tn)) || '(untitled)');
+  // #1402: a live title may itself hold a link. Resolve it before stripping tags, the way the
+  // backlink rows (stripCaptionTags(linkText(title))) and the pickers already do -- this sink was
+  // the one that did not, so a nested reference reached the reader as a literal `[[]]`.
+  const title = escHtml(label || stripCaptionTags(linkText(textForDisplay(tn))) || '(untitled)');
   return `<span class="node-link" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
 }
 
@@ -7858,7 +7882,10 @@ function renderCrossLinkPill(docId, target, label) {
   // identical dead pills. Fall back to the DOC NAME instead: "in <doc>" reads as a real destination.
   const docName = workspaceIndex?.nameByDocId?.get(docId);
   // #943: strip the target's #tags from the live-title caption (label undefined); a fixed label wins first.
-  const capText = label || stripCaptionTags(title) || (docName ? 'in ' + displayName(docName) : 'another document');
+  // #1402: the same-doc twin resolves a nested link in the caption; this one did not, and the
+  // workspace index stores titles RAW (the backlink rows say so at their own stripCaptionTags
+  // call). Same family, same fix -- resolve, then strip tags.
+  const capText = label || stripCaptionTags(linkText(title)) || (docName ? 'in ' + displayName(docName) : 'another document');
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another document)')}">${cap}</span>`;
