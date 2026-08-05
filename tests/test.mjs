@@ -11487,6 +11487,41 @@ test('#951: the Rolls log has a first-class toolbar toggle (fa-scroll) mirroring
     assert.ok(_src.includes(`'fa-${g}'`), `fa-${g} must remain in the FA subset`));
 });
 
+test('#1405 the always-visible toggle is derived on EVERY path that replaces root', () => {
+  // syncRollLogLabel was correct and was only ever CALLED from openFileMenu, so the File-menu row
+  // read "On" while the always-visible toolbar button read aria-pressed="false" and sat un-lit --
+  // and the next click, which a user makes to turn logging ON, turned it off. Driven, after a
+  // reload: root.rollLog.on === true, File row "On"/true, toolbar "false"/inactive.
+  //
+  // root.rollLog is per-DOCUMENT, so the census is "every path that assigns root", not "boot":
+  const PATHS = {
+    applyAutosaveData: 'the localStorage/OPFS boot restore',
+    adoptDoc: 'File > Open, New, workspace switch, reopen',
+    restoreSnapshot: 'undo/redo — found by driving, not by the report',
+  };
+  for (const [fn, why] of Object.entries(PATHS))
+    assert.ok(fnBody(_src, fn).includes('syncRollLogLabel()'), `${fn} must re-derive it (${why})`);
+  // and the boot tail, which has no restore call at all — the same hole #586 fixed for verbosity,
+  // and it sits directly beside that fix.
+  assert.ok(/syncVerbosityClass\(\);\s*\n\s*syncRollLogLabel\(\);/.test(NC),
+    'the boot tail derives it beside syncVerbosityClass, which is there for exactly this reason');
+  // the two siblings that have always synced here are the argument; they must not regress
+  const aad = fnBody(_src, 'applyAutosaveData');
+  assert.ok(/btn-done'\);[\s\S]{0,160}setAttribute\('aria-pressed'/.test(aad), 'btn-done still syncs');
+  assert.ok(aad.includes('syncNotesBtn()'), 'btn-notes still syncs');
+  // one function, both doors: the toolbar button and the File-menu row derive from the same read
+  const sync = fnBody(_src, 'syncRollLogLabel');
+  assert.ok(/const on = !!root\.rollLog\?\.on;/.test(sync), 'it reads the document, not a cached flag');
+  assert.ok(/getElementById\('btn-rolllog'\)\?\.setAttribute\('aria-pressed'/.test(sync),
+    'and writes the File-menu row from that one read');
+  // BOTH halves of the toolbar button. Caught by mutation: dropping the aria write and keeping the
+  // tint left the pin green while the screen-reader half -- the half the issue is about -- was gone.
+  assert.ok(/tb\.setAttribute\('aria-pressed', on \? 'true' : 'false'\)/.test(sync),
+    'the toolbar button carries the state to assistive tech');
+  assert.ok(/tb\.classList\.toggle\('active', on\)/.test(sync),
+    'and carries it visually');
+});
+
 test('GUIDE drift guard: every essSection has its own Shortcuts nav entry', () => {
   // The Shortcuts nav group is five entries, one per essSection: each renders the one
   // scrollable page (shortcutsAllBody) and scrolls to its own section via scrollTo. A new
