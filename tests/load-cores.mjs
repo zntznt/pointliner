@@ -300,7 +300,7 @@ export function loadCores() {
     'rolltableDefToRules','migrateRolltables',
     'rollPickSource','formatVarValue','flattenArtifacts','flattenSpoilers','frozenTokenText','mathErrorReason','mathReasonPhrase',
     'fnArities','fnArityProblem','arityPhrase',   // #1169: a known function at the wrong arity
-    'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText','clockAtOrdinal','manualClocksOf','collectPillActions', 'pillTokenFor',   // #1116: a rendered pill can name its own token
+    'parseClock','clockGlyph','formatClock','advanceClock','advanceClockInText','clockAtOrdinal','manualClocksOf','collectPillActions','varEditLabel', 'pillTokenFor',   // #1116: a rendered pill can name its own token
     'clockFillFor','completingChildIndex','clockCompletionCue','progressCount','tallyMarkers',
     'parseMeter','resolveMeter','meterBar','formatMeter','meterPool','childPropNumber',
     'parseActionPill','actionRhsValue','actionNewValue','formatStatValue',

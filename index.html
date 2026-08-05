@@ -21484,13 +21484,17 @@ function collectPillActions(node, scopeText = null) {
     rows.push({ icon:PEN, label:'Edit chain' + tag(mk.name), fn:() => editMarkov(node, mk.key) });
     rows.push(freeze('markov', mk.key));
   }
-  for (const v of node.vars || []) if (v.kind === 'pick' && has('var', v.key)) {
-    rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-roll pick' + tag(v.name), fn:() => rerollPickVar(node, v.key) });
-    rows.push(freeze('var', v.key));
-  }
-  // #952: the keyboard door for a distribution variable, whose body-click gesture is re-sample.
-  for (const v of node.vars || []) if (v.kind === 'dist' && has('var', v.key)) {
-    rows.push({ icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' }, label:'Re-sample value' + tag(v.name), fn:() => rerollDistVar(node, v.key) });
+  // #1403: EVERY variable flavour, in one loop. Two of them had rows because they have a CLICK
+  // gesture (a pick re-rolls, a dist re-samples, #952) -- and the rows stopped at that gesture. A
+  // formula variable has no click gesture, so it had no PILLS section at all. All three share ONE
+  // edit dialog (editVar handles every kind), and the pencil that opens it is tabindex="-1", so
+  // without a row here that dialog is mouse-only and the pill's own "Click to edit" is a promise a
+  // keyboard user cannot collect. The section IS the keyboard door (UXP-13/14).
+  for (const v of node.vars || []) if (has('var', v.key)) {
+    const VAR = { fa:'fa-solid fa-dollar-sign', fb:'$' };
+    if (v.kind === 'pick') rows.push({ icon:VAR, label:'Re-roll pick' + tag(v.name), fn:() => rerollPickVar(node, v.key) });
+    if (v.kind === 'dist') rows.push({ icon:VAR, label:'Re-sample value' + tag(v.name), fn:() => rerollDistVar(node, v.key) });
+    rows.push({ icon:PEN, label:varEditLabel(v.kind) + tag(v.name), fn:() => editVar(node, v.key) });
     rows.push(freeze('var', v.key));
   }
   // Manual clocks and spoilers are plain-text tokens (no sidecar), so surface them by their
@@ -31175,11 +31179,18 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   requestAnimationFrame(() => { nameInp.focus(); nameInp.select(); });
 }
 
+// #1403: ONE name for one door. The bullet-menu row, the dialog it opens and the pill's own pencil
+// all read the same words -- they were three different strings for the same dialog ("Edit uncertain
+// variable" on the pencil, "Edit variable" on the dialog it opened, and no row at all).
+function varEditLabel(kind) {
+  return kind === 'pick' ? 'Edit random variable' : kind === 'dist' ? 'Edit uncertain variable' : 'Edit variable';
+}
+
 function editVar(node, key) {
   const v = node?.vars?.find(x => x.key === key);
   if (!v) return;
   openVarDialog({
-    title: v.kind === 'pick' ? 'Edit random variable' : 'Edit variable',
+    title: varEditLabel(v.kind),
     submitLabel: 'Save',
     name: v.name, expr: v.expr, kind: v.kind, seed: v.seed, existing: key,
     onResult: result => {
