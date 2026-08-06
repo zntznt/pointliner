@@ -9,7 +9,9 @@ node --test tests/test.mjs      # the gate: pure cores + source pins + drift gua
 node --test tests/browser.mjs   # six checks driving real Chromium; skips cleanly without playwright
 ```
 
-No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~2000 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it.
+No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~2000 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it. That number is parsed out of this sentence and ratcheted by a test, so keep the phrasing.
+
+**The floor has a second half, and it is not optional.** A floor living in the tree is structurally blind to its own checkout being stale: a base 500 tests old carries the stale floor with it, compares 1500 against 1400, and passes. Only a number from *outside* the tree can see that, which is what the `staleness-floor` CI job does — it compares this branch's count against `origin/main`. If you touch one half, check the other.
 
 ## Architecture at a glance
 
