@@ -6344,3 +6344,42 @@ not a copy of their gating -- the sibling-divergence trap -- and a pin asserts t
 level, and both negative cases). Five mutations, each asserting its target present first: remove the
 `render()` call; append the bar when empty; fork the gating from the row path; drop the refresh path;
 let the heading markers leak into the label. All five red.
+
+---
+
+## UXP-329 -- the add-row door family is mouse-only (P2/P3, pre-existing)
+
+**Status: open.** Found while driving #1240 phase 4 (UXP-328); predates it and is NOT a defect of that
+change. Filed rather than silently widened.
+
+### The finding, driven
+
+All five doors -- `+ Add`, `+ Total`, `+ Check`, `+ Variance`, `+ Card` -- are **mouse-only**:
+
+- each is built with `tabindex="-1"`, and **no keydown handler anywhere references
+  `.addrow-affordance`**. The only key handling is the element's own Enter/Space listener, which can
+  never fire because nothing can focus it by keyboard.
+- driven: seed a shaped list, focus a point, press Tab fourteen times -- every stop is
+  `.node-content`. A door is never reached.
+- the `/` route `guidance/guided-authoring-proposal.md` promises ("**Standard** -> the slash menu lists
+  'Add [noun]'... **Lean** -> `renderLeanSlashTip` shows the one-line caret tip") **was never built**:
+  `openAddRowForm` has exactly one caller in the file, the door itself.
+
+### Why it matters
+
+The proposal's own verbosity section rests on this: the "+ Add" affordance is justified as an
+edit-pencil-class convenience *because* "the capability is still one keystroke away" and reachable
+"via `/` -- riding the existing three-tier menu surface, exactly like every other command." Neither is
+true today, so a capability the panel called its #1 barrier is reachable by mouse only. That is P2
+(a visible front door that keyboard users cannot open) and P3 (operable) unmet together.
+
+In Lean the doors are `opacity:0` at rest and revealed by `:focus-visible` -- a reveal that cannot
+trigger, since focus cannot arrive. So Lean users have no door at all.
+
+### The fix shape (not started)
+
+Either give the family a keyboard path (a roving entry from the row, as UXP-240 did for the timeline
+and graph), or build the `/` command the proposal specifies, or both. The `/` command is the one the
+proposal already designed and the one that satisfies every tier by construction. **Both arms:** the
+command pool is pure and belongs in `load-cores`; the keyboard path must be DRIVEN, since a handler on
+an unfocusable element is the #1021 bug that passes its own source-pin.
