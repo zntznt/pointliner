@@ -10,7 +10,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2036 declarations in 149 sections.**
+**2039 declarations in 150 sections.**
 
 ## doc-cache registry
 
@@ -2365,6 +2365,12 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openAddRowForm` — Built on openInsertDialog (the shared dialog shell, UXP-247) so it inherits the draft-save, focus,
 - `affordanceDirtyIds` — #1240 phase 1b: the VISIBLE front door. On a heading whose children share a shape, append a "+ Add"
 - `refreshRowChrome` — The DOM half. Everything buildRow puts on a point OUTSIDE `.node-content` goes stale after a commit,
+
+## #1240 phase 4: the doors of the point you are LOOKING AT
+
+- `viewDoorHost` — DOM-free. Every "+ Add" / "+ Total" / "+ Check" / "+ Variance" door hangs off its parent's
+- `renderViewDoors` — The DOM half: give the view parent's doors a home at the END of the list they belong to. It
+- `refreshViewDoors` — Keep the view bar honest after an edit that changes the shape (a new property makes a column
 - `maybeAddRowAffordance`
 - `addDeckCard` — #1240 phase 3 DOM half: append a card to a deck record + re-render (round-trips to the shuffle shorthand).
 - `openAddCardForm`

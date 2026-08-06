@@ -6286,3 +6286,61 @@ this session; the discipline is load-bearing, not ceremony.
 first: add a function without regenerating (freshness gate fails); rename a section heading (census
 red); drop the `async` form from the extractor (cross-registry parity red); commit the
 `--with-lines` output (no-line-numbers pin red).
+
+---
+
+## UXP-328 -- the doors of the point you are looking at (#1240 phase 4)
+
+**Status: shipped.** UX change. Conformance below.
+
+### Phase 4 as filed was already done; measurement moved the work
+
+- *"Onboarding nudge on first landing in a starter"* -- **already shipped.** `maybeAddRowAffordance`
+  fires `fireNudge('addrow-affordance', ...)` when a door first renders: Guided-only, once-ever,
+  exactly as the proposal's verbosity section specifies.
+- *"Refine where the affordance appears"* -- **already shipped for starters.** Parsed all 14 starter
+  documents: **26 shaped lists, 26 with a door.** #1330 had closed it. No gap where the phase assumed one.
+
+### The real gap, found by driving the app
+
+Every `+ Add`/`+ Total`/`+ Check`/`+ Variance` hangs off its PARENT's rendered row. The point you are
+LOOKING at has no row in its own view. Driven, pre-fix:
+
+| | doors |
+|---|---|
+| shaped list under `## Groceries` | `+ Add` `+ Total` `+ Check` |
+| **zoom INTO that same heading** | **none** |
+| **the same rows at the top level** | **none** |
+
+The zoom case is the **P1 break**: you zoom in to work on precisely that list and its controls leave on
+arrival. The root case is the blank-document case -- the doors are gated behind first knowing to create
+a parent heading, which is the outline knowledge a non-syntax user does not have yet.
+
+`viewDoorHost` (pure) decides whether the view hosts the doors; `renderViewDoors` places them at the end
+of the rows they act on. It calls the SAME `maybe*Affordance` builders the row path calls, deliberately
+not a copy of their gating -- the sibling-divergence trap -- and a pin asserts the reuse.
+
+### Conformance Statement
+
+- **P1 Predictable** ✅ -- the fix IS the P1 restoration: the same list keeps the same doors whether you
+  are zoomed into it or looking at it from above.
+- **P2 Discoverable** ✅ -- no new syntax; the door is the existing visible front door, now present where
+  it was missing. Negative case measured: ordinary prose grows no chrome, and a bar that earns no doors
+  is never appended.
+- **P3 Reachable** ⚠️ **pre-existing gap, not closed here, filed separately.** The bar carries
+  `role="group"` and an `aria-label` naming its point (with heading markers stripped, so a reader does
+  not say "hash hash Groceries"), and its children are the same focusable widgets as the row path. But
+  the whole family is **mouse-only**: `tabindex="-1"` with no keydown path, and driving Tab reaches
+  `.node-content` and never a door. The `/` route the proposal promises was never built --
+  `openAddRowForm` has exactly one caller, the door itself. That is P2/P3 unmet for all five doors,
+  predates this phase, and wants its own change rather than being quietly widened.
+- **P4 Responsive** ✅ -- the existing door actions already flash/announce; unchanged.
+- **P5 Coherent** ✅ -- reuses `.addrow-affordance` wholesale, so the verbosity dial (Lean hides at rest,
+  keyboard focus reveals) and the #1245 touch rail apply with no new rules. The new CSS is layout only.
+
+### Verification
+
+`tests/test.mjs` **2069** green; `tests/browser.mjs` **8** green (the new check is #8, driving zoom, top
+level, and both negative cases). Five mutations, each asserting its target present first: remove the
+`render()` call; append the bar when empty; fork the gating from the row path; drop the refresh path;
+let the heading markers leak into the label. All five red.

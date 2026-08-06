@@ -166,6 +166,28 @@ full teaching surface. That is the dial working as designed, not a fourth varian
   that unlock #1245 (mobile / phone-first quick entry) — the same "fill values, we write the braces" forms
   are what make one-handed phone entry possible.
 
+  **Phase 4 status (shipped): the two halves as filed were already done; the real gap was elsewhere.**
+  Measured before building, rather than assumed:
+  - *"Onboarding nudge on first landing in a starter"* — **already shipped.** `maybeAddRowAffordance`
+    fires `fireNudge('addrow-affordance', …)` the first time a door renders, which is Guided-only and
+    once-ever, exactly as the verbosity section above specifies.
+  - *"Refine where the affordance appears"* — **already shipped for starters.** Parsing all 14 starter
+    documents: **26 shaped lists, 26 with a door.** #1330 (heading-only → plain bullets with a number
+    column) had closed it. There was no gap left where this phase assumed one.
+  - **The actual gap, found by driving the app:** every door hangs off its PARENT's rendered row, and
+    the point you are *looking at* has no row in its own view. So zooming into `## Groceries` made its
+    `+ Add`/`+ Total`/`+ Check` **disappear**, and a shaped list at the top level of a document never
+    had them. The zoom case is the P1 break — you zoom in to work on that list and its controls leave.
+    `viewDoorHost` + `renderViewDoors` give the view parent's doors a home at the end of the rows they
+    act on, reusing the row builders verbatim so the two placements cannot drift.
+
+  **Still open, and NOT closed by this phase (filed separately):** the doors are **mouse-only**. They
+  carry `tabindex="-1"` with no keydown path, and driving Tab through the outline reaches
+  `.node-content` and never a door. The `/` route this document promises above ("Standard → the slash
+  menu lists 'Add [noun]'") was never built — `openAddRowForm` has exactly one caller, the door itself.
+  So the *capability* has no keyboard path at any tier, which is P2/P3 unmet for the whole family, not
+  a defect of this phase. It predates Phase 4 and wants its own change.
+
 ## Binding constraints (all satisfied)
 
 - **P5 — no new syntax.** Every form writes existing braces; the syntax inventory is unchanged.

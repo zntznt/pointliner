@@ -272,3 +272,58 @@ test('a shipped list section renders its + Add door, and the door adds a row', {
     'clicking the door opened its form or added a row, rather than doing nothing');
   await pg.close();
 });
+
+// #1240 phase 4 — the doors of the point you are LOOKING AT.
+//
+// Every "+ Add"/"+ Total"/"+ Check" door hangs off its PARENT's rendered row. The point you are
+// looking at has no row in its own view (it is the masthead, or it is the document), so its doors
+// had nowhere to hang and silently vanished. Measured on the pre-fix build by driving it:
+//   zoom into "## Groceries"      -> its three doors disappeared
+//   a shaped list at the top level -> never had them at all
+// The zoom case is the P1 break: you zoom in to work on that exact list and its controls go away on
+// arrival. This drives BOTH, plus the two negative cases, because "complete the set" onto a list
+// that should stay door-free is its own bug.
+test('#1240 the view parent keeps its doors when its row is not on screen', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const doc = body => `<?xml version="1.0" encoding="UTF-8"?><opml version="2.0">` +
+    `<head><title>Notes</title></head><body>${body}</body></opml>`;
+  const rows = `<outline text="Aldi #august {prop cost: 92.4}"/><outline text="Lidl #august {prop cost: 40.1}"/>`;
+
+  const view = (xml, zoom) => pg.evaluate(([x, z]) => {
+    adoptDoc(fromOpml(x)); focusedId = null; render();
+    if (z) { focusedId = root.children[0].id; render(); }
+    const bar = document.querySelector('#outline > .view-doors');
+    return {
+      row: [...document.querySelectorAll('.node-row .addrow-affordance')].map(e => e.textContent.trim()),
+      view: bar ? [...bar.querySelectorAll('.addrow-affordance')].map(e => e.textContent.trim()) : [],
+      label: bar ? bar.getAttribute('aria-label') : null,
+    };
+  }, [xml, zoom]);
+
+  const zoomed = await view(doc(`<outline text="## Groceries">${rows}</outline>`), true);
+  assert.ok(zoomed.view.includes('+ Add'),
+    'zoomed into the list, its + Add must still be reachable: ' + JSON.stringify(zoomed));
+  assert.ok(zoomed.view.includes('+ Total'), 'and the + Total it earned: ' + JSON.stringify(zoomed.view));
+  assert.equal(zoomed.label, 'Add to Groceries',
+    'the group names the point it acts on, with the heading markers stripped (not "## Groceries")');
+
+  const top = await view(doc(rows), false);
+  assert.ok(top.view.includes('+ Add') && top.view.includes('+ Total'),
+    'a shaped list at the top level of a document earns its doors: ' + JSON.stringify(top));
+
+  // Unchanged: a row that CAN host its doors still does, and the view adds no second copy.
+  const nested = await view(doc(`<outline text="## Groceries">${rows}</outline>`), false);
+  assert.ok(nested.row.includes('+ Add'), 'the row path is untouched');
+  assert.deepEqual(nested.view, [], 'and the view does not duplicate what a row already carries');
+
+  // The negative case. An ordinary prose outline must grow no chrome at all.
+  const prose = await view(doc(`<outline text="Woke up late"/><outline text="Rewrote chapter one"/>`), false);
+  assert.deepEqual(prose.view, [], 'ordinary prose at the top level stays door-free');
+
+  // A door that renders and does nothing is the #1021 shape wearing a different hat.
+  const acted = await pg.evaluate(() => {
+    const bar = document.querySelector('#outline > .view-doors');
+    return !!bar;
+  });
+  assert.ok(acted === false, 'prose left no bar behind to click');
+});

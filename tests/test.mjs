@@ -1333,6 +1333,49 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
 // the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
 // broken form fails here rather than silently removing its door again.
+// ── #1240 phase 4: the doors of the point you are LOOKING AT ───────────────────────────────────
+// Every "+ Add"/"+ Total"/"+ Check"/"+ Variance" door hangs off its PARENT's rendered row. The point
+// you are looking at has no row in its own view, so its doors had nowhere to hang. Measured by
+// driving the app before building: zoom into "## Groceries" and its three doors vanish; a shaped
+// list at the top level of a document never had them at all. The zoom case is the P1 break -- you
+// zoom in to work on that list, and the controls for it disappear on arrival.
+test('#1240 viewDoorHost: the view hosts the doors only when a row cannot', () => {
+  const shaped = { text: 'x', children: [{ text: 'a' }, { text: 'b' }] };
+  assert.equal(c.viewDoorHost(shaped), shaped, 'a 2+ row list earns a host');
+  // maybeAddRowAffordance needs 2+ rows; anything less can have no shape to infer.
+  assert.equal(c.viewDoorHost({ text: 'x', children: [{ text: 'a' }] }), null);
+  assert.equal(c.viewDoorHost({ text: 'x', children: [] }), null);
+  assert.equal(c.viewDoorHost(null), null);
+  assert.equal(c.viewDoorHost(undefined), null);
+  // Views that are not the outline: the board replaces the row list, a filtered view is not the
+  // list you would be adding to, and a zoomed base is a table widget with its own controls.
+  assert.equal(c.viewDoorHost(shaped, { corkOn: true }), null, 'corkboard hosts no row doors');
+  assert.equal(c.viewDoorHost(shaped, { searchQuery: 'aldi' }), null, 'a filtered view hosts none');
+  assert.equal(c.viewDoorHost({ ...shaped, type: 'base' }), null, 'a zoomed base hosts none');
+  // Opts default: called with no second argument it must not throw on a missing options bag.
+  assert.doesNotThrow(() => c.viewDoorHost(shaped));
+});
+
+test('#1240 phase 4 wiring: the view bar is rendered, refreshed, and reuses the row builders', () => {
+  const fn = fnBody(_src, 'renderViewDoors');
+  // It must call the SAME builders the row path calls. A copy of their gating would drift, which is
+  // the sibling-divergence trap; pin the reuse so a future edit cannot quietly fork it.
+  for (const b of ['maybeAddRowAffordance', 'maybeAddFieldAffordance', 'maybeAddCardAffordance'])
+    assert.ok(fn.includes(b + '(host, bar)'), `renderViewDoors must reuse ${b}, not reimplement its gating`);
+  assert.ok(/if \(!bar\.children\.length\) return null/.test(fn),
+    'a bar that earned no doors must not be appended — an ordinary prose outline grows no chrome');
+  assert.ok(/role', 'group'/.test(fn) && /aria-label/.test(fn),
+    'out of row context the group must say which point it acts on (P3)');
+  assert.ok(/#\{1,6\}/.test(fn),
+    'the heading markers must be stripped from the label — a reader saying "hash hash Groceries" is syntax leaking into speech');
+  // The call site, not just the function: a tested builder proves nothing about whether render calls it.
+  assert.ok(/renderViewDoors\(vp, container, \{ corkOn, searchQuery \}\)/.test(_src),
+    'render() must call renderViewDoors with the view parent and the view flags');
+  // And the refresh path: an edit that makes a column totalable must reach a bar that has no row.
+  assert.ok(/refreshViewDoors\(\)/.test(fnBody(_src, 'commitActiveEdit')) || _src.includes('refreshViewDoors();'),
+    'a commit must refresh the view bar, which refreshRowChrome cannot reach');
+});
+
 // ── the staleness floor's second half: what a floor inside the tree cannot do ────────────────
 // The floor ITSELF is already enforced, further down, by "CLAUDE.md's staleness floor stays within
 // reach of the actual suite size": it parses the number out of CLAUDE.md, counts the suite's test
