@@ -44549,7 +44549,22 @@ function writeAutosavePayloadNow() {
   const payload = withFoldedActive(() => JSON.stringify({ root, focusedId, fileName, showDone, showNotes, verbosity, forcedTheme, fullWidth, accentId, agendaView, agendaShowRunning, agendaShowDone, agendaOverdueOnly, agendaSort, agendaFolderScope, ganttNamesW, savedAt: Date.now(), fileModified: (workspaceFile ? _wsKnownModified : 0) }));
   if (hasOPFS) writeOpfsAutosave(payload);             // durable primary (no 5MB cap) — coalesced, not awaited
   if (!autosaveDisabled) writeLocalAutosave(payload);  // fast-boot copy + fallback where OPFS is absent
-  if (workspaceFile) flushWorkspaceFile();             // continuous folder write (brief #4) — coalesced, not awaited
+  // #1440: `&& dirty` — the folder write follows the DOCUMENT, not the view. Ten of the twenty-four
+  // scheduleAutosave() call sites are pure view state (the agenda Running/Done/Overdue filters, its
+  // sort order and folder scope, the Gantt column width). Those live in the JSON payload above and
+  // change no point text, but this line rewrote notes.opml anyway: driven on a CLEAN document, one
+  // agenda-filter toggle produced one full serialize + atomic temp+move write whose body was
+  // identical apart from a fresh <dateModified>.
+  //
+  // The cost is not really the git diff (dateModified is one line in <head>); it is that an
+  // untouched document's mtime changes, which wakes Dropbox/iCloud/Syncthing to re-upload the whole
+  // file, re-anchors the staleness guard that exists to prevent clobbering, and re-serializes the
+  // entire tree on every drag frame of a Gantt resize.
+  //
+  // Gated HERE and not inside flushWorkspaceFile, because its three other callers must keep writing
+  // unconditionally: the reconcile "keep mine" choice (an explicit overwrite), the docId re-stamp
+  // (which markDirty()s first anyway), and its own _wsPending re-run after a coalesced write.
+  if (workspaceFile && dirty) flushWorkspaceFile();    // continuous folder write (brief #4) — coalesced, not awaited
   maybeBackupNudge(payload.length);                    // UXP-119: gentle backup reminder on the weakest durability tier
   _lastSavedAt = Date.now(); _savePending = false; updateSaveStatus();   // #1268: the working copy is written; the chip settles to "Saved just now"
 }

@@ -1333,6 +1333,27 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
 // the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
 // broken form fails here rather than silently removing its door again.
+// ── #1440: the folder write follows the DOCUMENT, not the view ─────────────────────────────────
+// Driven on a CLEAN document with a connected folder: toggling the agenda "Done" filter produced a
+// full serialize + atomic temp+move write of notes.opml whose body was identical apart from a fresh
+// <dateModified>. Ten of the twenty-four scheduleAutosave() call sites are pure view state.
+test('#1440 a view-only autosave tick does not rewrite the document file', () => {
+  const body = fnBody(_src, 'writeAutosavePayloadNow');
+  assert.ok(/if \(workspaceFile && dirty\) flushWorkspaceFile\(\)/.test(body),
+    'the folder write must be gated on `dirty` — an agenda filter or a Gantt drag changes no point ' +
+    'text, and rewriting the file anyway churns its mtime, wakes folder sync, and re-anchors the ' +
+    'staleness guard');
+  // Gated at the CALL SITE only. flushWorkspaceFile's other callers are deliberate unconditional
+  // writes, and pushing the gate inside would silently break all three.
+  const fn = fnBody(_src, 'flushWorkspaceFile');
+  assert.ok(!/^\s*if \(!dirty\) return;/m.test(fn),
+    'flushWorkspaceFile itself must stay ungated: the reconcile "keep mine" overwrite and the docId ' +
+    're-stamp call it directly and must still write');
+  // And the deliberate callers are still there to be broken.
+  assert.ok(nonEmpty(_src.match(/flushWorkspaceFile\(\)/g) || [], 'flushWorkspaceFile callers').length >= 4,
+    'the reconcile, docId-restamp, _wsPending and autosave callers must all survive');
+});
+
 // ── #1438 / UXP-329: the keyboard route to "add a row like these" ──────────────────────────────
 // The "+ Add" door was mouse-only: every affordance is tabindex="-1" with no keydown path, and
 // driving Tab through the outline reaches `.node-content` and never a door. The guided-authoring
