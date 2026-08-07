@@ -5093,6 +5093,23 @@ function firstEmptyRollup(expr, node, opts = {}) {
   return null;
 }
 
+// #1449: min/max over a QUOTED SEARCH that matched nothing. expandAggExpr collapses such a reducer
+// to the extremal identity (max → -Infinity, min → +Infinity) exactly as the BARE form does, but
+// firstEmptyRollup's regex only matches a bare identifier — so `max("due:overdue", cost)` escaped the
+// "nothing matched" cue its sibling `max(cost)` gets, fell through to the non-finite branch, and was
+// told it divides by zero. Nothing divided: ±Infinity is the identity element here, not n/0, and the
+// user was sent looking for a division that does not exist.
+//
+// Keyed on the SIGN, which is what makes this safe: an empty max can only be -Infinity and an empty
+// min only +Infinity, so a genuine n/0 of the opposite sign is not claimed. Returns the rolled-up
+// property so the existing cue can name it, or null. Pure + Node-testable.
+function emptyExtremalProp(expr, value) {
+  if (value !== Infinity && value !== -Infinity) return null;
+  const fn = value === -Infinity ? 'max' : 'min';
+  const m = new RegExp('\\b' + fn + '\\s*\\(\\s*"[^"]*"\\s*,\\s*([A-Za-z_]\\w*)\\s*(?:,[^)]*)?\\)').exec(String(expr || ''));
+  return m ? m[1] : null;
+}
+
 // #1200: an empty rollup ({= sum(fee)} that matched no `fee` property) has two distinguishable
 // causes, and only one is a typo. "No child has a `fee` property" is a name/scope mistake. But if the
 // children COMPUTE their values with pills (a `{= words * rate}` on each row) and simply never stored
@@ -30235,7 +30252,8 @@ function renderMathPill(key, m, opts = {}) {
   // (a pill placed as a sibling instead of a parent, or a typo'd prop). Surface it as a muted
   // "nothing matched" state with the prop name, instead of a confident wrong number. Display-only:
   // the computed value is unchanged; count() (honest 0) and min/max (±∞) are excluded by the core.
-  const emptyProp = firstEmptyRollup(m.expr, cookieNode, { extrema: true });   // #1171: display cue covers min/max too
+  const emptyProp = firstEmptyRollup(m.expr, cookieNode, { extrema: true })   // #1171: display cue covers min/max too
+    || emptyExtremalProp(m.expr, fresh);   // #1449: …and the QUOTED-search form of min/max, which its regex cannot see
   if (emptyProp) {
     // If the rollup uses the DEFAULT (direct-children) scope, the props may simply sit deeper; a bare
     // rollup widens by depth (sum(cost, subtree)), NOT the query-only , document/, folder. Only suggest

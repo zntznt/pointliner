@@ -14815,6 +14815,38 @@ test('#557 firstEmptyRollup — flags a sum/avg over an empty prop scope; exclud
 // with pills but stored no matching property, the honest cause is "a rollup reads properties, not
 // pill results" — a dead end right after the per-row computation succeeded (3 personas hit it). The
 // pure predicate lets renderMathPill name that state instead of the generic "check the property name."
+test('#1449 emptyExtremalProp — a QUOTED-search min/max that matched nothing is an identity, not a division', () => {
+  // Found by rendering every concept-guide example: {= max("due:overdue", cost)} (the `rollups` entry)
+  // read "#ERR (divide by zero)". Nothing divided. expandAggExpr collapses an empty extremal to its
+  // identity (max → -Infinity, min → +Infinity) exactly as the BARE form does, but firstEmptyRollup's
+  // regex only matches a bare identifier, so the search form escaped the cue and fell through to the
+  // non-finite branch, which reads every ±Infinity as n/0.
+  assert.equal(c.emptyExtremalProp('max("due:overdue", cost)', -Infinity), 'cost');
+  assert.equal(c.emptyExtremalProp('min("x", cost)', Infinity), 'cost');
+  assert.equal(c.emptyExtremalProp('max("q", cost, document)', -Infinity), 'cost',
+    'a widened search reducer still names its property');
+  // Keyed on the SIGN, which is what keeps a real divide-by-zero safe: an empty max can only be
+  // -Infinity and an empty min only +Infinity, so the opposite sign is never claimed as an identity.
+  assert.equal(c.emptyExtremalProp('max("q", cost)', Infinity), null, 'an empty max is never +Infinity');
+  assert.equal(c.emptyExtremalProp('min("q", cost)', -Infinity), null, 'an empty min is never -Infinity');
+  assert.equal(c.emptyExtremalProp('1/0', Infinity), null, 'a genuine n/0 keeps the divide-by-zero reading');
+  assert.equal(c.emptyExtremalProp('max(cost)', -Infinity), null, 'the BARE form stays firstEmptyRollup\'s job');
+  assert.equal(c.emptyExtremalProp('max("q", cost)', 5), null, 'a finite result is not an empty extremal');
+  assert.equal(c.emptyExtremalProp('', -Infinity), null);
+  assert.equal(c.emptyExtremalProp(null, -Infinity), null, 'no expression is not a crash');
+});
+
+test('#1449 the math pill asks BOTH empty-rollup cores, so the search form gets the same cue as the bare one', () => {
+  const body = fnBody(_src, 'renderMathPill');
+  assert.ok(/firstEmptyRollup\(m\.expr, cookieNode, \{ extrema: true \}\)/.test(body),
+    'the bare-identifier rollup cue still runs');
+  assert.ok(/\|\|\s*emptyExtremalProp\(m\.expr, fresh\)/.test(body),
+    'and the quoted-search min/max falls back to the new core, rather than to the non-finite branch');
+  // Order matters: the cue must be decided BEFORE the ±Infinity branch, or the fix never runs.
+  assert.ok(body.indexOf('emptyExtremalProp(m.expr, fresh)') < body.indexOf("'#ERR (divide by zero)'"),
+    'the empty-extremal check sits ahead of the divide-by-zero branch it is rescuing values from');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');

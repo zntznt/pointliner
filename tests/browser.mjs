@@ -531,3 +531,40 @@ test('#1265 a pasted .bib imports as references, and its citations reach the foo
   assert.ok(got.kidProps.includes('year=2020'), 'and the year, so a reading list can sort by it');
   assert.deepEqual(pageErrors, [], 'no page errors during the import');
 });
+
+// 13. the math pill's DIAGNOSIS, not just its number. #1449 was invisible to every unit test: the
+// pure cores were all correct and fully pinned, and the defect lived in which core the renderer
+// ASKED. {= max("due:overdue", cost)} read "#ERR (divide by zero)" when nothing had divided --
+// ±Infinity is the identity of an empty extremal, and firstEmptyRollup's regex could not see the
+// quoted-search form. A wrong diagnosis sends a user hunting a division that does not exist.
+test('#1449 an empty min/max over a search reads "nothing matched", not "divide by zero"', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const got = await pg.evaluate(() => {
+    const lines = [
+      '{= max("due:overdue", cost)}',   // the guide's own `rollups` example
+      '{= min("due:overdue", cost)}',
+      '{= max(cost)}',                  // the BARE sibling: the treatment being matched
+      '{= sum("due:overdue", cost)}',   // sum keeps its own "0 in scope" cue
+      '{= 1/0}',                        // a REAL divide by zero must keep saying so
+    ];
+    root.children = lines.map(t => mkNode(t));
+    promoteLoadedShorthand(root); buildIndex(root, null); markDirty(); render();
+    const els = [...document.querySelectorAll('.node-content[data-id]')];
+    return root.children.map((n, i) => ({
+      src: lines[i],
+      text: (els.find(e => e.dataset.id === n.id) || {}).innerText || '',
+    }));
+  });
+  const by = s => got.find(g => g.src === s).text;
+
+  for (const s of ['{= max("due:overdue", cost)}', '{= min("due:overdue", cost)}']) {
+    assert.ok(/nothing matched/.test(by(s)), `${s} should say nothing matched, got: ${JSON.stringify(by(s))}`);
+    assert.ok(!/divide by zero/.test(by(s)), `${s} must not claim a division that never happened`);
+  }
+  // the whole point is that the two forms of the SAME question now answer alike
+  assert.ok(/nothing matched/.test(by('{= max(cost)}')), 'the bare form still carries the cue');
+  assert.ok(/∞/.test(by('{= max("due:overdue", cost)}')),
+    'and still shows the identity value, exactly as the bare form does');
+  assert.ok(/0 in scope/.test(by('{= sum("due:overdue", cost)}')), 'sum keeps its own distinct cue');
+  assert.ok(/divide by zero/.test(by('{= 1/0}')), 'a genuine n/0 is still called a divide by zero');
+});

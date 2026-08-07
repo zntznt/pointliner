@@ -10,7 +10,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2051 declarations in 152 sections.**
+**2052 declarations in 152 sections.**
 
 ## doc-cache registry
 
@@ -234,6 +234,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `expandAggExpr`
 - `mathPrepassErrs` — #889: did the expandAggExpr pre-pass INTRODUCE a deterministic #ERR into an expression that
 - `firstEmptyRollup` — #557: the prop name of the FIRST rollup in `expr` whose scope matched ZERO values, or null. A
+- `emptyExtremalProp` — #1449: min/max over a QUOTED SEARCH that matched nothing. expandAggExpr collapses such a reducer
 - `childrenComputePillsNotProp` — #1200: an empty rollup ({= sum(fee)} that matched no `fee` property) has two distinguishable
 - `queryReducerLeaf` — #914: a QUOTED query reducer ({= count("q")} / {= sum("q", prop)}) that is subtree-scoped (no
 - `wordsScopeLeaf` — #950: a words(subtree)/words(children) count on a childless HEADING can only ever count the
