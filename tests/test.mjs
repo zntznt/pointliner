@@ -14484,11 +14484,16 @@ test('#648 parseMeter — the four forms, the trailing style word, and the non-m
   assert.equal(c.parseMeter('meter: hp/hpmax').value.kind, 'prop', 'a bare name stays a prop, never an expr');
 });
 
-test('agent-review: an unresolved meter names the missing property in its tooltip/aria (src pin)', () => {
+test('agent-review: an unresolved meter names what is missing in its tooltip/aria (src pin)', () => {
   const md = fnBody(_src, 'mdInline');
-  // the {meter?} marker branch computes the missing prop names and puts them in the tip
-  assert.ok(/filter\(x => x\.kind === 'prop' && !Number\.isFinite\(childPropNumber\(cookieNode, x\.v\)\)\)/.test(md), 'the marker collects unresolved prop refs');
-  assert.ok(/Add a numeric \$\{missing\.join\(' and '\)\} property to this point/.test(md), 'the tip names the property to add');
+  // #1451 widened this: a name can be satisfied by a property OR a variable, so the marker collects
+  // refs that resolve as NEITHER (it used to collect every prop ref whose property was absent, which
+  // sent someone who had declared {hp := 4} off to add a property they did not need).
+  assert.ok(/x\.kind === 'prop' \|\| x\.kind === 'var'/.test(md), 'the marker considers both kinds of ref');
+  assert.ok(/childPropNumber\(cookieNode, x\.v\)\) && !Number\.isFinite\(Number\(vrs\[x\.v\]\)\)/.test(md),
+    'and calls a name missing only when neither a property nor a variable resolves it');
+  assert.ok(/No numeric \$\{missing\.join\(' or '\)\} here/.test(md), 'the tip names what is missing');
+  assert.ok(/declare it as a variable like/.test(md), 'and offers BOTH doors, property and variable');
   assert.ok(/aria-label="Meter unresolved\. \$\{escQ\(tip\)\}"/.test(md), 'the aria carries the same reason');
 });
 test('#648 meterPool — icon-pool fill counts, or null past the cap (#668)', () => {
@@ -14894,6 +14899,43 @@ test('#1450 the guide teaches the min/max wideners it had left undocumented', ()
   // the trap is named, because min(cost, 2) silently returns the numeric min rather than a depth
   assert.ok(/min\(cost, 2\) is the smaller of cost and 2/.test(entry),
     'the number-form exception is stated, not left for a user to discover from a wrong total');
+});
+
+test('#1451 resolveMeter — a meter reads a VARIABLE, not only a property', () => {
+  // Reported from real use: `{hp := 4}` then `{meter: hp/100}` rendered a bare red {meter?}.
+  // The var branch was DEAD. collectVars returns a flat name → resolved-value map (a number for a
+  // formula/pick/dice var, a string for a text pick), but the branch read `.value ?? .rolled` off it —
+  // undefined on a number, and Number(undefined) is NaN. So NO variable could ever drive a meter,
+  // including the guide's own {meter: {done}/{goal}}.
+  const bare = { id:'n', text:'x', props:[], children:[] };
+  const withProp = { id:'n', text:'x', props:[{ key:'hp', val:'7' }], children:[] };
+  const r = (node, spec, vars) => {
+    const out = c.resolveMeter(node, c.parseMeter(spec), vars);
+    return out ? `${out.value}/${out.max}` : null;
+  };
+  assert.equal(r(bare, 'meter: hp/100', { hp: 4 }), '4/100', 'a bare name falls back to a variable');
+  assert.equal(r(bare, 'meter: {hp}/100', { hp: 4 }), '4/100', 'and the braced var form resolves');
+  assert.equal(r(bare, 'meter: hp/hpmax', { hp: 4, hpmax: 100 }), '4/100', 'both sides may be variables');
+  // A computed variable arrives already resolved to a number, so it needs no special case.
+  assert.equal(r(bare, 'meter: area/100', { area: 6 }), '6/100', 'a computed variable works like any other');
+
+  // Precedence and refusals: the fallback must not change what already worked.
+  assert.equal(r(withProp, 'meter: hp/100', { hp: 4 }), '7/100',
+    'a PROPERTY on the point still wins over a variable of the same name');
+  assert.equal(r(withProp, 'meter: hp/100', {}), '7/100', 'the property path is untouched');
+  assert.equal(r(bare, 'meter: 4/100', {}), '4/100', 'literals are untouched');
+  assert.equal(r(bare, 'meter: tone/100', { tone: 'cool' }), null,
+    'a TEXT variable still refuses: Number("cool") is NaN, and a refusal beats a wrong bar');
+  assert.equal(r(bare, 'meter: nope/100', {}), null, 'a name that resolves nowhere still refuses');
+  assert.equal(r(bare, 'meter: hp/0', { hp: 4 }), null, 'a zero max is still refused');
+});
+
+test('#1451 the meter failure names BOTH doors, not just the property one', () => {
+  const body = between(_src, 's = s.replace(/\\{meter\\s*:', 'const full = r.value >= r.max');
+  assert.ok(/declare it as a variable like \{\$\{missing\[0\]\} := 10\}/.test(body),
+    'the tip offers the variable route, which is what the reporter had actually used');
+  assert.ok(/childPropNumber\(cookieNode, x\.v\)\) && !Number\.isFinite\(Number\(vrs\[x\.v\]\)\)/.test(body),
+    'and a name is only called missing when NEITHER a property nor a variable resolves it');
 });
 
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
