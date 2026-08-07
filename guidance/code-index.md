@@ -10,7 +10,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2040 declarations in 151 sections.**
+**2051 declarations in 152 sections.**
 
 ## doc-cache registry
 
@@ -2055,6 +2055,20 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `rowsToCsv`
 - `sectionToCsvRows` — A point's child rows → [headerRow, ...dataRows], or null when there is no table to export (fewer than
 - `markdownVaultToPoints` — #1265 PR 2: import a set of Markdown files (a "vault") into ONE document. Each file becomes a
+
+## #1265: BibTeX (.bib) → citations in the document footnote store
+
+- `LATEX_ACCENT` — Symbol and letter accents, as COMBINING marks: `\"o` → o + U+0308, NFC-normalized to `ö` at the end
+- `bibTranslateLatex` — Translate the LaTeX a .bib file uses to SPELL a name into the characters it means. Split out from
+- `bibFieldText` — A field value as readable text: accents translated, escaped punctuation unescaped, any REMAINING
+- `bibDropsLatex` — Did cleaning this value have to DROP a command, rather than translate one? Drives the "simplified"
+- `bibAuthorNames` — `author`/`editor` → one name per entry. Splits on ` and ` at brace depth 0, so a braced corporate
+- `bibYear` — The publication year: `year` when it is one, else the first 4-digit run in BibLaTeX's `date`.
+- `bibCitation` — One entry → one neutral citation line. Deliberately style-free (no APA/MLA/Chicago switch): the
+- `sniffBibtex` — Does this text look like a BibTeX database? True only when the first non-blank, non-comment content
+- `parseBibtex` — Parse a BibTeX/BibLaTeX database into entries. A brace-aware SCANNER, not a regex: values nest braces
+- `parseBibEntryBody` — One entry's inside: `key, field = value, field = value`. Split out from parseBibtex so the field
+- `bibToPoints` — A .bib file → ONE heading subtree, each entry a point whose [^key] footnote holds its citation.
 
 ## #1282: read-only shareable web page — the OUT seam (mirror of Markdown import, the IN seam)
 

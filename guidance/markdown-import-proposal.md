@@ -1,6 +1,8 @@
 # Markdown import (proposal)
 
-Status: **Proposed** (2026-08). Source: panel finding **#1265** (import bridges), reframed by the owner.
+Status: **Shipped** (2026-08) — Markdown v1 + vault v2, and, under the same format-not-product rule,
+the spreadsheet (`#1296`) and **BibTeX** bridges. Source: panel finding **#1265** (import bridges),
+reframed by the owner.
 Read `guidance/product-identity.md` (formats, not products) and the CLAUDE.md "both arms" rule before
 building.
 
@@ -121,8 +123,11 @@ import is never silently wrong.
   doc), with a title index that resolves `[[wikilinks]]` to cross-doc links / mirrors; frontmatter ->
   properties; Markdown tables -> bases. This is where the "bring my whole Obsidian vault" story lands,
   built on the v1 parser.
-- **Later, same principle:** BibTeX import (into footnotes) and CSV import (into a base / rows), each a
-  format serving many tools, never a vendor.
+- **Shipped, same principle:** CSV / delimited import (`sniffDelimited` + `tableToPoints`, `#1296`) and
+  **BibTeX import** (`sniffBibtex` + `bibToPoints`): each entry becomes a point whose `[^key]` footnote
+  holds the citation, with the cite key and year kept as properties. Each a format serving many tools,
+  never a vendor. Note the sniff ORDER: BibTeX must be tested BEFORE the delimited table, because a
+  one-field-per-line `.bib` is rectangular under a comma split and `sniffDelimited` claims it.
 
 ## Verbosity + conformance (P1 to P5)
 
