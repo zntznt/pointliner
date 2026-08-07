@@ -1,6 +1,6 @@
 # Snippet / pattern palette (#1267)
 
-**Shipped so far:** #1267 already carries passing tests for `PATTERN_RECIPES` and `recipeToNodes`, and `insertRecipe` is live in the Builder. Confirm what remains before treating this proposal as unbuilt.
+Status: **Shipped** (2026-08). The Builder's "Patterns" section landed: `PATTERN_RECIPES`, `recipeToNodes` and `insertRecipe`, with the v1 recipe set and its discoverability rails.
 
 ## The wall (2026-08 panel)
 

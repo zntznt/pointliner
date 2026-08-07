@@ -102,16 +102,16 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | User research, "various walks of life" laptop panel (bounce, propagation-is-the-click) | `guidance/user-research-2026-07-c.md` | Candidate |
 | User research, third fleet (laptop; hospitality, language services, domestic work) | `guidance/user-research-2026-07-fleet3.md` | Candidate |
 | Variable declaration spec (Stage B, positional) | `guidance/typed-var-declaration-proposal.md` | Shipped |
-| Variable-kind unification, measured plan (#1353) | `guidance/variable-kind-unification-plan.md` | Proposed |
+| Variable-kind unification, measured plan (#1353) | `guidance/variable-kind-unification-plan.md` | Shipped |
 | Discoverability strategy (verbosity dial) | `guidance/ux.md` | Vision |
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
 | Contextual `{` body completion | `guidance/brace-completion-proposal.md` | Shipped |
-| Guided authoring (no-syntax "Add another") | `guidance/guided-authoring-proposal.md` | Proposed |
+| Guided authoring (no-syntax "Add another") | `guidance/guided-authoring-proposal.md` | Shipped |
 | Document footnote store + Footnotes manager | `guidance/footnote-store-proposal.md` | Proposed |
 | Contested rolls and margins (opposed roll) | `guidance/contested-roll-proposal.md` | Shipped |
 | Markdown import (format-based import bridges) | `guidance/markdown-import-proposal.md` | Shipped |
-| Single-file reassurance + scaling legibility | `guidance/single-file-reassurance-proposal.md` | Proposed |
-| Snippet / pattern palette (using `{…}` at speed) | `guidance/snippet-palette-proposal.md` | Proposed |
+| Single-file reassurance + scaling legibility | `guidance/single-file-reassurance-proposal.md` | Shipped |
+| Snippet / pattern palette (using `{…}` at speed) | `guidance/snippet-palette-proposal.md` | Shipped |
 
 ## Working notes
 

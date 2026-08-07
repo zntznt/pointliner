@@ -1,7 +1,7 @@
 # Guided authoring: no-syntax "Add another like this" — proposal
 
 **Status: PROPOSED (2026-08). Tracks issue #1240. Owner-directed: no-syntax authoring is the territory
-**Shipped so far:** #1240 already carries passing tests for the builder machinery (`inferRowShape`, `buildRow`, `BUILDER_FORMS`) and phase-4 view-door wiring. Confirm what remains before treating this proposal as unbuilt.
+Status: **Shipped** (2026-08). All five phases landed: 0 (`inferRowShape` / `buildRow`), 1a/1b (the `/` add-row command and the visible "+ Add another" affordance), 2 (the STAMP engine), 3 ("Add a card") and 4 (discoverability and mobile rails, incl. the view-parent doors).
 
 of Guided mode and will be solved there.**
 
