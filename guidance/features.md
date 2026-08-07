@@ -550,6 +550,20 @@ Implemented:
   `line-height:1.5` (the sanctioned step), `--muted` ink, regular upright (no
   italic — that's the blockquote register), no border-left, and the placeholder
   uses plain `--muted` (the `opacity:.7` contrast-floor violation was fixed).
+- **Guided authoring: "Add another like these"** (#1240) — when sibling points share a shape (the
+  same tags, the same property keys), Pointliner infers that shape and offers a values-only form:
+  you type a description and a number, it writes `#august {prop cost: 92.40}`. `inferRowShape`
+  reads the shape from the existing rows; `buildRow` emits it using the existing syntax, so this
+  adds no language. Structured siblings (rows that are themselves pages) stamp a blank scaffold
+  instead (`stampScaffold`), and a `{shuffle:}` deck gets "+ Card" (`addDeckCard`).
+  **Two doors, one form.** A `+ Add` control sits at the end of a shaped list, and `/addrow` opens
+  the same form from the keyboard, resolving the target list from the caret (`addRowTarget`) whether
+  it sits on the list's container or on a row inside it. The keyboard door is what makes the
+  capability reachable in Lean, where the controls are hidden at rest, and without a mouse at all
+  (#1438). The doors also render for the point you are *looking at* — the document root, or a point
+  you zoomed into — whose own row is not on screen (`renderViewDoors`, #1240 phase 4).
+  Both refusals name their cause: no list here, or these points share no shape yet.
+
 ### Search & organization
 
 - **Search query operators** — the search box speaks a small filter language

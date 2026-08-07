@@ -9854,6 +9854,9 @@ const BLOCK_CMDS = [
   { id:'template',icon:'⧉',    fa:'fa-solid fa-stamp',         keys:['stamp','insert'], label:'Template',   desc:'Stamp a saved subtree here. Type /template:name to stamp it directly, or /template for the picker. Save one from a point’s bullet menu.', ex:'/template:weekly review', section:'Blocks' },
   { id:'savetemplate',icon:'⧉',fa:'fa-solid fa-stamp',         label:'Save template',desc:'Save this point and its children as a reusable template. Type /savetemplate:name to save it inline, then stamp copies later with /template:name.', ex:'/savetemplate:weekly review', section:'Blocks' },
   { id:'due',     icon:'📅',   fa:'fa-solid fa-calendar-day',  keys:['date','deadline','when','remind'], label:'Schedule',   desc:'Set a start and/or due date on this point. Type /due:tomorrow to set it inline, or bare /due to open the Schedule dialog. Shows in the Agenda.', ex:'/due:tomorrow · /start:2026-07-01', section:'Organize' },
+  // #1438: the KEYBOARD half of the "+ Add" door. Same capability, same form, reachable without a
+  // mouse -- the route the guided-authoring proposal always specified and that was never built.
+  { id:'addrow',  icon:'＋',   fa:'fa-solid fa-plus',            keys:['add','another','row','item','entry','like','same','more'], label:'Add another',  desc:'Add a point shaped like the ones around it: fill the values, and the tags and properties are written for you. Works from the list itself or from any row in it. Same form as the + Add door.', ex:'/addrow', section:'Organize' },
   { id:'check',   icon:'✓',    fa:'fa-solid fa-clipboard-check',  keys:['constraint','assert','lint','validate','budget','prose','words'], label:'Check',      desc:'A pass/fail constraint over this point and its children. Point it at numbers (sum(cost) ≤ budget) or at your own words and structure (count("#claim -has:footnote") == 0 flags a claim with no source; words(subtree) ≥ 500). Type /check:expr inline, or /check for the dialog. Find violations with is:failing.', ex:'/check:sum(cost) <= budget', section:'Organize' },
   { id:'alias',   icon:'🏷',   fa:'fa-solid fa-tag',           keys:['aka','synonym'], label:'Aliases',    desc:'Alternate names so links and mentions find this point under more than its title. Type /alias:a, b to set them inline, or /alias for the dialog.', ex:'/alias:wyrm, drake', section:'Organize' },
   { id:'prop',    icon:'▤',    fa:'fa-solid fa-list',          keys:['property','field','attribute','meta'], label:'Property',   desc:'Set a key:value property on this point, shown as a chip and searchable with key:value. Type /prop:owner=zeo to set it inline, or /prop to fill in the blanks, or bare for the full editor.', ex:'/prop:owner=zeo', section:'Organize' },
@@ -22743,6 +22746,15 @@ function slashApply() {
       const el = document.querySelector(`.node-content[data-id="${nodeId}"]`);
       if (el) try { setCaretByOffset(el, slashOffset + '{date due: '.length); } catch (_) {}   // caret on the value blank
     });
+    return;
+  }
+  if (trigger !== '@' && cmd.id === 'addrow') {
+    // The caret may sit on the list itself or on one of its rows; addRowTarget resolves which.
+    // P4: never a silent no-op -- say which of the two things is missing, shape or list.
+    const here = nodeById(nodeId);
+    const target = addRowTarget(here, parentOf(nodeId) || null);
+    if (!target) { flashHint('Put the caret in a list of two or more similar points, then try again'); return; }
+    openAddRowForm(target.id);   // infers the shape and flashes its own reason when there is none
     return;
   }
   if (trigger !== '@' && cmd.id === 'check') {
@@ -41563,6 +41575,14 @@ const GUIDE = [
       { syn:'open before done',   desc:'unfinished points rise to the top' },
       { syn:'A before B before C',desc:'higher priority first, unmarked last' },
     ] },
+  { id:'addrow', cat:'todos', covers:['addrow'],
+    title:'Add another like these',
+    body:"When several points in a row share a shape, the same tags, the same properties, Pointliner can write the next one for you. You fill in the values; it writes the tags and the braces. So a grocery line becomes a description and a number, not a line of syntax you have to remember.\n\nThere are two ways in, and they do the same thing. A \u002b Add control appears at the end of a list that has a shape, so you can point at it. Or put the caret in the list, on the heading above it or on any row inside it, and run /addrow. The keyboard route matters when the list is long, when you are working without a mouse, or when you have hidden the extra controls in Lean.\n\nThe shape is read from the points already there, so the more consistent they are, the better the guess. If the points do not share anything yet, Pointliner says so rather than guessing. A list needs at least two points before there is a shape to copy.",
+    related:['properties','hashtags','rollups'],
+    examples:[
+      { syn:'/addrow',        desc:'add a point shaped like its neighbours' },
+      { syn:'\u002b Add',         desc:'the same form, at the end of the list' },
+    ] },
   { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
     body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, shown as a small pill below the point. Type /prop:owner=zeo to set one inline, or /prop to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again. To add several at once (a character stat block, a set of line items), paste a list of key: value lines into the key field of the editor and each line becomes a property. Search by them with has:key to find every point that has a property, or key:value to match an exact one; to match a value that has spaces, quote it, like area:\"Home Renovation\" (a quoted value matches by contains). Child properties feed the roll-up totals.\n\nA property's value can be a little SUM of its own: write {prop cost: 60 * 3.50} and the pill shows 210, computed, while still being an ordinary cost property that totals. So a line whose price is a small calculation (quantity times unit price, hours times a rate) stays one thing that both reads as its result and rolls up, instead of a separate math pill the total cannot see.",
@@ -42942,6 +42962,24 @@ function stampScaffold(headingNode, template) {
 }
 // Built on openInsertDialog (the shared dialog shell, UXP-247) so it inherits the draft-save, focus,
 // escape/backdrop and button-order discipline every dialog shares — never a hand-rolled shell.
+// ── #1438 / UXP-329: the keyboard route to "add a row like these" ────────────────────────────
+// DOM-free. The "+ Add" door is mouse-only: every affordance is tabindex="-1" with no keydown
+// path, so driving Tab through the outline reaches `.node-content` and never a door. The
+// guided-authoring proposal always specified the other half -- "via `/` ... exactly like every
+// other command" -- and it was never built: openAddRowForm had exactly one caller, the door.
+//
+// From the caret, which list does "add another" mean? Two positions, one answer each:
+//   - the caret is ON the container (a heading or bullet whose children are the list) -> that node
+//   - the caret is on a ROW inside the list                                           -> its parent
+// Returns the node to add to, or null when neither is a list (the caller then says why -- P4).
+// The SHAPE check is deliberately not repeated here: openAddRowForm already infers it and flashes
+// its own reason, and a second copy of that gate is the divergence trap.
+function addRowTarget(node, parent) {
+  if (node && (node.children || []).length >= 2) return node;   // on the container itself
+  if (parent && (parent.children || []).length >= 2) return parent;   // on one of its rows
+  return null;
+}
+
 function openAddRowForm(contextNodeId) {
   const ctx = nodeById(contextNodeId);
   if (!ctx) return;
