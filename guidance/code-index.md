@@ -10,7 +10,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2039 declarations in 150 sections.**
+**2040 declarations in 151 sections.**
 
 ## doc-cache registry
 
@@ -2362,7 +2362,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `rowNoun` — #1240 the DOM half (phase 1): a focused "Add another" dialog. Opened for a shaped list (a heading whose
 - `createPromotedRow`
 - `stampScaffold` — #1240 phase 2 DOM half: stamp a blank scaffold of a structured sibling under its heading. Clones the
-- `openAddRowForm` — Built on openInsertDialog (the shared dialog shell, UXP-247) so it inherits the draft-save, focus,
+
+## #1438 / UXP-329: the keyboard route to "add a row like these"
+
+- `addRowTarget` — DOM-free. The "+ Add" door is mouse-only: every affordance is tabindex="-1" with no keydown
+- `openAddRowForm`
 - `affordanceDirtyIds` — #1240 phase 1b: the VISIBLE front door. On a heading whose children share a shape, append a "+ Add"
 - `refreshRowChrome` — The DOM half. Everything buildRow puts on a point OUTSIDE `.node-content` goes stale after a commit,
 

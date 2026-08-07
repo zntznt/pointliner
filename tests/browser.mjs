@@ -327,3 +327,66 @@ test('#1240 the view parent keeps its doors when its row is not on screen', { sk
   });
   assert.ok(acted === false, 'prose left no bar behind to click');
 });
+
+// #1438 / UXP-329 — the KEYBOARD route to "add a row like these".
+//
+// The "+ Add" door was mouse-only: every affordance is tabindex="-1" with no keydown path, and
+// driving Tab through the outline reaches `.node-content` and never a door. The guided-authoring
+// proposal always specified the other half ("via `/` ... exactly like every other command") and it
+// was never built: openAddRowForm had exactly ONE caller, the door itself. This check exists
+// BECAUSE a source-pin cannot tell the difference -- a registered command that nothing routes looks
+// identical in the source to one that works. So it types the verb like a user and watches.
+test('#1438 /addrow opens the same form from the keyboard, and refuses out loud', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const shaped = '<outline text="## Groceries">' +
+    '<outline text="Aldi #august {prop cost: 92.4}"/><outline text="Lidl #august {prop cost: 40.1}"/></outline>';
+  const load = body => pg.evaluate(x => {
+    adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title></head><body>' + x + '</body></opml>'));
+    focusedId = null; render();
+  }, body);
+  const caretInto = re => pg.evaluate(r => {
+    const e = [...document.querySelectorAll('.node-content')].find(x => new RegExp(r).test(x.innerText));
+    if (!e) throw new Error('no point matching ' + r);
+    e.focus();
+    const s = getSelection(), g = document.createRange();
+    g.selectNodeContents(e); g.collapse(false); s.removeAllRanges(); s.addRange(g);
+  }, re);
+  // The form is a persistent container, so presence is NOT openness -- it is always in the DOM.
+  // Measured the hard way: an earlier probe read `!!querySelector('#io-card')` and called a closed
+  // dialog open. Openness is laid out AND carrying text.
+  const state = () => pg.evaluate(() => {
+    const c = document.querySelector('#io-card');
+    const open = !!(c && c.offsetParent !== null && c.innerText.trim());
+    return { open, title: open ? c.innerText.split('\n')[0] : null,
+             said: (document.getElementById('flash-hint')?.innerText || '').trim() || null };
+  });
+  const type = async () => {
+    await pg.keyboard.type(' /addrow'); await pg.waitForTimeout(400);
+    await pg.keyboard.press('Enter');  await pg.waitForTimeout(600);
+  };
+
+  // From a ROW inside the list.
+  await load(shaped); await caretInto('Aldi'); await type();
+  let s = await state();
+  assert.ok(s.open, 'typing /addrow from a row must open the add form');
+  assert.match(s.title, /Groceries/, 'and it targets the list, not the row: ' + JSON.stringify(s.title));
+
+  // From the CONTAINER itself — the other caret position a user can be in.
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+  await load(shaped); await caretInto('Groceries'); await type();
+  assert.ok((await state()).open, 'and from the heading above the list');
+
+  // P4, both refusals. They are DIFFERENT reasons and must not collapse into one:
+  // "there is no list here" is not "these points share no shape".
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+  await load('<outline text="just one thought"/>'); await caretInto('one thought'); await type();
+  s = await state();
+  assert.equal(s.open, false, 'a lone point is not a list, so no form');
+  assert.match(s.said || '', /caret in a list/, 'and it says so rather than no-opping: ' + JSON.stringify(s.said));
+
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+  await load('<outline text="Alpha"/><outline text="Beta"/>'); await caretInto('Alpha'); await type();
+  s = await state();
+  assert.equal(s.open, false, 'two points sharing no shape earn no form');
+  assert.match(s.said || '', /share a shape/, 'with the OTHER reason, not the same one: ' + JSON.stringify(s.said));
+});

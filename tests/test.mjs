@@ -1333,6 +1333,44 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
 // the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
 // broken form fails here rather than silently removing its door again.
+// ── #1438 / UXP-329: the keyboard route to "add a row like these" ──────────────────────────────
+// The "+ Add" door was mouse-only: every affordance is tabindex="-1" with no keydown path, and
+// driving Tab through the outline reaches `.node-content` and never a door. The guided-authoring
+// proposal always specified the other half ("via `/` ... exactly like every other command") and it
+// was never built -- openAddRowForm had exactly ONE caller, the door itself. So the capability the
+// 2026-08 panel called its #1 barrier could not be reached without a mouse, at any verbosity tier.
+test('#1438 addRowTarget resolves the list from either caret position', () => {
+  const rows = [{ text: 'a' }, { text: 'b' }];
+  const list = { text: '## Groceries', children: rows };
+  // On the container itself.
+  assert.equal(c.addRowTarget(list, null), list);
+  // On a row inside it -> its parent owns the list.
+  assert.equal(c.addRowTarget(rows[0], list), list);
+  // A lone point is not a list, and neither is a one-row parent: two rows are the minimum a shape
+  // can be inferred from, which is the same floor maybeAddRowAffordance uses.
+  assert.equal(c.addRowTarget({ text: 'x' }, null), null);
+  assert.equal(c.addRowTarget({ text: 'x' }, { text: 'p', children: [{ text: 'only' }] }), null);
+  assert.equal(c.addRowTarget(null, null), null);
+  // A childless node with a qualifying parent still resolves to the parent, not to itself.
+  assert.equal(c.addRowTarget({ text: 'x', children: [] }, list), list);
+});
+
+test('#1438 the / verb is registered, dispatched, and refuses without a silent no-op', () => {
+  const cmd = between(_src, "{ id:'addrow',", '},');
+  assert.ok(/label:'Add another'/.test(cmd), 'the verb is named for what it does');
+  assert.ok(/section:'Organize'/.test(cmd), 'and filed in a section, so it appears in the menu');
+  // The dispatch, not just the registry entry: a command in the list that nothing routes is the
+  // shape this whole issue is about.
+  const disp = between(_src, "cmd.id === 'addrow'", 'return;\n  }');
+  assert.ok(/addRowTarget\(/.test(disp), 'dispatch must resolve the target through the pure core');
+  assert.ok(/openAddRowForm\(/.test(disp), 'and open the SAME form the + Add door opens');
+  assert.ok(/flashHint\(/.test(disp), 'P4: refusing must say why, never no-op silently');
+  // openAddRowForm must now have MORE than one caller -- the door and the verb. One caller was the
+  // defect: a capability with a single mouse-only entrance.
+  const callers = (_src.match(/openAddRowForm\(/g) || []).length;
+  assert.ok(callers >= 3, `openAddRowForm needs the door AND the verb calling it (found ${callers} references)`);
+});
+
 // ── #1240 phase 4: the doors of the point you are LOOKING AT ───────────────────────────────────
 // Every "+ Add"/"+ Total"/"+ Check"/"+ Variance" door hangs off its PARENT's rendered row. The point
 // you are looking at has no row in its own view, so its doors had nowhere to hang. Measured by

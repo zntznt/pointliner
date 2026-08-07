@@ -6349,7 +6349,7 @@ let the heading markers leak into the label. All five red.
 
 ## UXP-329 -- the add-row door family is mouse-only (P2/P3, pre-existing)
 
-**Status: open.** Found while driving #1240 phase 4 (UXP-328); predates it and is NOT a defect of that
+**Status: CLOSED (#1438) -- the `/addrow` verb ships the keyboard route.** Original finding below. Found while driving #1240 phase 4 (UXP-328); predates it and is NOT a defect of that
 change. Filed rather than silently widened.
 
 ### The finding, driven
@@ -6383,3 +6383,34 @@ and graph), or build the `/` command the proposal specifies, or both. The `/` co
 proposal already designed and the one that satisfies every tier by construction. **Both arms:** the
 command pool is pure and belongs in `load-cores`; the keyboard path must be DRIVEN, since a handler on
 an unfocusable element is the #1021 bug that passes its own source-pin.
+
+
+---
+
+## UXP-329 closeout -- `/addrow`, the keyboard half of the door (#1438)
+
+The fix is the one the guided-authoring proposal already designed: a `/` verb riding the existing
+three-tier menu, so the capability is reachable at every tier by construction rather than by a
+special case. `addRowTarget` (pure) resolves which list the caret is in -- the container itself, or
+any row inside it -- and the verb opens the SAME `openAddRowForm` the `+ Add` door opens. Not a
+second implementation: `openAddRowForm` went from one caller to two, which was the whole defect.
+
+**The doors themselves remain `tabindex="-1"`, deliberately.** They are edit-pencil-class
+convenience chrome, and the proposal's verbosity model justifies that gating *on the condition* that
+the capability is reachable another way. It now is. Converting them to tab stops would put five new
+stops in the Tab order of every shaped list, which is a worse outline for keyboard users than one
+verb, and the caret invariant forbids turning them into `<button>`s besides.
+
+**P4, both refusals, driven:** "Put the caret in a list of two or more similar points" (no list) and
+"These points do not share a shape to copy yet" (no shape) are distinct messages, and a test asserts
+they do not collapse into one -- the two failures have different fixes, so one message for both would
+teach the wrong repair.
+
+**Verification.** `tests/test.mjs` 2071 green; `tests/browser.mjs` 9 green, the new check typing the
+verb like a user from both caret positions and asserting both refusals. Four mutations, each with its
+target asserted present first: dispatch to nothing; refuse silently; drop the container case; drop
+the row case. All four red.
+
+A probe artifact worth recording: `#io-card` is a PERSISTENT container, so `!!querySelector('#io-card')`
+reads a closed dialog as open. The first driven run "passed" the no-list case wrongly because of it.
+Openness is laid out AND carrying text, and the shipped check measures it that way.
