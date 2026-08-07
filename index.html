@@ -36381,6 +36381,240 @@ function markdownVaultToPoints(files) {
   return { points: sections, skipped: [...skipped] };
 }
 
+// ─── #1265: BibTeX (.bib) → citations in the document footnote store ───
+// The panel's last unbuilt import bridge (Amara, postdoc): her sources live in a reference manager, so
+// every citation she writes here is "a parallel universe I have to retype later". Same rule as the
+// Markdown and spreadsheet bridges — import a FORMAT, never a product: one `.bib` parser serves Zotero,
+// Mendeley, JabRef, EndNote and BibLaTeX alike, and there is no vendor button anywhere in the app.
+// NOT a reference manager: no bibliography generation, no citation styles, no live sync. Each entry
+// lands as a point carrying a [^key] marker whose footnote holds the citation, so the shipped footnote
+// store, the Footnotes manager and every export already render it — no new syntax, no new surface.
+
+// Symbol and letter accents, as COMBINING marks: `\"o` → o + U+0308, NFC-normalized to `ö` at the end
+// of bibFieldText. A map beats a precomposed table because it covers every base letter for free.
+const LATEX_ACCENT = { '"': '\u0308', "'": '\u0301', '`': '\u0300', '^': '\u0302', '~': '\u0303', '=': '\u0304', '.': '\u0307', c: '\u0327', v: '\u030C', u: '\u0306', H: '\u030B' };
+
+// Translate the LaTeX a .bib file uses to SPELL a name into the characters it means. Split out from
+// bibFieldText so bibDropsLatex can ask "is anything left that we can only drop?" — the toast must not
+// cry "simplified" over a `\"o` we rendered exactly right.
+// The letter accents (\c \v \u \H) require a brace or a space before their base letter, or `\citep{X}`
+// would parse as a cedilla on `i` and eat the command name.
+function bibTranslateLatex(s) {
+  return String(s == null ? '' : s)
+    .replace(/\\(["'`^~=.])\s*\{?([A-Za-z])\}?/g, (_, a, ch) => ch + (LATEX_ACCENT[a] || ''))
+    .replace(/\\([cvuH])(?:\{([A-Za-z])\}|\s+([A-Za-z])\b)/g, (_, a, b, c) => (b || c) + (LATEX_ACCENT[a] || ''))
+    .replace(/\\ss\b/g, 'ß')
+    .replace(/\\([oOlL])\b/g, (_, c) => ({ o: 'ø', O: 'Ø', l: 'ł', L: 'Ł' })[c]);
+}
+// A field value as readable text: accents translated, escaped punctuation unescaped, any REMAINING
+// command dropped (its braced argument survives — `\emph{Origins}` → `Origins`), capitalization braces
+// removed, `~` (a BibTeX non-breaking space) back to a space. Escaped braces are parked on sentinels
+// first so the capitalization-brace sweep cannot eat a brace the author asked for literally.
+function bibFieldText(raw) {
+  return bibTranslateLatex(raw)
+    .replace(/\\\{/g, '\u0001').replace(/\\\}/g, '\u0002')
+    .replace(/\\([&%$_#])/g, '$1')
+    .replace(/\\[A-Za-z]+\s*/g, '')
+    .replace(/[{}]/g, '')
+    .replace(/\u0001/g, '{').replace(/\u0002/g, '}')
+    .replace(/~/g, ' ')
+    .replace(/\s+/g, ' ').trim().normalize('NFC');
+}
+// Did cleaning this value have to DROP a command, rather than translate one? Drives the "simplified"
+// note, so an import that lost nothing says nothing (P4: no crying wolf).
+function bibDropsLatex(raw) { return /\\[A-Za-z]+/.test(bibTranslateLatex(raw)); }
+
+// `author`/`editor` → one name per entry. Splits on ` and ` at brace depth 0, so a braced corporate
+// name ({Smith and Sons}) stays one author. Names keep their written surname-first form: reordering
+// them would be a citation STYLE, which this importer deliberately does not have.
+function bibAuthorNames(raw) {
+  const s = String(raw == null ? '' : raw);
+  const parts = []; let depth = 0, start = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    else if (!depth && i > 0 && (c === 'a' || c === 'A') && /^\sand\s/i.test(s.slice(i - 1, i + 4))) {
+      parts.push(s.slice(start, i - 1)); start = i + 4; i += 3;
+    }
+  }
+  parts.push(s.slice(start));
+  return parts.map(bibFieldText).filter(Boolean);
+}
+// The publication year: `year` when it is one, else the first 4-digit run in BibLaTeX's `date`.
+function bibYear(fields) {
+  const f = fields || {};
+  const y = bibFieldText(f.year || '');
+  if (/^\d{4}$/.test(y)) return y;
+  const m = /\b(\d{4})\b/.exec(y) || /\b(\d{4})\b/.exec(bibFieldText(f.date || ''));
+  return m ? m[1] : '';
+}
+// One entry → one neutral citation line. Deliberately style-free (no APA/MLA/Chicago switch): the
+// pieces the entry HAS, in a fixed order, so nothing is invented and nothing is dropped.
+function bibCitation(entry) {
+  const f = (entry && entry.fields) || {};
+  const get = (k) => bibFieldText(f[k] || '');
+  const authors = bibAuthorNames(f.author || f.editor || '').join('; ');
+  const title = get('title') || get('booktitle');
+  const container = [get('journal'), get('journaltitle'), get('booktitle'), get('publisher'), get('school'), get('institution'), get('howpublished')].find(x => x && x !== title) || '';
+  const doi = get('doi'), url = get('url');
+  const bits = [];
+  if (authors) bits.push(authors);
+  if (title) bits.push(title);
+  const tail = [container, bibYear(f)].filter(Boolean).join(', ');
+  if (tail) bits.push(tail);
+  if (doi) bits.push('doi:' + doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, ''));
+  else if (url) bits.push(url);
+  return bits.length ? bits.join('. ') + '.' : '';
+}
+
+// Does this text look like a BibTeX database? True only when the first non-blank, non-comment content
+// OPENS an entry. This MUST be sniffed before sniffDelimited: a one-field-per-line .bib is rectangular
+// under a comma split, so the spreadsheet sniff would claim it and land every citation as a table row.
+function sniffBibtex(text) {
+  const s = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+  let i = 0;
+  while (i < s.length) {
+    if (/\s/.test(s[i])) { i++; continue; }
+    if (s[i] === '%') { const nl = s.indexOf('\n', i); if (nl < 0) return false; i = nl + 1; continue; }
+    break;
+  }
+  return /^@[A-Za-z]+\s*[{(]/.test(s.slice(i, i + 40));
+}
+// Parse a BibTeX/BibLaTeX database into entries. A brace-aware SCANNER, not a regex: values nest braces
+// ({The {DNA} Study}), quoted values may contain braces, and `#` concatenates — none of which a regex
+// can balance. Unterminated input takes the rest of the file rather than throwing. @string/@preamble
+// macros and @comment blocks are recorded BY NAME in `skipped` so the toast can say what was passed
+// over. Returns { entries: [{type, key, fields}], skipped }. Pure + Node-testable.
+function parseBibtex(text) {
+  const s = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+  const entries = [], skipped = new Set();
+  let i = 0;
+  const ws = () => { while (i < s.length && /\s/.test(s[i])) i++; };
+  // read a balanced run starting AT its opener; returns the inner text and leaves i past the closer
+  const group = (open, close) => {
+    let depth = 0; const start = i + 1;
+    for (; i < s.length; i++) {
+      const c = s[i];
+      if (c === '\\') { i++; continue; }
+      if (c === open) depth++;
+      else if (c === close) { depth--; if (!depth) { const inner = s.slice(start, i); i++; return inner; } }
+    }
+    return s.slice(start);
+  };
+  while (i < s.length) {
+    const at = s.indexOf('@', i);
+    if (at < 0) break;
+    i = at + 1;
+    const m = /^[A-Za-z]+/.exec(s.slice(i, i + 40));
+    if (!m) continue;
+    const type = m[0].toLowerCase();
+    i += m[0].length;
+    ws();
+    if (s[i] !== '{' && s[i] !== '(') continue;
+    const body = group(s[i], s[i] === '{' ? '}' : ')');
+    if (type === 'string' || type === 'preamble') { skipped.add('BibTeX macros'); continue; }
+    if (type === 'comment') { skipped.add('comment blocks'); continue; }
+    const parsed = parseBibEntryBody(body);
+    if (parsed && (parsed.key || Object.keys(parsed.fields).length)) entries.push({ type, key: parsed.key, fields: parsed.fields });
+  }
+  return { entries, skipped: [...skipped] };
+}
+// One entry's inside: `key, field = value, field = value`. Split out from parseBibtex so the field
+// grammar (braced / quoted / bare, `#`-concatenated) is pinnable on its own.
+function parseBibEntryBody(body) {
+  const s = String(body == null ? '' : body);
+  let i = 0;
+  const ws = () => { while (i < s.length && /\s/.test(s[i])) i++; };
+  const braced = () => {
+    let depth = 0; const start = i + 1;
+    for (; i < s.length; i++) {
+      const c = s[i];
+      if (c === '\\') { i++; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') { depth--; if (!depth) { const inner = s.slice(start, i); i++; return inner; } }
+    }
+    return s.slice(start);
+  };
+  const quoted = () => {
+    let depth = 0; const start = ++i;
+    for (; i < s.length; i++) {
+      const c = s[i];
+      if (c === '\\') { i++; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') depth--;
+      else if (c === '"' && !depth) { const inner = s.slice(start, i); i++; return inner; }
+    }
+    return s.slice(start);
+  };
+  const value = () => {
+    const parts = [];
+    for (;;) {
+      ws();
+      if (s[i] === '{') parts.push(braced());
+      else if (s[i] === '"') parts.push(quoted());
+      else { const bs = i; while (i < s.length && !/[,\s#]/.test(s[i])) i++; parts.push(s.slice(bs, i)); }
+      ws();
+      if (s[i] === '#') { i++; continue; }   // BibTeX string concatenation
+      break;
+    }
+    return parts.join('');
+  };
+  ws();
+  const ks = i;
+  while (i < s.length && s[i] !== ',') i++;
+  const key = s.slice(ks, i).trim();
+  const fields = {};
+  while (i < s.length) {
+    ws();
+    if (s[i] === ',') { i++; continue; }
+    if (i >= s.length) break;
+    const ns = i;
+    while (i < s.length && /[A-Za-z0-9_:+-]/.test(s[i])) i++;
+    const name = s.slice(ns, i).toLowerCase();
+    ws();
+    if (s[i] !== '=') { if (i === ns) i++; continue; }   // junk between fields: step one and resync
+    i++;
+    const v = value();
+    if (name) fields[name] = v;
+  }
+  return { key, fields };
+}
+// A .bib file → ONE heading subtree, each entry a point whose [^key] footnote holds its citation.
+// Returns { points, skipped } to match markdownToPoints and tableToPoints, so it rides the same
+// appendOpmlSubtrees path — clone, promote, ONE undo, and the footnote lift that remaps every [^key]
+// into this document's store. The cite key rides along as a {prop cite: …}: that is the identity that
+// has to survive the trip (it is what her reference manager calls this source), and as a property it
+// is also filterable, while {prop year: …} makes a reading list sortable by year.
+function bibToPoints(text) {
+  const parsed = parseBibtex(text);
+  const skipped = new Set(parsed.skipped);
+  const heading = mkNode('## Imported references', 'h2');
+  const used = new Set();
+  for (const e of parsed.entries) {
+    const cite = bibCitation(e);
+    if (!cite) continue;
+    const f = e.fields || {};
+    if (Object.keys(f).some(k => bibDropsLatex(f[k]))) skipped.add('LaTeX commands');
+    const title = bibFieldText(f.title || '') || e.key || 'Untitled reference';
+    // The marker key has to be something a marker can HOLD: getFnRefs stops at the first `]` and the
+    // store lift splits on the literal `[^key]`, so anything else is remapped. The ORIGINAL cite key
+    // is never touched — it goes in the property, where it stays legible and searchable.
+    let mk = (e.key || 'ref').replace(/[^A-Za-z0-9_.:-]/g, '_') || 'ref';
+    const stem = mk; let n = 2;
+    while (used.has(mk)) mk = stem + '_' + n++;   // two entries sharing a cite key would share a footnote
+    used.add(mk);
+    let t = `${title} [^${mk}]`;
+    if (e.key) t += ` {prop cite: ${e.key}}`;
+    const yr = bibYear(f);
+    if (yr) t += ` {prop year: ${yr}}`;
+    const node = mkNode(t, 'ul');
+    node.footnotes = [{ key: mk, text: cite }];
+    heading.children.push(node);
+  }
+  return heading.children.length ? { points: [heading], skipped: [...skipped] } : { points: [], skipped: [...skipped] };
+}
+
 // ─── #1282: read-only shareable web page — the OUT seam (mirror of Markdown import, the IN seam) ───
 // Panel #3/#4, 3-4 of 7, a dealbreaker for two. The existing HTML export packs the whole app and
 // "reopens as the live app"; a client can't just READ it. This renders a STATIC page: every pill
@@ -42231,13 +42465,14 @@ const GUIDE = [
   // like the tag-browser entry. It is tracked by the chrome-feature drift guard in tests/test.mjs.
   { id:'import', cat:'files',
     title:'Importing points from a shared file',
-    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did.\n\nIt reads three formats, no vendor buttons. A Pointliner .opml file comes in exactly as it left. A Markdown (.md) file is turned into points: headings become the outline's shape, bullets and numbered lists nest by their indentation, checkboxes become to-dos, quotes and footnotes carry over, so notes from any Markdown app come in as a real outline you can then bring to life. A spreadsheet comes in as data: paste rows straight from Excel or Google Sheets, or open a .csv, and each row becomes a point under one heading, with every column after the first attached as a property. Numbers keep being numbers even with a dollar sign or thousands commas, so the moment it lands you can click + Total on the heading to sum a column, with no formula typed. You do not even need this dialog for a spreadsheet: paste rows straight into the outline and they land the same way, as a heading with a property column per column, and a toast tells you it happened so a single Undo backs it out if you wanted plain text. The format is detected for you, so you can paste any of the three into the box. Anything Markdown that Pointliner does not model yet (a page's frontmatter) is kept as plain text and the toast tells you what was simplified, never a silent loss.\n\nYou can also choose several Markdown files at once, which brings in a whole set of linked notes as one document. Each file becomes its own section, and the wiki-links between them are wired up: a [[Page]] link becomes a live link to that section, and a ![[Page]] embed becomes a live mirror of it, so a linked note collection arrives with its connections intact rather than as loose text. A link to a page that was not among the files you chose is left as plain text. This works in any browser and writes nothing to your disk; it is all one document you can save as usual.\n\nWhatever the format, the whole thing lands below your current points and the view jumps to the first one that arrived. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file with no points in it is refused with a message rather than doing anything silently.",
+    body:"When someone shares a Pointliner outline with you, or you want to pull a piece of one document into another, use File → Import points. It adds the points to the end of your current document and leaves everything you already have untouched. This is the difference from File → Open, which replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations, oracles, decks and links keep working exactly as they did.\n\nIt reads four formats, no vendor buttons. A Pointliner .opml file comes in exactly as it left. A Markdown (.md) file is turned into points: headings become the outline's shape, bullets and numbered lists nest by their indentation, checkboxes become to-dos, quotes and footnotes carry over, so notes from any Markdown app come in as a real outline you can then bring to life. A spreadsheet comes in as data: paste rows straight from Excel or Google Sheets, or open a .csv, and each row becomes a point under one heading, with every column after the first attached as a property. Numbers keep being numbers even with a dollar sign or thousands commas, so the moment it lands you can click + Total on the heading to sum a column, with no formula typed. You do not even need this dialog for a spreadsheet: paste rows straight into the outline and they land the same way, as a heading with a property column per column, and a toast tells you it happened so a single Undo backs it out if you wanted plain text. A BibTeX (.bib) bibliography comes in as your sources: every entry becomes a point titled by the work, and the citation itself is kept as that point's footnote, so a source you cite while writing is the one your bibliography file already holds rather than a copy you retyped. The key your reference manager knows the source by is kept as a property, so it can still be matched up later, and so is the year, so a reading list sorts by it. Names spelled the LaTeX way come out as the characters they spell. This is not a reference manager: it writes no bibliography, has no citation styles, and never talks to another program. It reads the file, once. The format is detected for you, so you can paste any of the four into the box. Anything Pointliner does not model yet (a page's frontmatter, a bibliography's macros) is kept as plain text and the toast tells you what was simplified, never a silent loss.\n\nYou can also choose several Markdown files at once, which brings in a whole set of linked notes as one document. Each file becomes its own section, and the wiki-links between them are wired up: a [[Page]] link becomes a live link to that section, and a ![[Page]] embed becomes a live mirror of it, so a linked note collection arrives with its connections intact rather than as loose text. A link to a page that was not among the files you chose is left as plain text. This works in any browser and writes nothing to your disk; it is all one document you can save as usual.\n\nWhatever the format, the whole thing lands below your current points and the view jumps to the first one that arrived. If it turns out to be the wrong file, one Undo removes the whole import in a single step. A file with no points in it is refused with a message rather than doing anything silently.",
     related:['saving','export','templates','rollups'],
     examples:[
-      { syn:'File → Import points → Choose a file', desc:'add points from an .opml, Markdown, or .csv file, or several Markdown files as one linked document' },
+      { syn:'File → Import points → Choose a file', desc:'add points from an .opml, Markdown, .csv or .bib file, or several Markdown files as one linked document' },
       { syn:'Paste spreadsheet rows',               desc:'rows from Excel or Sheets become points with each number column ready to + Total' },
       { syn:'Paste a spreadsheet into the outline',  desc:'no dialog needed: rows land as a table with property columns right where you paste' },
-      { syn:'File → Import points → paste box',     desc:'paste an .opml file, Markdown, or a table you copied' },
+      { syn:'File → Import points → a .bib file',   desc:'each entry becomes a point, and its citation becomes a footnote' },
+      { syn:'File → Import points → paste box',     desc:'paste an .opml file, Markdown, a table you copied, or BibTeX entries' },
       { syn:`${MOD}+Z`,                             desc:'undo removes the whole import in one step' },
     ] },
 
@@ -45838,7 +46073,7 @@ function openImportDialog() {
   });
   const intro = document.createElement('p');
   intro.style.cssText = 'font-size:13px;color:var(--muted);margin:-2px 0 12px;line-height:1.55';
-  intro.textContent = 'Bring points into this document from a Pointliner .opml file, a Markdown (.md) file, or a spreadsheet (paste from Excel or Sheets, or a .csv). A spreadsheet comes in as a section of rows with each number column ready to total. Pick several Markdown files at once and each becomes a section, with the links between them wired up live. They are added below what you have now, live and editable, and you can undo in one step. Nothing here is replaced.';
+  intro.textContent = 'Bring points into this document from a Pointliner .opml file, a Markdown (.md) file, a spreadsheet (paste from Excel or Sheets, or a .csv), or a BibTeX (.bib) bibliography. A spreadsheet comes in as a section of rows with each number column ready to total. A .bib comes in as a section of references, each citation kept as a footnote. Pick several Markdown files at once and each becomes a section, with the links between them wired up live. They are added below what you have now, live and editable, and you can undo in one step. Nothing here is replaced.';
   ioCard.appendChild(intro);
 
   // Both paths route here. Clear the pristine first-run gate exactly as a starter pick does (#1192),
@@ -45850,9 +46085,18 @@ function openImportDialog() {
   // never a per-product importer.
   const doImport = (text, label) => {
     if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
-    let ok, skippedNote = '', tableNote = false, tblDelim;
+    let ok, skippedNote = '', tableNote = false, bibCount = 0, tblDelim;
     if (/^\s*(<\?xml|<opml\b)/i.test(text)) {
       ok = appendOpmlSubtrees(text, label, { all: true, announce: true });
+    } else if (sniffBibtex(text)) {
+      // #1265: a .bib database — each entry becomes a point whose [^key] footnote holds the citation.
+      // Sniffed BEFORE the table on purpose: one field per line is rectangular under a comma split, so
+      // sniffDelimited would claim a .bib and land every citation as a spreadsheet row.
+      const { points, skipped } = bibToPoints(text);
+      if (!points.length) { flashError('Nothing to import: no references found in that BibTeX file.'); return false; }
+      if (skipped.length) skippedNote = ` (${skipped.join(', ')} simplified)`;
+      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });
+      if (ok) bibCount = points[0].children.length;
     } else if ((tblDelim = sniffDelimited(text))) {
       // #1296: a pasted/opened spreadsheet — rows become points with number columns as properties,
       // under one heading so the + Total door can total a column. Rides the same append path.
@@ -45869,7 +46113,8 @@ function openImportDialog() {
     }
     if (ok) {
       closeIo();
-      if (tableNote) flashHint('Imported the table. Open the section and click + Total to sum a number column.');
+      if (bibCount) flashHint(`Imported ${bibCount} reference${bibCount === 1 ? '' : 's'}${skippedNote}. Each citation is a footnote: open File then Footnotes to see them all.`);
+      else if (tableNote) flashHint('Imported the table. Open the section and click + Total to sum a number column.');
       else if (skippedNote) flashHint(`Imported from Markdown${skippedNote}.`);
     }
     return ok;
@@ -45893,12 +46138,12 @@ function openImportDialog() {
   const fileBtn = document.createElement('button'); fileBtn.type = 'button'; fileBtn.className = 'io-btn';
   fileBtn.dataset.first = '1';
   const fbIc = document.createElement('span'); fbIc.setAttribute('aria-hidden', 'true'); setIcon(fbIc, { fa: 'fa-solid fa-folder-open', fb: '↑' });
-  const fbLbl = document.createElement('span'); fbLbl.textContent = 'Choose a file (.opml, .md, or .csv; or several .md at once)';
+  const fbLbl = document.createElement('span'); fbLbl.textContent = 'Choose a file (.opml, .md, .csv, or .bib; or several .md at once)';
   fileBtn.append(fbIc, fbLbl);
-  fileBtn.setAttribute('aria-label', 'Choose an .opml, Markdown, or .csv file to import points from; pick several Markdown files to bring in a linked note set');
+  fileBtn.setAttribute('aria-label', 'Choose an .opml, Markdown, .csv, or BibTeX .bib file to import points from; pick several Markdown files to bring in a linked note set');
   fileBtn.addEventListener('click', () => {
     const inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true;
-    inp.accept = '.opml,text/x-opml,application/xml,text/xml,.md,.markdown,text/markdown,.csv,.tsv,text/csv,text/tab-separated-values';
+    inp.accept = '.opml,text/x-opml,application/xml,text/xml,.md,.markdown,text/markdown,.csv,.tsv,text/csv,text/tab-separated-values,.bib,.bibtex,text/x-bibtex,application/x-bibtex';
     inp.addEventListener('change', () => {
       const files = [...(inp.files || [])]; if (!files.length) return;
       // several files -> a linked vault (each a section, wikilinks resolved); one file -> the sniffed path
@@ -45918,9 +46163,9 @@ function openImportDialog() {
 
   // ── or paste ──
   const pasteField = document.createElement('div'); pasteField.className = 'io-field'; pasteField.style.marginTop = '10px';
-  const pasteLbl = document.createElement('label'); pasteLbl.textContent = 'Or paste an .opml file, Markdown, or spreadsheet rows';
+  const pasteLbl = document.createElement('label'); pasteLbl.textContent = 'Or paste an .opml file, Markdown, spreadsheet rows, or BibTeX entries';
   const ta = document.createElement('textarea'); ta.className = 'io-mono'; ta.rows = 5;
-  ta.placeholder = '<opml>…</opml>   #·Markdown   or   Item⇥Cost  (paste from a sheet)'; ta.spellcheck = false; ta.autocomplete = 'off';
+  ta.placeholder = '<opml>…</opml>   #·Markdown   Item⇥Cost  (paste from a sheet)   or   @article{…}'; ta.spellcheck = false; ta.autocomplete = 'off';
   const _tid = 'io-import-paste'; ta.id = _tid; pasteLbl.setAttribute('for', _tid);
   pasteField.append(pasteLbl, ta);
   ioCard.appendChild(pasteField);

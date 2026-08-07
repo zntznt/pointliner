@@ -463,3 +463,71 @@ test('#1443 a point that matches only by an inherited tag is still a match', { s
   assert.equal(byText('Session one').hl, true, 'as must the point that owns the tag');
   assert.equal(r.length, 3, 'and the untagged branch stays out entirely');
 });
+
+// 12. import formats -- the sniff picks the right PARSER, and the import reaches the doc store.
+// A source pin cannot see this class: `indexOf('sniffBibtex') < indexOf('sniffDelimited')` stayed
+// green with the branch disabled (`false && sniffBibtex(text)`), because the substring never moved.
+// And the hazard is live -- sniffDelimited claims a plain .bib -- so a wrong order silently lands
+// every citation as a spreadsheet row. This drives the real door and asserts on what ARRIVED.
+test('#1265 a pasted .bib imports as references, and its citations reach the footnote store', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const BIB = [
+    '@article{smith2020,',
+    '  author  = {Smith, Jane and Doe, John},',
+    '  title   = {A Study of {DNA} Things},',
+    '  journal = {Journal of Things},',
+    '  year    = {2020}',
+    '}',
+    '@book{muller-2019,',
+    '  author    = {M{\\"u}ller, Anna},',
+    '  title     = {Origins of Everything},',
+    '  publisher = "Big Press",',
+    '  year      = {2019}',
+    '}',
+  ].join('\n');
+
+  const before = await pg.evaluate(() => (root.footnotes || []).length);
+  await pg.click('#logo-btn');                       // the real File menu, then the real door
+  await pg.waitForTimeout(200);
+  await pg.click('#btn-import');
+  await pg.waitForTimeout(300);
+  await pg.fill('#io-import-paste', BIB);
+  // the footer's commit button, by its visible label -- not by calling doImport ourselves
+  await pg.evaluate(() => [...document.querySelectorAll('#io-card button')]
+    .find(b => /Add pasted points/.test(b.textContent)).click());
+  await pg.waitForTimeout(600);
+
+  const got = await pg.evaluate(() => {
+    const sec = root.children.find(n => /Imported references/.test(n.text || ''));
+    const kid = sec && sec.children[0];
+    return {
+      section: sec ? sec.text : null,
+      anyTable: root.children.some(n => /Imported table/.test(n.text || '')),
+      kids: sec ? sec.children.length : 0,
+      kidText: kid ? kid.text : '',
+      kidProps: kid ? (kid.props || []).map(p => p.key + '=' + p.val) : [],
+      store: (root.footnotes || []).map(f => f.text),
+      // the marker must now hold a STORE id, not the raw cite key: that is the lift having run
+      markerIsStoreId: kid ? (root.footnotes || []).some(f => kid.text.includes('[^' + f.id + ']')) : false,
+      rendered: [...document.querySelectorAll('.node-content')]
+        .some(el => /A Study of DNA Things/.test(el.innerText || '')),
+      sups: document.querySelectorAll('.fn-ref').length,
+    };
+  });
+
+  assert.equal(got.section, '## Imported references', 'the .bib landed as a references section');
+  assert.equal(got.anyTable, false, 'and NOT as a spreadsheet table (the sniff order held)');
+  assert.equal(got.kids, 2, 'one point per entry');
+  assert.ok(got.rendered, 'the reference is on screen, with its LaTeX resolved to real characters');
+  assert.ok(got.markerIsStoreId,
+    'the [^key] marker was remapped to a doc-store id: the footnote lift ran on insert');
+  assert.equal(got.store.length - before, 2, 'both citations reached the document footnote store');
+  assert.ok(got.store.some(t => /Smith, Jane; Doe, John\. A Study of DNA Things\./.test(t)),
+    'and the store holds the citation, not the raw BibTeX');
+  assert.ok(got.store.some(t => /Müller, Anna/.test(t)), 'including the one whose author was spelled in LaTeX');
+  assert.ok(got.sups >= 2, 'each reference renders a real footnote marker');
+  // the cite key is the identity that has to survive the trip out of her reference manager
+  assert.ok(got.kidProps.includes('cite=smith2020'), 'the cite key promoted to a real property');
+  assert.ok(got.kidProps.includes('year=2020'), 'and the year, so a reading list can sort by it');
+  assert.deepEqual(pageErrors, [], 'no page errors during the import');
+});

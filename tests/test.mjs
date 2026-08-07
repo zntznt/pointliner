@@ -18979,6 +18979,188 @@ test('#1265 PR2 vault import — wired into the Import door (multi-file -> one l
   assert.ok(/inp\.multiple = true/.test(_src), 'the file picker accepts multiple files');
 });
 
+// ── #1265: BibTeX (.bib) → citations in the document footnote store ──────
+// The panel's last import bridge. Same rule as its Markdown and spreadsheet siblings: a FORMAT, never
+// a product, so these fixtures are plain BibTeX/BibLaTeX rather than any one manager's dialect.
+const _BIB = [
+  '% exported by a reference manager',
+  '@string{jt = {Journal of Things}}',
+  '@article{smith2020,',
+  '  author  = {Smith, Jane and Doe, John},',
+  '  title   = {A Study of {DNA} Things},',
+  '  journal = {Journal of Things},',
+  '  year    = {2020},',
+  '  doi     = {https://doi.org/10.1000/xyz}',
+  '}',
+  '@book{muller-2019,',
+  '  author    = {M{\\"u}ller, Anna},',
+  '  title     = {Origins of \\emph{Everything}},',
+  '  publisher = "Big Press",',
+  '  date      = {2019-05-01}',
+  '}',
+].join('\n');
+
+test('#1265 sniffBibtex — tells a .bib from Markdown, OPML and a spreadsheet, past leading comments', () => {
+  assert.ok(c.sniffBibtex(_BIB), 'a real .bib is recognised even behind a % comment line');
+  assert.ok(c.sniffBibtex('@misc(parens,\n title = {T})'), 'the paren entry form counts too');
+  assert.equal(c.sniffBibtex('# A heading\n\n- a bullet'), false, 'Markdown is not BibTeX');
+  assert.equal(c.sniffBibtex('<?xml version="1.0"?><opml/>'), false, 'OPML is not BibTeX');
+  assert.equal(c.sniffBibtex('Item\tCost\nRope\t5'), false, 'a spreadsheet is not BibTeX');
+  assert.equal(c.sniffBibtex('an email to a@b.com, then @home later'), false,
+    'a stray @ mid-prose does not open an entry');
+});
+
+test('#1265 the BibTeX sniff MUST precede the table sniff: a .bib really is rectangular under a comma split', () => {
+  const bib = '@article{k,\n  title = {T},\n  year = {2020},\n}';
+  // Not a hypothetical: this is the live hazard the branch order exists to dodge. Without it every
+  // citation in a .bib lands as a spreadsheet row.
+  assert.ok(c.sniffDelimited(bib), 'sniffDelimited CLAIMS a plain .bib (one field per line reads as 2 columns)');
+  assert.ok(c.sniffBibtex(bib), 'so the BibTeX sniff has to get there first');
+});
+
+test('#1265 parseBibtex — entries, nested braces, quoted values, macros named as skipped', () => {
+  const { entries, skipped } = c.parseBibtex(_BIB);
+  assert.equal(entries.length, 2, 'two real entries; @string is not one of them');
+  assert.ok(skipped.includes('BibTeX macros'), 'the @string macro is passed over and SAID so');
+  assert.equal(entries[0].type, 'article');
+  assert.equal(entries[0].key, 'smith2020');
+  assert.equal(entries[0].fields.title, 'A Study of {DNA} Things', 'a nested brace run survives the scan intact');
+  assert.equal(entries[1].fields.publisher, 'Big Press', 'a "quoted" value parses');
+  assert.equal(c.parseBibtex('@comment{jabref-meta: databaseType:bibtex;}').skipped[0], 'comment blocks');
+  assert.equal(c.parseBibtex('@article{a, title = {X} # { Y}}').entries[0].fields.title, 'X Y',
+    'a # concatenation joins its parts');
+  assert.equal(JSON.stringify(c.parseBibtex('').entries), '[]', 'empty input is empty, not a throw');
+  assert.equal(c.parseBibtex('@article{unterminated, title = {X}').entries.length, 1,
+    'an unterminated entry takes the rest of the file rather than throwing');
+});
+
+test('#1265 bibFieldText — LaTeX that SPELLS a character becomes that character', () => {
+  assert.equal(c.bibFieldText('M{\\"u}ller, Anna'), 'Müller, Anna', 'umlaut');
+  assert.equal(c.bibFieldText('Fran\\c{c}ois'), 'François', 'cedilla in its braced form');
+  assert.equal(c.bibFieldText("Beyonc\\'{e}"), 'Beyoncé', 'acute accent');
+  assert.equal(c.bibFieldText('Wei\\ss'), 'Weiß', 'eszett');
+  assert.equal(c.bibFieldText('A Study of {DNA} Things'), 'A Study of DNA Things',
+    'capitalization braces are removed, their content kept');
+  assert.equal(c.bibFieldText('Origins of \\emph{Everything}'), 'Origins of Everything',
+    'an unknown command is dropped and its argument kept');
+  assert.equal(c.bibFieldText('Smith \\& Sons'), 'Smith & Sons', 'escaped punctuation is unescaped');
+  assert.equal(c.bibFieldText('Vol.~3'), 'Vol. 3', 'a tilde is a non-breaking space, not a tilde accent');
+  // The command-name hazard: a backslash-c is a cedilla, so a naive rule turns \citep{Smith} into a
+  // cedilla on the i and eats the command name.
+  assert.equal(c.bibFieldText('\\citep{Smith}'), 'Smith', 'a command STARTING with an accent letter is not eaten');
+});
+
+test('#1265 bibDropsLatex — reports a command it had to drop, stays quiet about one it translated', () => {
+  assert.equal(c.bibDropsLatex('M{\\"u}ller'), false,
+    'an accent is translated exactly, so nothing was simplified (P4: no crying wolf)');
+  assert.equal(c.bibDropsLatex('Wei\\ss'), false, 'so is an eszett');
+  assert.equal(c.bibDropsLatex('Origins of \\emph{Everything}'), true, 'a dropped command IS a simplification');
+});
+
+test('#1265 bibAuthorNames / bibYear — names split at depth 0, BibLaTeX date falls back to its year', () => {
+  assert.equal(JSON.stringify(c.bibAuthorNames('Smith, Jane and Doe, John')), '["Smith, Jane","Doe, John"]');
+  assert.equal(JSON.stringify(c.bibAuthorNames('{Smith and Sons}')), '["Smith and Sons"]',
+    'a braced corporate name is one author, not two');
+  assert.equal(JSON.stringify(c.bibAuthorNames('')), '[]', 'no author is no names');
+  assert.equal(c.bibYear({ year: '2020' }), '2020');
+  assert.equal(c.bibYear({ date: '2019-05-01' }), '2019', 'a BibLaTeX date yields its year');
+  assert.equal(c.bibYear({ year: 'in press' }), '', 'a non-year year yields nothing rather than junk');
+});
+
+test('#1265 bibCitation — one neutral line: nothing invented, nothing duplicated', () => {
+  const { entries } = c.parseBibtex(_BIB);
+  assert.equal(c.bibCitation(entries[0]),
+    'Smith, Jane; Doe, John. A Study of DNA Things. Journal of Things, 2020. doi:10.1000/xyz.',
+    'authors, title, container plus year, doi -- and the doi URL prefix normalised off');
+  assert.equal(c.bibCitation(entries[1]), 'Müller, Anna. Origins of Everything. Big Press, 2019.');
+  assert.equal(c.bibCitation({ fields: { title: 'Alone' } }), 'Alone.', 'a sparse entry prints only what it has');
+  assert.equal(c.bibCitation({ fields: {} }), '', 'an entry with nothing to say says nothing');
+  assert.equal(c.bibCitation({ fields: { booktitle: 'Same', title: 'Same', year: '2001' } }), 'Same. 2001.',
+    'a container equal to the title is not printed twice');
+});
+
+test('#1265 bibToPoints — each entry a point whose [^key] footnote carries its citation', () => {
+  const { points, skipped } = c.bibToPoints(_BIB);
+  assert.equal(points.length, 1, 'one section holds the import');
+  assert.equal(points[0].text, '## Imported references');
+  assert.equal(points[0].type, 'h2');
+  assert.ok(skipped.includes('BibTeX macros') && skipped.includes('LaTeX commands'),
+    'the toast is told what was passed over and what was simplified');
+  const kids = nonEmpty(points[0].children, 'imported reference points');
+  assert.equal(kids.length, 2, 'one point per entry');
+  assert.ok(kids[0].text.startsWith('A Study of DNA Things '), 'the title is the point you read');
+  assert.ok(kids[0].text.includes('[^smith2020]'), 'the point carries a footnote marker');
+  assert.ok(kids[0].text.includes('{prop cite: smith2020}'),
+    'the cite key rides along as a property: it is what her reference manager calls this source');
+  assert.ok(kids[0].text.includes('{prop year: 2020}'), 'and the year, so a reading list sorts');
+  assert.equal(JSON.stringify(kids[0].footnotes),
+    JSON.stringify([{ key: 'smith2020', text: c.bibCitation(c.parseBibtex(_BIB).entries[0]) }]),
+    'the citation is the FOOTNOTE (the doc store lifts and renumbers it on insert)');
+  assert.equal(JSON.stringify(c.bibToPoints('not a bib at all').points), '[]',
+    'junk imports nothing rather than an empty section');
+});
+
+test('#1265 bibToPoints — a marker-hostile cite key is remapped, and two entries never share a footnote', () => {
+  const { points } = c.bibToPoints('@misc{smith]2020, title = {T}}\n@misc{dup, title = {A}}\n@misc{dup, title = {B}}');
+  const kids = nonEmpty(points[0].children, 'imported reference points');
+  // getFnRefs stops at the first ], so a key holding one would silently truncate every marker.
+  assert.equal(kids[0].footnotes[0].key, 'smith_2020', 'a key a marker cannot hold is remapped');
+  assert.ok(kids[0].text.includes('[^smith_2020]'), 'and the marker in the text agrees with it');
+  assert.ok(kids[0].text.includes('{prop cite: smith]2020}'),
+    'while the ORIGINAL key is kept, untouched, as the property');
+  assert.notEqual(kids[1].footnotes[0].key, kids[2].footnotes[0].key,
+    'two entries sharing a cite key get distinct markers, or they would share one citation');
+});
+
+test('#1265 BibTeX import — wired into the Import door (sniffed before the table, same append path)', () => {
+  const dlg = fnBody(_src, 'openImportDialog');
+  const di = between(dlg, 'const doImport = (text, label) =>', 'const doVaultImport');
+  // Match the whole BRANCH HEAD, not just the call: an `indexOf('sniffBibtex')` order check still
+  // passed with the branch disabled (`false && sniffBibtex(text)`), because the substring stays put.
+  const bibHead = '} else if (sniffBibtex(text)) {';
+  const tblHead = '} else if ((tblDelim = sniffDelimited(text))) {';
+  assert.ok(di.includes(bibHead), 'BibTeX is a LIVE branch of the format sniff, not a disabled one');
+  assert.ok(di.includes(tblHead), 'and so is the delimited table');
+  assert.ok(di.includes('bibToPoints(text)'), 'the branch parses the file into points');
+  assert.ok(di.indexOf(bibHead) < di.indexOf(tblHead),
+    'BibTeX is tried BEFORE the table sniff, which would otherwise claim a .bib (proved above)');
+  assert.ok(di.indexOf(tblHead) < di.indexOf('markdownToPoints'),
+    'and the table before Markdown, as before');
+  assert.ok(/trees: points/.test(di),
+    'references append as trees, so the footnote lift runs and one undo reverts the whole import');
+  assert.ok(di.includes('no references found in that BibTeX file'),
+    'an empty or unparseable .bib is refused OUT LOUD (P4)');
+  assert.ok(/open File then Footnotes/.test(di),
+    'the success toast names the door that lists the citations (P2)');
+  const said = nonEmpty([...di.matchAll(/flash(?:Hint|Error)\(`?'?([^`'\n]+)/g)].map(m => m[1]),
+    'user-facing strings in the BibTeX branch');
+  for (const s of said) assert.ok(!/—/.test(s), `no em dashes in user copy: ${s}`);
+});
+
+test('#1265 the Import door format family — every format it accepts is in the picker AND named in the copy', () => {
+  const dlg = fnBody(_src, 'openImportDialog');
+  const di = between(dlg, 'const doImport = (text, label) =>', 'const doVaultImport');
+  const accept = dlg.match(/inp\.accept = '([^']+)'/)[1];
+  const intro = dlg.match(/intro\.textContent = '([^']+)'/)[1];
+  const paste = dlg.match(/pasteLbl\.textContent = '([^']+)'/)[1];
+  // The census: one appendOpmlSubtrees call per format the door can take. A fifth format adds a fifth
+  // call and fails here until it joins the table below -- the ratchet that catches the NEXT omission.
+  const appends = nonEmpty([...di.matchAll(/appendOpmlSubtrees\(/g)], 'format branches in doImport');
+  const family = [
+    { ext: '.opml', word: 'opml' },
+    { ext: '.bib', word: 'BibTeX' },
+    { ext: '.csv', word: 'spreadsheet' },
+    { ext: '.md', word: 'Markdown' },
+  ];
+  assert.equal(appends.length, family.length,
+    'one append per format; add a format, add it to this census (P2: a door nobody is told about is syntax-only)');
+  for (const f of family) {
+    assert.ok(accept.includes(f.ext), `the file picker accepts ${f.ext}`);
+    assert.ok(intro.includes(f.word), `the dialog intro names ${f.word}`);
+    assert.ok(paste.includes(f.word) || paste.includes(f.ext), `the paste label names ${f.word}`);
+  }
+});
+
 // ── #1267: snippet / pattern palette (ready-to-use {…} recipes in the Builder) ──────
 // PATTERN_RECIPES is pure data (not a function), so it is parsed straight out of the source rather
 // than loaded as a core. The array runs from its declaration to the next const.

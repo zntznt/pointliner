@@ -1126,6 +1126,34 @@ Implemented:
 
 ### Export & files
 
+- **Import points — formats, never products** (`#518`, `#1265`, `#1296`) — **File menu → Import
+  points** takes a file or pasted text and **appends** it: never a replace, always one Undo, and a
+  malformed or empty input is refused with a message. The format is **sniffed, not asked**, and the
+  unit of import is a vendor-neutral FORMAT, so one parser serves a whole class of tools and there is
+  no vendor button anywhere in the app. All four route through the same `appendOpmlSubtrees` path, so
+  clone, shorthand promotion, the footnote lift, undo and the toast are shared:
+  - **`.opml`** — a Pointliner document, in exactly as it left.
+  - **Markdown (`.md`)** — `markdownToPoints`, designed as the inverse of the `toMarkdown` export
+    (round-trip is its acceptance test). Headings nest by level, lists by relative indent. Picking
+    **several** `.md` files at once runs `markdownVaultToPoints`: each file becomes a section and
+    `[[wikilinks]]` between them resolve to live links, `![[embeds]]` to mirrors. Serves Obsidian,
+    Logseq, Bear, iA Writer and plain `.md` alike.
+  - **Spreadsheet (`.csv`/`.tsv`, or a paste)** — `sniffDelimited` + `tableToPoints`: one heading, one
+    point per row, every column after the first attached as a `{prop}` so **+ Total** sums it on the
+    spot. Currency and thousands separators still read as numbers.
+  - **BibTeX (`.bib`)** — `sniffBibtex` + `bibToPoints`: each entry becomes a point titled by the
+    work, carrying a `[^key]` marker whose **footnote holds the citation**, so a source lands in the
+    document footnote store the Footnotes manager and every export already understand. The cite key
+    rides along as `{prop cite: …}` (the identity that has to survive the trip out of a reference
+    manager) and the year as `{prop year: …}`, so a reading list sorts. A brace-aware scanner, not a
+    regex: nested braces, quoted values and `#` concatenation all parse, and LaTeX that *spells* a
+    character becomes it (`M{\"u}ller` → Müller) while a command that can only be dropped is dropped
+    **and named in the toast**. Serves Zotero, Mendeley, JabRef, EndNote and BibLaTeX alike.
+    **Not a reference manager:** no bibliography generation, no citation styles, no live sync.
+  - **Sniff ORDER is load-bearing:** BibTeX is tested before the table, because a one-field-per-line
+    `.bib` *is* rectangular under a comma split and `sniffDelimited` claims it — a pinned fact, and
+    the reason a browser-driven check (`tests/browser.mjs`) guards the branch rather than a source pin.
+
 - **Self-contained HTML export** (C1) — File menu → **Self-contained HTML** writes one
   `.html` file that *is* the app **and** the document. `exportSelfContainedHtml()` clones
   the running page (`document.documentElement`), empties the rendered/dynamic DOM

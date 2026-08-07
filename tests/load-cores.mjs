@@ -183,6 +183,8 @@ export function loadCores() {
     'recordVarReads', 'depsChanged',   // #827 item 5: input-dependency snapshot + stale-inputs compare
     'parseAlt', 'pickWeightedAlt', 'modParts', 'bracedModParts', 'bracedDiceParts', 'applyMods', 'pluralize', 'pastTense', 'presentParticiple', 'fieldParts', 'fieldModParts',
     'dottedVarParts', 'resolveDottedVar', 'varBaseName', 'varBaseDefs', 'varBaseDefsMemo', 'varMapAt', 'varBasePreview',   // variable bases (dotted projections)
+    'sniffBibtex', 'parseBibtex', 'parseBibEntryBody', 'bibToPoints', 'bibFieldText', 'bibTranslateLatex',
+    'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
     'promoteCellShorthand', 'promoteLoadedShorthand',   // per-cell base promotion (PR C)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
