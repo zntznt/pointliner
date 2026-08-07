@@ -1,5 +1,7 @@
 # Single-file reassurance + scaling legibility (#1268)
 
+**Shipped so far:** #1268 already carries passing tests for `saveStatusLabel`, `relTimeShort`, the save-status chip wiring and the restore safety net. Confirm what remains before treating this proposal as unbuilt.
+
 ## The wall (2026-08 panel)
 
 Single-file is an identity pillar AND the panel's most recurring anxiety, in two flavors:

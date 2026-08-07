@@ -1,6 +1,8 @@
 # Variable-kind unification (#1353) — measured plan
 
 **Status: Proposed.** Nothing built. Every table below is driven against `3230eea`, one fresh page per
+**Shipped so far:** #1353 already carries passing tests for Phases 1, 2 and 3 (brace-refusal reasons, the node-scope distribution lane, the Variables panel naming an unshowable kind). Confirm what remains before treating this plan as unbuilt.
+
 row, through the real editor.
 
 ---
