@@ -2,6 +2,9 @@
 
 **Measured:** 2026-07-21 (storage section re-measured 2026-07-28) · **Build:** `main` @ `a631c2c`
 · **Machines:** three (see below).
+> **Partially re-measured 2026-08-07** at `main` @ `2294775`, 685 commits later — see
+> "Re-measurement 2026-08-07" below. **`applySearch` has regressed ~65% at 50k** since this
+> baseline; `toOpml` improved ~70%. The tables in this section are still the July numbers.
 **Method:** synthetic trees of N nodes driven through the live code paths; times in ms.
 Re-run harness at the bottom; re-measure and update the date/commit when the numbers
 move materially.
@@ -411,6 +414,86 @@ OPFS is available in Chromium, Firefox 111+ and Safari 15.2+, so this is now the
 rather than the common one — the reverse of how this document used to frame it.
 
 ---
+
+## Re-measurement 2026-08-07 (machine X) — one regression, one large win
+
+**Why this section exists.** The numbers above were taken at `a631c2c` on 2026-07-21. `main` is now
+**685 commits** past that. Two weeks of that drift is enough that quoting the July table as current
+was no longer safe.
+
+**Method, and the part that matters.** Absolute ms from a new machine are NOT comparable to the M/W/D
+columns above, so this did not re-run current `main` alone and diff against July's recorded figures —
+that comparison would be worthless. The doc's own harness was run on **both** `a631c2c` and current
+`main`, **on the same machine, in the same session**, and only that A/B is reported. Two deviations
+from the harness as written, both to make the A/B tighter:
+
+- **The RNG is seeded** (`_s = 123456789`, reset per sweep), so both builds get byte-identical trees.
+  The published harness uses `Math.random`, which is fine for one build's absolute numbers and adds
+  avoidable noise to a comparison.
+- Driven headless via Playwright rather than pasted into DevTools, so the two builds run identically.
+
+Second sweep pass read, per the harness instructions. **Three runs of each build**; the ranges below
+are the actual spread, and the two distributions do not overlap on any row.
+
+**Machine X:** Intel Xeon @ 2.10GHz, 4 cores, headless Chromium 1194, Linux container. A shared cloud
+vCPU is slower and noisier than the M/W/D laptops above — which is exactly why only the ratio is
+quoted, never the absolute.
+
+### `applySearch('words')` — REGRESSED
+
+| nodes | `a631c2c` (3 runs) | current `main` (3 runs) | change |
+|---|---|---|---|
+| 10k | 85, 86, 94 ms | 118, 116, 127 ms | **+36%** |
+| 25k | 224, 218, 225 ms | 341, 328, 336 ms | **+51%** |
+| 50k | 462, 455, 492 ms | 762, 775, 792 ms | **+65%** |
+
+The regression **grows with N**, so it is not a fixed per-call cost added somewhere; it is per-node
+work inside the search path.
+
+**Coarse bisect (search, 50k):**
+
+| commit | date | 50k search |
+|---|---|---|
+| `a631c2c` | 2026-07-21 | 462–492 ms |
+| `8686599` | 2026-07-30 | 710 ms |
+| `21140b3` | 2026-08-05 | 781 ms |
+| `2294775` | 2026-08-07 | 762–792 ms |
+
+**Most of it landed between 2026-07-21 and 2026-07-30** and has been flat since. The exact commit is
+not yet identified — a finer bisect over that window is the next step, and it is cheap now that the
+harness runs headless.
+
+### `toOpml` — IMPROVED, substantially
+
+| nodes | `a631c2c` | current `main` | change |
+|---|---|---|---|
+| 10k | 20, 23, 20 ms | 5, 5, 5 ms | **−76%** |
+| 25k | 66, 54, 65 ms | 16, 19, 15 ms | **−73%** |
+| 50k | 142, 141, 129 ms | 44, 42, 49 ms | **−67%** |
+
+Every save serializes, so this is a real win on the write path.
+
+### Everything else, 50k (single run each, indicative only)
+
+| operation | `a631c2c` | current | note |
+|---|---|---|---|
+| `buildIndex` | 34.2 | 34.3 | flat |
+| `render` | 87.0 | 89.5 | flat |
+| `collectVars` | 7.3 | 6.3 | flat/better |
+| `JSON.stringify` | 188.7 | 199.3 | flat |
+| `snapshot` | 197.2 | 132.3 | better |
+| structural edit | 131.0 | 109.8 | better |
+| keystroke median | 0.3 | 0.6 | both far under the perceptible floor |
+
+### What this changes
+
+- **The search cache is now a repair, not an optimisation.** It was already the one path past the
+  perceptible line at reachable sizes; it is now also **65% worse than it was in July** at 50k. Find
+  the commit in the 07-21..07-30 window before designing a cache — the regression may simply be
+  undoable, which would be cheaper and safer than adding a cache to a path that recently got slower
+  for a reason nobody has named.
+- **Nothing in the 2026-08-05..07 session (PRs #1434–#1441) contributed**: `21140b3`, the commit
+  before that work, already measured 781 ms.
 
 ## Bases (M measured 2026-07-18 · `main` @ `9fb9133` · W measured 2026-07-18 · `main` @ `5bd1c3e`)
 
