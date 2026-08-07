@@ -459,9 +459,83 @@ work inside the search path.
 | `21140b3` | 2026-08-05 | 781 ms |
 | `2294775` | 2026-08-07 | 762–792 ms |
 
-**Most of it landed between 2026-07-21 and 2026-07-30** and has been flat since. The exact commit is
-not yet identified — a finer bisect over that window is the next step, and it is cheap now that the
-harness runs headless.
+**Most of it landed between 2026-07-21 and 2026-07-30** and has been flat since.
+
+### The commit: #1089, tag inheritance (bisected 2026-08-07)
+
+Binary search over the 144 first-parent merges in that window, 25k `applySearch` as the metric,
+probe calibrated on both endpoints first (GOOD 273–284 ms, BAD 365–391 ms, threshold 325):
+
+| commit | | 25k search |
+|---|---|---|
+| `be5daee1` | merge #1088 | **261, 278, 289 ms** |
+| `07e5ba27` | merge #1089 | **386, 394, 407 ms** |
+
+Three runs each, no overlap. `07e5ba2` is *"Tag inheritance (Tier 1 complete) + the search/serializer
+performance pass it forced"* — so the cost was known at the time and already mitigated once.
+
+**By query type (25k, median of 5), which splits the regression in two:**
+
+| query | #1088 | #1089 | current `main` | change |
+|---|---|---|---|---|
+| `words` (text) | 273.7 | 401.6 | 388.0 | **+47%** |
+| `#project` (tag) | 79.7 | 336.3 | 359.4 | **+322%** |
+| `is:todo` | 33.0 | 169.0 | 188.4 | **+412%** |
+
+- **The tag-query cost is the feature.** A tag search must now consider inherited tags, so it walks
+  the ancestor chain. That is the semantics Tier 1 bought, not an accident, and it is not obviously
+  "undoable" without giving up inheritance.
+- **The text and `is:` cost is NOT inheritance.** `computeMatchSet` already carries a `needTags`
+  guard — *"a text or is: query has nothing to inherit, so it should not pay for the chain at all"* —
+  and that guard **shipped in #1089 itself**, so the chain is correctly skipped for those queries.
+  Their regression therefore comes from #1089's rewrite of the per-node matchers
+  (`termMatchesNode` / `queryMatchesNode` / `nodeMatchesSearch`), not from the inheritance walk.
+
+### Profiled 2026-08-07: one call site bypasses the guard
+
+CPU profile (CDP `Profiler`, 100µs sampling) of `applySearch('words')` at 25k, **self** time:
+
+| | #1088 | current `main` |
+|---|---|---|
+| `stripMd` | 47.8% | — |
+| `stripStateTags` | — | **27.1%** |
+| `tagScanText` | — | **21.1%** |
+| `parentOf` | — | 5.4% |
+
+Those three are **new to the hot path** and together are ~54% of self time — on a TEXT query, which
+has no tags to inherit.
+
+**Counted, same query, 25,000 nodes:** `stripStateTags` **453,275 calls**, `tagScanText` **453,275**,
+`parentOf` **503,275**. Stack capture puts all of them under `ancestorTagText < termMatchesNode`.
+
+**The mechanism.** `termMatchesNode` takes
+
+```js
+ancTagText = ancestorTagText(ancestorsOf(node), knownStates())
+```
+
+as a **default parameter**, so it walks the entire ancestor chain whenever that argument is
+`undefined`. `computeMatchSet` knows this and passes `''` on purpose — its own comment says so:
+*"'' is passed, not undefined, so termMatchesNode's ancestorsOf default stays out of the hot path."*
+
+**`pushSearchRows` does not.** Two lines above `flatten`, in the same file:
+
+```js
+const self = nodeMatchesSearch(node);      // ← ancTagText omitted → the default fires
+```
+
+It runs once per matched row, so **every row re-walks its own ancestor chain**. The guard exists, is
+documented, and one sibling call site skips it — the "check the SIBLINGS, not just the site" shape.
+
+**Confirmed by experiment** (throwaway patch, NOT committed): passing `''` there takes 25k text
+search **390.5 → 222.7 ms (−43%)** and tag search **353.1 → 227.4 ms (−36%)** — below the #1088
+baseline entirely.
+
+**That one-liner is a PROBE, not the fix.** `self` decides whether a row renders as a real match or
+as surrounding context, so blanking `ancTagText` would make a node that matches ONLY by inherited tag
+report as context. The fixture cannot see that — every row matched `words` directly, so highlights ==
+rows == 25000. The real fix threads the correct ancestor text into `pushSearchRows` the way
+`computeMatchSet` already does, and needs a fixture where a node matches only by inheritance.
 
 ### `toOpml` — IMPROVED, substantially
 
@@ -487,11 +561,11 @@ Every save serializes, so this is a real win on the write path.
 
 ### What this changes
 
-- **The search cache is now a repair, not an optimisation.** It was already the one path past the
-  perceptible line at reachable sizes; it is now also **65% worse than it was in July** at 50k. Find
-  the commit in the 07-21..07-30 window before designing a cache — the regression may simply be
-  undoable, which would be cheaper and safer than adding a cache to a path that recently got slower
-  for a reason nobody has named.
+- **A cache is not the first move; the bypassed guard is.** Profiling attributes most of the
+  regression to one call site (`pushSearchRows`) re-walking every row's ancestor chain because it
+  omits an argument. Neutralising it measured **−43% text / −36% tag** at 25k, which is more than a
+  cache would buy and costs no complexity. Fix that, re-measure, and only then ask whether what
+  remains needs a cache.
 - **Nothing in the 2026-08-05..07 session (PRs #1434–#1441) contributed**: `21140b3`, the commit
   before that work, already measured 781 ms.
 
