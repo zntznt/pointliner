@@ -19161,6 +19161,97 @@ test('#1265 the Import door format family — every format it accepts is in the 
   }
 });
 
+// ── The proposal-status drift guard: a doc marked Proposed whose work already shipped ──────
+// Two sessions running picked their "next" task off a status column that lied. #1265 (Markdown +
+// vault + spreadsheet import) and #1243 (contested rolls + the session seed) were both marked
+// Proposed while fully shipped AND pinned, so an agent read the backlog and set out to rebuild
+// finished work. The status column IS the backlog, and nothing checked it against the tree.
+//
+// The signal is the cheapest one that separates the two cases: a doc marked Proposed whose SOURCE
+// ISSUE already has passing tests. Measured before this was written rather than assumed -- it fires
+// on 4 of the 5 currently-Proposed docs, and every one checked was a TRUE positive (#1267's pattern
+// palette is live in the Builder; #1353's phases 1-3, #1240's builder machinery and #1268's save
+// chip all have shipped tests). So this is drift, not noise.
+//
+// It deliberately does NOT decide shipped-vs-proposed: that is a judgement call and the owner's.
+// It forces the ambiguity to be WRITTEN DOWN in the doc, where the next agent picking work will
+// actually read it. The census runs BOTH ways -- a new drifting doc fails until someone looks, and
+// an entry that stopped drifting (re-statused, or its tests went away) fails until it is removed --
+// so the registry cannot rot into a permanent waiver list.
+const _claudeMd  = readFileSync(new URL('../CLAUDE.md', import.meta.url), 'utf8');
+const _suiteSelf = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8');
+
+// Every issue number named in a test TITLE, with how many tests name it.
+const _testedIssues = (() => {
+  const out = new Map();
+  for (const m of _suiteSelf.matchAll(/test\(\s*(['"`])([\s\S]*?)\1/g)) {
+    for (const n of new Set([...m[2].matchAll(/#(\d+)/g)].map(x => x[1]))) {
+      out.set(n, (out.get(n) || 0) + 1);
+    }
+  }
+  return out;
+})();
+
+// Docs the always-loaded CLAUDE.md table marks Proposed, paired with the issues their header names
+// that ALREADY have tests. The header window is where a proposal states the issue it tracks.
+const _driftingProposals = (() => {
+  const out = new Map();
+  for (const m of _claudeMd.matchAll(/^\|\s*.+?\s*\|\s*`(guidance\/[^`]+)`\s*\|\s*Proposed\s*\|/gm)) {
+    const rel = m[1];
+    let doc;
+    try { doc = readFileSync(new URL('../' + rel, import.meta.url), 'utf8'); } catch { continue; }
+    const issues = [...new Set([...doc.slice(0, 1200).matchAll(/#(\d+)/g)].map(x => x[1]))];
+    const shipped = issues.filter(i => _testedIssues.has(i)).map(i => `#${i} (${_testedIssues.get(i)} tests)`);
+    if (shipped.length) out.set(rel, shipped);
+  }
+  return out;
+})();
+
+// The census. Every entry is a doc whose status says "not built yet" while the suite already tests
+// the issue it tracks. Each MUST carry a "Shipped so far:" line naming what landed.
+const PROPOSED_WITH_SHIPPED_TESTS = new Set([
+  'guidance/variable-kind-unification-plan.md',
+  'guidance/guided-authoring-proposal.md',
+  'guidance/single-file-reassurance-proposal.md',
+  'guidance/snippet-palette-proposal.md',
+]);
+
+test('#1265/#1243 status drift — a Proposed doc whose issue already has tests is declared, not silent', () => {
+  // Non-vacuous by construction: if the scan ever finds nothing, the guard has stopped looking
+  // (a renamed CLAUDE.md column, a changed table shape) and would pass forever on an empty set.
+  nonEmpty(_testedIssues, 'issue numbers named in test titles');
+  nonEmpty(_driftingProposals, 'Proposed docs whose tracked issue already has tests');
+
+  const live = [..._driftingProposals.keys()].sort();
+  const declared = [...PROPOSED_WITH_SHIPPED_TESTS].sort();
+
+  const undeclared = live.filter(d => !PROPOSED_WITH_SHIPPED_TESTS.has(d));
+  assert.deepEqual(undeclared, [],
+    'a doc is marked Proposed but the suite already tests the issue it tracks — either it shipped ' +
+    'and the status is stale (this is what sent two sessions to rebuild #1265 and #1243), or the ' +
+    'tests belong to a different phase. Decide which, then add it to PROPOSED_WITH_SHIPPED_TESTS ' +
+    'with a "Shipped so far:" line in the doc. Evidence: ' +
+    JSON.stringify(Object.fromEntries(_driftingProposals)));
+
+  const stale = declared.filter(d => !_driftingProposals.has(d));
+  assert.deepEqual(stale, [],
+    'a declared entry no longer drifts (it was re-statused, or its tests went away) — remove it, ' +
+    'so this census stays a live list rather than a permanent waiver');
+});
+
+test('#1265/#1243 status drift — each declared doc SAYS what already shipped, where the next agent reads it', () => {
+  for (const rel of nonEmpty([...PROPOSED_WITH_SHIPPED_TESTS], 'declared drifting proposals')) {
+    const doc = readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
+    const m = doc.match(/\*\*Shipped so far:\*\*\s*(.+)/);
+    assert.ok(m, `${rel} is Proposed while its issue already has tests, so it must carry a ` +
+      '"**Shipped so far:**" line naming what landed. A status column that lies is the whole defect.');
+    assert.ok(/#\d+/.test(m[1]), `${rel}: the "Shipped so far" line must name the issue it is talking about`);
+    // it belongs at the TOP, not buried: someone skimming to pick work must hit it
+    assert.ok(doc.indexOf(m[0]) < 900,
+      `${rel}: the "Shipped so far" line is too far down to be seen by someone skimming for work`);
+  }
+});
+
 // ── #1267: snippet / pattern palette (ready-to-use {…} recipes in the Builder) ──────
 // PATTERN_RECIPES is pure data (not a function), so it is parsed straight out of the source rather
 // than loaded as a core. The array runs from its declaration to the next const.

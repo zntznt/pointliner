@@ -1,6 +1,8 @@
 # Guided authoring: no-syntax "Add another like this" — proposal
 
 **Status: PROPOSED (2026-08). Tracks issue #1240. Owner-directed: no-syntax authoring is the territory
+**Shipped so far:** #1240 already carries passing tests for the builder machinery (`inferRowShape`, `buildRow`, `BUILDER_FORMS`) and phase-4 view-door wiring. Confirm what remains before treating this proposal as unbuilt.
+
 of Guided mode and will be solved there.**
 
 ## The problem (from the 2026-08 laptop panel)
