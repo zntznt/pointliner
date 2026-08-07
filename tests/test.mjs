@@ -1333,6 +1333,34 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // The SIBLINGS ratchet (CLAUDE.md). The five sections below are real lists that shipped doorless;
 // the shape is inferred from the OPML we actually ship, so re-authoring a section back into the
 // broken form fails here rather than silently removing its door again.
+// ── #1443: the ancestor-chain walk must be SEEDED, never re-derived per row ─────────────────────
+// termMatchesNode takes `ancTagText = ancestorTagText(ancestorsOf(node), …)` as a DEFAULT PARAMETER,
+// so omitting the argument re-walks the whole chain. computeMatchSet passes '' on purpose and says
+// so. Two siblings did not: pushSearchRows (once per matched row) and the announce counter in
+// applySearch (once per node in the subtree) — measured together as 2 chain-walks per node,
+// 453,275 stripStateTags calls over 25,000 points, ~54% of search self-time.
+test('#1443 every per-node search walk threads ancTagText instead of re-deriving it', () => {
+  for (const fn of ['computeMatchSet', 'pushSearchRows']) {
+    const body = fnBody(_src, fn);
+    assert.ok(/nodeMatchesSearch\(node, anc\)/.test(body),
+      `${fn} must pass the threaded ancestor text — omitting it fires termMatchesNode's ancestorsOf default`);
+    assert.ok(/needTags \? extendAncTagText\(anc, node\.text, states\) : ''/.test(body),
+      `${fn} must extend the chain only when the query has a tag term`);
+  }
+  // The announce counter is the second bypass and the easiest to forget: it walks EVERY node.
+  const apply = fnBody(_src, 'applySearch');
+  assert.ok(/nodeMatchesSearch\(node, anc\)/.test(apply),
+    'the matching-points counter must thread the chain too — it walks every node, not just matches');
+  // And nothing may reintroduce a bare per-node call. The remaining bare calls are one-offs on a
+  // single live node (an edit commit), which are correct and must stay legal.
+  // Bare calls are legal ONLY as one-offs on a single live node (the edit-commit before/after
+  // check), where there is no walk to seed and the default's cost is paid once. Pinned by COUNT so
+  // a new bare call inside a walk has to come past this test and justify itself.
+  const bare = (_src.match(/nodeMatchesSearch\(node\)/g) || []).length;
+  assert.equal(bare, 1, 'the only bare call left is the edit-commit one-off; a new one inside a ' +
+    'per-node walk reintroduces the ancestor re-walk this fix removed');
+});
+
 // ── #1440: the folder write follows the DOCUMENT, not the view ─────────────────────────────────
 // Driven on a CLEAN document with a connected folder: toggling the agenda "Done" filter produced a
 // full serialize + atomic temp+move write of notes.opml whose body was identical apart from a fresh

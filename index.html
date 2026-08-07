@@ -10599,12 +10599,23 @@ function pushRows(node, depth, parent, pos, size) {
     vis.forEach((c, i) => pushRows(c, depth + 1, node, i + 1, vis.length));
   }
 }
-function pushSearchRows(node, depth, parent, pos, size) {
+// `anc`/`states`/`needTags` are threaded exactly as computeMatchSet threads them, and for the same
+// reason (#1443): termMatchesNode takes `ancTagText = ancestorTagText(ancestorsOf(node), …)` as a
+// DEFAULT PARAMETER, so omitting it makes every row re-walk its own ancestor chain. computeMatchSet
+// passes '' deliberately to keep that default out of the hot path; this function used to call
+// nodeMatchesSearch with no second argument, and paid the walk once per matched row.
+// Profiled at 25k: stripStateTags 27% + tagScanText 21% of search self-time, 453,275 calls each.
+// Passing '' unconditionally would be WRONG, not merely blunt: `self` decides whether a row renders
+// as a real match or as context, so a node matching only by an INHERITED tag would be demoted to
+// context. The value has to be right, not absent — hence the same threading, not a blanket ''.
+function pushSearchRows(node, depth, parent, pos, size, anc = '', states = knownStates(),
+                        needTags = searchTerms.some(t => t.kind === 'tag')) {
   if (!searchMatchSet.has(node.id)) return;
-  const self = nodeMatchesSearch(node);
+  const self = nodeMatchesSearch(node, anc);
   flatRows.push({ node, depth, parent, pos, size, searchCtx: !self, highlight: self });
+  const kids = needTags ? extendAncTagText(anc, node.text, states) : '';
   const vis = node.children.filter(c => searchMatchSet.has(c.id));
-  vis.forEach((c, i) => pushSearchRows(c, depth + 1, node, i + 1, vis.length)); // search always expands
+  vis.forEach((c, i) => pushSearchRows(c, depth + 1, node, i + 1, vis.length, kids, states, needTags)); // search always expands
 }
 function flatten(vp) {
   flatRows = []; flatIndex = new Map();
@@ -10616,7 +10627,7 @@ function flatten(vp) {
     const vpAnc = ancestorTagText(ancestorsOf(vp), knownStates()) + ' ' + stripStateTags(tagScanText(vp.text), knownStates());
     vp.children.forEach(c => computeMatchSet(c, searchMatchSet, vpAnc));
     const vis = vp.children.filter(c => searchMatchSet.has(c.id));
-    vis.forEach((c, i) => pushSearchRows(c, 0, vp, i + 1, vis.length));
+    vis.forEach((c, i) => pushSearchRows(c, 0, vp, i + 1, vis.length, vpAnc));   // #1443: seed the chain, don't re-walk it per row
   } else {
     const vis = vp.children.filter(isVisible);
     vis.forEach((c, i) => pushRows(c, 0, vp, i + 1, vis.length));
@@ -36633,8 +36644,20 @@ function applySearch(q) {
   if (searchQueryLC && searchTerms.length) {       // P3: a filter that repaints without moving focus announces (UXP-88)
     const vp = focusedId ? nodeById(focusedId) : root;
     let n = 0;
-    const cnt = node => { if (nodeMatchesSearch(node)) n++; (node.children || []).forEach(cnt); };
-    (vp.children || []).forEach(cnt);
+    // #1443, the SECOND bypass of the same guard: this walks EVERY node, not just matched rows, and
+    // called nodeMatchesSearch with no ancTagText — so each node re-walked its ancestor chain. The
+    // two bypasses together were the measured 2 chain-walks per node (50,001 for 25,000 points).
+    // Threaded like computeMatchSet/pushSearchRows; the seed is flatten's, so a zoomed view counts
+    // inherited tags from above the zoom root the same way it matches them.
+    const cntStates = knownStates();
+    const cntNeedTags = searchTerms.some(t => t.kind === 'tag');
+    const cntAnc = ancestorTagText(ancestorsOf(vp), cntStates) + ' ' + stripStateTags(tagScanText(vp.text), cntStates);
+    const cnt = (node, anc) => {
+      if (nodeMatchesSearch(node, anc)) n++;
+      const kids = cntNeedTags ? extendAncTagText(anc, node.text, cntStates) : '';
+      (node.children || []).forEach(c => cnt(c, kids));
+    };
+    (vp.children || []).forEach(c => cnt(c, cntAnc));
     const count = n === 1 ? '1 matching point' : n + ' matching points';
     // ONE live-region write, not two: each clears the region then rAF-sets it, so a second write
     // swallows the first. The reason leads — "0 matching points" is the misleading half.

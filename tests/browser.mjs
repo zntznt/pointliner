@@ -435,3 +435,31 @@ test('#1440 a view toggle writes nothing; a real edit still writes', { skip: ski
   const wrote = await pg.evaluate(() => /extra/.test(window.__writes[0] || ''));
   assert.ok(wrote, 'and the write must contain the edit, not a stale serialization');
 });
+
+// #1443 — the fix must not demote an INHERITED-tag match to a context row.
+//
+// The cheap version of this fix (pass '' everywhere) is 43% faster and WRONG: `self` decides whether
+// a row renders as a real match or as surrounding context, so a node matching only through an
+// ancestor's tag would silently become context. A 25k synthetic fixture cannot see it — every row
+// there matches directly. This is the fixture that can.
+test('#1443 a point that matches only by an inherited tag is still a match', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title></head><body>' +
+      '<outline text="Session one #campaign">' +
+      '<outline text="Alder the smith"/><outline text="Bram the cooper"/></outline>' +
+      '<outline text="Shopping list"><outline text="bread"/></outline></body></opml>'));
+    focusedId = null; render();
+    applySearch('#campaign');
+    const out = flatRows.map(x => ({ text: x.node.text, hl: !!x.highlight }));
+    applySearch('');
+    return out;
+  });
+  const byText = t => r.find(x => x.text.startsWith(t));
+  assert.ok(byText('Alder'), 'the inheriting child is in the results at all');
+  assert.equal(byText('Alder').hl, true,
+    'Alder carries no tag of its own and must still count as a MATCH, not context');
+  assert.equal(byText('Bram').hl, true, 'and so must its sibling');
+  assert.equal(byText('Session one').hl, true, 'as must the point that owns the tag');
+  assert.equal(r.length, 3, 'and the untagged branch stays out entirely');
+});
