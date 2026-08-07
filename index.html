@@ -603,6 +603,12 @@ body.v-lean .addrow-affordance:focus-visible{opacity:1}
 @media(hover:none){
   .addrow-affordance,body.v-lean .addrow-affordance{opacity:1;min-height:30px;height:auto;padding:5px 13px;font-size:12.5px}
 }
+/* #1240 phase 4: the doors of the point you are LOOKING AT (root, or the point you zoomed into).
+   Its row is not in this view, so the doors sit at the end of the rows they act on. Children are
+   ordinary .addrow-affordance, so the verbosity gating and the touch rail above apply unchanged —
+   this rule is layout only, and adds no new visual language. */
+.view-doors{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 0 var(--row-indent,26px);padding:0}
+.view-doors>.addrow-affordance{margin-left:0}
 /* V6: pill edit-pencils are a verbose-tier affordance. Hidden AT REST (opacity 0 in
    each `*-edit` rule below) so pill-dense lines stay calm; revealed on pill-hover
    (the `*-roll:hover .*-edit` rules). Touch has no hover, so this block keeps them
@@ -10521,6 +10527,12 @@ function render() {
   // identical invitation right under it. (firstChildId is set only in that empty case.)
   if (!firstChildId) appendGhostRow(vp, container);
 
+  // #1240 phase 4: the view parent's own doors. Its row is not in this view (it is the masthead,
+  // or it is the document itself), so without this the "+ Add"/"+ Total" it earns simply vanish
+  // the moment you zoom into the list you meant to work on. Placed at the end of the rows it acts
+  // on, which is where "add another" belongs.
+  renderViewDoors(vp, container, { corkOn, searchQuery });
+
   // #953: a zoomed note carries its own inbound references in flow, under its children. The
   // bottom strip stays for the outline's caret case; here the answer belongs WITH the note (the
   // strip sat ~480px below the title, docked to the window edge). Bases are skipped: a zoomed
@@ -19911,6 +19923,9 @@ function exitEdit(content, node) {
     // which is the only thing the repaints above touch, so a commit that attached a property or made
     // a list totalable showed neither until the next full render.
     for (const id of affordanceDirtyIds(node, parentOf(node.id) || null)) refreshRowChrome(id);
+    // #1240 phase 4: the same commit can make the VIEW parent's list totalable, and its doors do
+    // not live on a row, so refreshRowChrome above cannot reach them.
+    refreshViewDoors();
   }
   if (activeContentId === node.id) activeContentId = null;
   // #467: stamp created/edited only when the point's own text actually changed (same signal
@@ -43001,6 +43016,68 @@ function refreshRowChrome(nodeId) {
   if (hasVisibleProps(node)) div.appendChild(buildPropsRow(node));   // #494: timestamp-only props render nothing
   for (const el of row.querySelectorAll(':scope > .addrow-affordance')) el.remove();
   maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row); maybeAddCardAffordance(node, row);
+}
+
+// ── #1240 phase 4: the doors of the point you are LOOKING AT ─────────────────────────────────
+// DOM-free. Every "+ Add" / "+ Total" / "+ Check" / "+ Variance" door hangs off its parent's
+// rendered row. The point you are looking AT — the document root, or the point you zoomed into —
+// has no row in its own view (its title is the masthead), so its doors had nowhere to hang and
+// silently vanished. Measured before building, by driving the app:
+//   - a shaped list under "## Groceries"        -> + Add, + Total, + Check
+//   - zoom INTO that same heading               -> NOTHING
+//   - the same rows at the top level of a doc   -> NOTHING
+// The zoom case is the P1 break: the user zooms in to work on precisely that list and the doors
+// disappear on arrival. The root case is the blank-document case — the doors are gated behind
+// first knowing to create a parent heading, which is the outline knowledge a non-syntax user
+// does not have yet.
+//
+// Returns the node whose doors the VIEW should host, or null when a rendered row already carries
+// them (or when this view is not an outline at all).
+function viewDoorHost(vp, opts = {}) {
+  if (!vp || !vp.children || vp.children.length < 2) return null;   // maybeAddRowAffordance needs 2+ rows
+  if (opts.corkOn) return null;        // the corkboard replaces the row list; its cards are not a shaped list
+  if (opts.searchQuery) return null;   // a filtered view is not the list you would be adding to
+  if (vp.type === 'base') return null; // a zoomed base is a table widget with its own controls
+  return vp;
+}
+
+// The DOM half: give the view parent's doors a home at the END of the list they belong to. It
+// calls the SAME maybe*Affordance builders the row path uses — deliberately not a copy of their
+// gating, so the two placements cannot drift apart (the sibling-divergence trap). The host is
+// dropped when nothing lands in it, so an ordinary prose outline grows no chrome.
+function renderViewDoors(vp, container, opts = {}) {
+  const host = viewDoorHost(vp, opts);
+  if (!host) return null;
+  const bar = document.createElement('div');
+  bar.className = 'view-doors';
+  maybeAddRowAffordance(host, bar);
+  maybeAddFieldAffordance(host, bar);
+  maybeAddCardAffordance(host, bar);
+  if (!bar.children.length) return null;   // earned no doors — add no bar
+  // The row path announces these as chrome on a point; here they act on the view, so the group
+  // says which point they act on (P3: the control must be self-describing out of row context).
+  bar.setAttribute('role', 'group');
+  // The heading markers are syntax, not the name of the thing — a screen reader saying "Add to
+  // hash hash Groceries" is the marker leaking into speech. stripMd leaves them, so drop them here.
+  const title = stripMd(String(host.text || '').replace(/^\s*#{1,6}\s+/, '')).trim();
+  bar.setAttribute('aria-label', 'Add to ' + (title || 'this document'));
+  container.appendChild(bar);
+  return bar;
+}
+
+// Keep the view bar honest after an edit that changes the shape (a new property makes a column
+// totalable). refreshRowChrome finds its target by `.node[data-id]`, which the view parent has
+// none of in its own view, so without this the bar keeps offering a stale door.
+function refreshViewDoors() {
+  const container = document.getElementById('outline');
+  if (!container) return;
+  for (const el of container.querySelectorAll(':scope > .view-doors')) el.remove();
+  const vp = focusedId ? nodeById(focusedId) : root;
+  if (!vp) return;
+  const bar = renderViewDoors(vp, container, { corkOn: !!(focusedId != null && vp.cards && !searchQuery), searchQuery });
+  // The bar belongs at the end of the list, not after the backlinks/empty-state that follow it.
+  const anchor = container.querySelector(':scope > #search-empty');
+  if (bar && anchor) container.insertBefore(bar, anchor);
 }
 
 function maybeAddRowAffordance(node, row) {
