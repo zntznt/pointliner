@@ -1,6 +1,6 @@
 # Single-file reassurance + scaling legibility (#1268)
 
-**Shipped so far:** #1268 already carries passing tests for `saveStatusLabel`, `relTimeShort`, the save-status chip wiring and the restore safety net. Confirm what remains before treating this proposal as unbuilt.
+Status: **Shipped** (2026-08). All four items landed: the always-visible save-status chip (`saveStatusLabel` / `relTimeShort`), the restore safety net surfaced early, the Welcome intro's reassurance halves, and the scaling-honesty paragraph in the guide.
 
 ## The wall (2026-08 panel)
 

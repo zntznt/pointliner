@@ -19194,6 +19194,13 @@ const _testedIssues = (() => {
 
 // Docs the always-loaded CLAUDE.md table marks Proposed, paired with the issues their header names
 // that ALREADY have tests. The header window is where a proposal states the issue it tracks.
+// Every doc row in the CLAUDE.md "Where to find things" table, whatever its status. This is the
+// parser's own liveness check: bind non-vacuity HERE rather than to the drift set, because an empty
+// drift set is the GOAL, and a guard that fails when the drift is finally cleaned would just teach
+// the next person to delete it.
+const _tableRows = [..._claudeMd.matchAll(/^\|\s*.+?\s*\|\s*`(guidance\/[^`]+)`\s*\|\s*(\w[\w ]*?)\s*\|/gm)]
+  .map(m => ({ doc: m[1], status: m[2].trim() }));
+
 const _driftingProposals = (() => {
   const out = new Map();
   for (const m of _claudeMd.matchAll(/^\|\s*.+?\s*\|\s*`(guidance\/[^`]+)`\s*\|\s*Proposed\s*\|/gm)) {
@@ -19209,18 +19216,21 @@ const _driftingProposals = (() => {
 
 // The census. Every entry is a doc whose status says "not built yet" while the suite already tests
 // the issue it tracks. Each MUST carry a "Shipped so far:" line naming what landed.
-const PROPOSED_WITH_SHIPPED_TESTS = new Set([
-  'guidance/variable-kind-unification-plan.md',
-  'guidance/guided-authoring-proposal.md',
-  'guidance/single-file-reassurance-proposal.md',
-  'guidance/snippet-palette-proposal.md',
-]);
+// Empty, and that is the point: every doc it held was audited against its own acceptance criteria
+// and re-statused Shipped (#1353 says so in its own body; #1267's Patterns section, #1240's phases
+// 0-4 and all four of #1268's items are live in index.html). An entry here is a KNOWN, WRITTEN-DOWN
+// exception, never a parking space -- and the census below fails if one is added without cause.
+const PROPOSED_WITH_SHIPPED_TESTS = new Set([]);
 
 test('#1265/#1243 status drift — a Proposed doc whose issue already has tests is declared, not silent', () => {
-  // Non-vacuous by construction: if the scan ever finds nothing, the guard has stopped looking
-  // (a renamed CLAUDE.md column, a changed table shape) and would pass forever on an empty set.
+  // Non-vacuity binds to the SCANNERS, never to the drift set. An empty drift set is the goal, so
+  // asserting on it would fail the day the backlog is finally honest. What must never be empty is
+  // the machinery: if the table stops parsing (a renamed column, a reshaped table) or no test title
+  // names an issue, this guard has quietly stopped looking and would pass forever on nothing.
   nonEmpty(_testedIssues, 'issue numbers named in test titles');
-  nonEmpty(_driftingProposals, 'Proposed docs whose tracked issue already has tests');
+  nonEmpty(_tableRows, 'doc rows parsed from the CLAUDE.md table');
+  assert.ok(_tableRows.some(r => /^(Proposed|Shipped)$/.test(r.status)),
+    'the table parses no Proposed/Shipped row, so the status column this guard reads has changed shape');
 
   const live = [..._driftingProposals.keys()].sort();
   const declared = [...PROPOSED_WITH_SHIPPED_TESTS].sort();
@@ -19240,7 +19250,10 @@ test('#1265/#1243 status drift — a Proposed doc whose issue already has tests 
 });
 
 test('#1265/#1243 status drift — each declared doc SAYS what already shipped, where the next agent reads it', () => {
-  for (const rel of nonEmpty([...PROPOSED_WITH_SHIPPED_TESTS], 'declared drifting proposals')) {
+  // No nonEmpty() here, deliberately. An empty census is the goal state, and the test above already
+  // proves the census EQUALS the live drift set -- so "nothing to check" is a PROVEN nothing, not an
+  // unnoticed one. Re-adding a non-vacuity assert here would fail the day the backlog goes honest.
+  for (const rel of [...PROPOSED_WITH_SHIPPED_TESTS]) {
     const doc = readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
     const m = doc.match(/\*\*Shipped so far:\*\*\s*(.+)/);
     assert.ok(m, `${rel} is Proposed while its issue already has tests, so it must carry a ` +
