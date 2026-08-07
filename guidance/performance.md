@@ -561,11 +561,27 @@ Every save serializes, so this is a real win on the write path.
 
 ### What this changes
 
-- **A cache is not the first move; the bypassed guard is.** Profiling attributes most of the
-  regression to one call site (`pushSearchRows`) re-walking every row's ancestor chain because it
-  omits an argument. Neutralising it measured **−43% text / −36% tag** at 25k, which is more than a
-  cache would buy and costs no complexity. Fix that, re-measure, and only then ask whether what
-  remains needs a cache.
+- **FIXED (#1443). No cache needed, and none added.** There were **two** bypasses, not one:
+  `pushSearchRows` (once per matched row) and the announce counter in `applySearch` (once per node in
+  the subtree) — together the measured 2 chain-walks per node. Both now thread `anc` the way
+  `computeMatchSet` does.
+
+  **Measured after, 25k, same machine:**
+
+  | query | before (`main`) | after | vs the pre-regression `#1088` |
+  |---|---|---|---|
+  | `words` (text) | 392.8 ms | **79.4 ms** (−80%) | 273 ms → **3.4× faster than before the regression** |
+  | `#project` (tag) | 351.0 ms | **79.9 ms** (−77%) | ~80 ms → back to baseline |
+  | `is:todo` | 173.1 ms | **26.3 ms** (−85%) | ~33 ms → better than baseline |
+
+  Text search ends up well *below* the July baseline because #1089's matcher rewrite was a genuine
+  improvement (it replaced `stripMd`, 47.8% of self time in `#1088`) that was masked by the leaked
+  ancestor walk. Removing the leak keeps the gain.
+
+  **Equivalence proven, not assumed:** seven query shapes (text, tag, inherited tag, `is:`, negation,
+  multi-term) return identical matches, identical context rows and an identical match set before and
+  after. A driven check pins the case a synthetic fixture cannot see — a point matching ONLY through
+  an ancestor's tag stays a match rather than being demoted to context.
 - **Nothing in the 2026-08-05..07 session (PRs #1434–#1441) contributed**: `21140b3`, the commit
   before that work, already measured 781 ms.
 

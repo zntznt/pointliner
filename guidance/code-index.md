@@ -616,7 +616,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## virtual list
 
 - `pushRows` — pos/size are the node's 1-based position among its VISIBLE siblings and that
-- `pushSearchRows`
+- `pushSearchRows` — `anc`/`states`/`needTags` are threaded exactly as computeMatchSet threads them, and for the same
 - `flatten`
 - `measureTops`
 - `rowAtOffset` — largest index i with rowTops[i] <= y (clamped to valid range)
