@@ -390,3 +390,48 @@ test('#1438 /addrow opens the same form from the keyboard, and refuses out loud'
   assert.equal(s.open, false, 'two points sharing no shape earn no form');
   assert.match(s.said || '', /share a shape/, 'with the OTHER reason, not the same one: ' + JSON.stringify(s.said));
 });
+
+// #1440 — the folder write follows the DOCUMENT, not the view.
+//
+// A source-pin can prove the `&& dirty` is present; only driving proves the write stops happening,
+// and that a REAL edit still lands (which is the half that matters — a gate that also suppresses
+// genuine saves would be far worse than the churn it fixes).
+//
+// Driven on the pre-fix build: with a connected folder and a CLEAN document, toggling the agenda
+// "Done" filter produced one full serialize + atomic write whose body was identical apart from a
+// fresh <dateModified>.
+test('#1440 a view toggle writes nothing; a real edit still writes', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    // adoptDoc resets the workspace state, so stand in for the folder AFTER loading (measured: the
+    // reverse order silently produced zero writes and looked like a passing fix).
+    adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title></head><body>' +
+      '<outline text="## Groceries"><outline text="Aldi {prop cost: 92.4}"/>' +
+      '<outline text="Lidl {prop cost: 40.1}"/></outline></body></opml>'));
+    focusedId = null; render();
+    window.__writes = [];
+    window.safeWriteOpml = async (dir, name, opml) => { window.__writes.push(opml); };
+    window.anchorWorkspaceFile = async () => {};
+    window.refreshOwnDocInIndex = () => {};
+    workspaceDir = { name: 'nb' };
+    workspaceFile = { getFile: async () => ({ lastModified: _wsKnownModified, size: _wsKnownSize }) };
+    fileName = 'notes.opml';
+    dirty = false;                       // the document is SAVED; nothing is pending
+  });
+
+  // A pure view toggle: agenda filter state lives in the JSON payload, not in any point's text.
+  await pg.evaluate(() => { agendaShowDone = !agendaShowDone; scheduleAutosave(); });
+  await pg.waitForTimeout(1400);         // past the 800ms debounce
+  const afterView = await pg.evaluate(() => window.__writes.length);
+  assert.equal(afterView, 0,
+    'a view-only toggle must not rewrite the document file — it churns mtime, wakes folder sync, ' +
+    'and re-anchors the staleness guard, all for a byte-identical body');
+
+  // The half that must NOT regress: a genuine edit still reaches disk.
+  await pg.evaluate(() => { root.children[0].children[0].text += ' extra'; markDirty(); });
+  await pg.waitForTimeout(1400);
+  const afterEdit = await pg.evaluate(() => window.__writes.length);
+  assert.equal(afterEdit, 1, 'a real text edit must still write the document');
+  const wrote = await pg.evaluate(() => /extra/.test(window.__writes[0] || ''));
+  assert.ok(wrote, 'and the write must contain the edit, not a stale serialization');
+});

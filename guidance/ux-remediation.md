@@ -6414,3 +6414,49 @@ the row case. All four red.
 A probe artifact worth recording: `#io-card` is a PERSISTENT container, so `!!querySelector('#io-card')`
 reads a closed dialog as open. The first driven run "passed" the no-list case wrongly because of it.
 Openness is laid out AND carrying text, and the shipped check measures it that way.
+
+---
+
+## UXP-330 -- the folder write follows the document, not the view (#1440)
+
+**Status: shipped.** `UI: none` (no DOM, no copy, no interaction; one call-site condition).
+
+### The defect, driven
+
+With a connected folder and a **clean** document (`dirty === false`, nothing pending), toggling the
+agenda "Done" filter produced **one full OPML serialize plus an atomic temp+move write** of
+`notes.opml`, whose body was identical to the previous one apart from a fresh `<dateModified>`.
+
+`writeAutosavePayloadNow()` ended with an ungated `if (workspaceFile) flushWorkspaceFile()`, and
+`flushWorkspaceFile` has no dirty check -- while **10 of the 24 `scheduleAutosave()` call sites are
+pure view state**: the agenda Running/Done/Overdue filters, its sort order, its folder scope, and the
+Gantt column width. Those belong to the JSON payload and change no point text.
+
+### Why the git diff was the wrong frame
+
+Found while checking #1266, which says an OPML no-op save produces whole-file churn. Measured:
+`dateModified` appears **once**, in `<head>`, and the body is `out.join('\\n')`, one line per point --
+so a no-op save is a **one-line** diff. The real costs are elsewhere:
+
+- an untouched document's **mtime** changes, waking Dropbox/iCloud/Syncthing to re-upload the file
+- it **re-anchors `_wsKnownModified`**, the anchor the pre-write staleness check uses to avoid clobbering
+- it **re-serializes the whole tree on every drag frame** of a Gantt column resize
+
+### Gated at the call site, deliberately
+
+`flushWorkspaceFile` itself stays ungated: its three other callers are explicit unconditional writes
+-- the reconcile "keep mine" choice (`_wsForceWrite`), the docId re-stamp (which `markDirty()`s
+first), and its own `_wsPending` re-run after a coalesced write. Pushing the gate inside would have
+broken all three silently. `markDirty()` is the documented single invalidation point and view toggles
+bypass it, so `dirty` separates the two cases exactly.
+
+### Verification
+
+`tests/test.mjs` 2072 green; `tests/browser.mjs` 10 green. Removing the gate turns **both** the
+source pin and the driven check red -- the driven half matters because a pin proves the condition is
+present, not that the write stopped. The driven check also asserts the half that must not regress: a
+real text edit still writes, and the write contains the edit.
+
+A probe-calibration note: standing in for the folder **before** `adoptDoc` silently produced zero
+writes (adoptDoc resets workspace state), which looked exactly like a passing fix on the unfixed
+build. The shipped check sets up after loading, and says why.
