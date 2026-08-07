@@ -185,6 +185,7 @@ export function loadCores() {
     'dottedVarParts', 'resolveDottedVar', 'varBaseName', 'varBaseDefs', 'varBaseDefsMemo', 'varMapAt', 'varBasePreview',   // variable bases (dotted projections)
     'sniffBibtex', 'parseBibtex', 'parseBibEntryBody', 'bibToPoints', 'bibFieldText', 'bibTranslateLatex',
     'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
+    'emptyExtremalProp',   // #1449 a quoted-search min/max that matched nothing (identity, not a division)
     'promoteCellShorthand', 'promoteLoadedShorthand',   // per-cell base promotion (PR C)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
