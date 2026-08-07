@@ -459,9 +459,42 @@ work inside the search path.
 | `21140b3` | 2026-08-05 | 781 ms |
 | `2294775` | 2026-08-07 | 762–792 ms |
 
-**Most of it landed between 2026-07-21 and 2026-07-30** and has been flat since. The exact commit is
-not yet identified — a finer bisect over that window is the next step, and it is cheap now that the
-harness runs headless.
+**Most of it landed between 2026-07-21 and 2026-07-30** and has been flat since.
+
+### The commit: #1089, tag inheritance (bisected 2026-08-07)
+
+Binary search over the 144 first-parent merges in that window, 25k `applySearch` as the metric,
+probe calibrated on both endpoints first (GOOD 273–284 ms, BAD 365–391 ms, threshold 325):
+
+| commit | | 25k search |
+|---|---|---|
+| `be5daee1` | merge #1088 | **261, 278, 289 ms** |
+| `07e5ba27` | merge #1089 | **386, 394, 407 ms** |
+
+Three runs each, no overlap. `07e5ba2` is *"Tag inheritance (Tier 1 complete) + the search/serializer
+performance pass it forced"* — so the cost was known at the time and already mitigated once.
+
+**By query type (25k, median of 5), which splits the regression in two:**
+
+| query | #1088 | #1089 | current `main` | change |
+|---|---|---|---|---|
+| `words` (text) | 273.7 | 401.6 | 388.0 | **+47%** |
+| `#project` (tag) | 79.7 | 336.3 | 359.4 | **+322%** |
+| `is:todo` | 33.0 | 169.0 | 188.4 | **+412%** |
+
+- **The tag-query cost is the feature.** A tag search must now consider inherited tags, so it walks
+  the ancestor chain. That is the semantics Tier 1 bought, not an accident, and it is not obviously
+  "undoable" without giving up inheritance.
+- **The text and `is:` cost is NOT inheritance.** `computeMatchSet` already carries a `needTags`
+  guard — *"a text or is: query has nothing to inherit, so it should not pay for the chain at all"* —
+  and that guard **shipped in #1089 itself**, so the chain is correctly skipped for those queries.
+  Their regression therefore comes from #1089's rewrite of the per-node matchers
+  (`termMatchesNode` / `queryMatchesNode` / `nodeMatchesSearch`), not from the inheritance walk.
+
+**What is measured and what is not.** The boundary commit, the per-query-type split, and the presence
+of the `needTags` guard in #1089 are all measured. **Which line of the matcher rewrite costs the time
+is not** — that needs a profile, and is the next step. Do not quote a mechanism for the text-query
+half until someone has run one.
 
 ### `toOpml` — IMPROVED, substantially
 
@@ -487,11 +520,11 @@ Every save serializes, so this is a real win on the write path.
 
 ### What this changes
 
-- **The search cache is now a repair, not an optimisation.** It was already the one path past the
-  perceptible line at reachable sizes; it is now also **65% worse than it was in July** at 50k. Find
-  the commit in the 07-21..07-30 window before designing a cache — the regression may simply be
-  undoable, which would be cheaper and safer than adding a cache to a path that recently got slower
-  for a reason nobody has named.
+- **The search cache question is now two questions, not one.** The tag half is the price of tag
+  inheritance and a cache is the right shape for it (the same `searchBlob` WeakMap+generation
+  precedent). The text/`is:` half is a ~47% regression in the per-node matcher with no feature
+  attached, and it should be profiled and fixed on its own before any cache is layered over it —
+  caching a matcher that got slower for an unexamined reason banks the wrong baseline.
 - **Nothing in the 2026-08-05..07 session (PRs #1434–#1441) contributed**: `21140b3`, the commit
   before that work, already measured 781 ms.
 
