@@ -14847,6 +14847,55 @@ test('#1449 the math pill asks BOTH empty-rollup cores, so the search form gets 
     'the empty-extremal check sits ahead of the divide-by-zero branch it is rescuing values from');
 });
 
+test('#1450 scope parity — min/max reach every scope sum does, and the number form stays the two-value min', () => {
+  // This capability already worked and NOTHING pinned it, so it was invisible: the guide named only
+  // sum/count in the widener sentence and showed min/max with no scope at all, which reads as "min and
+  // max cannot widen". They can. Pinned so the parity cannot silently regress, and so the ONE genuine
+  // exception (the number form) is written down rather than rediscovered.
+  const tree = () => ({ id:'p', text:'P', props:[{key:'cost',val:'10'}], children:[
+    { id:'k', text:'K', props:[{key:'cost',val:'5'}], children:[
+      { id:'g', text:'G', props:[{key:'cost',val:'7'}], children:[] }] }] });
+  const exp = (e) => String(c.expandAggExpr(e, tree(), {}));
+  const expanded = (e) => /^\(.*\)$/.test(exp(e));   // a recognised reducer collapses to a literal
+
+  // direct children (kid=5 only), then the subtree (kid=5 + grandkid=7)
+  assert.equal(exp('min(cost)'), '(5)');
+  assert.equal(exp('max(cost)'), '(5)', 'the direct-child scope sees only the kid');
+  assert.equal(exp('min(cost, subtree)'), '(5)');
+  assert.equal(exp('max(cost, subtree)'), '(7)', 'subtree reaches the grandkid, so the max moves');
+
+  // the widener WORDS are accepted by min/max exactly as by sum. The value depends on a populated
+  // document (absent in Node, so each yields its identity) -- what is pinned here is that the reducer
+  // is RECOGNISED and expanded rather than left as raw text for the numeric variadic to eat.
+  for (const scope of ['subtree', 'self', 'document']) {
+    for (const fn of ['sum', 'min', 'max']) {
+      assert.ok(expanded(`${fn}(cost, ${scope})`), `${fn}(cost, ${scope}) must expand, like its siblings`);
+    }
+  }
+  // and the quoted-search form, wideners included
+  for (const e of ['min("has:cost", cost)', 'max("has:cost", cost)', 'min("has:cost", cost, document)']) {
+    assert.ok(expanded(e), `${e} must expand`);
+  }
+
+  // THE EXCEPTION, and it is deliberate (features.md: "a comma'd min(a, b) keeps the numeric-variadic
+  // meaning, untouched"). sum/avg take a depth NUMBER; min/max cannot, because min(cost, 2) already
+  // means "the smaller of cost and 2". It stays unexpanded so the numeric meaning survives.
+  assert.equal(exp('sum(cost, 2)'), '(12)', 'sum takes a depth number (kid 5 + grandkid 7)');
+  assert.ok(!expanded('min(cost, 2)'), 'min(cost, 2) stays the two-value numeric min, NOT a depth');
+  assert.ok(!expanded('max(cost, 2)'), 'and so does max(cost, 2)');
+});
+
+test('#1450 the guide teaches the min/max wideners it had left undocumented', () => {
+  const entry = between(_src, "{ id:'rollups', cat:'compute',", "\n  { id:");
+  // the capability now has examples: a doc-only fix, but the reason the parity read as missing
+  assert.ok(entry.includes('{= max(cost, subtree)}'), 'a bare-scope min/max example exists');
+  assert.ok(entry.includes('{= min(cost, document)}'), 'and a document-widened one');
+  assert.ok(/max\("#task", cost, folder\)/.test(entry), 'and a search-reducer one with a widener');
+  // the trap is named, because min(cost, 2) silently returns the numeric min rather than a depth
+  assert.ok(/min\(cost, 2\) is the smaller of cost and 2/.test(entry),
+    'the number-form exception is stated, not left for a user to discover from a wrong total');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
