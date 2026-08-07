@@ -1,7 +1,9 @@
 # Contested rolls and margins (research + proposal)
 
-Status: **Proposed** (2026-08). Source: panel finding **#1243** (2026-08 laptop panel, engineer + weekend
-GM persona). Read `guidance/adding-an-artifact.md` (the P5 gate), `guidance/ux.md` (verbosity), and the
+Status: **Shipped** (2026-08) — PR 1 (engine + bare pill), PR 2 (named + math + taught) and the deferred
+RNG seed have all landed; see the `#1243` tests in `tests/test.mjs`. Side labels remain the one v2 idea
+(open question 3), and are not part of the #1243 ask. Source: panel finding **#1243** (2026-08 laptop
+panel, engineer + weekend GM persona). Read `guidance/adding-an-artifact.md` (the P5 gate), `guidance/ux.md` (verbosity), and the
 CLAUDE.md "both arms" rule before building.
 
 **Decisions (owner-approved, 2026-08):** (1) syntax is the **`vs` operator** (`{name := A vs B}`), not a

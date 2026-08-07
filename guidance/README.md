@@ -126,7 +126,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | `typed-var-declaration-proposal.md` | SHIPPED (Stages A + B) |
 | `brace-completion-proposal.md` | Phases 1 + 2 shipped |
 | `base-views-vision.md` | Delivered; trimmed to the two durable parts — §0 (binding red-team corrections) + §3b (column-type catalogue). The rest moved to `bases-direction.md` §4 / `product-identity.md` |
-| `contested-roll-proposal.md` | PROPOSED (2026-08) — the `vs` operator for contested rolls + margins; from panel finding #1243 |
+| `contested-roll-proposal.md` | SHIPPED (2026-08) — the `vs` operator for contested rolls + margins, plus the session RNG seed; from panel finding #1243 |
 | `footnote-store-proposal.md` | PROPOSED (2026-08) — document footnote store + Footnotes manager; supersedes the "citation bridge" framing of #1244 |
 | `guided-authoring-proposal.md` | PROPOSED (2026-08) — no-syntax "Add another like this"; owner-directed to Guided mode. Tracks #1240 |
 | `markdown-import-proposal.md` | SHIPPED (2026-08) — import a FORMAT, never a product; from #1265. Markdown + vault + spreadsheet + BibTeX |
