@@ -7997,7 +7997,11 @@ function mdInline(s) {
   // Fast-path: the vast majority of table cells are plain text with no special characters.
   // If none of the inline-markdown trigger characters are present, the escaped string is
   // already the correct output — all the substitution passes below would be no-ops.
-  if (!/[`[!{*_~:^#]/.test(s) && !/https?:\/\//i.test(s)) return s;
+  if (!/[`[!{*_~:^#=+]/.test(s) && !/https?:\/\//i.test(s)) return s;   // #1458: = and + are here for
+  // mdEmph's ==highlight== and ++underline++. This fast path is a CHARACTER LIST that has to be kept
+  // in step with mdEmph's rules, and it was not: both markers were implemented, taught in the guide,
+  // and unreachable, because a string of only ==…== contains none of the old characters and returned
+  // here untouched. ~~strike~~ and X^2^ worked the whole time, which is what made it look fine.
   // Stash code/image/link/footnote as opaque tokens so later passes (emoji,
   // hashtags, autolink) can't reach inside their URLs or attributes.
   const tok = [];
