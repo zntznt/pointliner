@@ -674,7 +674,14 @@ test('#1452 every concept-guide example renders, once its context exists', { ski
       // UNCERTAIN value, convert needs declared UNITS, a dotted ref needs a BASE whose rows declare
       // Row.Column variables. Giving the wrong kind produces the app's correct complaint about the
       // kind, which reads exactly like a bug.
-      const dists = [...syn.matchAll(/\b(?:percentile|chanceover|chanceunder)\s*\(\s*([A-Za-z_]\w*)/g)].map(m => m[1]);
+      const dists = [
+        ...[...syn.matchAll(/\b(?:percentile|chanceover|chanceunder)\s*\(\s*([A-Za-z_]\w*)/g)].map(m => m[1]),
+        // a BARE brace doing arithmetic ({cost * 2}) is only meaningful for an UNCERTAIN value —
+        // a plain number needs {= cost * 2}. So the shape itself names the kind.
+        ...[...syn.matchAll(/\{\s*([A-Za-z_]\w*)\s*[*/+-]/g)].map(m => m[1]),
+      ];
+      // #tags an example rolls or searches over need points that actually carry them
+      const tags = [...new Set([...syn.matchAll(/#([A-Za-z][\w-]*)/g)].map(m => m[1]))];
       const units = [...syn.matchAll(/\bconvert\s*\(\s*[^,]+,\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)/g)].flatMap(m => [m[1], m[2]]);
       const dotted = [...syn.matchAll(/\b([A-Z][A-Za-z0-9_]*)\.([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?/g)]
         .map(m => ({ a: m[1], b: m[2], c: m[3] }));
@@ -689,6 +696,8 @@ test('#1452 every concept-guide example renders, once its context exists', { ski
       host.children.push(target);
       const decls = [...names.map(n => `{${n} := 12}`), ...dists.map(n => `{${n} := 100 to 200}`)].join('');
       root.children = [mkNode(decls || 'ctx')];
+      // two tagged points per tag: enough for a roll to pick and a query to match
+      for (const t of tags) { root.children.push(mkNode(`Ana #${t}`), mkNode(`Bo #${t}`)); }
       // custom units: the app's own stored shape, one private dimension so no built-in is shadowed
       if (units.length) {
         const u = {}; units.forEach((n, k) => { u[n.toLowerCase()] = { dim: 'guidesweep', ratio: Math.pow(10, k) }; });
@@ -718,6 +727,15 @@ test('#1452 every concept-guide example renders, once its context exists', { ski
       if (!el) { failed.push({ syn: ex.syn, id: ex.id, why: 'never rendered' }); continue; }
       const mark = el.querySelector(MARKERS);
       if (mark) failed.push({ syn: ex.syn, id: ex.id, why: mark.className, text: el.innerText.replace(/\n/g, ' | ').slice(0, 60) });
+      // THE SECOND SIGNAL, and the one a marker cannot give. An example can fail SILENTLY: the brace
+      // simply never promotes and the reader is left looking at the recipe instead of the result, with
+      // no error anywhere. That is how {meter: {done}/{goal}} hid, and a marker sweep alone is blind
+      // to it. Once context is provisioned, a brace still visible in the RENDERED text is a broken
+      // promise -- the example said "type this, get that" and delivered the this.
+      else if (/\{[^}]*\}/.test(el.innerText)) {
+        failed.push({ syn: ex.syn, id: ex.id, why: 'rendered as literal text (never promoted)',
+                      text: el.innerText.replace(/\n/g, ' | ').slice(0, 60) });
+      }
     }
     return { total: examples.length, failed };
   });
