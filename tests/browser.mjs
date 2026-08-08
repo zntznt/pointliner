@@ -781,3 +781,66 @@ test('#1452 every concept-guide example renders, once its context exists', { ski
   assert.deepEqual(fixed, [],
     'these examples now render with plain provisioning — remove them from GUIDE_NEEDS_RICHER_SETUP');
 });
+
+// 16. every / and @ COMMAND the guide shows must open a door whose SELECTED row is the one the pure
+// ranking picks. tests/test.mjs pins the ranking itself; this pins the wiring around it, which is a
+// separate thing and has broken on its own: #1396 threw away the query the trigger had already
+// consumed, so /note filtered on "ote", Quote outranked Note, and Enter turned a scene heading into a
+// blockquote. The core was right the whole time — only the seeding was wrong, so nothing that tested
+// the core could have seen it.
+// Note the door: at the DEFAULT guidance tier checkSlash hides the inline menu and opens the BUILDER,
+// so `slashState` is null here and reading it is how a probe silently measures nothing.
+test('#1459 every / and @ command the guide teaches selects that command in the builder', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const cmds = await pg.evaluate(() => {
+    const out = new Map();
+    for (const e of GUIDE) for (const x of (e.examples || [])) {
+      for (const m of String(x.syn || '').matchAll(/(?:^|\s)([/@])([a-z][\w-]*)/gi)) {
+        const k = m[1] + m[2].toLowerCase();
+        if (!out.has(k)) out.set(k, { entry: e.id, sigil: m[1], cmd: m[2] });
+      }
+    }
+    return [...out.values()];
+  });
+  assert.ok(cmds.length > 10, `only ${cmds.length} commands found in the guide — the scan broke`);
+
+  // BOTH POSITIONS, and the second is the one that carries the weight. At the start of a point the
+  // bare trigger opens the builder on its own and every later keystroke is typed straight into the
+  // search box — so the seeding path is never used and re-introducing #1396 leaves a start-only check
+  // green (measured: it did). Mid-line the #1108 guard suppresses the bare trigger, the first word
+  // character is what opens the door, and that character only reaches the filter by being seeded.
+  const bad = [];
+  for (const { entry, sigil, cmd } of cmds) {
+    for (const prefix of ['', 'Scene ']) {
+      await pg.evaluate((prefix) => {
+        root.children = [mkNode(prefix)]; buildIndex(root); markDirty(); render();
+        const c = document.querySelector('.node-content[data-id]');
+        const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+        const r = document.createRange(); r.selectNodeContents(c); r.collapse(false);
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      }, prefix);
+      await pg.waitForTimeout(120);
+      await pg.keyboard.type(sigil + cmd);
+      await pg.waitForTimeout(300);
+      const seen = await pg.evaluate(([sigil, cmd]) => {
+        const rows = [...document.querySelectorAll('.builder-item')];
+        const sel = document.querySelector('.builder-item[aria-selected="true"] .cmd-label');
+        // what the pure ranking says SHOULD be selected, computed from the same live pool
+        const vis = builderFilterCmds(builderCmdPool(sigil), cmd, sigil);
+        const pick = vis[builderBestIdx(vis, cmd, sigil)];
+        return { rows: rows.length, sel: sel ? sel.textContent.trim() : null, want: pick ? pick.label : null };
+      }, [sigil, cmd]);
+      // Asserting only "a row is selected" would pass on the #1396 bug — a row is always selected.
+      // The claim is that the door and the ranking agree about WHICH one.
+      const where = prefix ? 'mid-line' : 'at the start';
+      if (!seen.rows) bad.push(`[${entry}] ${sigil}${cmd} ${where} — no door opened`);
+      else if (seen.sel !== seen.want)
+        bad.push(`[${entry}] ${sigil}${cmd} ${where} — builder selected ${JSON.stringify(seen.sel)}, ranking says ${JSON.stringify(seen.want)}`);
+      await pg.keyboard.press('Escape');
+      await pg.waitForTimeout(80);
+    }
+  }
+  assert.deepEqual(bad, [],
+    'a command the guide teaches opens a door that highlights a different command than the ranking ' +
+    'picks, so Enter fires something other than what was typed');
+});

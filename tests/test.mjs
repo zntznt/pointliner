@@ -15150,6 +15150,85 @@ test('#1458 every markdown form the guide teaches actually renders as markup', (
     '==highlight== and ++underline++: a stale fast-path character list in mdInline)');
 });
 
+// The uncovered remainder, bounded. Six guards now cover the guide — rendered syntax and prose braces
+// (browser), menu paths, search operators, keyboard chords, markdown forms, and driven / and @ commands.
+// What is left resists all of them, and measuring rather than guessing is the only reason I know why:
+//   • GESTURES ("Drag the bullet", "Click an entry", "Swipe sideways") name no label and assert no
+//     output. Verifying one means driving a pointer at a control and judging what happened — a reader.
+//   • SAMPLE VALUES ("Buy milk", "gp = 10 sp", "word word") are user data, not promises about the app.
+//   • CONTROL DESCRIPTIONS ("Toolbar hourglass button", "Notes button") describe a control rather than
+//     naming it, so no string in the app matches. A per-control mapping in the guide data would fix
+//     that, and is a data change across ~40 entries, not a test.
+// The number cannot be verified, so it is FROZEN instead: nothing stops it growing except this. A new
+// uncovered example is a new untested promise, and it now has to be looked at rather than absorbed.
+const GUIDE_UNCOVERED_FLOOR = 93;
+
+test('#1459 the guide examples no guard can check are counted, and the count does not grow', () => {
+  const CHORD = /\b(?:Ctrl|Cmd|Shift|Alt|Enter|Tab|Esc|Backspace|Delete|Space|F\d+)\b|⌘|[↑↓←]/;
+  const paired = /(\*\*|__|~~|==|\+\+|`)[^\s].*?\1/;
+  const leading = /^(?:>!?\s|#{1,6}\s|-{3,}$|\*{3,}$|```|~~~|:[a-z0-9_]+:)/;
+  const covered = (syn) =>
+    /[{[]/.test(syn)                                            // rendered by the browser sweep
+    || syn.includes('→')                                        // menu path
+    || CHORD.test(syn)                                          // keyboard chord
+    || /(?:^|\s)[/@][a-z]/i.test(syn)                           // driven / or @ command
+    || syn.split(/\s*\/\s*/).some(p => /^-?["#]|^-?\w+:/.test(p.trim()))   // search operator
+    || syn.split(/\s+or\s+/).some(p => paired.test(p.trim()) || leading.test(p.trim()));  // markdown form
+
+  const uncovered = nonEmpty(_GUIDE_SYNS, 'guide examples').filter(x => !covered(x.syn));
+  assert.ok(uncovered.length <= GUIDE_UNCOVERED_FLOOR,
+    `${uncovered.length} guide examples are covered by no guard (floor ${GUIDE_UNCOVERED_FLOOR}). A new ` +
+    'one is a new untested promise: either it fits an existing guard and the classifier needs widening, ' +
+    'or it is a gesture that needs a reader. New:\n  ' +
+    uncovered.slice(-6).map(x => `[${x.id}] ${x.syn}`).join('\n  '));
+  assert.ok(uncovered.length >= GUIDE_UNCOVERED_FLOOR - 15,
+    `only ${uncovered.length} uncovered (floor ${GUIDE_UNCOVERED_FLOOR}) — lower the floor so it keeps its teeth`);
+});
+
+// #1459: every / and @ command the guide teaches must be ANSWERED BY THAT COMMAND.
+//
+// Two weaker versions of this were built and rejected, and the reasons are the guard:
+//   1. A SOURCE vocabulary sweep (ids + `keys` from the registries) accused /paragraph and /start of
+//      not existing. Both work — /paragraph matches on the label ("Paragraph"; the id is `para`), and
+//      /start is folded onto `due` by parseSlashQuery. It would have sent someone to fix two doors
+//      that were never broken.
+//   2. Driving each command and asserting "the menu offered SOMETHING" LOOKED honest and was not:
+//      builderFilterCmds matches on a haystack that includes every command's `desc`, so renaming
+//      `base` away still left "Query base" in the list and the check green. Mutation is the only
+//      reason that was ever found out.
+// What a reader is actually promised is what ENTER FIRES, and that the fired command is the one they
+// named. builderBestIdx picks that row; this asserts the pick carries the typed word in its OWN id,
+// synonyms or label, rather than having drifted onto a neighbour whose description happens to
+// mention the word. Rename any of these nineteen and the pick falls through to such a neighbour.
+test('#1459 every / and @ command the guide teaches is the command the builder selects', () => {
+  const shown = new Map();
+  for (const { id, syn } of nonEmpty(_GUIDE_SYNS, 'guide examples'))
+    for (const m of syn.matchAll(/(?:^|\s)([/@])([a-z][\w-]*)/gi))
+      if (!shown.has(m[1] + m[2].toLowerCase())) shown.set(m[1] + m[2].toLowerCase(), { entry: id, sigil: m[1], cmd: m[2] });
+  const cmds = nonEmpty([...shown.values()], 'commands taught by the guide');
+  assert.ok(cmds.length >= 15, `only ${cmds.length} commands scanned out of the guide — the scan broke`);
+
+  const bad = [];
+  for (const { entry, sigil, cmd } of cmds) {
+    const pool = nonEmpty(c.builderCmdPool(sigil), `${sigil} command pool`);
+    const vis = c.builderFilterCmds(pool, cmd, sigil);
+    if (!vis.length) { bad.push(`[${entry}] ${sigil}${cmd} — nothing matches it at all`); continue; }
+    const pick = vis[c.builderBestIdx(vis, cmd, sigil)];
+    // parseSlashQuery folds aliases onto the real verb (start -> due); compare against what the
+    // picker itself resolved, or the guard would re-invent the mapping and get it wrong.
+    const q = String(c.parseSlashQuery(cmd, sigil).matchWord || cmd).toLowerCase();
+    const answers = (pick.id || '').toLowerCase().startsWith(q)
+      || (pick.keys || []).some(k => String(k).toLowerCase().startsWith(q))
+      || (pick.label || '').toLowerCase().startsWith(q);
+    if (!answers) bad.push(
+      `[${entry}] ${sigil}${cmd} selects ${JSON.stringify(pick.label)} (id ${pick.id}), which carries ` +
+      `"${q}" nowhere in its id, keys or label — it only matched on a description`);
+  }
+  assert.deepEqual(bad, [],
+    'the guide teaches a command that no longer answers to that word. Either the command was renamed ' +
+    '(fix the guide), or it lost the `keys` synonym the guide relies on (restore it)');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
