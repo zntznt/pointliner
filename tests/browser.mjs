@@ -568,3 +568,40 @@ test('#1449 an empty min/max over a search reads "nothing matched", not "divide 
   assert.ok(/0 in scope/.test(by('{= sum("due:overdue", cost)}')), 'sum keeps its own distinct cue');
   assert.ok(/divide by zero/.test(by('{= 1/0}')), 'a genuine n/0 is still called a divide by zero');
 });
+
+// 14. a meter driven by a VARIABLE. Reported from real use: `{hp := 4}` + `{meter: hp/100}` drew a
+// bare red {meter?}. resolveMeter's var branch read `.value ?? .rolled` off collectVars, which is a
+// flat name → value map, so it was NaN for every variable and the branch was dead. Driven, not pinned:
+// the pure core was reachable all along, and what was broken was the value it was handed.
+test('#1451 a meter reads a declared variable, and a property still wins over one', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const got = await pg.evaluate(() => {
+    const shot = (kids) => {
+      root.children = kids.map(t => mkNode(t));
+      promoteLoadedShorthand(root); buildIndex(root, null); markDirty(); render();
+      const els = [...document.querySelectorAll('.node-content[data-id]')];
+      const last = root.children[root.children.length - 1];
+      const el = els.find(e => e.dataset.id === last.id);
+      const meter = el && el.querySelector('.meter');
+      return { text: el ? el.innerText : '', aria: meter ? meter.getAttribute('aria-label') : null,
+               bad: !!(el && el.querySelector('.meter-bad')) };
+    };
+    return {
+      user:  shot(['{hp := 4}', '{meter: hp/100}']),                       // the reported case
+      both:  shot(['{hp := 4}{hpmax := 100}', '{meter: hp/hpmax}']),
+      pool:  shot(['{hp := 3}', '{meter: hp/5 hearts}']),                  // icons carry no innerText
+      prop:  shot(['P {prop hp: 4}{prop hpmax: 100} {meter: hp/hpmax}']),  // must be unchanged
+      text:  shot(['{tone := warm}', '{meter: tone/100}']),                // must still refuse
+      none:  shot(['{meter: nope/100}']),
+    };
+  });
+  assert.equal(got.user.bad, false, 'the reported case must not render the {meter?} marker');
+  assert.ok(/4\/100/.test(got.user.text), `a variable drives the bar, got: ${JSON.stringify(got.user.text)}`);
+  assert.ok(/4\/100/.test(got.both.text), 'both sides may be variables');
+  // the pool style draws Font Awesome glyphs, which have no text at all -- assert the accessible name
+  assert.ok(/3 of 5 filled/.test(got.pool.aria || ''), `a variable drives a pool too, aria: ${got.pool.aria}`);
+  assert.ok(/4\/100/.test(got.prop.text), 'the property form is unchanged');
+  assert.equal(got.text.bad, true, 'a TEXT variable still refuses rather than drawing a wrong bar');
+  assert.equal(got.none.bad, true, 'a name resolving nowhere still refuses');
+  assert.ok(/declare it as a variable/.test(got.none.aria || ''), 'and the refusal offers both doors');
+});

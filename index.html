@@ -4472,18 +4472,29 @@ function meterPool(value, max, cap = METER_POOL_CAP) {
 }
 // Resolve a parsed meter's refs against a node (props read via childPropNumber). Returns
 // {value, max} numbers, or null if either side can't resolve to a finite number or max<=0.
-function resolveMeter(node, parsed) {
+function resolveMeter(node, parsed, vars = null) {
   if (!parsed) return null;
+  const vmap = () => (vars ??= collectVars());   // optional param so this is Node-testable (like collectVars)
+  // #1451: collectVars is a flat name → RESOLVED VALUE map (a number for a formula, pick or dice var,
+  // a string for a text pick) — NOT a map of records. Reading `.value` / `.rolled` off a number yields
+  // undefined, and Number(undefined) is NaN, so this branch was DEAD: no variable could ever drive a
+  // meter, including the guide's own {meter: {done}/{goal}}. A text value still yields NaN, which is
+  // the correct refusal rather than a wrong bar.
+  const varNum = (name) => { const v = vmap()[name]; return v == null ? NaN : Number(v); };
   const val = (r) => {
     if (r.kind === 'lit') return r.v;
-    if (r.kind === 'prop') return childPropNumber(node, r.v);
-    if (r.kind === 'var') { const vrs = collectVars(); const v = vrs[r.v]; return Number(v?.value ?? v?.rolled ?? NaN); }
+    // A bare name is a PROPERTY first — that is what {meter: hp/hpmax} means on a point carrying hp —
+    // but it now falls back to a VARIABLE of the same name. `{hp := 4}` then `{meter: hp/100}` is what
+    // a reader of the guide actually writes, and refusing it taught nothing (#1451). Property still
+    // wins, so a point carrying its own hp is unaffected.
+    if (r.kind === 'prop') { const p = childPropNumber(node, r.v); return Number.isFinite(p) ? p : varNum(r.v); }
+    if (r.kind === 'var') return varNum(r.v);
     if (r.kind === 'expr') {
       // A live math expression against THIS point's scope: the same aggregate path a {= words(subtree)}
       // pill uses. Guarded so a bad expr or a bare preview node degrades to NaN (→ the {meter?} marker),
       // never a throw.
       try {
-        const vrs = collectVars();
+        const vrs = vmap();
         const n = evalMath(expandAggExpr(r.v, node, vrs), resolveNodeScope(node, ancestorsOf(node), vrs));
         return n == null ? NaN : n;
       } catch (_) { return NaN; }
@@ -8122,10 +8133,15 @@ function mdInline(s) {
       // first-timer copying the example thinks meters are broken. Name the missing property.
       let tip = 'Check the recipe: {meter: value/max}, like {meter: hp/hpmax}.';
       if (parsed) {
+        // #1451: a name can be satisfied by a property OR a variable, so only call it missing when
+        // NEITHER resolves, and name both doors. Naming only the property sent someone who had
+        // declared {hp := 4} off to add a property they did not need.
+        const vrs = collectVars();
+        const unresolved = (x) => !Number.isFinite(childPropNumber(cookieNode, x.v)) && !Number.isFinite(Number(vrs[x.v]));
         const missing = [parsed.value, parsed.max]
-          .filter(x => x.kind === 'prop' && !Number.isFinite(childPropNumber(cookieNode, x.v)))
+          .filter(x => (x.kind === 'prop' || x.kind === 'var') && unresolved(x))
           .map(x => x.v);
-        if (missing.length) tip = `Add a numeric ${missing.join(' and ')} property to this point (bullet menu, Add property).`;
+        if (missing.length) tip = `No numeric ${missing.join(' or ')} here. Add it as a property on this point (bullet menu, Add property), or declare it as a variable like {${missing[0]} := 10}.`;
         else if ([parsed.value, parsed.max].some(x => x.kind === 'expr')) tip = 'Check the expression, like {meter: words(subtree)/1000}.';
       }
       return stash(`<span class="meter meter-bad" tabindex="-1" title="${escQ(tip)}" aria-label="Meter unresolved. ${escQ(tip)}">{meter?}</span>`);
