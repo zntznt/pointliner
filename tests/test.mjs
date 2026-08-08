@@ -14938,6 +14938,123 @@ test('#1451 the meter failure names BOTH doors, not just the property one', () =
     'and a name is only called missing when NEITHER a property nor a variable resolves it');
 });
 
+// ── #1456: the guide's NAMES — the mechanizable half of a plain-word claim ──────────────
+// The example sweep (tests/browser.mjs) renders anything with a brace. That leaves 261 of the
+// guide's 461 examples unchecked, because they are not syntax at all: they are menu PATHS
+// ("File → Import points") and search OPERATORS ("is:overdue"). Those are still promises, and they
+// still rot — rename a door and the guide lies about it with nothing to catch that.
+//
+// A plain-word behaviour claim ("a folder total counts other documents as saved") genuinely needs a
+// reader. But the NAMES inside those claims do not, and names are what drift.
+const _GUIDE = (() => {
+  const i = _src.indexOf('const GUIDE = [');
+  if (i < 0) throw new Error('GUIDE array not found — the guide moved, so these guards are blind');
+  let depth = 0, start = _src.indexOf('[', i), j = start, q = null, prev = '';
+  for (; j < _src.length; j++) {
+    const ch = _src[j];
+    if (q) { if (ch === q && prev !== '\\') q = null; prev = ch; continue; }
+    if (ch === "'" || ch === '"' || ch === '`') { q = ch; prev = ch; continue; }
+    if (ch === '[') depth++;
+    else if (ch === ']') { depth--; if (!depth) { j++; break; } }
+    prev = ch;
+  }
+  return new Function('MOD', 'ALT', 'return ' + _src.slice(start, j))('Ctrl', 'Alt');
+})();
+const _GUIDE_SYNS = _GUIDE.flatMap(e => (e.examples || []).map(x => ({ id: e.id, syn: String(x.syn || '') })));
+// Both extractions must actually find something. If the guide moves or the array stops parsing, every
+// guard below would pass on an empty set rather than fail — the exact vacuity #1133 exists to stop.
+if (_GUIDE_SYNS.length === 0) throw new Error('no guide examples parsed — the guide guards would be blind');
+// The app's source WITHOUT the guide. Searching plain `_src` for a door label is vacuous: the guide
+// itself contains "File → Footnotes", so `_src.includes('Footnotes')` is true no matter what the app
+// calls that door. Renaming the real menu item was caught by nothing until this slice was removed.
+const _SRC_NO_GUIDE = (() => {
+  const i = _src.indexOf('const GUIDE = [');
+  let depth = 0, start = _src.indexOf('[', i), j = start, q = null, prev = '';
+  for (; j < _src.length; j++) {
+    const ch = _src[j];
+    if (q) { if (ch === q && prev !== '\\') q = null; prev = ch; continue; }
+    if (ch === "'" || ch === '"' || ch === '`') { q = ch; prev = ch; continue; }
+    if (ch === '[') depth++;
+    else if (ch === ']') { depth--; if (!depth) { j++; break; } }
+    prev = ch;
+  }
+  return _src.slice(0, start) + _src.slice(j);
+})();
+// Everything the app can SHOW: the contents of its string literals and its element text. Deliberately
+// not "anywhere in the source" and not "an enumerated list of label sites". The first is vacuous --
+// `showFootnotesReport` contains "Footnotes", so renaming the real menu item and dialog title left the
+// guard green. The second is a losing game: labels are built too many ways (`fullWidth ? 'Width: Full'
+// : …`), and every site I failed to model became a false accusation against a door that exists.
+// A string literal is the one thing every rendered label passes through, whatever builds it.
+// Every pattern is NEWLINE-BOUNDED on purpose: a template regex that may span lines mispairs on the
+// first unbalanced backtick upstream and silently loses every template after it, which is how
+// `Set as inbox ${slot}` went missing and accused a door that exists.
+const _APP_SHOWABLE = (() => {
+  const parts = [];
+  for (const re of [/'((?:[^'\\\n]|\\.)*)'/g, /"((?:[^"\\\n]|\\.)*)"/g, /`([^`\n]*)`/g, />([^<>{}]{1,90})</g]) {
+    for (const m of _SRC_NO_GUIDE.matchAll(re)) if (m[1] && m[1].length < 200) parts.push(m[1]);
+  }
+  const blob = parts.join('\u0000');
+  if (blob.length === 0) throw new Error('no showable text extracted from the app — the door guard would pass on anything');
+  return blob;
+})();
+
+test('#1456 every door the guide names exists in the app', () => {
+  // "File → Import points" is a promise about a door. Rename the door and the guide is wrong, with
+  // nothing to notice. A key chord ("Alt + ← / →") uses the same arrow and is not a path.
+  // An arrow is not always a path: a key chord uses one ("Alt + ← / →"), and so does markov data
+  // ("{markov: sun→rain}"). Braces mean it is syntax, which the example sweep already renders.
+  const isChord = (s) => /\b(?:Alt|Ctrl|Cmd|Shift)\b|⌘|⌥|←\s*\/\s*→/.test(s);
+  const paths = nonEmpty(_GUIDE_SYNS.filter(x => x.syn.includes('→') && !isChord(x.syn) && !/[{[]/.test(x.syn)),
+    'menu-path examples in the guide');
+  const missing = [];
+  for (const { id, syn } of paths) {
+    // segment 0 is the SURFACE (File, Menu, @, Base) — a mode, not a label to find
+    for (const raw of nonEmpty(syn.split('→').slice(1), `path segments after the surface in ${syn}`)) {
+      const seg = raw.replace(/\s*\(.*\)\s*$/, '')   // a trailing parenthetical is a gloss
+        .replace(/\s+N$/, '').trim();                 // "Set as inbox N" — N is a slot number
+      // A real menu LABEL is capitalised; a lowercase tail is descriptive prose ("→ paste box"),
+      // naming where to look rather than what the control is called.
+      if (!seg || seg.length > 44 || !/^[A-Z@#]/.test(seg)) continue;
+      if (!_APP_SHOWABLE.includes(seg)) {
+        missing.push(`[${id}] ${syn} — the app never SHOWS the text "${seg}"`);
+      }
+    }
+  }
+  assert.deepEqual(missing, [],
+    'the guide names a door that does not exist. Either the door was renamed and the guide was not, ' +
+    'or the guide promises something unbuilt');
+  // KNOWN LIMIT, stated so nobody mistakes this for more than it is: the question asked is "does the
+  // app show this text ANYWHERE", not "on this exact control". Renaming the Footnotes menu item while
+  // a Footnotes dialog title survives still passes. It catches a name the product has stopped using
+  // altogether, which is what it found three times (Connect folder, Full width, Verbosity); it does
+  // not catch a half-rename. Tightening it to a per-control check needs a model of every way a label
+  // is built, and each site missed becomes a false accusation against a door that exists.
+});
+
+test('#1456 every search operator the guide teaches is one the parser knows', () => {
+  const states = [...(typeof c.knownStates === 'function' ? c.knownStates() : [])];
+  const toks = [];
+  for (const { id, syn } of _GUIDE_SYNS) {
+    if (/[{[]/.test(syn) || syn.includes('→')) continue;          // syntax and paths have their own guards
+    for (const part of nonEmpty(syn.split(/\s*\/\s*/), `slash-separated alternatives in ${syn}`)) {
+      const t = part.replace(/\s*\(.*\)\s*$/, '').trim();          // "has:dice (math, est, …)" — the list is a gloss
+      if (!/^-?["#]|^-?\w+:/.test(t)) continue;                    // operator-shaped only
+      if (t.includes('<') || t.includes('…')) continue;            // "start:<date" is a placeholder, not a query
+      toks.push({ id, t });
+    }
+  }
+  const bad = [];
+  for (const { id, t } of nonEmpty(toks, 'search-operator examples in the guide')) {
+    const problems = c.searchTermProblems(c.parseSearchQuery(t), { states }) || [];
+    if (problems.length) bad.push(`[${id}] ${t} — ${problems[0].message.slice(0, 80)}`);
+  }
+  assert.deepEqual(bad, [],
+    'the guide teaches a search operator the parser does not know, so it matches nothing and the ' +
+    'reader is told to type something inert. The app already explains this to a USER at the search ' +
+    'box; nothing was telling the GUIDE');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
