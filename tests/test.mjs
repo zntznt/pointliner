@@ -15119,6 +15119,37 @@ test('#1457 every keyboard chord the guide teaches is one the app actually binds
     'not, or the guide promises a shortcut that was never built');
 });
 
+test('#1458 every markdown form the guide teaches actually renders as markup', () => {
+  // The slice the brace sweep structurally cannot see: `**bold**`, `> quote`, `==highlight==` carry no
+  // braces, so nothing rendered them and nothing noticed when two of them stopped working.
+  //
+  // ++underline++ and ==highlight== were implemented in mdEmph, taught in the guide, and unreachable:
+  // mdInline opens with a fast-path bail-out over a CHARACTER LIST that had never gained `=` or `+`, so
+  // a line of only ==…== returned before mdEmph ran. ~~strike~~ and X^2^ worked throughout, because
+  // `~` and `^` were on the list — which is exactly why it read as fine.
+  const paired = /(\*\*|__|~~|==|\+\+|`)[^\s].*?\1/;          // a marker that WRAPS something
+  const leading = /^(?:>!?\s|#{1,6}\s|-{3,}$|\*{3,}$|```|~~~|:[a-z0-9_]+:)/;
+  const forms = nonEmpty(_GUIDE_SYNS
+    .filter(x => !/[{[]/.test(x.syn) && !x.syn.includes('→'))
+    .flatMap(x => x.syn.split(/\s+or\s+/).map(s => ({ id: x.id, part: s.trim() })))
+    .filter(x => x.part && (paired.test(x.part) || leading.test(x.part))),
+    'markdown-form examples in the guide');
+
+  const inert = [];
+  for (const { id, part } of forms) {
+    const html = c.mdToHtml(part);
+    // "rendered" means the OUTPUT is not just the input back again. Tags, an emoji substitution and an
+    // entity all count; only an untouched echo is a failure.
+    if (html.replace(/\s+/g, ' ').trim() === part.replace(/\s+/g, ' ').trim()) {
+      inert.push(`[${id}] ${JSON.stringify(part)} -> rendered as itself, no markup`);
+    }
+  }
+  assert.deepEqual(inert, [],
+    'the guide teaches a markdown form the renderer leaves as literal text. Either the rule was ' +
+    'removed, or something upstream is short-circuiting before it runs (that is what happened to ' +
+    '==highlight== and ++underline++: a stale fast-path character list in mdInline)');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
