@@ -647,8 +647,36 @@ const GUIDE_NEEDS_RICHER_SETUP = new Map([]);
 test('#1452 every concept-guide example renders, once its context exists', { skip: skip() }, async () => {
   const pg = await fresh();
   const got = await pg.evaluate(() => {
-    const examples = GUIDE.flatMap(e => (e.examples || []).map(x => ({ id: e.id, syn: x.syn })))
+    const listed = GUIDE.flatMap(e => (e.examples || []).map(x => ({ id: e.id, syn: x.syn })))
       .filter(x => /[{[]/.test(x.syn));
+    // ALSO the prose. An entry's BODY shows syntax too ("widen it with sum(cost, document)"), and
+    // that half was never checked -- an example list can be perfect while the paragraph above it
+    // promises something the app does not do. Braces are the honest extraction: a {…} in guide prose
+    // is unambiguously syntax being shown. Backticked spans and bare name(…) runs were measured and
+    // rejected as too noisy -- the guide backticks single characters ({, /, @) and prose swallows
+    // parentheses ("date (when any child carries a due date)"), so both manufacture fake failures.
+    const seen = new Set(listed.map(x => x.syn));
+    // Not every brace in prose is something to TYPE. Three generic rules cover most of it, because
+    // each follows a convention the app or the writing already keeps:
+    //   • `…?}` is the app's OWN unresolved-marker convention ({meter?}, {cond?}) — prose quotes those
+    //     when explaining what a failure looks like, so "typing" one is meaningless.
+    //   • an ellipsis is a placeholder for the part being discussed ({= …}), never a literal.
+    //   • a whitespace-only brace is punctuation in a sentence ("use { } not [ ]").
+    const notSyntax = (s) => /\?\}$/.test(s) || /\.\.\.|…/.test(s) || !s.slice(1, -1).trim();
+    // and three that need naming, because no rule catches them without also eating real syntax
+    const PROSE_NOT_SYNTAX = new Map([
+      ['{vs ac}', 'a sentence fragment ("or one of your own variables, like {vs ac}"), not a whole pill'],
+      ['{= simulate(N, roll, over a bar)}', 'a prose SIGNATURE — N and "over a bar" are placeholders'],
+      ['{= (5 to 10) * 2}', 'a deliberate COUNTER-example: the prose says it fails, and it does'],
+    ]);
+    const prose = [];
+    for (const e of GUIDE) {
+      for (const m of String(e.body || '').matchAll(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g)) {
+        if (seen.has(m[0]) || notSyntax(m[0]) || PROSE_NOT_SYNTAX.has(m[0])) continue;
+        seen.add(m[0]); prose.push({ id: e.id + ':body', syn: m[0] });
+      }
+    }
+    const examples = listed.concat(prose);
     // RESERVED = only what would BREAK if declared (functions, scope words, style words, artifact
     // keywords). Everything else is a user DATA name and gets provisioned. Reserving an ordinary
     // name like `a`, `x`, `due` or `done` starves the example under test and manufactures a failure
@@ -698,6 +726,8 @@ test('#1452 every concept-guide example renders, once its context exists', { ski
       root.children = [mkNode(decls || 'ctx')];
       // two tagged points per tag: enough for a roll to pick and a query to match
       for (const t of tags) { root.children.push(mkNode(`Ana #${t}`), mkNode(`Bo #${t}`)); }
+      // a query or roll over is:todo / is:done needs points in those STATES, not just tagged ones
+      if (/\bis:(?:todo|done)\b/.test(syn)) root.children.push(mkNode('- [ ] Open task'), mkNode('- [x] Closed task'));
       // custom units: the app's own stored shape, one private dimension so no built-in is shadowed
       if (units.length) {
         const u = {}; units.forEach((n, k) => { u[n.toLowerCase()] = { dim: 'guidesweep', ratio: Math.pow(10, k) }; });
