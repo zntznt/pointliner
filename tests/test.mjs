@@ -15055,6 +15055,70 @@ test('#1456 every search operator the guide teaches is one the parser knows', ()
     'box; nothing was telling the GUIDE');
 });
 
+test('#1457 every keyboard chord the guide teaches is one the app actually binds', () => {
+  // The last unswept slice with a mechanical answer. A chord is a promise like any other, and it rots
+  // the same way: move a handler and the guide keeps telling people to press a key that does nothing.
+  //
+  // There is no shortcut registry to read — 102 keydown listeners, each an ad-hoc condition — so the
+  // conditions ARE the registry. Take each `if (…e.key…)`, keep the modifiers it REQUIRES (not the ones
+  // it negates), pair them with the key literals it compares, and that is a chord the app answers to.
+  const handled = new Set();
+  for (const m of _SRC_NO_GUIDE.matchAll(/if\s*\(([^{]{0,400}?\.key[^{]{0,400}?)\)\s*\{/g)) {
+    const cond = m[1];
+    const mods = [];
+    for (const [flag, name] of [['altKey', 'alt'], ['shiftKey', 'shift'], ['ctrlKey', 'mod'], ['metaKey', 'mod']]) {
+      const mm = new RegExp('(!?)\\s*(?:e|ev|evt)\\.' + flag).exec(cond);
+      if (mm && mm[1] !== '!' && !mods.includes(name)) mods.push(name);
+    }
+    // The app hoists `const ctrl = e.ctrlKey || e.metaKey` and tests the local. That idiom is the
+    // commonest one here and is invisible to a scan looking only for e.ctrlKey — missing it made six
+    // working shortcuts (Ctrl+S, Ctrl+O, Ctrl+Z, ⌘K, ⌘⇧J, ⌘⇧.) look unbound.
+    if (/(?<![!\w.])ctrl\b/.test(cond) && !mods.includes('mod')) mods.push('mod');
+    const sigOf = (k) => [...mods].sort().join('+') + '|' + k;
+    for (const k of [...cond.matchAll(/\.key\s*===?\s*'([^']+)'/g)]) handled.add(sigOf(k[1].toLowerCase()));
+    for (const s of [...cond.matchAll(/\.key\.startsWith\('([^']+)'\)/g)]) {
+      for (const arrow of ['arrowup', 'arrowdown', 'arrowleft', 'arrowright']) {
+        if (arrow.startsWith(s[1].toLowerCase())) handled.add(sigOf(arrow));
+      }
+    }
+  }
+  assert.ok(handled.size > 40,
+    `only ${handled.size} chord signatures parsed from the app — the scan broke, and this guard ` +
+    'would then accuse every chord in the guide rather than checking any of them');
+
+  const KEYMAP = { '↑': 'arrowup', '↓': 'arrowdown', '←': 'arrowleft', '→': 'arrowright',
+    esc: 'escape', del: 'delete', 'arrow keys': 'arrowup', arrow: 'arrowup' };
+  const sig = (chord) => {
+    const mods = [];
+    let key = null;
+    for (const p of chord.split('+').map(s => s.trim()).filter(Boolean)) {
+      const low = p.toLowerCase();
+      if (/^(?:ctrl|cmd|ctrl\/cmd|⌘|mod)$/.test(low)) { if (!mods.includes('mod')) mods.push('mod'); }
+      else if (low === 'shift') mods.push('shift');
+      else if (low === 'alt') mods.push('alt');
+      else key = KEYMAP[p] || KEYMAP[low] || low;
+    }
+    return key ? mods.sort().join('+') + '|' + key : null;
+  };
+
+  const CHORD = /\b(?:Ctrl|Cmd|Shift|Alt|Enter|Tab|Esc|Backspace|Delete|Space|F\d+)\b|⌘|[↑↓←]/;
+  const chords = nonEmpty(_GUIDE_SYNS.filter(x =>
+    !/[{[]/.test(x.syn) && !x.syn.includes('→') && CHORD.test(x.syn)
+    && !/click/i.test(x.syn)        // "Shift+Click" is a POINTER chord, not a keyboard binding
+    && !x.syn.includes('…')),       // "⌘⇧1 … 0" is a RANGE, not a single chord
+    'keyboard-chord examples in the guide');
+
+  const unbound = [];
+  for (const { id, syn } of chords) {
+    // "Tab / Shift+Tab" teaches two chords; the example holds if either is bound
+    const alts = nonEmpty(syn.split(/\s*\/\s*/).map(s => s.trim()).filter(Boolean), `alternatives in ${syn}`);
+    if (!alts.some(a => { const s = sig(a); return s && handled.has(s); })) unbound.push(`[${id}] ${syn}`);
+  }
+  assert.deepEqual(unbound, [],
+    'the guide teaches a keyboard chord no handler binds. Either the binding moved and the guide did ' +
+    'not, or the guide promises a shortcut that was never built');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
