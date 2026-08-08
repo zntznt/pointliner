@@ -42330,7 +42330,7 @@ const GUIDE = [
       { syn:'{= round(hypergeom(60, 24, 10, 3))}%', desc:'the land-count question, rounded with a percent sign' },
       { syn:'{= simulate(2000, 2d6+3, >= 10)}', desc:'how often 2d6+3 beats a target of 10' },
       { syn:'{= simulate(5000, 4d6kh3, >= 15)}', desc:'odds a keep-highest stat rolls 15 or more' },
-      { syn:'{= simulate(2000, atk, >= ac)}', desc:'thresholds can be declared variables' },
+      { syn:'{= simulate(2000, 2d6+3, >= ac)}', desc:'the threshold can be a declared variable' },
       { syn:'{= round(wilsonlow(12, 20))}-{= round(wilsonhigh(12, 20))}%', desc:'the honest range around a 12/20 win rate' },
     ] },
   { id:'rollups', cat:'compute',

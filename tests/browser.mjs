@@ -634,15 +634,15 @@ test('#1451 a meter reads a declared variable, and a property still wins over on
 //
 // What it asserts is the app's OWN failure chrome (.meter-bad / .math-err / .math-bad /
 // .brace-attempt) -- never a raw-text heuristic, which is what made the first pass so noisy.
-const GUIDE_NEEDS_RICHER_SETUP = new Map([
-  ['{= convert(2, gp, cp)}',            'needs custom UNITS (gp/cp) declared, not just names'],
-  ['{= Orc.HP + 5}',                    'needs a named BASE called Orc'],
-  ['{= sum(Monsters.HP)}',              'needs a named BASE called Monsters'],
-  ['{= percentile(cost, 90)}',          'cost must be a DISTRIBUTION ({cost := 100 to 200}), not a number'],
-  ['{= chanceover(cost, 500)}',         'same: an uncertain value, not a plain number'],
-  ['{= chanceunder(cost, budget)}',     'same: an uncertain value, not a plain number'],
-  ['{= simulate(2000, atk, >= ac)}',    'atk must be a DICE variable, not a number'],
-]);
+// The allow-list is EMPTY, and getting it there was the work. Six of its seven entries were the
+// harness's fault, not the app's: five needed a KIND the flat provisioner could not invent (a
+// distribution for percentile, a dice literal, custom units for convert, a named base for a dotted
+// ref), and one — {= Orc.HP + 5} — failed only because the harness promoted BEFORE buildIndex, so a
+// base's row variables did not exist yet at promotion time. The seventh was a real guide error, fixed
+// in index.html: {= simulate(2000, atk, >= ac)} used a VARIABLE as the die, which simulate does not
+// take, while its own description says "thresholds can be declared variables" (the threshold works).
+// Keep this empty. An entry here is a promise the guide makes and the app does not keep.
+const GUIDE_NEEDS_RICHER_SETUP = new Map([]);
 
 test('#1452 every concept-guide example renders, once its context exists', { skip: skip() }, async () => {
   const pg = await fresh();
@@ -669,15 +669,47 @@ test('#1452 every concept-guide example renders, once its context exists', { ski
     const MARKERS = '.meter-bad, .math-err, .math-bad, .brace-attempt';
     const failed = [];
     for (const ex of examples) {
-      const names = namesIn(ex.syn);
+      const syn = ex.syn;
+      // ── provision by KIND. A flat "every name is the number 12" is not enough: percentile needs an
+      // UNCERTAIN value, convert needs declared UNITS, a dotted ref needs a BASE whose rows declare
+      // Row.Column variables. Giving the wrong kind produces the app's correct complaint about the
+      // kind, which reads exactly like a bug.
+      const dists = [...syn.matchAll(/\b(?:percentile|chanceover|chanceunder)\s*\(\s*([A-Za-z_]\w*)/g)].map(m => m[1]);
+      const units = [...syn.matchAll(/\bconvert\s*\(\s*[^,]+,\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)/g)].flatMap(m => [m[1], m[2]]);
+      const dotted = [...syn.matchAll(/\b([A-Z][A-Za-z0-9_]*)\.([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?/g)]
+        .map(m => ({ a: m[1], b: m[2], c: m[3] }));
+      const aggBase = /\b(?:sum|avg|count|min|max)\s*\(\s*([A-Z][A-Za-z0-9_]*)\.([A-Za-z_]\w*)\s*\)/.exec(syn);
+      const typed = new Set([...dists, ...units, ...dotted.flatMap(d => [d.a, d.b, d.c].filter(Boolean))]);
+      const names = namesIn(syn).filter(n => !typed.has(n));
+
       const props = names.map(n => `{prop ${n}: 12}`).join(' ');
       const host = mkNode('Host ' + props);
       host.children = [mkNode('Row A ' + props), mkNode('Row B ' + props)];
-      const target = mkNode(ex.syn);
+      const target = mkNode(syn);
       host.children.push(target);
-      root.children = [mkNode(names.map(n => `{${n} := 12}`).join('') || 'ctx'), host];
+      const decls = [...names.map(n => `{${n} := 12}`), ...dists.map(n => `{${n} := 100 to 200}`)].join('');
+      root.children = [mkNode(decls || 'ctx')];
+      // custom units: the app's own stored shape, one private dimension so no built-in is shadowed
+      if (units.length) {
+        const u = {}; units.forEach((n, k) => { u[n.toLowerCase()] = { dim: 'guidesweep', ratio: Math.pow(10, k) }; });
+        root.units = normalizeUnits(u) || undefined;
+      } else root.units = undefined;
+      // a base whose rows declare Row.Column variables (named, when the ref is 3-segment or an aggregate)
+      if (dotted.length) {
+        const named = aggBase ? aggBase[1] : (dotted.find(d => d.c) || {}).a;
+        const rowName = aggBase ? 'Orc' : (dotted[0].c ? dotted[0].b : dotted[0].a);
+        const col = aggBase ? aggBase[2] : (dotted[0].c || dotted[0].b);
+        const b = mkNode(`| Name | ${col} |\n| --- | --- |\n| ${rowName} | 12 |\n| Goblin | 7 |`, 'base');
+        b.varbase = named ? { name: named } : {};
+        root.children.push(b);
+      }
+      root.children.push(host);
       try {
-        promoteLoadedShorthand(root); buildIndex(root, null); render();
+        // markDirty FIRST: collectVars is cached on _varsVer, and this loop reuses one page, so
+        // without invalidation every example after the first asks a STALE cache whether a name is
+        // known — and a perfectly good base looks broken. Then buildIndex, because a base's row
+        // variables must exist before promotion asks. Both orderings cost a pass to find.
+        markDirty(); buildIndex(root, null); promoteLoadedShorthand(root); buildIndex(root, null); render();
       } catch (e) {
         failed.push({ syn: ex.syn, id: ex.id, why: 'THREW ' + String(e).slice(0, 60) });
         continue;
