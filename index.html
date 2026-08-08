@@ -28124,7 +28124,14 @@ function promoteInlineShorthand(node) {
         // braces to fragments, destroying the form the user was building (and the render-side
         // .brace-attempt cue needs the intact text to flag). Prose braces ('literal') keep the
         // descent, so a {2d6} inside prose braces still comes alive.
-        if (classifyBraceBody(text.slice(i + 1, j), collectRules(), collectVars()) === 'invalid') {
+        // #1451: the test is "not PROSE", not "invalid" — the rule the UNCLOSED half below already
+        // uses, and the one both comments describe. The missing case is an `artifact` body that
+        // promoteBraceBody DECLINED: a meter is a real form whose recipe deliberately stays in
+        // node.text, so it is never promoted and never classified invalid. It fell through to the
+        // char walk, which descended inside and promoted its inner `{hp}` into a [[var:…]] token —
+        // corrupting the recipe on the load path, so {meter: {hp}/100} (the guide's own
+        // {meter: {done}/{goal}}) rendered {meter?} after a save and reopen.
+        if (classifyBraceBody(text.slice(i + 1, j), collectRules(), collectVars()) !== 'literal') {
           out += text.slice(i, j + 1); i = j + 1; continue;
         }
       } else {
@@ -28251,7 +28258,9 @@ function promoteCellShorthand(node, cellText) {
         if (token != null) { out += token; i = j + 1; changed = true; continue; }
         // #916 anti-shred (see promoteInlineShorthand): an attempted-but-invalid outer form stays
         // one intact literal span — never promoted piecemeal into fragments.
-        if (classifyBraceBody(text.slice(i + 1, j), collectRules(), collectVars()) === 'invalid') {
+        // #1451: same widening as its sibling, and for the same reason — a declined `artifact`
+        // (a meter in a cell) must not be descended into either. Fixed with the site, not after it.
+        if (classifyBraceBody(text.slice(i + 1, j), collectRules(), collectVars()) !== 'literal') {
           out += text.slice(i, j + 1); i = j + 1; continue;
         }
       } else {

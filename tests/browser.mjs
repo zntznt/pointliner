@@ -593,6 +593,13 @@ test('#1451 a meter reads a declared variable, and a property still wins over on
       prop:  shot(['P {prop hp: 4}{prop hpmax: 100} {meter: hp/hpmax}']),  // must be unchanged
       text:  shot(['{tone := warm}', '{meter: tone/100}']),                // must still refuse
       none:  shot(['{meter: nope/100}']),
+      // #1451b: the BRACED var form, and the guide's own {meter: {done}/{goal}}. These break on the
+      // LOAD path only: promotion used to descend into the meter body and rewrite {hp} to a
+      // [[var:…]] token, so a saved document rendered {meter?} on reopen while it looked fine when
+      // first typed. shot() promotes exactly as a load does, which is what exposes it.
+      braced: shot(['{hp := 4}', '{meter: {hp}/100}']),
+      guide:  shot(['{done := 3}{goal := 10}', '{meter: {done}/{goal}}']),
+      prose:  shot(['{just prose holding {2d6} inside}']),   // prose braces must STILL come alive
     };
   });
   assert.equal(got.user.bad, false, 'the reported case must not render the {meter?} marker');
@@ -604,4 +611,93 @@ test('#1451 a meter reads a declared variable, and a property still wins over on
   assert.equal(got.text.bad, true, 'a TEXT variable still refuses rather than drawing a wrong bar');
   assert.equal(got.none.bad, true, 'a name resolving nowhere still refuses');
   assert.ok(/declare it as a variable/.test(got.none.aria || ''), 'and the refusal offers both doors');
+  assert.equal(got.braced.bad, false, 'the braced var form survives a load-path promote');
+  assert.ok(/4\/100/.test(got.braced.text), 'and resolves');
+  assert.ok(/3\/10/.test(got.guide.text), "the guide's own {meter: {done}/{goal}} renders");
+  assert.ok(/\{meter: \{done\}\/\{goal\}\}/.test(got.guide.text) === false, 'it is a bar, not literal text');
+  // the anti-shred widening must not stop PROSE braces from bringing an inner pill alive
+  assert.ok(/2d6/.test(got.prose.text) && !/\{2d6\}/.test(got.prose.text),
+    'a {2d6} inside prose braces still promotes, so the widened rule did not over-reach');
+});
+
+// 15. THE CONCEPT-GUIDE SWEEP — every example the guide teaches, rendered in the real app.
+//
+// The guide is a promise: "type this, get that". Nothing checked it, and two shipped bugs lived
+// exactly there (#1449's rollup, #1451's meter), each in an example a reader would copy verbatim.
+//
+// The trick is CONTEXT. A first pass rendered every example into an EMPTY document, so an example
+// that merely needed a variable was indistinguishable from one that was broken -- 162 of 197 "failed"
+// and a real meter bug was dismissed as noise inside that pile. This provisions first: every
+// identifier an example mentions is declared as a document variable AND as a property on the host
+// and on two child rows, so scoped reads and rollups both find real values. Only then is a failure
+// a failure, and the count drops from 162 to a handful.
+//
+// What it asserts is the app's OWN failure chrome (.meter-bad / .math-err / .math-bad /
+// .brace-attempt) -- never a raw-text heuristic, which is what made the first pass so noisy.
+const GUIDE_NEEDS_RICHER_SETUP = new Map([
+  ['{= convert(2, gp, cp)}',            'needs custom UNITS (gp/cp) declared, not just names'],
+  ['{= Orc.HP + 5}',                    'needs a named BASE called Orc'],
+  ['{= sum(Monsters.HP)}',              'needs a named BASE called Monsters'],
+  ['{= percentile(cost, 90)}',          'cost must be a DISTRIBUTION ({cost := 100 to 200}), not a number'],
+  ['{= chanceover(cost, 500)}',         'same: an uncertain value, not a plain number'],
+  ['{= chanceunder(cost, budget)}',     'same: an uncertain value, not a plain number'],
+  ['{= simulate(2000, atk, >= ac)}',    'atk must be a DICE variable, not a number'],
+]);
+
+test('#1452 every concept-guide example renders, once its context exists', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const got = await pg.evaluate(() => {
+    const examples = GUIDE.flatMap(e => (e.examples || []).map(x => ({ id: e.id, syn: x.syn })))
+      .filter(x => /[{[]/.test(x.syn));
+    // RESERVED = only what would BREAK if declared (functions, scope words, style words, artifact
+    // keywords). Everything else is a user DATA name and gets provisioned. Reserving an ordinary
+    // name like `a`, `x`, `due` or `done` starves the example under test and manufactures a failure
+    // that reads like an app bug -- that mistake cost a full pass, so the list stays deliberately tight.
+    const reserved = new Set([
+      ...Object.keys(typeof FN1 !== 'undefined' ? FN1 : {}),
+      ...Object.keys(typeof FN2 !== 'undefined' ? FN2 : {}),
+      ...Object.keys(typeof FN3 !== 'undefined' ? FN3 : {}),
+      'sum','avg','count','min','max','and','or','if','words','simulate','percentile','chanceover','chanceunder',
+      'self','children','subtree','document','doc','folder','notes','true','false','pi','e',
+      'meter','roll','rule','shuffle','cycle','once','stopping','markov','oracle','query','prop','date',
+      'is','has','tag','hearts','stars','blocks','dots','likely','unlikely','even',
+      'cap','title','upper','lower','s','ed','poss','ord','png','url','alt','http','https','md','opml','csv','to',
+    ]);
+    const namesIn = (syn) => [...new Set((syn.match(/[A-Za-z_][A-Za-z0-9_]*/g) || []))]
+      .filter(n => !reserved.has(n.toLowerCase()) && !/^\d/.test(n));
+
+    const MARKERS = '.meter-bad, .math-err, .math-bad, .brace-attempt';
+    const failed = [];
+    for (const ex of examples) {
+      const names = namesIn(ex.syn);
+      const props = names.map(n => `{prop ${n}: 12}`).join(' ');
+      const host = mkNode('Host ' + props);
+      host.children = [mkNode('Row A ' + props), mkNode('Row B ' + props)];
+      const target = mkNode(ex.syn);
+      host.children.push(target);
+      root.children = [mkNode(names.map(n => `{${n} := 12}`).join('') || 'ctx'), host];
+      try {
+        promoteLoadedShorthand(root); buildIndex(root, null); render();
+      } catch (e) {
+        failed.push({ syn: ex.syn, id: ex.id, why: 'THREW ' + String(e).slice(0, 60) });
+        continue;
+      }
+      const el = [...document.querySelectorAll('.node-content[data-id]')].find(e => e.dataset.id === target.id);
+      if (!el) { failed.push({ syn: ex.syn, id: ex.id, why: 'never rendered' }); continue; }
+      const mark = el.querySelector(MARKERS);
+      if (mark) failed.push({ syn: ex.syn, id: ex.id, why: mark.className, text: el.innerText.replace(/\n/g, ' | ').slice(0, 60) });
+    }
+    return { total: examples.length, failed };
+  });
+
+  assert.ok(got.total > 150, `the sweep must actually find the guide's examples, got ${got.total}`);
+  const unexpected = got.failed.filter(f => !GUIDE_NEEDS_RICHER_SETUP.has(f.syn));
+  assert.deepEqual(unexpected.map(f => `[${f.id}] ${f.syn} -> ${f.why} ${f.text || ''}`), [],
+    'a guide example renders a failure marker even with its context provisioned. Either the example ' +
+    'is wrong, the feature is broken, or it needs setup beyond names (then add it to ' +
+    'GUIDE_NEEDS_RICHER_SETUP with the reason)');
+  // the allow-list is a live list, not a dumping ground: an entry that starts working must leave it
+  const fixed = [...GUIDE_NEEDS_RICHER_SETUP.keys()].filter(s => !got.failed.some(f => f.syn === s));
+  assert.deepEqual(fixed, [],
+    'these examples now render with plain provisioning — remove them from GUIDE_NEEDS_RICHER_SETUP');
 });
