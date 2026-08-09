@@ -15282,6 +15282,53 @@ test('#1459 every / and @ command the guide teaches is the command the builder s
     '(fix the guide), or it lost the `keys` synonym the guide relies on (restore it)');
 });
 
+// The min/max DEPTH GAP. `sum(cost, 2)` is a depth; `min(cost, 2)` is the two-value numeric min and
+// cannot be a depth, because min(a, b) owns that spelling (#448). The gap was documented and left
+// open. It is still open -- the capability genuinely does not exist -- but the DEAD END is closed:
+// the #ERR now names the trap and the door instead of sending the reader after a typo.
+//
+// The negative cases are the point. A tip that fires on a working min(hp, 10), or on a property
+// nothing below actually carries, is a new false accusation, which is worse than the silence it
+// replaces.
+test('depthExtremalProp fires on the depth trap and on nothing else', () => {
+  const kid = (t, cost) => ({ id: t, text: t, props: [{ key: 'cost', val: String(cost) }], children: [] });
+  const node = { id: 'p', text: 'P', children: [Object.assign(kid('a', 10), { children: [kid('deep', 1)] }), kid('b', 5)] };
+
+  assert.equal(c.depthExtremalProp('min(cost, 2)', node, {}), 'cost', 'the trap: a depth number on min');
+  assert.equal(c.depthExtremalProp('max(cost, 3)', node, {}), 'cost', 'and on max');
+  // deeper than the number asked for is the SAME mistake, and subtree is the answer either way
+  assert.equal(c.depthExtremalProp('min(cost, 1)', node, {}), 'cost');
+
+  // NOT the trap: the numeric reading computes, so this is the blessed floor idiom (#448)
+  assert.equal(c.depthExtremalProp('min(cost, 2)', node, { cost: 7 }), null,
+    'a resolvable cost makes this the two-value min the user meant — never accuse it');
+  // NOT the trap: nothing below carries the property, so this is an ordinary unknown name
+  assert.equal(c.depthExtremalProp('min(rent, 2)', node, {}), null);
+  // NOT the trap: word scopes work today and are not errors at all
+  assert.equal(c.depthExtremalProp('min(cost, subtree)', node, {}), null);
+  assert.equal(c.depthExtremalProp('sum(cost, 2)', node, {}), null, 'sum takes a depth; it has no trap');
+  assert.equal(c.depthExtremalProp('min(cost, 0)', node, {}), null, '0 is not a depth; `self` spells that');
+  assert.equal(c.depthExtremalProp('', node, {}), null);
+  assert.equal(c.depthExtremalProp('min(cost, 2)', null, {}), null, 'no node: nothing is below, so no claim');
+});
+
+test('the depth trap tip is what the math pill actually renders', () => {
+  // A tested core proves nothing about whether anything calls it. Pin the CALL SITE: the #ERR branch
+  // must consult depthExtremalProp and prefer its tip over the generic reason phrase.
+  const branch = between(_src, 'const reason = mathErrorReason(expr, scope,', 'const display = formatMathDisplay');
+  assert.match(branch, /depthExtremalProp\(expr, cookieNode, scope\)/,
+    'the math #ERR branch must ask about the depth trap, using the SAME scope evalMath just failed with');
+  assert.match(branch, /min and max take a word scope, not a depth number/,
+    'and the tip must name the trap');
+  assert.match(branch, /subtree\)/, 'and the door out of it');
+  // NO source-ORDER assertion here. One was written -- indexOf('depthProp') < indexOf('phrase ?') --
+  // and mutation proved it decorative: inverting the condition to `!depthProp`, which makes the pill
+  // show the generic phrase for the trap and a tip reading "min(null, 2)" for everything else, left
+  // it green because both identifiers still appear in that order. Which branch WINS is behaviour, so
+  // tests/browser.mjs owns it: check 18 reads the title off the rendered pill and reddens on exactly
+  // that mutation.
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
