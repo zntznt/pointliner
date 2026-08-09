@@ -844,3 +844,147 @@ test('#1459 every / and @ command the guide teaches selects that command in the 
     'a command the guide teaches opens a door that highlights a different command than the ranking ' +
     'picks, so Enter fires something other than what was typed');
 });
+
+// 17. every CONTROL the guide points at must exist, be visible, and still answer to the name the
+// guide uses for it.
+//
+// This closes the last mechanizable slice of the guide. The examples here describe a control rather
+// than naming it -- "Toolbar hourglass button", "chip ✕", "Home crumb", "▶ (top left of a base)" --
+// so no string in the app matches and every text-based guard was structurally blind to them. The fix
+// is data, not cleverness: each such example now carries `ctl`, the control's REAL accessible name,
+// and this drives the app to prove that name is still on screen.
+//
+// Every `ctl` value was measured by driving and reading the live accessible name, never guessed. That
+// matters: "Show Week view" and "Include completed points" are nothing a reader of the guide copy
+// ("Week", "Done / Running") could have predicted, and a guessed value would have made this guard a
+// second source of false accusations rather than a check.
+const CTL_UNREACHABLE = new Map([
+  ['New document in the folder',
+   'the document switcher only exists once a folder is connected, and File System Access is not ' +
+   'available to a headless file:// page. The anchor still pins the name; only the driving is absent'],
+]);
+
+test('#1460 every control the guide points at is on screen under the name the guide uses', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const wanted = await pg.evaluate(() =>
+    GUIDE.flatMap(e => (e.examples || []).filter(x => x.ctl).map(x => ({ id: e.id, syn: x.syn, ctl: x.ctl }))));
+  assert.ok(wanted.length >= 20, `only ${wanted.length} anchored controls found — the scan broke`);
+
+  // Each opener reveals the surface its entry documents. Tried only AFTER a bare look, so a control
+  // that is already on screen never depends on one working.
+  const OPEN = {
+    agenda:   () => openAgenda(),
+    timeline: () => openTimeline(),
+    // renderGraph offers Nearby only when `graphAnchorId && nodeById(graphAnchorId)` -- "Nearby
+    // needs a point to centre on". graphAnchorNow() reads activeContentId, which after an earlier
+    // example still names a point from a DOCUMENT THAT NO LONGER EXISTS: non-null, unresolvable,
+    // so the scope silently falls back to This document and the button never renders. Putting the
+    // caret in a live point is the provisioning, not a workaround.
+    'link-graph': () => {
+      const c = document.querySelector('.node-content[data-id]');
+      const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+      graphAnchorId = null; openGraph();
+    },
+    hashtags:   () => document.querySelector('#logo-btn').click(),
+    tags:       () => document.querySelector('#logo-btn').click(),
+    'workspace-search': () => document.querySelector('#logo-btn').click(),
+    // #search-save is display:none unless the wrap has focus AND a search is live, so focusing
+    // the box is part of revealing it, not incidental setup.
+    // #search-save is display:none unless the wrap has focus AND a search is live, so focusing the
+    // box is part of revealing it. The two saved-search examples describe OPPOSITE states of the
+    // same control, so they cannot share one opener -- keyed by ctl below.
+    'Save this search': () => {
+      const s = document.getElementById('search-box');
+      s.focus(); s.value = 'dragon'; s.dispatchEvent(new Event('input', { bubbles: true }));
+    },
+    'Forget this search': () => {
+      const s = document.getElementById('search-box');
+      s.focus(); s.value = 'dragon'; s.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('search-save').click();   // ★ filled is the SAVED state
+      s.focus();
+    },
+    'base-views': () => {
+      const n = mkNode('Table'); n.type = 'base';
+      n.base = { cols: [{ name: 'A' }, { name: 'B' }], rows: [['1', '2'], ['3', '4']] };
+      root.children = [n]; buildIndex(root); markDirty(); render();
+    },
+    corkboard: () => {
+      const n = mkNode('Table'); n.type = 'base';
+      n.base = { cols: [{ name: 'A' }, { name: 'B' }], rows: [['1', '2'], ['3', '4']] };
+      root.children = [n]; buildIndex(root); markDirty(); render();
+    },
+    zoom: () => {
+      root.children = [mkNode('Parent')]; root.children[0].children = [mkNode('Child')];
+      buildIndex(root); markDirty(); render(); zoomTo(root.children[0].id); render();
+    },
+    backlinks: () => {
+      root.children = [mkNode('Parent')]; root.children[0].children = [mkNode('Child')];
+      buildIndex(root); markDirty(); render(); zoomTo(root.children[0].id); render();
+    },
+    'multi-select': () => {
+      root.children = [mkNode('One'), mkNode('Two')]; buildIndex(root); markDirty(); render();
+      selectedIds = new Set(root.children.map(n => n.id));
+      updateNodeSelBar();   // the bar is display:none until this adds .on
+      render();
+    },
+  };
+
+  // STARTS WITH, not contains. `includes` was tried and is vacuous: renaming the Notes button to
+  // "Annotations" left this green because the File menu offers "Footnotes", which contains "notes".
+  // That is the same substring trap that made the command guard useless, found the same way -- by
+  // mutation, not by reading. A prefix still allows the names that are genuinely longer than the
+  // anchor ("Show what links to the point you are on, within 2 steps", "Connect a folder…Auto-save
+  // every document"), which is why the anchors are prefixes rather than exact strings.
+  const look = (ctl) => {
+    const nameOf = el => (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '').trim();
+    return [...document.querySelectorAll('*')].some(el =>
+      el.offsetParent !== null && nameOf(el).toLowerCase().startsWith(ctl.toLowerCase()));
+  };
+
+  const bad = [], reached = [];
+  for (const { id, syn, ctl } of wanted) {
+    if (CTL_UNREACHABLE.has(ctl)) continue;
+    // Panels and the File menu are toggles, and an earlier example's opener leaves one on. Without
+    // this the graph refused to open behind a still-open menu and the guard blamed the GUIDE for it
+    // -- a false accusation of exactly the kind it exists to prevent.
+    // Panels are toggles and an earlier example's opener leaves one up, so each example starts by
+    // closing all three through the app's own close functions. Toggling the toolbar buttons instead
+    // does NOT work: those three panels each track their own `…Open` flag, and clicking a button
+    // whose aria-pressed has drifted out of step with that flag closes what was never open. Chasing
+    // that with retries cost several rounds before the flags were read directly.
+    await pg.evaluate(() => {
+      closeAgenda(); closeTimeline(); closeGraph();
+      // The document state earlier examples leave behind changes what a panel HAS TO SHOW, which is
+      // not the same problem as a panel being open. A saved search of "dragon" filters every point
+      // away and a live zoom narrows the tree, and the link graph then renders a reduced scope strip
+      // with no Nearby button at all -- reported, wrongly, as the guide naming a control that does
+      // not exist. Restore the plain document view before looking.
+      const sb = document.getElementById('search-box');
+      if (sb && sb.value) { sb.value = ''; sb.dispatchEvent(new Event('input', { bubbles: true })); }
+      focusedId = null;
+      if (typeof selectedIds !== 'undefined') { selectedIds.clear(); updateNodeSelBar(); }
+      if (typeof hideSlashMenu === 'function') hideSlashMenu();
+      const back = document.getElementById('io-back'); if (back) back.classList.remove('on');
+      const card = document.getElementById('io-card'); if (card) card.classList.remove('builder-open');
+    });
+    await pg.waitForTimeout(150);
+    let seen = await pg.evaluate(look, ctl).catch(() => false);
+    const open = OPEN[ctl] || OPEN[id];
+    if (!seen && open) {
+      await pg.evaluate(open);
+      await pg.waitForTimeout(600);
+      seen = await pg.evaluate(look, ctl).catch(() => false);
+    }
+    if (seen) reached.push(ctl);
+    else bad.push(`[${id}] ${JSON.stringify(syn)} points at a control named ${JSON.stringify(ctl)}, which is nowhere on screen`);
+    await pg.keyboard.press('Escape');
+    await pg.evaluate(() => { root.children = [mkNode('Parent')]; buildIndex(root); markDirty(); render(); }).catch(() => {});
+    await pg.waitForTimeout(120);
+  }
+  assert.deepEqual(bad, [],
+    'the guide points a reader at a control that is not there under that name. Either the control was ' +
+    'renamed (update the `ctl` anchor AND the guide copy) or it is gone (drop the example)');
+  // the unreachable list is live, not a dumping ground
+  const fixed = [...CTL_UNREACHABLE.keys()].filter(c => wanted.some(w => w.ctl === c) === false);
+  assert.deepEqual(fixed, [], 'these entries name no anchored control any more — drop them from CTL_UNREACHABLE');
+});
