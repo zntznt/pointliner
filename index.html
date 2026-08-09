@@ -3201,6 +3201,8 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 <script>
 'use strict';
 
+
+// ═════════════════════ DOMAIN: Document model & caches ═════════════════════
 // ─── doc-cache registry ──────────────────────────────────────────────────────
 // Every cross-node cache in the file registers here, so resetDocCaches() AND the invalidation test
 // in tests/test.mjs DERIVE their coverage instead of enumerating it by hand. That is the cure for
@@ -3550,6 +3552,8 @@ function nodeNames(node) {
   return out;
 }
 
+
+// ═════════════ DOMAIN: Point semantics: to-dos, progress, pills ═════════════
 // ─── TODO states & priorities (Org-style) ────────────────────────────────────
 // A todo node's state keyword + priority live at the START of node.text, Org
 // headline style: `TODO [#A] body`. Keeping them in node.text means no new node
@@ -4685,6 +4689,8 @@ function aggregateVarBaseColumn(fn, base, col, vars) {
   return null;
 }
 
+
+// ═════════════ DOMAIN: Units, lint, appearance, dates & journal ═════════════
 // ── units: a declarable conversion table (SR-6 / #875) ────────────────────────
 // The calendars/sequences substrate pattern applied to "what is a quantity": a built-in
 // ratio table + the doc's own declared units, converted by one evalMath-family primitive
@@ -7423,6 +7429,8 @@ function pathTo(id) {
   return path;
 }
 
+
+// ══════════════════ DOMAIN: Markdown, generators & tables ══════════════════
 // ─── markdown ─────────────────────────────────────────────────────────────────
 
 // Zero-width space used by insertLineBreak to anchor the caret on blank lines.
@@ -9516,6 +9524,8 @@ function renderStaticTable(block, l0, l1) {
   return h + '</table></div></div>';
 }
 
+
+// ═══════════════════ DOMAIN: OPML, commands & navigation ═══════════════════
 // ─── OPML ─────────────────────────────────────────────────────────────────────
 
 // Doc-level config rides the <head> as underscore-prefixed custom ELEMENTS
@@ -10358,6 +10368,8 @@ function mkCrumb(t, fn) {
 }
 function mkSep() { const s=document.createElement('span'); s.className='crumb-sep'; s.textContent='›'; return s; }
 
+
+// ══════════════════════════ DOMAIN: Render & bases ══════════════════════════
 // ─── render ──────────────────────────────────────────────────────────────────
 
 function render() {
@@ -14129,6 +14141,8 @@ function appendNoteIndicator(content, node) {
   (last && /^(P|LI|H[1-6]|BLOCKQUOTE)$/.test(last.tagName) ? last : content).appendChild(ind);
 }
 
+
+// ═══════════════════ DOMAIN: Notes, properties & dialogs ═══════════════════
 // ─── per-point notes ──────────────────────────────────────────────────────────
 // A secondary plain-text block under a point (`node.note`): muted display,
 // click-to-edit in place. Plain text only (escaped; no markdown, no pills) — a
@@ -16283,6 +16297,8 @@ function stampTemplate(nodeId, name) {
   flashHint(`Stamped “${tpl.name}” (${ptsLabel(countPoints(clone))})`);
 }
 
+
+// ═════════════════════ DOMAIN: Refile, capture & strips ═════════════════════
 // ─── refile ────────────────────────────────────────────────────────────────────
 // Move a point's whole subtree to become the last child of another point chosen via
 // a search picker (vs. drag / indent). Org-mode's refile.
@@ -17660,6 +17676,8 @@ function cycleJournalMode() {
   }
 }
 
+
+// ══════════════════════════ DOMAIN: Search & caret ══════════════════════════
 // ─── search ───────────────────────────────────────────────────────────────────
 // The search box speaks a small operator language (UXP-20-routed: operators over
 // the EXISTING vocabulary, no new sigil — `#` is the hashtag sigil, `-`/quotes are
@@ -20049,6 +20067,8 @@ function caretFromPoint(x, y) {
   return null;
 }
 
+
+// ═══════════════════ DOMAIN: Input & interaction surfaces ═══════════════════
 // ─── paste ───────────────────────────────────────────────────────────────────
 
 function handlePaste(e, node, content) {
@@ -22429,6 +22449,8 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
   requestAnimationFrame(() => { (bpop.querySelector('.tp-chip.cur') || bpop.querySelector('.tp-chip'))?.focus(); });
 }
 
+
+// ═══════════════════ DOMAIN: Command menus & dialog shell ═══════════════════
 // ─── slash commands ───────────────────────────────────────────────────────────
 
 const slashMenu = document.getElementById('slash-menu');
@@ -24318,6 +24340,8 @@ function openMarkovDialog({ title, submitLabel, def = '', start = '', steps = ''
   });
 }
 
+
+// ═══════════════════ DOMAIN: Generation engines & indexes ═══════════════════
 // ─── roll tables (legacy → grammar migration) ────────────────────────────────
 // Roll tables collapsed into the grammar engine (June 2026): a named table IS a
 // one-rule grammar (`loot: sword | shield 2`), which collectRules was already
@@ -27647,6 +27671,8 @@ function pruneGrammar(node) {
   node.grammar = node.grammar.filter(g => node.text.includes(`[[grammar:${g.key}]]`));
 }
 
+
+// ═════════════════ DOMAIN: Math, variables & authoring aids ═════════════════
 // ─── typed shorthand → pill promotion ────────────────────────────────────────
 // Lets the user *write* an artifact inline instead of using a dialog: a brace
 // body is classified exactly like resolveBrace, an artifact record is built, and
@@ -32651,6 +32677,8 @@ function selectLogicalRange(el, start, end) {
   const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
 }
 
+
+// ══════════════════════ DOMAIN: Tree editing & history ══════════════════════
 // ─── node type / checked ─────────────────────────────────────────────────────
 
 // Flip the Nth task-list checkbox (- [ ] / - [x]) in a node's text, then refresh
@@ -34054,6 +34082,8 @@ function renderFileName() {
   if (el) el.textContent = displayName(fileName);
 }
 
+
+// ══════════════ DOMAIN: Persistence, workspace & import/export ══════════════
 // ─── file I/O ─────────────────────────────────────────────────────────────────
 
 const hasFSA = 'showOpenFilePicker' in window;
@@ -36905,6 +36935,8 @@ function exportSelfContainedHtml() {
   flashHint('Saved a self-contained copy. It opens as this app with your document inside.' + left + lost + links);
 }
 
+
+// ══════════════════ DOMAIN: Panels & recognition surfaces ══════════════════
 // ─── search wiring ────────────────────────────────────────────────────────────
 
 let searchDebounce = null;
@@ -40463,6 +40495,8 @@ document.getElementById('timeline-back').addEventListener('mousedown', e => {
   if (e.target.id === 'timeline-back') closeTimeline();
 });
 
+
+// ═════════════════ DOMAIN: Chrome, boot, builder & autosave ═════════════════
 // ─── boot ─────────────────────────────────────────────────────────────────────
 
 // file menu

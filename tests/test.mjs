@@ -1532,6 +1532,59 @@ test('#1430 a section losing its marker cannot pass unnoticed', () => {
   assert.ok(biggest < 200, `one section holds ${biggest} declarations; the index has stopped grouping`);
 });
 
+// #1431: the COARSE tier. The issue asked for banner sections plus a parity check that "every
+// top-level declaration lives inside a bannered region". That check, as specified, cannot fail: the
+// first banner precedes the first declaration, so every declaration inherits a region by
+// construction, and a check that cannot fail is not a check (#1133).
+//
+// What CAN fail is the inverse, and it is what these pin:
+//   - a DOMAIN banner is deleted or renamed, and its sections silently merge into the domain above
+//   - a new section lands above the first banner, outside the spine entirely
+//   - the tier stops partitioning: one domain swallowing the file regenerates and byte-compares
+//     happily while telling a reader nothing, exactly as one giant section would
+// Section-to-domain MOVES are caught by CI's byte-compare of the regenerated index, which is what
+// makes placing new code a deliberate act rather than a silent inheritance -- the outcome #1431
+// actually wanted.
+test('#1431 the domain spine partitions the file, and a domain cannot lose its name', () => {
+  const doms = nonEmpty([..._codeIndex.matchAll(/^# (?!Code index$)(.+)$/gm)], 'index domains')
+    .map(m => m[1].trim());
+  assert.equal(new Set(doms).size, doms.length,
+    'a domain heading appears twice, so its sections are not contiguous — the spine has interleaved');
+  assert.ok(doms.length >= 12 && doms.length <= 30,
+    `${doms.length} domains: the coarse tier is meant to be scannable in one screen`);
+  // Named, not counted. A count stays green while the wrong domains pass.
+  for (const want of ['Document model & caches', 'Render & bases', 'Tree editing & history',
+                      'Persistence, workspace & import/export'])
+    assert.ok(doms.includes(want), `the "${want}" domain lost its banner — its sections have ` +
+      'silently merged into the domain above it');
+  // Nothing outside the spine. The extractor labels such sections "(no domain)" rather than
+  // hiding them, so this reads that label instead of trusting the banners to cover everything.
+  assert.ok(!doms.includes('(no domain)'),
+    'a section sits above the first DOMAIN banner, so its declarations are outside the spine');
+  // And the tier must actually partition: sections spread across domains, not pooled in one.
+  const perDomain = doms.map(d =>
+    (between(_codeIndex + '\n#  ', `# ${d}\n`, '\n# ').match(/^## /gm) || []).length);
+  assert.ok(Math.min(...perDomain) >= 1, 'a domain holds no sections at all');
+  assert.ok(Math.max(...perDomain) <= 40,
+    `one domain holds ${Math.max(...perDomain)} sections; the coarse tier has stopped grouping`);
+});
+
+test('#1431 the banner spine in index.html is the source the index reads', () => {
+  // The generated file could agree with itself forever while index.html carried no banners at all.
+  // These read the APP, so the spine has to exist where a person opening the file would see it.
+  const banners = nonEmpty([..._src.matchAll(/^\/\/ ═+ DOMAIN: (.+?) ═+$/gm)], 'DOMAIN banners in index.html')
+    .map(m => m[1].trim());
+  assert.ok(banners.length >= 12, `only ${banners.length} DOMAIN banners in index.html`);
+  const doms = new Set(nonEmpty([..._codeIndex.matchAll(/^# (?!Code index$)(.+)$/gm)], 'index domains')
+    .map(m => m[1].trim()));
+  const drifted = banners.filter(b => !doms.has(b));
+  assert.deepEqual(drifted, [],
+    'a DOMAIN banner in index.html is absent from the generated index — regenerate it');
+  // The two tiers must stay visually distinct, or the spine is unreadable and the regexes collide.
+  assert.ok(!/^\/\/ ─+ DOMAIN:/m.test(_src),
+    'a DOMAIN banner was written with the fine tier\'s ─ rule; the coarse tier uses ═');
+});
+
 test('#1430 the index tool reads the same app block as load-cores, and commits no line numbers', () => {
   // Two tools disagreeing about which <script> is the app is a bug neither would report, so the
   // block signature is pinned to match load-cores.mjs exactly.
