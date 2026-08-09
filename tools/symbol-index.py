@@ -45,6 +45,9 @@ OUT = ROOT / 'guidance' / 'code-index.md'
 # two tools disagreeing about which <script> is the app is a bug neither would report.
 SCRIPT_RE = re.compile(r'<script\b[^>]*>([\s\S]*?)</script>')
 MARKER_RE = re.compile(r'^// ─+ ?(.*?) ?─*\s*$')
+# #1431's coarse tier, above the 157 fine markers. A DIFFERENT rule character (═ not ─) so the two
+# tiers can never be confused by eye or by regex. `grep 'DOMAIN:' index.html` is the whole outline.
+DOMAIN_RE = re.compile(r'^// ═+ DOMAIN: (.+?) ═+\s*$')
 # `async ` and `function*` are part of the form, not decoration. Omitting the async prefix hid
 # `stashPayloadAsPrev` -- a core the test suite already tracks in load-cores need[] -- from the map,
 # which is precisely the "silently partial index" the cross-registry parity test exists to catch.
@@ -92,36 +95,50 @@ def doc_for(lines, i):
 
 def collect():
     lines = app_block(HTML.read_text(encoding='utf8')).split('\n')
-    groups = []            # [(marker_name, [(name, kind, doc, lineno)])]
+    groups = []            # [(domain, marker_name, [(name, kind, doc, lineno)])]
     current = '(unmarked)'
+    domain = '(no domain)'      # anything above the first DOMAIN banner, reported not hidden
     bucket = {}
     order = []
+    sec_domain = {}
 
     def put(section, item):
         if section not in bucket:
             bucket[section] = []
             order.append(section)
+            sec_domain[section] = domain
         bucket[section].append(item)
 
     for i, line in enumerate(lines):
+        dm = DOMAIN_RE.match(line)
+        if dm:
+            domain = dm.group(1).strip()
+            continue
         m = MARKER_RE.match(line)
         if m:
             name = m.group(1).strip()
             # A marker with no text is a rule, not a section title; keep the previous section.
             if name:
                 current = name
+                # A section re-entered under a later domain keeps its FIRST domain; that would be a
+                # split section, which the name census would surface as its own problem.
+                sec_domain.setdefault(current, domain)
             continue
         d = DECL_RE.match(line)
         if d:
             put(current, (d.group(2), d.group(1), doc_for(lines, i), i + 1))
 
     for section in order:
-        groups.append((section, bucket[section]))
+        groups.append((sec_domain.get(section, '(no domain)'), section, bucket[section]))
     return groups
 
 
 def render(groups, with_lines=False):
-    total = sum(len(v) for _, v in groups)
+    total = sum(len(v) for _, _, v in groups)
+    domains = []
+    for d, _, _ in groups:
+        if not domains or domains[-1] != d:
+            domains.append(d)
     out = [
         '# Code index',
         '',
@@ -129,16 +146,22 @@ def render(groups, with_lines=False):
         'CI regenerates this and fails on drift, so it cannot rot (#1430).',
         '',
         'Every top-level declaration in the app `<script>` of `index.html`, grouped by the section',
-        'marker it sits under, with the first line of its own comment as its purpose.',
+        'marker it sits under and by the `DOMAIN:` banner above that (#1431), with the first line',
+        'of its own comment as its purpose. `grep \'DOMAIN:\' index.html` prints the coarse outline.',
         '',
         'No line numbers, deliberately: they drift every edit and names do not',
         '(`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while',
         'editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.',
         '',
-        f'**{total} declarations in {len(groups)} sections.**',
+        f'**{total} declarations in {len(groups)} sections across {len(domains)} domains.**',
         '',
     ]
-    for section, items in groups:
+    seen = None
+    for dom, section, items in groups:
+        if dom != seen:
+            out.append(f'# {dom}')
+            out.append('')
+            seen = dom
         out.append(f'## {section}')
         out.append('')
         for name, kind, doc, ln in items:
@@ -179,11 +202,11 @@ def main():
                     print(f'\nfirst difference at line {i + 1}:\n  committed: {x}\n  generated: {y}', file=sys.stderr)
                     break
             return 1
-        print(f'{OUT.relative_to(ROOT)} is up to date ({sum(len(v) for _, v in groups)} declarations).')
+        print(f'{OUT.relative_to(ROOT)} is up to date ({sum(len(v) for _, _, v in groups)} declarations).')
         return 0
 
     OUT.write_text(fresh, encoding='utf8')
-    print(f'wrote {OUT.relative_to(ROOT)}: {sum(len(v) for _, v in groups)} declarations in {len(groups)} sections')
+    print(f'wrote {OUT.relative_to(ROOT)}: {sum(len(v) for _, _, v in groups)} declarations in {len(groups)} sections')
     return 0
 
 

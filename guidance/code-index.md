@@ -4,13 +4,16 @@
 CI regenerates this and fails on drift, so it cannot rot (#1430).
 
 Every top-level declaration in the app `<script>` of `index.html`, grouped by the section
-marker it sits under, with the first line of its own comment as its purpose.
+marker it sits under and by the `DOMAIN:` banner above that (#1431), with the first line
+of its own comment as its purpose. `grep 'DOMAIN:' index.html` prints the coarse outline.
 
 No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2052 declarations in 152 sections.**
+**2052 declarations in 152 sections across 17 domains.**
+
+# Document model & caches
 
 ## doc-cache registry
 
@@ -85,6 +88,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `displayText`
 - `aliasesOf` — A point's alternate names — the reserved `aliases` property, comma-split, trimmed,
 - `nodeNames` — Every name a point answers to: canonical title first, then aliases (deduped
+
+# Point semantics: to-dos, progress, pills
 
 ## TODO states & priorities (Org-style)
 
@@ -218,6 +223,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `aggregateChildren`
 - `_aggColReCache` — Substitute every sum|avg|count|min|max(propName) in a math expression with its
 - `aggregateVarBaseColumn`
+
+# Units, lint, appearance, dates & journal
 
 ## units: a declarable conversion table (SR-6 / #875)
 
@@ -399,6 +406,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `ancestorsOf` — The chain of ancestor NODES above `node`, nearest-first (parent, grandparent, …),
 - `pathTo`
 
+# Markdown, generators & tables
+
 ## markdown
 
 - `ZWSP` — Zero-width space used by insertLineBreak to anchor the caret on blank lines.
@@ -541,6 +550,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `tableDelimCells` — GFM table delimiter row detector — the false-positive guard. Returns the cell
 - `renderStaticTable` — Render a detected pipe-table block (grid lines + an optional trailing #+TBLFM:
 
+# OPML, commands & navigation
+
 ## OPML
 
 - `headEl` — Doc-level config rides the <head> as underscore-prefixed custom ELEMENTS
@@ -608,6 +619,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `crumbLabel` — A base has no prose title (its text is the table markdown), so show a clean label
 - `mkCrumb`
 - `mkSep`
+
+# Render & bases
 
 ## render
 
@@ -812,6 +825,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `renderRow`
 - `appendNoteIndicator` — The hidden-note indicator: a tiny trailing glyph inside the display-mode
 
+# Notes, properties & dialogs
+
 ## per-point notes
 
 - `noteEditId` — A secondary plain-text block under a point (`node.note`): muted display,
@@ -916,6 +931,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openCitePicker` — Phase C: the "cite an existing footnote" picker — a P2 front door for reuse from the @ menu. Lists
 - `stampTemplate` — Stamp a fresh copy of a saved template as a new point. Replaces the invoking
 
+# Refile, capture & strips
+
 ## refile
 
 - `pickerTitle` — The one display label for a point inside any picker / navigator: a base shows a
@@ -1005,6 +1022,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `doChronicleAdd`
 - `openJournalEntry`
 - `cycleJournalMode` — Toggle where journal entries go: 'append' (a Journal home point in this document)
+
+# Search & caret
 
 ## search
 
@@ -1097,6 +1116,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `isComputedNode` — #801 (agent-review, UXP-194): repaint visible points whose DISPLAY depends on
 - `repaintComputedDependents`
 - `caretFromPoint`
+
+# Input & interaction surfaces
 
 ## paste
 
@@ -1206,6 +1227,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `_bpopSwallowTimer`
 - `showTodoPicker` — Compact state + priority picker for a todo node. Reuses the #bpop element (so
 
+# Command menus & dialog shell
+
 ## slash commands
 
 - `slashMenu`
@@ -1299,6 +1322,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openConfirmDialog` — Lightweight destructive-action confirmation. Returns a Promise that resolves
 - `openDiceDialog` — Shared dialog for creating / editing a dice formula. Calls back with a fresh
 - `openMarkovDialog` — Shared dialog for creating / editing a Markov chain. Calls back with a fresh
+
+# Generation engines & indexes
 
 ## roll tables (legacy → grammar migration)
 
@@ -1519,6 +1544,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `rerollGrammar`
 - `editGrammar`
 - `pruneGrammar`
+
+# Math, variables & authoring aids
 
 ## typed shorthand → pill promotion
 
@@ -1789,6 +1816,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `domPointForLogical` — Find the DOM {node, off} for a logical character offset, counting atomic pill
 - `selectLogicalRange` — Select the logical [start,end) span in a contenteditable (type-to-replace). Used
 
+# Tree editing & history
+
 ## node type / checked
 
 - `toggleTaskInNode` — Flip the Nth task-list checkbox (- [ ] / - [x]) in a node's text, then refresh
@@ -1895,6 +1924,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `toFileName` — Pure: turn a user-typed/bare name back into a storage filename (sanitize + ensure
 - `updateTitle`
 - `renderFileName` — Refresh the menu-header filename display (bare name, no extension).
+
+# Persistence, workspace & import/export
 
 ## file I/O
 
@@ -2093,6 +2124,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `extractEmbeddedOpml`
 - `exportSelfContainedHtml`
 
+# Panels & recognition surfaces
+
 ## search wiring
 
 - `searchDebounce`
@@ -2252,6 +2285,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `closeGraph`
 - `toggleGraph`
 - `renderGraph`
+
+# Chrome, boot, builder & autosave
 
 ## boot
 
