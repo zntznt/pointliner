@@ -1,0 +1,86 @@
+{
+  "_comment": [
+    "Kill-mutations, one per guard whose SHAPE is prone to going vacuous. Run by",
+    "tools/mutation-check.mjs and by the `mutation` CI job: each mutant is applied to the working",
+    "tree, the suite is run, and the named guard MUST fail. A mutant that survives means that guard",
+    "cannot fail and is decorative.",
+    "",
+    "WHAT BELONGS HERE. Not every assertion: value-equality tests have essentially never gone vacuous",
+    "in this repo. What has, six times out of ~35 new guards in one session, is the EXISTENCE shape --",
+    "a claim checked over a search space far larger than its subject (a substring of the whole source,",
+    "an accessible name matched with `includes`, `the menu offered something`, a source-ORDER pin).",
+    "Add a mutant when a guard asserts that something EXISTS, IS PRESENT, or HAPPENED. Skip it when",
+    "the guard asserts a value.",
+    "",
+    "kills = a substring of the failing test's name. file/find/replace = one exact, UNIQUE edit; the",
+    "runner refuses to proceed if `find` does not match exactly once, because a find string that has",
+    "drifted would apply nothing and the mutant would 'survive' for a reason unrelated to the guard.",
+    "suite:'browser' entries are recorded but not run by default -- a driven run costs ~80s against",
+    "~5s for the unit suite. The runner prints what it skipped rather than skipping silently."
+  ],
+  "mutants": [
+    {
+      "id": "depth-tip-unwired",
+      "suite": "unit",
+      "why": "the core is tested and nothing calls it: a tested core proves nothing about its call site",
+      "file": "index.html",
+      "find": "const depthProp = depthExtremalProp(expr, cookieNode, scope);",
+      "replace": "const depthProp = null;",
+      "kills": "the depth trap tip is what the math pill actually renders"
+    },
+    {
+      "id": "depth-tip-overfires",
+      "suite": "unit",
+      "why": "without the resolvable-value guard the tip accuses a working min(hp, 10)",
+      "file": "index.html",
+      "find": "  if (typeof v === 'number' && isFinite(v)) return null;\n  // Look at the WHOLE subtree",
+      "replace": "  // Look at the WHOLE subtree",
+      "kills": "depthExtremalProp fires on the depth trap and on nothing else"
+    },
+    {
+      "id": "domain-banner-renamed",
+      "suite": "unit",
+      "why": "a DOMAIN banner renamed in the app while the generated index still names the old one",
+      "file": "index.html",
+      "find": "DOMAIN: Render & bases",
+      "replace": "DOMAIN: Widgets",
+      "kills": "#1431 the banner spine in index.html is the source the index reads"
+    },
+    {
+      "id": "domain-lost-from-index",
+      "suite": "unit",
+      "why": "a domain heading gone from the index means its sections merged into the one above",
+      "file": "guidance/code-index.md",
+      "find": "# Tree editing & history",
+      "replace": "# Widgets",
+      "kills": "#1431 the domain spine partitions the file"
+    },
+    {
+      "id": "bibtex-door-disabled",
+      "suite": "unit",
+      "why": "the original source pin read only the function NAME and stayed green with the branch dead",
+      "file": "index.html",
+      "find": "} else if (sniffBibtex(text)) {",
+      "replace": "} else if (false && sniffBibtex(text)) {",
+      "kills": "#1265 BibTeX import"
+    },
+    {
+      "id": "meter-tip-one-door",
+      "suite": "unit",
+      "why": "the meter failure naming only the property door sends a variable user nowhere",
+      "file": "index.html",
+      "find": ", or declare it as a variable like {${missing[0]} := 10}.`;",
+      "replace": ".`;",
+      "kills": "#1451 the meter failure names BOTH doors"
+    },
+    {
+      "id": "control-anchor-renamed",
+      "suite": "browser",
+      "why": "renaming a control the guide points at; caught `includes` matching Footnotes for Notes",
+      "file": "index.html",
+      "find": "title=\"Notes\" aria-label=\"Notes\"",
+      "replace": "title=\"Annotations\" aria-label=\"Annotations\"",
+      "kills": "every control the guide points at is on screen under the name the guide uses"
+    }
+  ]
+}

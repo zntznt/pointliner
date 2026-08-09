@@ -37,6 +37,22 @@ jobs:
       # common path rather than becoming a weekly job nobody watches.
       - run: python3 tools/symbol-index.py --check
 
+  # A guard that CANNOT FAIL is indistinguishable from a passing guard in every report CI produces,
+  # and measured over one session roughly one new guard in six was exactly that -- always the same
+  # EXISTENCE shape (a substring of the whole source, an accessible name matched with `includes`,
+  # "the menu offered something", a source-ORDER pin). Each was found by hand-mutating the app and
+  # watching the guard stay green, which proved it at one instant and then evaporated. This job makes
+  # it standing: every mutant in tests/mutants.json is applied and its named guard MUST go red.
+  # ~5s per mutant (one unit-suite run each), so it stays on the common path.
+  mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/mutation-check.mjs
+
   # The other half of the staleness guard. tests/test.mjs enforces a floor, but a floor committed in
   # the tree is structurally blind to its own checkout being stale: a base 500 tests old carries the
   # old floor too, compares 1500 against 1400, and passes. That is the documented failure ("it sat at
