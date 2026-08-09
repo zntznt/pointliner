@@ -14960,7 +14960,7 @@ const _GUIDE = (() => {
   }
   return new Function('MOD', 'ALT', 'return ' + _src.slice(start, j))('Ctrl', 'Alt');
 })();
-const _GUIDE_SYNS = _GUIDE.flatMap(e => (e.examples || []).map(x => ({ id: e.id, syn: String(x.syn || '') })));
+const _GUIDE_SYNS = _GUIDE.flatMap(e => (e.examples || []).map(x => ({ id: e.id, syn: String(x.syn || ''), ctl: x.ctl || null })));
 // Both extractions must actually find something. If the guide moves or the array stops parsing, every
 // guard below would pass on an empty set rather than fail — the exact vacuity #1133 exists to stop.
 if (_GUIDE_SYNS.length === 0) throw new Error('no guide examples parsed — the guide guards would be blind');
@@ -15161,7 +15161,7 @@ test('#1458 every markdown form the guide teaches actually renders as markup', (
 //     that, and is a data change across ~40 entries, not a test.
 // The number cannot be verified, so it is FROZEN instead: nothing stops it growing except this. A new
 // uncovered example is a new untested promise, and it now has to be looked at rather than absorbed.
-const GUIDE_UNCOVERED_FLOOR = 93;
+const GUIDE_UNCOVERED_FLOOR = 69;
 
 test('#1459 the guide examples no guard can check are counted, and the count does not grow', () => {
   const CHORD = /\b(?:Ctrl|Cmd|Shift|Alt|Enter|Tab|Esc|Backspace|Delete|Space|F\d+)\b|⌘|[↑↓←]/;
@@ -15175,7 +15175,7 @@ test('#1459 the guide examples no guard can check are counted, and the count doe
     || syn.split(/\s*\/\s*/).some(p => /^-?["#]|^-?\w+:/.test(p.trim()))   // search operator
     || syn.split(/\s+or\s+/).some(p => paired.test(p.trim()) || leading.test(p.trim()));  // markdown form
 
-  const uncovered = nonEmpty(_GUIDE_SYNS, 'guide examples').filter(x => !covered(x.syn));
+  const uncovered = nonEmpty(_GUIDE_SYNS, 'guide examples').filter(x => !x.ctl && !covered(x.syn));
   assert.ok(uncovered.length <= GUIDE_UNCOVERED_FLOOR,
     `${uncovered.length} guide examples are covered by no guard (floor ${GUIDE_UNCOVERED_FLOOR}). A new ` +
     'one is a new untested promise: either it fits an existing guard and the classifier needs widening, ' +
