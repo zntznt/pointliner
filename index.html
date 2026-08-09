@@ -5127,6 +5127,34 @@ function emptyExtremalProp(expr, value) {
   return m ? m[1] : null;
 }
 
+// The min/max DEPTH GAP, made actionable rather than closed. `sum(cost, 2)` reaches two levels down;
+// `min(cost, 2)` cannot mean that, because `min(a, b)` is evalMath's numeric variadic and that
+// spelling is already taken (#448). So min/max accept WORD scopes only, and someone who writes
+// min(cost, 2) expecting a depth gets a bare #ERR with nothing to go on: the numeric reading failed
+// because `cost` is a child PROPERTY, not a number in scope, and nothing said so.
+//
+// This detects exactly that state so the error can name the trap and the door. It fires only when
+// the numeric reading ALREADY failed and the depth reading is the plausible one (something below
+// really does carry the property), so a working `min(hp, 10)` never reaches it.
+//
+// DELIBERATELY NOT CLOSED by making the numeric argument mean depth when the identifier does not
+// resolve. That rule is available and looks free -- it changes only expressions that are errors
+// today -- but it makes the meaning depend on what happens to be declared: a working min(cost, 2)
+// depth rollup would flip silently to the two-value min the day someone adds `{cost := 7}` to that
+// point. A missing capability is better than a formula that changes answer behind you (P1).
+// Returns the property name, or null. Pure.
+function depthExtremalProp(expr, node, scope = null) {
+  const m = /\b(?:min|max)\s*\(\s*([A-Za-z_]\w*)\s*,\s*(\d+)\s*\)/.exec(String(expr || ''));
+  if (!m) return null;
+  if (resolveScopeDepth(m[2]) === null) return null;     // 0 is not a depth; `self` spells that
+  const prop = m[1];
+  const v = scope ? scope[prop] : undefined;             // the numeric reading computes -> not this trap
+  if (typeof v === 'number' && isFinite(v)) return null;
+  // Look at the WHOLE subtree, not the depth that was typed: props sitting deeper than the number
+  // asked for are the same mistake, and the tip points at `subtree` either way.
+  return collectScoped(node || {}, Infinity).some(c => childPropNumber(c, prop) !== null) ? prop : null;
+}
+
 // #1200: an empty rollup ({= sum(fee)} that matched no `fee` property) has two distinguishable
 // causes, and only one is a typo. "No child has a `fee` property" is a name/scope mistake. But if the
 // children COMPUTE their values with pills (a `{= words * rate}` on each row) and simply never stored
@@ -30271,7 +30299,15 @@ function renderMathPill(key, m, opts = {}) {
     const reason = mathErrorReason(expr, scope, _varCycles, globalVarMap);   // agent-review: globalVarMap → distinguish a forward ref ("declared later") from a typo
     const label = reason ? `#ERR (${reason})` : '#ERR';
     const phrase = mathReasonPhrase(reason, expr);
-    const tip = phrase ? `This uses ${phrase}. Click to edit.` : 'This can\'t be computed. Click to edit.';
+    // The min/max depth trap gets its own tip, ahead of the generic one: `min(cost, 2)` reads as a
+    // depth by analogy with sum(cost, 2) and is not one, and the generic "uses an unknown name"
+    // sends the reader hunting for a typo in a property that is spelled correctly and really is
+    // below them. Name the trap and the door in the same breath.
+    const depthProp = depthExtremalProp(expr, cookieNode, scope);
+    const tip = depthProp
+      ? `min and max take a word scope, not a depth number. min(${depthProp}, 2) is the smaller of `
+        + `${depthProp} and 2. To reach every level below, write min(${depthProp}, subtree).`
+      : phrase ? `This uses ${phrase}. Click to edit.` : 'This can\'t be computed. Click to edit.';
     return `<span class="math-roll math-err" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
       + ` aria-label="Math ${escQ(m.expr)} shows ${escQ(label)}. ${escQ(tip)}">`
       + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
@@ -42373,7 +42409,7 @@ const GUIDE = [
     ] },
   { id:'rollups', cat:'compute',
     title:'Roll-up totals',
-    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nYou do not have to type any of it. On a heading whose rows carry a number, a + Total door totals the column in one click; and in the @ Math or @ Check dialog, sum, avg, count, min and max are click chips, and so are your own property keys, so a total is built by clicking the reducer and then the key, never spelling either out. When the rows carry exactly TWO number columns (a quote and an actual, an estimate and an invoice), a + Variance door writes the over-or-under for you: the difference on every row and the total on the heading, so a budget-vs-actual reads its variance without you authoring a single formula.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. Widen it all the way with sum(cost, document), which totals the property across the WHOLE document from any point, the same widener word a search reducer takes. min and max take these scopes too: max(cost, subtree) is the priciest item anywhere below, and min(cost, document) the cheapest in the document. The one exception is the NUMBER form: min(cost, 2) is the smaller of cost and 2, the everyday two-value min, not a depth. Use min(cost, subtree) when you mean depth. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. Every reducer takes the widener, so max(\"#task\", cost, folder) is the priciest tagged item across the whole folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, hover the pill and click the magnifier beside the pencil (or open the pill's actions by right-clicking it, or focusing it and pressing the menu key, and choose Explain this number). It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
+    body:"Automatically total a budget across the tasks under a heading, find the most expensive item in a list, count how many children have a value set or surface the latest deadline in a project. The result updates whenever a child changes, with no manual adding. Name properties on child points, then roll them up on the parent with sum, avg, count, min or max.\n\nYou do not have to type any of it. On a heading whose rows carry a number, a + Total door totals the column in one click; and in the @ Math or @ Check dialog, sum, avg, count, min and max are click chips, and so are your own property keys, so a total is built by clicking the reducer and then the key, never spelling either out. When the rows carry exactly TWO number columns (a quote and an actual, an estimate and an invoice), a + Variance door writes the over-or-under for you: the difference on every row and the total on the heading, so a budget-vs-actual reads its variance without you authoring a single formula.\n\nBy default a roll-up counts the DIRECT children; add a scope to reach deeper: sum(cost, subtree) totals every descendant, and sum(cost, 2) reaches two levels down. Widen it all the way with sum(cost, document), which totals the property across the WHOLE document from any point, the same widener word a search reducer takes. min and max take these scopes too: max(cost, subtree) is the priciest item anywhere below, and min(cost, document) the cheapest in the document. The one exception is the NUMBER form: min(cost, 2) is the smaller of cost and 2, the everyday two-value min, not a depth. Use min(cost, subtree) when you mean depth. If you write min(cost, 2) meaning depth, the pill says so rather than leaving you to guess. You can also roll up the prose itself: words(subtree) counts every word beneath a point, a live word count for a writing target, and reading time is just words(subtree) / 200. Per-point notes stay out of the count unless you ask: words(subtree, notes) includes them.\n\nQuote the first argument and give a property as the second, and the SAME reducers total that property over a live SEARCH instead of by child position: sum(\"#task\", cost) totals the cost of everything tagged #task below this point, at any depth, and avg(\"#risk\", severity) averages a tag's severity. The query takes all the usual search operators, so the search is the filter and the property is what you add up. A bare name stays the child-position rollup, so the two never collide; an empty match reduces to zero, like count(\"query\").\n\nA search reducer looks below the point it sits on by default. Widen it with a third word: sum(\"#task\", cost, document) totals across the WHOLE document, and count(\"is:todo\", folder) reaches every note in the folder. Every reducer takes the widener, so max(\"#task\", cost, folder) is the priciest tagged item across the whole folder. If a search reducer sits on a point that has nothing below it, the pill reads \"0 in scope\" to tell you it needs a parent or a wider scope, instead of a silent zero that looks broken.\n\nTo see exactly what a total is made of, hover the pill and click the magnifier beside the pencil (or open the pill's actions by right-clicking it, or focusing it and pressing the menu key, and choose Explain this number). It lists every row that went into the sum with its value, and, importantly, every row that was left OUT because it carries no number for that property, so a point you forgot to price never hides inside a total that looks complete.",
     related:['math','properties','check'],
     examples:[
       { syn:'{= sum(cost)}',  desc:'total the cost of the direct children' },

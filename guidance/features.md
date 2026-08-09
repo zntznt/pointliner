@@ -332,7 +332,7 @@ Implemented:
   child → `+∞ >= 1` → true), not spuriously false on a 0 sentinel. **`min`/`max` are purely additive**
   (the spreadsheet `MIN(col)` overload): evalMath's numeric `min`/`max` already require ≥2 args, so
   a single-arg `min(ident)` was already an error there, and the aggregation regex matches only one
-  bare identifier — a comma'd `min(a, b)` keeps the numeric-variadic meaning, untouched. **Date
+  bare identifier — a comma'd `min(a, b)` keeps the numeric-variadic meaning, untouched. Depth-limited `min`/`max` therefore does not exist (`min(cost, 2)` is the two-value min, not depth); `depthExtremalProp` detects that misreading and the pill's `#ERR` names the trap and points at `min(cost, subtree)`, so the gap is a dead end no longer. **Date
   properties also aggregate** (`childPropNumber` tries `Number` first, then `parseDueDate`): a
   date-shaped value rolls up as **epoch-days**, so `max(due)` / `min(start)` give the latest/earliest
   child date (wrap in `asdate(...)` to display it as a date) and F2 gets real **date-range checks**

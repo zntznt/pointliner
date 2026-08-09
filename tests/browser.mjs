@@ -988,3 +988,26 @@ test('#1460 every control the guide points at is on screen under the name the gu
   const fixed = [...CTL_UNREACHABLE.keys()].filter(c => wanted.some(w => w.ctl === c) === false);
   assert.deepEqual(fixed, [], 'these entries name no anchored control any more — drop them from CTL_UNREACHABLE');
 });
+
+// 18. the min/max DEPTH TRAP tip reaches the pill.
+// `sum(cost, 2)` is a depth; `min(cost, 2)` is the two-value numeric min and cannot be one, because
+// min(a, b) owns that spelling. The capability gap stays open; what closed is the DEAD END, and only
+// driving shows whether the tip survives the render. A source pin proves the string exists in the
+// file, which is exactly what it proved before #1021 shipped a handler nothing could reach.
+test('the min/max depth trap explains itself on the rendered pill', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const seen = await pg.evaluate(() => {
+    const kid = (t, cost) => { const n = mkNode(t); n.props = [{ key: 'cost', val: String(cost) }]; return n; };
+    const parent = mkNode('Budget {= min(cost, 2)}');
+    parent.children = [kid('a', 10), kid('b', 5)];
+    root.children = [parent];
+    markDirty(); buildIndex(root, null); promoteLoadedShorthand(root); buildIndex(root, null); render();
+    const pill = document.querySelector('.math-err');
+    return { found: !!pill, title: pill ? pill.getAttribute('title') : null,
+             aria: pill ? pill.getAttribute('aria-label') : null };
+  });
+  assert.ok(seen.found, 'min(cost, 2) must render the error pill, not a confident number');
+  assert.match(seen.title, /word scope, not a depth number/, 'the tip names the trap: ' + seen.title);
+  assert.match(seen.title, /min\(cost, subtree\)/, 'and names the door out of it');
+  assert.match(seen.aria, /word scope/, 'assistive tech gets the same explanation, not just the glyph');
+});
