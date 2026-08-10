@@ -142,9 +142,13 @@ around.
 - On a **board**, focus a card and press `Alt+Left` / `Alt+Right` to move it between lanes.
 
 A column's menu can also **sort the rows** (ascending or descending): the sort writes the new
-order into the table itself, one undo restores the old order, and the comparison follows the
-column's role, so a Number column sorts numerically, a Date column by date, and a Status column by
-your sequence's own state order. Blank cells always sink to the bottom.
+order into the table itself, and one undo restores the old order. The menu names the reading it is
+about to use, and the message afterwards names the one it used, because "Ascending" on its own does
+not tell you whether 100 lands above or below 3. A column you set to **Number** sorts numerically, a
+**Date** column by date, and a **Status** column by your sequence's own state order. A column you
+have given no role is read from its own values: when every filled cell is a number it sorts as
+numbers, the same way Calculate totals it, and one word anywhere in the column sorts the whole
+column A to Z. Blank cells always sink to the bottom.
 
 A base is never a trap: the base's own menu has **Convert to text**, which turns it back into a plain
 Markdown table in the same point (the reverse of turning a table into a base). You get a normal,

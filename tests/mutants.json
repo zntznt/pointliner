@@ -171,6 +171,51 @@
       "find": "    if (!again || again === document.activeElement) return;",
       "replace": "    if (true) return;",
       "kills": "#1468 arrowing inside a base lands in the cell above and keeps what you type"
+    },
+    {
+      "id": "sort-blind-to-numbers",
+      "suite": "unit",
+      "why": "#1469: with no role set Sort fell to localeCompare and answered 10, 100, 3, 99",
+      "file": "index.html",
+      "find": "const numericCol = !role && sortReading(rows, col, role, lastDataRow) === 'number';   // #1469",
+      "replace": "const numericCol = false;",
+      "kills": "#1469 an un-roled column of numbers sorts as numbers"
+    },
+    {
+      "id": "cell-number-reading-forked",
+      "suite": "unit",
+      "why": "#1469: Calculate keeping a private copy of the parse is how the two answers diverged",
+      "file": "index.html",
+      "find": "  const literal = (r, c) => cellNum(rows[r] && rows[r][c]);   // #1469: shared with Sort",
+      "replace": "  const literal = (r, c) => { const cell = (rows[r] && rows[r][c] != null ? String(rows[r][c]) : '').trim(); if (cell === '') return null; const n = parseFloat(cell); return isNaN(n) ? null : n; };",
+      "kills": "#1469 an un-roled column of numbers sorts as numbers"
+    },
+    {
+      "id": "sort-menu-unnamed",
+      "suite": "unit",
+      "why": "#1469 aggravator: the section back to a bare 'Sort rows', naming no reading",
+      "file": "index.html",
+      "find": "addSection(`Sort rows (${sortCopy.as})`, true);",
+      "replace": "addSection('Sort rows', true);",
+      "kills": "#1469 the Sort menu names the reading"
+    },
+    {
+      "id": "sort-flash-direction-only",
+      "suite": "unit",
+      "why": "#1469 aggravator: 'ascending' alone never said whether 100 landed above or below 3",
+      "file": "index.html",
+      "find": "flashHint(`Sorted rows by ${colName}, ${dir === 'desc' ? sc.desc : sc.asc}. Undo restores the old order.`);",
+      "replace": "flashHint(`Sorted rows by ${colName}, ${dir === 'desc' ? 'descending' : 'ascending'}. Undo restores the old order.`);",
+      "kills": "#1469 the Sort menu names the reading"
+    },
+    {
+      "id": "sort-item-title-dropped",
+      "suite": "browser",
+      "why": "#1469: the per-item description present in source but never reaching the element",
+      "file": "index.html",
+      "find": "    if (title) { item.title = title; item.setAttribute('aria-description', title); }",
+      "replace": "    if (false) { item.title = title; }",
+      "kills": "#1469 Sort and Calculate give the same column the same answer"
     }
   ]
 }

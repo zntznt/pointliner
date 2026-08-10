@@ -21882,7 +21882,7 @@ test('mtSortRows — role-aware, blanks sink, pinned edges, stable (SV-1)', () =
   assert.ok(/pushUndo\(\);/.test(sb) && /mtCommit\(node, m\)/.test(sb) && /mtCommitEpilogue\(node\)/.test(sb),
     'the sort is an undoable data operation through the shared commit tail');
   const scp = fnBody(_src, 'showColPanel');
-  assert.ok(/addSection\('Sort rows', true\)/.test(scp) && /mtSortBase\(node, colIdx, 'asc'\)/.test(scp), 'the Column menu door exists');
+  assert.ok(/addSection\(`Sort rows \(\$\{sortCopy\.as\}\)`, true\)/.test(scp) && /mtSortBase\(node, colIdx, 'asc'\)/.test(scp), 'the Column menu door exists');
 });
 
 // ── SV-2: persisted sort on query bases ─────────────────────────────────────
@@ -21974,6 +21974,128 @@ test('parseQBaseSort + the qbase sort wiring (SV-2)', () => {
   assert.ok(/\.\.\.\(sort \? \{ sort \} : \{\}\)/.test(eq) && /showAll: true/.test(eq), 'saving keeps sort AND showAll');
   assert.ok(/qbaseCreateAt\(nodeId, expr, cols, sort\)/.test(_src), 'the create dialog threads the sort');
   assert.ok(/mt-qbase-sort/.test(fnBody(_src, 'mtBaseChromeHtml')), 'the strip names an active sort');
+});
+
+// ── #1469: Sort and Calculate read the same column the same way ─────────────
+// The reported symptom: a Cost column of 10 / 3 / 99 / 100 with no role set. Calculate →
+// Sum answered 212; Sort → Ascending answered 10, 100, 3, 99. Both commands live in the
+// same column menu, and they disagreed about whether the column held numbers or words.
+test('#1469 an un-roled column of numbers sorts as numbers, and agrees with Calculate', () => {
+  const rows = [['Item', 'Cost', 'Qty'],
+                ['Rope', '10', '2'], ['Torch', '3', '5'], ['Anvil', '99', '1'], ['Lamp', '100', '7']];
+  const col = (rr, cIdx, dir, role = null) =>
+    host(c.mtSortOrder(host(rr), cIdx, dir, role, host([]), rr.length - 1)).map(i => rr[i][cIdx]);
+  // the issue's own repro, both directions — numeric order, not 10 / 100 / 3 / 99
+  assert.deepEqual(col(rows, 1, 'asc'), ['3', '10', '99', '100']);
+  assert.deepEqual(col(rows, 1, 'desc'), ['100', '99', '10', '3']);
+  // and the total over that same column, from the OTHER command in the menu
+  const totalled = host(computeTable({ aligns: [null, null, null], rows: [...host(rows), ['', '', '']] },
+    '@6$2=vsum(@2$2..@5$2)'));
+  assert.equal(totalled[5][1], '212', 'Calculate reads 10+3+99+100; Sort now reads the same cells');
+
+  // the gate is all-or-nothing: one word and the column keeps its text sort, where
+  // alphabetical is the defensible answer (a partial numeric order would be a guess)
+  const mixed = [['H', 'C'], ['a', '10'], ['b', '3'], ['c', 'apple']];
+  assert.deepEqual(col(mixed, 1, 'asc'), ['10', '3', 'apple'], 'mixed stays text');
+  // a plain text column is untouched by the change
+  const words = [['H', 'C'], ['x', 'Torch'], ['y', 'Anvil'], ['z', 'Rope']];
+  assert.deepEqual(col(words, 1, 'asc'), ['Anvil', 'Rope', 'Torch']);
+  // blanks still sink in BOTH directions (missing data is not a small number)
+  const blanks = [['H', 'C'], ['a', '10'], ['b', ''], ['c', '3']];
+  assert.deepEqual(col(blanks, 1, 'asc'), ['3', '10', '']);
+  assert.deepEqual(col(blanks, 1, 'desc'), ['10', '3', '']);
+
+  // cellNum is Calculate's reading, lifted out unchanged: parseFloat, so "10 gold" is 10
+  // (Calculate totals it as 10 too) and "$10" is nothing; blanks and null are nothing.
+  assert.deepEqual([c.cellNum('10'), c.cellNum('  10.5 '), c.cellNum('10 gold'), c.cellNum('-2')],
+    [10, 10.5, 10, -2]);
+  assert.deepEqual([c.cellNum('$10'), c.cellNum(''), c.cellNum('   '), c.cellNum(null), c.cellNum(undefined)],
+    [null, null, null, null, null]);
+  // colIsNumeric: every non-empty cell must read, and an all-blank column is NOT numeric
+  assert.equal(c.colIsNumeric(host(rows), 1, 4), true);
+  assert.equal(c.colIsNumeric(host(mixed), 1, 3), false);
+  assert.equal(c.colIsNumeric(host(blanks), 1, 3), true, 'blanks are skipped, not disqualifying');
+  assert.equal(c.colIsNumeric(host([['H', 'C'], ['a', ''], ['b', '']]), 1, 2), false, 'no values, no claim');
+
+  // CALL SITES — a tested core proves nothing about whether anything calls it right.
+  // One numeric reading, two consumers: Calculate's literal() and Sort's gate.
+  assert.match(fnBody(_src, 'computeTable'), /const literal = \(r, c\) => cellNum\(/,
+    'Calculate reads cells through the shared rule, not a private copy');
+  const so = fnBody(_src, 'mtSortOrder');
+  assert.match(so, /const numericCol = !role && sortReading\(rows, col, role, lastDataRow\) === 'number'/,
+    'Sort infers numeric ONLY when the user has set no role');
+  assert.match(so, /if \(numericCol\) return cellNum\(v\)/, 'and keys those cells with the shared rule');
+  // an explicit `number` role keeps Number(), because mtCellHtml FORMATS with Number():
+  // sort order and displayed value must agree about the same column
+  assert.match(so, /if \(role === 'number'\) \{ const n = Number\(v\)/);
+  assert.match(fnBody(_src, 'mtCellHtml'), /role === 'number'\) \{\s*\n\s*const n = Number\(s\)/);
+  // the sort door passes the roles through, so `role` is genuinely null on an un-roled base
+  assert.match(fnBody(_src, 'mtSortBase'), /\(mtColRoles\(node\) \|\| \[\]\)\[colIdx\] \|\| null/);
+});
+
+// The issue's aggravator, and the reason it mattered: "Ascending" of WHAT? The two items said
+// the same thing whichever reading was about to be applied, so the user had no way to know
+// whether 100 would land above or below 3 — and for a while the answer was the wrong one.
+test('#1469 the Sort menu names the reading it is about to apply, and the flash confirms it', () => {
+  const nums  = [['H', 'C'], ['a', '10'], ['b', '3']];
+  const words = [['H', 'C'], ['a', 'Rope'], ['b', 'Anvil']];
+  // the decision: a set role is the user's word; with none, the data decides
+  assert.equal(c.sortReading(host(nums), 1, null, 2), 'number');
+  assert.equal(c.sortReading(host(words), 1, null, 2), 'text');
+  assert.equal(c.sortReading(host(nums), 1, 'status', 2), 'status', 'a set role is never overridden');
+  assert.equal(c.sortReading(host(nums), 1, 'date', 2), 'date');
+  assert.equal(c.sortReading(host(words), 1, 'number', 2), 'number');
+  // every reading has copy, and each reading's two directions differ — the whole point
+  const readings = ['number', 'date', 'status', 'text'];
+  const seen = new Set();
+  for (const r of nonEmpty(readings, 'sort readings')) {
+    const cp = host(c.sortReadingCopy(r));
+    assert.ok(cp.as && cp.asc && cp.desc, `${r} names itself and both directions`);
+    assert.notEqual(cp.asc, cp.desc, `${r}: the two items must not read identically`);
+    for (const s of [cp.as, cp.asc, cp.desc]) {
+      assert.ok(!/—|–/.test(s), 'AP punctuation only in user copy');
+      assert.equal(seen.has(s), false, `"${s}" names exactly one thing`);
+      seen.add(s);
+    }
+  }
+  // an unknown reading degrades to text rather than rendering "undefined" at the user
+  assert.deepEqual(host(c.sortReadingCopy('nonesuch')), host(c.sortReadingCopy('text')));
+  // capFirst turns the mid-sentence phrase into a menu tooltip, and leaves "A to Z" alone
+  assert.equal(c.capFirst('smallest number first'), 'Smallest number first');
+  assert.equal(c.capFirst('A to Z'), 'A to Z');
+
+  // CALL SITES — the menu names it BEFORE, the flash names it AFTER, from the same record
+  const scp = fnBody(_src, 'showColPanel');
+  assert.match(scp, /const sortCopy = sortReadingCopy\(sortReading\(model\.rows, colIdx, curRole, lastDataRow\)\)/);
+  assert.match(scp, /addSection\(`Sort rows \(\$\{sortCopy\.as\}\)`, true\)/, 'the section names the reading');
+  // CENSUS RATCHET over the family: a direction-only label ("Ascending" of what?) is exactly the
+  // defect, so every menu item labelled with a bare direction must carry the reading beside it.
+  // A third sort door added later without one fails here instead of shipping.
+  const dirItems = [..._src.matchAll(/addItem\('(Ascending|Descending)',\s*\{([^}]*)\}/g)];
+  assert.equal(nonEmpty(dirItems, 'direction-labelled menu items').length, 2,
+    'the two Sort items are the whole family; a new one must be named too');
+  for (const m of dirItems)
+    assert.match(m[2], /title: capFirst\(sortCopy\.(asc|desc)\)/, `${m[1]} must say what it will do`);
+  const sb = fnBody(_src, 'mtSortBase');
+  assert.match(sb, /sortReadingCopy\(sortReading\(m\.rows, colIdx, \(mtColRoles\(node\) \|\| \[\]\)\[colIdx\] \|\| null, lastDataRow\)\)/);
+  assert.match(sb, /Sorted rows by \$\{colName\}, \$\{dir === 'desc' \? sc\.desc : sc\.asc\}\./,
+    'the confirmation names the reading that was applied, not just the direction');
+  // the label stays the accessible NAME; the reading is a description beside it (P3-1: never
+  // `title` alone), so "Ascending" still reads as "Ascending" to a screen reader
+  const mb = fnBody(_src, 'mtMenuBuilder');
+  assert.match(mb, /if \(title\) \{ item\.title = title; item\.setAttribute\('aria-description', title\); \}/);
+  assert.match(mb, /item\.innerHTML = '<span class="mt-col-item-label">' \+ escHtml\(label\)/,
+    'the visible label is still the name');
+
+  // THE NEGATIVE CASE, pinned so the set is not "completed" by reflex. The other sort door is the
+  // query base's, and it needs no reading beside it: it is a STATUS chip reporting an order already
+  // applied to a rendering, naming its column and direction, not a pair of commands you choose
+  // between without knowing what they mean. It routes through the same fixed core, so the ORDER it
+  // produces was corrected by this change; only the naming is not its problem.
+  assert.match(fnBody(_src, 'mtBaseChromeHtml'),
+    /class="mt-qbase-sort">by \$\{escHtml\([\s\S]*?\)\} \$\{node\.qbase\.sort\.dir === 'desc' \? '↓' : '↑'\}/,
+    'the query base reports its sort, it does not offer an unexplained choice');
+  assert.match(fnBody(_src, 'qbaseModel'), /mtSortOrder\(rows, srt\.col,/, 'and it shares the corrected core');
 });
 
 // ── var: over projections (the last §7b deferral bar shadow markers) ─────────

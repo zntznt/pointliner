@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2057 declarations in 152 sections across 17 domains.**
+**2063 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -538,6 +538,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `fnArityProblem` — #1169: a KNOWN function called with the wrong number of values. evalMath's parser already detects
 - `arityPhrase` — #1169: name the function and a shape that works, in the #1159 house style ("name the fix, not
 - `mathReasonPhrase` — A human phrase for a mathErrorReason code, so the math dialog, the check dialog,
+- `cellNum` — What a base cell reads as a number when NO column role is set (#1469) — one rule, two
+- `colIsNumeric` — Does EVERY non-empty cell in this column read as a number? The gate Sort gates its
 - `computeTable` — Apply TBLFM formulas to a table model, returning a new rows grid with every
 - `TBLFM_LINE_RE` — Split a table node's text into the grid portion and its trailing `#+TBLFM:` recipe.
 - `extractTblfm`
@@ -791,6 +793,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `boardBlockReason`
 - `mtSetView`
 - `mtBaseChromeHtml` — The strip(s) above a base's grid or board: the query strip (query bases) and the
+- `sortReading` — #1469: which reading a Sort will apply to one column — the user's role when they set one,
+- `SORT_READING_COPY` — What that reading is CALLED, in the user's words. `as` names it in the menu section; `asc`/
+- `sortReadingCopy`
+- `capFirst`
 - `mtSortOrder` — SV-1: sort a base's data rows by one column, role-aware — numeric compare for a
 - `mtSortRows`
 - `mtSortBase` — The one-shot sort door (saved-views-proposal SV-1): a DATA operation — the new order
