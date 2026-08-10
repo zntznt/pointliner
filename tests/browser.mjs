@@ -1177,3 +1177,58 @@ test('#1464 Escape closes the agenda the way it closes the graph and the timelin
   assert.equal(await pg.evaluate(() => document.activeElement.id), 'btn-agenda',
     'and hand focus back to the button that opened it');
 });
+
+// 21. #1465 — the multi-select bar's thirteen actions must have a keyboard door.
+// Tab is NOT that door and must not become it: this app's grammar is "plain = text, Tab = depth"
+// (ux-discipline §3), and Tab correctly indents the selection instead. The door is the one the graph,
+// the timeline and the agenda already use -- the surface moves focus into itself when it appears.
+// Every claim below was measured before it was built: focus is on <body> when the bar appears (so
+// nothing is taken), Shift+arrows still extend from inside the bar, and Tab still indents.
+test('#1465 the selection bar is reachable, announced, and does not steal Tab', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('One'), mkNode('Two'), mkNode('Three'), mkNode('Four')];
+    buildIndex(root, null); markDirty(); render();
+    const c = document.querySelectorAll('.node-content[data-id]')[1];
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.waitForTimeout(250);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+  const st = () => pg.evaluate(() => ({
+    n: selectedIds.size,
+    active: document.activeElement.id || document.activeElement.tagName,
+    inBar: document.getElementById('node-sel-bar').contains(document.activeElement),
+    live: (document.getElementById('a11y-live') || {}).textContent || '',
+  }));
+
+  await pg.keyboard.press('Shift+ArrowDown'); await pg.waitForTimeout(450);
+  const made = await st();
+  assert.equal(made.n, 2, 'two points are selected');
+  assert.ok(made.inBar, `focus must land in the selection bar, got ${JSON.stringify(made.active)}`);
+  assert.match(made.live, /2 points selected/, 'and the selection must be announced, not silent');
+
+  // arrows rove the group (UXP-240's convention), ends clamp via the shared roveIndex
+  await pg.keyboard.press('ArrowRight'); await pg.waitForTimeout(220);
+  const roved = await st();
+  assert.ok(roved.inBar && roved.active !== made.active, 'ArrowRight moves along the bar');
+  await pg.keyboard.press('End'); await pg.waitForTimeout(220);
+  assert.equal((await st()).active, 'nsb-clear', 'End reaches the last action');
+
+  // Shift+arrows STILL extend from inside the bar, and the count re-announces
+  await pg.keyboard.press('Shift+ArrowDown'); await pg.waitForTimeout(380);
+  const ext = await st();
+  assert.equal(ext.n, 3, 'Shift+arrows still extend the selection from inside the bar');
+  assert.match(ext.live, /3 points selected/, 'and the new count is announced');
+
+  // Tab still means DEPTH. This is the regression the fix could have caused and did not.
+  await pg.keyboard.press('Tab'); await pg.waitForTimeout(420);
+  assert.deepEqual(await pg.evaluate(() => root.children.map(n => n.text)), ['One'],
+    'Tab from the bar must still indent the selection, not move focus');
+  assert.match((await st()).live, /Indented 3 points/, 'and say so');
+
+  // Escape clears and hands focus back to the outline, not to <body>
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+  const done = await st();
+  assert.equal(done.n, 0, 'Escape clears the selection');
+  assert.notEqual(done.active, 'BODY', 'and focus returns to the outline rather than going homeless');
+});

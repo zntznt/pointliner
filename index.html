@@ -20617,11 +20617,18 @@ function onKeyDown(e, id, content) {
 // ─── multi-select ─────────────────────────────────────────────────────────────
 
 function clearSelection() {
+  // #1465: if focus is inside the bar we are about to hide, hand it back to the outline. Without
+  // this, Escape out of the selection left focus on <body> -- the same homeless state that made the
+  // bar unreachable in the first place, just arrived at from the other side.
+  const bar = document.getElementById('node-sel-bar');
+  const wasInBar = bar && bar.contains(document.activeElement);
+  const back = selFocusId || selAnchorId || activeContentId;
   selectedIds.clear();
   selAnchorId = null;
   selFocusId  = null;
   updateSelVisuals();
   updateNodeSelBar();
+  if (wasInBar && back && nodeById(back)) focusNode(back);
 }
 
 function updateSelVisuals() {
@@ -20635,12 +20642,52 @@ function updateSelVisuals() {
   });
 }
 
+let _nsbSaid = 0;   // #1465: last announced selection size, so re-renders do not re-announce
 function updateNodeSelBar() {
   const bar = document.getElementById('node-sel-bar');
-  if (selectedIds.size === 0) { bar.classList.remove('on'); return; }
+  if (selectedIds.size === 0) { bar.classList.remove('on'); _nsbSaid = 0; return; }
+  const wasOff = !bar.classList.contains('on');
   bar.classList.add('on');
   document.getElementById('nsb-count').textContent = `${selectedIds.size} selected`;
+  // #1465: the selection was SILENT -- a11y-live stayed empty when it was made, extended and
+  // cleared, so a screen-reader user got a thirteen-button toolbar and no word that it existed.
+  // Announce the count, and only when it CHANGES: updateNodeSelBar also runs on plain re-renders.
+  if (selectedIds.size !== _nsbSaid) {
+    _nsbSaid = selectedIds.size;
+    announce(`${selectedIds.size} points selected`);
+  }
+  // #1465: the bar's thirteen actions had NO keyboard door. Tab cannot be it -- Tab is depth in this
+  // app's grammar ("plain = text, Tab = depth"), and it correctly indents the selection instead. The
+  // app's own answer for a surface that appears is the one the graph, the timeline and (since #1464)
+  // the agenda use: move focus into it. Measured before doing it: focus is on <body> when the bar
+  // appears, so nothing is taken from anywhere real; Shift+arrows still extend the selection from
+  // inside the bar; and Escape still clears it. Claim focus ONLY when it is homeless, so a mouse
+  // drag or a caret still in the outline is never yanked mid-gesture.
+  if (wasOff && (!document.activeElement || document.activeElement === document.body)) {
+    requestAnimationFrame(() => {
+      if (!bar.classList.contains('on')) return;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      bar.querySelector('button')?.focus();
+    });
+  }
 }
+
+// #1465: ←/→ rove the bar's buttons, the "one stop for the group, arrows inside it" convention this
+// app already applies to the graph, the timeline, the calendar grid and the table grid (UXP-240).
+// Plain arrows did nothing here before, so this claims no key that had a meaning. Shift+arrows are
+// deliberately NOT touched: they still extend the selection, which is what Shift means everywhere.
+document.getElementById('node-sel-bar').addEventListener('keydown', e => {
+  if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+  const btns = [...document.querySelectorAll('#node-sel-bar button')].filter(x => x.offsetParent !== null);
+  if (!btns.length) return;
+  const at = btns.indexOf(document.activeElement);
+  if (at < 0) return;
+  const to = roveIndex(e.key, at, btns.length);   // shared core: takes the key, clamps at the ends
+  if (to === null) return;
+  e.preventDefault(); e.stopPropagation();
+  btns[to].focus();
+});
 
 // Cmd/Ctrl-click: add or remove ONE point from the selection (out-of-order, non-
 // contiguous), the file-manager toggle. Sets the toggled point as the new anchor so a

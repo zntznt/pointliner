@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2054 declarations in 152 sections across 17 domains.**
+**2055 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1138,6 +1138,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `clearSelection`
 - `updateSelVisuals`
+- `_nsbSaid`
 - `updateNodeSelBar`
 - `toggleSelect` — Cmd/Ctrl-click: add or remove ONE point from the selection (out-of-order, non-
 - `rangeSelectTo`
