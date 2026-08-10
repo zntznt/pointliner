@@ -117,6 +117,24 @@
       "find": "    if (first && strip.classList.contains('on')) first.focus();",
       "replace": "    if (false) first.focus();",
       "kills": "#1464 Escape closes the agenda the way it closes the graph and the timeline"
+    },
+    {
+      "id": "selbar-focus-not-claimed",
+      "suite": "browser",
+      "why": "#1465: without the focus claim the bar's 13 actions have no keyboard door at all",
+      "file": "index.html",
+      "find": "      bar.querySelector('button')?.focus();",
+      "replace": "      if (false) bar.querySelector('button')?.focus();",
+      "kills": "#1465 the selection bar is reachable, announced, and does not steal Tab"
+    },
+    {
+      "id": "selbar-silent",
+      "suite": "browser",
+      "why": "#1465: the selection was made, extended and cleared with a11y-live empty throughout",
+      "file": "index.html",
+      "find": "    announce(`${selectedIds.size} points selected`);",
+      "replace": "    ;",
+      "kills": "#1465 the selection bar is reachable, announced, and does not steal Tab"
     }
   ]
 }
