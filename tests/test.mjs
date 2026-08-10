@@ -1501,6 +1501,45 @@ const _codeIndex = readFileSync(new URL('../guidance/code-index.md', import.meta
 const _loadCoresSrc = readFileSync(new URL('./load-cores.mjs', import.meta.url), 'utf8');
 const _symTool = readFileSync(new URL('../tools/symbol-index.py', import.meta.url), 'utf8');
 
+// The kill-mutation registry (tests/mutants.json). tools/mutation-check.mjs applies each mutant and
+// proves the guard it names goes red; this is the FAST half, so a registry that has drifted from the
+// code fails in the normal suite instead of waiting for the mutation job.
+//
+// A mutant whose `find` string no longer matches applies NOTHING, the suite passes, and the runner
+// would report the guard as unprotected for a reason that has nothing to do with the guard. That is
+// the registry's own vacuity mode, and this is the guard against it.
+//
+// NOTE for anyone reading a mutation run: while a mutant is applied, THIS test fails too, because
+// the tree really is mutated. The runner's contract is that the NAMED guard is among the failures,
+// not that it is the only one, so a fail count above 1 is expected and not a problem.
+const _mutants = JSON.parse(readFileSync(new URL('./mutants.json', import.meta.url), 'utf8')).mutants;
+
+test('every kill-mutation still anchors to real code and a real guard', () => {
+  const ms = nonEmpty(_mutants, 'kill-mutation registry');
+  assert.ok(ms.length >= 5, `only ${ms.length} mutants registered; the existence-shaped guards need one each`);
+  const sources = {
+    'index.html': _src,
+    'guidance/code-index.md': _codeIndex,
+  };
+  const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
+    + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
+  const bad = [];
+  for (const m of ms) {
+    for (const k of ['id', 'suite', 'why', 'file', 'find', 'replace', 'kills'])
+      if (!m[k]) bad.push(`${m.id || '(no id)'}: missing ${k}`);
+    if (m.find === m.replace) bad.push(`${m.id}: find and replace are identical, so it mutates nothing`);
+    const src = sources[m.file];
+    if (src === undefined) { bad.push(`${m.id}: no reader for ${m.file} — add one here or the anchor is unchecked`); continue; }
+    const hits = src.split(m.find).length - 1;
+    if (hits !== 1) bad.push(`${m.id}: its find string matches ${hits} times in ${m.file}, expected exactly 1`);
+    // `kills` must name a guard that exists, or the runner is waiting for a failure that can never come
+    if (!testNames.includes(m.kills)) bad.push(`${m.id}: no test name contains ${JSON.stringify(m.kills)}`);
+  }
+  assert.deepEqual(bad, [],
+    'the kill-mutation registry has drifted from the code it mutates. A mutant that no longer ' +
+    'applies makes its guard look protected when nothing tested it');
+});
+
 test('#1430 the symbol index covers every pure core the test suite already knows about', () => {
   // Cross-registry parity. `need[]` in load-cores.mjs is the OTHER symbol registry in this repo,
   // and two registries that do not agree are worse than one: a name in `need[]` but absent from the
