@@ -1011,3 +1011,65 @@ test('the min/max depth trap explains itself on the rendered pill', { skip: skip
   assert.match(seen.title, /min\(cost, subtree\)/, 'and names the door out of it');
   assert.match(seen.aria, /word scope/, 'assistive tech gets the same explanation, not just the glyph');
 });
+
+// 19. #1463 — the / builder's block commands must produce the object they promise.
+// This is the defect the multi-agent UX drive surfaced, and it is a DRIVEN check by necessity: the
+// applier's text was already correct in source, and both failures were about state the source cannot
+// show. The prefix strip read `node.type`, which the `/` trigger invalidates (the text is briefly
+// "/# Chapter one", which derives to `ul`), and the caret was never placed past the marker it wrote.
+// Both announced plain success, so nothing but driving could see them.
+test('#1463 a / block command replaces the marker and leaves the caret past it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const startEditing = () => pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  const pick = async (name) => {
+    await pg.keyboard.type('/', { delay: 25 }); await pg.waitForTimeout(420);
+    await pg.keyboard.type(name, { delay: 30 }); await pg.waitForTimeout(380);
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+  };
+  const caret = () => pg.evaluate(() => {
+    const el = document.activeElement.closest && document.activeElement.closest('.node-content');
+    if (!el) return { caret: null };
+    const s = getSelection(); if (!s.rangeCount) return { text: el.textContent, caret: null };
+    const m = document.createRange(); m.selectNodeContents(el);
+    m.setEnd(s.getRangeAt(0).startContainer, s.getRangeAt(0).startOffset);
+    return { text: el.textContent, caret: m.toString().length };
+  });
+
+  // 1. the caret lands past the marker, so the next keystroke is CONTENT and not syntax
+  await startEditing();
+  await pg.keyboard.type('Shopping', { delay: 15 });
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(250);
+  await pick('To-do');
+  const c1 = await caret();
+  assert.equal(c1.text, '- [ ] ', 'the marker is written');
+  assert.equal(c1.caret, 6, `the caret must sit past the marker, not inside it (got ${c1.caret})`);
+  await pg.keyboard.type('milk', { delay: 30 }); await pg.waitForTimeout(250);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+  assert.deepEqual(await pg.evaluate(() => root.children.map(n => n.text)), ['Shopping', '- [ ] milk'],
+    'typing after the command must extend the to-do, not shred it into "-milk [ ] "');
+  assert.ok(await pg.evaluate(() =>
+    document.querySelectorAll('#outline input[type=checkbox], #outline .md-task').length > 0),
+    'and it renders as a real to-do with a checkbox');
+
+  // 2. markers REPLACE rather than stack, and /Bullet strips whatever is there
+  for (const [first, second, want] of [
+    ['Heading 1', 'Heading 2', '## Hello'],
+    ['Quote', 'Heading 1', '# Hello'],
+    ['Heading 1', 'Bullet', 'Hello'],
+    ['Quote', 'Bullet', 'Hello'],
+    ['Numbered', 'Bullet', 'Hello'],
+  ]) {
+    await pg.evaluate(() => { root.children = [mkNode('Hello')]; buildIndex(root, null); markDirty(); render(); });
+    await pg.waitForTimeout(200);
+    await startEditing();
+    await pg.keyboard.press('Home'); await pg.waitForTimeout(120);
+    await pick(first);
+    await pg.keyboard.press('Home'); await pg.waitForTimeout(120);
+    await pick(second);
+    assert.equal(await pg.evaluate(() => root.children[0].text), want,
+      `/${first} then /${second} must land on ${JSON.stringify(want)}, not stack markers`);
+  }
+});

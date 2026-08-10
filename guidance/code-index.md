@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2053 declarations in 152 sections across 17 domains.**
+**2054 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -74,6 +74,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `mkNode`
 - `inheritedType` — type that a new Enter-sibling should inherit
 - `BLOCK_PREFIX_MAP` — Block types that store their markdown prefix in node.text
+- `textBlockPrefix` — #1463: which block prefix the TEXT actually carries, longest first. applyBlockCmd used to read the
 - `deriveTypeFromText`
 - `rederiveFromText` — Re-derive BOTH derived hints (type AND checked) from node.text, the single source of truth.
 - `textForDisplay` — Text shown in rendered (non-edit) view — block prefix stripped. Also strips a

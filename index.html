@@ -3320,6 +3320,22 @@ function inheritedType(type) {
 // Block types that store their markdown prefix in node.text
 const BLOCK_PREFIX_MAP = { h1: '# ', h2: '## ', h3: '### ', h4: '#### ', h5: '##### ', h6: '###### ', quote: '> ', code: '```' };
 
+// #1463: which block prefix the TEXT actually carries, longest first. applyBlockCmd used to read the
+// old prefix off `node.type`, which is a DERIVED HINT and not the source of truth (architecture rule
+// 3: node.type for headings/quotes/to-dos derives from the text). Typing the `/` trigger at the start
+// of a line briefly makes the text "/# Chapter one", which derives to `ul`, and the type stays stale
+// once the trigger is stripped again. applyBlockCmd then looked up BLOCK_PREFIX_MAP['ul'] -> '',
+// stripped nothing, and PREPENDED: `/Heading 2` on `# Chapter one` produced `## # Chapter one`, and
+// `/Bullet` on any heading was a byte-for-byte no-op because there was nothing to strip and nothing
+// to add. Reading the text answers correctly whatever the type happens to say.
+// Longest-first matters: '## ' must not be answered as '# ' + '# '.
+function textBlockPrefix(text) {
+  const t = String(text == null ? '' : text);
+  let best = '';
+  for (const p of Object.values(BLOCK_PREFIX_MAP)) if (t.startsWith(p) && p.length > best.length) best = p;
+  return best;
+}
+
 function deriveTypeFromText(text) {
   if (!text) return null;
   if (text.startsWith('###### ')) return 'h6';
@@ -32490,8 +32506,8 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   if (id.startsWith('state:')) {
     const kw = id.slice(6);
     const wasDone = node.checked;
-    const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
-    if (oldPrefix && node.text.startsWith(oldPrefix)) node.text = node.text.slice(oldPrefix.length);
+    const oldPrefix = textBlockPrefix(node.text);   // #1463: the TEXT, not the derived type
+    if (oldPrefix) node.text = node.text.slice(oldPrefix.length);
     node.text = setTodoState(node.text, kw);
     node.type = deriveTypeFromText(node.text) || 'ul';
     node.checked = todoDoneFromText(node.text);
@@ -32504,15 +32520,18 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   // /todo: a markdown-writing helper, not a type. Ensure the node's text starts
   // with the task marker (unless it's already a to-do in either form).
   if (id === 'todo') {
-    const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
-    let t = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
+    const oldPrefix = textBlockPrefix(node.text);   // #1463
+    let t = oldPrefix ? node.text.slice(oldPrefix.length) : node.text;
+    const before = t;
     if (!isTaskFirst(t) && !parseTodo(t).keyword) t = '- [ ] ' + t;
     node.text = t;
     node.type = 'todo';
     node.checked = todoDoneFromText(t);
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
+    const addedTodo = Math.max(0, node.text.length - before.length);   // #1463: caret past the marker
     finishBlockCmd();
+    if (!opts.display) requestAnimationFrame(() => focusNodeAtOffset(nodeId, addedTodo));   // see the block arm
     return;
   }
   // base: create the interactive grid, NON-DESTRUCTIVELY (see createBaseAt). The
@@ -32528,19 +32547,19 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   // from a to-do also strips its task marker / keyword (otherwise the node would
   // just derive back to 'todo' on the next edit).
   const newPrefix = BLOCK_PREFIX_MAP[id] ?? '';
-  const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';
-  let cleanText = oldPrefix && node.text.startsWith(oldPrefix) ? node.text.slice(oldPrefix.length) : node.text;
+  const oldPrefix = textBlockPrefix(node.text);   // #1463
+  let cleanText = oldPrefix ? node.text.slice(oldPrefix.length) : node.text;
   cleanText = cleanText.replace(TASK_STRIP_RE, '');
   const pt = parseTodo(cleanText);
   if (pt.keyword) cleanText = pt.body;
   // converting away from a divider strips its break line (like to-do markers above —
   // otherwise the node would just derive back to 'divider' on the next edit)
-  if (node.type === 'divider' && HR_RE.test(cleanText.split('\n', 1)[0])) {
+  if (HR_RE.test(cleanText.split('\n', 1)[0])) {   // #1463: the text, not the derived type
     cleanText = cleanText.split('\n').slice(1).join('\n');
   }
   // converting away from an ol strips its N. list prefix (UXP-25 — otherwise the node
   // would derive back to 'ol' from its text on the next edit)
-  if (node.type === 'ol') {
+  if (id !== 'ol') {   // #1463: strip an EXISTING number prefix off the text whatever the type says
     const om = cleanText.match(/^\s*\d+\.\s+([\s\S]*)/);
     if (om) cleanText = om[1];
   }
@@ -32556,7 +32575,28 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
   // if currently editing this node, sync the live contenteditable
   const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
   if (activeEl) activeEl.innerHTML = editModeHTML(node);
+  // #1463: park the caret where the user's OWN content starts, i.e. just past the marker we wrote.
+  // Without this it landed at offset 1 -- INSIDE the syntax -- so typing `milk` right after picking
+  // /To-do gave `-milk [ ] `, which renders as literal text with no checkbox while the command
+  // announced success. Measured as the length actually prepended, so it is right for every marker
+  // ('# ', '## ', '> ', '1. ', '- [ ] ') without a second table to keep in sync.
+  // AFTER finishBlockCmd, not before: that repaints the row (rerenderNode), which discards any
+  // caret set on the element it replaces. Setting it first looks correct and does nothing.
+  const added = Math.max(0, node.text.length - cleanText.length);
   finishBlockCmd();
+  // focusNodeAtOffset, not a hand-rolled setCaretByOffset: finishBlockCmd repaints and then focuses
+  // through _focusNodeGo, which owns the "element may not exist yet" rAF. Setting the caret before
+  // that runs looks right and is immediately overwritten; this asks the same primitive for the
+  // offset we want instead of racing it.
+  // NOT gated on activeEl: on the builder door the point has already refolded and lost
+  // [data-editing] by the time we get here (#1396), so an activeEl guard skips exactly the door this
+  // bug lives on. finishBlockCmd's own non-display path focuses the row anyway; this only asks for
+  // an offset instead of end-of-line.
+  // ONE FRAME LATER. _focusNodeGo runs enterEdit() when the row is not already in edit mode, and
+  // enterEdit rewrites the element's content after we ask for the offset, so a same-tick call is
+  // measured back at 1 every time. Traced: `_focusNodeGo offset=6 sync=true` followed by a range at
+  // text-offset 1. Asking on the next frame lets edit mode settle first.
+  if (!opts.display) requestAnimationFrame(() => focusNodeAtOffset(nodeId, added));
 }
 
 // Returns the logical character offset of the caret within el.

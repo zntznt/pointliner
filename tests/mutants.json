@@ -81,6 +81,24 @@
       "find": "title=\"Notes\" aria-label=\"Notes\"",
       "replace": "title=\"Annotations\" aria-label=\"Annotations\"",
       "kills": "every control the guide points at is on screen under the name the guide uses"
+    },
+    {
+      "id": "block-prefix-from-type",
+      "suite": "unit",
+      "why": "#1463: reading the old block prefix off node.type, which the / trigger invalidates",
+      "file": "index.html",
+      "find": "\n  const oldPrefix = textBlockPrefix(node.text);   // #1463\n",
+      "replace": "\n  const oldPrefix = BLOCK_PREFIX_MAP[node.type] ?? '';\n",
+      "kills": "#1463 the block applier reads the text and parks the caret past the marker"
+    },
+    {
+      "id": "block-caret-not-parked",
+      "suite": "browser",
+      "why": "#1463: the caret left at offset 1 inside the marker, so the next keystroke shreds it",
+      "file": "index.html",
+      "find": "    if (!opts.display) requestAnimationFrame(() => focusNodeAtOffset(nodeId, addedTodo));   // see the block arm",
+      "replace": "    if (false) focusNodeAtOffset(nodeId, addedTodo);",
+      "kills": "#1463 a / block command replaces the marker and leaves the caret past it"
     }
   ]
 }
