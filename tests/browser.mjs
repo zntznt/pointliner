@@ -1339,3 +1339,102 @@ test('#1468 arrowing inside a base lands in the cell above and keeps what you ty
   assert.notEqual(after, before, 'what you type after arrowing must reach the model, not vanish');
   assert.match(after, /\b99\b/, 'and be the value you typed');
 });
+
+// 24. #1469 — the same column, two commands in one menu, two answers. Calculate → Sum read the
+//     Cost column as 10+3+99+100 = 212; Sort → Ascending read it as words and ordered 10, 100,
+//     3, 99. A pure test can prove the comparator; only a driven one proves that the MENU the
+//     user opens routes both commands to the same reading, with role inference in the path.
+test('#1469 Sort and Calculate give the same column the same answer', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.keyboard.type('Kit', { delay: 15 });
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(220);
+  await pg.keyboard.type('/', { delay: 22 }); await pg.waitForTimeout(420);
+  await pg.keyboard.type('base:5x3', { delay: 25 }); await pg.waitForTimeout(420);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+
+  // the issue's own grid, typed the way a person types it
+  const cells = ['Item', 'Cost', 'Qty', 'Rope', '10', '2', 'Torch', '3', '5',
+                 'Anvil', '99', '1', 'Lamp', '100', '7'];
+  await pg.evaluate(() => document.querySelector('.mt-cell[data-r="0"][data-c="0"]').focus());
+  await pg.waitForTimeout(220);
+  for (let i = 0; i < cells.length; i++) {
+    await pg.keyboard.type(cells[i], { delay: 12 });
+    if (i < cells.length - 1) { await pg.keyboard.press('Tab'); await pg.waitForTimeout(80); }
+  }
+  await pg.evaluate(() => document.activeElement.blur()); await pg.waitForTimeout(600);
+
+  const baseIdx = await pg.evaluate(() => root.children.findIndex(n => n.type === 'base'));
+  assert.ok(baseIdx >= 0, 'the base exists');
+  // no role was ever set: this is the un-roled column the issue is about, not a Number column
+  assert.equal(await pg.evaluate(i => root.children[i].colRole ? 'set' : 'none', baseIdx), 'none',
+    'the repro is a column with NO role, which is where the two commands disagreed');
+
+  // the keyboard door to the column menu, on a Cost cell
+  const openColMenu = async () => {
+    await pg.evaluate(() => document.querySelector('.mt-cell[data-r="1"][data-c="1"]').focus());
+    await pg.waitForTimeout(220);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(350);
+  };
+  // identity, not existence: exactly one item carries this name, and that is the one we click
+  const clickItem = async (label) => {
+    const hits = await pg.evaluate(l => [...document.querySelectorAll('#mt-colpanel .mt-col-item')]
+      .map((el, k) => [el.querySelector('.mt-col-item-label')?.textContent.trim(), k])
+      .filter(([t]) => t === l).map(([, k]) => k), label);
+    assert.equal(hits.length, 1, `exactly one menu item named "${label}"`);
+    await pg.locator('#mt-colpanel .mt-col-item').nth(hits[0]).click();
+    await pg.waitForTimeout(550);
+  };
+
+  await openColMenu();
+  await clickItem('Sum');
+  const total = await pg.evaluate(() => {
+    const tot = [...document.querySelectorAll('.mt-total-cell[data-c="1"]')];
+    return tot.length === 1 ? tot[0].textContent.trim() : `${tot.length} total cells`;
+  });
+  assert.equal(total, '212', 'Calculate reads the column as numbers');
+
+  // the menu SAYS which reading it is about to apply -- the issue's aggravator: "Ascending" of what?
+  await openColMenu();
+  const said = await pg.evaluate(() => {
+    const secs = [...document.querySelectorAll('#mt-colpanel .mt-col-section')].map(s => s.textContent.trim());
+    const item = l => [...document.querySelectorAll('#mt-colpanel .mt-col-item')]
+      .find(i => i.querySelector('.mt-col-item-label')?.textContent.trim() === l);
+    return { sortSecs: secs.filter(t => t.startsWith('Sort rows')),
+             asc: item('Ascending')?.title, desc: item('Descending')?.title };
+  });
+  assert.deepEqual(said.sortSecs, ['Sort rows (as numbers)'], 'the section names the reading, once');
+  assert.equal(said.asc, 'Smallest number first');
+  assert.equal(said.desc, 'Largest number first');
+
+  await clickItem('Ascending');
+  const order = await pg.evaluate(() => [...document.querySelectorAll('.mt-cell[data-c="1"]')]
+    .filter(el => el.tagName === 'TD' && !el.classList.contains('mt-total-cell'))
+    .map(el => el.textContent.trim()).filter(Boolean));
+  assert.deepEqual(order, ['3', '10', '99', '100'],
+    'and Sort must read the SAME column the same way, not 10 / 100 / 3 / 99');
+  // and the confirmation says which reading was applied, not just "ascending"
+  const flash = await pg.evaluate(() => document.getElementById('flash-hint')?.textContent.trim() || '');
+  assert.match(flash, /Sorted rows by Cost, smallest number first\./, `flash said: ${flash}`);
+
+  // the Item column beside it is words, and it must still sort alphabetically
+  await pg.evaluate(() => document.querySelector('.mt-cell[data-r="1"][data-c="0"]').focus());
+  await pg.waitForTimeout(220);
+  await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(350);
+  const saidText = await pg.evaluate(() => {
+    const secs = [...document.querySelectorAll('#mt-colpanel .mt-col-section')].map(s => s.textContent.trim());
+    const item = l => [...document.querySelectorAll('#mt-colpanel .mt-col-item')]
+      .find(i => i.querySelector('.mt-col-item-label')?.textContent.trim() === l);
+    return { sortSecs: secs.filter(t => t.startsWith('Sort rows')), asc: item('Ascending')?.title };
+  });
+  assert.deepEqual(saidText.sortSecs, ['Sort rows (as text)'], 'the words column says so, in the same place');
+  assert.equal(saidText.asc, 'A to Z');
+  await clickItem('Ascending');
+  const names = await pg.evaluate(() => [...document.querySelectorAll('.mt-cell[data-c="0"]')]
+    .filter(el => el.tagName === 'TD' && !el.classList.contains('mt-total-cell'))
+    .map(el => el.textContent.trim()).filter(Boolean));
+  assert.deepEqual(names, ['Anvil', 'Lamp', 'Rope', 'Torch'], 'a text column is untouched by the change');
+});

@@ -9279,6 +9279,32 @@ function mathReasonPhrase(why, expr) {
        : '';
 }
 
+// What a base cell reads as a number when NO column role is set (#1469) — one rule, two
+// consumers: Calculate (which has always parsed cells this way) and Sort (which had no
+// numeric reading at all, so the same column summed to 212 and ordered 10, 100, 3, 99 —
+// two commands in one menu with two answers about what the column IS). Returns a number,
+// or null when the cell holds none. Lifted out of computeTable unchanged, parseFloat and
+// isNaN included, so Calculate's answers are byte-identical to what they were.
+function cellNum(raw) {
+  const s = (raw == null ? '' : String(raw)).trim();
+  if (s === '') return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;   // isNaN, not isFinite: Calculate's exact reading, moved not rewritten
+}
+// Does EVERY non-empty cell in this column read as a number? The gate Sort gates its
+// numeric comparison on. Deliberately all-or-nothing: one word in the column and the
+// whole column sorts as text, where alphabetical is the defensible answer.
+function colIsNumeric(rows, col, lastDataRow) {
+  let seen = 0;
+  for (let i = 1; i <= lastDataRow; i++) {
+    const v = (rows[i] || [])[col];
+    if ((v == null ? '' : String(v)).trim() === '') continue;
+    if (cellNum(v) === null) return false;
+    seen++;
+  }
+  return seen > 0;
+}
+
 // Apply TBLFM formulas to a table model, returning a new rows grid with every
 // formula target replaced by its computed display value ('#ERR (reason)' on
 // cycle / bad ref / non-numeric / invalid).
@@ -9310,12 +9336,7 @@ function computeTable(model, tblfm, vars = {}) {
   const ERR_OWN = Object.create(null);
   const ERR_UP  = Object.create(null);
   const isErrCell = v => v === ERR_OWN || v === ERR_UP;
-  const literal = (r, c) => {
-    const cell = (rows[r] && rows[r][c] != null ? String(rows[r][c]) : '').trim();
-    if (cell === '') return null;
-    const n = parseFloat(cell);
-    return isNaN(n) ? null : n;
-  };
+  const literal = (r, c) => cellNum(rows[r] && rows[r][c]);   // #1469: shared with Sort
   function valueAt(r, c) {
     if (r < 0 || c < 0 || r >= nrows || c >= ncols) return null;
     const key = r + ',' + c;
@@ -12099,12 +12120,16 @@ function mtMenuBuilder(panel) {
     s.textContent = label;
     panel.appendChild(s);
   };
-  const addItem = (label, { active = false, disabled = false, danger = false, onApply } = {}) => {
+  const addItem = (label, { active = false, disabled = false, danger = false, title = '', onApply } = {}) => {
     const item = document.createElement('div');
     item.className = 'mt-col-item' + (active ? ' on' : '') + (disabled ? ' mt-col-disabled' : '') + (danger ? ' mt-col-danger' : '');
     item.setAttribute('role', 'menuitem');
     item.setAttribute('tabindex', '-1');
     if (disabled) item.setAttribute('aria-disabled', 'true');
+    // #1469: an optional DESCRIPTION, never the name — the visible label is still the accessible
+    // name (P3-1 forbids `title` alone). For the two items whose meaning depends on the data
+    // ("Ascending" of what?), this is what says which reading is about to be applied.
+    if (title) { item.title = title; item.setAttribute('aria-description', title); }
     // Escape at the sink: `label` reaches here unescaped from attacker-controlled sidecar
     // data (showCardMenu passes raw seq.states keywords from a malicious _seq). This is the
     // twin of renderCmd's cmd-info sink, which already escapes the same source; every caller
@@ -12259,9 +12284,14 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
 
   // SV-1: the one-shot sort (a data operation — writes the order, undoable). Role-aware:
   // the Show as section above it decides how this column compares.
-  addSection('Sort rows', true);
-  addItem('Ascending', { onApply: () => mtSortBase(node, colIdx, 'asc') });
-  addItem('Descending', { onApply: () => mtSortBase(node, colIdx, 'desc') });
+  // #1469: name the READING, before the pick and after it. "Ascending" alone said nothing about
+  // whether 100 would land above or below 3, and the two commands in this menu used to answer
+  // that differently — so the section says how this column is being read and each item says what
+  // it will do with it. Same record the confirmation flash reuses, so they cannot drift apart.
+  const sortCopy = sortReadingCopy(sortReading(model.rows, colIdx, curRole, lastDataRow));
+  addSection(`Sort rows (${sortCopy.as})`, true);
+  addItem('Ascending',  { title: capFirst(sortCopy.asc),  onApply: () => mtSortBase(node, colIdx, 'asc') });
+  addItem('Descending', { title: capFirst(sortCopy.desc), onApply: () => mtSortBase(node, colIdx, 'desc') });
 
   addSection('Alignment', true);
   [['left','Left'],['center','Center'],['right','Right']]
@@ -12666,6 +12696,31 @@ function mtBaseChromeHtml(node, model, readOnly) {
   return h;
 }
 
+// #1469: which reading a Sort will apply to one column — the user's role when they set one,
+// otherwise inferred from the data the way Calculate reads it. inferColRolesFromModel refuses
+// to infer `number` on purpose (an id or year column must not silently reformat), and that
+// refusal is right for DISPLAY and wrong for COMPARISON: it left Sort with role null on a plain
+// numbers column, falling through to localeCompare, so Calculate totalled 10+3+99+100 = 212
+// while Sort ordered the same cells 10, 100, 3, 99. This decides comparison only; no cell
+// changes how it renders. ONE home, because the menu names the reading before you pick it and
+// the confirmation names it after, and a menu that promised a different reading than it applied
+// would be worse than the silence it replaced.
+function sortReading(rows, col, role, lastDataRow) {
+  if (role === 'number' || role === 'date' || role === 'status') return role;
+  return colIsNumeric(rows, col, lastDataRow) ? 'number' : 'text';
+}
+// What that reading is CALLED, in the user's words. `as` names it in the menu section; `asc`/
+// `desc` say what each item will do, mid-sentence so the confirmation can reuse them verbatim
+// (the menu capitalizes the first letter, which leaves "A to Z" alone).
+const SORT_READING_COPY = {
+  number: { as: 'as numbers',  asc: 'smallest number first', desc: 'largest number first' },
+  date:   { as: 'as dates',    asc: 'oldest date first',     desc: 'newest date first' },
+  status: { as: 'by workflow', asc: 'in workflow order',     desc: 'in reverse workflow order' },
+  text:   { as: 'as text',     asc: 'A to Z',                desc: 'Z to A' },
+};
+function sortReadingCopy(reading) { return SORT_READING_COPY[reading] || SORT_READING_COPY.text; }
+function capFirst(s) { const t = String(s || ''); return t.charAt(0).toUpperCase() + t.slice(1); }
+
 // SV-1: sort a base's data rows by one column, role-aware — numeric compare for a
 // number column, epoch-day for a date, the OWNING SEQUENCE's declared state order for
 // a status (the boardLanes vocabulary: a sort by the user's own workflow), locale
@@ -12681,10 +12736,16 @@ function mtSortOrder(rows, col, dir, role, seqs, lastDataRow) {
     const { seq } = boardLanes({ aligns: [], rows }, col, seqs, lastDataRow);
     seqOrder = new Map(); seq.states.forEach((kw, i) => seqOrder.set(kw.toUpperCase(), i));
   }
+  const numericCol = !role && sortReading(rows, col, role, lastDataRow) === 'number';   // #1469
   const keyOf = raw => {
     const v = String(raw ?? '').trim();
     if (!v) return null;
+    // An explicit `number` role keeps Number(), because that is what mtCellHtml's number
+    // branch formats with — sort and display must agree about the SAME column. The inferred
+    // path keeps Calculate's parseFloat, because with no role there is no numeric display
+    // to agree with, and Calculate is the command it was disagreeing with.
     if (role === 'number') { const n = Number(v); return Number.isFinite(n) ? n : null; }
+    if (numericCol) return cellNum(v);
     if (role === 'date') return parseDueDate(v);
     if (role === 'status') { const i = seqOrder.get(v.toUpperCase()); return i === undefined ? null : i; }
     return v.toLowerCase();
@@ -12720,7 +12781,11 @@ function mtSortBase(node, colIdx, dir) {
   refreshTable(node);
   const colName = String(m.rows[0]?.[colIdx] || 'column ' + (colIdx + 1)).trim() || 'column ' + (colIdx + 1);
   mtFocusCell(node, 0, colIdx);   // #1400: it announced and then dropped focus on <body> like the rest
-  flashHint(`Sorted rows by ${colName}, ${dir === 'desc' ? 'descending' : 'ascending'}. Undo restores the old order.`);
+  // #1469: name the reading that was actually applied, not just the direction. "ascending" left
+  // the user to guess whether 100 sorted above or below 3; the menu now promises a reading and
+  // this is the half that confirms the promise was kept.
+  const sc = sortReadingCopy(sortReading(m.rows, colIdx, (mtColRoles(node) || [])[colIdx] || null, lastDataRow));
+  flashHint(`Sorted rows by ${colName}, ${dir === 'desc' ? sc.desc : sc.asc}. Undo restores the old order.`);
 }
 
 // QP-2 Phase C: write-through cells. A query base's plain-property cells edit the SOURCE
