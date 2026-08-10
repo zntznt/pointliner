@@ -12719,7 +12719,9 @@ function mtWireQBaseEdit(host, node) {
   host.addEventListener('focusin', e => {
     const cell = e.target.closest(SEL); if (!cell) return;
     // show the raw value for editing (the display may be a role chip)
-    cell.textContent = mtModelRead(node).rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    const _qRawTok = mtModelRead(node).rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    cell.dataset.tokenVal = _qRawTok;                       // #1467
+    cell.textContent = unfoldTokensIn(_qRawTok, node);      // #1467: show the source, not the token
     cell.dataset.enterVal = cell.textContent;
     showCellEditorPop(node, cell);   // FR-1: inferred Date columns get the calendar too
   });
@@ -12754,8 +12756,10 @@ function mtWireQBaseEdit(host, node) {
     const raw = cell.textContent.trim();
     const was = (cell.dataset.enterVal ?? '').trim();
     delete cell.dataset.enterVal;
+    const _tok = cell.dataset.tokenVal; delete cell.dataset.tokenVal;   // #1467
     const c = +cell.dataset.c;
-    if (raw === was) { cell.innerHTML = mtCellHtml(node, was, c); return; }   // untouched: restore the role paint
+    // #1467: repaint from the TOKEN, or the pill would come back as literal `{2d6}` text
+    if (raw === was) { cell.innerHTML = mtCellHtml(node, _tok !== undefined ? _tok : was, c); return; }
     const nid = cell.closest('tr[data-nid]')?.dataset.nid;
     const src = nid ? nodeById(nid) : null;
     const field = qbaseColList(node.qbase.cols)[c]?.field.trim();
@@ -13560,7 +13564,14 @@ function mtWireCells(host, node) {
     mtClearSelection();
     forceIncludeId = node.id;
     const m = mtModelRead(node);
-    cell.textContent = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    // #1467: EDIT THE SOURCE, not the token. The model text holds `[[dice:key]]`; a person who
+    // clicks in must see the `{2d6}` they typed, the same thing a point shows on enterEdit.
+    // The token text is kept so an UNTOUCHED cell can be written back verbatim -- focusout below
+    // always commits, and committing the shorthand would re-promote it into a NEW record, quietly
+    // re-rolling a frozen roll just because someone clicked through the cell.
+    const _cellRawTok = m.rows[+cell.dataset.r]?.[+cell.dataset.c] ?? '';
+    cell.dataset.tokenVal = _cellRawTok;
+    cell.textContent = unfoldTokensIn(_cellRawTok, node);
     cell.dataset.enterVal = cell.textContent;   // value on entry — for the focusout formula-signpost diff
     // #1387: the base's text as the edit BEGINS. It has to be captured here, not at focusout: the
     // per-keystroke input handler mtCommit()s into node.text on every character, so by focusout the
@@ -13601,6 +13612,9 @@ function mtWireCells(host, node) {
     let raw = cell.textContent;
     const enteredWith = cell.dataset.enterVal ?? '';   // value when the cell was focused
     delete cell.dataset.enterVal;
+    // #1467: untouched -> write back the TOKEN we unfolded from, never the shorthand we showed.
+    const _tok = cell.dataset.tokenVal; delete cell.dataset.tokenVal;
+    if (_tok !== undefined && raw === enteredWith) raw = _tok;
     const m = mtModel(node);
     if (!m.rows[+cell.dataset.r]) return;   // the row went away under the caret (see the input guard)
     m.rows[+cell.dataset.r][+cell.dataset.c] = raw;
@@ -28575,9 +28589,27 @@ const _unfoldData = new WeakMap(); // node → [{sh, token}]
 
 // Entering edit mode: rewrite each inline-able token in node.text to its {…} source
 // so the user can edit it as text. Records are left in their sidecars untouched.
+// #1467: the ONE token pattern. unfoldArtifacts and unfoldTokensIn both walk it, and two copies
+// of it would drift the day a new artifact type is added -- exactly the "one splitter" rule this
+// file already applies to parseSlashQuery.
+function artifactTokenRe() { return /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi; }
+
+// #1467: the STRING half of unfolding -- tokens back to the shorthand the user typed -- with no
+// mutation and no _unfoldData bookkeeping. A base cell needs exactly this and nothing else: it
+// showed `[[dice:rm7fzzqv]]` the moment you clicked into it, because the cell editor fills itself
+// from the raw model text and the raw model text is where the opaque token lives. Pure.
+function unfoldTokensIn(text, node) {
+  return String(text == null ? '' : text).replace(artifactTokenRe(), (full, type, key) => {
+    const t = String(type).toLowerCase();
+    const arr = node && node[t === 'var' ? 'vars' : t];
+    const sh = artifactToShorthand(t, arr && arr.find(r => r.key === key));
+    return sh == null ? full : sh;   // not inline-able -> leave the token (it renders as a pill)
+  });
+}
+
 function unfoldArtifacts(node) {
   const list = [];
-  const TOKEN_RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
+  const TOKEN_RE = artifactTokenRe();
   node.text = node.text.replace(TOKEN_RE, (full, type, key) => {
     const arr = node[type === 'var' ? 'vars' : type];
     const sh = artifactToShorthand(type, arr?.find(r => r.key === key));

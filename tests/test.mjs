@@ -15410,6 +15410,51 @@ test('#1463 the block applier reads the text and parks the caret past the marker
     'an activeEl guard here skips the builder door, where the point has already refolded (#1396)');
 });
 
+// #1467: a base cell filled its editor from the RAW model text, and the raw model text is where the
+// opaque `[[dice:key]]` token lives -- so clicking into a cell holding a pill showed the token, and
+// editing `2d6` to `3d6` meant deleting an opaque string and retyping the pill from scratch. The
+// architecture rule is that a token never reaches the user; a point already unfolds on enterEdit.
+test('#1467 unfoldTokensIn turns tokens back into the shorthand the user typed', () => {
+  const node = { text: '', dice: [{ key: 'abc123', expr: '2d6', total: 7 }], vars: [], math: [] };
+  assert.equal(c.unfoldTokensIn('roll [[dice:abc123]] now', node), 'roll {2d6} now');
+  assert.equal(c.unfoldTokensIn('[[dice:abc123]]', node), '{2d6}');
+  // two tokens in one cell both come back
+  const two = { text: '', dice: [{ key: 'a1', expr: '1d4', total: 3 }, { key: 'b2', expr: '2d8', total: 9 }] };
+  assert.equal(c.unfoldTokensIn('[[dice:a1]] and [[dice:b2]]', two), '{1d4} and {2d8}');
+  // an UNKNOWN key has no shorthand to return to, so the token is left alone rather than destroyed
+  assert.equal(c.unfoldTokensIn('x [[dice:missing]] y', node), 'x [[dice:missing]] y');
+  // text with no token is returned untouched, including the empty and null cases
+  assert.equal(c.unfoldTokensIn('plain text', node), 'plain text');
+  assert.equal(c.unfoldTokensIn('', node), '');
+  assert.equal(c.unfoldTokensIn(null, node), '');
+  assert.equal(c.unfoldTokensIn('roll [[dice:abc123]]', null), 'roll [[dice:abc123]]', 'no node: nothing to resolve against');
+});
+
+test('#1467 the token pattern has ONE home, and both unfolders use it', () => {
+  // Two copies of this regex would drift the day a new artifact type is added.
+  const re = c.artifactTokenRe();
+  assert.ok(re.global, 'the shared pattern is global (both callers replace every occurrence)');
+  for (const t of ['dice', 'math', 'var', 'grammar', 'est', 'markov', 'seq', 'query'])
+    assert.ok(c.artifactTokenRe().test(`[[${t}:k1]]`), `${t} tokens must match the shared pattern`);
+  assert.match(fnBody(_src, 'unfoldArtifacts'), /artifactTokenRe\(\)/,
+    'unfoldArtifacts must use the shared pattern, not its own copy');
+  assert.match(fnBody(_src, 'unfoldTokensIn'), /artifactTokenRe\(\)/,
+    'and so must unfoldTokensIn');
+});
+
+test('#1467 both cell editors unfold on entry and write the token back untouched', () => {
+  // A tested core proves nothing about the call sites, and there are TWO -- the authored base and
+  // the query base -- which is how the leak survived: fixing one would have left the other.
+  const wire = fnBody(_src, 'mtWireCells');
+  assert.match(wire, /cell\.textContent = unfoldTokensIn\(/, 'the authored cell editor must unfold on entry');
+  assert.match(wire, /if \(_tok !== undefined && raw === enteredWith\) raw = _tok;/,
+    'and an UNTOUCHED authored cell must commit the token, not the shorthand it displayed — ' +
+    'that focusout always writes, so committing the shorthand would re-promote and silently re-roll');
+  // the query base's editor lives in the qbase wiring, not mtWireCells
+  const q = between(_src, "cell.dataset.tokenVal = _qRawTok;", "host.addEventListener('keydown'");
+  assert.match(q, /unfoldTokensIn\(_qRawTok, node\)/, 'the query cell editor must unfold too');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
