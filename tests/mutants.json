@@ -135,6 +135,33 @@
       "find": "    announce(`${selectedIds.size} points selected`);",
       "replace": "    ;",
       "kills": "#1465 the selection bar is reachable, announced, and does not steal Tab"
+    },
+    {
+      "id": "cell-token-leak",
+      "suite": "browser",
+      "why": "#1467: the cell editor filled itself from raw model text, showing [[dice:key]] to the user",
+      "file": "index.html",
+      "find": "    cell.textContent = unfoldTokensIn(_cellRawTok, node);",
+      "replace": "    cell.textContent = _cellRawTok;",
+      "kills": "#1467 a base cell shows {2d6} on entry and keeps its frozen roll when untouched"
+    },
+    {
+      "id": "cell-untouched-rerolls",
+      "suite": "browser",
+      "why": "#1467: without the token writeback, clicking through a cell re-promotes and silently re-rolls",
+      "file": "index.html",
+      "find": "    if (_tok !== undefined && raw === enteredWith) raw = _tok;",
+      "replace": "    ;",
+      "kills": "#1467 a base cell shows {2d6} on entry and keeps its frozen roll when untouched"
+    },
+    {
+      "id": "token-pattern-forked",
+      "suite": "unit",
+      "why": "#1467: a second copy of the token regex drifts the day a new artifact type is added",
+      "file": "index.html",
+      "find": "  const TOKEN_RE = artifactTokenRe();",
+      "replace": "  const TOKEN_RE = /\\[\\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\\]\\]/gi;",
+      "kills": "#1467 the token pattern has ONE home, and both unfolders use it"
     }
   ]
 }

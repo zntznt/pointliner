@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2055 declarations in 152 sections across 17 domains.**
+**2057 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1572,7 +1572,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `unfoldedPrefixLen` — Length `prefix` would have after unfoldArtifacts rewrites its inline-able tokens
 - `foldedOffsetFor` — The inverse: translate an offset captured against the UNFOLDED edit buffer into
 - `_unfoldData` — While a node is in edit mode its text transiently holds {…} grammar source in
-- `unfoldArtifacts` — Entering edit mode: rewrite each inline-able token in node.text to its {…} source
+- `artifactTokenRe` — Entering edit mode: rewrite each inline-able token in node.text to its {…} source
+- `unfoldTokensIn` — #1467: the STRING half of unfolding -- tokens back to the shorthand the user typed -- with no
+- `unfoldArtifacts`
 - `applyRefold` — Restore each untouched unfolded {sh} in `text` back to its token (pure helper).
 - `refoldArtifacts` — Leaving edit mode: fold untouched {…} back to their original tokens (frozen state
 - `foldedTextForSave` — Canonical (folded) text of a node that may currently be unfolded for editing —

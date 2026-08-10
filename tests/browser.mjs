@@ -1232,3 +1232,59 @@ test('#1465 the selection bar is reachable, announced, and does not steal Tab', 
   assert.equal(done.n, 0, 'Escape clears the selection');
   assert.notEqual(done.active, 'BODY', 'and focus returns to the outline rather than going homeless');
 });
+
+// 22. #1467 — a base cell must edit its SOURCE, not the internal token.
+// Driven because all three claims are about what the cell shows and what survives a focus cycle,
+// and the dangerous one is invisible in source: the authored focusout ALWAYS writes the cell back,
+// so unfolding without care would re-promote the shorthand and silently re-roll a frozen pill just
+// because someone clicked through.
+test('#1467 a base cell shows {2d6} on entry and keeps its frozen roll when untouched', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.keyboard.type('/', { delay: 22 }); await pg.waitForTimeout(420);
+  await pg.keyboard.type('base', { delay: 25 }); await pg.waitForTimeout(380);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(650);
+
+  const SEL = '.mt-cell[data-r="1"][data-c="0"]';
+  const focusCell = () => pg.evaluate((s) => document.querySelector(s).focus(), SEL);
+  const blur = () => pg.evaluate(() => document.activeElement.blur());
+  const state = () => pg.evaluate((s) => {
+    const cell = document.querySelector(s), n = root.children[0];
+    return { editText: cell.textContent, shown: cell.innerText.replace(/\n/g, ' '),
+             tokens: (n.text.match(/\[\[dice:[a-z0-9]+\]\]/g) || []),
+             isPill: !!cell.querySelector('.dice-roll') };
+  }, SEL);
+
+  await focusCell(); await pg.waitForTimeout(300);
+  await pg.keyboard.type('roll {2d6}', { delay: 30 }); await pg.waitForTimeout(320);
+  await blur(); await pg.waitForTimeout(600);
+  const made = await state();
+  assert.equal(made.tokens.length, 1, 'the typed shorthand promoted to a folded token');
+  assert.ok(made.isPill, 'and renders as a pill');
+
+  // 1. entering the cell shows the SOURCE
+  await focusCell(); await pg.waitForTimeout(400);
+  assert.equal((await state()).editText, 'roll {2d6}',
+    'clicking into the cell must show the {2d6} that was typed, never the [[dice:key]] token');
+
+  // 2. leaving it untouched changes nothing -- same token, same roll, still a pill
+  await blur(); await pg.waitForTimeout(600);
+  const through = await state();
+  assert.deepEqual(through.tokens, made.tokens,
+    'a click-through must not re-promote: the token (and its frozen roll) has to survive');
+  assert.equal(through.shown, made.shown, 'and the shown value must not change');
+  assert.ok(through.isPill, 'and it is still a pill, not literal {2d6} text');
+
+  // 3. a REAL edit still re-promotes
+  await focusCell(); await pg.waitForTimeout(400);
+  await pg.keyboard.press('Control+a'); await pg.waitForTimeout(140);
+  await pg.keyboard.type('roll {3d6}', { delay: 30 }); await pg.waitForTimeout(320);
+  await blur(); await pg.waitForTimeout(650);
+  const edited = await state();
+  assert.equal(edited.tokens.length, 1, 'the edit promoted to one token');
+  assert.notEqual(edited.tokens[0], made.tokens[0], 'a NEW record, since the expression changed');
+  assert.match(edited.shown, /3d6/, 'and the pill now shows 3d6');
+});
