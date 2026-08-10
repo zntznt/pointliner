@@ -15368,6 +15368,48 @@ test('the depth trap tip is what the math pill actually renders', () => {
   // that mutation.
 });
 
+// #1463: applyBlockCmd used to read the old block prefix off `node.type`. That is a DERIVED HINT,
+// not the source of truth (architecture rule 3), and typing the `/` trigger at the start of a line
+// invalidates it: the text is briefly "/# Chapter one", which derives to `ul`, and the type stays
+// stale after the trigger is stripped again. The applier then looked up BLOCK_PREFIX_MAP['ul'] -> '',
+// stripped nothing, and PREPENDED. Measured in the running app before the fix:
+//   after "/"2 : text="/# Chapter one" type="ul"      <- the type the applier trusted
+//   after /H2  : text="## # Chapter one"
+// Reading the text answers correctly whatever the type says.
+test('#1463 textBlockPrefix reads the marker off the TEXT, longest first', () => {
+  assert.equal(c.textBlockPrefix('# Chapter'), '# ');
+  assert.equal(c.textBlockPrefix('## Chapter'), '## ', 'longest-first: ## is not # followed by #');
+  assert.equal(c.textBlockPrefix('###### deep'), '###### ');
+  assert.equal(c.textBlockPrefix('> quoted'), '> ');
+  assert.equal(c.textBlockPrefix('```code'), '```');
+  // NOT a prefix: no space, so it is a hashtag, not a heading. This is the case that made the bug
+  // invisible -- "#Chapter" is what /Heading 1 produced when the caret was wrong, and it renders as
+  // a tag filter link rather than a heading.
+  assert.equal(c.textBlockPrefix('#Chapter'), '');
+  assert.equal(c.textBlockPrefix('plain text'), '');
+  assert.equal(c.textBlockPrefix(''), '');
+  assert.equal(c.textBlockPrefix(null), '');
+});
+
+test('#1463 the block applier reads the text and parks the caret past the marker', () => {
+  const body = fnBody(_src, 'applyBlockCmd');
+  // the three strip arms must all consult the text, never the derived type
+  assert.equal((body.match(/BLOCK_PREFIX_MAP\[node\.type\]/g) || []).length, 0,
+    'a strip arm still derives the old prefix from node.type, which the / trigger invalidates');
+  assert.equal((body.match(/textBlockPrefix\(node\.text\)/g) || []).length, 3,
+    'all three arms (state:, /todo, block) must read the prefix off the text');
+  // the caret must be asked for on a LATER FRAME: _focusNodeGo runs enterEdit, which rewrites the
+  // element after a same-tick call, so an immediate call is measured back at offset 1 every time.
+  assert.match(body, /requestAnimationFrame\(\(\) => focusNodeAtOffset\(nodeId, added\)\)/,
+    'the block arm must place the caret past the marker, one frame later');
+  assert.match(body, /requestAnimationFrame\(\(\) => focusNodeAtOffset\(nodeId, addedTodo\)\)/,
+    'and so must the /todo arm');
+  // and NOT gated on activeEl: on the builder door the row has already refolded and lost
+  // [data-editing], which is exactly the door the bug lives on
+  assert.ok(!/activeEl && !opts\.display\) focusNodeAtOffset/.test(body),
+    'an activeEl guard here skips the builder door, where the point has already refolded (#1396)');
+});
+
 test('#1200 childrenComputePillsNotProp — pills-but-no-property is distinguished from a name typo', () => {
   // Dmitri's case: each child computes {= words*rate} (a math pill); none stores a `fee` property.
   const dmitri = c.mkNode('jobs');
