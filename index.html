@@ -12411,6 +12411,23 @@ function mtFocusCell(node, r, c) {
   mtSetRovingCell(host, target);   // the remembered tab stop follows focus (#443)
   target.focus();
   mtSelectCellContents(target); // marks the selection navigation-placed (no toolbar)
+  // #1468: RE-ASSERT on the next frame. Moving focus here fires the old cell's focusout, which
+  // commits and can rebuild the whole widget -- and a rebuild replaces the element we just focused,
+  // so focus falls to <body> with no ring and nothing announced, and everything typed next is
+  // swallowed. Measured: after the first ArrowUp the target cell EXISTS but is a different element
+  // (the old host is disconnected), and focus never reached it at all.
+  // Only the first navigation of a session hit it, which is what made it read as a glitch rather
+  // than a rule. This is the one choke point every cell navigation goes through, so re-finding the
+  // cell by its coordinates here covers arrows, Tab and Enter alike rather than one of them.
+  requestAnimationFrame(() => {
+    if (document.activeElement && document.activeElement.closest?.('.mt-cell')) return;   // still in a cell
+    const h2 = mtHost(node.id); if (!h2) return;
+    const again = h2.querySelector(`.mt-cell[data-r="${r}"][data-c="${c}"]`);
+    if (!again || again === document.activeElement) return;
+    mtSetRovingCell(h2, again);
+    again.focus();
+    mtSelectCellContents(again);
+  });
   return true;
 }
 
