@@ -1073,3 +1073,107 @@ test('#1463 a / block command replaces the marker and leaves the caret past it',
       `/${first} then /${second} must land on ${JSON.stringify(want)}, not stack markers`);
   }
 });
+
+// 20. #1464 — dismissing a surface must not strand the keyboard.
+// Three symptoms of one shape, all driven because all three are about where focus WENT, which a
+// source pin cannot see. The worst had no keyboard exit at all: Escape inside a /-command form left
+// the full-screen modal up and dropped focus onto the point BEHIND it, so everything typed after
+// landed invisibly in the document.
+test('#1464 Escape from a command form returns to the builder, not behind it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.keyboard.type('Anchor', { delay: 15 });
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(220);
+  await pg.keyboard.type('/', { delay: 25 }); await pg.waitForTimeout(420);
+  await pg.keyboard.type('Dice roll', { delay: 25 }); await pg.waitForTimeout(380);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+  assert.match(await pg.evaluate(() => document.activeElement.id), /io-fld/, 'the form opened with focus in a field');
+
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(420);
+  const back = await pg.evaluate(() => ({
+    overlay: getComputedStyle(document.getElementById('io-back')).display,
+    active: document.activeElement.className || document.activeElement.tagName,
+    rows: root.children.map(n => n.text),
+  }));
+  // The overlay staying up is CORRECT -- the builder is still open. What must not happen is focus
+  // leaving it, which is what made the state unrecoverable.
+  assert.match(back.active, /builder-search|guide-search/,
+    `Escape must land focus back in the builder, got ${JSON.stringify(back.active)}`);
+  await pg.keyboard.type('hello', { delay: 25 }); await pg.waitForTimeout(250);
+  assert.deepEqual(await pg.evaluate(() => root.children.map(n => n.text)), back.rows,
+    'typing after the dismissal must not fall through into the document beneath the modal');
+
+  // and there IS a way out: a second Escape closes the builder and returns the caret to the point
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(450);
+  const out = await pg.evaluate(() => ({
+    overlay: getComputedStyle(document.getElementById('io-back')).display,
+    active: document.activeElement.className || document.activeElement.tagName,
+  }));
+  assert.equal(out.overlay, 'none', 'the second Escape closes the builder');
+  assert.match(out.active, /node-content/, 'and the caret is back in the point');
+});
+
+test('#1464 Enter on Cancel cancels, and Enter on the commit button still commits', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const openForm = async () => {
+    // the first half leaves the builder open; start each half from closed chrome or the `/` is
+    // typed into the builder's search box instead of into a point
+    await pg.evaluate(() => { if (typeof closeBuilderWindow === 'function') closeBuilderWindow(); });
+    await pg.waitForTimeout(200);
+    await pg.evaluate(() => {
+      root.children = [mkNode('Anchor'), mkNode('')];
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content[data-id]')[1];
+      const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+    });
+    await pg.waitForTimeout(250);
+    await pg.keyboard.type('/', { delay: 25 }); await pg.waitForTimeout(420);
+    await pg.keyboard.type('Dice roll', { delay: 25 }); await pg.waitForTimeout(380);
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+    await pg.keyboard.type('3d8', { delay: 30 }); await pg.waitForTimeout(220);
+  };
+  const tabTo = async (label) => {
+    for (let i = 0; i < 6; i++) {
+      await pg.keyboard.press('Tab'); await pg.waitForTimeout(160);
+      if (await pg.evaluate(l => (document.activeElement.textContent || '').trim() === l, label)) return true;
+    }
+    return false;
+  };
+
+  // Assert on the text the insert actually produces ("{3d8}"), not on a folded [[dice:…]] token:
+  // the token form is not what sits in node.text at this moment, so a regex for it would pass the
+  // cancel half no matter what happened. Measured, not assumed.
+  const hasRoll = () => pg.evaluate(() => root.children.some(n => n.text.includes('3d8')));
+
+  await openForm();
+  assert.ok(await tabTo('Cancel'), 'the Cancel button is reachable by Tab');
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+  assert.equal(await hasRoll(), false,
+    'Enter on Cancel must CANCEL: it used to run the confirm action and insert the pill');
+
+  await openForm();
+  assert.ok(await tabTo('Roll'), 'the commit button is reachable by Tab');
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  assert.equal(await hasRoll(), true,
+    'and Enter on the commit button must still commit');
+});
+
+test('#1464 Escape closes the agenda the way it closes the graph and the timeline', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => { root.children = [mkNode('Task')]; buildIndex(root, null); markDirty(); render(); });
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => document.querySelector('#btn-agenda').click());
+  await pg.waitForTimeout(600);
+  // openAgenda must put focus INSIDE the strip -- the strip's own keydown is what closes it, so
+  // leaving focus on the toolbar button made Escape a no-op here while it worked on the other two.
+  assert.ok(await pg.evaluate(() => document.getElementById('agenda-strip').contains(document.activeElement)),
+    'opening the agenda must move focus into the strip');
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(450);
+  assert.ok(!(await pg.evaluate(() => document.getElementById('agenda-strip').classList.contains('on'))),
+    'Escape must close the agenda strip');
+  assert.equal(await pg.evaluate(() => document.activeElement.id), 'btn-agenda',
+    'and hand focus back to the button that opened it');
+});
