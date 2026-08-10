@@ -162,6 +162,15 @@
       "find": "  const TOKEN_RE = artifactTokenRe();",
       "replace": "  const TOKEN_RE = /\\[\\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\\]\\]/gi;",
       "kills": "#1467 the token pattern has ONE home, and both unfolders use it"
+    },
+    {
+      "id": "cell-focus-not-reasserted",
+      "suite": "browser",
+      "why": "#1468: a rebuild during focusout replaces the cell mtFocusCell just focused, dropping focus to body",
+      "file": "index.html",
+      "find": "    if (!again || again === document.activeElement) return;",
+      "replace": "    if (true) return;",
+      "kills": "#1468 arrowing inside a base lands in the cell above and keeps what you type"
     }
   ]
 }

@@ -1288,3 +1288,54 @@ test('#1467 a base cell shows {2d6} on entry and keeps its frozen roll when unto
   assert.notEqual(edited.tokens[0], made.tokens[0], 'a NEW record, since the expression changed');
   assert.match(edited.shown, /3d6/, 'and the pill now shows 3d6');
 });
+
+// 23. #1468 — the first arrow-nav inside a base must not throw focus away.
+// Moving focus between cells fires the old cell's focusout, which commits and can REBUILD the whole
+// widget. The rebuild replaces the element mtFocusCell just focused, so focus fell to <body> with no
+// ring, nothing announced, and everything typed next silently swallowed. Measured before fixing:
+// the target cell existed but was a DIFFERENT element and the old host was disconnected.
+// Only the FIRST navigation of a session hit it, which is what made it read as a glitch.
+test('#1468 arrowing inside a base lands in the cell above and keeps what you type', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.keyboard.type('Shopping list', { delay: 15 });
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(220);
+  await pg.keyboard.type('/', { delay: 22 }); await pg.waitForTimeout(420);
+  await pg.keyboard.type('base', { delay: 25 }); await pg.waitForTimeout(380);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(650);
+
+  // fill the grid the way a person would, so the first arrow carries a pending commit
+  await pg.evaluate(() => document.querySelector('.mt-cell[data-r="0"][data-c="0"]').focus());
+  await pg.waitForTimeout(220);
+  for (const t of ['Item', 'Cost', 'Qty', 'Rope', '10', '2', 'Torch', '3', '5']) {
+    await pg.keyboard.type(t, { delay: 18 });
+    await pg.keyboard.press('Tab'); await pg.waitForTimeout(100);
+  }
+  await pg.evaluate(() => document.activeElement.blur()); await pg.waitForTimeout(600);
+
+  const baseIdx = await pg.evaluate(() => root.children.findIndex(n => n.type === 'base'));
+  assert.ok(baseIdx >= 0, 'the base exists');
+  const before = await pg.evaluate(i => root.children[i].text, baseIdx);
+
+  await pg.evaluate(() => document.querySelector('.mt-cell[data-r="2"][data-c="1"]').focus());
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('ArrowUp'); await pg.waitForTimeout(450);
+
+  const landed = await pg.evaluate(() => {
+    const a = document.activeElement;
+    return { tag: a.tagName, r: a.dataset ? a.dataset.r : null, c: a.dataset ? a.dataset.c : null,
+             ring: !!document.querySelector(':focus-visible') };
+  });
+  assert.equal(landed.tag, 'TD', `the FIRST ArrowUp must stay in the grid, got ${landed.tag}`);
+  assert.equal(landed.r, '1', 'and land one row up');
+  assert.equal(landed.c, '1', 'in the same column');
+  assert.ok(landed.ring, 'with a visible focus ring, not an invisible <body> focus');
+
+  await pg.keyboard.type('99', { delay: 35 }); await pg.waitForTimeout(400);
+  const after = await pg.evaluate(i => root.children[i].text, baseIdx);
+  assert.notEqual(after, before, 'what you type after arrowing must reach the model, not vanish');
+  assert.match(after, /\b99\b/, 'and be the value you typed');
+});
