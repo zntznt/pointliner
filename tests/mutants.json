@@ -99,6 +99,24 @@
       "find": "    if (!opts.display) requestAnimationFrame(() => focusNodeAtOffset(nodeId, addedTodo));   // see the block arm",
       "replace": "    if (false) focusNodeAtOffset(nodeId, addedTodo);",
       "kills": "#1463 a / block command replaces the marker and leaves the caret past it"
+    },
+    {
+      "id": "builder-cancel-loses-focus",
+      "suite": "browser",
+      "why": "#1464: dismissing a nested dialog dropped focus behind the still-open modal, with no keyboard exit",
+      "file": "index.html",
+      "find": "      _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); if (searchEl && searchEl.isConnected) searchEl.focus(); };   // #1464: focus returns with the pane",
+      "replace": "      _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };",
+      "kills": "#1464 Escape from a command form returns to the builder, not behind it"
+    },
+    {
+      "id": "agenda-focus-not-moved",
+      "suite": "browser",
+      "why": "#1464: leaving focus on the toolbar button made Escape a no-op on the agenda alone",
+      "file": "index.html",
+      "find": "    if (first && strip.classList.contains('on')) first.focus();",
+      "replace": "    if (false) first.focus();",
+      "kills": "#1464 Escape closes the agenda the way it closes the graph and the timeline"
     }
   ]
 }

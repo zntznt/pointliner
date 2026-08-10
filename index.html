@@ -39982,12 +39982,23 @@ function openAgenda() {
   btn.classList.add('active');
   btn.setAttribute('aria-pressed', 'true');
   renderAgenda();
+  // #1464: move focus INTO the strip, the same rule openGraph already follows. The strip's own
+  // keydown is what closes it on Escape, and that handler only ever fires when focus is inside --
+  // so leaving focus on the toolbar button meant Escape did nothing at all here while it closed
+  // the graph and the timeline on the first press. Same key, three surfaces, two behaviours (P1).
+  requestAnimationFrame(() => {
+    const first = strip.querySelector('.ag-toggle, [tabindex="0"]');
+    if (first && strip.classList.contains('on')) first.focus();
+  });
 }
 
 function closeAgenda() {
   agendaOpen = false;
   const strip = document.getElementById('agenda-strip');
   const btn = document.getElementById('btn-agenda');
+  // #1464: if focus is still inside the strip we are about to hide, hand it back to the button that
+  // opened it -- otherwise it lands on <body> and the next Tab restarts from the top of the page.
+  if (strip.contains(document.activeElement)) btn.focus();
   strip.classList.remove('on');
   btn.classList.remove('active');
   btn.setAttribute('aria-pressed', 'false');
@@ -43851,7 +43862,7 @@ function showNestedDialog(cmd, pane) {
   try { setCaretByOffset(st.content, off); } catch (_) {}
   markDirty();
   _dialogRoot = pane;
-  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };
+  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); if (searchEl && searchEl.isConnected) searchEl.focus(); };   // #1464: focus returns with the pane
   _dialogGuideCmd = cmd;
   insertInlineArtifact(cmd.id, st.nodeId, st.content);
 }
@@ -44055,7 +44066,7 @@ function openBuilder(trigger) {
       try { setCaretByOffset(st.content, dOff); } catch (_) {}
       markDirty();
       _dialogRoot = pane;
-      _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); };
+      _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); if (searchEl && searchEl.isConnected) searchEl.focus(); };   // #1464: focus returns with the pane
       _dialogGuideCmd = cmd;
       insertInlineArtifact(cmd.id, st.nodeId, st.content);
       return;
@@ -44168,6 +44179,7 @@ function openBuilder(trigger) {
       e.preventDefault();
       pane.focus();
     } else if (e.key === 'Enter') {
+      if (e.target.closest && e.target.closest('button')) return;   // #1464: see the pane handler
       e.preventDefault();
       applyBuilder();
     } else if (e.key === 'Tab' && !e.shiftKey) {
@@ -44175,7 +44187,11 @@ function openBuilder(trigger) {
       pane.focus();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
-      if (_dialogCancel) { _dialogCancel(); }
+      // #1464: _dialogCancel returns to the BUILDER (it is still open and correct -- measured:
+      // builder-open, nav populated, search box present). What it did not do was take focus with
+      // it, so focus fell out of the overlay onto the point BEHIND it and everything typed after
+      // landed invisibly in the document under a full-screen modal, with no keyboard way out.
+      if (_dialogCancel) { _dialogCancel(); if (searchEl && searchEl.isConnected) searchEl.focus(); }
       else if (pane.querySelector('.builder-form-cancel')) { pane.querySelector('.builder-form-cancel').click(); }
       else closeBuilder(true);
     }
@@ -44190,13 +44206,22 @@ function openBuilder(trigger) {
       e.preventDefault();
       searchEl.focus();
     } else if (e.key === 'Enter') {
+      // #1464: a focused BUTTON already does the right thing with Enter -- the browser fires its
+      // click. Hijacking Enter here made "Cancel" PERFORM THE CONFIRM ACTION: preventDefault()
+      // suppressed the button's own activation and _dialogFormEl.click() submitted instead, so
+      // Tab-to-Cancel-then-Enter inserted the pill. Let any button keep its native activation.
+      if (e.target.closest && e.target.closest('button')) return;
       e.preventDefault();
       if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); }
       else if (pane.querySelector('.builder-form-submit')) { builderFormApply(visibleCmds()[activeIdx], pane); }
       else applyBuilder();
     } else if (e.key === 'Escape') {
       e.stopPropagation();
-      if (_dialogCancel) { _dialogCancel(); }
+      // #1464: _dialogCancel returns to the BUILDER (it is still open and correct -- measured:
+      // builder-open, nav populated, search box present). What it did not do was take focus with
+      // it, so focus fell out of the overlay onto the point BEHIND it and everything typed after
+      // landed invisibly in the document under a full-screen modal, with no keyboard way out.
+      if (_dialogCancel) { _dialogCancel(); if (searchEl && searchEl.isConnected) searchEl.focus(); }
       else if (pane.querySelector('.builder-form-cancel')) { pane.querySelector('.builder-form-cancel').click(); }
       else closeBuilder(true);
     }
