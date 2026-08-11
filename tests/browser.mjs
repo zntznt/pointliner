@@ -1875,3 +1875,73 @@ test('#1474 the builder says when the list empties, once, and speaks again on re
     await pg.close();
   }
 });
+
+// 33. #1475 — the Alignment section reported a state the grid was not in: after Show as > Number
+//     the cells render right-aligned and the menu still ticked "Left". Driven because the claim is
+//     that a computed style and a menu tick disagree, which no source pin can compare.
+test('#1475 the Alignment tick says what the cells are doing, and the way back exists', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const rows = ['| Item | Cost | Qty |', '| --- | --- | --- |',
+                  '| Rope | 10 | 2 |', '| Torch | 3 | 5 |', '| Anvil | 99 | 1 |'];
+    const n = mkNode(rows.join('\n')); n.type = 'base';
+    root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(500);
+
+  const openMenu = async () => {
+    await pg.evaluate(() => document.querySelector('.mt-cell[data-r="1"][data-c="1"]').focus());
+    await pg.waitForTimeout(200);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(400);
+  };
+  // the Alignment rows only, read between its header and the next one
+  const alignRows = () => pg.evaluate(() => {
+    const all = [...document.querySelectorAll('#mt-colpanel > *')];
+    const start = all.findIndex(e => e.classList.contains('mt-col-section') && e.textContent.trim() === 'Alignment');
+    const out = [];
+    for (let i = start + 1; i < all.length && !all[i].classList.contains('mt-col-section'); i++)
+      out.push({ label: (all[i].querySelector('.mt-col-item-label')?.textContent || '').trim(),
+                 ticked: all[i].classList.contains('on') });
+    return out;
+  });
+  const ticked = async () => (await alignRows()).filter(r => r.ticked).map(r => r.label);
+  const cells = () => pg.evaluate(() => [...document.querySelectorAll('.mt-cell[data-c="1"]')]
+    .filter(e => e.tagName === 'TD').map(e => getComputedStyle(e).textAlign));
+  const clickItem = async (label) => {
+    const idx = await pg.evaluate(l => [...document.querySelectorAll('#mt-colpanel .mt-col-item')]
+      .findIndex(i => i.querySelector('.mt-col-item-label')?.textContent.trim() === l), label);
+    assert.ok(idx >= 0, `the menu must offer "${label}"`);
+    await pg.locator('#mt-colpanel .mt-col-item').nth(idx).click();
+    await pg.waitForTimeout(550);
+  };
+  // "start" is how Chromium reports an unstyled cell; treat it as left
+  const isRight = (a) => a.every(x => x === 'right');
+  const isLeft = (a) => a.every(x => x === 'left' || x === 'start');
+
+  await openMenu();
+  assert.deepEqual(await ticked(), ['Automatic (left)'], 'a fresh column is on its automatic setting');
+  assert.ok(isLeft(await cells()), 'and renders left');
+
+  await clickItem('Number');
+  await openMenu();
+  assert.ok(isRight(await cells()), 'Show as Number right-aligns the cells');
+  assert.deepEqual(await ticked(), ['Automatic (right)'],
+    'and the tick follows: this is the row that used to read "Left" over right-aligned cells');
+
+  await clickItem('Left');
+  await openMenu();
+  assert.ok(isLeft(await cells()), 'an explicit Left still works');
+  assert.deepEqual(await ticked(), ['Left']);
+  const back = (await alignRows()).find(r => r.label.startsWith('Automatic'));
+  assert.ok(back, 'and the automatic row is still offered: that is the route back');
+
+  await clickItem(back.label);
+  await openMenu();
+  assert.ok(isRight(await cells()), 'which returns the column to what it was a moment earlier');
+  assert.deepEqual(await ticked(), ['Automatic (right)']);
+  // and it is genuinely the UNSET state in the text, not a third explicit value
+  assert.match(await pg.evaluate(() => root.children[0].text.split('\n')[1]), /^\| --- \| --- \| --- \|$/,
+    'automatic writes no alignment marker at all');
+  await pg.close();
+});

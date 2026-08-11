@@ -318,6 +318,7 @@ export function loadCores() {
     'pruneNoexport','exportExclusionImpact','parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
     'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting
+    'effectiveAlign',   // #1475: the alignment a base cell actually gets (menu + renderer share it)
     'cellNum','colIsNumeric','sortReading','sortReadingCopy','capFirst',   // #1469: the one numeric reading Calculate and Sort share, and what it is called
 
     'toggleSavedSearch','isSavedSearch',

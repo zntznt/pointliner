@@ -290,6 +290,33 @@
       "kills": "#1471 both entry paths route through the one core"
     },
     {
+      "id": "align-unset-folded-into-left",
+      "suite": "unit",
+      "why": "#1475: the shipped menu, ticking Left over cells the grid was rendering right",
+      "file": "index.html",
+      "find": "  const curAlign = model.aligns[colIdx] || null;   // #1475: unset is its own state, not 'left'",
+      "replace": "  const curAlign = model.aligns[colIdx] || 'left';",
+      "kills": "#1475 effectiveAlign is the one answer"
+    },
+    {
+      "id": "align-auto-forgets-number",
+      "suite": "unit",
+      "why": "#1475: the auto state claiming left while a Number column renders right",
+      "file": "index.html",
+      "find": "       : role === 'number' ? 'right' : 'left';",
+      "replace": "       : 'left';",
+      "kills": "#1475 effectiveAlign is the one answer"
+    },
+    {
+      "id": "align-no-way-back",
+      "suite": "browser",
+      "why": "#1475: the automatic row gone, so an explicit Left is a one-way door",
+      "file": "index.html",
+      "find": "  addItem(`Automatic (${effectiveAlign(null, curRole)})`,\n    { active: curAlign == null, onApply: () => mtSetAlign(node, colIdx, null) });",
+      "replace": "  ;",
+      "kills": "#1475 the Alignment tick says what the cells are doing"
+    },
+    {
       "id": "builder-empty-silent",
       "suite": "unit",
       "why": "#1474: the shipped state, where the live region kept naming a command no longer listed",

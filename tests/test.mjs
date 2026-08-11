@@ -21662,7 +21662,9 @@ test('bases round 1 — B4 read sites + write sites stay split (source pins)', (
   assert.ok(/const roles = mtColRoles\(node\) \|\| \[\];/.test(fnBody(_src, 'mtViewSwitcherHtml')), 'the switcher ready-state reads via the accessor');
   const sv = fnBody(_src, 'mtSetView');
   assert.equal((sv.match(/mtColRoles\(node\)/g) || []).length, 2, 'both view gates (board + calendar) read via the accessor');
-  assert.ok(/_colRoles\[c\] === 'number'/.test(_src), 'the right-align check reads the hoisted roles');
+  // #1475 moved the rule itself into effectiveAlign; the invariant this pins is unchanged — the
+  // right-align decision reads the HOISTED roles, never a per-cell mtColRoles(node) call.
+  assert.ok(/effectiveAlign\(model\.aligns\[c\], _colRoles\[c\]\)/.test(_src), 'the right-align check reads the hoisted roles');
   // write sites stay authored-only: mtSetColRole writes node.colRole (never a qbase) and, per #922,
   // SEEDS the array from the current inference on first touch so promoting one column to explicit
   // mode doesn't drop the others' auto-detected roles.
@@ -21979,6 +21981,49 @@ test('parseQBaseSort + the qbase sort wiring (SV-2)', () => {
   assert.ok(/\.\.\.\(sort \? \{ sort \} : \{\}\)/.test(eq) && /showAll: true/.test(eq), 'saving keeps sort AND showAll');
   assert.ok(/qbaseCreateAt\(nodeId, expr, cols, sort\)/.test(_src), 'the create dialog threads the sort');
   assert.ok(/mt-qbase-sort/.test(fnBody(_src, 'mtBaseChromeHtml')), 'the strip names an active sort');
+});
+
+// ── #1475: the Alignment section reported a state the grid was not in ───────
+// After Show as > Number the cells render right-aligned, and the menu still showed "Left ✓" —
+// because it coerced the model's UNSET alignment to 'left', while the renderer spelled the
+// number-column rule a second time and rendered right. Clicking Left then worked, and there was no
+// way back to the state the column had a moment earlier.
+test('#1475 effectiveAlign is the one answer the menu and the grid share', () => {
+  // an explicit alignment is the user's word, whatever the role says
+  for (const role of nonEmpty([null, 'number', 'status', 'date'], 'column roles'))
+    for (const a of nonEmpty(['left', 'center', 'right'], 'explicit alignments'))
+      assert.equal(c.effectiveAlign(a, role), a, `${a} stands under role ${role}`);
+  // UNSET is not 'left': a Number column renders right, which is the whole bug
+  assert.equal(c.effectiveAlign(null, 'number'), 'right');
+  assert.equal(c.effectiveAlign(undefined, 'number'), 'right');
+  assert.equal(c.effectiveAlign('', 'number'), 'right');
+  // and unset on anything else is left
+  assert.equal(c.effectiveAlign(null, null), 'left');
+  assert.equal(c.effectiveAlign(null, 'status'), 'left');
+  assert.equal(c.effectiveAlign(null, 'date'), 'left');
+  // a junk value is not passed through as a class name
+  assert.equal(c.effectiveAlign('sideways', 'number'), 'right');
+  assert.equal(c.effectiveAlign('sideways', null), 'left');
+
+  // CALL SITES — one decision, two consumers, which is what makes the tick honest.
+  const w = fnBody(_src, 'buildTableWidget');
+  assert.match(w, /aCls\(effectiveAlign\(model\.aligns\[c\], _colRoles\[c\]\)\)/,
+    'the cell renderer asks the shared core rather than re-spelling the rule');
+  assert.ok(!/_colRoles\[c\] === 'number' && !model\.aligns\[c\]/.test(_src),
+    'the second copy of the rule is gone');
+  const scp = fnBody(_src, 'showColPanel');
+  assert.match(scp, /const curAlign = model\.aligns\[colIdx\] \|\| null;/,
+    'unset is its own state in the menu, not folded into left');
+  assert.match(scp, /addItem\(`Automatic \(\$\{effectiveAlign\(null, curRole\)\}\)`/,
+    'the auto row says what it resolves to, from the same core the grid uses');
+  assert.match(scp, /\{ active: curAlign == null, onApply: \(\) => mtSetAlign\(node, colIdx, null\) \}/,
+    'and selecting it is the route back that did not exist');
+  // the confirmation copes with the unset case rather than saying "aligned null"
+  assert.match(fnBody(_src, 'baseStructMessage'), /aligned automatically\. Undo restores it\./);
+  // serializeTable already round-trips an unset alignment as `---`, which is what makes the
+  // route back a real state and not a third explicit value
+  assert.equal(host(c.serializeTable({ aligns: [null, 'left', 'right'], rows: [['a', 'b', 'c']] })).split('\n')[1],
+    '| --- | :--- | ---: |');
 });
 
 // ── #1469: Sort and Calculate read the same column the same way ─────────────
