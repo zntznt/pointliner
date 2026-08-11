@@ -6867,6 +6867,34 @@ function codeNodeHTML(node) {
   return `<pre class="md-code"><code${lang ? ` class="language-${escQ(lang)}"` : ''}>${esc}</code></pre>`;
 }
 
+// #1470: the two attributes every focusable control rendered INSIDE a point carries, as ONE string
+// so they cannot come apart. `tabindex="-1"` makes it reachable by assistive tech and by our own
+// focus() calls; `contenteditable="false"` makes it an ATOMIC island the editing host will not
+// swallow. Both are needed and only the first looks necessary, which is how nine controls shipped
+// with half of it.
+//
+// What the missing half costs: with the control still editable, Chromium retargets focus to the
+// editing host on the first keystroke, BEFORE keydown is dispatched. The keyboard twin in onKeyDown
+// then reads `e.target` as the point itself, skips its branch, and Enter falls through to "split the
+// point" -- so pressing Enter on a footnote marker typed the footnote into the document instead.
+// It only bites while the host has no selection yet, i.e. on a point never focused this session,
+// which is every point on a freshly loaded document. That is why it read as intermittent.
+//
+// Measured across the whole family (driven, one fresh page each): the five artifact pills, the
+// node link and the pill pencils already carried it and behaved; .fn-ref, .clock, .act-pill,
+// .hashtag, .md-task-check, .md-spoiler, .todo-state, .todo-prio, .meter-bad and .web-img-blocked
+// did not, and all TEN split the point. A driven census in tests/browser.mjs now enumerates the
+// family, and a source ratchet reads the keyboard twins in onKeyDown so the eleventh cannot ship.
+//
+// The RULE is the contenteditable half; the tabindex is each control's own business, and two
+// members take the first without the second. `.md-task-check` is a native <input type=checkbox>,
+// already focusable, and -1 would pull a natively tabbable control OUT of the Tab order to fix a
+// bug it does not have. `.web-img-blocked` deliberately carries tabindex="0" because a blocked
+// image is a consent prompt worth tabbing to. Both write `contenteditable="false"` themselves.
+// (`.note-ind` set it in JS from the start, with the comment "contenteditable=false, like pills" —
+// the convention was written down at one site and missed at ten.)
+const INLINE_CTL = 'contenteditable="false" tabindex="-1"';
+
 // Render a node's display HTML with its dice/markov/grammar data in scope so
 // inline tokens ([[dice:KEY]] etc.) can resolve. mdToHtml is synchronous, so
 // the globals are safe (no re-entrance).
@@ -6907,8 +6935,8 @@ function renderContentHTML(node) {
       // a11y kit — role/tabindex/name/title — and gets an Enter/Space keydown twin in the content
       // handler (beside its mousedown, caret invariant). tabindex="-1" = programmatic/AT focus, as
       // every peer inline chip uses.
-      const badge = `<span class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" tabindex="-1" aria-label="State: ${keyword}. Change state or priority" title="Change state or priority">${keyword}</span>`;
-      const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" tabindex="-1" aria-label="Priority ${priority}. Change state or priority" title="Change state or priority">[#${priority}]</span>` : '';
+      const badge = `<span class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" ${INLINE_CTL} aria-label="State: ${keyword}. Change state or priority" title="Change state or priority">${keyword}</span>`;
+      const chip = priority ? `<span class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" ${INLINE_CTL} aria-label="Priority ${priority}. Change state or priority" title="Change state or priority">[#${priority}]</span>` : '';
       const bodyHtml = mdToHtml(body || '');
       // inject badges inside the first block-open tag so they flow inline with the text
       const m = bodyHtml.match(/^(<(?:p|li|h[1-6]|blockquote|div)[^>]*>)/);
@@ -7588,7 +7616,10 @@ function urlHost(u) { const m = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i.exec(String(
 function webImageBlockedHtml(u, alt) {
   const host = urlHost(u);
   const name = alt ? String(alt) : 'Web image';
-  return `<span class="web-img-blocked" role="button" tabindex="0" data-webimg="${escQ(u)}"`
+  // #1470: contenteditable="false" beside a tabindex="0" it keeps — this one IS meant to be in the
+  // Tab order (a blocked image is a consent prompt worth tabbing to), so it takes the island half
+  // of INLINE_CTL without the tabindex half.
+  return `<span class="web-img-blocked" role="button" contenteditable="false" tabindex="0" data-webimg="${escQ(u)}"`
     + ` title="This document keeps your reading private and does not load web images yet. Click to allow images from ${escQ(host)}."`
     + ` aria-label="Blocked web image ${escQ(name)} from ${escQ(host)}. Activate to allow web images in this document.">`
     + `<i class="fa-regular fa-image" aria-hidden="true"></i> ${escHtml(name)}. Click to allow web images</span>`;
@@ -8097,9 +8128,9 @@ function mdInline(s) {
     const ord = store ? footnoteOrder() : null;
     const num = String((ord && ord.has(id)) ? ord.get(id) : id);
     const written = !known || !store || fnIsWritten(store, id);
-    if (written) return stash(`<sup class="fn-ref" role="button" tabindex="-1" data-key="${escQ(id)}" aria-label="Footnote ${escQ(num)}">[${num}]</sup>`);
+    if (written) return stash(`<sup class="fn-ref" role="button" ${INLINE_CTL} data-key="${escQ(id)}" aria-label="Footnote ${escQ(num)}">[${num}]</sup>`);
     const tip = 'Nothing written here yet. Click to write this footnote.';
-    return stash(`<sup class="fn-ref fn-ref-empty" role="button" tabindex="-1" data-key="${escQ(id)}" title="${escQ(tip)}" aria-label="Footnote ${escQ(num)}, not written yet. Click to write it.">[${num}]</sup>`);
+    return stash(`<sup class="fn-ref fn-ref-empty" role="button" ${INLINE_CTL} data-key="${escQ(id)}" title="${escQ(tip)}" aria-label="Footnote ${escQ(num)}, not written yet. Click to write it.">[${num}]</sup>`);
   });
   // dice rolls — [[dice:KEY]] resolves against the node's stored roll data
   s = s.replace(/\[\[dice:([a-z0-9]+)\]\]/gi, (_, k) =>
@@ -8174,7 +8205,7 @@ function mdInline(s) {
       return stash(`<span class="clock clock-computed${full}" aria-label="Clock, ${done} of ${pc.total} filled from sub-points">${formatClock(done, pc.total)}</span>`);
     }
     const full = pc.done === pc.total ? ' clock-full' : '';
-    return stash(`<span class="clock${full}" role="button" tabindex="-1" aria-label="Clock, ${pc.done} of ${pc.total} filled">${formatClock(pc.done, pc.total)}</span>`);
+    return stash(`<span class="clock${full}" role="button" ${INLINE_CTL} aria-label="Clock, ${pc.done} of ${pc.total} filled">${formatClock(pc.done, pc.total)}</span>`);
   });
   // meter — {meter: value/max} → a segmented bar of a numeric property. A COMPUTED display
   // (like the cookie): resolved live against the render node (cookieNode), no sidecar, not a
@@ -8200,7 +8231,7 @@ function mdInline(s) {
         if (missing.length) tip = `No numeric ${missing.join(' or ')} here. Add it as a property on this point (bullet menu, Add property), or declare it as a variable like {${missing[0]} := 10}.`;
         else if ([parsed.value, parsed.max].some(x => x.kind === 'expr')) tip = 'Check the expression, like {meter: words(subtree)/1000}.';
       }
-      return stash(`<span class="meter meter-bad" tabindex="-1" title="${escQ(tip)}" aria-label="Meter unresolved. ${escQ(tip)}">{meter?}</span>`);
+      return stash(`<span class="meter meter-bad" ${INLINE_CTL} title="${escQ(tip)}" aria-label="Meter unresolved. ${escQ(tip)}">{meter?}</span>`);
     }
     const full = r.value >= r.max ? ' meter-full' : '';
     // an icon-pool style draws one FA glyph per unit (filled vs dimmed) when the max is within
@@ -8239,7 +8270,7 @@ function mdInline(s) {
             const arith = act.op === '=' ? '' : ' ' + act.op[0];   // "-=","+=" → the bare arithmetic sign for the label
             const desc = act.op === '=' ? `set ${act.target} to ${act.rhs}` : `change ${act.target} by${arith} ${act.rhs}`;
             const label = `${act.target} ${act.op} ${act.rhs}`;
-            out += stash(`<span class="act-pill" role="button" tabindex="-1" data-act-body="${escQ(body)}" title="Click to apply: ${escQ(desc)}" aria-label="Action, ${escQ(desc)}. Click to apply.">${escHtml(label)}</span>`);
+            out += stash(`<span class="act-pill" role="button" ${INLINE_CTL} data-act-body="${escQ(body)}" title="Click to apply: ${escQ(desc)}" aria-label="Action, ${escQ(desc)}. Click to apply.">${escHtml(label)}</span>`);
             i = end + 1;
             continue;
           }
@@ -8310,7 +8341,7 @@ function mdInline(s) {
   // change all.
   s = s.replace(/(?<![a-zA-Z0-9])#((?=[\d_-]*[a-zA-Z])[\w-]+(?:\/[\w-]+)*)/g, (_,t) => {
     const col = tagColorOf(t); // #464: an on-brand swatch, hierarchical (nearest configured ancestor)
-    return `<a class="hashtag" data-tag="#${t}"${col ? ` data-color="${col}"` : ''} role="button" tabindex="-1" aria-label="Filter by #${t}">#${t}</a>`;
+    return `<a class="hashtag" data-tag="#${t}"${col ? ` data-color="${col}"` : ''} role="button" ${INLINE_CTL} aria-label="Filter by #${t}">#${t}</a>`;
   });
   s = s.replace(/\x00(\d+)\x00/g,(_,i)=>tok[+i]);
   return s;
@@ -8835,7 +8866,7 @@ function renderListItem(inner, taskNo) {
     // (bullet, pill pencils) needs a real sibling element. display:none except under
     // hover:none, where it overlays the checkbox zone at ~40px; it carries the same
     // data-task so the mousedown toggle path treats it exactly like the box itself.
-    return `<li class="md-task"><span class="md-task-pad" data-task="${taskNo.n}" aria-hidden="true"></span><input type="checkbox" class="md-task-check" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
+    return `<li class="md-task"><span class="md-task-pad" data-task="${taskNo.n}" aria-hidden="true"></span><input type="checkbox" class="md-task-check" contenteditable="false" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
   }
   return `<li>${mdInline(inner)}</li>`;
 }
@@ -8879,7 +8910,7 @@ function mdToHtml(raw, isCode) {
       flush();
       const q = [];
       while (i < lines.length && SPOILER_RE.test(lines[i])) { q.push(lines[i].match(SPOILER_RE)[1]); i++; }
-      out.push(`<div class="md-spoiler" role="button" tabindex="-1" aria-expanded="false" aria-label="Hidden text, activate to reveal">${q.map(mdInline).join('<br>')}</div>`);
+      out.push(`<div class="md-spoiler" role="button" ${INLINE_CTL} aria-expanded="false" aria-label="Hidden text, activate to reveal">${q.map(mdInline).join('<br>')}</div>`);
       continue;
     }
     // blockquote: group consecutive "> " lines into one <blockquote> (spoiler ">!" lines
@@ -19212,7 +19243,12 @@ function attachContentEvents(content, node) {
   content.addEventListener('change', e => {
     if (content.dataset.editing) return;
     if (e.target.classList && e.target.classList.contains('md-task-check')) {
-      toggleTaskInNode(node, +e.target.dataset.task);
+      const ordinal = e.target.dataset.task;
+      toggleTaskInNode(node, +ordinal);
+      // #1470: the toggle repaints the row, destroying the box the user was standing on, so focus
+      // fell to <body> -- the UXP-19 class, on the one member of the family that reaches this by
+      // Space rather than by a pill handler. Put them back on the box they just ticked.
+      refocusAfterRepaint(node.id, c => c.querySelector(`.md-task-check[data-task="${CSS.escape(String(ordinal))}"]`));
     }
   });
 
@@ -20514,6 +20550,29 @@ function onKeyDown(e, id, content) {
     // footnote ref (UXP-55): Enter/Space reveals + highlights its footnote (hover's keyboard twin)
     const fnref = e.target.closest?.('.fn-ref');
     if (fnref) { e.preventDefault(); activateFnRef(fnref.dataset.key, id); return; }
+    // #1470: task checkbox. Space already toggles it natively and the `change` listener writes the
+    // model; Enter has no native action on a checkbox, so it escaped to the outline handler and
+    // SPLIT THE POINT. Every other inline control here treats Enter and Space alike (P1), so route
+    // Enter through the element's own click, which fires the same `change` the Space path uses --
+    // one toggle, one write, no second copy of the logic. Space is deliberately NOT handled here:
+    // it would toggle twice.
+    const tchk = e.target.closest?.('.md-task-check');
+    if (tchk && e.key === 'Enter') {
+      e.preventDefault();
+      const ordinal = tchk.dataset.task;
+      tchk.click();
+      refocusAfterRepaint(id, c => c.querySelector(`.md-task-check[data-task="${CSS.escape(String(ordinal))}"]`));
+      return;
+    }
+    // #1470: a meter is a focusable DIAGNOSTIC, not a control -- .meter-bad carries tabindex so
+    // assistive tech can reach the explanation of why the meter has no value. It has no action, and
+    // an unhandled key here split the point. Swallow it and say the reason, rather than nothing (P4).
+    const mtr = e.target.closest?.('.meter');
+    if (mtr && e.target === mtr) {
+      e.preventDefault();
+      announce(mtr.getAttribute('aria-label') || mtr.getAttribute('title') || 'Meter');
+      return;
+    }
     // UXP-177: TODO state / priority badge — Enter/Space opens the state/priority picker, the
     // keyboard twin of its mousedown (→ showTodoPicker). Guard to the focused badge itself.
     const tbadge = e.target.closest?.('.todo-state,.todo-prio');
