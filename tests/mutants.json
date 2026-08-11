@@ -290,6 +290,42 @@
       "kills": "#1471 both entry paths route through the one core"
     },
     {
+      "id": "bpop-row-drops-focus",
+      "suite": "unit",
+      "why": "#1464 B6: the shipped menu, where eleven rows acted and left focus on <body>",
+      "file": "index.html",
+      "find": "        bpopRestoreAfterAction(back, rowIdx < 0 ? null : rowIdx);",
+      "replace": "        ;",
+      "kills": "#1464 B6: a menu row that acts leaves focus somewhere usable"
+    },
+    {
+      "id": "bpop-restore-bails-on-closing-menu",
+      "suite": "unit",
+      "why": "#1464 B6: a plain !== body test reads the just-dismissed row as 'focus was placed'",
+      "file": "index.html",
+      "find": "    if (ae && ae !== document.body && !bpop.contains(ae)) return;   // the action placed focus deliberately",
+      "replace": "    if (ae && ae !== document.body) return;",
+      "kills": "#1464 B6: a menu row that acts leaves focus somewhere usable"
+    },
+    {
+      "id": "dialog-return-target-raw",
+      "suite": "unit",
+      "why": "#1464 B3: capturing activeElement raw stores a menu row the dialog then hides",
+      "file": "index.html",
+      "find": "    if (fresh) ioReturnFocus = dialogReturnTarget();",
+      "replace": "    if (fresh) ioReturnFocus = document.activeElement;",
+      "kills": "#1464 B3: a dialog never hands focus back to a surface that closed behind it"
+    },
+    {
+      "id": "bpop-tab-escapes",
+      "suite": "unit",
+      "why": "#1464 B5: Tab walking out to the help button behind a still-open menu",
+      "file": "index.html",
+      "find": "  else if (e.key === 'Tab') { e.preventDefault(); items[((e.shiftKey ? idx - 1 : idx + 1) + items.length) % items.length]?.focus(); }",
+      "replace": "  else if (false) { ; }",
+      "kills": "#1464 B5: Tab stays inside the point-actions menu"
+    },
+    {
       "id": "typed-run-appended-not-replaced",
       "suite": "unit",
       "why": "#1466: the shipped restore, which wrote the seeded character twice into the point",

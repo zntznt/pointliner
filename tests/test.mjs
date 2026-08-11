@@ -22635,7 +22635,9 @@ test('#1192 the chooser leads with everyday domains, then blank and the tour, ev
   // P3: named rows, a named card, focus in on open and back out on close.
   assert.ok(fn.includes("pick.setAttribute('aria-label', aria)"), 'every pick carries an accessible name');
   assert.ok(fn.includes("ioCard.setAttribute('aria-label', title)"), 'the card names itself (welcome vs gallery)');
-  assert.ok(fn.includes('ioReturnFocus = document.activeElement'), 'focus returns to where it came from on close');
+  // #1464 routes every capture through dialogReturnTarget(), which is activeElement EXCEPT when
+  // that is inside a surface closing behind the dialog. The intent pinned here is unchanged.
+  assert.ok(fn.includes('ioReturnFocus = dialogReturnTarget()'), 'focus returns to where it came from on close');
   assert.match(fn, /requestAnimationFrame\(\(\) => \{ \(ioCard\.querySelector\('\.tpl-pick'\) \|\| closeBtn\)\.focus\(\); \}\)/,
     'focus moves into the chooser on open');
   // §3c: Escape, the backdrop and the Close button share ONE dismissal, so none can become a wall.
@@ -26755,6 +26757,50 @@ test('#1108 restoreTypedRun — hands back what was typed into the palette', () 
   assert.equal(c.restoreTypedRun('a /', 2, 0, null).text, 'a /');
 });
 
+// ── #1464: where focus goes when a surface closes or acts ───────────────────
+// Three of the six symptoms, one shape. Driven censuses, not the issue's samples: B6 named two
+// menu rows that dropped focus and there were ELEVEN; B3 named Schedule against Check and Aliases,
+// and through the point menu ALL NINE forms lost the caret.
+test('#1464 B6: a menu row that acts leaves focus somewhere usable', () => {
+  // the restore existed (#1411) and was wired to Escape and the to-do picker only; the ordinary
+  // action rows were built with "each fn owns its own dismissal", which quietly meant its focus too
+  const sb = fnBody(_src, 'showBulletPopup');
+  assert.match(sb, /bpopRestoreAfterAction\(back, rowIdx < 0 \? null : rowIdx\)/,
+    'every action row restores after its fn runs');
+  assert.match(sb, /const rowIdx = \[\.\.\.document\.querySelectorAll\('\.node-content\[data-id\]'\)\]/,
+    'the row index is read BEFORE the action, because Delete removes the row it is about');
+  const helper = fnBody(_src, 'bpopRestoreAfterAction');
+  // the two conditions that keep it from firing where it should not
+  assert.match(helper, /if \(nodeId == null\) return;/,
+    'keyboard-opened menus only: .node-content focus enters edit mode, which a mouse user did not ask for');
+  assert.match(helper, /if \(ae && ae !== document\.body && !bpop\.contains\(ae\)\) return;/,
+    'a row that placed focus deliberately keeps it, and the dismissed menu counts as nowhere');
+  assert.match(helper, /bpopRestoreFocus\(fallbackIdx\)/, 'reusing the #1411 restore, fallback included');
+});
+
+test('#1464 B3: a dialog never hands focus back to a surface that closed behind it', () => {
+  const drt = fnBody(_src, 'dialogReturnTarget');
+  assert.match(drt, /bpop\.contains\(a\) && bpopReturnFocus != null/, 'the point-menu case');
+  assert.match(drt, /ioCard\.contains\(a\) && builderState && builderState\.content/, 'the builder-card case');
+  assert.match(drt, /return a;/, 'and otherwise the active element, unchanged');
+  // CENSUS: no capture site may still read activeElement raw, or the rule holds at twelve places
+  // and not the thirteenth. This is the ratchet: a new dialog added later joins by construction.
+  assert.equal((_src.match(/ioReturnFocus = document\.activeElement/g) || []).length, 0,
+    'every capture routes through the helper');
+  const captures = (_src.match(/ioReturnFocus = dialogReturnTarget\(\)/g) || []).length;
+  assert.ok(captures >= 13, `the capture sites must all still be there, found ${captures}`);
+});
+
+test('#1464 B5: Tab stays inside the point-actions menu', () => {
+  const kd = between(_src, "bpop.addEventListener('keydown'", "// The node id to restore focus to");
+  assert.match(kd, /else if \(e\.key === 'Tab'\) \{ e\.preventDefault\(\);/,
+    'Tab is claimed by the menu rather than walking out behind it');
+  assert.match(kd, /items\[\(\(e\.shiftKey \? idx - 1 : idx \+ 1\) \+ items\.length\) % items\.length\]\?\.focus\(\)/,
+    'and rovers both ways, wrapping, exactly like the arrows above it');
+  // Escape is still the way out, which is what a menu is supposed to offer
+  assert.match(kd, /e\.key === 'Escape'.*hideBpop\(\); bpopRestoreFocus\(\)/);
+});
+
 // ── #1466: the seeded search box counted its own first characters twice ─────
 test('#1466 the restored run replaces the seeded query instead of following it', () => {
   const r = c.restoreTypedRun;
@@ -28555,7 +28601,9 @@ test('UXP-247 the dialog shell is the one place a dialog shell lives', () => {
   // read BEFORE ioBack gains `.on`, or a rebuild is indistinguishable from a fresh open.
   assert.ok(/const fresh = !ioBack\.classList\.contains\('on'\);\s*\n\s*root\.innerHTML = '';/.test(_src),
     'fresh must be sampled before the shell touches the scrim');
-  assert.ok(/if \(fresh\) ioReturnFocus = document\.activeElement;/.test(_src),
+  // #1464: the `if (fresh)` guard is what this pins, and it is unchanged; only the target
+  // expression moved behind dialogReturnTarget().
+  assert.ok(/if \(fresh\) ioReturnFocus = dialogReturnTarget\(\);/.test(_src),
     'an in-place rebuild must not overwrite the return target from the first open');
   // openInsertDialog is built ON the shell — the proof case, since it carries the nested-in-builder
   // path and the bulk of the existing pins.

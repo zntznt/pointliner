@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2071 declarations in 152 sections across 17 domains.**
+**2073 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1212,7 +1212,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `bpopShowTimer`
 - `bpopExpanded` — A hover-opened menu shows only the primary actions until the user clicks "More
 - `bpopReturnFocus` — The node id to restore focus to when the popup gives focus back.
-- `bpopRestoreFocus` — #1411: ONE restore, and it is deliberately NOT inside hideBpop -- an outside-click dismissal must
+- `bpopRestoreAfterAction` — #1411: ONE restore, and it is deliberately NOT inside hideBpop -- an outside-click dismissal must
+- `bpopRestoreFocus`
 
 ## column panel one-time init
 
@@ -1320,7 +1321,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 ## the shared dialog shell (UXP-247)
 
-- `openDialogShell` — The ONE place a dialog's shell lives. Every part of this was copy-pasted across 22 dialogs, and
+- `dialogReturnTarget` — The ONE place a dialog's shell lives. Every part of this was copy-pasted across 22 dialogs, and
+- `openDialogShell`
 - `openInsertDialog`
 - `closeIo`
 - `closeBuilderWindow` — Close the builder window after a nested dialog submits. Clears builder state,
