@@ -15007,7 +15007,7 @@ function openCalendarAuditConfirm(next, audit, onConfirm) {
   foot.append(cancelBtn, okBtn); ioCard.appendChild(foot);
 
   ioCancel = closeIo;
-  ioReturnFocus = document.activeElement;
+  ioReturnFocus = dialogReturnTarget();
   ioCard.setAttribute('aria-label', 'Check your dates');
   ioBack.classList.add('on');
   requestAnimationFrame(() => cancelBtn.focus());
@@ -15669,7 +15669,7 @@ function openTemplatePicker(nodeId) {
   foot.append(closeBtn); ioCard.appendChild(foot);
   ioCancel = closeIo;
 
-  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the original return target (UXP-81)
+  if (!ioBack.classList.contains('on')) ioReturnFocus = dialogReturnTarget(); // in-place re-render keeps the original return target (UXP-81)
   ioCard.setAttribute('aria-label', 'Stamp a template');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
@@ -15732,7 +15732,7 @@ function openDataPackManager() {
 
   if (_packEditId) buildPackEditView(); else buildPackListView();
 
-  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the return target (UXP-81)
+  if (!ioBack.classList.contains('on')) ioReturnFocus = dialogReturnTarget(); // in-place re-render keeps the return target (UXP-81)
   // UXP-244: stash what was typed BEFORE dropping the in-memory pack. _packDraft is the unsaved
   // pack shell (which must not be persisted — BUG-1); _packDrafts holds the typed text (which must
   // not be lost). Dropping one no longer means losing the other.
@@ -16290,7 +16290,7 @@ async function openWorkspaceSwitcher() {
   foot.append(newBtn, closeBtn); ioCard.appendChild(foot);
   ioCancel = closeIo;
 
-  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement; // in-place re-render keeps the original return target (UXP-81)
+  if (!ioBack.classList.contains('on')) ioReturnFocus = dialogReturnTarget(); // in-place re-render keeps the original return target (UXP-81)
   ioCard.setAttribute('aria-label', 'Folder documents');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick[aria-current]') || ioCard.querySelector('.tpl-pick') || newBtn).focus(); });
@@ -16390,7 +16390,7 @@ function showBrokenLinksReport() {
   foot.append(closeBtn); ioCard.appendChild(foot);
   ioCancel = closeIo;
 
-  if (!ioBack.classList.contains('on')) ioReturnFocus = document.activeElement;
+  if (!ioBack.classList.contains('on')) ioReturnFocus = dialogReturnTarget();
   ioCard.setAttribute('aria-label', 'Broken links report');
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });
@@ -16967,7 +16967,7 @@ function openBulkRefileDialog() {
   const roots = selectionRoots();
   if (!roots.length) return;
   const excludeIds = new Set(roots);
-  ioReturnFocus = document.activeElement;
+  ioReturnFocus = dialogReturnTarget();
   ioCancel = closeIo;
   buildTreePicker({
     icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },
@@ -16989,7 +16989,7 @@ function openBulkRefileDialog() {
 function openRefileDialog(moveId) {
   const node = nodeById(moveId);
   if (!node) return;
-  ioReturnFocus = document.activeElement;
+  ioReturnFocus = dialogReturnTarget();
   ioCancel = closeIo;
   buildTreePicker({
     icon: { fa: 'fa-solid fa-arrow-right-arrow-left', fb: '⇄' },   // UXP-134: refile's own glyph (was fa-left-right, the width glyph)
@@ -17014,7 +17014,7 @@ function openRefileDialog(moveId) {
 // parent paths open on entry (tag trees are shallow); a structural-only group is dimmed.
 function openTagBrowser() {
   const tags = collectTags();
-  ioReturnFocus = document.activeElement;
+  ioReturnFocus = dialogReturnTarget();
   ioCancel = closeIo;
   const initialExpanded = [];
   const seen = new Set();
@@ -17336,7 +17336,7 @@ function captureAddInbox() {
   // buildTreePicker only fills ioCard — the caller must OPEN the modal overlay (ioBack.on)
   // and set the io plumbing, exactly like openRefileDialog. (Missing this is what left the
   // Add-inbox button dead once capture stopped being a modal itself.)
-  ioReturnFocus = document.activeElement;
+  ioReturnFocus = dialogReturnTarget();
   ioCancel = closeIo;
   const back = () => { closeIo(); captureManage = true; requestAnimationFrame(() => { if (captureOpen) renderCaptureStrip(); }); };
   buildTreePicker({
@@ -21854,6 +21854,12 @@ bpop.addEventListener('keydown', e => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); items[(idx - 1 + items.length) % items.length]?.focus(); }
   else if (e.key === 'Home') { e.preventDefault(); items[0]?.focus(); }
   else if (e.key === 'End') { e.preventDefault(); items[items.length - 1]?.focus(); }
+  // #1464 B5: Tab stays IN the menu, wrapping like the arrows. It used to walk straight out to the
+  // help button BEHIND the still-open popup, where Enter opened the guide on top of an orphaned
+  // menu -- two surfaces up at once, neither owning focus. The File menu keeps all thirty of its
+  // stops inside itself, so a menu that leaks Tab makes one key mean two things in one app (P1).
+  // Escape is still the way out, which is where a menu is supposed to send you.
+  else if (e.key === 'Tab') { e.preventDefault(); items[((e.shiftKey ? idx - 1 : idx + 1) + items.length) % items.length]?.focus(); }
   else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); document.activeElement?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }
   else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideBpop(); bpopRestoreFocus(); }
 });
@@ -21865,6 +21871,30 @@ let bpopReturnFocus = null;
 // <body>: backwards, and on the surface that takes focus onto a chip the moment it opens. The old
 // comment on bpopReturnFocus said "when the popup is closed by keyboard (Escape)" -- the omission,
 // written down. Refocus by id, because an apply re-renders the row it is about.
+// #1464 B6: a row that ACTS must leave focus somewhere usable, exactly as Escape and the to-do
+// picker already do. #1411 built that restore and wired those two paths; the ordinary action rows
+// never got it, and "each fn owns its own dismissal" quietly meant each fn owns its own focus too.
+// Driven census of all 28 rows: ELEVEN landed on <body> -- Copy link, Re-roll dice, Show
+// distribution, Move up (while Move DOWN was fine, a few lines away), Export to Markdown, Exclude
+// from export, Set as inbox, Set as journal home, the oracle row, Chronicle and Delete.
+//
+// Two things keep this from firing where it should not. It only acts when the action left focus on
+// <body>, so the many rows that open a dialog and put focus in its first field are untouched. And it
+// only runs for a KEYBOARD-opened menu, because .node-content's focus handler enters edit mode --
+// restoring after a mouse click would drop a caret into a point the user only opened a menu on.
+function bpopRestoreAfterAction(nodeId, fallbackIdx) {
+  if (nodeId == null) return;
+  requestAnimationFrame(() => {
+    // "Somewhere usable" excludes the menu we just dismissed: the activated row keeps focus for a
+    // frame after hideBpop (which only drops a class), so a plain !== body test reads as "the action
+    // placed focus" and bails, and focus falls to <body> a moment later anyway. Measured.
+    const ae = document.activeElement;
+    if (ae && ae !== document.body && !bpop.contains(ae)) return;   // the action placed focus deliberately
+    bpopReturnFocus = nodeId;
+    bpopRestoreFocus(fallbackIdx);
+  });
+}
+
 function bpopRestoreFocus(fallbackIdx = null) {
   const id = bpopReturnFocus; bpopReturnFocus = null;
   if (!id) return;
@@ -22609,7 +22639,16 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     head.setAttribute('aria-hidden', 'true');   // decorative label; rows carry the semantics
     bpop.appendChild(head);
     for (const { icon, label, fn, danger } of rows) {
-      const item = mkCmdItem(icon, label, '', fn);   // each fn owns its own dismissal
+      // #1464: each fn still owns its own dismissal; what it no longer owns is where focus lands.
+      // The row index is read BEFORE the action, because Delete removes the row this is about and
+      // bpopRestoreFocus needs it to land on the surviving neighbour instead of <body>.
+      const item = mkCmdItem(icon, label, '', () => {
+        const back = bpopReturnFocus;
+        const rowIdx = [...document.querySelectorAll('.node-content[data-id]')]
+          .findIndex(el => el.dataset.id === String(nodeId));
+        fn();
+        bpopRestoreAfterAction(back, rowIdx < 0 ? null : rowIdx);
+      });
       item.setAttribute('role', 'menuitem');
       item.setAttribute('tabindex', '-1');
       if (danger) item.classList.add('danger');
@@ -24223,6 +24262,32 @@ function wireDialogDraft(key, seeds, readFields, applyFields) {
 //   fresh  true when this is a FIRST open rather than an in-place rebuild. openAppearanceDialog
 //          re-renders itself after every swatch commit; restoring a draft mid-rebuild would push a
 //          stale value over the input being typed into. Read before anything sets `.on`.
+// #1464 B3: what a dialog should hand focus back to. `document.activeElement` is the obvious
+// answer and it is wrong from the point-actions menu: focus is on a `.cmd-item` that the menu hides
+// on the way out, so closeIo focuses a display:none element, which silently does nothing, and the
+// caret ends on <body>. Measured across both doors: all NINE forms the point menu opens lost the
+// caret, while Check, Aliases and Refile kept it through `/` -- because the builder sets the target
+// to the point explicitly and never lets activeElement answer for it.
+//
+// So when focus sits inside a surface that is closing, name the point that surface was opened on
+// instead. Keyboard-opened menus only, for the same reason the B6 restore is: `.node-content`'s
+// focus handler enters edit mode, and a mouse user who clicked a menu row did not ask for a caret.
+function dialogReturnTarget() {
+  const a = document.activeElement;
+  if (a && bpop.contains(a) && bpopReturnFocus != null) {
+    const live = document.querySelector(`.node-content[data-id="${CSS.escape(String(bpopReturnFocus))}"]`);
+    if (live) return live;
+  }
+  // The same shape one level up. Through `/`, a form opens ON the builder card, so the active
+  // element is the builder's own search box -- and the card is emptied with innerHTML = '' on the
+  // way out. The builder already knows the point it was typed from; that is the honest target, and
+  // it is why Check and Aliases worked through this door while Schedule, Property and Repeat did
+  // not: those three re-captured over it, the other three never did.
+  if (a && ioCard.contains(a) && builderState && builderState.content && builderState.content.isConnected)
+    return builderState.content;
+  return a;
+}
+
 function openDialogShell(opts) {
   const root = opts.root || ioCard;
   // Read BEFORE ioBack gains `.on` below, or a fresh open cannot be told from a rebuild.
@@ -24284,7 +24349,7 @@ function openDialogShell(opts) {
   if (!opts.nested) {
     ioCancel = close;
     // An in-place rebuild must not overwrite the return target captured on the first open.
-    if (fresh) ioReturnFocus = document.activeElement;
+    if (fresh) ioReturnFocus = dialogReturnTarget();
     root.setAttribute('aria-label', opts.ariaLabel || opts.title || '');
     ioBack.classList.add('on');
   }
@@ -24621,7 +24686,7 @@ function openConfirmDialog({ title = 'Are you sure?', message, confirmLabel = 'O
     ioBack.addEventListener('keydown', onKey);
     registerIoPending({ owner: finish, alive: () => ioCard.contains(foot), dismiss: () => finish(false, true) });   // #844
 
-    ioReturnFocus = document.activeElement;
+    ioReturnFocus = dialogReturnTarget();
     ioCard.setAttribute('aria-label', title);
     ioBack.classList.add('on');
     cancelBtn.focus(); // focus Cancel so Enter doesn't accidentally discard
@@ -36112,7 +36177,7 @@ function openReconcileDialog(name, cleanTwoTab) {
     ioBack.addEventListener('keydown', onKey);
     registerIoPending({ owner: finish, alive: () => ioCard.contains(foot), dismiss: () => finish('later', true) });   // #844
 
-    ioReturnFocus = document.activeElement;
+    ioReturnFocus = dialogReturnTarget();
     ioCard.setAttribute('aria-label', 'This document changed on disk');
     ioBack.classList.add('on');
     theirsBtn.focus();   // a sensible neutral default; Enter here takes the disk version
@@ -36161,7 +36226,7 @@ function openDupDocIdDialog(names) {
     function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } }
     ioBack.addEventListener('keydown', onKey);
     registerIoPending({ owner: finish, alive: () => ioCard.contains(foot), dismiss: () => finish(null, true) });   // #844
-    ioReturnFocus = document.activeElement;
+    ioReturnFocus = dialogReturnTarget();
     ioCard.setAttribute('aria-label', 'Two files share one identity');
     ioBack.classList.add('on');
     if (firstBtn) firstBtn.focus();
@@ -46929,7 +46994,7 @@ function openStarterGallery(opts = {}) {
   foot.append(closeBtn); ioCard.appendChild(foot);
   ioCancel = dismiss;
 
-  ioReturnFocus = document.activeElement;
+  ioReturnFocus = dialogReturnTarget();
   ioCard.setAttribute('aria-label', title);
   ioBack.classList.add('on');
   requestAnimationFrame(() => { (ioCard.querySelector('.tpl-pick') || closeBtn).focus(); });

@@ -1987,3 +1987,104 @@ test('#1466 dismissing a late-opening trigger writes what was typed, once', { sk
     'backspacing the seed in the box removes it from the point too');
   await pg.close();
 });
+
+// 35. #1464 B3/B5/B6 — where focus goes when a surface closes or acts. Driven, and driven as
+//     CENSUSES rather than the issue's samples: it named two menu rows that lost focus and there
+//     were eleven, and named Schedule against Check and Aliases while all nine forms lost the
+//     caret through the point menu. No source pin can see any of it.
+test('#1464 every point-actions row leaves focus somewhere usable', { skip: skip() }, async () => {
+  const seed = async (pg) => {
+    await pg.evaluate(() => {
+      const mk = t => { const n = mkNode(t); n.type = 'ul'; return n; };
+      root.children = [mk('Damage {2d6} to the orc'), mk('Second point'), mk('Third point')];
+      root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      if (typeof promoteLoadedShorthand === 'function') promoteLoadedShorthand(root);
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0]; c.focus(); activeContentId = c.dataset.id;
+    });
+    await pg.waitForTimeout(320);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+  };
+  const first = await fresh();
+  await seed(first);
+  const labels = await first.evaluate(() => [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')]
+    .map(e => (e.innerText || '').split('\n')[0].trim()));
+  assert.ok(labels.length >= 20, `the census must cover the real menu, found ${labels.length} rows`);
+  await first.close();
+
+  const lost = [];
+  for (let i = 0; i < labels.length; i++) {
+    const pg = await fresh();
+    await seed(pg);
+    const ok = await pg.evaluate(n => {
+      const el = [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')][n];
+      if (!el) return false; el.focus(); return document.activeElement === el;
+    }, i);
+    if (!ok) { await pg.close(); continue; }
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(600);
+    const ae = await pg.evaluate(() => document.activeElement.tagName);
+    if (ae === 'BODY') lost.push(labels[i] || `row ${i}`);
+    await pg.close();
+  }
+  assert.deepEqual(lost, [],
+    'a row that acts and drops focus on <body> leaves the keyboard with nowhere to go');
+});
+
+test('#1464 B3/B5: forms hand the caret back, and Tab stays in the menu', { skip: skip() }, async () => {
+  // B3 — every form the point menu opens, dismissed with Escape
+  for (const label of ['Set dates', 'Add check', 'Add alias', 'Add property', 'Refile…']) {
+    const pg = await fresh();
+    await pg.evaluate(() => {
+      const mk = t => { const n = mkNode(t); n.type = 'ul'; return n; };
+      root.children = [mk('Damage {2d6} to the orc'), mk('Second')];
+      root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      if (typeof promoteLoadedShorthand === 'function') promoteLoadedShorthand(root);
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0]; c.focus(); activeContentId = c.dataset.id;
+    });
+    await pg.waitForTimeout(320);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+    const i = await pg.evaluate(l => [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')]
+      .findIndex(e => (e.innerText || '').split('\n')[0].trim() === l), label);
+    assert.ok(i >= 0, `the menu must offer "${label}"`);
+    await pg.evaluate(n => [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')][n].focus(), i);
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    assert.notEqual(await pg.evaluate(() => document.activeElement.tagName), 'BODY',
+      `${label}: precondition, the form takes focus when it opens`);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(700);
+    assert.equal(await pg.evaluate(() => document.activeElement.className.includes('node-content')), true,
+      `${label}: Escape must hand the caret back to the point, not to <body>`);
+    await pg.close();
+  }
+
+  // B5 — Tab used to walk out to the help button BEHIND the still-open menu
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('Buy milk'), mkNode('Second')];
+    root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    const c = document.querySelectorAll('.node-content')[0]; c.focus(); activeContentId = c.dataset.id;
+  });
+  await pg.waitForTimeout(320);
+  await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+  const seen = [];
+  for (let i = 0; i < 6; i++) {
+    await pg.keyboard.press('Tab'); await pg.waitForTimeout(140);
+    const r = await pg.evaluate(() => {
+      const a = document.activeElement;
+      const items = [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item, #bpop .tp-chip')];
+      return { inMenu: document.getElementById('bpop').contains(a), idx: items.indexOf(a) };
+    });
+    assert.equal(r.inMenu, true, `Tab ${i + 1} left the menu, which stays open behind it`);
+    seen.push(r.idx);
+  }
+  assert.ok(new Set(seen).size > 1, 'and Tab actually moves through the rows rather than sticking');
+  const back = await (async () => { await pg.keyboard.press('Shift+Tab'); await pg.waitForTimeout(150);
+    return pg.evaluate(() => { const items = [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item, #bpop .tp-chip')];
+      return items.indexOf(document.activeElement); }); })();
+  assert.equal(back, seen[seen.length - 1] - 1, 'Shift+Tab walks back');
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(500);
+  assert.equal(await pg.evaluate(() => document.activeElement.className.includes('node-content')), true,
+    'and Escape is still the way out, back to the point');
+  await pg.close();
+});
