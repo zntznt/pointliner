@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2064 declarations in 152 sections across 17 domains.**
+**2066 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -160,6 +160,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `TASK_STRIP_ONE`
 - `isTaskFirst`
 - `toggleTaskLine` — #437: toggle the to-do marker on the line the caret is in — a plain line gains `- [ ]`, a task
+- `taskShortcutAt` — #1471: what the Ctrl/⌘+Shift+X shortcut does to `text` with the caret at `off`, and WHAT TO SAY
+- `taskShortcutSay` — What each outcome is called, so both entry paths (editing, and from the cursor) say the same
 - `todoDoneFromText` — Node-level done-ness from the text: keyword wins — done iff it sits right of
 
 ## progress cookies ([/] and [%])

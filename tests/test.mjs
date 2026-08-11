@@ -3590,7 +3590,9 @@ test('undo pushes are unconditional here, not guarded on activeContentId', () =>
 
 test('the keyboard and mouse routes to a checkbox now agree', () => {
   // Ctrl+Shift+X always recorded undo; clicking the box never did. Same user intent, two answers.
-  assert.ok(/pushUndo\(\); setFirstTaskChecked\(n, !firstTaskChecked\(n\)\)/.test(_src),
+  // #1471 routed the keyboard twin through taskShortcutAt; it must still snapshot BEFORE it writes.
+  const kbX = between(_src, '// ⌘/Ctrl+⇧+X add or tick a to-do', '// ⌘/Ctrl+D duplicate');
+  assert.ok(/pushUndo\(\);/.test(kbX) && kbX.indexOf('pushUndo()') < kbX.indexOf('n.text = r.text'),
     'the keyboard twin still snapshots');
   assert.ok(/pushUndo\(\);/.test(fnBody(_src, 'toggleTaskInNode')),
     'and the click path now does too');
@@ -25880,6 +25882,87 @@ test('#437 — toggleTaskLine adds/removes the to-do marker on the caret line', 
   assert.equal(t('a\nb\nc', 2), 'a\n- [ ] b\nc');         // multi-line: only the caret's line
   assert.equal(t('a\n- [ ] b\nc', 3), 'a\nb\nc');         // …and toggling it back
   assert.equal(t('buy milk', 999), 'buy milk');           // caret out of range → unchanged
+});
+
+// ── #1471: Ctrl/⌘+Shift+X is a to-do shortcut, not a no-op with a to-do label ─
+// It flipped [ ]↔[x] and did nothing at all, silently, on a line that was not already a task,
+// which is the line most people try it on first. Its two siblings in the same chord family both
+// speak (Ctrl+Shift+S announced "TODO", Ctrl+Shift+P "Priority A"); this one never said a word,
+// including on the branch where it DID work.
+test('#1471 taskShortcutAt adds the marker, ticks the box, and names every outcome', () => {
+  const t = (text, off) => host(c.taskShortcutAt(text, off));
+  // a plain line GAINS the marker (the reported gap) and reports how far the caret moved
+  assert.deepEqual(t('Buy milk', 0), { text: '- [ ] Buy milk', action: 'added', delta: 6 });
+  assert.deepEqual(t('Buy milk', 4), { text: '- [ ] Buy milk', action: 'added', delta: 6 });
+  assert.deepEqual(t('', 0), { text: '- [ ] ', action: 'added', delta: 6 });
+  // an existing box flips, in both directions, and the caret does not move
+  assert.deepEqual(t('- [ ] Buy milk', 0), { text: '- [x] Buy milk', action: 'checked', delta: 0 });
+  assert.deepEqual(t('- [x] Buy milk', 0), { text: '- [ ] Buy milk', action: 'unchecked', delta: 0 });
+  // every list marker the task grammar admits, and indentation is preserved rather than flattened
+  assert.equal(t('* [ ] star', 0).text, '* [x] star');
+  assert.equal(t('1. [ ] numbered', 0).text, '1. [x] numbered');
+  assert.deepEqual(t('    nested line', 6), { text: '    - [ ] nested line', action: 'added', delta: 6 });
+  // multi-line: only the caret's line, exactly like toggleTaskLine
+  assert.deepEqual(t('a\nb\nc', 2), { text: 'a\n- [ ] b\nc', action: 'added', delta: 6 });
+  assert.equal(t('a\n- [ ] b\nc', 3).text, 'a\n- [x] b\nc');
+  // NEVER removes a marker: that is toggleTaskLine's job, and the touch button's
+  assert.equal(t('- [x] done', 0).text, '- [ ] done');
+  assert.notEqual(t('- [x] done', 0).text, 'done');
+  // a keyword to-do is already a to-do, in the form the state cycle owns: refuse, don't double-mark
+  assert.deepEqual(t('#TODO Buy milk', 0), { text: '#TODO Buy milk', action: 'keyword', delta: 0 });
+  // an offset off the end names itself rather than silently returning the text
+  assert.equal(t('Buy milk', 999).action, 'none');
+  assert.equal(c.taskShortcutAt({}, 0), null, 'invalid input returns null, like every pure core here');
+
+  // every action has copy, no two outcomes say the same thing, and the refusal names its remedy
+  const said = ['added', 'checked', 'unchecked', 'keyword'].map(a => c.taskShortcutSay(a, 'Ctrl'));
+  for (const s of nonEmpty(said, 'shortcut announcements')) {
+    assert.ok(s && s.length > 3, 'every outcome that happens has something to say (P4)');
+    assert.ok(!/—|–/.test(s), 'AP punctuation only in user copy');
+  }
+  assert.equal(new Set(said).size, said.length, 'four outcomes, four different sentences');
+  assert.match(c.taskShortcutSay('keyword', 'Ctrl'), /Ctrl\+Shift\+S/, 'the refusal names the key that does own it');
+  assert.match(c.taskShortcutSay('keyword', '⌘'), /⌘\+Shift\+S/, 'and follows the platform modifier');
+  assert.equal(c.taskShortcutSay('none'), '', "'none' is nothing happening to nothing, and says nothing");
+});
+
+test('#1471 both entry paths route through the one core, and both speak', () => {
+  // editing: the hand-rolled loop that used to live here is gone, and the caret follows the marker
+  const ed = between(_src, '// Add or tick a to-do on the current line', '// Cycle to-do state forward');
+  assert.match(ed, /const r = taskShortcutAt\(text, off\);/, 'the editing path uses the core');
+  assert.match(ed, /setCaretByOffset\(content, Math\.min\(off \+ r\.delta, r\.text\.length\)\)/,
+    'and moves the caret by what the core inserted, so it stays where the words are');
+  assert.match(ed, /announce\(taskShortcutSay\(r\.action, MOD\)\)/, 'and says what happened');
+  assert.ok(!/let charOff = 0, toggled = false;/.test(_src), 'the hand-rolled duplicate is gone');
+  // from the cursor: the same core at offset 0, so standing on a point and editing it agree (P1)
+  const cur = between(_src, '// ⌘/Ctrl+⇧+X add or tick a to-do', '// ⌘/Ctrl+D duplicate');
+  assert.match(cur, /const r = taskShortcutAt\(n\.text, 0\);/, 'the cursor path uses the same core');
+  assert.match(cur, /announce\(taskShortcutSay\(r\.action, MOD\)\)/, 'and says the same things');
+  assert.ok(!/isTaskFirst\(n\.text\)/.test(cur), 'it no longer refuses a point that is not already a task');
+  assert.match(cur, /n\.checked = todoDoneFromText\(n\.text\)/,
+    'and still re-derives the hints setFirstTaskChecked used to keep honest');
+
+  // the whole chord family invalidates now. These rewrite node.text WITHOUT going through the
+  // `input` listener, so nothing bumped _varsVer and a cache read before blur served stale data.
+  // Deliberately NOT pushUndo: the edit SESSION snapshot already covers them, and adding one buys
+  // a second Ctrl+Z that visibly does nothing (measured).
+  for (const [marker, end, label] of [
+    ['// Add or tick a to-do on the current line', '// Cycle to-do state forward', 'the task shortcut'],
+    ['// Cycle to-do state forward', '// Cycle to-do priority forward', 'the state cycle'],
+    ['// Cycle to-do priority forward', '    }\n  }\n  // Paragraph is the sanctioned', 'the priority cycle'],
+  ]) {
+    const blk = between(_src, marker, end);
+    assert.match(blk, /markDirty\(\);/, `${label} must invalidate after it rewrites the text`);
+    assert.ok(!/pushUndo\(\);/.test(blk), `${label} must not add a second snapshot inside an edit session`);
+  }
+  // the priority cycle's own silent no-op, the third one in the family
+  const prio = between(_src, '// Cycle to-do priority forward', '    }\n  }\n  // Paragraph is the sanctioned');
+  assert.match(prio, /A priority needs a state\. Press \$\{MOD\}\+Shift\+S first\./,
+    'a plain point cannot carry a priority, and now says so instead of nothing');
+  // and the touch button, which is the door that REMOVES a marker, says which way it went
+  assert.match(_src, /announce\(next\.length > text\.length \? 'Turned into a to-do' : 'No longer a to-do'\)/);
+  // the in-app label names what the key does now, rather than the flip it used to do
+  assert.match(_src, /essLabel:'Add or tick a to-do on this line'/);
 });
 
 test('#437 — the touch edit-bar carries a wired to-do button', () => {

@@ -1609,3 +1609,95 @@ test('#1470 the task checkbox answers Enter, the meter says why, the link still 
     'the negative case: the link was never broken and still zooms to its target');
   await pg.close();
 });
+
+// 28. #1471 — the shortcut the app's own SHORTCUTS panel advertises did nothing at all, silently,
+//     on a plain point, which is the point most people try it on first. Driven because the whole
+//     defect is "the key reaches the page and is ignored": a source pin on the handler was green
+//     throughout, and what is being asserted here is the caret, the text and the announcement.
+test('#1471 Ctrl+Shift+X makes a to-do, ticks it, and says so every time', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('Buy milk', { delay: 12 });
+  await pg.waitForTimeout(250);
+  // caret parked mid-word, so the marker must not drag it out of position
+  await pg.evaluate(() => { setCaretByOffset(document.querySelector('.node-content[data-editing]'), 3);
+    const a = document.getElementById('a11y-live'); if (a) a.textContent = ''; });
+  await pg.waitForTimeout(150);
+
+  const press = async () => {
+    await pg.keyboard.press('Control+Shift+X'); await pg.waitForTimeout(420);
+    return pg.evaluate(() => ({ text: root.children[0].text,
+      said: (document.getElementById('a11y-live')?.textContent || '').trim() }));
+  };
+  let r = await press();
+  assert.equal(r.text, '- [ ] Buy milk', 'a plain point becomes a to-do, which is what the label promises');
+  assert.equal(r.said, 'Turned into a to-do', 'and it is not silent about it');
+  // the caret rode along with the words: typing lands where it was, not at the marker
+  await pg.keyboard.type('X', { delay: 12 }); await pg.waitForTimeout(300);
+  assert.equal(await pg.evaluate(() => root.children[0].text), '- [ ] BuyX milk',
+    'the caret stays where the words are, not stranded inside the marker');
+  await pg.evaluate(() => { root.children[0].text = '- [ ] Buy milk';
+    const c = document.querySelector('.node-content[data-editing]');
+    c.innerHTML = editModeHTML(root.children[0]); setCaretByOffset(c, 8); });
+  await pg.waitForTimeout(200);
+
+  r = await press();
+  assert.equal(r.text, '- [x] Buy milk', 'an unchecked box ticks');
+  assert.equal(r.said, 'To-do checked');
+  r = await press();
+  assert.equal(r.text, '- [ ] Buy milk', 'a ticked box un-ticks');
+  assert.equal(r.said, 'To-do unchecked');
+  assert.notEqual(r.text, 'Buy milk', 'and the marker is never removed: that is the edit bar button');
+  await pg.close();
+});
+
+// 29. #1471 — the same key from the cursor state (not editing), and the two refusals in the family.
+//     Both entry paths must answer the key the same way (P1), and no branch may be silent (P4).
+test('#1471 the cursor-state path agrees, and the refusals name their remedy', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('Buy milk'), mkNode('#TODO Call Rosa'), mkNode('Plain again')];
+    for (const n of root.children) { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    if (typeof promoteLoadedShorthand === 'function') promoteLoadedShorthand(root);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(400);
+
+  // standing on a point without editing it
+  const stand = async (i) => {
+    await pg.evaluate(n => {
+      const c = [...document.querySelectorAll('.node-content')][n];
+      selFocusId = selAnchorId = c.dataset.id; activeContentId = null;
+      const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    }, i);
+    await pg.waitForTimeout(180);
+  };
+  const say = () => pg.evaluate(() => (document.getElementById('a11y-live')?.textContent || '').trim());
+
+  await stand(0);
+  await pg.keyboard.press('Control+Shift+X'); await pg.waitForTimeout(450);
+  assert.equal(await pg.evaluate(() => root.children[0].text), '- [ ] Buy milk',
+    'standing on a point answers the key the same way editing it does');
+  assert.equal(await say(), 'Turned into a to-do');
+  const shape = await pg.evaluate(() => ({ type: root.children[0].type, checked: root.children[0].checked }));
+  assert.equal(shape.type, 'todo', 'and the derived hints follow the text');
+  assert.equal(shape.checked, false);
+
+  // a keyword to-do is already a to-do: refuse, and name the key that owns that form
+  await stand(1);
+  await pg.keyboard.press('Control+Shift+X'); await pg.waitForTimeout(450);
+  assert.equal(await pg.evaluate(() => root.children[1].text), '#TODO Call Rosa', 'left alone');
+  assert.match(await say(), /already uses a keyword.*Shift\+S/, 'and told why, with the remedy');
+
+  // the sibling that was silent for the same reason: a priority needs a state to hang off
+  await pg.evaluate(() => {
+    const c = [...document.querySelectorAll('.node-content')][2];
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+    const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+  });
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('Control+Shift+P'); await pg.waitForTimeout(450);
+  assert.equal(await pg.evaluate(() => root.children[2].text), 'Plain again', 'nothing to prioritise');
+  assert.match(await say(), /priority needs a state.*Shift\+S/, 'and it says so rather than nothing');
+  await pg.close();
+});
