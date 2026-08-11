@@ -1741,3 +1741,88 @@ test('#1472 typing a command name selects that command, and Enter runs it', { sk
   assert.ok(!/\/Variable/i.test(after.text), 'and must not leave the typed command sitting in the point');
   await pg.close();
 });
+
+// 31. #1473 — two panels appear as a side effect of moving the caret, and a screen-reader user was
+//     never told. Both exposed role=null and no name, reading as bare `generic` nodes, while their
+//     six sibling docked panels all carried a role and a label. Driven because the claim is about
+//     the accessibility tree and the live region, neither of which a source pin can see.
+test('#1473 the docked strips are named, and say so when they appear', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const mk = t => { const n = mkNode(t); n.type = 'ul'; return n; };
+    root.children = [mk('Claim[^a] and[^b] and[^c]'), mk('Plain point'), mk('Target'), mk('PH')];
+    root.children[3].text = 'See [[#' + root.children[2].id + ']]';
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    if (typeof promoteLoadedShorthand === 'function') promoteLoadedShorthand(root);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(450);
+
+  const sentinel = () => pg.evaluate(() => { document.getElementById('a11y-live').textContent = 'SENTINEL'; });
+  const said = () => pg.evaluate(() => (document.getElementById('a11y-live').textContent || '').trim());
+  const caretTo = (i) => pg.evaluate(n => {
+    const c = [...document.querySelectorAll('.node-content')][n];
+    const node = nodeById(c.dataset.id); enterEdit(c, node); c.focus(); activeContentId = node.id;
+    updateFnPanel(node); updateBlPanel(node.id);
+  }, i);
+  const named = (sel) => pg.evaluate(s => {
+    const el = document.querySelector(s), lb = el.getAttribute('aria-labelledby');
+    return { role: el.getAttribute('role'),
+             name: el.getAttribute('aria-label') || (lb ? (document.getElementById(lb)?.textContent || '').trim() : null),
+             open: el.classList.contains('on'),
+             focusInside: !!(document.activeElement && el.contains(document.activeElement)) };
+  }, sel);
+
+  // the footnote strip: appears because the caret moved, so the caret must stay put AND it must speak
+  await sentinel(); await caretTo(0); await pg.waitForTimeout(600);
+  let p = await named('#fn-panel');
+  assert.ok(p.open, 'the footnote strip is showing');
+  assert.equal(p.role, 'region', 'it has a role, not a bare generic node');
+  assert.equal(p.name, 'Footnotes · 3', 'and a name, taken from its own header');
+  assert.equal(p.focusInside, false, 'the caret stays in the point: that is why it has to speak');
+  assert.equal(await said(), 'Footnotes, 3', 'and it says its own header, with the dot spoken as a pause');
+
+  // it must not repeat itself on every caret move within the same point
+  await sentinel(); await caretTo(0); await pg.waitForTimeout(500);
+  assert.equal(await said(), 'SENTINEL', 're-announcing on every caret move would make the strip unusable');
+
+  // the backlinks strip, same treatment
+  await sentinel(); await caretTo(2); await pg.waitForTimeout(700);
+  p = await named('#bl-panel');
+  assert.ok(p.open, 'the backlinks strip is showing');
+  assert.equal(p.role, 'region');
+  assert.equal(p.name, 'Linked from · 1');
+  assert.equal(p.focusInside, false);
+  assert.equal(await said(), 'Linked from, 1');
+
+  // leaving and returning is news again, or the second appearance would be silent
+  await sentinel(); await caretTo(1); await pg.waitForTimeout(600);
+  await sentinel(); await caretTo(0); await pg.waitForTimeout(600);
+  assert.equal(await said(), 'Footnotes, 3', 'a strip that hid and came back must speak again');
+
+  // the negative case, measured: a panel the user ASKS for and that takes focus is announced by
+  // that focus move, and must NOT also speak here or every open double-speaks.
+  for (const [opener, sel] of [['openGraph()', '#graph-panel'], ['openTimeline()', '#timeline-panel'],
+                               ['openAgenda()', '#agenda-strip']]) {
+    const p2 = await fresh();
+    await p2.evaluate(() => { root.children = [mkNode('a'), mkNode('b')];
+      root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      buildIndex(root, null); markDirty(); render(); });
+    await p2.waitForTimeout(300);
+    await p2.evaluate(() => { document.getElementById('a11y-live').textContent = 'SENTINEL'; });
+    // The opener is interpolated into the evaluated SOURCE, never eval()'d inside the page: the
+    // app ships a CSP without unsafe-eval, and a swallowed CSP error here would leave the panel
+    // shut and the assertions measuring nothing.
+    await p2.evaluate('(async () => { ' + opener + ' })()');
+    await p2.waitForTimeout(600);
+    const st = await p2.evaluate(s => {
+      const el = document.querySelector(s);
+      return { focusInside: !!(document.activeElement && el && el.contains(document.activeElement)),
+               said: (document.getElementById('a11y-live').textContent || '').trim() };
+    }, sel);
+    assert.equal(st.focusInside, true, `${sel} takes focus, which is what announces it`);
+    assert.equal(st.said, 'SENTINEL', `${sel} must not ALSO speak, or every open double-speaks`);
+    await p2.close();
+  }
+  await pg.close();
+});

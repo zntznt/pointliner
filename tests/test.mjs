@@ -29465,6 +29465,58 @@ test('#992 the @image form offers the width modes, and point still writes no tit
 // Measured on origin/main before this change: the panel DID populate on zoom (the issue's other
 // half was already fixed), but it sat position:fixed against the viewport bottom, 476px below the
 // note title. This is a placement fix, and these pins hold the model both surfaces now share.
+// ── #1473: the docked panels that appear without taking focus ───────────────
+// `#fn-panel` and `#bl-panel` exposed role=null, aria-label=null, aria-labelledby=null and read as
+// bare `generic` nodes, while their six sibling docked panels all carried a role and a name. They
+// also appear as a pure SIDE EFFECT of moving the caret, and said nothing when they did.
+test('#1473 panelOpenSay speaks the panel\'s own header, not new copy', () => {
+  // the header is already count-aware, so the announcement is the header, with the visual
+  // separator spoken as a pause rather than left for a screen reader to read out as a glyph
+  assert.equal(c.panelOpenSay('Footnote'), 'Footnote');
+  assert.equal(c.panelOpenSay('Footnotes · 3'), 'Footnotes, 3');
+  assert.equal(c.panelOpenSay('Linked from'), 'Linked from');
+  assert.equal(c.panelOpenSay('Linked from · 2'), 'Linked from, 2');
+  assert.equal(c.panelOpenSay('Linked from  ·  12'), 'Linked from, 12', 'spacing around the dot varies');
+  // a name that carries NO count of its own takes one, which is the variables panel
+  assert.equal(c.panelOpenSay('Variables', 3), 'Variables, 3');
+  assert.equal(c.panelOpenSay('Variables', 0), 'Variables, 0', 'zero is a fact, not a reason to be silent');
+  // and a count is only appended when one is given, so the count-aware headers are not doubled
+  assert.equal(c.panelOpenSay('Footnotes · 3', undefined), 'Footnotes, 3');
+  assert.equal(c.panelOpenSay('Variables', NaN), 'Variables', 'a non-number is no count at all');
+  assert.equal(c.panelOpenSay(''), '');
+  assert.equal(c.panelOpenSay(null), '', 'no name, nothing to say');
+});
+
+test('#1473 the two anonymous panels are named, and only the focus-less ones speak', () => {
+  // the name comes from the header that already holds the right words
+  assert.match(_src, /<div id="fn-panel" role="region" aria-labelledby="fn-panel-hd">/);
+  assert.match(_src, /<div id="bl-panel" role="region" aria-labelledby="bl-panel-hd">/);
+  // CENSUS of the docked panels, from the markup rather than a hand list: every one of them
+  // carries a role and a name. This is the shape the two were missing.
+  const panels = [...new Set([..._src.matchAll(/<div id="(fn-panel|bl-panel|var-panel|graph-panel|timeline-panel|agenda-strip|capture-strip|journal-strip)"([^>]*)>/g)]
+    .map(m => [m[1], m[2]]))];
+  assert.equal(nonEmpty(panels, 'docked panels').length, 8, 'all eight docked panels must be found in the markup');
+  for (const [id, attrs] of panels) {
+    assert.match(attrs, /role="(region|dialog)"/, `${id} needs a role`);
+    assert.match(attrs, /aria-label(ledby)?="/, `${id} needs an accessible name`);
+  }
+  // Announced ONLY where focus does not go. Driven measurement: graph, timeline, agenda, capture
+  // and journal all land focus inside themselves, so a live-region line there would double up on
+  // every open; the footnote and backlink strips keep the caret in the point (the caret invariant)
+  // and the variables panel lands focus on <body>, so nothing else speaks for those three.
+  const speaks = [...new Set([..._src.matchAll(/announcePanelOpen\((document\.getElementById\('([a-z-]+)'\)|[A-Za-z]+)/g)]
+    .map(m => m[2] || m[1])
+    .filter(x => x !== 'panelEl')                      // the declaration itself, not a call site
+    .map(x => x === 'varPanelEl' ? 'var-panel' : x))];  // the one call site holding an element, not an id
+  assert.deepEqual(speaks.sort(), ['bl-panel', 'fn-panel', 'var-panel'],
+    'exactly the three panels that appear without taking focus announce themselves');
+  // and each re-arms when it hides, or the second appearance would be silent
+  for (const id of nonEmpty(['fn-panel', 'bl-panel', 'var-panel'], 'panels that speak'))
+    assert.ok(_src.includes(`forgetPanelSaid('${id}')`), `${id} must re-arm on hide`);
+  // the announce-on-CHANGE guard: these strips re-render on every caret move
+  assert.match(fnBody(_src, 'announcePanelOpen'), /if \(!say \|\| _panelSaid\[panelEl\.id\] === say\) return;/);
+});
+
 test('#953 blSectionModel: the headings and counts the strip already had, written down once', () => {
   const mk = (n, u, x, cu) => ({ sources: Array(n).fill(0), unlinked: Array(u).fill(0),
                                  cross: Array(x).fill(0), crossUnlinked: Array(cu).fill(0) });

@@ -218,7 +218,7 @@ export function loadCores() {
     'mdLinkOut', 'countExportLinks', 'exportedNote',
     'countMirrorRefs',                                            // #1142: mirrors flatten to a title line, and the toast says so
     'imgSizeParts',   // #992: markdown image title -> width mode class + inline width
-    'blSectionModel',   // #953: the shared backlinks section model (strip + in-flow zoom footer)
+    'blSectionModel','panelOpenSay',   // #953: the shared backlinks section model (strip + in-flow zoom footer)
     'nearbyAdjacency', 'nearbyGraphModel', 'qid', 'unqid',   // #898: neighborhood graph (current point +/- N hops, cross-doc)
     'cardDropAfter', 'reorderIndex',   // #955: shared card-reorder geometry + index math
     'corkboardCards', 'cardMoveIndex',   // #955: the corkboard's card model + keyboard move
