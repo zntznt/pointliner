@@ -4135,6 +4135,56 @@ function toggleTaskLine(text, off) {
   return lines.join('\n');
 }
 
+// #1471: what the Ctrl/⌘+Shift+X shortcut does to `text` with the caret at `off`, and WHAT TO SAY
+// about it. The shortcut used to flip [ ]↔[x] and do nothing at all, silently, on a line that was
+// not already a task — which is the line most people try it on first, and the one the in-app label
+// ("Toggle task on current line") reads as the whole point. It now adds the marker instead.
+//
+// Non-destructive on purpose, and this is the line between it and its neighbour: this shortcut only
+// ever ADDS a marker or flips a box, never removes one. toggleTaskLine above owns removing it, and
+// that is the touch edit bar's "Toggle to-do" button. Two doors, two verbs, neither one surprising.
+//
+// Returns { text, action, delta } — never null except on a non-string, because every outcome has to
+// be sayable (P4), including the two where the text does not change:
+//   'added'     a plain line gained `- [ ] `        delta = characters inserted before the caret
+//   'checked' / 'unchecked'                         the box flipped, delta 0
+//   'keyword'   already a to-do in the #KEYWORD form, which the state cycle owns, so hands off
+//   'none'      the offset lands on no line at all
+function taskShortcutAt(text, off) {
+  if (typeof text !== 'string' && text != null && typeof text !== 'number') return null;
+  const lines = String(text == null ? '' : text).split('\n');
+  let charOff = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const lineEnd = charOff + lines[i].length;
+    if (off >= charOff && off <= lineEnd) {
+      const m = lines[i].match(TASK_LINE_RE);
+      if (m) {
+        const checked = m[2].toLowerCase() === 'x';
+        lines[i] = m[1] + '[' + (checked ? ' ' : 'x') + ']' + (m[3] || '');
+        return { text: lines.join('\n'), action: checked ? 'unchecked' : 'checked', delta: 0 };
+      }
+      // A `#TODO body` line is already a to-do, in the form the state cycle owns. Marking it with a
+      // checkbox too would give one point two independent done-nesses.
+      if (parseTodo(lines[i]).keyword) return { text: String(text ?? ''), action: 'keyword', delta: 0 };
+      // Add the marker AFTER any leading indent, so a nested line stays nested.
+      const ind = lines[i].match(/^\s*/)[0];
+      lines[i] = ind + '- [ ] ' + lines[i].slice(ind.length);
+      return { text: lines.join('\n'), action: 'added', delta: 6 };
+    }
+    charOff += lines[i].length + 1;
+  }
+  return { text: String(text ?? ''), action: 'none', delta: 0 };
+}
+// What each outcome is called, so both entry paths (editing, and from the cursor) say the same
+// thing. The 'keyword' line names the shortcut that DOES own that form rather than just refusing.
+function taskShortcutSay(action, mod = 'Ctrl') {
+  return action === 'added'     ? 'Turned into a to-do'
+       : action === 'checked'   ? 'To-do checked'
+       : action === 'unchecked' ? 'To-do unchecked'
+       : action === 'keyword'   ? `This point already uses a keyword. Press ${mod}+Shift+S to cycle its state.`
+       : '';
+}
+
 // Node-level done-ness from the text: keyword wins — done iff it sits right of
 // its sequence's | split (generalizes the old keyword===DONE); otherwise a
 // task-form node is done when EVERY task marker in it is checked (a checklist
@@ -20662,31 +20712,26 @@ function onKeyDown(e, id, content) {
         }
         return; // Ctrl+Shift+Enter is consumed here; no fallthrough to zoom
       }
-      // Toggle task checkbox on current line (Ctrl/⌘ + Shift + X)
+      // Add or tick a to-do on the current line (Ctrl/⌘ + Shift + X). #1471: the loop that used to
+      // live here flipped the box and fell out silently on any other line; taskShortcutAt owns the
+      // decision now, and it is the same core the cursor-state path uses, so the two agree.
       if (e.key === 'x' || e.key === 'X') {
         e.preventDefault();
         const text  = editableText(content);
         const off   = getCaretOffset(content);
-        const lines = text.split('\n');
-        let charOff = 0, toggled = false;
-        for (let i = 0; i < lines.length; i++) {
-          const lineEnd = charOff + lines[i].length;
-          if (off >= charOff && off <= lineEnd) {
-            const m = lines[i].match(TASK_LINE_RE);
-            if (m) {
-              const checked = m[2].toLowerCase() === 'x';
-              lines[i] = m[1] + '[' + (checked ? ' ' : 'x') + ']' + (m[3] || '');
-              toggled = true;
-            }
-            break;
-          }
-          charOff += lines[i].length + 1;
-        }
-        if (toggled) {
-          node.text = lines.join('\n');
+        const r = taskShortcutAt(text, off);
+        if (r && r.text !== text) {
+          node.text = r.text;
+          // #1471: markDirty, but deliberately NOT pushUndo. The mutation bypasses the `input`
+          // listener, so nothing bumps _varsVer and any cross-point cache consulted before blur
+          // serves stale data. Undo, on the other hand, is already covered by the edit SESSION
+          // snapshot: measured, one Ctrl+Z reverts this without help, and adding a snapshot here
+          // buys a second Ctrl+Z that visibly does nothing.
+          markDirty();
           content.innerHTML = editModeHTML(node);
-          setCaretByOffset(content, off);
+          setCaretByOffset(content, Math.min(off + r.delta, r.text.length));
         }
+        if (r) announce(taskShortcutSay(r.action, MOD));   // P4: every outcome speaks, including the refusals
         return;
       }
       // Cycle to-do state forward (Ctrl/⌘ + Shift + S)
@@ -20697,6 +20742,7 @@ function onKeyDown(e, id, content) {
         const newText = cycleTodoState(text, 1);
         if (newText !== text) {
           node.text = newText;
+          markDirty();                   // #1471: see the task shortcut above (invalidate, don't snapshot)
           content.innerHTML = editModeHTML(node);
           setCaretByOffset(content, Math.min(off, newText.length));
           announce(parseTodo(newText).keyword || 'state cleared');
@@ -20711,10 +20757,15 @@ function onKeyDown(e, id, content) {
         const newText = cycleTodoPriority(text, 1);
         if (newText !== text) {
           node.text = newText;
+          markDirty();                   // #1471: see the task shortcut above
           content.innerHTML = editModeHTML(node);
           setCaretByOffset(content, Math.min(off, newText.length));
           const prio = parseTodo(newText).priority;
           announce(prio ? `Priority ${prio}` : 'priority cleared');
+        } else {
+          // #1471: a priority hangs off a keyword, so a plain point has nothing to carry one. That
+          // is a fine answer; being silent about it is not (P4). Name the key that fixes it.
+          announce(`A priority needs a state. Press ${MOD}+Shift+S first.`);
         }
         return;
       }
@@ -21229,6 +21280,9 @@ ebBtn('eb-todo', () => {
   setCaretByOffset(content, Math.max(0, Math.min(off + (next.length - text.length), next.length)));
   markDirty();
   updateEditBar();
+  // This button REMOVES the marker as well as adding it, which is the one thing Ctrl/⌘+Shift+X
+  // never does — so it says which of the two happened rather than leaving them to guess (P4).
+  announce(next.length > text.length ? 'Turned into a to-do' : 'No longer a to-do');
 });
 ebBtn('eb-outdent', () => editBarMove(outdentNode));
 ebBtn('eb-indent',  () => editBarMove(indentNode));
@@ -41867,7 +41921,7 @@ const GUIDE = [
   { id:'edit-capn',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+1–0`],         essLabel:'Capture to inbox 1–10 (empty slot adopts the current point)' },
   { id:'edit-setinbox',essential:true, essSection:'Edit', keys:[`${MOD}+Alt+1–0`],       essLabel:'Set current point as inbox 1–10' },
   { id:'edit-format', essential:true, essSection:'Edit', keys:[`${MOD}+B`,`${MOD}+I`,`${MOD}+U`], essLabel:'Bold / italic / underline the selection' },
-  { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Toggle task on current line' },
+  { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Add or tick a to-do on this line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state (this point, or the whole selection)' },
   { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority (this point, or the whole selection)' },
   { id:'edit-dup',     essential:true, essSection:'Edit', keys:[`${MOD}+D`],             essLabel:'Duplicate point' },
@@ -44656,10 +44710,26 @@ document.addEventListener('keydown', e => {
       const id = kbdTargetId();
       if (id) { e.preventDefault(); setCollapsed(id, e.key==='.'); return; }
     }
-    // ⌘/Ctrl+⇧+X toggle the point's opening checkbox — from the cursor state.
+    // ⌘/Ctrl+⇧+X add or tick a to-do on the point's first line — from the cursor state. #1471: the
+    // same core the editing path uses, at offset 0, so standing on a point and editing it answer
+    // the key identically (P1). It used to require isTaskFirst and do nothing, silently, otherwise.
     if (ctrl && e.shiftKey && (e.key==='X'||e.key==='x') && activeContentId == null) {
       const n = nodeById(kbdTargetId());
-      if (n && isTaskFirst(n.text)) { e.preventDefault(); pushUndo(); setFirstTaskChecked(n, !firstTaskChecked(n)); markDirty(); render(); return; }
+      if (n) {
+        e.preventDefault();
+        const r = taskShortcutAt(n.text, 0);
+        // node.type and node.checked are DERIVED hints; setFirstTaskChecked used to re-derive
+        // `checked` here and the row's shape depends on both, so keep re-deriving them.
+        if (r && r.text !== n.text) {
+          pushUndo();
+          n.text = r.text;
+          n.type = deriveTypeFromText(n.text) || n.type;
+          n.checked = todoDoneFromText(n.text);
+          markDirty(); render();
+        }
+        if (r) announce(taskShortcutSay(r.action, MOD));
+        return;
+      }
     }
     // ⌘/Ctrl+D duplicate the current point (subtree). Works editing or from the cursor.
     if (ctrl && !e.shiftKey && (e.key==='d'||e.key==='D')) {

@@ -254,6 +254,51 @@
       "kills": "#1470 Enter on a cold footnote marker writes the footnote, not the point"
     },
     {
+      "id": "task-shortcut-unwired",
+      "suite": "unit",
+      "why": "#1471: a tested core proves nothing about whether the shortcut calls it",
+      "file": "index.html",
+      "find": "const r = taskShortcutAt(text, off);",
+      "replace": "const r = null;",
+      "kills": "#1471 both entry paths route through the one core"
+    },
+    {
+      "id": "task-shortcut-silent",
+      "suite": "unit",
+      "why": "#1471: the shortcut worked on a task line and never said a word, unlike its two siblings",
+      "file": "index.html",
+      "find": "        if (r) announce(taskShortcutSay(r.action, MOD));   // P4: every outcome speaks, including the refusals",
+      "replace": "        ;",
+      "kills": "#1471 both entry paths route through the one core"
+    },
+    {
+      "id": "chord-family-not-invalidated",
+      "suite": "unit",
+      "why": "#1471: these rewrite node.text outside the input listener, so nothing bumps _varsVer",
+      "file": "index.html",
+      "find": "          markDirty();                   // #1471: see the task shortcut above (invalidate, don't snapshot)",
+      "replace": "          ;   // mutant: the invalidation removed",
+      "kills": "#1471 both entry paths route through the one core"
+    },
+    {
+      "id": "priority-no-op-silent",
+      "suite": "unit",
+      "why": "#1471: a priority needs a state, and saying nothing about that is the same P4 gap",
+      "file": "index.html",
+      "find": "          announce(`A priority needs a state. Press ${MOD}+Shift+S first.`);",
+      "replace": "          ;",
+      "kills": "#1471 both entry paths route through the one core"
+    },
+    {
+      "id": "task-shortcut-refuses-plain",
+      "suite": "browser",
+      "why": "#1471: the reported bug -- the core refusing to add a marker, so the key stays inert",
+      "file": "index.html",
+      "find": "      const ind = lines[i].match(/^\\s*/)[0];",
+      "replace": "      if (true) return { text: String(text ?? ''), action: 'none', delta: 0 };\n      const ind = lines[i].match(/^\\s*/)[0];",
+      "kills": "#1471 Ctrl+Shift+X makes a to-do, ticks it, and says so every time"
+    },
+    {
       "id": "sort-item-title-dropped",
       "suite": "browser",
       "why": "#1469: the per-item description present in source but never reaching the element",

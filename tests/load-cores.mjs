@@ -274,6 +274,7 @@ export function loadCores() {
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','sortChildrenByProp','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix','toggleTaskLine',
+    'taskShortcutAt','taskShortcutSay',   // #1471: what Ctrl/Cmd+Shift+X does, and what it says about it
     'cloneArtifactSidecars','mergeArtifactSidecars',
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
