@@ -1826,3 +1826,52 @@ test('#1473 the docked strips are named, and say so when they appear', { skip: s
   }
   await pg.close();
 });
+
+// 32. #1474 — typing until the builder's list emptied announced nothing, so the live region kept
+//     naming a command that was no longer in the list, over an empty list where Enter does nothing.
+//     Driven because the claim is about WHEN the live region changes, which a source pin cannot see:
+//     the transition must speak, the next keystroke at zero must not, and recovery must speak again.
+test('#1474 the builder says when the list empties, once, and speaks again on recovery', { skip: skip() }, async () => {
+  for (const trig of ['/', '@']) {
+    const pg = await fresh();
+    await blankWithCaret(pg);
+    // record every value the live region is ever set to, so a re-announce of the SAME sentence is
+    // visible: announce() clears and re-sets, so reading the final value would hide a stutter.
+    await pg.evaluate(() => {
+      window.__spoken = [];
+      const el = document.getElementById('a11y-live');
+      new MutationObserver(() => { const t = (el.textContent || '').trim(); if (t) window.__spoken.push(t); })
+        .observe(el, { childList: true, characterData: true, subtree: true });
+    });
+    const drain = async () => { await pg.waitForTimeout(420);
+      return pg.evaluate(() => { const s = window.__spoken.slice(); window.__spoken.length = 0; return s; }); };
+    const items = () => pg.evaluate(() => document.querySelectorAll('.builder-item').length);
+
+    await pg.keyboard.type(trig, { delay: 20 }); await pg.waitForTimeout(500);
+    assert.deepEqual(await drain(), [], `${trig}: opening the builder must not announce a command nobody chose`);
+
+    await pg.keyboard.press('q'); const matched = await drain();
+    assert.ok(await items() > 0, `${trig}: precondition, q matches something`);
+    assert.equal(matched.length, 1, `${trig}: a match names the selected command`);
+
+    await pg.keyboard.press('q'); await pg.keyboard.press('q');
+    const emptied = await drain();
+    assert.equal(await items(), 0, `${trig}: precondition, the list is now empty`);
+    assert.equal(await pg.evaluate(() => (document.querySelector('.builder-no-results')?.textContent || '').trim()),
+      'No commands match your search.', 'the empty state is on screen');
+    assert.deepEqual(emptied, ['No commands match your search.'],
+      `${trig}: the list emptying is announced, in the words already on screen`);
+
+    await pg.keyboard.press('q');
+    assert.deepEqual(await drain(), [],
+      `${trig}: still empty is not news; repeating it would stutter on every keystroke`);
+
+    // three back: qqqq -> qqq -> qq are all still empty, and only qq -> q matches again
+    await pg.keyboard.press('Backspace'); await pg.keyboard.press('Backspace'); await pg.keyboard.press('Backspace');
+    const back = await drain();
+    assert.ok(await items() > 0, `${trig}: precondition, backspacing matches again`);
+    assert.equal(back.length, 1, `${trig}: recovery names the command that is selected again`);
+    assert.ok(!/No commands/.test(back[0]), `${trig}: and is not the empty sentence`);
+    await pg.close();
+  }
+});

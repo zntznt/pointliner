@@ -27519,6 +27519,36 @@ test('#1106: builderBestIdx fires the exact-id verb, not the first fuzzy descrip
   assert.equal(c.builderBestIdx(pool, '', '/'), 0);
 });
 
+// ── #1474: the builder's zero-result state ──────────────────────────────────
+// Typing until the list emptied announced nothing, so the live region kept naming a command that
+// was no longer in the list, over an empty list where Enter does nothing (P3/P4). The app already
+// had the words: it painted "No commands match your search." and, on Enter, announced a DIFFERENT
+// sentence, "No matching commands" — two strings for one state.
+test('#1474 the list emptying is announced, once, in the words already on screen', () => {
+  const sync = between(_src, '  function syncActive() {', '  function applyBuilder() {');
+  // the branch that was missing: a list with no selectable command says so
+  assert.match(sync, /\} else if \(!_builderWasEmpty\) \{/, 'the empty list has a branch of its own');
+  assert.match(sync, /announce\(builderEmptyMessage\(\)\);/, 'and it speaks');
+  // ...on the TRANSITION only. announce() clears and re-sets to force a re-read, so an
+  // unconditional call would stutter the same sentence on every further keystroke.
+  assert.match(sync, /_builderWasEmpty = true;/);
+  assert.match(sync, /_builderWasEmpty = false;/, 'and re-arms as soon as something matches again');
+  assert.ok(sync.indexOf('_builderWasEmpty = false') < sync.indexOf('_builderWasEmpty = true'),
+    'the re-arm sits on the has-a-command branch, not after the announce');
+  // per-session, so re-opening the builder onto an empty list is news again
+  assert.match(_src, /let _builderWasEmpty = false;/);
+
+  // ONE sentence for one state, read off the rendered node so it cannot drift from the screen
+  // (the announceOverlayCount precedent). The old Enter-time string is gone.
+  assert.match(fnBody(_src, 'builderEmptyMessage'), /nav\.querySelector\('\.builder-no-results'\)\?\.textContent/);
+  assert.equal((_src.match(/No commands match your search\./g) || []).length, 2,
+    'the sentence is spelled once in the markup and once as the fallback, nowhere else');
+  assert.equal((_src.match(/'No matching commands'/g) || []).length, 0,
+    'the second, different sentence for the same state is gone');
+  // and Enter at zero uses the same reader rather than its own copy
+  assert.match(_src, /if \(visibleCmds\(\)\.length\) applyBuilder\(\);\s*\n\s*else announce\(builderEmptyMessage\(\)\);/);
+});
+
 // ── #1472: typing a command's whole NAME selects that command ────────────────
 // `Variable` selected `Variables panel` — a side-panel toggle whose id happens to start with the
 // word — while the command actually named Variable sat third, so Enter opened a panel and left the

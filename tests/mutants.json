@@ -290,6 +290,33 @@
       "kills": "#1471 both entry paths route through the one core"
     },
     {
+      "id": "builder-empty-silent",
+      "suite": "unit",
+      "why": "#1474: the shipped state, where the live region kept naming a command no longer listed",
+      "file": "index.html",
+      "find": "        announce(builderEmptyMessage());",
+      "replace": "        ;",
+      "kills": "#1474 the list emptying is announced"
+    },
+    {
+      "id": "builder-empty-stutters",
+      "suite": "unit",
+      "why": "#1474: announce() clears and re-sets, so no transition guard repeats it every keystroke",
+      "file": "index.html",
+      "find": "        _builderWasEmpty = true;",
+      "replace": "        ;",
+      "kills": "#1474 the list emptying is announced"
+    },
+    {
+      "id": "builder-empty-message-forked",
+      "suite": "unit",
+      "why": "#1474: a second sentence for one state is how the screen and the live region disagreed",
+      "file": "index.html",
+      "find": "    return (nav.querySelector('.builder-no-results')?.textContent || 'No commands match your search.').trim();",
+      "replace": "    return 'No matching commands';",
+      "kills": "#1474 the list emptying is announced"
+    },
+    {
       "id": "docked-panel-anonymous",
       "suite": "unit",
       "why": "#1473: the shipped state, where the strip read as a bare generic node with no name",

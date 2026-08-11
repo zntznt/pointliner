@@ -44295,6 +44295,9 @@ function openBuilder(trigger) {
 
   let activeIdx = 0;
   let liveSuppress = true;   // UXP-173: suppress aria-live announcement on initial render
+  // #1474: has the list ALREADY been empty? The empty state is announced on the way in, not on
+  // every keystroke that leaves it empty. Scoped to this builder session, so re-opening speaks.
+  let _builderWasEmpty = false;
 
   // #1106: in Guided (the DEFAULT tier) this search box IS the command line — `/` matches every
   // command, so the builder opens on the trigger char alone and every keystroke after it lands
@@ -44337,6 +44340,14 @@ function openBuilder(trigger) {
     nav.innerHTML = html;
   }
 
+  // #1474: the empty-state words, read back off the RENDERED node rather than re-spelled, so the
+  // announcement cannot drift from what is on screen (the announceOverlayCount precedent). Two
+  // strings for one state was itself the smaller half of this bug: the list painted "No commands
+  // match your search." while Enter announced "No matching commands".
+  function builderEmptyMessage() {
+    return (nav.querySelector('.builder-no-results')?.textContent || 'No commands match your search.').trim();
+  }
+
   function syncActive() {
     const vis = visibleCmds();
     insertBtn.disabled = !vis.length;
@@ -44357,6 +44368,14 @@ function openBuilder(trigger) {
       const cmd = vis[activeIdx];
       if (cmd) {
         announce(cmd.desc ? cmd.label + ': ' + cmd.desc : cmd.label);
+        _builderWasEmpty = false;
+      } else if (!_builderWasEmpty) {
+        // #1474: the list emptying is the state change nothing spoke for. Before this the live
+        // region kept naming a command that was no longer in the list, over an empty list where
+        // Enter does nothing (P4). Only on the TRANSITION into empty: announce() clears and re-sets
+        // to force a re-read, so repeating it on every further keystroke would be a stutter.
+        announce(builderEmptyMessage());
+        _builderWasEmpty = true;
       }
     }
     liveSuppress = false;
@@ -44659,7 +44678,7 @@ function openBuilder(trigger) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (visibleCmds().length) applyBuilder();
-      else announce('No matching commands');
+      else announce(builderEmptyMessage());   // #1474: one state, one sentence
     } else if (e.key === 'Escape') {
       e.stopPropagation();
       closeBuilder(true);
