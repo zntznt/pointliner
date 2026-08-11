@@ -1875,3 +1875,115 @@ test('#1474 the builder says when the list empties, once, and speaks again on re
     await pg.close();
   }
 });
+
+// 33. #1475 — the Alignment section reported a state the grid was not in: after Show as > Number
+//     the cells render right-aligned and the menu still ticked "Left". Driven because the claim is
+//     that a computed style and a menu tick disagree, which no source pin can compare.
+test('#1475 the Alignment tick says what the cells are doing, and the way back exists', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const rows = ['| Item | Cost | Qty |', '| --- | --- | --- |',
+                  '| Rope | 10 | 2 |', '| Torch | 3 | 5 |', '| Anvil | 99 | 1 |'];
+    const n = mkNode(rows.join('\n')); n.type = 'base';
+    root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(500);
+
+  const openMenu = async () => {
+    await pg.evaluate(() => document.querySelector('.mt-cell[data-r="1"][data-c="1"]').focus());
+    await pg.waitForTimeout(200);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(400);
+  };
+  // the Alignment rows only, read between its header and the next one
+  const alignRows = () => pg.evaluate(() => {
+    const all = [...document.querySelectorAll('#mt-colpanel > *')];
+    const start = all.findIndex(e => e.classList.contains('mt-col-section') && e.textContent.trim() === 'Alignment');
+    const out = [];
+    for (let i = start + 1; i < all.length && !all[i].classList.contains('mt-col-section'); i++)
+      out.push({ label: (all[i].querySelector('.mt-col-item-label')?.textContent || '').trim(),
+                 ticked: all[i].classList.contains('on') });
+    return out;
+  });
+  const ticked = async () => (await alignRows()).filter(r => r.ticked).map(r => r.label);
+  const cells = () => pg.evaluate(() => [...document.querySelectorAll('.mt-cell[data-c="1"]')]
+    .filter(e => e.tagName === 'TD').map(e => getComputedStyle(e).textAlign));
+  const clickItem = async (label) => {
+    const idx = await pg.evaluate(l => [...document.querySelectorAll('#mt-colpanel .mt-col-item')]
+      .findIndex(i => i.querySelector('.mt-col-item-label')?.textContent.trim() === l), label);
+    assert.ok(idx >= 0, `the menu must offer "${label}"`);
+    await pg.locator('#mt-colpanel .mt-col-item').nth(idx).click();
+    await pg.waitForTimeout(550);
+  };
+  // "start" is how Chromium reports an unstyled cell; treat it as left
+  const isRight = (a) => a.every(x => x === 'right');
+  const isLeft = (a) => a.every(x => x === 'left' || x === 'start');
+
+  await openMenu();
+  assert.deepEqual(await ticked(), ['Automatic (left)'], 'a fresh column is on its automatic setting');
+  assert.ok(isLeft(await cells()), 'and renders left');
+
+  await clickItem('Number');
+  await openMenu();
+  assert.ok(isRight(await cells()), 'Show as Number right-aligns the cells');
+  assert.deepEqual(await ticked(), ['Automatic (right)'],
+    'and the tick follows: this is the row that used to read "Left" over right-aligned cells');
+
+  await clickItem('Left');
+  await openMenu();
+  assert.ok(isLeft(await cells()), 'an explicit Left still works');
+  assert.deepEqual(await ticked(), ['Left']);
+  const back = (await alignRows()).find(r => r.label.startsWith('Automatic'));
+  assert.ok(back, 'and the automatic row is still offered: that is the route back');
+
+  await clickItem(back.label);
+  await openMenu();
+  assert.ok(isRight(await cells()), 'which returns the column to what it was a moment earlier');
+  assert.deepEqual(await ticked(), ['Automatic (right)']);
+  // and it is genuinely the UNSET state in the text, not a third explicit value
+  assert.match(await pg.evaluate(() => root.children[0].text.split('\n')[1]), /^\| --- \| --- \| --- \|$/,
+    'automatic writes no alignment marker at all');
+  await pg.close();
+});
+
+// 34. #1466 — a trigger that opens LATE seeds the search box with the character that opened it, so
+//     those characters lived in two places at once, and Escape wrote both: `Roll @` + `d` + `ice`
+//     came back as `Roll @ddice`, saved, with no warning. Driven because the defect is in what
+//     reaches node.text after a real dismissal.
+test('#1466 dismissing a late-opening trigger writes what was typed, once', { skip: skip() }, async () => {
+  // Both doors. The report called `/` immune; it is immune only AT THE START of a point, where a
+  // bare trigger opens on its own and nothing is seeded.
+  for (const [trig, word] of [['@', 'dice'], ['/', 'head']]) {
+    const pg = await fresh();
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Roll ', { delay: 14 }); await pg.waitForTimeout(200);
+    await pg.keyboard.type(trig, { delay: 20 }); await pg.waitForTimeout(400);
+    assert.equal(await pg.evaluate(() => !!document.querySelector('.builder-search')), false,
+      `${trig}: precondition, a bare trigger mid-text is punctuation until a word character follows`);
+
+    await pg.keyboard.type(word[0], { delay: 30 }); await pg.waitForTimeout(500);
+    const opened = await pg.evaluate(() => ({ box: document.querySelector('.builder-search')?.value ?? null,
+                                              text: root.children[0].text }));
+    assert.equal(opened.box, word[0], `${trig}: precondition, the box is seeded with the character that opened it`);
+    assert.equal(opened.text, 'Roll ' + trig + word[0],
+      `${trig}: precondition, the point holds that character too — which is the whole bug`);
+
+    await pg.keyboard.type(word.slice(1), { delay: 30 }); await pg.waitForTimeout(400);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(650);
+    assert.equal(await pg.evaluate(() => root.children[0].text), 'Roll ' + trig + word,
+      `${trig}: the character that opened the palette must be counted once`);
+    await pg.close();
+  }
+
+  // and the box is authoritative: editing it away from the seed leaves no stale character behind
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('Roll @d', { delay: 30 }); await pg.waitForTimeout(550);
+  assert.ok(await pg.evaluate(() => !!document.querySelector('.builder-search')), 'the palette is open');
+  await pg.keyboard.press('Backspace');
+  await pg.keyboard.type('note', { delay: 30 }); await pg.waitForTimeout(400);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(650);
+  assert.equal(await pg.evaluate(() => root.children[0].text), 'Roll @note',
+    'backspacing the seed in the box removes it from the point too');
+  await pg.close();
+});

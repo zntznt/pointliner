@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2070 declarations in 152 sections across 17 domains.**
+**2071 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -743,7 +743,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 ## column model ops (reuse the same model logic the header gestures used; now
 
-- `mtSetAlign` — exposed as explicit, keyboard-reachable panel actions) ───────────────────
+- `effectiveAlign` — exposed as explicit, keyboard-reachable panel actions) ───────────────────
+- `mtSetAlign`
 - `baseStructMessage` — #1400: what a structural base op says when it lands. Pure, so the six sentences are pinned as
 - `COL_W_PRESETS` — #1415: the width presets, ONE home. The Column menu builds its rows from this and the message
 - `colWidthLabel`

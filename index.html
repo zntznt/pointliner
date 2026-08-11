@@ -7589,10 +7589,27 @@ function editableText(el) {
 // text never entered the document, so undo could not reach it either: four sentences, gone. Any
 // trigger will sometimes be wrong, so the recovery cannot depend on the trigger being right.
 // DOM-free by design, like stripTriggerRun.
+// #1466: the search box is SEEDED with the matched query (#1396: `if (filterQ) searchEl.value =
+// filterQ`, from the same builderState.query whose length arrives here). So when a trigger opens
+// LATE those characters are in TWO places at once — already in the point, and again at the front of
+// the box — and splicing the box's whole value after the run counted them twice: `Roll @` + `d`
+// opened the palette, `ice` finished the word, and Escape wrote `Roll @ddice` to the document.
+// A trigger opens late whenever it is not at the start of the point, because a bare trigger
+// mid-text is punctuation until a word character follows it (the #1108 rule) — so this hit `/`
+// mid-text exactly as hard as `@`, though only `@` was reported.
+//
+// So the box REPLACES the query rather than following it, which is also the honest inverse of
+// stripTriggerRun: that removes trigger+query, this puts the trigger's run back as whatever the box
+// now holds. Appending only the un-typed remainder would fix the reported case and still leave a
+// stale character behind the moment the box is EDITED: opening on `@d`, backspacing, and typing
+// `note` wrote `Roll @dnote`, because the point's copy of `d` goes stale as soon as the box changes.
+// Nothing is lost by replacing: those characters are by construction the box's own opening value,
+// and an empty box never reaches here (builderReturnTypedText returns early on no text).
 function restoreTypedRun(text, offset, queryLen, typed) {
-  const at = Math.min(offset + 1 + queryLen, text.length);   // just past the trigger char + matched query
+  const from = Math.min(offset + 1, text.length);            // just past the trigger char
+  const to = Math.min(from + queryLen, text.length);         // ...to the end of the matched query
   const t = String(typed || '');
-  return { text: text.slice(0, at) + t + text.slice(at), caret: at + t.length };
+  return { text: text.slice(0, from) + t + text.slice(to), caret: from + t.length };
 }
 
 function stripTriggerRun(text, offset, queryLen, insert = '') {
@@ -11937,6 +11954,16 @@ function openFormulaDialog(node, lhs, kindLabel, disp) {
 
 // ── column model ops (reuse the same model logic the header gestures used; now
 // exposed as explicit, keyboard-reachable panel actions) ───────────────────
+// #1475: the alignment a base cell ACTUALLY gets. The model has THREE states, not two: an explicit
+// left/center/right, or unset -- and unset is not "left", because a column shown as Number renders
+// right. The column menu coerced unset to 'left' and so reported "Left ✓" over visibly right-aligned
+// cells, and offered no way back to unset once you picked Left. ONE home, so the menu can only ever
+// name what the grid is doing.
+function effectiveAlign(align, role) {
+  return (align === 'left' || align === 'center' || align === 'right') ? align
+       : role === 'number' ? 'right' : 'left';
+}
+
 function mtSetAlign(node, colIdx, align) {
   const m = mtModel(node);
   pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
@@ -11963,7 +11990,9 @@ function baseStructMessage(op, opts = {}) {
     // #1415: the formatting half of the same menu. Sort spoke; these three wrote to the document
     // and said nothing. The undo promise is per-op and honest: align and totals push undo (#1387),
     // width does not, so width does not claim it.
-    case 'col-align': return `Column ${subj} aligned ${opts.align}. Undo restores it.`;
+    case 'col-align': return opts.align
+      ? `Column ${subj} aligned ${opts.align}. Undo restores it.`
+      : `Column ${subj} aligned automatically. Undo restores it.`;   // #1475
     case 'col-width': return `Column ${subj} ${opts.width == null ? 'fits its content' : 'set to ' + opts.width}.`;
     case 'col-agg':   return opts.agg
       ? `Column ${subj} totals with ${opts.agg}. Undo restores it.`
@@ -12292,7 +12321,7 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   const ncols = model.aligns.length;
   const tblfm = extractTblfm(node.text);
   const curAgg = mtColAggKind(tblfm, col1);
-  const curAlign = model.aligns[colIdx] || 'left';
+  const curAlign = model.aligns[colIdx] || null;   // #1475: unset is its own state, not 'left'
   const { addSection, addItem } = mtMenuBuilder(panel);
 
   // Row-section eligibility, also used by the Formula section (cell formulas
@@ -12378,6 +12407,11 @@ function showColPanel(node, colIdx, anchorEl, rowIdx = null) {
   addItem('Descending', { title: capFirst(sortCopy.desc), onApply: () => mtSortBase(node, colIdx, 'desc') });
 
   addSection('Alignment', true);
+  // #1475: the unset state is selectable and says what it resolves to, so the tick can never sit on
+  // a row the cells disagree with, and there is a route back after you pick an explicit alignment.
+  // Same shape as the Width section below, which has always offered its own auto state first.
+  addItem(`Automatic (${effectiveAlign(null, curRole)})`,
+    { active: curAlign == null, onApply: () => mtSetAlign(node, colIdx, null) });
   [['left','Left'],['center','Center'],['right','Right']]
     .forEach(([al, label]) => addItem(label, { active: al === curAlign, onApply: () => mtSetAlign(node, colIdx, al) }));
 
@@ -13684,7 +13718,7 @@ function buildTableWidget(node, readOnly) {
         h += `<td class="mt-cell mt-computed mt-total-blank${aCls(model.aligns[c])}" data-r="${r}" data-c="${c}"${colStyle(c)} contenteditable="false" tabindex="0" aria-readonly="true"></td>`;
       } else {
         const qEdit = _qFields && qbaseFieldWritable(_qFields[c]);
-        h += `<td class="mt-cell${aCls(model.aligns[c])}${(_colRoles[c] === 'number' && !model.aligns[c]) ? ' mt-a-right' : ''}${cc?' mt-computed':''}${qEdit?' mt-qcell':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':(qEdit?` contenteditable="true" title="Edits write to the matching point's ${escQ(_qFields[c])} property"`:ro)}>${mtCellHtml(node, model.rows[r][c]||'', c, _colRoles)}</td>`;
+        h += `<td class="mt-cell${aCls(effectiveAlign(model.aligns[c], _colRoles[c]))}${cc?' mt-computed':''}${qEdit?' mt-qcell':''}" data-r="${r}" data-c="${c}"${colStyle(c)}${cc?' contenteditable="false" tabindex="0" aria-readonly="true"':(qEdit?` contenteditable="true" title="Edits write to the matching point's ${escQ(_qFields[c])} property"`:ro)}>${mtCellHtml(node, model.rows[r][c]||'', c, _colRoles)}</td>`;
       }
     }
     h += '</tr>';
