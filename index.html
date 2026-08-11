@@ -43277,15 +43277,32 @@ function builderBestIdx(vis, rawQuery, trigger) {
   const { matchWord } = parseSlashQuery(raw, trigger || '/');
   const q = (matchWord || raw).toLowerCase();
   if (!q) return 0;
+  // #1472: a command's whole NAME beats a prefix of someone else's id. The old order ranked an id
+  // prefix above an exact label, so typing the full word `Variable` selected `Variables panel`
+  // (id `variables`, a side-panel toggle) while the command actually named Variable (id `var`) sat
+  // third, and Enter opened a panel instead of declaring a variable. Typing a thing's whole name is
+  // the strongest signal a person can send; matching the first seven letters of a different
+  // command's id is a much weaker one.
+  //
+  // Exact id still wins outright, which is what keeps `/todo` selecting the To-do command ahead of
+  // a document's own `#TODO` state row (measured: that pair is the only exact-label collision left
+  // in the pool, and exact-id is the right answer for it).
+  //
+  // `keys` deliberately stay BELOW an id prefix, exactly where they were. They are hidden synonyms,
+  // not names, and promoting an exact key over an id prefix reorders five unrelated queries that
+  // nobody reported (`state`, `stat`, `item`, `unit`, `like` — measured across 1818 queries). One
+  // inversion is the bug; the rest is a separate judgement call and is left alone.
   const rank = c => {
     const id = (c.id || '').toLowerCase();
+    const label = (c.label || '').toLowerCase();
     if (id === q) return 0;
-    if (id.startsWith(q)) return 1;
-    if ((c.keys || []).some(k => String(k).toLowerCase().startsWith(q))) return 2;
-    if ((c.label || '').toLowerCase().startsWith(q)) return 3;
-    return 4;
+    if (label === q) return 1;
+    if (id.startsWith(q)) return 2;
+    if ((c.keys || []).some(k => String(k).toLowerCase().startsWith(q))) return 3;
+    if (label.startsWith(q)) return 4;
+    return 5;
   };
-  let best = 0, bestRank = 5;
+  let best = 0, bestRank = 6;
   (vis || []).forEach((c, i) => { const r = rank(c); if (r < bestRank) { bestRank = r; best = i; } });
   return best;
 }

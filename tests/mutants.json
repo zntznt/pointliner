@@ -290,6 +290,24 @@
       "kills": "#1471 both entry paths route through the one core"
     },
     {
+      "id": "label-loses-to-id-prefix",
+      "suite": "unit",
+      "why": "#1472: the shipped ranking, where `Variable` selected `Variables panel` and Enter opened it",
+      "file": "index.html",
+      "find": "    if (label === q) return 1;",
+      "replace": "    if (false) return 1;",
+      "kills": "#1472 an exact label beats a prefix"
+    },
+    {
+      "id": "builder-pick-is-first-row",
+      "suite": "unit",
+      "why": "#1472: the ranking not consulted at all, which a census over an empty loop would miss",
+      "file": "index.html",
+      "find": "  (vis || []).forEach((c, i) => { const r = rank(c); if (r < bestRank) { bestRank = r; best = i; } });",
+      "replace": "  ;",
+      "kills": "#1472 census: every command in every pool is selected by its own name"
+    },
+    {
       "id": "task-shortcut-refuses-plain",
       "suite": "browser",
       "why": "#1471: the reported bug -- the core refusing to add a marker, so the key stays inert",

@@ -1701,3 +1701,43 @@ test('#1471 the cursor-state path agrees, and the refusals name their remedy', {
   assert.match(await say(), /priority needs a state.*Shift\+S/, 'and it says so rather than nothing');
   await pg.close();
 });
+
+// 30. #1472 — typing a command's whole name pre-selected a DIFFERENT command, and Enter then did
+//     something unrelated: `Variable` selected `Variables panel` (a side-panel toggle whose id
+//     starts with the word) and opened a panel instead of declaring a variable. Driven because the
+//     claim is about what `.builder-item.active` is and what Enter does to the point, neither of
+//     which a source pin can see.
+test('#1472 typing a command name selects that command, and Enter runs it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('HP ', { delay: 14 });
+  await pg.waitForTimeout(200);
+  await pg.keyboard.type('/', { delay: 20 }); await pg.waitForTimeout(450);
+  await pg.keyboard.type('Variable', { delay: 22 }); await pg.waitForTimeout(500);
+
+  const menu = await pg.evaluate(() => {
+    const items = [...document.querySelectorAll('.builder-item')];
+    const name = el => (el.querySelector('.cmd-label')?.innerText || '').trim();
+    const act = items.filter(i => i.classList.contains('active'));
+    return { labels: items.map(name), active: act.length === 1 ? name(act[0]) : `${act.length} active`,
+             ariaSelected: items.filter(i => i.getAttribute('aria-selected') === 'true').map(name) };
+  });
+  assert.ok(menu.labels.length > 1, `the menu must be offering a choice, got ${JSON.stringify(menu.labels)}`);
+  assert.ok(menu.labels.includes('Variables panel'),
+    'precondition: the command that used to win is still on offer, so this cannot pass by it vanishing');
+  assert.equal(menu.active, 'Variable',
+    `the exactly-named command must be pre-selected, offered ${JSON.stringify(menu.labels)}`);
+  assert.deepEqual(menu.ariaSelected, ['Variable'],
+    'and the selection a screen reader hears is the same one, not just the painted highlight');
+
+  // and Enter must run THAT command: a variable dialog, not the side panel
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+  const after = await pg.evaluate(() => ({
+    varPanelOpen: !!document.getElementById('var-panel')?.classList.contains('on'),
+    dialogOpen: !!document.querySelector('#io-card.on, #io-card:not([hidden])'),
+    text: root.children[0].text,
+  }));
+  assert.equal(after.varPanelOpen, false, 'Enter must not open the Variables side panel');
+  assert.ok(!/\/Variable/i.test(after.text), 'and must not leave the typed command sitting in the point');
+  await pg.close();
+});

@@ -27519,6 +27519,65 @@ test('#1106: builderBestIdx fires the exact-id verb, not the first fuzzy descrip
   assert.equal(c.builderBestIdx(pool, '', '/'), 0);
 });
 
+// ── #1472: typing a command's whole NAME selects that command ────────────────
+// `Variable` selected `Variables panel` — a side-panel toggle whose id happens to start with the
+// word — while the command actually named Variable sat third, so Enter opened a panel and left the
+// point alone. The ranking put an id PREFIX above an exact label.
+test('#1472 an exact label beats a prefix of someone else\'s id', () => {
+  const pool = c.builderCmdPool('/');
+  const pick = (q) => { const vis = c.builderFilterCmds(pool, q, '/'); return vis[c.builderBestIdx(vis, q, '/')]; };
+  // the report, in both cases the user can type it
+  assert.equal(pick('Variable').id, 'var', 'the command named Variable, not the panel named variables');
+  assert.equal(pick('variable').id, 'var');
+  // the precondition, so this cannot pass for the wrong reason: the loser is still IN the list and
+  // still earlier in pool order, which is exactly why first-in-list would get it wrong
+  const vis = Array.from(c.builderFilterCmds(pool, 'Variable', '/'));
+  const ids = vis.map(x => x.id);
+  assert.ok(ids.includes('variables'), 'precondition: Variables panel still matches the query');
+  assert.ok(ids.indexOf('variables') < ids.indexOf('var'), 'precondition: and still sorts ahead of it');
+  // an exact id still outranks an exact label, which is the tie-break for /todo vs a #TODO state row
+  assert.equal(pick('todo').id, 'todo');
+  assert.equal(pick('TODO').id, 'todo', 'exact id wins the one collision the pool actually has');
+  // and every rank below the change is untouched: id prefix, then a hidden keys synonym, then label
+  assert.equal(pick('prop').id, 'prop', 'exact id');
+  assert.equal(pick('deadline').id, 'due', 'a keys synonym still resolves');
+  // an id prefix still resolves to an id-prefix match (two commands share `quer`, and which of
+  // them wins is pool order, untouched by this change — the point is that it is not a desc hit)
+  assert.ok(pick('quer').id.startsWith('quer'), 'an id prefix still resolves');
+});
+
+// The ratchet. Enumerated from the pool rather than a hand list, so a command added later whose id
+// prefixes another command's label fails HERE instead of being reported by a user.
+test('#1472 census: every command in every pool is selected by its own name', () => {
+  const wrong = [], byExactId = [];
+  let checked = 0;
+  for (const trig of nonEmpty(['/', '@', '{'], 'builder triggers')) {
+    const pool = Array.from(c.builderCmdPool(trig));
+    for (const cmd of nonEmpty(pool, `the ${trig} command pool`)) {
+      const label = String(cmd.label || '');
+      if (!label) continue;
+      checked++;
+      const vis = Array.from(c.builderFilterCmds(pool, label, trig));
+      const got = vis[c.builderBestIdx(vis, label, trig)];
+      if (!got) { wrong.push(`${trig} ${label}: nothing selected`); continue; }
+      if (got.id === cmd.id) continue;
+      // Two pool entries legitimately share a label (a brace form `math` beside the insert command
+      // `Math`); either is the right answer, so compare by IDENTITY, not by the string typed.
+      if (String(got.label || '').toLowerCase() === label.toLowerCase()) continue;
+      // The one sanctioned loss: this label is exactly ANOTHER command's id, and an exact id is the
+      // stronger signal. Collected rather than waved through, so the exemption is proven to fire.
+      if (String(got.id || '').toLowerCase() === label.toLowerCase()) { byExactId.push(`${trig} ${label} → ${got.id}`); continue; }
+      wrong.push(`${trig} ${JSON.stringify(label)} (id=${cmd.id}) selected ${JSON.stringify(got.label)} (id=${got.id})`);
+    }
+  }
+  assert.ok(checked > 200, `the census must cover the real pools, covered ${checked}`);
+  assert.deepEqual(wrong, [], 'a command that its own name does not select is the #1472 defect');
+  // Measure the negative case too: the exemption is real, and it is ONLY the #TODO state row.
+  assert.ok(byExactId.length > 0, 'the exact-id exemption must actually fire, or it is dead code in the test');
+  assert.deepEqual([...new Set(byExactId.map(s => s.split(' ')[1]))], ['TODO'],
+    'exactly one label in the pool is another command id, and it is the one measured');
+});
+
 test('#1106: the guided builder delegates every / command to slashApply, ungated', () => {
   // The delegation existed but was gated on `slashState`, which checkSlash's guided fork always
   // nulls (hideSlashMenu) before opening the builder — so from the DEFAULT tier it never ran and
