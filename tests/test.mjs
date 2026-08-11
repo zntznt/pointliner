@@ -3546,7 +3546,9 @@ test('every display-mode mutation records an undo entry (corruption regression)'
   // 2. the bulk call site must NOT push again, or one bulk tick costs two undos.
   assert.ok(!/if \(bulk\) pushUndo\(\);/.test(_src),
     'the bulk site pushed its own snapshot; with the push inside toggleTaskInNode that is a double');
-  assert.equal((_src.match(/toggleTaskInNode\(node, \+e\.target\.dataset\.task\)/g) || []).length, 2,
+  // #1470 added an Enter twin, and it deliberately does NOT become a third writer: it calls the
+  // checkbox's own .click(), which fires the same `change` the Space path already used. Still two.
+  assert.equal((_src.match(/toggleTaskInNode\(node, \+/g) || []).length, 2,
     'both call sites (mousedown + change) still route through the one snapshotting function');
 
   // 3. the clock. Ordering is load-bearing: pushUndo clears redoStack, so snapshotting a click that
@@ -9736,7 +9738,7 @@ test('UXP-39: rendered #hashtag is keyboard-operable (role/tabindex + Enter/Spac
   // the rendered chip carries button semantics + AT focus reach (mirrors note-ind/prop-chip).
   // (#464 inserts an optional data-color between data-tag and role, so match the parts, not one string.)
   assert.ok(/class="hashtag" data-tag="#\$\{t\}"/.test(_src), 'hashtag class + data-tag');
-  assert.ok(/role="button" tabindex="-1" aria-label="Filter by #\$\{t\}"/.test(_src), 'hashtag role/tabindex/aria-label');
+  assert.ok(/role="button" \$\{INLINE_CTL\} aria-label="Filter by #\$\{t\}"/.test(_src), 'hashtag role/tabindex/aria-label');   // #1470: tabindex now arrives via INLINE_CTL, with contenteditable="false" beside it
   assert.ok(_src.includes('.hashtag:focus-visible'), 'hashtag focus-visible style missing');
   // the keyboard twin: Enter/Space on a focused chip runs the same filter as the click
   assert.ok(_src.includes("closest?.('.hashtag')"), 'hashtag Enter/Space branch missing');
@@ -12526,9 +12528,10 @@ test('UXP-19: pill-body keyboard activation (Enter/Space dispatch) is present', 
 
 test('UXP-177: the TODO state/priority badge is keyboard-operable (a11y attrs + Enter/Space twin)', () => {
   // the interactive inline badge carries the pill a11y kit
-  assert.ok(_src.includes('class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" tabindex="-1"'),
+  // #1470: the tabindex now arrives through INLINE_CTL, which carries contenteditable="false" with it
+  assert.ok(_src.includes('class="todo-state todo-state-${kw}${doneCls}${heldCls}" data-todo-state="${keyword}" role="button" ${INLINE_CTL}'),
     'inline todo-state badge missing role/tabindex (UXP-177)');
-  assert.ok(_src.includes('class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" tabindex="-1"'),
+  assert.ok(_src.includes('class="todo-prio todo-prio-${priority.toLowerCase()}" role="button" ${INLINE_CTL}'),
     'todo-prio chip missing role/tabindex (UXP-177)');
   // the Enter/Space keydown twin dispatches the badge's mousedown (→ showTodoPicker)
   assert.ok(_src.includes("closest?.('.todo-state,.todo-prio')"),
@@ -25227,8 +25230,9 @@ test('clock/spoiler (#701) — SOURCE PIN: pills are tabindex=-1 (out of the Tab
   // 50-clock document does not add 50 tab stops). The clock and spoiler shipped as tabindex="0"
   // and must be corrected to match dice/grammar/etc.
   const src = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
-  assert.match(src, /class="clock\$\{full\}" role="button" tabindex="-1"/, 'the manual clock pill is tabindex="-1", not 0');
-  assert.match(src, /class="md-spoiler" role="button" tabindex="-1"/, 'the spoiler block is tabindex="-1", not 0');
+  // #1470: both now take the tabindex from INLINE_CTL, which also makes them contenteditable="false"
+  assert.match(src, /class="clock\$\{full\}" role="button" \$\{INLINE_CTL\}/, 'the manual clock pill is tabindex="-1", not 0');
+  assert.match(src, /class="md-spoiler" role="button" \$\{INLINE_CTL\}/, 'the spoiler block is tabindex="-1", not 0');
   const cpa = fnBody(src, 'collectPillActions');
   assert.match(cpa, /manualClocksOf\(node\.text\)/, 'collectPillActions surfaces each manual clock as a keyboard action');
   assert.match(cpa, /Advance clock/, 'a keyboard "Advance clock" row exists');
@@ -31743,4 +31747,87 @@ test('#1398 the footnote marker lands the caret where its own label promises', (
     'the reveal/scroll/announce it already did are untouched');
   assert.ok(fn.indexOf('scrollIntoView') < fn.indexOf(".querySelector('.fn-content')?.focus()"),
     'focus comes after the panel has been populated and scrolled');
+  // #1470: every line above stayed green for months while the marker's Enter typed into the point,
+  // because the branch that CALLS activateFnRef never ran. Presence is not behaviour; the driven
+  // check in tests/browser.mjs owns that half, and the ratchet below owns the cause.
+});
+
+// ── #1470: a focusable control inside a point must be an atomic island ───────
+// The cause behind "Enter on a footnote marker types into the point": the marker had tabindex but
+// not contenteditable="false", so the editing host swallowed focus on the first keystroke, BEFORE
+// keydown was dispatched. onKeyDown then read e.target as the point, skipped the marker branch, and
+// Enter fell through to "split the point". It only bit while the host had no selection yet, i.e. on
+// a point never focused this session -- every point on a freshly loaded document.
+test('#1470 every keyboard twin inside a point is an atomic island (census)', () => {
+  assert.match(_src, /const INLINE_CTL = 'contenteditable="false" tabindex="-1"';/,
+    'the two attributes live in ONE string so they cannot come apart');
+
+  // The family, enumerated from the KEYBOARD TWINS rather than a hand list: every selector
+  // onKeyDown reaches for with closest() is a control the user can stand on inside a point.
+  const i = _src.indexOf('function onKeyDown(e, id, content)');
+  const j = _src.indexOf('// Point-actions menu: the OS-standard', i);
+  assert.ok(i > 0 && j > i, 'the onKeyDown twin block must be locatable');
+  const twinBlock = _src.slice(i, j);
+  const classes = [...new Set([...twinBlock.matchAll(/closest\?\.\('([^']+)'\)/g)]
+    .flatMap(m => m[1].split(','))
+    .map(s => s.trim().replace(/:not\([^)]*\)$/, ''))
+    .filter(s => s.startsWith('.')))];
+  assert.ok(nonEmpty(classes, 'keyboard-twin selectors').length >= 25,
+    `the twin census must find the whole family, found ${classes.length}`);
+
+  // Exemptions, each with the reason it is NOT a defect. Written down because "completing the set"
+  // onto one of these would be cargo cult: the pencils are already inside an island, and the last
+  // two are not inside the editing host at all.
+  const EXEMPT = {
+    '.dice-edit': 'nested inside .dice-roll, which is the island',
+    '.mk-edit':   'nested inside .mk-roll',
+    '.math-edit': 'nested inside .math-roll',
+    '.gr-edit':   'nested inside .gr-roll',
+    '.var-edit':  'nested inside .var-pill',
+    '.est-edit':  'nested inside .est-pill',
+    '.seq-edit':  'nested inside .seq-pill',
+    '.prop-chip': 'lives in .props-area, a sibling of .node-content, not inside it',
+  };
+  // .note-ind is built with the DOM API, not a template string, and set it from the start.
+  assert.match(fnBody(_src, 'appendNoteIndicator'), /ind\.contentEditable = 'false';/,
+    'the note indicator was the one site that already had the convention');
+
+  const missing = [];
+  for (const cls of classes) {
+    if (EXEMPT[cls]) continue;
+    if (cls === '.note-ind') continue;   // asserted above, JS form
+    const name = cls.slice(1);
+    // Line-scoped, not a byte window (#1141): each emit writes its class and its attributes on one
+    // line, and a line is a real boundary rather than a count that slides as code moves.
+    // Only the FOCUSABLE emits are in scope: several of these classes also have a display-only
+    // variant (clock-computed, meter with a value, query-bad, a base cell's status badge) that
+    // carries no tabindex and so can never receive the keydown. Filtering on focusability is the
+    // point of the census, not a way to shrink it — an emit that gains a tabindex later joins here.
+    const lines = _src.split('\n')
+      .filter(l => l.includes(`class="${name}`))
+      // focusable = an explicit tabindex, the shared string, or a natively focusable tag
+      .filter(l => l.includes('tabindex=') || l.includes('${INLINE_CTL}') || /<(button|input|select|textarea)\b/.test(l));
+    if (!lines.length) { missing.push(`${cls} (no focusable emit site found — did it move?)`); continue; }
+    const island = lines.every(l => l.includes('${INLINE_CTL}') || l.includes('contenteditable="false"'));
+    if (!island) missing.push(cls);
+  }
+  assert.deepEqual(missing, [],
+    'a focusable control inside a point without contenteditable="false" loses its keyboard twin on a cold point');
+
+  // The two members that take the island half WITHOUT the tabindex half, and why.
+  assert.match(_src, /class="md-task-check" contenteditable="false"/,
+    'a native checkbox keeps its natural Tab order; -1 would remove it to fix a bug it lacks');
+  assert.match(_src, /class="web-img-blocked" role="button" contenteditable="false" tabindex="0"/,
+    'a blocked-image consent prompt keeps tabindex="0" on purpose');
+
+  // The two twins the census FOUND MISSING, added by #1470. A checkbox has no native Enter action,
+  // so Enter escaped to the outline; a meter has no action at all and did the same.
+  const kb = twinBlock;
+  assert.match(kb, /const tchk = e\.target\.closest\?\.\('\.md-task-check'\);/);
+  assert.match(kb, /if \(tchk && e\.key === 'Enter'\) \{/, 'Enter only: Space already toggles natively');
+  assert.match(kb, /tchk\.click\(\);/, 'routed through the element, so the one `change` writer still owns the model');
+  assert.match(kb, /const mtr = e\.target\.closest\?\.\('\.meter'\);/);
+  assert.match(kb, /announce\(mtr\.getAttribute\('aria-label'\)/, 'a diagnostic answers with its reason, not silence (P4)');
+  // and the Space path puts focus back on the box it repainted away (the UXP-19 class)
+  assert.match(_src, /refocusAfterRepaint\(node\.id, c => c\.querySelector\(`\.md-task-check\[data-task="\$\{CSS\.escape\(String\(ordinal\)\)\}"\]`\)\)/);
 });

@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2063 declarations in 152 sections across 17 domains.**
+**2064 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -380,6 +380,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `continuationPrefix` — start with so the format continues (a new to-do gets its `- [ ]`, a new quote
 - `migrateTodoText` — Legacy migration: a `_type="todo"` node from before the markdown-first refactor
 - `codeNodeHTML` — Render a whole-node code block (node.type === 'code'). The text is `\`\`\`` +
+- `INLINE_CTL` — #1470: the two attributes every focusable control rendered INSIDE a point carries, as ONE string
 - `renderContentHTML` — Render a node's display HTML with its dice/markov/grammar data in scope so
 - `countVarRefs` — Count display-only `{name}` references to a variable across the document (the
 - `typedVarDeclSnapshot` — Snapshot a node's TYPED variable declarations as name→displayValue, for before/after

@@ -1438,3 +1438,174 @@ test('#1469 Sort and Calculate give the same column the same answer', { skip: sk
     .map(el => el.textContent.trim()).filter(Boolean));
   assert.deepEqual(names, ['Anvil', 'Lamp', 'Rope', 'Torch'], 'a text column is untouched by the change');
 });
+
+// 25. #1470 — the reported defect, exactly as filed. A footnote marker on a point that has never
+//     been focused this session (i.e. every point on a freshly loaded document): Enter on the
+//     marker landed the caret in the POINT and the footnote text was typed into the document.
+//     Source-pinnable only as far as "activateFnRef calls focus()", which was true the whole time
+//     — the branch that calls it never ran, because focus had already left the marker.
+test('#1470 Enter on a cold footnote marker writes the footnote, not the point', { skip: skip() }, async () => {
+  const pg = await fresh();
+  // Build the document from the model and never touch a point: "cold" is the whole bug.
+  await pg.evaluate(() => {
+    root.children = [mkNode('Interview with Rosa[^src]')];
+    root.children[0].type = 'ul';
+    buildIndex(root); markDirty(); render();
+  });
+  await pg.waitForTimeout(400);
+  const marker = await pg.evaluate(() => {
+    const el = document.querySelector('.node-content .fn-ref');
+    return el ? { name: el.getAttribute('aria-label'), editable: el.isContentEditable } : null;
+  });
+  assert.ok(marker, 'the marker rendered');
+  assert.match(marker.name, /^Footnote 1, not written yet/, 'and says what activating it will do');
+  assert.equal(marker.editable, false, 'an atomic island: the editing host must not swallow it');
+
+  // focus it the way assistive tech does, then activate it
+  await pg.evaluate(() => document.querySelector('.node-content .fn-ref').focus());
+  await pg.waitForTimeout(200);
+  assert.equal(await pg.evaluate(() => document.activeElement.className.split(' ')[0]), 'fn-ref',
+    'the marker holds focus before the key');
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  const landed = await pg.evaluate(() => ({
+    ae: document.activeElement.tagName + '.' + String(document.activeElement.className || '').split(' ')[0],
+    panelOn: document.getElementById('fn-panel')?.classList.contains('on'),
+    points: root.children.length,
+  }));
+  assert.equal(landed.ae, 'DIV.fn-content', 'the caret lands in the footnote body, as the name promises');
+  assert.ok(landed.panelOn, 'with the Footnotes panel open around it');
+  assert.equal(landed.points, 1, 'and Enter did NOT split the point');
+
+  await pg.keyboard.type('Rosa M., interview.', { delay: 12 });
+  await pg.waitForTimeout(450);
+  const wrote = await pg.evaluate(() => ({
+    point: root.children[0].text,
+    notes: (root.footnotes || []).map(f => f.text),
+  }));
+  assert.equal(wrote.point, 'Interview with Rosa[^src]', 'the point is untouched by what you typed');
+  assert.deepEqual(wrote.notes, ['Rosa M., interview.'], 'and the footnote holds it');
+  await pg.close();
+});
+
+// 26. #1470 — the family, because .fn-ref was one of NINE. Every focusable control rendered inside
+//     a point's contenteditable must be an atomic island, or the editing host swallows focus on the
+//     first keystroke and Enter reaches the outline handler that splits the point. This census is
+//     discovered from the DOM, not from a list, so a control added later is covered by seeding it.
+test('#1470 every focusable control inside a point is an atomic island', { skip: skip() }, async () => {
+  // One seed carrying the whole family, reused per member below.
+  const seedFamily = () => {
+    const lines = [
+      'Interview with Rosa[^src]', 'A {2d6} roll here', 'Sum is {= 2 + 2}',
+      '{rule Loot: gold | silver}', 'Pick {Loot}', '{markov: a→b, b→c}', 'Est {5 to 10} days',
+      '{hp := 9}', 'Hit {hp -= 1}', '{seq Flow: TODO DOING | DONE}', '#TODO [#A] Urgent thing',
+      'Progress [o 0/3] here', 'Tagged #alpha here', '- [ ] a task item', '>! a hidden secret',
+      '{meter: nosuch/10}',
+    ];
+    root.children = [];
+    for (const t of lines) { const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    if (typeof promoteLoadedShorthand === 'function') promoteLoadedShorthand(root);
+    buildIndex(root, null); markDirty(); render();
+  };
+  const pg = await fresh();
+  await pg.evaluate(seedFamily);
+  await pg.waitForTimeout(600);
+
+  const found = await pg.evaluate(() => {
+    const out = [];
+    for (const c of document.querySelectorAll('.node-content')) {
+      for (const el of c.querySelectorAll('[tabindex="-1"], input, a[href], [role="button"], [role="link"]')) {
+        out.push({ cls: String(el.className || el.tagName).split(' ')[0], editable: el.isContentEditable });
+      }
+    }
+    return out;
+  });
+  assert.ok(found.length >= 12, `the seed must actually render the family, got ${found.length}`);
+  const swallowed = found.filter(f => f.editable).map(f => f.cls);
+  assert.deepEqual([...new Set(swallowed)], [],
+    'a focusable control the editing host can swallow loses its keyboard twin on a cold point');
+  // and the ones the issue is about are genuinely among them, not an empty sweep
+  const seen = new Set(found.map(f => f.cls));
+  for (const need of ['fn-ref', 'clock', 'act-pill', 'hashtag', 'md-task-check', 'md-spoiler', 'todo-state', 'meter'])
+    assert.ok(seen.has(need), `${need} must be in the census, not silently absent from the seed`);
+
+  await pg.close();
+
+  // Enter on each named member: none of them may reach the outline's split handler. A FRESH PAGE
+  // per member, and this is not caution -- "cold" is the bug's precondition. Reusing one page made
+  // .act-pill and .hashtag pass while they were broken, because activating the first member gives
+  // the editing host a selection and the retarget stops happening. Re-rendering is not enough;
+  // that state is the document's, not the element's.
+  const MEMBERS = ['.fn-ref', '.clock:not(.clock-computed)', '.act-pill', '.hashtag',
+                   '.md-task-check', '.md-spoiler', '.todo-state', '.todo-prio', '.meter.meter-bad'];
+  for (const sel of MEMBERS) {
+    const p2 = await fresh();
+    await p2.evaluate(seedFamily);
+    await p2.waitForTimeout(500);
+    const before = await p2.evaluate(() => root.children.length);
+    const ok = await p2.evaluate(s => {
+      const el = document.querySelector('.node-content ' + s);
+      if (!el) return false;
+      el.focus(); return document.activeElement === el;
+    }, sel);
+    assert.ok(ok, `${sel} must be focusable for this to measure anything`);
+    await p2.keyboard.press('Enter'); await p2.waitForTimeout(380);
+    const after = await p2.evaluate(() => ({ n: root.children.length,
+      ae: document.activeElement.tagName + '.' + String(document.activeElement.className || '').split(' ')[0] }));
+    assert.equal(after.n, before, `Enter on ${sel} split the point instead of activating it (${after.ae})`);
+    await p2.close();
+  }
+});
+
+// 27. #1470 — the two members whose fix was a missing keyboard twin rather than the island
+//     attribute, and the one that needed nothing. Driven because "the branch exists" is exactly
+//     the claim that was already true and already useless for .fn-ref.
+test('#1470 the task checkbox answers Enter, the meter says why, the link still follows', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [];
+    for (const t of ['- [ ] a task item', '{meter: nosuch/10}', 'Target point', 'PLACEHOLDER']) {
+      const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    }
+    root.children[3].text = 'See [[#' + root.children[2].id + ']]';
+    if (typeof promoteLoadedShorthand === 'function') promoteLoadedShorthand(root);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(500);
+
+  // Enter toggles the box the way Space always did, and focus stays on the box you ticked
+  await pg.evaluate(() => document.querySelector('.md-task-check').focus());
+  await pg.waitForTimeout(180);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+  let r = await pg.evaluate(() => ({ text: root.children[0].text,
+    checked: document.querySelector('.md-task-check')?.checked,
+    ae: document.activeElement.className.split(' ')[0] }));
+  assert.equal(r.text, '- [x] a task item', 'Enter writes the tick through to the point');
+  assert.equal(r.checked, true, 'and the box shows it');
+  assert.equal(r.ae, 'md-task-check', 'and you are still standing on the box');
+  // Space keeps its native path and lands the same way (one write, not two)
+  await pg.keyboard.press('Space'); await pg.waitForTimeout(450);
+  r = await pg.evaluate(() => ({ text: root.children[0].text, ae: document.activeElement.className.split(' ')[0] }));
+  assert.equal(r.text, '- [ ] a task item', 'Space still toggles, exactly once');
+  assert.equal(r.ae, 'md-task-check', 'and also keeps focus');
+
+  // the meter is a diagnostic: the key does nothing to the document and is not silent
+  await pg.evaluate(() => { document.querySelector('.meter-bad').focus(); const a = document.getElementById('a11y-live'); if (a) a.textContent = ''; });
+  await pg.waitForTimeout(180);
+  const nBefore = await pg.evaluate(() => root.children.length);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(400);
+  const m = await pg.evaluate(() => ({ n: root.children.length,
+    ae: document.activeElement.className.split(' ')[0],
+    said: (document.getElementById('a11y-live')?.textContent || '').trim() }));
+  assert.equal(m.n, nBefore, 'Enter on a meter must not split the point');
+  assert.equal(m.ae, 'meter', 'and must not throw focus away');
+  assert.match(m.said, /[Mm]eter/, 'and says why it has no value rather than nothing (P4)');
+
+  // the link needed no change: it was already an island, and Enter follows it
+  await pg.evaluate(() => document.querySelector('.node-content .node-link').focus());
+  await pg.waitForTimeout(180);
+  const target = await pg.evaluate(() => root.children[2].id);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(600);
+  assert.equal(await pg.evaluate(() => focusedId), target,
+    'the negative case: the link was never broken and still zooms to its target');
+  await pg.close();
+});

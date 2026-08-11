@@ -209,6 +209,51 @@
       "kills": "#1469 the Sort menu names the reading"
     },
     {
+      "id": "inline-ctl-fn-ref-bare",
+      "suite": "unit",
+      "why": "#1470: the marker with tabindex but no island attribute, which is the shipped bug",
+      "file": "index.html",
+      "find": "<sup class=\"fn-ref fn-ref-empty\" role=\"button\" ${INLINE_CTL}",
+      "replace": "<sup class=\"fn-ref fn-ref-empty\" role=\"button\" tabindex=\"-1\"",
+      "kills": "#1470 every keyboard twin inside a point is an atomic island"
+    },
+    {
+      "id": "inline-ctl-webimg-bare",
+      "suite": "unit",
+      "why": "#1470: the member that keeps tabindex=0, so a census keyed on INLINE_CTL alone would miss it",
+      "file": "index.html",
+      "find": "class=\"web-img-blocked\" role=\"button\" contenteditable=\"false\" tabindex=\"0\"",
+      "replace": "class=\"web-img-blocked\" role=\"button\" tabindex=\"0\"",
+      "kills": "#1470 every keyboard twin inside a point is an atomic island"
+    },
+    {
+      "id": "task-check-enter-twin-gone",
+      "suite": "unit",
+      "why": "#1470: a checkbox has no native Enter action, so Enter escaped and split the point",
+      "file": "index.html",
+      "find": "    if (tchk && e.key === 'Enter') {",
+      "replace": "    if (false && e.key === 'Enter') {",
+      "kills": "#1470 every keyboard twin inside a point is an atomic island"
+    },
+    {
+      "id": "meter-key-silent",
+      "suite": "unit",
+      "why": "#1470: swallowing the key on a diagnostic without saying why is a silent no-op (P4)",
+      "file": "index.html",
+      "find": "      announce(mtr.getAttribute('aria-label') || mtr.getAttribute('title') || 'Meter');",
+      "replace": "      ;",
+      "kills": "#1470 every keyboard twin inside a point is an atomic island"
+    },
+    {
+      "id": "inline-ctl-island-half-dropped",
+      "suite": "browser",
+      "why": "#1470: the whole family losing the island half at once -- the state the app shipped in",
+      "file": "index.html",
+      "find": "const INLINE_CTL = 'contenteditable=\"false\" tabindex=\"-1\"';",
+      "replace": "const INLINE_CTL = 'tabindex=\"-1\"';",
+      "kills": "#1470 Enter on a cold footnote marker writes the footnote, not the point"
+    },
+    {
       "id": "sort-item-title-dropped",
       "suite": "browser",
       "why": "#1469: the per-item description present in source but never reaching the element",
