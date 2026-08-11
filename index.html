@@ -7589,10 +7589,27 @@ function editableText(el) {
 // text never entered the document, so undo could not reach it either: four sentences, gone. Any
 // trigger will sometimes be wrong, so the recovery cannot depend on the trigger being right.
 // DOM-free by design, like stripTriggerRun.
+// #1466: the search box is SEEDED with the matched query (#1396: `if (filterQ) searchEl.value =
+// filterQ`, from the same builderState.query whose length arrives here). So when a trigger opens
+// LATE those characters are in TWO places at once — already in the point, and again at the front of
+// the box — and splicing the box's whole value after the run counted them twice: `Roll @` + `d`
+// opened the palette, `ice` finished the word, and Escape wrote `Roll @ddice` to the document.
+// A trigger opens late whenever it is not at the start of the point, because a bare trigger
+// mid-text is punctuation until a word character follows it (the #1108 rule) — so this hit `/`
+// mid-text exactly as hard as `@`, though only `@` was reported.
+//
+// So the box REPLACES the query rather than following it, which is also the honest inverse of
+// stripTriggerRun: that removes trigger+query, this puts the trigger's run back as whatever the box
+// now holds. Appending only the un-typed remainder would fix the reported case and still leave a
+// stale character behind the moment the box is EDITED: opening on `@d`, backspacing, and typing
+// `note` wrote `Roll @dnote`, because the point's copy of `d` goes stale as soon as the box changes.
+// Nothing is lost by replacing: those characters are by construction the box's own opening value,
+// and an empty box never reaches here (builderReturnTypedText returns early on no text).
 function restoreTypedRun(text, offset, queryLen, typed) {
-  const at = Math.min(offset + 1 + queryLen, text.length);   // just past the trigger char + matched query
+  const from = Math.min(offset + 1, text.length);            // just past the trigger char
+  const to = Math.min(from + queryLen, text.length);         // ...to the end of the matched query
   const t = String(typed || '');
-  return { text: text.slice(0, at) + t + text.slice(at), caret: at + t.length };
+  return { text: text.slice(0, from) + t + text.slice(to), caret: from + t.length };
 }
 
 function stripTriggerRun(text, offset, queryLen, insert = '') {

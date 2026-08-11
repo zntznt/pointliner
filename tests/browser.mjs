@@ -1945,3 +1945,45 @@ test('#1475 the Alignment tick says what the cells are doing, and the way back e
     'automatic writes no alignment marker at all');
   await pg.close();
 });
+
+// 34. #1466 — a trigger that opens LATE seeds the search box with the character that opened it, so
+//     those characters lived in two places at once, and Escape wrote both: `Roll @` + `d` + `ice`
+//     came back as `Roll @ddice`, saved, with no warning. Driven because the defect is in what
+//     reaches node.text after a real dismissal.
+test('#1466 dismissing a late-opening trigger writes what was typed, once', { skip: skip() }, async () => {
+  // Both doors. The report called `/` immune; it is immune only AT THE START of a point, where a
+  // bare trigger opens on its own and nothing is seeded.
+  for (const [trig, word] of [['@', 'dice'], ['/', 'head']]) {
+    const pg = await fresh();
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Roll ', { delay: 14 }); await pg.waitForTimeout(200);
+    await pg.keyboard.type(trig, { delay: 20 }); await pg.waitForTimeout(400);
+    assert.equal(await pg.evaluate(() => !!document.querySelector('.builder-search')), false,
+      `${trig}: precondition, a bare trigger mid-text is punctuation until a word character follows`);
+
+    await pg.keyboard.type(word[0], { delay: 30 }); await pg.waitForTimeout(500);
+    const opened = await pg.evaluate(() => ({ box: document.querySelector('.builder-search')?.value ?? null,
+                                              text: root.children[0].text }));
+    assert.equal(opened.box, word[0], `${trig}: precondition, the box is seeded with the character that opened it`);
+    assert.equal(opened.text, 'Roll ' + trig + word[0],
+      `${trig}: precondition, the point holds that character too — which is the whole bug`);
+
+    await pg.keyboard.type(word.slice(1), { delay: 30 }); await pg.waitForTimeout(400);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(650);
+    assert.equal(await pg.evaluate(() => root.children[0].text), 'Roll ' + trig + word,
+      `${trig}: the character that opened the palette must be counted once`);
+    await pg.close();
+  }
+
+  // and the box is authoritative: editing it away from the seed leaves no stale character behind
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('Roll @d', { delay: 30 }); await pg.waitForTimeout(550);
+  assert.ok(await pg.evaluate(() => !!document.querySelector('.builder-search')), 'the palette is open');
+  await pg.keyboard.press('Backspace');
+  await pg.keyboard.type('note', { delay: 30 }); await pg.waitForTimeout(400);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(650);
+  assert.equal(await pg.evaluate(() => root.children[0].text), 'Roll @note',
+    'backspacing the seed in the box removes it from the point too');
+  await pg.close();
+});

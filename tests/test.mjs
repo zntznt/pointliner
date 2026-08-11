@@ -26745,9 +26745,52 @@ test('#1108 restoreTypedRun — hands back what was typed into the palette', () 
   assert.equal(r.caret, r.text.length, 'the caret lands where the typing left off');
   const mid = c.restoreTypedRun('a / b', 2, 0, 'X');
   assert.equal(mid.text, 'a /X b', 'splices at the trigger, so text after the run survives');
-  assert.equal(c.restoreTypedRun('go /tod', 3, 3, 'o').text, 'go /todo', 'a matched query is part of the run');
+  // #1466 corrected this one. It encoded the box holding only the UN-typed remainder ('o' after a
+  // matched 'tod'), which cannot happen: #1396 seeds the box with the whole matched query, so the
+  // box reads 'todo' and the run it hands back REPLACES 'tod' rather than following it. Appending
+  // was how `Roll @` + `d` + `ice` came back as `Roll @ddice`.
+  assert.equal(c.restoreTypedRun('go /tod', 3, 3, 'todo').text, 'go /todo', 'the box replaces the matched query');
+  assert.equal(c.restoreTypedRun('go /tod', 3, 3, 'o').text, 'go /o', 'and it is the box that is authoritative');
   assert.equal(c.restoreTypedRun('a /', 2, 0, '').text, 'a /', 'nothing typed changes nothing');
   assert.equal(c.restoreTypedRun('a /', 2, 0, null).text, 'a /');
+});
+
+// ── #1466: the seeded search box counted its own first characters twice ─────
+test('#1466 the restored run replaces the seeded query instead of following it', () => {
+  const r = c.restoreTypedRun;
+  // the report: `Roll @` is punctuation until a word character follows (#1108), so the palette
+  // opens on `@d` with the box seeded `d`; finishing the word and pressing Escape wrote `@ddice`
+  assert.deepEqual(host(r('Roll @d', 5, 1, 'dice')), { text: 'Roll @dice', caret: 10 });
+  // the same defect on `/`, which the report believed immune — it is immune only AT THE START,
+  // where nothing is seeded because a bare trigger opens on its own there
+  assert.deepEqual(host(r('Roll /h', 5, 1, 'head')), { text: 'Roll /head', caret: 10 });
+  assert.deepEqual(host(r('/', 0, 0, 'head')), { text: '/head', caret: 5 }, 'the unseeded case is unchanged');
+  assert.deepEqual(host(r('@', 0, 0, 'dice')), { text: '@dice', caret: 5 });
+  // the box is authoritative, so EDITING it away from the seed leaves no stale character behind:
+  // appending only the remainder would have fixed the report and still written `Roll @dnote`
+  assert.equal(r('Roll @d', 5, 1, 'note').text, 'Roll @note');
+  assert.equal(r('Roll @d', 5, 1, 'math').text, 'Roll @math');
+  // text after the run survives, and the caret lands where the typing left off
+  const mid = host(r('a /h b', 2, 1, 'head'));
+  assert.equal(mid.text, 'a /head b');
+  assert.equal(mid.caret, 7, 'just past what was handed back, not at the end of the line');
+  // a longer seed, and a shorter box than the seed (a backspace mid-word)
+  assert.equal(r('go /todo', 3, 4, 'to').text, 'go /to');
+  assert.equal(r('go /todo', 3, 4, 'todo').text, 'go /todo', 'unchanged when the box still reads the seed');
+  // clamped rather than throwing when the recorded query runs past the text
+  assert.equal(r('a /x', 2, 99, 'y').text, 'a /y');
+  assert.equal(r('a /', 2, 0, '').text, 'a /', 'nothing typed changes nothing');
+  assert.equal(r('a /', 2, 0, null).text, 'a /');
+
+  // CALL SITE — one consumer, the dismissal path, and it still passes the state's own query length
+  assert.match(fnBody(_src, 'builderReturnTypedText'),
+    /restoreTypedRun\(builderSpliceText\(node\), builderSpliceOffset\(node, st\.offset\), st\.query\.length, typed\)/);
+  // the invariant the replace rests on: the box is seeded from that same query (#1396)
+  assert.match(_src, /let filterQ = \(builderState && builderState\.query\) \|\| '';/);
+  assert.match(_src, /if \(filterQ\) searchEl\.value = filterQ;/);
+  // and an empty box still returns early, which is why replacing can never delete a seed the user
+  // did not touch — the one boundary left deliberately where it was
+  assert.match(fnBody(_src, 'builderReturnTypedText'), /const typed = document\.querySelector\('\.builder-search'\)\?\.value \|\| '';\s*\n\s*if \(!typed\) return;/);
 });
 
 test('#1108 the trigger stops firing on a bare slash mid-prose', () => {

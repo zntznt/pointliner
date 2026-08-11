@@ -290,6 +290,24 @@
       "kills": "#1471 both entry paths route through the one core"
     },
     {
+      "id": "typed-run-appended-not-replaced",
+      "suite": "unit",
+      "why": "#1466: the shipped restore, which wrote the seeded character twice into the point",
+      "file": "index.html",
+      "find": "  return { text: text.slice(0, from) + t + text.slice(to), caret: from + t.length };",
+      "replace": "  return { text: text.slice(0, to) + t + text.slice(to), caret: to + t.length };",
+      "kills": "#1466 the restored run replaces the seeded query"
+    },
+    {
+      "id": "typed-run-drops-the-tail",
+      "suite": "unit",
+      "why": "#1466: replacing past the query would eat the rest of the line, the #1108 defect again",
+      "file": "index.html",
+      "find": "  const to = Math.min(from + queryLen, text.length);         // ...to the end of the matched query",
+      "replace": "  const to = text.length;",
+      "kills": "#1466 the restored run replaces the seeded query"
+    },
+    {
       "id": "align-unset-folded-into-left",
       "suite": "unit",
       "why": "#1475: the shipped menu, ticking Left over cells the grid was rendering right",
