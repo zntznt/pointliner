@@ -3173,12 +3173,15 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
      only (no new sigil); the template promotes to a pill on Done and rolls on tap like any other. -->
 <div id="roll-palette" role="menu" aria-label="Roll templates" hidden></div>
 <!-- footnote panel -->
-<div id="fn-panel">
+<!-- #1473: role + a name taken from the header that already holds the right words. The sibling
+     docked panels (variables, graph, timeline, agenda, capture, journal) all carry this; these two
+     did not, and read as bare `generic` nodes in the accessibility tree. -->
+<div id="fn-panel" role="region" aria-labelledby="fn-panel-hd">
   <div class="fn-panel-hd" id="fn-panel-hd">Footnotes</div>
   <div id="fn-list"></div>
 </div>
 <!-- backlinks panel -->
-<div id="bl-panel">
+<div id="bl-panel" role="region" aria-labelledby="bl-panel-hd">   <!-- #1473: see #fn-panel -->
   <div class="fn-panel-hd" id="bl-panel-hd">Linked from</div>
   <div id="bl-list"></div>
 </div>
@@ -38223,6 +38226,38 @@ function scheduleFnHide() {
   }, 150);
 }
 
+// #1473: what a docked panel says when it appears. Pure, and deliberately NOT new copy: it speaks
+// the panel's own header, which the app already keeps count-aware ("Footnote" for one, "Footnotes ·
+// 3", "Linked from · 2"). The interpunct becomes a comma, because it is a visual separator and a
+// screen reader should hear a pause, not a glyph. `n` is for the one panel whose name carries no
+// count of its own (the variables panel), where the count is exactly what you cannot see.
+function panelOpenSay(name, n) {
+  const nm = String(name == null ? '' : name).replace(/\s*·\s*/g, ', ').trim();
+  if (!nm) return '';
+  return Number.isFinite(n) ? `${nm}, ${n}` : nm;
+}
+
+// Say that a panel appeared, ONCE per appearance. Only for panels that appear WITHOUT taking
+// focus: the five that do move focus into themselves (graph, timeline, agenda, capture, journal)
+// are announced by that focus move, and speaking here as well would double up on every open.
+// Measured across all eight docked panels; the three that reach this are the footnote strip and
+// the backlinks strip, which appear as a side effect of moving the caret and must leave the caret
+// where it is, and the variables panel, which is asked for but lands focus nowhere.
+let _panelSaid = Object.create(null);
+function announcePanelOpen(panelEl, n) {
+  if (!panelEl) return;
+  // The name comes from the SAME place the accessibility tree reads it, so what is announced and
+  // what the region is called cannot drift apart.
+  const name = panelEl.getAttribute('aria-label')
+    || (document.getElementById(panelEl.getAttribute('aria-labelledby') || '')?.textContent || '').trim();
+  const say = panelOpenSay(name, n);
+  // Re-announcing on every caret move would make the strips unusable; only a CHANGE speaks.
+  if (!say || _panelSaid[panelEl.id] === say) return;
+  _panelSaid[panelEl.id] = say;
+  announce(say);
+}
+function forgetPanelSaid(id) { delete _panelSaid[id]; }
+
 function showFnPanel(nodeId) {
   const node = nodeById(nodeId);
   if (!node) return hideFnPanel();
@@ -38232,6 +38267,7 @@ function showFnPanel(nodeId) {
   fnNodeId = nodeId;
   renderFnPanel(node, refs);
   document.getElementById('fn-panel').classList.add('on');
+  announcePanelOpen(document.getElementById('fn-panel'));   // #1473: the header already counts
   syncFnPanelBottom(); // lift above the mobile keyboard if it's open
   syncBodyPadBottom();
   syncBlPanelBottom(); // re-stack bl-panel above fn-panel if both are open
@@ -38242,6 +38278,7 @@ function hideFnPanel() {
   fnLocked = false;
   fnNodeId = null;
   document.getElementById('fn-panel').classList.remove('on');
+  forgetPanelSaid('fn-panel');   // #1473: the next appearance is news again
   syncFnPanelBottom(); // reset bottom so the hidden panel can't peek above the keyboard
   syncBlPanelBottom(); // re-stack bl-panel if it's open
   syncBodyPadBottom();
@@ -38697,6 +38734,9 @@ function blShowWith(nodeId, d) {
   blNodeId = nodeId;
   renderBlPanel(d.sources, d.unlinked, d.cross, d.crossUnlinked);
   document.getElementById('bl-panel').classList.add('on');
+  // #1473: the header carries "Linked from · N" and is the panel's name, so it already says the
+  // count a person cannot see when the strip slides up behind their caret.
+  announcePanelOpen(document.getElementById('bl-panel'));
   syncBlPanelBottom();
   syncBodyPadBottom();
 }
@@ -38714,6 +38754,7 @@ function hideBlPanel() {
   clearTimeout(blHideTimer);
   blNodeId = null;
   document.getElementById('bl-panel').classList.remove('on');
+  forgetPanelSaid('bl-panel');   // #1473
   syncBlPanelBottom();
   syncBodyPadBottom();
 }
@@ -39149,8 +39190,14 @@ blPanelEl.addEventListener('mousedown', e => e.preventDefault());
 
 const varPanelEl = document.getElementById('var-panel');
 function isVarPanelOpen() { return varPanelEl.classList.contains('on'); }
-function openVarPanel() { updateVarPanelContent(); varPanelEl.classList.add('on'); syncBodyPadBottom(); }
-function closeVarPanel() { varPanelEl.classList.remove('on'); syncBodyPadBottom(); }
+function openVarPanel() {
+  updateVarPanelContent(); varPanelEl.classList.add('on'); syncBodyPadBottom();
+  // #1473: it is asked for, but focus lands on <body>, so nothing announces it either. Measured
+  // alongside the two strips the issue reported; the other five docked panels take focus and
+  // therefore must NOT speak here.
+  announcePanelOpen(varPanelEl, document.querySelectorAll('#var-panel-list .vp-row').length);
+}
+function closeVarPanel() { varPanelEl.classList.remove('on'); forgetPanelSaid('var-panel'); syncBodyPadBottom(); }
 function toggleVarPanel() { if (isVarPanelOpen()) closeVarPanel(); else openVarPanel(); }
 
 // Variable-base panel groups: a base's ~rows×cols projections collapse under one header so
@@ -44248,6 +44295,9 @@ function openBuilder(trigger) {
 
   let activeIdx = 0;
   let liveSuppress = true;   // UXP-173: suppress aria-live announcement on initial render
+  // #1474: has the list ALREADY been empty? The empty state is announced on the way in, not on
+  // every keystroke that leaves it empty. Scoped to this builder session, so re-opening speaks.
+  let _builderWasEmpty = false;
 
   // #1106: in Guided (the DEFAULT tier) this search box IS the command line — `/` matches every
   // command, so the builder opens on the trigger char alone and every keystroke after it lands
@@ -44290,6 +44340,14 @@ function openBuilder(trigger) {
     nav.innerHTML = html;
   }
 
+  // #1474: the empty-state words, read back off the RENDERED node rather than re-spelled, so the
+  // announcement cannot drift from what is on screen (the announceOverlayCount precedent). Two
+  // strings for one state was itself the smaller half of this bug: the list painted "No commands
+  // match your search." while Enter announced "No matching commands".
+  function builderEmptyMessage() {
+    return (nav.querySelector('.builder-no-results')?.textContent || 'No commands match your search.').trim();
+  }
+
   function syncActive() {
     const vis = visibleCmds();
     insertBtn.disabled = !vis.length;
@@ -44310,6 +44368,14 @@ function openBuilder(trigger) {
       const cmd = vis[activeIdx];
       if (cmd) {
         announce(cmd.desc ? cmd.label + ': ' + cmd.desc : cmd.label);
+        _builderWasEmpty = false;
+      } else if (!_builderWasEmpty) {
+        // #1474: the list emptying is the state change nothing spoke for. Before this the live
+        // region kept naming a command that was no longer in the list, over an empty list where
+        // Enter does nothing (P4). Only on the TRANSITION into empty: announce() clears and re-sets
+        // to force a re-read, so repeating it on every further keystroke would be a stutter.
+        announce(builderEmptyMessage());
+        _builderWasEmpty = true;
       }
     }
     liveSuppress = false;
@@ -44612,7 +44678,7 @@ function openBuilder(trigger) {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (visibleCmds().length) applyBuilder();
-      else announce('No matching commands');
+      else announce(builderEmptyMessage());   // #1474: one state, one sentence
     } else if (e.key === 'Escape') {
       e.stopPropagation();
       closeBuilder(true);

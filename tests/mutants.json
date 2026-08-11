@@ -290,6 +290,78 @@
       "kills": "#1471 both entry paths route through the one core"
     },
     {
+      "id": "builder-empty-silent",
+      "suite": "unit",
+      "why": "#1474: the shipped state, where the live region kept naming a command no longer listed",
+      "file": "index.html",
+      "find": "        announce(builderEmptyMessage());",
+      "replace": "        ;",
+      "kills": "#1474 the list emptying is announced"
+    },
+    {
+      "id": "builder-empty-stutters",
+      "suite": "unit",
+      "why": "#1474: announce() clears and re-sets, so no transition guard repeats it every keystroke",
+      "file": "index.html",
+      "find": "        _builderWasEmpty = true;",
+      "replace": "        ;",
+      "kills": "#1474 the list emptying is announced"
+    },
+    {
+      "id": "builder-empty-message-forked",
+      "suite": "unit",
+      "why": "#1474: a second sentence for one state is how the screen and the live region disagreed",
+      "file": "index.html",
+      "find": "    return (nav.querySelector('.builder-no-results')?.textContent || 'No commands match your search.').trim();",
+      "replace": "    return 'No matching commands';",
+      "kills": "#1474 the list emptying is announced"
+    },
+    {
+      "id": "docked-panel-anonymous",
+      "suite": "unit",
+      "why": "#1473: the shipped state, where the strip read as a bare generic node with no name",
+      "file": "index.html",
+      "find": "<div id=\"fn-panel\" role=\"region\" aria-labelledby=\"fn-panel-hd\">",
+      "replace": "<div id=\"fn-panel\">",
+      "kills": "#1473 the two anonymous panels are named"
+    },
+    {
+      "id": "docked-panel-silent",
+      "suite": "unit",
+      "why": "#1473: a panel appearing behind the caret with nothing said about it",
+      "file": "index.html",
+      "find": "  announcePanelOpen(document.getElementById('fn-panel'));   // #1473: the header already counts",
+      "replace": "  ;",
+      "kills": "#1473 the two anonymous panels are named"
+    },
+    {
+      "id": "docked-panel-never-rearms",
+      "suite": "unit",
+      "why": "#1473: without the reset, a strip that hid and came back is silent forever after",
+      "file": "index.html",
+      "find": "  forgetPanelSaid('fn-panel');   // #1473: the next appearance is news again",
+      "replace": "  ;",
+      "kills": "#1473 the two anonymous panels are named"
+    },
+    {
+      "id": "panel-announce-repeats",
+      "suite": "unit",
+      "why": "#1473: these strips re-render on every caret move, so no change-guard means spam",
+      "file": "index.html",
+      "find": "  if (!say || _panelSaid[panelEl.id] === say) return;",
+      "replace": "  if (!say) return;",
+      "kills": "#1473 the two anonymous panels are named"
+    },
+    {
+      "id": "panel-name-not-in-tree",
+      "suite": "browser",
+      "why": "#1473: the attribute present but pointing at nothing, which reads as anonymous again",
+      "file": "index.html",
+      "find": "<div id=\"bl-panel\" role=\"region\" aria-labelledby=\"bl-panel-hd\">   <!-- #1473: see #fn-panel -->",
+      "replace": "<div id=\"bl-panel\" role=\"region\" aria-labelledby=\"nope\">",
+      "kills": "#1473 the docked strips are named, and say so when they appear"
+    },
+    {
       "id": "label-loses-to-id-prefix",
       "suite": "unit",
       "why": "#1472: the shipped ranking, where `Variable` selected `Variables panel` and Enter opened it",

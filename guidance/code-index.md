@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2066 declarations in 152 sections across 17 domains.**
+**2070 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2191,6 +2191,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `hiFnItem` — highlight fn-panel item for a given key (no cursor movement)
 - `fnNodeId`
 - `scheduleFnHide`
+- `panelOpenSay` — #1473: what a docked panel says when it appears. Pure, and deliberately NOT new copy: it speaks
+- `_panelSaid` — Say that a panel appeared, ONCE per appearance. Only for panels that appear WITHOUT taking
+- `announcePanelOpen`
+- `forgetPanelSaid`
 - `showFnPanel`
 - `hideFnPanel`
 - `activateFnRef` — UXP-55: reveal + lock the footnote panel and highlight the matching entry, scrolling it into
