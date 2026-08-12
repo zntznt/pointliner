@@ -15,9 +15,17 @@ on:
 permissions:
   contents: read
 
+# TIMEOUTS. Every job here has one, sized as a generous multiple of its measured run. #1465's PR
+# is why: the `mutation` runner wedged inside its one step and, with no timeout, sat "in_progress"
+# for an hour on a job that finishes in six minutes -- indistinguishable, from the outside, from a
+# suite that is simply slow. GitHub's 360-minute default is not a backstop for anything a human is
+# waiting on. These bound the WEDGE, not the work: a job that legitimately grows past its number
+# should have the number raised, deliberately, in the same change that grew it.
+
 jobs:
   node-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 10   # measured ~15s
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -46,6 +54,7 @@ jobs:
   # ~5s per mutant (one unit-suite run each), so it stays on the common path.
   mutation:
     runs-on: ubuntu-latest
+    timeout-minutes: 25   # measured ~6min (46 mutants, one unit-suite run each)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,6 +72,7 @@ jobs:
   # tests, while a stale base is behind by hundreds. 25 sits well clear of both.
   staleness-floor:
     runs-on: ubuntu-latest
+    timeout-minutes: 10   # measured ~7s
     steps:
       - uses: actions/checkout@v4
       # No fetch-depth: 0 — the step fetches origin/main shallowly itself, so a full-history
@@ -93,6 +103,7 @@ jobs:
   # above does not, and stays the offline gate.
   browser-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 25   # measured ~7min (install + 40 driven checks)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

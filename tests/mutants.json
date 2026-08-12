@@ -567,6 +567,15 @@
       "find": "  if (restoreChromeReturn()) return true;\n  const sid = panelSubjectId(fromId);",
       "replace": "  const sid = panelSubjectId(fromId);",
       "kills": "every docked panel is reachable"
+    },
+    {
+      "id": "ci-job-unbounded",
+      "suite": "unit",
+      "why": "a CI job with no timeout wedges for six hours and reports in_progress the whole time, which reads exactly like a slow suite",
+      "file": ".github/workflows/tests.yml",
+      "find": "    timeout-minutes: 25   # measured ~6min (46 mutants, one unit-suite run each)",
+      "replace": "    # timeout-minutes: 25 (removed)",
+      "kills": "every CI job in tests.yml is bounded by a timeout"
     }
   ]
 }

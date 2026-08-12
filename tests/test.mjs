@@ -1520,6 +1520,9 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
   const sources = {
     'index.html': _src,
     'guidance/code-index.md': _codeIndex,
+    // #1465: a CI job's own timeout is mutated too, so add its reader here rather than letting the
+    // anchor go unchecked (which this very test exists to prevent).
+    '.github/workflows/tests.yml': readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -26332,6 +26335,25 @@ test('#1427 CI runs the browser smoke, and installs what it needs', () => {
   const offline = between(_wfTests, '  node-tests:', '  browser-smoke:');
   assert.ok(!/npm install|playwright/.test(offline),
     'and carries no network dependency — that separation is the reason there are two jobs');
+});
+
+// A wedged runner is invisible: GitHub's default job timeout is 360 minutes, so a job stuck inside
+// its one step reports "in_progress" for hours and reads exactly like a slow suite. #1465's PR sat
+// an hour on `mutation`, a job that finishes in six minutes. A census, not a spot check: a NEW job
+// added without a timeout is the same hole reopened, and this is the only place that would notice.
+test('every CI job in tests.yml is bounded by a timeout', () => {
+  const body = _wfTests.slice(_wfTests.indexOf('\njobs:\n'));
+  assert.ok(body, 'tests.yml must declare a jobs: block');
+  const jobs = nonEmpty([...body.matchAll(/^  ([a-z][a-z0-9-]*):$/gm)].map(m => m[1]),
+    'jobs declared in tests.yml');
+  assert.ok(jobs.length >= 4, `found only ${jobs.length} jobs — did the workflow move?`);
+  const unbounded = jobs.filter(name => {
+    const decl = _wfTests.slice(_wfTests.indexOf(`\n  ${name}:\n`));
+    const head = decl.slice(0, decl.indexOf('\n    steps:'));
+    return !/^ {4}timeout-minutes: \d+/m.test(head);
+  });
+  assert.deepEqual(unbounded, [],
+    'a CI job with no timeout-minutes can wedge for six hours and still look like it is working');
 });
 
 test('#1427 a skipped browser smoke cannot pass in CI', () => {
