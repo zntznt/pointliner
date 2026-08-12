@@ -50,6 +50,12 @@ has links of its own; the note's own list stays where you can read it.
 Each row shows a **line of context** from the source under its title, the words around the link, so
 you can see what that point says about this one without visiting it.
 
+From the keyboard, press **`F6`** to step from the point you are working in into the list, then
+`Enter` on a row to open it. `Tab` means indent everywhere in the outline, so `F6` is the key that
+crosses into a panel: it walks the open panels in turn (Footnotes, Linked from, Variables), and one
+more press takes you back to the point with the cursor where you left it. `Esc` from the list does
+the same. It works the same way on the zoomed page, where the list sits in the note.
+
 Both lists also surface **mentions of the title that are not linked yet**, so you can
 connect them with one click.
 

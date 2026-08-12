@@ -2113,3 +2113,190 @@ test('#1464 B3/B5: forms hand the caret back, and Tab stays in the menu', { skip
     'and Escape is still the way out, back to the point');
   await pg.close();
 });
+
+// 39. #1465 C2 — the docked panels were unreachable, and REACHING for them edited the document.
+// Driven because every claim here is about what focus did: the rows already carried role="link"
+// and tabindex="0" and already had a hide-suppressor for focus-in, so a source pin would have
+// reported this surface healthy for as long as it was dead (#1021's class exactly). The negative
+// case is measured too: with no panel open the key must stay the browser's.
+test('#1465 C2 F6 reaches the Linked from rows, and comes back to the caret', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const plan = mkNode('Plan'), target = mkNode('Draft the proposal');
+    root.children = [plan, target];
+    [plan, target].forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    ['Monday: see [[#' + target.id + ']]', 'Tuesday: also [[#' + target.id + ']]'].forEach(t => {
+      const n = mkNode(t); n.type = 'ul'; plan.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, plan);
+    });
+    buildIndex(root, null); markDirty(); render();
+    const c = [...document.querySelectorAll('.node-content')].find(e => e.dataset.id === target.id);
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+    setCaretByOffset(c, 6);                        // mid-word, so a restore has something to prove
+  });
+  await pg.waitForTimeout(500);
+  const st = () => pg.evaluate(() => {
+    const a = document.activeElement;
+    return {
+      inPanel: document.getElementById('bl-panel').contains(a),
+      isRow: !!a.classList?.contains('bl-item'),
+      role: a.getAttribute ? a.getAttribute('role') : null,
+      shape: root.children.map(n => n.text + '(' + n.children.length + ')').join(' | '),
+      live: (document.getElementById('a11y-live') || {}).textContent || '',
+      caret: a.classList?.contains('node-content') && a.dataset.editing ? getCaretOffset(a) : null,
+    };
+  });
+  const start = await st();
+  assert.equal(start.caret, 6, 'precondition: the caret is mid-word in the linked-to point');
+  assert.equal(await pg.evaluate(() => document.querySelectorAll('#bl-panel .bl-item').length), 2,
+    'precondition: the strip is open with two rows');
+
+  // F6 is the door.
+  await pg.keyboard.press('F6'); await pg.waitForTimeout(450);
+  const inPanel = await st();
+  assert.equal(inPanel.inPanel, true, 'F6 must land focus inside the strip');
+  assert.equal(inPanel.isRow, true, 'and on a ROW, not on the panel or a header control');
+  assert.equal(inPanel.role, 'link', 'the row it lands on is the one that advertises itself');
+  assert.match(inPanel.live, /Linked from/, 'and arriving says where you are (P4)');
+  assert.equal(inPanel.shape, start.shape, 'reaching the panel must not touch the document');
+
+  // Enter on the row does what the row says.
+  const opened = await (async () => {
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(700);
+    return pg.evaluate(() => !!focusedId);
+  })();
+  assert.equal(opened, true, 'Enter on a row opens the source point');
+
+  // ...and the ring is its own way home, with the caret where it stood.
+  const pg2 = await fresh();
+  await pg2.evaluate(() => {
+    const plan = mkNode('Plan'), target = mkNode('Draft the proposal');
+    root.children = [plan, target];
+    [plan, target].forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    const s = mkNode('Monday: see [[#' + target.id + ']]');
+    s.type = 'ul'; plan.children.push(s); nodeMap.set(s.id, s); parentMap.set(s.id, plan);
+    buildIndex(root, null); markDirty(); render();
+    const c = [...document.querySelectorAll('.node-content')].find(e => e.dataset.id === target.id);
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+    setCaretByOffset(c, 6);
+  });
+  await pg2.waitForTimeout(500);
+  const home = () => pg2.evaluate(() => {
+    const a = document.activeElement;
+    return { isPoint: !!a.classList?.contains('node-content'),
+             caret: a.classList?.contains('node-content') && a.dataset.editing ? getCaretOffset(a) : null };
+  });
+  for (const [n, key] of [[1, 'F6'], [2, 'F6']]) {
+    await pg2.keyboard.press(key); await pg2.waitForTimeout(450);
+    if (n === 2) {
+      const back = await home();
+      assert.equal(back.isPoint, true, 'a step past the last panel goes back to the outline, not to <body>');
+      assert.equal(back.caret, 6, 'and the caret lands exactly where it stood');
+    }
+  }
+  // Escape is the other way home, from a fresh trip in.
+  await pg2.keyboard.press('F6'); await pg2.waitForTimeout(450);
+  assert.equal(await pg2.evaluate(() => document.getElementById('bl-panel').contains(document.activeElement)), true);
+  await pg2.keyboard.press('Escape'); await pg2.waitForTimeout(500);
+  const esc = await home();
+  assert.equal(esc.isPoint, true, 'Escape from the panel returns to the point');
+  assert.equal(esc.caret, 6, 'with the caret where it stood');
+
+  // The regression the fix could have caused and must not: Tab still means DEPTH. A fresh page,
+  // because this one deliberately restructures the document.
+  const pg3 = await fresh();
+  await pg3.evaluate(() => {
+    const plan = mkNode('Plan'), target = mkNode('Draft the proposal');
+    root.children = [plan, target];
+    [plan, target].forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    const s = mkNode('Monday: see [[#' + target.id + ']]');
+    s.type = 'ul'; plan.children.push(s); nodeMap.set(s.id, s); parentMap.set(s.id, plan);
+    buildIndex(root, null); markDirty(); render();
+    const c = [...document.querySelectorAll('.node-content')].find(e => e.dataset.id === target.id);
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+  });
+  await pg3.waitForTimeout(500);
+  await pg3.keyboard.press('Tab'); await pg3.waitForTimeout(450);
+  assert.deepEqual(await pg3.evaluate(() => root.children.map(n => n.text + '(' + n.children.length + ')')),
+    ['Plan(2)'], 'Tab from a point still indents it — the ring must not redefine the depth key');
+  assert.equal(await pg3.evaluate(() => document.getElementById('bl-panel').contains(document.activeElement)),
+    false, 'and Tab is not a second door into the panel');
+  await pg.close(); await pg2.close(); await pg3.close();
+});
+
+// The census half: every member of the family, plus the NEGATIVE case. Five findings in a row
+// were a capability applied to some siblings and not others, so the ring is driven per member
+// rather than proved once on the one the issue happened to name.
+test('#1465 C2 every docked panel is reachable, and F6 is unclaimed when none is', { skip: skip() }, async () => {
+  // mode -> [what to seed, which panel id must take focus]
+  const cases = [
+    ['bl',   'bl-panel'],
+    ['fn',   'fn-panel'],
+    ['var',  'var-panel'],
+    ['zoom', 'zoom-bl'],
+    ['none', null],          // the negative case: nothing open, so the key stays the browser's
+  ];
+  for (const [mode, want] of cases) {
+    const pg = await fresh();
+    await pg.evaluate((mode) => {
+      window.__f6 = [];
+      document.addEventListener('keydown', e => { if (e.key === 'F6') window.__f6.push(e.defaultPrevented); });
+      const plan = mkNode('Plan');
+      const wantFn = mode === 'fn';
+      const target = mkNode('Draft the proposal' + (wantFn ? ' [^a]' : ''));
+      if (wantFn) root.footnotes = [{ id: 'a', text: 'due Friday' }];
+      root.children = [plan, target];
+      [plan, target].forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      if (mode === 'bl' || mode === 'zoom') {
+        const s = mkNode('Monday: see [[#' + target.id + ']]');
+        s.type = 'ul'; plan.children.push(s); nodeMap.set(s.id, s); parentMap.set(s.id, plan);
+      }
+      buildIndex(root, null); markDirty(); render();
+      window.__targetId = target.id;
+    }, mode);
+    await pg.waitForTimeout(300);
+    if (mode === 'zoom') {
+      await pg.evaluate(() => zoomTo(window.__targetId));
+      await pg.waitForTimeout(900);
+    } else {
+      await pg.evaluate(() => {
+        const c = [...document.querySelectorAll('.node-content')].find(e => e.dataset.id === window.__targetId);
+        enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+      });
+      if (mode === 'var') await pg.keyboard.press('Control+Shift+V');
+      await pg.waitForTimeout(500);
+    }
+    if (want) {
+      assert.equal(await pg.evaluate(w => {
+        const e = document.getElementById(w);
+        return !!e && (e.classList.contains('on') || e.classList.contains('zoom-bl'));
+      }, want), true, `${mode}: precondition, ${want} is open`);
+    }
+    await pg.keyboard.press('F6'); await pg.waitForTimeout(500);
+    const r = await pg.evaluate((w) => ({
+      inWanted: w ? !!document.getElementById(w)?.contains(document.activeElement) : false,
+      onBody: document.activeElement === document.body,
+      f6: window.__f6.slice(),
+    }), want);
+    if (want) {
+      assert.equal(r.inWanted, true, `${mode}: F6 must land focus inside #${want}`);
+      assert.deepEqual(r.f6, [true], `${mode}: and claim the key`);
+      // Every member must also have a way BACK, or the ring is a new trap of the #1464 B1 kind.
+      // The variables panel is the member that proves the armed-caret restore is load-bearing:
+      // it is about the document, not a point, so it has no subject to fall back to.
+      await pg.keyboard.press('F6'); await pg.waitForTimeout(550);
+      const home = await pg.evaluate(() => {
+        const a = document.activeElement;
+        return { isPoint: !!(a.classList?.contains('node-content') || a.classList?.contains('zoom-title')),
+                 onBody: a === document.body, where: a.tagName + '.' + (a.className || '') };
+      });
+      assert.equal(home.isPoint, true,
+        `${mode}: a step past the last panel must come home to a point, got ${home.where}`);
+      assert.equal(home.onBody, false, `${mode}: and never to <body>`);
+    } else {
+      assert.deepEqual(r.f6, [false],
+        'with no docked panel open F6 must stay unclaimed, so the browser keeps its own');
+      assert.equal(r.onBody, false, 'and focus must not be thrown anywhere');
+    }
+    await pg.close();
+  }
+});
