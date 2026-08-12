@@ -486,6 +486,87 @@
       "find": "    if (title) { item.title = title; item.setAttribute('aria-description', title); }",
       "replace": "    if (false) { item.title = title; }",
       "kills": "#1469 Sort and Calculate give the same column the same answer"
+    },
+    {
+      "id": "f6-ring-drops-the-outline",
+      "suite": "unit",
+      "why": "a ring of panels only never comes home: the last F6 would wrap to the first panel and the point becomes unreachable",
+      "file": "index.html",
+      "find": "  const ring = ['', ...list];",
+      "replace": "  const ring = [...list];",
+      "kills": "the F6 ring includes the outline"
+    },
+    {
+      "id": "f6-claims-the-key-with-nothing-open",
+      "suite": "unit",
+      "why": "preventDefault before the step claims F6 even when no panel is open, killing the browser's own F6",
+      "file": "index.html",
+      "find": "    if (stepDockedPanels(e.shiftKey)) { e.preventDefault(); return; }",
+      "replace": "    e.preventDefault(); stepDockedPanels(e.shiftKey); return;",
+      "kills": "F6 is wired, guarded, and unclaimed"
+    },
+    {
+      "id": "f6-escapes-a-modal-sideways",
+      "suite": "unit",
+      "why": "without the dialog guard F6 walks focus OUT of an open modal into a docked panel behind it",
+      "file": "index.html",
+      "find": "!document.activeElement?.closest?.('[aria-modal=\"true\"],[role=\"dialog\"]')",
+      "replace": "true",
+      "kills": "F6 is wired, guarded, and unclaimed"
+    },
+    {
+      "id": "f6-rearms-the-caret-on-every-hop",
+      "suite": "unit",
+      "why": "arming on a panel-to-panel hop overwrites the point the ring came from, so home becomes wherever it last was",
+      "file": "index.html",
+      "find": "  if (!from) armChromeReturn();",
+      "replace": "  armChromeReturn();",
+      "kills": "F6 is wired, guarded, and unclaimed"
+    },
+    {
+      "id": "f6-in-flow-section-unaddressable",
+      "suite": "unit",
+      "why": "without its id the zoomed Linked from section cannot join the ring and is unreachable again",
+      "file": "index.html",
+      "find": "  sec.id = 'zoom-bl';",
+      "replace": "  sec.id = 'zoom-backlinks';",
+      "kills": "the ring covers the whole family"
+    },
+    {
+      "id": "f6-lands-on-the-header-control",
+      "suite": "unit",
+      "why": "an unscoped search lands F6 on the panel's close button instead of its first row",
+      "file": "index.html",
+      "find": "  const scope = (listId && document.getElementById(listId)) || panelEl;",
+      "replace": "  const scope = panelEl;",
+      "kills": "the ring covers the whole family"
+    },
+    {
+      "id": "f6-sibling-strip-collapses",
+      "suite": "unit",
+      "why": "the old same-panel-only guard let the backlinks strip hide while focus sat in the footnote strip, collapsing the ring mid-cycle",
+      "file": "index.html",
+      "find": "    if (focusedDockedPanel()) return;\n    // keep open while an editable point header holds focus",
+      "replace": "    if (document.getElementById('bl-panel')?.contains(document.activeElement)) return;\n    // keep open while an editable point header holds focus",
+      "kills": "the ring covers the whole family"
+    },
+    {
+      "id": "f6-has-no-front-door",
+      "suite": "unit",
+      "why": "a key with no row in the shortcuts reference is syntax-only at the floor (P2)",
+      "file": "index.html",
+      "find": "{ id:'nav-panel',   essential:true, essSection:'Navigate', keys:['F6','⇧+F6'],     essLabel:'Go to the open panel (Footnotes, Linked from, Variables) and back' },",
+      "replace": "{ id:'nav-panel',   essential:false, essSection:'Navigate', keys:['F6'],     essLabel:'Panels' },",
+      "kills": "the ring covers the whole family"
+    },
+    {
+      "id": "f6-variables-panel-strands-focus",
+      "suite": "browser",
+      "why": "the variables panel is about the document, not a point, so it has no subject to fall back to: drop the armed-caret restore and F6 out of it leaves focus stuck in the panel",
+      "file": "index.html",
+      "find": "  if (restoreChromeReturn()) return true;\n  const sid = panelSubjectId(fromId);",
+      "replace": "  const sid = panelSubjectId(fromId);",
+      "kills": "every docked panel is reachable"
     }
   ]
 }

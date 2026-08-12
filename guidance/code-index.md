@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2074 declarations in 152 sections across 17 domains.**
+**2086 declarations in 153 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2197,8 +2197,23 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `scheduleFnHide`
 - `panelOpenSay` — #1473: what a docked panel says when it appears. Pure, and deliberately NOT new copy: it speaks
 - `_panelSaid` — Say that a panel appeared, ONCE per appearance. Only for panels that appear WITHOUT taking
+- `panelAccName` — The name the accessibility tree reads for a panel. ONE source, so what is announced and what
 - `announcePanelOpen`
 - `forgetPanelSaid`
+
+## #1465 C2: the docked-panel ring (F6)
+
+- `DOCKED_PANELS` — The same three panels as the comment above: the ones that appear WITHOUT taking focus. That is
+- `DOCKED_PANEL_IDS`
+- `panelRingStep` — Pure. `openIds` are the docked panels currently open, in page order; `hereId` is the panel that
+- `panelSubjectId` — Which point a panel is ABOUT — where "back to the outline" lands when there is no armed caret
+- `dockedPanelOpen` — The strips slide in with `.on`; the in-flow section is simply present or absent.
+- `openDockedPanels`
+- `focusedDockedPanel`
+- `PANEL_FOCUS_SEL` — The row F6 lands on: the first focusable inside the panel's ROW container, so the landing is a
+- `panelEntryEl`
+- `leaveDockedPanel` — Back out of a docked panel to the outline: the caret exactly where it stood — the same restore
+- `stepDockedPanels`
 - `showFnPanel`
 - `hideFnPanel`
 - `activateFnRef` — UXP-55: reveal + lock the footnote panel and highlight the matching entry, scrolling it into

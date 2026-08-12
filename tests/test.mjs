@@ -32202,3 +32202,114 @@ test('#1470 every keyboard twin inside a point is an atomic island (census)', ()
   // and the Space path puts focus back on the box it repainted away (the UXP-19 class)
   assert.match(_src, /refocusAfterRepaint\(node\.id, c => c\.querySelector\(`\.md-task-check\[data-task="\$\{CSS\.escape\(String\(ordinal\)\)\}"\]`\)\)/);
 });
+
+// ── #1465 C2: the docked-panel ring (F6) ─────────────────────────────────────
+// Three panels advertise themselves as reachable — `#bl-panel`'s rows carry role="link" and
+// tabindex="0", `#fn-panel`'s keys carry role="button", `scheduleBlHide` has an explicit
+// "focus moved in, keep it open" branch — and none of them could be reached, because the outline
+// claims Tab unconditionally as indent. Reaching for them RESTRUCTURED the document instead.
+test('#1465 C2 the F6 ring includes the outline, so the key is its own way home', () => {
+  // A step out of the outline lands on the first open panel; a step past the last lands home.
+  assert.equal(c.panelRingStep(['bl-panel'], '', false), 'bl-panel');
+  assert.equal(c.panelRingStep(['bl-panel'], 'bl-panel', false), '');
+  assert.equal(c.panelRingStep(['fn-panel', 'bl-panel'], '', false), 'fn-panel');
+  assert.equal(c.panelRingStep(['fn-panel', 'bl-panel'], 'fn-panel', false), 'bl-panel');
+  assert.equal(c.panelRingStep(['fn-panel', 'bl-panel'], 'bl-panel', false), '');
+  // Backwards is the same ring read the other way: out of the outline into the LAST panel.
+  assert.equal(c.panelRingStep(['fn-panel', 'bl-panel'], '', true), 'bl-panel');
+  assert.equal(c.panelRingStep(['fn-panel', 'bl-panel'], 'bl-panel', true), 'fn-panel');
+  assert.equal(c.panelRingStep(['fn-panel', 'bl-panel'], 'fn-panel', true), '');
+  // A ring of one panel is still a ring: in, then out.
+  assert.equal(c.panelRingStep(['var-panel'], '', true), 'var-panel');
+  assert.equal(c.panelRingStep(['var-panel'], 'var-panel', true), '');
+  // Nothing open → null, the pure-core "nothing to do" signal. The caller leaves the key
+  // unclaimed so the browser's own F6 still works, which the driven check measures.
+  assert.equal(c.panelRingStep([], '', false), null);
+  assert.equal(c.panelRingStep(null, '', false), null);
+  assert.equal(c.panelRingStep([null, undefined, ''], '', false), null);
+  // Focus somewhere else entirely (a toast, a stray blur) is treated as the outline, not as a
+  // missing member — otherwise `indexOf` = -1 would step to ring[0] and read as "already home".
+  assert.equal(c.panelRingStep(['bl-panel'], 'not-a-panel', false), 'bl-panel');
+  // A panel that closed while focus was inside it does not strand the ring.
+  assert.equal(c.panelRingStep(['fn-panel'], 'bl-panel', false), 'fn-panel');
+});
+
+test('#1465 C2 F6 is wired, guarded, and unclaimed when there is nothing to visit', () => {
+  const g = between(_src, "// #1465 C2: F6 is the door into the docked panels", "// Esc from inside a docked panel");
+  assert.match(g, /e\.key==='F6' && !ctrl && !e\.altKey/, 'Ctrl+F6 / Alt+F6 stay the browser’s');
+  assert.match(g, /\[aria-modal="true"\],\[role="dialog"\]/,
+    'never a sideways exit from a modal — that is the #1464 B1 dead end in reverse');
+  // The CALL SITE, not just the core: preventDefault is conditional on the step having happened,
+  // which is what leaves the browser's own F6 alive when no panel is open.
+  assert.match(g, /if \(stepDockedPanels\(e\.shiftKey\)\) \{ e\.preventDefault\(\); return; \}/);
+
+  const step = fnBody(_src, 'stepDockedPanels');
+  assert.match(step, /if \(next == null\) return false;/, 'nothing open → the key is not ours');
+  assert.match(step, /if \(next === ''\) return leaveDockedPanel\(from\);/);
+  assert.match(step, /if \(!from\) armChromeReturn\(\);/,
+    'the caret is armed on the way OUT of the outline only, so panel→panel hops keep the first target');
+  assert.match(step, /announce\(panelOpenSay\(panelAccName\(panel\), n\)\)/, 'arriving says where you are (P4)');
+
+  // Esc is the other way home, and it does not steal the footnote editor's own Esc.
+  const esc = between(_src, "// Esc from inside a docked panel is the other way home",
+                            "// Help chords all open the ONE help surface");
+  assert.match(esc, /e\.key==='Escape' && focusedDockedPanel\(\)/);
+  assert.match(esc, /leaveDockedPanel\(focusedDockedPanel\(\)\)/);
+  assert.match(_src, /if \(e\.key === 'Escape'\) \{ e\.stopPropagation\(\); returnToFnRef\(key\); \}/,
+    'the footnote text editor keeps its own Esc and stops the event before the document sees it');
+
+  // Home is the armed caret first, the panel's SUBJECT point second — never <body>.
+  const leave = fnBody(_src, 'leaveDockedPanel');
+  assert.match(leave, /if \(restoreChromeReturn\(\)\) return true;/);
+  assert.match(leave, /const sid = panelSubjectId\(fromId\);/);
+  assert.match(leave, /document\.querySelector\('\.zoom-title'\)/, 'zoomed, the subject’s editor is the title');
+});
+
+test('#1465 C2 the ring covers the whole family, and lands on a row', () => {
+  // The family is the panels that appear WITHOUT taking focus — exactly the set announcePanelOpen
+  // was measured against (#1473) — plus the in-flow twin of the backlinks strip, which #1465 names.
+  const tbl = between(_src, 'const DOCKED_PANELS = [', 'const DOCKED_PANEL_IDS');
+  const ids = nonEmpty([...tbl.matchAll(/id: *'([a-z-]+)'/g)].map(m => m[1]), 'DOCKED_PANELS ids');
+  assert.deepEqual(host(ids), ['zoom-bl', 'fn-panel', 'bl-panel', 'var-panel']);
+  // Every id is a real element in the document, and the in-flow section gets its id at build time.
+  for (const id of ids) {
+    if (id === 'zoom-bl') { assert.match(_src, /sec\.id = 'zoom-bl';/); continue; }
+    assert.ok(_src.includes(`id="${id}"`), `${id} is not an element in the page`);
+  }
+  // Exactly one element carries each id — an "is it mentioned" check would pass on a comment.
+  for (const id of ids) {
+    if (id === 'zoom-bl') continue;
+    assert.equal(_src.split(`id="${id}"`).length - 1, 1, `${id} must be declared exactly once`);
+  }
+
+  // F6 lands on a ROW, not on the header's close button: the search is scoped to the panel's
+  // row container. Before scoping, the variables panel put focus on "Close variables panel".
+  const entry = fnBody(_src, 'panelEntryEl');
+  assert.match(entry, /DOCKED_PANELS\.find\(p => p\.id === panelEl\.id\)\?\.list/);
+  assert.match(entry, /const scope = \(listId && document\.getElementById\(listId\)\) \|\| panelEl;/);
+  assert.match(entry, /panelEl\.setAttribute\('tabindex', '-1'\);/,
+    'a panel with no focusable row still takes focus, so AT reads the region instead of <body>');
+  assert.doesNotMatch(c.panelRingStep(['bl-panel'], '', false), /^$/);
+
+  // The sibling strips keep EACH OTHER open. Before this, stepping into the footnote strip
+  // collapsed the backlinks strip out from under the ring mid-cycle (measured, not supposed).
+  assert.match(fnBody(_src, 'scheduleBlHide'), /if \(focusedDockedPanel\(\)\) return;/);
+  assert.match(fnBody(_src, 'scheduleFnHide'), /if \(focusedDockedPanel\(\)\) return;/);
+
+  // One source for a panel's spoken name, so the arrival and the appearance cannot drift apart.
+  const acc = fnBody(_src, 'panelAccName');
+  assert.match(acc, /getAttribute\('aria-label'\)/);
+  assert.match(acc, /getAttribute\('aria-labelledby'\)/);
+  assert.match(fnBody(_src, 'announcePanelOpen'), /panelOpenSay\(panelAccName\(panelEl\), n\)/);
+
+  // P3/P4: what F6 focuses has a visible ring. `.fn-key` was role="button" + tabindex="0" with
+  // none, which cost nothing while nothing could focus it by keyboard; F6 can.
+  assert.match(_src, /\.fn-key:focus-visible\{outline:2px solid var\(--acc\)/);
+  assert.match(_src, /#fn-panel:focus,#bl-panel:focus,#var-panel:focus,\.zoom-bl:focus\{outline:2px solid var\(--acc\)/,
+    'the container fallback takes focus, so it must also SHOW it');
+
+  // P2: the key has a visible front door in the shortcuts reference, and it is a Navigate row.
+  const row = between(_src, "{ id:'nav-panel',", "\n");
+  assert.match(row, /essential:true, essSection:'Navigate', keys:\['F6','⇧\+F6'\]/);
+  assert.match(row, /essLabel:'Go to the open panel \(Footnotes, Linked from, Variables\) and back'/);
+});

@@ -1272,6 +1272,9 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .fn-key{font-size:.73em;color:var(--acc);font-weight:600;background:var(--cbg);border:1px solid var(--bdr);border-radius:var(--r-sm);padding:3px 8px;user-select:none;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s;align-self:start;margin-top:1px;line-height:1.6}
 .fn-key:hover{background:var(--ring);border-color:var(--acc)}
 .fn-key.hi{background:var(--ring);border-color:var(--acc)}
+/* #1465 C2: it was role=button + tabindex=0 with no ring, which cost nothing while nothing could
+   focus it by keyboard. F6 can, so it gets the standard one. */
+.fn-key:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .fn-content{outline:none;font:inherit;color:var(--fg);white-space:pre-wrap;word-break:break-word;min-height:1.3em;caret-color:auto;padding-top:3px;line-height:var(--lh)}
 .fn-content:empty::before{content:'Add a note…';color:var(--muted);pointer-events:none}/* UXP-107: --muted (AA on --bg) reads as lighter than the filled --fg body; no opacity fade */
 
@@ -2672,6 +2675,11 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
    which outranks a plain #var-panel override, so the reduce rule has to name both states. It also
    only ever covered one of the three docked panels; the siblings slide under reduce today. */
 @media(prefers-reduced-motion:reduce){#fn-panel,#fn-panel.on,#bl-panel,#bl-panel.on,#var-panel,#var-panel.on{transition:none}}
+/* #1465 C2: F6 falls back to focusing the panel itself when it holds no focusable row (the
+   variables panel is read-only text), and a focus move a sighted keyboard user cannot see is a
+   silent one (P4). Plain :focus, not :focus-visible — the only thing that focuses these
+   containers is the F6 ring, which is always a keyboard move. */
+#fn-panel:focus,#bl-panel:focus,#var-panel:focus,.zoom-bl:focus{outline:2px solid var(--acc);outline-offset:-2px}
 @media(prefers-reduced-motion:reduce){#outline{transition:none}}
 
 /* ── touch devices: surface hover-only affordances + grow tap targets ── */
@@ -38334,8 +38342,7 @@ function scheduleFnHide() {
   clearTimeout(fnHideTimer);
   fnHideTimer = setTimeout(() => {
     if (fnLocked) return;
-    const panel = document.getElementById('fn-panel');
-    if (panel?.contains(document.activeElement)) return;
+    if (focusedDockedPanel()) return;   // #1465 C2: the sibling strips keep each other open too
     if (document.activeElement?.classList.contains('node-content')) return;
     hideFnPanel();
   }, 150);
@@ -38359,19 +38366,123 @@ function panelOpenSay(name, n) {
 // the backlinks strip, which appear as a side effect of moving the caret and must leave the caret
 // where it is, and the variables panel, which is asked for but lands focus nowhere.
 let _panelSaid = Object.create(null);
+// The name the accessibility tree reads for a panel. ONE source, so what is announced and what
+// the region is called cannot drift apart — the appearance announcement and the F6 arrival
+// (#1465 C2) both read it here.
+function panelAccName(panelEl) {
+  if (!panelEl) return '';
+  return panelEl.getAttribute('aria-label')
+    || (document.getElementById(panelEl.getAttribute('aria-labelledby') || '')?.textContent || '').trim();
+}
 function announcePanelOpen(panelEl, n) {
   if (!panelEl) return;
-  // The name comes from the SAME place the accessibility tree reads it, so what is announced and
-  // what the region is called cannot drift apart.
-  const name = panelEl.getAttribute('aria-label')
-    || (document.getElementById(panelEl.getAttribute('aria-labelledby') || '')?.textContent || '').trim();
-  const say = panelOpenSay(name, n);
+  const say = panelOpenSay(panelAccName(panelEl), n);
   // Re-announcing on every caret move would make the strips unusable; only a CHANGE speaks.
   if (!say || _panelSaid[panelEl.id] === say) return;
   _panelSaid[panelEl.id] = say;
   announce(say);
 }
 function forgetPanelSaid(id) { delete _panelSaid[id]; }
+
+// ── #1465 C2: the docked-panel ring (F6) ─────────────────────────────────────
+// The same three panels as the comment above: the ones that appear WITHOUT taking focus. That is
+// exactly why they were keyboard-unreachable — nothing ever moved focus into them, and the outline
+// claims Tab unconditionally as indent, so REACHING for them silently reparented a point instead.
+// F6 is the platform "cycle panes" key, chosen on the argument that chose F1 for the picker's help
+// (ux-discipline §3): the outline is a text field, so every printable key must keep typing, and a
+// function key is collision-free by construction.
+// Each panel paired with the container holding its ROWS, so F6 lands on a row and not on the
+// header's close button. `zoom-bl` is the in-flow twin of the backlinks strip (#953: "same rows,
+// same model, same keyboard behaviour as the strip — only the container and the navigate hooks
+// differ"), and #1465 C2 reports it as equally unreachable, so it is a member of the same family.
+// In page order: the in-flow section lives in the outline, the strips are at the end of the body.
+const DOCKED_PANELS = [
+  { id: 'zoom-bl',   list: null },
+  { id: 'fn-panel',  list: 'fn-list' },
+  { id: 'bl-panel',  list: 'bl-list' },
+  { id: 'var-panel', list: 'var-panel-list' },
+];
+const DOCKED_PANEL_IDS = DOCKED_PANELS.map(p => p.id);
+
+// Pure. `openIds` are the docked panels currently open, in page order; `hereId` is the panel that
+// holds focus, or '' / null when focus is in the outline. Returns the next stop: '' for the
+// outline, a panel id otherwise, and `null` when there is nothing to visit — the ring includes the
+// outline as a member, so a step past the last panel is a step home and the key is its own way back.
+function panelRingStep(openIds, hereId, back) {
+  const list = (openIds || []).filter(Boolean);
+  if (!list.length) return null;
+  const ring = ['', ...list];
+  const at = ring.indexOf(hereId || '');
+  const from = at < 0 ? 0 : at;   // focus somewhere else entirely → treat it as the outline
+  return ring[(from + (back ? -1 : 1) + ring.length) % ring.length];
+}
+
+// Which point a panel is ABOUT — where "back to the outline" lands when there is no armed caret
+// (the panel was entered by mouse). The variables panel is about the document, not a point.
+function panelSubjectId(id) {
+  return id === 'bl-panel' ? blNodeId
+       : id === 'fn-panel' ? fnNodeId
+       : id === 'zoom-bl'  ? focusedId
+       : null;
+}
+// The strips slide in with `.on`; the in-flow section is simply present or absent.
+function dockedPanelOpen(el) {
+  return !!el && (el.classList.contains('on') || el.classList.contains('zoom-bl'));
+}
+function openDockedPanels() {
+  return DOCKED_PANEL_IDS.filter(id => dockedPanelOpen(document.getElementById(id)));
+}
+function focusedDockedPanel() {
+  const a = document.activeElement;
+  if (!a) return '';
+  return DOCKED_PANEL_IDS.find(id => document.getElementById(id)?.contains(a)) || '';
+}
+// The row F6 lands on: the first focusable inside the panel's ROW container, so the landing is a
+// row and not the header's close button. Falls back to the panel itself when it holds no focusable
+// row (the variables panel is read-only text), so focus still lands INSIDE the region and AT reads
+// it rather than dropping the user on <body>.
+const PANEL_FOCUS_SEL = 'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+function panelEntryEl(panelEl) {
+  if (!panelEl) return null;
+  const listId = DOCKED_PANELS.find(p => p.id === panelEl.id)?.list;
+  const scope = (listId && document.getElementById(listId)) || panelEl;
+  const first = scope.querySelector(PANEL_FOCUS_SEL);
+  if (first) return first;
+  panelEl.setAttribute('tabindex', '-1');
+  return panelEl;
+}
+
+// Back out of a docked panel to the outline: the caret exactly where it stood — the same restore
+// the search field and the file menu do (§3 Esc) — or, failing that, the point the panel is about.
+function leaveDockedPanel(fromId) {
+  if (restoreChromeReturn()) return true;
+  const sid = panelSubjectId(fromId);
+  if (sid == null) return false;
+  const el = document.querySelector(`.node-content[data-id="${CSS.escape(String(sid))}"]`);
+  if (el) { ensureRowVisible(sid); el.focus(); return true; }
+  // Zoomed, the subject of the in-flow section is the note itself, whose editor is the title.
+  const title = sid === focusedId ? document.querySelector('.zoom-title') : null;
+  if (!title) return false;
+  title.focus();
+  return true;
+}
+
+function stepDockedPanels(back) {
+  const from = focusedDockedPanel();
+  const next = panelRingStep(openDockedPanels(), from, back);
+  if (next == null) return false;              // nothing open — leave the browser's own F6 alone
+  if (next === '') return leaveDockedPanel(from);
+  if (!from) armChromeReturn();                // leaving the outline: remember the caret to come back to
+  const panel = document.getElementById(next);
+  const el = panelEntryEl(panel);
+  if (!el) return false;
+  el.focus();
+  // The variables panel is the one whose name carries no count of its own — same argument as
+  // announcePanelOpen's caller, so the arrival and the appearance say the same words.
+  const n = next === 'var-panel' ? document.querySelectorAll('#var-panel-list .vp-row').length : undefined;
+  announce(panelOpenSay(panelAccName(panel), n));
+  return true;
+}
 
 function showFnPanel(nodeId) {
   const node = nodeById(nodeId);
@@ -38427,8 +38538,10 @@ let blNodeId = null, blHideTimer = null;
 function scheduleBlHide() {
   clearTimeout(blHideTimer);
   blHideTimer = setTimeout(() => {
-    const panel = document.getElementById('bl-panel');
-    if (panel?.contains(document.activeElement)) return;   // UXP-54: focus moved into the panel — keep it open
+    // UXP-54: focus moved into a docked panel — keep this one open. #1465 C2: ANY docked panel,
+    // not just this one. The strips are two views of the same point, so stepping into the footnote
+    // strip with F6 used to collapse the backlinks strip out from under the ring mid-cycle.
+    if (focusedDockedPanel()) return;
     // keep open while an editable point header holds focus: outline rows (.node-content)
     // or the zoomed-in title (.zoom-title), which is a separate hand-rolled editor.
     const ae = document.activeElement;
@@ -38805,6 +38918,7 @@ function cardMoveIndex(count, from, key, perRow) {
 function buildZoomBacklinks(nodeId) {
   const sec = document.createElement('section');
   sec.className = 'zoom-bl';
+  sec.id = 'zoom-bl';        // #1465 C2: so the F6 ring can address it like the docked strips
   sec.setAttribute('role', 'region');
   const hd = document.createElement('div');
   hd.className = 'zoom-bl-hd';
@@ -42065,6 +42179,7 @@ const GUIDE = [
   { id:'nav-esc',     essential:true, essSection:'Navigate', keys:['Esc'],           essLabel:'Zoom out / close panel' },
   { id:'nav-search',  essential:true, essSection:'Navigate', keys:[`${MOD}+F`],      essLabel:'Search' },
   { id:'nav-jump',    essential:true, essSection:'Navigate', keys:['↓ from search'],   essLabel:'Jump to first match' },
+  { id:'nav-panel',   essential:true, essSection:'Navigate', keys:['F6','⇧+F6'],     essLabel:'Go to the open panel (Footnotes, Linked from, Variables) and back' },
   { id:'nav-link',    essential:true, essSection:'Navigate', keys:[`${MOD}+⇧+Enter`],  essLabel:'Follow link under caret' },
   { id:'nav-help',    essential:true, essSection:'Navigate', keys:[`${MOD}+/`,`${MOD}+⇧+/`,'?'], essLabel:'Open help and the guide (this reference, and every feature)' },
 
@@ -42965,11 +43080,12 @@ const GUIDE = [
     ] },
   { id:'backlinks', cat:'links',
     title:'Backlinks',
-    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept.\n\nZoom into a point and its Linked from list sits at the foot of the note, under its children, as part of the page. It is always there, and says so plainly when nothing links to the point yet. On the plain outline the same list rises from the bottom of the screen instead, following whichever point you are working in, and only when something links to it.\n\nEach row shows a line of context from the source under its title, so you can see what it says about this point without visiting. Both lists also surface mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder they list unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.",
+    body:"See the full web of what connects to an idea: not just what you linked from this point, but everything across your documents that links to it. Useful in a personal wiki or research documents when you want to know what else depends on or references this concept.\n\nZoom into a point and its Linked from list sits at the foot of the note, under its children, as part of the page. It is always there, and says so plainly when nothing links to the point yet. On the plain outline the same list rises from the bottom of the screen instead, following whichever point you are working in, and only when something links to it.\n\nEach row shows a line of context from the source under its title, so you can see what it says about this point without visiting. Both lists also surface mentions of the title that aren't linked yet, so you can connect them with one click. In a connected folder they list unlinked mentions in your other documents too, so you can spot where a topic is talked about but not yet linked; click one to open that document.\n\nFrom the keyboard, press F6 to step from the point into the list, then Enter on a row to open it. Tab means indent everywhere in the outline, so F6 is the key that crosses into a panel: it walks the open panels in turn (Footnotes, Linked from, Variables) and one more press takes you back to the point, with the caret where you left it. Escape from the list does the same. It works the same way on the zoomed page, where the list sits in the note.",
     related:['point-links','link-graph','cross-doc-links'],
     examples:[
       { syn:'Linked from', ctl:'Linked from',          desc:'points that link here (this document + the folder)' },
       { syn:'zoom into a point',    desc:'its Linked from list sits under the note, always' },
+      { syn:'F6',                   desc:'step from the point into the list; F6 again goes back' },
       { syn:'Unlinked references',  desc:'mentions; click Link to connect them' },
       { syn:'…in other documents',  desc:'mentions in your other folder documents; click to open' },
     ] },
@@ -44841,6 +44957,19 @@ function builderReturnTypedText() {
 document.addEventListener('keydown', e => {
   const ctrl = e.ctrlKey || e.metaKey;
   if (e.key==='Escape' && fileMenu.classList.contains('on')) { e.preventDefault(); restoreChromeReturn(); closeFileMenu(); return; }
+  // #1465 C2: F6 is the door into the docked panels (footnotes / linked from / variables) and,
+  // one step past the last of them, the way back out — see ux-discipline §3. Not claimed when no
+  // docked panel is open (the browser's own F6 still works) and never while a modal holds focus,
+  // which would otherwise be a way to escape a dialog sideways.
+  if (e.key==='F6' && !ctrl && !e.altKey && !document.activeElement?.closest?.('[aria-modal="true"],[role="dialog"]')) {
+    if (stepDockedPanels(e.shiftKey)) { e.preventDefault(); return; }
+  }
+  // Esc from inside a docked panel is the other way home, restoring the caret exactly where it
+  // stood (P1-3 back-out order). The footnote text editor handles its own Esc and stops the
+  // event, so this covers the rows and controls that do not.
+  if (e.key==='Escape' && focusedDockedPanel()) {
+    if (leaveDockedPanel(focusedDockedPanel())) { e.preventDefault(); return; }
+  }
   // Help chords all open the ONE help surface, the Concept guide, on its Shortcuts home entry
   // (the corner shortcuts panel was retired — one surface, one set of doors). ⌘/Ctrl+/ and
   // ⌘/Ctrl+Shift+/ work mid-edit; a bare ? (the universal help key) also toggles it, but only
