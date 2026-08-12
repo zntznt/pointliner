@@ -26782,6 +26782,17 @@ test('#1464 B3: a dialog never hands focus back to a surface that closed behind 
   const drt = fnBody(_src, 'dialogReturnTarget');
   assert.match(drt, /bpop\.contains\(a\) && bpopReturnFocus != null/, 'the point-menu case');
   assert.match(drt, /ioCard\.contains\(a\) && builderState && builderState\.content/, 'the builder-card case');
+  // ...and the `/` verbs whose dialog opens only AFTER the builder has torn itself down
+  assert.match(drt, /_slashApplyContent && _slashApplyContent\.isConnected/, 'the slash-apply case');
+  assert.match(drt, /_slashApplyContent\.classList\.contains\('node-content'\)/,
+    'and it must still be a live point, not a stale reference');
+  assert.match(drt, /\(!a \|\| a === document\.body\)/,
+    'consulted only when focus has nowhere better to go, so it never overrides a real target');
+  assert.match(fnBody(_src, 'slashApply'), /_slashApplyContent = content \|\| null;/,
+    'slashApply records the point it is acting on, before hideSlashMenu nulls the state');
+  assert.ok(fnBody(_src, 'slashApply').indexOf('_slashApplyContent = content') <
+            fnBody(_src, 'slashApply').indexOf('hideSlashMenu()'),
+    'and records it BEFORE that, or there is nothing left to record');
   assert.match(drt, /return a;/, 'and otherwise the active element, unchanged');
   // CENSUS: no capture site may still read activeElement raw, or the rule holds at twelve places
   // and not the thirteenth. This is the ratchet: a new dialog added later joins by construction.

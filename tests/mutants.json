@@ -317,6 +317,15 @@
       "kills": "#1464 B3: a dialog never hands focus back to a surface that closed behind it"
     },
     {
+      "id": "slash-apply-origin-unrecorded",
+      "suite": "unit",
+      "why": "#1464 B3: /Schedule opens its form after the builder is gone, with nothing left to name",
+      "file": "index.html",
+      "find": "  _slashApplyContent = content || null;",
+      "replace": "  _slashApplyContent = null;",
+      "kills": "#1464 B3: a dialog never hands focus back to a surface that closed behind it"
+    },
+    {
       "id": "bpop-tab-escapes",
       "suite": "unit",
       "why": "#1464 B5: Tab walking out to the help button behind a still-open menu",

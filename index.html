@@ -23045,11 +23045,22 @@ function slashMove(dir) {
   if (isLean()) renderLeanSlashTip(); else renderSlashMenu();
 }
 
+let _slashApplyContent = null;   // #1464 B3: see slashApply
 function slashApply() {
   if (!slashState) return;
   if (slashState.cell) { cellSlashApply(); return; }
   const { nodeId, content, slashOffset, activeIdx, matches, trigger, query, rawArg, stripLen, tailInsert } = slashState;
   const cmd = matches[activeIdx];
+  // #1464 B3: remember the point this command is acting on, because in a moment nothing else will
+  // know it. applyBuilder calls closeBuilder() BEFORE delegating here, and hideSlashMenu below
+  // nulls slashState on the way in -- so a verb that opens a dialog reaches its return-target
+  // capture with the builder gone, slashState gone and focus on <body>. That is why Schedule,
+  // Property and Repeat lost the caret through `/` while Check, Aliases and Refile kept it: those
+  // three open a dialog and re-capture, the others never re-captured over the builder's target.
+  // Deliberately not cleared: the next apply overwrites it, so it is stale for at most one command,
+  // and dialogReturnTarget only reads it when it is still a connected point AND focus has nowhere
+  // better to go -- where naming the last point acted on beats naming <body>.
+  _slashApplyContent = content || null;
   hideSlashMenu();
   // strip the trigger char + exactly the query checkSlash settled on (its length
   // matches the source text regardless of case). For a date verb the query includes
@@ -24285,6 +24296,11 @@ function dialogReturnTarget() {
   // not: those three re-captured over it, the other three never did.
   if (a && ioCard.contains(a) && builderState && builderState.content && builderState.content.isConnected)
     return builderState.content;
+  // ...and the same shape once more, for the `/` verbs that open a dialog only AFTER the builder
+  // has torn itself down. By then focus is on <body> and only slashApply still knows the origin.
+  if ((!a || a === document.body) && _slashApplyContent && _slashApplyContent.isConnected
+      && _slashApplyContent.classList.contains('node-content'))
+    return _slashApplyContent;
   return a;
 }
 

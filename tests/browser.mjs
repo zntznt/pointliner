@@ -2057,6 +2057,31 @@ test('#1464 B3/B5: forms hand the caret back, and Tab stays in the menu', { skip
     await pg.close();
   }
 
+  // B3 through the OTHER door: `/` verbs whose dialog opens after the builder is gone. Only the
+  // commands that actually open a form belong here -- /Property and /Repeat write an inline stub
+  // and leave the caret in the point, so Escape there means "stop editing", which lands on <body>
+  // for every ordinary edit in the app and is not this defect. Measured against that baseline
+  // before being excluded, rather than assumed.
+  for (const cmd of ['Schedule', 'Check', 'Aliases', 'Refile']) {
+    const p3 = await fresh();
+    await blankWithCaret(p3);
+    await p3.keyboard.type('Buy milk', { delay: 12 }); await p3.waitForTimeout(200);
+    await p3.keyboard.press('Home'); await p3.waitForTimeout(150);
+    await p3.keyboard.type('/', { delay: 20 }); await p3.waitForTimeout(450);
+    await p3.keyboard.type(cmd, { delay: 25 }); await p3.waitForTimeout(450);
+    await p3.keyboard.press('Enter'); await p3.waitForTimeout(800);
+    const inForm = await p3.evaluate(() => {
+      const a = document.activeElement;
+      return { tag: a.tagName, isPoint: a.classList.contains('node-content') };
+    });
+    assert.equal(inForm.tag, 'INPUT',
+      `/${cmd}: precondition, this verb opens a form and puts focus in it`);
+    await p3.keyboard.press('Escape'); await p3.waitForTimeout(800);
+    assert.equal(await p3.evaluate(() => document.activeElement.classList.contains('node-content')), true,
+      `/${cmd}: Escape must hand the caret back to the point it was typed from`);
+    await p3.close();
+  }
+
   // B5 — Tab used to walk out to the help button BEHIND the still-open menu
   const pg = await fresh();
   await pg.evaluate(() => {
