@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2073 declarations in 152 sections across 17 domains.**
+**2074 declarations in 152 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1256,6 +1256,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `renderLeanSlashTip`
 - `placeAtCaret` — shared caret-anchored placement for a fixed-position element (menu + lean tip use it)
 - `slashMove`
+- `_slashApplyContent`
 - `slashApply`
 
 ## shared grid size picker (used by BOTH /base and @table)
