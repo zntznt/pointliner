@@ -6918,7 +6918,13 @@ function migrateTodoText(text, checked) {
 // optional closing `\`\`\`` fence, so a pasted ```lang … ``` block renders cleanly
 // instead of showing the literal language tag and trailing fence.
 function codeNodeHTML(node) {
-  let t = textForDisplay(node);                  // drops the leading ``` prefix
+  // #1463 A4: tokens back to the source the user typed. A code block is LITERAL text, so the thing
+  // to show is the authored `{2d6}` — not the opaque `[[dice:rm224ex2]]` the model stores, which is
+  // an internal name that means nothing to a reader and cannot be typed back. Exactly the #1467
+  // defect on a second surface, so it reuses that fix's pure core rather than growing a second
+  // unfolder: `node.text` is untouched, so converting away still restores the pill with its frozen
+  // roll. Edit mode already unfolded here; only the rendered block leaked.
+  let t = unfoldTokensIn(textForDisplay(node), node);   // and drops the leading ``` prefix
   let lang = '';
   const lm = t.match(/^([\w+-]+)[ \t]*\r?\n/);   // a lone language token on line 1
   if (lm) { lang = lm[1]; t = t.slice(lm[0].length); }
@@ -20861,7 +20867,14 @@ function onKeyDown(e, id, content) {
       const off = getCaretOffset(content);
       zoomOut();
       focusNodeAtOffset(id, off);
-    } else content.blur();
+    } else {
+      content.blur();
+      // #1490: blur is the rung, but it used to leave nothing behind — no painted cursor, nothing
+      // announced, so the state read as "focus fell off the document" to sighted and AT users
+      // alike. The model never lost the point (selFocusId is still this one); this makes that
+      // visible and audible. After the frame, because the blur handler's exitEdit re-renders.
+      requestAnimationFrame(() => { if (activeContentId == null && selectedIds.size === 0) moveRowCursor(id); });
+    }
   }
 }
 
@@ -20880,6 +20893,37 @@ function clearSelection() {
   updateSelVisuals();
   updateNodeSelBar();
   if (wasInBar && back && nodeById(back)) focusNode(back);
+}
+
+// ── #1490: the row cursor, said out loud and reachable ───────────────────────
+// Escape out of an edit lands on <body> by design — the ladder's last rung IS "blur", and focus
+// cannot go to the point instead, because `.node-content`'s focus listener enters edit, so landing
+// there would undo the Escape. The row cursor is the state you are actually left in, and it worked:
+// the arrows DO move it (the issue reports them dead because it read activeElement, which never
+// changes). What was missing is that the cursor was silent — nothing announced, nothing painted
+// until the first arrow — and that Enter, the way back IN, did nothing.
+//
+// Pure: what the cursor says. Position matters here more than anywhere else in the app, because
+// there is no focused element for a screen reader to fall back on.
+function rowCursorSay(title, i, total) {
+  const name = String(title == null ? '' : title).trim() || '(empty point)';
+  return Number.isFinite(i) && Number.isFinite(total) && total > 0 ? `${name}, ${i + 1} of ${total}` : name;
+}
+
+// Put the row cursor on a point and say so. One writer, so the arrows, the Escape rung and any
+// later caller cannot drift on what the cursor does or how it reads.
+function moveRowCursor(id, opts) {
+  if (id == null) return false;
+  selectedIds.clear();
+  selAnchorId = id;
+  selFocusId  = id;
+  ensureRowVisible(id);
+  updateSelVisuals();
+  updateNodeSelBar();
+  if (opts && opts.silent) return true;
+  const i = typeof flatIndex !== 'undefined' ? flatIndex.get(id) : null;
+  announce(rowCursorSay(displayText(nodeById(id)), i, flatRows.length));
+  return true;
 }
 
 function updateSelVisuals() {
@@ -42173,6 +42217,7 @@ document.getElementById('tbtn-cluster').addEventListener('mouseout', e => {
 const GUIDE = [
   // ── Navigate (essentials only) ────────────────────────────────────────────
   { id:'nav-move',    essential:true, essSection:'Navigate', keys:['↑','↓'],      essLabel:'Move between points' },
+  { id:'nav-enter',   essential:true, essSection:'Navigate', keys:['Enter'],         essLabel:'Edit the point the cursor is on (after Esc leaves an edit)' },
   { id:'nav-col',     essential:true, essSection:'Navigate', keys:[`${MOD}+.`,','],  essLabel:'Collapse / expand' },
   { id:'nav-levels',  essential:true, essSection:'Navigate', keys:[`${MOD}+1–6`],     essLabel:'Collapse to N levels (browser may reserve; use 1/2/3/All)' },
   { id:'nav-zoom',    essential:true, essSection:'Navigate', keys:[`${MOD}+Enter`],  essLabel:'Zoom into point' },
@@ -42359,6 +42404,16 @@ const GUIDE = [
       { syn:'Ctrl/Cmd+C',             desc:'copy the selection (Ctrl/Cmd+X cuts, Ctrl/Cmd+V pastes)' },
       { syn:'Tab / Shift+Tab',        desc:'indent or outdent the selection' },
       { syn:'Delete',                 desc:'delete the selection (Esc clears it)' },
+    ] },
+  { id:'row-cursor', cat:'getting-around',
+    title:'Browsing points without editing',
+    body:"Press Esc while you are typing and you stop editing, but you do not lose your place. The point you were on keeps a soft highlight, the row cursor, and the up and down arrows walk it through the document without opening anything for editing. It is the quiet way to look around: skim a long outline, find the point you want, and only then start typing in it.\n\nPress Enter to edit the point the cursor is on, with the caret at the end of its text, ready to carry on. Shift with the arrows turns the cursor into a selection of several points instead. Every move says the point and its position out loud for a screen reader, because at this moment nothing on the page holds focus and the cursor is the only thing that knows where you are.",
+    related:['multi-select','move-nest','zoom'],
+    examples:[
+      { syn:'Esc',        desc:'stop editing; the cursor stays on that point' },
+      { syn:'↑ / ↓',      desc:'walk the cursor through the document' },
+      { syn:'Enter',      desc:'edit the point the cursor is on' },
+      { syn:'Shift+↑ / ↓', desc:'turn it into a selection of several points' },
     ] },
   { id:'move-nest', cat:'getting-around',
     title:'Moving and nesting points',
@@ -45131,12 +45186,23 @@ document.addEventListener('keydown', e => {
       selFocusId = nextId;
       rangeSelectTo(nextId);
     } else {
-      selectedIds.clear();
-      selAnchorId = nextId;
-      selFocusId  = nextId;
-      ensureRowVisible(nextId);
-      updateSelVisuals();
-      updateNodeSelBar();
+      moveRowCursor(nextId);   // #1490: same move as before, now announced (P3-5)
+    }
+  }
+  // #1490: Enter is the way back IN. Without it the row cursor was a read-only state: you could
+  // move it and never act on it, and the only key that got you back into the document was Tab,
+  // which lands on a DIFFERENT point than the one under the cursor. Gated on <body> holding focus,
+  // which is exactly the stranded state and nothing else — any dialog, menu or field owns its own
+  // Enter, and while one of those has focus this branch cannot see it.
+  if (e.key === 'Enter' && activeContentId == null && !ctrl && !e.altKey && !e.shiftKey
+      && selectedIds.size === 0 && selFocusId != null && document.activeElement === document.body) {
+    const el = document.querySelector(`.node-content[data-id="${CSS.escape(String(selFocusId))}"]`);
+    const node = nodeById(selFocusId);
+    if (el && node) {
+      e.preventDefault();
+      ensureRowVisible(selFocusId);
+      el.focus();   // the focus listener enters edit; a base focuses without one
+      if (node.type !== 'base') { try { setCaretByOffset(el, editableText(el).length); } catch (_) {} }
     }
   }
 });

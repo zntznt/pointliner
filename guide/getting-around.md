@@ -82,6 +82,17 @@ paragraph to Markdown or plain text, each pill flattens to just its **result** (
 so the exported prose reads clean. Pills in ordinary bullets keep their full capsule and export their
 recipe, as before.
 
+## Browsing without editing
+
+Press `Esc` while you are typing and you stop editing, but you do not lose your place. The point you
+were on keeps a soft highlight, the **row cursor**, and `Up` / `Down` walk it through the document
+without opening anything for editing. It is the quiet way to look around a long outline: skim to the
+point you want, then press `Enter` to edit it, with the caret at the end of its text ready to carry
+on. `Shift` with the arrows turns the cursor into a selection of several points instead.
+
+Every move says the point and its position out loud ("Two, 2 of 3") for a screen reader. At this
+moment nothing on the page holds focus, so the cursor is the only thing that knows where you are.
+
 ## Selecting many points
 
 Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole
