@@ -19742,8 +19742,9 @@ test('#1265 bibToPoints — each entry a point whose [^key] footnote carries its
     'the cite key rides along as a property: it is what her reference manager calls this source');
   assert.ok(kids[0].text.includes('{prop year: 2020}'), 'and the year, so a reading list sorts');
   assert.equal(JSON.stringify(kids[0].footnotes),
-    JSON.stringify([{ key: 'smith2020', text: c.bibCitation(c.parseBibtex(_BIB).entries[0]) }]),
-    'the citation is the FOOTNOTE (the doc store lifts and renumbers it on insert)');
+    JSON.stringify([{ key: 'smith2020', text: c.bibCitation(c.parseBibtex(_BIB).entries[0]), stable: true }]),
+    'the citation is the FOOTNOTE, and #1244 marks it `stable` so the lift KEEPS the cite key as the ' +
+    'store id — that is what makes an imported bibliography citable by the key you already know');
   assert.equal(JSON.stringify(c.bibToPoints('not a bib at all').points), '[]',
     'junk imports nothing rather than an empty section');
 });
@@ -32428,4 +32429,53 @@ test('#1490 blur leaves a cursor behind, and Enter gets back in at that point', 
   assert.match(ent, /setCaretByOffset\(el, editableText\(el\)\.length\)/,
     'resuming lands at the end of the text, as the chrome restore does');
   assert.match(ent, /node\.type !== 'base'/, 'a base focuses without a caret');
+});
+
+// ── #1244: an imported bibliography you can actually CITE ────────────────────
+// Measured before building: the import wrote `The Politics of Memory [^f1w1wlho] {prop cite: ives2019}`
+// and citing `[^ives2019]` on a claim made a SECOND, empty footnote beside the real one — a silent
+// wrong answer (P4), and the exact retyping error the Research starter's check exists to prevent.
+test('#1244 a stable footnote key survives the lift, so the cite key IS the marker', () => {
+  let n = 0; const mint = () => 'F' + (++n);
+  const store = [];
+  const node = { text: 'The Politics of Memory [^ives2019]',
+                 footnotes: [{ key: 'ives2019', text: 'Ives, Sarah. The Politics of Memory.', stable: true }] };
+  c.migrateNodeFootnotes(node, store, mint);
+  assert.equal(node.text, 'The Politics of Memory [^ives2019]', 'the marker keeps the key it came in with');
+  assert.equal(host(store).length, 1);
+  assert.equal(host(store)[0].id, 'ives2019', 'and the store is keyed by it, so a claim can reach it');
+  assert.equal(host(store)[0].text, 'Ives, Sarah. The Politics of Memory.');
+
+  // COLLISION STILL WINS. A stable key already taken falls back to a mint, so two sources that
+  // sanitize to one key never end up sharing a citation.
+  const dupe = { text: 'Another work [^ives2019]',
+                 footnotes: [{ key: 'ives2019', text: 'A different book.', stable: true }] };
+  c.migrateNodeFootnotes(dupe, store, mint);
+  assert.equal(dupe.text, 'Another work [^F1]', 'the second one diverges to a minted id');
+  assert.equal(host(store).length, 2);
+  assert.notEqual(host(store)[1].id, host(store)[0].id);
+
+  // A record that does NOT opt in is untouched — every legacy document keeps today's minting, which
+  // is what the Phase A cross-point [^1] divergence depends on.
+  const legacy = { text: 'a claim[^1] here', footnotes: [{ key: '1', text: 'Ives 2019' }] };
+  c.migrateNodeFootnotes(legacy, store, mint);
+  assert.equal(legacy.text, 'a claim[^F2] here', 'a legacy [^1] still mints, exactly as before');
+  // ...and neither does a record whose key is empty, which could never be a marker anyway.
+  const blank = { text: 'x', footnotes: [{ key: '', text: 'no key', stable: true }] };
+  c.migrateNodeFootnotes(blank, store, mint);
+  assert.equal(host(store).at(-1).id, 'F3', 'an empty stable key mints rather than becoming id ""');
+});
+
+test('#1244 the BibTeX import opts in, and the call site is what makes it citable', () => {
+  const { points } = c.bibToPoints('@book{ives2019, title = {The Politics of Memory}, author = {Ives, Sarah}, year = {2019}}');
+  const kid = nonEmpty(points[0].children, 'imported reference points')[0];
+  assert.equal(kid.footnotes[0].stable, true, 'the import marks its records stable');
+  assert.ok(kid.text.includes('[^ives2019]'), 'and the marker is the cite key itself');
+
+  // The whole point is the pair: the capability is worthless if the import does not ask for it.
+  assert.match(fnBody(_src, 'bibToPoints'), /\{ key: mk, text: cite, stable: true \}/);
+  const mig = fnBody(_src, 'migrateNodeFootnotes');
+  assert.match(mig, /fn\.stable === true && fn\.key !== '' && !store\.some\(f => f\.id === fn\.key\)/,
+    'opt-in, non-empty, and free — all three, or a collision silently merges two sources');
+  assert.match(mig, /const id = keepable \? fn\.key : mint\(\);/);
 });
