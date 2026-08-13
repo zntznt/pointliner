@@ -308,6 +308,12 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   (a `$` or thousands comma and all), so you can click `+ Total` on the heading to sum a column with no
   formula typed. This is how you pull a piece of one document (or an outline someone shared) into
   another; Open replaces the whole document, Import only ever adds.
+- **Bibliography import you can cite from.** A BibTeX `.bib` file comes in as a section of sources:
+  each entry is a point titled by the work, its citation kept as that point's footnote, the year and
+  the cite key as properties. The source keeps the name your reference manager knows it by, so citing
+  it anywhere is just writing that name (`[^ives2019]`), and ten claims citing one source share one
+  citation. It reads the file once and writes no bibliography: this is not a reference manager.
+  ([footnotes](writing-and-formatting.md#footnotes-links-and-images))
 - **Published grammar + lossless format.** Every `{…}` pill form, the order they are matched, the
   escape hatches, and the OPML lossless round-trip (the format that reopens with every pill live) are
   documented in one place, so your grammar and your data are portable text you own.

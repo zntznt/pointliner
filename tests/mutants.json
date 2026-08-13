@@ -648,6 +648,33 @@
       "find": "  { id:'row-cursor', cat:'getting-around',\n    title:'Browsing points without editing',",
       "replace": "  { id:'row-cursor-x', cat:'getting-around',\n    title:'Browsing points without editing',",
       "kills": "the row cursor has a front door and a guide entry"
+    },
+    {
+      "id": "cite-key-minted-away",
+      "suite": "unit",
+      "why": "minting over a stable key is the original defect: the citation lands under an id nobody can name, so citing by the cite key makes an empty twin",
+      "file": "index.html",
+      "find": "    const keepable = fn.stable === true && fn.key !== '' && !store.some(f => f.id === fn.key);",
+      "replace": "    const keepable = false;",
+      "kills": "a stable footnote key survives the lift"
+    },
+    {
+      "id": "cite-key-collision-merges-sources",
+      "suite": "unit",
+      "why": "dropping the free-key check makes two sources that sanitize to one key share a single citation",
+      "file": "index.html",
+      "find": " && !store.some(f => f.id === fn.key);",
+      "replace": ";",
+      "kills": "a stable footnote key survives the lift"
+    },
+    {
+      "id": "bib-import-does-not-opt-in",
+      "suite": "unit",
+      "why": "the capability exists and the import does not ask for it — a tested core proves nothing about its call site",
+      "file": "index.html",
+      "find": "    node.footnotes = [{ key: mk, text: cite, stable: true }];",
+      "replace": "    node.footnotes = [{ key: mk, text: cite }];",
+      "kills": "the BibTeX import opts in"
     }
   ]
 }

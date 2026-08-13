@@ -1,8 +1,19 @@
 # Document footnote store + Footnotes manager (proposal)
 
-Status: **Proposed** (2026-08). Owner-agreed direction. Supersedes the "citation bridge" framing of
-panel finding **#1244** (2026-08 "various walks of life" laptop panel, PhD persona Aisha). Read
-`guidance/ux.md` (verbosity dial, binding) and the CLAUDE.md "both arms" rule before building.
+Status: **Shipped** (2026-08) — all three phases have landed; the status above read "Proposed" long
+after the fact, which is the exact drift the `#1265/#1243` status guard exists to catch. Supersedes the
+"citation bridge" framing of panel finding **#1244** (2026-08 "various walks of life" laptop panel, PhD
+persona Aisha). Read `guidance/ux.md` (verbosity dial, binding) and the CLAUDE.md "both arms" rule
+before changing it.
+
+**Shipped so far:** Phase A (the doc store `root.footnotes`, `migrateNodeFootnotes` + marker remap,
+`footnoteOrder` document-sequence numbering, no auto-prune), Phase B (the Footnotes manager behind
+`#btn-footnotes`: list, copy-to-cite-again, delete an unused one), and Phase C (the "Cite footnote"
+picker from the `@` menu, `openCitePicker`). **#1244** closed the last gap: a footnote record can mark
+itself `stable` so the lift KEEPS its key as the store id, which is what makes an imported BibTeX
+bibliography citable by the key your reference manager already knows (`[^ives2019]`) instead of by a
+minted id nobody can guess. Driven: the imported citation is offered by both the picker and the
+manager. The one idea NOT built is **side labels** (open question 3), which was never part of #1244.
 
 ## The problem (what the panel hit, verified in code)
 

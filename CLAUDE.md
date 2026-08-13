@@ -107,7 +107,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Generation model (Perchance-style picks) | `guidance/generation-direction.md` | Direction |
 | Contextual `{` body completion | `guidance/brace-completion-proposal.md` | Shipped |
 | Guided authoring (no-syntax "Add another") | `guidance/guided-authoring-proposal.md` | Shipped |
-| Document footnote store + Footnotes manager | `guidance/footnote-store-proposal.md` | Proposed |
+| Document footnote store + Footnotes manager | `guidance/footnote-store-proposal.md` | Shipped |
 | Contested rolls and margins (opposed roll) | `guidance/contested-roll-proposal.md` | Shipped |
 | Markdown import (format-based import bridges) | `guidance/markdown-import-proposal.md` | Shipped |
 | Single-file reassurance + scaling legibility | `guidance/single-file-reassurance-proposal.md` | Shipped |

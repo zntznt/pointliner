@@ -2410,3 +2410,71 @@ test('#1490 Escape leaves a cursor you can hear, and Enter gets back into that p
     'precondition: the builder holds focus, so the row-cursor Enter is out of reach');
   await pg2.close(); await pg.close();
 });
+
+// 43. #1244 — an imported bibliography you can CITE. Driven because the claim is about what the two
+// P2 doors OFFER after a real import, and because the defect it fixes was a silent wrong answer:
+// citing by your reference manager's key used to make a second, EMPTY footnote beside the real one.
+test('#1244 an imported source is citable by its own key, and both doors offer it', { skip: skip() }, async () => {
+  const BIB = '@book{ives2019, title = {The Politics of Memory}, author = {Ives, Sarah}, year = {2019}, publisher = {Harvard University Press}}';
+  const pg = await fresh();
+  await pg.evaluate((BIB) => {
+    root.children = []; root.footnotes = [];
+    const res = bibToPoints(BIB);
+    res.points.forEach(p => root.children.push(p));
+    migrateFootnotesToStore(res.points[0], root.footnotes);   // the real insert-path lift
+    const attach = (n, parent) => { nodeMap.set(n.id, n); parentMap.set(n.id, parent); (n.children || []).forEach(k => attach(k, n)); };
+    res.points.forEach(p => attach(p, root));
+    const claim = mkNode('Memory is contested');
+    claim.type = 'ul'; root.children.push(claim); nodeMap.set(claim.id, claim); parentMap.set(claim.id, root);
+    buildIndex(root, null); markDirty(); render();
+    window.__claimId = claim.id;
+  }, BIB);
+  await pg.waitForTimeout(400);
+
+  const imported = await pg.evaluate(() => ({
+    refText: root.children[0].children[0].text,
+    store: (root.footnotes || []).map(f => ({ id: f.id, text: (f.text || '').slice(0, 40) })),
+  }));
+  assert.match(imported.refText, /\[\^ives2019\]/,
+    'the lift must KEEP the cite key as the marker, or nothing downstream can name this source');
+  assert.equal(imported.store.length, 1);
+  assert.equal(imported.store[0].id, 'ives2019');
+
+  // The defect: citing by the key you already know used to mint a SECOND, empty entry.
+  const cited = await pg.evaluate(() => {
+    const n = nodeById(window.__claimId);
+    n.text = 'Memory is contested [^ives2019]';
+    buildIndex(root, null); markDirty(); render();
+    syncFnEntries(n);
+    return {
+      count: (root.footnotes || []).length,
+      resolves: (root.footnotes.find(f => f.id === 'ives2019') || {}).text || '',
+    };
+  });
+  assert.equal(cited.count, 1, 'citing the key must reuse the imported footnote, not add an empty twin');
+  assert.match(cited.resolves, /Ives, Sarah\. The Politics of Memory/, 'and it resolves to the real citation');
+
+  // P2 door one: the Cite-footnote picker offers it, named by its text rather than by an opaque id.
+  await pg.evaluate(() => {
+    const c = [...document.querySelectorAll('.node-content')].find(e => e.dataset.id === window.__claimId);
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+    openCitePicker(window.__claimId, editableText(c).length);
+  });
+  await pg.waitForTimeout(700);
+  const picks = await pg.evaluate(() => [...document.querySelectorAll('.tpl-row .tpl-pick')]
+    .map(e => e.getAttribute('aria-label')));
+  assert.equal(picks.length, 1, 'exactly one citable footnote is offered');
+  assert.match(picks[0], /Cite footnote 1: Ives, Sarah\. The Politics of Memory/);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+
+  // P2 door two: the Footnotes manager lists it, with its use count.
+  await pg.evaluate(() => document.getElementById('btn-footnotes')?.click());
+  await pg.waitForTimeout(800);
+  const rows = await pg.evaluate(() => [...document.querySelectorAll('.tpl-row')].map(e => (e.textContent || '').trim()));
+  assert.equal(rows.length, 1, 'the manager lists the one imported source');
+  assert.match(rows[0], /Ives, Sarah\. The Politics of Memory/);
+  assert.match(rows[0], /2 uses/,
+    'two markers now point at ONE citation — the reference point the import made, and the claim. ' +
+    'That count IS the fix: before it, the claim had its own empty footnote and this read "1 use".');
+  await pg.close();
+});
