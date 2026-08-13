@@ -32335,3 +32335,97 @@ test('#1465 C2 the ring covers the whole family, and lands on a row', () => {
   assert.match(row, /essential:true, essSection:'Navigate', keys:\['F6','⇧\+F6'\]/);
   assert.match(row, /essLabel:'Go to the open panel \(Footnotes, Linked from, Variables\) and back'/);
 });
+
+// ── #1463 A4: a code block shows the source, not the internal token ──────────
+test('#1463 A4 a code block unfolds its pill tokens to the source', () => {
+  // The pure core is #1467's, reused rather than duplicated — that is the point of the fix.
+  const node = { dice: [{ key: 'rm224ex2', expr: '2d6' }] };
+  assert.equal(c.unfoldTokensIn('Damage [[dice:rm224ex2]] to the orc', node),
+    'Damage {2d6} to the orc', 'the opaque key is an internal name; the source is what a reader can type back');
+  // A token with no record left alone — a code block must never invent a shorthand.
+  assert.equal(c.unfoldTokensIn('Damage [[dice:gone]] to the orc', node),
+    'Damage [[dice:gone]] to the orc');
+  assert.equal(c.unfoldTokensIn('no tokens here', node), 'no tokens here');
+
+  // The CALL SITE, which is the whole defect: the core already existed and the code block
+  // did not call it. A pin on the core alone would have passed throughout the bug.
+  const body = fnBody(_src, 'codeNodeHTML');
+  assert.match(body, /unfoldTokensIn\(textForDisplay\(node\), node\)/,
+    'the rendered code block must unfold; edit mode already did, which is why only the render leaked');
+  // And it is the ONE unfolder — a second copy is how #1467 said this drifts.
+  assert.equal(_src.split('function unfoldTokensIn(').length - 1, 1);
+});
+
+// ── #1490: the row cursor is announced, and Enter is the way back in ─────────
+// P2: a new key needs a visible front door, and a capability needs a concept-guide entry. Both are
+// the drift the process doc names, and both are checked by identity (exactly one entry, exactly one
+// row) rather than "the word appears somewhere", which passes on any prose mentioning it.
+test('#1490 the row cursor has a front door and a guide entry', () => {
+  const row = between(_src, "{ id:'nav-enter',", "\n");
+  assert.match(row, /essential:true, essSection:'Navigate', keys:\['Enter'\]/);
+  assert.match(row, /essLabel:'Edit the point the cursor is on \(after Esc leaves an edit\)'/);
+  assert.equal(_src.split("id:'nav-enter'").length - 1, 1, 'exactly one shortcut row');
+
+  assert.equal(_src.split("id:'row-cursor'").length - 1, 1, 'exactly one concept-guide entry');
+  const entry = between(_src, "{ id:'row-cursor', cat:'getting-around',", "{ id:'move-nest'");
+  assert.match(entry, /title:'Browsing points without editing'/);
+  for (const key of ['Esc', '↑ / ↓', 'Enter'])
+    assert.ok(entry.includes(`syn:'${key}'`), `the entry must show ${key} as a typed form (P2-2)`);
+  // and the standalone guide carries it too, so the two references cannot drift apart
+  const g = _repoDoc('guide/getting-around.md');
+  assert.match(g, /^## Browsing without editing$/m);
+  assert.match(g, /row cursor/);
+});
+
+test('#1490 the row cursor says where it is, with its position', () => {
+  // Position matters more here than anywhere else in the app: there is no focused element for a
+  // screen reader to fall back on, so "which point, and where in the list" has to come from this.
+  assert.equal(c.rowCursorSay('Two', 1, 3), 'Two, 2 of 3');
+  assert.equal(c.rowCursorSay('One', 0, 3), 'One, 1 of 3');
+  assert.equal(c.rowCursorSay('Three', 2, 3), 'Three, 3 of 3');
+  // An empty point still reads as something — silence would be indistinguishable from a dead key,
+  // which is the exact failure this fixes. User-facing copy says "point".
+  assert.equal(c.rowCursorSay('', 0, 2), '(empty point), 1 of 2');
+  assert.equal(c.rowCursorSay('   ', 0, 2), '(empty point), 1 of 2');
+  assert.equal(c.rowCursorSay(null, 0, 2), '(empty point), 1 of 2');
+  // No position to give → the name alone, never "undefined of NaN".
+  assert.equal(c.rowCursorSay('Two', null, null), 'Two');
+  assert.equal(c.rowCursorSay('Two', 1, 0), 'Two');
+});
+
+test('#1490 blur leaves a cursor behind, and Enter gets back in at that point', () => {
+  // The blur rung stays a blur — focus CANNOT go to the point, because .node-content's focus
+  // listener enters edit, so landing there would undo the Escape. Pin that reason, since a future
+  // reader's obvious "fix" is exactly the thing that breaks it.
+  assert.match(_src,
+    /content\.addEventListener\('focus', \(\) => \{\s*if \(!content\.dataset\.editing\) enterEdit\(content, node\);/,
+    'focusing a point IS editing it — the invariant that rules out landing focus on the point');
+
+  const esc = between(_src, "    } else {\n      content.blur();", "  }\n}");
+  assert.match(esc, /moveRowCursor\(id\)/, 'the rung leaves the cursor on the point it left');
+  assert.match(esc, /requestAnimationFrame/, "after the frame — the blur handler's exitEdit re-renders");
+  assert.match(esc, /activeContentId == null && selectedIds\.size === 0/,
+    'and only into the genuinely stranded state, never over a selection or a fresh edit');
+
+  // One writer for the cursor, so the arrows and the Escape rung cannot drift.
+  const mv = fnBody(_src, 'moveRowCursor');
+  assert.match(mv, /selFocusId {2}= id;/);
+  assert.match(mv, /announce\(rowCursorSay\(displayText\(nodeById\(id\)\), i, flatRows\.length\)\)/);
+  assert.match(mv, /if \(opts && opts\.silent\) return true;/, 'a caller may move it without speaking');
+  // The arrow branch routes through it rather than hand-rolling the same four lines.
+  const arrows = between(_src, '// Arrow row-nav and Shift+Arrow range selection', '// #1490: Enter is the way back IN');
+  assert.match(arrows, /moveRowCursor\(nextId\);/);
+  assert.doesNotMatch(arrows, /selFocusId {2}= nextId;\s*\n\s*ensureRowVisible/,
+    'the open-coded copy is gone, or the announcement would be missing from one of the two paths');
+
+  // Enter: gated on <body> holding focus, which IS the stranded state and nothing else. Any
+  // dialog, menu or field owns its own Enter and holds focus, so this branch cannot see it.
+  const ent = between(_src, '// #1490: Enter is the way back IN', '});');
+  assert.match(ent, /document\.activeElement === document\.body/,
+    'the guard that keeps every dialog’s Enter its own');
+  assert.match(ent, /activeContentId == null && !ctrl && !e\.altKey && !e\.shiftKey/);
+  assert.match(ent, /selectedIds\.size === 0 && selFocusId != null/);
+  assert.match(ent, /setCaretByOffset\(el, editableText\(el\)\.length\)/,
+    'resuming lands at the end of the text, as the chrome restore does');
+  assert.match(ent, /node\.type !== 'base'/, 'a base focuses without a caret');
+});

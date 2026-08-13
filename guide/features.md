@@ -251,6 +251,10 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
 - **Backlinks under the note.** Zoom into a point and everything that links to it is listed at the
   foot of the note, under its children, always present.
   ([backlinks](links-and-references.md#backlinks))
+- **Browsing without editing.** `Esc` stops editing without losing your place: the point keeps a soft
+  row cursor, the arrows walk it through the document, and `Enter` edits the point it is on. Every
+  move is announced with its position, since nothing holds focus in that state.
+  ([browsing without editing](getting-around.md#browsing-without-editing))
 - **Panels from the keyboard.** `F6` steps from the point you are working in into whichever panel is
   open (Footnotes, Linked from, Variables) and walks between them; one more press, or `Esc`, comes
   back to the point with the cursor where you left it.

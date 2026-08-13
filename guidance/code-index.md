@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2086 declarations in 153 sections across 17 domains.**
+**2088 declarations in 154 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1147,6 +1147,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## multi-select
 
 - `clearSelection`
+
+## #1490: the row cursor, said out loud and reachable
+
+- `rowCursorSay` — Escape out of an edit lands on <body> by design — the ladder's last rung IS "blur", and focus
+- `moveRowCursor` — Put the row cursor on a point and say so. One writer, so the arrows, the Escape rung and any
 - `updateSelVisuals`
 - `_nsbSaid`
 - `updateNodeSelBar`

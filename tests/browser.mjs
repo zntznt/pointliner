@@ -2300,3 +2300,113 @@ test('#1465 C2 every docked panel is reachable, and F6 is unclaimed when none is
     await pg.close();
   }
 });
+
+// 41. #1463 A4 — a code block leaked the internal pill token. Driven because the claim is about
+// what the RENDERED block shows, and because the round-trip (convert away, get the pill back with
+// its frozen roll) cannot be seen from source at all.
+test('#1463 A4 a code block shows the source, and converting back restores the frozen pill', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const before = await pg.evaluate(() => {
+    document.getElementById('storage-warn')?.remove();
+    const n = mkNode('Damage {2d6} to the orc');
+    n.type = 'ul'; root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    buildIndex(root, null); markDirty(); render();
+    promoteInlineShorthand(n);
+    buildIndex(root, null); markDirty(); render();
+    return { text: n.text, key: (n.dice || [])[0]?.key || null, roll: (n.dice || [])[0]?.value ?? null };
+  });
+  assert.match(before.text, /\[\[dice:[a-z0-9]+\]\]/, 'precondition: the pill folded to a token');
+  assert.ok(before.key, 'precondition: with a sidecar record');
+
+  const asCode = await pg.evaluate(() => {
+    const n = root.children[0];
+    n.type = 'code'; n.text = '```' + n.text;     // what the / applier produces
+    buildIndex(root, null); markDirty(); render();
+    return {
+      rendered: (document.querySelector('#outline pre.md-code')?.textContent || ''),
+      text: n.text,
+    };
+  });
+  assert.equal(asCode.rendered, 'Damage {2d6} to the orc',
+    'the code block must show the authored source, not the opaque internal key');
+  assert.doesNotMatch(asCode.rendered, /\[\[dice:/, 'and never the token');
+  assert.match(asCode.text, /\[\[dice:/, 'while node.text keeps the token — the render unfolds, the model does not');
+
+  // Convert away: the pill comes back LIVE, with the same key and the same frozen roll.
+  const back = await pg.evaluate(() => {
+    const n = root.children[0];
+    n.type = 'ul'; n.text = n.text.replace(/^```/, '');
+    buildIndex(root, null); markDirty(); render();
+    return { text: n.text, key: (n.dice || [])[0]?.key || null, roll: (n.dice || [])[0]?.value ?? null,
+             pill: !!document.querySelector('#outline .node-content [data-key]') };
+  });
+  assert.equal(back.key, before.key, 'the same pill, not a fresh one');
+  assert.equal(back.roll, before.roll, 'and the same frozen roll — a code-block detour must not re-roll');
+  await pg.close();
+});
+
+// 42. #1490 — Escape out of an edit. Driven because every claim is about what the keyboard does
+// from a state where activeElement never changes: reading activeElement alone is exactly how the
+// issue concluded the arrows were dead when they were in fact moving the row cursor.
+test('#1490 Escape leaves a cursor you can hear, and Enter gets back into that point', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('One'), mkNode('Two'), mkNode('Three')];
+    root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    const c = document.querySelectorAll('.node-content')[1];
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+  });
+  await pg.waitForTimeout(400);
+  const st = () => pg.evaluate(() => {
+    const a = document.activeElement, cur = document.querySelector('.node-cursor');
+    return {
+      onBody: a === document.body,
+      editing: a.classList?.contains('node-content') && a.dataset.editing ? nodeById(a.dataset.id)?.text : null,
+      caret: a.classList?.contains('node-content') && a.dataset.editing ? getCaretOffset(a) : null,
+      cursorRow: cur ? nodeById(cur.dataset.id)?.text : null,
+      live: (document.getElementById('a11y-live') || {}).textContent || '',
+      model: root.children.map(n => n.text),
+    };
+  });
+
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(550);
+  const esc = await st();
+  assert.equal(esc.onBody, true, 'blur is still the rung — focus on the point would re-enter the edit');
+  assert.equal(esc.cursorRow, 'Two', 'but the cursor is PAINTED on the point you left, not nowhere');
+  assert.equal(esc.live, 'Two, 2 of 3', 'and said, with its position — there is no focused element to fall back on');
+
+  // The arrows were never dead; they move the cursor. Now they say so too.
+  await pg.keyboard.press('ArrowDown'); await pg.waitForTimeout(400);
+  let r = await st();
+  assert.equal(r.cursorRow, 'Three'); assert.equal(r.live, 'Three, 3 of 3');
+  await pg.keyboard.press('ArrowUp'); await pg.waitForTimeout(400);
+  r = await st();
+  assert.equal(r.cursorRow, 'Two'); assert.equal(r.live, 'Two, 2 of 3');
+
+  // Enter is the way back IN, on the point under the cursor — not the different point Tab lands on.
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  const back = await st();
+  assert.equal(back.editing, 'Two', 'Enter re-enters the point the cursor was on');
+  assert.equal(back.caret, 3, 'at the end of its text, as the chrome restore does');
+  await pg.keyboard.type('!', { delay: 40 }); await pg.waitForTimeout(400);
+  assert.deepEqual((await st()).model, ['One', 'Two!', 'Three'], 'and typing goes where it looks like it will');
+
+  // The negative case: a dialog owns its own Enter, because it holds focus and this branch is
+  // gated on <body>. Without that gate the row cursor would fire under every open surface.
+  const pg2 = await fresh();
+  await pg2.evaluate(() => {
+    root.children = [mkNode('One'), mkNode('Two')];
+    root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    const c = document.querySelectorAll('.node-content')[1];
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+  });
+  await pg2.waitForTimeout(350);
+  await pg2.keyboard.press('Escape'); await pg2.waitForTimeout(450);
+  await pg2.keyboard.press(process.platform === 'darwin' ? 'Meta+k' : 'Control+k');
+  await pg2.waitForTimeout(800);
+  assert.equal(await pg2.evaluate(() => document.activeElement === document.body), false,
+    'precondition: the builder holds focus, so the row-cursor Enter is out of reach');
+  await pg2.close(); await pg.close();
+});

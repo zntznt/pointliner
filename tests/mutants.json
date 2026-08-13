@@ -576,6 +576,78 @@
       "find": "    timeout-minutes: 25   # measured ~6min (46 mutants, one unit-suite run each)",
       "replace": "    # timeout-minutes: 25 (removed)",
       "kills": "every CI job in tests.yml is bounded by a timeout"
+    },
+    {
+      "id": "code-block-leaks-the-token",
+      "suite": "unit",
+      "why": "the pure core already existed and the code block did not call it — a tested core proves nothing about its call site, which was the whole of #1463 A4",
+      "file": "index.html",
+      "find": "  let t = unfoldTokensIn(textForDisplay(node), node);   // and drops the leading ``` prefix",
+      "replace": "  let t = textForDisplay(node);   // and drops the leading ``` prefix",
+      "kills": "a code block unfolds its pill tokens to the source"
+    },
+    {
+      "id": "row-cursor-silent",
+      "suite": "unit",
+      "why": "the cursor moves with nothing announced, which is the state a screen-reader user cannot distinguish from a dead key",
+      "file": "index.html",
+      "find": "  announce(rowCursorSay(displayText(nodeById(id)), i, flatRows.length));",
+      "replace": "  void rowCursorSay(displayText(nodeById(id)), i, flatRows.length);",
+      "kills": "blur leaves a cursor behind"
+    },
+    {
+      "id": "blur-leaves-nothing",
+      "suite": "unit",
+      "why": "without the rung's cursor the Escape state is invisible again: nothing painted, nothing said, exactly as filed",
+      "file": "index.html",
+      "find": "      requestAnimationFrame(() => { if (activeContentId == null && selectedIds.size === 0) moveRowCursor(id); });",
+      "replace": "      void id;",
+      "kills": "blur leaves a cursor behind"
+    },
+    {
+      "id": "row-enter-steals-dialog-enter",
+      "suite": "unit",
+      "why": "without the <body> gate the row cursor fires Enter under every open dialog, menu and field",
+      "file": "index.html",
+      "find": "      && selectedIds.size === 0 && selFocusId != null && document.activeElement === document.body) {",
+      "replace": "      && selectedIds.size === 0 && selFocusId != null) {",
+      "kills": "blur leaves a cursor behind"
+    },
+    {
+      "id": "arrows-bypass-the-one-writer",
+      "suite": "unit",
+      "why": "an open-coded copy of the cursor move is how one of the two paths loses the announcement",
+      "file": "index.html",
+      "find": "      moveRowCursor(nextId);   // #1490: same move as before, now announced (P3-5)",
+      "replace": "      selectedIds.clear();\n      selAnchorId = nextId;\n      selFocusId  = nextId;\n      ensureRowVisible(nextId);\n      updateSelVisuals();\n      updateNodeSelBar();",
+      "kills": "blur leaves a cursor behind"
+    },
+    {
+      "id": "row-enter-lands-at-offset-zero",
+      "suite": "browser",
+      "why": "resuming an edit at the start rather than the end silently prepends whatever is typed next",
+      "file": "index.html",
+      "find": "setCaretByOffset(el, editableText(el).length)",
+      "replace": "setCaretByOffset(el, 0)",
+      "kills": "Escape leaves a cursor you can hear"
+    },
+    {
+      "id": "row-cursor-no-front-door",
+      "suite": "unit",
+      "why": "a key with no row in the shortcuts reference is syntax-only at the floor (P2)",
+      "file": "index.html",
+      "find": "  { id:'nav-enter',   essential:true, essSection:'Navigate', keys:['Enter'],         essLabel:'Edit the point the cursor is on (after Esc leaves an edit)' },",
+      "replace": "  { id:'nav-enter',   essential:false, essSection:'Navigate', keys:['Enter'],         essLabel:'Edit' },",
+      "kills": "the row cursor has a front door and a guide entry"
+    },
+    {
+      "id": "row-cursor-guide-entry-gone",
+      "suite": "unit",
+      "why": "a shipped capability with no concept-guide entry is the drift guard the process doc names",
+      "file": "index.html",
+      "find": "  { id:'row-cursor', cat:'getting-around',\n    title:'Browsing points without editing',",
+      "replace": "  { id:'row-cursor-x', cat:'getting-around',\n    title:'Browsing points without editing',",
+      "kills": "the row cursor has a front door and a guide entry"
     }
   ]
 }
