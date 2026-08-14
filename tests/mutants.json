@@ -582,8 +582,8 @@
       "suite": "unit",
       "why": "the pure core already existed and the code block did not call it — a tested core proves nothing about its call site, which was the whole of #1463 A4",
       "file": "index.html",
-      "find": "  let t = unfoldTokensIn(textForDisplay(node), node);   // and drops the leading ``` prefix",
-      "replace": "  let t = textForDisplay(node);   // and drops the leading ``` prefix",
+      "find": "  return codeBlockParts(unfoldTokensIn(textForDisplay(node), node));",
+      "replace": "  return codeBlockParts(textForDisplay(node));",
       "kills": "a code block unfolds its pill tokens to the source"
     },
     {
@@ -675,6 +675,51 @@
       "find": "    node.footnotes = [{ key: mk, text: cite, stable: true }];",
       "replace": "    node.footnotes = [{ key: mk, text: cite }];",
       "kills": "the BibTeX import opts in"
+    },
+    {
+      "id": "md-export-flattens-code",
+      "suite": "unit",
+      "why": "the original defect: newline-to-space in an inline span, so multi-line code did not survive an export",
+      "file": "index.html",
+      "find": "        const cb = codeBlockSource(node);\n        body = '```' + cb.lang + '\\n' + cb.body + '\\n```';",
+      "replace": "        body = '`' + body.replace(/\\n/g, ' ') + '`';",
+      "kills": "all three surfaces read a code block through the ONE reader"
+    },
+    {
+      "id": "web-export-leaks-the-fence",
+      "suite": "unit",
+      "why": "back to the paragraph path, where the literal fence ships as body text and the block is not a code block",
+      "file": "index.html",
+      "find": "    const cb = codeBlockSource(node);\n    inner = '<pre class=\"ro-code\"><code'",
+      "replace": "    const cb = { lang: '', body: flat };\n    inner = '<div'",
+      "kills": "all three surfaces read a code block through the ONE reader"
+    },
+    {
+      "id": "code-block-not-a-bare-block",
+      "suite": "unit",
+      "why": "as a list item the fence is indented into a list and stops being a top-level block",
+      "file": "index.html",
+      "find": "(node.type === 'para' || isQuote || node.type === 'code') && !hasKids",
+      "replace": "(node.type === 'para' || isQuote) && !hasKids",
+      "kills": "a code point is a bare block only while it is childless"
+    },
+    {
+      "id": "code-language-eaten-as-body",
+      "suite": "unit",
+      "why": "without the language split the `js` token ships as the first line of the code",
+      "file": "index.html",
+      "find": "  if (lm) { lang = lm[1]; t = t.slice(lm[0].length); }",
+      "replace": "  if (lm) { lang = ''; }",
+      "kills": "codeBlockParts separates the language from the body"
+    },
+    {
+      "id": "code-surfaces-diverge-on-pills",
+      "suite": "browser",
+      "why": "resolving pills in the export puts three different strings on three surfaces for one literal block",
+      "file": "index.html",
+      "find": "  return codeBlockParts(unfoldTokensIn(textForDisplay(node), node));",
+      "replace": "  return codeBlockParts(flattenArtifacts(textForDisplay(node), node, {}, true));",
+      "kills": "screen, Markdown and web page show a code block the same way"
     }
   ]
 }

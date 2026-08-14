@@ -2478,3 +2478,76 @@ test('#1244 an imported source is citable by its own key, and both doors offer i
     'That count IS the fix: before it, the claim had its own empty footnote and this read "1 use".');
   await pg.close();
 });
+
+// 44. #1493 — a code block must survive both exports. Driven because the failure was in what
+// SHIPPED, and because the round trip (export, re-import, still a code block with the same lines)
+// is the export's own stated spec and cannot be seen from source.
+test('#1493 a code block exports as a code block, keeps its lines, and round-trips', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const out = {};
+    const mk = (text) => {
+      const n = mkNode(text); n.type = 'code';
+      root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+      buildIndex(root, null); markDirty(); render();
+      return { node: n, md: toMarkdown(root), web: String(nodeToReadonlyHtml(n, varMapAt(n))) };
+    };
+    out.multi = mk('```js\nconst x = 1;\nconsole.log(x);');
+    out.plain = mk('```hello world');
+    // the round trip, which is the spec: export -> import -> the same block
+    const back = markdownToPoints(out.multi.md);
+    out.reimported = (back.points || back).map(p => ({ type: p.type, text: p.text }));
+    return out;
+  });
+
+  // Markdown: a real fence, the language on it, every line still a line.
+  const lines = r.multi.md.split('\n');
+  assert.ok(lines.includes('```js'), `the fence carries the language, got:\n${r.multi.md}`);
+  assert.ok(lines.includes('const x = 1;') && lines.includes('console.log(x);'),
+    'both lines survive as lines — they used to be joined by spaces into one');
+  assert.doesNotMatch(r.multi.md, /- `/, 'and it is a block, not an inline span in a list item');
+  assert.doesNotMatch(r.multi.md, /`js const x/, 'the language token is not part of the code');
+
+  // Web page: a real code block, not a paragraph div holding a literal fence.
+  assert.match(r.multi.web, /<pre class="ro-code"><code class="language-js">/);
+  assert.match(r.multi.web, /const x = 1;\nconsole\.log\(x\);/, 'with its line breaks intact');
+  assert.doesNotMatch(r.multi.web, /```/, 'and no leaked fence');
+  assert.doesNotMatch(r.plain.web, /```/);
+  assert.match(r.plain.web, /<pre class="ro-code"><code>hello world<\/code><\/pre>/);
+
+  // The round trip: what came back is the same code block, not prose.
+  assert.equal(r.reimported.length, 1);
+  assert.equal(r.reimported[0].type, 'code', 'a re-imported code block is still a code block');
+  assert.match(r.reimported[0].text, /const x = 1;/);
+  assert.match(r.reimported[0].text, /console\.log\(x\);/);
+  await pg.close();
+});
+
+// 45. #1493 — and the three surfaces agree on a block holding a pill. They showed three different
+// strings for one literal block; the owner's call is the SOURCE everywhere.
+test('#1493 screen, Markdown and web page show a code block the same way', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const n = mkNode('Damage {2d6} to the orc'); n.type = 'ul';
+    root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    buildIndex(root, null); markDirty(); render();
+    promoteInlineShorthand(n);
+    n.type = 'code'; n.text = '```' + n.text;
+    buildIndex(root, null); markDirty(); render();
+    return {
+      screen: (document.querySelector('#outline pre.md-code')?.textContent || ''),
+      md: toMarkdown(root),
+      web: String(nodeToReadonlyHtml(n, varMapAt(n))),
+      text: n.text,
+    };
+  });
+  const WANT = 'Damage {2d6} to the orc';
+  assert.equal(r.screen, WANT, 'screen');
+  assert.ok(r.md.split('\n').includes(WANT), `Markdown export, got:\n${r.md}`);
+  assert.ok(r.web.includes(WANT), `web page export, got:\n${r.web}`);
+  // None of them leaks the internal name, and the model still holds the token.
+  for (const [where, s] of [['screen', r.screen], ['markdown', r.md], ['web', r.web]])
+    assert.doesNotMatch(s, /\[\[dice:/, `${where} must never show the internal token`);
+  assert.match(r.text, /\[\[dice:/, 'the model is untouched: the surfaces read it, they do not rewrite it');
+  await pg.close();
+});
