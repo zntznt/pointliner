@@ -64,7 +64,10 @@ color, widen the editing column for a big screen or tuck completed tasks out of 
 Share your document with someone who does not have the app, post it as Markdown on a blog or in a
 README, or create a portable archive. From the **File** menu:
 
-- **Markdown** or **plain text** for posting and sharing.
+- **Markdown** or **plain text** for posting and sharing. A code block comes out as a real fenced
+  block, keeping its line breaks, its language and its text exactly as you wrote it (pills as the
+  source you typed, not the value they happen to show), because a code block is literal text and a
+  reader is meant to copy it. Paste that Markdown back in and it arrives as a code block again.
 - **Web page (HTML)** packs the entire app and your document into one file. It works offline,
   opens in any browser and keeps all the interactive features (dice, generators and calculations)
   live, so the person you hand it to can re-roll and recompute on their own machine.

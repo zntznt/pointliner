@@ -6924,14 +6924,39 @@ function codeNodeHTML(node) {
   // defect on a second surface, so it reuses that fix's pure core rather than growing a second
   // unfolder: `node.text` is untouched, so converting away still restores the pill with its frozen
   // roll. Edit mode already unfolded here; only the rendered block leaked.
-  let t = unfoldTokensIn(textForDisplay(node), node);   // and drops the leading ``` prefix
+  const { lang, body } = codeBlockSource(node);
+  const esc = body.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `<pre class="md-code"><code${lang ? ` class="language-${escQ(lang)}"` : ''}>${esc}</code></pre>`;
+}
+
+// #1493: the code-block reader, as a pure core, because THREE surfaces need it and only one had it.
+// Input is the text with its leading ``` already dropped (textForDisplay's job); output separates an
+// optional language token on line 1 from the body, and drops an optional closing fence.
+//
+// Both exports skipped this and treated the raw text as prose, which is one cause with six symptoms:
+// the Markdown export replaced every newline with a space (multi-line content did not survive an
+// export at all), emitted an inline span rather than a fenced block, and shipped the `js` token as
+// part of the code; the web export emitted the literal ``` fence into a plain paragraph div, so the
+// block was not a code block in the reader-facing page. None of it involved a pill — it was measured
+// on plain code blocks while checking whether #1463 A4's blast radius reached the exports.
+// The ONE reading of a code block: its SOURCE, fence and language stripped. Every surface that shows
+// a code block calls this, so the screen, the Markdown export and the web page cannot show three
+// different strings for one literal block — which they did, measured: `Damage {2d6} to the orc` on
+// screen, `Damage 2d6 = 7 to the orc` in Markdown, `Damage 7 to the orc` on the page. A code block is
+// literal text (#1463 A4), so resolving its pills to values contradicted the block's own meaning; and
+// keeping the source means an exported block re-imports as a working pill rather than a dead number.
+function codeBlockSource(node) {
+  return codeBlockParts(unfoldTokensIn(textForDisplay(node), node));
+}
+
+function codeBlockParts(text) {
+  let t = String(text == null ? '' : text);
   let lang = '';
   const lm = t.match(/^([\w+-]+)[ \t]*\r?\n/);   // a lone language token on line 1
   if (lm) { lang = lm[1]; t = t.slice(lm[0].length); }
   else t = t.replace(/^\r?\n/, '');              // or just a leading blank line
   t = t.replace(/\r?\n?`{3,}[ \t]*$/, '');       // drop a trailing closing fence
-  const esc = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return `<pre class="md-code"><code${lang ? ` class="language-${escQ(lang)}"` : ''}>${esc}</code></pre>`;
+  return { lang, body: t };
 }
 
 // #1470: the two attributes every focusable control rendered INSIDE a point carries, as ONE string
@@ -36653,7 +36678,11 @@ function toMarkdown(rootNode) {
     // the heading level already encodes the hierarchy, and `- ## Section` would look broken in
     // every renderer. A pin holds this so nobody re-opens it as a gap.
     const hasKids = !!(node.children || []).length;
-    const bareBlock = !!hLvlPre || ((node.type === 'para' || isQuote) && !hasKids);
+    // #1493: a code block joins para/quote here for the same reason they are here. A fence is a
+    // block, so childless it stands on its own; WITH children it takes a list marker, because a
+    // list item is Markdown's only native container and its children would otherwise flatten up
+    // one level. It used to be neither: a one-line inline span, always.
+    const bareBlock = !!hLvlPre || ((node.type === 'para' || isQuote || node.type === 'code') && !hasKids);
     // A para-with-children is a LIST ITEM now, so it must not count as a block for the blank-line
     // policy — separating it from its own children would make the list loose and wrap every
     // sibling item in <p>.
@@ -36681,7 +36710,15 @@ function toMarkdown(rootNode) {
       // EVERY line, not just the first: a multi-line quote otherwise relies on lazy continuation to
       // stay one <blockquote>, which the blank-line policy above is specifically breaking.
       if (isQuote) body = body.split('\n').map(l => `> ${l}`).join('\n');
-      else if (node.type === 'code') body = '`' + body.replace(/\n/g, ' ') + '`';
+      // #1493: a real fenced block, keeping its line breaks and its language. It used to be
+      // `'`' + body.replace(/\n/g, ' ') + '`'` — an inline span with every newline turned into a
+      // space, so a multi-line code block did not survive the export.
+      else if (node.type === 'code') {
+        // The SOURCE, deliberately bypassing the flatten/link/footnote chain above: a code block is
+        // literal text, so its pills, links and markers are content rather than things to resolve.
+        const cb = codeBlockSource(node);
+        body = '```' + cb.lang + '\n' + cb.body + '\n```';
+      }
       const lines = body.split('\n');
       if (bareBlock) {
         // headings, and CHILDLESS paragraphs and quotes, export without a list marker; headings get
@@ -37239,7 +37276,16 @@ function nodeToReadonlyHtml(node, varMap) {
   // sidecars are shared by reference, so every pill still resolves) to force clean values for any type.
   const proseView = node.type === 'para' ? node : { ...node, type: 'para' };
   const flat = linkText(flattenArtifacts(node.text, proseView, varMap, true), 0, (t, _d, id) => mdLinkOut(t, id, ''));
-  let inner = mdToHtml(flat, type === 'code');
+  // #1493: a code block is a BLOCK, and this page is what a reader gets. It used to fall through to
+  // the paragraph path, so the literal ``` fence and any language token shipped as body text inside
+  // a <div> — not monospaced, and with the line breaks collapsed by HTML. Same reader as the app
+  // (codeBlockParts), so the page and the screen agree on where the code starts.
+  let inner;
+  if (type === 'code') {
+    const cb = codeBlockSource(node);
+    inner = '<pre class="ro-code"><code' + (cb.lang ? ' class="language-' + escQ(cb.lang) + '"' : '') + '>'
+          + mdToHtml(cb.body, true) + '</code></pre>';
+  } else inner = mdToHtml(flat, false);
   const chk = checkExprOf(node);
   if (chk) inner += checkVerdictHtml(evalCheck(node, varMap));
   if (node.note) inner += '<div class="ro-note">' + mdToHtml(node.note) + '</div>';
@@ -37260,6 +37306,9 @@ const RO_EXPORT_CSS =
   '*{box-sizing:border-box}body{margin:0;background:var(--ro-bg);color:var(--ro-fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
   '.ro-doc{max-width:44rem;margin:0 auto;padding:2.5rem 1.25rem 1rem}' +
   '.ro-pt{margin:.15rem 0}.ro-kids{margin-left:1.25rem;padding-left:.75rem;border-left:1px solid var(--ro-line)}' +
+  // #1493: a code block is a block on the page too, not a run of prose.
+  '.ro-code{margin:.4rem 0;padding:.6rem .8rem;background:color-mix(in srgb,var(--ro-fg) 5%,transparent);border:1px solid var(--ro-line);border-radius:4px;overflow-x:auto;white-space:pre}' +
+  '.ro-code code{background:none;padding:0;border-radius:0;font-size:.88em}' +
   'h1,h2,h3,h4,h5,h6{line-height:1.25;margin:1.1em 0 .3em}h1{font-size:1.9rem}h2{font-size:1.5rem}h3{font-size:1.25rem}' +
   'p{margin:.25rem 0}a{color:inherit;text-decoration:underline}code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em;background:color-mix(in srgb,var(--ro-fg) 8%,transparent);padding:.05em .3em;border-radius:4px}' +
   'blockquote{margin:.4rem 0;padding:.1rem 0 .1rem .9rem;border-left:3px solid var(--ro-line);color:var(--ro-muted)}' +
@@ -43245,7 +43294,7 @@ const GUIDE = [
     ] },
   { id:'export', cat:'files',
     title:'Exporting & sharing',
-    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing, and they differ in what they keep. Markdown freezes the pills to their shown text and keeps your links, writing each one as a real markdown link so the connections survive in a blog post or a README. Plain text has no way to write a link, so links become the words they point at, and the message after the export tells you how many. Shareable page is a read-only web page: a clean, static page anyone opens in any browser with no app, where every pill shows the value it had when you saved (a total is its number, a roll its result, an estimate its range, a check its ✓ or ✗). This is the one to hand to a client, a stakeholder or anyone who just needs to READ your work, dice and formulas rendered as plain results rather than live controls. Web page (HTML) is the opposite choice: it packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice, calculations and links still live (it reopens as the running app, not a static page). Send the Shareable page when someone should read it, the Web page when they should use it. All in the File menu.\n\nWhen a point holds a list of same-shaped rows with properties (a budget, an inventory, a set of costs), its menu also offers Export table to CSV: a spreadsheet file an accountant or Excel opens, one row per point and a column per property, values frozen. It is the exact reverse of pasting a spreadsheet in, so a table can round-trip out and back.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the Export a copy formats skips that point and everything under it, Markdown, plain text, Shareable page and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
+    body:"To back up or move your document, use File → Save (or the storage warning's Save to file): it writes an OPML file (the app's own file format) that File → Open reads straight back in, pills and all, with nothing lost. That is the format to archive and restore. The Export a copy options are one-way and for sharing, and they differ in what they keep. Markdown freezes the pills to their shown text and keeps your links, writing each one as a real markdown link so the connections survive in a blog post or a README. A code block is the deliberate exception: it exports as a real fenced block, keeping its line breaks, its language and its text exactly as you wrote it, pills included as the source you typed rather than the value they happen to show. A code block is literal text and a reader is meant to be able to copy it, so paste that Markdown back in and it comes in as a code block again. Plain text has no way to write a link, so links become the words they point at, and the message after the export tells you how many. Shareable page is a read-only web page: a clean, static page anyone opens in any browser with no app, where every pill shows the value it had when you saved (a total is its number, a roll its result, an estimate its range, a check its ✓ or ✗). This is the one to hand to a client, a stakeholder or anyone who just needs to READ your work, dice and formulas rendered as plain results rather than live controls. Web page (HTML) is the opposite choice: it packs the whole app and your document into one file that anyone can double-click to open offline in any browser with the dice, calculations and links still live (it reopens as the running app, not a static page). Send the Shareable page when someone should read it, the Web page when they should use it. All in the File menu.\n\nWhen a point holds a list of same-shaped rows with properties (a budget, an inventory, a set of costs), its menu also offers Export table to CSV: a spreadsheet file an accountant or Excel opens, one row per point and a column per property, values frozen. It is the exact reverse of pasting a spreadsheet in, so a table can round-trip out and back.\n\nTo keep scaffolding out of a shared copy (variable declarations, planning notes, anything that is not the prose), open a point's menu and choose Exclude from export: every one of the Export a copy formats skips that point and everything under it, Markdown, plain text, Shareable page and Web page alike. Your OPML save is the one thing that keeps it, which is the point: the save is your backup, the exports are what you hand to someone else. An excluded point shows a faint ring on its bullet so you can see what will be left out.\n\nOne thing to watch when you exclude a variable declaration. The Markdown and plain-text exports freeze pills to the values they are showing, so a frozen number survives. The Web page export stays live and recomputes on the other person's machine, so a point that reads a variable declared inside an excluded section has nothing to read there. The app tells you when that happens: the message after the export names the variables the copy lost, so you can move the declaration somewhere kept or leave it out on purpose.",
     related:['saving','workspace-documents'],
     examples:[
       { syn:'File → Save', desc:'an OPML file you can Open again later (the archive format)' },

@@ -221,6 +221,7 @@ export function loadCores() {
     'blSectionModel','panelOpenSay',   // #953: the shared backlinks section model (strip + in-flow zoom footer)
     'panelRingStep',   // #1465 C2: the F6 docked-panel ring (outline -> each open panel -> outline)
     'rowCursorSay',   // #1490: what the row cursor says when it moves (no focused element to fall back on)
+    'codeBlockParts',   // #1493: the code-block reader (fence + language), shared by the renderer and BOTH exports
     'nearbyAdjacency', 'nearbyGraphModel', 'qid', 'unqid',   // #898: neighborhood graph (current point +/- N hops, cross-doc)
     'cardDropAfter', 'reorderIndex',   // #955: shared card-reorder geometry + index math
     'corkboardCards', 'cardMoveIndex',   // #955: the corkboard's card model + keyboard move

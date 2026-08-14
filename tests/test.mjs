@@ -20074,7 +20074,7 @@ test('UXP-235: a HEADING with children is deliberately left alone', () => {
   assert.match(md, /# The Report\n\n {2}- a bullet/, 'the child list follows it, separated');
 });
 
-test('toMarkdown — quote is a bare block; divider and code stay list items', () => {
+test('toMarkdown — quote and code are bare blocks; a divider stays a list item', () => {
   // `- > text` was a list item wrapping a blockquote. Bare is correct at every depth for the same
   // reason para is: inside a list the `>` lands on the parent item's content column.
   assert.ok(!/- >/.test(_mdOf(_mdN('> Q', 'quote'))), 'a quote emits no list marker');
@@ -20082,7 +20082,15 @@ test('toMarkdown — quote is a bare block; divider and code stay list items', (
   // siblings and its own children stay under it. A bare `---` would drop out of the list
   // structure. Pinned so the decision is not silently re-opened.
   assert.match(_mdOf(_mdN('---\nSection', 'divider')), /- ---/, 'a divider is still a list item');
-  assert.match(_mdOf(_mdN('```\ncode here', 'code')), /- `/, 'so is a code point');
+  // #1493: a code point is NOT. It used to emit `- \`code here\`` — an inline span with every
+  // newline replaced by a space, so multi-line code did not survive an export. A fence is a block,
+  // so childless it stands on its own like a quote; the list-item form returns when it has children.
+  const code = _mdOf(_mdN('```js\nconst x = 1;\nconsole.log(x);', 'code'));
+  assert.doesNotMatch(code, /- `/, 'a childless code point emits no list marker');
+  assert.match(code, /^```js$/m, 'it opens a real fence, carrying its language');
+  assert.match(code, /^const x = 1;$/m, 'and its lines survive as lines');
+  assert.match(code, /^console\.log\(x\);$/m);
+  assert.match(code, /^```$/m, 'and it closes');
 });
 
 // ── #1282 read-only shareable web page (the OUT seam: a static page anyone opens in a browser) ──
@@ -32350,9 +32358,12 @@ test('#1463 A4 a code block unfolds its pill tokens to the source', () => {
 
   // The CALL SITE, which is the whole defect: the core already existed and the code block
   // did not call it. A pin on the core alone would have passed throughout the bug.
-  const body = fnBody(_src, 'codeNodeHTML');
-  assert.match(body, /unfoldTokensIn\(textForDisplay\(node\), node\)/,
-    'the rendered code block must unfold; edit mode already did, which is why only the render leaked');
+  // #1493 moved the unfold into codeBlockSource, the ONE reading every surface shares — so pin the
+  // chain, not one site: the renderer must go through it, and it must be what unfolds.
+  assert.match(fnBody(_src, 'codeNodeHTML'), /codeBlockSource\(node\)/,
+    'the rendered code block reads through the shared source reader');
+  assert.match(fnBody(_src, 'codeBlockSource'), /unfoldTokensIn\(textForDisplay\(node\), node\)/,
+    'and that reader unfolds; edit mode already did, which is why only the render leaked');
   // And it is the ONE unfolder — a second copy is how #1467 said this drifts.
   assert.equal(_src.split('function unfoldTokensIn(').length - 1, 1);
 });
@@ -32478,4 +32489,55 @@ test('#1244 the BibTeX import opts in, and the call site is what makes it citabl
   assert.match(mig, /fn\.stable === true && fn\.key !== '' && !store\.some\(f => f\.id === fn\.key\)/,
     'opt-in, non-empty, and free — all three, or a collision silently merges two sources');
   assert.match(mig, /const id = keepable \? fn\.key : mint\(\);/);
+});
+
+// ── #1493: a code block survives both exports ────────────────────────────────
+// One cause, six symptoms: neither export read a code block as a code block, so the fence leaked,
+// the language token became code, and multi-line content was flattened to one line. Found on PLAIN
+// code blocks (no pill involved) while checking whether #1463 A4's blast radius reached the exports.
+test('#1493 codeBlockParts separates the language from the body, and drops a closing fence', () => {
+  assert.deepEqual(host(c.codeBlockParts('js\nconst x = 1;\nconsole.log(x);')),
+    { lang: 'js', body: 'const x = 1;\nconsole.log(x);' });
+  assert.deepEqual(host(c.codeBlockParts('\nhello world')), { lang: '', body: 'hello world' });
+  assert.deepEqual(host(c.codeBlockParts('hello world')), { lang: '', body: 'hello world' },
+    'a single line with no leading newline is all body — never mistaken for a language token');
+  assert.deepEqual(host(c.codeBlockParts('py\nprint(1)\n```')), { lang: 'py', body: 'print(1)' },
+    'a trailing closing fence is dropped');
+  assert.deepEqual(host(c.codeBlockParts('c++\nint x;')), { lang: 'c++', body: 'int x;' });
+  // A first line that is not a lone token is CONTENT, or a comment would be eaten as a language.
+  assert.deepEqual(host(c.codeBlockParts('const x = 1;\nmore')), { lang: '', body: 'const x = 1;\nmore' });
+  assert.deepEqual(host(c.codeBlockParts('')), { lang: '', body: '' });
+  assert.deepEqual(host(c.codeBlockParts(null)), { lang: '', body: '' });
+});
+
+test('#1493 all three surfaces read a code block through the ONE reader', () => {
+  // The whole defect was three readings of one block. Pin the call sites, because a shared core
+  // proves nothing about whether anything calls it.
+  assert.match(fnBody(_src, 'codeNodeHTML'), /codeBlockSource\(node\)/, 'the renderer');
+  const md = between(_src, "      else if (node.type === 'code') {", "      const lines = body.split");
+  assert.match(md, /const cb = codeBlockSource\(node\);/, 'the Markdown export');
+  assert.match(md, /body = '```' \+ cb\.lang \+ '\\n' \+ cb\.body \+ '\\n```';/,
+    'a real fence carrying the language, not an inline span');
+  assert.doesNotMatch(md, /replace\(\/\\n\/g, ' '\)/,
+    'and never the newline-to-space flatten that lost multi-line content');
+  assert.match(fnBody(_src, 'nodeToReadonlyHtml'), /const cb = codeBlockSource\(node\);/, 'the web page export');
+  assert.match(fnBody(_src, 'nodeToReadonlyHtml'), /<pre class="ro-code">/,
+    'which emits a real block, not a paragraph div holding a literal fence');
+  // Exactly one reader, or the three surfaces can drift again.
+  assert.equal(_src.split('function codeBlockParts(').length - 1, 1);
+  assert.equal(_src.split('function codeBlockSource(').length - 1, 1);
+  // The page needs the block to LOOK like one, so the exported stylesheet carries the rule.
+  assert.match(_src, /\.ro-code\{[^}]*white-space:pre\}/, 'or the line breaks collapse in HTML');
+
+  // A code block is literal, so its source is what ships — the reading the renderer uses, which is
+  // why the flatten/link/footnote chain is deliberately bypassed for this one type.
+  assert.match(fnBody(_src, 'codeBlockSource'), /unfoldTokensIn\(textForDisplay\(node\), node\)/);
+});
+
+test('#1493 a code point is a bare block only while it is childless', () => {
+  // Markdown's one native container is a list item, so a code block WITH children has to take a
+  // marker or its children flatten up a level — the same rule para and quote follow.
+  const bare = between(_src, '// #1493: a code block joins para/quote here', 'const bareBlock =');
+  assert.match(bare, /list item is Markdown's only native container/);
+  assert.match(_src, /\(node\.type === 'para' \|\| isQuote \|\| node\.type === 'code'\) && !hasKids/);
 });
