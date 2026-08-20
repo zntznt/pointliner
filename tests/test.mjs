@@ -32405,6 +32405,37 @@ test('#1490 the row cursor says where it is, with its position', () => {
   assert.equal(c.rowCursorSay('Two', 1, 0), 'Two');
 });
 
+// ── #1496: the row-cursor Enter must not act on an Enter someone else already handled ───────
+// A live UX panel drove this out of the app and I reproduced it against the commit before #1490
+// shipped: there, Enter on a focused pill chained three re-rolls; after #1490 it re-rolled AND
+// opened the point, and the next Enter split the point. Focus reaches <body> TRANSIENTLY whenever an
+// in-content control repaints on activate, which the gate read as "the user is stranded".
+test('#1496 the row-cursor Enter yields to any handler that already acted', () => {
+  const ent = between(_src, '// #1490: Enter is the way back IN', '});');
+  assert.match(ent, /e\.key === 'Enter' && !e\.defaultPrevented &&/,
+    'the guard is on the SAME condition as the rest of the gate, so it cannot be stepped around');
+  // The comment must RETRACT the claim that was measured false, not merely omit it — the previous
+  // wording is what would talk the next reader into rebuilding the bug.
+  assert.match(ent, /is NOT "exactly the stranded state and nothing else"/,
+    'the disproved claim has to be named and retracted where the gate is written');
+  assert.match(ent, /repaints? the point on activate|repaints on activate/,
+    'and the comment records WHY, since the obvious reading of <body> is the one that failed');
+
+  // The guard only works because every in-content twin marks the event handled first. Census it
+  // from source: each keyboard twin in onKeyDown must preventDefault before it acts, or that
+  // control drops back through the gate and re-opens the defect on one member.
+  const kb = fnBody(_src, 'onKeyDown');
+  const twins = nonEmpty([...kb.matchAll(/const (tchk|tbadge|pillBody|mtr) = e\.target\.closest\?\.\(/g)]
+    .map(m => m[1]), 'in-content keyboard twins in onKeyDown');
+  assert.ok(twins.length >= 3, `found only ${twins.length} twins — did the family move?`);
+  for (const t of twins) {
+    const branch = kb.slice(kb.indexOf(`const ${t} = e.target.closest`));
+    const head = branch.slice(0, branch.indexOf('return;') + 7);
+    assert.match(head, /e\.preventDefault\(\)/,
+      `${t} acts without preventDefault, so the #1490 gate would fire on its Enter too`);
+  }
+});
+
 test('#1490 blur leaves a cursor behind, and Enter gets back in at that point', () => {
   // The blur rung stays a blur — focus CANNOT go to the point, because .node-content's focus
   // listener enters edit, so landing there would undo the Escape. Pin that reason, since a future

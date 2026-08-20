@@ -2551,3 +2551,92 @@ test('#1493 screen, Markdown and web page show a code block the same way', { ski
   assert.match(r.text, /\[\[dice:/, 'the model is untouched: the surfaces read it, they do not rewrite it');
   await pg.close();
 });
+
+// 46. #1496 — Enter on a focused in-content control fired twice: the control acted, then the
+// document-level #1490 row-cursor gate saw <body> and opened the point behind it, and the NEXT
+// Enter split that point. Driven, and driven as a CENSUS, because the family is every control that
+// repaints on activate and the defect was reported on only one member of it.
+test('#1496 Enter on a focused in-content control acts once and chains, on every member', { skip: skip() }, async () => {
+  // [label, text to type, selector for the control]
+  const FAMILY = [
+    ['dice',      'Attack {2d6+3}',            '[data-key]'],
+    ['oracle',    'Q {oracle: likely}',        '[data-key]'],
+    ['deck',      'D {shuffle 2: a|b|c|d}',    '[data-key]'],
+    ['cycle',     'C {cycle: dawn|noon|dusk}', '[data-key]'],
+    ['pick',      'P {sword|axe|bow}',         '[data-key]'],
+    ['clock',     'Track [o 0/6]',             '.clock'],
+    ['taskcheck', '- [ ] do it',               '.md-task-check'],
+    // The negative case, and it BOUNDS the fix: a spoiler toggles a class instead of repainting, so
+    // focus never fell to <body> and it never had the defect. If it ever starts failing here, the
+    // guard has been widened past what it should cover.
+    ['spoiler',   '>! secret',                 '.md-spoiler'],
+  ];
+
+  for (const [label, typed, sel] of FAMILY) {
+    const pg = await fresh();
+    // TYPE it, never seed: seeding replaces root.children and orphans selFocusId, which silently
+    // disables the very gate under test. That is exactly how the original report's contrast case
+    // came out clean and mis-stated the precondition.
+    await pg.evaluate(() => {
+      const c = document.querySelector('.node-content');
+      enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+    });
+    await pg.keyboard.type(typed, { delay: 18 }); await pg.waitForTimeout(250);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(600);
+
+    const focused = await pg.evaluate(s => { const el = document.querySelector(s); if (!el) return false; el.focus(); return true; }, sel);
+    assert.equal(focused, true, `${label}: precondition, the control rendered and can take focus`);
+    await pg.waitForTimeout(200);
+
+    const snap = () => pg.evaluate(() => ({
+      rows: root.children.length,
+      editing: !!document.querySelector('.node-content[data-editing]'),
+      onControl: document.activeElement !== document.body && !document.activeElement.classList.contains('node-content'),
+      live: (document.getElementById('a11y-live') || {}).textContent || '',
+    }));
+    const before = await snap();
+    assert.equal(before.rows, 1, `${label}: precondition, one point`);
+
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+    const one = await snap();
+    assert.equal(one.editing, false, `${label}: Enter must not open the point for editing`);
+    assert.equal(one.rows, 1, `${label}: Enter must not change the document shape`);
+    assert.equal(one.onControl, true, `${label}: focus must stay on the control so the next Enter repeats it`);
+
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+    const two = await snap();
+    assert.equal(two.rows, 1, `${label}: a SECOND Enter must not add a point — the reported symptom`);
+    assert.equal(two.editing, false, `${label}: nor open the point`);
+    await pg.close();
+  }
+});
+
+// 47. #1496 — and the gate it gutters must still do its own job (#1490).
+test('#1496 the row-cursor Enter still works when nothing else handled the key', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('One'), mkNode('Two'), mkNode('Three')];
+    root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    const c = document.querySelectorAll('.node-content')[1];
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+  });
+  await pg.waitForTimeout(400);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(550);
+  const parked = await pg.evaluate(() => ({
+    onBody: document.activeElement === document.body,
+    cursor: document.querySelector('.node-cursor') ? nodeById(document.querySelector('.node-cursor').dataset.id).text : null,
+  }));
+  assert.equal(parked.onBody, true, 'precondition: the blur rung parks focus on the page body');
+  assert.equal(parked.cursor, 'Two', 'with the row cursor on the point it left');
+
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  const back = await pg.evaluate(() => {
+    const a = document.activeElement;
+    return { editing: a.dataset && a.dataset.editing ? nodeById(a.dataset.id).text : null,
+             caret: a.dataset && a.dataset.editing ? getCaretOffset(a) : null };
+  });
+  assert.equal(back.editing, 'Two', 'an unhandled Enter still enters the point under the cursor');
+  assert.equal(back.caret, 3, 'at the end of its text');
+  await pg.close();
+});
