@@ -24445,6 +24445,24 @@ function openDialogShell(opts) {
     if (fresh) ioReturnFocus = dialogReturnTarget();
     root.setAttribute('aria-label', opts.ariaLabel || opts.title || '');
     ioBack.classList.add('on');
+    // #1497: a role=dialog aria-modal=true that never takes focus is not a dialog — it is a picture
+    // of one. Two of the ten callers (openDistributionPanel, openPillAudit) built their body and
+    // focused nothing, so Escape could not close them (global Escape routes through ioCancel, which
+    // only fires for a key the dialog receives), Tab kept indenting the outline behind the scrim,
+    // and typing authored text into the document under it. Eight callers focus their own first
+    // field; this makes the shell the floor, so a caller cannot forget.
+    //
+    // Deferred to a frame because the caller appends its body AFTER this returns, and skipped when
+    // the caller placed focus itself — its choice of field is better than a generic first-focusable,
+    // and the caller's own rAF is scheduled later than this one, so it wins either way.
+    requestAnimationFrame(() => {
+      if (!root.isConnected || !root.offsetParent) return;   // closed again before the frame
+      if (root.contains(document.activeElement)) return;     // the caller chose its own field
+      const first = root.querySelector(FOCUSABLE_SEL);
+      if (first) { first.focus(); return; }
+      root.setAttribute('tabindex', '-1');                   // read-only report: the card itself
+      root.focus();
+    });
   }
   return { root, body: root, mountFooter, wireDraft, btns, close, fresh, stash: () => stash() };
 }
@@ -38549,12 +38567,15 @@ function focusedDockedPanel() {
 // row and not the header's close button. Falls back to the panel itself when it holds no focusable
 // row (the variables panel is read-only text), so focus still lands INSIDE the region and AT reads
 // it rather than dropping the user on <body>.
-const PANEL_FOCUS_SEL = 'a[href],button:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+// #1497: ONE list of what counts as focusable, shared by the docked-panel ring and the dialog
+// shell. It gained the form controls when the dialog shell started using it — a dialog's first
+// focusable is nearly always an input, and a second copy of this list is how the two drift.
+const FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
 function panelEntryEl(panelEl) {
   if (!panelEl) return null;
   const listId = DOCKED_PANELS.find(p => p.id === panelEl.id)?.list;
   const scope = (listId && document.getElementById(listId)) || panelEl;
-  const first = scope.querySelector(PANEL_FOCUS_SEL);
+  const first = scope.querySelector(FOCUSABLE_SEL);
   if (first) return first;
   panelEl.setAttribute('tabindex', '-1');
   return panelEl;

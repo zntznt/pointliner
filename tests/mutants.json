@@ -738,6 +738,33 @@
       "find": "  // #1496: `<body>` holds focus is NOT \"exactly the stranded state and nothing else\" — this comment",
       "replace": "  // #1496: gated on `<body>` holding focus, which is exactly the stranded state — this comment",
       "kills": "the row-cursor Enter yields to any handler that already acted"
+    },
+    {
+      "id": "dialog-never-takes-focus",
+      "suite": "browser",
+      "why": "the original defect: an aria-modal dialog with focus outside it has no keyboard exit, and keys reach the document behind the scrim",
+      "file": "index.html",
+      "find": "      const first = root.querySelector(FOCUSABLE_SEL);\n      if (first) { first.focus(); return; }",
+      "replace": "      const first = null;\n      if (first) { first.focus(); return; }",
+      "kills": "every dialog lands focus inside itself"
+    },
+    {
+      "id": "dialog-focus-overrides-the-caller",
+      "suite": "unit",
+      "why": "without the yield the shell steals focus from the field the caller deliberately chose",
+      "file": "index.html",
+      "find": "      if (root.contains(document.activeElement)) return;     // the caller chose its own field",
+      "replace": "      // (yield removed)",
+      "kills": "the dialog shell puts focus inside itself"
+    },
+    {
+      "id": "dialog-focus-selector-forked",
+      "suite": "unit",
+      "why": "a second focusable list is how the dialog floor and the docked-panel ring drift apart",
+      "file": "index.html",
+      "find": "const FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled])",
+      "replace": "const PANEL_FOCUS_SEL_UNUSED = '';\nconst FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled])",
+      "kills": "the dialog shell puts focus inside itself"
     }
   ]
 }
