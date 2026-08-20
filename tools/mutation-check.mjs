@@ -65,8 +65,19 @@ if (args.includes('--list')) {
 const selected = mutants.filter(m => (only ? m.id === only : m.suite === 'unit'));
 const skipped = mutants.filter(m => !selected.includes(m));
 
+// Every spawn is bounded. #1496's CI run wedged inside this loop for the full 25-minute job budget
+// against a ~5s-per-mutant baseline, and from the outside a wedged child is indistinguishable from a
+// slow one -- the same shape as the job-level timeout added for #1493, one level down. A killed
+// child is reported as its own named failure below rather than being read as a suite that "did not
+// compile", so a wedge names the mutant it wedged on instead of costing the whole run.
+const SUITE_TIMEOUT_MS = 180000;   // 36x the ~5s baseline: generous for a loaded runner, fatal to a hang
+
 function runUnitSuite() {
-  const r = spawnSync('node', ['--test', 'tests/test.mjs'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = spawnSync('node', ['--test', 'tests/test.mjs'],
+    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: SUITE_TIMEOUT_MS });
+  if (r.error && r.error.code === 'ETIMEDOUT') {
+    return { ran: false, timedOut: true, out: `the suite did not finish within ${SUITE_TIMEOUT_MS / 1000}s and was killed` };
+  }
   const out = (r.stdout || '') + (r.stderr || '');
   // A suite that did not COMPILE prints no plan. Treating that as "the target test did not fail"
   // is exactly how a harness lies: my first version filtered for `not ok <name>`, read "no such
@@ -101,7 +112,9 @@ try {
     writeFileSync(path, original.replace(m.find, m.replace), 'utf8');
     const r = runUnitSuite();
     undo();
-    if (!r.ran) results.push({ id: m.id, verdict: 'BROKEN', detail: 'the suite did not run to completion under this mutant' });
+    if (!r.ran) results.push({ id: m.id, verdict: 'BROKEN',
+      detail: r.timedOut ? 'the suite HUNG under this mutant and was killed by the per-run timeout'
+                         : 'the suite did not run to completion under this mutant' });
     else if (r.failed.some(name => name.includes(m.kills))) results.push({ id: m.id, verdict: 'killed', detail: `${r.fails} failing` });
     else results.push({ id: m.id, verdict: 'SURVIVED', detail: `${r.fails} failing, none of them ${JSON.stringify(m.kills)}` });
   }

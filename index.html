@@ -45256,10 +45256,20 @@ document.addEventListener('keydown', e => {
   }
   // #1490: Enter is the way back IN. Without it the row cursor was a read-only state: you could
   // move it and never act on it, and the only key that got you back into the document was Tab,
-  // which lands on a DIFFERENT point than the one under the cursor. Gated on <body> holding focus,
-  // which is exactly the stranded state and nothing else — any dialog, menu or field owns its own
-  // Enter, and while one of those has focus this branch cannot see it.
-  if (e.key === 'Enter' && activeContentId == null && !ctrl && !e.altKey && !e.shiftKey
+  // which lands on a DIFFERENT point than the one under the cursor.
+  //
+  // #1496: `<body>` holds focus is NOT "exactly the stranded state and nothing else" — this comment
+  // used to claim that and it was wrong. Focus also lands on `<body>` TRANSIENTLY, mid-dispatch,
+  // whenever an in-content control repaints the point on activate: the pill/clock/checkbox twins
+  // above destroy the focused element with a synchronous repaint and restore it in a later frame.
+  // So a single Enter on a focused pill was handled twice — the pill re-rolled, then this branch
+  // saw `<body>` and opened the point behind it, and the NEXT Enter split that point.
+  //
+  // `defaultPrevented` is the guard because it states the real rule: an Enter that another handler
+  // has already acted on is not an Enter into a stranded outline. Every in-content twin calls
+  // preventDefault before acting, so this covers the whole family — present and future — rather
+  // than the one control that happened to be reported.
+  if (e.key === 'Enter' && !e.defaultPrevented && activeContentId == null && !ctrl && !e.altKey && !e.shiftKey
       && selectedIds.size === 0 && selFocusId != null && document.activeElement === document.body) {
     const el = document.querySelector(`.node-content[data-id="${CSS.escape(String(selFocusId))}"]`);
     const node = nodeById(selFocusId);

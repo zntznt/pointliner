@@ -720,6 +720,24 @@
       "find": "  return codeBlockParts(unfoldTokensIn(textForDisplay(node), node));",
       "replace": "  return codeBlockParts(flattenArtifacts(textForDisplay(node), node, {}, true));",
       "kills": "screen, Markdown and web page show a code block the same way"
+    },
+    {
+      "id": "row-enter-ignores-handled-key",
+      "suite": "browser",
+      "why": "without the guard the #1490 gate fires on an Enter a pill already handled, so one press re-rolls AND opens the point and the next splits it",
+      "file": "index.html",
+      "find": "  if (e.key === 'Enter' && !e.defaultPrevented && activeContentId == null",
+      "replace": "  if (e.key === 'Enter' && activeContentId == null",
+      "kills": "Enter on a focused in-content control acts once and chains"
+    },
+    {
+      "id": "row-enter-retraction-erased",
+      "suite": "unit",
+      "why": "the disproved claim standing unretracted at the gate is what talks the next reader into rebuilding the bug",
+      "file": "index.html",
+      "find": "  // #1496: `<body>` holds focus is NOT \"exactly the stranded state and nothing else\" — this comment",
+      "replace": "  // #1496: gated on `<body>` holding focus, which is exactly the stranded state — this comment",
+      "kills": "the row-cursor Enter yields to any handler that already acted"
     }
   ]
 }
