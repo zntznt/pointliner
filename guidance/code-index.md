@@ -2217,7 +2217,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `dockedPanelOpen` — The strips slide in with `.on`; the in-flow section is simply present or absent.
 - `openDockedPanels`
 - `focusedDockedPanel`
-- `PANEL_FOCUS_SEL` — The row F6 lands on: the first focusable inside the panel's ROW container, so the landing is a
+- `FOCUSABLE_SEL` — The row F6 lands on: the first focusable inside the panel's ROW container, so the landing is a
 - `panelEntryEl`
 - `leaveDockedPanel` — Back out of a docked panel to the outline: the caret exactly where it stood — the same restore
 - `stepDockedPanels`

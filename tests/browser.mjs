@@ -2640,3 +2640,133 @@ test('#1496 the row-cursor Enter still works when nothing else handled the key',
   assert.equal(back.caret, 3, 'at the end of its text');
   await pg.close();
 });
+
+// 48. #1497 — two aria-modal dialogs opened without taking focus, so they had no keyboard exit at
+// all and keys reached the document behind the scrim. Driven, and driven through the REAL door,
+// because the whole defect is about where focus is and a source pin cannot see that.
+test('#1497 a dialog opened from the point menu takes focus, holds Tab, and Escape returns to the point', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('First point'), mkNode('R {2d6+3}')];
+    root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    promoteInlineShorthand(root.children[1]);
+    buildIndex(root, null); markDirty(); render();
+    const c = [...document.querySelectorAll('.node-content')][1];
+    enterEdit(c, nodeById(c.dataset.id)); c.focus(); activeContentId = c.dataset.id;
+  });
+  await pg.waitForTimeout(350);
+  const before = await pg.evaluate(() => root.children.map(n => n.text));
+
+  // The real keyboard door: Shift+F10, walk to the row, Enter.
+  await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(500);
+  let reached = false;
+  for (let i = 0; i < 30 && !reached; i++) {
+    await pg.keyboard.press('ArrowDown'); await pg.waitForTimeout(70);
+    reached = await pg.evaluate(() => /Show distribution/i.test((document.activeElement.textContent || '')));
+  }
+  assert.equal(reached, true, 'precondition: the Show distribution row is reachable in the point menu');
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(800);
+
+  const st = () => pg.evaluate(() => {
+    const card = document.getElementById('io-card'), a = document.activeElement;
+    return { open: getComputedStyle(card).display, inDialog: card.contains(a),
+             isPoint: !!a.classList?.contains('node-content'),
+             texts: root.children.map(n => n.text),
+             // SHAPE, not text: opening the dialog blurs the point, which refolds its pill and
+             // legitimately rewrites the text. Indenting is what changes the shape, and indenting
+             // through the scrim is the claim under test.
+             shape: root.children.map(n => (n.children || []).length).join(',') + '|' + root.children.length };
+  });
+  const opened = await st();
+  assert.equal(opened.open, 'block', 'the dialog is open');
+  assert.equal(opened.inDialog, true, 'and focus is INSIDE it — the whole defect was that it was not');
+  // Baseline taken AFTER the open, so the refold is already accounted for.
+  const baseShape = opened.shape, baseTexts = opened.texts;
+
+  // Tab must stay in the dialog rather than indenting the outline behind the scrim.
+  await pg.keyboard.press('Tab'); await pg.waitForTimeout(350);
+  const tabbed = await st();
+  assert.equal(tabbed.inDialog, true, 'Tab stays inside the dialog');
+  assert.equal(tabbed.shape, baseShape, 'and does not indent the document behind it');
+
+  // Typing must not author into the document under the scrim.
+  await pg.keyboard.type('XYZ', { delay: 40 }); await pg.waitForTimeout(400);
+  const typed = await st();
+  assert.deepEqual(typed.texts, baseTexts, 'keystrokes must not reach the document behind an aria-modal dialog');
+  assert.equal(typed.shape, baseShape);
+
+  // Escape closes it and hands the caret back.
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(700);
+  const closed = await st();
+  assert.equal(closed.open, 'none', 'Escape closes it — it could not before, because Escape never reached it');
+  assert.equal(closed.isPoint, true, 'and focus returns to the point');
+  assert.equal(closed.shape, baseShape, 'with the document shape untouched throughout');
+  assert.equal(before.length, 2, 'and the document still has its two points');
+  await pg.close();
+});
+
+// 49. #1497 — the census. The fix is in the shell, so it must hold for the whole family, including
+// the read-only reports that have no input to focus and the callers that pick their own field.
+test('#1497 every dialog lands focus inside itself, whichever door opened it', { skip: skip() }, async () => {
+  // [label, how to open it]
+  const DIALOGS = [
+    ['distribution', () => { const n = root.children[1]; openDistributionPanel(n, 'dice', (n.dice || [])[0].key); }],
+    ['pill audit',   () => { const p = root.children[2]; openPillAudit(p, (p.math || [])[0].key); }],
+    ['footnotes',    () => document.getElementById('btn-footnotes').click()],
+    ['appearance',   () => document.getElementById('btn-appearance').click()],
+    ['import',       () => document.getElementById('btn-import').click()],
+  ];
+  for (const [label] of DIALOGS) {
+    const pg = await fresh();
+    await pg.evaluate(() => {
+      const roll = mkNode('R {2d6+3}');
+      const tot  = mkNode('Kitchen {= sum(cost)}');
+      const kid  = mkNode('Cabinets {prop cost: 1200}');
+      tot.children = [kid];
+      root.children = [mkNode('First point [^a]'), roll, tot];
+      root.footnotes = [{ id: 'a', text: 'a source' }];
+      const attach = (n, par) => { n.type = n.type || 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, par); (n.children || []).forEach(k => attach(k, n)); };
+      root.children.forEach(n => attach(n, root));
+      buildIndex(root, null); markDirty(); render();
+      root.children.forEach(n => { promoteInlineShorthand(n); (n.children || []).forEach(k => promoteInlineShorthand(k)); });
+      buildIndex(root, null); markDirty(); render();
+    });
+    await pg.waitForTimeout(400);
+    const idx = DIALOGS.findIndex(d => d[0] === label);
+    await pg.evaluate((i) => {
+      const opens = [
+        () => { const n = root.children[1]; openDistributionPanel(n, 'dice', (n.dice || [])[0].key); },
+        () => { const p = root.children[2]; openPillAudit(p, (p.math || [])[0].key); },
+        () => document.getElementById('btn-footnotes').click(),
+        () => document.getElementById('btn-appearance').click(),
+        () => document.getElementById('btn-import').click(),
+      ];
+      opens[i]();
+    }, idx);
+    await pg.waitForTimeout(800);
+    const r = await pg.evaluate(() => {
+      const card = document.getElementById('io-card'), a = document.activeElement;
+      const SEL = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+      return { open: getComputedStyle(card).display, inDialog: card.contains(a),
+               onBody: a === document.body, onCard: a === card,
+               controls: card.querySelectorAll(SEL).length,
+               ae: a.tagName + '.' + String(a.className || '').split(' ')[0] };
+    });
+    assert.equal(r.open, 'block', `${label}: precondition, the dialog opened`);
+    assert.equal(r.inDialog, true, `${label}: focus must land inside the dialog, got ${r.ae}`);
+    assert.equal(r.onBody, false, `${label}: and never on the page body`);
+    // Landing on the CARD is the fallback for a report with nothing to operate. Where the dialog
+    // has a control, focus belongs ON it — otherwise the user has to hunt for the first field, and
+    // a guard that accepts either cannot tell the two apart (it let a mutant through that did).
+    if (r.controls > 0)
+      assert.equal(r.onCard, false,
+        `${label}: the dialog has ${r.controls} focusable control(s), so focus must be on one of them, not the card`);
+
+    // and Escape must reach it, which is only true because focus is inside
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(600);
+    assert.equal(await pg.evaluate(() => getComputedStyle(document.getElementById('io-card')).display), 'none',
+      `${label}: Escape closes it`);
+    await pg.close();
+  }
+});

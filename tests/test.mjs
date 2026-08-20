@@ -32405,6 +32405,38 @@ test('#1490 the row cursor says where it is, with its position', () => {
   assert.equal(c.rowCursorSay('Two', 1, 0), 'Two');
 });
 
+// ── #1497: a dialog that never takes focus is a picture of a dialog ─────────────────────────
+// Two of the ten openDialogShell callers built their body and focused nothing, so their
+// role=dialog aria-modal=true panels had NO keyboard exit: Escape could not reach them, Tab kept
+// indenting the outline behind the scrim, and typing authored text into the document under it.
+// The floor belongs in the shell, so a caller cannot forget it.
+test('#1497 the dialog shell puts focus inside itself, and yields when the caller chose a field', () => {
+  const shell = fnBody(_src, 'openDialogShell');
+  assert.match(shell, /requestAnimationFrame\(\(\) => \{/, 'deferred a frame: the caller appends its body after this returns');
+  assert.match(shell, /if \(root\.contains\(document\.activeElement\)\) return;/,
+    "a caller's own choice of field beats a generic first-focusable");
+  assert.match(shell, /if \(!root\.isConnected \|\| !root\.offsetParent\) return;/,
+    'and a dialog closed again before the frame must not be focused');
+  assert.match(shell, /const first = root\.querySelector\(FOCUSABLE_SEL\);/);
+  assert.match(shell, /root\.setAttribute\('tabindex', '-1'\);/,
+    'a read-only report has no focusable child, so the card itself takes focus rather than <body>');
+
+  // ONE definition of what counts as focusable, shared with the docked-panel ring. Two lists is how
+  // the dialog floor and the panel ring drift apart.
+  assert.equal(_src.split('const FOCUSABLE_SEL =').length - 1, 1, 'exactly one selector constant');
+  assert.equal(_src.split('PANEL_FOCUS_SEL').length - 1, 0, 'and no second copy left behind');
+  const sel = between(_src, 'const FOCUSABLE_SEL =', ';');
+  for (const need of ['a[href]', 'button:not([disabled])', 'input:not([disabled])', 'textarea', '[contenteditable="true"]'])
+    assert.ok(sel.includes(need), `the shared selector must cover ${need} — a dialog's first focusable is usually an input`);
+
+  // The census that made this a shell fix rather than two caller fixes: every caller goes through
+  // the shell, so the count is the guard. A new dialog that hand-rolls its own shell would not be
+  // covered by the floor above, and this is where that shows up.
+  const callers = nonEmpty([...(_src.matchAll(/openDialogShell\(\{?/g))], 'openDialogShell call sites');
+  assert.ok(callers.length >= 10,
+    `only ${callers.length} openDialogShell sites — if a dialog stopped using the shell it lost the focus floor`);
+});
+
 // ── #1496: the row-cursor Enter must not act on an Enter someone else already handled ───────
 // A live UX panel drove this out of the app and I reproduced it against the commit before #1490
 // shipped: there, Enter on a focused pill chained three re-rolls; after #1490 it re-rolled AND
