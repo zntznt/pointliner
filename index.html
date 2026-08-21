@@ -4681,15 +4681,34 @@ function formatStatValue(n) {
 // another point under the SAME parent carries the same key with a number. A lone
 // numeric prop has nothing to total, so we stay silent. Returns the key to suggest,
 // or null. Pure: takes the edited node, its siblings, and the key just added.
-function nudgeSumKey(node, siblings, key) {
+// #1498: does this point already roll up `key`? Checks the authored text AND the folded math
+// records, because the same pill reads `{= sum(cost)}` before promotion and `[[math:key]]` after,
+// and the nudge fires from a path where either is possible. Any reducer counts, not just sum: the
+// tip is FALSE on a point already showing sum(k), and merely wasted on one showing avg(k) — and it
+// fires once ever per profile, so spending it on someone who is already doing the thing is the
+// whole cost. Pure.
+function hasRollupFor(node, key) {
+  const k = String(key || '').trim().toLowerCase();
+  if (!k || !node) return false;
+  const esc = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('\\b(?:sum|avg|min|max|count)\\s*\\(\\s*' + esc + '\\s*[,)]', 'i');
+  if (re.test(String(node.text || ''))) return true;
+  return (node.math || []).some(m => re.test(String(m.expr || '')));
+}
+
+function nudgeSumKey(node, siblings, key, parent) {
   const k = String(key || '').trim().toLowerCase();
   if (!k || DATE_KEYS.has(k) || k === CHECK_KEY || k === REPEAT_KEY || k === ALIAS_KEY) return null;   // reserved keys aren't user rollups
   const num = (n) => { const p = (n?.props || []).find(x => (x.key || '').trim().toLowerCase() === k); if (!p) return null; return Number.isFinite(Number(String(p.val).trim())) ? Number(p.val) : null; };
   if (num(node) == null) return null;                                  // the edited point's value isn't numeric
   // is there ANOTHER point with the same numeric key nearby (a sibling, or a child of the node)?
   const others = (siblings || []).filter(s => s !== node);
-  if (others.some(s => num(s) != null)) return k;                      // siblings share it → parent can sum(k)
-  if ((node.children || []).some(c => num(c) != null)) return k;       // children carry it → node can sum(k)
+  // #1498: and don't teach it to someone already doing it. The tip names the point it wants the
+  // rollup ON -- the PARENT when siblings share the key, the NODE when its own children carry it --
+  // so that is the point to check. Without this the tip read "put {= sum(cost)} on the point above
+  // these" on a parent whose pill was displaying 2,700 at that moment.
+  if (others.some(s => num(s) != null)) return hasRollupFor(parent, k) ? null : k;   // siblings share it → parent can sum(k)
+  if ((node.children || []).some(c => num(c) != null)) return hasRollupFor(node, k) ? null : k;  // children carry it → node can sum(k)
   return null;
 }
 
@@ -14701,7 +14720,12 @@ function buildCheckChip(node) {
   chip.append(g, t);
   // announce only a genuine flip (not the first sight of the chip)
   if (prev && prev !== verdict) {
-    const lbl = (textForDisplay(node) || '').split('\n')[0].trim().slice(0, 40);
+    // #1498: displayText, not textForDisplay. textForDisplay strips block prefixes and stops, so a
+    // point holding a pill announced `Check failing on Kitchen job [[math:xdzb9cqi]]` — an internal
+    // name read aloud to a screen reader. displayText resolves the pill to its shown value, and is
+    // the helper pickerTitle already uses with a comment naming this exact failure (#821); UXP-264
+    // rolled it out to the graph and Cards. This announcer was the third site in that family.
+    const lbl = (displayText(node) || '').split('\n')[0].trim().slice(0, 40);
     announce(`Check ${word}${lbl ? ' on ' + lbl : ''}`);
   }
   // #1195: a FAILING check whose expression embeds a search query (count("q") / sum("q", prop) …) gains
@@ -45827,6 +45851,9 @@ function maybeBackupNudge(size) {
 // per nudge id EVER (persisted in localStorage so it never nags across sessions), and
 // through the standard flashHint toast (no new UI, the one-feedback-pattern rule).
 const NUDGE_STORE_KEY = 'pl-nudges-seen';
+// Long enough that a same-tick functional announcement settles and is spoken first, short enough
+// that the tip still reads as a response to what just happened.
+const NUDGE_YIELD_MS = 1500;
 function nudgeSeen(id) {
   try { const seen = JSON.parse(localStorage.getItem(NUDGE_STORE_KEY) || '{}'); return seen[id] === true; }
   catch (_) { return false; }
@@ -45840,7 +45867,13 @@ function fireNudge(id, msg) {
   if (!isGuided()) return false;        // the verbosity dial: teaching aids are Guided-only
   if (nudgeSeen(id)) return false;      // once ever, never a nag
   markNudgeSeen(id);
-  flashHint(msg);                       // the one feedback channel (also reaches #a11y-live, P3)
+  // #1498: a tip YIELDS to whatever the app is saying about the thing the user just did. announce()
+  // clears synchronously and sets on rAF, so two messages in one tick both clear and then both set
+  // in the same frame -- the first is never a settled value of the polite region and is therefore
+  // never spoken at all, not merely superseded. Measured: a check flipping to FAILING and this tip
+  // landed 0ms apart, and the failing constraint was the one lost. A coaching aid is the lowest-
+  // priority thing on this channel, so it waits for the functional message to settle and be read.
+  setTimeout(() => flashHint(msg), NUDGE_YIELD_MS);
   return true;
 }
 // Trigger 1: a numeric property just added to a point that has a sibling/child sharing it.
@@ -45848,7 +45881,7 @@ function fireNudge(id, msg) {
 function maybeNudgeSum(node, key) {
   if (!isGuided() || nudgeSeen('sum')) return;
   const parent = parentOf(node.id);
-  const k = nudgeSumKey(node, parent ? parent.children : [node], key);
+  const k = nudgeSumKey(node, parent ? parent.children : [node], key, parent);
   if (k) fireNudge('sum', `Tip: put {= sum(${k})} on the point above these to total their ${k}, live. See the Calculations guide.`);
 }
 // Trigger 2: a #tag roster grew big enough to be a random-draw pool. Called after a

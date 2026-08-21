@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2090 declarations in 154 sections across 17 domains.**
+**2092 declarations in 154 sections across 17 domains.**
 
 # Document model & caches
 
@@ -220,7 +220,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 ## depth nudges (#519): point-of-relevance discovery
 
-- `nudgeSumKey` — A numeric property is worth a sum() nudge only when it can actually roll up — i.e.
+- `hasRollupFor` — A numeric property is worth a sum() nudge only when it can actually roll up — i.e.
+- `nudgeSumKey`
 - `nudgeRollTag` — A tag is worth a {roll: #tag} nudge once its roster is big enough to be a real
 - `reduceAgg` — The reducer's identity semantics, shared by the child-prop rollups AND the query
 - `aggregateChildren`
@@ -2555,6 +2556,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## depth nudges (#519): the firing side
 
 - `NUDGE_STORE_KEY` — Generalizes the storage-quota nudge (the sanctioned proactive-hint precedent, ux-
+- `NUDGE_YIELD_MS` — Long enough that a same-tick functional announcement settles and is spoken first, short enough
 - `nudgeSeen`
 - `markNudgeSeen`
 - `fireNudge` — The single door. Returns true if it fired (for tests / callers that want to stop probing).

@@ -32405,6 +32405,64 @@ test('#1490 the row cursor says where it is, with its position', () => {
   assert.equal(c.rowCursorSay('Two', 1, 0), 'Two');
 });
 
+// ── #1498: what the check flip says, and who the sum tip is for ─────────────────────────────
+test('#1498 hasRollupFor sees a rollup whether the pill is folded or not', () => {
+  // The same pill reads `{= sum(cost)}` before promotion and `[[math:key]]` after, and the nudge
+  // fires from a path where either is possible — so checking one form only would miss half the time.
+  assert.equal(c.hasRollupFor({ text: 'Kitchen {= sum(cost)}' }, 'cost'), true, 'unfolded');
+  assert.equal(c.hasRollupFor({ text: 'Kitchen [[math:x1]]', math: [{ key: 'x1', expr: 'sum(cost)' }] }, 'cost'), true,
+    'folded: the record carries the expression the text no longer shows');
+  assert.equal(c.hasRollupFor({ text: 'Kitchen {= avg(cost)}' }, 'cost'), true, 'any reducer, not only sum');
+  assert.equal(c.hasRollupFor({ text: 'Kitchen {= sum(cost, subtree)}' }, 'cost'), true, 'a scoped rollup still counts');
+  // and the cases that must NOT count as "already doing it"
+  assert.equal(c.hasRollupFor({ text: 'Kitchen {= sum(hours)}' }, 'cost'), false, 'a different key');
+  assert.equal(c.hasRollupFor({ text: 'Kitchen {= 2+2}' }, 'cost'), false, 'an unrelated pill');
+  assert.equal(c.hasRollupFor({ text: 'Kitchen {= sum(costume)}' }, 'cost'), false,
+    'a LONGER key that merely starts with this one — the boundary, or every cost tip dies on a costume');
+  assert.equal(c.hasRollupFor({ text: 'Kitchen' }, 'cost'), false);
+  assert.equal(c.hasRollupFor(null, 'cost'), false);
+  assert.equal(c.hasRollupFor({ text: 'x' }, ''), false);
+});
+
+test('#1498 the sum tip is withheld from the point that already carries the rollup', () => {
+  const kid = (v) => ({ props: [{ key: 'cost', val: v }] });
+  const a = kid('1200'), b = kid('600');
+  const sibs = [a, b];
+  // The tip names the PARENT when siblings share the key, so the parent is what gets checked.
+  assert.equal(c.nudgeSumKey(b, sibs, 'cost', { text: 'Kitchen' }), 'cost', 'no rollup yet: teach it');
+  assert.equal(c.nudgeSumKey(b, sibs, 'cost', { text: 'Kitchen {= sum(cost)}' }), null,
+    'the advice would be false on a point already showing that total');
+  assert.equal(c.nudgeSumKey(b, sibs, 'cost', { text: 'Kitchen {= sum(hours)}' }), 'cost',
+    'a rollup of a different key does not answer this one');
+  assert.equal(c.nudgeSumKey(b, sibs, 'cost', undefined), 'cost', 'no parent known → behave as before');
+  // The children case names the NODE instead, so the node is what gets checked.
+  const par = { text: 'Total {= sum(cost)}', children: [a, b], props: [{ key: 'cost', val: '5' }] };
+  assert.equal(c.nudgeSumKey(par, [par], 'cost', null), null, 'the node already rolls its own children up');
+  const bare = { text: 'Total', children: [a, b], props: [{ key: 'cost', val: '5' }] };
+  assert.equal(c.nudgeSumKey(bare, [bare], 'cost', null), 'cost', 'and is taught when it does not');
+});
+
+test('#1498 the flip announcement reads a label a person can hear, and a tip yields to it', () => {
+  // The leak: textForDisplay strips block prefixes and stops, so a point holding a pill announced
+  // its internal name. displayText resolves the pill to its shown value.
+  const chip = fnBody(_src, 'buildCheckChip');
+  assert.match(chip, /const lbl = \(displayText\(node\) \|\| ''\)/,
+    'the announce label must go through displayText');
+  assert.doesNotMatch(chip, /const lbl = \(textForDisplay\(node\)/,
+    'textForDisplay leaves [[math:key]] in place — that was the defect');
+
+  // The clobber: announce() clears synchronously and sets on rAF, so two messages in one tick both
+  // land in the same frame and the FIRST is never a settled value. A teaching tip must wait.
+  const fire = fnBody(_src, 'fireNudge');
+  assert.match(fire, /setTimeout\(\(\) => flashHint\(msg\), NUDGE_YIELD_MS\);/,
+    'a coaching aid yields to whatever the app is saying about what the user just did');
+  assert.doesNotMatch(fire, /^\s*flashHint\(msg\);\s*$/m, 'and not immediately');
+  assert.match(_src, /const NUDGE_YIELD_MS = \d+;/);
+  // announce()'s clear-then-rAF shape is WHY the yield is needed; pin it so the reason stays true.
+  assert.match(fnBody(_src, 'announce'), /el\.textContent = '';\s*\n\s*requestAnimationFrame/,
+    'if announce ever queues instead of clobbering, the yield can be revisited');
+});
+
 // ── #1497: a dialog that never takes focus is a picture of a dialog ─────────────────────────
 // Two of the ten openDialogShell callers built their body and focused nothing, so their
 // role=dialog aria-modal=true panels had NO keyboard exit: Escape could not reach them, Tab kept

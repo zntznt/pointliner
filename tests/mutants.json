@@ -765,6 +765,60 @@
       "find": "const FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled])",
       "replace": "const PANEL_FOCUS_SEL_UNUSED = '';\nconst FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled])",
       "kills": "the dialog shell puts focus inside itself"
+    },
+    {
+      "id": "check-flip-label-not-resolved",
+      "suite": "unit",
+      "why": "the original defect: textForDisplay stops at block prefixes, so a point holding a pill announced [[math:key]] to a screen reader",
+      "file": "index.html",
+      "find": "    const lbl = (displayText(node) || '').split('\\n')[0].trim().slice(0, 40);",
+      "replace": "    const lbl = (textForDisplay(node) || '').split('\\n')[0].trim().slice(0, 40);",
+      "kills": "the flip announcement reads a label a person can hear"
+    },
+    {
+      "id": "nudge-yield-untimed",
+      "suite": "unit",
+      "why": "a hard-coded 0 is not a yield: the pin must name the measured constant, or the delay drifts back to nothing unnoticed",
+      "file": "index.html",
+      "find": "  setTimeout(() => flashHint(msg), NUDGE_YIELD_MS);",
+      "replace": "  setTimeout(() => flashHint(msg), 0);",
+      "kills": "the flip announcement reads a label a person can hear"
+    },
+    {
+      "id": "rollup-blind",
+      "suite": "unit",
+      "why": "a rollup detector that never sees one puts the tip back on the very point already showing that total",
+      "file": "index.html",
+      "find": "function hasRollupFor(node, key) {\n  const k = String(key || '').trim().toLowerCase();",
+      "replace": "function hasRollupFor(node, key) {\n  if (node) return false;\n  const k = String(key || '').trim().toLowerCase();",
+      "kills": "hasRollupFor sees a rollup whether the pill is folded or not"
+    },
+    {
+      "id": "check-flip-unnamed",
+      "suite": "browser",
+      "why": "'Check failing' naming no point is unusable in a document of many checks; the label is the whole announcement",
+      "file": "index.html",
+      "find": "    announce(`Check ${word}${lbl ? ' on ' + lbl : ''}`);",
+      "replace": "    announce(`Check ${word}`);",
+      "kills": "a check flip says a label a person can hear"
+    },
+    {
+      "id": "sum-tip-ignores-the-parent",
+      "suite": "browser",
+      "why": "the pure core knowing about the parent proves nothing if the call site never hands it one",
+      "file": "index.html",
+      "find": "  const k = nudgeSumKey(node, parent ? parent.children : [node], key, parent);",
+      "replace": "  const k = nudgeSumKey(node, parent ? parent.children : [node], key);",
+      "kills": "a check flip says a label a person can hear"
+    },
+    {
+      "id": "nudge-does-not-yield",
+      "suite": "browser",
+      "why": "announce() clears then sets on rAF, so a tip fired in the same tick puts both in one frame and the functional message is never spoken at all",
+      "file": "index.html",
+      "find": "  setTimeout(() => flashHint(msg), NUDGE_YIELD_MS);\n  return true;",
+      "replace": "  flashHint(msg);\n  return true;",
+      "kills": "the sum tip still fires when there is no rollup, and waits its turn"
     }
   ]
 }

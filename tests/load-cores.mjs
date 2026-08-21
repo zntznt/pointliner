@@ -237,6 +237,7 @@ export function loadCores() {
     'nearestPointToClick',   // #1210: which point an empty-canvas click routes the caret to
     'varDistsOf', 'varDistRec', 'attachVarDists', 'usesDistVar',   // #952: the sibling lane that carries it alongside `resolved`
     'nudgeSumKey', 'nudgeRollTag',   // #519 depth-nudge pure predicates
+    'hasRollupFor',   // #1498: does this point already roll up that key (text OR folded math record)
     'parseRulesLoose',   // #582 pack-tolerant rule parser
     'collectUnlinkedRefs', 'collectCrossUnlinkedRefs', 'linkifyMention', 'aliasesOf', 'nodeNames',
     'parseLinkToken', 'buildWorkspaceIndex', 'dupDocIdGroups',   // CF-1: cross-doc link index pure cores
