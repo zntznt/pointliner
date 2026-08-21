@@ -2770,3 +2770,119 @@ test('#1497 every dialog lands focus inside itself, whichever door opened it', {
     await pg.close();
   }
 });
+
+// 50. #1498 — the check flip announced its point's INTERNAL name to assistive tech, and a
+// first-encounter tip landed in the same frame and buried it. Driven because the failure is confined
+// to the aria-live channel: every visible surface was correct throughout, so nothing but a live
+// MutationObserver on #a11y-live can see it.
+test('#1498 a check flip says a label a person can hear, and nothing buries it', { skip: skip() }, async () => {
+  const pg = await fresh();   // fresh context = empty localStorage = the nudge is unspent
+  assert.equal(await pg.evaluate(() => isGuided() && !nudgeSeen('sum')), true,
+    'precondition: Guided verbosity with the once-ever sum tip still unspent — the defect is first-encounter only');
+
+  await pg.evaluate(() => {
+    const parent = mkNode('Kitchen job {= sum(cost)}');
+    const a = mkNode('Cabinets'), c = mkNode('Worktop');
+    parent.children = [a, c]; root.children = [parent];
+    const attach = (n, p) => { n.type = n.type || 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); (n.children || []).forEach(k => attach(k, n)); };
+    root.children.forEach(n => attach(n, root));
+    setProp(a, 'cost', '1200'); setProp(c, 'cost', '600');
+    setProp(parent, 'check', 'sum(cost) <= 2000');
+    buildIndex(root, null); markDirty(); render();
+    promoteInlineShorthand(parent);
+    buildIndex(root, null); markDirty(); render();
+    window.__live = [];
+    const el = document.getElementById('a11y-live');
+    new MutationObserver(() => window.__live.push({ t: Date.now(), v: el.textContent }))
+      .observe(el, { childList: true, characterData: true, subtree: true });
+  });
+  await pg.waitForTimeout(400);
+  const chip = () => pg.evaluate(() => {
+    const c = document.querySelector('.prop-check');
+    return { cls: c.className, txt: c.textContent, aria: c.getAttribute('aria-label') };
+  });
+  assert.match((await chip()).cls, /prop-check-pass/, 'precondition: the check is passing at 1,800');
+
+  // Flip it past the limit, through the path openPropsDialog uses after a commit.
+  await pg.evaluate(() => {
+    const w = root.children[0].children[1];
+    setProp(w, 'cost', '1500');
+    buildIndex(root, null); markDirty(); render();
+    maybeNudgeSum(w, 'cost');
+  });
+  await pg.waitForTimeout(2400);   // well past the tip's yield delay
+
+  const after = await chip();
+  assert.match(after.cls, /prop-check-fail/, 'the check flipped to failing');
+  assert.match(after.aria, /is failing/, 'and the chip label says so');
+
+  const live = await pg.evaluate(() => window.__live.slice());
+  const spoken = live.filter(e => e.v);
+  assert.ok(spoken.length, 'something was announced');
+  for (const e of spoken) assert.doesNotMatch(e.v, /\[\[math:/, `an internal token was read aloud: ${JSON.stringify(e.v)}`);
+  const at = spoken.findIndex(e => /^Check failing on/.test(e.v));
+  assert.ok(at >= 0, `the flip must be announced, got ${JSON.stringify(spoken.map(e => e.v))}`);
+  assert.match(spoken[at].v, /^Check failing on Kitchen job\b/, 'named by its readable label');
+
+  // The clobber: the flip must OCCUPY the polite region long enough to be spoken, not exist for one
+  // frame before a coaching tip replaces it in the same tick. Measured as a gap, not as "still there
+  // at the end": a later unrelated tip (the deferred + Add one) legitimately takes the region after,
+  // and asserting the flip is the FINAL value would fail on that legitimate handover rather than on
+  // the defect. A same-tick clobber shows up as a gap of ~0ms; the real handover here is ~1.1s.
+  const next = spoken[at + 1];
+  assert.ok(!next || next.t - spoken[at].t >= 400,
+    `the flip was buried after only ${next ? next.t - spoken[at].t : 0}ms by ${JSON.stringify(next && next.v)}`);
+  // and the tip is withheld entirely here, because this point already carries {= sum(cost)}
+  for (const e of spoken) assert.doesNotMatch(e.v, /Tip: put \{= sum\(cost\)\}/,
+    'the tip recommends a pill this very point is already displaying');
+  await pg.close();
+});
+
+// 51. #1498 — and the teaching moment must survive for someone who actually needs it, WITHOUT
+// stealing the frame from what the app is saying about the edit that triggered it. Same tree as 50
+// but the parent carries no rollup, so the tip is genuinely new information and fires for real: the
+// flip and the tip are produced in one tick, which is the exact collision that lost the flip.
+test('#1498 the sum tip still fires when there is no rollup, and waits its turn', { skip: skip() }, async () => {
+  const pg = await fresh();
+  assert.equal(await pg.evaluate(() => isGuided() && !nudgeSeen('sum')), true,
+    'precondition: Guided verbosity with the once-ever sum tip still unspent');
+
+  await pg.evaluate(() => {
+    const parent = mkNode('Kitchen job');          // no pill: the tip is genuinely new information
+    const a = mkNode('Cabinets'), c = mkNode('Worktop');
+    parent.children = [a, c]; root.children = [parent];
+    const attach = (n, p) => { n.type = n.type || 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); (n.children || []).forEach(k => attach(k, n)); };
+    root.children.forEach(n => attach(n, root));
+    setProp(a, 'cost', '1200'); setProp(c, 'cost', '600');
+    setProp(parent, 'check', 'sum(cost) <= 2000');   // a check needs no {= sum(cost)} pill of its own
+    buildIndex(root, null); markDirty(); render();
+    window.__live = [];
+    const el = document.getElementById('a11y-live');
+    new MutationObserver(() => window.__live.push({ t: Date.now(), v: el.textContent }))
+      .observe(el, { childList: true, characterData: true, subtree: true });
+  });
+  await pg.waitForTimeout(400);
+  assert.equal(await pg.evaluate(() => hasRollupFor(root.children[0], 'cost')), false,
+    'precondition: this parent has no rollup, so withholding the tip here would be wrong');
+
+  // One tick: the property commit flips the check AND is the first-encounter the tip teaches from.
+  await pg.evaluate(() => {
+    const w = root.children[0].children[1];
+    setProp(w, 'cost', '1500');
+    buildIndex(root, null); markDirty(); render();
+    maybeNudgeSum(w, 'cost');
+  });
+  await pg.waitForTimeout(2600);   // past the tip's yield delay
+
+  const spoken = (await pg.evaluate(() => window.__live.slice())).filter(e => e.v);
+  const at = spoken.findIndex(e => /^Check failing on/.test(e.v));
+  assert.ok(at >= 0, `the flip must be announced, got ${JSON.stringify(spoken.map(e => e.v))}`);
+  const next = spoken[at + 1];
+  assert.ok(!next || next.t - spoken[at].t >= 400,
+    `the tip took the frame ${next ? next.t - spoken[at].t : 0}ms after the flip, so the flip was never spoken`);
+
+  const live = await pg.evaluate(() => (document.getElementById('a11y-live').textContent || '').trim());
+  assert.match(live, /Tip: put \{= sum\(cost\)\}/, 'the first-encounter tip must still reach someone who has no rollup');
+  assert.equal(await pg.evaluate(() => nudgeSeen('sum')), true, 'and be spent, so it never nags again');
+  await pg.close();
+});
