@@ -2886,3 +2886,97 @@ test('#1498 the sum tip still fires when there is no rollup, and waits its turn'
   assert.equal(await pg.evaluate(() => nudgeSeen('sum')), true, 'and be spent, so it never nags again');
   await pg.close();
 });
+
+// 52. #1526 — a live `[[#id]]` title reference printed the target's raw `[[math:key]]` on screen, in
+// ordinary prose. Driven because the defect IS the rendered output: the source pin can only say
+// which helper the sink calls, and the whole point of #1140/#1402/#1526 is that the family kept
+// getting the helper half-right. The negatives ride along, because the fix swaps the outermost
+// helper at a sink that four separate issues have already tuned (#943 tags, #1402 nesting, mirrors).
+test('#1526 a live title reference reads what the target shows, and the tuned cases survive', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const rows = await pg.evaluate(() => {
+    const mk = (t) => { const n = mkNode(t); n.type = 'ul'; return n; };
+    const attach = (arr) => { root.children = arr; arr.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); }); buildIndex(root, null); markDirty(); render(); };
+    const plain  = mk('Kitchen job');
+    const tagged = mk('Atomic notes #zettelkasten/principle');
+    const pill   = mk('Payroll {= 3 * 400}');
+    attach([plain, tagged, pill]);
+    promoteInlineShorthand(pill); buildIndex(root, null); markDirty(); render();
+    const nested = mk('Inner [[#' + plain.id + ']] outer');
+    const refs = [
+      mk('refA: [[#' + pill.id + ']]'),                 // the defect: a target holding a pill
+      mk('refB: [[#' + tagged.id + ']]'),               // #943: the target's tags stay off the caption
+      mk('refC: [[#' + pill.id + '|My own words]]'),    // a fixed caption is the user's words, untouched
+      mk('refD: [[#' + pill.id + '|]]'),                // the mirror form must still transclude
+    ];
+    attach([plain, tagged, pill, nested, ...refs]);
+    const nestedRef = mk('refE: [[#' + nested.id + ']]');   // #1402: a title that itself holds a link
+    attach([plain, tagged, pill, nested, ...refs, nestedRef]);
+    const shown = [...document.querySelectorAll('.node-content')].map(e => e.innerText.replace(/\s+/g, ' ').trim());
+    return { shown, tokens: root.children.map(n => n.text).filter(t => /\[\[math:/.test(t)).length,
+             mirrors: document.querySelectorAll('.node-link-mirror').length };
+  });
+  // an exact, unique prefix: a bare letter matched the 'Atomic notes' TARGET row, not the reference
+  const row = (p) => {
+    const hit = rows.shown.filter(t => t.startsWith(p + ': '));
+    assert.equal(hit.length, 1, `expected exactly one ${p} row, got ${JSON.stringify(hit)}`);
+    return hit[0];
+  };
+
+  assert.equal(rows.tokens, 1, 'precondition: the target really does hold a folded pill');
+  assert.equal(row('refA'), 'refA: Payroll 1,200',
+    `a live title reference must read what the target shows, got ${JSON.stringify(row('refA'))}`);
+  for (const t of rows.shown) assert.doesNotMatch(t, /\[\[math:/, `an internal token reached the screen: ${JSON.stringify(t)}`);
+
+  assert.equal(row('refB'), 'refB: Atomic notes', '#943: the target\'s #tags stay off the caption');
+  assert.equal(row('refC'), 'refC: My own words', 'a fixed caption is the user\'s own words and is never resolved over');
+  assert.equal(row('refE'), 'refE: Inner Kitchen job outer', '#1402: a nested link still resolves, and leaves no literal [[]]');
+  assert.ok(rows.mirrors >= 1, 'the mirror form still transcludes rather than degrading to a title');
+  await pg.close();
+});
+
+// 53. #1526 — and the query base's title column, which projects `[[#id]]` and so inherits the same
+// sink. Built through its own front door (`/querybase` → the builder → Create), because the whole
+// finding is that a surface no test drove was reading a helper nobody had checked.
+test('#1526 a query base names its rows the way the points read', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.keyboard.type('Payroll {= 3 * 400} #pay', { delay: 12 });
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+  await pg.keyboard.type('/querybase', { delay: 16 }); await pg.waitForTimeout(700);
+  await pg.evaluate(() => document.querySelector('#io-card .builder-insert-btn').click());
+  await pg.waitForTimeout(800);
+  await pg.evaluate(() => document.querySelector('#io-card input').focus());
+  await pg.keyboard.type('#pay', { delay: 18 }); await pg.waitForTimeout(180);
+  await pg.evaluate(() => { const t = document.querySelector('#io-card textarea'); t.focus(); t.select(); });
+  await pg.keyboard.type('Title: title\ndue', { delay: 14 }); await pg.waitForTimeout(180);
+  await pg.evaluate(() => [...document.querySelectorAll('#io-card button')].find(b => /^Create$/.test(b.textContent.trim())).click());
+  await pg.waitForTimeout(900);
+  await pg.evaluate(() => { setProp(root.children[0], 'due', '2026-09-01'); buildIndex(root, null); markDirty(); render(); });
+  await pg.waitForTimeout(600);
+
+  const titleCell = () => pg.evaluate(() => {
+    const c = document.querySelector('.mt-cell[data-r="1"][data-c="0"]');
+    return c ? c.innerText.replace(/\s+/g, ' ').trim() : null;
+  });
+  assert.equal(await pg.evaluate(() => /\[\[math:/.test(root.children[0].text)), true,
+    'precondition: the source point holds a folded pill');
+  assert.equal(await titleCell(), 'Payroll 1,200',
+    'the projected title column must read what the point shows, not its [[math:key]]');
+
+  // the same row's cell-commit toast names it the same way (it said "Payroll 🖩" before)
+  await pg.evaluate(() => document.querySelector('.mt-cell[data-r="1"][data-c="1"]').focus());
+  await pg.waitForTimeout(320);
+  await pg.keyboard.press('Control+a'); await pg.keyboard.type('2026-10-05', { delay: 16 });
+  await pg.waitForTimeout(220);
+  await pg.evaluate(() => document.activeElement.blur());
+  await pg.waitForTimeout(700);
+  const said = await pg.evaluate(() => (document.getElementById('a11y-live').textContent || '').trim());
+  assert.match(said, /Updated due on "Payroll 1,200/,
+    `the toast must name the point the way the grid does, got ${JSON.stringify(said)}`);
+  assert.doesNotMatch(said, /🖩|\[\[math:/, 'never a glyph placeholder and never a token');
+  await pg.close();
+});

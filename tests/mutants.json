@@ -819,6 +819,60 @@
       "find": "  setTimeout(() => flashHint(msg), NUDGE_YIELD_MS);\n  return true;",
       "replace": "  flashHint(msg);\n  return true;",
       "kills": "the sum tip still fires when there is no rollup, and waits its turn"
+    },
+    {
+      "id": "link-caption-token-leak",
+      "suite": "browser",
+      "why": "the original defect: linkText resolves [[#id]] and nothing else, so a target holding a pill was captioned with its internal [[math:key]] on screen",
+      "file": "index.html",
+      "find": "  const title = escHtml(label || stripCaptionTags(displayText(tn)) || '(untitled)');",
+      "replace": "  const title = escHtml(label || stripCaptionTags(linkText(textForDisplay(tn))) || '(untitled)');",
+      "kills": "a live title reference reads what the target shows"
+    },
+    {
+      "id": "mirror-fallback-caption-forked",
+      "suite": "unit",
+      "why": "the mirror's title-only fallback is the same sink; a family fixed on one member and not its twin is how this defect survived #1140 and #1402",
+      "file": "index.html",
+      "find": "      const title = escHtml(stripCaptionTags(displayText(tn)) || '(untitled)');",
+      "replace": "      const title = escHtml(stripCaptionTags(linkText(textForDisplay(tn))) || '(untitled)');",
+      "kills": "both live-title link captions resolve artifacts, not only links"
+    },
+    {
+      "id": "ws-index-title-raw",
+      "suite": "unit",
+      "why": "one map feeds six user-facing captions; storing raw text puts [[math:key]] in every one of them",
+      "file": "index.html",
+      "find": "      const title = ART_SNIFF.test(raw) ? flattenArtifacts(raw, n, varsForDoc()) : raw;",
+      "replace": "      const title = raw;",
+      "kills": "buildWorkspaceIndex stores what a point SHOWS"
+    },
+    {
+      "id": "ws-index-var-scope-not-its-own",
+      "suite": "unit",
+      "why": "resolving a foreign pill against the wrong document's variables is #1528's error class, silently computing a wrong number instead of leaking a token",
+      "file": "index.html",
+      "find": "    const varsForDoc = () => (docVars || (docVars = collectVars(d.root)));",
+      "replace": "    const varsForDoc = () => (docVars || (docVars = {}));",
+      "kills": "a foreign pill resolves against its OWN document"
+    },
+    {
+      "id": "ws-index-resolves-foreign-links",
+      "suite": "unit",
+      "why": "linkText at index-build time resolves foreign ids against the LIVE document, which is #1528 moved one step earlier and harder to see",
+      "file": "index.html",
+      "find": "      titleMap.set(n.id, title);",
+      "replace": "      titleMap.set(n.id, linkText(title));",
+      "kills": "link tokens stay raw in the index"
+    },
+    {
+      "id": "qbase-toast-glyph-name",
+      "suite": "unit",
+      "why": "stripMd substitutes a glyph for a pill, so the toast named the point “Payroll 🖩” -- a name no one can read or hear",
+      "file": "index.html",
+      "find": "    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill (\"Payroll 🖩\"); displayText says what the row shows\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
+      "replace": "    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
+      "kills": "the query-base cell toast names the point the way the grid does"
     }
   ]
 }
