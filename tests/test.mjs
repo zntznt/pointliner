@@ -10687,6 +10687,80 @@ test('buildWorkspaceIndex: walks points only (not the doc-title root) and recurs
   assert.equal(idx.titles.get('d').get('kid'), 'Kid [[#p]]');
 });
 
+// ── #1526: the titles map is a CAPTION, so it holds what the point shows ─────────────────────
+// Six sinks read this one map -- the cross-doc link pill, the graph's and Cards' foreign labels,
+// the workspace backlink rows and the `[[` picker's other-doc rows -- and every one of them is
+// user-facing. It stored `textForDisplay`, so a foreign point holding a pill was captioned with
+// its internal `[[math:key]]`. #1140 made exactly this fix for the graph's OWN document and left
+// the foreign branch reading this map raw: one map, six sinks, one omission.
+test('#1526 buildWorkspaceIndex stores what a point SHOWS, not its internal token', () => {
+  const d = cfDoc('db', 'b.opml');
+  const money = cfPt('m1', 'Payroll [[math:k1]]');
+  money.math = [{ key: 'k1', expr: '3 * 400' }];
+  d.root.children.push(money);
+  d.root.children.push(cfPt('m2', 'Plain title'));
+  d.root.children.push(cfPt('m3', ''));
+  const idx = c.buildWorkspaceIndex([d]);
+
+  assert.equal(idx.titles.get('db').get('m1'), 'Payroll 1,200',
+    'the caption must read what the point shows, never [[math:k1]]');
+  assert.equal(idx.titles.get('db').get('m2'), 'Plain title', 'a title with no token is untouched');
+  assert.equal(idx.titles.get('db').get('m3'), '', "an empty title stays '' so existence is still knowable");
+  // the `[[` picker's other-doc rows are built from the same string, so they agree by construction
+  const cand = nonEmpty(idx.candidates.filter(x => x.docId === 'db'), 'db candidates');
+  assert.deepEqual(host(cand.map(x => x.title).sort()), ['Payroll 1,200', 'Plain title'],
+    'the cross-doc picker offers the same name the caption will show');
+});
+
+// The var scope is the FOREIGN doc's own. Passing the live document's map (or none) would compute
+// this pill against the wrong scope, which is the same class of error as #1528's link anchoring --
+// so it is measured, not assumed.
+test('#1526 a foreign pill resolves against its OWN document\'s variables', () => {
+  const d = cfDoc('db', 'b.opml');
+  const decl = cfPt('m1', 'Rate [[var:v1]]');
+  decl.vars = [{ key: 'v1', name: 'price', expr: '25' }];
+  const use = cfPt('m2', 'Four of them [[math:k1]]');
+  use.math = [{ key: 'k1', expr: 'price * 4' }];
+  d.root.children.push(decl, use);
+  const idx = c.buildWorkspaceIndex([d]);
+  assert.equal(idx.titles.get('db').get('m2'), 'Four of them 100',
+    'price is declared in THIS document, so the pill computes; an empty or live-doc scope could not');
+});
+
+// Link tokens are deliberately NOT resolved here: linkText resolves `[[#id]]` against the LIVE
+// document, and these ids belong to a foreign one. Pre-resolving would be #1528 moved earlier.
+// Every consumer already anchors its own resolver (#1110, #1402).
+test('#1526 link tokens stay raw in the index, for the caller to resolve doc-anchored', () => {
+  const d = cfDoc('db', 'b.opml');
+  const linker = cfPt('m1', 'See [[#m2]] and [[da#n9]]');
+  linker.math = [{ key: 'k1', expr: '1 + 1' }];   // a pill present too: only the pill resolves
+  d.root.children.push(linker, cfPt('m2', 'Target'));
+  const idx = c.buildWorkspaceIndex([d]);
+  assert.equal(idx.titles.get('db').get('m1'), 'See [[#m2]] and [[da#n9]]',
+    'the ids belong to another document; resolving them here would resolve them in the wrong one');
+});
+
+// The two same-doc caption sinks in renderLinkPill. A source pin, because the sinks build HTML --
+// what they RENDER is driven in tests/browser.mjs.
+test('#1526 both live-title link captions resolve artifacts, not only links', () => {
+  const pill = fnBody(_src, 'renderLinkPill');
+  assert.match(pill, /label \|\| stripCaptionTags\(displayText\(tn\)\)/,
+    'the live-title caption goes through displayText (flatten + linkText + strip)');
+  assert.match(pill, /const title = escHtml\(stripCaptionTags\(displayText\(tn\)\) \|\| '\(untitled\)'\)/,
+    "the mirror's title-only fallback is the same sink and gets the same helper -- it was the twin left behind twice already");
+  assert.doesNotMatch(pill, /stripCaptionTags\(linkText\(textForDisplay\(tn\)\)\)/,
+    'linkText alone resolves [[#id]] and nothing else, which was the defect');
+});
+
+test('#1526 the query-base cell toast names the point the way the grid does', () => {
+  // stripMd substitutes a GLYPH for a pill ("Payroll 🖩"), so this sink never leaked a token -- it
+  // announced a name no one can hear or read. Same family, so the same helper.
+  assert.equal((_src.match(/const title = \(displayText\(src\) \|\| '\(untitled\)'\)\.slice\(0, 40\)/g) || []).length, 2,
+    'both query-base cell-commit paths (date route and value route) use displayText');
+  assert.doesNotMatch(_src, /const title = \(stripMd\(textForDisplay\(src\)\) \|\| '\(untitled\)'\)/,
+    'neither is left on the glyph-substituting helper');
+});
+
 test('buildWorkspaceIndex: skips docs missing docId or root; empty input → empty index', () => {
   const empty = c.buildWorkspaceIndex([]);
   assert.equal(empty.titles.size, 0);
@@ -17661,8 +17735,15 @@ test('#943 stripCaptionTags — removes hashtags from a caption, keeps the title
   // gutted the token and left a literal `[[]]` on screen. #943's claim is unchanged and still
   // asserted; what moved is that stripCaptionTags is no longer the outermost thing applied to raw
   // text at these two sinks.
-  assert.ok(/label \|\| stripCaptionTags\(linkText\(textForDisplay\(tn\)\)\)/.test(_src),
-    'renderLinkPill live-title resolves, then strips caption tags');
+  // REWRITTEN AGAIN for #1526, same shape: the same-doc sink resolved links and not ARTIFACTS, so
+  // it printed `[[math:key]]`. displayText resolves both, and stripCaptionTags stays outermost, so
+  // #943's claim and #1402's ordering both still hold.
+  assert.ok(/label \|\| stripCaptionTags\(displayText\(tn\)\)/.test(_src),
+    'renderLinkPill live-title resolves (artifacts AND links, via displayText), then strips caption tags');
+  // The cross-doc twin keeps linkText here on purpose and is NOT displayText: its `title` comes from
+  // the workspace index, so its `[[#id]]`s belong to a FOREIGN document and linkText/graphNodeLabel
+  // resolve them doc-anchored (#1110). #1526 fixed its artifact half one level up, in the index
+  // itself -- see the buildWorkspaceIndex test below, which is what stops that leak.
   assert.ok(/label \|\| stripCaptionTags\(linkText\(title\)\)/.test(_src),
     'renderCrossLinkPill live-title resolves, then strips caption tags');
 });

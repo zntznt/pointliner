@@ -8094,7 +8094,7 @@ function renderLinkPill(target, label) {
   // a transclusion (_inlineDepth > 0) fall back to title-only so A↔B cycles can't recurse.
   if (label === '') {
     if (_inlineDepth > 0) {
-      const title = escHtml(stripCaptionTags(linkText(textForDisplay(tn))) || '(untitled)');   // #1402: resolve a nested link, like the backlink rows already do
+      const title = escHtml(stripCaptionTags(displayText(tn)) || '(untitled)');   // #1402 nested link + #1526 artifact tokens: displayText does both
       return `<span class="node-link node-link-mirror" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
     }
     // #917: read the block gate BEFORE rendering — renderNodeInline recurses into mdInline,
@@ -8113,7 +8113,13 @@ function renderLinkPill(target, label) {
   // #1402: a live title may itself hold a link. Resolve it before stripping tags, the way the
   // backlink rows (stripCaptionTags(linkText(title))) and the pickers already do -- this sink was
   // the one that did not, so a nested reference reached the reader as a literal `[[]]`.
-  const title = escHtml(label || stripCaptionTags(linkText(textForDisplay(tn))) || '(untitled)');
+  // #1526: and it still was not, for the OTHER kind of token. `linkText` resolves `[[#id]]` and
+  // nothing else, so a target holding a pill reached the reader as `Payroll [[math:x2wyzsnb]]` --
+  // an internal key, on screen, in prose. The `[[` picker offered that same point as "Payroll
+  // 1,200" (pickerTitle -> displayText), so the two doors disagreed about the point's name (P1).
+  // displayText is that helper: textForDisplay + flattenArtifacts + linkText + stripInlineMd, so
+  // this caption now reads exactly what the picker offered and what the target's own row shows.
+  const title = escHtml(label || stripCaptionTags(displayText(tn)) || '(untitled)');
   return `<span class="node-link" role="link" tabindex="-1" data-target="${escQ(target)}" contenteditable="false">${title}</span>`;
 }
 
@@ -13043,7 +13049,7 @@ function mtWireQBaseEdit(host, node) {
     // the model until the next full render.
     const shown = (src.props || []).find(p => p.key.trim().toLowerCase() === field.trim().toLowerCase())?.val ?? raw;
     cell.innerHTML = mtCellHtml(node, shown, c);   // immediate feedback in place
-    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);
+    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill ("Payroll 🖩"); displayText says what the row shows
     const stillMatches = qbaseModel(node).qids.includes(nid);
     flashHint((raw ? `Updated ${field} on "${title}".` : `Cleared ${field} on "${title}".`)
       + (stillMatches ? '' : ' It no longer matches this query.'));
@@ -13138,7 +13144,7 @@ function mtSetCellValue(node, r, c, val) {
     if (route === 'date') setDateProp(src, field.trim().toLowerCase(), val);
     else setProp(src, field, val);
     markDirty();
-    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);
+    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill ("Payroll 🖩"); displayText says what the row shows
     const stillMatches = qbaseModel(node).qids.includes(src.id);
     flashHint((val ? `Updated ${field} on "${title}".` : `Cleared ${field} on "${title}".`)
       + (stillMatches ? '' : ' It no longer matches this query.'));
@@ -27385,7 +27391,8 @@ function tokenUnderCaret(text, offset) {
 // Pure: build the whole-workspace link index from already-parsed docs.
 //   docs = [{ docId, name, root }]   (root = a parsed tree; its .children are the points)
 // Returns:
-//   titles      Map(docId -> Map(nodeId -> title))          every point's textForDisplay (may be '')
+//   titles      Map(docId -> Map(nodeId -> title))          what each point SHOWS: textForDisplay with
+//               artifact pills flattened to their value, link tokens left raw for the caller (#1526; may be '')
 //   outgoing    [{ srcDocId, srcNodeId, dstDocId, dstNodeId, label }]   every token occurrence
 //   backlinks   Map("dstDocId#dstNodeId" -> [{ srcDocId, srcNodeId }]) the reverse map (CF-4 payoff)
 //   candidates  [{ docId, nodeId, title, docName }]         titled points only (the CF-3 source)
@@ -27425,8 +27432,20 @@ function buildWorkspaceIndex(docs) {
     roots.set(ownDocId, d.root);
     let titleMap = titles.get(ownDocId);
     if (!titleMap) { titleMap = new Map(); titles.set(ownDocId, titleMap); }
+    // #1526: the titles map is READ as a caption -- by the cross-doc link pill, the graph's and
+    // Cards' foreign labels, the workspace backlink rows and the `[[` picker's other-doc rows --
+    // so it must hold what the point SHOWS, not `[[math:key]]`. #1140 made exactly this fix for
+    // the graph's OWN document and left the foreign branch reading this map raw; the leak was one
+    // map, six sinks. Artifacts only: link tokens stay unresolved on purpose, because `linkText`
+    // resolves `[[#id]]` against the LIVE document and these ids belong to a foreign one -- every
+    // consumer already resolves them with its own doc-anchored resolver (#1110, #1402). The var
+    // scope is the foreign doc's own, doc-wide, built at most once per doc and only if some title
+    // in it actually carries a token (ART_SNIFF, the #953 guard).
+    let docVars = null;
+    const varsForDoc = () => (docVars || (docVars = collectVars(d.root)));
     const walk = (n) => {
-      const title = textForDisplay(n) || '';
+      const raw = textForDisplay(n) || '';
+      const title = ART_SNIFF.test(raw) ? flattenArtifacts(raw, n, varsForDoc()) : raw;
       titleMap.set(n.id, title);
       if (title) candidates.push({ docId: ownDocId, nodeId: n.id, title, docName: d.name });
       const seen = new Set();
