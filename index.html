@@ -3439,9 +3439,21 @@ function textForDisplay(node) {
 // NOT applied to the depth > 0 arm - that is a link inside a title being read for its words, not a
 // link occupying a slot in the exported sentence.
 const LINK_RESOLVE_DEPTH = 2;   // #1402: see the terminal branch below
-function linkText(str, depth = 0, emit) {
+// #1528: `homeDocId` is the document the STRING came from, and it decides what a BARE `[[#id]]`
+// means. Omitted, it is the open document, which is right for every same-doc caller and was the
+// only behaviour there used to be. It is wrong for a title read out of `workspaceIndex.titles`:
+// those ids belong to THAT document, so resolving them here looked them up in the open one, found
+// nothing, and fell through to the bare-id terminal -- `Ecological rationality argued in qyhvfq73`,
+// on screen, which is #1402's own reported example surviving in its cross-doc twin. (With an id
+// collision it was worse than a leak: it silently named a different point.) The graph settled this
+// already -- `nearbyTitleOf` anchors its resolver on the foreign docId, "a bare [[#id]] inside one
+// is same-document to THAT document, so the resolver is anchored on its docId, not on ours"
+// (#1110). This is that rule, in the shared helper, so a caller cannot forget it.
+// A QUALIFIED `[[doc#id]]` names its own document and was always correct; only the bare form moved.
+function linkText(str, depth = 0, emit, homeDocId) {
   if (!str || str.indexOf('[[') === -1) return str;
   const out = emit || ((text) => text);
+  const home = homeDocId == null ? (root.docId || '') : homeDocId;
   WLINK_RE.lastIndex = 0;
   return str.replace(WLINK_RE, (_, docId, id, label) => {
     if (label) return out(label, docId || '', id);             // explicit caption wins
@@ -3457,12 +3469,13 @@ function linkText(str, depth = 0, emit) {
     //     top level, which deleted the names. Here it is the terminal of a recursion that has
     //     already carried two levels of names, and it is what makes an A↔B title cycle finite.
     if (depth > LINK_RESOLVE_DEPTH) return '';
-    if (!docId || docId === (root.docId || '')) {              // same-doc: live title
+    const owner = docId || home;                               // #1528: a bare id belongs to the string's home doc
+    if (owner === (root.docId || '')) {                        // the OPEN document: live title
       const tn = nodeById(id);
-      if (tn) return out(linkText(textForDisplay(tn), depth + 1) || id, docId || '', id);
-    } else {                                                   // cross-doc: workspace index
-      const title = workspaceIndex?.titles?.get(docId)?.get(id);
-      if (title) return out(linkText(title, depth + 1) || id, docId, id);
+      if (tn) return out(linkText(textForDisplay(tn), depth + 1, undefined, owner) || id, docId || '', id);
+    } else {                                                   // another document: workspace index
+      const title = workspaceIndex?.titles?.get(owner)?.get(id);
+      if (title) return out(linkText(title, depth + 1, undefined, owner) || id, docId, id);
     }
     return out(id, docId || '', id);                           // unresolvable → bare id (better than the raw token)
   });
@@ -3539,12 +3552,17 @@ function displayTitle(node) {
 // MD_SNIFF / EX_SNIFF guards: prove cheaply that no expensive work can fire, then skip it.
 const ART_SNIFF = /[\[{]/;
 const EMPTY_VARMAP = {};
-function displayText(node, { forMatch = false, varMap } = {}) {
+// `opts.homeDocId` (#1528): the document `node` lives in, for a FOREIGN node. It only reaches
+// linkText, and only the display branch: a bare `[[#id]]` in a foreign title is same-document to
+// THAT document, so without it the id is looked up in the open one. Omitted = the open document,
+// which is every same-doc caller. The `varMap: {}` beside it is the same idea one lane over, and
+// collectCrossUnlinkedRefs already passed that half while leaving this one.
+function displayText(node, { forMatch = false, varMap, homeDocId } = {}) {
   let t = textForDisplay(node) || '';
   t = flattenArtifacts(t, node, varMap || (ART_SNIFF.test(t) ? varMapAt(node) : EMPTY_VARMAP));  // dice/grammar/math/etc → shown value (positional)
   t = forMatch
     ? t.replace(/\[\[[^\]]*\]\]/g, ' ').replace(/\[\^[^\]]*\]/g, ' ')  // drop link + footnote tokens
-    : linkText(t);                                                     // resolve links to legible text
+    : linkText(t, 0, undefined, homeDocId);                            // resolve links to legible text, in THEIR document
   return stripInlineMd(t).replace(/\s+/g, ' ').trim();
 }
 
@@ -8168,7 +8186,7 @@ function renderCrossLinkPill(docId, target, label) {
   // #1402: the same-doc twin resolves a nested link in the caption; this one did not, and the
   // workspace index stores titles RAW (the backlink rows say so at their own stripCaptionTags
   // call). Same family, same fix -- resolve, then strip tags.
-  const capText = label || stripCaptionTags(linkText(title)) || (docName ? 'in ' + displayName(docName) : 'another document');
+  const capText = label || stripCaptionTags(linkText(title, 0, undefined, docId)) || (docName ? 'in ' + displayName(docName) : 'another document');   // #1528: the title came from `docId`, so its bare ids do too
   const cap = escHtml(capText);
   if (!title) {                                                              // missing doc or node → broken (P4)
     return `<span class="node-link node-link-broken" role="link" tabindex="-1" data-doc="${escQ(docId)}" data-target="${escQ(target)}" contenteditable="false" aria-label="${escQ(capText + ' (broken link to another document)')}">${cap}</span>`;
@@ -27721,7 +27739,7 @@ function collectCrossUnlinkedRefs(target, ownDocId, wsIndex) {
       // varMap:{} — a foreign-doc node must NOT resolve its pills against the LIVE doc's vars
       // (varMapAt reads the current doc); name-matching only needs the prose, so pass an empty map.
       if (!already.has(docId + '#' + n.id) && re.test(displayText(n, { forMatch: true, varMap: {} }))) {
-        out.push({ docId, docName, nodeId: n.id, title: displayText(n, { varMap: {} }) || '(untitled)' });
+        out.push({ docId, docName, nodeId: n.id, title: displayText(n, { varMap: {}, homeDocId: docId }) || '(untitled)' });   // #1528: its links belong to ITS doc, like its vars
       }
       for (const c of n.children || []) walk(c);
     })(docRoot);
@@ -32217,7 +32235,7 @@ function renderLinkMenu() {
   lpState.matches.forEach((nd, i) => {
     const item = document.createElement('div');
     item.className = 'lp-item' + (i === lpState.activeIdx ? ' hi' : '');
-    item.textContent = linkText(nd.title);   // #821: resolve link tokens in candidate labels — never raw [[#hexid|]]
+    item.textContent = linkText(nd.title, 0, undefined, nd.docId);   // #821: resolve link tokens in candidate labels — never raw [[#hexid|]]; #1528: a cross-doc row's ids belong to ITS doc (nd.docId is undefined for a same-doc row → the open one)
     // CF-3: a cross-doc row (from another workspace doc) carries a docId — show its doc
     // name so it's clear the point lives elsewhere (P4) and name the doc in the aria-label
     // (P3). A row never has both: alias matching is current-doc-only.
@@ -39216,7 +39234,7 @@ function renderBlRows(inner, hd, subjectId, d, opts) {
   cross.forEach(({ docId, nodeId, title, docName }) => {
     const item = document.createElement('div');
     item.className = 'bl-item bl-cross';
-    const t = stripCaptionTags(linkText(title)) || '(untitled)';   // #943: tag-free (index title may hold link tokens — render legibly)
+    const t = stripCaptionTags(linkText(title, 0, undefined, docId)) || '(untitled)';   // #943: tag-free (index title may hold link tokens — render legibly); #1528: anchored on the source doc
     item.textContent = t;
     const hint = document.createElement('span');
     hint.className = 'bl-doc-hint';

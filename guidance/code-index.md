@@ -79,14 +79,14 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `rederiveFromText` — Re-derive BOTH derived hints (type AND checked) from node.text, the single source of truth.
 - `textForDisplay` — Text shown in rendered (non-edit) view — block prefix stripped. Also strips a
 - `LINK_RESOLVE_DEPTH` — Render `[[…]]` link tokens in a title to legible PLAIN TEXT for the no-pill,
-- `linkText`
+- `linkText` — #1528: `homeDocId` is the document the STRING came from, and it decides what a BARE `[[#id]]`
 - `mdLinkOut` — #1111: the markdown form a resolved link takes in an exported .md.
 - `CAPTION_TAG_RE` — #943: strip hashtag tokens from a title/snippet shown as a link CAPTION or backlink row.
 - `stripCaptionTags`
 - `displayTitle` — Title for a no-pill display sink: textForDisplay (prefixes/markers stripped) with
 - `ART_SNIFF` — A point's text as it READS on screen — markdown, pill, and {…} syntax resolved
 - `EMPTY_VARMAP`
-- `displayText`
+- `displayText` — `opts.homeDocId` (#1528): the document `node` lives in, for a FOREIGN node. It only reaches
 - `aliasesOf` — A point's alternate names — the reserved `aliases` property, comma-split, trimmed,
 - `nodeNames` — Every name a point answers to: canonical title first, then aliases (deduped
 

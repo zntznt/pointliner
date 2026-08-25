@@ -205,6 +205,36 @@ directions live; this section is the detailed rationale.)*
   rules/vars. Explicitly-addressed forms (a future `{doc:name.var}`) would be a new
   syntax-inventory decision — not part of this study.
 
+## 4z. The anchoring rule (a bare id belongs to the document its string came from)
+
+Recorded here because the codebase has now broken it four times, each time in a different member of
+the same family, and each time the fix landed on one member and not its neighbour: #1110 (graph
+labels), #1402 (nested links in a caption), #1526 (artifact tokens in a caption), #1528 (bare ids in
+a FOREIGN caption).
+
+**The rule.** A `[[#id]]` with no document part is *same-document to the document the string came
+from*, which is not always the open one. Any helper that resolves tokens out of a foreign string —
+a title from `workspaceIndex.titles`, a node from a retained foreign root — must be told which
+document that is. `linkText(str, depth, emit, homeDocId)` and `displayText(node, { homeDocId })`
+take it; omitted, it is the open document, which is correct for every same-doc caller and is the
+behaviour that existed before. A QUALIFIED `[[doc#id]]` names its own document and never needed it.
+
+**Why it bites quietly.** Resolving in the wrong document usually finds nothing, and the terminal
+prints the bare node id — a leak #1111 forbids outright. When it *does* find something (ids are
+random, so only on a collision) it is worse: the caption silently names a different point, with no
+error anywhere.
+
+**The readers, enumerated** (a test in `tests/test.mjs` pins this list, so a new one that forgets the
+anchor fails): the cross-doc link pill's caption, the CF-4 cross-doc backlink rows, the `[[` picker's
+other-doc rows, and `collectCrossUnlinkedRefs`. The graph and Cards do not appear because they
+already anchor their own resolver (`nearbyTitleOf`), which is where the rule was first written down.
+
+**Its sibling.** The same argument applies to variable scope: a foreign node's pills must not resolve
+against the live document's variables. `collectCrossUnlinkedRefs` had passed `varMap: {}` for that
+half since it was written, while leaving links unanchored — the two halves of one idea, shipped
+years apart. `buildWorkspaceIndex` (#1526) resolves foreign artifacts against `collectVars(d.root)`
+for the same reason, and deliberately leaves link tokens raw so the consumer can anchor them.
+
 ## 5. The spine both 4b and 4c need: index liveness + generation
 
 The real engineering (and the stability half of the owner's caution) is not any single

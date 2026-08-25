@@ -873,6 +873,69 @@
       "find": "    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill (\"Payroll 🖩\"); displayText says what the row shows\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "replace": "    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "kills": "the query-base cell toast names the point the way the grid does"
+    },
+    {
+      "id": "link-anchor-ignored",
+      "suite": "browser",
+      "why": "the original defect: a bare id in a foreign title was looked up in the OPEN document, so it printed a bare node id (or, on a collision, silently named a different point)",
+      "file": "index.html",
+      "find": "    const owner = docId || home;                               // #1528: a bare id belongs to the string's home doc",
+      "replace": "    const owner = docId || (root.docId || '');",
+      "kills": "a foreign title resolves its own links in its own document"
+    },
+    {
+      "id": "link-anchor-lost-in-recursion",
+      "suite": "unit",
+      "why": "a title inside a foreign title is still that document's; dropping the anchor one level down reopens the bug at depth 2",
+      "file": "index.html",
+      "find": "      if (title) return out(linkText(title, depth + 1, undefined, owner) || id, docId, id);",
+      "replace": "      if (title) return out(linkText(title, depth + 1) || id, docId, id);",
+      "kills": "linkText takes the document a string came FROM"
+    },
+    {
+      "id": "displaytext-anchor-decorative",
+      "suite": "unit",
+      "why": "an option accepted and never forwarded is the exact vacuity shape this registry exists for: every caller looks anchored and nothing is",
+      "file": "index.html",
+      "find": "    : linkText(t, 0, undefined, homeDocId);                            // resolve links to legible text, in THEIR document",
+      "replace": "    : linkText(t);",
+      "kills": "every sink that reads a foreign title is anchored"
+    },
+    {
+      "id": "cross-unlinked-links-not-anchored",
+      "suite": "unit",
+      "why": "the collector already anchored the VARS half and left the links half; that asymmetry is what made the omission legible",
+      "file": "index.html",
+      "find": "        out.push({ docId, docName, nodeId: n.id, title: displayText(n, { varMap: {}, homeDocId: docId }) || '(untitled)' });   // #1528: its links belong to ITS doc, like its vars",
+      "replace": "        out.push({ docId, docName, nodeId: n.id, title: displayText(n, { varMap: {} }) || '(untitled)' });",
+      "kills": "every sink that reads a foreign title is anchored"
+    },
+    {
+      "id": "cross-pill-caption-unanchored",
+      "suite": "unit",
+      "why": "renderCrossLinkPill is the sink the issue was filed against",
+      "file": "index.html",
+      "find": "  const capText = label || stripCaptionTags(linkText(title, 0, undefined, docId))",
+      "replace": "  const capText = label || stripCaptionTags(linkText(title))",
+      "kills": "every sink that reads a foreign title is anchored"
+    },
+    {
+      "id": "bl-cross-row-unanchored",
+      "suite": "unit",
+      "why": "the CF-4 backlink row reads the same map through the same helper; a family fixed at one sink and not its neighbour is how this survived three issues",
+      "file": "index.html",
+      "find": "    const t = stripCaptionTags(linkText(title, 0, undefined, docId)) || '(untitled)';",
+      "replace": "    const t = stripCaptionTags(linkText(title)) || '(untitled)';",
+      "kills": "every sink that reads a foreign title is anchored"
+    },
+    {
+      "id": "picker-row-unanchored",
+      "suite": "unit",
+      "why": "the [[ picker's other-doc row had nd.docId in scope on the very next line and did not use it",
+      "file": "index.html",
+      "find": "    item.textContent = linkText(nd.title, 0, undefined, nd.docId);",
+      "replace": "    item.textContent = linkText(nd.title);",
+      "kills": "picker labels resolve tokens"
     }
   ]
 }
