@@ -17638,6 +17638,58 @@ test('linkText — labelled link → label; no token → passthrough; unresolved
   assert.equal(c.linkText('gone [[#zzz|]]'), 'gone zzz', 'empty-label link → id, never [[…]]');
 });
 
+// ── #1528: a bare [[#id]] belongs to the document its STRING came from ───────────────────────
+// linkText decided "same document" against the OPEN one, so a title read out of workspaceIndex --
+// whose ids belong to ANOTHER document -- was looked up in the wrong place, found nothing, and fell
+// through to the bare-id terminal: "Ecological rationality argued in qyhvfq73", on screen. That is
+// #1402's own reported example surviving in its cross-doc twin. The graph settled the rule already
+// (#1110, nearbyTitleOf anchors on the foreign docId); this puts it in the shared helper.
+test('#1528 linkText takes the document a string came FROM, and only the bare form moves', () => {
+  // The vm harness cannot rebind the module-level nodeMap/workspaceIndex, so the RESOLUTION branch
+  // is driven in tests/browser.mjs (check 54). Pure here: the anchor must not disturb the two forms
+  // that were always correct, and omitting it must behave exactly as it did before.
+  assert.equal(c.linkText('ref [[#a1|the alpha]]', 0, undefined, 'DOCB'), 'ref the alpha',
+    "a labelled link is the user's own words, whatever document it came from");
+  assert.equal(c.linkText('cross [[da#n2|Gamma]]', 0, undefined, 'DOCB'), 'cross Gamma',
+    'a QUALIFIED token names its own document and never needed the anchor');
+  assert.equal(c.linkText('gone [[#zzz]]', 0, undefined, 'DOCB'), 'gone zzz',
+    'unresolvable is still the bare id, never the raw token (#1111)');
+  assert.equal(c.linkText('gone [[#zzz]]'), 'gone zzz', 'and omitting the anchor is the old behaviour exactly');
+  assert.equal(c.linkText('just text', 0, undefined, 'DOCB'), 'just text');
+
+  const lt = fnBody(_src, 'linkText');
+  assert.match(lt, /const home = homeDocId == null \? \(root\.docId \|\| ''\) : homeDocId;/,
+    'omitted means the open document, so every same-doc caller is untouched');
+  assert.match(lt, /const owner = docId \|\| home;/, "a bare id belongs to the string's home document");
+  assert.match(lt, /workspaceIndex\?\.titles\?\.get\(owner\)/,
+    "the index lookup goes through the owner -- reading the token's own docId there was the defect");
+  assert.match(lt, /linkText\(title, depth \+ 1, undefined, owner\)/,
+    'and the recursion carries it, so a title inside a foreign title stays in that document');
+});
+
+// A census, because this family has now been left half-fixed three times (#1110, #1402, #1526).
+// Every read of a foreign title is enumerated here; a new one that forgets the anchor fails.
+test('#1528 every sink that reads a foreign title is anchored on the document it came from', () => {
+  // code lines only: #1402's comment at this very sink QUOTES the old unanchored form, and a census
+  // that counted the quote would fail forever on prose rather than on a call.
+  const codeLines = _src.split('\n').filter(l => !/^\s*\/\//.test(l)).join('\n');
+  const reads = nonEmpty([...codeLines.matchAll(/linkText\((?:nd\.)?title(?:, [^)]*)?\)/g)].map(m => m[0]),
+    'linkText calls over an index title');
+  assert.deepEqual(reads.sort(), [
+    'linkText(nd.title, 0, undefined, nd.docId)',   // the [[ picker's other-doc rows
+    'linkText(title, 0, undefined, docId)',         // the CF-4 cross-doc backlink rows
+    'linkText(title, 0, undefined, docId)',         // renderCrossLinkPill's caption
+    'linkText(title, depth + 1, undefined, owner)', // linkText's own recursion into a foreign title
+  ], 'a foreign title read with no anchor resolves its ids in the wrong document');
+  // the fourth surface is a COLLECTOR, not a render sink: the cross-doc unlinked-mention rows are
+  // built from displayText, whose display arm calls linkText -- so it needs the anchor too. Its
+  // sibling half (varMap: {}) was already passed, which is what makes the omission legible.
+  assert.match(_src, /displayText\(n, \{ varMap: \{\}, homeDocId: docId \}\)/,
+    'collectCrossUnlinkedRefs must anchor the links it resolves, as it already anchors the vars');
+  assert.match(fnBody(_src, 'displayText'), /: linkText\(t, 0, undefined, homeDocId\);/,
+    'and displayText must actually forward it, or the option is decorative');
+});
+
 test('#1402 a nested reference resolves, and past the budget it is dropped rather than printed as an id', () => {
   // The old terminal was `depth > 0 → return id`, and that bare node id was USER-VISIBLE: it reached
   // the link caption on screen and it reached exported .md and .txt, which #1111 forbids outright.
@@ -17744,8 +17796,8 @@ test('#943 stripCaptionTags — removes hashtags from a caption, keeps the title
   // the workspace index, so its `[[#id]]`s belong to a FOREIGN document and linkText/graphNodeLabel
   // resolve them doc-anchored (#1110). #1526 fixed its artifact half one level up, in the index
   // itself -- see the buildWorkspaceIndex test below, which is what stops that leak.
-  assert.ok(/label \|\| stripCaptionTags\(linkText\(title\)\)/.test(_src),
-    'renderCrossLinkPill live-title resolves, then strips caption tags');
+  assert.ok(/label \|\| stripCaptionTags\(linkText\(title, 0, undefined, docId\)\)/.test(_src),
+    'renderCrossLinkPill live-title resolves — anchored on the doc the title came from (#1528) — then strips caption tags');
 });
 
 test('#950 wordsScopeLeaf — flags words(subtree)/words(children) on a childless HEADING; not a paragraph, words(self) or non-words', () => {
@@ -27390,7 +27442,10 @@ test('#812: the mobile quick-bar roll button uses an in-subset glyph', () => {
 });
 test('#821: picker labels resolve tokens (pickerTitle → displayText; lp rows → linkText)', () => {
   assert.match(_fix5, /function pickerTitle[\s\S]{0,400}displayText\(n\)/, 'pickerTitle must use displayText');
-  assert.ok(_fix5.includes('item.textContent = linkText(nd.title)'), 'lp candidate labels must resolve link tokens');
+  // #1528 widened the call, not the claim: a cross-doc row's bare ids belong to ITS document, so the
+  // row passes nd.docId (undefined on a same-doc row, which is the open document -- the old default).
+  assert.ok(_fix5.includes('item.textContent = linkText(nd.title, 0, undefined, nd.docId)'),
+    'lp candidate labels must resolve link tokens, anchored on the row\'s own document');
   // end-to-end: a node whose text carries a link token yields a legible picker label
   const n = c.mkNode('Budget [[#zzz9|vendor]] of 20000');
   assert.equal(c.pickerTitle(n), 'Budget vendor of 20000');

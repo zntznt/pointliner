@@ -2980,3 +2980,80 @@ test('#1526 a query base names its rows the way the points read', { skip: skip()
   assert.doesNotMatch(said, /🖩|\[\[math:/, 'never a glyph placeholder and never a token');
   await pg.close();
 });
+
+// 54. #1528 — a caption built from a FOREIGN title resolved that title's own bare `[[#id]]`s
+// against the OPEN document, found nothing, and printed the bare node id: "Ecological rationality
+// argued in qyhvfq73". #1402's own reported example, surviving in its cross-doc twin.
+//
+// Driven, and this one has no unit alternative: the resolution branch reads the module-level
+// nodeMap/workspaceIndex, which the vm harness cannot rebind — the linkText unit test says so at
+// its own head. Everything below therefore runs against a real two-document workspace.
+test('#1528 a foreign title resolves its own links in its own document', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const mk = (t) => { const n = mkNode(t); n.type = 'ul'; return n; };
+    const attach = (arr) => { root.children = arr; arr.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); }); buildIndex(root, null); markDirty(); render(); };
+    const here = mk('Gigerenzer 1996');
+    attach([here]);
+    root.docId = 'DOCA';
+    // Document B: a title holding a BARE link to another point in B (the broken case), and one
+    // holding a QUALIFIED link back to A (the case that was always right — the negative).
+    const bOther   = mk('Bounded rationality');
+    const bLinker  = mk('Ecological rationality argued in [[#' + bOther.id + ']]');
+    const bBackToA = mk('Mentions [[DOCA#' + here.id + ']] over in A');
+    const otherRoot = { id: 'r2', text: '', children: [bOther, bLinker, bBackToA] };
+    const wi = buildWorkspaceIndex([
+      { docId: 'DOCA', name: 'A.opml', root: root },
+      { docId: 'DOCB', name: 'B.opml', root: otherRoot },
+    ]);
+    workspaceIndex = wi; workspaceDir = { name: 'ws' };   // truthy: unlocks the cross-doc picker rows
+    const fTitle = wi.titles.get('DOCB').get(bLinker.id);
+
+    const x1 = mk('X: [[DOCB#' + bLinker.id + ']]');
+    const x2 = mk('Y: [[DOCB#' + bBackToA.id + ']]');
+    const z  = mk('Z: [[#' + here.id + ']]');            // a same-doc reference, the untouched default
+    attach([here, x1, x2, z]);
+    const rows = [...document.querySelectorAll('.node-content')].map(e => e.innerText.replace(/\s+/g, ' ').trim());
+
+    // the CF-4 cross-doc backlink rows, through the real row renderer
+    const host = document.getElementById('bl-list');
+    renderBlRows(host, document.getElementById('bl-panel-hd'), here.id,
+      { sources: [], unlinked: [],
+        cross: [{ docId: 'DOCB', docName: 'B.opml', nodeId: bLinker.id, title: fTitle, snippet: '' }],
+        crossUnlinked: [] }, {});
+    // the `[[` picker's other-doc rows, through the real menu renderer
+    lpState = { nodeId: here.id, content: null, triggerOffset: 0, query: 'eco', activeIdx: 0,
+                matches: [{ id: bLinker.id, docId: 'DOCB', docName: 'B.opml', title: fTitle }],
+                create: null, createNote: null };
+    renderLinkMenu();
+
+    return {
+      bOtherId: bOther.id, indexTitle: fTitle,
+      crossPill:   rows.find(t => t.startsWith('X: ')),
+      qualified:   rows.find(t => t.startsWith('Y: ')),
+      sameDoc:     rows.find(t => t.startsWith('Z: ')),
+      blCrossRow:  [...host.querySelectorAll('.bl-item.bl-cross')].map(e => e.textContent.trim())[0],
+      pickerRow:   [...document.querySelectorAll('.lp-item')].map(e => e.textContent.trim())[0],
+    };
+  });
+
+  assert.match(r.indexTitle, /\[\[#/, "precondition: the index keeps the foreign title's link token raw (#1526)");
+  const id = new RegExp(r.bOtherId);
+
+  assert.equal(r.crossPill, 'X: Ecological rationality argued in Bounded rationality',
+    'the cross-doc caption must resolve the foreign title in ITS document');
+  assert.equal(r.blCrossRow, 'Ecological rationality argued in Bounded rationality · B',
+    'and so must the cross-doc backlink row');
+  assert.match(r.pickerRow, /^Ecological rationality argued in Bounded rationality\b/,
+    "and the `[[` picker's other-doc row, which had nd.docId in scope on the next line");
+  for (const [k, v] of Object.entries(r)) {
+    if (k === 'bOtherId' || k === 'indexTitle') continue;
+    assert.doesNotMatch(String(v), id, `a bare node id reached the reader in ${k}: ${JSON.stringify(v)}`);
+  }
+
+  // the two forms that were always correct and must stay that way
+  assert.equal(r.qualified, 'Y: Mentions Gigerenzer 1996 over in A',
+    'a QUALIFIED token names its own document, so it still resolves back into the open one');
+  assert.equal(r.sameDoc, 'Z: Gigerenzer 1996', 'and a same-doc reference is the untouched default');
+  await pg.close();
+});
