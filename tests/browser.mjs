@@ -3407,3 +3407,96 @@ test('#1503 a partial total says so, and a correct one is left alone', { skip: s
   assert.equal(r.deep.mark, '1 not counted');
   await pg.close();
 });
+
+// 60. #1536 -- `fallbackCopy` borrowed focus and never gave it back, so every copy taken on the
+// clipboard API's FAILURE path ended with the caret on <body>: in a contenteditable outliner that is
+// the caret gone, arrows dead, the next keystroke nowhere. Driven, and driven with the rejection
+// FORCED: locally `navigator.clipboard.writeText` resolves, the fallback never runs, and the defect
+// is invisible -- which is exactly how it reached CI as a one-row failure in check 37 and nothing
+// else. Forcing the rejection is the only way a check can see the path it is about.
+test('#1536 a copy that falls back to execCommand gives the caret back', { skip: skip() }, async () => {
+  const CARET = 6;
+  const setup = async (mode) => {
+    const pg = await fresh();
+    await pg.evaluate((m) => {
+      // the three environments the fallback exists for: a denied or insecure write, no API at all,
+      // and the ordinary success that must stay ordinary
+      if (m === 'reject') navigator.clipboard.writeText = () => new Promise((_, rej) => setTimeout(() => rej(new Error('Document is not focused')), 5));
+      if (m === 'absent') { try { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); } catch (_) {} }
+      const mk = t => { const n = mkNode(t); n.type = 'ul'; return n; };
+      root.children = [mk('Damage to the orc'), mk('Second point')];
+      root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0];
+      c.focus(); activeContentId = c.dataset.id;
+      // put the caret in the MIDDLE, so a restore that only refocuses is distinguishable from one
+      // that puts the insertion point back where it was
+      const sel = window.getSelection(), r = document.createRange();
+      r.setStart(c.firstChild, 6); r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
+    }, mode);
+    await pg.waitForTimeout(320);
+    return pg;
+  };
+  const land = (pg) => pg.evaluate(async () => {
+    const idle = () => new Promise(r => setTimeout(r, 100));
+    for (let n = 0; n < 20 && document.activeElement.tagName === 'BODY'; n++) await idle();
+    await idle(); await idle();                        // settle: catch a LATE drop back to <body>
+    const ae = document.activeElement;
+    return {
+      tag: ae.tagName,
+      cls: String(ae.className || ''),
+      // the APP's logical offset, not the DOM one: a raw startOffset is relative to whichever
+      // boundary node the selection happens to sit on, so two paths that put the caret in the same
+      // place can report 0 and 17. getCaretOffset is the model the app itself edits against.
+      offset: ae.classList?.contains('node-content') ? getCaretOffset(ae) : null,
+      said: (document.getElementById('flash-hint')?.textContent || '').trim(),
+    };
+  });
+
+  // ── route A: the keyboard door, where the caret never left the point
+  for (const mode of ['reject', 'absent', 'resolve']) {
+    const pg = await setup(mode);
+    await pg.keyboard.press('Control+Shift+L');
+    const r = await land(pg);
+    await pg.close();
+    assert.notEqual(r.tag, 'BODY', `${mode}: a copy must not end with focus on <body>`);
+    assert.match(r.cls, /node-content/, `${mode}: focus goes back to the point, not somewhere else on the page`);
+    assert.equal(r.offset, CARET,
+      `${mode}: and the caret goes back WHERE it was -- refocusing alone collapses to the start of the point`);
+    assert.match(r.said, /Link copied/, `${mode}: and the copy still reports success (P4)`);
+  }
+
+  // ── route B: the point-actions row, which is the case CI actually caught
+  const viaMenu = async (mode) => {
+    const pg = await setup(mode);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+    const found = await pg.evaluate(() => {
+      const el = [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')]
+        .find(e => (e.innerText || '').split('\n')[0].trim() === 'Copy link');
+      if (!el) return false; el.focus(); return document.activeElement === el;
+    });
+    await pg.keyboard.press('Enter');
+    const r = await land(pg);
+    await pg.close();
+    return { found, ...r };
+  };
+  const control = await viaMenu('resolve');
+  assert.equal(control.found, true, 'precondition: the Copy link row exists and takes focus');
+  assert.match(control.cls, /node-content/, 'precondition: the working path lands back in the point');
+  for (const mode of ['reject', 'absent']) {
+    const r = await viaMenu(mode);
+    assert.equal(r.found, true, `${mode}: precondition -- the Copy link row exists and takes focus`);
+    assert.notEqual(r.tag, 'BODY',
+      `${mode}: the row that CI caught -- a menu copy must not leave the keyboard on <body>`);
+    assert.match(r.cls, /node-content/, `${mode}: and focus is back in the point, as on the working path`);
+    assert.match(r.said, /Link copied/, `${mode}: and the copy still reports success`);
+  }
+  // The caret is pinned on the ASYNC rejection only, which is the case CI caught: with no clipboard
+  // API at all the fallback runs SYNCHRONOUSLY, inside the row's own handler and before the menu has
+  // handed the caret back, so it borrows from the row rather than from the point. Focus still lands
+  // in the point (asserted above) and that is the whole claim there; demanding an identical offset
+  // would be pinning an ordering, not a behaviour.
+  const async_ = await viaMenu('reject');
+  assert.deepEqual({ offset: async_.offset }, { offset: control.offset },
+    'a rejected clipboard write must leave the caret exactly where the successful one does');
+});

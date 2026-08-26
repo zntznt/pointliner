@@ -16980,6 +16980,37 @@ test('#1502 the one writer rolls a repeating point forward, and leaves everythin
   assert.equal(c.commitTodoDone(null, false), false, 'no node, no crash');
 });
 
+// #1536: `fallbackCopy` has to borrow focus (a textarea must be focused to be selected) and used to
+// hand it to <body>, because removing the focused element leaves it there. In a contenteditable
+// outliner that is the caret gone. It runs on exactly the paths where the clipboard API said no, so
+// the person least likely to have a working clipboard also lost their place. Driven in
+// tests/browser.mjs (check 60) with the rejection forced -- locally the write resolves and the
+// fallback never runs, which is how this reached CI as a one-row failure and nothing else.
+test('#1536 the clipboard fallback returns the focus and the caret it borrowed', () => {
+  const fn = fnBody(_src, 'fallbackCopy');
+  assert.match(fn, /const prev = document\.activeElement/, 'it remembers who had focus before it takes it');
+  assert.match(fn, /getCaretOffset\(prev\)/,
+    'and WHERE their caret was, as the app’s logical offset -- a DOM Range does not survive the ' +
+    'refold that blurring the point triggers');
+  assert.match(fn, /setCaretByOffset\(prev, caret\)/, 'and puts it back, not just the focus');
+  // both exits restore, and the throw is the one that matters: this function IS the failure path
+  assert.match(fn, /\} catch \(_\) \{ giveItBack\(\); \}/,
+    'a copy that threw still borrowed the focus, so it still owes it back');
+  // and it restores BEFORE it announces, with the toast still on the success path only: a throw
+  // must not claim "Link copied", which is the one thing the original catch got right
+  const success = between(fn, 'document.body.removeChild(ta);', '} catch');
+  assert.match(success, /giveItBack\(\);[\s\S]*if \(after\) after\(\)/,
+    'the focus comes back, then the copy reports success');
+
+  // the census: every door that copies goes through this one fallback, so fixing it fixes them all
+  const DOORS = { copyNodeLink: 'Copy link / the keyboard shortcut',
+                  copyTextToClipboard: 'copy this text (footnotes, share text)' };
+  for (const [door, what] of Object.entries(DOORS)) {
+    assert.match(fnBody(_src, door), /fallbackCopy\(/,
+      `${what} (${door}) must fall back through the shared helper, or it keeps the old defect`);
+  }
+});
+
 test('formatDueDate — state classification', () => {
   const today = c.dueDateToday();
   assert.equal(c.formatDueDate(today).state,     'today');

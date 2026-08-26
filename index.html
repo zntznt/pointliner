@@ -10635,15 +10635,38 @@ function maybeShowTouchHint() {
 function ptsLabel(n) { return n === 1 ? '1 point' : `${n} points`; }
 function countPoints(node) { let c = 1; for (const ch of node.children || []) c += countPoints(ch); return c; }
 
+// #1536: BORROWED FOCUS IS RETURNED (P3). A textarea has to be focused to be selected, and removing
+// the focused element drops focus to <body> -- which in a contenteditable outliner means the caret is
+// gone, arrows do nothing and the next keystroke lands nowhere. This runs on exactly the paths where
+// the clipboard API said no (an insecure context, a document that has lost focus, a denied
+// permission), so the person least likely to have a working clipboard also lost their place. Measured
+// in a real browser: with the write resolving, focus is back in the point 50ms after Copy link; with
+// it rejecting, focus is on <body> and stays there. Restored on the failure path too, because that is
+// the path this whole function IS.
 function fallbackCopy(text, after) {
+  const prev = document.activeElement;
+  // The caret is recorded as the app's own LOGICAL offset, not a DOM Range: borrowing focus blurs the
+  // point, which refolds it and replaces the text node a Range would be anchored to (measured:
+  // `isConnected` is false by the time the textarea is gone, and `addRange` then throws "the given
+  // range isn't in document"). An offset survives the refold, which is why #814 uses one too.
+  const isPoint = !!prev && prev.classList?.contains('node-content');
+  const caret = isPoint ? getCaretOffset(prev) : null;
+  const giveItBack = () => {
+    if (!prev || prev === document.body || typeof prev.focus !== 'function' || !prev.isConnected) return;
+    prev.focus();
+    // and the caret WHERE it was: refocusing a contenteditable alone collapses to its start,
+    // which moves the insertion point a copy was never supposed to touch.
+    if (caret != null) { try { setCaretByOffset(prev, caret); } catch (_) {} }
+  };
   try {
     const ta = document.createElement('textarea');
     ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    if (after) after();
-  } catch (_) {}
+    giveItBack();
+    if (after) after();   // still only on success: a throw must not claim "Link copied"
+  } catch (_) { giveItBack(); }
 }
 function zoomOut() {
   if (!focusedId) return;
