@@ -277,6 +277,7 @@ export function loadCores() {
     'parseTodo','formatTodo','collapseDoubledKeyword','collapseTaskKeywordCollision','cyclePriority',
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','sortChildrenByProp','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
+    'commitTodoDone','rollForwardRepeat','reopenTaskText',   // #1502: the one writer for a done-flip, and the roll it drives
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix','toggleTaskLine',
     'taskShortcutAt','taskShortcutSay',   // #1471: what Ctrl/Cmd+Shift+X does, and what it says about it
     'cloneArtifactSidecars','mergeArtifactSidecars',

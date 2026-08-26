@@ -16912,8 +16912,69 @@ test('rollForwardRepeat — wiring (#462)', () => {
   assert.ok(/flashHint\(/.test(fn), 'visible + announced (flashHint reaches #a11y-live), never a silent flip');
   // it is actually called at the two done-transition chokepoints
   assert.ok(/rollForwardRepeat\(node, wasDone\)/.test(fnBody(_src, 'toggleTaskInNode')), 'wired into the checkbox path');
+  // #1502: this comment said "the two chokepoints" while asserting ONE, and that gap was the bug.
+  // The roll lived in exitEdit and toggleTaskInNode only, so every completion made outside an edit
+  // session ended the recurrence for good. There is now one writer, and the census names its doors.
+  assert.match(fnBody(_src, 'commitTodoDone'), /rollForwardRepeat\(node, wasDone\)/,
+    'the shared writer is where the roll now lives');
+  const DOORS = { exitEdit: 'typing #DONE / the state-cycle chord',
+                  applyTodoCycleToNodes: 'the bulk cycle chord over a selection',
+                  showTodoPicker: 'the state-badge picker',
+                  applyBlockCmd: 'the row-cursor state command' };
+  for (const [fn, what] of Object.entries(DOORS)) {
+    assert.match(fnBody(_src, fn), /commitTodoDone\(/,
+      `${what} (${fn}) must route its done-flip through the one writer, or it ends the recurrence silently`);
+  }
+  // and none of them may re-derive `checked` themselves afterwards, which is how a door drifts back out
+  const stray = nonEmpty(Object.keys(DOORS), 'done-flip doors')
+    .filter(fn => /\.checked = todoDoneFromText\(/.test(fnBody(_src, fn)));
+  assert.deepEqual(host(stray), [],
+    'a door that sets .checked itself has stepped around the writer and lost the roll-forward');
   // repeat is a reserved key everywhere the other reserved keys are guarded
   assert.ok(/k === REPEAT_KEY/.test(_src), 'repeat is hidden from the generic Properties editor + prop-vars');
+});
+
+test('#1502 the one writer rolls a repeating point forward, and leaves everything else alone', () => {
+  const today = c.dueDateToday();
+  const mk = (text, props) => {
+    const n = c.mkNode(text); n.type = 'todo'; n.props = props.map(([key, val]) => ({ key, val }));
+    n.checked = c.todoDoneFromText(n.text); return n;
+  };
+  const dueOf = n => (n.props || []).find(p => p.key.toLowerCase() === 'due')?.val ?? null;
+  const flip = n => { const w = n.checked; n.text = c.setTodoState(n.text, 'DONE'); return c.commitTodoDone(n, w); };
+
+  // the reported case: a repeating point rolls forward and RE-OPENS
+  const rep = mk('#TODO Water plants', [['due', c.formatEpochDays(today)], ['repeat', 'every 3 days']]);
+  assert.equal(flip(rep), true, 'the writer reports that it rescheduled');
+  assert.equal(dueOf(rep), c.formatEpochDays(today + 3), 'the schedule advanced by the cadence');
+  assert.equal(rep.checked, false, 'and the point is open again, not done');
+
+  // every case that must simply complete, with no roll
+  const plain = mk('#TODO Buy milk', [['due', c.formatEpochDays(today)]]);
+  assert.equal(flip(plain), false, 'a to-do with no repeat just completes');
+  assert.equal(plain.checked, true);
+  assert.equal(dueOf(plain), c.formatEpochDays(today), 'and its date is untouched');
+
+  const noDate = mk('#TODO Stretch', [['repeat', 'every 3 days']]);
+  assert.equal(flip(noDate), false, 'a repeat with no date has nothing to advance');
+  assert.equal(noDate.checked, true);
+
+  const badPhrase = mk('#TODO Odd', [['due', c.formatEpochDays(today)], ['repeat', 'every blue moon']]);
+  assert.equal(flip(badPhrase), false, 'an unrecognised phrase completes normally rather than erroring');
+  assert.equal(badPhrase.checked, true);
+
+  const already = mk('#DONE Water plants', [['due', c.formatEpochDays(today)], ['repeat', 'every 3 days']]);
+  assert.equal(flip(already), false, 'a point already done does not roll a second time');
+  assert.equal(dueOf(already), c.formatEpochDays(today));
+
+  // a flip to a non-done state is not a completion
+  const toNext = mk('#TODO Water plants', [['due', c.formatEpochDays(today)], ['repeat', 'every 3 days']]);
+  const w = toNext.checked; toNext.text = c.setTodoState(toNext.text, 'NEXT');
+  assert.equal(c.commitTodoDone(toNext, w), false, 'NEXT is not done, so nothing rolls');
+  assert.equal(dueOf(toNext), c.formatEpochDays(today));
+  assert.equal(toNext.checked, false);
+
+  assert.equal(c.commitTodoDone(null, false), false, 'no node, no crash');
 });
 
 test('formatDueDate — state classification', () => {

@@ -3267,3 +3267,69 @@ test('#1501 a colon-less generate keyword survives whole, and the repair does no
     `and the export carries values, not tokens, got ${JSON.stringify(fixed.md)}`);
   await pg.close();
 });
+
+// 58. #1502 — a repeating point completed OUTSIDE an edit session lost its recurrence for good.
+// rollForwardRepeat was wired into exitEdit and toggleTaskInNode only, so the state-badge picker,
+// the bulk cycle chord and the row-cursor state command each flipped the point to done and left its
+// schedule where it was, with no cue. The split was display-mode vs edit-mode, which is not a
+// distinction a user can see: Ctrl+Shift+S meant "reschedule" while editing and "end this forever"
+// from the row cursor. Driven through the real doors, because the model-level roll is unit-tested
+// and what this proves is that each DOOR reaches it.
+test('#1502 every door that completes a repeating point rolls it forward', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const out = {};
+    const seed = () => {
+      const n = mkNode('#WAITING Water plants'); n.type = 'todo';
+      const filler = mkNode('Filler'); filler.type = 'ul';
+      root.children = [n, filler];
+      root.children.forEach(x => { nodeMap.set(x.id, x); parentMap.set(x.id, root); });
+      buildIndex(root, null);
+      setDateProp(n, 'due', formatEpochDays(dueDateToday()));
+      setProp(n, 'repeat', 'every 3 days');
+      n.checked = todoDoneFromText(n.text);
+      markDirty(); render();
+      return n;
+    };
+    const snap = n => ({
+      due: (n.props || []).find(p => p.key.toLowerCase() === 'due')?.val ?? null,
+      checked: n.checked, text: n.text,
+    });
+    out.today = formatEpochDays(dueDateToday());
+    out.next = formatEpochDays(dueDateToday() + 3);
+    out.before = snap(seed());
+
+    // DOOR A — the state-badge picker's own apply path
+    let n = seed();
+    showTodoPicker(n.id, document.querySelector('.node-content'));
+    const doneRow = [...document.querySelectorAll('#bpop .tp-chip')]
+      .find(e => (e.innerText || e.textContent || '').trim() === 'DONE');
+    out.pickerOfferedDone = !!doneRow;
+    // the chip is wired on mousedown+preventDefault, the caret invariant -- a plain .click() never
+    // reaches its handler, which is exactly the kind of miss a source pin cannot catch.
+    if (doneRow) doneRow.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    out.A_picker = snap(nodeById(n.id));
+
+    // DOOR B — the bulk cycle over a selection
+    n = seed();
+    applyTodoCycleToNodes([n], t => setTodoState(t, 'DONE'));
+    out.B_bulkCycle = snap(n);
+
+    // DOOR C — the row-cursor state command
+    n = seed();
+    applyBlockCmd('state:DONE', n.id, n, document.querySelector('.node-content'), {});
+    out.C_rowCursor = snap(nodeById(n.id));
+    return out;
+  });
+
+  assert.equal(r.before.due, r.today, 'precondition: it is due today and not yet done');
+  assert.equal(r.before.checked, false);
+  assert.equal(r.pickerOfferedDone, true, 'precondition: the picker really offers DONE');
+
+  for (const door of ['A_picker', 'B_bulkCycle', 'C_rowCursor']) {
+    assert.equal(r[door].due, r.next, `${door}: the schedule must advance by the cadence, not stay put`);
+    assert.equal(r[door].checked, false, `${door}: and the point must re-open, not stay done`);
+    assert.doesNotMatch(r[door].text, /#DONE/, `${door}: the done marker must be cleared from the text`);
+  }
+  await pg.close();
+});

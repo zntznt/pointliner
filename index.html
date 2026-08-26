@@ -11250,6 +11250,25 @@ function flashHiddenIfDone(node, wasDone) {
 // The start→due span is preserved (both shift by the same delta). VISIBLE + ANNOUNCED
 // (P1/P4): never a silent render-time flip. Returns true if it rescheduled. Called at the
 // done-transition chokepoints AFTER node.checked flips true.
+// #1502: the ONE writer for a to-do's done-state after its text has changed. The roll-forward
+// (#462) lived only in exitEdit and toggleTaskInNode, so every completion made OUTSIDE an edit
+// session -- the state-badge picker, the bulk cycle chord, the row-cursor state command -- flipped
+// the point to done and left its schedule where it was, permanently ending the recurrence with no
+// cue at all. The line was display-mode vs edit-mode, which is not a distinction a user can see or
+// predict: Ctrl+Shift+S meant "reschedule" while editing and "end this forever" from the row cursor.
+// Routing every door through one function is the point; a fourth door that forgets to call
+// rollForwardRepeat is the bug coming back, and there is now only one thing to call.
+// Returns true when the point was rescheduled, so a caller can skip a "now hidden" cue: a
+// rescheduled task is not hidden, it is open again.
+function commitTodoDone(node, wasDone) {
+  if (!node) return false;
+  node.checked = todoDoneFromText(node.text);
+  if (node.checked && rollForwardRepeat(node, wasDone)) {
+    node.checked = todoDoneFromText(node.text);   // re-derive: rollForwardRepeat re-opened it
+    return true;
+  }
+  return false;
+}
 function rollForwardRepeat(node, wasDone) {
   if (wasDone || !node || !node.checked) return false;      // only on a fresh not-done → done flip
   const phrase = repeatOf(node);
@@ -20389,7 +20408,6 @@ function exitEdit(content, node) {
   // Derive checked from the text (keyword DONE / all task markers checked) so
   // strikethrough + hide-done stay in sync — text is the source of truth
   const wasDone = todoDoneFromText(prevText);
-  node.checked = todoDoneFromText(node.text);
   // UXP-143: unify the "Done, now hidden" cue across ALL commit paths (typing #DONE, the
   // keyboard state-cycle chord, etc.) at the ONE chokepoint every edit passes through, rather
   // than bolting it onto the transient cycle keystroke (which would over-notify while still
@@ -20397,7 +20415,7 @@ function exitEdit(content, node) {
   // next render, so say so once (P4). node.type is a derived hint, so gate on todo-ness by text.
   // recurring task completed by typing #DONE / the state-cycle chord: roll forward + re-open (#462).
   // Do this BEFORE the hidden-cue (a rescheduled task isn't hidden) and re-derive checked.
-  if (node.checked && rollForwardRepeat(node, wasDone)) node.checked = todoDoneFromText(node.text);
+  commitTodoDone(node, wasDone);   // #1502: one writer, shared with every non-edit door
   if (node.checked) flashHiddenIfDone(node, wasDone);
   if (!_suppressPruneOnFlush) pruneArtifacts(node); // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
@@ -21777,7 +21795,10 @@ function applyTodoCycleToNodes(nodes, mutator) {
   let changed = 0;
   for (const n of nodes) {
     const next = mutator(n.text);
-    if (next !== n.text) { n.text = next; n.checked = todoDoneFromText(next); changed++; }
+    if (next !== n.text) {
+      const wasDone = todoDoneFromText(n.text);   // #1502: read BEFORE the text moves
+      n.text = next; commitTodoDone(n, wasDone); changed++;
+    }
   }
   return changed;
 }
@@ -22986,8 +23007,8 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
     for (const t of applyList) {
       const wasDone = t.checked;
       t.type = deriveTypeFromText(t.text) || (t.type === 'todo' ? 'ul' : t.type);
-      t.checked = todoDoneFromText(t.text);
-      if (!wasDone && t.checked && !isVisible(t)) hiddenCount++;
+      commitTodoDone(t, wasDone);   // #1502: a repeating point rolls forward here too
+      if (!wasDone && t.checked && !isVisible(t)) hiddenCount++;   // a rescheduled one is open, so never counted
     }
     // #1411: where the row SITS, read before the render that may remove it (see bpopRestoreFocus).
     const rowIdx = [...document.querySelectorAll('.node-content[data-id]')]
@@ -33254,7 +33275,7 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
     if (oldPrefix) node.text = node.text.slice(oldPrefix.length);
     node.text = setTodoState(node.text, kw);
     node.type = deriveTypeFromText(node.text) || 'ul';
-    node.checked = todoDoneFromText(node.text);
+    commitTodoDone(node, wasDone);   // #1502: the row cursor must mean what edit mode means
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
     finishBlockCmd();
@@ -33270,7 +33291,11 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
     if (!isTaskFirst(t) && !parseTodo(t).keyword) t = '- [ ] ' + t;
     node.text = t;
     node.type = 'todo';
-    node.checked = todoDoneFromText(t);
+    // #1502: through the one writer as well. Converting a point INTO a to-do can never be a
+    // done-flip (the marker it adds is unchecked), so nothing rolls -- but keeping every
+    // `checked` re-derive in this function on one path is what lets the census say "no door
+    // sets checked itself", which is the assertion that catches the next door drifting out.
+    commitTodoDone(node, node.checked);
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
     const addedTodo = Math.max(0, node.text.length - before.length);   // #1463: caret past the marker

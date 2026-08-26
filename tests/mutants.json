@@ -1098,6 +1098,51 @@
       "find": "    + (REPEAT_KEYWORD_RE.test(ck) ? `${ck}: {a|b}` : GENERATE_FORM_HINT[ck]) + '}.';",
       "replace": "    + `${ck}: a | b | c` + '}.';",
       "kills": "every keyword has a form hint, and every hint is a form that really parses"
+    },
+    {
+      "id": "repeat-roll-lost-outside-edit",
+      "suite": "browser",
+      "why": "the original defect: the roll lived only in edit-mode paths, so a picker/chord completion ended a recurrence permanently and silently",
+      "file": "index.html",
+      "find": "  if (node.checked && rollForwardRepeat(node, wasDone)) {",
+      "replace": "  if (false && rollForwardRepeat(node, wasDone)) {",
+      "kills": "every door that completes a repeating point rolls it forward"
+    },
+    {
+      "id": "picker-door-bypasses-the-writer",
+      "suite": "unit",
+      "why": "the state-badge picker is the door the report was filed against; a door that re-derives checked itself has stepped around the roll",
+      "file": "index.html",
+      "find": "      commitTodoDone(t, wasDone);   // #1502: a repeating point rolls forward here too",
+      "replace": "      t.checked = todoDoneFromText(t.text);",
+      "kills": "rollForwardRepeat — wiring"
+    },
+    {
+      "id": "bulk-cycle-door-bypasses-the-writer",
+      "suite": "unit",
+      "why": "the bulk chord completes many points at once, so it destroys many recurrences at once",
+      "file": "index.html",
+      "find": "      n.text = next; commitTodoDone(n, wasDone); changed++;",
+      "replace": "      n.text = next; n.checked = todoDoneFromText(next); changed++;",
+      "kills": "rollForwardRepeat — wiring"
+    },
+    {
+      "id": "row-cursor-door-bypasses-the-writer",
+      "suite": "unit",
+      "why": "Ctrl+Shift+S must not mean reschedule while editing and end-the-recurrence from the row cursor",
+      "file": "index.html",
+      "find": "    commitTodoDone(node, wasDone);   // #1502: the row cursor must mean what edit mode means",
+      "replace": "    node.checked = todoDoneFromText(node.text);",
+      "kills": "rollForwardRepeat — wiring"
+    },
+    {
+      "id": "writer-rolls-a-point-already-done",
+      "suite": "unit",
+      "why": "without the fresh-flip guard a point re-committed while done rolls again, walking its schedule forward on every touch",
+      "file": "index.html",
+      "find": "  node.checked = todoDoneFromText(node.text);\n  if (node.checked && rollForwardRepeat(node, wasDone)) {",
+      "replace": "  node.checked = todoDoneFromText(node.text);\n  if (node.checked && rollForwardRepeat(node, false)) {",
+      "kills": "the one writer rolls a repeating point forward, and leaves everything else alone"
     }
   ]
 }
