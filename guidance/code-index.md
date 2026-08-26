@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2097 declarations in 154 sections across 17 domains.**
+**2102 declarations in 154 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1116,6 +1116,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `attachContentEvents`
 - `attachSwipeIndent` — Swipe-to-indent for touch (single point). Bound on the row content; active only in
 - `isQuotedLiteral` — The ONE quote-literal test the three lockstep functions share (#521/#522). A body is a
+- `GENERATE_FORM_HINT` — #1501: the generate keywords whose form commits on a COLON -- {shuffle: a | b}, {3x: template},
+- `COLON_COMMIT_KEYWORDS`
+- `REPEAT_KEYWORD_RE`
+- `colonlessGenerateKeyword`
+- `colonlessGenerateAttempt`
 - `classifyBraceBody`
 - `templateAttempt` — #916: a GLUE TEMPLATE body — nested balanced {…} groups optionally glued to bare literal
 - `templateParts`

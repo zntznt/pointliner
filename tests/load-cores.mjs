@@ -290,6 +290,7 @@ export function loadCores() {
     'searchTokenAt','searchCompletions','oracleCompletions','meterTokenAt','meterCompletions',
     'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','capturePayloadOf','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
+    'colonlessGenerateKeyword','colonlessGenerateAttempt',   // #1501: a generate keyword one colon short of its form
     'classifyBraceBody','braceAttemptReason','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteBraceBodyIn','renderVarPill','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'nameSetSignature','pendingBraceMessage',   // #1357: the retry-promotion gate + its report
     'affordanceDirtyIds',                       // #1281: which rows a commit can change the doors on

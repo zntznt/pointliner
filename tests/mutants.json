@@ -1062,6 +1062,42 @@
       "find": "    + '. Built-in units cover length, mass, volume and time; define your own with /units (File then Custom units),'",
       "replace": "    + '.'.slice(0, 1) + ''",
       "kills": "each marker reaches its own reason"
+    },
+    {
+      "id": "colonless-keyword-stays-prose",
+      "suite": "browser",
+      "why": "the original defect: classified as prose, the walk descends and promotes the inner brace, leaving half a pill and visible braces with no cue",
+      "file": "index.html",
+      "find": "  if (colonlessGenerateAttempt(body)) return 'invalid';",
+      "replace": "  if (false) return 'invalid';",
+      "kills": "a colon-less generate keyword survives whole"
+    },
+    {
+      "id": "colonless-gate-is-the-space-not-the-brace",
+      "suite": "unit",
+      "why": "committing on the space is the obvious fix and the wrong one: it reclassifies eleven measured lines of ordinary prose as errors",
+      "file": "index.html",
+      "find": "  return rest.includes('{') ? w : null;     // only a nested brace can be shredded",
+      "replace": "  return w;",
+      "kills": "prose that merely STARTS with a generate keyword is left alone"
+    },
+    {
+      "id": "colonless-swallows-the-colon-form",
+      "suite": "unit",
+      "why": "without the colon guard a spaced `{shuffle : a|b}` is condemned as an attempt though it is the valid form",
+      "file": "index.html",
+      "find": "  if (rest.startsWith(':')) return null;    // `{shuffle : a|b}` is the colon form, merely spaced",
+      "replace": "  if (false) return null;",
+      "kills": "prose that merely STARTS with a generate keyword is left alone"
+    },
+    {
+      "id": "colonless-cue-teaches-a-generic-form",
+      "suite": "unit",
+      "why": "an oracle takes a band and a roll takes a query; a generic 'a | b | c' sends the reader one wrong step further",
+      "file": "index.html",
+      "find": "    + (REPEAT_KEYWORD_RE.test(ck) ? `${ck}: {a|b}` : GENERATE_FORM_HINT[ck]) + '}.';",
+      "replace": "    + `${ck}: a | b | c` + '}.';",
+      "kills": "every keyword has a form hint, and every hint is a form that really parses"
     }
   ]
 }
