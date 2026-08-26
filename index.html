@@ -27970,8 +27970,16 @@ function renderGrammarPill(key, g) {
   // the title attribute outright, and the roll's badFilter already interpolated user query text, so
   // the hole was latent rather than new. escQ's own comment invites this: "a correct attribute
   // escape is never wrong here." Identity for every cta that carries no quote, so nothing else moves.
-  return `<span class="gr-roll${stale ? ' gr-stale' : ''}${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${escQ(cta)}` : escQ(cta)}"`
-    + ` aria-label="Grammar${name ? ' ' + escQ(name) : ''}: ${escQ(shownResult)}. ${escQ(cta)}">`
+  // #1499: an oracle says so. Every other generator keeps its identity in the label -- "Deck
+  // (cycle)", "Markov chain", "Sequence Flow", "Estimate", "Contest" -- while an oracle read
+  // "Grammar: Yes", identical to a hand-typed pick, so nothing on any surface said the pill had
+  // ever been one, or at what odds. oracleBandLive verifies the stored band against the odds the
+  // record still carries, so an oracle whose odds were edited afterwards goes back to reading as
+  // the plain grammar it now is, rather than naming a band it no longer rolls.
+  const oracleBand = oracleBandLive(g);
+  const kindLabel = oracleBand ? `Oracle (${escQ(oracleBand)})` : `Grammar${name ? ' ' + escQ(name) : ''}`;
+  return `<span class="gr-roll${stale ? ' gr-stale' : ''}${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${escQ(cta)}` : (oracleBand ? `Oracle (${escQ(oracleBand)}). ${escQ(cta)}` : escQ(cta))}"`
+    + ` aria-label="${kindLabel}: ${escQ(shownResult)}. ${escQ(cta)}">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
     + `<span class="gr-result${valence}${emptyMark ? ' gr-empty' : ''}">${escHtml(shownResult)}</span>`
@@ -28106,6 +28114,55 @@ const ORACLE_SWING_BANDS = ORACLE_BANDS.map(b => {
 const ORACLE_CHIPS = ORACLE_BANDS.map(b => ({ label: b.label, insert: el => { el.value = b.body; } }));
 const ORACLE_SWING_CHIPS = ORACLE_SWING_BANDS.map(b => ({ label: b.label, insert: el => { el.value = b.body; } }));
 
+// #1499: the {oracle: ARG} that produces a given odds BODY, or null. EXACT match only, and every
+// non-table answer is PROVED by regenerating it, so a hand-edited body returns null rather than a
+// plausible-but-wrong band. It exists for the DIALOG door, whose field is odds rather than a band:
+// a chip sets a band's body and we can name it, while a body the user then tuned by hand is not a
+// band any more and must record nothing.
+// The map really is invertible -- measured over all 212 arguments oracleParts accepts (5 bands x
+// plain/swing, 0..100 x plain/swing): every one inverts, and no two produce the same body. That is
+// also why this is NOT used to rebuild the shorthand from odds alone: it cannot tell an authored
+// `{oracle: likely}` from an authored `{Yes 3 | No 1}`, and rewriting the second into the first is
+// the same silent rewrite the round-trip bug was reported for, pointed the other way.
+function oracleBandOf(body) {
+  const t = String(body || '').trim();
+  if (!t) return null;
+  for (const b of ORACLE_BANDS) if (b.body === t) return b.label.toLowerCase();
+  for (const b of ORACLE_SWING_BANDS) if (b.body === t) return b.label.toLowerCase() + ' + swing';
+  const plain = /^Yes (\d+) \| No (\d+)$/.exec(t);
+  if (plain && +plain[1] + +plain[2] === 100) {
+    const n = +plain[1];
+    return oracleParts(`oracle: ${n}`)?.body === t ? String(n) : null;
+  }
+  // Recover the band weight from the swing arms (W = plain + 2*twist, w = W/4) and prove it by
+  // regenerating. BOTH sides are tried, because oracleSwingSide floors twist and plain at 1: at
+  // weight 0 that side reads 1|1|1 and no longer encodes its weight, so `{oracle: 0 + swing}` is
+  // only recoverable from its No arms (and 100 only from its Yes arms). Measured: deriving from
+  // the Yes side alone loses exactly one of the 212 arguments.
+  const sw = /^Yes, and (\d+) \| Yes (\d+) \| Yes, but \d+ \| No, but (\d+) \| No (\d+) \| No, and \d+$/.exec(t);
+  if (sw) {
+    const fromYes = Math.round((+sw[2] + 2 * +sw[1]) / 4);
+    const fromNo = 100 - Math.round((+sw[4] + 2 * +sw[3]) / 4);
+    for (const n of new Set([fromYes, fromNo])) {
+      if (n >= 0 && n <= 100 && oracleParts(`oracle: ${n} + swing`)?.body === t) return String(n) + ' + swing';
+    }
+  }
+  return null;
+}
+
+// #1499: the band a stored oracle record STILL answers to, or null. `rec.oracle` is the argument the
+// author used; it stays true only while the odds are what that argument produces, so it is verified
+// on every read instead of trusted. Edit the odds in Edit grammar and the pill goes back to reading
+// as plain odds -- a label that quietly lies about what the pill now rolls is worse than no label.
+function oracleBandLive(rec) {
+  const arg = rec && typeof rec.oracle === 'string' ? rec.oracle.trim() : '';
+  if (!arg) return null;
+  const p = oracleParts('oracle: ' + arg);
+  if (!p) return null;
+  const m = /^[a-z_][\w]*\s*:\s*(.+)$/i.exec(String(rec.def || '').trim());
+  return m && m[1].trim() === p.body ? arg : null;
+}
+
 // oracleParts(body) — sniff the oracle's typed twin: {oracle: likely} / {oracle: likely + swing}
 // (#543). A reserved `oracle` keyword (like query:/roll:/markov:), then a band NAME matched
 // case-insensitively against ORACLE_BANDS — the names are the whole value of the door (nobody
@@ -28154,7 +28211,15 @@ function openOracleDialog({ onResult }) {
     validate: v => splitTopLevel(v.body, '|').length >= 2 && !!build(v.body),
     onSubmit: v => {
       const roll = build(v.body);
-      if (roll) { roll.anon = true; onResult(roll); }   // UXP-145: valence is now a render-time content-sniff (isYesNoOracle), no stored flag
+      if (roll) {
+        roll.anon = true;   // UXP-145: valence is a render-time content-sniff (isYesNoOracle), no stored flag
+        // #1499: the second door records the band too, or the two doors make different pills. This
+        // field is DERIVED, because the dialog's field is odds: a chip's body names its band exactly,
+        // and a body the user then tuned by hand names none, which is the honest answer for it.
+        const band = oracleBandOf(v.body);
+        if (band) roll.oracle = band;
+        onResult(roll);
+      }
     },
   });
 }
@@ -28557,12 +28622,22 @@ function promoteBraceBodyIn(node, body) {
     if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
   }
   // {oracle: likely} → EXACTLY the anonymous Yes/No grammar the oracle dialog builds (#543):
-  // same record, so the pill tints via isYesNoOracle and unfolds to its true {Yes N | No M}
-  // source — the typed form is a constructor (the band name is the value), not a stored syntax.
+  // same record, so the pill tints via isYesNoOracle.
+  // #1499: and the BAND rides the record. The sentence that used to end this comment said the typed
+  // form is "a constructor (the band name is the value), not a stored syntax" -- a real decision,
+  // but it left `{oracle: likely}` unfolding to `{Yes 3 | No 1}` with nothing anywhere saying the
+  // pill had ever been an oracle. Every other generator round-trips its own words. The odds alone
+  // cannot recover it: they ARE a legal hand-typed source, so rebuilding `{oracle: …}` from them
+  // would rewrite an authored `{Yes 3 | No 1}` instead -- the same silent rewrite, reversed. The
+  // band is the one thing only the author knows, so the author's word is what gets stored.
   const orp = oracleParts(body);
   if (orp) {
     const roll = makeGrammarRoll(`origin: ${orp.body}`, 'origin');
-    if (roll) { roll.anon = true; (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`; }
+    if (roll) {
+      roll.anon = true;
+      roll.oracle = orp.label.toLowerCase() + (orp.swing ? ' + swing' : '');   // rides _grammar with the rest of the record
+      (node.grammar ||= []).push(roll); return `[[grammar:${roll.key}]]`;
+    }
   }
   // text modifier: {beast.cap} / {var.s} → an anonymous grammar wrapped `origin:
   // {ref.mod}`, so unfold/refold/prune/export all reuse the grammar machinery (the
@@ -29002,6 +29077,11 @@ function artifactToShorthand(type, rec) {
     const m = def.match(/^([a-z_][\w]*)\s*:\s*(.+)$/i);
     if (!m || !rec.origin || m[1].toLowerCase() !== rec.origin.toLowerCase()) return null;
     const rhs = m[2].trim();
+    // #1499: an oracle unfolds to the words it was authored with, like every other generator.
+    // oracleBandLive re-derives the odds from the stored band and compares, so a record whose odds
+    // were edited afterwards falls through to them instead of carrying a band that is no longer true.
+    const band = oracleBandLive(rec);
+    if (band) return `{oracle: ${band}}`;
     // RHS already a single brace expr ({color}) → that *is* the source; else wrap.
     return (rhs[0] === '{' && matchBrace(rhs, 0) === rhs.length - 1) ? rhs : `{${rhs}}`;
   }

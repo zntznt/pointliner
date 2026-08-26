@@ -1073,8 +1073,14 @@ test('#1361: the pill wires the conditional arm, and a roll keeps its own', () =
     'a roll with an unreadable filter still wins, so its specific reason is not lost');
   assert.match(body, /emptyMark \? .Nothing matched yet/, 'and a plain empty ROLL keeps its own copy');
   // #1361: the cta reaches two ATTRIBUTES and now carries a quoted condition, so it must be escaped.
-  assert.match(body, /title="\$\{name \? `\{\$\{escQ\(name\)\}\}\. \$\{escQ\(cta\)\}` : escQ\(cta\)\}"/, 'title escapes the cta');
-  assert.match(body, /aria-label="Grammar[^"]*\$\{escQ\(cta\)\}/, 'aria-label escapes it too');
+  // #1499 added a third title branch (the oracle band), so this checks EVERY branch instead of one
+  // literal expression — a pin that names one shape goes quiet the moment a branch is added beside it.
+  const titleExpr = between(body, 'title="', 'aria-label=');
+  assert.ok(!/\$\{cta\}/.test(titleExpr), 'no title branch interpolates the raw cta');
+  assert.equal((titleExpr.match(/escQ\(cta\)/g) || []).length, 3,
+    'all three title branches escape it: a named rule, an oracle band, and a plain roll');
+  assert.match(body, /aria-label="\$\{kindLabel\}: \$\{escQ\(shownResult\)\}\. \$\{escQ\(cta\)\}/,
+    'aria-label escapes it too');
 });
 
 test('resolveBrace — an unresolvable condition fails visibly (P4), never silently', () => {
@@ -2226,6 +2232,80 @@ test('oracleParts — out-of-bounds numeric odds return null (stays literal)', (
 test('oracleParts — numeric and band-name forms coexist', () => {
   assert.equal(c.oracleParts('oracle: likely').body, 'Yes 3 | No 1');   // band name still works
   assert.equal(c.oracleParts('oracle: 25').body, 'Yes 25 | No 75');     // numeric still works
+});
+
+// ── #1499: the oracle keeps its own words ────────────────────────────────────────────────────
+// `{oracle: likely}` promoted to an anonymous `Yes 3 | No 1` grammar and the word `oracle` was gone
+// — the pill unfolded to odds, its label read "Grammar: Yes" like any hand-typed pick, and nothing
+// on any surface said it had ever been an oracle. Every other generator round-trips its own words
+// ({cycle:}, {shuffle 2:}, {markov:}, {seq Flow:}, {5 to 10}, {2d6 vs 3d6}). The band now rides the
+// record, from BOTH doors, and is verified against the odds on every read.
+test('#1499 oracleBandOf inverts every body an oracle can produce, and names nothing else', () => {
+  // The exhaustive pass, because it is what decided the design: if a body could NOT be inverted the
+  // dialog door could not record a band at all. All 212 arguments oracleParts accepts, and each
+  // recovered argument must regenerate the identical body.
+  const args = [];
+  for (const b of ['certain', 'likely', 'even', 'unlikely', 'impossible']) for (const sw of ['', ' + swing']) args.push(b + sw);
+  for (let n = 0; n <= 100; n++) for (const sw of ['', ' + swing']) args.push(String(n) + sw);
+  const missed = nonEmpty(args, 'oracle arguments').filter(a => {
+    const p = c.oracleParts('oracle: ' + a);
+    const got = c.oracleBandOf(p.body);
+    const back = got == null ? null : c.oracleParts('oracle: ' + got);
+    return !back || back.body !== p.body;
+  });
+  assert.deepEqual(host(missed), [], 'every oracle body must name the argument that produces it');
+  assert.equal(args.length, 212, 'and the sweep really covered the whole space');
+  // it names the BAND, not merely something: the five bands read back as their own words
+  assert.equal(c.oracleBandOf('Yes 3 | No 1'), 'likely');
+  assert.equal(c.oracleBandOf('Yes 1 | No 19'), 'impossible');
+  assert.equal(c.oracleBandOf('Yes 70 | No 30'), '70');
+  assert.equal(c.oracleBandOf(c.oracleParts('oracle: certain + swing').body), 'certain + swing');
+  // #1499: weight 0 floors a side's arms to 1|1|1, so that side no longer encodes its weight — the
+  // ONLY argument recoverable from the other side alone. Deriving from the Yes arms only loses it.
+  assert.equal(c.oracleBandOf(c.oracleParts('oracle: 0 + swing').body), '0 + swing');
+  // and a body that is not an oracle's names nothing, rather than the nearest band
+  assert.equal(c.oracleBandOf('Yes 3 | No 2'), null, 'a hand-tuned body is not a band any more');
+  assert.equal(c.oracleBandOf('Yes 4 | No 1'), null);
+  assert.equal(c.oracleBandOf('Yes 70 | No 31'), null, 'a percentage body must still sum to 100');
+  assert.equal(c.oracleBandOf('a | b'), null);
+  assert.equal(c.oracleBandOf(''), null);
+  assert.equal(c.oracleBandOf(null), null);
+});
+
+test('#1499 a stored band is VERIFIED against the odds, never trusted', () => {
+  const rec = (def, oracle) => ({ def, oracle, origin: 'origin', anon: true });
+  assert.equal(c.oracleBandLive(rec('origin: Yes 3 | No 1', 'likely')), 'likely');
+  assert.equal(c.oracleBandLive(rec('origin: Yes 70 | No 30', '70')), '70');
+  assert.equal(c.oracleBandLive(rec(c.oracleParts('oracle: even + swing').body ? 'origin: ' + c.oracleParts('oracle: even + swing').body : '', 'even + swing')),
+    'even + swing');
+  // the whole point of verifying: Edit grammar can change the odds under a stored band
+  assert.equal(c.oracleBandLive(rec('origin: Yes 5 | No 2', 'likely')), null,
+    'the odds were edited, so the band no longer describes what the pill rolls');
+  assert.equal(c.oracleBandLive(rec('origin: Yes 3 | No 1', 'certain')), null, 'a band that never matched is not honoured either');
+  // and the ordinary absences
+  assert.equal(c.oracleBandLive(rec('origin: Yes 3 | No 1', undefined)), null, 'a hand-typed alternation carries no band');
+  assert.equal(c.oracleBandLive(rec('origin: Yes 3 | No 1', 'maybe')), null, 'an unparseable band is not honoured');
+  assert.equal(c.oracleBandLive(rec('origin: Yes 3 | No 1', '')), null);
+  assert.equal(c.oracleBandLive(null), null);
+});
+
+test('#1499 both doors record the band, and the unfold and the label read it back', () => {
+  // Door 1, the typed shorthand: the author's own word is stored, because the odds cannot recover
+  // it — they are a legal hand-typed source too, so rebuilding {oracle: …} from them would rewrite
+  // an authored {Yes 3 | No 1} instead. That is the whole reason this is a stored field.
+  const promote = fnBody(_src, 'promoteBraceBodyIn');   // promoteBraceBody is the thin wrapper
+  assert.match(promote, /roll\.oracle = orp\.label\.toLowerCase\(\) \+ \(orp\.swing \? ' \+ swing' : ''\);/,
+    'the typed door stores the band it was given');
+  // Door 2, the dialog: its field is ODDS, so the band is derived from the body a chip set — and a
+  // body the user then tuned by hand derives nothing, which is the honest record for it.
+  const dlg = fnBody(_src, 'openOracleDialog');
+  assert.match(dlg, /const band = oracleBandOf\(v\.body\);\s*\n\s*if \(band\) roll\.oracle = band;/,
+    'the dialog door records the band its chip set');
+  // and the two readers
+  assert.match(fnBody(_src, 'artifactToShorthand'), /const band = oracleBandLive\(rec\);\s*\n\s*if \(band\) return `\{oracle: \$\{band\}\}`;/,
+    'the unfold gives the author their own words back');
+  assert.match(fnBody(_src, 'renderGrammarPill'), /const oracleBand = oracleBandLive\(g\);/,
+    'and the pill says it is an oracle, at what odds');
 });
 
 test('promoteBraceBody — {oracle: band} builds the dialog-identical anonymous grammar (#543)', () => {

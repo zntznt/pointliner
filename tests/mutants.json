@@ -936,6 +936,69 @@
       "find": "    item.textContent = linkText(nd.title, 0, undefined, nd.docId);",
       "replace": "    item.textContent = linkText(nd.title);",
       "kills": "picker labels resolve tokens"
+    },
+    {
+      "id": "oracle-typed-door-drops-band",
+      "suite": "browser",
+      "why": "the original defect: the typed form was treated as a constructor, so the word `oracle` did not survive promotion",
+      "file": "index.html",
+      "find": "      roll.oracle = orp.label.toLowerCase() + (orp.swing ? ' + swing' : '');   // rides _grammar with the rest of the record",
+      "replace": "      // (band not stored)",
+      "kills": "an oracle keeps its own words through the authoring cycle"
+    },
+    {
+      "id": "oracle-dialog-door-drops-band",
+      "suite": "unit",
+      "why": "a fix applied to one door and not the other makes two pills that are supposed to be identical differ, which is how this family keeps regressing",
+      "file": "index.html",
+      "find": "        const band = oracleBandOf(v.body);\n        if (band) roll.oracle = band;",
+      "replace": "        const band = null;\n        if (band) roll.oracle = band;",
+      "kills": "both doors record the band"
+    },
+    {
+      "id": "oracle-unfold-ignores-band",
+      "suite": "browser",
+      "why": "a band stored and never read back is the whole bug with a field added",
+      "file": "index.html",
+      "find": "    const band = oracleBandLive(rec);\n    if (band) return `{oracle: ${band}}`;",
+      "replace": "    const band = null;\n    if (band) return `{oracle: ${band}}`;",
+      "kills": "an oracle keeps its own words through the authoring cycle"
+    },
+    {
+      "id": "oracle-band-trusted-unverified",
+      "suite": "unit",
+      "why": "trusting the stored band lets Edit grammar leave a label naming odds the pill no longer rolls -- a quiet lie is worse than no label",
+      "file": "index.html",
+      "find": "  const m = /^[a-z_][\\w]*\\s*:\\s*(.+)$/i.exec(String(rec.def || '').trim());\n  return m && m[1].trim() === p.body ? arg : null;",
+      "replace": "  return arg;",
+      "kills": "a stored band is VERIFIED against the odds"
+    },
+    {
+      "id": "oracle-swing-inverted-one-sided",
+      "suite": "unit",
+      "why": "weight 0 floors a side's arms to 1|1|1 so it stops encoding its weight; deriving from the Yes arms alone silently loses exactly one of the 212 arguments",
+      "file": "index.html",
+      "find": "    for (const n of new Set([fromYes, fromNo])) {",
+      "replace": "    for (const n of new Set([fromYes])) {",
+      "kills": "oracleBandOf inverts every body an oracle can produce"
+    },
+    {
+      "id": "oracle-band-of-guesses",
+      "suite": "unit",
+      "why": "returning the nearest band without regenerating it would name a hand-tuned body as a band it does not roll",
+      "file": "index.html",
+      "find": "      if (n >= 0 && n <= 100 && oracleParts(`oracle: ${n} + swing`)?.body === t) return String(n) + ' + swing';",
+      "replace": "      if (n >= 0 && n <= 100) return String(n) + ' + swing';",
+      "kills": "oracleBandOf inverts every body an oracle can produce"
+    },
+    {
+      "id": "oracle-pill-unnamed",
+      "suite": "browser",
+      "why": "the label read 'Grammar: Yes', identical to a hand-typed pick, so no surface said the pill was an oracle or at what odds",
+      "file": "index.html",
+      "find": "  const oracleBand = oracleBandLive(g);",
+      "replace": "  const oracleBand = null;",
+      "kills": "an oracle keeps its own words through the authoring cycle"
     }
   ]
 }
