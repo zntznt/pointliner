@@ -278,6 +278,7 @@ export function loadCores() {
     'cycleTodoState','cycleTodoPriority','todoSortKey','compareTodo','sortChildrenByProp','applyTodoCycleToNodes',   // LEAN FLOOR: bulk state/priority
     'setTodoState','setTodoPriority',
     'commitTodoDone','rollForwardRepeat','reopenTaskText',   // #1502: the one writer for a done-flip, and the roll it drives
+    'repeatOf','repeatIsDateless','repeatNeedsDate',   // #1504: is this repeat anchored to a date it can advance?
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix','toggleTaskLine',
     'taskShortcutAt','taskShortcutSay',   // #1471: what Ctrl/Cmd+Shift+X does, and what it says about it
     'cloneArtifactSidecars','mergeArtifactSidecars',

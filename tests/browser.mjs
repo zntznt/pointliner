@@ -3507,3 +3507,113 @@ test('#1536 a copy that falls back to execCommand gives the caret back', { skip:
   // What this route owns is the defect CI actually caught, asserted above: focus, never <body>.
 });
 
+// 61. #1504 — a repeat phrase with NO due and NO start date is inert: rollForwardRepeat has always
+// bailed on it, and every surface that could have said so stayed quiet. The chip read "Recurring",
+// the Schedule dialog promised "Advances when you complete it", and ticking the box completed the
+// point and ended the recurrence in silence. Driven because two of the three surfaces are chrome a
+// source pin cannot read (a chip's rendered class/title/aria, a live preview that depends on two
+// OTHER fields' current values), and the third is a cross-field listener that only exists at runtime.
+test('#1504 an unanchored repeat says so on the chip, in the dialog, and at completion', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const out = {};
+    const today = formatEpochDays(dueDateToday());
+    out.today = today;
+    const seed = (props) => {
+      const n = mkNode('#TODO Water plants'); n.type = 'todo';
+      const filler = mkNode('Filler'); filler.type = 'ul';
+      root.children = [n, filler];
+      root.children.forEach(x => { nodeMap.set(x.id, x); parentMap.set(x.id, root); });
+      buildIndex(root, null);
+      for (const [k, v] of props) (k === 'due' || k === 'start') ? setDateProp(n, k, v) : setProp(n, k, v);
+      n.checked = todoDoneFromText(n.text);
+      markDirty(); render();
+      return n;
+    };
+    const chipOf = () => {
+      const el = document.querySelector('.prop-chip.prop-repeat');
+      return el ? { cls: el.className, title: el.title, aria: el.getAttribute('aria-label') } : null;
+    };
+
+    // ── surface 1: the property chip, with its three neighbours as controls
+    out.chipDateless  = (seed([['repeat', 'every week']]), chipOf());
+    out.chipDue       = (seed([['repeat', 'every week'], ['due', today]]), chipOf());
+    out.chipStartOnly = (seed([['repeat', 'every week'], ['start', today]]), chipOf());
+    out.chipBadPhrase = (seed([['repeat', 'every blue moon']]), chipOf());
+
+    // ── surface 2: the real Schedule dialog, driven through its own fields
+    const dn = seed([['repeat', 'every week']]);
+    openDueDateDialog(dn.id);
+    const q = s => document.querySelector(`[aria-label="${s}"]`);
+    const preview = () => { const i = q('Repeat schedule'); return i ? i.parentElement.lastElementChild : null; };
+    const say = () => (preview()?.textContent || '').trim();
+    const type = (field, v) => { const i = q(field); i.value = v; i.dispatchEvent(new Event('input', { bubbles: true })); };
+    out.dlgOpened = !!q('Repeat schedule');
+    out.dlgPrefilledDue = q('Due date')?.value ?? null;   // the dialog prefills today when nothing is set
+    out.dlgWithDue = say();
+    type('Due date', '');                                  // clear it, which is how the reported state is reached
+    out.dlgCleared = say();
+    out.dlgClearedColor = preview()?.style.color ?? null;
+    type('Start date', today);                             // a START date is enough on its own
+    out.dlgStartOnly = say();
+    type('Start date', '');
+    out.dlgBack = say();                                   // and taking it away brings the warning back
+    closeIo();
+
+    // ── surface 3: completing it, where the recurrence actually ends
+    const flip = (n) => {
+      const el = document.getElementById('flash-hint'); if (el) el.textContent = '';
+      const w = n.checked; n.text = setTodoState(n.text, 'DONE');
+      const rolled = commitTodoDone(n, w);
+      return { rolled, checked: n.checked, said: (document.getElementById('flash-hint')?.textContent || '').trim() };
+    };
+    out.completeDateless = flip(seed([['repeat', 'every week']]));
+    out.completeDated    = flip(seed([['repeat', 'every week'], ['due', today]]));
+    out.completePlain    = flip(seed([['due', today]]));
+    return out;
+  });
+
+  // surface 1 — the chip
+  assert.ok(r.chipDateless, 'precondition: a repeat property renders a chip');
+  assert.match(r.chipDateless.cls, /prop-repeat-bad/, 'an inert repeat must not wear the healthy chrome');
+  assert.match(r.chipDateless.title, /no date to advance from/i, 'and it says why, in the tooltip');
+  assert.match(r.chipDateless.aria, /no date to advance from/i, 'and to assistive tech, not by colour alone (P3)');
+  // the controls: each of these advances, so none may be flagged
+  for (const k of ['chipDue', 'chipStartOnly']) {
+    assert.doesNotMatch(r[k].cls, /prop-repeat-bad/, `${k}: an anchored repeat advances, so flagging it is a false alarm`);
+    assert.match(r[k].title, /^Recurring\./, `${k}: it keeps the plain promise`);
+    assert.doesNotMatch(r[k].aria, /no date/, `${k}: and says nothing about dates`);
+  }
+  // the two failures are different failures and must not be told the same way (P1/P4)
+  assert.match(r.chipBadPhrase.cls, /prop-repeat-bad/, 'precondition: an unparseable phrase was already flagged');
+  assert.notEqual(r.chipBadPhrase.title, r.chipDateless.title,
+    '"we could not read this phrase" and "this phrase has nothing to advance from" need different remedies');
+  assert.notEqual(r.chipBadPhrase.aria, r.chipDateless.aria, 'including for a screen reader');
+
+  // surface 2 — the dialog, while both dates are still one keystroke away
+  assert.equal(r.dlgOpened, true, 'precondition: the Schedule dialog really opened');
+  assert.equal(r.dlgPrefilledDue, r.today, 'precondition: it prefills today, so the promise starts true');
+  assert.match(r.dlgWithDue, /Advances when you complete it/, 'with a due date it still promises the rollover');
+  assert.doesNotMatch(r.dlgCleared, /Advances when you complete it/,
+    'clearing the last date must retract the promise, not keep printing it');
+  assert.match(r.dlgCleared, /No date to advance from/, 'and say what is missing');
+  assert.match(r.dlgCleared, /every week/i, 'while still confirming what it understood, so the field is not just an error');
+  assert.notEqual(r.dlgClearedColor, '', 'the warning is styled as one');
+  assert.match(r.dlgStartOnly, /Advances when you complete it/,
+    'a start date alone is a real anchor, so the warning must clear on it');
+  assert.match(r.dlgBack, /No date to advance from/, 'and return when the anchor is taken away again');
+
+  // surface 3 — completion
+  assert.equal(r.completeDateless.rolled, false, 'precondition: it genuinely cannot advance');
+  assert.equal(r.completeDateless.checked, true, 'the completion itself still happens');
+  assert.match(r.completeDateless.said, /does not come back/,
+    'but the recurrence ending is announced, instead of returning false in silence');
+  assert.match(r.completeDateless.said, /due or start date/, 'and the remedy is named');
+  // the controls: neither of these has a dead recurrence, so neither may hear about one
+  assert.equal(r.completeDated.rolled, true, 'an anchored repeat still rolls forward');
+  assert.match(r.completeDated.said, /Rescheduled/, 'and says so, as it always did');
+  assert.doesNotMatch(r.completeDated.said, /does not come back/, 'never both messages');
+  assert.doesNotMatch(r.completePlain.said, /does not come back/,
+    'a one-off to-do has no recurrence to lose, so completing it must stay quiet about repeats');
+  await pg.close();
+});
