@@ -3206,3 +3206,64 @@ test('#1500 convert() names the failure it actually had, on the pill and in the 
   }
   await pg.close();
 });
+
+// 57. #1501 — `{3x {a|b}}` (the colon-less form) had its INNER brace promoted and its outer left
+// literal: `{3x [[grammar:key]]}`, rendered `{3x a}`, no cue. Driven because every part of the harm
+// is on the real commit path: the shred needs promoteInlineShorthand's descent, the false success
+// needs the first-pill nudge (which only fires on a genuine commit, not a direct promote call), and
+// the corruption only appears one step LATER, when the user adds the missing colon.
+test('#1501 a colon-less generate keyword survives whole, and the repair does not corrupt the point', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const type = async (text) => {
+    await pg.evaluate(() => {
+      const c = document.querySelector('.node-content[data-id]');
+      const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+      window.__live = []; const el = document.getElementById('a11y-live');
+      new MutationObserver(() => window.__live.push(el.textContent)).observe(el, { childList: true, characterData: true, subtree: true });
+    });
+    await pg.keyboard.type(text, { delay: 12 });
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(2200);   // past NUDGE_YIELD_MS, so a first-pill nudge would have landed
+  };
+  await type('M2 {3x {a|b}}');
+
+  const after = await pg.evaluate(() => ({
+    text: root.children[0].text,
+    rendered: document.querySelector('.node-content')?.innerText.replace(/\s+/g, ' ').trim(),
+    attempt: !!document.querySelector('.brace-attempt'),
+    said: window.__live.filter(Boolean),
+  }));
+  assert.equal(after.text, 'M2 {3x {a|b}}', 'the form must survive whole, not be taken apart around a promoted inner pill');
+  assert.doesNotMatch(after.text, /\[\[grammar:/, 'nothing inside it may be promoted');
+  assert.equal(after.rendered, 'M2 {3x {a|b}}', 'and it reads back as what was typed');
+  assert.equal(after.attempt, true, 'it carries the attempt cue, the way {rule x {a|b}} already does');
+  assert.ok(after.said.some(m => /needs a colon after 3x/.test(m)),
+    `the cue must say what is wrong, got ${JSON.stringify(after.said)}`);
+  for (const m of after.said) assert.doesNotMatch(m, /Nice, that is a live pill/,
+    'a form that failed must never be announced as a success (P4-1)');
+
+  // THE REPAIR: add the missing colon, the way a person would. This is where the old behaviour
+  // baked the raw token into the visible text and into the Markdown export.
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+    setCaretByOffset(c, editableText(c).indexOf('3x') + 2);
+  });
+  await pg.waitForTimeout(200);
+  await pg.keyboard.type(':', { delay: 20 });
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(900);
+
+  const fixed = await pg.evaluate(() => ({
+    text: root.children[0].text,
+    rendered: document.querySelector('.node-content')?.innerText.replace(/\s+/g, ' ').trim(),
+    md: toMarkdown(root).split('\n').filter(Boolean)[0],
+  }));
+  assert.match(fixed.text, /^M2 \[\[grammar:[a-z0-9]+\]\]$/, 'the repaired form promotes to ONE pill');
+  assert.match(fixed.rendered, /^M2 [ab] [ab] [ab]$/,
+    `the repeat must emit its template three times, got ${JSON.stringify(fixed.rendered)}`);
+  assert.doesNotMatch(fixed.rendered, /\[\[grammar:/, 'never the raw token on screen');
+  assert.match(fixed.md, /^- M2 [ab] [ab] [ab]$/,
+    `and the export carries values, not tokens, got ${JSON.stringify(fixed.md)}`);
+  await pg.close();
+});

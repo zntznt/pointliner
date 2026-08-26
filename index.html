@@ -19686,6 +19686,51 @@ function isQuotedLiteral(body) {
   const q = s[0];
   return (q === '"' || q === "'") && s.length >= 2 && s[s.length - 1] === q;
 }
+// #1501: the generate keywords whose form commits on a COLON -- {shuffle: a | b}, {3x: template},
+// {oracle: likely}. Written WITHOUT the colon and followed by a nested {…}, the body matched nothing,
+// classified as prose, and promoteInlineShorthand's descent (which prose braces deliberately keep, so
+// a {2d6} inside prose still comes alive) promoted the INNER brace while the outer stayed literal:
+// `{3x {a|b}}` became `{3x [[grammar:key]]}` and rendered `{3x a}`. Half a pill, visible braces, no
+// .brace-attempt cue -- and, because a pill really was promoted, the first-pill nudge announced
+// "Nice, that is a live pill" for a form that had failed (P4-1: a false success).
+//
+// The gate is the nested BRACE, not the space. The obvious rule -- commit on a space, the way
+// rule/seq/prop do -- cannot be used here: these are ordinary English words, and committing on a
+// space would reclassify `{once upon a time}`, `{deck the halls}`, `{stopping by woods on a snowy
+// evening}` and `{roll a d20 and add your bonus}` as errors. Measured, all eleven of them. A pipe
+// gate is no better: `{once | twice}`, `{deck A | deck B}` and `{count me in | count me out}` are
+// legitimate alternations that already promote correctly. Only a nested brace can be shredded, so
+// only a nested brace is the trigger, and prose keeps every form it has today.
+// keyword -> the form it actually takes. The cue names the real form, not a generic one: an oracle
+// takes a band, a roll takes a query, a meter takes value/max, and telling someone to write
+// `{oracle: a | b | c}` would send them one wrong step further. A test asserts every keyword here
+// has an entry AND that each entry's own body classifies as a real artifact, so the copy can never
+// teach a form the engine does not accept.
+const GENERATE_FORM_HINT = {
+  shuffle:  'shuffle: a | b | c',
+  cycle:    'cycle: a | b | c',
+  once:     'once: a | b | c',
+  stopping: 'stopping: a | b | c',
+  deck:     'shuffle: a | b | c',
+  oracle:   'oracle: likely',
+  roll:     'roll: #tag',
+  markov:   'markov: a→b, b→c',
+  query:    'query: is:todo',
+  count:    'count: is:todo',
+  meter:    'meter: hp/hpmax',
+};
+const COLON_COMMIT_KEYWORDS = Object.keys(GENERATE_FORM_HINT);
+const REPEAT_KEYWORD_RE = /^(?:\d+|\d+d\d+)x$/i;   // {3x: …} / {2d4x: …} — the repeat keyword is a count
+function colonlessGenerateKeyword(body) {
+  const m = /^\s*([A-Za-z]+|\d+x|\d+d\d+x)(\s+)([\s\S]*)$/.exec(String(body || ''));
+  if (!m) return null;
+  const w = m[1].toLowerCase();
+  if (!COLON_COMMIT_KEYWORDS.includes(w) && !REPEAT_KEYWORD_RE.test(w)) return null;
+  const rest = m[3];
+  if (rest.startsWith(':')) return null;    // `{shuffle : a|b}` is the colon form, merely spaced
+  return rest.includes('{') ? w : null;     // only a nested brace can be shredded
+}
+const colonlessGenerateAttempt = (body) => colonlessGenerateKeyword(body) !== null;
 function classifyBraceBody(body, rules, vars) {
   body = (body || '').trim();
   if (!body) return 'literal';
@@ -19848,6 +19893,14 @@ function classifyBraceBody(body, rules, vars) {
   // itself. Prose braces are unaffected: a bare-word chunk ({see {color} sample}) fails
   // templateAttempt's chunk gate, stays 'literal', and its inner braces still promote as before.
   if (templateAttempt(body)) return 'invalid';                          // an attempted template (#916)
+  // #1501: saying 'invalid' is the whole fix. It earns the .brace-attempt cue AND engages
+  // promoteInlineShorthand's anti-shred guard, so the form stays whole instead of being taken apart
+  // around a promoted inner pill. No new mechanism, the #916/UXP-253 one.
+  // Placed last for readability rather than for correctness: colonlessGenerateKeyword excludes any
+  // body carrying its colon, so no valid form can reach it wherever it sits. Measured -- a mutant
+  // that moves it above the parsers survives, so this position is not load-bearing and is not pinned
+  // as if it were.
+  if (colonlessGenerateAttempt(body)) return 'invalid';
   return diceish ? 'invalid' : 'literal'; // dice-looking but unparseable → attempted roll
 }
 
@@ -19942,6 +19995,13 @@ function braceAttemptReason(body, rules, vars) {
   };
   const nm = NEAR_MISS[body.toLowerCase()];
   if (nm) return nm;
+  // #1501: the same keywords one punctuation mark short. The NEAR_MISS map above only covers the
+  // BARE word ({oracle}); this is `{shuffle {a|b}}` — the keyword, an argument, and no colon. It
+  // used to say nothing at all, because the body classified as prose and the inner brace was
+  // promoted around it. Name the missing colon and show the form, the way the rule branch does.
+  const ck = colonlessGenerateKeyword(body);
+  if (ck) return `This needs a colon after ${ck}: try {`
+    + (REPEAT_KEYWORD_RE.test(ck) ? `${ck}: {a|b}` : GENERATE_FORM_HINT[ck]) + '}.';
   // UXP-254: a dice-shaped typo. Pattern-matched rather than keyed like the entries above, because
   // dice has no keyword — its shape IS the keyword. Names the fix, not just the miss, the same way
   // the modifier branch above does.

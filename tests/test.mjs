@@ -24257,6 +24257,75 @@ test('UXP-253 P4-1: shuffle: and markov: are keyword-commits like every other ke
   assert.ok(_src.includes("class=\"gr-src gr-bad\""), 'the invalid mark is the gr-bad span');
 });
 
+// ── #1501: a generate keyword one colon short, followed by a nested brace ────────────────────
+// `{3x {a|b}}` matched nothing, classified as prose, and promoteInlineShorthand's descent (which
+// prose braces deliberately keep, so a {2d6} inside prose still comes alive) promoted the INNER
+// brace and left the outer literal: node.text `{3x [[grammar:key]]}`, rendered `{3x a}`. Half a
+// pill, visible braces, no cue -- and, because a pill really was promoted, the first-pill nudge
+// announced "Nice, that is a live pill" for a form that had failed.
+test('#1501 a colon-less generate keyword with a nested brace is an attempt, not prose', () => {
+  const KEYWORDS = ['shuffle', 'cycle', 'once', 'stopping', 'deck', 'oracle', 'roll', 'markov', 'query', 'count', 'meter'];
+  const shredded = nonEmpty(KEYWORDS.concat(['3x', '2d4x']), 'colon-committing generate keywords');
+  for (const k of shredded) {
+    assert.equal(c.classifyBraceBody(`${k} {a|b}`, {}, {}), 'invalid',
+      `{${k} {a|b}} must be an attempt: prose lets the inner brace promote and shreds the form`);
+    assert.equal(c.colonlessGenerateKeyword(`${k} {a|b}`), k.toLowerCase());
+  }
+});
+
+// The gate is the nested BRACE, not the space, and this is the half that says why. The obvious fix
+// -- commit on a space, the way rule/seq/prop do -- cannot be used: these are ordinary English
+// words. Every line below is prose a person might reasonably write, and every one of them would
+// become an error under a space rule.
+test('#1501 prose that merely STARTS with a generate keyword is left alone', () => {
+  const PROSE = nonEmpty([
+    'once upon a time', 'deck the halls', 'roll a d20 and add your bonus', 'count the votes',
+    'query the witness', 'meter reading was high', 'shuffle the papers', 'cycle to work',
+    'stopping by woods on a snowy evening', '3x the fun', 'markov was a mathematician',
+  ], 'prose that opens with a generate keyword');
+  for (const p of PROSE) {
+    assert.equal(c.classifyBraceBody(p, {}, {}), 'literal', `{${p}} is prose and must stay prose`);
+    assert.equal(c.colonlessGenerateKeyword(p), null);
+  }
+  // and a pipe gate would be no better: these are legitimate alternations that already work
+  for (const alt of ['once | twice', 'deck A | deck B', 'count me in | count me out', 'roll a d20 | d12']) {
+    assert.equal(c.classifyBraceBody(alt, {}, {}), 'artifact', `{${alt}} is a real alternation`);
+    assert.equal(c.colonlessGenerateKeyword(alt), null);
+  }
+  // the colon form is untouched, spaced or not
+  assert.equal(c.colonlessGenerateKeyword('shuffle: a | b'), null);
+  assert.equal(c.colonlessGenerateKeyword('shuffle : {a|b}'), null, 'a spaced colon is still the colon form');
+  assert.equal(c.classifyBraceBody('shuffle: a | b | c', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('3x: {a|b}', {}, {}), 'artifact');
+  // a keyword with no argument at all is the BARE case, which NEAR_MISS already owned
+  assert.equal(c.colonlessGenerateKeyword('shuffle'), null);
+  assert.equal(c.colonlessGenerateKeyword(''), null);
+  assert.equal(c.colonlessGenerateKeyword(null), null);
+});
+
+// The cue must name the form the engine ACCEPTS. An oracle takes a band, a roll takes a query, a
+// meter takes value/max -- a generic "a | b | c" would send the reader one wrong step further.
+test('#1501 every keyword has a form hint, and every hint is a form that really parses', () => {
+  const map = between(_src, 'const GENERATE_FORM_HINT = {', '};');
+  const hints = nonEmpty([...map.matchAll(/^\s*([a-z]+):\s*'([^']+)'/gm)].map(m => [m[1], m[2]]),
+    'GENERATE_FORM_HINT entries');
+  const keys = hints.map(h => h[0]);
+  assert.deepEqual(host(keys.slice().sort()),
+    ['count', 'cycle', 'deck', 'markov', 'meter', 'once', 'oracle', 'query', 'roll', 'shuffle', 'stopping'],
+    'every colon-committing keyword needs its own hint, or the cue teaches a generic form that is wrong for it');
+  for (const [k, form] of hints) {
+    assert.equal(c.classifyBraceBody(form, {}, {}), 'artifact',
+      `the ${k} cue offers {${form}}, which the engine must actually accept`);
+  }
+  // and the message reaches the reader, naming the keyword and its own form
+  assert.equal(c.braceAttemptReason('oracle {a|b}', {}, {}),
+    'This needs a colon after oracle: try {oracle: likely}.');
+  assert.equal(c.braceAttemptReason('roll {a|b}', {}, {}),
+    'This needs a colon after roll: try {roll: #tag}.');
+  assert.equal(c.braceAttemptReason('3x {a|b}', {}, {}),
+    'This needs a colon after 3x: try {3x: {a|b}}.');
+});
+
 test('UXP-251 V-1: user-facing copy does not call the document an outline', () => {
   // ux-discipline §1 permits "outliner" (the app) and "the outline" (the navigable tree view), and
   // bans "outline" for the DOCUMENT. Audited over the strings a user actually sees; the code keeps
