@@ -3420,7 +3420,12 @@ test('#1536 a copy that falls back to execCommand gives the caret back', { skip:
     const pg = await fresh();
     await pg.evaluate((m) => {
       // the three environments the fallback exists for: a denied or insecure write, no API at all,
-      // and the ordinary success that must stay ordinary
+      // and the ordinary success that must stay ordinary. ALL THREE are stubbed, the success
+      // included -- the real API resolves on a developer machine and REJECTS in CI (headless, the
+      // document does not hold focus), so an unstubbed "control" is a control in one environment
+      // and a second copy of the reject case in the other. That is not a hypothetical: it is how
+      // this check first went red in CI while passing locally.
+      if (m === 'resolve') navigator.clipboard.writeText = () => Promise.resolve();
       if (m === 'reject') navigator.clipboard.writeText = () => new Promise((_, rej) => setTimeout(() => rej(new Error('Document is not focused')), 5));
       if (m === 'absent') { try { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); } catch (_) {} }
       const mk = t => { const n = mkNode(t); n.type = 'ul'; return n; };
@@ -3500,3 +3505,4 @@ test('#1536 a copy that falls back to execCommand gives the caret back', { skip:
   assert.deepEqual({ offset: async_.offset }, { offset: control.offset },
     'a rejected clipboard write must leave the caret exactly where the successful one does');
 });
+
