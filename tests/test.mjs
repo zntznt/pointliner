@@ -16912,7 +16912,10 @@ test('rollForwardRepeat — wiring (#462)', () => {
   assert.ok(/nextOccurrence\(desc, base\)/.test(fn), 'advances via nextOccurrence off the old date (fixed cadence)');
   assert.ok(/const delta = nextDue - base/.test(fn) && /startEp \+ delta/.test(fn), 'preserves the start→due span (both shift by the same delta)');
   assert.ok(/reopenTaskText\(node\)/.test(fn), 're-opens the task text so it recurs, not a done copy');
-  assert.ok(/flashHint\(/.test(fn), 'visible + announced (flashHint reaches #a11y-live), never a silent flip');
+  // #1504 scoped this: `flashHint(` anywhere in the body stopped distinguishing the branches once
+  // the dateless bail gained one of its own, so a mutant that deleted the RESCHEDULE announcement
+  // would still have found a flashHint here.
+  assert.ok(/flashHint\('⟳ Rescheduled to/.test(fn), 'visible + announced (flashHint reaches #a11y-live), never a silent flip');
   // it is actually called at the two done-transition chokepoints
   assert.ok(/rollForwardRepeat\(node, wasDone\)/.test(fnBody(_src, 'toggleTaskInNode')), 'wired into the checkbox path');
   // #1502: this comment said "the two chokepoints" while asserting ONE, and that gap was the bug.
@@ -17009,6 +17012,98 @@ test('#1536 the clipboard fallback returns the focus and the caret it borrowed',
     assert.match(fnBody(_src, door), /fallbackCopy\(/,
       `${what} (${door}) must fall back through the shared helper, or it keeps the old defect`);
   }
+});
+
+// ─── #1504: a repeat with nothing to advance from ────────────────────────────
+// rollForwardRepeat has ALWAYS known this case ("a repeat with no date can't advance") and always
+// returned false in silence. Three surfaces could have said so and none did: the Schedule dialog
+// promised "Advances when you complete it", the chip read "Recurring. Click to edit the schedule",
+// and ticking the box completed the point and ended the recurrence with no word anywhere.
+test('#1504 repeatIsDateless — either date anchors a repeat, neither leaves it inert', () => {
+  assert.equal(c.repeatIsDateless('', ''), true, 'no dates at all: nothing to advance from');
+  assert.equal(c.repeatIsDateless(null, undefined), true, 'a missing prop reads the same as blank');
+  assert.equal(c.repeatIsDateless('   ', '\t'), true, 'whitespace is not a date');
+  assert.equal(c.repeatIsDateless('someday', 'whenever'), true, 'unparseable text is not an anchor');
+  // the NEGATIVES are the half that keeps this honest: measured, a start-only repeat advances
+  // normally (rollForwardRepeat anchors on due, ELSE start), so flagging it would be a false alarm.
+  assert.equal(c.repeatIsDateless('', '2026-09-01'), false, 'a due date anchors it');
+  assert.equal(c.repeatIsDateless('2026-09-01', ''), false, 'so does a start date, on its own');
+  assert.equal(c.repeatIsDateless('2026-09-01', '2026-09-08'), false, 'and so does a range');
+  assert.equal(c.repeatIsDateless(' 2026-09-01 ', ''), false, 'padding does not hide a real date');
+  assert.equal(c.repeatIsDateless('today', ''), false, 'a relative form is still a date');
+});
+
+test('#1504 repeatNeedsDate — only a parseable, unanchored repeat asks for a date', () => {
+  const mk = (props) => ({ props: props.map(([key, val]) => ({ key, val })) });
+  assert.equal(c.repeatNeedsDate(mk([['repeat', 'every week']])), true, 'the reported case');
+  assert.equal(c.repeatNeedsDate(mk([['Repeat', ' every week ']])), true, 'the key match is case-insensitive');
+  assert.equal(c.repeatNeedsDate(mk([['repeat', 'every week'], ['due', 'not a date']])), true,
+    'a due prop that does not parse is not an anchor');
+  assert.equal(c.repeatNeedsDate(mk([['repeat', 'every week'], ['due', '2026-09-01']])), false,
+    'a due date anchors it, so there is nothing to warn about');
+  assert.equal(c.repeatNeedsDate(mk([['repeat', 'every week'], ['start', '2026-09-01']])), false,
+    'a start-only repeat advances (measured), so it must not be flagged');
+  assert.equal(c.repeatNeedsDate(mk([['repeat', 'every blue moon']])), false,
+    'an unparseable phrase has its own flag and its own words -- two cues would say two different things');
+  assert.equal(c.repeatNeedsDate(mk([['due', '2026-09-01']])), false, 'no repeat, nothing to warn about');
+  assert.equal(c.repeatNeedsDate(mk([])), false, 'a bare point is not a broken repeat');
+  assert.equal(c.repeatNeedsDate(null), false, 'no node, no crash');
+});
+
+test('#1504 all three surfaces route through the ONE dateless predicate, and each has its own words', () => {
+  // ONE predicate, or the chip and the dialog drift into disagreeing about what "no date" means.
+  assert.match(fnBody(_src, 'repeatNeedsDate'), /repeatIsDateless\(/,
+    'the node-level question is the value-level question, asked of two props');
+
+  // surface 1 — the property chip
+  const props = fnBody(_src, 'buildPropsArea');
+  assert.match(props, /const inert = ok && repeatNeedsDate\(node\)/,
+    'the chip asks the shared predicate, and only about a phrase that PARSES');
+  assert.match(props, /if \(!ok \|\| inert\) chip\.classList\.add\('prop-repeat-bad'\)/,
+    'an inert repeat wears the existing bad-flag chrome (#1389) rather than minting a second one');
+  const chipTitles = nonEmpty(
+    (between(props, "const inert = ok && repeatNeedsDate(node)", "// #1317").match(/'[^']*Click to [^']*'/g) || []),
+    'repeat chip titles');
+  assert.equal(new Set(chipTitles).size, chipTitles.length,
+    'the unrecognised phrase and the unanchored phrase are different failures and must not share a sentence');
+  assert.match(props, /no date to advance from\)/,
+    'and assistive tech hears the difference too, not just the tooltip');
+
+  // surface 2 — the Schedule dialog, warning while both date fields are still on screen
+  const dlg = fnBody(_src, 'openDueDateDialog');
+  assert.match(dlg, /repeatIsDateless\(startF\.inp\.value, dueF\.inp\.value\)/,
+    'the dialog asks about the LIVE field values, not the saved props -- nothing is saved yet');
+  assert.match(between(dlg, 'repeatIsDateless(startF.inp.value', 'preview.style.color = \'var(--muted)\''),
+    /No date to advance from/,
+    'and it replaces the promise instead of printing both');
+  // the warning depends on the other two fields, so it must re-run when they change
+  for (const f of nonEmpty(['startF', 'dueF'], 'date fields')) {
+    assert.ok(new RegExp(`${f}\\.inp\\.addEventListener\\('input', \\(\\) => repeatF\\.update\\(\\)\\)`).test(dlg),
+      `typing in ${f} must refresh the repeat warning, or it goes stale mid-dialog`);
+  }
+
+  // surface 3 — completion, where the recurrence actually ends
+  const roll = fnBody(_src, 'rollForwardRepeat');
+  assert.match(between(roll, 'if (base == null)', 'nextOccurrence('), /flashHint\(/,
+    'the bail branch says the recurrence is over, instead of returning false in silence');
+  assert.match(between(roll, 'if (base == null)', 'nextOccurrence('), /no date to advance from/,
+    'and it names the same failure the chip and the dialog name (P1)');
+
+  // CENSUS RATCHET. The family is "code that reads a point's repeat phrase", and it is exactly the
+  // three sites above. A fourth is a NEW surface that has not been asked whether the repeat it is
+  // about can actually advance -- which is the entire shape of this bug -- so it fails here until
+  // someone decides. Code lines only: #1502's own comment quotes a call it is describing.
+  const code = _src.split('\n').filter(l => !/^\s*\/\//.test(l));
+  const readers = nonEmpty(code.filter(l => /\brepeatOf\(/.test(l) && !/^function repeatOf\(/.test(l.trim())),
+    'repeatOf call sites');
+  assert.equal(readers.length, 2,
+    `repeatOf is read at 2 sites (repeatNeedsDate, rollForwardRepeat); found ${readers.length}. ` +
+    'A new reader is a new surface: does it know an unanchored repeat can never advance?');
+  const describers = nonEmpty(code.filter(l => /\bdescribeRepeat\(/.test(l) && !/^function describeRepeat\(/.test(l.trim())),
+    'describeRepeat call sites');
+  assert.equal(describers.length, 2,
+    `a repeat is described to a person at 2 places, both in the Schedule dialog preview; found ${describers.length}. ` +
+    'A third is somewhere new making the promise this issue was about.');
 });
 
 test('formatDueDate — state classification', () => {
@@ -32403,7 +32498,10 @@ test('#1389 no classList call can build a token containing whitespace', () => {
   // the specific site, pinned as two separate adds rather than one concatenation
   const area = between(_src, 'if (propK === REPEAT_KEY) {', 'formula-valued property');
   assert.ok(/chip\.classList\.add\('prop-repeat'\);/.test(area), 'the base class is added on its own');
-  assert.ok(/if \(!ok\) chip\.classList\.add\('prop-repeat-bad'\);/.test(area),
+  // #1504 widened the condition (a phrase that parses but has no date to advance from is flagged
+  // too). The CLAIM is unchanged and is what matters here: the flag is a second, separate add, so
+  // no token can ever carry a space -- the concatenation that threw cannot come back this way.
+  assert.ok(/if \(!ok \|\| inert\) chip\.classList\.add\('prop-repeat-bad'\);/.test(area),
     'and the bad flag is a SECOND add, so no token can contain a space');
   assert.ok(!/'prop-repeat' \+ \(ok/.test(area), 'the concatenation that threw is gone');
 });

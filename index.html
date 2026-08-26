@@ -11278,6 +11278,28 @@ function flashHiddenIfDone(node, wasDone) {
   }
 }
 
+// #1504: a repeat phrase with no date to anchor it is INERT. rollForwardRepeat has always known
+// ("a repeat with no date can't advance") and said nothing, and neither did anything else: the
+// Schedule dialog promised "Advances when you complete it", the chip read "Recurring", and ticking
+// the box completed the point and ended the recurrence in silence. Three surfaces, one false
+// promise, and the app knew at every one of them.
+// An UNPARSEABLE phrase returns false here on purpose: that case already has its own flag and its
+// own words (prop-repeat-bad, #1389), and two cues on one chip would say two different things.
+// A START date anchors a repeat just as a due date does, so a start-only repeat is not inert
+// (measured: it advances normally) -- this asks for either.
+// The three surfaces share ONE predicate, so the chip, the Schedule dialog and the completion
+// path cannot disagree about what "no date to advance from" means. The dialog asks it of two
+// live field values (nothing is saved yet); the chip asks it of a node.
+function repeatIsDateless(startVal, dueVal) {
+  const dated = (v) => parseDueDate(String(v ?? '').trim()) !== null;
+  return !dated(startVal) && !dated(dueVal);
+}
+function repeatNeedsDate(node) {
+  const phrase = repeatOf(node);
+  if (!phrase || !parseRepeat(phrase)) return false;
+  const pv = (k) => (node?.props || []).find(x => (x.key || '').trim().toLowerCase() === k)?.val;
+  return repeatIsDateless(pv('start'), pv('due'));
+}
 // Recurring tasks (#462): when a dated to-do carrying a `repeat` property flips to done,
 // roll its schedule forward to the next occurrence and re-open it, so the same point keeps
 // recurring rather than piling up copies. Anchored off the OLD due date (fixed cadence).
@@ -11314,7 +11336,13 @@ function rollForwardRepeat(node, wasDone) {
   const dueEp = dueVal ? parseDueDate(dueVal.val) : null;
   const startEp = startVal ? parseDueDate(startVal.val) : null;
   const base = dueEp != null ? dueEp : startEp;              // schedule anchors on due, else start
-  if (base == null) return false;                            // a repeat with no date can't advance
+  if (base == null) {
+    // #1504: it can't advance, and it used to say so nowhere. The completion itself is not silent
+    // (the box ticks, the text gains [x]); what was silent is the RECURRENCE quietly ending. Say it
+    // once, here, where the failure actually happens -- flashHint also reaches #a11y-live (P3/P4).
+    flashHint('Completed. This repeat has no date to advance from, so it does not come back. Add a due or start date to make it recur.');
+    return false;
+  }
   const nextDue = nextOccurrence(desc, base);
   if (nextDue == null) return false;
   const delta = nextDue - base;
@@ -14797,9 +14825,16 @@ function buildPropsArea(node) {
       // and the phrase is persisted, so a reload reproduced it. The comment above states the intent
       // exactly: a rejected phrase should be "visible not silent". It was neither: it was fatal.
       chip.classList.add('prop-repeat');
-      if (!ok) chip.classList.add('prop-repeat-bad');
-      chip.title = ok ? 'Recurring. Click to edit the schedule' : 'Unrecognized repeat phrase. Click to fix';
-      chip.setAttribute('aria-label', `repeats ${val}${ok ? '' : ' (unrecognized)'}. Click to edit the schedule`);
+      // #1504: a phrase that PARSES but has no date to anchor it is inert -- it can never advance,
+      // so "Recurring" was a promise the point could not keep. Reuse the existing bad-flag chrome
+      // (#1389) with its own words, so the two failures stay distinguishable.
+      const inert = ok && repeatNeedsDate(node);
+      if (!ok || inert) chip.classList.add('prop-repeat-bad');
+      chip.title = !ok ? 'Unrecognized repeat phrase. Click to fix'
+                 : inert ? 'This repeat has no date to advance from. Click to set a due or start date'
+                 : 'Recurring. Click to edit the schedule';
+      chip.setAttribute('aria-label',
+        `repeats ${val}${!ok ? ' (unrecognized)' : inert ? ' (no date to advance from)' : ''}. Click to edit the schedule`);
     }
     // #1317: a formula-valued property ("cost: 60 * 3.50") shows its computed RESULT like a math pill,
     // not the raw formula, so a line value both reads as a number and rolls up. Reserved keys are skipped.
@@ -15592,15 +15627,28 @@ function openDueDateDialog(nodeId, targets = null) {
       if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank for a one-off task'; return; }
       const desc = parseRepeat(v);
       if (!desc) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a repeat phrase. Try "every week", "every Monday" or "monthly on the 1st".'; return; }
+      // #1504: a repeat advances a DATE. With neither field filled there is nothing to advance
+      // from, so the recurrence would end silently at the first completion. Say it HERE, while
+      // both dates are still on screen and one keystroke away, instead of promising a rollover
+      // this schedule cannot deliver (P4).
+      if (repeatIsDateless(startF.inp.value, dueF.inp.value)) {
+        preview.style.color = 'var(--warn)';
+        preview.textContent = '⟳ ' + describeRepeat(desc) + '. No date to advance from: add a due or start date above, or it will not come back.';
+        return;
+      }
       preview.style.color = 'var(--muted)';
       preview.textContent = '⟳ ' + describeRepeat(desc) + '. Advances when you complete it.';
     }
     inp.addEventListener('input', updatePreview);
     updatePreview();
     f.append(lbl, inp, preview);
-    return { f, inp, valid: () => { const v = inp.value.trim(); return !v || parseRepeat(v) !== null; } };
+    return { f, inp, valid: () => { const v = inp.value.trim(); return !v || parseRepeat(v) !== null; }, update: updatePreview };
   })();
   wrap.append(repeatF.f);
+  // The warning depends on the OTHER two fields, so it has to re-run when they change -- typing a
+  // due date must clear it, and clearing one must bring it back.
+  startF.inp.addEventListener('input', () => repeatF.update());
+  dueF.inp.addEventListener('input', () => repeatF.update());
   ioCard.appendChild(wrap);
 
   // UXP-246 draft survival, now wired through the shell once the fields it writes into exist.

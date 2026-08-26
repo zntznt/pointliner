@@ -1215,6 +1215,69 @@
       "find": "  } catch (_) { giveItBack(); }",
       "replace": "  } catch (_) {}",
       "kills": "the clipboard fallback returns the focus and the caret it borrowed"
+    },
+    {
+      "id": "dateless-chip-not-flagged",
+      "suite": "browser",
+      "why": "the reported defect: a repeat with no date to advance from rendered the same healthy chip as one that works",
+      "file": "index.html",
+      "find": "      const inert = ok && repeatNeedsDate(node);",
+      "replace": "      const inert = false;",
+      "kills": "an unanchored repeat says so on the chip, in the dialog, and at completion"
+    },
+    {
+      "id": "dateless-chip-borrows-the-bad-phrase-words",
+      "suite": "unit",
+      "why": "two different failures told with one sentence sends the reader to the wrong remedy",
+      "file": "index.html",
+      "find": "                 : inert ? 'This repeat has no date to advance from. Click to set a due or start date'",
+      "replace": "                 : inert ? 'Unrecognized repeat phrase. Click to fix'",
+      "kills": "all three surfaces route through the ONE dateless predicate"
+    },
+    {
+      "id": "dialog-promise-not-retracted",
+      "suite": "browser",
+      "why": "the dialog went on promising 'Advances when you complete it' for a schedule that cannot advance",
+      "file": "index.html",
+      "find": "      if (repeatIsDateless(startF.inp.value, dueF.inp.value)) {",
+      "replace": "      if (false) {",
+      "kills": "an unanchored repeat says so on the chip, in the dialog, and at completion"
+    },
+    {
+      "id": "dialog-warning-goes-stale",
+      "suite": "unit",
+      "why": "the warning reads two OTHER fields, so without their listeners it is right only at open time",
+      "file": "index.html",
+      "find": "  dueF.inp.addEventListener('input', () => repeatF.update());",
+      "replace": "  ;",
+      "kills": "all three surfaces route through the ONE dateless predicate"
+    },
+    {
+      "id": "dateless-completion-silent",
+      "suite": "browser",
+      "why": "the original silence: completing the point ended the recurrence and said nothing",
+      "file": "index.html",
+      "find": "    flashHint('Completed. This repeat has no date to advance from, so it does not come back. Add a due or start date to make it recur.');",
+      "replace": "    ;",
+      "kills": "an unanchored repeat says so on the chip, in the dialog, and at completion"
+    },
+    {
+      "id": "dateless-check-hand-rolled-per-surface",
+      "suite": "unit",
+      "why": "a second copy of 'is this anchored?' is how the chip and the dialog drift into disagreeing",
+      "file": "index.html",
+      "find": "  return repeatIsDateless(pv('start'), pv('due'));",
+      "replace": "  return !pv('start') && !pv('due');",
+      "kills": "all three surfaces route through the ONE dateless predicate"
+    },
+    {
+      "id": "inert-repeat-keeps-the-healthy-chrome",
+      "suite": "unit",
+      "why": "the flag existed for the unparseable case only, which is why the inert case shipped unmarked",
+      "file": "index.html",
+      "find": "      if (!ok || inert) chip.classList.add('prop-repeat-bad');",
+      "replace": "      if (!ok) chip.classList.add('prop-repeat-bad');",
+      "kills": "all three surfaces route through the ONE dateless predicate"
     }
   ]
 }
