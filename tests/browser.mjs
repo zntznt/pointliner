@@ -2021,8 +2021,20 @@ test('#1464 every point-actions row leaves focus somewhere usable', { skip: skip
       if (!el) return false; el.focus(); return document.activeElement === el;
     }, i);
     if (!ok) { await pg.close(); continue; }
-    await pg.keyboard.press('Enter'); await pg.waitForTimeout(600);
-    const ae = await pg.evaluate(() => document.activeElement.tagName);
+    await pg.keyboard.press('Enter');
+    // Wait for focus to SETTLE rather than sampling once at a fixed deadline. The claim is "this row
+    // does not leave the keyboard on <body>", and a row that lands somewhere usable a little late
+    // still honours it -- but a fixed 600ms turns CI load into a verdict about the app. This check
+    // opens ~28 fresh pages and took 94s in CI against ~35s locally, and it failed there on a row
+    // that passes locally and is untouched by the change under test. Polling removes the deadline
+    // without softening the assertion: the final read is still "where did focus actually end up",
+    // taken after a settle pause, so a row that moves focus and then drops it is still caught.
+    const ae = await pg.evaluate(async () => {
+      const idle = () => new Promise(r => setTimeout(r, 100));
+      for (let n = 0; n < 25 && document.activeElement.tagName === 'BODY'; n++) await idle();
+      await idle(); await idle();                      // settle: catch a late drop back to <body>
+      return document.activeElement.tagName;
+    });
     if (ae === 'BODY') lost.push(labels[i] || `row ${i}`);
     await pg.close();
   }
