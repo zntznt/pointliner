@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2094 declarations in 154 sections across 17 domains.**
+**2097 declarations in 154 sections across 17 domains.**
 
 # Document model & caches
 
@@ -238,6 +238,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `normalizeUnits`
 - `UNIT_DIM_BASE` — The built-in base unit of each built-in dimension (the ratio-1 anchor), so unitsToText can
 - `unitsToText` — Reconstruct editable declaration text from a resolved table (the dialog's round-trip, the
+- `convertFailKind` — #1500: WHICH of convert()'s two failures happened. convertUnits collapses them into one null,
+- `convertUnitErrToken` — #1500: the sentinel replaceConvert leaves for an unknown unit. It keeps the `#ERR` prefix, so
 - `convertUnits` — Same-dimension multiplicative convert; null on unknown unit / dimension mismatch / non-number.
 - `splitArgsTopLevel` — Split on TOP-LEVEL commas only (commas inside nested parens stay). Pure helper for convert().
 - `replaceConvert` — Replace every convert(valueExpr, from, to) with its numeric result (innermost-first, so
@@ -543,7 +545,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `fnArities`
 - `fnArityProblem` — #1169: a KNOWN function called with the wrong number of values. evalMath's parser already detects
 - `arityPhrase` — #1169: name the function and a shape that works, in the #1159 house style ("name the fix, not
-- `mathReasonPhrase` — A human phrase for a mathErrorReason code, so the math dialog, the check dialog,
+- `unknownUnitPhrase` — A human phrase for a mathErrorReason code, so the math dialog, the check dialog,
+- `mathReasonPhrase`
 - `cellNum` — What a base cell reads as a number when NO column role is set (#1469) — one rule, two
 - `colIsNumeric` — Does EVERY non-empty cell in this column read as a number? The gate Sort gates its
 - `computeTable` — Apply TBLFM formulas to a table model, returning a new rows grid with every

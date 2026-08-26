@@ -3118,3 +3118,79 @@ test('#1499 an oracle keeps its own words through the authoring cycle, and a han
     'once the odds are edited the band stops being claimed, rather than naming odds it no longer rolls');
   await pg.close();
 });
+
+// 56. #1500 — convert() fails in four ways and reported the fourth for all of them: an unknown unit
+// read as "a conversion between two different kinds of units (like a length and a mass)". Driven on
+// BOTH surfaces because the issue is that they agree on the wrong thing — the pill says it, and so
+// does the edit dialog the user opens to repair it, so a fix proved on one proves nothing about the
+// other. The dialog's preview is exercised through its own live field, not by calling its helpers.
+test('#1500 convert() names the failure it actually had, on the pill and in the repair dialog', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const CASES = [
+    { src: 'convert(12, m2, ft2)',   reason: 'unknown unit',   says: /a unit this document does not know, "m2"/ },
+    { src: 'convert(10, blorp, kg)', reason: 'unknown unit',   says: /a unit this document does not know, "blorp"/ },
+    { src: 'convert(10, km, kg)',    reason: 'convert',        says: /different kinds of units/ },
+    { src: 'convert(budgt, km, m)',  reason: 'convert amount', says: /amount is not a number/ },
+    { src: 'convert(10, km)',        reason: 'convert parts',  says: /wrong number of parts/ },
+  ];
+
+  // SURFACE 1 — the pill
+  const pills = await pg.evaluate((cases) => {
+    const mk = (t) => { const n = mkNode(t); n.type = 'ul'; return n; };
+    const nodes = cases.map((cse, i) => mk(`P${i} {= ${cse.src}}`)).concat(mk('OK {= convert(10, km, m)}'));
+    root.children = nodes; nodes.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    nodes.forEach(n => promoteInlineShorthand(n));
+    buildIndex(root, null); markDirty(); render();
+    return {
+      rows: [...document.querySelectorAll('.math-roll')].map(e => ({
+        cls: e.className, shown: e.querySelector('.math-result')?.textContent || '',
+        aria: e.getAttribute('aria-label') || '',
+      })),
+      screen: document.body.innerText,
+    };
+  }, CASES);
+
+  assert.equal(pills.rows.length, CASES.length + 1, 'one pill per case, plus the working one');
+  CASES.forEach((cse, i) => {
+    assert.match(pills.rows[i].cls, /math-err/, `${cse.src} must still be a loud error pill`);
+    assert.equal(pills.rows[i].shown, `#ERR (${cse.reason})`, `${cse.src} names its own failure`);
+    assert.match(pills.rows[i].aria, cse.says, `${cse.src} explains its own failure`);
+  });
+  const last = pills.rows[CASES.length];
+  assert.doesNotMatch(last.cls, /math-err/, 'a good conversion is untouched');
+  assert.equal(last.shown, '10,000');
+
+  // exactly ONE pill may claim a dimension mismatch, and it is the one that has one
+  const claimingMismatch = pills.rows.filter(r => /different kinds of units/.test(r.aria));
+  assert.equal(claimingMismatch.length, 1, `only the real mismatch may say so, got ${claimingMismatch.length}`);
+  assert.match(claimingMismatch[0].aria, /convert\(10, km, kg\)/, 'and it is the km-to-kg one');
+  // no internal marker may reach the reader
+  assert.doesNotMatch(pills.screen, /#ERR_(UNIT|CONV)/, 'the sentinel is internal and must never be on screen');
+
+  // SURFACE 2 — the repair dialog, driven through its own field
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.keyboard.type('@math', { delay: 14 }); await pg.waitForTimeout(650);
+  await pg.evaluate(() => document.querySelector('#io-card .builder-insert-btn')?.click());
+  await pg.waitForTimeout(700);
+  const field = await pg.evaluate(() => {
+    const el = [...document.querySelectorAll('#io-card input, #io-card textarea')].find(e => !/builder-search/.test(e.className));
+    return !!el;
+  });
+  assert.ok(field, 'the math dialog offers an expression field');
+
+  for (const cse of CASES) {
+    const line = await pg.evaluate((src) => {
+      const el = [...document.querySelectorAll('#io-card input, #io-card textarea')].find(e => !/builder-search/.test(e.className));
+      el.value = src;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return document.querySelector('#io-card .io-preview-bad')?.textContent || '(no error line)';
+    }, cse.src);
+    assert.match(line, cse.says, `the repair dialog must agree with the pill for ${cse.src}, got ${JSON.stringify(line)}`);
+    assert.doesNotMatch(line, /#ERR_(UNIT|CONV)/, 'and never show the internal marker');
+  }
+  await pg.close();
+});

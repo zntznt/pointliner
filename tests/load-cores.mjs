@@ -329,6 +329,7 @@ export function loadCores() {
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
     'childPropNumber','propExprValue','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','childrenComputePillsNotProp','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
     'parseUnitDecls','unitTable','normalizeUnits','convertUnits','splitArgsTopLevel','replaceConvert','unitsToText', // #875 units
+    'convertFailKind','convertUnitErrToken','unknownUnitPhrase',   // #1500: WHICH of convert()'s four failures happened
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','resolveNodeScope','checkExprOf','hasVisibleProps','buildIndex','ancestorsOf',
     'nowStamp','parseStamp','timestampOf','stampEdit','formatStampDisplay',
