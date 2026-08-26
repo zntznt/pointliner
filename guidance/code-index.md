@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2102 declarations in 154 sections across 17 domains.**
+**2103 declarations in 154 sections across 17 domains.**
 
 # Document model & caches
 
@@ -660,7 +660,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `isVisible`
 - `countHiddenDone` — Pure (mobile-neophyte review, MOBILE-2): count the checked to-dos anywhere in `tree` that
 - `flashHiddenIfDone` — A checked to-do is filtered out of the outline while show-done is off, so the row
-- `rollForwardRepeat` — Recurring tasks (#462): when a dated to-do carrying a `repeat` property flips to done,
+- `commitTodoDone` — Recurring tasks (#462): when a dated to-do carrying a `repeat` property flips to done,
+- `rollForwardRepeat`
 - `reopenTaskText` — Flip a task's done marker back to open in node.text: uncheck every `[x]` task box and
 - `reopenDoneKeyword` — If the first line leads with a DONE keyword, rewrite it to its sequence's first active
 - `createChildModel`
