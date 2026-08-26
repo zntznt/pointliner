@@ -4899,6 +4899,28 @@ function unitsToText(units) {
   }
   return lines.join('\n');
 }
+// #1500: WHICH of convert()'s two failures happened. convertUnits collapses them into one null,
+// and by the time the message is chosen the call itself is gone (replaceConvert has substituted a
+// sentinel), so every failure was reported as the dimension mismatch: `convert(10, blorp, kg)` and
+// `convert(12, m2, ft2)` both read "a conversion between two different kinds of units (like a
+// length and a mass)". The second is the sympathetic case -- there is no area dimension at all, so
+// m2/ft2 fail by the identical unknown-unit path as blorp. Returns null when the units are fine
+// (the failure was the VALUE argument, which is not this function's business). Pure.
+function convertFailKind(from, to, table) {
+  const t = table || {};
+  const fn = String(from ?? '').trim().toLowerCase(), tn = String(to ?? '').trim().toLowerCase();
+  if (!t[fn]) return { why: 'unit', unit: fn };
+  if (!t[tn]) return { why: 'unit', unit: tn };   // the FIRST unknown one is the one to name
+  return t[fn].dim === t[tn].dim ? null : { why: 'dim' };
+}
+// #1500: the sentinel replaceConvert leaves for an unknown unit. It keeps the `#ERR` prefix, so
+// every `includes('#ERR')` test in the engine still fires, and carries the offending name so the
+// message can say it. The name is fenced to the shape parseUnitDecls accepts, so nothing else a
+// user typed can ride into a label; an unfenced one degrades to the bare marker.
+function convertUnitErrToken(unit) {
+  const u = String(unit || '');
+  return /^[A-Za-z][\w]*$/.test(u) ? '#ERR_UNIT_' + u : '#ERR_UNIT';
+}
 // Same-dimension multiplicative convert; null on unknown unit / dimension mismatch / non-number.
 function convertUnits(value, from, to, table) {
   const a = table[String(from).trim().toLowerCase()], b = table[String(to).trim().toLowerCase()];
@@ -4936,12 +4958,24 @@ function replaceConvert(str, evalFn, table) {
       s = s.slice(0, open + 1) + replaceConvert(inner, evalFn, table) + s.slice(close);
       continue;
     }
+    // #1500: convert() fails in four ways and reported the fourth for all of them. The marker says
+    // which, while the call is still in hand -- once it is substituted the information is gone, and
+    // that is exactly why every failure used to borrow the dimension-mismatch sentence. Each marker
+    // keeps the `#ERR` prefix, so every `includes('#ERR')` test in the engine still fires.
     const parts = splitArgsTopLevel(inner);
-    let repl = '#ERR';
-    if (parts.length === 3) {
+    let repl = '#ERR';                                   // the true cross-dimension mismatch
+    if (parts.length !== 3) repl = '#ERR_CONVARGS';      // not three parts
+    else {
       const v = evalFn(parts[0].trim());
-      const r = (typeof v === 'number' && Number.isFinite(v)) ? convertUnits(v, parts[1], parts[2], table) : null;
-      if (r !== null) repl = '(' + r + ')';
+      if (!(typeof v === 'number' && Number.isFinite(v))) repl = '#ERR_CONVAMT';   // the amount is not a number
+      else {
+        const r = convertUnits(v, parts[1], parts[2], table);
+        if (r !== null) repl = '(' + r + ')';
+        else {
+          const k = convertFailKind(parts[1], parts[2], table);
+          if (k && k.why === 'unit') repl = convertUnitErrToken(k.unit);
+        }
+      }
     }
     s = s.slice(0, start) + repl + s.slice(close + 1);
   }
@@ -9334,6 +9368,12 @@ function mathErrorReason(expr, vars = {}, cycles = new Set(), globalVars = null)
   // A #ERR sentinel survived the expandAggExpr pre-pass — a deterministic conversion failure
   // (cross-dimension convert(), #889). Name it precisely so the pill does not blame a missing
   // variable (km/kg read as unknown names). Checked before the identifier scan for that reason.
+  // #1500: the unknown-unit sentinel is checked FIRST, because it also contains '#ERR' -- the
+  // generic arm below would swallow it and report the mismatch wording for a unit that simply
+  // is not in the table.
+  if (s.includes('#ERR_UNIT')) return 'unknown unit';
+  if (s.includes('#ERR_CONVARGS')) return 'convert parts';
+  if (s.includes('#ERR_CONVAMT')) return 'convert amount';
   if (s.includes('#ERR')) return 'convert';
   // #1101: a distribution reducer aimed at something that is not a distribution. The identifier
   // scan below would say NOTHING here (the name resolves, and it is a number, so no arm fires) and
@@ -9442,11 +9482,27 @@ function arityPhrase(expr) {
 // A human phrase for a mathErrorReason code, so the math dialog, the check dialog,
 // and #ERR pills explain a failure the SAME way (P1/P4 — legible, consistent). ''
 // for a generic/unknown code (the caller supplies its own "syntax error" fallback).
+// #1500: the unit name rides the sentinel, so the phrase can say which one it did not know.
+function unknownUnitPhrase(expr) {
+  const m = /#ERR_UNIT_([A-Za-z][\w]*)/.exec(String(expr || ''));
+  return (m ? `a unit this document does not know, "${m[1]}"` : 'a unit this document does not know')
+    + '. Built-in units cover length, mass, volume and time; define your own with /units (File then Custom units),'
+    + ' one per line and the base first, like "cp" then "gp = 100 cp"';
+}
 function mathReasonPhrase(why, expr) {
   return why === 'arity' ? arityPhrase(expr)
        : why === 'not-uncertain' ? 'a plain number where an uncertain value was expected; percentile() and chanceover() only work on a variable declared as a range, like cost := 100 to 200'
        : why === 'estimate'    ? 'an estimate like 5 to 10 (or a variable holding one), which works on its own but not inside a math formula or check. Write it without the = to keep it an estimate, like {cost * 2}'
        : why === 'convert'     ? 'a conversion between two different kinds of units (like a length and a mass), which has no answer'
+       // #1500: the other half of convert()'s two failures, which used to borrow the sentence above.
+       // The remedy names /units because that door was driven end to end before it was cited here:
+       // "cp" then "gp = 100 cp" makes convert(2, gp, cp) answer 200. Base first is the rule the
+       // dialog itself enforces (parseUnitDecls: "define it above, or use a built-in").
+       : why === 'unknown unit' ? unknownUnitPhrase(expr)
+       // #1500: the other two, found by the census rather than reported. Each read as the
+       // dimension mismatch, which is nonsense for a call that never named two dimensions.
+       : why === 'convert parts'  ? 'a convert() with the wrong number of parts: it takes three, the amount, the unit it is in and the unit you want, like convert(10, km, mi)'
+       : why === 'convert amount' ? 'a convert() whose amount is not a number: the first part is the value being converted, so check that it resolves, like convert(10, km, mi) or convert(distance, km, mi)'
        : why === 'declared later' ? 'a variable declared later in the document; values resolve top to bottom, so move its declaration above this point'
        // #1159: the old text was "declare it as a variable or add it as a property". The second
        // remedy is the one the user has usually ALREADY done: the other coaching cue (maybeNudgeField,

@@ -999,6 +999,69 @@
       "find": "  const oracleBand = oracleBandLive(g);",
       "replace": "  const oracleBand = null;",
       "kills": "an oracle keeps its own words through the authoring cycle"
+    },
+    {
+      "id": "convert-unknown-unit-blamed-on-dimension",
+      "suite": "browser",
+      "why": "the original defect: an unknown unit reported as a conversion between two kinds of units, on the pill and in the repair dialog alike",
+      "file": "index.html",
+      "find": "          if (k && k.why === 'unit') repl = convertUnitErrToken(k.unit);",
+      "replace": "          if (false) repl = convertUnitErrToken(k.unit);",
+      "kills": "convert() names the failure it actually had"
+    },
+    {
+      "id": "convert-marker-swallowed-by-generic-arm",
+      "suite": "unit",
+      "why": "every marker contains '#ERR', so the generic arm swallows all of them unless the specific ones are checked first -- the ordering IS the fix",
+      "file": "index.html",
+      "find": "  if (s.includes('#ERR_UNIT')) return 'unknown unit';",
+      "replace": "  if (false) return 'unknown unit';",
+      "kills": "each marker reaches its own reason"
+    },
+    {
+      "id": "convert-amount-blamed-on-dimension",
+      "suite": "unit",
+      "why": "a call whose amount does not resolve never named two dimensions, so the mismatch sentence is nonsense for it",
+      "file": "index.html",
+      "find": "      if (!(typeof v === 'number' && Number.isFinite(v))) repl = '#ERR_CONVAMT';   // the amount is not a number",
+      "replace": "      if (false) repl = '#ERR_CONVAMT';",
+      "kills": "replaceConvert leaves a DIFFERENT marker for each of the four failures"
+    },
+    {
+      "id": "convert-parts-blamed-on-dimension",
+      "suite": "unit",
+      "why": "convert(10, km) never named two dimensions either; it was the same borrowed sentence",
+      "file": "index.html",
+      "find": "    if (parts.length !== 3) repl = '#ERR_CONVARGS';      // not three parts",
+      "replace": "    if (false) repl = '#ERR_CONVARGS';",
+      "kills": "replaceConvert leaves a DIFFERENT marker for each of the four failures"
+    },
+    {
+      "id": "convert-unit-name-unfenced",
+      "suite": "unit",
+      "why": "the name comes from user text and rides into an aria-label; an unfenced one is how arbitrary typed text reaches an attribute",
+      "file": "index.html",
+      "find": "  return /^[A-Za-z][\\w]*$/.test(u) ? '#ERR_UNIT_' + u : '#ERR_UNIT';",
+      "replace": "  return '#ERR_UNIT_' + u;",
+      "kills": "the marker carries the unit name, fenced to what a unit may be called"
+    },
+    {
+      "id": "convert-fail-kind-names-the-wrong-unit",
+      "suite": "unit",
+      "why": "naming the second unit when the first is the unknown one sends the reader to fix a unit that is fine",
+      "file": "index.html",
+      "find": "  if (!t[fn]) return { why: 'unit', unit: fn };",
+      "replace": "  if (!t[fn]) return { why: 'unit', unit: tn };",
+      "kills": "convertFailKind says WHICH failure"
+    },
+    {
+      "id": "unknown-unit-phrase-drops-the-remedy",
+      "suite": "unit",
+      "why": "naming the failure without the door leaves the reader stuck; /units was driven end to end before being cited, so the citation is the deliverable",
+      "file": "index.html",
+      "find": "    + '. Built-in units cover length, mass, volume and time; define your own with /units (File then Custom units),'",
+      "replace": "    + '.'.slice(0, 1) + ''",
+      "kills": "each marker reaches its own reason"
     }
   ]
 }

@@ -22163,6 +22163,88 @@ test('units — parse decls, convert, normalize, and the substitution (SR-6)', (
   assert.equal(c.unitsToText(null), '', 'no units → empty text');
 });
 
+// ── #1500: convert() has four failure modes and reported the fourth for all of them ──────────
+// `convert(10, blorp, kg)` and `convert(12, m2, ft2)` both read "a conversion between two different
+// kinds of units (like a length and a mass)" — and there is no area dimension at all, so m2/ft2
+// fails by the identical unknown-unit path as blorp. convertUnits collapses the causes into one
+// null and replaceConvert substitutes a bare sentinel, so by the time the message is chosen the
+// call is gone. The marker now says which, on BOTH surfaces that read it (the pill and the edit
+// dialog the user opens to repair it).
+test('#1500 convertFailKind says WHICH failure, and stays silent when the units are fine', () => {
+  const T = host(c.unitTable(null));   // the built-in table, the way the #875 test gets it
+  assert.deepEqual(host(c.convertFailKind('blorp', 'kg', T)), { why: 'unit', unit: 'blorp' });
+  assert.deepEqual(host(c.convertFailKind('km', 'blorp', T)), { why: 'unit', unit: 'blorp' });
+  assert.deepEqual(host(c.convertFailKind('nope', 'alsonope', T)), { why: 'unit', unit: 'nope' },
+    'the FIRST unknown one is the one to name');
+  assert.deepEqual(host(c.convertFailKind('m2', 'ft2', T)), { why: 'unit', unit: 'm2' },
+    'there is no area dimension, so m2 is an unknown unit — not the mismatch it used to report');
+  assert.deepEqual(host(c.convertFailKind('km', 'kg', T)), { why: 'dim' }, 'the real mismatch keeps its name');
+  assert.equal(c.convertFailKind('km', 'm', T), null, 'units fine → not this function\'s failure');
+  assert.equal(c.convertFailKind(' KM ', 'M', T), null, 'case and whitespace are normalised, like convertUnits');
+});
+
+test('#1500 the marker carries the unit name, fenced to what a unit may be called', () => {
+  assert.equal(c.convertUnitErrToken('blorp'), '#ERR_UNIT_blorp');
+  assert.equal(c.convertUnitErrToken('m2'), '#ERR_UNIT_m2');
+  // nothing a user typed can ride into a label: an unfenced name degrades to the bare marker
+  assert.equal(c.convertUnitErrToken('a b'), '#ERR_UNIT');
+  assert.equal(c.convertUnitErrToken('"><img>'), '#ERR_UNIT');
+  assert.equal(c.convertUnitErrToken('9lives'), '#ERR_UNIT', 'a unit name starts with a letter (parseUnitDecls\'s rule)');
+  assert.equal(c.convertUnitErrToken(''), '#ERR_UNIT');
+});
+
+test('#1500 replaceConvert leaves a DIFFERENT marker for each of the four failures', () => {
+  const B = host(c.unitTable(null));
+  const ev = s => { const n = Number(String(s).trim()); return Number.isFinite(n) ? n : null; };
+  const marks = {
+    ok:       c.replaceConvert('convert(10, km, m)', ev, B),
+    unknown:  c.replaceConvert('convert(10, blorp, kg)', ev, B),
+    area:     c.replaceConvert('convert(12, m2, ft2)', ev, B),
+    mismatch: c.replaceConvert('convert(10, km, kg)', ev, B),
+    amount:   c.replaceConvert('convert(budgt, km, m)', ev, B),
+    parts:    c.replaceConvert('convert(10, km)', ev, B),
+  };
+  assert.equal(marks.ok, '(10000)', 'a good conversion still substitutes its number');
+  assert.equal(marks.unknown, '#ERR_UNIT_blorp');
+  assert.equal(marks.area, '#ERR_UNIT_m2');
+  assert.equal(marks.mismatch, '#ERR', 'the true mismatch keeps the original marker, so its wording is untouched');
+  assert.equal(marks.amount, '#ERR_CONVAMT');
+  assert.equal(marks.parts, '#ERR_CONVARGS');
+  // every marker must still read as the engine's error sentinel, or {= convert(…)} stops promoting
+  // to a loud pill and silently becomes prose (#889).
+  for (const [k, v] of Object.entries(marks)) {
+    if (k === 'ok') continue;
+    assert.ok(String(v).includes('#ERR'), `${k} must keep the #ERR prefix mathPrepassErrs looks for`);
+    assert.equal(c.mathPrepassErrs(({ unknown: 'convert(10, blorp, kg)', area: 'convert(12, m2, ft2)',
+      mismatch: 'convert(10, km, kg)', amount: 'convert(budgt, km, m)', parts: 'convert(10, km)' })[k]), true,
+      `${k} must still promote to a loud #ERR pill`);
+  }
+});
+
+test('#1500 each marker reaches its own reason and its own sentence', () => {
+  const R = e => c.mathErrorReason(c.expandAggExpr(e, null), {});
+  assert.equal(R('convert(10, blorp, kg)'), 'unknown unit');
+  assert.equal(R('convert(12, m2, ft2)'), 'unknown unit');
+  assert.equal(R('convert(10, km, kg)'), 'convert', 'the true mismatch is unchanged');
+  assert.equal(R('convert(budgt, km, m)'), 'convert amount');
+  assert.equal(R('convert(10, km)'), 'convert parts');
+  assert.equal(c.mathErrorReason('#ERR', {}), 'convert', 'a bare sentinel still means the mismatch');
+
+  // the four sentences are distinct, and only the mismatch one talks about two kinds of units
+  const say = e => c.mathReasonPhrase(R(e), c.expandAggExpr(e, null));
+  const four = nonEmpty([say('convert(10, blorp, kg)'), say('convert(10, km, kg)'),
+                         say('convert(budgt, km, m)'), say('convert(10, km)')], 'convert phrases');
+  assert.equal(new Set(four).size, 4, 'four failures, four sentences');
+  assert.equal(four.filter(p => /different kinds of units/.test(p)).length, 1,
+    'exactly one of them claims a dimension mismatch, and it is the one that has one');
+  // the unknown-unit sentence names the unit and the door that was driven end to end before being cited
+  assert.match(say('convert(10, blorp, kg)'), /"blorp"/, 'it names the unit it did not know');
+  assert.match(say('convert(12, m2, ft2)'), /"m2"/);
+  assert.match(say('convert(10, blorp, kg)'), /\/units/, 'and the remedy the app actually ships');
+  // no marker may reach a reader
+  for (const p of four) assert.doesNotMatch(p, /#ERR/, `an internal marker reached the sentence: ${JSON.stringify(p)}`);
+});
+
 test('#889 — a deterministically-erroring {= …} (cross-dimension convert) becomes a loud #ERR pill', () => {
   // mathPrepassErrs: the pre-pass INTRODUCED a #ERR (cross-dim convert), so it is a real
   // calculation that errors, not prose. Same-dim convert does NOT (it resolves to a number).
