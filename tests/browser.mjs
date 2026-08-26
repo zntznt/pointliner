@@ -3057,3 +3057,64 @@ test('#1528 a foreign title resolves its own links in its own document', { skip:
   assert.equal(r.sameDoc, 'Z: Gigerenzer 1996', 'and a same-doc reference is the untouched default');
   await pg.close();
 });
+
+// 55. #1499 — `{oracle: likely}` promoted to an anonymous `Yes 3 | No 1` grammar and the word
+// `oracle` was gone: the pill unfolded to odds, its label read "Grammar: Yes" exactly like a
+// hand-typed pick, and nothing on any surface said it had ever been an oracle. Driven because the
+// harm is the AUTHORING CYCLE — type, promote, click back in, read — which no pure test performs,
+// and because the same cycle is where the reverse mistake would show: rebuilding `{oracle: …}` from
+// odds alone would rewrite a hand-typed `{Yes 3 | No 1}`, so that negative is driven beside it.
+test('#1499 an oracle keeps its own words through the authoring cycle, and a hand-typed one is left alone', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const mk = (t) => { const n = mkNode(t); n.type = 'ul'; return n; };
+    const setup = (arr) => { root.children = arr; arr.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); }); buildIndex(root, null); markDirty(); render(); };
+    const out = {};
+
+    // the reported case, and the one the issue calls the real bite (a swing body no one can invert by eye)
+    const a = mk('Q1 {oracle: likely}'), b = mk('Q2 {oracle: certain + swing}');
+    const typed = mk('Coin {Yes 3 | No 1}');            // NOT an oracle: authored as plain odds
+    setup([a, b, typed]);
+    [a, b, typed].forEach(n => promoteInlineShorthand(n));
+    buildIndex(root, null); markDirty(); render();
+
+    out.folded = [a, b, typed].map(n => /\[\[grammar:/.test(n.text));
+    out.bands = [a, b, typed].map(n => (n.grammar || [])[0]?.oracle ?? null);
+    out.unfolded = [a, b, typed].map(n => unfoldTokensIn(n.text, n));
+    out.labels = [...document.querySelectorAll('.gr-roll')].map(e => e.getAttribute('aria-label'));
+
+    // the CYCLE: what the unfold produced must promote back to the same thing, twice over
+    a.text = unfoldTokensIn(a.text, a); a.grammar = [];
+    promoteInlineShorthand(a); buildIndex(root, null); markDirty(); render();
+    out.cycleBand = (a.grammar || [])[0]?.oracle ?? null;
+    out.cycleUnfold = unfoldTokensIn(a.text, a);
+
+    // and the band must not outlive the odds it describes (Edit grammar rewrites the def)
+    b.grammar[0].def = 'origin: Yes 5 | No 2';
+    out.staleUnfold = unfoldTokensIn(b.text, b);
+    return out;
+  });
+
+  assert.deepEqual(r.folded, [true, true, true], 'precondition: all three promoted to folded pills');
+  assert.deepEqual(r.bands, ['likely', 'certain + swing', null],
+    'both oracles record their band; the hand-typed alternation records none');
+  assert.equal(r.unfolded[0], 'Q1 {oracle: likely}', 'an oracle unfolds to the words it was authored with');
+  assert.equal(r.unfolded[1], 'Q2 {oracle: certain + swing}',
+    'including the swing form, whose odds body is the one no author could rewrite by hand');
+  assert.equal(r.unfolded[2], 'Coin {Yes 3 | No 1}',
+    'and a hand-typed alternation is returned untouched — naming it "likely" would be the same rewrite, reversed');
+
+  // positional, so the negative is asserted as a negative rather than swept up by a blanket rule:
+  // the third pill IS a bare grammar and must keep reading as one.
+  assert.equal(r.labels.length, 3, `one label per pill, got ${JSON.stringify(r.labels)}`);
+  assert.match(r.labels[0], /^Oracle \(likely\): /, 'the label names the band, not just the result');
+  assert.match(r.labels[1], /^Oracle \(certain \+ swing\): /, 'the swing form names itself too');
+  assert.match(r.labels[2], /^Grammar: /,
+    'and the hand-typed alternation stays a grammar — calling it an oracle would be the same overreach');
+
+  assert.equal(r.cycleBand, 'likely', 're-promoting the unfolded source records the band again');
+  assert.equal(r.cycleUnfold, 'Q1 {oracle: likely}', 'so the cycle is a fixed point, not a one-way trip');
+  assert.equal(r.staleUnfold, 'Q2 {Yes 5 | No 2}',
+    'once the odds are edited the band stops being claimed, rather than naming odds it no longer rolls');
+  await pg.close();
+});

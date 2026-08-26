@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2092 declarations in 154 sections across 17 domains.**
+**2094 declarations in 154 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1563,6 +1563,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `ORACLE_SWING_BANDS`
 - `ORACLE_CHIPS`
 - `ORACLE_SWING_CHIPS`
+- `oracleBandOf` — #1499: the {oracle: ARG} that produces a given odds BODY, or null. EXACT match only, and every
+- `oracleBandLive` — #1499: the band a stored oracle record STILL answers to, or null. `rec.oracle` is the argument the
 - `oracleParts` — oracleParts(body) — sniff the oracle's typed twin: {oracle: likely} / {oracle: likely + swing}
 - `openOracleDialog`
 - `rerollGrammar`
