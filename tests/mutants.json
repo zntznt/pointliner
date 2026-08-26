@@ -1143,6 +1143,78 @@
       "find": "  node.checked = todoDoneFromText(node.text);\n  if (node.checked && rollForwardRepeat(node, wasDone)) {",
       "replace": "  node.checked = todoDoneFromText(node.text);\n  if (node.checked && rollForwardRepeat(node, false)) {",
       "kills": "the one writer rolls a repeating point forward, and leaves everything else alone"
+    },
+    {
+      "id": "partial-total-wears-success-chrome",
+      "suite": "browser",
+      "why": "the original defect: a sum computed around a hole was indistinguishable from a correct one in className, border, title and aria",
+      "file": "index.html",
+      "find": "  if (aggHasSkippedValues(cookieNode, m.expr)) {",
+      "replace": "  if (false) {",
+      "kills": "a partial total says so, and a correct one is left alone"
+    },
+    {
+      "id": "skipped-gate-blind-to-scope",
+      "suite": "unit",
+      "why": "reading node.children only makes a subtree rollup report clean, which is the case where the hole is hardest to see by eye",
+      "file": "index.html",
+      "find": "    for (const ch of collectScoped(node, depth)) {",
+      "replace": "    for (const ch of (node?.children || [])) {",
+      "kills": "aggHasSkippedValues reads the SCOPE"
+    },
+    {
+      "id": "skipped-gate-flags-a-missing-prop",
+      "suite": "unit",
+      "why": "a point with no cost at all is the ordinary case; flagging it would cue almost every real rollup and train the reader to ignore the mark",
+      "file": "index.html",
+      "find": "      if (p && String(p.val).trim() !== '' && childPropNumber(ch, prop) === null) bad = true;",
+      "replace": "      if (childPropNumber(ch, prop) === null) bad = true;",
+      "kills": "aggHasSkippedValues reads the SCOPE"
+    },
+    {
+      "id": "partial-cue-counts-missing-props-too",
+      "suite": "browser",
+      "why": "counting auditAgg's 'no cost' rows alongside real holes would overstate the mark on an ordinary rollup",
+      "file": "index.html",
+      "find": "    const skipped = (audit?.missing || []).filter(x => x.reason === 'not a number');",
+      "replace": "    const skipped = (audit?.missing || []);",
+      "kills": "a partial total says so, and a correct one is left alone"
+    },
+    {
+      "id": "partial-cue-withholds-the-number",
+      "suite": "unit",
+      "why": "the partial total is real and wanted; erroring it or blanking it withholds what the reader came for",
+      "file": "index.html",
+      "find": "      + `<span class=\"math-result\">${escHtml(dispVal)}</span>`\n      + `<span class=\"math-empty-mark\" aria-hidden=\"true\">${n} not counted</span>`",
+      "replace": "      + `<span class=\"math-result\"></span>`\n      + `<span class=\"math-empty-mark\" aria-hidden=\"true\">${n} not counted</span>`",
+      "kills": "the pill asks, and cues a partial total without erroring it"
+    },
+    {
+      "id": "copy-fallback-drops-focus",
+      "suite": "browser",
+      "why": "the reported defect: removing the borrowed textarea leaves focus on <body>, and in a contenteditable outliner that is the caret gone",
+      "file": "index.html",
+      "find": "    giveItBack();\n    if (after) after();   // still only on success: a throw must not claim \"Link copied\"",
+      "replace": "    if (after) after();",
+      "kills": "a copy that falls back to execCommand gives the caret back"
+    },
+    {
+      "id": "copy-fallback-forgets-the-caret",
+      "suite": "browser",
+      "why": "restoring focus alone collapses the caret to the start of the point, which is a silent edit-position change",
+      "file": "index.html",
+      "find": "  const caret = isPoint ? getCaretOffset(prev) : null;",
+      "replace": "  const caret = null;",
+      "kills": "a copy that falls back to execCommand gives the caret back"
+    },
+    {
+      "id": "copy-fallback-restores-only-on-success",
+      "suite": "unit",
+      "why": "this function IS the failure path, so the throw exit is the one that must give focus back",
+      "file": "index.html",
+      "find": "  } catch (_) { giveItBack(); }",
+      "replace": "  } catch (_) {}",
+      "kills": "the clipboard fallback returns the focus and the caret it borrowed"
     }
   ]
 }

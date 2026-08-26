@@ -11329,8 +11329,11 @@ test('the math pill signposts the number-format door it opens (P2)', () => {
   // drift this test was written to catch fails here.
   const pencils = [..._src.matchAll(/class="math-edit"[^`]*?aria-label="([^"]*)" title="([^"]*)"/g)];
   assert.equal(pencils.length, 1, `the math pencil must be ONE hoisted string, found ${pencils.length}`);
-  assert.equal((fnBody(_src, 'renderMathPill').match(/\+ pencil/g) || []).length, 5,
-    'and all five branches must interpolate it -- one string nothing uses is not a fix');
+  // #1503 added the partial-total branch, so this is six. The number is the claim's SHAPE, not a
+  // magic constant: every chrome-rendering branch interpolates the one hoisted pencil, and a new
+  // branch that forgets it fails here rather than shipping a pill with no edit affordance.
+  assert.equal((fnBody(_src, 'renderMathPill').match(/\+ pencil/g) || []).length, 6,
+    'and all six branches must interpolate it -- one string nothing uses is not a fix');
   for (const [, aria, title] of pencils) {
     assert.equal(aria, title, 'the pencil label and tooltip agree');
     assert.match(aria, /number format/, 'the pencil names what the dialog actually offers');
@@ -16975,6 +16978,37 @@ test('#1502 the one writer rolls a repeating point forward, and leaves everythin
   assert.equal(toNext.checked, false);
 
   assert.equal(c.commitTodoDone(null, false), false, 'no node, no crash');
+});
+
+// #1536: `fallbackCopy` has to borrow focus (a textarea must be focused to be selected) and used to
+// hand it to <body>, because removing the focused element leaves it there. In a contenteditable
+// outliner that is the caret gone. It runs on exactly the paths where the clipboard API said no, so
+// the person least likely to have a working clipboard also lost their place. Driven in
+// tests/browser.mjs (check 60) with the rejection forced -- locally the write resolves and the
+// fallback never runs, which is how this reached CI as a one-row failure and nothing else.
+test('#1536 the clipboard fallback returns the focus and the caret it borrowed', () => {
+  const fn = fnBody(_src, 'fallbackCopy');
+  assert.match(fn, /const prev = document\.activeElement/, 'it remembers who had focus before it takes it');
+  assert.match(fn, /getCaretOffset\(prev\)/,
+    'and WHERE their caret was, as the app’s logical offset -- a DOM Range does not survive the ' +
+    'refold that blurring the point triggers');
+  assert.match(fn, /setCaretByOffset\(prev, caret\)/, 'and puts it back, not just the focus');
+  // both exits restore, and the throw is the one that matters: this function IS the failure path
+  assert.match(fn, /\} catch \(_\) \{ giveItBack\(\); \}/,
+    'a copy that threw still borrowed the focus, so it still owes it back');
+  // and it restores BEFORE it announces, with the toast still on the success path only: a throw
+  // must not claim "Link copied", which is the one thing the original catch got right
+  const success = between(fn, 'document.body.removeChild(ta);', '} catch');
+  assert.match(success, /giveItBack\(\);[\s\S]*if \(after\) after\(\)/,
+    'the focus comes back, then the copy reports success');
+
+  // the census: every door that copies goes through this one fallback, so fixing it fixes them all
+  const DOORS = { copyNodeLink: 'Copy link / the keyboard shortcut',
+                  copyTextToClipboard: 'copy this text (footnotes, share text)' };
+  for (const [door, what] of Object.entries(DOORS)) {
+    assert.match(fnBody(_src, door), /fallbackCopy\(/,
+      `${what} (${door}) must fall back through the shared helper, or it keeps the old defect`);
+  }
 });
 
 test('formatDueDate — state classification', () => {
@@ -27419,6 +27453,64 @@ test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a chec
   const chk = c.mkNode('Budget'); chk.props = [{ key: 'check', val: 'sum(cost) <= 20000' }];
   chk.children = [kid('8000'), kid('12o')];
   assert.equal(c.evalCheck(chk, {}), 'error');
+});
+
+// ── #1503: a rollup computed around a hole must not wear the plain success chrome ────────────
+// aggHasSkippedValues has known about the hole since #809 -- evalCheck consults it, auditAgg
+// reports it, and renderMathPill never asked. So `sum(cost)` over a child whose cost reads `£850`
+// dropped it and rendered the short total with the same className, border, colour, title and aria
+// as an all-numeric control, and an empty live region.
+test('#1503 aggHasSkippedValues reads the SCOPE, so it agrees with auditAgg about what is counted', () => {
+  const kid = (title, val) => { const n = c.mkNode(title); if (val !== null) n.props = [{ key: 'cost', val }]; return n; };
+  const tree = (kids) => { const p = c.mkNode('Parent'); p.children = kids; return p; };
+
+  // a hole among the direct children: the reported case
+  assert.equal(c.aggHasSkippedValues(tree([kid('A', '1200'), kid('B', '\u00a3850')]), 'sum(cost)'), true);
+  // #1503: and one THREE levels down under a subtree rollup. The old regex had no scope group and
+  // the old walk read node.children only, so this matched nothing and reported clean -- silently
+  // wrong in the case where the hole is hardest to see by eye.
+  const deep = tree([kid('A', '1200')]);
+  deep.children[0].children = [kid('Deep', 'TBC')];
+  assert.equal(c.aggHasSkippedValues(deep, 'sum(cost, subtree)'), true, 'a subtree rollup sees a deep hole');
+  assert.equal(c.aggHasSkippedValues(deep, 'sum(cost, 2)'), true, 'so does an explicit depth that reaches it');
+  assert.equal(c.aggHasSkippedValues(deep, 'sum(cost)'), false, 'and a depth-1 rollup does not count it, so it is not a hole');
+
+  // the negatives: none of these is a silent-wrong-total
+  assert.equal(c.aggHasSkippedValues(tree([kid('A', '1200'), kid('B', '850.00')]), 'sum(cost)'), false, 'all numeric');
+  assert.equal(c.aggHasSkippedValues(tree([kid('A', '1200'), kid('Notes', null)]), 'sum(cost)'), false,
+    'a point with NO cost is the ordinary case, not a hole');
+  assert.equal(c.aggHasSkippedValues(tree([kid('A', '1200'), kid('B', '')]), 'sum(cost)'), false,
+    'a blank value is deliberately unset');
+  assert.equal(c.aggHasSkippedValues(tree([kid('A', '1200')]), '2 + 2'), false, 'a plain arithmetic pill has no rollup');
+
+  // the invariant this restores: the cheap gate and the full audit agree about scope. auditAgg has
+  // always read `, subtree`; the gate did not, and two helpers that describe the same rollup must
+  // not disagree about what it counts.
+  for (const expr of nonEmpty(['sum(cost)', 'sum(cost, subtree)', 'sum(cost, 2)'], 'rollup scopes')) {
+    const audited = (c.auditAgg(deep, expr)?.missing || []).some(x => x.reason === 'not a number');
+    assert.equal(c.aggHasSkippedValues(deep, expr), audited,
+      `the gate and the audit must agree for ${expr}, or the pill cues what the breakdown denies`);
+  }
+});
+
+test('#1503 the pill asks, and cues a partial total without erroring it', () => {
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.match(rmp, /if \(aggHasSkippedValues\(cookieNode, m\.expr\)\)/,
+    'the pill must consult the helper that already knew -- this call site is the whole defect');
+  assert.match(rmp, /math-roll math-partial/, 'it gets its own cue chrome');
+  assert.match(rmp, /not counted/, 'and a mark that says so in words, not colour alone (P3-4)');
+  // it is a CUE, not an error: the partial total is real and must still be shown.
+  // Scoped to THIS branch with between(): slicing to the end of the function matched a later
+  // success branch's own dispVal, so the assertion passed with the partial branch blanked -- the
+  // search-space-larger-than-the-subject vacuity, caught by its own mutant surviving.
+  const branch = between(rmp, 'if (aggHasSkippedValues(cookieNode, m.expr)) {', 'Value-only display');
+  assert.ok(branch.length > 200 && branch.length < 3000, `the partial branch must be isolated, got ${branch.length} chars`);
+  assert.doesNotMatch(branch, /math-err/, 'a skipped value must not error the pill and withhold the number');
+  assert.match(branch, /<span class="math-result">\$\{escHtml\(dispVal\)\}<\/span>/,
+    'the computed value still renders inside the cue chrome');
+  assert.match(branch, /math-roll math-partial/, 'and it is the partial chrome that carries it');
+  // the cue names the offenders and the door, so it is actionable rather than merely alarming
+  assert.match(rmp, /Open Explain this number/, 'it points at the breakdown that lists them');
 });
 
 test('#808: setDateProp resolves relative dates to ISO at commit; repeat phrases untouched', () => {

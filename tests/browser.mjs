@@ -3333,3 +3333,177 @@ test('#1502 every door that completes a repeating point rolls it forward', { ski
   }
   await pg.close();
 });
+
+// 59. #1503 — a rollup computed AROUND a hole rendered in the plain success chrome. Driven because
+// the defect IS the rendered comparison: the reported pill was identical to an all-numeric control
+// in className, title, border and aria, so the only way to show the fix is to render both and
+// compare them. The helper knew all along; the pill never asked.
+test('#1503 a partial total says so, and a correct one is left alone', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const build = (expr, kids, deep) => {
+      const parent = mkNode('Kitchen refit {= ' + expr + '}');
+      parent.children = kids.map(([t, v]) => { const n = mkNode(t); n.type = 'ul'; if (v !== null) setProp(n, 'cost', v); return n; });
+      if (deep) { const g = mkNode('Deep'); g.type = 'ul'; setProp(g, 'cost', 'TBC'); parent.children[0].children = [g]; }
+      root.children = [parent];
+      const attach = (n, p) => { n.type = n.type || 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); (n.children || []).forEach(k => attach(k, n)); };
+      root.children.forEach(n => attach(n, root));
+      buildIndex(root, null); markDirty(); render(); promoteInlineShorthand(parent);
+      buildIndex(root, null); markDirty(); render();
+      const pill = document.querySelector('.math-roll');
+      const cs = pill ? getComputedStyle(pill) : null;
+      return {
+        cls: pill?.className, aria: pill?.getAttribute('aria-label'), title: pill?.title,
+        value: pill?.querySelector('.math-result')?.textContent,
+        mark: pill?.querySelector('.math-empty-mark')?.textContent ?? null,
+        border: cs ? `${cs.borderStyle} ${cs.borderColor}` : null,
+        hasExplain: !!pill?.querySelector('.math-explain'),
+        hasPencil: !!pill?.querySelector('.math-edit'),
+      };
+    };
+    const HOLE = [['Cabinets', '1200'], ['Worktop', '£850'], ['Install', '600']];
+    const ALL  = [['Cabinets', '1200'], ['Worktop', '850'], ['Install', '600']];
+    return {
+      hole: build('sum(cost)', HOLE),
+      allNumeric: build('sum(cost)', ALL),
+      noProp: build('sum(cost)', [['Cabinets', '1200'], ['Notes', null], ['Install', '600']]),
+      // a real hole AND an ordinary no-cost point together: the mark must count only the hole.
+      // Without this case the count is unobservable -- auditAgg's `missing` mixes both reasons, and
+      // a cue that counted them all would overstate on almost every real rollup.
+      mixed: build('sum(cost)', [['Cabinets', '1200'], ['Worktop', '£850'], ['Notes', null]]),
+      deep: build('sum(cost, subtree)', [['Cabinets', '1200'], ['Install', '600']], true),
+    };
+  });
+
+  // the reported case: the total is PARTIAL and the pill says so
+  assert.match(r.hole.cls, /math-partial/, 'a rollup with a skipped value must not wear the success chrome');
+  assert.equal(r.hole.value, '1,800', 'the partial total is still shown, not withheld');
+  assert.equal(r.hole.mark, '1 not counted', 'and a mark says so in words, not colour alone');
+  assert.match(r.hole.aria, /partial total/, 'assistive tech is told too');
+  assert.match(r.hole.aria, /Worktop/, 'and the offender is named');
+  assert.ok(r.hole.hasExplain && r.hole.hasPencil, 'it keeps its Explain and edit doors');
+
+  // the control: identical input minus the hole, and it must be untouched
+  assert.doesNotMatch(r.allNumeric.cls, /math-partial/, 'a correct total keeps the plain chrome');
+  assert.equal(r.allNumeric.value, '2,650');
+  assert.equal(r.allNumeric.mark, null);
+  // the two must now be DISTINGUISHABLE, which is the whole finding
+  assert.notEqual(r.hole.cls, r.allNumeric.cls, 'the broken and correct pills must not look identical');
+  assert.notEqual(r.hole.border, r.allNumeric.border, 'including to the eye, not only to a screen reader');
+
+  // a point with NO cost is the ordinary case and must not be cued
+  assert.doesNotMatch(r.noProp.cls, /math-partial/, 'a child with no cost at all is not a hole');
+  assert.equal(r.noProp.mark, null);
+
+  // a real hole beside an ordinary no-cost point: only the hole counts
+  assert.match(r.mixed.cls, /math-partial/, 'the real hole still cues');
+  assert.equal(r.mixed.mark, '1 not counted',
+    'a point with no cost is not "not counted" -- counting it would overstate on almost every rollup');
+  assert.match(r.mixed.aria, /Worktop/, 'and the named offender is the hole, not the unpriced point');
+  assert.doesNotMatch(r.mixed.aria, /Notes/, 'the unpriced point is not blamed');
+
+  // #1503: a subtree rollup sees a hole three levels down, where it is hardest to spot by eye
+  assert.match(r.deep.cls, /math-partial/, 'a scoped rollup must see the hole its scope reaches');
+  assert.equal(r.deep.mark, '1 not counted');
+  await pg.close();
+});
+
+// 60. #1536 -- `fallbackCopy` borrowed focus and never gave it back, so every copy taken on the
+// clipboard API's FAILURE path ended with the caret on <body>: in a contenteditable outliner that is
+// the caret gone, arrows dead, the next keystroke nowhere. Driven, and driven with the rejection
+// FORCED: locally `navigator.clipboard.writeText` resolves, the fallback never runs, and the defect
+// is invisible -- which is exactly how it reached CI as a one-row failure in check 37 and nothing
+// else. Forcing the rejection is the only way a check can see the path it is about.
+test('#1536 a copy that falls back to execCommand gives the caret back', { skip: skip() }, async () => {
+  const CARET = 6;
+  const setup = async (mode) => {
+    const pg = await fresh();
+    await pg.evaluate((m) => {
+      // the three environments the fallback exists for: a denied or insecure write, no API at all,
+      // and the ordinary success that must stay ordinary. ALL THREE are stubbed, the success
+      // included -- the real API resolves on a developer machine and REJECTS in CI (headless, the
+      // document does not hold focus), so an unstubbed "control" is a control in one environment
+      // and a second copy of the reject case in the other. That is not a hypothetical: it is how
+      // this check first went red in CI while passing locally.
+      if (m === 'resolve') navigator.clipboard.writeText = () => Promise.resolve();
+      if (m === 'reject') navigator.clipboard.writeText = () => new Promise((_, rej) => setTimeout(() => rej(new Error('Document is not focused')), 5));
+      if (m === 'absent') { try { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); } catch (_) {} }
+      const mk = t => { const n = mkNode(t); n.type = 'ul'; return n; };
+      root.children = [mk('Damage to the orc'), mk('Second point')];
+      root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0];
+      c.focus(); activeContentId = c.dataset.id;
+      // put the caret in the MIDDLE, so a restore that only refocuses is distinguishable from one
+      // that puts the insertion point back where it was
+      const sel = window.getSelection(), r = document.createRange();
+      r.setStart(c.firstChild, 6); r.collapse(true); sel.removeAllRanges(); sel.addRange(r);
+    }, mode);
+    await pg.waitForTimeout(320);
+    return pg;
+  };
+  const land = (pg) => pg.evaluate(async () => {
+    const idle = () => new Promise(r => setTimeout(r, 100));
+    for (let n = 0; n < 20 && document.activeElement.tagName === 'BODY'; n++) await idle();
+    await idle(); await idle();                        // settle: catch a LATE drop back to <body>
+    const ae = document.activeElement;
+    return {
+      tag: ae.tagName,
+      cls: String(ae.className || ''),
+      // the APP's logical offset, not the DOM one: a raw startOffset is relative to whichever
+      // boundary node the selection happens to sit on, so two paths that put the caret in the same
+      // place can report 0 and 17. getCaretOffset is the model the app itself edits against.
+      offset: ae.classList?.contains('node-content') ? getCaretOffset(ae) : null,
+      said: (document.getElementById('flash-hint')?.textContent || '').trim(),
+    };
+  });
+
+  // ── route A: the keyboard door, where the caret never left the point
+  for (const mode of ['reject', 'absent', 'resolve']) {
+    const pg = await setup(mode);
+    await pg.keyboard.press('Control+Shift+L');
+    const r = await land(pg);
+    await pg.close();
+    assert.notEqual(r.tag, 'BODY', `${mode}: a copy must not end with focus on <body>`);
+    assert.match(r.cls, /node-content/, `${mode}: focus goes back to the point, not somewhere else on the page`);
+    assert.equal(r.offset, CARET,
+      `${mode}: and the caret goes back WHERE it was -- refocusing alone collapses to the start of the point`);
+    assert.match(r.said, /Link copied/, `${mode}: and the copy still reports success (P4)`);
+  }
+
+  // ── route B: the point-actions row, which is the case CI actually caught
+  const viaMenu = async (mode) => {
+    const pg = await setup(mode);
+    await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+    const found = await pg.evaluate(() => {
+      const el = [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')]
+        .find(e => (e.innerText || '').split('\n')[0].trim() === 'Copy link');
+      if (!el) return false; el.focus(); return document.activeElement === el;
+    });
+    await pg.keyboard.press('Enter');
+    const r = await land(pg);
+    await pg.close();
+    return { found, ...r };
+  };
+  const control = await viaMenu('resolve');
+  assert.equal(control.found, true, 'precondition: the Copy link row exists and takes focus');
+  assert.match(control.cls, /node-content/, 'precondition: the working path lands back in the point');
+  for (const mode of ['reject', 'absent']) {
+    const r = await viaMenu(mode);
+    assert.equal(r.found, true, `${mode}: precondition -- the Copy link row exists and takes focus`);
+    assert.notEqual(r.tag, 'BODY',
+      `${mode}: the row that CI caught -- a menu copy must not leave the keyboard on <body>`);
+    assert.match(r.cls, /node-content/, `${mode}: and focus is back in the point, as on the working path`);
+    assert.match(r.said, /Link copied/, `${mode}: and the copy still reports success`);
+  }
+  // NO CARET PIN ON THIS ROUTE, deliberately, and it took two CI runs to earn that sentence. Opening
+  // the menu takes focus OUT of the point, so what the fallback finds to borrow from depends on
+  // whether the rejection beats the menu's own hand-back: win it and the caret is saved from the
+  // point, lose it and there is nothing yet to save. Both orderings are real (with no clipboard API
+  // the fallback runs synchronously, inside the row's handler), no delay makes the race safe, and
+  // the two CI failures here reported OPPOSITE offsets on the same code. That is a measurement of
+  // scheduling, not of the app. The caret claim belongs to route A, where the point never loses
+  // focus and there is no race to lose -- and it is pinned there exactly, in all three environments.
+  // What this route owns is the defect CI actually caught, asserted above: focus, never <body>.
+});
+

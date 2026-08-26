@@ -626,7 +626,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `maybeShowTouchHint`
 - `ptsLabel` — Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
 - `countPoints`
-- `fallbackCopy`
+- `fallbackCopy` — #1536: BORROWED FOCUS IS RETURNED (P3). A textarea has to be focused to be selected, and removing
 - `zoomOut`
 - `renderBreadcrumb`
 - `crumbLabel` — A base has no prose title (its text is the table markdown), so show a clean label
