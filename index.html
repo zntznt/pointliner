@@ -1165,6 +1165,10 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 /* #557: a sum/avg that matched nothing — a muted WARNING (not an error): the 0 is real but likely
    unintended (pill on the wrong point / typo'd prop). Dashed warm border + a small muted tag. */
 .math-roll.math-empty{border-color:var(--warn);border-style:dashed}
+/* #1503: a partial total. Same dashed warn border as math-empty, because the reader must see that
+   something is wrong -- but the RESULT keeps its normal ink, because unlike an empty rollup this
+   number is real and wanted. Not color alone (P3-4): the "N not counted" mark carries the words. */
+.math-roll.math-partial{border-color:var(--warn);border-style:dashed}
 .math-roll.math-empty .math-result{color:var(--muted)}
 .math-empty-mark{font-size:11px;color:var(--muted);font-style:normal}
 @keyframes math-pop{0%{opacity:.35;transform:scale(.88)}60%{transform:scale(1.05)}100%{opacity:1;transform:scale(1)}}
@@ -4432,8 +4436,15 @@ function childPropNumber(child, prop) {
 // date-shaped values parse to epoch-days, so they never flag. Pure; Node-testable.
 function aggHasSkippedValues(node, expr) {
   let bad = false;
-  String(expr || '').replace(/\b(?:sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*\)/g, (m, prop) => {
-    for (const ch of (node?.children || [])) {
+  // #1503: the scope argument is READ, not ignored. This used to match only the bare
+  // `sum(cost)` form and walk `node.children` alone, so `sum(cost, subtree)` with a
+  // non-numeric value three levels down matched nothing and reported clean -- silently
+  // wrong in exactly the case where the hole is hardest to see by eye. auditAgg has always
+  // read the scope and walked with collectScoped; these two are supposed to agree about
+  // what a rollup counts, and they did not. Same regex, same walk, so now they do.
+  String(expr || '').replace(/\b(?:sum|avg|count|min|max)\s*\(\s*([A-Za-z_]\w*)\s*(?:,\s*(subtree|\d+))?\s*\)/g, (m, prop, scope) => {
+    const depth = scope === 'subtree' ? Infinity : scope ? Number(scope) : 1;
+    for (const ch of collectScoped(node, depth)) {
       const p = (ch.props || []).find(x => (x.key || '').trim().toLowerCase() === prop.toLowerCase());
       if (p && String(p.val).trim() !== '' && childPropNumber(ch, prop) === null) bad = true;
     }
@@ -31207,6 +31218,39 @@ function renderMathPill(key, m, opts = {}) {
       + `<span class="math-eq">=</span>`
       + `<span class="math-result">${escHtml(display)}</span>`
       + `<span class="math-empty-mark" aria-hidden="true">nothing below</span>`
+      + pencil
+      + `</span>`;
+  }
+  // #1503: a rollup computed AROUND a hole. aggHasSkippedValues (#809) has known about this since
+  // it was written -- evalCheck consults it and auditAgg reports it -- and the PILL never asked. So
+  // a child whose `cost` reads `£850` was dropped and the short total rendered in the plain success
+  // chrome: identical className, border, colour, title and aria to an all-numeric control, with an
+  // empty live region. The helper's own comment names the case exactly: "never silently pass a sum
+  // computed around the hole -- the exact silent-wrong-success P4 exists to prevent."
+  //
+  // A CUE, not an error. The partial total is real and the reader wants it, so this reuses the
+  // math-empty cue chrome and keeps the number legible rather than withholding it. A child with no
+  // such property at all is NOT a hole and is not flagged: aggHasSkippedValues already draws that
+  // line (it requires a present, non-empty, unparseable value), and auditAgg's "no cost" rows are
+  // the ordinary case of a point that simply has no cost. Measured both ways.
+  if (aggHasSkippedValues(cookieNode, m.expr)) {
+    // aggHasSkippedValues is the cheap gate; the walk only runs on the rare pill that has a hole.
+    const audit = auditAgg(cookieNode, m.expr);
+    const skipped = (audit?.missing || []).filter(x => x.reason === 'not a number');
+    const n = skipped.length;
+    const prop = audit?.prop || 'value';
+    const names = skipped.slice(0, 2).map(x => x.title).filter(Boolean);
+    const who = names.length ? ` (${names.join(', ')}${n > names.length ? ' and others' : ''})` : '';
+    const tip = `${n} point${n === 1 ? '' : 's'} below this one ${n === 1 ? 'has a' : 'have a'} ${prop} that is not a number${who}`
+      + `, so ${n === 1 ? 'it is' : 'they are'} left out of this total. Open Explain this number to see which, or make ${n === 1 ? 'that value a plain number' : 'those values plain numbers'}.`;
+    return `<span class="math-roll math-partial" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(tip)}"`
+      + ` aria-label="Math ${escQ(m.expr)} = ${escQ(ariaVal)}, a partial total. ${escQ(tip)}">`
+      + `<span class="math-ico"><i class="fa-solid fa-calculator"></i></span>`
+      + `<span class="math-expr">${escHtml(m.expr)}</span>`
+      + `<span class="math-eq">=</span>`
+      + `<span class="math-result">${escHtml(dispVal)}</span>`
+      + `<span class="math-empty-mark" aria-hidden="true">${n} not counted</span>`
+      + explain
       + pencil
       + `</span>`;
   }

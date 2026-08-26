@@ -3333,3 +3333,77 @@ test('#1502 every door that completes a repeating point rolls it forward', { ski
   }
   await pg.close();
 });
+
+// 59. #1503 — a rollup computed AROUND a hole rendered in the plain success chrome. Driven because
+// the defect IS the rendered comparison: the reported pill was identical to an all-numeric control
+// in className, title, border and aria, so the only way to show the fix is to render both and
+// compare them. The helper knew all along; the pill never asked.
+test('#1503 a partial total says so, and a correct one is left alone', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const build = (expr, kids, deep) => {
+      const parent = mkNode('Kitchen refit {= ' + expr + '}');
+      parent.children = kids.map(([t, v]) => { const n = mkNode(t); n.type = 'ul'; if (v !== null) setProp(n, 'cost', v); return n; });
+      if (deep) { const g = mkNode('Deep'); g.type = 'ul'; setProp(g, 'cost', 'TBC'); parent.children[0].children = [g]; }
+      root.children = [parent];
+      const attach = (n, p) => { n.type = n.type || 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, p); (n.children || []).forEach(k => attach(k, n)); };
+      root.children.forEach(n => attach(n, root));
+      buildIndex(root, null); markDirty(); render(); promoteInlineShorthand(parent);
+      buildIndex(root, null); markDirty(); render();
+      const pill = document.querySelector('.math-roll');
+      const cs = pill ? getComputedStyle(pill) : null;
+      return {
+        cls: pill?.className, aria: pill?.getAttribute('aria-label'), title: pill?.title,
+        value: pill?.querySelector('.math-result')?.textContent,
+        mark: pill?.querySelector('.math-empty-mark')?.textContent ?? null,
+        border: cs ? `${cs.borderStyle} ${cs.borderColor}` : null,
+        hasExplain: !!pill?.querySelector('.math-explain'),
+        hasPencil: !!pill?.querySelector('.math-edit'),
+      };
+    };
+    const HOLE = [['Cabinets', '1200'], ['Worktop', '£850'], ['Install', '600']];
+    const ALL  = [['Cabinets', '1200'], ['Worktop', '850'], ['Install', '600']];
+    return {
+      hole: build('sum(cost)', HOLE),
+      allNumeric: build('sum(cost)', ALL),
+      noProp: build('sum(cost)', [['Cabinets', '1200'], ['Notes', null], ['Install', '600']]),
+      // a real hole AND an ordinary no-cost point together: the mark must count only the hole.
+      // Without this case the count is unobservable -- auditAgg's `missing` mixes both reasons, and
+      // a cue that counted them all would overstate on almost every real rollup.
+      mixed: build('sum(cost)', [['Cabinets', '1200'], ['Worktop', '£850'], ['Notes', null]]),
+      deep: build('sum(cost, subtree)', [['Cabinets', '1200'], ['Install', '600']], true),
+    };
+  });
+
+  // the reported case: the total is PARTIAL and the pill says so
+  assert.match(r.hole.cls, /math-partial/, 'a rollup with a skipped value must not wear the success chrome');
+  assert.equal(r.hole.value, '1,800', 'the partial total is still shown, not withheld');
+  assert.equal(r.hole.mark, '1 not counted', 'and a mark says so in words, not colour alone');
+  assert.match(r.hole.aria, /partial total/, 'assistive tech is told too');
+  assert.match(r.hole.aria, /Worktop/, 'and the offender is named');
+  assert.ok(r.hole.hasExplain && r.hole.hasPencil, 'it keeps its Explain and edit doors');
+
+  // the control: identical input minus the hole, and it must be untouched
+  assert.doesNotMatch(r.allNumeric.cls, /math-partial/, 'a correct total keeps the plain chrome');
+  assert.equal(r.allNumeric.value, '2,650');
+  assert.equal(r.allNumeric.mark, null);
+  // the two must now be DISTINGUISHABLE, which is the whole finding
+  assert.notEqual(r.hole.cls, r.allNumeric.cls, 'the broken and correct pills must not look identical');
+  assert.notEqual(r.hole.border, r.allNumeric.border, 'including to the eye, not only to a screen reader');
+
+  // a point with NO cost is the ordinary case and must not be cued
+  assert.doesNotMatch(r.noProp.cls, /math-partial/, 'a child with no cost at all is not a hole');
+  assert.equal(r.noProp.mark, null);
+
+  // a real hole beside an ordinary no-cost point: only the hole counts
+  assert.match(r.mixed.cls, /math-partial/, 'the real hole still cues');
+  assert.equal(r.mixed.mark, '1 not counted',
+    'a point with no cost is not "not counted" -- counting it would overstate on almost every rollup');
+  assert.match(r.mixed.aria, /Worktop/, 'and the named offender is the hole, not the unpriced point');
+  assert.doesNotMatch(r.mixed.aria, /Notes/, 'the unpriced point is not blamed');
+
+  // #1503: a subtree rollup sees a hole three levels down, where it is hardest to spot by eye
+  assert.match(r.deep.cls, /math-partial/, 'a scoped rollup must see the hole its scope reaches');
+  assert.equal(r.deep.mark, '1 not counted');
+  await pg.close();
+});
