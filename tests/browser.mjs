@@ -3496,13 +3496,14 @@ test('#1536 a copy that falls back to execCommand gives the caret back', { skip:
     assert.match(r.cls, /node-content/, `${mode}: and focus is back in the point, as on the working path`);
     assert.match(r.said, /Link copied/, `${mode}: and the copy still reports success`);
   }
-  // The caret is pinned on the ASYNC rejection only, which is the case CI caught: with no clipboard
-  // API at all the fallback runs SYNCHRONOUSLY, inside the row's own handler and before the menu has
-  // handed the caret back, so it borrows from the row rather than from the point. Focus still lands
-  // in the point (asserted above) and that is the whole claim there; demanding an identical offset
-  // would be pinning an ordering, not a behaviour.
-  const async_ = await viaMenu('reject');
-  assert.deepEqual({ offset: async_.offset }, { offset: control.offset },
-    'a rejected clipboard write must leave the caret exactly where the successful one does');
+  // NO CARET PIN ON THIS ROUTE, deliberately, and it took two CI runs to earn that sentence. Opening
+  // the menu takes focus OUT of the point, so what the fallback finds to borrow from depends on
+  // whether the rejection beats the menu's own hand-back: win it and the caret is saved from the
+  // point, lose it and there is nothing yet to save. Both orderings are real (with no clipboard API
+  // the fallback runs synchronously, inside the row's handler), no delay makes the race safe, and
+  // the two CI failures here reported OPPOSITE offsets on the same code. That is a measurement of
+  // scheduling, not of the app. The caret claim belongs to route A, where the point never loses
+  // focus and there is no race to lose -- and it is pinned there exactly, in all three environments.
+  // What this route owns is the defect CI actually caught, asserted above: focus, never <body>.
 });
 
