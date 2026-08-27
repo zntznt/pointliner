@@ -282,6 +282,7 @@ export function loadCores() {
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix','toggleTaskLine',
     'taskShortcutAt','taskShortcutSay',   // #1471: what Ctrl/Cmd+Shift+X does, and what it says about it
     'cloneArtifactSidecars','mergeArtifactSidecars',
+    'pruneArtifacts','restoreArtifacts',        // #1507: what a prune DROPPED, and putting it back
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates','filterBraceForms',

@@ -8505,8 +8505,10 @@ test('@-dialog insert keeps its sidecar record (regression: mid-insert prune dro
   // mode on click. The flush now suppresses pruning; the next real exit prunes normally.
   assert.ok(_src.includes('_suppressPruneOnFlush'), 'prune-suppression flag missing');
   assert.match(_src, /_suppressPruneOnFlush = true;\s*ed\.blur\(\);\s*_suppressPruneOnFlush = false;/, 'flush must wrap ed.blur() in the suppression flag');
-  assert.match(_src, /if \(!_suppressPruneOnFlush\)\s*pruneArtifacts\(node\)/, 'exitEdit prune must honor the flag');
-  assert.match(_src, /function pruneArtifacts\(node\)\s*\{[\s\S]{0,200}pruneGrammar\(node\)/, 'pruneArtifacts bundles the per-type prunes incl. pruneGrammar');
+  // #1507 kept the flag and captured what the prune dropped, so the shape moved from a bare `if` to a
+  // ternary that yields the dropped records. Same claim: a mid-insert flush must not prune.
+  assert.match(_src, /_suppressPruneOnFlush \? null : pruneArtifacts\(node\)/, 'exitEdit prune must honor the flag');
+  assert.match(fnBody(_src, 'pruneArtifacts'), /pruneGrammar\(node\)/, 'pruneArtifacts bundles the per-type prunes incl. pruneGrammar');
 });
 
 test('rollPickSource: dice source rolls through the dice core', () => {
@@ -32039,7 +32041,8 @@ test('#1369: undo takes back a property the text cannot carry', () => {
   // A `{prop k: v}` / `{date k: v}` brace is CONSUMED into node.props and leaves no inline token, so
   // restoring the text alone un-typed the brace while the value stayed. Measured on origin/main:
   // undo took "Scene {prop tension: 7}" back to "Scene" and left props ["tension=7"] behind.
-  assert.ok(/function recordTextEdit\(nodeId, prev, next, propsPrev, propsNext\)/.test(_src),
+  // #1507 appended a sixth parameter (the records the edit orphaned); props are untouched.
+  assert.ok(/function recordTextEdit\(nodeId, prev, next, propsPrev, propsNext(?:, \w+)?\)/.test(_src),
     'the entry can carry the props either side of the edit');
   assert.ok(/const propsMoved = propsPrev !== undefined && propsPrev !== propsNext;/.test(rec),
     'and only when they actually moved');
@@ -32059,14 +32062,120 @@ test('#1369: undo takes back a property the text cannot carry', () => {
   const ee = fnBody(_src, 'exitEdit');
   assert.ok(/const propsJsonBefore = JSON\.stringify\(node\.props \|\| \[\]\);/.test(ee),
     'the before-snapshot is taken at the top of exitEdit');
-  assert.ok(/recordTextEdit\(node\.id, prevText, node\.text, propsJsonBefore, JSON\.stringify\(node\.props \|\| \[\]\)\)/.test(ee),
+  assert.ok(/recordTextEdit\(node\.id, prevText, node\.text, propsJsonBefore, JSON\.stringify\(node\.props \|\| \[\]\)(?:, \w+)?\)/.test(ee),
     'and the after-snapshot is read at record time');
   const beforeAt = ee.indexOf('const propsJsonBefore'), promoteAt = ee.indexOf('promoteInlineShorthand(node)');
   assert.ok(beforeAt > 0 && promoteAt > beforeAt, 'captured BEFORE the promotion that consumes the brace');
 
-  // scoped deliberately: every other sidecar is keyed by a token that lives in the text
+  // #1507 CORRECTED the sentence that used to live here. It read "only props are restored; the
+  // token-keyed sidecars ride the text and pruneArtifacts" -- the same one-directional reasoning
+  // recordTextEdit's own comment carried, and it was wrong. Prune only ever DELETES, so restoring
+  // the text brought the token back with no record behind it: a "(missing data)" pill on seven of
+  // the eight prunable sidecars, unrepairable in-row and surviving save.
+  // Props are still the only sidecar restored by direct assignment, because they have no token to
+  // reconcile against. The token-keyed ones are OFFERED back and then reconciled BY the text.
   assert.ok(!/node\.(math|vars|est|dice|grammar|query) = JSON\.parse/.test(ap),
-    'only props are restored; the token-keyed sidecars ride the text and pruneArtifacts');
+    'the token-keyed sidecars are never assigned wholesale; the text stays the authority on which survive');
+  assert.match(ap, /restoreArtifacts\(node, JSON\.parse\(entry\.dropped\)\)/,
+    'they are offered back from the entry');
+  const restoreAt = ap.indexOf('restoreArtifacts('), pruneAt = ap.indexOf('pruneArtifacts(node)');
+  assert.ok(restoreAt > 0 && pruneAt > restoreAt,
+    'and pruned straight after, so only the ones the restored text names survive');
+});
+
+// ─── #1507: undo restores the token, so it must restore the record too ────────────────────────
+// Deleting a pill's shorthand in edit mode prunes its sidecar record. Undo then restored the TEXT --
+// bringing the [[type:key]] token back -- with nothing behind it, leaving a "(missing data)" pill
+// that in-row editing could not repair and that survived save. Prune is the one place that knows
+// which records are about to stop existing, and it threw that away.
+test('#1507 pruneArtifacts reports what it dropped, and reports nothing when it drops nothing', () => {
+  const mk = (text, extra) => ({ text, ...extra });
+  const n = mk('Quote [[math:k1]] and [[dice:d1]]', {
+    math: [{ key: 'k1', expr: '2+2' }, { key: 'k2', expr: '9' }],
+    dice: [{ key: 'd1' }],
+    grammar: [{ key: 'g1' }],
+  });
+  const dropped = c.pruneArtifacts(n);
+  assert.deepEqual(host(n.math.map(r => r.key)), ['k1'], 'the record whose token is gone is still pruned');
+  assert.deepEqual(host(n.dice.map(r => r.key)), ['d1'], 'and the one whose token remains is kept');
+  assert.deepEqual(host(dropped.math.map(r => r.key)), ['k2'], 'and the dropped one is REPORTED, not just deleted');
+  assert.deepEqual(host(dropped.grammar.map(r => r.key)), ['g1'], 'across every sidecar it walks');
+  assert.ok(!('dice' in dropped), 'a sidecar that lost nothing is not mentioned');
+  assert.equal(dropped.math[0].expr, '9', 'the WHOLE record comes back, not just its key');
+
+  // the NEGATIVE, which is what keeps every caller that ignores the return value honest
+  assert.equal(c.pruneArtifacts(mk('Quote [[math:k1]]', { math: [{ key: 'k1' }] })), null,
+    'nothing dropped, nothing reported');
+  assert.equal(c.pruneArtifacts(mk('bare text', {})), null, 'a point with no sidecars at all');
+  // footnotes are a DOCUMENT store, so an orphan persists and is deleted only via the manager
+  const fn = mk('bare', { footnotes: [{ key: 'f1' }] });
+  assert.equal(c.pruneArtifacts(fn), null, 'footnotes are never pruned, so never reported as dropped');
+  assert.equal(fn.footnotes.length, 1, 'and never removed');
+});
+
+test('#1507 restoreArtifacts puts records back without duplicating what is already there', () => {
+  const n = { text: 'x', math: [{ key: 'k1', expr: 'keep me' }] };
+  c.restoreArtifacts(n, { math: [{ key: 'k1', expr: 'STALE' }, { key: 'k2', expr: 'new' }], dice: [{ key: 'd1' }] });
+  assert.deepEqual(host(n.math.map(r => r.key)), ['k1', 'k2'], 'a key already present is not added twice');
+  assert.equal(n.math[0].expr, 'keep me', 'and the live record wins over the carried one');
+  assert.deepEqual(host(n.dice.map(r => r.key)), ['d1'], 'a sidecar the point did not have is created');
+  c.restoreArtifacts(n, null);
+  assert.equal(n.math.length, 2, 'null is a no-op');
+});
+
+test('#1507 the undo entry carries the orphans, and the text decides which come back', () => {
+  const rec = fnBody(_src, 'recordTextEdit');
+  assert.match(rec, /if \(dropped\) \{ e\.dropped = JSON\.stringify\(dropped\); e\.size \+= e\.dropped\.length; \}/,
+    'serialized like props, so nothing later can reach into the entry, and the stack budget counts it');
+
+  // ONE path for undo and redo. A `dir` branch would be two behaviours to keep in step, and the
+  // token is already the authority on which records belong.
+  const ap = fnBody(_src, 'applyEntry');
+  assert.doesNotMatch(between(ap, 'entry.dropped', 'rederiveFromText'), /dir === /,
+    'restore-then-prune is direction-agnostic: undoing brings the token back, redoing takes it away');
+  // and the PRUNE is what makes it direction-agnostic. Without it, redo would leave the restored
+  // records behind as orphans -- the same asymmetry this issue is about, pointed the other way.
+  assert.match(between(ap, 'entry.dropped', 'rederiveFromText'), /pruneArtifacts\(node\);/,
+    'the restored records are reconciled against the restored text, every time');
+
+  // #1133: the CALL SITE. exitEdit is the only place that both prunes and records, and the capture
+  // has to happen at the prune or the records are already gone.
+  const ee = fnBody(_src, 'exitEdit');
+  assert.match(ee, /const droppedHere = _suppressPruneOnFlush \? null : pruneArtifacts\(node\)/,
+    'exitEdit keeps what its prune dropped');
+  assert.match(ee, /recordTextEdit\(node\.id, prevText, node\.text, propsJsonBefore, JSON\.stringify\(node\.props \|\| \[\]\), droppedHere\)/,
+    'and hands it to the entry');
+  // Anchored on the SIX-argument call, not the first `recordTextEdit(node.id, prevText` in the body:
+  // exitEdit's `node.type === 'base'` branch has its own three-argument call and returns before the
+  // prune, so it orphans nothing and needs nothing carried. indexOf found that one and compared the
+  // wrong pair.
+  assert.ok(ee.indexOf('const droppedHere') < ee.indexOf(', droppedHere)'),
+    'the prune runs BEFORE the record, which is why the record could not see what was lost');
+  assert.doesNotMatch(between(ee, 'if (node.type === \'base\')', 'const droppedHere'), /pruneArtifacts\(/,
+    'and the base branch returns without pruning, so it has no orphans to carry');
+
+  // CENSUS RATCHET on the two hand-maintained lists of the same family. The prune list is the
+  // carry list minus footnotes; a sidecar added to one and not the other is how `query` was left
+  // out of the carry list before (audit #4), and it is how the next one would be left out here.
+  const prunable = nonEmpty((/const PRUNABLE_SIDECARS = \[([^\]]+)\]/.exec(_src)?.[1] || '')
+    .match(/'([a-z]+)'/g) || [], 'PRUNABLE_SIDECARS');
+  const carried = nonEmpty((/const ARTIFACT_SIDECARS = \[([^\]]+)\]/.exec(_src)?.[1] || '')
+    .match(/'([a-z]+)'/g) || [], 'ARTIFACT_SIDECARS');
+  const strip = (a) => a.map(x => x.replace(/'/g, ''));
+  assert.deepEqual(host([...strip(prunable)].sort()),
+                   host(strip(carried).filter(k => k !== 'footnotes').sort()),
+    'the prune list is the carry list minus footnotes; a sidecar in one and not the other is a hole');
+  // and prune really walks every one of them. Named explicitly rather than derived: the names are
+  // irregular (query -> pruneQueries, seq -> pruneSeqs, est -> pruneEst), and a heuristic that
+  // guesses them wrong reports a hole that is not there while missing one that is.
+  const WALKERS = { dice: 'pruneDice', markov: 'pruneMarkov', math: 'pruneMath', est: 'pruneEst',
+                    vars: 'pruneVars', grammar: 'pruneGrammar', seq: 'pruneSeqs', query: 'pruneQueries' };
+  const body = fnBody(_src, 'pruneArtifacts');
+  for (const k of nonEmpty(strip(prunable), 'prunable sidecars')) {
+    assert.ok(WALKERS[k], `${k} is listed as prunable but this test does not know its walker`);
+    assert.ok(body.includes(WALKERS[k] + '(node)'),
+      `pruneArtifacts must actually walk ${k} via ${WALKERS[k]}, or it is listed and never checked`);
+  }
 });
 
 test('#1375: a point edited out of the active search says so, and is not removed', () => {
