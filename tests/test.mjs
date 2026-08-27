@@ -12375,9 +12375,12 @@ test('user-guide drift: computing-numbers.md only names math functions that exis
 // forms; every one of them must be documented in the reference, or a reader trusts a spec that has
 // drifted from the app. Canonical source = that guard's alternation, parsed from index.html.
 test('#1215: the pill-syntax reference documents every keyword pill form the code recognizes', () => {
-  const m = _src.match(/if \(\/\^\(\?:=\|\(\?:([a-z|]+)\)\\s\*:\)\\s\*\$\/i\.test\(body\)\) return '';/);
-  assert.ok(m, "the promoteBraceBodyIn empty-keyword guard alternation was not found (did #1213's regex change?)");
-  const keywords = m[1].split('|');
+  // #1505 moved the guard's alternation out of promoteBraceBodyIn and into a named list, so the
+  // ANNOUNCEMENT could ask the same question the deletion asks. Same canonical source, now declared
+  // rather than parsed out of a regex literal; the claim below is unchanged.
+  const m = _src.match(/const EMPTY_STUB_KEYWORDS = \[([^\]]+)\]/);
+  assert.ok(m, "EMPTY_STUB_KEYWORDS was not found (did #1213's keyword list move again?)");
+  const keywords = nonEmpty([...m[1].matchAll(/'([a-z]+)'/g)].map(x => x[1]), 'stub keywords');
   assert.ok(keywords.length >= 8, `parsed too few keyword pills (${keywords.length}); the guard regex changed shape?`);
   const ref = readFileSync(_guidePath('pill-syntax-reference.md'), 'utf8');
   const missing = keywords.filter(kw => !new RegExp(`\\{${kw}\\b`).test(ref));
@@ -32131,6 +32134,10 @@ test('#1353 Phase 2: a node scope carries the distribution lane across', () => {
     'restored in resolveNodeScope itself, not worked around at one call site');
 });
 
+// #1505: the deletion list, parsed from its declaration in index.html. Both #1505 tests and the
+// #1215 reference guard read the same source of truth the app does.
+const STUB_KEYWORDS = [...(/const EMPTY_STUB_KEYWORDS = \[([^\]]+)\]/.exec(_src)?.[1] || '')
+  .matchAll(/'([a-z]+)'/g)].map(m => m[1]);
 test('#1353 Phase 1: a refused brace ANNOUNCES the reason, not just the fact', () => {
   const A = c.braceAttemptAnnounce, rules = {}, vars = { tone: 'warm', n: 4 };
   // The specific sentence already reached the committed row's `.brace-attempt` TITLE. A title is
@@ -32150,9 +32157,14 @@ test('#1353 Phase 1: a refused brace ANNOUNCES the reason, not just the fact', (
   assert.match(noReason, /^This looks like a pill but could not be created/);
   assert.match(noReason, /It stays plain text\.$/);
   assert.ok(!/^\s/.test(noReason) && !/undefined|null/.test(noReason));
-  assert.match(fnBody(_src, 'braceAttemptAnnounce').replace(/\s+/g, ' ').trim(),
-    /^\{ return braceAttemptReason\(body, rules, vars\) \+ ' It stays plain text\.'; \}$/,
-    'the body is the one return, with no unreachable fallback branch');
+  // #1505 widened this. There is now a second return above the fallback, and unlike the `why ? … : …`
+  // this pin was written against it is REACHABLE: twelve empty stubs take it, asserted by value in
+  // the #1505 tests. The claim is unchanged, and so is the last resort.
+  const annBody = fnBody(_src, 'braceAttemptAnnounce')
+    .split('\n').filter(l => !/^\s*\/\//.test(l)).join(' ').replace(/\s+/g, ' ').trim();
+  assert.match(annBody,
+    /^\{ const stub = emptyStubAnnounce\(body\); if \(stub\) return stub; return braceAttemptReason\(body, rules, vars\) \+ ' It stays plain text\.'; \}$/,
+    'the reason path is still the last resort, with no unreachable branch above it');
   for (const b of ['= tone', '= nosuchname', '']) {
     assert.ok(!/—/.test(A(b, rules, vars)), 'AP punctuation, no em dashes');
     assert.ok(!/\bnode\b/.test(A(b, rules, vars)), 'user-facing copy says point');
@@ -32169,6 +32181,79 @@ test('#1353 Phase 1: a refused brace ANNOUNCES the reason, not just the fact', (
   assert.ok(!/announce\('Not recognized/.test(b), 'and the generic sentence is gone from that site');
   assert.ok(/const braceRules = collectRules\(\), braceScope = resolveNodeScope\(node, ancestorsOf\(node\), collectVars\(\)\);/.test(b),
     'reusing the SAME rules and scope classifyBraceBody just used, so the reason cannot disagree with the verdict');
+});
+
+// ─── #1505: the announcement is derived from the OUTCOME, not a parallel classifier ──────────
+// The #1213 stub guard deletes an empty-bodied keyword pill rather than let its braces leak into
+// the prose. Deliberate and shipped; not in question. What was wrong is what the app SAID while
+// you typed one. classifyBraceBody does not know what promoteBraceBodyIn will do, so the family
+// split three ways, measured by driving the real app: seven announced "It stays plain text" and
+// were deleted, five said nothing at all and were deleted, and a near-identical {= 1200 + } got
+// the SAME sentence as {= } and stayed. Same words, opposite outcomes.
+test('#1505 one predicate answers "will this be deleted", for the announcement and the deletion alike', () => {
+  const KEYWORDS = nonEmpty(STUB_KEYWORDS, 'stub keywords');
+  for (const kw of KEYWORDS) {
+    for (const body of [`${kw}:`, `${kw}: `, `${kw}:   `, `${kw.toUpperCase()}: `, ` ${kw}: `]) {
+      assert.equal(c.braceBodyIsEmptyStub(body), true, `{${body}} is an empty stub and promotion consumes it`);
+    }
+  }
+  for (const body of ['=', '= ', '=   ']) assert.equal(c.braceBodyIsEmptyStub(body), true, `{${body}} too`);
+  // the NEGATIVES, which are the half that keeps this from flagging working pills
+  for (const body of ['= 1200 + ', '= 2 + 2', 'oracle: likely', 'shuffle: a | b', 'rule tavern: a | b',
+                      'seq status: active | done', 'note to self', '"literal"', 'a, b', '', '   ']) {
+    assert.equal(c.braceBodyIsEmptyStub(body), false, `{${body}} is not an empty stub and must not be`);
+  }
+  // and the deletion asks THIS predicate, rather than carrying a second copy of the regex
+  assert.match(fnBody(_src, 'promoteBraceBodyIn'), /if \(braceBodyIsEmptyStub\(body\)\) return '';/,
+    'promoteBraceBodyIn consumes via the shared predicate, or the two answers drift apart again');
+});
+
+test('#1505 every empty stub says what actually happens to it, in its own words', () => {
+  const KEYWORDS = nonEmpty(STUB_KEYWORDS, 'stub keywords');
+  const said = {};
+  for (const kw of KEYWORDS) said[kw] = c.emptyStubAnnounce(`${kw}: `);
+  said['='] = c.emptyStubAnnounce('= ');
+
+  for (const [kw, msg] of Object.entries(said)) {
+    assert.ok(msg, `{${kw}} is deleted and must not be deleted in silence`);
+    // the OUTCOME, which is the whole finding: never "it stays plain text" about text that goes
+    assert.match(msg, /removed when you leave the point\.$/, `{${kw}} states what happens to the text`);
+    assert.doesNotMatch(msg, /stays plain text/, `{${kw}} must not promise the opposite of what it does`);
+    // its OWN form, not a neighbour's. {cycle: } {once: } {stopping: } all advised about decks.
+    const own = kw === '=' ? '{= ' : `{${kw}`;
+    assert.ok(msg.includes(own), `{${kw}} must show the form it needs, not another keyword's (got: ${msg})`);
+    // house style
+    assert.ok(!/—/.test(msg), `{${kw}}: AP punctuation, no em dashes`);
+    assert.ok(!/\bnode\b/.test(msg), `{${kw}}: user-facing copy says point`);
+  }
+  // three keywords shared one sentence before this, and the sentence was about a form none of them
+  // had typed. Identity, not existence: every keyword's advice is its own.
+  const forms = Object.values(said);
+  assert.equal(new Set(forms).size, forms.length,
+    'two keywords sharing a sentence means at least one reader is being sent to the wrong form');
+  // CENSUS RATCHET: a keyword added to the deletion list with no sentence would silently fall back
+  // to a bare outcome clause with no advice at all. Both halves are the same list.
+  const table = between(_src, 'const EMPTY_STUB_FORM = {', '};');
+  for (const kw of KEYWORDS) {
+    assert.ok(new RegExp(`(?:^|\\s)'?${kw}'?:`, 'm').test(table),
+      `${kw} is deleted but has no sentence of its own in EMPTY_STUB_FORM`);
+  }
+  assert.equal(c.emptyStubAnnounce('= 2 + 2'), null, 'a body that promotes is not a stub');
+  assert.equal(c.emptyStubAnnounce('note to self'), null, 'and neither is prose');
+});
+
+test('#1505 the announcement and the live cue both route through the one outcome-aware sentence', () => {
+  const A = (b) => c.braceAttemptAnnounce(b, {}, {});
+  // an empty stub: the outcome clause is the stub's, not the generic one
+  assert.match(A('= '), /removed when you leave the point\.$/, 'a body that goes says it goes');
+  assert.match(A('roll: '), /A roll needs something to roll on/, 'and keeps a specific reason');
+  // the CONTROL from the report: near-identical, stays, and still says so
+  assert.match(A('= 1200 + '), /It stays plain text\.$/, 'a body that stays still says it stays');
+  assert.doesNotMatch(A('= 1200 + '), /removed/, 'and is never told it will be deleted');
+  // the silent five classified 'literal', so the announce path returned before reaching them
+  assert.match(fnBody(_src, 'checkInlineHighlight'),
+    /if \(braceBodyIsEmptyStub\(body\)\) announce\(braceAttemptAnnounce\(body, braceRules, braceScope\)\)/,
+    'a stub that classifies as prose is still announced, or it is deleted in silence');
 });
 
 test('#1353 Phase 3: the Variables panel names a kind the value cannot show', () => {

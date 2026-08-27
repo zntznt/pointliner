@@ -1278,6 +1278,51 @@
       "find": "      if (!ok || inert) chip.classList.add('prop-repeat-bad');",
       "replace": "      if (!ok) chip.classList.add('prop-repeat-bad');",
       "kills": "all three surfaces route through the ONE dateless predicate"
+    },
+    {
+      "id": "stub-announced-as-staying",
+      "suite": "unit",
+      "why": "the reported defect: a body the stub guard deletes was announced as staying plain text",
+      "file": "index.html",
+      "find": "  const stub = emptyStubAnnounce(body);\n  if (stub) return stub;",
+      "replace": "  const stub = null;\n  if (stub) return stub;",
+      "kills": "the announcement and the live cue both route through the one outcome-aware sentence"
+    },
+    {
+      "id": "stub-deleted-in-silence",
+      "suite": "browser",
+      "why": "five empty stubs classify as prose, so without this the announce path returns before reaching them and the text vanishes with no word",
+      "file": "index.html",
+      "find": "    if (braceBodyIsEmptyStub(body)) announce(braceAttemptAnnounce(body, braceRules, braceScope));",
+      "replace": "    ;",
+      "kills": "a brace that is about to be deleted says so, and one that stays still says it stays"
+    },
+    {
+      "id": "stub-predicate-forked-again",
+      "suite": "unit",
+      "why": "a second copy of the deletion test is exactly how the announcement and the deletion drifted apart",
+      "file": "index.html",
+      "find": "  if (braceBodyIsEmptyStub(body)) return '';",
+      "replace": "  if (/^(?:=|(?:roll|count|query|shuffle|cycle|once|stopping|markov|oracle|seq|rule)\\s*:)\\s*$/i.test(body)) return '';",
+      "kills": "one predicate answers"
+    },
+    {
+      "id": "stub-advice-borrowed-from-a-neighbour",
+      "suite": "unit",
+      "why": "cycle, once and stopping all advised about decks before this; one shared sentence sends a reader to a form they did not type",
+      "file": "index.html",
+      "find": "  cycle:    'A cycle needs a list to step through: try {cycle: a | b | c}.',",
+      "replace": "  cycle:    'A shuffle needs a list to deal from: try {shuffle: a | b | c}.',",
+      "kills": "every empty stub says what actually happens to it, in its own words"
+    },
+    {
+      "id": "stub-outcome-clause-dropped",
+      "suite": "unit",
+      "why": "the outcome clause IS the finding: without it the sentence is advice with no word about the text disappearing",
+      "file": "index.html",
+      "find": "  return (form ? form + ' ' : '') + 'This empty pill is removed when you leave the point.';",
+      "replace": "  return (form ? form + ' ' : '') + 'Check the syntax.';",
+      "kills": "every empty stub says what actually happens to it, in its own words"
     }
   ]
 }

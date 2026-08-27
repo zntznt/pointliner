@@ -3617,3 +3617,66 @@ test('#1504 an unanchored repeat says so on the chip, in the dialog, and at comp
     'a one-off to-do has no recurrence to lose, so completing it must stay quiet about repeats');
   await pg.close();
 });
+
+// 62. #1505 — an empty-bodied keyword pill is DELETED by the #1213 stub guard, and the app told the
+// reader the opposite while they typed it. Driven, and it can only be driven: the contradiction is
+// between something said at one moment (the live region, as the `}` lands) and something done at a
+// later one (promotion, on exit). No source pin spans those two moments, and neither half is wrong
+// on its own. The census matters more than the reported case here: the report named {= }, and
+// driving the family found seven that lied and five that said nothing at all.
+test('#1505 a brace that is about to be deleted says so, and one that stays still says it stays', { skip: skip() }, async () => {
+  const drive = async (body) => {
+    const pg = await fresh();
+    await pg.evaluate(() => {
+      const n = mkNode(''); n.type = 'ul';
+      root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0];
+      c.focus(); activeContentId = c.dataset.id;
+      const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    });
+    await pg.waitForTimeout(200);
+    await pg.keyboard.type('Subtotal {' + body + '}');   // the announcement fires on the closing }
+    await pg.waitForTimeout(350);
+    const said = await pg.evaluate(() => (document.getElementById('a11y-live')?.textContent || '').trim());
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(350);
+    const after = await pg.evaluate(() => ({
+      text: root.children[0].text,
+      attempts: document.querySelectorAll('.brace-attempt').length,
+    }));
+    await pg.close();
+    return { said, ...after };
+  };
+
+  // The whole deleted family, read out of the app's own list so a keyword added later is driven too.
+  const KEYWORDS = ['=', 'roll', 'count', 'query', 'shuffle', 'cycle', 'once', 'stopping',
+                    'markov', 'oracle', 'seq', 'rule'];
+  const seen = new Set();
+  for (const kw of KEYWORDS) {
+    const body = kw === '=' ? '= ' : `${kw}: `;
+    const r = await drive(body);
+    // it really is deleted -- the precondition, and the #1213 behaviour this must not change
+    assert.equal(r.text, 'Subtotal ', `{${body}} must still be consumed (that half is deliberate, #1213)`);
+    // and it was never silent about it: five of these said nothing at all before
+    assert.ok(r.said, `{${body}} is deleted, so it must not be deleted in silence`);
+    assert.match(r.said, /removed when you leave the point/,
+      `{${body}} must say the text goes, not that it stays`);
+    assert.doesNotMatch(r.said, /stays plain text/,
+      `{${body}} announced the opposite of what the next keystroke did`);
+    // its own advice, not a neighbour's: three of these were told about decks
+    assert.ok(r.said.includes(kw === '=' ? '{= ' : `{${kw}`),
+      `{${body}} must show its own form, got: ${r.said}`);
+    assert.ok(!seen.has(r.said), `{${body}} shares its sentence with another keyword: ${r.said}`);
+    seen.add(r.said);
+  }
+
+  // THE CONTROL, and the reason the report could name the contradiction at all: near-identical,
+  // classified the same way, and it STAYS. Measure the negative case or "complete the set" work
+  // lands on a member that never needed it.
+  const stays = await drive('= 1200 + ');
+  assert.equal(stays.text, 'Subtotal {= 1200 + }', 'precondition: this one really does stay');
+  assert.equal(stays.attempts, 1, 'and wears the .brace-attempt cue');
+  assert.match(stays.said, /It stays plain text/, 'so it must still be told it stays');
+  assert.doesNotMatch(stays.said, /removed/, 'and never that it will be deleted');
+});
