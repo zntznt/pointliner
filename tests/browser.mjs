@@ -3680,3 +3680,99 @@ test('#1505 a brace that is about to be deleted says so, and one that stays stil
   assert.match(stays.said, /It stays plain text/, 'so it must still be told it stays');
   assert.doesNotMatch(stays.said, /removed/, 'and never that it will be deleted');
 });
+
+// 63. #1506 — a dialog Save that REFUSES was a total no-op: an ENABLED button, pressed, writing
+// nothing, saying nothing, changing nothing on screen. Driven, because the finding IS what a press
+// does: the validity cores are already tested and prove nothing about whether pressing Save tells
+// anyone it refused. The census matters as much as the case: the family is the dialogs whose commit
+// stays ENABLED, and the two that DISABLE theirs instead are a different, visible pattern.
+test('#1506 an enabled Save that refuses says why, and a valid one still saves', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const setup = () => pg.evaluate(() => {
+    const n = mkNode('Dentist'); n.type = 'ul';
+    root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    buildIndex(root, null); markDirty(); render();
+    return n.id;
+  });
+  const commit = () => pg.evaluate(async () => {
+    const btn = [...document.querySelectorAll('#io-card button')]
+      .filter(x => !/cancel|close/i.test(x.textContent || '') && !x.className.includes('io-x')).pop();
+    const live = document.getElementById('a11y-live'); if (live) live.textContent = '';
+    const out = { label: (btn?.textContent || '').trim(), disabled: !!btn?.disabled };
+    btn?.click();
+    await new Promise(r => setTimeout(r, 150));            // announce() lands on the next frame
+    const ae = document.activeElement;
+    return { ...out,
+      said: (document.getElementById('a11y-live')?.textContent || '').trim(),
+      focusName: ae?.getAttribute?.('aria-label') || ae?.tagName,
+      focusInvalid: ae?.getAttribute?.('aria-invalid'),
+      // #io-card is never removed, only emptied: openness is the backdrop's `on` class
+      stillOpen: document.getElementById('io-back')?.classList.contains('on') === true,
+      props: JSON.stringify((nodeById(activeContentId) || root.children[0]).props || []),
+    };
+  });
+  const open = (fn, id) => pg.evaluate(([f, i]) => { window[f](i); }, [fn, id]);
+  const settle = () => pg.waitForTimeout(150);             // the dialog's open-time focus rAF
+  const type = (sel, v) => pg.evaluate(([s, val]) => {
+    const d = document.querySelector(s); d.value = val; d.dispatchEvent(new Event('input', { bubbles: true }));
+  }, [sel, v]);
+  const close = () => pg.evaluate(() => { try { closeIo(); } catch (_) {} });
+
+  const id = await setup();
+
+  // ── the reported case: an impossible date the parser rejects
+  await open('openDueDateDialog', id); await settle();
+  await type('[aria-label="Due date"]', '2026-02-30');
+  const due = await commit();
+  assert.equal(due.disabled, false, 'precondition: the button really is enabled, so pressing it is an action');
+  assert.ok(due.said, 'an enabled Save that writes nothing must not do it in silence');
+  assert.match(due.said, /^Not saved\./, 'and it leads with the outcome, not the diagnosis');
+  assert.match(due.said, /Due date/, 'naming which of the three fields refused');
+  assert.match(due.said, /YYYY-MM-DD/, 'and the same repair the typed door already offers');
+  assert.equal(due.focusName, 'Due date', 'focus lands on the offending field');
+  assert.equal(due.focusInvalid, 'true', 'and that field announces as invalid on arrival');
+  assert.equal(due.props, '[]', 'nothing was written');
+  assert.equal(due.stillOpen, true, 'and the dialog stays open to be fixed');
+  await close();
+
+  // ── the sibling field, which must name ITSELF and not borrow the date wording
+  await open('openDueDateDialog', id); await settle();
+  await type('[aria-label="Repeat schedule"]', 'every weekday');
+  const rep = await commit();
+  assert.match(rep.said, /^Not saved\./, 'the repeat refusal is announced too');
+  assert.match(rep.said, /repeat phrase/, 'in its own words, not the date field\'s');
+  assert.equal(rep.focusName, 'Repeat schedule', 'and focus lands on the field that refused');
+  assert.equal(rep.focusInvalid, 'true');
+  assert.notEqual(rep.said, due.said, 'two different refusals must not read identically');
+  // and the mark clears the moment the mistake does, or the next focus landing announces a lie
+  await type('[aria-label="Repeat schedule"]', 'every week');
+  const cleared = await pg.evaluate(() =>
+    document.querySelector('[aria-label="Repeat schedule"]').getAttribute('aria-invalid'));
+  assert.equal(cleared, null, 'a fixed field stops claiming to be invalid');
+  await close();
+
+  // ── the sibling DIALOG: the issue said treat the family, and this one shared the silence
+  await open('openPropsDialog', id); await settle();
+  await pg.evaluate(() => {
+    const k = document.querySelectorAll('#io-card .key-in'), v = document.querySelectorAll('#io-card .val-in');
+    k[0].value = 'due'; k[0].dispatchEvent(new Event('input', { bubbles: true }));
+    v[0].value = '2026-02-30'; v[0].dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const props = await commit();
+  assert.match(props.said, /^Not saved\./, 'the Properties dialog refused in silence too');
+  assert.match(props.said, /due/, 'and names WHICH property, since this dialog can hold several dates');
+  assert.equal(props.focusInvalid, 'true', 'the offending value field announces as invalid');
+  await close();
+
+  // ── THE CONTROL. A valid Save must still save, and must say nothing about refusing.
+  await open('openDueDateDialog', id); await settle();
+  await type('[aria-label="Due date"]', '2026-09-01');
+  await type('[aria-label="Repeat schedule"]', '');
+  const ok = await commit();
+  assert.doesNotMatch(ok.said || '', /Not saved/, 'a Save that works is never told it refused');
+  assert.equal(ok.stillOpen, false, 'and the dialog closes');
+  const written = await pg.evaluate(() =>
+    (root.children[0].props || []).map(p => p.key + '=' + p.val).join(','));
+  assert.match(written, /due=2026-09-01/, 'and the date is actually written');
+  await pg.close();
+});

@@ -15088,6 +15088,7 @@ function openPropsDialog(nodeId, targets = null) {
 
   const errDiv = document.createElement('div');
   errDiv.style.cssText = 'display:none;color:var(--bad);font-size:11px;padding:0 16px 8px';
+  nameFieldPreview(errDiv, 'Properties');   // #1506: it was loose unnamed text, like the previews UXP-281 fixed
   ioCard.appendChild(errDiv);
 
   _shell.mountFooter([
@@ -15100,12 +15101,17 @@ function openPropsDialog(nodeId, targets = null) {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
     const badIdx = props.findIndex(p => DATE_KEYS.has(p.key.trim().toLowerCase()) && p.val.trim() && parseDueDate(p.val.trim()) === null);
     if (badIdx >= 0) {
+      // #1506: the visible half was already here; the press itself said nothing, so a screen-reader
+      // user pressed an enabled Save and met silence. Name the offending KEY, since this dialog can
+      // hold several date properties and "not a valid date" alone does not say which one.
+      const badKey = (props[badIdx].key || '').trim() || 'date';
       errDiv.textContent = 'Not a valid date. ' + dateFormsHint();
       errDiv.style.display = '';
-      list.querySelectorAll('.val-in')[badIdx]?.focus();
-      return;
+      return refuseDialogSave(list.querySelectorAll('.val-in')[badIdx],
+        `Not saved. The ${badKey} value is not a valid date. ` + dateFormsHint());
     }
     errDiv.style.display = 'none';
+    for (const el of list.querySelectorAll('.val-in')) markFieldInvalid(el, false);   // #1506: the refusal is over
     pushUndo();
     if (applyList.length === 1) {
       // single point: the dialog showed its full prop set, so replace wholesale.
@@ -15540,6 +15546,49 @@ function attachDateCalendar(input, host, isDate, onPicked) {
   return { refresh: open, sync };
 }
 
+// ── #1506: a dialog Save that REFUSES ───────────────────────────────────────────────────────────
+// Measured, driving the real app: the Save button is ENABLED, you press it, and nothing happens at
+// all. No props written, no toast, nothing in the live region, and in the Schedule dialog not a
+// pixel changes. Focus does move to the offending field, which is the one thing that worked, and it
+// is invisible to a sighted user and unexplained to everyone.
+//
+// The app already owned both halves of the answer. The TYPED door for the identical failure says
+// "Not a valid date: friday. Use YYYY-MM-DD, today, tomorrow or today+N." through flashHint, and
+// builderFormApply already announces its own refusal ("P4: no silent refocus"). Only the dialogs
+// omitted it, so the same mistake was explained through one door and silent through another (P1).
+//
+// NOT a live region on the preview. UXP-281 (#1184) records that decision and its guard mutation-
+// tests it: a preview re-renders on every keystroke, so a polite region there is a stream of
+// interruptions. A refusal is one discrete action, which is what announce() is for.
+//
+// Only reached by the dialogs whose commit stays ENABLED and refuses on press. openInsertDialog and
+// openVarDialog DISABLE their commit instead (measured: disabled true), which is a visible state
+// rather than a silent refusal, and is left alone.
+function refuseDialogSave(input, why) {
+  announce(why);                                    // P4: a failed action is an event, not a state
+  if (input) {
+    // the field focus is about to land on says so on arrival, which is what makes the existing
+    // (and previously silent) focus move mean something
+    input.setAttribute('aria-invalid', 'true');
+    input.focus();
+  }
+  return false;                                     // callers `return refuseDialogSave(...)`
+}
+// A field stops claiming to be invalid the moment it is not. Without this the attribute is a stale
+// lie the next time focus lands there, which is the same defect one level down.
+function markFieldInvalid(input, bad) {
+  if (!input) return;
+  if (bad) input.setAttribute('aria-invalid', 'true');
+  else input.removeAttribute('aria-invalid');
+}
+// #1506: the inline message under a field is NAMED, exactly as UXP-281 named the io-preview divs.
+// `role="group"` is load-bearing: a bare <div> maps to `generic`, and ARIA-in-HTML prohibits naming
+// on generic. No aria-live here either, for UXP-281's reason.
+function nameFieldPreview(el, label) {
+  el.setAttribute('role', 'group');
+  el.setAttribute('aria-label', 'Preview: ' + label);
+}
+
 // ─── schedule dialog ─────────────────────────────────────────────────────────
 // A two-field dialog for setting / clearing the "start" and "due" properties — a
 // point can carry a start→due range. Each field accepts YYYY-MM-DD, "today",
@@ -15584,13 +15633,15 @@ function openDueDateDialog(nodeId, targets = null) {
     preview.style.cssText = 'font-size:11px;color:var(--muted);margin-top:5px;min-height:16px';
     function updatePreview() {
       const v = inp.value.trim();
-      if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank to clear'; return; }
+      if (!v) { markFieldInvalid(inp, false); preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank to clear'; return; }
       const ep = parseDueDate(v);
+      markFieldInvalid(inp, ep === null);   // #1506: never a stale claim on the next focus landing
       if (ep === null) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a valid date. ' + dateFormsHint(); return; }
       const df = formatDueDate(ep);
       preview.style.color = df.state === 'overdue' ? 'var(--bad)' : df.state === 'today' ? 'var(--ok)' : 'var(--muted)';
       preview.textContent = df.label + ' · ' + df.iso;
     }
+    nameFieldPreview(preview, labelText);   // #1506: UXP-281 named the io-preview divs and skipped these
     inp.addEventListener('input', updatePreview);
     updatePreview();
     f.append(lbl, inp, preview);
@@ -15624,8 +15675,9 @@ function openDueDateDialog(nodeId, targets = null) {
     preview.style.cssText = 'font-size:11px;color:var(--muted);margin-top:5px;min-height:16px';
     function updatePreview() {
       const v = inp.value.trim();
-      if (!v) { preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank for a one-off task'; return; }
+      if (!v) { markFieldInvalid(inp, false); preview.style.color = 'var(--muted)'; preview.textContent = 'Leave blank for a one-off task'; return; }
       const desc = parseRepeat(v);
+      markFieldInvalid(inp, !desc);   // #1506
       if (!desc) { preview.style.color = 'var(--bad)'; preview.textContent = 'Not a repeat phrase. Try "every week", "every Monday" or "monthly on the 1st".'; return; }
       // #1504: a repeat advances a DATE. With neither field filled there is nothing to advance
       // from, so the recurrence would end silently at the first completion. Say it HERE, while
@@ -15639,6 +15691,7 @@ function openDueDateDialog(nodeId, targets = null) {
       preview.style.color = 'var(--muted)';
       preview.textContent = '⟳ ' + describeRepeat(desc) + '. Advances when you complete it.';
     }
+    nameFieldPreview(preview, 'Repeat');   // #1506
     inp.addEventListener('input', updatePreview);
     updatePreview();
     f.append(lbl, inp, preview);
@@ -15664,9 +15717,12 @@ function openDueDateDialog(nodeId, targets = null) {
   const cancelBtn = _shell.btns.cancel, saveBtn = _shell.btns.save;
 
   function save() {
-    if (!startF.valid()) { startF.inp.focus(); return; }
-    if (!dueF.valid())   { dueF.inp.focus();   return; }
-    if (!repeatF.valid()) { repeatF.inp.focus(); return; }
+    // #1506: each refusal leads with the OUTCOME ("Not saved"), then the same sentence the field
+    // already shows, so the press and the preview cannot tell different stories.
+    if (!startF.valid()) return refuseDialogSave(startF.inp, 'Not saved. Start date is not a valid date. ' + dateFormsHint());
+    if (!dueF.valid())   return refuseDialogSave(dueF.inp,   'Not saved. Due date is not a valid date. ' + dateFormsHint());
+    if (!repeatF.valid()) return refuseDialogSave(repeatF.inp,
+      'Not saved. That is not a repeat phrase. Try "every week", "every Monday" or "monthly on the 1st".');
     pushUndo();
     const sv = startF.inp.value.trim(), dv = dueF.inp.value.trim(), rv = repeatF.inp.value.trim();
     for (const t of applyList) {

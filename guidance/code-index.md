@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2110 declarations in 155 sections across 17 domains.**
+**2113 declarations in 156 sections across 17 domains.**
 
 # Document model & caches
 
@@ -892,6 +892,12 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `DATE_KEYS` — Property keys that hold a date — these get the inline calendar in the props dialog.
 - `buildDatePicker`
 - `attachDateCalendar` — Wire an inline calendar to a date text input. The calendar lives in `host` and
+
+## #1506: a dialog Save that REFUSES
+
+- `refuseDialogSave` — Measured, driving the real app: the Save button is ENABLED, you press it, and nothing happens at
+- `markFieldInvalid` — A field stops claiming to be invalid the moment it is not. Without this the attribute is a stale
+- `nameFieldPreview` — #1506: the inline message under a field is NAMED, exactly as UXP-281 named the io-preview divs.
 
 ## schedule dialog
 

@@ -9540,9 +9540,75 @@ test('regression: formula-only variables are untouched by the pick branch', () =
     // group ambiguous to read and a selector-based guard unable to tell the two apart.
     assert.ok(!/<span class="io-preview">/.test(NCsrc),
       'a preview callback must not re-declare the class inside the div that already has it');
+
+    // #1506 widened this guard's REACH, not its claim. It said "every dialog preview is NAMED" while
+    // seeing only the two that carry the io-preview class; the Schedule dialog builds its three by
+    // hand with inline styles and the Properties dialog builds an error div, and all four were
+    // invisible here and shipped unnamed. They now go through nameFieldPreview, which applies the
+    // same role + "Preview: " name UXP-281 chose, so there is one way to name a field message.
+    const namer = fnBody(NCsrc, 'nameFieldPreview');
+    assert.match(namer, /setAttribute\('role', 'group'\)/, 'the hand-built messages take a role that permits a name');
+    assert.match(namer, /setAttribute\('aria-label', 'Preview: '/, 'and the same name shape as the io-preview divs');
+    assert.ok(!/aria-live/.test(namer), 'and no live region, which is the half UXP-281 decided against');
+    // Identity, not a count: name the sites, so a new hand-built message shows up as a missing site
+    // rather than as a number that happens to still add up.
+    const SITES = { dateField: 'the Schedule start/due field messages',
+                    openDueDateDialog: "the Schedule dialog's repeat message",
+                    openPropsDialog: 'the Properties error message' };
+    for (const [fn, what] of Object.entries(SITES)) {
+      assert.match(fnBody(NCsrc, fn), /nameFieldPreview\(/,
+        `${what} (${fn}) is a field message built by hand, and must be named the same way`);
+    }
+    const named = nonEmpty([...NCsrc.matchAll(/^\s*nameFieldPreview\(/gm)], 'nameFieldPreview call sites');
+    assert.equal(named.length, Object.keys(SITES).length,
+      `${named.length} hand-built messages are named and ${Object.keys(SITES).length} are accounted for ` +
+      `above. A new one must be listed here, or it ships unnamed exactly as these four did.`);
   });
 
-  test('#1175 every fmt door offers the field, and the two are exclusive (#1133 call sites)', () => {
+    test('#1506 a dialog Save that refuses says so, through one helper', () => {
+    // Measured, driving the real app: the Save button ENABLED, pressed, and nothing happened at all.
+    // No props written, no toast, nothing in the live region, and in the Schedule dialog not a pixel
+    // changed. The app already owned the sentence (the typed /due door flashes it) and the channel
+    // (builderFormApply announces its own refusal, "P4: no silent refocus"); only the dialogs omitted it.
+    const fn = fnBody(_src, 'refuseDialogSave');
+    assert.match(fn, /announce\(why\)/, 'the refusal reaches the live region: a failed action is an event');
+    assert.match(fn, /setAttribute\('aria-invalid', 'true'\)/,
+      'and the field focus is about to land on says so on arrival, which is what makes that move mean something');
+    assert.match(fn, /input\.focus\(\)/, 'the focus move that already worked is kept');
+    // UXP-281 (#1184) is a standing decision, and this must not reopen it by the back door.
+    assert.doesNotMatch(fn, /aria-live/, 'a refusal announces through announce(), never by bolting a live region on');
+
+    // THE CENSUS. Both enabled-Save dialogs route every refusal through the one helper. A bare
+    // `inp.focus(); return;` is exactly what this issue was.
+    const DOORS = { openDueDateDialog: 3, openPropsDialog: 1 };
+    for (const [door, n] of Object.entries(DOORS)) {
+      const body = fnBody(_src, door);
+      const calls = nonEmpty(body.match(/refuseDialogSave\(/g) || [], `${door} refusals`);
+      assert.equal(calls.length, n, `${door} has ${n} ways to refuse and each must say so; found ${calls.length}`);
+      assert.doesNotMatch(body, /\{\s*\w+F?\.inp\.focus\(\);\s*return;\s*\}/,
+        `${door} still bails silently somewhere: a refocus with no word is the whole defect`);
+    }
+    // The two dialogs that DISABLE their commit instead are a different, visible pattern and are
+    // deliberately untouched. Measured: their commit button reports disabled true on an invalid form.
+    for (const door of nonEmpty(['openInsertDialog', 'openVarDialog'], 'disabled-commit dialogs')) {
+      assert.match(fnBody(_src, door), /okBtn\.disabled = !valid\(\)/,
+        `${door} refuses by disabling its commit, which is visible; it must keep doing that`);
+    }
+  });
+
+  test('#1506 aria-invalid tracks the field, and never outlives the mistake', () => {
+    // A field that keeps claiming to be invalid after it has been fixed is the same defect one level
+    // down: the next focus landing announces a lie. markFieldInvalid is called on every keystroke.
+    const fn = fnBody(_src, 'markFieldInvalid');
+    assert.match(fn, /removeAttribute\('aria-invalid'\)/, 'it clears, not just sets');
+    const dlg = fnBody(_src, 'openDueDateDialog');
+    const clears = nonEmpty(dlg.match(/markFieldInvalid\(inp, /g) || [], 'Schedule live-validity updates');
+    assert.ok(clears.length >= 4,
+      `each of the three fields re-states its validity as you type; found ${clears.length} updates`);
+    assert.match(fnBody(_src, 'openPropsDialog'), /markFieldInvalid\(el, false\)/,
+      'and a Properties save that succeeds clears what the last refusal marked');
+  });
+test('#1175 every fmt door offers the field, and the two are exclusive (#1133 call sites)', () => {
     // A record with a field one dialog can set and another cannot is a P1 break, so all THREE must
     // offer it. A tested core proves nothing about whether the dialogs pass it.
     const fields = nonEmpty([..._src.matchAll(/key: 'sigfigs',/g)], "the sigfigs dialog fields");

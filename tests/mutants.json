@@ -1323,6 +1323,51 @@
       "find": "  return (form ? form + ' ' : '') + 'This empty pill is removed when you leave the point.';",
       "replace": "  return (form ? form + ' ' : '') + 'Check the syntax.';",
       "kills": "every empty stub says what actually happens to it, in its own words"
+    },
+    {
+      "id": "dialog-save-refuses-in-silence",
+      "suite": "browser",
+      "why": "the reported defect: an enabled Save pressed, nothing written, nothing said, nothing changed on screen",
+      "file": "index.html",
+      "find": "  announce(why);                                    // P4: a failed action is an event, not a state",
+      "replace": "  ;",
+      "kills": "an enabled Save that refuses says why, and a valid one still saves"
+    },
+    {
+      "id": "schedule-save-bails-bare-again",
+      "suite": "unit",
+      "why": "a bare refocus with no word is exactly what this issue was; a door that stops routing through the helper reopens it",
+      "file": "index.html",
+      "find": "    if (!dueF.valid())   return refuseDialogSave(dueF.inp,   'Not saved. Due date is not a valid date. ' + dateFormsHint());",
+      "replace": "    if (!dueF.valid())   { dueF.inp.focus(); return; }",
+      "kills": "a dialog Save that refuses says so, through one helper"
+    },
+    {
+      "id": "props-save-refuses-in-silence",
+      "suite": "unit",
+      "why": "the Properties dialog shares the family and shared the silence; the issue named it explicitly",
+      "file": "index.html",
+      "find": "      return refuseDialogSave(list.querySelectorAll('.val-in')[badIdx],",
+      "replace": "      list.querySelectorAll('.val-in')[badIdx]?.focus(); return; ((x) => x)(",
+      "kills": "a dialog Save that refuses says so, through one helper"
+    },
+    {
+      "id": "invalid-mark-never-clears",
+      "suite": "unit",
+      "why": "a field that keeps claiming to be invalid after it is fixed announces a lie on the next focus landing",
+      "file": "index.html",
+      "find": "  else input.removeAttribute('aria-invalid');",
+      "replace": "  ;",
+      "kills": "aria-invalid tracks the field, and never outlives the mistake"
+    },
+    {
+      "id": "hand-built-message-unnamed",
+      "suite": "unit",
+      "why": "UXP-281 named the io-preview divs and skipped the hand-built ones, which is why four shipped as loose unnamed text",
+      "file": "index.html",
+      "find": "    nameFieldPreview(preview, labelText);   // #1506: UXP-281 named the io-preview divs and skipped these",
+      "replace": "    ;",
+      "kills": "every dialog preview is NAMED"
     }
   ]
 }
