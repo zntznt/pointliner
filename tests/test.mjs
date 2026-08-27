@@ -32178,6 +32178,59 @@ test('#1507 the undo entry carries the orphans, and the text decides which come 
   }
 });
 
+// ─── #1508: the agenda Month grid's keyboard ──────────────────────────────────────────────────
+// A <button> fires `click` on Enter/Space and NEVER `mousedown`, so a focusable button carrying an
+// aria-label that no key can operate is the #1021 shape CLAUDE.md names by hand. Measured, driving
+// the real app: on "Show 15 more points for this day", Enter and Space left `_agExpandedDay` null
+// while a dispatched mousedown expanded the day. Its `.agd-less` twin was wired the same way.
+test('#1508 the day’s expand/collapse buttons answer the keyboard, through one action each', () => {
+  const fn = fnBody(_src, 'fillAgendaDay');
+  // one closure per action, so the mouse path and the key path cannot drift into doing different things
+  for (const [name, closure] of Object.entries({ less: 'collapse', more: 'expand' })) {
+    assert.match(fn, new RegExp(`${name}\\.addEventListener\\('mousedown', e => \\{ e\\.preventDefault\\(\\); ${closure}\\(\\); \\}\\)`),
+      `${name} still acts on mousedown, through the shared closure`);
+    assert.match(fn, new RegExp(`${name}\\.addEventListener\\('keydown', e => \\{ if \\(e\\.key === 'Enter' \\|\\| e\\.key === ' '\\)`),
+      `${name} is a focusable <button>, so Enter and Space must reach the same action`);
+  }
+  // and they really are buttons, which is what makes the omission a defect rather than a choice
+  assert.match(fn, /less\.type = 'button'/, 'the collapse control is a real button');
+  assert.match(fn, /more\.type = 'button'/, 'and so is the expand control, when the day is expandable');
+
+  // CENSUS RATCHET over the agenda's own render functions: a focusable control that acts on
+  // mousedown and has no keyboard twin is this bug returning. `.agc-add` already had the pair, in
+  // the same file, twenty lines from the code that lacked it.
+  const AGENDA_FNS = nonEmpty(['fillAgendaDay', 'renderAgendaCalendar', 'renderAgendaWeek'], 'agenda renderers');
+  for (const name of AGENDA_FNS) {
+    const body = fnBody(_src, name);
+    const receivers = [...body.matchAll(/(\w+)\.addEventListener\('mousedown', e => \{ e\.preventDefault\(\); (?!\}\))/g)]
+      .map(m => m[1]);
+    for (const r of new Set(receivers)) {
+      const paired = new RegExp(`${r}\\.addEventListener\\('keydown'`).test(body)
+                  || new RegExp(`\\[\\s*${r}\\s*,`).test(body);   // the batched [el, fn] nav loop
+      assert.ok(paired,
+        `${name}: "${r}" acts on mousedown with no keyboard twin. If it is focusable that is #1021; ` +
+        `if it is a container-driven row, wire it through the batched loop so this stays readable.`);
+    }
+  }
+});
+
+test('#1508 a focused day cell acts, and does not drop the keyboard on <body>', () => {
+  const fn = fnBody(_src, 'renderAgendaCalendar');
+  assert.match(fn, /c\.addEventListener\('keydown', e => \{/, 'the gridcell itself takes a key handler');
+  const cell = between(fn, "c.addEventListener('keydown'", '});');
+  assert.match(cell, /e\.target !== c/,
+    'and only for its OWN key: a chip or the + inside the cell owns its Enter, and this must not fire behind it');
+  assert.match(cell, /e\.key !== 'Enter' && e\.key !== ' '/, 'Enter and Space, matching every other cell in the app');
+  assert.match(cell, /e\.preventDefault\(\); e\.stopPropagation\(\);/,
+    'and it claims the key, or the global handler that used to steal focus still runs');
+  assert.match(cell, /createDatedPointOnInbox\(ep\)/,
+    'it runs what the cell’s own visible + performs, so the mouse has the action too');
+  // the + keeps its own handler; the cell must not have replaced it
+  assert.match(fn, /add\.addEventListener\('keydown'/, 'the + button keeps its own keyboard path');
+  assert.match(fn, /add\.addEventListener\('keydown'[^\n]*stopPropagation/,
+    'and stops propagation, so pressing Enter on the + does not also fire the cell behind it');
+});
+
 test('#1375: a point edited out of the active search says so, and is not removed', () => {
   const M = c.offSearchMessage;
   // The row STAYS. Dropping it the moment it stops matching would remove the point out from under

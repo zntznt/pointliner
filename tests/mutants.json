@@ -1413,6 +1413,51 @@
       "find": "    node[k] = [...(node[k] || []), ...dropped[k].filter(r => !have.has(r.key))];",
       "replace": "    node[k] = [...(node[k] || []), ...dropped[k]];",
       "kills": "restoreArtifacts puts records back without duplicating what is already there"
+    },
+    {
+      "id": "agenda-more-keyboard-dead",
+      "suite": "browser",
+      "why": "the reported defect: a focusable labelled <button> that only listens for mousedown, so Enter and Space do nothing (#1021 shape)",
+      "file": "index.html",
+      "find": "      more.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expand(); } });",
+      "replace": "      ;",
+      "kills": "the day’s expand button and the day cell both answer the keyboard"
+    },
+    {
+      "id": "agenda-less-keyboard-dead",
+      "suite": "unit",
+      "why": "the collapse twin was wired the same way, and fixing only the one you were shown is how the family stays half-done",
+      "file": "index.html",
+      "find": "      less.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse(); } });",
+      "replace": "      ;",
+      "kills": "the day’s expand/collapse buttons answer the keyboard"
+    },
+    {
+      "id": "agenda-cell-drops-focus-on-enter",
+      "suite": "browser",
+      "why": "Enter on a focused day cell used to leave the keyboard on <body> with nowhere to go",
+      "file": "index.html",
+      "find": "          createDatedPointOnInbox(ep);\n        });\n      }",
+      "replace": "          ;\n        });\n      }",
+      "kills": "the day’s expand button and the day cell both answer the keyboard"
+    },
+    {
+      "id": "agenda-cell-fires-behind-its-children",
+      "suite": "unit",
+      "why": "without the target guard, Enter on a chip or on the + inside the cell would fire the cell's action behind it",
+      "file": "index.html",
+      "find": "          if (e.target !== c || (e.key !== 'Enter' && e.key !== ' ')) return;",
+      "replace": "          if (e.key !== 'Enter' && e.key !== ' ') return;",
+      "kills": "a focused day cell acts, and does not drop the keyboard on <body>"
+    },
+    {
+      "id": "agenda-mouse-and-key-drift-apart",
+      "suite": "unit",
+      "why": "two copies of the action is how a mouse path and a key path come to do different things",
+      "file": "index.html",
+      "find": "      more.addEventListener('mousedown', e => { e.preventDefault(); expand(); });   // #1508: and its twin",
+      "replace": "      more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });",
+      "kills": "the day’s expand/collapse buttons answer the keyboard"
     }
   ]
 }
