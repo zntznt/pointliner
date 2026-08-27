@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2113 declarations in 156 sections across 17 domains.**
+**2115 declarations in 156 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1882,7 +1882,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `repaintAfterRoll` — Repaint after a roll/edit changed a pill's frozen value. A PROJECTING variable base's
 - `rerollDice`
 - `editDice` — Open the editor for an existing dice token; on submit, replace its formula
-- `pruneArtifacts` — Drop every sidecar record whose inline token no longer appears in node.text — the
+- `PRUNABLE_SIDECARS` — Drop every sidecar record whose inline token no longer appears in node.text — the
+- `pruneArtifacts` — #1507: returns what it DROPPED, `{sidecar: [record,…]}` or null. This is the one place in the app
+- `restoreArtifacts` — Put records back, skipping any key the point already carries. The caller prunes straight after, so
 - `pruneDice` — Drop dice records whose [[dice:KEY]] token no longer appears in the text.
 - `rerollMarkov` — Re-walk a markov chain in place (click handler), keeping its definition.
 - `editMarkov` — Open the editor for an existing chain; on submit, replace its def + re-walk.

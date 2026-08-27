@@ -1368,6 +1368,51 @@
       "find": "    nameFieldPreview(preview, labelText);   // #1506: UXP-281 named the io-preview divs and skipped these",
       "replace": "    ;",
       "kills": "every dialog preview is NAMED"
+    },
+    {
+      "id": "undo-restores-token-without-record",
+      "suite": "browser",
+      "why": "the reported defect: undo brought the [[type:key]] token back with nothing behind it, a missing-data pill that survived save",
+      "file": "index.html",
+      "find": "      if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }",
+      "replace": "      ;",
+      "kills": "undo brings back a deleted pill whole, and redo takes it away again"
+    },
+    {
+      "id": "prune-drops-silently-again",
+      "suite": "unit",
+      "why": "the prune is the one place that knows which records stop existing; reporting nothing is how undo lost them",
+      "file": "index.html",
+      "find": "    if (gone.length) (dropped ||= {})[k] = gone;",
+      "replace": "    ;",
+      "kills": "pruneArtifacts reports what it dropped"
+    },
+    {
+      "id": "entry-does-not-carry-the-orphans",
+      "suite": "unit",
+      "why": "exitEdit is the only place that both prunes and records; not handing the drop across is the original hole",
+      "file": "index.html",
+      "find": "  if (dropped) { e.dropped = JSON.stringify(dropped); e.size += e.dropped.length; }",
+      "replace": "  ;",
+      "kills": "the undo entry carries the orphans"
+    },
+    {
+      "id": "restore-not-reconciled-by-the-text",
+      "suite": "unit",
+      "why": "without the prune after the restore, redo would leave the records behind as orphans -- the same asymmetry pointed the other way",
+      "file": "index.html",
+      "find": "      if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }\n      pruneArtifacts(node);",
+      "replace": "      if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }",
+      "kills": "the undo entry carries the orphans"
+    },
+    {
+      "id": "restore-clobbers-a-live-record",
+      "suite": "unit",
+      "why": "a carried record must never overwrite one the point already has; the live one is newer",
+      "file": "index.html",
+      "find": "    node[k] = [...(node[k] || []), ...dropped[k].filter(r => !have.has(r.key))];",
+      "replace": "    node[k] = [...(node[k] || []), ...dropped[k]];",
+      "kills": "restoreArtifacts puts records back without duplicating what is already there"
     }
   ]
 }

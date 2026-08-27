@@ -3776,3 +3776,84 @@ test('#1506 an enabled Save that refuses says why, and a valid one still saves',
   assert.match(written, /due=2026-09-01/, 'and the date is actually written');
   await pg.close();
 });
+
+// 64. #1507 — deleting a pill's shorthand in edit mode prunes its sidecar record; undo then restored
+// the TEXT, bringing the [[type:key]] token back with nothing behind it. The result was a
+// "(missing data)" pill that in-row editing could not repair and that SURVIVED SAVE. Driven, because
+// the defect spans three real moments no source pin joins: a keystroke edit, a prune on exit, and an
+// undo. The cores are pure and were already right; what was wrong is what the sequence produced.
+test('#1507 undo brings back a deleted pill whole, and redo takes it away again', { skip: skip() }, async () => {
+  // Every sidecar a [[type:key]] token can name. The report named math; driving the family found
+  // seven more, which is expected once the cause is "prune only ever deletes" rather than anything
+  // math-specific -- and is exactly why the fix is at the prune and not at one pill type.
+  const CASES = [
+    ['{= 2+2}', 'math'], ['{2d6}', 'dice'], ['{a | b}', 'grammar'], ['{x := 1d6}', 'vars'],
+    ['{query: is:todo}', 'query'], ['{seq s: a | b}', 'seq'], ['{3 to 9}', 'est'],
+    ['{markov: a→b, b→c}', 'markov'],
+  ];
+  // node.text holds the UNFOLDED buffer while a row is in edit mode, so every read below waits for
+  // the edit session to actually end rather than sampling at a fixed delay. Measured: at 250ms the
+  // grammar case was still unfolded and read as "Quote {a | b}" while its record already existed.
+  // LEAVE the edit session, rather than "press Escape once". Typing a body can leave an inline menu
+  // open -- `{query: is:` opens the search completions -- and the first Escape is then spent closing
+  // that, so the row is still editing and node.text is still the unfolded buffer. Bounded, and a row
+  // that will not commit fails the assertion that follows rather than hanging.
+  const commitEdit = async (pg) => {
+    for (let i = 0; i < 4; i++) {
+      if (!await pg.evaluate(() => !!document.querySelector('.node-content[data-editing]'))) break;
+      await pg.keyboard.press('Escape');
+      await pg.waitForTimeout(200);
+    }
+    await pg.waitForTimeout(100);
+  };
+  for (const [shorthand, sidecar] of CASES) {
+    const pg = await fresh();
+    // the shared helper, which enters a REAL edit session (enterEdit) rather than just focusing the
+    // element. Without that the row never carries data-editing, so Escape commits nothing and every
+    // read below sees the unfolded buffer instead of the folded text.
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Quote ' + shorthand);
+    await commitEdit(pg);
+    const made = await pg.evaluate(sc => ({
+      text: root.children[0].text, n: (root.children[0][sc] || []).length,
+    }), sidecar);
+    assert.equal(made.n, 1, `precondition: {${shorthand}} promoted to a live ${sidecar} record`);
+    assert.match(made.text, /\[\[/, `precondition: and left a token in the text (got ${JSON.stringify(made.text)})`);
+
+    // delete the shorthand the way a person does: click in, End, backspace it away
+    await pg.evaluate(() => { const c = document.querySelectorAll('.node-content')[0]; c.focus(); c.click(); });
+    await pg.waitForTimeout(200);
+    await pg.keyboard.press('End');
+    for (let i = 0; i < shorthand.length; i++) await pg.keyboard.press('Backspace');
+    await commitEdit(pg);
+    const gone = await pg.evaluate(sc => ({
+      text: root.children[0].text, n: (root.children[0][sc] || []).length,
+    }), sidecar);
+    assert.equal(gone.text, 'Quote ', `${sidecar}: precondition -- the shorthand is really deleted`);
+    assert.equal(gone.n, 0, `${sidecar}: and the prune really dropped the record`);
+
+    await pg.keyboard.press('Control+z');
+    await pg.waitForTimeout(250);
+    await commitEdit(pg);                         // undo focuses back into an edit session
+    const undone = await pg.evaluate(sc => ({
+      text: root.children[0].text, n: (root.children[0][sc] || []).length,
+      bad: document.querySelectorAll('.math-bad,.gr-bad,.var-bad,.dice-bad,.est-bad,.seq-bad,.query-bad,.mk-bad').length,
+      md: toMarkdown(root),
+    }), sidecar);
+    assert.match(undone.text, /\[\[/, `${sidecar}: undo brings the token back`);
+    assert.equal(undone.n, 1, `${sidecar}: and the record with it, or the token names nothing`);
+    assert.equal(undone.bad, 0, `${sidecar}: so no "(missing data)" pill`);
+    // it SURVIVED SAVE before: the export dropped the pill while node.text kept the orphan
+    assert.match(undone.md, /Quote /, `${sidecar}: precondition -- the export still has the point`);
+
+    // REDO must take it away again, or the fix trades one asymmetry for another
+    await pg.keyboard.press('Control+Shift+z');
+    await commitEdit(pg);
+    const redone = await pg.evaluate(sc => ({
+      text: root.children[0].text, n: (root.children[0][sc] || []).length,
+    }), sidecar);
+    assert.equal(redone.text, 'Quote ', `${sidecar}: redo removes the shorthand again`);
+    assert.equal(redone.n, 0, `${sidecar}: and the record goes with the token, not back to orphaned`);
+    await pg.close();
+  }
+});

@@ -20608,7 +20608,10 @@ function exitEdit(content, node) {
   // Do this BEFORE the hidden-cue (a rescheduled task isn't hidden) and re-derive checked.
   commitTodoDone(node, wasDone);   // #1502: one writer, shared with every non-edit door
   if (node.checked) flashHiddenIfDone(node, wasDone);
-  if (!_suppressPruneOnFlush) pruneArtifacts(node); // drop data for deleted tokens (skipped on a mid-insert flush — see _suppressPruneOnFlush)
+  // #1507: keep what the prune DROPPED, so the undo entry recorded below can put it back. Restoring
+  // the text restores the [[type:key]] token, and prune can only ever delete -- nothing else in the
+  // app can bring the record back, which is why undo left a "(missing data)" pill.
+  const droppedHere = _suppressPruneOnFlush ? null : pruneArtifacts(node); // (skipped on a mid-insert flush — see _suppressPruneOnFlush)
   if (fnNodeId === node.id) updateFnPanel(node); // keep open panel in sync after a prune
   delete content.dataset.editing;
   markDirty();
@@ -20676,7 +20679,7 @@ function exitEdit(content, node) {
   // recordTextEdit uses for undo). Structural moves + child edits never reach here, so they
   // don't stamp — "edited" means "I changed what this point says".
   if (node.text !== prevText) stampEdit(node);
-  recordTextEdit(node.id, prevText, node.text, propsJsonBefore, JSON.stringify(node.props || [])); // O(1) undo entry, only if changed
+  recordTextEdit(node.id, prevText, node.text, propsJsonBefore, JSON.stringify(node.props || []), droppedHere); // O(1) undo entry, only if changed
   // #1357: the retry's rewrites are recorded AFTER the user's own edit, so the first undo takes
   // the promotions back off and the second takes the value away. The other order would leave one
   // undo showing live pills whose value had just been removed, which reads as breakage.
@@ -33927,9 +33930,36 @@ function editDice(node, key) {
 // Drop every sidecar record whose inline token no longer appears in node.text — the
 // exit-edit cleanup, reused by the caret-split (UXP-60) so each half sheds the other
 // half's orphaned artifact records.
+// The sidecar arrays prune walks. This is ARTIFACT_SIDECARS (the split/merge carry list, declared
+// below) MINUS `footnotes`, which is deliberately absent: footnotes are a DOCUMENT store, so an
+// orphan persists and is deleted only through the manager. A test pins that relationship, because
+// two hand-maintained lists of the same family is how a sidecar gets left out of one of them.
+const PRUNABLE_SIDECARS = ['dice', 'markov', 'math', 'est', 'vars', 'grammar', 'seq', 'query'];
+// #1507: returns what it DROPPED, `{sidecar: [record,…]}` or null. This is the one place in the app
+// that knows which records are about to stop existing, and it used to throw that away -- so undo
+// restored the token from the text with nothing behind it, leaving a "(missing data)" pill that
+// in-row editing cannot repair and that survives save. Measured on seven of the eight sidecars.
 function pruneArtifacts(node) {
+  const before = {};
+  for (const k of PRUNABLE_SIDECARS) if (node[k]?.length) before[k] = node[k];
   pruneDice(node); pruneMarkov(node); pruneMath(node); pruneEst(node);
   pruneVars(node); pruneGrammar(node); pruneSeqs(node); pruneQueries(node);   // Phase A: footnotes are NOT pruned (doc store; orphans persist, deleted only via the manager)
+  let dropped = null;
+  for (const k of Object.keys(before)) {
+    // each prune* rebuilds its array with filter(), so `before[k]` still holds the originals
+    const kept = new Set((node[k] || []).map(r => r.key));
+    const gone = before[k].filter(r => !kept.has(r.key));
+    if (gone.length) (dropped ||= {})[k] = gone;
+  }
+  return dropped;
+}
+// Put records back, skipping any key the point already carries. The caller prunes straight after, so
+// only the ones the restored TEXT actually names survive -- which makes undo and redo the same code.
+function restoreArtifacts(node, dropped) {
+  for (const k of Object.keys(dropped || {})) {
+    const have = new Set((node[k] || []).map(r => r.key));
+    node[k] = [...(node[k] || []), ...dropped[k].filter(r => !have.has(r.key))];
+  }
 }
 // Drop dice records whose [[dice:KEY]] token no longer appears in the text.
 function pruneDice(node) {
@@ -35036,15 +35066,25 @@ function restoreSnapshot(snap) {
 // "Scene {prop tension: 7}" back to "Scene" and left `props: ["tension=7"]`. #1374 made that worse in
 // the sense that matters — the orphan is now a visible chip rather than an invisible record.
 //
-// Scoped deliberately to props. Every OTHER sidecar (math, vars, dice, grammar, est, query) is keyed
-// by a `[[type:key]]` token that lives IN the text, so restoring the text restores the token and
-// pruneArtifacts drops whatever is orphaned. Props are the one sidecar with no inline trace, which is
-// exactly why they were the one thing undo could not reach.
-function recordTextEdit(nodeId, prev, next, propsPrev, propsNext) {
+// #1507 CORRECTED the paragraph that stood here. It read: every OTHER sidecar is keyed by a token
+// that lives IN the text, "so restoring the text restores the token and pruneArtifacts drops whatever
+// is orphaned" -- and concluded props were "the one thing undo could not reach". That reasoning is
+// ONE-DIRECTIONAL. It covers a RECORD with no token, which prune does handle. It says nothing about a
+// TOKEN with no record, because prune only ever DELETES: by the time undo restored the text, the
+// record its token names had already been pruned away and nothing in the app could bring it back.
+// Measured on seven of the eight prunable sidecars: Ctrl+Z after deleting a pill's shorthand left a
+// "(missing data)" pill that in-row editing could not repair and that survived save.
+// So the entry carries the records this edit ORPHANED, and applyEntry offers them back before letting
+// the text decide which survive. Props remain the only sidecar restored WHOLESALE, because they have
+// no token to reconcile against; the token-keyed ones are reconciled by the token.
+function recordTextEdit(nodeId, prev, next, propsPrev, propsNext, dropped) {
   const propsMoved = propsPrev !== undefined && propsPrev !== propsNext;
   if (prev === next && !propsMoved) return; // no-op edit (focus + blur, or unchanged)
   const e = { kind: 'text', nodeId, prev, next, focusedId, size: prev.length + next.length + 64 };
   if (propsMoved) { e.props = { prev: propsPrev, next: propsNext }; e.size += propsPrev.length + propsNext.length; }
+  // #1507: serialized, like props above, so nothing that happens later can reach into the entry.
+  // Only records this edit ORPHANED are carried; anything the text still names needs no help.
+  if (dropped) { e.dropped = JSON.stringify(dropped); e.size += e.dropped.length; }
   undoStack.push(e);
   trimStack(undoStack);
   redoStack.length = 0;
@@ -35108,6 +35148,12 @@ function applyEntry(entry, intoStack, dir) {
       // #1369: a consumed `{prop k: v}` leaves no token in the text, so the text alone cannot carry
       // it back. Restored BEFORE rederiveFromText, which reads the point's state to re-derive.
       if (entry.props) { try { node.props = JSON.parse(entry.props[dir]); } catch (_) {} }
+      // #1507: offer the orphaned records back, then let prune keep only the ones the restored TEXT
+      // actually names. That is deliberately ONE path for both directions: undoing brings the token
+      // back so the record survives, redoing takes the token away so it is dropped again. A `dir`
+      // branch here would be two behaviours to keep in step, and the token is already the authority.
+      if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }
+      pruneArtifacts(node);
       rederiveFromText(node);   // type AND checked (audit #2: was type-only, so an undone to-do vanished with Show-Done off)
     }
     markDirty(); render();
