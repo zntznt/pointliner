@@ -3944,3 +3944,84 @@ test('#1508 the day’s expand button and the day cell both answer the keyboard'
   assert.match(acted.live, /schedule/i, 'and says what it opened, for a reader who cannot see it');
   await pg.close();
 });
+
+// 66. #1509 — a search while ZOOMED counted only inside the zoom and said nothing about it. The
+// announcement and the empty state both did it. Driven, because the defect is the gap between a
+// number and what the reader thinks it covers: the counter was correct for its own scope, so no
+// pure test of it could fail, and only a real zoom + a real search produces the misleading pair.
+test('#1509 a zoomed search says what the zoom is hiding, and offers the way out', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const ids = await pg.evaluate(() => {
+    const mk = (t, kids = []) => { const n = mkNode(t); n.type = 'ul'; n.children = kids; return n; };
+    root.children = [
+      mk('Study A', [mk('Participant P4 said propagation is the click')]),
+      mk('Admin', [mk('Invoice filed')]),
+    ];
+    const attach = (n, p) => { nodeMap.set(n.id, n); parentMap.set(n.id, p); (n.children || []).forEach(k => attach(k, n)); };
+    root.children.forEach(n => attach(n, root));
+    buildIndex(root, null); markDirty(); render();
+    return { admin: root.children[1].id };
+  });
+  const search = (q, zoom) => pg.evaluate(async ([qq, z]) => {
+    focusedId = z; render();
+    const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    applySearch(qq);
+    await new Promise(r => setTimeout(r, 150));
+    const e = document.getElementById('search-empty');
+    const btn = e?.querySelector('.se-zoomout');
+    return {
+      live: (document.getElementById('a11y-live')?.textContent || '').trim(),
+      rows: document.querySelectorAll('.node-content').length,
+      emptyShown: e ? !e.hidden : false,
+      emptyText: e && !e.hidden ? (e.firstChild?.textContent || '').trim() : null,
+      btnLabel: btn?.getAttribute('aria-label') ?? null,
+    };
+  }, [q, zoom]);
+
+  // UNZOOMED: the control. This is what the count has always meant, and must keep meaning.
+  const open = await search('propagation', null);
+  assert.equal(open.live, '1 matching point', 'unzoomed, the plain count is unchanged');
+  assert.equal(open.emptyShown, false);
+
+  // ZOOMED, zero here: the reported case. "0 matching points" while the document held one.
+  const zeroHere = await search('propagation', ids.admin);
+  assert.equal(zeroHere.rows, 0, 'precondition: the zoom really does hide the match');
+  assert.match(zeroHere.live, /^0 matching points here · 1 in this document$/,
+    'the count must not report 0 as if it meant the document');
+  assert.equal(zeroHere.emptyShown, true, 'and the banner still shows');
+  assert.match(zeroHere.emptyText, /Nothing in this zoom matches/, 'naming the zoom, not the document');
+  assert.match(zeroHere.emptyText, /1 match is elsewhere in this document/, 'and what it is hiding');
+  assert.ok(zeroHere.btnLabel, 'with a door out, not just a number');
+  assert.match(zeroHere.btnLabel, /Zoom out and show all 1 matching point/);
+
+  // ZOOMED, nonzero here: the half a reader would never suspect, because the number looks fine.
+  const someHere = await search('i', ids.admin);
+  assert.match(someHere.live, /^1 matching point here · 3 in this document$/,
+    'a plausible-looking count is the more dangerous case and must qualify too');
+
+  // ZOOMED with nothing elsewhere: the NEGATIVE. Qualifying here would be noise on every search.
+  const onlyHere = await search('filed', ids.admin);
+  assert.equal(onlyHere.live, '1 matching point', 'nothing elsewhere, so nothing to say about the zoom');
+
+  // THE DOOR, driven with the KEYBOARD -- a mousedown-only control is the #1021 shape, and a
+  // source pin proves the handler is present, never that it can be reached.
+  await search('propagation', ids.admin);
+  await pg.evaluate(() => {
+    document.querySelector('.se-zoomout')?.focus();
+    const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+  });
+  const focused = await pg.evaluate(() => document.activeElement?.className || '');
+  assert.match(focused, /se-zoomout/, 'the door takes focus, or no key can reach it');
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(300);
+  const after = await pg.evaluate(() => ({
+    zoomed: focusedId != null, q: searchQuery,
+    rows: document.querySelectorAll('.node-content').length,
+    live: (document.getElementById('a11y-live')?.textContent || '').trim(),
+  }));
+  assert.equal(after.zoomed, false, 'Enter on the door zooms out');
+  assert.equal(after.q, 'propagation', 'and KEEPS the query, or it has undone the search as well');
+  assert.ok(after.rows > 0, 'so the match the zoom was hiding is now on screen');
+  assert.match(after.live, /Zoomed out/, 'and it says what it did (P4)');
+  await pg.close();
+});
