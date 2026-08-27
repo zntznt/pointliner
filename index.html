@@ -20067,7 +20067,60 @@ function templateParts(body, rules, vars) {
 // looks like a pill but could not be created…" — so a `why ? … : …` here would be a branch that can
 // never run and therefore can never be pinned, which is the #1133 class this codebase keeps removing.
 // Pure; no DOM.
+// ── #1505: what a body that is about to be DELETED says about itself ────────────────────────────
+// The #1213 stub guard consumes an empty-bodied keyword pill ({= }, {roll: }, {count: }…) rather
+// than leaving its braces to leak into the rendered prose. That is deliberate, shipped, and not in
+// question here. What was wrong is what the app SAID while you typed it: the announcement came from
+// classifyBraceBody, a parallel classifier that does not know what promotion will do, so the whole
+// family either lied or said nothing. Measured, driving the real app:
+//   seven announced "It stays plain text" and were then deleted on exit
+//       {= } {roll: } {count: } {query: } {shuffle: } {oracle: } {markov: }
+//   five said NOTHING AT ALL and were deleted in silence (they classify 'literal', so the
+//       announce path returned before reaching them) -- {seq: } {rule: } {cycle: } {once: } {stopping: }
+// The silent five are the worse half and were not in the report. A near-identical {= 1200 + } gets
+// the same sentence as {= } and DOES stay: same words, opposite outcomes.
+//
+// ONE keyword list, ONE regex, ONE sentence per keyword, so the deletion and the words about it
+// cannot drift apart again. The sentences are per-keyword because the shared reason path got three
+// of them wrong in the same way: {cycle: }, {once: } and {stopping: } all fell through to the deck
+// branch and advised the reader about {shuffle: …}, a form they had not typed.
+const EMPTY_STUB_KEYWORDS = ['roll', 'count', 'query', 'shuffle', 'cycle', 'once', 'stopping',
+                             'markov', 'oracle', 'seq', 'rule'];
+const EMPTY_STUB_RE = new RegExp('^(?:=|(?:' + EMPTY_STUB_KEYWORDS.join('|') + ')\\s*:)\\s*$', 'i');
+// Pure. The single source of truth for "promotion will consume this body to nothing"; promoteBraceBodyIn
+// tests the same predicate, so there is one answer to that question rather than two.
+function braceBodyIsEmptyStub(body) { return EMPTY_STUB_RE.test(String(body ?? '').trim()); }
+// Each keyword's own form, matching guide/pill-syntax-reference.md. `=` is keyed by its symbol
+// because that is its keyword. A test asserts every keyword in the list above has an entry.
+const EMPTY_STUB_FORM = {
+  '=':      'A calculation needs an expression: try {= 2 + 2}.',
+  roll:     'A roll needs something to roll on: try {roll: #tag}.',
+  count:    'A count needs a search: try {count: is:todo}.',
+  query:    'A query needs a search: try {query: is:todo}.',
+  shuffle:  'A shuffle needs a list to deal from: try {shuffle: a | b | c}.',
+  cycle:    'A cycle needs a list to step through: try {cycle: a | b | c}.',
+  once:     'A once list needs options: try {once: a | b | c}.',
+  stopping: 'A stopping list needs options: try {stopping: a | b | c}.',
+  markov:   'A markov chain links states with arrows: try {markov: a→b, b→c}.',
+  oracle:   'An oracle needs an odds word: try {oracle: likely}.',
+  seq:      'A sequence needs a name and its states: try {seq status: active | done}.',
+  rule:     'A rule needs a name and options: try {rule tavern: The Bell | The Anchor}.',
+};
+// The sentence for an empty stub, or null if this body is not one. Pure; no DOM.
+function emptyStubAnnounce(body) {
+  const b = String(body ?? '').trim();
+  if (!braceBodyIsEmptyStub(b)) return null;
+  const kw = b[0] === '=' ? '=' : b.slice(0, b.indexOf(':')).trim().toLowerCase();
+  const form = EMPTY_STUB_FORM[kw];
+  // The OUTCOME clause is the whole point of #1505: it names what actually happens to the text,
+  // and it says it while there is still time to fill the pill in.
+  return (form ? form + ' ' : '') + 'This empty pill is removed when you leave the point.';
+}
+
 function braceAttemptAnnounce(body, rules, vars) {
+  // #1505: outcome first. "It stays plain text" was a promise the very next keystroke broke.
+  const stub = emptyStubAnnounce(body);
+  if (stub) return stub;
   return braceAttemptReason(body, rules, vars) + ' It stays plain text.';
 }
 
@@ -28646,7 +28699,9 @@ function promoteBraceBodyIn(node, body) {
   // empty tail and would otherwise let it fall through to literal). NOT touched: a quoted literal
   // (handled just above), prose braces (no keyword — the alternation/escape-hatch paths keep them),
   // and a bare `{`/`{{` while typing (a different, edit-buffer path). `=` with an empty tail counts.
-  if (/^(?:=|(?:roll|count|query|shuffle|cycle|once|stopping|markov|oracle|seq|rule)\s*:)\s*$/i.test(body)) return '';
+  // #1505: the regex moved to braceBodyIsEmptyStub so the ANNOUNCEMENT can ask the same question.
+  // Two copies of it was how the app came to say "It stays plain text" about text it then deleted.
+  if (braceBodyIsEmptyStub(body)) return '';
   // expression: {= expr}
   if (body[0] === '=') {
     // validate against the node's inherited scope (#461) so a pill referencing an own/ancestor
@@ -29533,7 +29588,13 @@ function checkInlineHighlight(content, node) {
   // ancestor prop is styled valid (agreeing with what promotion will do on exit).
   const braceRules = collectRules(), braceScope = resolveNodeScope(node, ancestorsOf(node), collectVars());
   const braceCls = classifyBraceBody(body, braceRules, braceScope);
-  if (braceCls === 'literal') { hideBracePreview(); return false; }
+  if (braceCls === 'literal') {
+    hideBracePreview();
+    // #1505: five empty stubs ({seq: } {rule: } {cycle: } {once: } {stopping: }) classify as prose
+    // and returned here without a word, then vanished on exit. A deletion is never silent (P4).
+    if (braceBodyIsEmptyStub(body)) announce(braceAttemptAnnounce(body, braceRules, braceScope));
+    return false;
+  }
   // the marker's AT twin (UXP-15): the visual signal is also announced.
   // #1353 Phase 1: announce the REASON, not the bare fact. The specific sentence already exists and
   // already reaches the committed row's `.brace-attempt` title — but a title is hover-only (#1199),
