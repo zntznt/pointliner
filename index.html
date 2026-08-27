@@ -40879,7 +40879,13 @@ function fillAgendaDay(box, epochDay, items, mkItem, { repaint, expandable = tru
       const less = document.createElement('button');
       less.type = 'button'; less.className = 'agd-more agd-less';
       less.textContent = 'Show less'; less.setAttribute('aria-label', 'Collapse this day');
-      less.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = null; repaint(); });
+      // #1508: keyboard BESIDE mousedown, the same pair `.agc-add` uses twenty lines below in this
+      // very file. A <button> fires `click` on Enter/Space, never `mousedown`, so a focusable button
+      // carrying an aria-label that no key can operate is the #1021 shape exactly. Measured: Enter
+      // and Space left `_agExpandedDay` null while a dispatched mousedown expanded the day.
+      const collapse = () => { _agExpandedDay = null; repaint(); };
+      less.addEventListener('mousedown', e => { e.preventDefault(); collapse(); });
+      less.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse(); } });
       box.appendChild(less);
     }
     return;
@@ -40907,7 +40913,9 @@ function fillAgendaDay(box, epochDay, items, mkItem, { repaint, expandable = tru
     if (expandable) {
       more.type = 'button';
       more.setAttribute('aria-label', 'Show ' + hidden + ' more point' + (hidden !== 1 ? 's' : '') + ' for this day');
-      more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });
+      const expand = () => { _agExpandedDay = epochDay; repaint(); };
+      more.addEventListener('mousedown', e => { e.preventDefault(); expand(); });   // #1508: and its twin
+      more.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expand(); } });
     } else { more.setAttribute('aria-hidden', 'true'); more.style.pointerEvents = 'none'; }
     box.appendChild(more);
   });
@@ -41144,6 +41152,20 @@ function renderAgendaCalendar(host, visible, totalDated) {
         add.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); createDatedPointOnInbox(ep); });
         add.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); createDatedPointOnInbox(ep); } });
         c.appendChild(add);
+        // #1508: and the CELL itself. It is a focusable role=gridcell inside a role=grid, the same
+        // widget shape the Schedule dialog's day cells use -- and there Enter acts. Here Enter did
+        // not merely no-op: measured, it DROPPED FOCUS TO <body>, so arrowing to a day and pressing
+        // Enter lost the keyboard's place entirely (the #1464 class). Space was inert and a click on
+        // the cell body did nothing either.
+        // It runs the action the cell's own visible `+` performs, so the mouse has it too (hover the
+        // day, click `+`) and this is the keyboard's equivalent rather than a key-only power.
+        // `e.target === c` only: a chip or the `+` inside the cell owns its own Enter, and this must
+        // not fire a second time behind it.
+        c.addEventListener('keydown', e => {
+          if (e.target !== c || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault(); e.stopPropagation();
+          createDatedPointOnInbox(ep);
+        });
       }
 
       // Side months: items still render but are inert, so clicking anywhere on the month

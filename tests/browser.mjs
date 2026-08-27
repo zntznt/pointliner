@@ -3857,3 +3857,90 @@ test('#1507 undo brings back a deleted pill whole, and redo takes it away again'
     await pg.close();
   }
 });
+
+// 65. #1508 — the Agenda Month grid's keyboard. A <button> fires `click` on Enter/Space and NEVER
+// `mousedown`, so "Show N more points for this day" was a focusable, labelled button that no key
+// could operate: the #1021 shape exactly, and precisely what a source pin cannot catch, since the
+// handler was present and simply unreachable. Driven for that reason, and because the day cell's
+// Enter did not merely no-op -- it DROPPED FOCUS TO <body>.
+test('#1508 the day’s expand button and the day cell both answer the keyboard', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    // enough points on one day that the cell overflows and renders the "+N more" control
+    const today = formatEpochDays(dueDateToday());
+    root.children = [];
+    for (let i = 0; i < 15; i++) {
+      const n = mkNode('#TODO Task ' + i); n.type = 'todo';
+      root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root);
+      setDateProp(n, 'due', today);
+      n.checked = todoDoneFromText(n.text);
+    }
+    buildIndex(root, null); markDirty(); render();
+    agendaView = 'month'; openAgenda();
+  });
+  await pg.waitForTimeout(900);
+
+  const more = await pg.evaluate(() => {
+    const el = document.querySelector('.agd-more');
+    return el ? { tag: el.tagName, label: el.getAttribute('aria-label') } : null;
+  });
+  assert.ok(more, 'precondition: the overflowing day renders its "+N more" control');
+  assert.equal(more.tag, 'BUTTON', 'precondition: it is a real button, so it is focusable and Enter-able');
+  assert.match(more.label, /more point/, 'precondition: and it is labelled for assistive tech');
+
+  const press = async (key) => {
+    await pg.evaluate(() => document.querySelector('.agd-more')?.focus());
+    const ok = await pg.evaluate(() => document.activeElement === document.querySelector('.agd-more'));
+    assert.equal(ok, true, 'precondition: the control takes focus');
+    await pg.keyboard.press(key);
+    await pg.waitForTimeout(300);
+    return pg.evaluate(() => ({
+      expanded: document.querySelectorAll('.agd-expanded').length,
+      label: document.querySelector('.agd-more')?.getAttribute('aria-label') || null,
+    }));
+  };
+  // Enter expands the day; the control becomes its collapse twin, and Space works there too
+  const afterEnter = await press('Enter');
+  assert.equal(afterEnter.expanded, 1, 'Enter on the expand button must expand the day');
+  assert.match(afterEnter.label || '', /Collapse/, 'and the control becomes its collapse twin');
+  const afterSpace = await press('Space');
+  assert.equal(afterSpace.expanded, 0, 'Space on the collapse twin must collapse it: both keys, both twins');
+
+  // and the MOUSE path is untouched, which is the half that always worked
+  await pg.evaluate(() => document.querySelector('.agd-more')
+    ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })));
+  await pg.waitForTimeout(300);
+  assert.equal(await pg.evaluate(() => document.querySelectorAll('.agd-expanded').length), 1,
+    'mousedown still expands, so the keyboard was added beside it and not instead of it');
+
+  // ── the day CELL. Enter used to leave focus on <body>, which is the #1464 class.
+  await pg.evaluate(() => {
+    _agExpandedDay = null; renderAgenda();
+  });
+  await pg.waitForTimeout(500);
+  const cellInfo = await pg.evaluate(() => {
+    const want = calDayLabel(dueDateToday()).split(',')[1].trim().split(' ')[0];   // the current month
+    const cells = [...document.querySelectorAll('.agc-cell:not(.oom)')]
+      .filter(x => (x.getAttribute('aria-label') || '').includes(want));
+    const c = cells.find(x => !x.classList.contains('today')) || cells[0];
+    if (!c) return null;
+    window.__cell = c; c.setAttribute('tabindex', '0'); c.focus();
+    const live = document.getElementById('a11y-live'); if (live) live.textContent = '';
+    return { label: c.getAttribute('aria-label'), role: c.getAttribute('role'), focused: document.activeElement === c };
+  });
+  assert.ok(cellInfo, 'precondition: the current month renders day cells');
+  assert.equal(cellInfo.role, 'gridcell', 'precondition: it is the same widget shape the Schedule picker uses');
+  assert.equal(cellInfo.focused, true, 'precondition: and it takes focus');
+
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(400);
+  const acted = await pg.evaluate(() => ({
+    ae: String(document.activeElement.className || document.activeElement.tagName),
+    live: (document.getElementById('a11y-live')?.textContent || '').trim(),
+  }));
+  assert.doesNotMatch(acted.ae, /^v-guided$|^BODY$/,
+    'Enter on a day cell must not leave the keyboard on <body> with nowhere to go');
+  assert.match(acted.ae, /cap-input/, 'it lands in the capture strip, where the point gets typed');
+  assert.match(acted.live, /schedule/i, 'and says what it opened, for a reader who cannot see it');
+  await pg.close();
+});
