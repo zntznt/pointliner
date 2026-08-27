@@ -535,6 +535,11 @@ body.full-width #outline{max-width:none}
    child nodes below the base follow the fullWidth setting (constrained by #vlist). */
 body.base-zoom #outline{max-width:none}
 body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-empty{max-width:720px;margin:40px auto;padding:0 16px;color:var(--muted);font-size:13.5px;text-align:center;line-height:1.6}
+/* #1509: the way out of a zoom that is hiding matches. Tokens only (design-language: no literal
+   colours), so it follows the theme through both homes. */
+.se-zoomout{margin-top:10px;font-size:12.5px;font-weight:600;color:var(--acc);background:transparent;border:1px solid var(--bdr-ui);border-radius:var(--r-sm);padding:4px 10px;cursor:pointer}
+.se-zoomout:hover{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:var(--acc)}
+.se-zoomout:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* virtual list: only a window of rows is in the DOM; spacers reserve the rest */
 #vlist{position:relative}
 .vspacer{flex:none;width:100%}
@@ -10932,11 +10937,29 @@ function render() {
   // UXP-59: empty-state banner when a search yields no matches
   const seEl = document.createElement('div');
   seEl.id = 'search-empty';
-  const seMsg = workspaceDir
-    ? 'Nothing in this note matches “' + searchQuery + '”. Press Esc to clear'
-    : 'Nothing matches “' + searchQuery + '”. Press Esc to clear';
-  seEl.textContent = seMsg;
-  seEl.hidden = !(searchQuery && flatRows.length === 0);
+  const seShow = !!(searchQuery && flatRows.length === 0);
+  // #1509: a zoomed empty state used to say "Nothing matches" while the document held matches the
+  // zoom was hiding. Counted only when this banner is actually about to show AND the view is zoomed,
+  // so the walk never runs on the common path.
+  const seDoc = (seShow && focusedId != null) ? searchMatchCounts(vp).inDoc : 0;
+  seEl.textContent = searchEmptySay(searchQuery, seDoc, focusedId != null, !!workspaceDir);
+  seEl.hidden = !seShow;
+  // ...and the way out. The count alone still leaves the reader to work out that zooming out is the
+  // move; this is the same "here is the door" the cross-document list ships (WS-2).
+  if (seShow && seDoc > 0) {
+    const out = document.createElement('button');
+    out.type = 'button'; out.className = 'se-zoomout';
+    out.textContent = 'Show all ' + seDoc + ' in this document';
+    out.setAttribute('aria-label', 'Zoom out and show all ' + seDoc + ' matching point'
+      + (seDoc === 1 ? '' : 's') + ' in this document');
+    // mousedown + keydown, never click: the caret invariant (P3-3), and the pair this file uses
+    // everywhere else. One closure, so the two gestures cannot drift into doing different things.
+    const act = () => { focusedId = null; render(); announce('Zoomed out. ' + searchScopeSay(seDoc, seDoc, false)); };
+    out.addEventListener('mousedown', e => { e.preventDefault(); act(); });
+    out.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+    seEl.appendChild(document.createElement('br'));
+    seEl.appendChild(out);
+  }
   container.appendChild(seEl);
 
   measureTops();
@@ -38087,6 +38110,52 @@ function exportSelfContainedHtml() {
 
 
 // ══════════════════ DOMAIN: Panels & recognition surfaces ══════════════════
+// ── #1509: what a search says when the view is ZOOMED ───────────────────────────────────────────
+// The count and the empty state were scoped to the zoom root by construction
+// (`const vp = focusedId ? nodeById(focusedId) : root`) and neither said so. Measured: zoomed into
+// Admin, "propagation" announced "0 matching points" and painted "Nothing matches" while the
+// document held one; a word present in both subtrees announced "1 matching point" while the
+// document held three. A count that silently means something narrower than it says is the P4 case
+// #1331 already named on the pill side ("0 here · N in document") and WS-2 named across documents
+// ("Found in other documents · N"). This is the third member of that family.
+//
+// Pure, and the whole P4 decision lives here: qualify ONLY when the zoom is actually hiding
+// matches. Zoomed with nothing elsewhere reads exactly as it did, because there is nothing to say
+// and a qualifier on every search would train the reader to skip it.
+function searchScopeSay(inScope, inDoc, zoomed) {
+  const points = (k) => k === 1 ? '1 matching point' : k + ' matching points';
+  if (!zoomed || inDoc <= inScope) return points(inScope);
+  return points(inScope) + ' here \u00b7 ' + inDoc + ' in this document';
+}
+// The empty state's sentence, same rule. Kept beside its announcement so the two cannot drift into
+// describing the same state differently.
+// How many points match the LIVE search, split into "inside the current zoom" and "in the whole
+// document". ONE walk, threading ancestor tag text the way this count always has (#1443: without the
+// thread each node re-walks its own ancestor chain). Unzoomed the two numbers are equal and the walk
+// is the size it always was, because vp IS root.
+function searchMatchCounts(vp) {
+  const states = knownStates();
+  const needTags = searchTerms.some(t => t.kind === 'tag');
+  const seed = ancestorTagText(ancestorsOf(root), states) + ' ' + stripStateTags(tagScanText(root.text), states);
+  let inScope = 0, inDoc = 0;
+  const walk = (node, anc, scoped) => {
+    if (nodeMatchesSearch(node, anc)) { inDoc++; if (scoped) inScope++; }
+    const kids = needTags ? extendAncTagText(anc, node.text, states) : '';
+    const kidScope = scoped || node === vp;
+    (node.children || []).forEach(c => walk(c, kids, kidScope));
+  };
+  (root.children || []).forEach(c => walk(c, seed, vp === root));
+  return { inScope, inDoc };
+}
+function searchEmptySay(query, inDoc, zoomed, inNote) {
+  const where = inNote ? 'Nothing in this note matches ' : 'Nothing matches ';
+  const head = zoomed && inDoc > 0
+    ? 'Nothing in this zoom matches \u201c' + query + '\u201d. '
+      + (inDoc === 1 ? '1 match is' : inDoc + ' matches are') + ' elsewhere in this document.'
+    : where + '\u201c' + query + '\u201d.';
+  return head + ' Press Esc to clear';
+}
+
 // ─── search wiring ────────────────────────────────────────────────────────────
 
 let searchDebounce = null;
@@ -38106,22 +38175,11 @@ function applySearch(q) {
   const problems = renderSearchProblems(searchTerms);
   if (searchQueryLC && searchTerms.length) {       // P3: a filter that repaints without moving focus announces (UXP-88)
     const vp = focusedId ? nodeById(focusedId) : root;
-    let n = 0;
-    // #1443, the SECOND bypass of the same guard: this walks EVERY node, not just matched rows, and
-    // called nodeMatchesSearch with no ancTagText — so each node re-walked its ancestor chain. The
-    // two bypasses together were the measured 2 chain-walks per node (50,001 for 25,000 points).
-    // Threaded like computeMatchSet/pushSearchRows; the seed is flatten's, so a zoomed view counts
-    // inherited tags from above the zoom root the same way it matches them.
-    const cntStates = knownStates();
-    const cntNeedTags = searchTerms.some(t => t.kind === 'tag');
-    const cntAnc = ancestorTagText(ancestorsOf(vp), cntStates) + ' ' + stripStateTags(tagScanText(vp.text), cntStates);
-    const cnt = (node, anc) => {
-      if (nodeMatchesSearch(node, anc)) n++;
-      const kids = cntNeedTags ? extendAncTagText(anc, node.text, cntStates) : '';
-      (node.children || []).forEach(c => cnt(c, kids));
-    };
-    (vp.children || []).forEach(c => cnt(c, cntAnc));
-    const count = n === 1 ? '1 matching point' : n + ' matching points';
+    // #1443: the walk threads ancestor tag text rather than letting each node re-walk its own chain
+    // (the measured 2 chain-walks per node, 50,001 for 25,000 points). It lives in searchMatchCounts.
+    // #1509: one walk from ROOT, both totals, so the announcement can say what the zoom is hiding.
+    const { inScope: n, inDoc: docN } = searchMatchCounts(vp);
+    const count = searchScopeSay(n, docN, focusedId != null);
     // ONE live-region write, not two: each clears the region then rAF-sets it, so a second write
     // swallows the first. The reason leads — "0 matching points" is the misleading half.
     announce(problems.length ? problems[0].message + ' ' + count : count);

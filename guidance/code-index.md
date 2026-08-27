@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2115 declarations in 156 sections across 17 domains.**
+**2118 declarations in 157 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2180,6 +2180,12 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `exportSelfContainedHtml`
 
 # Panels & recognition surfaces
+
+## #1509: what a search says when the view is ZOOMED
+
+- `searchScopeSay` — The count and the empty state were scoped to the zoom root by construction
+- `searchMatchCounts` — The empty state's sentence, same rule. Kept beside its announcement so the two cannot drift into
+- `searchEmptySay`
 
 ## search wiring
 

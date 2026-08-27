@@ -1345,8 +1345,75 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // so. Two siblings did not: pushSearchRows (once per matched row) and the announce counter in
 // applySearch (once per node in the subtree) — measured together as 2 chain-walks per node,
 // 453,275 stripStateTags calls over 25,000 points, ~54% of search self-time.
+// ─── #1509: a search count that means something narrower than it says ─────────────────────────
+// The count and the empty state were scoped to the zoom root by construction and neither said so.
+// Measured: zoomed into "Admin", searching "propagation" announced "0 matching points" and painted
+// "Nothing matches" while the document held one; a word present in both subtrees announced
+// "1 matching point" while the document held three. Same shape as #1331's "0 here · N in document"
+// and WS-2's "Found in other documents · N" -- the third member of a family already twice solved.
+test('#1509 the count qualifies itself only when the zoom is actually hiding matches', () => {
+  const S = c.searchScopeSay;
+  // the two reported cases
+  assert.equal(S(0, 1, true), '0 matching points here · 1 in this document');
+  assert.equal(S(1, 3, true), '1 matching point here · 3 in this document');
+  // THE NEGATIVES, which are what stop this becoming noise on every search
+  assert.equal(S(1, 1, true), '1 matching point', 'zoomed with nothing elsewhere reads exactly as before');
+  assert.equal(S(0, 0, true), '0 matching points', 'and a genuinely empty document is not qualified either');
+  assert.equal(S(2, 9, false), '2 matching points', 'unzoomed never qualifies, whatever the numbers say');
+  assert.equal(S(3, 3, false), '3 matching points');
+  // singular/plural on both halves
+  assert.equal(S(1, 1, false), '1 matching point');
+  assert.equal(S(2, 2, false), '2 matching points');
+  // a doc count BELOW the scope count cannot happen, and must not produce a nonsense sentence
+  assert.equal(S(5, 2, true), '5 matching points', 'a document total under the scope total is not qualified');
+  for (const say of nonEmpty([S(0, 1, true), S(1, 3, true), S(1, 1, true)], 'scope sentences')) {
+    assert.ok(!/—/.test(say), 'AP punctuation, no em dashes');
+    assert.ok(!/\bnode\b/.test(say), 'user-facing copy says point');
+  }
+});
+
+test('#1509 the empty state says what the zoom is hiding, and only then', () => {
+  const E = c.searchEmptySay;
+  assert.match(E('propagation', 1, true, false), /^Nothing in this zoom matches/,
+    'a zoomed empty state names the zoom, not the document');
+  assert.match(E('propagation', 1, true, false), /1 match is elsewhere in this document/);
+  assert.match(E('propagation', 3, true, false), /3 matches are elsewhere in this document/, 'and agrees in number');
+  assert.match(E('propagation', 1, true, false), /Press Esc to clear$/, 'keeping the recovery it always had');
+  // the negatives: unchanged wording everywhere the zoom is not the reason
+  assert.equal(E('x', 0, false, false), 'Nothing matches “x”. Press Esc to clear');
+  assert.equal(E('x', 0, false, true), 'Nothing in this note matches “x”. Press Esc to clear',
+    'the workspace wording is untouched');
+  assert.equal(E('x', 0, true, false), 'Nothing matches “x”. Press Esc to clear',
+    'zoomed with nothing elsewhere is not blamed on the zoom');
+});
+
+test('#1509 the count, the empty state and the way out are all wired', () => {
+  // #1133: the cores are pure and prove nothing about whether anything calls them.
+  assert.match(fnBody(_src, 'applySearch'), /searchScopeSay\(n, docN, focusedId != null\)/,
+    'the announcement uses the scope-aware sentence');
+  const rend = fnBody(_src, 'render');
+  assert.match(rend, /searchEmptySay\(searchQuery, seDoc, focusedId != null, !!workspaceDir\)/,
+    'and so does the empty state');
+  // the document count is paid for ONLY when the banner is about to show AND the view is zoomed,
+  // so the common path keeps the walk it always had
+  assert.match(rend, /const seDoc = \(seShow && focusedId != null\) \? searchMatchCounts\(vp\)\.inDoc : 0;/,
+    'the extra walk is gated on the case that needs it');
+  // the way out, and it is operable by keyboard: a mousedown-only control is #1021 all over again
+  assert.match(rend, /out\.addEventListener\('mousedown'/, 'the zoom-out door works with a mouse');
+  assert.match(rend, /out\.addEventListener\('keydown', e => \{ if \(e\.key === 'Enter' \|\| e\.key === ' '\)/,
+    'and with a keyboard, beside the mousedown rather than instead of it (the caret invariant)');
+  const act = between(rend, 'const act = ()', "out.addEventListener('mousedown'");
+  assert.match(act, /focusedId = null/, 'it zooms out');
+  assert.doesNotMatch(act, /searchQuery = ''|applySearch\(''\)/, 'and keeps the query, or the door undoes the search too');
+  // one closure for both gestures, so they cannot drift into doing different things
+  assert.equal((rend.match(/act\(\);/g) || []).length, 2, 'both gestures run the same closure');
+});
+
 test('#1443 every per-node search walk threads ancTagText instead of re-deriving it', () => {
-  for (const fn of ['computeMatchSet', 'pushSearchRows']) {
+  // #1509 moved the announce counter into searchMatchCounts (it now counts the zoom scope and the
+  // document in one pass), so the threading rule is asserted on its new home and applySearch is
+  // pinned to route through it -- otherwise this guard could go quiet by the counter simply moving.
+  for (const fn of ['computeMatchSet', 'pushSearchRows', 'searchMatchCounts']) {
     const body = fnBody(_src, fn);
     assert.ok(/nodeMatchesSearch\(node, anc\)/.test(body),
       `${fn} must pass the threaded ancestor text — omitting it fires termMatchesNode's ancestorsOf default`);
@@ -1355,8 +1422,10 @@ test('#1443 every per-node search walk threads ancTagText instead of re-deriving
   }
   // The announce counter is the second bypass and the easiest to forget: it walks EVERY node.
   const apply = fnBody(_src, 'applySearch');
-  assert.ok(/nodeMatchesSearch\(node, anc\)/.test(apply),
+  assert.match(apply, /searchMatchCounts\(vp\)/,
     'the matching-points counter must thread the chain too — it walks every node, not just matches');
+  assert.doesNotMatch(apply, /nodeMatchesSearch\(/,
+    'and applySearch must not grow a second, unthreaded walk of its own');
   // And nothing may reintroduce a bare per-node call. The remaining bare calls are one-offs on a
   // single live node (an edit commit), which are correct and must stay legal.
   // Bare calls are legal ONLY as one-offs on a single live node (the edit-commit before/after

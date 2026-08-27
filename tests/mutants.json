@@ -1458,6 +1458,51 @@
       "find": "      more.addEventListener('mousedown', e => { e.preventDefault(); expand(); });   // #1508: and its twin",
       "replace": "      more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });",
       "kills": "the day’s expand/collapse buttons answer the keyboard"
+    },
+    {
+      "id": "zoomed-count-unqualified",
+      "suite": "unit",
+      "why": "the reported defect: a count scoped to the zoom root reported as if it meant the document",
+      "file": "index.html",
+      "find": "  return points(inScope) + ' here \\u00b7 ' + inDoc + ' in this document';",
+      "replace": "  return points(inScope);",
+      "kills": "the count qualifies itself only when the zoom is actually hiding matches"
+    },
+    {
+      "id": "scope-qualifier-fires-always",
+      "suite": "unit",
+      "why": "qualifying every search, including unzoomed and nothing-elsewhere, trains the reader to skip the one time it matters",
+      "file": "index.html",
+      "find": "  if (!zoomed || inDoc <= inScope) return points(inScope);",
+      "replace": "  if (!zoomed) return points(inScope);",
+      "kills": "the count qualifies itself only when the zoom is actually hiding matches"
+    },
+    {
+      "id": "empty-state-blames-the-document",
+      "suite": "browser",
+      "why": "'Nothing matches' while the document holds matches is the half a reader acts on, and it says the wrong thing",
+      "file": "index.html",
+      "find": "  const seDoc = (seShow && focusedId != null) ? searchMatchCounts(vp).inDoc : 0;",
+      "replace": "  const seDoc = 0;",
+      "kills": "a zoomed search says what the zoom is hiding, and offers the way out"
+    },
+    {
+      "id": "zoomout-door-keyboard-dead",
+      "suite": "browser",
+      "why": "a focusable labelled button no key can operate is the #1021 shape, and a source pin cannot see it",
+      "file": "index.html",
+      "find": "    out.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });",
+      "replace": "    ;",
+      "kills": "a zoomed search says what the zoom is hiding, and offers the way out"
+    },
+    {
+      "id": "zoomout-door-clears-the-query",
+      "suite": "unit",
+      "why": "a door that zooms out AND drops the search leaves the reader retyping the query they just ran",
+      "file": "index.html",
+      "find": "    const act = () => { focusedId = null; render(); announce('Zoomed out. ' + searchScopeSay(seDoc, seDoc, false)); };",
+      "replace": "    const act = () => { focusedId = null; applySearch(''); announce('Zoomed out.'); };",
+      "kills": "the count, the empty state and the way out are all wired"
     }
   ]
 }

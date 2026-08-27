@@ -431,6 +431,13 @@ The naming half generalizes past this issue: **UXP-281's guard said "every dialo
 
 **A matrix row is a claim, and claims rot.** §9's Dates/agenda row asserted *"cells: `role`+`tabindex`+`aria-label` with `keydown` beside `mousedown`"* while two of that surface's buttons had no `keydown` at all. The row was aspirational and read as verified. Where a conformance claim names a mechanism, something should enumerate the sites it covers; a ratchet over the agenda's renderers now does.
 
+**A number says what it counted, or it is not an answer (#1509).** Searching while zoomed counted only inside the zoom root, by construction (`const vp = focusedId ? nodeById(focusedId) : root`), and neither the count nor the empty state said so. Measured: zoomed into Admin, "propagation" announced *"0 matching points"* and painted *"Nothing matches"* while the document held one. It is not a contrived state either, since `focusedId` rides the autosave payload, so a document left zoomed reopens zoomed.
+
+- **The dangerous half is the one that looks fine.** A zero at least prompts a second look; *"1 matching point"* while the document holds three is a plausible number that quietly answers a different question than the one asked. Both halves need the qualifier, and the plausible one is why.
+- **Qualify only when there is something to qualify.** Zoomed with nothing elsewhere reads exactly as it always did. A scope note on every search is noise, and noise is what trains a reader to skip the one time it matters — the same reasoning as `#1503`'s "a point with no such property is not a hole".
+- **This family was already solved twice.** `#1331` ships *"0 here · N in document"* on the pill side and WS-2 ships *"Found in other documents · N"* across documents; the in-document zoom boundary was the unbuilt third member. **Before designing a message, look for the same shape already shipped** — the wording, the separator and the "here is the door" row all came from those two rather than being invented.
+- **A count plus a door beats a count.** The empty state names what the zoom is hiding *and* carries the way out, because leaving the reader to deduce "so I should zoom out" is the same gap one step later.
+
 **Tone:** plain language, names the thing, offers the next step. The storage warning ("…save it to a file to be safe") is the template for all of it.
 
 **Drafts:** a transient input surface (the capture strip, the search box) MUST NOT discard a non-empty draft on dismiss; the draft is kept for the next open, or its loss is confirmed (P4).
