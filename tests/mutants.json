@@ -2259,6 +2259,78 @@
       "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
       "replace": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px}",
       "kills": "#1520 every command name and description renders inside the builder nav"
+    },
+    {
+      "id": "dial-tears-down-the-edit",
+      "suite": "unit",
+      "why": "the whole defect: a bare render() ends the edit the display setting rendered around",
+      "file": "index.html",
+      "find": "  renderKeepingCaret();   // #1521: a display setting must not end the edit it renders around",
+      "replace": "  render();",
+      "kills": "#1521 the verbosity dial carries the caret across its re-render"
+    },
+    {
+      "id": "dial-sibling-door-left-behind",
+      "suite": "unit",
+      "why": "the issue named the chords; setVerbosity is the other writer and all four doors reach one of the two",
+      "file": "index.html",
+      "find": "  renderKeepingCaret();   // #1521: same door, same rule -- all four dial entry points kept the caret",
+      "replace": "  render();",
+      "kills": "#1521 the verbosity dial carries the caret across its re-render"
+    },
+    {
+      "id": "caret-read-after-the-render",
+      "suite": "unit",
+      "why": "reading the offset after render() reads an element the render already destroyed",
+      "file": "index.html",
+      "find": "  const off = el ? getCaretOffset(el) : null;\n  render();",
+      "replace": "  render();\n  const off = el ? getCaretOffset(el) : null;",
+      "kills": "#1521 the verbosity dial carries the caret across its re-render"
+    },
+    {
+      "id": "caret-plan-ignores-a-vanished-point",
+      "suite": "unit",
+      "why": "restoring into a point the render dropped is a focus call into nothing",
+      "file": "index.html",
+      "find": "  const plan = caretKeepPlan(id, off, !!nodeById(id));",
+      "replace": "  const plan = caretKeepPlan(id, off, true);",
+      "kills": "#1521 the verbosity dial carries the caret across its re-render"
+    },
+    {
+      "id": "caret-plan-coerces-a-missing-offset",
+      "suite": "unit",
+      "why": "+null is 0, so a coercing check claims 'caret at the start' whenever the offset is unreadable",
+      "file": "index.html",
+      "find": "  const ok = typeof offset === 'number' && Number.isFinite(offset) && offset >= 0;",
+      "replace": "  const ok = Number.isFinite(+offset) && +offset >= 0;",
+      "kills": "#1521 the verbosity dial carries the caret across its re-render"
+    },
+    {
+      "id": "dial-paints-a-row-cursor-instead",
+      "suite": "unit",
+      "why": "a row cursor makes a display setting mean 'stop editing', which is the P1 break the fix avoids",
+      "file": "index.html",
+      "find": "  if (plan) focusNodeAtOffset(plan.id, plan.offset);",
+      "replace": "  if (plan) moveRowCursor(plan.id);",
+      "kills": "#1521 the verbosity dial carries the caret across its re-render"
+    },
+    {
+      "id": "dial-swallows-the-next-keystroke",
+      "suite": "browser",
+      "why": "driven: where the caret is and whether the next keystroke lands is the finding, and no pin sees it",
+      "file": "index.html",
+      "find": "  renderKeepingCaret();   // #1521: a display setting must not end the edit it renders around",
+      "replace": "  render();",
+      "kills": "#1521 every verbosity door keeps the caret"
+    },
+    {
+      "id": "dial-restores-to-the-wrong-offset",
+      "suite": "browser",
+      "why": "driven: coming back to offset 0 instead of 8 looks like a restore and moves the user's place",
+      "file": "index.html",
+      "find": "  return { id, offset: ok ? Math.floor(offset) : null };",
+      "replace": "  return { id, offset: 0 };",
+      "kills": "#1521 every verbosity door keeps the caret"
     }
   ]
 }

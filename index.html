@@ -42687,6 +42687,36 @@ function syncVerbosityStrip() {
   const ind = document.getElementById('fm-tier-ind');
   if (ind) ind.textContent = verbosity.charAt(0).toUpperCase() + verbosity.slice(1);
 }
+// #1521: the verbosity dial is a DISPLAY setting -- it changes which teaching aids show -- so it
+// has no business ending your edit. Both dial writers called a bare `render()`, which tears down
+// the active contenteditable: measured on all FOUR doors (both chords, the File-menu tier
+// indicator, the tier card), `activeElement` went to BODY, `activeContentId` to null, and the next
+// four characters typed vanished. The contrast is decisive -- of eight chords driven mid-edit, only
+// these two landed on <body>; Ctrl+Shift+V and Ctrl+Shift+X keep the caret exactly where it was.
+//
+// This is the Esc-from-zoom idiom (#406), which already carries an edit across a re-render:
+// remember id + offset, re-render, hand it back. Deliberately NOT the row-cursor rung -- Escape
+// paints a cursor because Escape is a request to LEAVE the point, and the dial is not.
+//
+// Pure: whether the caret should be handed back, and where to. `exists` is whether the point
+// survived the render; a null offset still re-enters the point rather than dropping to <body>.
+function caretKeepPlan(id, offset, exists) {
+  if (id == null || !exists) return null;
+  // `typeof`, not coercion: `+null` is 0, so a coercing check would silently claim "caret at the
+  // START of the point" whenever the offset was unreadable -- a specific and wrong answer where
+  // the honest one is "re-enter it, wherever that lands".
+  const ok = typeof offset === 'number' && Number.isFinite(offset) && offset >= 0;
+  return { id, offset: ok ? Math.floor(offset) : null };
+}
+function renderKeepingCaret() {
+  const id = activeContentId;
+  const el = id ? document.querySelector(`.node-content[data-id="${CSS.escape(String(id))}"][data-editing]`) : null;
+  const off = el ? getCaretOffset(el) : null;
+  render();
+  const plan = caretKeepPlan(id, off, !!nodeById(id));
+  if (plan) focusNodeAtOffset(plan.id, plan.offset);
+}
+
 function setVerbosity(tier) {
   if (!VERBOSITY_TIERS.includes(tier) || tier === verbosity) { syncVerbosityCard(); return; }
   verbosity = tier;
@@ -42694,7 +42724,7 @@ function setVerbosity(tier) {
   syncVerbosityCard();
   syncVerbosityStrip();
   scheduleAutosave();
-  render();
+  renderKeepingCaret();   // #1521: a display setting must not end the edit it renders around
   flashHint(VERBOSITY_FLASH[verbosity]);
 }
 document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
@@ -43236,7 +43266,7 @@ function toggleVerbosity(dir = 1) {
   syncVerbosityCard();
   syncVerbosityStrip();
   scheduleAutosave();
-  render();
+  renderKeepingCaret();   // #1521: same door, same rule -- all four dial entry points kept the caret
   flashHint(VERBOSITY_FLASH[verbosity]);
 }
 document.getElementById('btn-builder').addEventListener('click', launchBuilder);

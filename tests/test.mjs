@@ -13327,6 +13327,57 @@ test('#1520 the builder row gives the name the width and stacks the syntax', () 
     'and the wide default is unchanged too');
 });
 
+// #1521: the verbosity dial called a bare `render()`, which tears down the active contenteditable.
+// Measured: `activeElement` went to BODY, `activeContentId` to null, and the next four characters
+// typed vanished. The filed repro named the two chords; driving the family found ALL FOUR doors
+// broken — the File-menu tier indicator and the tier card too, because `setVerbosity` has the same
+// bare render as `toggleVerbosity`.
+//
+// The verifier's narrowing decides the fix. Escape produces the same swallowing and is CORRECT:
+// what Escape leaves behind is a painted, announced row cursor, because Escape is a request to
+// leave the point. The dial is not, and of eight chords driven mid-edit only these two landed on
+// <body> — Ctrl+Shift+V and Ctrl+Shift+X keep the caret. So the caret comes back; a row cursor here
+// would make the dial mean "stop editing", which is exactly the P1 break.
+test('#1521 the verbosity dial carries the caret across its re-render', () => {
+  const plan = (...a) => { const r = c.caretKeepPlan(...a); return r && { ...r }; };
+  // ---- 1. the plan, by value.
+  assert.deepEqual(plan('n1', 8, true), { id: 'n1', offset: 8 }, 'the point and the offset come back');
+  assert.equal(plan(null, 8, true), null, 'nothing was being edited: a plain render');
+  assert.equal(plan('n1', 8, false), null, 'the point did not survive the render');
+  assert.deepEqual(plan('n1', null, true), { id: 'n1', offset: null },
+    'no readable offset still re-enters the point rather than dropping to <body>');
+  assert.deepEqual(plan('n1', 0, true), { id: 'n1', offset: 0 }, 'offset 0 is a real offset, not absent');
+  assert.deepEqual(plan('n1', -3, true), { id: 'n1', offset: null }, 'a nonsense offset degrades to the point');
+  assert.deepEqual(plan('n1', 4.7, true), { id: 'n1', offset: 4 }, 'and a fractional one is floored');
+
+  // ---- 2. BOTH dial writers go through it. The issue named the chords; the census is the doors.
+  for (const fn of ['toggleVerbosity', 'setVerbosity']) {
+    const body = fnBody(_src, fn);
+    assert.ok(body.includes('renderKeepingCaret()'),
+      `${fn} must carry the caret across its re-render`);
+    assert.ok(!/\n  render\(\);/.test(body),
+      `${fn} must not keep a bare render() — that is what tore down the edit`);
+  }
+  // all four doors reach one of those two writers, so none can drift
+  assert.ok(_src.includes("getElementById('fm-tier-ind')?.addEventListener('click', () => toggleVerbosity(1))"),
+    'the File-menu tier indicator is a dial door');
+  assert.ok(_src.includes("el.addEventListener('click', () => setVerbosity(el.dataset.tier))"),
+    'and so is the tier card');
+
+  // ---- 3. the reader itself: save BEFORE the render, restore after, and never invent a caret.
+  const rk = fnBody(_src, 'renderKeepingCaret');
+  assert.ok(rk, 'renderKeepingCaret must exist');
+  assert.ok(rk.indexOf('const off =') < rk.indexOf('render();'),
+    'the offset must be read BEFORE the render — afterwards the element is gone');
+  assert.ok(rk.includes('caretKeepPlan(id, off, !!nodeById(id))'),
+    'and the decision goes through the pure plan, including "did the point survive"');
+  assert.ok(rk.includes('if (plan) focusNodeAtOffset(plan.id, plan.offset)'),
+    'the restore is the Esc-from-zoom idiom, not a row cursor');
+  // and NOT the row-cursor rung: that would make a display setting mean "stop editing"
+  assert.ok(!rk.includes('moveRowCursor'),
+    'the dial must not paint a row cursor — Escape does that because Escape means LEAVE the point');
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
@@ -27120,7 +27171,10 @@ test('modes batch — verbosity card, toolbar chooser, File-pill gate, no-close 
   const setVStart = GUIDE_SRC.indexOf('function setVerbosity(');
   const setV = GUIDE_SRC.slice(setVStart, GUIDE_SRC.indexOf("document.querySelectorAll('#fm-verbosity-card", setVStart));
   assert.ok(!setV.includes('closeFileMenu'), 'picking a guidance tier must NOT close the menu (item 4)');
-  assert.ok(setV.includes('syncVerbosityClass') && setV.includes('render('), 'setVerbosity must apply the class and re-render');
+  // #1521 routed the re-render through renderKeepingCaret, which carries the active edit across it.
+  // Same claim (apply the class, re-render); the caret half is pinned in the #1521 test.
+  assert.ok(setV.includes('syncVerbosityClass') && setV.includes('renderKeepingCaret('),
+    'setVerbosity must apply the class and re-render');
   // the toolbar chooser toggles persist to localStorage and never close the menu (function body only).
   const buildStart = GUIDE_SRC.indexOf('function buildToolbarChooser(');
   const buildTC = GUIDE_SRC.slice(buildStart, GUIDE_SRC.indexOf('\napplyToolbarPrefs()', buildStart));
