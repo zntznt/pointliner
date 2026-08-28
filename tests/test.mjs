@@ -13164,6 +13164,64 @@ test('#1517 the chip that names the capture destination and the commit that uses
     'the destination must be read AFTER the switch, or it names the old one');
 });
 
+// #1518: `#fn-panel` docked at `bottom:0` UNDER the opaque touch quick bar, so the whole footnote
+// editor was invisible. `syncFnPanelBottom` wrote an inline `bottom = kbH + 'px'`, and with no
+// software keyboard kbH is 0 — an inline 0 that beats the `@media(hover:none)` rule
+// `#fn-panel,#var-panel{bottom:var(--qbar-h,0px)}` written for exactly this case.
+//
+// Measured at 390x844 AND 768x1024: 53px overlap, the panel's only interactive row entirely inside
+// the bar, `elementFromPoint` returning `qb-capture`. The editor was FOCUSED the whole time and
+// typing reached the model — invisible, not unreachable, which is why nothing errored.
+test('#1518 a bottom-docked panel clears the touch quick bar', () => {
+  const { panelFloorPx } = c;
+  // ---- 1. the floor, by value. MAX, not sum: `position:fixed` resolves against the LAYOUT
+  // viewport, so while the keyboard is up the bar is behind it (measured: bar 791..844, visual
+  // viewport ending at 544) and adding both would leave a 53px gap.
+  assert.equal(panelFloorPx(0, 53), 53, 'no keyboard: clear the quick bar');
+  assert.equal(panelFloorPx(300, 53), 300, 'keyboard up: clear the keyboard, and NOT keyboard+bar');
+  assert.notEqual(panelFloorPx(300, 53), 353, 'summing them would float the panel above the keyboard');
+  assert.equal(panelFloorPx(300, 0), 300, 'desktop-style: no bar');
+  assert.equal(panelFloorPx(0, 0), 0, 'nothing at the bottom: dock flush');
+  assert.equal(panelFloorPx(53, 300), 300, 'whichever is taller, in either order');
+  // junk floors read as absent rather than throwing or going negative
+  assert.equal(panelFloorPx(-5, 53), 53);
+  assert.equal(panelFloorPx(null, 53), 53);
+  assert.equal(panelFloorPx('x', 53), 53);
+  assert.equal(panelFloorPx(undefined, undefined), 0);
+
+  // ---- 2. THE CALL SITE. The bare kbH is what pinned the panel to the bar.
+  const fb = fnBody(_src, 'syncFnPanelBottom');
+  assert.ok(fb.includes("panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px'"),
+    'the panel must lift by the FLOOR, not by the keyboard inset alone');
+  assert.ok(!/panel\.style\.bottom = kbH \+ 'px'/.test(fb),
+    'the bare keyboard-only lift must be gone — it is an inline 0 that beats the CSS lift');
+  // the CSS rule the inline style was overriding is still there and still names both panels.
+  // NEWLINE-ANCHORED on purpose: the explanatory comment in syncFnPanelBottom quotes this rule
+  // verbatim, so a bare `includes` matched the comment and the guard passed with the real rule
+  // deleted — measured, by its own mutant surviving.
+  const CSS_LIFT = '\n  #fn-panel,#var-panel{bottom:var(--qbar-h,0px)}';
+  assert.ok(_src.includes(CSS_LIFT),
+    'the hover:none lift must survive: it is what #var-panel relies on entirely');
+
+  // ---- 3. CENSUS RATCHET, over the app's OWN list of bottom-docked panels. `bottomStackHeight`
+  // is where the file enumerates them; a fourth one added there must declare how it clears the bar.
+  const stack = fnBody(_src, 'bottomStackHeight');
+  const panels = nonEmpty([...stack.matchAll(/on\('([a-z-]+-panel)'\)/g)].map(m => m[1]),
+    'the docked panels bottomStackHeight counts');
+  assert.deepEqual(panels.slice().sort(), ['bl-panel', 'fn-panel', 'var-panel'],
+    'the bottom-docked panel family');
+  const LIFT = {
+    // each panel, and the ONE mechanism that lifts it over the quick bar
+    'var-panel': () => _src.includes(CSS_LIFT),
+    'fn-panel':  () => fnBody(_src, 'syncFnPanelBottom').includes('quickBarHeight()'),
+    'bl-panel':  () => fnBody(_src, 'syncBlPanelBottom').includes('quickBarHeight()'),
+  };
+  for (const id of panels) {
+    assert.ok(LIFT[id], `${id} is docked at the bottom and nothing here says how it clears the quick bar`);
+    assert.ok(LIFT[id](), `${id} no longer clears the quick bar`);
+  }
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');

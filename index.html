@@ -40243,13 +40243,31 @@ function updateBlPanel(nodeId) {
 // offset is applied ONLY while the panel is open — otherwise bumping `bottom`
 // up by the keyboard height would push the translateY(100%)-hidden panel back
 // into view, which is the "empty footnote bar" bug on phones.
+// #1518: how far a bottom-docked panel must lift to clear the bottom of the screen. The software
+// keyboard and the touch quick bar are ALTERNATIVE floors, not stacked ones: `position:fixed`
+// resolves against the LAYOUT viewport, so while the keyboard is up the bar sits behind it
+// (measured on a 390x844 phone: bar 791..844, visual viewport ending at 544). Summing them would
+// leave a 53px gap; taking the taller clears whichever floor is actually there. Pure.
+function panelFloorPx(kbH, qbH) {
+  const n = v => (Number.isFinite(+v) && +v > 0 ? +v : 0);
+  return Math.max(n(kbH), n(qbH));
+}
+
 function syncFnPanelBottom() {
   const panel = document.getElementById('fn-panel');
   if (!panel) return;
   const open = panel.classList.contains('on');
   const kbH = (open && window.visualViewport)
     ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
-  panel.style.bottom = kbH + 'px';
+  // #1518: the quick bar is the OTHER floor, and forgetting it made this inline style a
+  // regression rather than an adjustment. With no software keyboard `kbH` is 0, so the panel was
+  // pinned to `bottom:0` -- and an inline 0 beats the `@media(hover:none)` rule
+  // `#fn-panel,#var-panel{bottom:var(--qbar-h,0px)}` that exists for exactly this. Measured at
+  // 390x844 and 768x1024: the panel's only interactive row sat entirely inside the opaque
+  // (z-640) quick bar, elementFromPoint returned `qb-capture`, and the footnote editor was
+  // focused and typing into the model while being completely invisible. `#var-panel` gets this
+  // lift from the CSS and `#bl-panel` computes it in JS; only this one dropped it.
+  panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px';
   syncHelpBtnBottom();   // keep the help button clear of the panel when it shows/moves
 }
 
