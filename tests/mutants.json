@@ -1557,6 +1557,42 @@
       "find": "  fmSayFilter(total, (nores?.textContent || 'No matching action.').trim());",
       "replace": "  ;",
       "kills": "both filter surfaces speak, read their words off the node, and do not stutter"
+    },
+    {
+      "id": "syntax-samples-wired-as-chips",
+      "suite": "browser",
+      "why": "the reported defect: five rows documenting authoring syntax were stamped as Add-to-search buttons and pasted a pill body into the box",
+      "file": "index.html",
+      "find": "  const CHIP_SEL = '.sh-row kbd:not([data-doc])';",
+      "replace": "  const CHIP_SEL = '.sh-row kbd';",
+      "kills": "a syntax sample does nothing to the search, and the filter chips still work"
+    },
+    {
+      "id": "doc-sample-still-looks-clickable",
+      "suite": "unit",
+      "why": "the five were byte-identical in affordance to the 44 real chips, which is what made the confusion invisible",
+      "file": "index.html",
+      "find": "#search-hint .sh-row kbd[data-doc]{cursor:default;color:var(--muted)}",
+      "replace": "#search-hint .sh-row kbd[data-doc]{cursor:pointer}",
+      "kills": "search-hint tiered display + clickable examples"
+    },
+    {
+      "id": "doc-marker-dropped-from-a-row",
+      "suite": "unit",
+      "why": "a syntax row that loses its marker silently becomes a door again, which is the whole bug",
+      "file": "index.html",
+      "find": "<kbd data-doc>/querybase</kbd>",
+      "replace": "<kbd>/querybase</kbd>",
+      "kills": "the legend separates its filter chips from its syntax samples"
+    },
+    {
+      "id": "chip-selector-forked-again",
+      "suite": "unit",
+      "why": "three handlers and two seeding reads named the selector independently; a marker honoured by some and not others is worse than none",
+      "file": "index.html",
+      "find": "    const k = e.target.closest(CHIP_SEL);\n    if (!k) return;\n    e.preventDefault();   // keep the search box focused so the panel stays open",
+      "replace": "    const k = e.target.closest('.sh-row kbd');\n    if (!k) return;\n    e.preventDefault();   // keep the search box focused so the panel stays open",
+      "kills": "every reader of the chip set honours the marker"
     }
   ]
 }

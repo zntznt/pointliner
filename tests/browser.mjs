@@ -4101,3 +4101,87 @@ test('#1510 a filter says what it did, drops the stale entry, and answers its ke
   assert.equal(back.live, back.entries + ' results');
   await pg.close();
 });
+
+// 68. #1511 — the search legend stamped role=button, roving tabindex and "Add <token> to the
+// search" onto every kbd it contained, including five trailing rows that document AUTHORING syntax
+// rather than filters. Activating one pasted a pill body into the search box. Driven, because
+// whether a chip ACTS is runtime behaviour: the handlers were present and correct, and the defect
+// was which elements they were attached to.
+test('#1511 a syntax sample does nothing to the search, and the filter chips still work', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const mk = t => { const n = mkNode(t); n.type = 'todo'; n.checked = false; return n; };
+    root.children = [mk('#TODO Alpha'), mk('#TODO Beta'), mkNode('Gamma plain')];
+    root.children.forEach(n => { n.type = n.type || 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.evaluate(() => document.getElementById('search-box').focus());
+  await pg.waitForTimeout(300);
+
+  const census = await pg.evaluate(() => {
+    const ks = [...document.querySelectorAll('#search-hint .sh-row kbd')];
+    return {
+      total: ks.length,
+      buttons: ks.filter(k => k.getAttribute('role') === 'button').length,
+      docs: ks.filter(k => k.hasAttribute('data-doc')).map(k => k.textContent),
+      docsFocusable: ks.filter(k => k.hasAttribute('data-doc') && k.getAttribute('tabindex') !== null).length,
+    };
+  });
+  assert.equal(census.docs.length, 5, 'precondition: five rows document syntax rather than filters');
+  assert.equal(census.buttons, census.total - 5, 'and only the rest claim to be buttons');
+  assert.equal(census.docsFocusable, 0, 'a sample is not a tab stop, so roving cannot reach it');
+
+  // activating a documentation sample must do NOTHING to the search
+  const act = (tok) => pg.evaluate(async t => {
+    const sb = document.getElementById('search-box');
+    sb.value = 'is:todo'; applySearch('is:todo');
+    await new Promise(r => setTimeout(r, 150));
+    const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    const k = [...document.querySelectorAll('#search-hint .sh-row kbd')].find(x => x.textContent === t);
+    k.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    k.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 250));
+    return {
+      box: sb.value,
+      live: (document.getElementById('a11y-live')?.textContent || '').trim(),
+      invalid: document.getElementById('sh-invalid')?.hidden === false,
+    };
+  }, tok);
+
+  for (const tok of census.docs) {
+    const r = await act(tok);
+    // THE CONCRETE HARM the issue names: stacking onto a live filter dropped 2 points to 0
+    assert.equal(r.box, 'is:todo', `${tok} must not paste a pill body onto a live filter`);
+    assert.equal(r.invalid, false, `${tok} must not raise a diagnostic about a token nobody typed`);
+    assert.doesNotMatch(r.live, /is not a filter this app knows/,
+      `${tok} used to blame "is:todo}", a token the tokenizer manufactured, and prescribe advice ` +
+      'already inside the failing string');
+  }
+
+  // THE CONTROL: the real operator chips are wired identically and must keep working, by mouse
+  const chip = await pg.evaluate(async () => {
+    const sb = document.getElementById('search-box');
+    sb.value = ''; applySearch('');
+    await new Promise(r => setTimeout(r, 150));
+    const k = [...document.querySelectorAll('#search-hint .sh-row kbd')].find(x => x.textContent === 'is:todo');
+    k.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await new Promise(r => setTimeout(r, 250));
+    return { box: sb.value, live: (document.getElementById('a11y-live')?.textContent || '').trim() };
+  });
+  assert.equal(chip.box, 'is:todo', 'a real filter chip still stacks its token');
+  assert.match(chip.live, /2 matching points/, 'and still runs the search');
+
+  // ...and by keyboard, where the issue's reader reached the samples by roving one past the end
+  await pg.evaluate(() => { document.querySelector('#search-hint .sh-row kbd[tabindex="0"]').focus(); });
+  await pg.keyboard.press('End');
+  await pg.waitForTimeout(150);
+  await pg.keyboard.press('ArrowRight');   // one past the end
+  await pg.waitForTimeout(150);
+  const landed = await pg.evaluate(() => ({
+    isDoc: document.activeElement.hasAttribute?.('data-doc') ?? false,
+    text: document.activeElement.textContent,
+  }));
+  assert.equal(landed.isDoc, false,
+    `roving past the last chip must clamp on a real one, not step onto a sample (landed on ${landed.text})`);
+  await pg.close();
+});

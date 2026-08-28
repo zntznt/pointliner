@@ -1345,6 +1345,52 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // so. Two siblings did not: pushSearchRows (once per matched row) and the announce counter in
 // applySearch (once per node in the subtree) — measured together as 2 chain-walks per node,
 // 453,275 stripStateTags calls over 25,000 points, ~54% of search self-time.
+// ─── #1511: a legend row that documents syntax is not a filter chip ───────────────────────────
+// wireSearchExamples stamped role=button, roving tabindex and "Add <token> to the search" onto
+// EVERY kbd in the legend. Five trailing rows document AUTHORING syntax -- {query:}, {count:},
+// {roll:}, {roll folder:} and /querybase -- so activating one pasted a pill body into the search
+// box. Measured: three then blamed a token the whitespace tokenizer manufactured ("is:todo} is not
+// a filter this app knows... Try is:todo", advice already inside the failing string), and stacking
+// one onto a live filter took 2 matching points to 0.
+test('#1511 the legend separates its filter chips from its syntax samples', () => {
+  // The markup is the source of truth for which rows are which, so read it rather than a count.
+  const legend = nonEmpty(between(_src, 'id="search-hint"', '</div>\n      </div>'), 'the search legend markup');
+  const kbds = nonEmpty([...legend.matchAll(/<kbd([^>]*)>([\s\S]*?)<\/kbd>/g)], 'legend kbd elements');
+  const docs = kbds.filter(m => /\bdata-doc\b/.test(m[1])).map(m => m[2].trim());
+  const chips = kbds.filter(m => !/\bdata-doc\b/.test(m[1])).map(m => m[2].trim());
+
+  // IDENTITY, not a bare count: the previous comment said "48" against 49 present, which is exactly
+  // what a number in prose does. Name the five, so adding a sixth syntax row has to come past here.
+  assert.deepEqual(host(docs.sort()), host([
+    '/querybase', '{count: is:todo}', '{query: is:todo}', '{roll folder: #npc}', '{roll: is:todo}',
+  ].sort()), 'the syntax-documentation rows are exactly these five');
+  assert.ok(chips.length > 30, `and the rest are real filter chips (${chips.length})`);
+
+  // A sample must not LOOK like a door either: same cursor, hover and role was the whole confusion.
+  for (const tok of nonEmpty(docs, 'documentation tokens')) {
+    assert.ok(/^[{/]/.test(tok),
+      `${tok} is documentation, so it should be authoring syntax rather than a filter operator`);
+  }
+  // ...and no real chip may be a brace body, which is what made these five wrong in the first place
+  const braceChips = chips.filter(t => t.startsWith('{') || t.startsWith('/'));
+  assert.deepEqual(host(braceChips), [],
+    'a chip that pastes a pill body into the search box is not a filter: mark it data-doc');
+});
+
+test('#1511 every reader of the chip set honours the marker', () => {
+  const wire = fnBody(_src, 'wireSearchExamples');
+  // ONE selector, shared. Three handlers and two seeding reads used to name '.sh-row kbd'
+  // independently, so a marker honoured by some and not others would be worse than none.
+  assert.match(wire, /const CHIP_SEL = '\.sh-row kbd:not\(\[data-doc\]\)';/, 'the one selector exists');
+  assert.doesNotMatch(wire, /querySelectorAll\('\.sh-row kbd'\)|closest\('\.sh-row kbd'\)/,
+    'and nothing reads the unfiltered set any more: a doc row must not be seeded, roved or activated');
+  const uses = nonEmpty(wire.match(/CHIP_SEL/g) || [], 'CHIP_SEL uses');
+  assert.ok(uses.length >= 5,
+    `the declaration plus every reader (2 seeding, 3 handlers); found ${uses.length}`);
+  // the stale number is gone from the prose, since a number in a comment cannot be checked
+  assert.doesNotMatch(wire, /These 48 chips/, 'the drift marker is not re-introduced');
+});
+
 // ─── #1510: a filter that changes the list under a caret that never moved ─────────────────────
 // The concept guide went 94 nav entries -> 18 -> 0 with focus still in its search box and said
 // NOTHING at any step: no announce(), no live region anywhere in the dialog. Two more halves came
@@ -23439,8 +23485,12 @@ test('modes batch — search-hint tiered display + clickable examples', () => {
   assert.ok(!/(^|\n)#search-wrap:focus-within #search-hint\{display:block\}/.test(_src),
     'the old unconditional focus-within opener must be gone (the cheatsheet never pops in Standard/Lean)');
   // the example chips are clickable in Guided (pointer-events re-enabled on the kbd), border-highlight on hover.
-  assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}'),
+  // #1511 scoped this to the FILTER chips: five trailing rows document authoring syntax and are not
+  // doors, so they must not read as clickable. Same claim, narrower subject.
+  assert.ok(_src.includes('body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd:not([data-doc]){pointer-events:auto;cursor:pointer}'),
     'Guided example chips must be clickable (pointer-events re-enabled on the kbd)');
+  assert.ok(_src.includes('#search-hint .sh-row kbd[data-doc]{cursor:default'),
+    'and a documentation sample must not look like one of them');
   // the applier stacks the token onto the search box and keeps focus (the saved-chip mousedown model).
   // fnBody, not a byte window: the old pin sliced a fixed 1100 bytes, which is exactly the brittle
   // shape this file's header warns about — the roving-tabindex keydown pushed the assertions past
@@ -23494,8 +23544,12 @@ test('search legend chips are ONE tab stop with arrow navigation (roving tabinde
   // the seeding pass must not spread the NodeList: it runs at load, and the headless harness's
   // document stub is forEach-able but NOT iterable, so a spread throws mid-file and strands every
   // later `let` in TDZ (14 unrelated-looking failures, none pointing at this line).
-  assert.ok(wire.includes("hint.querySelectorAll('.sh-row kbd').forEach((k, i) =>"),
+  // #1511 moved the selector into CHIP_SEL (documentation rows are excluded); the forEach claim is
+  // unchanged and is the half that matters here.
+  assert.ok(wire.includes("hint.querySelectorAll(CHIP_SEL).forEach((k, i) =>"),
     'the load-time seeding pass must use forEach on the NodeList, not a spread');
+  assert.match(wire, /const CHIP_SEL = '\.sh-row kbd:not\(\[data-doc\]\)';/,
+    'and the one selector every reader shares, so a door and a sample cannot be confused again');
 });
 
 // item 8 (modes batch): the { grammar picker matches the lean / and @ commands — a one-line tip.
