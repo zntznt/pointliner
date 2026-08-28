@@ -68,6 +68,25 @@ async function fresh() {
   return page;
 }
 
+// #1516: a PHONE page — 390x844, hasTouch, isMobile. The touch bars (#edit-bar, #quick-bar) are the
+// only place some doors exist, and a desktop page never renders them, which is how a door verified
+// "on desktop" shipped dead on the surface it was built for. Its own context, so the desktop checks
+// above are untouched.
+let touchCtx = null;
+async function touchPage() {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  touchCtx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+  const pg = await touchCtx.newPage();
+  pageErrors = [];
+  pg.on('pageerror', e => pageErrors.push(String(e).split('\n')[0]));
+  await pg.goto(APP);
+  await pg.waitForSelector('#outline', { timeout: 10000 });
+  await pg.waitForTimeout(800);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(300);
+  return pg;
+}
+
 // A blank document with the caret in its one point — the state every check below starts from.
 async function blankWithCaret(pg) {
   await pg.evaluate(() => { root.children = [mkNode('')]; buildIndex(root); markDirty(); render(); });
@@ -4730,4 +4749,110 @@ test('#1515 every toolbar strip hands the caret back to the interrupted edit', {
   assert.equal(await pg.evaluate(() => document.getElementById('capture-strip').classList.contains('on')), true,
     'and leaves the strip open -- one layer out, not two');
   await pg.close();
+});
+
+// 73. #1516 — the touch edit bar's "Insert a pill" button typed a literal '@' and opened nothing at
+// any caret past 0, silently and PERMANENTLY (the glued sigil stays in the text, so every later
+// keystroke re-fails the same match). UXP-105 shipped it and recorded "Verified: the
+// execCommand('@') path opens the insert menu on desktop" — verified at the one caret position
+// where it happens to work. `#eb-insert` appeared in no driven check at all: this file had zero
+// edit-bar coverage, and the edit bar only exists on a touch viewport, so a desktop page could
+// never have caught it.
+test('#1516 the touch Insert-a-pill button opens the menu at any caret', { skip: skip() }, async () => {
+  const pg = await touchPage();
+  const seed = (text) => pg.evaluate((t) => {
+    const io = document.getElementById('io-back'); if (io?.classList.contains('on')) closeIo();
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    const n = mkNode(''); n.type = 'ul';
+    root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    buildIndex(root, null); markDirty(); render();
+    const el = document.querySelector('.node-content');
+    enterEdit(el, n); el.focus(); activeContentId = n.id;
+    if (t) document.execCommand('insertText', false, t);
+  }, text);
+  // pointerdown+pointerup, because ebBtn acts on pointerup gated on movement slop — a .click()
+  // would measure a gesture the bar never receives.
+  const tapInsert = () => pg.evaluate(() => {
+    const el = document.getElementById('eb-insert');
+    const b = el.getBoundingClientRect(), x = b.x + b.width / 2, y = b.y + b.height / 2;
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+  });
+  const open = () => pg.evaluate(() => ({
+    builder: !!builderState,
+    trigger: builderState?.trigger ?? null,
+    scrim: document.getElementById('io-back')?.classList.contains('on') ?? false,
+  }));
+
+  await seed('Buy milk');
+  await pg.waitForTimeout(400);
+  assert.equal(await pg.evaluate(() => document.getElementById('edit-bar').classList.contains('on')), true,
+    'precondition: the edit bar is actually on screen — this door does not exist on a desktop page');
+
+  // ── EVERY caret position, including the two the report did not name. The filed cause was "a word
+  // character"; the regex condition is "not whitespace and not }", so punctuation is dead too.
+  for (const [text, why] of [
+    ['Buy milk', 'after a word character (the filed permanent dead end)'],
+    ['Buy milk ', 'after a space (silent at tap, the filed variant B)'],
+    ['Buy milk,', 'after punctuation — not named in the report, dead the same way'],
+    ['Buy (', 'after an opening bracket'],
+    ['', 'at caret 0 — the one position that always worked, and must keep working'],
+  ]) {
+    await seed(text);
+    await pg.waitForTimeout(350);
+    await tapInsert();
+    await pg.waitForTimeout(500);
+    const o = await open();
+    assert.equal(o.builder, true, `"${text}": the insert menu must open — ${why}`);
+    assert.equal(o.trigger, '@', `"${text}": and it must be the @ insert menu`);
+    assert.equal(o.scrim, true, `"${text}": with its scrim up`);
+    await pg.evaluate(() => closeBuilder(true));
+    await pg.waitForTimeout(250);
+  }
+
+  // ── END TO END: the pill has to land as its own token, with the text intact around it. A menu
+  // that opens over a mangled `Buy milk@` would satisfy every assertion above and still be wrong.
+  await seed('Buy milk');
+  await pg.waitForTimeout(350);
+  await tapInsert();
+  await pg.waitForTimeout(500);
+  await pg.keyboard.press('Enter');                      // first row of the @ menu: Dice roll
+  await pg.waitForTimeout(600);
+  await pg.evaluate(() => {
+    const f = [...document.querySelectorAll('#io-card input')].find(i => !i.classList.contains('builder-search'));
+    f.focus(); f.value = '2d6'; f.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await pg.waitForTimeout(350);
+  await pg.evaluate(() => [...document.querySelectorAll('#io-card button')].find(b => /^insert$/i.test(b.textContent.trim()))?.click());
+  await pg.waitForTimeout(700);
+  assert.equal(await pg.evaluate(() => root.children[0].text), 'Buy milk {2d6}',
+    'the sigil is stripped, the inserted space survives, and the pill is its own token');
+  assert.equal(await pg.evaluate(() => (root.children[0].dice || []).length), 1,
+    'and it is a live pill, not literal text');
+
+  // ── THE NEGATIVE CASE. #1108 is why a bare mid-text sigil is suppressed, and the button's escape
+  // hatch must not leak to TYPED input: "the harbour master / his son" must still stay prose.
+  await seed('Buy milk');
+  await pg.waitForTimeout(350);
+  await pg.evaluate(() => document.execCommand('insertText', false, ' @'));
+  await pg.waitForTimeout(450);
+  assert.equal((await open()).builder, false,
+    'typing a bare @ mid-text must STILL open nothing — that is #1108, and the fix must not lift it');
+  await pg.evaluate(() => document.execCommand('insertText', false, 'd'));
+  await pg.waitForTimeout(450);
+  assert.equal((await open()).builder, true,
+    'and typing on must still recover, exactly as before');
+  await pg.evaluate(() => closeBuilder(true));
+  await pg.waitForTimeout(250);
+
+  // ── the sibling door, unchanged: the quick bar's @ makes a NEW point, so it always landed at 0.
+  await seed('');
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => document.getElementById('qb-insert').click());
+  await pg.waitForTimeout(800);
+  assert.equal((await open()).builder, true, 'the quick-bar insert door still works');
+
+  assert.deepEqual(pageErrors, [], 'no page errors on the touch surface');
+  await pg.close();
+  await touchCtx.close();
 });

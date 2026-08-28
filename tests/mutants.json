@@ -1926,6 +1926,69 @@
       "find": "  if (!chronicleOpen) { chronicleCount = 0; armChromeReturn(); chronicleReturnId = captureCurrentPointId(); }",
       "replace": "  if (!chronicleOpen) { chronicleCount = 0; chronicleReturnId = null; }",
       "kills": "#1515 every toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "insert-sigil-glues-to-the-word",
+      "suite": "unit",
+      "why": "the first barrier: a sigil glued to the preceding token matches nothing, permanently",
+      "file": "index.html",
+      "find": "  const sigil = insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@';",
+      "replace": "  const sigil = '@';",
+      "kills": "#1516 the touch \"Insert a pill\" button opens the menu wherever the caret is"
+    },
+    {
+      "id": "insert-button-does-not-say-it-meant-it",
+      "suite": "unit",
+      "why": "the second barrier: #1108 suppresses even a correctly-spaced mid-text sigil",
+      "file": "index.html",
+      "find": "  checkSlash(content, id, { force: true });",
+      "replace": "  ;",
+      "kills": "#1516 the touch \"Insert a pill\" button opens the menu wherever the caret is"
+    },
+    {
+      "id": "sigil-predicate-drifts-from-the-regex",
+      "suite": "unit",
+      "why": "the predicate and the trigger regex are separate source; a change to either alone is how this returns",
+      "file": "index.html",
+      "find": "  return i > 0 && !/[\\s}]/.test(t[i - 1]);",
+      "replace": "  return i > 0 && /\\w/.test(t[i - 1]);",
+      "kills": "#1516 the touch \"Insert a pill\" button opens the menu wherever the caret is"
+    },
+    {
+      "id": "forced-check-runs-before-the-insertion",
+      "suite": "unit",
+      "why": "the input handler's own checkSlash runs on the insertion and hides; the forced one must come after",
+      "file": "index.html",
+      "find": "  document.execCommand('insertText', false, sigil);\n  // The input handler already ran checkSlash",
+      "replace": "  checkSlash(content, id, { force: true });\n  document.execCommand('insertText', false, sigil);\n  // The input handler already ran checkSlash",
+      "kills": "#1516 the touch \"Insert a pill\" button opens the menu wherever the caret is"
+    },
+    {
+      "id": "force-hatch-open-to-typed-input",
+      "suite": "unit",
+      "why": "a second forced call site would re-open the mid-prose palette #1108 closed",
+      "file": "index.html",
+      "find": "    checkSlash(content, node.id);\n    checkLinkTrigger(content, node.id);\n    checkBraceTrigger(content, node.id);\n    checkTagTrigger(content, node.id);\n    checkEmojiTrigger(content, node.id);\n    updateSelToolbar();",
+      "replace": "    checkSlash(content, node.id, { force: true });\n    checkLinkTrigger(content, node.id);\n    checkBraceTrigger(content, node.id);\n    checkTagTrigger(content, node.id);\n    checkEmojiTrigger(content, node.id);\n    updateSelToolbar();",
+      "kills": "#1108 the trigger stops firing on a bare slash mid-prose"
+    },
+    {
+      "id": "insert-pill-dead-past-caret-zero",
+      "suite": "browser",
+      "why": "driven on a phone viewport: whether the menu opens is the whole finding, and the edit bar does not exist on a desktop page",
+      "file": "index.html",
+      "find": "  const sigil = insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@';\n  document.execCommand('insertText', false, sigil);",
+      "replace": "  const sigil = '@';\n  document.execCommand('insertText', false, sigil);",
+      "kills": "#1516 the touch Insert-a-pill button opens the menu at any caret"
+    },
+    {
+      "id": "insert-pill-mangles-the-text",
+      "suite": "browser",
+      "why": "a menu that opens over a mangled `Buy milk@` passes every open/closed assertion and is still wrong",
+      "file": "index.html",
+      "find": "insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@'",
+      "replace": "insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? '@ ' : '@'",
+      "kills": "#1516 the touch Insert-a-pill button opens the menu at any caret"
     }
   ]
 }

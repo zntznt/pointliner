@@ -21824,13 +21824,27 @@ function ebBtn(elId, fn) {
 // execCommand('insertText'), which fires the normal input handler → checkSlash → the '@' insert
 // menu, positioned at the caret. No fake sigil, no synthetic event, no duplicated menu logic:
 // it IS the typed path, so slashApply's trigger-strip removes the '@' on pick, exactly as usual.
+//
+// #1516: UXP-105 was verified at caret 0 and shipped dead everywhere else. Two separate barriers
+// sit between a mid-text '@' and the menu, and BOTH had to go:
+//   1. the trigger regex needs start-of-text, whitespace or '}' before the sigil, so at `Buy milk|`
+//      the typed '@' produced `Buy milk@` and matched NOTHING -- silently, and permanently, since
+//      the glued sigil stays in the text and every later keystroke re-fails the same match.
+//   2. #1108's bare-trigger carve-out then suppresses even a correctly-spaced mid-text '@', so
+//      `Buy milk |` opened nothing at tap time and only recovered if you happened to type on.
+// The space is inserted as part of the same execCommand, so it is one undo step and one input
+// event; `force` says this menu was ASKED for rather than typed as punctuation.
 ebBtn('eb-insert', () => {
   const id = editBarTargetId();
   if (id == null) return;
   const content = document.querySelector(`.node-content[data-id="${id}"][data-editing]`);
   if (!content) return;
   content.focus();                              // pointerdown+preventDefault kept the caret; ensure focus for execCommand
-  document.execCommand('insertText', false, '@');
+  const sigil = insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@';
+  document.execCommand('insertText', false, sigil);
+  // The input handler already ran checkSlash and (correctly, for a typed bare sigil) hid the menu.
+  // This is the button saying it meant it.
+  checkSlash(content, id, { force: true });
 });
 // #437: the touch front door for "make this line a to-do". Toggles the `- [ ]` marker on the caret's
 // line (the touch twin of typing `- [ ]` or the long-press type-switcher). Mirrors the Ctrl+Shift+X
@@ -23374,7 +23388,22 @@ function isSlashMenuOpen() { return slashState != null; }
 slashMenu.addEventListener('mousedown', e => e.preventDefault());
 
 // "/" opens the point-level menu, "@" opens the inline-insert menu.
-function checkSlash(content, nodeId) {
+// #1516: does a DELIBERATE sigil insertion need a separating space first? The trigger regex below
+// only fires after start-of-text, whitespace or a closing brace, so anywhere else the sigil glues
+// itself to the preceding token and the menu can never open -- and, because the glued `@` stays in
+// the text, it never opens again for that insertion either. Note the condition is NOT "after a word
+// character", which is how it was first reported: `Buy milk,` and `Buy (` are dead the same way.
+// Pure.
+function insertSigilNeedsSpace(text, off) {
+  const t = String(text ?? '');
+  const i = Math.max(0, Math.min(Number.isFinite(+off) ? +off : 0, t.length));
+  return i > 0 && !/[\s}]/.test(t[i - 1]);
+}
+
+// `opts.force` = a BUTTON asked for this menu, so the bare-trigger carve-out below does not apply.
+// #1108 suppresses a lone mid-text `@` because typed punctuation is not a command -- but a control
+// named "Insert a pill" is not punctuation, and it had no way to say so (#1516).
+function checkSlash(content, nodeId, opts) {
   const pos = getCaretOffset(content);
   const before = editableText(content).slice(0, pos);
   // The query is the word after the trigger, plus — for the arg-taking verbs — an
@@ -23405,7 +23434,7 @@ function checkSlash(content, nodeId) {
   // and " / " never fires. This is the discipline `#` and `:` already have: their pool is real
   // existing tags, so a bare trigger matches nothing and stays quiet. A `/` matches EVERY command
   // when the query is empty, so the "no matches -> hide" branch below can never fire for it.
-  if (slashOffset !== 0 && !rawQuery) { hideSlashMenu(); return; }
+  if (slashOffset !== 0 && !rawQuery && !(opts && opts.force)) { hideSlashMenu(); return; }
   if (m[2] === '/' && slashOffset !== 0 && nodeById(nodeId)?.type === 'para') { hideSlashMenu(); return; }
   const { word, query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();

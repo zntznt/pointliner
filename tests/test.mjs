@@ -28030,10 +28030,77 @@ test('#1108 the trigger stops firing on a bare slash mid-prose', () => {
   // "/tod" mid-line still does, and the novelist's full sentence survives intact.
   // NB: not fnBody(). fnBody does indexOf('function ' + name), which PREFIX-matches -- it returns
   // closeBuilderWindow's body for 'closeBuilder'. Anchor on the source directly (#1131).
-  assert.match(_src, /if \(slashOffset !== 0 && !rawQuery\) \{ hideSlashMenu\(\); return; \}/,
+  // #1516 widened this by exactly one escape hatch: a BUTTON may say it meant it (`opts.force`).
+  // The claim is unchanged for everything the user TYPES, which is what this guard is about, and
+  // the census below pins that only a real door can reach the hatch.
+  assert.match(_src, /if \(slashOffset !== 0 && !rawQuery && !\(opts && opts\.force\)\) \{ hideSlashMenu\(\); return; \}/,
     'a bare trigger mid-text must not open the palette');
+  const forced = nonEmpty([..._src.matchAll(/checkSlash\(([^)]*)\)/g)], 'checkSlash call sites')
+    .map(m => m[1]).filter(a => a.includes('force'));
+  assert.deepEqual(forced, ["content, id, { force: true }"],
+    'exactly one call site may bypass the bare-trigger guard: the "Insert a pill" button (#1516)');
   assert.match(_src, /nodeById\(nodeId\)\?\.type === 'para'\) \{ hideSlashMenu/,
     'the paragraph carve-out stays: Enter means line break there, so an open menu could eat the block');
+});
+
+// #1516: the touch edit bar's "Insert a pill" button worked at caret 0 and was DEAD everywhere
+// else, silently. UXP-105 shipped it and its verification line reads "Verified: the
+// execCommand('@') path opens the insert menu on desktop" -- verified at the one position where it
+// happens to work, which is why the regression went unrecorded and `ux-discipline.md` still marked
+// the door conformant.
+//
+// TWO barriers sit between a mid-text '@' and the menu, and only removing both opens it:
+//   1. the trigger regex needs `^`, whitespace or `}` before the sigil, so at `Buy milk|` the typed
+//      '@' produced `Buy milk@` and matched nothing -- permanently, since the glued sigil stays in
+//      the text and every later keystroke re-fails the same match.
+//   2. #1108's bare-trigger carve-out then suppresses even a correctly-spaced mid-text '@'.
+// Measured: the first barrier is NOT "after a word character" as filed -- `Buy milk,` and `Buy (`
+// are dead the same way.
+test('#1516 the touch "Insert a pill" button opens the menu wherever the caret is', () => {
+  const { insertSigilNeedsSpace } = c;
+  // ---- 1. the predicate, by value.
+  assert.equal(insertSigilNeedsSpace('Buy milk', 8), true, 'after a word character');
+  assert.equal(insertSigilNeedsSpace('Buy milk,', 9), true, 'after punctuation -- WIDER than the filed "word character"');
+  assert.equal(insertSigilNeedsSpace('Buy (', 5), true, 'after an opening bracket');
+  assert.equal(insertSigilNeedsSpace('Buy milk ', 9), false, 'after a space the regex already matches');
+  assert.equal(insertSigilNeedsSpace('{2d6}', 5), false, 'after a closing brace -- #919 made that a command position');
+  assert.equal(insertSigilNeedsSpace('', 0), false, 'at the start of an empty point');
+  assert.equal(insertSigilNeedsSpace('Buy milk', 0), false, 'at the start of text -- the one case that always worked');
+  assert.equal(insertSigilNeedsSpace('Buy milk', 4), false, 'mid-text but after a space');
+  // it reads the character BEFORE the caret, not the last character of the text
+  assert.equal(insertSigilNeedsSpace('a b', 2), false, 'the caret position is what matters, not the tail');
+  // out of range and junk clamp rather than throw
+  assert.equal(insertSigilNeedsSpace('ab', 99), true);
+  assert.equal(insertSigilNeedsSpace(null, 5), false);
+  assert.equal(insertSigilNeedsSpace('ab', null), false);
+
+  // ---- 2. THE PREDICATE TRACKS THE REGEX. This is the pin that matters: the two are separate
+  // pieces of source that must agree, and a change to either alone is the way this breaks again.
+  // The regex is read out of the app rather than restated here.
+  const lit = /const m = before\.match\((\/.*?\/)\);/.exec(_src);
+  assert.ok(lit, 'the trigger regex must still be a literal in checkSlash');
+  const trig = new RegExp(lit[1].slice(1, -1));
+  for (const ch of ['k', '5', ',', '(', ')', '.', '-', '"', '@', ' ', '\t', '\n', '}', '{']) {
+    const opens = trig.test(ch + '@');
+    assert.equal(insertSigilNeedsSpace(ch, 1), !opens,
+      `after ${JSON.stringify(ch)} the predicate and the trigger regex must agree`);
+  }
+
+  // ---- 3. THE CALL SITE. A predicate nothing consults is decoration.
+  // end-anchored on the NEXT handler, not on '});' -- the forced checkSlash call itself ends in
+  // '});' and would truncate the window just before the thing being asserted.
+  const src = between(_src, "ebBtn('eb-insert'", "ebBtn('eb-todo'");
+  assert.ok(src.includes("insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@'"),
+    'the button must space the sigil off the preceding token, or the menu can never open');
+  assert.ok(src.includes("document.execCommand('insertText', false, sigil)"),
+    'still the TYPED path -- one execCommand, so it is one undo step and slashApply strips it as usual');
+  assert.ok(src.includes('checkSlash(content, id, { force: true })'),
+    'and the button must say it meant it, or #1108 suppresses the bare mid-text sigil');
+  // the order is load-bearing: the input handler's own checkSlash runs first and (correctly) hides.
+  assert.ok(src.indexOf("execCommand('insertText'") < src.indexOf('checkSlash(content, id'),
+    'the forced re-check must come AFTER the insertion, not before it');
+  assert.ok(!/document\.execCommand\('insertText', false, '@'\)/.test(_src),
+    'the old unconditional bare-@ insertion must be gone');
 });
 
 test('#1108 dismissal is a CANCEL that returns the text; apply is not', () => {
@@ -33509,8 +33576,8 @@ test('#1396 the builder is seeded with the query the trigger already consumed', 
   assert.ok(/builderState = \{ nodeId, content, trigger, offset: slashOffset, query, rawArg \};/.test(cs),
     'checkSlash still hands the builder the query and the offset');
   // and the #1108 guard that makes mid-line different in the first place is intentional; keep it
-  assert.ok(/if \(slashOffset !== 0 && !rawQuery\) \{ hideSlashMenu\(\); return; \}/.test(cs),
-    'the #1108 bare-mid-text-trigger guard stays — it is why the first character is consumed');
+  assert.ok(/if \(slashOffset !== 0 && !rawQuery && !\(opts && opts\.force\)\) \{ hideSlashMenu\(\); return; \}/.test(cs),
+    'the #1108 bare-mid-text-trigger guard stays for TYPED input — it is why the first character is consumed (#1516 added a button-only escape hatch)');
 });
 
 // ─── #1397: opening a pill's context menu must not change the pill ────────────
