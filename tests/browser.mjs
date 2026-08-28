@@ -4962,3 +4962,98 @@ test('#1517 the chip, the tree and the toast agree on where a capture went', { s
     'the URL/share append still falls back to the first non-empty slot, and its own toast names it');
   await pg.close();
 });
+
+// 75. #1518 — `#fn-panel` docked at `bottom:0` under the opaque (z-640) touch quick bar, so the
+// whole footnote editor was invisible: 53px overlap, the panel's only interactive row entirely
+// inside the bar, and `elementFromPoint` on that row returning `qb-capture`. The editor was FOCUSED
+// the whole time and typing reached the model, so nothing errored and no unit pin could see it —
+// this is geometry, and geometry only exists on a real touch viewport with the bar rendered.
+test('#1518 the footnote panel sits ON the touch quick bar, not under it', { skip: skip() }, async () => {
+  for (const vp of [{ width: 390, height: 844 }, { width: 768, height: 1024 }]) {
+    const ctx = await browser.newContext({ viewport: vp, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(800);
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => {
+      nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+      const n = mkNode('A claim worth citing[^src1]'); n.type = 'ul';
+      root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+      buildIndex(root, null); markDirty(); render();
+    });
+    await pg.waitForTimeout(400);
+    await pg.evaluate(() => {
+      const m = document.querySelector('.fn-ref');
+      m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      m.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await pg.waitForTimeout(500);
+
+    const g = await pg.evaluate(() => {
+      const r = (id) => { const e = document.getElementById(id); const b = e.getBoundingClientRect();
+        return { on: e.classList.contains('on'), top: b.top, bottom: b.bottom, inline: e.style.bottom || null }; };
+      const key = document.querySelector('#fn-panel .fn-key').getBoundingClientRect();
+      const hit = document.elementFromPoint(40, key.top + key.height / 2);
+      return { fn: r('fn-panel'), qb: r('quick-bar'), qbarH: getComputedStyle(document.documentElement).getPropertyValue('--qbar-h').trim(),
+               hitInPanel: !!hit?.closest('#fn-panel'), hitId: hit ? (hit.id || hit.className) : null,
+               ae: document.activeElement.className || document.activeElement.tagName };
+    });
+    const at = `${vp.width}x${vp.height}`;
+    assert.equal(g.fn.on, true, `${at}: precondition — tapping the marker opens the panel`);
+    assert.equal(g.qb.on, true, `${at}: precondition — the touch quick bar is up`);
+    assert.ok(g.fn.bottom <= g.qb.top + 0.5,
+      `${at}: the panel must sit ON the bar, not under it (overlap ${g.fn.bottom - g.qb.top}px)`);
+    assert.equal(g.fn.inline, g.qbarH,
+      `${at}: and it must lift by exactly the bar's own published height`);
+    // the tap target is the half that was inoperable: the user sees the bar and taps what they see.
+    assert.equal(g.hitInPanel, true,
+      `${at}: the footnote row must hit-test to itself, not to the bar (got ${g.hitId})`);
+    assert.match(g.ae, /fn-content/, `${at}: and the editor is still focused, as it always was`);
+
+    // ── THE NEGATIVE CASE, and the reason this is a MAX rather than a sum: with a software
+    // keyboard up, `position:fixed` keeps the bar at the LAYOUT viewport bottom, behind the
+    // keyboard. Adding its height would float the panel 53px above the keyboard instead of on it.
+    const lifted = await pg.evaluate(() => {
+      Object.defineProperty(window.visualViewport, 'height', { configurable: true, get() { return 544; } });
+      syncFnPanelBottom();
+      const p = document.getElementById('fn-panel');
+      return { inline: p.style.bottom, bottom: p.getBoundingClientRect().bottom };
+    });
+    await pg.waitForTimeout(200);
+    assert.equal(lifted.inline, (vp.height - 544) + 'px',
+      `${at}: with the keyboard up the panel clears the KEYBOARD, and does not also add the hidden bar`);
+    assert.ok(Math.abs(lifted.bottom - 544) < 1,
+      `${at}: which puts it flush on the visual viewport's floor`);
+
+    assert.deepEqual(errs, [], `${at}: no page errors`);
+    await pg.close();
+    await ctx.close();
+  }
+
+  // ── DESKTOP IS UNTOUCHED: no touch bar, so the floor is 0 and the panel docks flush as before.
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('A claim worth citing[^src1]')];
+    root.children[0].type = 'ul';
+    buildIndex(root); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    const m = document.querySelector('.fn-ref');
+    m.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    m.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  });
+  await pg.waitForTimeout(400);
+  const desk = await pg.evaluate(() => {
+    const p = document.getElementById('fn-panel');
+    return { on: p.classList.contains('on'), inline: p.style.bottom, qb: document.getElementById('quick-bar').classList.contains('on') };
+  });
+  assert.equal(desk.qb, false, 'precondition: no quick bar on a desktop page');
+  assert.equal(desk.on, true, 'the panel still opens');
+  assert.equal(desk.inline, '0px', 'and still docks flush — the fix costs desktop nothing');
+  await pg.close();
+});

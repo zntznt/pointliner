@@ -2070,6 +2070,69 @@
       "find": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)) || root; }",
       "replace": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)) || nodeById(root.inboxes?.find(Boolean)) || root; }",
       "kills": "#1517 the chip, the tree and the toast agree on where a capture went"
+    },
+    {
+      "id": "fn-panel-docks-under-the-quick-bar",
+      "suite": "unit",
+      "why": "the whole defect: an inline bottom:0 that beats the CSS lift written for exactly this case",
+      "file": "index.html",
+      "find": "  panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px';",
+      "replace": "  panel.style.bottom = kbH + 'px';",
+      "kills": "#1518 a bottom-docked panel clears the touch quick bar"
+    },
+    {
+      "id": "panel-floor-sums-instead-of-maxing",
+      "suite": "unit",
+      "why": "the bar is BEHIND the keyboard, so summing floats the panel above the keyboard instead of on it",
+      "file": "index.html",
+      "find": "  return Math.max(n(kbH), n(qbH));",
+      "replace": "  return n(kbH) + n(qbH);",
+      "kills": "#1518 a bottom-docked panel clears the touch quick bar"
+    },
+    {
+      "id": "panel-floor-ignores-the-bar",
+      "suite": "unit",
+      "why": "dropping the quick bar from the floor is the bug expressed one level down",
+      "file": "index.html",
+      "find": "function panelFloorPx(kbH, qbH) {\n  const n = v => (Number.isFinite(+v) && +v > 0 ? +v : 0);",
+      "replace": "function panelFloorPx(kbH, qbH) {\n  const n = v => (Number.isFinite(+v) && +v > 0 ? +v : 0);\n  qbH = 0;",
+      "kills": "#1518 a bottom-docked panel clears the touch quick bar"
+    },
+    {
+      "id": "css-lift-removed-from-the-docked-panels",
+      "suite": "unit",
+      "why": "#var-panel has no JS lift at all: this CSS rule is the whole of its clearance",
+      "file": "index.html",
+      "find": "  #fn-panel,#var-panel{bottom:var(--qbar-h,0px)}",
+      "replace": "  #fn-panel{bottom:var(--qbar-h,0px)}",
+      "kills": "#1518 a bottom-docked panel clears the touch quick bar"
+    },
+    {
+      "id": "bl-panel-drops-the-bar-from-its-stack",
+      "suite": "unit",
+      "why": "the census must notice a sibling losing its clearance, not just the reported one",
+      "file": "index.html",
+      "find": "  const base = fnH + quickBarHeight();   // #566: the quick bar is the stack floor on touch",
+      "replace": "  const base = fnH;   // #566: the quick bar is the stack floor on touch",
+      "kills": "#1518 a bottom-docked panel clears the touch quick bar"
+    },
+    {
+      "id": "footnote-editor-invisible-under-the-bar",
+      "suite": "browser",
+      "why": "driven: 53px of overlap and a row that hit-tests to qb-capture is geometry, and geometry needs a real touch viewport",
+      "file": "index.html",
+      "find": "  panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px';",
+      "replace": "  panel.style.bottom = kbH + 'px';",
+      "kills": "#1518 the footnote panel sits ON the touch quick bar"
+    },
+    {
+      "id": "panel-floats-above-the-keyboard",
+      "suite": "browser",
+      "why": "driven: the sum leaves a gap over the keyboard, which only a measured rect shows",
+      "file": "index.html",
+      "find": "  return Math.max(n(kbH), n(qbH));",
+      "replace": "  return n(kbH) + n(qbH);",
+      "kills": "#1518 the footnote panel sits ON the touch quick bar"
     }
   ]
 }
