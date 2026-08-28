@@ -4580,3 +4580,154 @@ test('#1514 the tab strip is one roving group whose stop follows focus, at any s
     'Enter on a tab still opens that document');
   await pg.close();
 });
+
+// 72. #1515 — Escape out of the Capture strip stranded focus on the toolbar button, from TWO
+// independent causes (fixing either alone leaves the bug): the Escape closed the strip TWICE, and
+// the return target was a stored ELEMENT that a committed capture's render() detached. Both are
+// runtime facts. `tests/browser.mjs` had no capture coverage at all, and `tests/test.mjs` pinned
+// only that `function closeCapture` exists.
+//
+// THE FAMILY IS THREE. Driving found `#journal-strip` and `#chronicle-strip` carrying the identical
+// element slot: after a committed entry, all three stranded focus on their own toolbar button. They
+// share one exit now, and all three are driven here — the fix is only as good as its narrowest
+// member.
+test('#1515 every toolbar strip hands the caret back to the interrupted edit', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const STRIPS = [
+    { name: 'capture',   open: 'openCaptureDialog',   input: 'cap-input', btn: 'btn-capture' },
+    { name: 'journal',   open: 'openJournalStrip',    input: 'jr-input',  btn: 'btn-journal' },
+    { name: 'chronicle', open: 'openChronicleStrip',  input: 'chr-input', btn: 'btn-chronicle' },
+  ];
+  // A clean tree AND a clean nodeMap: a stale map lets a dropped node still resolve, which makes
+  // the chrome-return report success over a point that is not rendered. That cost a diagnosis.
+  const seed = () => pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    root.gamelog = { targetId: root.children[2].id };        // the chronicle needs a home point
+    buildIndex(root, null); markDirty(); render();
+    chromeReturn = null; activeContentId = null; lastEdit = null;
+    selectedIds.clear(); selAnchorId = null; selFocusId = null;
+    const l = document.getElementById('a11y-live'); if (l) l.textContent = '';
+  });
+  const editBeta = () => pg.evaluate(() => {
+    const el = document.querySelectorAll('.node-content')[1];
+    const n = nodeById(el.dataset.id); enterEdit(el, n); el.focus(); activeContentId = n.id;
+    setCaretByOffset(el, 3);
+    return n.id;
+  });
+  const state = () => pg.evaluate(() => {
+    const a = document.activeElement, sel = window.getSelection();
+    return {
+      tag: a.tagName, id: activeContentId,
+      caret: (a.classList?.contains('node-content') && sel?.anchorOffset != null) ? sel.anchorOffset : null,
+      cursor: document.querySelector('.node-cursor')?.textContent?.trim() ?? null,
+      live: (document.getElementById('a11y-live')?.textContent || '').trim(),
+    };
+  });
+
+  // ── EVERY STRIP × committed and uncommitted. The two causes separate here: uncommitted fails on
+  // the double-close alone (the stored element was still connected), committed fails on the
+  // detached element alone. A fix for one leaves the other, so both rows have to be green.
+  for (const commit of [false, true]) {
+    for (const st of STRIPS) {
+      await seed();
+      await pg.waitForTimeout(200);
+      const betaId = await editBeta();
+      await pg.waitForTimeout(200);
+      await pg.evaluate((o) => window[o](), st.open);
+      await pg.waitForTimeout(350);
+      assert.equal(await pg.evaluate(() => document.activeElement.id), st.input,
+        `${st.name}: precondition -- the strip opened and took the caret`);
+      if (commit) {
+        await pg.keyboard.type('note');
+        await pg.keyboard.press('Enter');
+        await pg.waitForTimeout(400);
+      }
+      await pg.keyboard.press('Escape');
+      await pg.waitForTimeout(400);
+      const after = await state();
+      const why = `${st.name}, ${commit ? 'after a committed entry' : 'with nothing committed'}`;
+      assert.notEqual(after.tag, 'BUTTON', `${why}: focus must not be stranded on the toolbar button`);
+      assert.equal(after.id, betaId, `${why}: the interrupted point must be back in edit`);
+      assert.equal(after.caret, 3, `${why}: and the caret where it stood, not at 0`);
+    }
+  }
+
+  // ── the double-close, counted. Uncommitted capture is the case that isolates it.
+  await seed();
+  await pg.waitForTimeout(200);
+  await editBeta();
+  await pg.waitForTimeout(200);
+  await pg.evaluate(() => {
+    window.__closes = 0;
+    const orig = closeCapture;
+    window.closeCapture = closeCapture = function () { window.__closes++; return orig.apply(this, arguments); };
+    openCaptureDialog();
+  });
+  await pg.waitForTimeout(350);
+  await pg.evaluate(() => { window.__closes = 0; });
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(350);
+  assert.equal(await pg.evaluate(() => window.__closes), 1,
+    'one Escape must close the strip ONCE -- the second pass is what overrode the restored focus');
+
+  // ── NOTHING INTERRUPTED: the Escape blur rung. Not the toolbar button, where the outline arrows
+  // never reach (#1512) and Enter re-opens the strip you were leaving.
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => document.getElementById('btn-capture').click());
+  await pg.waitForTimeout(350);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(400);
+  const rung = await state();
+  assert.equal(rung.tag, 'BODY', 'with no edit to return to, Escape lands on the blur rung');
+  assert.equal(rung.cursor, '▶Alpha', 'and the row cursor is PAINTED, not merely implied');
+  assert.equal(rung.live, 'Alpha, 1 of 3', 'and announced with its position');
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(250);
+  const moved = await state();
+  assert.equal(moved.cursor, '▶Beta', 'and the arrows actually reach it — the point of not parking on the button');
+
+  // ── a remembered point that is OFF SCREEN must not become the cursor. Driven: a collapsed-away
+  // point painted nothing and announced a positionless "(empty point)".
+  await pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    const p = mkNode('Parent'); p.type = 'ul';
+    const kid = mkNode('Child'); kid.type = 'ul';
+    const sib = mkNode('Sibling'); sib.type = 'ul';
+    p.children = [kid]; root.children = [p, sib];
+    [p, sib].forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    nodeMap.set(kid.id, kid); parentMap.set(kid.id, p);
+    buildIndex(root, null); markDirty(); render();
+    chromeReturn = null; activeContentId = null; lastEdit = null;
+    moveRowCursor(kid.id, { silent: true });
+    p.collapsed = true; markDirty(); render();
+    const l = document.getElementById('a11y-live'); if (l) l.textContent = '';
+  });
+  await pg.waitForTimeout(300);
+  assert.equal(await pg.evaluate(() => flatIndex.get(selFocusId) != null), false,
+    'precondition: the remembered point is genuinely off screen');
+  await pg.evaluate(() => openCaptureDialog());
+  await pg.waitForTimeout(350);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(400);
+  const off = await state();
+  assert.equal(off.cursor, '▶1Parent', 'an off-screen point must fall back to the first visible row');
+  assert.match(off.live, /Parent, 1 of 2/, 'and be announced with a real position');
+
+  // ── THE NEGATIVE CASE: Escape inside the destination manager still resolves ONE layer out, and
+  // leaves the strip open. Making Escape stopPropagation must not collapse the two rungs (P1-3).
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => { openCaptureDialog(); });
+  await pg.waitForTimeout(350);
+  await pg.evaluate(() => { captureManage = true; renderCaptureStrip(); document.getElementById('cap-input')?.focus(); });
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(300);
+  assert.equal(await pg.evaluate(() => captureManage), false, 'the first Escape closes the manager layer');
+  assert.equal(await pg.evaluate(() => document.getElementById('capture-strip').classList.contains('on')), true,
+    'and leaves the strip open -- one layer out, not two');
+  await pg.close();
+});

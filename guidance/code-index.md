@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2130 declarations in 158 sections across 17 domains.**
+**2132 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -993,7 +993,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `captureOpen` — Capture lives in a TOOLBAR STRIP (like the agenda), not a modal — you can insert without
 - `captureManage`
 - `openCaptureDialog` — Open (or re-target) the strip for `slot` (default: first non-empty slot, else 1). If a slot
-- `captureReturnFocus`
+- `stripExitPlan` — #1515: ONE way back out of a toolbar strip. All THREE strips -- capture, journal, chronicle --
+- `stripReturnFocus`
+- `captureReturnId`
 - `closeCapture`
 - `toggleCapture`
 - `normalizeCaptureSlot` — Resolve which slot to target: an explicit slot if given; if that slot is empty, try to

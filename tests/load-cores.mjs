@@ -329,6 +329,7 @@ export function loadCores() {
     'filterResultSay',                          // #1510: what a filter says when it changes the list
     'chipTemplateSpan','chipTemplateSay','chipAriaLabel','chipTemplateLabels',   // #1513: a legend chip whose label carries a placeholder is a template, not a query
     'tabFocusAfterClose','tabCloseSay',          // #1514: where the doc strip's focus lands after a close, and what it says
+    'stripExitPlan',                             // #1515: which exit a toolbar strip takes when it closes
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
     'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting
