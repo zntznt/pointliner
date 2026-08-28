@@ -5057,3 +5057,201 @@ test('#1518 the footnote panel sits ON the touch quick bar, not under it', { ski
   assert.equal(desk.inline, '0px', 'and still docks flush — the fix costs desktop nothing');
   await pg.close();
 });
+
+// 76. #1519 — all THREE transient strips carried the same blanket `else if (e.key !== 'Tab')
+// e.stopPropagation()`, which swallowed every global chord. Measured on each: after a commit,
+// Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y were total no-ops while the commit sat on `undoStack`, and
+// Ctrl+Shift+I could not close the strip it had opened. Driven because the finding is what the
+// KEY does — a source pin sees the listener and not the swallow.
+//
+// The negative half is the reason this is an allow-list rather than "forward every chord": the
+// global handler claims Ctrl+V whenever `activeContentId == null` (always, inside a strip) and
+// Ctrl+C / Ctrl+X whenever points are selected. Those four are driven too.
+test('#1519 undo reaches the document from inside a strip, and the text chords stay in the box', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const STRIPS = [
+    { name: 'capture',   open: 'openCaptureDialog',  input: 'cap-input' },
+    { name: 'journal',   open: 'openJournalStrip',   input: 'jr-input' },
+    { name: 'chronicle', open: 'openChronicleStrip', input: 'chr-input' },
+  ];
+  const seed = (selectPoints) => pg.evaluate((sel) => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    root.gamelog = { targetId: root.children[2].id }; root.inboxes = [];
+    ['closeCapture', 'closeJournalStrip', 'closeChronicleStrip'].forEach(f => { try { window[f](); } catch (_) {} });
+    undoStack.length = 0; redoStack.length = 0; nodeClipboard = null;
+    buildIndex(root, null); markDirty(); render();
+    if (sel) { selectedIds.clear(); root.children.forEach(x => selectedIds.add(x.id)); updateSelVisuals(); }
+  }, !!selectPoints);
+  const st = () => pg.evaluate(() => ({
+    n: root.children.length, undo: undoStack.length, redo: redoStack.length,
+    ae: document.activeElement.id || document.activeElement.tagName,
+    val: document.querySelector('#capture-strip .cap-input, #journal-strip .cap-input, #chronicle-strip .cap-input')?.value ?? null,
+    open: ['capture', 'journal', 'chronicle'].filter(k => document.getElementById(k + '-strip')?.classList.contains('on')),
+    clip: !!nodeClipboard,
+  }));
+
+  // ── EVERY strip: a committed entry must be undoable without leaving the strip.
+  for (const s of STRIPS) {
+    await seed();
+    await pg.waitForTimeout(250);
+    await pg.evaluate((o) => window[o](), s.open);
+    await pg.waitForTimeout(400);
+    assert.equal(await pg.evaluate(() => document.activeElement.id), s.input,
+      `${s.name}: precondition — the strip took the caret`);
+    await pg.keyboard.type('wrong list entirely');
+    await pg.keyboard.press('Enter');
+    await pg.waitForTimeout(450);
+    const committed = await st();
+    assert.ok(committed.undo >= 1, `${s.name}: precondition — the commit is on the undo stack`);
+
+    await pg.keyboard.press('Control+z');
+    await pg.waitForTimeout(300);
+    const undone = await st();
+    assert.equal(undone.undo, committed.undo - 1,
+      `${s.name}: Ctrl+Z must reach the DOCUMENT stack, not vanish into the strip`);
+    assert.equal(undone.redo, committed.redo + 1, `${s.name}: and land on the redo stack`);
+    assert.deepEqual(undone.open, [s.name], `${s.name}: the strip stays open through an undo`);
+    assert.equal(undone.ae, s.input, `${s.name}: and keeps the caret`);
+
+    await pg.keyboard.press('Control+Shift+z');
+    await pg.waitForTimeout(300);
+    assert.equal((await st()).undo, committed.undo, `${s.name}: Ctrl+Shift+Z redoes`);
+    await pg.keyboard.press('Control+z');
+    await pg.waitForTimeout(300);
+    await pg.keyboard.press('Control+y');
+    await pg.waitForTimeout(300);
+    assert.equal((await st()).undo, committed.undo, `${s.name}: and Ctrl+Y is the other redo spelling`);
+  }
+
+  // ── MID-DRAFT the box keeps its own undo. This is the behaviour a blanket forward destroys:
+  // Ctrl+Z would undo a POINT while the user meant "take back what I just typed".
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => openCaptureDialog());
+  await pg.waitForTimeout(400);
+  await pg.keyboard.type('half a thought');
+  await pg.waitForTimeout(250);
+  const drafted = await st();
+  assert.equal(drafted.val, 'half a thought');
+  await pg.keyboard.press('Control+z');
+  await pg.waitForTimeout(300);
+  const afterDraftUndo = await st();
+  assert.equal(afterDraftUndo.val, '', 'mid-draft Ctrl+Z is native TEXT undo');
+  assert.equal(afterDraftUndo.n, drafted.n, 'and it must not touch the document');
+  assert.equal(afterDraftUndo.undo, drafted.undo, 'nor the undo stack');
+
+  // ── SYMPTOM B: the strip's own toggle closes it from inside, as §3 says it does.
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => openCaptureDialog());
+  await pg.waitForTimeout(400);
+  assert.deepEqual((await st()).open, ['capture'], 'precondition: the chord opened it');
+  await pg.keyboard.press('Control+Shift+i');
+  await pg.waitForTimeout(400);
+  const toggled = await st();
+  assert.deepEqual(toggled.open, [], 'the same chord must close it from inside');
+  assert.notEqual(toggled.ae, 'cap-input', 'and focus leaves the strip');
+
+  // ── THE NEGATIVE CASE: the four chords the global handler would misfire on stay in the textarea.
+  for (const [chord, check] of [
+    ['Control+a', async () => {
+      const r = await pg.evaluate(() => { const i = document.getElementById('cap-input'); return [i.selectionStart, i.selectionEnd, i.value.length]; });
+      assert.deepEqual([r[0], r[1]], [0, r[2]], 'Ctrl+A selects the BOX TEXT, not the points');
+    }],
+    ['Control+c', async () => assert.equal((await st()).clip, false, 'Ctrl+C must not copy the selected POINTS')],
+    ['Control+x', async () => {
+      const r = await st();
+      assert.equal(r.n, 3, 'Ctrl+X must not cut the selected points out of the document');
+      assert.equal(r.val, '', 'it cuts the text');
+    }],
+    ['Control+v', async () => assert.equal((await st()).n, 3, 'Ctrl+V must not paste POINTS into the outline')],
+  ]) {
+    await seed(true);                       // points selected: the state that arms Ctrl+C / Ctrl+X
+    await pg.waitForTimeout(250);
+    // the point clipboard is loaded ONLY for the paste case — it is Ctrl+V's precondition, and
+    // pre-loading it for Ctrl+C would make "did it copy points" unmeasurable.
+    await pg.evaluate((v) => { if (v) nodeClipboard = [mkNode('PASTED POINT')]; openCaptureDialog(); }, chord === 'Control+v');
+    await pg.waitForTimeout(400);
+    await pg.keyboard.type('draft text');
+    await pg.waitForTimeout(200);
+    if (chord !== 'Control+a') { await pg.keyboard.press('Control+a'); await pg.waitForTimeout(150); }
+    await pg.keyboard.press(chord);
+    await pg.waitForTimeout(350);
+    await check();
+  }
+  await pg.close();
+});
+
+// 77. #1520 — in the Guided command builder, the phone's MAIN `@` and `/` menu, 48 of 89 command
+// NAMES rendered at `clientWidth 0` (descriptions too), leaving a column of bare syntax fragments.
+// 14 were still at zero on a 1280px desktop, so this was never only a narrow defect.
+//
+// UXP-250 shipped that row and verified PRESENCE only — "0 without a label, 0 without a
+// description" — at one width. Presence cannot see a zero-width render, which is why this check
+// measures GEOMETRY, at three widths, for both sigils.
+//
+// And it measures against the NAV'S OWN RECT, not just the element's width: the first attempt at
+// this fix put a min-width floor on the name column, which made every label "visible" by
+// clientWidth while pushing it outside the 150px nav, where it was clipped. A width-only check
+// passed that. This one did not.
+test('#1520 every command name and description renders inside the builder nav', { skip: skip() }, async () => {
+  for (const vp of [{ width: 390, height: 844, touch: true }, { width: 768, height: 1024, touch: true }, { width: 1280, height: 900, touch: false }]) {
+    const ctx = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height },
+      hasTouch: vp.touch, isMobile: vp.touch, deviceScaleFactor: vp.touch ? 2 : 1,
+    });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(800);
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(300);
+
+    for (const sigil of ['@', '/']) {
+      await pg.evaluate(() => {
+        const io = document.getElementById('io-back'); if (io?.classList.contains('on')) closeIo();
+        nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+        const n = mkNode(''); n.type = 'ul';
+        root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+        buildIndex(root, null); markDirty(); render();
+        const el = document.querySelector('.node-content');
+        enterEdit(el, n); el.focus(); activeContentId = n.id;
+      });
+      await pg.waitForTimeout(300);
+      await pg.evaluate((sg) => document.execCommand('insertText', false, sg), sigil);
+      await pg.waitForTimeout(700);
+
+      const g = await pg.evaluate(() => {
+        const nav = document.querySelector('.builder-nav');
+        if (!nav) return null;
+        const navR = nav.getBoundingClientRect();
+        const audit = (sel) => {
+          const els = [...document.querySelectorAll('.builder-item ' + sel)];
+          const bad = els.filter(e => {
+            const r = e.getBoundingClientRect();
+            return e.clientWidth === 0 || r.right > navR.right + 0.5 || r.left < navR.left - 0.5;
+          }).map(e => e.textContent.slice(0, 28));
+          return { n: els.length, bad: bad.slice(0, 5), badCount: bad.length };
+        };
+        return { navW: Math.round(navR.width), label: audit('.cmd-label'), desc: audit('.cmd-desc'), typed: audit('.builder-typed') };
+      });
+      const at = `${vp.width}x${vp.height} "${sigil}"`;
+      assert.ok(g, `${at}: the builder must be open`);
+      assert.ok(g.label.n > 40, `${at}: precondition — the whole command list is rendered (${g.label.n})`);
+      assert.equal(g.label.badCount, 0,
+        `${at}: every command NAME must render inside the nav (${g.label.badCount} did not: ${g.label.bad.join(' | ')})`);
+      assert.equal(g.desc.badCount, 0,
+        `${at}: and every description (${g.desc.badCount} did not: ${g.desc.bad.join(' | ')})`);
+      // P2-2 wants all THREE parts: the syntax may be ellipsised, never zero-width or outside.
+      assert.equal(g.typed.badCount, 0,
+        `${at}: and the typed form is still shown (${g.typed.badCount} did not: ${g.typed.bad.join(' | ')})`);
+    }
+    assert.deepEqual(errs, [], `${vp.width}x${vp.height}: no page errors`);
+    await pg.close();
+    await ctx.close();
+  }
+});

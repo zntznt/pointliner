@@ -2027,7 +2027,23 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
    menu's own row instead of being a bare label. The typed form sits right-aligned in the app's
    mono face, the same way a keyboard hint reads elsewhere. */
 .builder-item{align-items:flex-start}
+/* #1520: the syntax example may take the row's leftovers, never the row. `.builder-typed` is
+   `nowrap; flex-shrink:0`, so on a single-line row it claimed its full content width and
+   `.cmd-info` (flex:1, min-width:0) collapsed to what was left -- which was NOTHING for the long
+   examples. Measured: 48 of 89 command NAMES rendered at clientWidth 0 on a 390px phone, with
+   their descriptions at 0 too, leaving a column of bare syntax fragments; and 14 still at 0 on a
+   1280px desktop, so this was never only a narrow-viewport defect.
+   The example takes its own line under the name, indented past the icon and ellipsised if it is
+   still too wide -- the same stack the slash-menu footer uses, which the design language calls the
+   canonical teaching row. A `min-width` floor on `.cmd-info` was the wrong shape and was measured
+   as such: it pushed the row past the 150px nav, so the names were "visible" by clientWidth and
+   CLIPPED on screen -- the presence-vs-rendering trap that let UXP-250 ship this in the first
+   place, reproduced one level along. The check now measures against the nav's own rect.
+   Nothing here touches `.builder-nav{width:150px}` -- that is UXP-171's remedy for the same
+   overlay, and narrowing or widening it would trade this bug for that one. */
+.builder-item{flex-wrap:wrap}
 .builder-item>.cmd-info{display:flex;flex-direction:column;min-width:0;flex:1;gap:1px}
+.builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}
 /* clamped to two lines: unclamped, the long entries (Secret, Base, Paragraph) ran to five lines
    and the list lost its even rhythm. The full text is still one keystroke away in the doc pane. */
 .builder-item>.cmd-info>.cmd-desc{font-size:10.5px;color:var(--muted);line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
@@ -17500,6 +17516,42 @@ function openCaptureDialog(slot) {   // name kept: still the single entry point 
 // interrupted edit, caret and all -- the same mechanism Ctrl+F uses). Failing that, the Escape
 // blur rung: <body> with a PAINTED, ANNOUNCED row cursor. The toolbar button is the last resort,
 // for a document with no points to go back to, and it is the only case where it is not a dead end.
+// #1519: which keys a transient strip's input lets THROUGH to the global handler. All three strips
+// carried the same blanket line -- `else if (e.key !== 'Tab') e.stopPropagation()` -- which is right
+// for typing (a plain key in the box is an EDIT, not a command) and wrong for chords: it swallowed
+// Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z and the strip's OWN toggle, which §3 documents as "the same chord
+// closes it". Measured on all three: after a commit the undo chords were total no-ops while the
+// commit sat on `undoStack` the whole time.
+//
+// An ALLOW-LIST, not "forward every modified chord". The global handler claims Ctrl+V whenever
+// `activeContentId == null` (always true inside a strip) and Ctrl+C / Ctrl+X whenever points are
+// selected -- so a blanket forward would paste POINTS into the outline instead of text into the
+// box, and copy the selected points instead of the selected text. Those chords belong to the
+// textarea, and the list says which ones do not.
+//
+// `typed` = has this textarea been edited since it was BUILT. Undo/redo pass only when it has not.
+// Mid-draft, Ctrl+Z is native text undo and measurably works (typed "half a thought", Ctrl+Z
+// cleared the box, tree untouched); forwarding it there would undo a POINT while the user meant
+// "take back what I just typed". After a commit the strip rebuilds its textarea, so the native
+// history is empty and the document stack is the only thing left to undo -- which is exactly the
+// reported case. Pure.
+function stripChordPasses({ key, ctrl, shift, alt, typed }) {
+  if (key === 'Tab') return true;                 // the focus trap owns Tab (unchanged)
+  if (!ctrl || alt) return false;
+  const k = String(key || '').toLowerCase();
+  if (k === 'z' || k === 'y') return !typed;      // undo / redo, once the box has none of its own
+  if (shift && (k === 'i' || k === 'j')) return true;   // the strips' own toggles (Inbox, Journal)
+  return false;
+}
+// The live reader: `typed` is stamped on the element by each strip's `input` listener, so a
+// rebuilt textarea (what a commit does) starts clean without anyone having to remember to reset it.
+function stripKeyEscapes(e) {
+  return stripChordPasses({
+    key: e.key, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey, alt: e.altKey,
+    typed: (e.currentTarget || e.target)?.dataset?.typed === '1',
+  });
+}
+
 function stripExitPlan(restored, returnId, firstRowId) {
   if (restored) return { to: 'edit', id: null };
   const id = returnId ?? firstRowId ?? null;
@@ -17622,7 +17674,7 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   input.placeholder = 'Type a point to capture…';
   input.setAttribute('aria-label', 'Text to capture');
   input.spellcheck = true;
-  input.addEventListener('input', () => { captureDraft = input.value; capBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
+  input.addEventListener('input', () => { input.dataset.typed = '1'; captureDraft = input.value; capBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', capInputKeydown);
   // pending agenda-"+" due date: a removable chip so the target date is visible and dismissable (#463, P2/P4)
   if (captureDue !== null) {
@@ -17664,7 +17716,7 @@ function capInputKeydown(e) {
   // and then BUBBLES to the #capture-strip listener, which closes it a second time -- the second
   // pass finds the return target consumed and parks focus on the toolbar button.
   else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (captureManage) { captureManage = false; renderCaptureStrip(); } else closeCapture(); } // one layer out (P1-3); draft survives (§6, UXP-84)
-  else if (e.key !== 'Tab') e.stopPropagation();   // don't leak edits to global shortcuts
+  else if (!stripKeyEscapes(e)) e.stopPropagation();   // #1519: edits stay, listed global chords pass
 }
 
 // The in-strip destination manager (second line): a chip per configured inbox to target it,
@@ -17907,11 +17959,11 @@ function renderJournalStrip() {
   input.placeholder = "Type a point for today's journal…";
   input.setAttribute('aria-label', "Text for today's journal");
   input.spellcheck = true;
-  input.addEventListener('input', () => { journalDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
+  input.addEventListener('input', () => { input.dataset.typed = '1'; journalDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doJournalAdd(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeJournalStrip(); } // #1515: a handled key stops here; draft survives (§6)
-    else if (e.key !== 'Tab') e.stopPropagation();   // don't leak edits to global shortcuts
+    else if (!stripKeyEscapes(e)) e.stopPropagation();   // #1519: edits stay, listed global chords pass
   });
   row.appendChild(input);
 
@@ -18210,11 +18262,11 @@ function renderChronicleStrip() {
   input.placeholder = 'Log an entry in the chronicle…';
   input.setAttribute('aria-label', 'Text for the chronicle');
   input.spellcheck = true;
-  input.addEventListener('input', () => { chronicleDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
+  input.addEventListener('input', () => { input.dataset.typed = '1'; chronicleDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doChronicleAdd(); }
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeChronicleStrip(); }   // #1515: a handled key stops here
-    else if (e.key !== 'Tab') e.stopPropagation();
+    else if (!stripKeyEscapes(e)) e.stopPropagation();   // #1519: edits stay, listed global chords pass
   });
   row.appendChild(input);
 

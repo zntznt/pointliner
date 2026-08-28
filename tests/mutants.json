@@ -2133,6 +2133,132 @@
       "find": "  return Math.max(n(kbH), n(qbH));",
       "replace": "  return n(kbH) + n(qbH);",
       "kills": "#1518 the footnote panel sits ON the touch quick bar"
+    },
+    {
+      "id": "strip-swallows-every-global-chord",
+      "suite": "unit",
+      "why": "the blanket line is the whole defect, and it lived verbatim in three places",
+      "file": "index.html",
+      "find": "  else if (!stripKeyEscapes(e)) e.stopPropagation();   // #1519: edits stay, listed global chords pass\n}\n\n// The in-strip destination manager",
+      "replace": "  else if (e.key !== 'Tab') e.stopPropagation();\n}\n\n// The in-strip destination manager",
+      "kills": "#1519 a transient strip keeps the edits and passes the listed global chords"
+    },
+    {
+      "id": "strip-forwards-every-modified-chord",
+      "suite": "unit",
+      "why": "a blanket forward pastes POINTS into the outline and copies the selected points instead of the text",
+      "file": "index.html",
+      "find": "  if (k === 'z' || k === 'y') return !typed;      // undo / redo, once the box has none of its own",
+      "replace": "  return true;",
+      "kills": "#1519 a transient strip keeps the edits and passes the listed global chords"
+    },
+    {
+      "id": "strip-undo-ignores-the-draft",
+      "suite": "unit",
+      "why": "forwarding mid-draft undoes a POINT while the user meant to take back what they just typed",
+      "file": "index.html",
+      "find": "  if (k === 'z' || k === 'y') return !typed;",
+      "replace": "  if (k === 'z' || k === 'y') return true;",
+      "kills": "#1519 a transient strip keeps the edits and passes the listed global chords"
+    },
+    {
+      "id": "strip-toggle-still-unreachable",
+      "suite": "unit",
+      "why": "\u00a73 documents the toggle chord as the way to close the strip, and it could not",
+      "file": "index.html",
+      "find": "  if (shift && (k === 'i' || k === 'j')) return true;   // the strips' own toggles (Inbox, Journal)",
+      "replace": "  ;",
+      "kills": "#1519 a transient strip keeps the edits and passes the listed global chords"
+    },
+    {
+      "id": "strip-typed-stamp-dropped",
+      "suite": "unit",
+      "why": "the undo gate reads a flag nobody sets, so mid-draft Ctrl+Z forwards to the document",
+      "file": "index.html",
+      "find": "input.addEventListener('input', () => { input.dataset.typed = '1'; chronicleDraft = input.value;",
+      "replace": "input.addEventListener('input', () => { chronicleDraft = input.value;",
+      "kills": "#1519 a transient strip keeps the edits and passes the listed global chords"
+    },
+    {
+      "id": "sibling-strip-keeps-the-blanket-line",
+      "suite": "unit",
+      "why": "the census must notice one of the three left behind, which is how the line got copied three times",
+      "file": "index.html",
+      "find": "    else if (!stripKeyEscapes(e)) e.stopPropagation();   // #1519: edits stay, listed global chords pass\n  });\n  row.appendChild(input);\n\n  // the movable cursor",
+      "replace": "    else if (e.key !== 'Tab') e.stopPropagation();\n  });\n  row.appendChild(input);\n\n  // the movable cursor",
+      "kills": "#1519 a transient strip keeps the edits and passes the listed global chords"
+    },
+    {
+      "id": "undo-never-reaches-the-document-stack",
+      "suite": "browser",
+      "why": "driven: whether the chord moves undoStack is the finding, and a source pin sees the listener not the swallow",
+      "file": "index.html",
+      "find": "  if (k === 'z' || k === 'y') return !typed;      // undo / redo, once the box has none of its own",
+      "replace": "  if (k === 'z' || k === 'y') return false;",
+      "kills": "#1519 undo reaches the document from inside a strip"
+    },
+    {
+      "id": "text-chords-leak-to-the-outline",
+      "suite": "browser",
+      "why": "driven: a blanket forward pastes a point into the outline from the capture box, which only a running app shows",
+      "file": "index.html",
+      "find": "  if (shift && (k === 'i' || k === 'j')) return true;   // the strips' own toggles (Inbox, Journal)\n  return false;",
+      "replace": "  return true;",
+      "kills": "#1519 undo reaches the document from inside a strip"
+    },
+    {
+      "id": "builder-syntax-eats-the-row",
+      "suite": "unit",
+      "why": "the whole defect: a nowrap non-shrinking syntax column collapses the name to zero width",
+      "file": "index.html",
+      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
+      "replace": ".builder-item>.builder-typed{margin-left:0}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "builder-row-cannot-wrap",
+      "suite": "unit",
+      "why": "without the wrap the stacked syntax has nowhere to go and the row overflows again",
+      "file": "index.html",
+      "find": "\n.builder-item{flex-wrap:wrap}",
+      "replace": "\n.builder-item{flex-wrap:nowrap}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "builder-name-column-gets-a-floor",
+      "suite": "unit",
+      "why": "a min-width floor pushes the row past the nav: 'visible' by clientWidth, clipped on screen",
+      "file": "index.html",
+      "find": ".builder-item>.cmd-info{display:flex;flex-direction:column;min-width:0;flex:1;gap:1px}",
+      "replace": ".builder-item>.cmd-info{display:flex;flex-direction:column;min-width:110px;flex:1;gap:1px}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "uxp171-narrow-nav-reverted",
+      "suite": "unit",
+      "why": "widening the nav is the naive fix and it reverts UXP-171's remedy for the same overlay",
+      "file": "index.html",
+      "find": "\n  .builder-nav{width:150px}",
+      "replace": "\n  .builder-nav{width:260px}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "command-names-render-at-zero-width",
+      "suite": "browser",
+      "why": "driven: a zero-width render is invisible to every presence check, which is how UXP-250 shipped it",
+      "file": "index.html",
+      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
+      "replace": ".builder-item>.builder-typed{margin-left:0}",
+      "kills": "#1520 every command name and description renders inside the builder nav"
+    },
+    {
+      "id": "syntax-line-overflows-the-nav",
+      "suite": "browser",
+      "why": "driven: without the cap a long syntax example runs past the nav and is clipped, which a width-only check cannot see",
+      "file": "index.html",
+      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
+      "replace": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px}",
+      "kills": "#1520 every command name and description renders inside the builder nav"
     }
   ]
 }
