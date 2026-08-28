@@ -453,9 +453,12 @@ body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:n
 .sh-row kbd{font-size:11px;color:var(--fg);font-family:var(--mono);background:var(--hbg);border:1px solid var(--bdr);border-bottom-width:2px;border-radius:4px;padding:1px 5px;line-height:1.5}/* UXP-118: padding/line-height now match the canonical keycap (.cmd-key,#search-key,.guide-sc kbd); layout props stay omitted since .sh-row is its own flex context, not the auto-margin cmd row */
 .sh-row code{font-family:var(--mono);font-size:11px}/* #414: the info-text floor (UXP-78 raised the sibling kbd chips; the code examples lagged) */
 /* item 3: in Guided the example chips are clickable — click (or Enter/Space) to add the token to the
-   search box. Only the kbd re-enables pointer-events (the row stays inert per #587); the rows show only
-   in Guided, so this is Guided-scoped for free. Hover/focus use the border-only highlight of the saved
-   chips in the same panel (DL §4: a keycap's ink never changes on hover), keeping one interaction voice. */
+   search box. #1513: a complete operator runs at once; a chip whose label carries a placeholder
+   (data-tmpl) lands with that placeholder SELECTED and runs nothing, so the app never delivers a
+   verdict on a teaching string it wrote itself. Only the kbd re-enables pointer-events (the row stays
+   inert per #587); the rows show only in Guided, so this is Guided-scoped for free. Hover/focus use
+   the border-only highlight of the saved chips in the same panel (DL §4: a keycap's ink never
+   changes on hover), keeping one interaction voice. */
 body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd:not([data-doc]){pointer-events:auto;cursor:pointer}
 #search-hint .sh-row kbd:not([data-doc]):hover{border-color:var(--acc)}
 #search-hint .sh-row kbd:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
@@ -38383,8 +38386,65 @@ shSavedList.addEventListener('keydown', e => {
 syncSearchSave();
 renderSavedSearches();
 
+// #1513: TWELVE of the legend's chips are not operators, they are TEMPLATES -- their labels carry a
+// placeholder standing in for something only the author can supply (`key:value`, `#tag`, `-term`,
+// `start:<date`, `a | b`, ...). The blanket wiring below pasted each one literally with a COLLAPSED
+// caret and ran it, so the app authored a teaching string and then delivered a verdict on it: eight
+// answered "0 matching points" and blanked the outline, `-term` and `a | b` answered a confident
+// "3 matching points" (every point, by accident: `a`/`b`/`term` are ordinary text terms), and
+// `start:<date` blamed the user for a string it had just typed for them. None of that is a
+// miscomputation -- "0 matching" is the correct literal reading -- which is why searchTermProblems
+// has nothing to say about eleven of them.
+//
+// The app already knows the right idiom, one dialog away: the @ Query dialog's own chips paste the
+// same string and SELECT the placeholder (insertAndSelect), ready to type over, running nothing.
+// `#tag` exists on both surfaces byte-for-byte and behaved two different ways, which is the P1
+// breach exactly. So a template chip now pastes, selects its placeholder, and answers instead of
+// filtering; a complete operator (`is:todo`, `has:tag`, `priority:A`, ...) still filters at once.
+//
+// The map is EXPLICIT rather than sniffed. A heuristic ("does the label look like metasyntax?")
+// would have to call `has:tag` a template (it is a real operator) and `priority:A` an operator (it
+// is), and no rule separates them -- only the legend's author knows. A census test pins every
+// interactive chip as classified one way or the other, so a new row fails until it is.
+const CHIP_TEMPLATES = {
+  '#tag': 'tag',
+  '#tag/sub': 'tag/sub',
+  'start:<date': 'date',
+  '-term': 'term',
+  '"a b"': 'a b',
+  'a | b': 'a',
+  'has:key': 'key',
+  'key:value': 'key',
+  'key:>N': 'key',
+  'key:<=N': 'key',
+  'state:value': 'value',
+  'var:name': 'name',
+};
+function chipTemplateLabels() { return Object.keys(CHIP_TEMPLATES); }
+// Where the placeholder sits inside the label, or null when the label is a complete operator.
+// Two-placeholder labels (`key:value`, `a | b`) hand back the FIRST, which is what the @ Query
+// dialog's `key:` chip already selects -- you type the property name, tab along, type the value.
+function chipTemplateSpan(label) {
+  const s = String(label ?? '');
+  const ph = Object.prototype.hasOwnProperty.call(CHIP_TEMPLATES, s) ? CHIP_TEMPLATES[s] : null;
+  if (!ph) return null;
+  const at = s.indexOf(ph);
+  return at < 0 ? null : { ph, start: at, end: at + ph.length };
+}
+// P4: picking a template chip is not a silent no-op. It says what landed and what to do with it.
+function chipTemplateSay(label) {
+  const t = chipTemplateSpan(label);
+  return t ? `${label} is a template, not a filter yet. Type over "${t.ph}" to search.` : null;
+}
+function chipAriaLabel(label) {
+  return chipTemplateSpan(label) ? `Insert the ${label} template into the search`
+                                 : `Add ${label} to the search`;
+}
+
 // item 3 (modes batch): in Guided the cheatsheet example chips are clickable — click one (or
-// Enter/Space) to ADD its token to the search box and run it, so you can build a query by picking.
+// Enter/Space) to ADD its token to the search box, so you can build a query by picking. A complete
+// operator runs at once; a TEMPLATE chip lands with its placeholder selected and runs nothing
+// (#1513, CHIP_TEMPLATES above).
 // The rows are display:none outside Guided, so hidden chips aren't focusable and this stays
 // Guided-only for free. mousedown+preventDefault keeps the caret in the search box (the saved-chip
 // model), so the panel never blurs shut mid-click.
@@ -38419,7 +38479,12 @@ renderSavedSearches();
   hint.querySelectorAll(CHIP_SEL).forEach((k, i) => {
     k.setAttribute('role', 'button');
     k.setAttribute('tabindex', i === 0 ? '0' : '-1');
-    k.setAttribute('aria-label', `Add ${k.textContent} to the search`);
+    // #1513: "Add key:value to the search" was a promise the chip did not keep. A template chip
+    // says so, and carries its placeholder in data-tmpl so the classification is readable in the
+    // DOM rather than only inside a closure.
+    const t = chipTemplateSpan(k.textContent);
+    if (t) k.setAttribute('data-tmpl', t.ph);
+    k.setAttribute('aria-label', chipAriaLabel(k.textContent));
   });
   const rove = (from, to) => {
     if (!to || to === from) return;
@@ -38430,7 +38495,19 @@ renderSavedSearches();
   const applyExample = tok => {
     const sb = document.getElementById('search-box');
     const cur = sb.value.trim();
-    sb.value = cur ? `${cur} ${tok}` : tok;   // stack filters by picking several
+    const head = cur ? `${cur} ` : '';       // stack filters by picking several
+    sb.value = head + tok;
+    const t = chipTemplateSpan(tok);
+    if (t) {
+      // #1513: a TEMPLATE lands ready to type over and runs NOTHING -- the same idiom as the
+      // @ Query dialog's chips (insertAndSelect), so `#tag` finally behaves one way on both
+      // surfaces. Deliberately no applySearch: the pasted string is metasyntax, and answering it
+      // means blanking the outline over a placeholder the user has not filled in yet.
+      sb.focus();
+      sb.setSelectionRange(head.length + t.start, head.length + t.end);
+      announce(chipTemplateSay(tok));
+      return;
+    }
     applySearch(sb.value);
     sb.focus();
     const n = sb.value.length; sb.setSelectionRange(n, n);
