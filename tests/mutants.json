@@ -1503,6 +1503,60 @@
       "find": "    const act = () => { focusedId = null; render(); announce('Zoomed out. ' + searchScopeSay(seDoc, seDoc, false)); };",
       "replace": "    const act = () => { focusedId = null; applySearch(''); announce('Zoomed out.'); };",
       "kills": "the count, the empty state and the way out are all wired"
+    },
+    {
+      "id": "guide-filter-silent",
+      "suite": "browser",
+      "why": "the reported defect: 94 entries to 18 to 0 with focus in the box and nothing said at any step",
+      "file": "index.html",
+      "find": "    sayFilter(vis.length);   // P4-4/P3-5: the list changed under a caret that never moved",
+      "replace": "    ;",
+      "kills": "a filter says what it did, drops the stale entry, and answers its keys"
+    },
+    {
+      "id": "guide-pane-keeps-the-excluded-entry",
+      "suite": "browser",
+      "why": "the guide said No results on the left while rendering that entry in full on the right",
+      "file": "index.html",
+      "find": "    else if (!vis.length) activeId = null;",
+      "replace": "    ;",
+      "kills": "a filter says what it did, drops the stale entry, and answers its keys"
+    },
+    {
+      "id": "guide-empty-keys-do-nothing",
+      "suite": "browser",
+      "why": "ArrowDown and Enter on an empty list were total no-ops, the shape #1474 fixed for the builder",
+      "file": "index.html",
+      "find": "      else announce(guideEmptyMessage());",
+      "replace": "      ;",
+      "kills": "a filter says what it did, drops the stale entry, and answers its keys"
+    },
+    {
+      "id": "filter-count-stutters",
+      "suite": "unit",
+      "why": "re-reading the same count on every keystroke is a stutter that trains the listener to tune the region out",
+      "file": "index.html",
+      "find": "    if (msg === _lastSaid) return;",
+      "replace": "    if (false) return;",
+      "kills": "both filter surfaces speak, read their words off the node, and do not stutter"
+    },
+    {
+      "id": "filter-empty-words-respelled",
+      "suite": "unit",
+      "why": "a re-spelled empty sentence drifts from the one on screen, which #1474 names as the smaller half of its own bug",
+      "file": "index.html",
+      "find": "    return (nav.querySelector('.guide-no-results')?.textContent || 'No topics match your search.').trim();",
+      "replace": "    return 'No results';",
+      "kills": "both filter surfaces speak, read their words off the node, and do not stutter"
+    },
+    {
+      "id": "fm-filter-silent",
+      "suite": "unit",
+      "why": "the File menu is the guide's sibling, filed with it: naming the empty state visually was only half",
+      "file": "index.html",
+      "find": "  fmSayFilter(total, (nores?.textContent || 'No matching action.').trim());",
+      "replace": "  ;",
+      "kills": "both filter surfaces speak, read their words off the node, and do not stutter"
     }
   ]
 }

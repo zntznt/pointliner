@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2118 declarations in 157 sections across 17 domains.**
+**2122 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2377,6 +2377,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `fmRestoreAll`
 - `fmShowCategory`
 - `fmApplySearch`
+- `_fmLastSaid` — The last thing spoken, so a keystroke that does not change the result stays quiet rather than
+- `fmSayFilter`
+- `fmEmptyMessage`
 - `fmScrollSpy` — Scroll-spy: as the single page scrolls, mark the nav for the section currently at the top (skip
 - `relTimeShort` — #1268: a compact relative time for the save chip ("just now", "3 min ago", "2 hr ago"). Pure.
 - `saveStatusLabel` — #1268: map the save state to the honest chip label. Pure + testable. The order encodes the truth:
@@ -2454,6 +2457,10 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `highlightGuideMatch` — Mark every occurrence of `q` (already lowercased) in the guide entry's text, like document
 - `guideOpen` — The guide is the one help surface. `?` (and the help chords) toggle it: open on
 - `toggleGuide`
+
+## #1510: what a filter says when it changes the list under a caret that never moved
+
+- `filterResultSay` — The concept guide filtered 94 nav entries down to 18 and then to 0 with focus still in the search
 - `openGuide`
 
 ## builder window

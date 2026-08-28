@@ -4025,3 +4025,79 @@ test('#1509 a zoomed search says what the zoom is hiding, and offers the way out
   assert.match(after.live, /Zoomed out/, 'and it says what it did (P4)');
   await pg.close();
 });
+
+// 67. #1510 — the concept guide filtered 94 nav entries to 18 to 0 with focus still in its search
+// box and said nothing at any step, kept the previous entry on screen in full beside a "No results"
+// nav, and answered ArrowDown/Enter on the empty state with nothing at all. Driven, because all
+// three are runtime state a source pin cannot read: what the live region holds, what the reading
+// pane is showing, and whether a key reaches anything.
+test('#1510 a filter says what it did, drops the stale entry, and answers its keys', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => openGuide());
+  await pg.waitForTimeout(400);
+  // TWO surfaces carry class="guide-search": the File menu's and the guide's. Scoping to #io-card is
+  // load-bearing -- an unscoped selector types into the File menu and measures a guide that never
+  // filtered, which is exactly how the first run of this check "reproduced" nothing.
+  const snap = () => pg.evaluate(() => {
+    const nav = document.querySelector('#io-card .guide-nav'), pane = document.querySelector('#io-card .guide-pane');
+    return {
+      entries: nav?.querySelectorAll('.guide-nav-btn').length ?? -1,
+      noResults: !!nav?.querySelector('.guide-no-results'),
+      paneTitle: pane?.querySelector('.guide-entry-title')?.textContent ?? null,
+      paneChars: (pane?.textContent || '').length,
+      live: (document.getElementById('a11y-live')?.textContent || '').trim(),
+    };
+  });
+  const type = async (v) => {
+    await pg.evaluate(() => { const a = document.getElementById('a11y-live'); if (a) a.textContent = ''; });
+    await pg.evaluate(t => {
+      const s = document.querySelector('#io-card .guide-search');
+      s.focus(); s.value = t; s.dispatchEvent(new Event('input', { bubbles: true }));
+    }, v);
+    await pg.waitForTimeout(250);
+    return snap();
+  };
+
+  const all = await snap();
+  assert.ok(all.entries > 50, `precondition: the unfiltered guide is a long list (${all.entries})`);
+
+  // (1) the filter is announced
+  const some = await type('dice');
+  assert.ok(some.entries > 0 && some.entries < all.entries,
+    `precondition: "dice" really narrows the list (${all.entries} -> ${some.entries})`);
+  assert.equal(some.live, some.entries + ' results',
+    'a list that changed under a caret that never moved must say so');
+
+  // (2) nothing matches: announced, AND the pane stops showing a non-matching entry
+  const none = await type('dicezzzz');
+  assert.equal(none.entries, 0, 'precondition: nothing matches');
+  assert.equal(none.noResults, true, 'the nav says so');
+  assert.match(none.live, /No topics match your search\./, 'and so does the live region');
+  assert.equal(none.paneTitle, null,
+    'the reading pane must not keep a full entry the filter just excluded');
+  assert.ok(none.paneChars < 100,
+    `the pane holds the empty sentence, not an article (${none.paneChars} chars)`);
+  // ONE sentence for one state: the nav, the pane and the announcement must not tell three stories
+  const paneText = await pg.evaluate(() =>
+    (document.querySelector('#io-card .guide-pane')?.textContent || '').trim());
+  assert.equal(paneText, none.live, 'the pane and the announcement say the same thing');
+
+  // (3) the keys answer instead of doing nothing
+  for (const key of ['ArrowDown', 'Enter']) {
+    await pg.evaluate(() => {
+      document.querySelector('#io-card .guide-search').focus();
+      const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    });
+    await pg.keyboard.press(key);
+    await pg.waitForTimeout(200);
+    const said = await pg.evaluate(() => (document.getElementById('a11y-live')?.textContent || '').trim());
+    assert.match(said, /No topics match your search\./, `${key} on an empty list must say why, not nothing`);
+  }
+
+  // THE CONTROL: back to a query that matches, and the guide reads normally again
+  const back = await type('dice');
+  assert.equal(back.entries, some.entries, 'the filter recovers');
+  assert.ok(back.paneTitle, 'and the pane shows a real entry again');
+  assert.equal(back.live, back.entries + ' results');
+  await pg.close();
+});
