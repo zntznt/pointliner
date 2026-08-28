@@ -35655,6 +35655,25 @@ function tabClose(tabs, name, active) {
   return { tabs: next, nextActive: pick };
 }
 
+// #1514: which tab the STRIP's focus lands on after `name` closes -- the tab that slid into its
+// slot, else the new last one, else null (nothing left to focus; the strip is gone). Same rule
+// `tabClose` uses to pick `nextActive`, but applied whether or not the closed tab was the active
+// one: `nextActive` answers "which document do we switch to", which is null for a background tab,
+// and focus still has to go somewhere. Pure.
+function tabFocusAfterClose(tabs, name) {
+  const i = tabs.indexOf(name);
+  if (i < 0) return null;
+  const next = tabs.filter(t => t !== name);
+  return next.length ? next[Math.min(i, next.length - 1)] : null;
+}
+
+// #1514 (P4): closing a tab is a state change with no visual echo for a keyboard user -- the strip
+// just has one fewer chip. `display` is the displayName, not the filename. Pure.
+function tabCloseSay(display, remaining) {
+  const left = remaining === 1 ? '1 document open' : remaining + ' documents open';
+  return 'Closed ' + display + '. ' + (remaining ? left + '.' : 'No documents open.');
+}
+
 // The filename `dir` steps away from `active` in the tab order, wrapping. dir = +1 next,
 // -1 previous. Returns null when there are fewer than 2 tabs (nothing to cycle to). Pure.
 function tabCycle(tabs, active, dir) {
@@ -35995,6 +36014,7 @@ function renderDocTabs() {
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-selected', isCur ? 'true' : 'false');
     tab.tabIndex = isCur ? 0 : -1;                       // roving tabindex (tablist pattern)
+    tab.dataset.name = name;                             // #1514: so focus can find a tab by name
     tab.setAttribute('aria-label', 'Document ' + displayName(name) + (isCur ? ' (current)' : ''));
     // dot is always present; CSS shows it only on the active tab when #toolbar-row.dirty
     const dot = document.createElement('span'); dot.className = 'doc-tab-dot';
@@ -36006,18 +36026,32 @@ function renderDocTabs() {
     close.className = 'doc-tab-close close-btn'; close.type = 'button';
     setIcon(close, { fa: 'fa-solid fa-xmark', fb: '✕' });
     close.setAttribute('aria-label', 'Close ' + displayName(name));
-    close.title = 'Close';
+    // #1514: NOT a Tab stop. A native <button> defaults to tabIndex 0, so every open document was
+    // adding a stop the roving pattern forbids -- measured six stops for four documents, and the
+    // FIRST stop inside the strip was a Close button belonging to a tab that was itself -1. The
+    // corkboard's card bullet is the precedent (`tabindex="-1"`, reached from the card, not by
+    // Tab). The keyboard door for closing is Delete/Backspace on the tab itself, which is why that
+    // path now announces and puts focus somewhere real.
+    close.setAttribute('tabindex', '-1');
+    close.title = 'Close (or press Delete on the tab)';
     tab.appendChild(close);
     // activation (mousedown, so toolbar focus doesn't fight a contenteditable; keyboard alongside)
     tab.addEventListener('mousedown', e => { if (e.target === close) return; e.preventDefault(); openDocTab(name); });
     tab.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDocTab(name); }
-      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Home' || e.key === 'End') {
+        // #1514: the shared roving core, like the graph, the timeline, the calendar grid, the table
+        // grid, the selection bar and the search legend. This was hand-rolled modulo arithmetic:
+        // Home/End were unbound, and nothing swapped the tab stop, so the ONE stop stayed pinned to
+        // the active tab and Tab-away-Tab-back always landed there rather than where you had roved.
+        // Ends now CLAMP, which is what §3 already said the tablist did. The WRAPPING sibling is
+        // Ctrl/Cmd+Shift+] / [, which §3 calls a cycle and `tabCycle` still implements.
         e.preventDefault();
         const tabs = [...strip.querySelectorAll('.doc-tab')];
-        const i = tabs.indexOf(tab); const n = tabs.length;
-        tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + n) % n]?.focus();
-      } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); closeDocTab(name); }
+        const i = tabs.indexOf(tab);
+        const to = roveIndex(e.key, i, tabs.length);
+        if (to != null) roveTo(tab, tabs[to]);
+      } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); closeDocTab(name, { refocus: true }); }
     });
     close.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
     close.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); closeDocTab(name); });
@@ -36043,7 +36077,8 @@ async function openDocTab(name) {
 // (dirty-guarded by switchWorkspaceDoc); a declined guard aborts the close (P4 — no
 // silent drop). Closing a background tab just removes it. Closing the last tab empties
 // the strip (the doc stays on disk; nothing is deleted).
-async function closeDocTab(name) {
+async function closeDocTab(name, opts = {}) {
+  const before = openTabs.slice();
   const { tabs, nextActive } = tabClose(openTabs, name, fileName);
   if (nextActive) {
     const ok = await switchWorkspaceDoc(nextActive);
@@ -36052,6 +36087,33 @@ async function closeDocTab(name) {
   openTabs = tabs;
   persistOpenTabs();
   renderDocTabs();
+  // #1514 (P4): the strip just loses a chip, which a keyboard user never sees. Say it on BOTH
+  // doors -- the ✕ and Delete -- because a live region costs a pointer user nothing.
+  announce(tabCloseSay(displayName(name), tabs.length));
+  // Focus only follows the KEYBOARD door. The ✕ handler preventDefaults its mousedown precisely so
+  // the caret stays in the point you were writing in; pulling focus into the strip on a click would
+  // steal it (the caret invariant).
+  if (opts.refocus) focusDocTab(tabFocusAfterClose(before, name));
+}
+
+// #1514: put focus somewhere real after a keyboard close. It fell to <body> -- the closed tab's own
+// element -- so the next arrow key had no group to move in and the row cursor silently took over.
+// `name` null (the strip is now empty) hands the caret back to the document rather than leaving it
+// on a strip that no longer exists.
+function focusDocTab(name) {
+  const strip = document.getElementById('doc-tabs');
+  const tabs = strip ? [...strip.querySelectorAll('.doc-tab')] : [];
+  const el = name ? tabs.find(t => t.dataset.name === name) : null;
+  if (el) {
+    tabs.forEach(t => t.setAttribute('tabindex', t === el ? '0' : '-1'));
+    el.focus();
+    return;
+  }
+  const add = strip?.querySelector('.doc-tab-add');
+  if (add && strip.style.display !== 'none') { add.focus(); return; }
+  if (restoreChromeReturn()) return;
+  const row = flatRows.find(r => !r.searchCtx);
+  if (row) focusNode(row.node.id);
 }
 
 // Cycle to the next/prev open tab (Ctrl/Cmd+Shift+] / [). No-op with <2 tabs.
@@ -44032,7 +44094,7 @@ const GUIDE = [
     ] },
   { id:'workspace-documents', cat:'files',
     title:'Working with a folder of documents',
-    body:"Keep a whole library of documents in one folder on your computer and move between them the way you would tabs: a project document, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge or a similar browser only) and every document saves to disk as you type and reopens right where you left it after a reload.\n\nOpen File then Switch document to see all the documents in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a document any time by clicking its name at the top left and typing a new one. Each document also remembers where you were: switch away and come back and it restores your zoom and scroll position.\n\nThe documents you open also line up as a tab strip under the toolbar, so switching back is one click. The ✕ on a tab closes it (the file stays in the folder), the + at the end opens another and your open tabs come back after a reload. From the keyboard, `Ctrl/Cmd+Shift+]` and `[` cycle through the tabs and Alt+1 to 9 jumps straight to one.\n\nFile then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
+    body:"Keep a whole library of documents in one folder on your computer and move between them the way you would tabs: a project document, a daily log, a person page, each its own file but searchable and linkable together. Connect a folder once (Chrome, Edge or a similar browser only) and every document saves to disk as you type and reopens right where you left it after a reload.\n\nOpen File then Switch document to see all the documents in the folder, jump to one, add a fresh + New document (it asks you to name it) or delete an old one. Rename a document any time by clicking its name at the top left and typing a new one. Each document also remembers where you were: switch away and come back and it restores your zoom and scroll position.\n\nThe documents you open also line up as a tab strip under the toolbar, so switching back is one click. The ✕ on a tab closes it (the file stays in the folder), the + at the end opens another and your open tabs come back after a reload. From the keyboard, `Ctrl/Cmd+Shift+]` and `[` cycle through the tabs and Alt+1 to 9 jumps straight to one. The strip is a single Tab stop however many documents are open: Tab into it, then use the arrows to move along, Home and End for the ends, Enter to open the one you are on and Delete to close it.\n\nFile then Disconnect folder steps back out to single-file mode, and on other browsers the menu shows a copy-link invite to reopen in a Chromium browser instead.",
     related:['saving','cross-doc-links','workspace-search'],
     examples:[
       { syn:'File → Connect a folder…',   desc:'link a folder of documents (Chromium only)' },
@@ -44040,6 +44102,8 @@ const GUIDE = [
       { syn:'+ New document', ctl:'New document in the folder',           desc:'start a fresh document, named as you like' },
       { syn:'Click the file name',      desc:'rename the current document' },
       { syn:'Ctrl/Cmd+Shift+] / [',     desc:'next or previous document tab (Alt+1 to 9 jumps)' },
+      { syn:'← / →, Home, End',       desc:'move along the tab strip (one Tab stop for the whole strip)' },
+      { syn:'Delete',                 desc:'close the tab you are on (the file stays in the folder)' },
       { syn:'File → Disconnect folder', desc:'return to a single file' },
     ] },
   { id:'appearance-controls', cat:'files',

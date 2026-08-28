@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2127 declarations in 158 sections across 17 domains.**
+**2130 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2030,6 +2030,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openTabs` — A tab strip that surfaces the existing workspace switcher: tabs are the documents
 - `tabAdd` — Add `name` to the tab list if absent (no duplicates — a file is one tab). Returns a
 - `tabClose` — Close `name`. Returns { tabs, nextActive } where nextActive is the filename to switch
+- `tabFocusAfterClose` — #1514: which tab the STRIP's focus lands on after `name` closes -- the tab that slid into its
+- `tabCloseSay` — #1514 (P4): closing a tab is a state change with no visual echo for a keyboard user -- the strip
 - `tabCycle` — The filename `dir` steps away from `active` in the tab order, wrapping. dir = +1 next,
 - `workspaceAffordance` — Pure: the File-menu affordance state machine. Precedence — the capability gate wins
 - `firstLineTitle` — Pure: the document's title — its first point's display text, first line, markdown
@@ -2059,6 +2061,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `renderDocTabs` — Render the document-tabs strip. Shown ONLY with a connected workspace (gated on
 - `openDocTab` — Open a document into a tab. switchWorkspaceDoc does the swap AND registers the tab +
 - `closeDocTab` — Close a tab from the strip. If it's the active doc, switch to the neighbor first
+- `focusDocTab` — #1514: put focus somewhere real after a keyboard close. It fell to <body> -- the closed tab's own
 - `cycleDocTab` — Cycle to the next/prev open tab (Ctrl/Cmd+Shift+] / [). No-op with <2 tabs.
 - `gotoDocTab` — Jump straight to the Nth open tab, 1-based (Alt/Option+1..9). No-op if there is no such
 - `connectWorkspace` — Connect (user gesture): pick a folder, write the doc into it once via the existing OPML

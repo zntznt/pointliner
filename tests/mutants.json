@@ -1728,6 +1728,114 @@
       "find": "      announce(chipTemplateSay(tok));\n      return;\n    }",
       "replace": "      announce(chipTemplateSay(tok));\n    }",
       "kills": "#1513 a legend template chip lands ready to type, and an operator chip still filters"
+    },
+    {
+      "id": "tablist-hand-rolls-the-rove",
+      "suite": "unit",
+      "why": "the whole root cause: hand-rolled modulo has no Home/End and never swaps the tab stop",
+      "file": "index.html",
+      "find": "        const to = roveIndex(e.key, i, tabs.length);\n        if (to != null) roveTo(tab, tabs[to]);",
+      "replace": "        const n = tabs.length; tabs[(i + (e.key === 'ArrowRight' ? 1 : -1) + n) % n]?.focus();",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tablist-home-end-unbound",
+      "suite": "unit",
+      "why": "Home and End were dead on 16 measured primitives; the key list is where that lived",
+      "file": "index.html",
+      "find": "      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Home' || e.key === 'End') {",
+      "replace": "      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "close-button-is-a-tab-stop-again",
+      "suite": "unit",
+      "why": "a native button defaults to tabIndex 0, so dropping this line restores one stop per document",
+      "file": "index.html",
+      "find": "    close.setAttribute('tabindex', '-1');",
+      "replace": "    close.removeAttribute('data-none');",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-close-silent",
+      "suite": "unit",
+      "why": "P4: the strip just loses a chip, which a keyboard user never sees",
+      "file": "index.html",
+      "find": "  announce(tabCloseSay(displayName(name), tabs.length));",
+      "replace": "  void tabCloseSay(displayName(name), tabs.length);",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-close-strands-focus",
+      "suite": "unit",
+      "why": "focus fell to <body> after a keyboard close, so the next arrow had no group to move in",
+      "file": "index.html",
+      "find": "  if (opts.refocus) focusDocTab(tabFocusAfterClose(before, name));",
+      "replace": "  if (false) focusDocTab(tabFocusAfterClose(before, name));",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-close-pointer-steals-the-caret",
+      "suite": "unit",
+      "why": "the \u2715 preventDefaults its mousedown to keep the caret; pulling focus into the strip undoes that",
+      "file": "index.html",
+      "find": "closeDocTab(name); });",
+      "replace": "closeDocTab(name, { refocus: true }); });",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-refocus-leaves-two-stops",
+      "suite": "unit",
+      "why": "restoring focus without moving the stop gives the group two stops or none",
+      "file": "index.html",
+      "find": "    tabs.forEach(t => t.setAttribute('tabindex', t === el ? '0' : '-1'));",
+      "replace": "    ;",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-focus-neighbour-read-after-the-mutation",
+      "suite": "unit",
+      "why": "reading openTabs after the close makes the neighbour computation answer about the wrong list",
+      "file": "index.html",
+      "find": "  const before = openTabs.slice();\n  const { tabs, nextActive } = tabClose(openTabs, name, fileName);",
+      "replace": "  const { tabs, nextActive } = tabClose(openTabs, name, fileName);\n  const before = tabs.slice();",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-cycle-stops-cycling",
+      "suite": "unit",
+      "why": "clamping the arrows must not quietly clamp Ctrl/Cmd+Shift+] too -- \u00a73 calls that one a cycle",
+      "file": "index.html",
+      "find": "  return tabs[(i + dir + tabs.length) % tabs.length];",
+      "replace": "  return tabs[Math.max(0, Math.min(tabs.length - 1, i + dir))];",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-strip-keys-undocumented",
+      "suite": "unit",
+      "why": "removing the close buttons from the Tab order makes Delete the keyboard door, so it must be written down",
+      "file": "index.html",
+      "find": " Enter to open the one you are on and Delete to close it.",
+      "replace": " Enter to open the one you are on.",
+      "kills": "#1514 the document tab strip is one roving group"
+    },
+    {
+      "id": "tab-stop-grows-with-each-document",
+      "suite": "browser",
+      "why": "driven: six stops for four documents is the measurement, and only walking Tab counts stops honestly",
+      "file": "index.html",
+      "find": "    close.setAttribute('tabindex', '-1');",
+      "replace": "    close.removeAttribute('data-none');",
+      "kills": "#1514 the tab strip is one roving group whose stop follows focus"
+    },
+    {
+      "id": "tab-stop-does-not-follow-focus",
+      "suite": "browser",
+      "why": "driven: the stop stayed pinned to the active tab, so Tab away and back never returned where you roved",
+      "file": "index.html",
+      "find": "        const to = roveIndex(e.key, i, tabs.length);\n        if (to != null) roveTo(tab, tabs[to]);",
+      "replace": "        const to = roveIndex(e.key, i, tabs.length);\n        if (to != null) tabs[to].focus();",
+      "kills": "#1514 the tab strip is one roving group whose stop follows focus"
     }
   ]
 }
