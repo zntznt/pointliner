@@ -72,8 +72,21 @@ const skipped = mutants.filter(m => !selected.includes(m));
 // compile", so a wedge names the mutant it wedged on instead of costing the whole run.
 const SUITE_TIMEOUT_MS = 180000;   // 36x the ~5s baseline: generous for a loaded runner, fatal to a hang
 
-function runUnitSuite() {
-  const r = spawnSync('node', ['--test', 'tests/test.mjs'],
+// `pattern` narrows the run to the guard under test. The registry grew from 46 mutants to well
+// over a hundred, and one FULL suite run each (~7s) walked the CI job into its 25-minute timeout --
+// a gate that times out has stopped gating. A narrowed run is ~0.7s, a 10x cut that scales with the
+// registry instead of fighting it. The full run is still what decides a SURVIVED verdict (below),
+// so nothing is traded away: the fast path only has to be able to say "the named guard went red".
+function runUnitSuite(pattern) {
+  const argv = ['--test'];
+  // `kills` is documented as a SUBSTRING of the test name, and several contain regex metacharacters
+  // ("Ctrl+Shift+X", "{2d6}", "convert()", "tests.yml"). --test-name-pattern is a regex, so an
+  // unescaped one matches nothing. That direction is SAFE by construction rather than by luck: a
+  // fast path that finds no failure falls through to the full suite below, which reaches the same
+  // verdict slowly. The escape buys speed, and nothing depends on it for correctness.
+  if (pattern) argv.push('--test-name-pattern', pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  argv.push('tests/test.mjs');
+  const r = spawnSync('node', argv,
     { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: SUITE_TIMEOUT_MS });
   if (r.error && r.error.code === 'ETIMEDOUT') {
     return { ran: false, timedOut: true, out: `the suite did not finish within ${SUITE_TIMEOUT_MS / 1000}s and was killed` };
@@ -110,7 +123,15 @@ try {
     writeFileSync(SIDECAR, JSON.stringify({ file: m.file, content: original }), 'utf8');
     restore = { path, content: original };
     writeFileSync(path, original.replace(m.find, m.replace), 'utf8');
-    const r = runUnitSuite();
+    // FAST PATH: run only the guard this mutant names. A kill is decided by that one test, so if it
+    // goes red there is nothing more to learn and the other ~2100 tests are pure cost.
+    const quick = runUnitSuite(m.kills);
+    const killed = quick.ran && quick.failed.some(name => name.includes(m.kills));
+    // A SURVIVED verdict is the expensive, interesting one: the whole suite runs, both to confirm
+    // the mutant really is harmless to the named guard and to produce the honest diagnostic --
+    // "N failing, none of them X" is what says something ELSE caught the mutation, and it is how
+    // two guards in this registry were found to be pinning the wrong claim.
+    const r = killed ? quick : runUnitSuite();
     undo();
     if (!r.ran) results.push({ id: m.id, verdict: 'BROKEN',
       detail: r.timedOut ? 'the suite HUNG under this mutant and was killed by the per-run timeout'

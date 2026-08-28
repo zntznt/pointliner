@@ -573,7 +573,7 @@
       "suite": "unit",
       "why": "a CI job with no timeout wedges for six hours and reports in_progress the whole time, which reads exactly like a slow suite",
       "file": ".github/workflows/tests.yml",
-      "find": "    timeout-minutes: 25   # measured ~6min (46 mutants, one unit-suite run each)",
+      "find": "    timeout-minutes: 25   # measured ~2min for the whole registry, narrowed",
       "replace": "    # timeout-minutes: 25 (removed)",
       "kills": "every CI job in tests.yml is bounded by a timeout"
     },
@@ -1989,6 +1989,87 @@
       "find": "insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? ' @' : '@'",
       "replace": "insertSigilNeedsSpace(editableText(content), getCaretOffset(content)) ? '@ ' : '@'",
       "kills": "#1516 the touch Insert-a-pill button opens the menu at any caret"
+    },
+    {
+      "id": "capture-commit-redirects-across-slots",
+      "suite": "unit",
+      "why": "the whole defect: the commit landing somewhere the chip never named",
+      "file": "index.html",
+      "find": "  const inbox = captureDest();   // #1517: the same reader the chip names, so they cannot disagree",
+      "replace": "  const inbox = inboxAt(captureSlot) || resolveInbox() || root;",
+      "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
+    },
+    {
+      "id": "capture-chip-rederives-its-own-answer",
+      "suite": "unit",
+      "why": "two surfaces re-deriving the same question is how they came to disagree",
+      "file": "index.html",
+      "find": "  const landing = captureDest();\n  const inbox = landing === root ? null : landing;",
+      "replace": "  const inbox = inboxAt(captureSlot);",
+      "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
+    },
+    {
+      "id": "capture-dest-falls-through-to-another-slot",
+      "suite": "unit",
+      "why": "an unset slot is not a redirect: that redirect is named on no surface at all",
+      "file": "index.html",
+      "find": "  return list[i - 1] || null;",
+      "replace": "  return list[i - 1] || list.find(Boolean) || null;",
+      "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
+    },
+    {
+      "id": "capture-dest-drops-the-zero-setup-default",
+      "suite": "unit",
+      "why": "#559: no inbox is a WORKING state, and `|| root` is the whole of that promise now",
+      "file": "index.html",
+      "find": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)) || root; }",
+      "replace": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)); }",
+      "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
+    },
+    {
+      "id": "slot-chord-changes-the-destination-in-silence",
+      "suite": "unit",
+      "why": "P4: the chord changes where your next capture goes, and it said nothing even on a set slot",
+      "file": "index.html",
+      "find": "  announce(captureDestSay(slot, dest === root ? null : crumbLabel(dest)));",
+      "replace": "  void captureDestSay(slot, dest === root ? null : crumbLabel(dest));",
+      "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
+    },
+    {
+      "id": "slot-chord-names-the-old-destination",
+      "suite": "unit",
+      "why": "announcing before the switch reports the slot you just left",
+      "file": "index.html",
+      "find": "  captureSlot = slot;\n  renderCaptureStrip({ keepFocus: true });\n  const dest = captureDest();",
+      "replace": "  const dest = captureDest();\n  captureSlot = slot;\n  renderCaptureStrip({ keepFocus: true });",
+      "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
+    },
+    {
+      "id": "resolveInbox-creeps-back-into-a-chipped-door",
+      "suite": "unit",
+      "why": "the census is the only thing that stops a fourth cross-slot fallback appearing unclassified",
+      "file": "index.html",
+      "find": "  const inbox = resolveInbox() || root;",
+      "replace": "  const inbox = resolveInbox() || resolveInbox() || root;",
+      "kills": "#1517 the chip that names the capture destination and the commit that uses it are one reader"
+    },
+    {
+      "id": "capture-chip-contradicts-the-tree",
+      "suite": "browser",
+      "why": "driven: the finding is the disagreement between the chip, the tree and the toast, which only a running app shows",
+      "file": "index.html",
+      "find": "  const inbox = captureDest();   // #1517: the same reader the chip names, so they cannot disagree",
+      "replace": "  const inbox = inboxAt(captureSlot) || resolveInbox() || root;",
+      "kills": "#1517 the chip, the tree and the toast agree on where a capture went"
+    },
+    {
+      "id": "capture-zero-setup-broken-by-the-fix",
+      "suite": "browser",
+      "why": "driven: the way this fix breaks is losing #559's working default, which shows only as a capture that goes nowhere",
+      "file": "index.html",
+      "find": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)) || root; }",
+      "replace": "function captureDest() { return nodeById(captureDestSlotId(root.inboxes, captureSlot)) || nodeById(root.inboxes?.find(Boolean)) || root; }",
+      "kills": "#1517 the chip, the tree and the toast agree on where a capture went"
     }
   ]
 }

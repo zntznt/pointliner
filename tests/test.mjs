@@ -13087,6 +13087,83 @@ test('#1515 a toolbar strip hands the caret back to the interrupted edit, not to
     'the blur is load-bearing: focus left on a toolbar button means the outline arrows never reach the row cursor (#1512)');
 });
 
+// #1517: the capture strip's destination chip said "top level (no inbox set)" while `doCapture`
+// dropped the point into a DIFFERENT slot's inbox, and its toast said so -- the strip and the toast
+// contradicted each other on screen at the same moment. Measured: inbox 1 = Beta, target slot 4
+// (never set), capture "groceries" -> `Beta[groceries]`, toast "· Beta", chip still "top level" for
+// every later capture that session. It reproduces on the FIRST capture of a session too, so no
+// in-strip switch is needed to reach it.
+//
+// The two surfaces were two independent expressions: the chip read `inboxAt(captureSlot)`, the
+// commit read `inboxAt(captureSlot) || resolveInbox() || root`. The middle term already CONTAINED
+// the first (`resolveInbox` opens with `inboxAt(captureSlot)`), so all it ever added was "…or the
+// first non-empty slot" -- a cross-slot redirect named nowhere: not on the chip, not in the manager
+// (no chip carries `.cur`), and not in §3, which documents only "an empty slot adopts the selected
+// point".
+test('#1517 the chip that names the capture destination and the commit that uses it are one reader', () => {
+  const { captureDestSlotId, captureDestSay } = c;
+  // ---- 1. the destination, by value. A slot's OWN inbox or nothing.
+  assert.equal(captureDestSlotId(['b'], 1), 'b', 'a set slot');
+  assert.equal(captureDestSlotId(['b'], 4), null, 'an UNSET slot is not a redirect into slot 1');
+  assert.equal(captureDestSlotId(['b', null, 'g'], 2), null, 'nor into a later set slot');
+  assert.equal(captureDestSlotId(['b', null, 'g'], 3), 'g');
+  assert.equal(captureDestSlotId([], 1), null, 'no inboxes at all -> the top level (#559)');
+  assert.equal(captureDestSlotId(['b'], 0), null, 'slots are 1-based');
+  assert.equal(captureDestSlotId(['b'], -1), null);
+  assert.equal(captureDestSlotId(['b'], 1.5), null);
+  assert.equal(captureDestSlotId(null, 1), null, 'a document with no inbox list');
+  assert.equal(captureDestSlotId(undefined, 1), null);
+
+  // ---- 2. P4: changing the target changes where your next capture goes, and the chord was silent.
+  assert.equal(captureDestSay(1, 'Beta'), 'Capturing to inbox 1: Beta');
+  assert.equal(captureDestSay(10, 'Beta'), 'Capturing to inbox 0: Beta', 'slot 10 reads as 0, like its chord');
+  assert.equal(captureDestSay(4, null), 'Inbox 4 is not set. Captures land at the top level.',
+    'and an unset slot says where the capture WILL go, not just that the slot is empty');
+  assert.match(captureDestSay(4, null), /top level/,
+    'the words on the chip and the words in the live region must be the same words');
+
+  // ---- 3. THE AGREEMENT. Both surfaces read the one function; neither re-derives.
+  const dc = fnBody(_src, 'doCapture');
+  const rc = fnBody(_src, 'renderCaptureStrip');
+  assert.ok(dc.includes('const inbox = captureDest();'), 'the commit reads the shared destination');
+  // and the shared reader is TOTAL: it never hands back null, so #559's "no inbox is a working
+  // state" survives being the only fallback left.
+  assert.match(_src, /function captureDest\(\) \{ return nodeById\(captureDestSlotId\(root\.inboxes, captureSlot\)\) \|\| root; \}/,
+    'captureDest must fall back to the top level, never to null or to another slot');
+  assert.ok(rc.includes('const landing = captureDest();') && rc.includes('const inbox = landing === root ? null : landing;'),
+    'and so does the chip that names it -- null there means "the top level", which is what its copy says');
+  const code = (b) => b.split('\n').map(l => l.replace(/\s*\/\/.*$/, '')).join('\n');
+  assert.ok(!code(dc).includes('resolveInbox'),
+    'the cross-slot redirect must be gone from the capture commit: it is what the chip never named');
+  // and neither surface may re-derive the destination for itself -- re-deriving is how they came
+  // to disagree. (Scoped to the two bodies: the three-term expression still appears verbatim in the
+  // comment that explains why it went, and a global string search would match that.)
+  assert.ok(!code(dc).includes('inboxAt(captureSlot)') && !code(rc).includes('inboxAt(captureSlot)'),
+    'neither the commit nor the chip may read the slot directly any more -- both go through captureDest()');
+
+  // ---- 4. CENSUS. `resolveInbox` is still right for the doors that have NO destination chip to
+  // contradict -- they name where the point went in their own toast. A new caller has to be
+  // classified here, because "which door may silently pick another slot" is the whole question.
+  const srcCode = _src.split('\n').map(l => l.replace(/^\s*\/\/.*$/, '')).join('\n');
+  const calls = nonEmpty([...srcCode.matchAll(/(?<!function )resolveInbox\(\)/g)], 'resolveInbox call sites');
+  assert.equal(calls.length, 3,
+    'exactly three doors may still fall back across slots — the URL/share append, its toast, and ' +
+    'the link-and-create default. None of them shows a destination chip to contradict: each names ' +
+    'where the point actually went. A fourth caller has to be classified here.');
+  // the #559 zero-setup promise those doors carry is untouched
+  assert.match(_src, /function appendTextToInbox[\s\S]{0,400}resolveInbox\(\) \|\| root/,
+    'URL/share append keeps the top-level fallback');
+
+  // ---- 5. the slot chord speaks.
+  const ts = fnBody(_src, 'captureTargetSlot');
+  assert.ok(ts.includes('announce(captureDestSay(slot, dest === root ? null : crumbLabel(dest)))'),
+    'targeting a slot must say where captures now land -- it was silent even on a correctly labelled slot');
+  // the order that matters is the READ, not the announce: `captureDest()` is what resolves the
+  // slot, so hoisting it above the assignment names the slot you just left.
+  assert.ok(ts.indexOf('captureSlot = slot') < ts.indexOf('const dest = captureDest()'),
+    'the destination must be read AFTER the switch, or it names the old one');
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
@@ -14005,7 +14082,14 @@ test('capture: UI wiring + front doors present (src pins)', () => {
   // #559: capture works with ZERO setup — no inbox → the top level is the working default
   // (the same locked default as link-and-create), on the strip AND the URL/share route;
   // the demand-first placeholder and the no-destination early return are gone.
-  assert.ok(_src.includes('inboxAt(captureSlot) || resolveInbox() || root'), 'doCapture zero-setup top-level fallback missing');
+  // #1517 replaced this. It asserted the fallback EXISTS and never that the chip agreed with it --
+  // and its own message called it a "zero-setup top-level fallback" while the code fell back to
+  // ANOTHER SLOT's inbox first, which is the bug it was standing over. The zero-setup claim is what
+  // matters and it is kept; the agreement is pinned in the #1517 test below.
+  assert.ok(fnBody(_src, 'doCapture').includes('captureDest()'),
+    'doCapture must read the shared destination');
+  assert.match(_src, /function captureDest\(\) \{ return nodeById\(captureDestSlotId\(root\.inboxes, captureSlot\)\) \|\| root; \}/,
+    'and the shared destination must still fall back to the top level with no inbox set (#559)');
   assert.ok(!_src.includes('Set an inbox first'), 'the config-before-value placeholder must stay retired');
   assert.match(_src, /function appendTextToInbox[\s\S]{0,400}resolveInbox\(\) \|\| root/, 'URL/share append must share the top-level fallback');
   assert.ok(_src.includes('id="btn-capture"'), 'toolbar button missing');

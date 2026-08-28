@@ -331,6 +331,7 @@ export function loadCores() {
     'tabFocusAfterClose','tabCloseSay',          // #1514: where the doc strip's focus lands after a close, and what it says
     'stripExitPlan',                             // #1515: which exit a toolbar strip takes when it closes
     'insertSigilNeedsSpace',                     // #1516: does a deliberate @ insertion need a separating space first
+    'captureDestSlotId','captureDestSay',        // #1517: where a capture targeting a slot lands, and what the change says
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
     'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting
