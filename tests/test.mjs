@@ -13222,6 +13222,79 @@ test('#1518 a bottom-docked panel clears the touch quick bar', () => {
   }
 });
 
+// #1519: the same blanket line lived verbatim in all THREE transient strips —
+// `else if (e.key !== 'Tab') e.stopPropagation()`. Right for typing (a plain key in the box is an
+// edit, not a command) and wrong for chords: it swallowed Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z and each
+// strip's OWN toggle. Measured on all three: after a commit the undo chords were total no-ops while
+// the commit sat on `undoStack` the whole time, and Ctrl+Shift+I could not close the strip it had
+// opened — which §3 documents as "the same chord closes it".
+//
+// The fix is an ALLOW-LIST because a blanket forward regresses the textarea: the global handler
+// claims Ctrl+V whenever `activeContentId == null` (always true inside a strip) and Ctrl+C / Ctrl+X
+// whenever points are selected. Driven: all four text chords stay local, and no point is pasted,
+// copied or cut by them.
+test('#1519 a transient strip keeps the edits and passes the listed global chords', () => {
+  const P = (o) => c.stripChordPasses(o);
+  // ---- 1. the policy, by value.
+  assert.equal(P({ key: 'Tab' }), true, 'Tab still reaches the focus trap');
+  assert.equal(P({ key: 'z' }), false, 'an unmodified key is an EDIT and stays in the box');
+  assert.equal(P({ key: 'i', shift: true }), false, 'so is a shifted letter');
+  // undo/redo, gated on whether the BOX has anything of its own to undo
+  assert.equal(P({ key: 'z', ctrl: true }), true, 'a fresh box: Ctrl+Z reaches the document stack');
+  assert.equal(P({ key: 'z', ctrl: true, typed: true }), false,
+    'mid-draft: Ctrl+Z is native text undo, and forwarding it would undo a POINT instead');
+  assert.equal(P({ key: 'y', ctrl: true }), true, 'Ctrl+Y redo');
+  assert.equal(P({ key: 'Z', ctrl: true, shift: true }), true, 'Ctrl+Shift+Z redo');
+  assert.equal(P({ key: 'Z', ctrl: true, shift: true, typed: true }), false, 'and it is gated the same way');
+  // the strips' own toggles
+  assert.equal(P({ key: 'I', ctrl: true, shift: true }), true, 'Ctrl+Shift+I closes the capture strip');
+  assert.equal(P({ key: 'j', ctrl: true, shift: true }), true, 'Ctrl+Shift+J the journal');
+  assert.equal(P({ key: 'i', ctrl: true }), false, 'without Shift it is not the toggle');
+  // meta-modified variants are the same chord on macOS; alt is not
+  assert.equal(P({ key: 'z', ctrl: true, alt: true }), false, 'Alt makes it a different chord');
+  assert.equal(P({ key: '' }), false);
+  assert.equal(P({}), false);
+
+  // ---- 2. THE REGRESSION GUARD, checked against the global handler rather than restated. Every
+  // chord the global handler would MISFIRE on from inside a strip must be refused by the policy.
+  // (the global handler is an anonymous document listener, so it is matched in _src by its chords
+  // rather than sliced out by name)
+  const claimed = nonEmpty([...(_src.match(/ctrl && e\.key==='[a-z]'/g) || [])], 'single-letter ctrl chords in the global handler');
+  for (const [chord, why] of [
+    ['v', 'pastes POINTS into the outline when activeContentId is null — always true inside a strip'],
+    ['c', 'copies the SELECTED POINTS instead of the selected text'],
+    ['x', 'cuts the selected points out of the document'],
+    ['f', 'steals focus to the search box mid-capture'],
+  ]) {
+    assert.ok(claimed.some(s => s.includes(`'${chord}'`)),
+      `precondition: the global handler still claims Ctrl+${chord.toUpperCase()} (${why})`);
+    assert.equal(P({ key: chord, ctrl: true }), false,
+      `Ctrl+${chord.toUpperCase()} must stay in the textarea: forwarded, it ${why}`);
+  }
+  assert.equal(P({ key: 'a', ctrl: true }), false, 'and Ctrl+A selects the box text, not the points');
+
+  // ---- 3. CENSUS. All three strips route through the ONE policy, and none keeps the blanket line.
+  // The family is read off the shared CSS rule, the same ratchet #1515 established.
+  const rule = nonEmpty([..._src.matchAll(/^(#[a-z-]+-strip(?:,#[a-z-]+-strip)+)\{display:none/gm)],
+    'the shared toolbar-strip CSS rule');
+  const strips = nonEmpty(rule[0][1].split(',').map(x => x.replace('#', '')), 'strip ids');
+  assert.deepEqual(strips.slice().sort(), ['capture-strip', 'chronicle-strip', 'journal-strip']);
+  // the keydown handler for each strip's textarea, by the function that builds it
+  const HANDLER = { 'capture-strip': 'capInputKeydown', 'journal-strip': 'renderJournalStrip', 'chronicle-strip': 'renderChronicleStrip' };
+  for (const id of strips) {
+    const body = fnBody(_src, HANDLER[id]);
+    assert.ok(body, `${id}: no handler found (${HANDLER[id]})`);
+    assert.ok(body.includes('if (!stripKeyEscapes(e)) e.stopPropagation()'),
+      `${id} must route its key policy through the shared reader`);
+    assert.ok(!/e\.key !== 'Tab'\) e\.stopPropagation\(\)/.test(body),
+      `${id} must not keep the blanket line — it is the whole defect, in three places`);
+  }
+  // and every strip stamps `typed`, or its undo gate reads a flag nobody sets
+  const stamps = nonEmpty([..._src.matchAll(/input\.addEventListener\('input', \(\) => \{ input\.dataset\.typed = '1';/g)],
+    "the strips' typed stamps");
+  assert.equal(stamps.length, 3, 'all three strips must stamp `typed`, or Ctrl+Z forwards mid-draft');
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
