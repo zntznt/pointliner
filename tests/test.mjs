@@ -16296,6 +16296,55 @@ test('#1458 every markdown form the guide teaches actually renders as markup', (
 // uncovered example is a new untested promise, and it now has to be looked at rather than absorbed.
 const GUIDE_UNCOVERED_FLOOR = 69;
 
+// #1552: base-formula examples, computed through the real engine.
+// The base-formulas entry was written because two entries advertised formulas ("add formulas and
+// Calculate footers") and nothing taught them. Its examples then landed in the frozen uncovered
+// remainder below: they carry no brace, no chord, no menu arrow and no search operator, so all six
+// existing guards were blind to them — while they are among the MOST checkable strings in the guide,
+// because parseTblfm and computeTable are pure cores that answer them exactly. So they are answered
+// here rather than absorbed into the count, and covered() above defers to this test.
+const TBLFM_SYN = /^(?:@[<>#]|[@$][+-]?\d|v(?:sum|mean|max|min|count|median)\()/;
+
+test('#1552 every base-formula example in the guide computes through the real engine', () => {
+  // Every data cell is numeric, so ANY reference the guide teaches resolves to a number and a
+  // failure means the reference grammar itself is wrong, not that the example met a text cell.
+  const model = () => ({ aligns: [null, null, null, null], rows: [
+    ['A', 'B', 'C', 'D'],
+    ['2', '3', '4', '5'],       // @2
+    ['6', '7', '8', '9'],       // @3
+    ['10', '11', '12', '13'],   // @4
+  ] });
+  const forms = nonEmpty(_GUIDE_SYNS.filter(x => TBLFM_SYN.test(x.syn.trim())),
+    'base-formula examples in the guide');
+  const dead = [];
+  for (const { id, syn } of forms) {
+    const s = syn.trim();
+    // An assignment stands on its own; a bare reference or aggregate is exercised as a right-hand
+    // side, which is the only way a user can actually spend it.
+    const tblfm = s.includes('=') ? s : '@3$4=' + s;
+    const before = model().rows;
+    const out = computeTable(model(), tblfm);
+    const flat = out.flat().join(' | ');
+    if (/#ERR/.test(flat)) { dead.push(`[${id}] ${syn} -> ${flat.match(/#ERR[^|]*/)[0].trim()}`); continue; }
+    // A formula that computed nothing is the vacuous pass this guard exists to refuse.
+    if (out.flat().join('\u0000') === before.flat().join('\u0000'))
+      dead.push(`[${id}] ${syn} -> changed no cell; the formula never ran`);
+  }
+  assert.deepEqual(dead, [],
+    'the guide teaches a base formula the engine does not answer. Either the reference grammar ' +
+    'moved and the guide did not, or the guide promises a form that was never built');
+
+  // Both arms of the loop must be able to FAIL, or the pass above means nothing. (Note what is NOT
+  // the falsification: '@99$1' reads as 0, because Org treats an out-of-range field as blank rather
+  // than an error — the first negative case tried here, and it passed for the wrong reason.)
+  assert.match(computeTable(model(), '@2$4=@2$4').flat().join(' '), /#ERR/,
+    'the #ERR arm must be reachable: a cycle is an error the engine reports');
+  assert.match(computeTable(model(), '$4=nosuchvariable').flat().join(' '), /#ERR/,
+    'the #ERR arm must be reachable: an unresolvable name is an error the engine reports');
+  assert.equal(computeTable(model(), '').flat().join('\u0000'), model().rows.flat().join('\u0000'),
+    'the changed-no-cell arm must be reachable: a formula that targets nothing leaves the grid alone');
+});
+
 test('#1459 the guide examples no guard can check are counted, and the count does not grow', () => {
   const CHORD = /\b(?:Ctrl|Cmd|Shift|Alt|Enter|Tab|Esc|Backspace|Delete|Space|F\d+)\b|⌘|[↑↓←]/;
   const paired = /(\*\*|__|~~|==|\+\+|`)[^\s].*?\1/;
@@ -16306,7 +16355,8 @@ test('#1459 the guide examples no guard can check are counted, and the count doe
     || CHORD.test(syn)                                          // keyboard chord
     || /(?:^|\s)[/@][a-z]/i.test(syn)                           // driven / or @ command
     || syn.split(/\s*\/\s*/).some(p => /^-?["#]|^-?\w+:/.test(p.trim()))   // search operator
-    || syn.split(/\s+or\s+/).some(p => paired.test(p.trim()) || leading.test(p.trim()));  // markdown form
+    || syn.split(/\s+or\s+/).some(p => paired.test(p.trim()) || leading.test(p.trim()))  // markdown form
+    || TBLFM_SYN.test(syn.trim());                              // base formula, computed below
 
   const uncovered = nonEmpty(_GUIDE_SYNS, 'guide examples').filter(x => !x.ctl && !covered(x.syn));
   assert.ok(uncovered.length <= GUIDE_UNCOVERED_FLOOR,
@@ -27280,6 +27330,49 @@ test('#596 — GUIDE drift guard: every INSERT_CMDS (@ insert) id is covered', (
     `(add each id to some GUIDE entry's covers:[…], or write a new entry)`);
 });
 
+// #1552 — the drift guard's two blind spots, closed.
+//
+// The #596 pair runs ONE WAY: registry id → some covers array. That leaves two holes, and both were
+// occupied when this was written.
+//
+//  1. A THIRD registry existed that nothing pointed at. PATTERN_RECIPES ships 10 commands into the
+//     builder's Patterns section (`trigger:'@', type:'pattern'`), and because the guard derives its
+//     ids from BLOCK_CMDS and INSERT_CMDS only, all 10 were undocumented with nothing failing. The
+//     cost was not only the missing entry: builderGuideEntry resolves a command to its help THROUGH
+//     the covers lookup, so every one of the 10 rows in All commands rendered its one-line desc
+//     where every other row renders a full entry.
+//  2. The REVERSE direction was unasserted, so a covers id naming nothing passed forever.
+//     `covers:['deflist']` did exactly that: definition lists are typed syntax with no command, the
+//     string occurred nowhere else in index.html, and the entry documented a command that has never
+//     existed. The same hole means a RENAMED command leaves its old id behind in covers, the guard
+//     stays green, and builderGuideEntry silently stops resolving the new one.
+test('#1552 — GUIDE drift guard: every PATTERN_RECIPES (@ pattern) id is covered', () => {
+  const ids = registryIds(GUIDE_SRC, 'PATTERN_RECIPES');
+  assert.ok(ids.length >= 8, `PATTERN_RECIPES block found and non-empty (got ${ids.length}) — did the const move/rename?`);
+  const covered = guideCoveredIds(GUIDE_SRC);
+  assert.ok(covered.size > 20, `GUIDE covers tokens found (got ${covered.size}) — did the GUIDE block move?`);
+  const missing = ids.filter(id => !covered.has(id));
+  assert.deepEqual(missing, [],
+    `these @ patterns have no concept-guide entry: ${missing.join(', ')}\n` +
+    `(add each id to some GUIDE entry's covers:[…]; without it builderGuideEntry cannot resolve the ` +
+    `row's help either, so the pane in All commands degrades to the command's one-line desc)`);
+});
+
+test('#1552 — GUIDE drift guard: every covers:[…] id names a real command (the reverse direction)', () => {
+  const known = new Set([
+    ...registryIds(GUIDE_SRC, 'BLOCK_CMDS'),
+    ...registryIds(GUIDE_SRC, 'INSERT_CMDS'),
+    ...registryIds(GUIDE_SRC, 'PATTERN_RECIPES'),
+  ]);
+  assert.ok(known.size > 40, `command ids parsed from the three registries (got ${known.size}) — did a const move?`);
+  const covered = nonEmpty(guideCoveredIds(GUIDE_SRC), 'GUIDE covers ids');
+  const phantom = [...covered].filter(id => !known.has(id));
+  assert.deepEqual(phantom, [],
+    `these covers:[…] ids name no command in BLOCK_CMDS, INSERT_CMDS or PATTERN_RECIPES: ${phantom.join(', ')}\n` +
+    `A covers id is the drift-guard contract AND builderGuideEntry's lookup key, so a phantom ` +
+    `documents nothing and routes nothing. Remove it, or fix the rename it was left behind by.`);
+});
+
 // ── Chrome drift guard: toolbar buttons + chrome features keep a guide door ───
 // The #596 guards only reach features with a / or @ command id, so chrome-only features
 // (toolbar buttons, File-menu doors) could ship guide-less with no test failing — exactly the
@@ -31305,6 +31398,84 @@ test('#1133 no NEW guard iterates a collection whose size is never asserted', ()
     `passes. New offenders:\n  ` + risky.slice(0, 8).join('\n  '));
   assert.ok(risky.length >= VACUITY_FLOOR - 12,
     `only ${risky.length} left (floor ${VACUITY_FLOOR}) — lower VACUITY_FLOOR so the ratchet keeps its teeth`);
+});
+
+// #1552 — three more AP house rules, enforced the way the em dash already is.
+//
+// `guidance/concept-guide.md` states the house style and the em dash was the only clause with teeth,
+// so the rest drifted quietly. Each arm below is a defect that was actually IN the guide, not a rule
+// invented for a test:
+//
+//  1. MARKDOWN THAT RENDERS AS ITSELF. guideBodyHtml does exactly two things — split on \n\n and turn
+//     a backtick pair into <code>. There is no emphasis. So `**A tag covers everything beneath it**`
+//     and `*itself*` in the hashtags body put literal asterisks on the reader's screen. This is the
+//     one arm that is a rendering bug rather than a style preference, which is why it leads.
+//  2. BRITISH SPELLINGS. AP is American English, and the copy is overwhelmingly American already
+//     ("colored", "flavor", "recognize"). Six outliers had crept in: labelled, unlabelled, centred,
+//     neighbours, defence (twice), kilometres.
+//  3. MODIFIER GLYPHS IN A CONCEPT ENTRY. `${MOD}` resolves to ⌘ on a Mac. The essential shortcut
+//     ROWS use the glyphs deliberately; concept-entry bodies and examples spell keys as words
+//     ("Ctrl/Cmd+S"). Three examples in `saving` and `import` were built from `${MOD}` and so read
+//     with a glyph on one platform and "Ctrl" on the other, in entries whose own prose says
+//     "Ctrl/Cmd+S" two lines above.
+test('#1552 AP house style is enforced in GUIDE copy: no literal markdown, no British spellings, no key glyphs', () => {
+  const entries = nonEmpty(_GUIDE.filter(e => e.cat && e.body), 'GUIDE concept entries');
+
+  // 1) markdown the renderer does not implement. Backtick spans are stripped first — a token like
+  // `**` inside code is teaching the syntax, not using it — and `{= a * b}` style maths is exempt
+  // because a lone asterisk between spaces is multiplication, not emphasis.
+  const EMPH = /\*\*[^*\n]+\*\*|__[^_\n]+__|(?<![\w*\s])\*[^*\n]{2,60}\*(?![\w*])/;
+  const literal = [];
+  for (const e of entries) {
+    const prose = e.body.replace(/`[^`]*`/g, ' ');
+    const m = prose.match(EMPH);
+    if (m) literal.push(`[${e.id}] ${m[0]}`);
+  }
+  assert.deepEqual(literal, [],
+    'a GUIDE body uses markdown emphasis, which guideBodyHtml does not implement — it splits on a ' +
+    'blank line and turns a backtick pair into <code>, and escHtml runs before both. The asterisks ' +
+    'reach the reader as asterisks. Rewrite, or use a backtick pair.');
+
+  // 2) British spellings. A closed list, so it accuses nothing it was not told to.
+  const BRITISH = /\b(?:centred|kilometres?|metres?|litres?|neighbours?|labelled|unlabelled|defence|offence|colours?|coloured|favourites?|behaviour|organis(?:e|ed|ing|ation)|recognis(?:e|ed|ing)|analyse[ds]?|travelled|cancelled|whilst)\b/i;
+  const uk = [];
+  for (const e of entries)
+    for (const [where, v] of [['body', e.body], ...(e.examples || []).map((x, i) => [`ex[${i}].desc`, x.desc])]) {
+      if (typeof v !== 'string') continue;
+      const m = v.match(BRITISH);
+      if (m) uk.push(`[${e.id}] ${where}: "${m[0]}"`);
+    }
+  assert.deepEqual(uk, [], 'GUIDE copy is AP, which is American English; use the American spelling');
+
+  // 3) modifier glyphs, read from the SOURCE rather than the parsed entries. This arm has to be
+  // written carefully, and the first version of it was not: `${MOD}` is a template hole, so by the
+  // time _GUIDE is evaluated it has already become whatever MOD is on the machine running the test
+  // ("Ctrl" here). A parsed-value check for a glyph therefore CANNOT fail, which is what the
+  // kill-mutation `guide-key-glyph-in-entry` caught by surviving. The source is the only place the
+  // template is still visible.
+  //
+  // The two shapes separate by field: an essential shortcut row carries `keys:` and legitimately
+  // spells the glyphs (it builds the Shortcuts pages), while a concept-entry example carries `syn:`.
+  // So a `syn:` that is a template literal is, by construction, a concept entry borrowing one.
+  const gsrc = nonEmpty(between(_src, 'const GUIDE = [', '// GUIDE-END'), 'the GUIDE source block');
+  const synTemplates = [...gsrc.matchAll(/syn:`([^`]*)`/g)].map(m => m[1]);
+  const templated = synTemplates.filter(s => s.includes('${'));
+  assert.deepEqual(templated, [],
+    'a concept-entry example is built from a template hole, so it renders one way on a Mac and ' +
+    "another everywhere else. Concept entries spell keys as words: syn:'Ctrl/Cmd+S'. The glyphs " +
+    'belong to the essential shortcut rows, which carry keys:[...] rather than syn:.');
+
+  // ...and a glyph typed straight into an entry, which the parsed view DOES see.
+  const GLYPH = /[\u2318\u21e7\u2325\u232b\u21e5]/;
+  const glyphs = [];
+  for (const e of entries)
+    for (const [where, v] of [['body', e.body], ...(e.examples || []).flatMap((x, i) => [[`ex[${i}].syn`, x.syn], [`ex[${i}].desc`, x.desc]])]) {
+      if (typeof v !== 'string') continue;
+      if (GLYPH.test(v)) glyphs.push(`[${e.id}] ${where}: "${v.trim().slice(0, 40)}"`);
+    }
+  assert.deepEqual(glyphs, [],
+    'a concept entry spells a key with a modifier glyph. Bodies and examples use words ' +
+    '("Ctrl/Cmd+S", "Shift+Tab"); the glyphs belong to the essential shortcut rows.');
 });
 
 test('em-dash ban is ENFORCED across all user-facing copy (README, guide/, GUIDE bodies, command descs)', () => {

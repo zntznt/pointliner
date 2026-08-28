@@ -1777,7 +1777,7 @@
     {
       "id": "tab-close-pointer-steals-the-caret",
       "suite": "unit",
-      "why": "the \u2715 preventDefaults its mousedown to keep the caret; pulling focus into the strip undoes that",
+      "why": "the ✕ preventDefaults its mousedown to keep the caret; pulling focus into the strip undoes that",
       "file": "index.html",
       "find": "closeDocTab(name); });",
       "replace": "closeDocTab(name, { refocus: true }); });",
@@ -1804,7 +1804,7 @@
     {
       "id": "tab-cycle-stops-cycling",
       "suite": "unit",
-      "why": "clamping the arrows must not quietly clamp Ctrl/Cmd+Shift+] too -- \u00a73 calls that one a cycle",
+      "why": "clamping the arrows must not quietly clamp Ctrl/Cmd+Shift+] too -- §3 calls that one a cycle",
       "file": "index.html",
       "find": "  return tabs[(i + dir + tabs.length) % tabs.length];",
       "replace": "  return tabs[Math.max(0, Math.min(tabs.length - 1, i + dir))];",
@@ -3051,6 +3051,60 @@
       "find": "${stale || unresNote ? ' gr-stale' : ''}",
       "replace": "${stale ? ' gr-stale' : ''}",
       "kills": "a pill frozen before its rule existed says so, and one click heals it"
+    },
+    {
+      "id": "guide-pattern-covers-dropped",
+      "suite": "unit",
+      "why": "the PATTERN_RECIPES half of the drift guard: drop one pattern id from covers and the guard must notice, the way it failed to notice all ten for the whole life of the pattern palette",
+      "file": "index.html",
+      "find": "covers:['pat-dice','pat-contest',",
+      "replace": "covers:['pat-contest',",
+      "kills": "every PATTERN_RECIPES (@ pattern) id is covered"
+    },
+    {
+      "id": "guide-covers-phantom",
+      "suite": "unit",
+      "why": "the reverse direction: a covers id naming no command must fail. This is the exact shape that let covers:['deflist'] document a command that never existed",
+      "file": "index.html",
+      "find": "covers:['footnote','cite','link','image'],",
+      "replace": "covers:['footnote','cite','link','image','nosuchcommand'],",
+      "kills": "every covers:[…] id names a real command"
+    },
+    {
+      "id": "guide-base-formula-broken-ref",
+      "suite": "unit",
+      "why": "the base-formula examples must be COMPUTED, not merely present: break one reference and the engine must reject it",
+      "file": "index.html",
+      "find": "{ syn:'$3=$1*$2',               desc:'column formula: quantity times unit price, every row' },",
+      "replace": "{ syn:'$3=$1*nosuchname',       desc:'column formula: quantity times unit price, every row' },",
+      "kills": "every base-formula example in the guide computes through the real engine"
+    },
+    {
+      "id": "guide-literal-markdown",
+      "suite": "unit",
+      "why": "the arm that is a rendering bug, not a preference: guideBodyHtml implements no emphasis, so **bold** in a body reaches the reader as asterisks. This is the exact defect the guard was written from",
+      "file": "index.html",
+      "find": "body:\"Label points by topic, status or project",
+      "replace": "body:\"**Label** points by topic, status or project",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-british-spelling",
+      "suite": "unit",
+      "why": "AP is American English; a reintroduced British spelling must fail rather than drift back in the way six of them already had",
+      "file": "index.html",
+      "find": "desc:'10 kilometers in miles (6.21)'",
+      "replace": "desc:'10 kilometres in miles (6.21)'",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-key-glyph-in-entry",
+      "suite": "unit",
+      "why": "a concept entry spelling a key with a glyph reads ⌘ on a Mac and Ctrl elsewhere; ${MOD} in an example is how it happened three times",
+      "file": "index.html",
+      "find": "{ syn:'Ctrl/Cmd+O',           desc:'open a saved file' }",
+      "replace": "{ syn:`${MOD}+O`,           desc:'open a saved file' }",
+      "kills": "AP house style is enforced in GUIDE copy"
     }
   ]
 }

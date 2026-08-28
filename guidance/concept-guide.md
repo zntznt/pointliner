@@ -85,6 +85,18 @@ you forget to document **cannot** slip past the guard. **When you add a `/` verb
 1. Add the command's id to some entry's `covers:[…]` (existing or a new entry). That is the
    whole obligation — there is no second list to update.
 
+Since #1552 the guard runs in **three** registries and **both directions**:
+
+- `PATTERN_RECIPES` joined `BLOCK_CMDS` and `INSERT_CMDS` as a derived id list. The pattern palette
+  had shipped 10 commands with no `covers` entry and nothing failed, because the guard only knew the
+  other two. That cost more than a missing entry: `builderGuideEntry` resolves a command to its help
+  THROUGH the `covers` lookup, so all 10 rows in All commands rendered their one-line `desc` where
+  every other row renders a full entry. Documenting them lit the panes back up in the same change.
+- The **reverse** direction is asserted too: every id in every `covers:[…]` must name a real command.
+  `covers:['deflist']` had named nothing for as long as the entry existed (definition lists are typed
+  syntax with no command), and the same hole means a RENAMED command leaves its old id behind while
+  the guard stays green and `builderGuideEntry` silently stops resolving the new one.
+
 The tests slice the GUIDE array between `const GUIDE = [` and the stable `// GUIDE-END`
 boundary marker (kept in `index.html` right after the array's closing `];`), and each asserts
 it found a non-empty registry block and a non-empty covers set, so a renamed/moved const fails
@@ -130,7 +142,28 @@ strings before writing one; match them exactly.
 - **Vocabulary:** say **point** (not node) and **pill** (not artifact/widget) in all
   copy — the canonical user-facing split from `CLAUDE.md`. Code keeps `node`/`artifact`.
 - **Keybinds in bodies** are spelled `Ctrl/Cmd+Enter`, `Shift+Tab` — plain words. (The
-  *essential shortcut* rows use the `MOD`/`⇧` glyphs; concept-entry bodies do not.)
+  *essential shortcut* rows use the `MOD`/`⇧` glyphs; concept-entry bodies do not.) An
+  `examples[].syn` is held to the same rule and is a plain string: never a template literal, because
+  `` `${MOD}+S` `` renders `⌘+S` on a Mac and `Ctrl+S` everywhere else, in an entry whose own prose
+  two lines up says `Ctrl/Cmd+S`. Three examples in `saving` and `import` did exactly that until
+  #1552; the AP guard now reads the SOURCE for it, since by the time the array is evaluated the hole
+  is already filled and a parsed-value check cannot fail (its kill-mutation caught that).
+- **There is no markdown in a body.** `guideBodyHtml` does two things: split on `\n\n`, and turn a
+  backtick pair into `<code>`; `escHtml` runs before both. So `**bold**` and `*italic*` reach the
+  reader as literal asterisks — which is what the `hashtags` entry shipped until #1552. The house
+  emphasis device is ALL CAPS on a single word (`READS`/`WRITES`, `DIRECT`, `WHOLE`, `SAME`), used
+  in about 20 entries; it is deliberate, not shouting, and it is what to reach for.
+- **American spelling.** AP is American English and the copy overwhelmingly already is ("colored",
+  "flavor", "recognize"). Six British outliers had drifted in (labelled, unlabelled, centred,
+  neighbours, defence, kilometres); a guard now holds the line.
+- **Canonical spellings, where the guide had forked:** `roll-up` (the noun; the entry is titled
+  "Roll-up totals", while the verb "roll up" stays open), `re-roll`, `reopen`, `read-only`,
+  `three-quarters`. Say **document**, never "note", for the hierarchy level — `note` means a
+  per-point note, and `rollups` used both senses in one paragraph.
+- **Menu paths are `File → X` or `Menu → X`**, with the arrow, and `Menu →` means the point's bullet
+  menu specifically. Name the menu the row actually lives in: `appearance-controls` sent readers to
+  a "File menu under Appearance" section that does not exist (it is Settings), and to a "Guidance
+  level" row that is really the Guidance card under Settings.
 - Keep each **paragraph** to ~2–4 sentences. A short entry is one paragraph; a longer one
   splits into paragraphs on blank lines (`\n\n`), one sub-topic each, so it reads scannably
   instead of as a wall. The `examples` carry the precise syntax; the body is the why and the
