@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2122 declarations in 158 sections across 17 domains.**
+**2127 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2202,6 +2202,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `renderWorkspaceSearchResults` — WS-2: cross-doc search results in the focus-shown search panel. The in-doc filter (render()
 - `openWorkspaceSearchHit` — Jump to a workspace search hit: switch to its doc (dirty-guarded), drop the filter for a
 - `shSavedList`
+- `CHIP_TEMPLATES` — #1513: TWELVE of the legend's chips are not operators, they are TEMPLATES -- their labels carry a
+- `chipTemplateLabels`
+- `chipTemplateSpan` — Where the placeholder sits inside the label, or null when the label is a complete operator.
+- `chipTemplateSay` — P4: picking a template chip is not a silent no-op. It says what landed and what to do with it.
+- `chipAriaLabel`
 - `externalDropContent` — #1329: drag an image from a web page onto the outline → a new point that references it. A LOCAL image
 - `dragCarriesExternal`
 - `handleExternalDrop`

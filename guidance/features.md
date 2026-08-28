@@ -691,7 +691,12 @@ Implemented:
   CSS `:focus-within`, `aria-describedby` on the input) and a
   **"Search & filter" section in the `?` panel**. The legend's example chips are
   **live**: click (or Enter/Space) stacks that token onto whatever is already
-  typed, so filters are composed by picking. The 48 chips are ONE tab stop, not
+  typed, so filters are composed by picking. Twelve of them are **templates**
+  rather than operators (`key:value`, `#tag`, `-term`, `start:<date`, `a | b`,
+  `state:value`, ...): those paste with the placeholder **selected**, ready to
+  type over, and run nothing until you do (#1513, `CHIP_TEMPLATES`) — the same
+  idiom the `@ Query` dialog's chips already used. A complete operator
+  (`is:todo`, `has:tag`, `priority:A`) still filters at once. The 48 chips are ONE tab stop, not
   48 (**roving tabindex**, UXP-238): chip 0 seeds `tabindex="0"`, arrows move
   within the group (Left/Right flat across the ragged rows, Up/Down to the
   adjacent `.sh-row`, Home/End to the ends, clamping like the calendar grid),

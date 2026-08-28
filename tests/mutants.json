@@ -1638,6 +1638,96 @@
       "find": "    if (document.getElementById('bpop')?.classList.contains('on')) return false;",
       "replace": "    ;",
       "kills": "the outline acts on arrows and Delete only when it owns the keyboard"
+    },
+    {
+      "id": "template-chip-runs-the-template",
+      "suite": "unit",
+      "why": "the whole defect: drop the early return and a template chip applies its own metasyntax again",
+      "file": "index.html",
+      "find": "      announce(chipTemplateSay(tok));\n      return;\n    }",
+      "replace": "      announce(chipTemplateSay(tok));\n    }",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "template-caret-collapses",
+      "suite": "unit",
+      "why": "a collapsed caret over the placeholder is the reported symptom; the span must be a real range",
+      "file": "index.html",
+      "find": "sb.setSelectionRange(head.length + t.start, head.length + t.end);",
+      "replace": "sb.setSelectionRange(head.length + t.end, head.length + t.end);",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "template-selection-ignores-the-stacked-head",
+      "suite": "unit",
+      "why": "anchoring at 0 selects the wrong word once the chip is added to a query you already built",
+      "file": "index.html",
+      "find": "      sb.setSelectionRange(head.length + t.start, head.length + t.end);",
+      "replace": "      sb.setSelectionRange(t.start, t.end);",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "template-chip-says-nothing",
+      "suite": "unit",
+      "why": "P4: a chip that pastes and runs nothing is a silent success unless it says so",
+      "file": "index.html",
+      "find": "      announce(chipTemplateSay(tok));",
+      "replace": "      void chipTemplateSay(tok);",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "template-chip-keeps-the-add-promise",
+      "suite": "unit",
+      "why": "'Add key:value to the search' is a promise the chip does not keep; the door must rename itself",
+      "file": "index.html",
+      "find": "    k.setAttribute('aria-label', chipAriaLabel(k.textContent));",
+      "replace": "    k.setAttribute('aria-label', `Add ${k.textContent} to the search`);",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "template-classification-not-in-the-dom",
+      "suite": "unit",
+      "why": "data-tmpl is the only place the classification is readable from outside the closure",
+      "file": "index.html",
+      "find": "    if (t) k.setAttribute('data-tmpl', t.ph);",
+      "replace": "    if (false) k.setAttribute('data-tmpl', t.ph);",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "template-census-misses-a-new-chip",
+      "suite": "unit",
+      "why": "the ratchet is the only thing that stops the NEXT placeholder chip shipping with the old behaviour",
+      "file": "index.html",
+      "find": "<kbd>state:value</kbd><kbd>var:name</kbd>",
+      "replace": "<kbd>state:value</kbd><kbd>var:name</kbd><kbd>owner:?</kbd>",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "template-tag-diverges-from-the-dialog",
+      "suite": "unit",
+      "why": "#tag behaving two ways on two surfaces IS the P1 breach; the parity claim must bite",
+      "file": "index.html",
+      "find": "  '#tag': 'tag',\n  '#tag/sub': 'tag/sub',",
+      "replace": "  '#tag': '#tag',\n  '#tag/sub': 'tag/sub',",
+      "kills": "#1513 a legend chip whose label carries a placeholder is a template"
+    },
+    {
+      "id": "operator-chip-stops-filtering",
+      "suite": "browser",
+      "why": "the risk of this fix is misclassifying a working filter, which only shows as a chip that stopped filtering",
+      "file": "index.html",
+      "find": "  'has:key': 'key',",
+      "replace": "  'has:key': 'key',\n  'has:tag': 'tag',",
+      "kills": "#1513 a legend template chip lands ready to type, and an operator chip still filters"
+    },
+    {
+      "id": "template-chip-blanks-the-outline",
+      "suite": "browser",
+      "why": "driven: the verdict on a teaching string is what the user sees, and no source pin can read it",
+      "file": "index.html",
+      "find": "      announce(chipTemplateSay(tok));\n      return;\n    }",
+      "replace": "      announce(chipTemplateSay(tok));\n    }",
+      "kills": "#1513 a legend template chip lands ready to type, and an operator chip still filters"
     }
   ]
 }

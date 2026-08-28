@@ -4289,3 +4289,160 @@ test('#1512 an open dialog owns its keys, and the outline still owns its own', {
   assert.ok(deleted.n < 5, `bulk delete must still work from the outline (${deleted.n} left)`);
   await pg.close();
 });
+
+// 70. #1513 — twelve legend chips are TEMPLATES: their labels carry a placeholder (`key:value`,
+// `#tag`, `-term`, `start:<date`, `a | b`, …). Every one pasted literally with a COLLAPSED caret
+// and ran, so the app wrote a teaching string and then delivered a verdict on it — eight said "0
+// matching points" and blanked the outline, `-term` and `a | b` said a confident "3 matching
+// points", `start:<date` blamed the user for its own string. Source pins cannot see any of that:
+// the selection offset, whether the outline emptied, and what the live region said are all runtime
+// facts. The whole family is driven here, and so are the 32 complete operators — the risk of this
+// fix is misclassifying a working filter, which only shows up as a chip that stopped filtering.
+test('#1513 a legend template chip lands ready to type, and an operator chip still filters', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    setProp(root.children[0], 'cost', '120');
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(200);
+  const reset = async () => {
+    await pg.evaluate(() => {
+      const sb = document.getElementById('search-box');
+      sb.value = ''; applySearch(''); sb.focus();
+      const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    });
+    await pg.waitForTimeout(150);
+  };
+  // mousedown, not click: the chips deliberately act on mousedown+preventDefault so the panel does
+  // not blur shut mid-gesture, so a click() would measure a gesture the app never receives.
+  const pick = async (label) => {
+    await pg.evaluate((t) => {
+      const k = [...document.querySelectorAll('#search-hint .sh-row kbd:not([data-doc])')].find(x => x.textContent === t);
+      if (!k) throw new Error('no legend chip labelled ' + t);
+      k.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    }, label);
+    await pg.waitForTimeout(220);
+  };
+  const state = () => pg.evaluate(() => {
+    const sb = document.getElementById('search-box');
+    return {
+      v: sb.value, s: sb.selectionStart, e: sb.selectionEnd,
+      rows: [...document.querySelectorAll('.node-content')].map(n => n.textContent.trim()),
+      live: (document.getElementById('a11y-live')?.textContent || '').trim(),
+    };
+  });
+
+  await pg.evaluate(() => document.getElementById('search-box').focus());
+  await pg.waitForTimeout(250);
+  const labels = await pg.evaluate(() =>
+    [...document.querySelectorAll('#search-hint .sh-row kbd:not([data-doc])')].map(k => k.textContent));
+  assert.ok(labels.length >= 40, `the legend must actually be rendering its chips (${labels.length})`);
+
+  // ── THE TWELVE. Each pastes, SELECTS its placeholder, and leaves the outline alone.
+  const TEMPLATES = {
+    '#tag': 'tag', '#tag/sub': 'tag/sub', 'start:<date': 'date', '-term': 'term',
+    '"a b"': 'a b', 'a | b': 'a', 'has:key': 'key', 'key:value': 'key', 'key:>N': 'key',
+    'key:<=N': 'key', 'state:value': 'value', 'var:name': 'name',
+  };
+  for (const [label, ph] of Object.entries(TEMPLATES)) {
+    assert.ok(labels.includes(label), `the legend must still offer ${label}`);
+    await reset();
+    await pick(label);
+    const r = await state();
+    assert.equal(r.v, label, `${label}: the label is what lands in the box`);
+    assert.notEqual(r.s, r.e, `${label}: the caret must NOT be collapsed — that is the bug`);
+    assert.equal(r.v.slice(r.s, r.e), ph, `${label}: the placeholder must be selected, ready to type over`);
+    assert.deepEqual(r.rows, ['Alpha', 'Beta', 'Gamma'],
+      `${label}: a template must not filter — the outline stays as it was`);
+    assert.doesNotMatch(r.live, /matching point/,
+      `${label}: the app must not deliver a verdict on a string it wrote as a template (said "${r.live}")`);
+    assert.ok(r.live.includes(label) && r.live.includes(ph),
+      `${label}: and it must say what landed and what to type over (said "${r.live}")`);
+  }
+
+  // ── THE 32 OPERATORS, the negative case. Misclassifying one of these is the way this fix breaks:
+  // a filter that quietly stops filtering. Every remaining chip must still run at once and leave a
+  // collapsed caret at the end of the query.
+  const operators = labels.filter(l => !(l in TEMPLATES));
+  assert.ok(operators.length >= 30, `the operator half must be non-empty (${operators.length})`);
+
+  // the classification and the door's own name, read off the LIVE dom. A source pin can see the
+  // setAttribute call; only this can see whether it reached the element.
+  const stamped = await pg.evaluate(() => {
+    const ks = [...document.querySelectorAll('#search-hint .sh-row kbd:not([data-doc])')];
+    return {
+      tmpl: ks.filter(k => k.hasAttribute('data-tmpl')).map(k => k.textContent),
+      unnamed: ks.filter(k => !(k.getAttribute('aria-label') || '').trim()).map(k => k.textContent),
+      tagAria: ks.find(k => k.textContent === '#tag').getAttribute('aria-label'),
+      opAria: ks.find(k => k.textContent === 'is:todo').getAttribute('aria-label'),
+    };
+  });
+  assert.deepEqual(stamped.tmpl.slice().sort(), Object.keys(TEMPLATES).slice().sort(),
+    'exactly the template chips carry data-tmpl in the live DOM');
+  assert.deepEqual(stamped.unnamed, [], 'every chip keeps an accessible name (P3-1)');
+  assert.match(stamped.tagAria, /template/, 'a template chip says so in its accessible name');
+  assert.equal(stamped.opAria, 'Add is:todo to the search',
+    'and an operator chip keeps the name it always had');
+
+  for (const label of operators) {
+    await reset();
+    await pick(label);
+    const r = await state();
+    assert.equal(r.s, r.e, `${label}: a complete operator still leaves the caret collapsed`);
+    assert.equal(r.s, r.v.length, `${label}: at the end of the query`);
+    assert.match(r.live, /matching point/, `${label}: and it still answers with a count (said "${r.live}")`);
+  }
+
+  // ── FOLLOW-THROUGH: typing over the placeholder is what runs the search. Without this the fix
+  // would be "the chip does nothing", which is a different defect.
+  await reset();
+  await pick('key:value');
+  await pg.keyboard.type('cost');
+  await pg.waitForTimeout(300);
+  const typed = await state();
+  assert.equal(typed.v, 'cost:value', 'typing replaces the selected placeholder, it does not append');
+  assert.match(typed.live, /matching point/, 'and once you type, the search runs again');
+
+  // ── STACKING onto a live query: the selection is offset by what is already there, and the
+  // running filter survives. A template branch anchored at 0 would select the wrong word here.
+  await reset();
+  await pg.evaluate(() => { const sb = document.getElementById('search-box'); sb.value = 'Alpha'; applySearch('Alpha'); sb.focus(); });
+  await pg.waitForTimeout(250);
+  await pick('has:key');
+  const stacked = await state();
+  assert.equal(stacked.v, 'Alpha has:key', 'a chip still stacks onto the query you have built');
+  assert.equal(stacked.v.slice(stacked.s, stacked.e), 'key', 'and the placeholder span is offset by it');
+  assert.deepEqual(stacked.rows, ['Alpha'], 'the filter that was already running is not disturbed');
+
+  // ── THE KEYBOARD DOOR takes the same branch (P3): Enter on a chip, not just the pointer.
+  await reset();
+  await pg.evaluate(() => {
+    const k = [...document.querySelectorAll('#search-hint .sh-row kbd:not([data-doc])')].find(x => x.textContent === 'var:name');
+    k.setAttribute('tabindex', '0'); k.focus();
+  });
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(250);
+  const kb = await state();
+  assert.equal(kb.v.slice(kb.s, kb.e), 'name', 'Enter on a template chip selects the placeholder too');
+  assert.deepEqual(kb.rows, ['Alpha', 'Beta', 'Gamma'], 'and it does not filter either');
+
+  // ── THE P1 CLAIM, both surfaces in one page. `#tag` is byte-identical in the legend and in the
+  // @ Query dialog's chips; it used to leave [4,4] on one and [1,4] on the other.
+  await reset();
+  await pick('#tag');
+  const fromLegend = await state();
+  const fromDialog = await pg.evaluate(() => {
+    const inp = document.createElement('input');
+    document.body.appendChild(inp);
+    inp.value = ''; inp.selectionStart = inp.selectionEnd = 0;
+    QUERY_CHIPS.find(c => c.label === '#tag').insert(inp);
+    const r = { v: inp.value, s: inp.selectionStart, e: inp.selectionEnd };
+    inp.remove(); return r;
+  });
+  assert.equal(fromLegend.v, fromDialog.v, '#tag produces the same string on both surfaces');
+  assert.deepEqual([fromLegend.s, fromLegend.e], [fromDialog.s, fromDialog.e],
+    '#tag must leave the same selection on both surfaces — that is the P1 claim');
+  await pg.close();
+});

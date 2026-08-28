@@ -23538,7 +23538,11 @@ test('modes batch — search-hint tiered display + clickable examples', () => {
   // the cut and turned a behaviour-preserving insert into a false red.
   const wire = fnBody(_src, 'wireSearchExamples');
   assert.ok(wire, 'wireSearchExamples must exist');
-  assert.ok(wire.includes("cur ? `${cur} ${tok}` : tok") && wire.includes('applySearch(sb.value)'),
+  // #1513 split the applier in two: the stacking is unchanged (`head` is the old inline
+  // `cur ? cur + ' ' : ''`), and an OPERATOR chip still runs the search at once. The template
+  // branch is pinned separately, below; this assertion keeps the operator claim it always made.
+  assert.ok(wire.includes("const head = cur ? `${cur} ` : ''") && wire.includes('sb.value = head + tok')
+            && wire.includes('applySearch(sb.value)'),
     'clicking an example must add its token to the search box and run the search');
   assert.ok(wire.includes("e.preventDefault()") && wire.includes("k.setAttribute('role', 'button')"),
     'example chips must keep the caret (mousedown preventDefault) and carry role=button');
@@ -23591,6 +23595,130 @@ test('search legend chips are ONE tab stop with arrow navigation (roving tabinde
     'the load-time seeding pass must use forEach on the NodeList, not a spread');
   assert.match(wire, /const CHIP_SEL = '\.sh-row kbd:not\(\[data-doc\]\)';/,
     'and the one selector every reader shares, so a door and a sample cannot be confused again');
+});
+
+// #1513: TWELVE legend chips are TEMPLATES, not operators. Their labels carry a placeholder only
+// the author can fill (`key:value`, `#tag`, `-term`, `start:<date`, `a | b`, ...), and the blanket
+// wiring pasted each literally with a COLLAPSED caret and ran it -- so the app wrote a teaching
+// string and then delivered a verdict on it. Eight answered "0 matching points" and blanked the
+// outline; `-term` and `a | b` answered a confident "3 matching points" (every point, by accident);
+// `start:<date` blamed the user for the string it had just typed for them. The @ Query dialog's own
+// chips already had the right idiom -- paste, SELECT the placeholder, run nothing -- and `#tag`
+// exists on both surfaces byte-for-byte, which is the P1 breach on its own.
+//
+// The map is explicit because no heuristic separates `has:key` (template) from `has:tag`
+// (operator) or `key:value` (template) from `priority:A` (operator). The census below is the
+// ratchet: every interactive chip must be classified one way or the other.
+test('#1513 a legend chip whose label carries a placeholder is a template, not a query', () => {
+  const { chipTemplateSpan, chipTemplateSay, chipAriaLabel, chipTemplateLabels } = c;
+  // ---- 1. the twelve, by value. slice(start,end) is the placeholder, so the span is usable.
+  const EXPECT = {
+    '#tag': 'tag', '#tag/sub': 'tag/sub', 'start:<date': 'date', '-term': 'term',
+    '"a b"': 'a b', 'a | b': 'a', 'has:key': 'key', 'key:value': 'key', 'key:>N': 'key',
+    'key:<=N': 'key', 'state:value': 'value', 'var:name': 'name',
+  };
+  for (const [label, ph] of Object.entries(EXPECT)) {
+    const t = chipTemplateSpan(label);
+    assert.ok(t, `${label} must be recognised as a template`);
+    assert.equal(t.ph, ph, `${label} selects the wrong placeholder`);
+    assert.equal(label.slice(t.start, t.end), ph, `${label}: the span must cover the placeholder`);
+  }
+  // MEASURE THE NEGATIVE CASE. These read like metasyntax to a heuristic and are complete
+  // operators; converting one would stop a working filter from filtering.
+  for (const op of ['is:todo', 'has:tag', 'priority:A', 'priority:none', 'due:week', 'is:leaf',
+                    'is:duplicate-title', 'has:dice', 'due:overdue', 'is:unscheduled']) {
+    assert.equal(chipTemplateSpan(op), null, `${op} is a complete operator and must still filter`);
+  }
+  assert.equal(chipTemplateSpan(''), null, 'an empty label is not a template');
+  assert.equal(chipTemplateSpan(null), null, 'a missing label is not a template');
+  assert.equal(chipTemplateSpan('key:value '), null, 'lookup is exact, not fuzzy');
+
+  // ---- 2. CENSUS RATCHET. Every interactive chip in the legend is classified. A new row that is
+  // neither listed here nor in CHIP_TEMPLATES fails this, which is the only thing that stops the
+  // next placeholder chip from shipping with the old behaviour.
+  const legend = nonEmpty([..._src.matchAll(/<div class="sh-row">([\s\S]*?)<\/div>/g)]
+    .flatMap(m => [...m[1].matchAll(/<kbd(\s[^>]*)?>([\s\S]*?)<\/kbd>/g)])
+    .filter(m => !(m[1] || '').includes('data-doc'))
+    .map(m => m[2].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')),
+    'the legend must have interactive chips to classify');
+  const OPERATORS = new Set([
+    'has:tag', 'is:todo', 'is:done', 'is:note', 'is:failing', 'is:passing', 'is:scheduled',
+    'is:unscheduled', 'is:overdue', 'is:held', 'is:leaf', 'is:parent', 'is:collapsed',
+    'is:expanded', 'is:pill', 'is:random', 'has:dice', 'has:children', 'has:footnote', 'has:link',
+    'has:backlink', 'is:broken', 'is:empty', 'is:orphan', 'is:duplicate-title',
+    'is:recently-edited', 'due:today', 'due:overdue', 'due:week', 'due:month', 'priority:A',
+    'priority:none',
+  ]);
+  const templates = new Set(chipTemplateLabels());
+  const unclassified = legend.filter(l => !templates.has(l) && !OPERATORS.has(l));
+  assert.deepEqual(unclassified, [],
+    'every interactive legend chip must be classified as a template or a complete operator');
+  const dead = [...templates].filter(l => !legend.includes(l));
+  assert.deepEqual(dead, [], 'CHIP_TEMPLATES must not name a chip the legend no longer shows');
+  const staleOps = [...OPERATORS].filter(l => !legend.includes(l));
+  assert.deepEqual(staleOps, [], 'this operator list must not name a chip the legend no longer shows');
+  // and the two halves do not overlap: a chip either filters or teaches, never both.
+  assert.deepEqual([...templates].filter(l => OPERATORS.has(l)), [],
+    'a chip cannot be a template AND a complete operator');
+
+  // ---- 3. THE DECISIVE P1 EVIDENCE. `#tag` exists on BOTH surfaces byte-for-byte and used to
+  // behave two ways: the dialog left [1,4] and ran nothing, the legend left [4,4] and applied it.
+  // The dialog's span is `insertAndSelect(el, '#', 'tag', '')` -- head '#', word 'tag' -- so the
+  // parity claim is span-for-span, not "both exist".
+  const dlg = /\{ label:'#tag',[^\n]*insert: el => insertAndSelect\(el, '(.*?)', '(.*?)', '(.*?)'\)/.exec(_src);
+  assert.ok(dlg, "the @ Query dialog's #tag chip must still be an insertAndSelect");
+  const legendTag = chipTemplateSpan('#tag');
+  assert.equal(legendTag.start, dlg[1].length, '#tag must select at the same offset on both surfaces');
+  assert.equal(legendTag.end, dlg[1].length + dlg[2].length, '#tag must select the same length on both surfaces');
+  assert.equal(legendTag.ph, dlg[2], '#tag must select the same word on both surfaces');
+  // the `key:` family coincides too: the dialog selects `key` first, so the legend does the same.
+  const dlgKey = /\{ label:'key:',[^\n]*insert: el => insertAndSelect\(el, '(.*?)', '(.*?)', '(.*?)'\)/.exec(_src);
+  assert.ok(dlgKey, "the @ Query dialog's key: chip must still be an insertAndSelect");
+  assert.equal(chipTemplateSpan('key:value').ph, dlgKey[2],
+    'the legend and the dialog must select the same half of a key:value template first');
+
+  // ---- 4. P4: picking a template says what landed and what to do. Not a silent no-op.
+  const say = chipTemplateSay('key:>N');
+  assert.ok(say.includes('key:>N'), 'the announcement names what was inserted');
+  assert.ok(say.includes('"key"'), 'the announcement names the placeholder to type over');
+  assert.match(say, /not a filter yet/, 'the announcement says the search has NOT run');
+  assert.equal(chipTemplateSay('is:todo'), null, 'a complete operator has no template announcement');
+  // every template can say its own sentence (no map entry produces a broken one)
+  for (const label of chipTemplateLabels()) {
+    const m = chipTemplateSay(label);
+    assert.ok(m && m.includes(label) && m.includes('"' + chipTemplateSpan(label).ph + '"'),
+      `${label} must announce its own placeholder`);
+  }
+
+  // ---- 5. the door's own name changes with its behaviour: "Add X to the search" was a promise a
+  // template chip did not keep.
+  assert.equal(chipAriaLabel('is:todo'), 'Add is:todo to the search');
+  assert.equal(chipAriaLabel('key:value'), 'Insert the key:value template into the search');
+  assert.notEqual(chipAriaLabel('key:value'), chipAriaLabel('is:todo').replace('is:todo', 'key:value'));
+
+  // ---- 6. THE CALL SITES. A classified map proves nothing if the wiring ignores it.
+  const wire = fnBody(_src, 'wireSearchExamples');
+  assert.ok(wire.includes("k.setAttribute('aria-label', chipAriaLabel(k.textContent))"),
+    'the seeding pass must take its aria-label from chipAriaLabel, not a hardcoded template');
+  assert.ok(!/aria-label', `Add \$\{k\.textContent\} to the search`/.test(wire),
+    'the old unconditional "Add <token> to the search" label must be gone');
+  // the exact line, not a window around it: `if (false) k.setAttribute(...)` satisfies any
+  // proximity regex while stamping nothing, and its mutant survived until this was tightened.
+  assert.ok(wire.includes("const t = chipTemplateSpan(k.textContent);\n    if (t) k.setAttribute('data-tmpl', t.ph);"),
+    'a template chip must carry its placeholder in data-tmpl');
+  // the applier: template branch selects the placeholder OFFSET BY THE STACKED HEAD, announces,
+  // and RETURNS before applySearch. The head offset is the half that breaks when a chip is added
+  // to a query that already has terms.
+  const applier = between(wire, 'const applyExample = tok =>', '};');
+  assert.ok(applier.includes('const t = chipTemplateSpan(tok)'), 'the applier must classify the token');
+  assert.ok(applier.includes('sb.setSelectionRange(head.length + t.start, head.length + t.end)'),
+    'the template selection must be offset by the already-stacked query, not anchored at 0');
+  assert.ok(applier.includes('announce(chipTemplateSay(tok))'), 'a template chip must announce');
+  assert.ok(/if \(t\) \{[\s\S]{0,700}return;\s*\}\s*applySearch\(sb\.value\)/.test(applier),
+    'the template branch must RETURN before applySearch -- running the template is the bug');
+  // and the operator path is untouched: still applies, still collapses the caret at the end.
+  assert.ok(/applySearch\(sb\.value\);\s*sb\.focus\(\);\s*const n = sb\.value\.length; sb\.setSelectionRange\(n, n\);/.test(applier),
+    'a complete operator must still run the search and leave the caret at the end');
 });
 
 // item 8 (modes batch): the { grammar picker matches the lean / and @ commands — a one-line tip.
