@@ -12903,6 +12903,10 @@ test('document tabs: strip is gated on workspaceDir, keyboard-cycle wired + docu
   // ARIA tablist semantics (P3) and keyboard activation alongside pointer (caret invariant).
   assert.ok(_src.includes('role="tablist"') && _src.includes("setAttribute('role', 'tab')"),
     'doc-tabs is not an ARIA tablist with role=tab tabs');
+  // #1514: this used to be the WHOLE keyboard claim, and it is exactly the vacuous shape CLAUDE.md
+  // warns about -- "a handler exists" passed while Home/End were unbound, the tab stop never moved,
+  // and every close button was a Tab stop. The presence claim stays (it is still true and still
+  // worth pinning); what it asserts about is now pinned by name below.
   assert.ok(/tab\.addEventListener\('keydown'/.test(_src),
     'tabs lack a keyboard handler (added alongside the mousedown path)');
   // Discoverable: an essential ?-panel row advertises the shortcut.
@@ -12916,6 +12920,89 @@ test('document tabs: strip is gated on workspaceDir, keyboard-cycle wired + docu
   // it — the build-but-stay-hidden bug). Must set 'flex', not ''.
   assert.ok(/strip\.style\.display = 'flex'/.test(_src),
     'renderDocTabs must set display:flex explicitly (not "", which the CSS default re-hides)');
+});
+
+// #1514: `renderDocTabs` hand-rolled the tablist. Its own comment said "roving tabindex (tablist
+// pattern)" and the pattern was implemented nowhere: `tabs[(i + dir + n) % n]?.focus()` -- no
+// Home/End, no tab-stop swap, and wrapping where §3 says the roving groups clamp. Measured on four
+// documents: Home and End moved NOTHING across 16 primitives (re-measured with 30 tabs and a
+// genuinely overflowing strip, still nothing); after roving to tab 1 the tabindexes were STILL
+// [-1, 0, -1, -1], so Tab away and Tab back dropped you on the active tab again; and all four
+// `.doc-tab-close` buttons reported `tabIndex 0` with no explicit attribute -- six Tab stops for
+// four documents, growing one per open document, the first of them a Close button belonging to a
+// tab that was itself -1.
+//
+// §3 already listed the tablist among the seven roving groups, with `roveIndex` named as the shared
+// core. Unlike #1512, the doc was right and the code was wrong.
+test('#1514 the document tab strip is one roving group, not one Tab stop per document', () => {
+  const { tabFocusAfterClose, tabCloseSay } = c;
+  // ---- 1. where focus goes after a close. `tabClose`'s `nextActive` cannot answer this: it is
+  // null for a background tab, and focus still has to land somewhere.
+  assert.equal(tabFocusAfterClose(['a', 'b', 'c'], 'a'), 'b', 'the tab that slid into the slot');
+  assert.equal(tabFocusAfterClose(['a', 'b', 'c'], 'b'), 'c');
+  assert.equal(tabFocusAfterClose(['a', 'b', 'c'], 'c'), 'b', 'closing the last tab falls back one');
+  assert.equal(tabFocusAfterClose(['a'], 'a'), null, 'nothing left to focus');
+  assert.equal(tabFocusAfterClose(['a', 'b'], 'zz'), null, 'a name that is not open moves nothing');
+  assert.equal(tabFocusAfterClose([], 'a'), null);
+  // it agrees with tabClose wherever tabClose has an opinion (the ACTIVE-tab case), so the strip's
+  // focus and the document that opens cannot drift apart.
+  for (const name of ['a', 'b', 'c']) {
+    assert.equal(tabFocusAfterClose(['a', 'b', 'c'], name), c.tabClose(['a', 'b', 'c'], name, name).nextActive,
+      `closing the active tab ${name}: focus and the newly-active document must be the same tab`);
+  }
+
+  // ---- 2. P4: the strip just loses a chip. Say what went and what is left.
+  assert.equal(tabCloseSay('one', 3), 'Closed one. 3 documents open.');
+  assert.equal(tabCloseSay('one', 1), 'Closed one. 1 document open.', 'singular at one');
+  assert.equal(tabCloseSay('one', 0), 'Closed one. No documents open.', 'and never "0 documents"');
+
+  // ---- 3. THE CALL SITES. The shared roving core, and the hand-rolled modulo gone.
+  const rd = fnBody(_src, 'renderDocTabs');
+  assert.ok(rd, 'renderDocTabs must exist');
+  assert.ok(rd.includes('const to = roveIndex(e.key, i, tabs.length)') && rd.includes('roveTo(tab, tabs[to])'),
+    'the tablist must navigate through the shared roveIndex/roveTo, like the other six groups');
+  assert.ok(!/%\s*n\)\]\?\.focus\(\)/.test(rd) && !rd.includes("+ (e.key === 'ArrowRight' ? 1 : -1) + n"),
+    'the hand-rolled wrapping modulo must be gone -- it is what skipped Home/End and the tab-stop swap');
+  assert.ok(/e\.key === 'ArrowRight' \|\| e\.key === 'ArrowLeft' \|\| e\.key === 'Home' \|\| e\.key === 'End'/.test(rd),
+    'Home and End must be claimed keys, not unbound');
+  // one Tab stop for the strip: the close button is not a native default any more.
+  assert.ok(rd.includes("close.setAttribute('tabindex', '-1')"),
+    'a close button must not be a Tab stop -- that is the stop-per-document growth');
+  // the keyboard door for closing asks for focus back; the pointer door deliberately does not.
+  assert.ok(rd.includes("closeDocTab(name, { refocus: true })"),
+    'Delete/Backspace on a tab must ask for focus to be restored');
+  const clickLine = rd.split('\n').find(l => l.includes("close.addEventListener('click'"));
+  assert.ok(clickLine && clickLine.includes('closeDocTab(name);') && !clickLine.includes('refocus'),
+    'the ✕ must NOT pull focus into the strip -- its mousedown preventDefault exists to keep the caret');
+  // a tab must be findable by name for focus to return to it
+  assert.ok(rd.includes('tab.dataset.name = name'), 'a tab must carry its filename for focus to find it');
+
+  const cd = fnBody(_src, 'closeDocTab');
+  assert.ok(cd.includes('announce(tabCloseSay(displayName(name), tabs.length))'),
+    'closing a tab must announce on BOTH doors');
+  assert.ok(cd.includes('if (opts.refocus) focusDocTab(tabFocusAfterClose(before, name))'),
+    'the keyboard door must place focus through the pure core, not by hand');
+  assert.ok(/const before = openTabs\.slice\(\);/.test(cd),
+    'the pre-close list must be captured BEFORE the mutation, or the neighbour cannot be computed');
+
+  const fd = fnBody(_src, 'focusDocTab');
+  assert.ok(fd, 'focusDocTab must exist');
+  assert.ok(fd.includes("tabs.forEach(t => t.setAttribute('tabindex', t === el ? '0' : '-1'))"),
+    'restoring focus must also move the single tab stop, or the group has two stops or none');
+  assert.ok(/const add = strip\?\.querySelector\('\.doc-tab-add'\)/.test(fd) && fd.includes('restoreChromeReturn()'),
+    'with no tab left, focus must fall to the + or back into the document -- never to <body>');
+
+  // ---- 4. the WRAPPING sibling is untouched. §3 calls Ctrl/Cmd+Shift+] / [ a cycle, and clamping
+  // the arrows would be a regression if it had quietly clamped that too.
+  assert.ok(_src.includes('function tabCycle'), 'tabCycle must survive');
+  assert.ok(/return tabs\[\(i \+ dir \+ tabs\.length\) % tabs\.length\];/.test(_src),
+    'Ctrl/Cmd+Shift+] / [ must still WRAP -- it is the cycle, the arrows are the roving group');
+
+  // ---- 5. P2: the keys are documented where the guide teaches the strip. Removing the close
+  // buttons from the Tab order makes Delete the keyboard door, so it has to be written down.
+  const entry = _src.slice(_src.indexOf("id:'workspace-documents'"));
+  assert.ok(entry.slice(0, 6000).includes('Delete to close it'),
+    'the concept guide must teach the strip keys it now depends on');
 });
 
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {

@@ -30,7 +30,9 @@ blank document, connecting to a folder that already holds a document under the s
 document; a document with real content saves under a fresh name instead when its name is taken. A **tab strip** appears under the toolbar with the documents
 you have open: click a tab to switch, the `×` to close it or the `+` to open another. `Ctrl/Cmd+Shift+]`
 and `[` step to the next and previous tab, and `Alt+1` through `Alt+9` jump straight to that numbered
-tab. Tabs are the documents you have opened (not the whole folder),
+tab. The strip is a **single Tab stop** however many documents are open: Tab into it, then `←`/`→`
+move along it, `Home` and `End` reach the ends, `Enter` opens the tab you are on and `Delete`
+closes it. Tabs are the documents you have opened (not the whole folder),
 and they reappear after a reload. From the **File** menu:
 
 - **Switch document** to see all the documents in the folder, jump to one, add a fresh **+ New

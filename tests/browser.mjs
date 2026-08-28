@@ -4446,3 +4446,137 @@ test('#1513 a legend template chip lands ready to type, and an operator chip sti
     '#tag must leave the same selection on both surfaces — that is the P1 claim');
   await pg.close();
 });
+
+// 71. #1514 — the document tab strip advertised the roving pattern in its own comment and
+// implemented none of it. Driven, because every symptom is a runtime fact a source pin cannot see:
+// Home and End moved NOTHING (16 primitives, re-measured with a genuinely overflowing 30-tab
+// strip); the single tab stop never followed focus, so Tab-away-Tab-back always landed on the
+// active tab; and all four close buttons were Tab stops — six stops for four documents, GROWING one
+// per open document, the first of them a Close button belonging to a tab that was itself -1. The
+// growth is the half only a scale case shows, so this drives 4 tabs and 30.
+test('#1514 the tab strip is one roving group whose stop follows focus, at any size', { skip: skip() }, async () => {
+  const pg = await fresh();
+  // The File System Access API is unavailable on file://, so the strip never renders on its own.
+  // Seeding workspaceDir + openTabs is the documented repro, not a shortcut past one.
+  const seed = (names, active) => pg.evaluate(([ns, a]) => {
+    root.children = ['Alpha', 'Beta'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    workspaceDir = { name: 'MyFolder' };
+    openTabs = ns; fileName = a;
+    renderDocTabs();
+    const live = document.getElementById('a11y-live'); if (live) live.textContent = '';
+  }, [names, active]);
+  const label = () => pg.evaluate(() => (document.activeElement.getAttribute?.('aria-label') || '').trim());
+  const stops = () => pg.evaluate(() => [...document.querySelectorAll('#doc-tabs .doc-tab')]
+    .map(t => t.tabIndex).filter(n => n === 0).length);
+  const live = () => pg.evaluate(() => (document.getElementById('a11y-live')?.textContent || '').trim());
+
+  const FOUR = ['one.opml', 'two.opml', 'three.opml', 'four.opml'];
+  await seed(FOUR, 'two.opml');
+  await pg.waitForTimeout(250);
+
+  // ── the close buttons are out of the Tab order. This is the growth defect.
+  assert.deepEqual(await pg.evaluate(() => [...document.querySelectorAll('.doc-tab-close')].map(b => b.tabIndex)),
+    [-1, -1, -1, -1], 'a close button must not be a native Tab stop');
+
+  // ── arrows CLAMP and the single stop follows focus. Both halves fail on the old code: it wrapped,
+  // and the tabindexes stayed [-1,0,-1,-1] however far you roved.
+  await pg.evaluate(() => document.querySelector('.doc-tab.active').focus());
+  assert.equal(await label(), 'Document two (current)', 'precondition: focus starts on the active tab');
+  for (const [key, expect] of [
+    ['ArrowRight', 'Document three'], ['ArrowRight', 'Document four'],
+    ['ArrowRight', 'Document four'],                                    // clamps, does not wrap
+    ['ArrowLeft', 'Document three'], ['ArrowLeft', 'Document two (current)'],
+    ['ArrowLeft', 'Document one'], ['ArrowLeft', 'Document one'],       // clamps at the other end
+    ['Home', 'Document one'], ['End', 'Document four'], ['End', 'Document four'],
+  ]) {
+    await pg.keyboard.press(key);
+    await pg.waitForTimeout(110);
+    assert.equal(await label(), expect, `${key} must land on ${expect}`);
+    assert.equal(await stops(), 1, `${key}: the group must keep exactly one tab stop`);
+    assert.equal(await pg.evaluate(() => document.activeElement.tabIndex), 0,
+      `${key}: the tab stop must have FOLLOWED focus (Tab away and back lands where you roved)`);
+  }
+
+  // ── THE SCALE CASE. Six stops for four documents was the measurement; the fix is a constant.
+  // Counting stops by walking Tab is the only honest way to count them.
+  const walkStrip = async (n) => {
+    await pg.evaluate(() => document.querySelector('#doc-tabs .doc-tab[tabindex="0"]').focus());
+    const seen = [];
+    for (let i = 0; i < n; i++) {
+      await pg.keyboard.press('Tab');
+      await pg.waitForTimeout(60);
+      seen.push(await pg.evaluate(() => document.activeElement.className || document.activeElement.tagName));
+      if (!seen[seen.length - 1].includes('doc-tab')) break;
+    }
+    return seen;
+  };
+  const after4 = await walkStrip(6);
+  assert.equal(after4.filter(x => x.includes('doc-tab-close')).length, 0,
+    `no close button may be a Tab stop (walked: ${after4.join(' → ')})`);
+  assert.ok(after4[0].includes('doc-tab-add'),
+    `from the tab group, the next stop is the + (walked: ${after4.join(' → ')})`);
+
+  const THIRTY = Array.from({ length: 30 }, (_, i) => `doc${i}.opml`);
+  await seed(THIRTY, 'doc0.opml');
+  await pg.waitForTimeout(300);
+  assert.ok(await pg.evaluate(() => {
+    const s = document.getElementById('doc-tabs');
+    return s.scrollWidth > s.clientWidth;
+  }), 'precondition: 30 tabs must genuinely overflow the strip');
+  assert.equal(await stops(), 1, '30 documents is still ONE tab stop for the group');
+  const after30 = await walkStrip(6);
+  assert.ok(after30[0].includes('doc-tab-add'),
+    `the stop count must not grow with the document count (walked: ${after30.join(' → ')})`);
+  // and Home/End still reach the ends of a strip long enough to scroll
+  await pg.evaluate(() => document.querySelector('#doc-tabs .doc-tab[tabindex="0"]').focus());
+  await pg.keyboard.press('End');
+  await pg.waitForTimeout(150);
+  assert.equal(await label(), 'Document doc29', 'End must reach the last tab of an overflowing strip');
+  await pg.keyboard.press('Home');
+  await pg.waitForTimeout(150);
+  assert.equal(await label(), 'Document doc0 (current)', 'and Home the first');
+
+  // ── DELETE is now the keyboard door for closing, so it must land focus and say what happened.
+  // Before: focus fell to BODY and the live region stayed empty.
+  await seed(FOUR, 'two.opml');
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => document.querySelector('#doc-tabs .doc-tab').focus());
+  await pg.keyboard.press('Delete');
+  await pg.waitForTimeout(450);
+  assert.deepEqual(await pg.evaluate(() => openTabs), ['two.opml', 'three.opml', 'four.opml'],
+    'Delete on a tab closes it');
+  assert.equal(await label(), 'Document two (current)',
+    'focus must land on the tab that slid into the slot, not on <body>');
+  assert.equal(await stops(), 1, 'and the restored focus carries the tab stop with it');
+  assert.equal(await live(), 'Closed one. 3 documents open.', 'closing announces what went and what is left');
+
+  // ── the last tab: nothing in the strip to focus, so the caret goes back to the document.
+  await pg.evaluate(() => {
+    openTabs = ['solo.opml']; fileName = 'solo.opml'; renderDocTabs();
+    const l = document.getElementById('a11y-live'); if (l) l.textContent = '';
+    document.querySelector('#doc-tabs .doc-tab').focus();
+  });
+  await pg.waitForTimeout(250);
+  await pg.keyboard.press('Delete');
+  await pg.waitForTimeout(600);
+  assert.equal(await live(), 'Closed solo. No documents open.');
+  assert.doesNotMatch(await pg.evaluate(() => document.activeElement.tagName), /BODY/,
+    'closing the last tab must hand focus back to the document, not strand it on <body>');
+
+  // ── THE NEGATIVE CASE: the keys that already worked still work. Enter opens a tab, and the +
+  // is still its own Tab stop (it is not a tab, so it is not in the roving group).
+  await seed(FOUR, 'two.opml');
+  await pg.waitForTimeout(250);
+  assert.equal(await pg.evaluate(() => document.querySelector('.doc-tab-add').tabIndex), 0,
+    'the + stays a Tab stop of its own');
+  await pg.evaluate(() => { window.__opened = null; window.__origSwitch = switchWorkspaceDoc;
+    switchWorkspaceDoc = async (n) => { window.__opened = n; return true; }; });
+  await pg.evaluate(() => document.querySelectorAll('#doc-tabs .doc-tab')[2].focus());
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(300);
+  assert.equal(await pg.evaluate(() => window.__opened), 'three.opml',
+    'Enter on a tab still opens that document');
+  await pg.close();
+});
