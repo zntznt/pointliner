@@ -2027,7 +2027,23 @@ body.v-guided #sc-toggle:hover{background:color-mix(in srgb,var(--acc) 16%,trans
    menu's own row instead of being a bare label. The typed form sits right-aligned in the app's
    mono face, the same way a keyboard hint reads elsewhere. */
 .builder-item{align-items:flex-start}
+/* #1520: the syntax example may take the row's leftovers, never the row. `.builder-typed` is
+   `nowrap; flex-shrink:0`, so on a single-line row it claimed its full content width and
+   `.cmd-info` (flex:1, min-width:0) collapsed to what was left -- which was NOTHING for the long
+   examples. Measured: 48 of 89 command NAMES rendered at clientWidth 0 on a 390px phone, with
+   their descriptions at 0 too, leaving a column of bare syntax fragments; and 14 still at 0 on a
+   1280px desktop, so this was never only a narrow-viewport defect.
+   The example takes its own line under the name, indented past the icon and ellipsised if it is
+   still too wide -- the same stack the slash-menu footer uses, which the design language calls the
+   canonical teaching row. A `min-width` floor on `.cmd-info` was the wrong shape and was measured
+   as such: it pushed the row past the 150px nav, so the names were "visible" by clientWidth and
+   CLIPPED on screen -- the presence-vs-rendering trap that let UXP-250 ship this in the first
+   place, reproduced one level along. The check now measures against the nav's own rect.
+   Nothing here touches `.builder-nav{width:150px}` -- that is UXP-171's remedy for the same
+   overlay, and narrowing or widening it would trade this bug for that one. */
+.builder-item{flex-wrap:wrap}
 .builder-item>.cmd-info{display:flex;flex-direction:column;min-width:0;flex:1;gap:1px}
+.builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}
 /* clamped to two lines: unclamped, the long entries (Secret, Base, Paragraph) ran to five lines
    and the list lost its even rhythm. The full text is still one keystroke away in the doc pane. */
 .builder-item>.cmd-info>.cmd-desc{font-size:10.5px;color:var(--muted);line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}

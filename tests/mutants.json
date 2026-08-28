@@ -2205,6 +2205,60 @@
       "find": "  if (shift && (k === 'i' || k === 'j')) return true;   // the strips' own toggles (Inbox, Journal)\n  return false;",
       "replace": "  return true;",
       "kills": "#1519 undo reaches the document from inside a strip"
+    },
+    {
+      "id": "builder-syntax-eats-the-row",
+      "suite": "unit",
+      "why": "the whole defect: a nowrap non-shrinking syntax column collapses the name to zero width",
+      "file": "index.html",
+      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
+      "replace": ".builder-item>.builder-typed{margin-left:0}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "builder-row-cannot-wrap",
+      "suite": "unit",
+      "why": "without the wrap the stacked syntax has nowhere to go and the row overflows again",
+      "file": "index.html",
+      "find": "\n.builder-item{flex-wrap:wrap}",
+      "replace": "\n.builder-item{flex-wrap:nowrap}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "builder-name-column-gets-a-floor",
+      "suite": "unit",
+      "why": "a min-width floor pushes the row past the nav: 'visible' by clientWidth, clipped on screen",
+      "file": "index.html",
+      "find": ".builder-item>.cmd-info{display:flex;flex-direction:column;min-width:0;flex:1;gap:1px}",
+      "replace": ".builder-item>.cmd-info{display:flex;flex-direction:column;min-width:110px;flex:1;gap:1px}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "uxp171-narrow-nav-reverted",
+      "suite": "unit",
+      "why": "widening the nav is the naive fix and it reverts UXP-171's remedy for the same overlay",
+      "file": "index.html",
+      "find": "\n  .builder-nav{width:150px}",
+      "replace": "\n  .builder-nav{width:260px}",
+      "kills": "#1520 the builder row gives the name the width and stacks the syntax"
+    },
+    {
+      "id": "command-names-render-at-zero-width",
+      "suite": "browser",
+      "why": "driven: a zero-width render is invisible to every presence check, which is how UXP-250 shipped it",
+      "file": "index.html",
+      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
+      "replace": ".builder-item>.builder-typed{margin-left:0}",
+      "kills": "#1520 every command name and description renders inside the builder nav"
+    },
+    {
+      "id": "syntax-line-overflows-the-nav",
+      "suite": "browser",
+      "why": "driven: without the cap a long syntax example runs past the nav and is clipped, which a width-only check cannot see",
+      "file": "index.html",
+      "find": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}",
+      "replace": ".builder-item>.builder-typed{flex-basis:100%;margin-left:26px}",
+      "kills": "#1520 every command name and description renders inside the builder nav"
     }
   ]
 }

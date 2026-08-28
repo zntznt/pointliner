@@ -5183,3 +5183,75 @@ test('#1519 undo reaches the document from inside a strip, and the text chords s
   }
   await pg.close();
 });
+
+// 77. #1520 — in the Guided command builder, the phone's MAIN `@` and `/` menu, 48 of 89 command
+// NAMES rendered at `clientWidth 0` (descriptions too), leaving a column of bare syntax fragments.
+// 14 were still at zero on a 1280px desktop, so this was never only a narrow defect.
+//
+// UXP-250 shipped that row and verified PRESENCE only — "0 without a label, 0 without a
+// description" — at one width. Presence cannot see a zero-width render, which is why this check
+// measures GEOMETRY, at three widths, for both sigils.
+//
+// And it measures against the NAV'S OWN RECT, not just the element's width: the first attempt at
+// this fix put a min-width floor on the name column, which made every label "visible" by
+// clientWidth while pushing it outside the 150px nav, where it was clipped. A width-only check
+// passed that. This one did not.
+test('#1520 every command name and description renders inside the builder nav', { skip: skip() }, async () => {
+  for (const vp of [{ width: 390, height: 844, touch: true }, { width: 768, height: 1024, touch: true }, { width: 1280, height: 900, touch: false }]) {
+    const ctx = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height },
+      hasTouch: vp.touch, isMobile: vp.touch, deviceScaleFactor: vp.touch ? 2 : 1,
+    });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(800);
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(300);
+
+    for (const sigil of ['@', '/']) {
+      await pg.evaluate(() => {
+        const io = document.getElementById('io-back'); if (io?.classList.contains('on')) closeIo();
+        nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+        const n = mkNode(''); n.type = 'ul';
+        root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+        buildIndex(root, null); markDirty(); render();
+        const el = document.querySelector('.node-content');
+        enterEdit(el, n); el.focus(); activeContentId = n.id;
+      });
+      await pg.waitForTimeout(300);
+      await pg.evaluate((sg) => document.execCommand('insertText', false, sg), sigil);
+      await pg.waitForTimeout(700);
+
+      const g = await pg.evaluate(() => {
+        const nav = document.querySelector('.builder-nav');
+        if (!nav) return null;
+        const navR = nav.getBoundingClientRect();
+        const audit = (sel) => {
+          const els = [...document.querySelectorAll('.builder-item ' + sel)];
+          const bad = els.filter(e => {
+            const r = e.getBoundingClientRect();
+            return e.clientWidth === 0 || r.right > navR.right + 0.5 || r.left < navR.left - 0.5;
+          }).map(e => e.textContent.slice(0, 28));
+          return { n: els.length, bad: bad.slice(0, 5), badCount: bad.length };
+        };
+        return { navW: Math.round(navR.width), label: audit('.cmd-label'), desc: audit('.cmd-desc'), typed: audit('.builder-typed') };
+      });
+      const at = `${vp.width}x${vp.height} "${sigil}"`;
+      assert.ok(g, `${at}: the builder must be open`);
+      assert.ok(g.label.n > 40, `${at}: precondition — the whole command list is rendered (${g.label.n})`);
+      assert.equal(g.label.badCount, 0,
+        `${at}: every command NAME must render inside the nav (${g.label.badCount} did not: ${g.label.bad.join(' | ')})`);
+      assert.equal(g.desc.badCount, 0,
+        `${at}: and every description (${g.desc.badCount} did not: ${g.desc.bad.join(' | ')})`);
+      // P2-2 wants all THREE parts: the syntax may be ellipsised, never zero-width or outside.
+      assert.equal(g.typed.badCount, 0,
+        `${at}: and the typed form is still shown (${g.typed.badCount} did not: ${g.typed.bad.join(' | ')})`);
+    }
+    assert.deepEqual(errs, [], `${vp.width}x${vp.height}: no page errors`);
+    await pg.close();
+    await ctx.close();
+  }
+});

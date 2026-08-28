@@ -13295,6 +13295,38 @@ test('#1519 a transient strip keeps the edits and passes the listed global chord
   assert.equal(stamps.length, 3, 'all three strips must stamp `typed`, or Ctrl+Z forwards mid-draft');
 });
 
+// #1520: in the Guided command builder — the phone's MAIN `@` and `/` menu — 48 of 89 command
+// NAMES rendered at `clientWidth 0`, with their descriptions at 0 too, leaving a column of bare
+// syntax fragments. `.builder-typed` is `white-space:nowrap; flex-shrink:0`, so it claimed its full
+// content width (up to 336px) and `.cmd-info` (flex:1, min-width:0) collapsed into what was left.
+//
+// Measured at 1280x900 as well: 14 names still at zero width, so this was never only a narrow
+// defect — a fix aimed at the `@media(max-width:560px)` rule would have left them.
+//
+// This is CSS, so the pins here are the shape and the DRIVEN check is the guard. That split is the
+// point: UXP-250 shipped this row and verified PRESENCE only ("0 without a label, 0 without a
+// description"), at one width, which cannot see a zero-width render.
+test('#1520 the builder row gives the name the width and stacks the syntax', () => {
+  // the row wraps, and the syntax takes its own line rather than the row's width
+  assert.ok(_src.includes('\n.builder-item{flex-wrap:wrap}'),
+    'the builder row must be allowed to wrap');
+  assert.ok(_src.includes('.builder-item>.builder-typed{flex-basis:100%;margin-left:26px;max-width:calc(100% - 26px);overflow:hidden;text-overflow:ellipsis}'),
+    'the syntax example takes its own line, indented past the icon and ellipsised if still too wide');
+  // and the name column keeps min-width:0 — a floor there pushes the row PAST the nav, which reads
+  // as "visible" to clientWidth and is clipped on screen (measured; that is how this was first
+  // mis-fixed).
+  assert.ok(_src.includes('.builder-item>.cmd-info{display:flex;flex-direction:column;min-width:0;flex:1;gap:1px}'),
+    'the name column must not carry a min-width floor: it overflows the nav instead of wrapping');
+
+  // UXP-171's remedy is UNTOUCHED. Its `.builder-nav{width:150px}` inside the narrow media query is
+  // the proximate cause of the squeeze, and widening or removing it trades this bug for that one
+  // ("Builder has no responsive layout"). The fix is at the ROW, not the column.
+  assert.ok(_src.includes('\n  .builder-nav{width:150px}'),
+    "UXP-171's narrow builder nav must survive — reverting it is not the fix");
+  assert.ok(_src.includes('\n.builder-nav{width:260px;'),
+    'and the wide default is unchanged too');
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');
