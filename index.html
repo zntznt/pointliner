@@ -17441,7 +17441,13 @@ let captureManage = false;   // is the destination picker (second line) expanded
 // the input so you can type immediately; the outline stays live below.
 function openCaptureDialog(slot) {   // name kept: still the single entry point for all callers
   const wasOpen = captureOpen;
-  if (!wasOpen) { captureCount = 0; captureReturnFocus = document.activeElement; captureManage = false; } // captureDraft survives close/reopen; cleared only on successful capture (§6, UXP-84)
+  // #1515: remember the interrupted edit by POINT ID, not by element. The old slot held
+  // `document.activeElement`, and a committed capture calls render() -- so the stored element was
+  // DETACHED (`isConnected === false`, measured) by the time Escape ran, and every close door fell
+  // through to `btn-capture.focus()`. `armChromeReturn` stores { id, offset } and
+  // `restoreChromeReturn` re-queries by id: the mechanism Ctrl+F already uses and the one §3
+  // documents. captureReturnId is the coarser fallback for when no edit was interrupted at all.
+  if (!wasOpen) { captureCount = 0; armChromeReturn(); captureReturnId = captureCurrentPointId(); captureManage = false; } // captureDraft survives close/reopen; cleared only on successful capture (§6, UXP-84)
   captureSlot = normalizeCaptureSlot(slot);
   captureOpen = true;
   document.getElementById('capture-strip').classList.add('on');
@@ -17451,15 +17457,54 @@ function openCaptureDialog(slot) {   // name kept: still the single entry point 
   renderCaptureStrip();
   requestAnimationFrame(() => document.getElementById('cap-input')?.focus());
 }
-let captureReturnFocus = null;
+// #1515: ONE way back out of a toolbar strip. All THREE strips -- capture, journal, chronicle --
+// independently held `document.activeElement` and re-focused it on close, and all three commit
+// paths call render(), so the stored element was DETACHED by the time the strip closed and each
+// fell through to its own toolbar button. Measured: capture, journal and chronicle all stranded
+// focus on their button after a committed entry. Sharing the exit is what stops them drifting
+// apart again; the element slot is retired on all three.
+//
+// Pure: which exit a strip takes. `restored` is the outcome of the shared chrome-return (the
+// interrupted edit, caret and all -- the same mechanism Ctrl+F uses). Failing that, the Escape
+// blur rung: <body> with a PAINTED, ANNOUNCED row cursor. The toolbar button is the last resort,
+// for a document with no points to go back to, and it is the only case where it is not a dead end.
+function stripExitPlan(restored, returnId, firstRowId) {
+  if (restored) return { to: 'edit', id: null };
+  const id = returnId ?? firstRowId ?? null;
+  return id != null ? { to: 'cursor', id } : { to: 'button', id: null };
+}
+function stripReturnFocus(returnId, btnId) {
+  // Only offer a point that is actually ON SCREEN. Driving this found the failure: the remembered
+  // point can be stale (the row cursor still names a node a later render dropped), and
+  // moveRowCursor would then set selFocusId to it, paint nothing, and announce a positionless
+  // "(empty point)" -- a row cursor that does not exist, which is worse than the first row.
+  const live = returnId != null && typeof flatIndex !== 'undefined' && flatIndex.get(returnId) != null ? returnId : null;
+  const plan = stripExitPlan(restoreChromeReturn(), live, flatRows.find(r => !r.searchCtx)?.node.id ?? null);
+  if (plan.to === 'edit') return;
+  // Blur first: focus parked on a toolbar button means the outline's arrows do not reach the row
+  // cursor at all (outlineOwnsKeys, #1512) and Enter re-opens the strip you were leaving.
+  if (plan.to === 'cursor') { document.activeElement?.blur?.(); moveRowCursor(plan.id); return; }
+  document.getElementById(btnId)?.focus();
+}
+
+let captureReturnId = null;
 function closeCapture() {
+  // #1515: IDEMPOTENT. Escape used to close twice -- capInputKeydown ran closeCapture() and then
+  // let the event bubble to the #capture-strip listener, which ran it again with the return target
+  // already consumed, so the second pass took the toolbar-button fallback and overrode the focus
+  // the first pass had correctly restored (measured: closes = 2, on a committed capture AND on an
+  // empty one). The missing stopPropagation is fixed at the source; this guard means no future
+  // second door can undo the first one's restore either.
+  if (!captureOpen) return;
   captureOpen = false; captureManage = false; captureDue = null; // drop any pending agenda-"+" date (#463)
   document.getElementById('capture-strip').classList.remove('on');
   const btn = document.getElementById('btn-capture');
   btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
   document.getElementById('qb-capture')?.setAttribute('aria-pressed', 'false');   // #566: the quick-bar twin mirrors
-  const rf = captureReturnFocus; captureReturnFocus = null;
-  if (rf && rf.isConnected) rf.focus(); else document.getElementById('btn-capture').focus();
+  const back = captureReturnId; captureReturnId = null;
+  // The strip is a toolbar band, not a modal, so a capture must not move you off what you were
+  // doing. One exit, shared with the journal and chronicle strips.
+  stripReturnFocus(back, 'btn-capture');
 }
 function toggleCapture() { if (captureOpen) closeCapture(); else openCaptureDialog(); }
 // Resolve which slot to target: an explicit slot if given; if that slot is empty, try to
@@ -17578,7 +17623,10 @@ function capInputKeydown(e) {
     const d = +e.code.slice(5); captureTargetSlot(d === 0 ? 10 : d); return;
   }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doCapture(); }
-  else if (e.key === 'Escape') { e.preventDefault(); if (captureManage) { captureManage = false; renderCaptureStrip(); } else closeCapture(); } // one layer out (P1-3); draft survives (§6, UXP-84)
+  // #1515: stopPropagation is load-bearing, not tidiness. Without it this Escape closes the strip
+  // and then BUBBLES to the #capture-strip listener, which closes it a second time -- the second
+  // pass finds the return target consumed and parks focus on the toolbar button.
+  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (captureManage) { captureManage = false; renderCaptureStrip(); } else closeCapture(); } // one layer out (P1-3); draft survives (§6, UXP-84)
   else if (e.key !== 'Tab') e.stopPropagation();   // don't leak edits to global shortcuts
 }
 
@@ -17789,10 +17837,10 @@ function handleUrlAppend() {
 // ── journal strip: capture's twin for today's entry (DL §4: docked strips share one
 //    grammar). The date chip is segmented: year / month / day each navigate to that
 //    level of the journal tree. `journalOpen` mirrors the strip's .on class.
-let journalOpen = false, journalDraft = '', journalCount = 0, journalReturnFocus = null;
+let journalOpen = false, journalDraft = '', journalCount = 0, journalReturnId = null;
 function toggleJournalStrip() { if (journalOpen) closeJournalStrip(); else openJournalStrip(); }
 function openJournalStrip() {
-  if (!journalOpen) { journalCount = 0; journalReturnFocus = document.activeElement; } // journalDraft survives close/reopen (§6)
+  if (!journalOpen) { journalCount = 0; armChromeReturn(); journalReturnId = captureCurrentPointId(); } // #1515: by id, not by element (a commit re-renders); journalDraft survives close/reopen (§6)
   journalOpen = true;
   document.getElementById('journal-strip').classList.add('on');
   const btn = document.getElementById('btn-journal');
@@ -17801,12 +17849,13 @@ function openJournalStrip() {
   requestAnimationFrame(() => document.getElementById('jr-input')?.focus());
 }
 function closeJournalStrip() {
+  if (!journalOpen) return;   // #1515: idempotent, so no second door can undo the first's restore
   journalOpen = false;
   document.getElementById('journal-strip').classList.remove('on');
   const btn = document.getElementById('btn-journal');
   btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
-  const rf = journalReturnFocus; journalReturnFocus = null;
-  if (rf && rf.isConnected) rf.focus(); else document.getElementById('btn-journal').focus();
+  const back = journalReturnId; journalReturnId = null;
+  stripReturnFocus(back, 'btn-journal');
 }
 function renderJournalStrip() {
   const strip = document.getElementById('journal-strip');
@@ -17823,7 +17872,7 @@ function renderJournalStrip() {
   input.addEventListener('input', () => { journalDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doJournalAdd(); }
-    else if (e.key === 'Escape') { e.preventDefault(); closeJournalStrip(); } // draft survives (§6)
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeJournalStrip(); } // #1515: a handled key stops here; draft survives (§6)
     else if (e.key !== 'Tab') e.stopPropagation();   // don't leak edits to global shortcuts
   });
   row.appendChild(input);
@@ -18066,7 +18115,7 @@ function grammarLogSource(g) {
 //    home subtree, root.gamelog.calendarId its calendar, root.gamelog.cursor the current in-world
 //    day (an epoch-day integer). Beats file under the cursor's date via findOrCreateDatedEntry, so
 //    they nest year→month→day in the GAME calendar and feed the timeline as the in-world source.
-let chronicleOpen = false, chronicleDraft = '', chronicleCount = 0, chronicleReturnFocus = null;
+let chronicleOpen = false, chronicleDraft = '', chronicleCount = 0, chronicleReturnId = null;
 // The bound in-world-log home node, or null when nothing is bound (the strip has no target then).
 function chronicleHome() { const id = root.gamelog?.targetId; return id ? nodeById(id) : null; }
 // The chronicle's calendar object (from the named store), or null (Gregorian) as a safe fallback.
@@ -18093,7 +18142,7 @@ function syncChronicleButton() {
 function toggleChronicleStrip() { if (chronicleOpen) closeChronicleStrip(); else openChronicleStrip(); }
 function openChronicleStrip() {
   if (!chronicleHome()) { flashHint('Set a point as the chronicle first (its bullet menu), then log to it.'); return; }
-  if (!chronicleOpen) { chronicleCount = 0; chronicleReturnFocus = document.activeElement; }  // draft survives close/reopen
+  if (!chronicleOpen) { chronicleCount = 0; armChromeReturn(); chronicleReturnId = captureCurrentPointId(); }  // #1515: by id, not by element; draft survives close/reopen
   chronicleOpen = true;
   document.getElementById('chronicle-strip').classList.add('on');
   const btn = document.getElementById('btn-chronicle');
@@ -18102,12 +18151,13 @@ function openChronicleStrip() {
   requestAnimationFrame(() => document.getElementById('chr-input')?.focus());
 }
 function closeChronicleStrip() {
+  if (!chronicleOpen) return;   // #1515: idempotent, so no second door can undo the first's restore
   chronicleOpen = false;
   document.getElementById('chronicle-strip').classList.remove('on');
   const btn = document.getElementById('btn-chronicle');
   btn.classList.remove('active'); btn.setAttribute('aria-pressed', 'false');
-  const rf = chronicleReturnFocus; chronicleReturnFocus = null;
-  if (rf && rf.isConnected) rf.focus(); else document.getElementById('btn-chronicle').focus();
+  const back = chronicleReturnId; chronicleReturnId = null;
+  stripReturnFocus(back, 'btn-chronicle');
 }
 function renderChronicleStrip() {
   const strip = document.getElementById('chronicle-strip');
@@ -18125,7 +18175,7 @@ function renderChronicleStrip() {
   input.addEventListener('input', () => { chronicleDraft = input.value; goBtn.disabled = !input.value.trim(); autoGrowCapInput(input); });
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doChronicleAdd(); }
-    else if (e.key === 'Escape') { e.preventDefault(); closeChronicleStrip(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeChronicleStrip(); }   // #1515: a handled key stops here
     else if (e.key !== 'Tab') e.stopPropagation();
   });
   row.appendChild(input);

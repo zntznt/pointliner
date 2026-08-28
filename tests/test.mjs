@@ -13005,6 +13005,88 @@ test('#1514 the document tab strip is one roving group, not one Tab stop per doc
     'the concept guide must teach the strip keys it now depends on');
 });
 
+// #1515: Escape out of the Capture strip stranded focus on the toolbar button, from TWO
+// independent causes -- fixing either one alone leaves the bug:
+//   1. capInputKeydown's Escape ran closeCapture() and then let the event BUBBLE to the
+//      #capture-strip listener, which ran it again with the return target already consumed, so the
+//      second pass took the button fallback and overrode the focus the first pass had restored.
+//      Measured: closes = 2, with a committed capture and without one.
+//   2. the return target was a stored ELEMENT (`document.activeElement`), and a committed capture
+//      calls render(), so it was detached -- measured `isConnected === false` -- and even a single
+//      close fell through to the button. This one breaks the ✕/click door too.
+//
+// THE FAMILY IS THREE. `#capture-strip`, `#journal-strip` and `#chronicle-strip` each held their own
+// element slot and each fell through to their own toolbar button after a committed entry (driven:
+// all three stranded). They now share one exit, so they cannot drift apart again.
+test('#1515 a toolbar strip hands the caret back to the interrupted edit, not to its own button', () => {
+  // spread into a host object: the core runs in the vm realm, so a bare deepEqual would compare
+  // prototypes across realms and fail on a correct answer.
+  const plan = (...a) => ({ ...c.stripExitPlan(...a) });
+  // ---- 1. the exit policy, by value.
+  assert.deepEqual(plan(true, 'a', 'b'), { to: 'edit', id: null },
+    'a restored chrome-return wins: the interrupted edit, caret and all');
+  assert.deepEqual(plan(false, 'a', 'b'), { to: 'cursor', id: 'a' },
+    'else the remembered point');
+  assert.deepEqual(plan(false, null, 'b'), { to: 'cursor', id: 'b' },
+    'else the first row -- the Escape blur rung, never the toolbar button');
+  assert.deepEqual(plan(false, null, null), { to: 'button', id: null },
+    'the button is the LAST resort, for a document with no points to go back to');
+  assert.deepEqual(plan(true, null, null), { to: 'edit', id: null },
+    'and a restored edit does not need a row at all');
+
+  // ---- 2. CAUSE 1: the handled Escape must stop travelling.
+  const cik = fnBody(_src, 'capInputKeydown');
+  assert.ok(/e\.key === 'Escape'\) \{ e\.preventDefault\(\); e\.stopPropagation\(\);/.test(cik),
+    "the strip input's Escape must stopPropagation -- without it the #capture-strip listener closes a second time");
+  // and the belt: a second close cannot undo the first one's restore.
+  for (const [fn, flag] of [['closeCapture', 'captureOpen'], ['closeJournalStrip', 'journalOpen'], ['closeChronicleStrip', 'chronicleOpen']]) {
+    assert.ok(fnBody(_src, fn).includes(`if (!${flag}) return;`),
+      `${fn} must be idempotent -- a second door must not re-run the exit`);
+  }
+
+  // ---- 3. CAUSE 2: an id survives a re-render; an element does not.
+  // (deliberately narrow: `ioReturnFocus` is the DIALOG mechanism, which resolves through
+  // `dialogReturnTarget()` and already handles a detached target by design. The three strips were
+  // the outlier, and they are the subject.)
+  for (const slot of ['captureReturnFocus', 'journalReturnFocus', 'chronicleReturnFocus']) {
+    assert.ok(!_src.includes(slot),
+      `${slot} must be gone -- a strip may not hold document.activeElement, because a commit re-renders and detaches it`);
+  }
+  for (const [open, slot] of [['openCaptureDialog', 'captureReturnId'], ['openJournalStrip', 'journalReturnId'],
+                              ['openChronicleStrip', 'chronicleReturnId']]) {
+    const body = fnBody(_src, open);
+    assert.ok(body.includes('armChromeReturn()') && body.includes(`${slot} = captureCurrentPointId()`),
+      `${open} must remember the interrupted edit by id (armChromeReturn), not by element`);
+  }
+
+  // ---- 4. CENSUS RATCHET, read off the app's OWN enumeration of the family. The CSS rule that
+  // gives the strips their shared look is the list of what a strip is; a fourth one joining it has
+  // to come past this test.
+  const rule = nonEmpty([..._src.matchAll(/^(#[a-z-]+-strip(?:,#[a-z-]+-strip)+)\{display:none/gm)],
+    'the shared toolbar-strip CSS rule (the file’s own list of strips)');
+  const strips = nonEmpty(rule[0][1].split(',').map(x => x.replace('#', '')), 'strip ids in that rule');
+  assert.ok(strips.length >= 3, `the family is at least capture/journal/chronicle (${strips.join(', ')})`);
+  for (const id of strips) {
+    // the function that closes this strip is the one that takes its .on class off
+    const marker = `getElementById('${id}').classList.remove('on')`;
+    assert.ok(_src.includes(marker), `${id} must have a close path`);
+    const fn = nonEmpty([...(_src.match(/function (\w+)\([^)]*\) \{[\s\S]*?\n\}/g) || [])]
+      .filter(b => b.includes(marker)), `a function that closes ${id}`)[0];
+    assert.ok(fn.includes('stripReturnFocus('),
+      `${id} closes without the shared exit -- that is how the three drifted apart in the first place`);
+  }
+
+  // ---- 5. the shared exit itself.
+  const sr = fnBody(_src, 'stripReturnFocus');
+  assert.ok(sr, 'stripReturnFocus must exist');
+  assert.ok(sr.includes('stripExitPlan(restoreChromeReturn()'),
+    'the exit must be decided by the pure plan, not re-derived per strip');
+  assert.ok(/flatIndex\.get\(returnId\) != null \? returnId : null/.test(sr),
+    'a remembered point that is not ON SCREEN must not become the row cursor (driven: a collapsed-away point painted nothing and announced a positionless string)');
+  assert.ok(/document\.activeElement\?\.blur\?\.\(\); moveRowCursor\(plan\.id\)/.test(sr),
+    'the blur is load-bearing: focus left on a toolbar button means the outline arrows never reach the row cursor (#1512)');
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');

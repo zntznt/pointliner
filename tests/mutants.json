@@ -1836,6 +1836,96 @@
       "find": "        const to = roveIndex(e.key, i, tabs.length);\n        if (to != null) roveTo(tab, tabs[to]);",
       "replace": "        const to = roveIndex(e.key, i, tabs.length);\n        if (to != null) tabs[to].focus();",
       "kills": "#1514 the tab strip is one roving group whose stop follows focus"
+    },
+    {
+      "id": "strip-escape-double-closes",
+      "suite": "unit",
+      "why": "cause 1: without stopPropagation the strip listener closes a second time and overrides the restore",
+      "file": "index.html",
+      "find": "  else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (captureManage)",
+      "replace": "  else if (e.key === 'Escape') { e.preventDefault(); if (captureManage)",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "strip-close-not-idempotent",
+      "suite": "unit",
+      "why": "the belt: a second close door must not be able to undo the first one's focus restore",
+      "file": "index.html",
+      "find": "  if (!captureOpen) return;\n  captureOpen = false;",
+      "replace": "  captureOpen = false;",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "strip-remembers-an-element-again",
+      "suite": "unit",
+      "why": "cause 2: a commit calls render(), so a stored element is detached before the strip closes",
+      "file": "index.html",
+      "find": "if (!journalOpen) { journalCount = 0; armChromeReturn(); journalReturnId = captureCurrentPointId(); }",
+      "replace": "if (!journalOpen) { journalCount = 0; journalReturnFocus = document.activeElement; }",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "strip-exit-forked-per-strip",
+      "suite": "unit",
+      "why": "three strips each writing their own exit is how they drifted apart in the first place",
+      "file": "index.html",
+      "find": "  const back = chronicleReturnId; chronicleReturnId = null;\n  stripReturnFocus(back, 'btn-chronicle');",
+      "replace": "  const back = chronicleReturnId; chronicleReturnId = null;\n  if (back) document.getElementById('btn-chronicle').focus();",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "strip-cursor-lands-off-screen",
+      "suite": "unit",
+      "why": "a remembered point that is collapsed away paints nothing and announces a positionless string",
+      "file": "index.html",
+      "find": "  const live = returnId != null && typeof flatIndex !== 'undefined' && flatIndex.get(returnId) != null ? returnId : null;",
+      "replace": "  const live = returnId;",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "strip-cursor-keeps-focus-on-the-button",
+      "suite": "unit",
+      "why": "a painted row cursor with focus still on a toolbar button is the contradiction #1512 closed",
+      "file": "index.html",
+      "find": "  if (plan.to === 'cursor') { document.activeElement?.blur?.(); moveRowCursor(plan.id); return; }",
+      "replace": "  if (plan.to === 'cursor') { moveRowCursor(plan.id); return; }",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "strip-exit-plan-prefers-the-button",
+      "suite": "unit",
+      "why": "the toolbar button is the LAST resort, not the first: it is a dead end while points exist",
+      "file": "index.html",
+      "find": "  const id = returnId ?? firstRowId ?? null;\n  return id != null ? { to: 'cursor', id } : { to: 'button', id: null };",
+      "replace": "  const id = returnId ?? null;\n  return id != null ? { to: 'cursor', id } : { to: 'button', id: null };",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "strip-family-census-misses-a-strip",
+      "suite": "unit",
+      "why": "the ratchet must fail when a fourth strip joins the family without the shared exit",
+      "file": "index.html",
+      "find": "#capture-strip,#journal-strip,#chronicle-strip{display:none",
+      "replace": "#capture-strip,#journal-strip,#chronicle-strip,#outline{display:none",
+      "kills": "#1515 a toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "capture-escape-strands-focus",
+      "suite": "browser",
+      "why": "driven: where focus and the caret actually land is the whole finding, and no source pin sees it",
+      "file": "index.html",
+      "find": "  const back = captureReturnId; captureReturnId = null;",
+      "replace": "  const back = captureReturnId; captureReturnId = null;\n  document.getElementById('btn-capture').focus(); if (captureOpen === false) return;",
+      "kills": "#1515 every toolbar strip hands the caret back to the interrupted edit"
+    },
+    {
+      "id": "sibling-strips-left-behind",
+      "suite": "browser",
+      "why": "driven: the fix is only as good as its narrowest member, and journal/chronicle were the members",
+      "file": "index.html",
+      "find": "  if (!chronicleOpen) { chronicleCount = 0; armChromeReturn(); chronicleReturnId = captureCurrentPointId(); }",
+      "replace": "  if (!chronicleOpen) { chronicleCount = 0; chronicleReturnId = null; }",
+      "kills": "#1515 every toolbar strip hands the caret back to the interrupted edit"
     }
   ]
 }
