@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2132 declarations in 158 sections across 17 domains.**
+**2133 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1283,7 +1283,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `slashMenu`
 - `slashState`
 - `isSlashMenuOpen` — "open" = slashState exists, NOT the visible .on class — so in lean mode (where the panel never
-- `checkSlash` — "/" opens the point-level menu, "@" opens the inline-insert menu.
+- `insertSigilNeedsSpace` — "/" opens the point-level menu, "@" opens the inline-insert menu.
+- `checkSlash` — `opts.force` = a BUTTON asked for this menu, so the bare-trigger carve-out below does not apply.
 - `slashFooterHTML` — Footer content for the / and @ menus: a one-line description plus, when the
 - `renderSlashMenu`
 - `positionSlashMenu`
