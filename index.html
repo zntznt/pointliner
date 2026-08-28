@@ -456,9 +456,13 @@ body.v-standard #search-hint .sh-row, body.v-lean #search-hint .sh-row{display:n
    search box. Only the kbd re-enables pointer-events (the row stays inert per #587); the rows show only
    in Guided, so this is Guided-scoped for free. Hover/focus use the border-only highlight of the saved
    chips in the same panel (DL §4: a keycap's ink never changes on hover), keeping one interaction voice. */
-body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd{pointer-events:auto;cursor:pointer}
-#search-hint .sh-row kbd:hover{border-color:var(--acc)}
+body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd:not([data-doc]){pointer-events:auto;cursor:pointer}
+#search-hint .sh-row kbd:not([data-doc]):hover{border-color:var(--acc)}
 #search-hint .sh-row kbd:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* #1511: the five rows that document AUTHORING syntax are samples, not filter chips. They were
+   byte-identical in affordance to the 44 real ones -- same cursor, hover, role and tabindex --
+   while pasting a pill body into the search box. Read as text now, so the eye is told too. */
+#search-hint .sh-row kbd[data-doc]{cursor:default;color:var(--muted)}
 /* an unreadable filter (searchTermProblems). Inert like the teaching rows — it is text to read,
    never a target — so pointer-events stay off and the caret never leaves the search box. --warn
    already lives in BOTH palette homes (the CSS :root blocks and applyTheme's string), so this
@@ -2955,11 +2959,11 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="sh-row"><kbd>key:&gt;N</kbd><kbd>key:&lt;=N</kbd><span>numeric property compare, like <code>cost:&gt;100</code> or <code>score:&lt;=3.5</code></span></div>
         <div class="sh-row"><kbd>state:value</kbd><kbd>var:name</kbd><span>sequence status (<code>state:waiting</code>); the point that declares a variable (<code>var:strength</code>, <code>var:orc.hp</code> finds the base that projects it)</span></div>
         <div class="sh-row"><kbd>priority:A</kbd><kbd>priority:none</kbd><span>to-do priority (<code>priority:a</code>/<code>b</code>); <code>none</code> = unprioritized, <code>any</code> = has one</span></div>
-        <div class="sh-row"><kbd>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
-        <div class="sh-row"><kbd>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
-        <div class="sh-row"><kbd>{roll: is:todo}</kbd><span>pick ONE random matching point from anywhere in this document (rolls on your live points)</span></div>
-        <div class="sh-row"><kbd>{roll folder: #npc}</kbd><span>the same roll across every note in the connected folder</span></div>
-        <div class="sh-row"><kbd>/querybase</kbd><span>a live base of matching points: title, properties or a per-point formula as columns</span></div>
+        <div class="sh-row"><kbd data-doc>{query: is:todo}</kbd><span>a live embedded list of matching points (@ Query, or type it inline)</span></div>
+        <div class="sh-row"><kbd data-doc>{count: is:todo}</kbd><span>just the live number of matching points (@ Count, or type it inline)</span></div>
+        <div class="sh-row"><kbd data-doc>{roll: is:todo}</kbd><span>pick ONE random matching point from anywhere in this document (rolls on your live points)</span></div>
+        <div class="sh-row"><kbd data-doc>{roll folder: #npc}</kbd><span>the same roll across every note in the connected folder</span></div>
+        <div class="sh-row"><kbd data-doc>/querybase</kbd><span>a live base of matching points: title, properties or a per-point formula as columns</span></div>
       </div>
     </div>
     <span class="spacer"></span>
@@ -38387,10 +38391,21 @@ renderSavedSearches();
 (function wireSearchExamples() {
   const hint = document.getElementById('search-hint');
   if (!hint) return;
-  // ROVING TABINDEX. These 48 chips are deliberately keyboard-operable (they insert a token, so
+  // #1511: NOT every kbd in the legend is a filter chip. Five trailing rows document AUTHORING
+  // syntax -- {query:}, {count:}, {roll:}, {roll folder:} and /querybase -- and the blanket pass
+  // below stamped them "Add <token> to the search" like the rest. Activating one pasted a pill body
+  // into the search box, which is not a filter: three of them then blamed a token the whitespace
+  // tokenizer had manufactured ("is:todo} is not a filter this app knows... Try is:todo", advice
+  // already inside the failing string), and stacking one onto a live filter dropped 2 matching
+  // points to 0. They carry data-doc and are documentation, not doors; the row text already names
+  // the real door (@ Query, @ Count, /querybase).
+  const CHIP_SEL = '.sh-row kbd:not([data-doc])';
+  // ROVING TABINDEX. The filter chips are deliberately keyboard-operable (they insert a token, so
   // P3 requires it), but every one of them used to carry tabindex 0 — so a Guided keyboard user
-  // who Tabbed off the search box walked 48 stops to reach the next real control, with no arrow
+  // who Tabbed off the search box walked every stop to reach the next real control, with no arrow
   // alternative and no Escape. Exactly one chip is a tab stop now; arrows move within the group.
+  // No count is written here: the previous comment said "48" against 49 present, and a number in
+  // prose cannot be checked. A test pins the real split instead.
   // The pattern is this file's own, used by the agenda calendar grid, the table grid (#443) and
   // the tablist: one 0, the rest -1, and the swap happens on move.
   //
@@ -38400,8 +38415,8 @@ renderSavedSearches();
   // this honest if a row is ever added. forEach (not spread) on the seeding pass: this line runs
   // at load, and the headless test harness's document stub is forEach-able but NOT iterable, so a
   // spread here throws before the file finishes executing and strands every later `let` in TDZ.
-  const chips = () => [...hint.querySelectorAll('.sh-row kbd')];
-  hint.querySelectorAll('.sh-row kbd').forEach((k, i) => {
+  const chips = () => [...hint.querySelectorAll(CHIP_SEL)];
+  hint.querySelectorAll(CHIP_SEL).forEach((k, i) => {
     k.setAttribute('role', 'button');
     k.setAttribute('tabindex', i === 0 ? '0' : '-1');
     k.setAttribute('aria-label', `Add ${k.textContent} to the search`);
@@ -38421,14 +38436,14 @@ renderSavedSearches();
     const n = sb.value.length; sb.setSelectionRange(n, n);
   };
   hint.addEventListener('mousedown', e => {
-    const k = e.target.closest('.sh-row kbd');
+    const k = e.target.closest(CHIP_SEL);
     if (!k) return;
     e.preventDefault();   // keep the search box focused so the panel stays open
     applyExample(k.textContent);
   });
   hint.addEventListener('keydown', e => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const k = e.target.closest('.sh-row kbd');
+    const k = e.target.closest(CHIP_SEL);
     if (!k) return;
     e.preventDefault();
     applyExample(k.textContent);
@@ -38438,7 +38453,7 @@ renderSavedSearches();
   // walk the flat document order the way the legend reads, and up/down jump to the first chip of
   // the adjacent .sh-row, which is what "a row" means here.
   hint.addEventListener('keydown', e => {
-    const k = e.target.closest('.sh-row kbd');
+    const k = e.target.closest(CHIP_SEL);
     if (!k) return;
     // ESCAPE RESOLVES OUTWARD, ONE LEVEL (P1-3). A chip sits inside the search excursion, so the
     // first Escape leaves the chips for the box WITHOUT clearing, and a second Escape hits the
