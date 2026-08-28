@@ -1345,6 +1345,47 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // so. Two siblings did not: pushSearchRows (once per matched row) and the announce counter in
 // applySearch (once per node in the subtree) — measured together as 2 chain-walks per node,
 // 453,275 stripStateTags calls over 25,000 points, ~54% of search self-time.
+// ─── #1512: the outline's global keys leaked through open dialogs ─────────────────────────────
+// A DATA-LOSS bug, not a nuisance. Inside the modal Link graph, Shift+ArrowDown built a 4-point
+// selection behind the scrim and Backspace took the document from 5 points to 1, while focus never
+// left BUTTON.graph-close. Measured again on the File menu. The arrow branch guarded on element
+// TYPE (ae.tagName === 'INPUT') and the Delete/Backspace branch had NO focus guard at all.
+test('#1512 the outline acts on arrows and Delete only when it owns the keyboard', () => {
+  // the handler is an anonymous listener, so the predicate is sliced by its own markers
+  const owns = between(_src, 'const outlineOwnsKeys = ()', '  };');
+
+  // TYPE IS THE WRONG PREDICATE, and the old one is gone.
+  assert.doesNotMatch(_src, /if \(ae && ae\.tagName === 'INPUT'\) return;/,
+    'the tagName guard let every focused BUTTON, DIV and SVG node outside the outline through');
+
+  // A modal layer owns its own keys wherever focus sits: focus SHOULD land inside it, and the
+  // popup was measured open with focus still on <body>, which containment cannot tell apart from
+  // the row cursor. Layer ROOTS, not one branch per dialog (#io-back is the shared scrim).
+  for (const layer of nonEmpty(['bpop', 'io-back'], 'modal layer roots')) {
+    assert.ok(owns.includes(`getElementById('${layer}')?.classList.contains('on')`),
+      `an open ${layer} means the outline does not own the keys, whatever has focus`);
+  }
+  assert.match(owns, /graphOpen/, 'and the graph, which raises no shared scrim of its own');
+
+  // CONTAINMENT, not identity. `<body>` is the row-cursor state so it must stay true, but a bare
+  // `activeElement === document.body` gate (the Enter branch's rule, which the issue prescribed)
+  // would BREAK bulk delete: measured, Shift+ArrowDown moves focus onto the selection action bar,
+  // so at the moment Backspace is pressed in the legitimate flow the active element is
+  // BUTTON.nsb-btn, not <body>.
+  assert.match(owns, /a === document\.body\) return true/, 'the row-cursor state still owns the keys');
+  assert.match(owns, /closest\('#outline, #node-sel-bar'\)/,
+    'and so does the outline with its own selection chrome, or bulk delete stops working');
+
+  // BOTH branches ask, or the one with no guard is still the one that deletes points.
+  assert.match(_src, /\(e\.key==='Delete' \|\| e\.key==='Backspace'\)[^\n]*&& outlineOwnsKeys\(\)/,
+    'the delete branch must ask -- it had no focus guard at all, and it is the destructive one');
+  assert.match(_src, /if \(!outlineOwnsKeys\(\)\) return;/, 'and so must the arrow branch');
+  // exactly the two branches ask (the arrow-key one and the destructive one). The declaration is
+  // `const outlineOwnsKeys = () =>` and does not match, so this counts CALL SITES only.
+  const asks = nonEmpty(_src.match(/outlineOwnsKeys\(\)/g) || [], 'outlineOwnsKeys call sites');
+  assert.equal(asks.length, 2, `both branches ask and nothing else does; found ${asks.length}`);
+});
+
 // ─── #1511: a legend row that documents syntax is not a filter chip ───────────────────────────
 // wireSearchExamples stamped role=button, roving tabindex and "Add <token> to the search" onto
 // EVERY kbd in the legend. Five trailing rows document AUTHORING syntax -- {query:}, {count:},

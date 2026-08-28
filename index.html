@@ -45966,10 +45966,43 @@ document.addEventListener('keydown', e => {
     const id = el?.dataset?.id ?? selFocusId ?? selAnchorId ?? (flatRows.length ? flatRows[flatRows.length - 1].node.id : null);
     if (id) pasteFromNodeClipboard(id);
   }
+  // #1512: DOES THE OUTLINE OWN THE KEYBOARD RIGHT NOW? The arrow branch guarded on element TYPE
+  // (`ae.tagName === 'INPUT'`) and the Delete/Backspace branch had no focus guard at all, so any
+  // focused non-input outside the outline leaked. Measured, and this is a data-loss bug, not a
+  // nuisance: inside the modal Link graph, Shift+ArrowDown built a 4-point selection behind the
+  // scrim and Backspace took the document from 5 points to 1, while focus never left
+  // BUTTON.graph-close and the overlay went on reporting "2 points, 1 links" for points that no
+  // longer existed. The same leak was measured on the File menu, the styling dialog, the timeline,
+  // the bullet popup, the doc-tab strip and the command builder.
+  //
+  // TYPE IS THE WRONG PREDICATE. The proof is one Tab apart inside a single dialog: on its INPUT
+  // the arrows did nothing, and on the BUTTON beside it the identical keys cut the document. What
+  // matters is not what the focused element IS but WHOSE surface it belongs to.
+  //
+  // Containment, not identity. `<body>` is the row-cursor state, so it must stay true -- but a bare
+  // `activeElement === document.body` gate (the Enter branch's rule) would BREAK bulk delete:
+  // measured, Shift+ArrowDown moves focus onto the selection action bar, so at the moment Backspace
+  // is pressed in the legitimate flow the active element is BUTTON.nsb-btn, not <body>.
+  const outlineOwnsKeys = () => {
+    // A MODAL LAYER owns its own keys while it is up, wherever focus happens to sit. Focus should
+    // land inside it and usually does -- but the bullet popup was measured open with focus still on
+    // <body>, which the containment test below cannot tell apart from the row-cursor state. For a
+    // branch that deletes points, "usually" is not a guard. Layer ROOTS, not one entry per dialog:
+    // #io-back is the shared scrim every dialog raises (the File menu sets it too, measured).
+    if (document.getElementById('bpop')?.classList.contains('on')) return false;
+    if (document.getElementById('io-back')?.classList.contains('on')) return false;
+    if (typeof graphOpen !== 'undefined' && graphOpen) return false;
+    // Otherwise: WHOSE SURFACE is the focused element in? Not what kind of element it is. A docked
+    // strip (the agenda) is not modal and the outline stays usable behind it, so containment -- not
+    // an open-flag -- is the right test there.
+    const a = document.activeElement;
+    if (!a || a === document.body) return true;              // the row-cursor state
+    return !!a.closest('#outline, #node-sel-bar');           // the outline and its own selection chrome
+  };
   // Backspace deletes the selection too — on Mac the only "delete" key IS Backspace
   // (no forward-Delete). Safe here: this block only runs when not editing text
   // (activeContentId == null), so in-text Backspace is never intercepted.
-  if ((e.key==='Delete' || e.key==='Backspace') && selectedIds.size > 0 && activeContentId == null && !ctrl) { e.preventDefault(); deleteSelected(); }
+  if ((e.key==='Delete' || e.key==='Backspace') && selectedIds.size > 0 && activeContentId == null && !ctrl && outlineOwnsKeys()) { e.preventDefault(); deleteSelected(); }
   if (e.key==='Escape' && selectedIds.size > 0 && activeContentId == null) { clearSelection(); }
   // #816: zoomed with focus stranded on <body> (a dialog close, a stray blur) — the
   // advertised Esc = zoom out must still fire even though the title/content handlers
@@ -45987,8 +46020,10 @@ document.addEventListener('keydown', e => {
   if (ctrl && e.shiftKey && (e.key==='p' || e.key==='P') && selectedIds.size > 0 && activeContentId == null) { e.preventDefault(); bulkCycleTodo('priority', 1); return; }
   // Arrow row-nav and Shift+Arrow range selection in non-editing state (UXP-57)
   if ((e.key==='ArrowDown' || e.key==='ArrowUp') && activeContentId == null && !ctrl && !e.altKey) {
-    const ae = document.activeElement;
-    if (ae && ae.tagName === 'INPUT') return; // search box / other text inputs
+    // #1512: was `ae.tagName === 'INPUT'`, which let every focused BUTTON, DIV and SVG node outside
+    // the outline through. The containment test subsumes it: an input outside the outline is simply
+    // one of the many things that is not ours.
+    if (!outlineOwnsKeys()) return;
     if (!flatRows.length) return;
     const dir = e.key === 'ArrowDown' ? 1 : -1;
     const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;
