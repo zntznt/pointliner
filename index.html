@@ -41934,7 +41934,9 @@ function fmShowCategory(cat) {   // nav click: exit any search, scroll the secti
 }
 function fmApplySearch(q) {
   q = (q || '').trim().toLowerCase();
-  if (!q) { fmRestoreAll(); return; }   // empty query restores the full single page
+  // #1510: clearing the box is a state change too, and it must not leave the last count latched --
+  // typing the same query again would then say nothing at all.
+  if (!q) { fmRestoreAll(); _fmLastSaid = null; return; }   // empty query restores the full single page
   // Reset prior search state and reveal all sections first, so each row's TRUE visibility (only
   // capability- or CSS-media hiding remains) is measurable via offsetParent before deciding matches.
   fmRestoreAll();
@@ -41953,6 +41955,22 @@ function fmApplySearch(q) {
   });
   const nores = document.getElementById('fm-noresults');
   if (nores) nores.hidden = total > 0;   // P4: name the empty result instead of a silent blank pane
+  // #1510: the guide's sibling, filed with it and fixed with it. Naming the empty state VISUALLY was
+  // only half: the filter ran under a caret that never moved, so a screen reader heard nothing at
+  // any step. Same core, and the empty sentence is read off the node it just painted.
+  fmSayFilter(total, (nores?.textContent || 'No matching action.').trim());
+}
+// The last thing spoken, so a keystroke that does not change the result stays quiet rather than
+// re-reading the same count on every letter.
+let _fmLastSaid = null;
+function fmSayFilter(total, emptyMsg) {
+  const msg = filterResultSay(total, emptyMsg);
+  if (msg === _fmLastSaid) return;
+  _fmLastSaid = msg;
+  announce(msg);
+}
+function fmEmptyMessage() {
+  return (document.getElementById('fm-noresults')?.textContent || 'No matching action.').trim();
 }
 // Scroll-spy: as the single page scrolls, mark the nav for the section currently at the top (skip
 // while searching, so the filter's own section-hiding doesn't fight the highlight).
@@ -42170,13 +42188,20 @@ fileMenu.addEventListener('keydown', e => {
     if (onSearch) return;   // typing space in the search box is a space, not an activate
     e.preventDefault();
     if (onNav) { active.click(); fmItems()[0]?.focus(); return; }   // pick the category, dive into it
+    // #1510: Enter in the search box with nothing left to run was a total no-op. It says so now.
+    if (onSearch && !rows.length) { announce(fmEmptyMessage()); return; }
     active?.click();   // a row: run its handler
     return;
   }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
     const d = e.key === 'ArrowDown' ? 1 : -1;
-    if (onSearch) { (d > 0 ? rows[0] : navBtns[navBtns.length - 1])?.focus(); return; }
+    if (onSearch) {
+      const target = d > 0 ? rows[0] : navBtns[navBtns.length - 1];
+      if (target) target.focus();
+      else announce(fmEmptyMessage());   // #1510/#1474: a key that cannot act says why
+      return;
+    }
     if (onNav) {
       const i = navBtns.indexOf(active), next = navBtns[i + d];
       if (next) { next.click(); next.focus(); }        // switch category live as you arrow
@@ -44136,6 +44161,19 @@ function toggleGuide(initialId) {
   if (guideOpen()) { ioCancel ? ioCancel() : closeIo(); return; }
   openGuide(initialId || 'shortcuts');
 }
+// ── #1510: what a filter says when it changes the list under a caret that never moved ───────────
+// The concept guide filtered 94 nav entries down to 18 and then to 0 with focus still in the search
+// box, and said NOTHING at any step: no announce(), no live region anywhere inside the dialog.
+// The builder solved this exact shape in #1474, and the document search has always done it. Both
+// remaining filter surfaces -- the guide and the File menu -- were the unbuilt members.
+//
+// Pure. `emptyMsg` is passed IN, read off the rendered node by the caller, so the announcement and
+// the screen cannot drift apart. That was #1474's own hard-won half: two strings for one state let
+// the list paint one sentence while the live region spoke another.
+function filterResultSay(n, emptyMsg) {
+  if (!n) return emptyMsg;
+  return n === 1 ? '1 result' : n + ' results';
+}
 function openGuide(initialId) {
   armChromeReturn();
   document.getElementById('sc-toggle')?.setAttribute('aria-expanded', 'true');
@@ -44206,12 +44244,26 @@ function openGuide(initialId) {
           '" data-id="' + e.id + '">' + escHtml(e.title || e.id) + '</button>';
       }
     }
-    if (!html) html = '<p class="guide-no-results">No results</p>';
+    // #1510: ONE sentence for this state, so the nav, the reading pane and the announcement cannot
+    // tell three different stories about it. The builder's wording, for a sibling that reads alike.
+    if (!html) html = '<p class="guide-no-results">No topics match your search.</p>';
     nav.innerHTML = html;
+  }
+  // #1510: the empty-state words, read back off the RENDERED node rather than re-spelled (#1474).
+  function guideEmptyMessage() {
+    return (nav.querySelector('.guide-no-results')?.textContent || 'No topics match your search.').trim();
   }
   function renderPane() {
     const e = entries.find(x => x.id === activeId);
-    if (!e) { pane.innerHTML = '<p class="guide-no-results">Pick a topic on the left.</p>'; return; }
+    if (!e) {
+      // #1510: TWO different nothings. With a filter that matched nothing there is no topic to pick
+      // on the left, so pointing at it is advice the reader cannot take -- and the guide used to do
+      // worse than that, keeping the previous entry on screen in full (measured: nav read
+      // "No results" beside 2023 characters of "Start here").
+      pane.innerHTML = '<p class="guide-no-results">' +
+        escHtml(visibleEntries().length ? 'Pick a topic on the left.' : guideEmptyMessage()) + '</p>';
+      return;
+    }
     const exHtml = (e.examples||[]).length
       ? '<dl class="guide-ex">' + (e.examples||[]).map(x =>
           '<dt><code>' + escHtml(x.syn) + '</code></dt><dd>' + escHtml(x.desc) + '</dd>').join('') + '</dl>'
@@ -44283,19 +44335,40 @@ function openGuide(initialId) {
   pane.addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.stopPropagation(); close(); }   // #826: same from the reading pane
   });
+  // #1510: the last thing spoken, so a keystroke that does not change the RESULT stays quiet. A
+  // count re-read on every letter is a stutter; the state changing is the thing worth saying.
+  let _lastSaid = null;
+  function sayFilter(n) {
+    const msg = filterResultSay(n, guideEmptyMessage());
+    if (msg === _lastSaid) return;
+    _lastSaid = msg;
+    announce(msg);
+  }
   searchEl.addEventListener('input', () => {
     filterQ = searchEl.value;
     const vis = visibleEntries();
     // keep the current topic if it still matches; otherwise jump to the first hit
     if (vis.length && !vis.some(e => e.id === activeId)) activeId = vis[0].id;
+    // #1510: and when NOTHING matches, stop pointing at an entry the filter just excluded. Without
+    // this the guide said "No topics match your search." on the left while rendering that entry in
+    // full on the right.
+    else if (!vis.length) activeId = null;
     renderNav();
     renderPane();
+    sayFilter(vis.length);   // P4-4/P3-5: the list changed under a caret that never moved
   });
   searchEl.addEventListener('keydown', e => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       const first = nav.querySelector('.guide-nav-btn');
       if (first) { first.focus(); selectItem(first.dataset.id); }
+      // #1474's rule, applied to its sibling: a key that cannot act on an empty list says why
+      // rather than doing nothing at all.
+      else announce(guideEmptyMessage());
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!nav.querySelector('.guide-nav-btn')) announce(guideEmptyMessage());
     }
     if (e.key === 'Escape') { e.stopPropagation(); close(); }
   });

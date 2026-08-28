@@ -1345,6 +1345,63 @@ test('#1428 `check` is app machinery, not a user column — and that half is loa
 // so. Two siblings did not: pushSearchRows (once per matched row) and the announce counter in
 // applySearch (once per node in the subtree) — measured together as 2 chain-walks per node,
 // 453,275 stripStateTags calls over 25,000 points, ~54% of search self-time.
+// ─── #1510: a filter that changes the list under a caret that never moved ─────────────────────
+// The concept guide went 94 nav entries -> 18 -> 0 with focus still in its search box and said
+// NOTHING at any step: no announce(), no live region anywhere in the dialog. Two more halves came
+// with it -- the reading pane kept the previous entry in full beside a "No results" nav, and
+// ArrowDown/Enter on the empty state were total no-ops. The builder shipped this in #1474 and the
+// document search has always had it; the guide and the File menu were the unbuilt members.
+test('#1510 a filter says how many survived, or says the one sentence on screen', () => {
+  const F = c.filterResultSay;
+  assert.equal(F(18, 'x'), '18 results');
+  assert.equal(F(1, 'x'), '1 result', 'singular');
+  assert.equal(F(94, 'x'), '94 results');
+  // the empty message is passed IN, never re-spelled here: that is what stops the announcement and
+  // the screen drifting apart, which #1474 names as the smaller half of its own bug
+  assert.equal(F(0, 'No topics match your search.'), 'No topics match your search.');
+  assert.equal(F(0, 'No matching action. Clear the search to browse by category.'),
+    'No matching action. Clear the search to browse by category.',
+    'the File menu keeps its own words, from its own node');
+  for (const say of nonEmpty([F(0, 'No topics match your search.'), F(1, 'x'), F(18, 'x')], 'filter sentences')) {
+    assert.ok(!/—/.test(say), 'AP punctuation, no em dashes');
+    assert.ok(!/\bnode\b/.test(say), 'user-facing copy says point');
+  }
+});
+
+test('#1510 both filter surfaces speak, read their words off the node, and do not stutter', () => {
+  // #1133: the core is pure and proves nothing about whether anything calls it.
+  const g = fnBody(_src, 'openGuide');
+  assert.match(g, /filterResultSay\(n, guideEmptyMessage\(\)\)/,
+    'the guide announces through the shared core, with its own rendered words');
+  assert.match(g, /sayFilter\(vis\.length\)/, 'and calls it when the filter changes');
+  assert.match(fnBody(_src, 'fmApplySearch'), /fmSayFilter\(total, \(nores\?\.textContent \|\| 'No matching action\.'\)\.trim\(\)\)/,
+    'the File menu does the same, from ITS rendered node');
+  // read off the RENDERED node, never re-spelled (#1474's rule)
+  assert.match(g, /nav\.querySelector\('\.guide-no-results'\)\?\.textContent/,
+    'the empty words come from what the nav just painted');
+  assert.match(fnBody(_src, 'fmEmptyMessage'), /getElementById\('fm-noresults'\)\?\.textContent/);
+  // no stutter: the same result twice must not re-read
+  for (const [fn, last] of nonEmpty([['sayFilter', '_lastSaid'], ['fmSayFilter', '_fmLastSaid']], 'say helpers')) {
+    assert.ok(fnBody(_src, fn).includes(`if (msg === ${last}) return;`),
+      `${fn} must not re-read an unchanged result on every keystroke`);
+  }
+  // ...and clearing the box must UNLATCH it, or retyping the same query says nothing at all
+  assert.match(fnBody(_src, 'fmApplySearch'), /_fmLastSaid = null;/,
+    'a cleared filter resets what was last said');
+
+  // the pane must stop showing an entry the filter just excluded
+  assert.match(g, /visibleEntries\(\)\.length \? 'Pick a topic on the left\.' : guideEmptyMessage\(\)/,
+    'two different nothings: "pick one on the left" is advice the reader cannot take when the left is empty');
+  assert.match(g, /else if \(!vis\.length\) activeId = null;/,
+    'and the active topic is dropped when nothing matches, or renderPane finds it and paints it in full');
+
+  // a key that cannot act says why, rather than doing nothing (#1474)
+  const arrows = nonEmpty(g.match(/else announce\(guideEmptyMessage\(\)\);/g) || [], 'guide empty-key announcements');
+  assert.ok(arrows.length >= 1, 'ArrowDown on an empty list speaks');
+  assert.match(g, /if \(e\.key === 'Enter'\)[\s\S]{0,140}announce\(guideEmptyMessage\(\)\)/,
+    'and so does Enter, which had no handler at all');
+});
+
 // ─── #1509: a search count that means something narrower than it says ─────────────────────────
 // The count and the empty state were scoped to the zoom root by construction and neither said so.
 // Measured: zoomed into "Admin", searching "propagation" announced "0 matching points" and painted

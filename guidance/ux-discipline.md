@@ -438,6 +438,13 @@ The naming half generalizes past this issue: **UXP-281's guard said "every dialo
 - **This family was already solved twice.** `#1331` ships *"0 here · N in document"* on the pill side and WS-2 ships *"Found in other documents · N"* across documents; the in-document zoom boundary was the unbuilt third member. **Before designing a message, look for the same shape already shipped** — the wording, the separator and the "here is the door" row all came from those two rather than being invented.
 - **A count plus a door beats a count.** The empty state names what the zoom is hiding *and* carries the way out, because leaving the reader to deduce "so I should zoom out" is the same gap one step later.
 
+**A filter is a state change, and the caret never moves for it (#1510).** The concept guide narrowed 94 nav entries to 18 and then to 0 with focus still in its search box and said **nothing at any step**: no `announce()`, and no live region anywhere inside the dialog. This is P4-4 and P3-5 at once, and it is the exact shape the builder shipped as `#1474` and the document search has always had. The guide and the File menu were the two unbuilt members of a four-member family.
+
+- **Announce-only would have been half a fix.** Two more halves came with it. The reading pane kept the *previous* entry on screen in full while the nav beside it read "No results", so the guide told two contradictory stories at once. And ArrowDown and Enter on the empty state were total no-ops — the same "empty list where Enter does nothing" `#1474` names. A silent filter usually has company; look for the stale pane and the dead key before calling it done.
+- **Two different nothings.** "Pick a topic on the left" is advice the reader cannot take when the left is empty. An empty state that is *reachable two ways* needs the message that fits the way it was reached.
+- **One sentence per state, read off the node that painted it** (`#1474`'s rule, reused). The nav, the reading pane and the live region now all speak the same string because two of them read it from the third. Re-spelling it is how the announcement and the screen drift, and a registered mutant re-spells it to prove that.
+- **Say it when it changes, not on every keystroke.** Both surfaces remember the last thing spoken and stay quiet when the result is unchanged, and both **unlatch** on a cleared box — otherwise retyping the same query says nothing at all.
+
 **Tone:** plain language, names the thing, offers the next step. The storage warning ("…save it to a file to be safe") is the template for all of it.
 
 **Drafts:** a transient input surface (the capture strip, the search box) MUST NOT discard a non-empty draft on dismiss; the draft is kept for the next open, or its loss is confirmed (P4).
