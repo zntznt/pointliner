@@ -51,10 +51,15 @@ jobs:
   # "the menu offered something", a source-ORDER pin). Each was found by hand-mutating the app and
   # watching the guard stay green, which proved it at one instant and then evaporated. This job makes
   # it standing: every mutant in tests/mutants.json is applied and its named guard MUST go red.
-  # ~5s per mutant (one unit-suite run each), so it stays on the common path.
+  # Each mutant runs ONLY the guard it names (~0.7s); the whole suite runs again only when a mutant
+  # looks like it SURVIVED, which is the verdict worth paying for. That is what keeps this on the
+  # common path as the registry grows: the first version ran the full suite per mutant, and at ~46
+  # mutants that was ~6 minutes, at ~137 it walked into the timeout below and the job was CANCELLED
+  # -- a gate that times out has quietly stopped gating. No count is written here; a number in prose
+  # cannot be checked, and this one was three times out of date before anybody noticed.
   mutation:
     runs-on: ubuntu-latest
-    timeout-minutes: 25   # measured ~6min (46 mutants, one unit-suite run each)
+    timeout-minutes: 25   # measured ~2min for the whole registry, narrowed
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

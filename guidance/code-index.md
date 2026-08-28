@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2133 declarations in 158 sections across 17 domains.**
+**2136 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -985,6 +985,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `captureDue`
 - `inboxAt` — Slot N's node (or null). Prunes a stale id (point deleted) lazily on read.
 - `resolveInbox`
+- `captureDestSlotId` — #1517: the ONE answer to "where does a capture land right now". The chip that NAMES the
+- `captureDest` — The live reader both surfaces share. Returns `root` for the top level, never null.
+- `captureDestSay` — P4/P3: changing the target changes WHERE YOUR NEXT CAPTURE GOES, and the chord did it in silence
 - `inboxSlotOf`
 - `setInboxSlot` — Set slot N to a point id (extending the list with empty slots if needed, capped at 10).
 - `removeInboxSlot`

@@ -4856,3 +4856,109 @@ test('#1516 the touch Insert-a-pill button opens the menu at any caret', { skip:
   await pg.close();
   await touchCtx.close();
 });
+
+// 74. #1517 — the capture strip's destination chip said "top level (no inbox set)" while the commit
+// dropped the point into ANOTHER slot's inbox and its toast said so: the strip and the toast
+// contradicted each other on screen at the same moment, and the chip stayed wrong for every later
+// capture that session. Driven, because the finding IS the disagreement between three surfaces —
+// the chip's words, the tree, and the toast — and no source pin can compare them.
+test('#1517 the chip, the tree and the toast agree on where a capture went', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const seed = () => pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    root.inboxes = []; captureSlot = 1;
+    try { closeCapture(); } catch (_) {}
+    buildIndex(root, null); markDirty(); render();
+    const l = document.getElementById('a11y-live'); if (l) l.textContent = '';
+  });
+  const chip = () => pg.evaluate(() => document.querySelector('.cap-dest-name-btn')?.textContent.trim() ?? null);
+  const tree = () => pg.evaluate(() => root.children.map(c => c.text + '[' + c.children.map(k => k.text).join(',') + ']'));
+  const toast = () => pg.evaluate(() => (document.getElementById('flash-hint')?.textContent || '').trim());
+  const live = () => pg.evaluate(() => (document.getElementById('a11y-live')?.textContent || '').trim());
+
+  // ── THE LIE. Inbox 1 = Beta, then target slot 4, which was never set.
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => { setInboxSlot(1, root.children[1].id); captureSlot = 1; openCaptureDialog(); });
+  await pg.waitForTimeout(450);
+  assert.equal(await chip(), '1 Beta', 'precondition: the chip names the set slot');
+  await pg.evaluate(() => captureTargetSlot(4));
+  await pg.waitForTimeout(350);
+  assert.equal(await chip(), 'top level', 'an unset slot names the top level');
+  assert.equal(await live(), 'Inbox 4 is not set. Captures land at the top level.',
+    'and says so — the chord used to change the destination in total silence');
+  await pg.evaluate(() => { captureDraft = 'groceries'; doCapture(); });
+  await pg.waitForTimeout(500);
+  assert.deepEqual(await tree(), ['Alpha[]', 'Beta[]', 'Gamma[]', 'groceries[]'],
+    'the point must land where the chip SAID — not inside Beta');
+  assert.match(await toast(), /· top level$/, 'and the toast must not contradict the chip');
+  assert.equal(await chip(), 'top level', 'and the chip is still right afterwards');
+
+  // ── the same, reached WITHOUT an in-strip switch: the first capture of a session.
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => { setInboxSlot(1, root.children[1].id); captureTargetSlot(4); openCaptureDialog(4); });
+  await pg.waitForTimeout(450);
+  assert.equal(await chip(), 'top level');
+  await pg.evaluate(() => { captureDraft = 'first capture'; doCapture(); });
+  await pg.waitForTimeout(450);
+  assert.deepEqual(await tree(), ['Alpha[]', 'Beta[]', 'Gamma[]', 'first capture[]'],
+    'the very first capture of a session must not be mislabelled either');
+
+  // ── THE NEGATIVE CASES. Everything self-consistent stayed that way, including the two promises
+  // this fix could plausibly have broken: #559 zero-setup, and the empty-slot adoption rule.
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => { setInboxSlot(1, root.children[1].id); captureSlot = 1; openCaptureDialog(); });
+  await pg.waitForTimeout(450);
+  await pg.evaluate(() => { captureDraft = 'x1'; doCapture(); });
+  await pg.waitForTimeout(450);
+  assert.equal(await chip(), '1 Beta', 'a SET slot targeted in place still works');
+  assert.deepEqual(await tree(), ['Alpha[]', 'Beta[x1]', 'Gamma[]'], 'and still lands in its inbox');
+  assert.match(await toast(), /· Beta$/);
+
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => openCaptureDialog());
+  await pg.waitForTimeout(450);
+  await pg.evaluate(() => { captureDraft = 'x2'; doCapture(); });
+  await pg.waitForTimeout(450);
+  assert.equal(await chip(), 'top level', '#559: no inbox at all is a working state');
+  assert.deepEqual(await tree(), ['Alpha[]', 'Beta[]', 'Gamma[]', 'x2[]'], 'and the top level is where it lands');
+
+  // the unspecified-slot default is what carries zero-setup, which is why the commit does not need
+  // a cross-slot fallback of its own
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => { setInboxSlot(3, root.children[2].id); captureSlot = 1; openCaptureDialog(); });
+  await pg.waitForTimeout(450);
+  assert.equal(await chip(), '3 Gamma', 'opening with no slot still defaults to the first non-empty one');
+  await pg.evaluate(() => { captureDraft = 'x3'; doCapture(); });
+  await pg.waitForTimeout(450);
+  assert.deepEqual(await tree(), ['Alpha[]', 'Beta[]', 'Gamma[x3]']);
+
+  await seed();
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => {
+    const el = document.querySelectorAll('.node-content')[0];
+    const n = nodeById(el.dataset.id); enterEdit(el, n); el.focus(); activeContentId = n.id;
+  });
+  await pg.waitForTimeout(250);
+  await pg.evaluate(() => openCaptureDialog(4));
+  await pg.waitForTimeout(450);
+  assert.equal(await chip(), '4 Alpha',
+    'the documented rule survives: an empty slot ADOPTS the current point rather than redirecting');
+
+  // ── the chipless door is untouched: it has no chip to contradict and names its own destination.
+  await seed();
+  await pg.waitForTimeout(250);
+  assert.deepEqual(await pg.evaluate(() => {
+    setInboxSlot(2, root.children[2].id); captureSlot = 1;
+    appendTextToInbox('from url'); render();
+    return root.children.map(c => c.text + '[' + c.children.map(k => k.text).join(',') + ']');
+  }), ['Alpha[]', 'Beta[]', 'Gamma[from url]'],
+    'the URL/share append still falls back to the first non-empty slot, and its own toast names it');
+  await pg.close();
+});
