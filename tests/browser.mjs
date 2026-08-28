@@ -4185,3 +4185,107 @@ test('#1511 a syntax sample does nothing to the search, and the filter chips sti
     `roving past the last chip must clamp on a real one, not step onto a sample (landed on ${landed.text})`);
   await pg.close();
 });
+
+// 69. #1512 — the outline's global arrow and Delete/Backspace branches fired while a modal dialog
+// had focus. DATA LOSS, driven: inside the Link graph, Shift+ArrowDown built a 4-point selection
+// behind the scrim and Backspace took the document from 5 points to 1, while focus never left
+// BUTTON.graph-close and the overlay went on reporting points that no longer existed. Only driving
+// shows this: both branches were "correct" in isolation, and the defect was that nothing stopped
+// them running when another surface owned the keyboard.
+test('#1512 an open dialog owns its keys, and the outline still owns its own', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const seed = () => pg.evaluate(() => {
+    root.children = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Eps'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); selectedIds.clear();
+    selFocusId = root.children[0].id; selAnchorId = selFocusId;
+    markDirty(); render();
+  });
+  const state = () => pg.evaluate(() => ({
+    n: root.children.length,
+    texts: root.children.map(c => c.text).join(','),
+    sel: selectedIds.size,
+    cursor: (nodeById(selFocusId) || {}).text ?? null,
+    ae: document.activeElement.tagName + '.' + (document.activeElement.className || ''),
+  }));
+
+  // ── the leaking surfaces. A modal is open; the outline must not hear the keys at all.
+  for (const [label, open, close] of [
+    ['Link graph', () => openGraph(), () => { try { closeGraph(); } catch (_) {} }],
+    ['File menu', () => openFileMenu(), () => { try { closeFileMenu(); } catch (_) {} }],
+  ]) {
+    await seed();
+    await pg.waitForTimeout(200);
+    await pg.evaluate(open);
+    await pg.waitForTimeout(450);
+    const before = await state();
+    assert.equal(before.n, 5, `${label}: precondition -- five points`);
+    for (let i = 0; i < 3; i++) { await pg.keyboard.press('Shift+ArrowDown'); await pg.waitForTimeout(120); }
+    await pg.keyboard.press('Backspace');
+    await pg.waitForTimeout(350);
+    const after = await state();
+    assert.equal(after.sel, 0, `${label}: arrows must not build a selection behind the scrim`);
+    assert.equal(after.n, 5, `${label}: Backspace must not delete points through an open dialog`);
+    assert.equal(after.texts, 'Alpha,Beta,Gamma,Delta,Eps', `${label}: and the document is untouched`);
+    await pg.evaluate(close);
+    await pg.waitForTimeout(300);
+  }
+
+  // ── A SELECTION MADE FIRST, then a dialog opened over it. Without this case the delete branch's
+  // guard is UNOBSERVABLE: with the arrows already gated, nothing builds a selection behind the
+  // scrim, so Backspace has nothing to delete and removing its guard changes nothing. Registering
+  // that mutant is what exposed the hole. It is also the more dangerous real sequence -- you have
+  // points selected, you open the File menu, and Backspace reaches past it into the document.
+  await seed();
+  await pg.waitForTimeout(200);
+  await pg.evaluate(() => {
+    const c = document.querySelectorAll('.node-content')[0];
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.waitForTimeout(250);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(250);
+  for (let i = 0; i < 3; i++) { await pg.keyboard.press('Shift+ArrowDown'); await pg.waitForTimeout(120); }
+  const armed = await state();
+  assert.ok(armed.sel >= 2, `precondition: a real selection exists first (${armed.sel})`);
+  await pg.evaluate(() => openFileMenu());
+  await pg.waitForTimeout(450);
+  await pg.keyboard.press('Backspace');
+  await pg.waitForTimeout(350);
+  const survived = await state();
+  assert.equal(survived.n, 5,
+    'Backspace with a live selection must not reach past an open dialog into the document');
+  assert.equal(survived.texts, 'Alpha,Beta,Gamma,Delta,Eps');
+  await pg.evaluate(() => { try { closeFileMenu(); } catch (_) {} });
+  await pg.waitForTimeout(300);
+
+  // ── THE CONTROL, and the reason a bare `activeElement === document.body` gate is wrong. This is
+  // the flow the branches exist FOR, and Shift+ArrowDown moves focus onto the selection action bar,
+  // so at the moment Backspace lands the active element is not <body>.
+  await seed();
+  await pg.waitForTimeout(200);
+  await pg.evaluate(() => {
+    const c = document.querySelectorAll('.node-content')[0];
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.waitForTimeout(250);
+  await pg.keyboard.press('Escape');            // row-cursor state
+  await pg.waitForTimeout(300);
+  const cursor0 = await state();
+  assert.match(cursor0.ae, /BODY/, 'precondition: the row cursor really does leave focus on <body>');
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(200);
+  const moved = await state();
+  assert.notEqual(moved.cursor, cursor0.cursor, 'plain ArrowDown still moves the row cursor');
+  await pg.keyboard.press('Shift+ArrowDown');
+  await pg.waitForTimeout(250);
+  const picked = await state();
+  assert.ok(picked.sel >= 2, `Shift+ArrowDown still builds a selection (${picked.sel})`);
+  assert.doesNotMatch(picked.ae, /BODY/,
+    'and it moves focus onto the selection bar, which is why identity-with-<body> is the wrong gate');
+  await pg.keyboard.press('Backspace');
+  await pg.waitForTimeout(350);
+  const deleted = await state();
+  assert.ok(deleted.n < 5, `bulk delete must still work from the outline (${deleted.n} left)`);
+  await pg.close();
+});
