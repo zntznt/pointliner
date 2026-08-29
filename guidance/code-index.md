@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2139 declarations in 158 sections across 17 domains.**
+**2141 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2417,6 +2417,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `VERBOSITY_NAMES` — Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
 - `syncVerbosityCard`
 - `syncVerbosityStrip`
+- `caretKeepPlan` — #1521: the verbosity dial is a DISPLAY setting -- it changes which teaching aids show -- so it
+- `renderKeepingCaret`
 - `setVerbosity`
 
 ## Toolbar-feature chooser (modes batch, item 5)

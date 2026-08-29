@@ -5255,3 +5255,92 @@ test('#1520 every command name and description renders inside the builder nav', 
     await ctx.close();
   }
 });
+
+// 78. #1521 — the verbosity dial called a bare `render()`, which tears down the active
+// contenteditable: `activeElement` fell to BODY, `activeContentId` to null, and the next characters
+// typed vanished. Driven because the finding is where the caret IS afterwards and whether the next
+// keystroke lands — neither is visible to a source pin.
+//
+// The filed repro named the two chords. Driving the family found all FOUR doors broken, so all four
+// are here. The two contrast chords are driven too: they always kept the caret, and this fix must
+// not be measuring something that was already true.
+test('#1521 every verbosity door keeps the caret, and the next keystroke lands', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const seed = () => pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Buy milk and bread', 'Two', 'Three'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    verbosity = 'guided'; syncVerbosityClass();
+    buildIndex(root, null); markDirty(); render();
+    const el = document.querySelector('.node-content');
+    const n = nodeById(el.dataset.id);
+    enterEdit(el, n); el.focus(); activeContentId = n.id; setCaretByOffset(el, 8);
+    return n.id;
+  });
+  const st = () => pg.evaluate(() => {
+    const el = document.querySelector('.node-content[data-editing]');
+    return {
+      ae: document.activeElement.tagName, id: activeContentId,
+      caret: el ? getCaretOffset(el) : null,
+      tier: [...document.body.classList].find(x => x.startsWith('v-')),
+      text: root.children[0].text,
+    };
+  });
+
+  const DOORS = [
+    ['Ctrl+Shift+.', async () => pg.keyboard.press('Control+Shift+Period')],
+    ['Ctrl+Shift+,', async () => pg.keyboard.press('Control+Shift+Comma')],
+    ['the File-menu tier indicator', async () => pg.evaluate(() => document.getElementById('fm-tier-ind').click())],
+    ['the tier card', async () => pg.evaluate(() => setVerbosity('standard'))],
+  ];
+  for (const [name, act] of DOORS) {
+    const id = await seed();
+    await pg.waitForTimeout(250);
+    const before = await st();
+    assert.equal(before.caret, 8, `${name}: precondition — the caret is at offset 8`);
+    await act();
+    await pg.waitForTimeout(450);
+    const after = await st();
+    assert.notEqual(after.ae, 'BODY', `${name}: the dial must not drop the caret to <body>`);
+    assert.equal(after.id, id, `${name}: the same point is still being edited`);
+    assert.equal(after.caret, 8, `${name}: at the same offset`);
+    assert.notEqual(after.tier, before.tier, `${name}: and the tier actually changed`);
+    // the half a user feels: the next keystroke has to land
+    await pg.keyboard.type(' XYZ');
+    await pg.waitForTimeout(300);
+    assert.equal((await st()).text, 'Buy milk XYZ and bread',
+      `${name}: typing after the dial must reach the point, not vanish`);
+  }
+
+  // ── THE CONTRAST, driven so the assertions above are not measuring something already true of
+  // every chord: these two always kept the caret, and still do.
+  for (const [name, key, expect] of [
+    ['Ctrl+Shift+V', 'Control+Shift+V', 'Buy milk XYZ and bread'],
+    ['Ctrl+Shift+X', 'Control+Shift+X', '- [ ] Buy milk XYZ and bread'],
+  ]) {
+    await seed();
+    await pg.waitForTimeout(250);
+    await pg.keyboard.press(key);
+    await pg.waitForTimeout(400);
+    assert.notEqual((await st()).ae, 'BODY', `${name}: keeps the caret, as it always did`);
+    await pg.keyboard.type(' XYZ');
+    await pg.waitForTimeout(300);
+    assert.equal((await st()).text, expect, `${name}: and typing lands`);
+  }
+
+  // ── THE NEGATIVE CASE: with nothing being edited the dial is a plain re-render, and must not
+  // invent a caret in a point the user was not in.
+  await pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Alpha'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    document.activeElement.blur(); activeContentId = null;
+  });
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => toggleVerbosity(1));
+  await pg.waitForTimeout(400);
+  assert.equal(await pg.evaluate(() => activeContentId), null,
+    'with nothing being edited the dial must not pull the caret into a point');
+  await pg.close();
+});
