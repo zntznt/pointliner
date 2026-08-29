@@ -206,7 +206,7 @@ button,[contenteditable],input{touch-action:manipulation}
   --sel:color-mix(in srgb,var(--acc) 12%,transparent);--cell-sel:color-mix(in srgb,var(--acc) 22%,transparent);
   --hl:color-mix(in srgb,#caa53d 42%,transparent);--scrim:rgba(0,0,0,.55);--bad-fg:#16130f;
 }}
-body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:1.0625rem;line-height:var(--lh);min-height:100vh;padding-top:44px}/* UXP-191: rem, not 17px — 1.0625rem == 17px at the default 16px root but now honors the browser's font-size preference (P3-3, the primary low-vision control) that a bare px silently overrode. The whole em cascade (h1.md-h 2em, the body.zoomed step-downs, fitZoomTitle's px measure) rides on this unchanged. ponytail: measure stays max-width:720px (a cap that collapses to viewport, never breaks; re-clamp to ch if large-font CPL drift is judged worth it) */
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:1.0625rem;line-height:var(--lh);min-height:100vh;padding-top:44px;overscroll-behavior-y:none;overflow-anchor:none}/* UXP-191: rem, not 17px — 1.0625rem == 17px at the default 16px root but now honors the browser's font-size preference (P3-3, the primary low-vision control) that a bare px silently overrode. The whole em cascade (h1.md-h 2em, the body.zoomed step-downs, fitZoomTitle's px measure) rides on this unchanged. ponytail: measure stays max-width:720px (a cap that collapses to viewport, never breaks; re-clamp to ch if large-font CPL drift is judged worth it) */
 ::selection{background:color-mix(in srgb,var(--acc) 22%,transparent)}
 html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 
@@ -536,7 +536,7 @@ body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd:not([data-doc]){poin
 .crumb-sep{color:var(--muted);user-select:none;font-size:11px}
 
 /* outline */
-#outline{max-width:720px;margin:0 auto;padding:28px 24px 120px;transition:padding-bottom .22s cubic-bezier(.4,0,.2,1)}
+#outline{max-width:720px;margin:0 auto;padding:28px 24px 120px;overflow-anchor:none}
 body.full-width #outline{max-width:none}
 /* zoomed INTO a base: the base table is full-width regardless of the narrow/full toggle;
    child nodes below the base follow the fullWidth setting (constrained by #vlist). */
@@ -548,7 +548,7 @@ body.base-zoom:not(.full-width) #vlist{max-width:720px;margin:0 auto}#search-emp
 .se-zoomout:hover{background:color-mix(in srgb,var(--acc) 12%,transparent);border-color:var(--acc)}
 .se-zoomout:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 /* virtual list: only a window of rows is in the DOM; spacers reserve the rest */
-#vlist{position:relative}
+#vlist{position:relative;overflow-anchor:none}
 .vspacer{flex:none;width:100%}
 #vlist>.node{position:relative}
 /* The edited row while the viewport has scrolled away from it: kept in the DOM (and focusable, so
@@ -10903,6 +10903,8 @@ function render() {
   const corkOn = focusedId != null && !!vp.cards && vp.type !== 'base' && !searchQuery;
   if (focusedId != null && vp.type !== 'base') container.appendChild(buildCorkToggle(vp, !!searchQuery));
   if (corkOn) {
+    if (typeof vlResizeObserver !== 'undefined' && vlResizeObserver) { vlResizeObserver.disconnect(); vlResizeObserver = null; }
+    if (typeof mountedNodes !== 'undefined') mountedNodes.clear();
     container.appendChild(buildCorkboard(vp));
     flatRows = []; flatIndex = new Map();
     vlist = null; vTop = null; vBot = null;
@@ -10930,6 +10932,8 @@ function render() {
   // of the tree, with the hierarchy conveyed by aria-level/posinset/setsize (the
   // virtualized-tree pattern: setsize/posinset report true positions even though only
   // a window of rows is in the DOM). Spacers are presentational.
+  if (typeof vlResizeObserver !== 'undefined' && vlResizeObserver) { vlResizeObserver.disconnect(); vlResizeObserver = null; }
+  if (typeof mountedNodes !== 'undefined') mountedNodes.clear();
   vlist = document.createElement('div'); vlist.id = 'vlist';
   vlist.setAttribute('role', 'tree');
   vlist.setAttribute('aria-label', 'Outline');
@@ -11086,11 +11090,41 @@ function rowAtOffset(y) {
   return ans;
 }
 
+let mountedNodes = new Map(); // id -> HTMLElement
+let vlResizeObserver = null;
+
+function initVlResizeObserver() {
+  if (vlResizeObserver || typeof ResizeObserver === 'undefined') return;
+  vlResizeObserver = new ResizeObserver(entries => {
+    let changed = false;
+    for (const entry of entries) {
+      const el = entry.target;
+      const id = el.dataset?.id;
+      if (!id) continue;
+      let h = 0;
+      if (entry.borderBoxSize && entry.borderBoxSize.length > 0) {
+        h = Math.round(entry.borderBoxSize[0].blockSize);
+      } else if (entry.contentRect) {
+        h = Math.round(entry.contentRect.height);
+      } else {
+        h = el.offsetHeight;
+      }
+      if (h > 0 && heightCache.get(id) !== h) {
+        heightCache.set(id, h);
+        changed = true;
+      }
+    }
+    if (changed) scheduleReconcile();
+  });
+}
+
 function computeWindow() {
-  if (flatRows.length === 0) return [0, -1];
+  if (flatRows.length === 0 || !vlist) return [0, -1];
   const rect = vlist.getBoundingClientRect();
   const listTopDoc = rect.top + window.scrollY;
-  const viewTop = Math.max(0, window.scrollY - listTopDoc);
+  const maxScrollY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const clampedScrollY = Math.max(0, Math.min(window.scrollY, maxScrollY));
+  const viewTop = Math.max(0, clampedScrollY - listTopDoc);
   const viewBot = viewTop + window.innerHeight;
   let start = rowAtOffset(viewTop) - OVERSCAN;
   let end   = rowAtOffset(viewBot) + OVERSCAN;
@@ -11101,128 +11135,120 @@ function computeWindow() {
 
 function renderWindow(force) {
   if (!vlist) return;
+  initVlResizeObserver();
   let [s, e] = computeWindow();
-  // The edited row must never leave the DOM (removing it fires blur, which exitEdits and kills the
-  // caret — see the note below). That used to be done by WIDENING the window to span it, which was
-  // free only because the viewport was pinned to the caret and you could never scroll away from it.
-  // Now that you can, the span is the whole document: measured at 1200 points with the caret at row
-  // 2 and the view at the end, 926 rows mounted and renderWindow took 232ms per scroll frame, against
-  // 28 rows and 3.6ms with nothing edited. Virtualisation was simply switched off.
-  // So keep the row, but as ONE parked element positioned at its true offset (below), never by
-  // dragging the window across everything in between. `keepIdx` is null when it already falls inside.
+
   const keepId = activeContentId ?? forceIncludeId;
   const keepFi = keepId != null ? flatIndex.get(keepId) : null;
   const keepIdx = (keepFi != null && (keepFi < s || keepFi > e)) ? keepFi : null;
   if (!force && s === winStart && e === winEnd && keepIdx === _vlParkedIdx) return;
 
-  // preserve the live editing element across the rebuild (keeps caret + edit state).
-  // covers a .node-content editor (activeContentId) AND a focused table cell
-  // (forceIncludeId), so scroll/resize re-renders don't destroy the caret.
   const liveId = activeContentId ?? forceIncludeId;
-  const activeEl = liveId != null ? vlist.querySelector(`.node[data-id="${liveId}"]`) : null;
-  // Removing a row that HOLDS focus fires blur synchronously, and the blur handler
-  // exitEdits: the "preserved" element came back as a dead display row and the caret died
-  // with it (any mid-edit rebuild; the quick bar's fresh-point flow trips it reliably).
-  // For a focused .node-content: hold the blur handlers off for the rebuild's duration,
-  // then restore focus + caret to the re-appended element. Table cells keep their own
-  // commit-on-blur semantics untouched.
+  const activeEl = liveId != null ? (mountedNodes.get(liveId) || vlist.querySelector(`.node[data-id="${liveId}"]`)) : null;
+
   const _ae = document.activeElement;
   const focusedInner = activeEl && activeEl.contains(_ae) && _ae.classList?.contains('node-content') ? _ae : null;
   const caretOff = focusedInner?.dataset.editing ? getCaretOffset(focusedInner) : null;
-  if (focusedInner) _vlPreservingFocus = true;
-  if (activeEl) activeEl.remove();
 
-  vlist.innerHTML = '';
-  vlist.appendChild(vTop);
-  // The parked row: out of the window, so it goes back absolutely positioned at its real offset
-  // (#vlist is position:relative, and rowTops already holds every offset). It stays in the DOM and
-  // focusable — which is all the force-include ever needed — without the spacers or the rows in
-  // between knowing it exists. Off-screen by construction, since the window is what is on screen.
+  const targetIds = new Set();
+  for (let i = s; i <= e; i++) {
+    if (i >= 0 && i < flatRows.length) targetIds.add(flatRows[i].node.id);
+  }
+
+  // 1. Unmount nodes outside window (or rebuild stale nodes on force)
+  for (const [id, el] of mountedNodes.entries()) {
+    if (id === liveId && keepIdx != null) continue; // preserve parked node
+    if (!targetIds.has(id) || (force && id !== liveId)) {
+      if (vlResizeObserver) vlResizeObserver.unobserve(el);
+      el.remove();
+      mountedNodes.delete(id);
+    }
+  }
+
+  // 2. Handle Parking for Active Element
   if (keepIdx != null && activeEl) {
-    // #736, which parking would otherwise re-open. The old code let a scrolled-out row be DROPPED,
-    // and losing focus is what closed the caret-anchored pickers. Parking keeps the row connected,
-    // so that teardown never fires and a slash/brace/tag menu would hang at stale coordinates over
-    // rows it has nothing to do with. Close them on the transition INTO parked (not on every
-    // re-window while parked, which would be pointless work).
     if (_vlParkedIdx == null) hideInlineMenus();
     activeEl.classList.add('vl-parked');
     activeEl.style.top = rowTops[keepIdx] + 'px';
-    vlist.appendChild(activeEl);
-  } else if (activeEl) {
-    activeEl.classList.remove('vl-parked');   // back inside the window: rejoin the flow
+    if (activeEl.parentElement !== vlist) vlist.appendChild(activeEl);
+    mountedNodes.set(liveId, activeEl);
+  } else if (activeEl && activeEl.classList.contains('vl-parked')) {
+    activeEl.classList.remove('vl-parked');
     activeEl.style.top = '';
   }
   _vlParkedIdx = keepIdx;
+
+  // 3. Mount / Reconcile visible rows between vTop and vBot
+  let insertCursor = vTop.nextSibling;
+
   for (let i = s; i <= e; i++) {
+    if (i < 0 || i >= flatRows.length) continue;
     const r = flatRows[i];
-    let el;
+    const id = r.node.id;
+
     if (keepIdx != null && r.node.id === liveId) continue;   // already parked above; never mount twice
-    if (activeEl && r.node.id === liveId) {
-      el = activeEl; el.style.paddingLeft = (r.depth * IND) + 'px'; el.style.setProperty('--depth-w', (r.depth * IND) + 'px');
-      // keep the reused row's tree position attributes fresh (UXP-19)
-      el.setAttribute('aria-level', String(r.depth + 1));
-      if (r.pos) { el.setAttribute('aria-posinset', String(r.pos)); el.setAttribute('aria-setsize', String(r.size)); }
+
+    let el = mountedNodes.get(id);
+
+    if (!el) {
+      el = renderRow(r);
+      mountedNodes.set(id, el);
+      if (vlResizeObserver) vlResizeObserver.observe(el);
+      vlist.insertBefore(el, insertCursor === vBot ? vBot : insertCursor);
+    } else {
+      if (el.dataset.depth !== String(r.depth)) {
+        el.style.paddingLeft = (r.depth * IND) + 'px';
+        el.style.setProperty('--depth-w', (r.depth * IND) + 'px');
+        el.setAttribute('aria-level', String(r.depth + 1));
+        if (r.pos) {
+          el.setAttribute('aria-posinset', String(r.pos));
+          el.setAttribute('aria-setsize', String(r.size));
+        }
+        el.dataset.depth = String(r.depth);
+      }
+      if (el !== insertCursor) {
+        vlist.insertBefore(el, insertCursor === vBot ? vBot : insertCursor);
+      }
     }
-    else el = renderRow(r);
-    vlist.appendChild(el);
+    insertCursor = el.nextSibling;
   }
-  vlist.appendChild(vBot);
+
   winStart = s; winEnd = e;
+
   if (focusedInner) {
     if (focusedInner.isConnected) {
-      // preventScroll is the whole reason the outline could not be scrolled while editing. focus()
-      // scrolls its target into view by default, and this call runs on EVERY re-window — including
-      // the one the user's own scroll just triggered. So: scroll → rAF → renderWindow → focus() →
-      // the browser scrolls back → another scroll event → repeat. Measured before the fix, six
-      // wheel ticks over a 300-point document left scrollY at 0,0,0,0,0,0; with nothing being
-      // edited the same ticks reached 2400. The viewport was not jittering, it was arrested.
-      // Scoped deliberately to THIS call: focusNode and the menus are navigation, and navigation
-      // should still bring its target into view. Here we are restoring focus to a row the user has
-      // chosen to look away from, which is the one case where following it is wrong.
+      _vlPreservingFocus = true;
       focusedInner.focus({ preventScroll: true });
       if (caretOff != null) setCaretByOffset(focusedInner, caretOff);
     } else {
-      // The edited row scrolled OUT of the window and was not re-appended: focus is gone
-      // and the guarded blur above skipped exitEdit's teardown, so any open caret picker
-      // would float orphaned over unrelated rows, holding a detached content element and
-      // still owning Enter/Tab (#736). Close them here — the one exit path hideInlineMenus
-      // didn't cover.
       hideInlineMenus();
     }
-    _vlPreservingFocus = false;   // cleared unconditionally: the guard must never outlive the rebuild
+    _vlPreservingFocus = false;
   }
 
   vTop.style.height = (e >= s ? rowTops[s] : 0) + 'px';
   vBot.style.height = (e >= 0 ? totalHeight - rowTops[e + 1] : 0) + 'px';
-  // DIAL: Standard + Lean strip the pill "Click to re-roll/edit" tooltips (teaching text off once you know
-  // the pills; ux.md dial table, Pill tooltips → minimal). Scoped to the PILL classes only — a link's title
-  // (line ~3864 cross-doc = the target doc name; an external link = the URL) is FUNCTIONAL, not a helper, so
-  // it's left. Each pill keeps its aria-label twin, so nothing accessible is lost — only the redundant native
-  // hover-tooltip goes. One central post-render sweep (title lives in the HTML string; no single chokepoint).
+
   applyPillTitlePolicy(vlist);
-  // MOBILE-2: keep the "N done hidden" count current — but only on a real re-render (force),
-  // not on scroll-driven window shifts (#451 item 3). The count changes only when a to-do
-  // toggles done-ness or Show-done flips, both of which go through render() → force=true;
-  // syncDoneBadge whole-tree-walks countHiddenDone, so running it per scroll frame is pure
-  // waste on a large doc.
   if (force) syncDoneBadge();
   reconcileHeights();
 }
 
-// measure rendered rows; if real heights differ from estimates, fix offsets/spacers
 function reconcileHeights() {
   if (!vlist) return;
   let changed = false;
-  for (const el of vlist.children) {
-    const id = el.dataset && el.dataset.id;
-    if (!id) continue; // spacer
+  for (const [id, el] of mountedNodes.entries()) {
+    if (!el || !el.isConnected) continue;
     const h = el.offsetHeight;
-    if (h && heightCache.get(id) !== h) { heightCache.set(id, h); changed = true; }
+    if (h && heightCache.get(id) !== h) {
+      heightCache.set(id, h);
+      changed = true;
+    }
   }
   if (changed) {
     measureTops();
-    vTop.style.height = (winEnd >= winStart ? rowTops[winStart] : 0) + 'px';
-    vBot.style.height = (winEnd >= 0 ? totalHeight - rowTops[winEnd + 1] : 0) + 'px';
+    if (vTop) vTop.style.height = (winEnd >= winStart ? rowTops[winStart] : 0) + 'px';
+    if (vBot) vBot.style.height = (winEnd >= 0 ? totalHeight - rowTops[winEnd + 1] : 0) + 'px';
   }
 }
 
