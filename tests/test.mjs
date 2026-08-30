@@ -13378,6 +13378,57 @@ test('#1521 the verbosity dial carries the caret across its re-render', () => {
     'the dial must not paint a row cursor — Escape does that because Escape means LEAVE the point');
 });
 
+// #1522: `adoptDoc` cleared `focusedId` and left `selFocusId`/`selAnchorId` pointing into the
+// DISCARDED document. `selFocusId ?? selAnchorId ?? flatRows[0]` never reached its fallback — a
+// stale id is not a nullish one — so `flatRowStep` returned null on an id `flatIndex` had never
+// heard of, and the handler returned BEFORE `preventDefault()`. Measured: the arrows moved nothing,
+// painted nothing, announced nothing, and the page scrolled 0 → 40 → 80 → 120 → 80. The scroll is
+// the worst part: it reads as "the key did something".
+//
+// Two halves, and the second is not redundant. `adoptDoc` is the cause, but `restoreSnapshot` (undo)
+// also replaces `root` at runtime and does not clear the selection either; the arrow guard covers it
+// and any future path, without either one having to remember.
+test('#1522 a document swap leaves no cursor pointing at a discarded point', () => {
+  const { rowCursorAnchorId, rowCursorEntryIndex } = c;
+  // ---- 1. which id the arrows act from. `live` is the membership test flatIndex provides.
+  const live = (...ids) => { const s = new Set(ids); return (id) => s.has(id); };
+  assert.equal(rowCursorAnchorId('a', 'b', live('a', 'b')), 'a', 'the focus id wins when it is on screen');
+  assert.equal(rowCursorAnchorId('a', 'b', live('b')), 'b', 'else the anchor');
+  assert.equal(rowCursorAnchorId('a', 'b', live()), null, 'neither on screen: no cursor in THIS document');
+  assert.equal(rowCursorAnchorId('stale', null, live('x')), null,
+    'a STALE id reads as no cursor — the bug is that `??` cannot see the difference');
+  assert.equal(rowCursorAnchorId(null, null, live('x')), null);
+  assert.equal(rowCursorAnchorId(null, 'b', live('b')), 'b', 'the anchor alone is enough');
+  assert.equal(rowCursorAnchorId('a', 'b', () => false), null, 'a predicate that knows nothing yields nothing');
+
+  // ---- 2. where it lands with no live cursor: the NEAR end, not a step from a row it was never on.
+  assert.equal(rowCursorEntryIndex(1, 5), 0, 'ArrowDown enters at the first row');
+  assert.equal(rowCursorEntryIndex(-1, 5), 4, 'ArrowUp at the last');
+  assert.equal(rowCursorEntryIndex(1, 1), 0, 'a one-row document');
+  assert.equal(rowCursorEntryIndex(-1, 1), 0);
+  assert.equal(rowCursorEntryIndex(1, 0), null, 'an empty outline has nowhere to land');
+  assert.equal(rowCursorEntryIndex(1, null), null);
+  assert.equal(rowCursorEntryIndex(1, 2.5), null, 'a non-integer count is not a row count');
+
+  // ---- 3. THE CAUSE. The outgoing document's cursor and selection are dropped on the swap, beside
+  // the `focusedId` reset that was already there.
+  const ad = fnBody(_src, 'adoptDoc');
+  assert.ok(ad, 'adoptDoc must exist');
+  assert.ok(/focusedId = null;[\s\S]{0,600}selectedIds\.clear\(\); selAnchorId = null; selFocusId = null;/.test(ad),
+    'a swap must drop the row cursor and the selection, not just the zoom');
+
+  // ---- 4. THE DEFENCE. The arrow handler asks flatIndex rather than trusting the variable.
+  const arrows = between(_src, "if ((e.key==='ArrowDown' || e.key==='ArrowUp') && activeContentId == null", 'if (!nextId) return;');
+  assert.ok(arrows.includes('rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id))'),
+    'the arrows must resolve their starting row through the membership test');
+  assert.ok(!/selFocusId \?\? selAnchorId \?\? flatRows\[0\]/.test(arrows),
+    'the `??` chain must be gone — it is what could not see a stale id');
+  assert.ok(/if \(fromId == null\) \{\s*e\.preventDefault\(\);/.test(arrows),
+    'and with no live cursor the key must be CLAIMED, or the page scrolls and pretends it worked');
+  assert.ok(arrows.includes('moveRowCursor(flatRows[rowCursorEntryIndex(dir, flatRows.length)].node.id)'),
+    'landing goes through the one writer, so it is painted and announced like every other move');
+});
+
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
   assert.ok(_src.includes('.dice-edit,.mk-edit,.math-edit,.gr-edit,.var-edit'),
     'pill-pencil keyboard activation selector not found in index.html');

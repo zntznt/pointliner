@@ -21583,6 +21583,24 @@ function rangeSelectTo(id) {
   updateNodeSelBar();
 }
 
+// #1522: which remembered id the arrows act from, or null when neither is still on screen. A STALE
+// id is not a nullish one -- that is the whole bug. `adoptDoc` cleared `focusedId` and left
+// `selFocusId`/`selAnchorId` pointing into the DISCARDED document, so `selFocusId ?? selAnchorId ??
+// flatRows[0]` never reached its fallback, `flatRowStep` returned null on an id `flatIndex` had
+// never heard of, and the handler returned before `preventDefault()` -- the page scrolled while
+// nothing moved, which reads as "the key did something". `live` is the membership test. Pure.
+function rowCursorAnchorId(focusId, anchorId, live) {
+  const ok = id => id != null && !!live(id);
+  return ok(focusId) ? focusId : ok(anchorId) ? anchorId : null;
+}
+// Pure: where the cursor LANDS when the arrows fire with no live cursor in this document -- the near
+// end for the direction, rather than a step away from a row it was never on. (The old fallback
+// started at row 0 and stepped, so ArrowDown skipped the first row and ArrowUp fell off the front.)
+function rowCursorEntryIndex(dir, count) {
+  if (!Number.isInteger(count) || count <= 0) return null;
+  return dir > 0 ? 0 : count - 1;
+}
+
 function flatRowStep(id, dir, rows, idx) {
   rows = rows != null ? rows : flatRows;
   idx  = idx  != null ? idx  : flatIndex;
@@ -35506,6 +35524,11 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   _wsWarned = false;    // fresh doc → a later lost-access event may warn again
   _wsPromptSnooze = 0;  // #845: a dismissed prompt's snooze belongs to the outgoing doc, not this one
   focusedId = null;
+  // #1522: the row cursor and the selection belong to the OUTGOING document. `focusedId` was reset
+  // here and these three were not, so a swap left `selFocusId` naming a node this document has
+  // never contained: the arrows then moved nothing and scrolled the page instead, and the selection
+  // reported points that no longer existed (measured: 3 selected, 0 of them in the new document).
+  selectedIds.clear(); selAnchorId = null; selFocusId = null;
   clearTimeout(searchDebounce);
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0;
@@ -46384,7 +46407,15 @@ document.addEventListener('keydown', e => {
     if (!outlineOwnsKeys()) return;
     if (!flatRows.length) return;
     const dir = e.key === 'ArrowDown' ? 1 : -1;
-    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;
+    // #1522: ask flatIndex, not the variable. `??` cannot see a stale id, and the defence belongs
+    // here as well as in adoptDoc: any future path that leaves a cursor behind gets a working arrow
+    // instead of a page scroll.
+    const fromId = rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id));
+    if (fromId == null) {
+      e.preventDefault();
+      moveRowCursor(flatRows[rowCursorEntryIndex(dir, flatRows.length)].node.id);
+      return;
+    }
     const nextId = flatRowStep(fromId, dir);
     if (!nextId) return;
     e.preventDefault();

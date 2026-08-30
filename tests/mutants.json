@@ -2331,6 +2331,69 @@
       "find": "  return { id, offset: ok ? Math.floor(offset) : null };",
       "replace": "  return { id, offset: 0 };",
       "kills": "#1521 every verbosity door keeps the caret"
+    },
+    {
+      "id": "swap-keeps-the-outgoing-cursor",
+      "suite": "unit",
+      "why": "the cause: the discarded document's row cursor and selection surviving the swap",
+      "file": "index.html",
+      "find": "  selectedIds.clear(); selAnchorId = null; selFocusId = null;\n  clearTimeout(searchDebounce);",
+      "replace": "  clearTimeout(searchDebounce);",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "arrows-trust-the-variable-again",
+      "suite": "unit",
+      "why": "`??` cannot see a stale id, which is the whole reason the fallback never fired",
+      "file": "index.html",
+      "find": "    const fromId = rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id));",
+      "replace": "    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "stale-cursor-scrolls-the-page",
+      "suite": "unit",
+      "why": "returning without preventDefault lets the browser scroll, which reads as 'the key did something'",
+      "file": "index.html",
+      "find": "    if (fromId == null) {\n      e.preventDefault();",
+      "replace": "    if (fromId == null) {\n      ;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "row-cursor-entry-skips-the-first-row",
+      "suite": "unit",
+      "why": "the old fallback started at row 0 and STEPPED, so ArrowDown skipped it and ArrowUp fell off the front",
+      "file": "index.html",
+      "find": "  return dir > 0 ? 0 : count - 1;",
+      "replace": "  return dir > 0 ? Math.min(1, count - 1) : count - 1;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "row-cursor-anchor-accepts-a-stale-id",
+      "suite": "unit",
+      "why": "a membership test that answers yes to everything is the bug wearing the fix's shape",
+      "file": "index.html",
+      "find": "  const ok = id => id != null && !!live(id);",
+      "replace": "  const ok = id => id != null;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "swap-strands-the-arrows",
+      "suite": "browser",
+      "why": "driven: nothing moves, nothing is announced and the PAGE SCROLLS -- none of which a source pin sees",
+      "file": "index.html",
+      "find": "  selectedIds.clear(); selAnchorId = null; selFocusId = null;\n  clearTimeout(searchDebounce);",
+      "replace": "  clearTimeout(searchDebounce);",
+      "kills": "#1522 a document swap leaves the arrows working, not scrolling"
+    },
+    {
+      "id": "stale-cursor-defence-removed",
+      "suite": "browser",
+      "why": "driven on a NON-adoptDoc path: undo replaces root too, and the guard is what covers it",
+      "file": "index.html",
+      "find": "    const fromId = rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id));",
+      "replace": "    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;",
+      "kills": "#1522 a document swap leaves the arrows working, not scrolling"
     }
   ]
 }

@@ -5344,3 +5344,113 @@ test('#1521 every verbosity door keeps the caret, and the next keystroke lands',
     'with nothing being edited the dial must not pull the caret into a point');
   await pg.close();
 });
+
+// 79. #1522 — `adoptDoc` cleared `focusedId` and left `selFocusId`/`selAnchorId` pointing into the
+// DISCARDED document, so the row cursor named a node the new document had never contained. The
+// arrows then moved nothing, painted nothing, announced nothing — and SCROLLED THE PAGE
+// (0 → 40 → 80 → 120 → 80), because the handler returned before `preventDefault()`. Driven: every
+// symptom is runtime state, and the scroll in particular is the false feedback that made the state
+// look like it was working.
+test('#1522 a document swap leaves the arrows working, not scrolling', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const st = () => pg.evaluate(() => ({
+    selFocusId, selAnchorId, sel: selectedIds.size,
+    inFlat: selFocusId != null && flatIndex.has(selFocusId),
+    rows: flatRows.length, cursors: document.querySelectorAll('.node-cursor').length,
+    live: (document.getElementById('a11y-live') || {}).textContent?.trim() || '',
+    scrollY: Math.round(window.scrollY), activeContentId,
+  }));
+  const seed = () => pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    selectedIds.clear(); selAnchorId = null; selFocusId = null;
+    buildIndex(root, null); markDirty(); render();
+    document.activeElement.blur(); activeContentId = null;
+    const l = document.getElementById('a11y-live'); if (l) l.textContent = '';
+  });
+
+  // ── THE CAUSE: a swap taken while a cursor and a selection are live.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    moveRowCursor(root.children[2].id, { silent: true });
+    root.children.forEach(x => selectedIds.add(x.id));   // and a live multi-selection
+    updateSelVisuals();
+  });
+  await pg.waitForTimeout(250);
+  const before = await st();
+  assert.equal(before.inFlat, true, 'precondition: the cursor is on a real row');
+  assert.equal(before.sel, 3, 'precondition: three points are selected');
+
+  await pg.evaluate(() => {
+    const r = mkRoot(); const n = mkNode('Fresh'); n.type = 'ul'; r.children = [n];
+    adoptDoc(r, { fileName: 'x.opml' });
+  });
+  await pg.waitForTimeout(450);
+  const swapped = await st();
+  assert.equal(swapped.selFocusId, null, 'the swap must drop the row cursor of the outgoing document');
+  assert.equal(swapped.selAnchorId, null, 'and its anchor');
+  assert.equal(swapped.sel, 0,
+    'and its selection — it named three points the new document has never contained');
+
+  // the arrows work, and the PAGE DOES NOT SCROLL
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  const moved = await st();
+  assert.equal(moved.inFlat, true, 'ArrowDown must put the cursor on a real row of the NEW document');
+  assert.equal(moved.cursors, 1, 'painted');
+  assert.match(moved.live, /Fresh, 1 of 1/, 'and announced');
+  assert.equal(moved.scrollY, 0, 'and the page must not scroll instead — that is the false "it worked"');
+
+  // ── THE DEFENCE, on a path that is NOT adoptDoc: undo replaces root too, and does not clear the
+  // selection either. A cursor left on a point that undo removed must still yield a working arrow.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    moveRowCursor(root.children[2].id, { silent: true });
+    // drop the point the cursor is on, without touching selFocusId
+    root.children = root.children.slice(0, 2);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+  const stale = await st();
+  assert.equal(stale.inFlat, false, 'precondition: the cursor names a point that is no longer on screen');
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  const rescued = await st();
+  assert.equal(rescued.inFlat, true, 'a stale cursor from ANY path must still yield a working arrow');
+  assert.equal(rescued.scrollY, 0, 'without scrolling the page');
+
+  // ── ENTRY LANDS ON THE NEAR END, both directions. The old fallback started at row 0 and STEPPED,
+  // so ArrowDown skipped the first row and ArrowUp fell off the front and scrolled.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  assert.match((await st()).live, /Alpha, 1 of 3/, 'ArrowDown with no cursor enters at the FIRST row');
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('ArrowUp');
+  await pg.waitForTimeout(300);
+  assert.match((await st()).live, /Gamma, 3 of 3/, 'and ArrowUp at the last');
+
+  // ── THE NEGATIVE CASE: a live cursor still steps, Shift+Arrow still ranges, Enter still re-enters.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => moveRowCursor(root.children[0].id, { silent: true }));
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(250);
+  assert.match((await st()).live, /Beta, 2 of 3/, 'an ordinary step is unchanged');
+  await pg.keyboard.press('Shift+ArrowDown');
+  await pg.waitForTimeout(250);
+  assert.equal((await st()).sel, 2, 'Shift+Arrow still extends a range');
+  await pg.evaluate(() => { selectedIds.clear(); updateSelVisuals(); moveRowCursor(root.children[0].id, { silent: true }); });
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(350);
+  assert.ok(await pg.evaluate(() => activeContentId != null),
+    'and Enter is still the way back into the point');
+  await pg.close();
+});
