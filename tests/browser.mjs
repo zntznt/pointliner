@@ -5454,3 +5454,97 @@ test('#1522 a document swap leaves the arrows working, not scrolling', { skip: s
     'and Enter is still the way back into the point');
   await pg.close();
 });
+
+// #1523: EVERY dialog footer button stays inside the card and stays tappable at phone widths.
+//
+// `.io-foot` was a nowrap flex row justified to flex-end, so a footer wider than the card
+// overflowed to the LEFT -- off the card, off the screen. Leftward overflow is invisible to
+// scrollWidth (foot, #io-card and the document all reported scrollWidth === clientWidth), so
+// nothing could scroll to it: scrollLeft and scrollIntoView were both no-ops.
+//
+// Measured before the fix, at 320 wide in a touch context: Reusable packs' "+ New pack" sat at
+// -90..22 against a card starting at 14, leaving 7 hit-testable pixels; with the stale `welcome`
+// class still on the card (the leak fixed alongside) it was -97..14 -- ZERO. The
+// already-configured calendar's "Cancel" was worse: zero hit-testable pixels either way.
+//
+// The census matters here. The filed report named ONE dialog and called the others negative
+// controls, but the controls were measured in their fresh state: openCalendarDialog and
+// openUnitsDialog each grow a THIRD (danger) button once a calendar/units already exist, and both
+// overflow at 320. So this check drives the three-button states too, and asserts the two-button
+// ones stay single-row -- measuring the negative case, not just the positive.
+//
+// The assertion is a hit test, not a look: a clipped button can still report a healthy
+// getBoundingClientRect (#1520's lesson), so elementFromPoint across the button's centre-y is what
+// actually proves a finger can land on it. 24px is the repo's tap floor.
+test('#1523 every dialog footer button stays inside the card and stays tappable at phone widths', { skip: skip() }, async () => {
+  // ORDER MATTERS: the cases share one page, and the three-button states are three-button
+  // BECAUSE they mutate the document (a calendar/units now exist, so the dialog grows its danger
+  // button). Every fresh-state case therefore runs before anything that configures one, or it
+  // inherits the previous case's document and stops measuring the state it names.
+  const CASES = [
+    ['units, none set',     `openUnitsDialog();`,                                                2],
+    ['packs edit view',     `_packDraft = newPluginPack('P'); _packEditId = _packDraft.id; openDataPackManager();`, 2],
+    ['Reusable packs',      `_packEditId = null; openDataPackManager();`,                       4],
+    ['units, already set',  `applyUnitsChange('cp\\nsp = 10 cp'); openUnitsDialog();`,           3],
+    ['calendar, already set', `applyCalendarChange(buildCalendarFromFields({ months: 'Firstfrost: 30\\nDeepwinter: 30', week: '', eras: '', current: '1-01-01' })); openCalendarDialog();`, 3],
+  ];
+  for (const width of [320, 390]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(800);
+    await pg.keyboard.press('Escape');          // dismiss the first-run welcome
+    await pg.waitForTimeout(300);
+
+    // The leak that made every measurement below worse: openStarterGallery sets `welcome` on the
+    // SHARED #io-card, and closeIo used to remove `guide-open` but not `welcome`. The class then
+    // rode along on every later dialog, where `#io-card.welcome{max-width:calc(100vw - 32px)}`
+    // outranks the narrow-sheet rule and shaves 16px off the card.
+    assert.equal(await pg.evaluate(() => document.getElementById('io-card').classList.contains('welcome')), false,
+      `${width}: dismissing the welcome chooser must not leave its class on the shared card`);
+
+    for (const [name, expr, wantBtns] of CASES) {
+      const g = await pg.evaluate((e) => {
+        (0, eval)(e);
+        const card = document.getElementById('io-card');
+        const foot = card.querySelector('.io-foot');
+        const cr = card.getBoundingClientRect();
+        const padL = parseFloat(getComputedStyle(card).paddingLeft);
+        const bs = [...foot.querySelectorAll('.io-btn')];
+        foot.scrollIntoView({ block: 'end' });   // the card scrolls; a tall dialog's footer starts below the fold
+        const rects = bs.map(b => b.getBoundingClientRect());
+        // widest escape past the card's left content edge, and the hit width of each button
+        const clip = Math.max(0, ...rects.map(q => (cr.left + padL) - q.left));
+        const hits = bs.map((b, i) => {
+          const q = rects[i], cy = Math.round(q.top + q.height / 2);
+          let n = 0;
+          for (let x = 0; x < Math.min(window.innerWidth, Math.ceil(q.right) + 4); x++) {
+            if (document.elementFromPoint(x, cy) === b) n++;
+          }
+          return { label: b.textContent, hit: n };
+        });
+        const rows = new Set(rects.map(q => Math.round(q.top))).size;
+        return { n: bs.length, clip: Math.round(clip), rows, hits, cardW: Math.round(cr.width) };
+      }, expr);
+
+      assert.equal(g.n, wantBtns, `${width} ${name}: expected ${wantBtns} footer buttons, got ${g.n} (${g.hits.map(h => h.label).join(' | ')})`);
+      assert.equal(g.clip, 0, `${width} ${name}: a footer button escapes the card's left edge by ${g.clip}px`);
+      for (const h of g.hits) {
+        assert.ok(h.hit >= 24, `${width} ${name}: "${h.label}" has only ${h.hit} hit-testable px (tap floor is 24)`);
+      }
+      // The negative case: a footer that FITS must not wrap. Without this, "clip === 0" would also
+      // be satisfied by a rule that stacked every footer at every width, which is a different app.
+      if (wantBtns === 2) {
+        assert.equal(g.rows, 1, `${width} ${name}: a two-button footer must still be one row, not stacked`);
+      }
+      await pg.evaluate(() => closeIo());
+      await pg.waitForTimeout(120);
+    }
+    assert.deepEqual(errs, [], `${width}: no page errors while driving the dialog footers`);
+    await pg.close();
+    await ctx.close();
+  }
+});

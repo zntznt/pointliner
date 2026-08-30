@@ -1765,7 +1765,17 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
 .io-field input::placeholder{color:var(--muted)}/* UXP-107: no opacity; filled text is --fg, so --muted already reads lighter than typed input */
 .io-field input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
-.io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
+/* #1523: WRAP. Without it the row is a nowrap flex line justified to flex-end, so a footer
+   wider than the card overflows to the LEFT, off the card and off the screen. Nothing can
+   scroll to it: leftward overflow is invisible to scrollWidth (foot, #io-card and the
+   document all report scrollWidth === clientWidth), so scrollLeft and scrollIntoView are
+   both no-ops. Measured at 320px: Reusable packs' "+ New pack" had ZERO hit-testable
+   pixels, and the already-configured calendar's "Cancel" had zero too. Wrapping is the house
+   answer for a control row that can outgrow its box (.mt-baseheader, .mt-base-views, .cap-row,
+   #breadcrumb-row); .io-head above does NOT wrap, and does not need to -- it is an icon, a
+   title and an optional ? in a box wide enough for all three. .io-foot-stack is a column, so
+   the wrap is inert there. */
+.io-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:15px}
 .io-foot-stack{flex-direction:column;align-items:stretch}
 .io-foot-stack .io-btn{width:100%;text-align:center}
 .io-btn{font-family:var(--font);font-size:13px;font-weight:500;padding:7px 15px;border-radius:var(--r-md);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,filter .12s}
@@ -25250,6 +25260,7 @@ function closeIo() {
   if (ioCard.classList.contains('builder-open')) { closeBuilderWindow(); return; }
   ioBack.classList.remove('on');
   ioCard.classList.remove('guide-open');
+  ioCard.classList.remove('welcome');          // #1523: prevent leak across dialogs (as with the aria pair below)
   ioCard.innerHTML = ''; ioCancel = null;
   ioCard.removeAttribute('aria-label');
   ioCard.removeAttribute('aria-labelledby');   // UXP-181: prevent leak across dialogs

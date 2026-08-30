@@ -280,6 +280,14 @@ are why the control passes.
    `.io-foot` report 56px past at every width — the footer sits below the fold of a scrollable
    `#io-card`, which is what scrolling is for. Only the sheet cannot be scrolled into view.
 
+8. **Leftward overflow is invisible to every scroll test (#1523).** `spill` already measures it (it
+   takes `inL - q.left` as well as `q.right - inR`) and this is the column that catches it. Nothing
+   else can: leftward overflow does not count toward `scrollWidth`, so a footer hanging off the left
+   of the card reports `scrollWidth === clientWidth` on the row, on `#io-card` and on the document,
+   and both `scrollLeft` and `scrollIntoView` are no-ops. Note also that `unreachable` cannot see
+   it, because correction #4's `inHost` geometry filter treats a control whose centre has been
+   pushed outside its host as "not part of this surface" and skips it.
+
 **And one that does not belong in the generic driver at all:** on `#edit-bar`, calling `.focus()` on
 a button moves focus out of the point being edited, which **ends the edit and hides the bar** — so
 every reading after the first button comes from a hidden bar. The bar is tapped via
@@ -298,7 +306,12 @@ defects) and `af0ecbf` for the bars; `after` is `HEAD`.
 | `#capture-strip .cap-row`, `#journal-strip .cap-row` | 2 lines ≤560 | unchanged — declared `.cap-row{flex-wrap:wrap}`, so marked `wraps: true` |
 | `#agenda-strip .ag-top` | 2 lines ≤560 | unchanged — declared `flex-direction:column`, marked `wraps: true` |
 | `#breadcrumb-row` | 2 lines ≤430 | unchanged — declared `flex-wrap:wrap`, marked `wraps: true` |
-| `.io-foot`, `.guide-header`, `.fm-head` | clean | clean |
+| `.io-foot` 2 btn (`openMathDialog`) | clean | clean — this was the ONLY `.io-foot` row, and it is why the surface looked swept |
+| `.io-foot` Reusable packs (4 btn), touch | **spill 32 → 72 → 102 → 142px** at 430/390/360/320; `offscreen` from 390 | 0 at all 7 widths; wraps to 2 lines ≤430, declared `flex-wrap:wrap` |
+| `.io-foot` Reusable packs (4 btn), mouse | spill 33 / 63 / 103 at 390/360/320 | 0 at all 7 widths |
+| `.io-foot` units already set (3 btn), touch | spill 21 / 51 / 91 at 390/360/320 | 0 at all 7 widths |
+| `.io-foot` calendar already set (3 btn), touch | spill 27 / 67 / 97 / 137 at 430/390/360/320 | 0 at all 7 widths |
+| `.guide-header`, `.fm-head` | clean | clean |
 | `#search-wrap` | focused box covers `#level-ctl` by **117px** | **unchanged and not a defect** — identical at 1350 (wide design) and 900 (narrow design), i.e. the intended focus overlay, not a UXP-256 side effect |
 
 The last two rows exist so neither gets re-filed. A by-design `flex-wrap` and an intended overlay
@@ -339,8 +352,22 @@ const SURFACES = [
       for (const t of deep) { const n = mkNode(t); n.type='ul'; n.children=[]; par.children.push(n);
         nodeMap.set(n.id,n); parentMap.set(n.id,par); par = n; }
       markDirty(); render(); zoomTo(par.id);` },
-  { sel: '.io-foot', touch: false, note: 'dialog footer', setup: `
+  // #1523: a dialog footer is one surface PER DOCUMENT STATE, not one surface. This row used to be
+  // the openMathDialog seed alone -- two buttons, which fit at every width, which is why the sweep
+  // cleared `.io-foot` while Reusable packs' "+ New pack" had ZERO hit-testable pixels at 320.
+  // openCalendarDialog and openUnitsDialog each grow a THIRD (danger) button once a calendar or
+  // units already exist, so seed the configured state, never the state the app opens with.
+  { sel: '.io-foot', touch: false, note: 'dialog footer, 2 btn', setup: `
       openMathDialog({ title:'Insert a calculation', submitLabel:'Insert', onResult(){} });` },
+  { sel: '.io-foot', touch: true,  wraps: true, note: 'Reusable packs, 4 btn -- found #1523', setup: `
+      _packEditId = null; openDataPackManager();` },
+  { sel: '.io-foot', touch: false, wraps: true, note: 'Reusable packs, 4 btn, MOUSE', setup: `
+      _packEditId = null; openDataPackManager();` },
+  { sel: '.io-foot', touch: true,  wraps: true, note: 'units ALREADY SET, 3 btn', setup: `
+      applyUnitsChange('cp' + String.fromCharCode(10) + 'sp = 10 cp'); openUnitsDialog();` },
+  { sel: '.io-foot', touch: true,  wraps: true, note: 'calendar ALREADY SET, 3 btn', setup: `
+      applyCalendarChange(buildCalendarFromFields({ months:'Firstfrost: 30', week:'', eras:'', current:'1-01-01' }));
+      openCalendarDialog();` },
   { sel: '.guide-header', touch: false, note: 'File menu header', setup: `openFileMenu();` },
   { sel: '.fm-head', touch: false, note: 'File menu doc header', setup: `openFileMenu();` },
   // `overflows: true` = a child is MEANT to exceed this box. #search-box:focus grows to 592px (the
@@ -393,8 +420,13 @@ const MEASURE = `window.__measure = async function (sel) {
   // always reports a wrap (.builder-wrap failed all 12 widths this way).
   const column = cs.display.includes('flex') && cs.flexDirection.startsWith('column');
   const tops = [];
-  if (!column) for (const k of inFlow) { const t = Math.round(k.getBoundingClientRect().top);
-                            if (!tops.some(u => Math.abs(u - t) < 12)) tops.push(t); }
+  // #1523: two children share a line when their rects OVERLAP VERTICALLY. This was
+  // Math.abs(top - top) < 12, a magic number a short vertically-centred child can exceed without
+  // wrapping anything: #save-status sits 13px down inside a 44px #toolbar-row, so the CONTROL
+  // failed all five widths at and below 560 while the bar stayed exactly one 44px line tall.
+  // Overlap is exact and needs no threshold, and it still reports a real wrap as two lines.
+  if (!column) for (const k of inFlow) { const q = k.getBoundingClientRect();
+    if (!tops.some(u => Math.min(u.bottom, q.bottom) - Math.max(u.top, q.top) > 1)) tops.push(q); }
   else tops.push(0);
   // (2) a scroll container's overflow is its feature; (1) spill discounts negative margins.
   const scrolls = ['auto','scroll'].includes(cs.overflowX);
@@ -451,6 +483,13 @@ const MEASURE = `window.__measure = async function (sel) {
 
 const SEED = `
   document.getElementById('storage-warn')?.remove();
+  // #1523: DISMISS THE WELCOME CHOOSER, or the driver measures nothing. It ships open on first run
+  // and #io-back covers the whole viewport, so elementFromPoint returns the backdrop for every
+  // control and every non-dialog surface reports 100% unreachable -- which is exactly how the
+  // control failed when this sweep was re-run. The chooser landed after the numbers below were
+  // taken, so the recipe silently went stale rather than breaking loudly.
+  if (typeof closeIo === 'function') closeIo();
+  document.getElementById('io-back').classList.remove('on');
   root.children = [];
   for (const t of ['Alpha point','Beta point with a longer title','Gamma']) {
     const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
