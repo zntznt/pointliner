@@ -335,6 +335,7 @@ export function loadCores() {
     'panelFloorPx',                              // #1518: how far a bottom-docked panel must lift to clear the screen's bottom
     'stripChordPasses',                          // #1519: which keys a transient strip lets through to the global handler
     'caretKeepPlan',                             // #1521: whether a re-render hands the caret back, and where to
+    'rowCursorAnchorId','rowCursorEntryIndex',   // #1522: which row the arrows act from when the remembered id is stale
     'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
     'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting

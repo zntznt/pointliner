@@ -5344,3 +5344,207 @@ test('#1521 every verbosity door keeps the caret, and the next keystroke lands',
     'with nothing being edited the dial must not pull the caret into a point');
   await pg.close();
 });
+
+// 79. #1522 — `adoptDoc` cleared `focusedId` and left `selFocusId`/`selAnchorId` pointing into the
+// DISCARDED document, so the row cursor named a node the new document had never contained. The
+// arrows then moved nothing, painted nothing, announced nothing — and SCROLLED THE PAGE
+// (0 → 40 → 80 → 120 → 80), because the handler returned before `preventDefault()`. Driven: every
+// symptom is runtime state, and the scroll in particular is the false feedback that made the state
+// look like it was working.
+test('#1522 a document swap leaves the arrows working, not scrolling', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const st = () => pg.evaluate(() => ({
+    selFocusId, selAnchorId, sel: selectedIds.size,
+    inFlat: selFocusId != null && flatIndex.has(selFocusId),
+    rows: flatRows.length, cursors: document.querySelectorAll('.node-cursor').length,
+    live: (document.getElementById('a11y-live') || {}).textContent?.trim() || '',
+    scrollY: Math.round(window.scrollY), activeContentId,
+  }));
+  const seed = () => pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    selectedIds.clear(); selAnchorId = null; selFocusId = null;
+    buildIndex(root, null); markDirty(); render();
+    document.activeElement.blur(); activeContentId = null;
+    const l = document.getElementById('a11y-live'); if (l) l.textContent = '';
+  });
+
+  // ── THE CAUSE: a swap taken while a cursor and a selection are live.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    moveRowCursor(root.children[2].id, { silent: true });
+    root.children.forEach(x => selectedIds.add(x.id));   // and a live multi-selection
+    updateSelVisuals();
+  });
+  await pg.waitForTimeout(250);
+  const before = await st();
+  assert.equal(before.inFlat, true, 'precondition: the cursor is on a real row');
+  assert.equal(before.sel, 3, 'precondition: three points are selected');
+
+  await pg.evaluate(() => {
+    const r = mkRoot(); const n = mkNode('Fresh'); n.type = 'ul'; r.children = [n];
+    adoptDoc(r, { fileName: 'x.opml' });
+  });
+  await pg.waitForTimeout(450);
+  const swapped = await st();
+  assert.equal(swapped.selFocusId, null, 'the swap must drop the row cursor of the outgoing document');
+  assert.equal(swapped.selAnchorId, null, 'and its anchor');
+  assert.equal(swapped.sel, 0,
+    'and its selection — it named three points the new document has never contained');
+
+  // the arrows work, and the PAGE DOES NOT SCROLL
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  const moved = await st();
+  assert.equal(moved.inFlat, true, 'ArrowDown must put the cursor on a real row of the NEW document');
+  assert.equal(moved.cursors, 1, 'painted');
+  assert.match(moved.live, /Fresh, 1 of 1/, 'and announced');
+  assert.equal(moved.scrollY, 0, 'and the page must not scroll instead — that is the false "it worked"');
+
+  // ── THE DEFENCE, on a path that is NOT adoptDoc: undo replaces root too, and does not clear the
+  // selection either. A cursor left on a point that undo removed must still yield a working arrow.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    moveRowCursor(root.children[2].id, { silent: true });
+    // drop the point the cursor is on, without touching selFocusId
+    root.children = root.children.slice(0, 2);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+  const stale = await st();
+  assert.equal(stale.inFlat, false, 'precondition: the cursor names a point that is no longer on screen');
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  const rescued = await st();
+  assert.equal(rescued.inFlat, true, 'a stale cursor from ANY path must still yield a working arrow');
+  assert.equal(rescued.scrollY, 0, 'without scrolling the page');
+
+  // ── ENTRY LANDS ON THE NEAR END, both directions. The old fallback started at row 0 and STEPPED,
+  // so ArrowDown skipped the first row and ArrowUp fell off the front and scrolled.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  assert.match((await st()).live, /Alpha, 1 of 3/, 'ArrowDown with no cursor enters at the FIRST row');
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('ArrowUp');
+  await pg.waitForTimeout(300);
+  assert.match((await st()).live, /Gamma, 3 of 3/, 'and ArrowUp at the last');
+
+  // ── THE NEGATIVE CASE: a live cursor still steps, Shift+Arrow still ranges, Enter still re-enters.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => moveRowCursor(root.children[0].id, { silent: true }));
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(250);
+  assert.match((await st()).live, /Beta, 2 of 3/, 'an ordinary step is unchanged');
+  await pg.keyboard.press('Shift+ArrowDown');
+  await pg.waitForTimeout(250);
+  assert.equal((await st()).sel, 2, 'Shift+Arrow still extends a range');
+  await pg.evaluate(() => { selectedIds.clear(); updateSelVisuals(); moveRowCursor(root.children[0].id, { silent: true }); });
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(350);
+  assert.ok(await pg.evaluate(() => activeContentId != null),
+    'and Enter is still the way back into the point');
+  await pg.close();
+});
+
+// #1523: EVERY dialog footer button stays inside the card and stays tappable at phone widths.
+//
+// `.io-foot` was a nowrap flex row justified to flex-end, so a footer wider than the card
+// overflowed to the LEFT -- off the card, off the screen. Leftward overflow is invisible to
+// scrollWidth (foot, #io-card and the document all reported scrollWidth === clientWidth), so
+// nothing could scroll to it: scrollLeft and scrollIntoView were both no-ops.
+//
+// Measured before the fix, at 320 wide in a touch context: Reusable packs' "+ New pack" sat at
+// -90..22 against a card starting at 14, leaving 7 hit-testable pixels; with the stale `welcome`
+// class still on the card (the leak fixed alongside) it was -97..14 -- ZERO. The
+// already-configured calendar's "Cancel" was worse: zero hit-testable pixels either way.
+//
+// The census matters here. The filed report named ONE dialog and called the others negative
+// controls, but the controls were measured in their fresh state: openCalendarDialog and
+// openUnitsDialog each grow a THIRD (danger) button once a calendar/units already exist, and both
+// overflow at 320. So this check drives the three-button states too, and asserts the two-button
+// ones stay single-row -- measuring the negative case, not just the positive.
+//
+// The assertion is a hit test, not a look: a clipped button can still report a healthy
+// getBoundingClientRect (#1520's lesson), so elementFromPoint across the button's centre-y is what
+// actually proves a finger can land on it. 24px is the repo's tap floor.
+test('#1523 every dialog footer button stays inside the card and stays tappable at phone widths', { skip: skip() }, async () => {
+  // ORDER MATTERS: the cases share one page, and the three-button states are three-button
+  // BECAUSE they mutate the document (a calendar/units now exist, so the dialog grows its danger
+  // button). Every fresh-state case therefore runs before anything that configures one, or it
+  // inherits the previous case's document and stops measuring the state it names.
+  const CASES = [
+    ['units, none set',     `openUnitsDialog();`,                                                2],
+    ['packs edit view',     `_packDraft = newPluginPack('P'); _packEditId = _packDraft.id; openDataPackManager();`, 2],
+    ['Reusable packs',      `_packEditId = null; openDataPackManager();`,                       4],
+    ['units, already set',  `applyUnitsChange('cp\\nsp = 10 cp'); openUnitsDialog();`,           3],
+    ['calendar, already set', `applyCalendarChange(buildCalendarFromFields({ months: 'Firstfrost: 30\\nDeepwinter: 30', week: '', eras: '', current: '1-01-01' })); openCalendarDialog();`, 3],
+  ];
+  for (const width of [320, 390]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(800);
+    await pg.keyboard.press('Escape');          // dismiss the first-run welcome
+    await pg.waitForTimeout(300);
+
+    // The leak that made every measurement below worse: openStarterGallery sets `welcome` on the
+    // SHARED #io-card, and closeIo used to remove `guide-open` but not `welcome`. The class then
+    // rode along on every later dialog, where `#io-card.welcome{max-width:calc(100vw - 32px)}`
+    // outranks the narrow-sheet rule and shaves 16px off the card.
+    assert.equal(await pg.evaluate(() => document.getElementById('io-card').classList.contains('welcome')), false,
+      `${width}: dismissing the welcome chooser must not leave its class on the shared card`);
+
+    for (const [name, expr, wantBtns] of CASES) {
+      const g = await pg.evaluate((e) => {
+        (0, eval)(e);
+        const card = document.getElementById('io-card');
+        const foot = card.querySelector('.io-foot');
+        const cr = card.getBoundingClientRect();
+        const padL = parseFloat(getComputedStyle(card).paddingLeft);
+        const bs = [...foot.querySelectorAll('.io-btn')];
+        foot.scrollIntoView({ block: 'end' });   // the card scrolls; a tall dialog's footer starts below the fold
+        const rects = bs.map(b => b.getBoundingClientRect());
+        // widest escape past the card's left content edge, and the hit width of each button
+        const clip = Math.max(0, ...rects.map(q => (cr.left + padL) - q.left));
+        const hits = bs.map((b, i) => {
+          const q = rects[i], cy = Math.round(q.top + q.height / 2);
+          let n = 0;
+          for (let x = 0; x < Math.min(window.innerWidth, Math.ceil(q.right) + 4); x++) {
+            if (document.elementFromPoint(x, cy) === b) n++;
+          }
+          return { label: b.textContent, hit: n };
+        });
+        const rows = new Set(rects.map(q => Math.round(q.top))).size;
+        return { n: bs.length, clip: Math.round(clip), rows, hits, cardW: Math.round(cr.width) };
+      }, expr);
+
+      assert.equal(g.n, wantBtns, `${width} ${name}: expected ${wantBtns} footer buttons, got ${g.n} (${g.hits.map(h => h.label).join(' | ')})`);
+      assert.equal(g.clip, 0, `${width} ${name}: a footer button escapes the card's left edge by ${g.clip}px`);
+      for (const h of g.hits) {
+        assert.ok(h.hit >= 24, `${width} ${name}: "${h.label}" has only ${h.hit} hit-testable px (tap floor is 24)`);
+      }
+      // The negative case: a footer that FITS must not wrap. Without this, "clip === 0" would also
+      // be satisfied by a rule that stacked every footer at every width, which is a different app.
+      if (wantBtns === 2) {
+        assert.equal(g.rows, 1, `${width} ${name}: a two-button footer must still be one row, not stacked`);
+      }
+      await pg.evaluate(() => closeIo());
+      await pg.waitForTimeout(120);
+    }
+    assert.deepEqual(errs, [], `${width}: no page errors while driving the dialog footers`);
+    await pg.close();
+    await ctx.close();
+  }
+});

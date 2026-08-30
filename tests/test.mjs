@@ -12843,7 +12843,11 @@ test('#560 the guide sets its own accessible name; closeIo clears it so no reuse
   assert.ok(_src.includes("ioCard.setAttribute('aria-label', 'Concept guide')"),
     'openGuide must set aria-label to "Concept guide"');
   // closeIo removes the aria-label so the next container reuser can never inherit a stale name.
-  assert.match(_src, /function closeIo\(\)[\s\S]{0,220}ioCard\.removeAttribute\('aria-label'\)/,
+  // Scoped with fnBody rather than a `{0,220}` byte window from `function closeIo()`: the window
+  // was a distance assertion wearing a containment assertion's clothes, and #1523 broke it by
+  // adding one line INSIDE closeIo, which moved the removeAttribute past 220 bytes without
+  // touching the behaviour being pinned.
+  assert.match(fnBody(_src, 'closeIo'), /ioCard\.removeAttribute\('aria-label'\)/,
     'closeIo must clear the stale aria-label');
 });
 
@@ -13376,6 +13380,57 @@ test('#1521 the verbosity dial carries the caret across its re-render', () => {
   // and NOT the row-cursor rung: that would make a display setting mean "stop editing"
   assert.ok(!rk.includes('moveRowCursor'),
     'the dial must not paint a row cursor — Escape does that because Escape means LEAVE the point');
+});
+
+// #1522: `adoptDoc` cleared `focusedId` and left `selFocusId`/`selAnchorId` pointing into the
+// DISCARDED document. `selFocusId ?? selAnchorId ?? flatRows[0]` never reached its fallback — a
+// stale id is not a nullish one — so `flatRowStep` returned null on an id `flatIndex` had never
+// heard of, and the handler returned BEFORE `preventDefault()`. Measured: the arrows moved nothing,
+// painted nothing, announced nothing, and the page scrolled 0 → 40 → 80 → 120 → 80. The scroll is
+// the worst part: it reads as "the key did something".
+//
+// Two halves, and the second is not redundant. `adoptDoc` is the cause, but `restoreSnapshot` (undo)
+// also replaces `root` at runtime and does not clear the selection either; the arrow guard covers it
+// and any future path, without either one having to remember.
+test('#1522 a document swap leaves no cursor pointing at a discarded point', () => {
+  const { rowCursorAnchorId, rowCursorEntryIndex } = c;
+  // ---- 1. which id the arrows act from. `live` is the membership test flatIndex provides.
+  const live = (...ids) => { const s = new Set(ids); return (id) => s.has(id); };
+  assert.equal(rowCursorAnchorId('a', 'b', live('a', 'b')), 'a', 'the focus id wins when it is on screen');
+  assert.equal(rowCursorAnchorId('a', 'b', live('b')), 'b', 'else the anchor');
+  assert.equal(rowCursorAnchorId('a', 'b', live()), null, 'neither on screen: no cursor in THIS document');
+  assert.equal(rowCursorAnchorId('stale', null, live('x')), null,
+    'a STALE id reads as no cursor — the bug is that `??` cannot see the difference');
+  assert.equal(rowCursorAnchorId(null, null, live('x')), null);
+  assert.equal(rowCursorAnchorId(null, 'b', live('b')), 'b', 'the anchor alone is enough');
+  assert.equal(rowCursorAnchorId('a', 'b', () => false), null, 'a predicate that knows nothing yields nothing');
+
+  // ---- 2. where it lands with no live cursor: the NEAR end, not a step from a row it was never on.
+  assert.equal(rowCursorEntryIndex(1, 5), 0, 'ArrowDown enters at the first row');
+  assert.equal(rowCursorEntryIndex(-1, 5), 4, 'ArrowUp at the last');
+  assert.equal(rowCursorEntryIndex(1, 1), 0, 'a one-row document');
+  assert.equal(rowCursorEntryIndex(-1, 1), 0);
+  assert.equal(rowCursorEntryIndex(1, 0), null, 'an empty outline has nowhere to land');
+  assert.equal(rowCursorEntryIndex(1, null), null);
+  assert.equal(rowCursorEntryIndex(1, 2.5), null, 'a non-integer count is not a row count');
+
+  // ---- 3. THE CAUSE. The outgoing document's cursor and selection are dropped on the swap, beside
+  // the `focusedId` reset that was already there.
+  const ad = fnBody(_src, 'adoptDoc');
+  assert.ok(ad, 'adoptDoc must exist');
+  assert.ok(/focusedId = null;[\s\S]{0,600}selectedIds\.clear\(\); selAnchorId = null; selFocusId = null;/.test(ad),
+    'a swap must drop the row cursor and the selection, not just the zoom');
+
+  // ---- 4. THE DEFENCE. The arrow handler asks flatIndex rather than trusting the variable.
+  const arrows = between(_src, "if ((e.key==='ArrowDown' || e.key==='ArrowUp') && activeContentId == null", 'if (!nextId) return;');
+  assert.ok(arrows.includes('rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id))'),
+    'the arrows must resolve their starting row through the membership test');
+  assert.ok(!/selFocusId \?\? selAnchorId \?\? flatRows\[0\]/.test(arrows),
+    'the `??` chain must be gone — it is what could not see a stale id');
+  assert.ok(/if \(fromId == null\) \{\s*e\.preventDefault\(\);/.test(arrows),
+    'and with no live cursor the key must be CLAIMED, or the page scrolls and pretends it worked');
+  assert.ok(arrows.includes('moveRowCursor(flatRows[rowCursorEntryIndex(dir, flatRows.length)].node.id)'),
+    'landing goes through the one writer, so it is painted and announced like every other move');
 });
 
 test('UXP-36: pill-pencil keyboard activation (Enter/Space) is present', () => {
@@ -34478,4 +34533,56 @@ test('#1493 a code point is a bare block only while it is childless', () => {
   const bare = between(_src, '// #1493: a code block joins para/quote here', 'const bareBlock =');
   assert.match(bare, /list item is Markdown's only native container/);
   assert.match(_src, /\(node\.type === 'para' \|\| isQuote \|\| node\.type === 'code'\) && !hasKids/);
+});
+
+test('#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog', () => {
+  // `.io-foot` was `display:flex` + nowrap + `justify-content:flex-end`. A footer wider than the
+  // card therefore overflowed to the LEFT, off the card and off the screen, and nothing could
+  // scroll to it: leftward overflow does not count toward scrollWidth, so the footer, #io-card and
+  // the document all reported scrollWidth === clientWidth and both scrollLeft and scrollIntoView
+  // were no-ops. Measured at 320px in a touch context, "+ New pack" had 7 hit-testable pixels
+  // (zero with the welcome leak below), and the already-configured calendar's "Cancel" had zero.
+  //
+  // Anchored on the newline and matched whole, so quoting the rule in a nearby comment cannot
+  // satisfy this pin -- that is exactly how #1518's CSS guard went vacuous.
+  const RULE = '\n.io-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:15px}';
+  assert.ok(_src.includes(RULE),
+    '.io-foot must carry flex-wrap:wrap; without it a footer wider than the card overflows off-screen left');
+
+  // Identity, not existence: exactly ONE rule is selected by a bare `.io-foot`, so the wrap above
+  // is THE footer rule rather than one of several that a later declaration could outrank.
+  const bare = [..._src.matchAll(/\n\.io-foot\{[^}]*\}/g)];
+  assert.equal(bare.length, 1, `expected exactly one bare .io-foot rule, found ${bare.length}`);
+  // Nothing anywhere may put the nowrap back on a footer.
+  const nowrap = [..._src.matchAll(/\.io-foot[^{\n]*\{[^}]*flex-wrap:\s*nowrap/g)];
+  assert.equal(nowrap.length, 0, 'an .io-foot rule re-introduces flex-wrap:nowrap');
+
+  // The stacked variant is a COLUMN, so the wrap is inert there rather than fighting it.
+  assert.ok(_src.includes('.io-foot-stack{flex-direction:column;align-items:stretch}'),
+    '.io-foot-stack must stay a column so wrapping the base row cannot disturb it');
+
+  // Ratchet. Every dialog footer is built by handing it this one class, which is why a single CSS
+  // rule can fix all of them. A 13th footer built some other way would not inherit the wrap, so
+  // make a new one fail here and get driven (tests/browser.mjs #1523) rather than ship unmeasured.
+  const plain   = [..._src.matchAll(/foot\.className = 'io-foot'/g)].length;
+  const stacked = [..._src.matchAll(/className = 'io-foot io-foot-stack'/g)].length;
+  assert.equal(plain + stacked, 12,
+    `dialog footers moved from 12 to ${plain + stacked}. Drive the new one at 320px wide in a touch ` +
+    `context (it must not clip, and every button needs 24px of hit-testable width), then update this count.`);
+
+  // The leak that made the clip worse. openStarterGallery puts `welcome` on the SHARED #io-card;
+  // closeIo removed `guide-open` but not `welcome`, so the class rode along onto every later
+  // dialog, where `#io-card.welcome{max-width:calc(100vw - 32px)}` outranks the narrow-sheet rule
+  // and shaved 16px off the card -- turning "+ New pack"'s 7 surviving pixels into 0.
+  assert.match(fnBody(_src, 'closeIo'), /ioCard\.classList\.remove\('welcome'\)/,
+    'closeIo must clear the welcome class, as it already does for guide-open');
+
+  // The negative case: clearing it in closeIo is only safe because the gallery re-asserts the class
+  // on every open (a toggle, not a one-shot add). Without this, the pin above would be an
+  // instruction to break the welcome chooser.
+  assert.ok(_src.includes("ioCard.classList.toggle('welcome', welcome)"),
+    'openStarterGallery must re-assert the welcome class on open, or closeIo clearing it breaks the chooser');
+  // ...and the class still scopes real rules, so removing it is a behaviour change rather than a no-op.
+  assert.ok(_src.includes('#io-card.welcome{width:640px'),
+    'the welcome class must still scope the wider-card rule, or this pin proves nothing');
 });

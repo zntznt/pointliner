@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2141 declarations in 158 sections across 17 domains.**
+**2143 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1192,6 +1192,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `updateNodeSelBar`
 - `toggleSelect` — Cmd/Ctrl-click: add or remove ONE point from the selection (out-of-order, non-
 - `rangeSelectTo`
+- `rowCursorAnchorId` — #1522: which remembered id the arrows act from, or null when neither is still on screen. A STALE
+- `rowCursorEntryIndex` — Pure: where the cursor LANDS when the arrows fire with no live cursor in this document -- the near
 - `flatRowStep`
 - `getTopLevelSelected`
 - `deepCloneNodeNewIds` — An internal [[#id|...]] link (a mirror/embed, or a same-doc jump) points at a node id, which the clone
