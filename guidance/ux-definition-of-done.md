@@ -240,9 +240,29 @@ await b.close();
 other. Every layout defect this project has shipped was found by a person looking at the app, months
 later: UXP-256 (105px overlap), UXP-257 (145px indent), UXP-259 (the edit bar's Done button off the
 screen at 320px, present since before the toolbar work). The button-count ratchets catch *growth*;
-nothing measured *position*. This driver is that measurement. It lives in the scratchpad, never in
-the repo (`CLAUDE.md`: verification artifacts stay out of git); what is recorded here is the recipe,
-the corrections it needed, and the numbers.
+nothing measured *position*. This driver is that measurement.
+
+**It is `tools/layout-sweep.mjs`.** It used to live only as a fenced code block here, copied into a
+scratchpad on demand, on the reasoning that verification artifacts stay out of git. The consequence
+was that nothing ran it and nothing could tell when it stopped working — and it had stopped: the
+first-run welcome chooser shipped after the numbers below were taken, `#io-back` then covered the
+viewport, and `elementFromPoint` returned the backdrop for **every control on every non-dialog
+surface**. The recipe went stale silently rather than breaking loudly, and that survived until
+someone re-ran it for an unrelated fix (#1559). This is the same argument #1427 made for
+`tests/browser.mjs`, and the same answer. `tests/browser.mjs` now gates that the sweep still
+*measures* — the seed clears the modal layer, the save chip is frozen, the reach walk judges a
+non-zero number of controls — so a driver that stops working fails a test instead of waiting to
+mislead the next reader. Its geometry cores are pure, and `tests/test.mjs` pins them; the tool
+stringifies **those same function objects** into the page, so the tested cores are the ones that run.
+
+```bash
+node tools/layout-sweep.mjs                     # every surface, every width
+node tools/layout-sweep.mjs --control           # just the control (what CI's gate mirrors)
+node tools/layout-sweep.mjs --surface io-foot   # substring match on selector or note
+node tools/layout-sweep.mjs --widths 390,320
+```
+
+What is recorded below is the reasoning: the corrections the instrument needed, and the numbers.
 
 > **`#toolbar-row` is the control, and it is listed first for a reason. If the control fails, the
 > driver is wrong — fix the driver before believing a single other row.** The first version of this
@@ -254,9 +274,9 @@ the corrections it needed, and the numbers.
 | check | how | the defect it catches |
 |---|---|---|
 | **Overlap** | rectangle intersection of every visible **in-flow** pair of children | UXP-256: `#search-wrap` was `position:absolute` above 950px, so flex laid `#level-ctl` out as if it were not there — 21px of overlap at 9 toolbar buttons, **105px at 11** |
-| **Wrap** | distinct child top-offsets, **ignoring gaps under 12px and zero-height children** | UXP-258: a wrapped row makes the bar's height a function of the button count |
+| **Wrap** | distinct lines, where two children share a line if their rects **overlap vertically** | UXP-258: a wrapped row makes the bar's height a function of the button count |
 | **Offscreen** | a control past the viewport edge **with no scrollable ancestor to reveal it** | UXP-259: `#eb-done` 40px past the screen at 320px, `elementFromPoint` returning nothing |
-| **Reach** | scroll each control into view, then `elementFromPoint` at its centre | a scrolling strip that hides a control with no way to get to it |
+| **Reach** | scroll each control into view, then `elementFromPoint` at its centre. Judged for every control **sharing the host's line**, including one pushed outside it | a scrolling strip that hides a control with no way to get to it; a control shoved off its own container (#1523) |
 | **Scroll cue** | the `.more-l` / `.more-r` classes at scrollLeft 0 / middle / max | a hidden scrollbar with a permanently painted fade lies about there being more (P4) |
 
 **The five corrections, each traced to a real CSS idiom the naive version misread.** Keep them: they
@@ -280,6 +300,41 @@ are why the control passes.
    `.io-foot` report 56px past at every width — the footer sits below the fold of a scrollable
    `#io-card`, which is what scrolling is for. Only the sheet cannot be scrolled into view.
 
+8. **Leftward overflow is invisible to every scroll test (#1523).** `spill` already measures it (it
+   takes `inL - q.left` as well as `q.right - inR`) and this is the column that catches it. Nothing
+   else can: leftward overflow does not count toward `scrollWidth`, so a footer hanging off the left
+   of the card reports `scrollWidth === clientWidth` on the row, on `#io-card` and on the document,
+   and both `scrollLeft` and `scrollIntoView` are no-ops.
+
+9. **Correction #4 was excluding the thing the reach column is FOR (#1559).** `inHost` skipped any
+   control whose centre lay outside the host rect, to exclude popups that open on focus. It also
+   silently skipped a control pushed *out* of its host — the most severe reachability failure there
+   is, and the one `unreachable` therefore could not report: #1523's "+ New pack" had **seven**
+   hit-testable pixels while that column sat empty. **Vertical overlap separates the two cleanly**,
+   measured both ways: every control in the search popup has *negative* overlap with its host (−25
+   to −689px; it opens below the row), while a footer button shoved off the left of its card keeps
+   *full* overlap, because it is still laid out in that row. Same band, still ours — judge it.
+
+10. **A child can absorb its own overflow (#1559).** Correction #2 discounts overflow when the
+    **host** scrolls. `#tbtn-cluster` is not a scroller; it *contains* a `.scroll-strip`. Without
+    the one-level-down discount it reports 7px of spill and fails the CONTROL while nothing is
+    lost — `offscreen` empty, `unreachable` empty, and an independent walk for buttons past the
+    viewport with no scrollable ancestor returning `[]`.
+
+11. **Do not race a live status element (#1559).** `#save-status` is an in-flow flex child of
+    `#toolbar-row` whose text tracks save state: "Saved" → "✓Saved just now" is a **38px** jump that
+    shifts every child to its right, and it flipped the 620px verdict between two runs differing
+    only in when the measurement landed. The seed freezes it. **Which** state to freeze is a real
+    choice and the answer is not "the widest": the storage-blocked string is 183px against this
+    one's 112px, and freezing to it makes the control fail for a genuine app defect (#1560) rather
+    than an instrument one. The control has to sit in a state verified clean.
+
+12. **`walked` is the inverse-vacuity guard (#1559).** `unreachable: []` is also what a walk that
+    judged *nothing* reports, and the two are indistinguishable in the output. The band filter is a
+    skip, so a filter that got too aggressive would silently empty the walk and paint every surface
+    clean — the same shape as #1133. The measurement returns how many controls it actually judged,
+    and the CI gate asserts it is non-zero.
+
 **And one that does not belong in the generic driver at all:** on `#edit-bar`, calling `.focus()` on
 a button moves focus out of the point being edited, which **ends the edit and hides the bar** — so
 every reading after the first button comes from a hidden bar. The bar is tapped via
@@ -298,202 +353,41 @@ defects) and `af0ecbf` for the bars; `after` is `HEAD`.
 | `#capture-strip .cap-row`, `#journal-strip .cap-row` | 2 lines ≤560 | unchanged — declared `.cap-row{flex-wrap:wrap}`, so marked `wraps: true` |
 | `#agenda-strip .ag-top` | 2 lines ≤560 | unchanged — declared `flex-direction:column`, marked `wraps: true` |
 | `#breadcrumb-row` | 2 lines ≤430 | unchanged — declared `flex-wrap:wrap`, marked `wraps: true` |
-| `.io-foot`, `.guide-header`, `.fm-head` | clean | clean |
+| `.io-foot` 2 btn (`openMathDialog`) | clean | clean — this was the ONLY `.io-foot` row, and it is why the surface looked swept |
+| `.io-foot` Reusable packs (4 btn), touch | **spill 32 → 72 → 102 → 142px** at 430/390/360/320; `offscreen` from 390 | 0 at all 7 widths; wraps to 2 lines ≤430, declared `flex-wrap:wrap` |
+| `.io-foot` Reusable packs (4 btn), mouse | spill 33 / 63 / 103 at 390/360/320 | 0 at all 7 widths |
+| `.io-foot` units already set (3 btn), touch | spill 21 / 51 / 91 at 390/360/320 | 0 at all 7 widths |
+| `.io-foot` calendar already set (3 btn), touch | spill 27 / 67 / 97 / 137 at 430/390/360/320 | 0 at all 7 widths |
+| `.guide-header`, `.fm-head` | clean | clean |
 | `#search-wrap` | focused box covers `#level-ctl` by **117px** | **unchanged and not a defect** — identical at 1350 (wide design) and 900 (narrow design), i.e. the intended focus overlay, not a UXP-256 side effect |
+
+**Numbers of record, #1559 (`tools/layout-sweep.mjs`, all 25 surfaces × 12 widths = 300 rows).**
+Run with the instrument's own corrections in place. **One failing row**, and it is a real app defect
+the fixed reach column found on its first run, not an instrument artefact:
+
+| surface | result |
+|---|---|
+| 24 of 25 surfaces | **clean at all 12 widths** |
+| `#toolbar-row` (the CONTROL) at 620 | `spill 37` on `#level-ctl`, `lvl-all` offscreen, 9 controls with no hit-testable pixel — **#1560** |
+
+`#1560` was a **561–675px** band where the button cluster was squeezed to 5px and laid out past the
+viewport. The standard width list steps 700 → 620 → 560, so it lands on only one width inside that
+band; it was characterised by stepping 5px at a time.
+
+**Fixed, and the sweep is now 300 rows / 0 failing** — every surface clean at every width for the
+first time. `tests/browser.mjs` still gates the *instrument* (seed clears the modal layer, chip
+frozen, `walked > 0`, cores agree with the pinned ones) rather than asserting the app is clean
+everywhere: a green sweep is evidence about the app, and the gate's job is to keep the sweep
+honest, which are different claims.
 
 The last two rows exist so neither gets re-filed. A by-design `flex-wrap` and an intended overlay
 both look exactly like defects in a table of numbers; what distinguishes them is that they are
 **identical across bands the change never touched**.
 
-<details>
-<summary>Layout driver (scratchpad Playwright — Chromium at <code>/opt/pw-browsers/</code>, never <code>npx playwright install</code>)</summary>
-
-```js
-import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
-const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
-const APP = 'file:///home/user/pointliner/index.html';
-
-// The control is FIRST. Each surface names the row to measure and the setup that renders it;
-// a surface that does not render is reported as such, never as "clean".
-const SURFACES = [
-  { sel: '#toolbar-row', touch: true, note: 'CONTROL — must pass, or the driver is wrong', setup: `` },
-  { sel: '#edit-bar', touch: true, note: 'touch edit bar', setup: `
-      const c = document.querySelectorAll('.node-content')[1], n = root.children[1];
-      enterEdit(c, n); c.focus(); activeContentId = n.id; updateEditBar();` },
-  { sel: '#quick-bar', touch: true, note: 'touch display-mode bar', setup: `
-      activeContentId = null; updateEditBar(); updateQuickBar();` },
-  { sel: '#doc-tabs', touch: false, note: '5 open documents', setup: `
-      workspaceDir = { name: 'ws' };
-      openTabs = ['inbox.opml','campaign-notes.opml','session-log.opml','characters.opml','worldbuilding.opml'];
-      fileName = 'inbox.opml'; renderDocTabs();` },
-  // `wraps: true` = this row is DECLARED to reflow (flex-wrap / flex-direction:column in its own
-  // rule), so a second line is the design, not a defect. Marking intent explicitly is the point: a
-  // driver that prints six permanent FAILs teaches people to ignore it, which is how the toolbar
-  // defect survived four PRs. An UNexpected wrap on any other surface still fails.
-  { sel: '#capture-strip .cap-row', touch: true, wraps: true, note: 'capture row (.cap-row wraps)', setup: `toggleCapture();` },
-  { sel: '#journal-strip .cap-row', touch: true, wraps: true, note: 'journal row (.cap-row wraps)', setup: `openJournalStrip();` },
-  { sel: '#agenda-strip .ag-top', touch: true, wraps: true, note: 'agenda (.ag-top stacks ≤560)', setup: `openAgenda();` },
-  { sel: '#breadcrumb-row', touch: false, wraps: true, note: 'zoom trail (flex-wrap:wrap)', setup: `
-      const deep = ['Campaign','Act one','The road north','A very long point title here'];
-      root.children = []; let par = root;
-      for (const t of deep) { const n = mkNode(t); n.type='ul'; n.children=[]; par.children.push(n);
-        nodeMap.set(n.id,n); parentMap.set(n.id,par); par = n; }
-      markDirty(); render(); zoomTo(par.id);` },
-  { sel: '.io-foot', touch: false, note: 'dialog footer', setup: `
-      openMathDialog({ title:'Insert a calculation', submitLabel:'Insert', onResult(){} });` },
-  { sel: '.guide-header', touch: false, note: 'File menu header', setup: `openFileMenu();` },
-  { sel: '.fm-head', touch: false, note: 'File menu doc header', setup: `openFileMenu();` },
-  // `overflows: true` = a child is MEANT to exceed this box. #search-box:focus grows to 592px (the
-  // help-popup width, so the two read as one unit) inside a 220px wrap in the 951-1279 band, which
-  // reads as 372px of spill. Verified intentional, not a UXP-256 side effect: the focused field
-  // covers #level-ctl by 117px at EVERY width, including 1350 and 900 — bands that change never
-  // touched. Same reasoning as `wraps`: an unexplained red row trains people to skip the whole sweep.
-  { sel: '#search-wrap', touch: false, overflows: true, note: 'search field (focus overlay BY DESIGN)', setup: `
-      const sb = document.getElementById('search-box'); sb.focus();
-      sb.value = 'is:todo'; sb.dispatchEvent(new Event('input', { bubbles: true }));` },
-  // ── round 2 (UXP-260/261): run every hover:none surface in BOTH input modes. Three defects so
-  // far have been a narrow-window remedy gated on touch, so a mouse row is not a duplicate of the
-  // touch row — it is the row that finds them.
-  { sel: '.mt-baseheader', touch: true,  wraps: true, note: 'base header, touch', setup: `mkBase();` },
-  { sel: '.mt-baseheader', touch: false, wraps: true, note: 'base header, MOUSE — found UXP-260', setup: `mkBase();` },
-  { sel: '.mt-base-views', touch: true,  wraps: true, note: 'Table/Board/Cards/Calendar switcher', setup: `mkBase();` },
-  { sel: '.graph-head',  touch: false, note: 'link graph header', setup: `mkLinks(); openGraph();` },
-  { sel: '.tl-toggles',  touch: false, note: 'timeline filter toggles', setup: `mkDated(); openTimeline();` },
-  { sel: '.tl-toggles',  touch: true,  note: 'timeline filter toggles, touch', setup: `mkDated(); openTimeline();` },
-  { sel: '#file-menu .guide-body', touch: false, note: 'File menu two-pane body', setup: `openFileMenu();` },
-  { sel: '#io-card .guide-body',   touch: false, note: 'concept guide two-pane — found UXP-261', setup: `openGuide('nav-move');` },
-  { sel: '#io-card .builder-wrap', touch: false, note: 'All commands two-pane', setup: `
-      mkLinks(); document.querySelector('.node-content')?.focus();
-      await new Promise(r => setTimeout(r, 120)); document.getElementById('btn-builder').click();` },
-];
-const WIDTHS = [1400, 1100, 950, 820, 700, 620, 560, 510, 430, 390, 360, 320];
-
-const MEASURE = `window.__measure = async function (sel) {
-  const host = document.querySelector(sel);
-  if (!host) return { missing: true };
-  const cs = getComputedStyle(host), hr = host.getBoundingClientRect();
-  if (cs.display === 'none' || cs.visibility === 'hidden' || !hr.width || !hr.height) return { hidden: true };
-  const vis = e => { const s = getComputedStyle(e), q = e.getBoundingClientRect();
-                     return s.display !== 'none' && s.visibility !== 'hidden' && q.width > 0 && q.height > 0; };
-  const name = e => e.id || (e.className && String(e.className).split(' ')[0]) || e.tagName.toLowerCase();
-  const st = e => getComputedStyle(e);
-  const kids = [...host.children].filter(vis);
-  // (3) stacked-by-design children are excluded from the overlap check.
-  const inFlow = kids.filter(k => !['absolute','fixed'].includes(st(k).position));
-  const overlaps = [];
-  for (let i = 0; i < inFlow.length; i++) for (let j = i + 1; j < inFlow.length; j++) {
-    const a = inFlow[i].getBoundingClientRect(), d = inFlow[j].getBoundingClientRect();
-    const ox = Math.min(a.right, d.right) - Math.max(a.left, d.left);
-    const oy = Math.min(a.bottom, d.bottom) - Math.max(a.top, d.top);
-    if (ox > 1 && oy > 1) overlaps.push(name(inFlow[i]) + 'x' + name(inFlow[j]) + ':' + Math.round(ox));
-  }
-  // Zero-area children have no visual line (.eb-spacer sits 20px below the buttons and read as a
-  // second row), and a sub-12px difference is button-height noise, not a wrap. A COLUMN-direction
-  // container is skipped outright: stacking is what column means, so counting its children's tops
-  // always reports a wrap (.builder-wrap failed all 12 widths this way).
-  const column = cs.display.includes('flex') && cs.flexDirection.startsWith('column');
-  const tops = [];
-  if (!column) for (const k of inFlow) { const t = Math.round(k.getBoundingClientRect().top);
-                            if (!tops.some(u => Math.abs(u - t) < 12)) tops.push(t); }
-  else tops.push(0);
-  // (2) a scroll container's overflow is its feature; (1) spill discounts negative margins.
-  const scrolls = ['auto','scroll'].includes(cs.overflowX);
-  const scrollOver = scrolls ? Math.round(host.scrollWidth - host.clientWidth) : 0;
-  const padL = parseFloat(cs.paddingLeft) || 0, padR = parseFloat(cs.paddingRight) || 0;
-  const inL = hr.left + padL, inR = hr.right - padR;
-  let spill = 0, spiller = '';
-  if (!scrolls) for (const k of inFlow) {
-    const q = k.getBoundingClientRect(), ks = st(k);
-    const mr = Math.min(0, parseFloat(ks.marginRight) || 0), ml = Math.min(0, parseFloat(ks.marginLeft) || 0);
-    const s = Math.max(Math.round(q.right + mr - inR), Math.round(inL - (q.left - ml)));
-    if (s > spill) { spill = s; spiller = name(k); }
-  }
-  // (5) past the viewport is only a failure with no scrollable ancestor to bring it back.
-  const scrollableUp = el => { for (let p = el.parentElement; p; p = p.parentElement)
-      if (['auto','scroll'].includes(getComputedStyle(p).overflowX) && p.scrollWidth > p.clientWidth + 1) return true;
-    return false; };
-  const offscreen = [];
-  for (const el of host.querySelectorAll('button,[role=button],input,select,textarea')) {
-    if (!vis(el) || el.disabled) continue;
-    const q = el.getBoundingClientRect();
-    if ((q.right > innerWidth + 1 || q.left < -1) && !scrollableUp(el)) offscreen.push(name(el));
-  }
-  // (4) reach, with state reset between controls and popups excluded by geometry.
-  const unreachable = [];
-  const inHost = el => { const q = el.getBoundingClientRect();
-    const cx = q.left + q.width / 2, cy = q.top + q.height / 2;
-    return cx >= hr.left - 1 && cx <= hr.right + 1 && cy >= hr.top - 1 && cy <= hr.bottom + 1; };
-  for (const el of host.querySelectorAll('button,[role=button],input,select,textarea,[tabindex]')) {
-    if (!vis(el) || el.disabled) continue;
-    document.activeElement?.blur?.(); await new Promise(r => setTimeout(r, 30));
-    if (!vis(el) || !inHost(el)) continue;
-    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    await new Promise(r => setTimeout(r, 40));
-    if (!inHost(el)) continue;
-    const q = el.getBoundingClientRect();
-    const t = document.elementFromPoint(Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2));
-    if (!t || !(t === el || el.contains(t))) unreachable.push(name(el));
-  }
-  document.activeElement?.blur?.();
-  // UXP-261: does the surface (or its sheet) hang BELOW the window? No other column caught that --
-  // the offscreen column only walks controls, and the guide's buried nav buttons surfaced as
-  // "unreachable" with nothing in the table explaining why. A sheet sized for one top margin while
-  // carrying another is invisible until you subtract innerHeight.
-  // (No backticks in this string: it lives inside a template literal.)
-  // Measure the SHEET, never the host inside it. Including the host's own bottom made .io-foot
-  // report 56px past at every width: the footer sits below the fold of a scrollable #io-card, which
-  // is what scrolling is for. Only the sheet cannot be scrolled into view, so only the sheet counts.
-  const sheet = host.closest('#io-card, #file-menu, #graph-panel, #timeline-panel') || host;
-  const past = Math.round(sheet.getBoundingClientRect().bottom - innerHeight);
-  return { kids: inFlow.length, h: Math.round(hr.height), lines: tops.length, overlaps,
-           spill, spiller, scrollOver, offscreen, unreachable, past: Math.max(0, past) };
-};`;
-
-const SEED = `
-  document.getElementById('storage-warn')?.remove();
-  root.children = [];
-  for (const t of ['Alpha point','Beta point with a longer title','Gamma']) {
-    const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
-  markDirty(); render();
-  window.mkBase = () => { root.children = [];
-    const rows = ['| Task | Status | Due | Cost |', '| --- | --- | --- | --- |',
-                  '| Fix the roof | TODO | 2026-08-01 | 1200 |', '| Paint | DONE | 2026-08-09 | 300 |'];
-    const n = mkNode(rows.join(String.fromCharCode(10))); n.type = 'base';
-    root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); markDirty(); render(); };
-  window.mkLinks = () => { root.children = [];
-    for (const t of ['Target one', 'See [[Target one]] and [[Nowhere]]', 'Also [[Target one]]']) {
-      const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
-    markDirty(); render(); };
-  window.mkDated = () => { root.children = [];
-    for (const t of ['Ship it due:2026-08-01', 'Draft due:2026-09-15', 'Review start:2026-07-30']) {
-      const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root); }
-    markDirty(); render(); };`;
-
-for (const s of SURFACES) {
-  console.log(`\n══ ${s.sel}  — ${s.note}${s.touch ? '  [touch]' : ''}`);
-  console.log('   width kids   h lines  overlaps                 spill  scroll  past  offscreen        unreachable');
-  for (const w of WIDTHS) {
-    const ctx = await b.newContext({ viewport: { width: w, height: 640 }, hasTouch: s.touch, isMobile: s.touch });
-    const p = await ctx.newPage();
-    await p.goto(APP); await p.waitForTimeout(500);
-    await p.evaluate(SEED); await p.waitForTimeout(150);
-    let setupErr = '';
-    try { await p.evaluate(`(async () => { ${s.setup} })()`); } catch (e) { setupErr = String(e).slice(0, 90); }
-    await p.waitForTimeout(350);
-    await p.addScriptTag({ content: MEASURE });
-    const r = await p.evaluate(sel => window.__measure(sel), s.sel);
-    await ctx.close();
-    if (r.missing) { console.log(`   ${String(w).padStart(5)}  (not in the DOM) ${setupErr}`); continue; }
-    if (r.hidden)  { console.log(`   ${String(w).padStart(5)}  (hidden at this width)`); continue; }
-    const fail = r.overlaps.length || r.offscreen.length || r.unreachable.length || r.past > 1
-              || (r.spill > 1 && !s.overflows) || (r.lines > 1 && !s.wraps);
-    console.log(`   ${String(w).padStart(5)} ${String(r.kids).padStart(4)} ${String(r.h).padStart(3)} ${String(r.lines).padStart(4)}   ${(r.overlaps.join(',') || '-').padEnd(23)} ${String(r.spill).padStart(4)}${(r.spiller || '').slice(0,9).padStart(10)}  ${String(r.scrollOver).padStart(5)}  ${String(r.past).padStart(4)}  ${(r.offscreen.join(',') || '-').padEnd(15)}  ${r.unreachable.join(',') || '-'}${fail ? '   <== FAIL' : ''}`);
-  }
-}
-await b.close();
-```
-
-</details>
+> **The code moved to `tools/layout-sweep.mjs` (#1559).** It is no longer reproduced here: a
+> recipe that only a human can run is a recipe nothing notices has broken, which is exactly what
+> happened. The surfaces list, the seed, the geometry cores and the runner all live in that file,
+> its cores are pinned in `tests/test.mjs`, and `tests/browser.mjs` gates that it still measures.
 
 ---
 

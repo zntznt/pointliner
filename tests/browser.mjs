@@ -5344,3 +5344,395 @@ test('#1521 every verbosity door keeps the caret, and the next keystroke lands',
     'with nothing being edited the dial must not pull the caret into a point');
   await pg.close();
 });
+
+// 79. #1522 — `adoptDoc` cleared `focusedId` and left `selFocusId`/`selAnchorId` pointing into the
+// DISCARDED document, so the row cursor named a node the new document had never contained. The
+// arrows then moved nothing, painted nothing, announced nothing — and SCROLLED THE PAGE
+// (0 → 40 → 80 → 120 → 80), because the handler returned before `preventDefault()`. Driven: every
+// symptom is runtime state, and the scroll in particular is the false feedback that made the state
+// look like it was working.
+test('#1522 a document swap leaves the arrows working, not scrolling', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const st = () => pg.evaluate(() => ({
+    selFocusId, selAnchorId, sel: selectedIds.size,
+    inFlat: selFocusId != null && flatIndex.has(selFocusId),
+    rows: flatRows.length, cursors: document.querySelectorAll('.node-cursor').length,
+    live: (document.getElementById('a11y-live') || {}).textContent?.trim() || '',
+    scrollY: Math.round(window.scrollY), activeContentId,
+  }));
+  const seed = () => pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    selectedIds.clear(); selAnchorId = null; selFocusId = null;
+    buildIndex(root, null); markDirty(); render();
+    document.activeElement.blur(); activeContentId = null;
+    const l = document.getElementById('a11y-live'); if (l) l.textContent = '';
+  });
+
+  // ── THE CAUSE: a swap taken while a cursor and a selection are live.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    moveRowCursor(root.children[2].id, { silent: true });
+    root.children.forEach(x => selectedIds.add(x.id));   // and a live multi-selection
+    updateSelVisuals();
+  });
+  await pg.waitForTimeout(250);
+  const before = await st();
+  assert.equal(before.inFlat, true, 'precondition: the cursor is on a real row');
+  assert.equal(before.sel, 3, 'precondition: three points are selected');
+
+  await pg.evaluate(() => {
+    const r = mkRoot(); const n = mkNode('Fresh'); n.type = 'ul'; r.children = [n];
+    adoptDoc(r, { fileName: 'x.opml' });
+  });
+  await pg.waitForTimeout(450);
+  const swapped = await st();
+  assert.equal(swapped.selFocusId, null, 'the swap must drop the row cursor of the outgoing document');
+  assert.equal(swapped.selAnchorId, null, 'and its anchor');
+  assert.equal(swapped.sel, 0,
+    'and its selection — it named three points the new document has never contained');
+
+  // the arrows work, and the PAGE DOES NOT SCROLL
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  const moved = await st();
+  assert.equal(moved.inFlat, true, 'ArrowDown must put the cursor on a real row of the NEW document');
+  assert.equal(moved.cursors, 1, 'painted');
+  assert.match(moved.live, /Fresh, 1 of 1/, 'and announced');
+  assert.equal(moved.scrollY, 0, 'and the page must not scroll instead — that is the false "it worked"');
+
+  // ── THE DEFENCE, on a path that is NOT adoptDoc: undo replaces root too, and does not clear the
+  // selection either. A cursor left on a point that undo removed must still yield a working arrow.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    moveRowCursor(root.children[2].id, { silent: true });
+    // drop the point the cursor is on, without touching selFocusId
+    root.children = root.children.slice(0, 2);
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+  const stale = await st();
+  assert.equal(stale.inFlat, false, 'precondition: the cursor names a point that is no longer on screen');
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  const rescued = await st();
+  assert.equal(rescued.inFlat, true, 'a stale cursor from ANY path must still yield a working arrow');
+  assert.equal(rescued.scrollY, 0, 'without scrolling the page');
+
+  // ── ENTRY LANDS ON THE NEAR END, both directions. The old fallback started at row 0 and STEPPED,
+  // so ArrowDown skipped the first row and ArrowUp fell off the front and scrolled.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(300);
+  assert.match((await st()).live, /Alpha, 1 of 3/, 'ArrowDown with no cursor enters at the FIRST row');
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('ArrowUp');
+  await pg.waitForTimeout(300);
+  assert.match((await st()).live, /Gamma, 3 of 3/, 'and ArrowUp at the last');
+
+  // ── THE NEGATIVE CASE: a live cursor still steps, Shift+Arrow still ranges, Enter still re-enters.
+  await seed();
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => moveRowCursor(root.children[0].id, { silent: true }));
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('ArrowDown');
+  await pg.waitForTimeout(250);
+  assert.match((await st()).live, /Beta, 2 of 3/, 'an ordinary step is unchanged');
+  await pg.keyboard.press('Shift+ArrowDown');
+  await pg.waitForTimeout(250);
+  assert.equal((await st()).sel, 2, 'Shift+Arrow still extends a range');
+  await pg.evaluate(() => { selectedIds.clear(); updateSelVisuals(); moveRowCursor(root.children[0].id, { silent: true }); });
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(350);
+  assert.ok(await pg.evaluate(() => activeContentId != null),
+    'and Enter is still the way back into the point');
+  await pg.close();
+});
+
+// #1523: EVERY dialog footer button stays inside the card and stays tappable at phone widths.
+//
+// `.io-foot` was a nowrap flex row justified to flex-end, so a footer wider than the card
+// overflowed to the LEFT -- off the card, off the screen. Leftward overflow is invisible to
+// scrollWidth (foot, #io-card and the document all reported scrollWidth === clientWidth), so
+// nothing could scroll to it: scrollLeft and scrollIntoView were both no-ops.
+//
+// Measured before the fix, at 320 wide in a touch context: Reusable packs' "+ New pack" sat at
+// -90..22 against a card starting at 14, leaving 7 hit-testable pixels; with the stale `welcome`
+// class still on the card (the leak fixed alongside) it was -97..14 -- ZERO. The
+// already-configured calendar's "Cancel" was worse: zero hit-testable pixels either way.
+//
+// The census matters here. The filed report named ONE dialog and called the others negative
+// controls, but the controls were measured in their fresh state: openCalendarDialog and
+// openUnitsDialog each grow a THIRD (danger) button once a calendar/units already exist, and both
+// overflow at 320. So this check drives the three-button states too, and asserts the two-button
+// ones stay single-row -- measuring the negative case, not just the positive.
+//
+// The assertion is a hit test, not a look: a clipped button can still report a healthy
+// getBoundingClientRect (#1520's lesson), so elementFromPoint across the button's centre-y is what
+// actually proves a finger can land on it. 24px is the repo's tap floor.
+test('#1523 every dialog footer button stays inside the card and stays tappable at phone widths', { skip: skip() }, async () => {
+  // ORDER MATTERS: the cases share one page, and the three-button states are three-button
+  // BECAUSE they mutate the document (a calendar/units now exist, so the dialog grows its danger
+  // button). Every fresh-state case therefore runs before anything that configures one, or it
+  // inherits the previous case's document and stops measuring the state it names.
+  const CASES = [
+    ['units, none set',     `openUnitsDialog();`,                                                2],
+    ['packs edit view',     `_packDraft = newPluginPack('P'); _packEditId = _packDraft.id; openDataPackManager();`, 2],
+    ['Reusable packs',      `_packEditId = null; openDataPackManager();`,                       4],
+    ['units, already set',  `applyUnitsChange('cp\\nsp = 10 cp'); openUnitsDialog();`,           3],
+    ['calendar, already set', `applyCalendarChange(buildCalendarFromFields({ months: 'Firstfrost: 30\\nDeepwinter: 30', week: '', eras: '', current: '1-01-01' })); openCalendarDialog();`, 3],
+  ];
+  for (const width of [320, 390]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 3 });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(800);
+    await pg.keyboard.press('Escape');          // dismiss the first-run welcome
+    await pg.waitForTimeout(300);
+
+    // The leak that made every measurement below worse: openStarterGallery sets `welcome` on the
+    // SHARED #io-card, and closeIo used to remove `guide-open` but not `welcome`. The class then
+    // rode along on every later dialog, where `#io-card.welcome{max-width:calc(100vw - 32px)}`
+    // outranks the narrow-sheet rule and shaves 16px off the card.
+    assert.equal(await pg.evaluate(() => document.getElementById('io-card').classList.contains('welcome')), false,
+      `${width}: dismissing the welcome chooser must not leave its class on the shared card`);
+
+    for (const [name, expr, wantBtns] of CASES) {
+      const g = await pg.evaluate((e) => {
+        (0, eval)(e);
+        const card = document.getElementById('io-card');
+        const foot = card.querySelector('.io-foot');
+        const cr = card.getBoundingClientRect();
+        const padL = parseFloat(getComputedStyle(card).paddingLeft);
+        const bs = [...foot.querySelectorAll('.io-btn')];
+        foot.scrollIntoView({ block: 'end' });   // the card scrolls; a tall dialog's footer starts below the fold
+        const rects = bs.map(b => b.getBoundingClientRect());
+        // widest escape past the card's left content edge, and the hit width of each button
+        const clip = Math.max(0, ...rects.map(q => (cr.left + padL) - q.left));
+        const hits = bs.map((b, i) => {
+          const q = rects[i], cy = Math.round(q.top + q.height / 2);
+          let n = 0;
+          for (let x = 0; x < Math.min(window.innerWidth, Math.ceil(q.right) + 4); x++) {
+            if (document.elementFromPoint(x, cy) === b) n++;
+          }
+          return { label: b.textContent, hit: n };
+        });
+        const rows = new Set(rects.map(q => Math.round(q.top))).size;
+        return { n: bs.length, clip: Math.round(clip), rows, hits, cardW: Math.round(cr.width) };
+      }, expr);
+
+      assert.equal(g.n, wantBtns, `${width} ${name}: expected ${wantBtns} footer buttons, got ${g.n} (${g.hits.map(h => h.label).join(' | ')})`);
+      assert.equal(g.clip, 0, `${width} ${name}: a footer button escapes the card's left edge by ${g.clip}px`);
+      for (const h of g.hits) {
+        assert.ok(h.hit >= 24, `${width} ${name}: "${h.label}" has only ${h.hit} hit-testable px (tap floor is 24)`);
+      }
+      // The negative case: a footer that FITS must not wrap. Without this, "clip === 0" would also
+      // be satisfied by a rule that stacked every footer at every width, which is a different app.
+      if (wantBtns === 2) {
+        assert.equal(g.rows, 1, `${width} ${name}: a two-button footer must still be one row, not stacked`);
+      }
+      await pg.evaluate(() => closeIo());
+      await pg.waitForTimeout(120);
+    }
+    assert.deepEqual(errs, [], `${width}: no page errors while driving the dialog footers`);
+    await pg.close();
+    await ctx.close();
+  }
+});
+
+// #1559: the layout sweep still MEASURES. This is the gate whose absence let the driver rot.
+//
+// The sweep used to be a fenced code block in guidance/ux-definition-of-done.md, copied into a
+// scratchpad on demand. Nothing ran it, so nothing could tell when it stopped working -- and it had
+// stopped: the first-run welcome chooser shipped after its numbers of record were taken, #io-back
+// then covered the viewport, and elementFromPoint returned the backdrop for every control, so every
+// non-dialog surface read 100% unreachable. It went stale silently instead of breaking loudly.
+//
+// WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT. It proves the INSTRUMENT is alive: the seed
+// really clears the modal layer, the save chip really is frozen, the reach walk really judges
+// controls, and the cores really run in the page and agree with the same functions tests/test.mjs
+// pins. It does NOT assert the app is layout-clean at every width -- #toolbar-row currently is not
+// (#1560, a 561-660px band where the button cluster is unreachable), and baking that into a gate
+// would either freeze the bug in place or paint the instrument red for a defect it exists to find.
+// One width, verified clean and away from that band, carries the "a real surface measures sane"
+// half; the sweep itself is the tool for breadth.
+test('#1559 the layout sweep still measures: seed, freeze, and a live reach walk', { skip: skip() }, async () => {
+  const { SEED, MEASURE, SAVE_STATUS_FREEZE, SURFACES, rowFails, sharesLine, spillPx } =
+    await import('../tools/layout-sweep.mjs');
+  const control = SURFACES[0];
+  assert.equal(control.control, true, 'the first surface must be the control');
+
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 640 }, hasTouch: true, isMobile: true });
+  const pg = await ctx.newPage();
+  const errs = [];
+  pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+  await pg.goto(APP);
+  await pg.waitForSelector('#outline', { timeout: 10000 });
+  await pg.waitForTimeout(700);
+
+  // Before the seed, the chooser really is up -- otherwise the assertion after it proves nothing.
+  assert.equal(await pg.evaluate(() => document.getElementById('io-back').classList.contains('on')), true,
+    'the first-run chooser should be open before the seed; if it is not, the next assertion is vacuous');
+  await pg.evaluate(SEED);
+  await pg.waitForTimeout(400);
+  assert.equal(await pg.evaluate(() => document.getElementById('io-back').classList.contains('on')), false,
+    'SEED must clear the modal backdrop, or every control reads unreachable (the rot this gate exists for)');
+  assert.equal(await pg.evaluate(() => document.querySelector('#save-status .ss-text').textContent),
+    SAVE_STATUS_FREEZE, 'SEED must freeze the save chip, or geometry races autosave');
+
+  await pg.addScriptTag({ content: MEASURE });
+  const r = await pg.evaluate(sel => window.__measure(sel), control.sel);
+
+  // The reach walk must have JUDGED something. "unreachable: []" is also what a walk that skipped
+  // everything reports, and that is exactly how the old band filter hid #1523's zero-pixel button.
+  assert.ok(r.walked >= 5, `the reach walk judged only ${r.walked} controls; a walk that skips everything reports "clean"`);
+  assert.ok(r.kids >= 3, `expected the toolbar's children, measured ${r.kids}`);
+  assert.equal(r.lines, 1, 'the toolbar is one line at 1400px');
+  assert.deepEqual(r.overlaps, [], 'no overlaps at 1400px');
+  assert.deepEqual(r.unreachable, [], 'no unreachable control at 1400px');
+  assert.deepEqual(r.offscreen, [], 'nothing offscreen at 1400px');
+  assert.equal(rowFails(r, control), false, 'the control is clean at 1400px');
+
+  // The cores really ran in the page, and they are the same functions the unit suite pins. A page
+  // copy that had drifted would still produce a plausible-looking row, which is the whole problem
+  // this file exists to make visible.
+  const agree = await pg.evaluate(() => ({
+    line: sharesLine({ top: 0, bottom: 44, left: 0, right: 10 }, { top: 13, bottom: 31, left: 0, right: 10 }),
+    spill: spillPx({ left: 10, right: 655, top: 0, bottom: 44 }, 0, 620, 0, 0, false),
+  }));
+  assert.equal(agree.line, sharesLine({ top: 0, bottom: 44, left: 0, right: 10 }, { top: 13, bottom: 31, left: 0, right: 10 }),
+    'the in-page sharesLine must agree with the pinned one');
+  assert.equal(agree.spill, spillPx({ left: 10, right: 655, top: 0, bottom: 44 }, 0, 620, 0, 0, false),
+    'the in-page spillPx must agree with the pinned one');
+  assert.equal(agree.spill, 35, 'and both must give the measured answer');
+
+  assert.deepEqual(errs, [], 'no page errors while running the sweep');
+  await pg.close();
+  await ctx.close();
+});
+
+// #1560: every toolbar control is hit-testable at every width, and the level control's alternate
+// door really works where the toolbar one is gone.
+//
+// The row could not stop overflowing: #save-status was flex-shrink:0, #level-ctl is flex-shrink:0
+// by design, #search-wrap carries a 190px floor -- so logo + chip + search + level exceeded the
+// viewport on their own and #tbtn-cluster, the element built to absorb the squeeze, was laid out
+// PAST the right edge. Measured 5px of strip at x 650 in a 620px window, 8-11 controls with no
+// hit-testable pixel across 561-675px, and the trigger was ordinary: the save chip gains 38px when
+// autosave lands, so the app was clickable for a second after load and then was not.
+//
+// Source pins cannot see any of that -- the CSS was "present" the whole time. This drives it.
+// Widths are chosen either side of both breakpoints, including 560/561 where the phone sheet takes
+// over, because an off-by-one there would leave a one-pixel-wide broken band.
+test('#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing', { skip: skip() }, async () => {
+  const { SEED } = await import('../tools/layout-sweep.mjs');
+  for (const width of [820, 760, 700, 620, 580, 561, 560, 390]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 700 }, hasTouch: true, isMobile: true });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(700);
+    await pg.evaluate(SEED);            // also freezes the save chip, so this does not race autosave
+    await pg.waitForTimeout(350);
+
+    const g = await pg.evaluate(async () => {
+      // These buttons are MEANT to be reached by swiping, so each one is revealed in turn and then
+      // judged. Scrolling the strip ONCE to its far end is not the same test: it hides the near-end
+      // buttons, and reported 6 dead controls at 820px, a width that is demonstrably fine.
+      const strip = document.getElementById('tbtn-cluster');
+      strip.style.scrollBehavior = 'auto';
+      const dead = [];
+      const btns = [...document.querySelectorAll('#toolbar-row button')].filter(b => b.getBoundingClientRect().width > 0);
+      for (const el of btns) {
+        if (strip.contains(el)) {
+          el.scrollIntoView({ block: 'nearest', inline: 'center' });
+          await new Promise(r => setTimeout(r, 40));
+        }
+        const q = el.getBoundingClientRect();
+        const L = Math.max(q.left, 0), R = Math.min(q.right, innerWidth);
+        const T = Math.max(q.top, 0), B = Math.min(q.bottom, innerHeight);
+        if (R - L < 1 || B - T < 1) { dead.push(el.id || String(el.className).split(' ')[0]); continue; }
+        const t = document.elementFromPoint(Math.round((L + R) / 2), Math.round((T + B) / 2));
+        if (!t || !(t === el || el.contains(t))) dead.push(el.id || String(el.className).split(' ')[0]);
+      }
+      const lvl = document.getElementById('level-ctl');
+      return { dead, count: btns.length, strip: strip.clientWidth,
+               stripRight: Math.round(strip.getBoundingClientRect().right), innerWidth,
+               levelInToolbar: getComputedStyle(lvl).display !== 'none',
+               fmRow: getComputedStyle(document.getElementById('fm-levels-row')).display !== 'none' };
+    });
+
+    assert.ok(g.count >= 5, `${width}: expected the toolbar's buttons, found ${g.count} — a walk over nothing reports clean`);
+    assert.deepEqual(g.dead, [], `${width}: ${g.dead.length} toolbar control(s) with no hit-testable pixel`);
+    // The strip must be ON screen and wide enough to show a control, not merely scrollable in
+    // principle. Its 5px remnant at x 650 in a 620px window satisfied "scrollable" and was useless.
+    assert.ok(g.strip >= 44, `${width}: the icon strip is ${g.strip}px — below the one-button floor`);
+    assert.ok(g.stripRight <= g.innerWidth + 1, `${width}: the icon strip ends at ${g.stripRight}, past the ${g.innerWidth}px viewport`);
+    // Exactly one home for the level control at any width: moved, never removed, never duplicated.
+    assert.equal(g.levelInToolbar, width > 760, `${width}: the toolbar level control should be ${width > 760 ? 'shown' : 'hidden'}`);
+    assert.equal(g.fmRow, !g.levelInToolbar, `${width}: the File-menu level row must be shown exactly when the toolbar one is not`);
+    assert.deepEqual(errs, [], `${width}: no page errors`);
+    await pg.close();
+    await ctx.close();
+  }
+});
+
+// The alternate door has to WORK, not just render. #1560 hides the toolbar level control across a
+// 200px band, so this drives the File-menu one: scroll to it, tap it, and watch the outline change.
+test('#1560 the File-menu level control is tappable and actually changes the level', { skip: skip() }, async () => {
+  const { SEED } = await import('../tools/layout-sweep.mjs');
+  const ctx = await browser.newContext({ viewport: { width: 620, height: 700 }, hasTouch: true, isMobile: true });
+  const pg = await ctx.newPage();
+  await pg.goto(APP);
+  await pg.waitForSelector('#outline', { timeout: 10000 });
+  await pg.waitForTimeout(700);
+  await pg.evaluate(SEED);
+  await pg.evaluate(() => {
+    const par = root.children[0], kid = mkNode('Nested child'); kid.type = 'ul';
+    par.children = [kid]; nodeMap.set(kid.id, kid); parentMap.set(kid.id, par);
+    markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+
+  const r = await pg.evaluate(async () => {
+    const before = document.querySelectorAll('.node-content').length;
+    openFileMenu();
+    await new Promise(r => setTimeout(r, 400));
+    const btn = document.querySelector('#fm-levels .lvl-btn[data-lvl="1"]');
+    // #fm-pane is the scroller and it scrolls SMOOTHLY: a scrollIntoView plus a short wait moves a
+    // fraction of the distance and the control reads unreachable when it is merely still moving.
+    for (let e = btn.parentElement; e; e = e.parentElement) {
+      const s = getComputedStyle(e);
+      if (['auto', 'scroll'].includes(s.overflowY) && e.scrollHeight > e.clientHeight + 1) {
+        e.style.scrollBehavior = 'auto'; e.scrollTop = e.scrollHeight;
+      }
+      if (e === document.body) break;
+    }
+    await new Promise(r => setTimeout(r, 250));
+    const q = btn.getBoundingClientRect();
+    const hit = document.elementFromPoint(Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2));
+    const tappable = !!hit && (hit === btn || btn.contains(hit));
+    btn.click();
+    await new Promise(r => setTimeout(r, 400));
+    return { before, tappable, h: Math.round(q.height), name: btn.getAttribute('aria-label'),
+             after: document.querySelectorAll('.node-content').length };
+  });
+
+  assert.equal(r.tappable, true, 'the File-menu level button must be hit-testable once scrolled to');
+  assert.ok(r.h >= 24, `the File-menu level button is ${r.h}px tall — below the 24px tap floor`);
+  assert.equal(r.name, 'Show 1 level', 'and it must carry its accessible name');
+  assert.ok(r.after < r.before, `pressing it must collapse the outline (${r.before} -> ${r.after} points)`);
+  await pg.close();
+  await ctx.close();
+});

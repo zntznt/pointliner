@@ -555,7 +555,7 @@
       "suite": "unit",
       "why": "a key with no row in the shortcuts reference is syntax-only at the floor (P2)",
       "file": "index.html",
-      "find": "{ id:'nav-panel',   essential:true, essSection:'Navigate', keys:['F6','⇧+F6'],     essLabel:'Go to the open panel (Footnotes, Linked from, Variables) and back' },",
+      "find": "{ id:'nav-panel',   essential:true, essSection:'Navigate', keys:['F6','\u21e7+F6'],     essLabel:'Go to the open panel (Footnotes, Linked from, Variables) and back' },",
       "replace": "{ id:'nav-panel',   essential:false, essSection:'Navigate', keys:['F6'],     essLabel:'Panels' },",
       "kills": "the ring covers the whole family"
     },
@@ -580,7 +580,7 @@
     {
       "id": "code-block-leaks-the-token",
       "suite": "unit",
-      "why": "the pure core already existed and the code block did not call it — a tested core proves nothing about its call site, which was the whole of #1463 A4",
+      "why": "the pure core already existed and the code block did not call it \u2014 a tested core proves nothing about its call site, which was the whole of #1463 A4",
       "file": "index.html",
       "find": "  return codeBlockParts(unfoldTokensIn(textForDisplay(node), node));",
       "replace": "  return codeBlockParts(textForDisplay(node));",
@@ -670,7 +670,7 @@
     {
       "id": "bib-import-does-not-opt-in",
       "suite": "unit",
-      "why": "the capability exists and the import does not ask for it — a tested core proves nothing about its call site",
+      "why": "the capability exists and the import does not ask for it \u2014 a tested core proves nothing about its call site",
       "file": "index.html",
       "find": "    node.footnotes = [{ key: mk, text: cite, stable: true }];",
       "replace": "    node.footnotes = [{ key: mk, text: cite }];",
@@ -735,8 +735,8 @@
       "suite": "unit",
       "why": "the disproved claim standing unretracted at the gate is what talks the next reader into rebuilding the bug",
       "file": "index.html",
-      "find": "  // #1496: `<body>` holds focus is NOT \"exactly the stranded state and nothing else\" — this comment",
-      "replace": "  // #1496: gated on `<body>` holding focus, which is exactly the stranded state — this comment",
+      "find": "  // #1496: `<body>` holds focus is NOT \"exactly the stranded state and nothing else\" \u2014 this comment",
+      "replace": "  // #1496: gated on `<body>` holding focus, which is exactly the stranded state \u2014 this comment",
       "kills": "the row-cursor Enter yields to any handler that already acted"
     },
     {
@@ -868,9 +868,9 @@
     {
       "id": "qbase-toast-glyph-name",
       "suite": "unit",
-      "why": "stripMd substitutes a glyph for a pill, so the toast named the point “Payroll 🖩” -- a name no one can read or hear",
+      "why": "stripMd substitutes a glyph for a pill, so the toast named the point \u201cPayroll \ud83d\udda9\u201d -- a name no one can read or hear",
       "file": "index.html",
-      "find": "    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill (\"Payroll 🖩\"); displayText says what the row shows\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
+      "find": "    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill (\"Payroll \ud83d\udda9\"); displayText says what the row shows\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "replace": "    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "kills": "the query-base cell toast names the point the way the grid does"
     },
@@ -1115,7 +1115,7 @@
       "file": "index.html",
       "find": "      commitTodoDone(t, wasDone);   // #1502: a repeating point rolls forward here too",
       "replace": "      t.checked = todoDoneFromText(t.text);",
-      "kills": "rollForwardRepeat — wiring"
+      "kills": "rollForwardRepeat \u2014 wiring"
     },
     {
       "id": "bulk-cycle-door-bypasses-the-writer",
@@ -1124,7 +1124,7 @@
       "file": "index.html",
       "find": "      n.text = next; commitTodoDone(n, wasDone); changed++;",
       "replace": "      n.text = next; n.checked = todoDoneFromText(next); changed++;",
-      "kills": "rollForwardRepeat — wiring"
+      "kills": "rollForwardRepeat \u2014 wiring"
     },
     {
       "id": "row-cursor-door-bypasses-the-writer",
@@ -1133,7 +1133,7 @@
       "file": "index.html",
       "find": "    commitTodoDone(node, wasDone);   // #1502: the row cursor must mean what edit mode means",
       "replace": "    node.checked = todoDoneFromText(node.text);",
-      "kills": "rollForwardRepeat — wiring"
+      "kills": "rollForwardRepeat \u2014 wiring"
     },
     {
       "id": "writer-rolls-a-point-already-done",
@@ -1421,7 +1421,7 @@
       "file": "index.html",
       "find": "      more.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expand(); } });",
       "replace": "      ;",
-      "kills": "the day’s expand button and the day cell both answer the keyboard"
+      "kills": "the day\u2019s expand button and the day cell both answer the keyboard"
     },
     {
       "id": "agenda-less-keyboard-dead",
@@ -1430,7 +1430,7 @@
       "file": "index.html",
       "find": "      less.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse(); } });",
       "replace": "      ;",
-      "kills": "the day’s expand/collapse buttons answer the keyboard"
+      "kills": "the day\u2019s expand/collapse buttons answer the keyboard"
     },
     {
       "id": "agenda-cell-drops-focus-on-enter",
@@ -1439,7 +1439,7 @@
       "file": "index.html",
       "find": "          createDatedPointOnInbox(ep);\n        });\n      }",
       "replace": "          ;\n        });\n      }",
-      "kills": "the day’s expand button and the day cell both answer the keyboard"
+      "kills": "the day\u2019s expand button and the day cell both answer the keyboard"
     },
     {
       "id": "agenda-cell-fires-behind-its-children",
@@ -1457,7 +1457,7 @@
       "file": "index.html",
       "find": "      more.addEventListener('mousedown', e => { e.preventDefault(); expand(); });   // #1508: and its twin",
       "replace": "      more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });",
-      "kills": "the day’s expand/collapse buttons answer the keyboard"
+      "kills": "the day\u2019s expand/collapse buttons answer the keyboard"
     },
     {
       "id": "zoomed-count-unqualified",
@@ -2331,6 +2331,312 @@
       "find": "  return { id, offset: ok ? Math.floor(offset) : null };",
       "replace": "  return { id, offset: 0 };",
       "kills": "#1521 every verbosity door keeps the caret"
+    },
+    {
+      "id": "swap-keeps-the-outgoing-cursor",
+      "suite": "unit",
+      "why": "the cause: the discarded document's row cursor and selection surviving the swap",
+      "file": "index.html",
+      "find": "  selectedIds.clear(); selAnchorId = null; selFocusId = null;\n  clearTimeout(searchDebounce);",
+      "replace": "  clearTimeout(searchDebounce);",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "arrows-trust-the-variable-again",
+      "suite": "unit",
+      "why": "`??` cannot see a stale id, which is the whole reason the fallback never fired",
+      "file": "index.html",
+      "find": "    const fromId = rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id));",
+      "replace": "    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "stale-cursor-scrolls-the-page",
+      "suite": "unit",
+      "why": "returning without preventDefault lets the browser scroll, which reads as 'the key did something'",
+      "file": "index.html",
+      "find": "    if (fromId == null) {\n      e.preventDefault();",
+      "replace": "    if (fromId == null) {\n      ;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "row-cursor-entry-skips-the-first-row",
+      "suite": "unit",
+      "why": "the old fallback started at row 0 and STEPPED, so ArrowDown skipped it and ArrowUp fell off the front",
+      "file": "index.html",
+      "find": "  return dir > 0 ? 0 : count - 1;",
+      "replace": "  return dir > 0 ? Math.min(1, count - 1) : count - 1;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "row-cursor-anchor-accepts-a-stale-id",
+      "suite": "unit",
+      "why": "a membership test that answers yes to everything is the bug wearing the fix's shape",
+      "file": "index.html",
+      "find": "  const ok = id => id != null && !!live(id);",
+      "replace": "  const ok = id => id != null;",
+      "kills": "#1522 a document swap leaves no cursor pointing at a discarded point"
+    },
+    {
+      "id": "swap-strands-the-arrows",
+      "suite": "browser",
+      "why": "driven: nothing moves, nothing is announced and the PAGE SCROLLS -- none of which a source pin sees",
+      "file": "index.html",
+      "find": "  selectedIds.clear(); selAnchorId = null; selFocusId = null;\n  clearTimeout(searchDebounce);",
+      "replace": "  clearTimeout(searchDebounce);",
+      "kills": "#1522 a document swap leaves the arrows working, not scrolling"
+    },
+    {
+      "id": "stale-cursor-defence-removed",
+      "suite": "browser",
+      "why": "driven on a NON-adoptDoc path: undo replaces root too, and the guard is what covers it",
+      "file": "index.html",
+      "find": "    const fromId = rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id));",
+      "replace": "    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;",
+      "kills": "#1522 a document swap leaves the arrows working, not scrolling"
+    },
+    {
+      "id": "foot-loses-the-wrap",
+      "suite": "unit",
+      "why": "the whole fix is one declaration; without a mutant the guard is just a quoted string sitting next to itself",
+      "file": "index.html",
+      "find": "\n.io-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:15px}",
+      "replace": "\n.io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}",
+      "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
+    },
+    {
+      "id": "foot-nowrap-added-back-later",
+      "suite": "unit",
+      "why": "a later rule outranking the base one is how a CSS fix silently dies; the base rule still reads correct",
+      "file": "index.html",
+      "find": "\n.io-foot-stack{flex-direction:column;align-items:stretch}",
+      "replace": "\n.io-foot-narrow{flex-wrap:nowrap}\n.io-foot-stack{flex-direction:column;align-items:stretch}",
+      "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
+    },
+    {
+      "id": "second-bare-foot-rule",
+      "suite": "unit",
+      "why": "identity over existence: two bare .io-foot rules mean the pinned one may not be the one that wins",
+      "file": "index.html",
+      "find": "\n.io-foot-stack .io-btn{width:100%;text-align:center}",
+      "replace": "\n.io-foot{gap:8px}\n.io-foot-stack .io-btn{width:100%;text-align:center}",
+      "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
+    },
+    {
+      "id": "stack-stops-being-a-column",
+      "suite": "unit",
+      "why": "the wrap is only inert for the stacked footers BECAUSE they are a column",
+      "file": "index.html",
+      "find": ".io-foot-stack{flex-direction:column;align-items:stretch}",
+      "replace": ".io-foot-stack{align-items:stretch}",
+      "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
+    },
+    {
+      "id": "welcome-class-leaks-again",
+      "suite": "unit",
+      "why": "HAPPENED-shaped: the removal is one line inside closeIo and deleting it restores the leak",
+      "file": "index.html",
+      "find": "  ioCard.classList.remove('welcome');          // #1523: prevent leak across dialogs (as with the aria pair below)\n  ioCard.innerHTML = ''; ioCancel = null;",
+      "replace": "  ioCard.innerHTML = ''; ioCancel = null;",
+      "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
+    },
+    {
+      "id": "gallery-adds-welcome-instead-of-toggling",
+      "suite": "unit",
+      "why": "clearing the class in closeIo is only safe while the gallery re-asserts it; an add() would leave the chooser narrow on its second open",
+      "file": "index.html",
+      "find": "ioCard.classList.toggle('welcome', welcome)",
+      "replace": "if (welcome) ioCard.classList.add('welcome')",
+      "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
+    },
+    {
+      "id": "welcome-class-scopes-nothing",
+      "suite": "unit",
+      "why": "if the class stopped scoping a width rule, the closeIo pin would be guarding a no-op",
+      "file": "index.html",
+      "find": "#io-card.welcome{width:640px;max-width:calc(100vw - 32px)}",
+      "replace": "#io-card.welcomeX{width:640px;max-width:calc(100vw - 32px)}",
+      "kills": "#1523 the dialog footer wraps, and the welcome class cannot ride along to the next dialog"
+    },
+    {
+      "id": "foot-clips-off-the-card",
+      "suite": "browser",
+      "why": "driven: a clipped button still reports a healthy rect (#1520), so only a hit test proves a finger can land on it",
+      "file": "index.html",
+      "find": "\n.io-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:15px}",
+      "replace": "\n.io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}",
+      "kills": "#1523 every dialog footer button stays inside the card and stays tappable at phone widths"
+    },
+    {
+      "id": "welcome-leak-narrows-every-dialog",
+      "suite": "browser",
+      "why": "driven: the leak is invisible in source once closeIo is read alone -- it only shows as 16px off the card of the NEXT dialog",
+      "file": "index.html",
+      "find": "  ioCard.classList.remove('welcome');          // #1523: prevent leak across dialogs (as with the aria pair below)\n  ioCard.innerHTML = ''; ioCancel = null;",
+      "replace": "  ioCard.innerHTML = ''; ioCancel = null;",
+      "kills": "#1523 every dialog footer button stays inside the card and stays tappable at phone widths"
+    },
+    {
+      "id": "band-back-to-centre-in-host",
+      "suite": "unit",
+      "why": "the O1 blind spot: a control shoved out of its host has its centre outside it, so the old test skipped the very failure the reach column is for",
+      "file": "tools/layout-sweep.mjs",
+      "find": "export function inMeasureBand(hostRect, rect) {\n  return sharesLine(hostRect, rect);\n}",
+      "replace": "export function inMeasureBand(hostRect, rect) {\n  const cx = rect.left + (rect.right - rect.left) / 2, cy = rect.top + (rect.bottom - rect.top) / 2;\n  return cx >= hostRect.left - 1 && cx <= hostRect.right + 1 && cy >= hostRect.top - 1 && cy <= hostRect.bottom + 1;\n}",
+      "kills": "#1559 inMeasureBand keeps a control pushed out of its host and skips a popup below it"
+    },
+    {
+      "id": "spill-ignores-a-scrolling-child",
+      "suite": "unit",
+      "why": "without the discount the CONTROL fails on #tbtn-cluster, which absorbs its own overflow; a driver that cries wolf gets ignored",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (absorbsOwnOverflow) return 0;\n",
+      "replace": "",
+      "kills": "#1559 spillPx discounts a negative margin and a child that absorbs its own overflow"
+    },
+    {
+      "id": "spill-discounts-everything",
+      "suite": "unit",
+      "why": "the mirror of the above: a discount that always fires reports every surface clean, which is the failure mode this whole issue is about",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (absorbsOwnOverflow) return 0;\n  const mr = Math.min(0, marginRight || 0), ml = Math.min(0, marginLeft || 0);",
+      "replace": "  if (absorbsOwnOverflow) return 0;\n  const mr = marginRight || 0, ml = marginLeft || 0;",
+      "kills": "#1559 spillPx discounts a negative margin and a child that absorbs its own overflow"
+    },
+    {
+      "id": "shares-line-back-to-the-magic-12",
+      "suite": "unit",
+      "why": "the threshold a short vertically-centred child exceeds without wrapping; it failed the CONTROL at five widths",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;",
+      "replace": "  return Math.abs(a.top - b.top) < 12;",
+      "kills": "#1559 sharesLine: two boxes share a line when they overlap vertically, not when their tops are close"
+    },
+    {
+      "id": "sweep-loses-the-save-chip-freeze",
+      "suite": "unit",
+      "why": "HAPPENED-shaped: without the freeze the geometry races autosave, and a 38px swing flipped a verdict between two runs",
+      "file": "tools/layout-sweep.mjs",
+      "find": "    if (tx) tx.textContent = ${JSON.stringify(SAVE_STATUS_FREEZE)};\n",
+      "replace": "",
+      "kills": "#1559 the sweep ships the fixtures and the freezes that its own findings depend on"
+    },
+    {
+      "id": "sweep-drops-a-footer-state",
+      "suite": "unit",
+      "why": "the #1523 lesson: seeding only the 2-button footer is what let a 4-button one with zero hit-testable pixels look swept",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  { sel: '.io-foot', touch: true,  wraps: true, note: 'calendar ALREADY SET, 3 btn', setup: `\n      applyCalendarChange(buildCalendarFromFields({ months:'Firstfrost: 30', week:'', eras:'', current:'1-01-01' }));\n      openCalendarDialog();` },\n",
+      "replace": "",
+      "kills": "#1559 the sweep ships the fixtures and the freezes that its own findings depend on"
+    },
+    {
+      "id": "sweep-seed-stops-dismissing-the-chooser",
+      "suite": "browser",
+      "why": "driven: this is the exact rot that silently stopped the old recipe measuring -- #io-back covers the viewport and every control reads unreachable",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (typeof closeIo === 'function') closeIo();\n  document.getElementById('io-back')?.classList.remove('on');\n",
+      "replace": "",
+      "kills": "#1559 the layout sweep still measures: seed, freeze, and a live reach walk"
+    },
+    {
+      "id": "probe-aims-at-the-box-centre",
+      "suite": "unit",
+      "why": "the centre of a control taller than its pane lands past the pane and hits the backdrop, so a plainly tappable control reads unreachable",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  const left = Math.max(rect.left, clip.left), right = Math.min(rect.right, clip.right);\n  const top = Math.max(rect.top, clip.top), bottom = Math.min(rect.bottom, clip.bottom);",
+      "replace": "  const left = rect.left, right = rect.right;\n  const top = rect.top, bottom = rect.bottom;",
+      "kills": "#1559 probePoint aims at the visible part of a control, clipped by what clips it"
+    },
+    {
+      "id": "probe-invents-a-target-for-an-invisible-control",
+      "suite": "unit",
+      "why": "without the empty-intersection guard a control entirely off-screen gets a coordinate anyway, and reads reachable",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (right - left < 1 || bottom - top < 1) return null;",
+      "replace": "",
+      "kills": "#1559 probePoint aims at the visible part of a control, clipped by what clips it"
+    },
+    {
+      "id": "toolbar-declutter-back-to-560",
+      "suite": "browser",
+      "why": "driven: the whole defect is that 560 is not the width where the row stops fitting; the CSS looks correct either way",
+      "file": "index.html",
+      "find": "@media (max-width:760px){\n  #level-ctl{display:none}",
+      "replace": "@media (max-width:560px){\n  #level-ctl{display:none}",
+      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
+    },
+    {
+      "id": "strip-loses-its-one-button-floor",
+      "suite": "browser",
+      "why": "driven: without it the strip collapses to 5px -- technically scrollable, no visible front door",
+      "file": "index.html",
+      "find": "margin:-5px -5px 0 0;min-width:44px}",
+      "replace": "margin:-5px -5px 0 0}",
+      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
+    },
+    {
+      "id": "level-door-removed-not-moved",
+      "suite": "browser",
+      "why": "driven: hiding the toolbar control without showing the File-menu row deletes the capability instead of relocating it (P2)",
+      "file": "index.html",
+      "find": "  #fm-levels-row{display:flex}   /* the level control lives in the File menu at these widths */\n",
+      "replace": "",
+      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
+    },
+    {
+      "id": "chip-cannot-yield",
+      "suite": "unit",
+      "why": "min-width:0 is what lets a flex item shrink below its content; without it the chip stays rigid and the row overflows again",
+      "file": "index.html",
+      "find": "gap:5px;flex-shrink:0;min-width:0;white-space:nowrap",
+      "replace": "gap:5px;flex-shrink:0;white-space:nowrap",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "chip-shrinks-at-every-width",
+      "suite": "unit",
+      "why": "the factor is scoped to the band on purpose; applied globally it nibbles the chip at widths that were never broken",
+      "file": "index.html",
+      "find": "  .save-status{flex-shrink:.004}\n",
+      "replace": "",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "save-glyph-shrinks-away",
+      "suite": "unit",
+      "why": "the glyph IS the state; letting it shrink would drop the warning mark in exactly the case it exists to announce",
+      "file": "index.html",
+      "find": ".save-status .ss-ic{font-size:11px;line-height:1;flex-shrink:0}",
+      "replace": ".save-status .ss-ic{font-size:11px;line-height:1}",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "chip-text-clips-without-ellipsis",
+      "suite": "unit",
+      "why": "shrinking the chip without text-overflow just cuts the sentence mid-glyph with no cue that more exists",
+      "file": "index.html",
+      "find": ".save-status .ss-text{overflow:hidden;text-overflow:ellipsis;min-width:0}\n",
+      "replace": "",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "fm-level-door-unnamed",
+      "suite": "browser",
+      "why": "driven: the toolbar control is hidden across a 200px band, so the door it moves to has to carry its name",
+      "file": "index.html",
+      "find": "<div id=\"fm-levels\" role=\"group\" aria-label=\"Show levels\">\n            <button class=\"lvl-btn\" data-lvl=\"1\" aria-label=\"Show 1 level\">1</button>",
+      "replace": "<div id=\"fm-levels\" role=\"group\" aria-label=\"Show levels\">\n            <button class=\"lvl-btn\" data-lvl=\"1\">1</button>",
+      "kills": "#1560 the File-menu level control is tappable and actually changes the level"
+    },
+    {
+      "id": "fourth-scroll-strip-ships-unmeasured",
+      "suite": "unit",
+      "why": "census ratchet: a new bar sharing the recipe that carried this defect must not arrive without a sweep surface watching where its controls land",
+      "file": "index.html",
+      "find": "#qb-tools{gap:4px}",
+      "replace": "#qb-tools{gap:4px}\n#xx-tools{gap:2px}",
+      "kills": "#1560 every .scroll-strip bar is a swept surface, so this defect cannot recur unmeasured"
     }
   ]
 }

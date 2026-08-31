@@ -229,9 +229,24 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 .dirty .dirty-dot{display:block}
 /* #1268: the save-status affordance. Quiet by default (it reassures, it must never nag), a warm check
    when saved, a warning tint only when the notes truly live in memory alone. One non-wrapping chip. */
-.save-status{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;font-size:11.5px;color:var(--muted);padding:3px 8px;border:1px solid transparent;background:transparent}
+/* #1560: the chip YIELDS. It was flex-shrink:0, so its text pushed the row wider instead of
+   giving, and the toolbar's icon strip -- the one element designed to absorb the squeeze -- was
+   pushed past the viewport entirely: measured 5px wide at x 650 in a 620px window, with 9 controls
+   having no hit-testable pixel. Its width is not a constant either (Saved -> "Saved just now" is
+   +38px, the storage-blocked string +109px), so a row that only fits at one chip state is a row
+   that breaks when autosave lands. Shrinking with an ellipsis keeps the glyph, which is what
+   carries the alarm, and the full sentence is already in title + aria-label (updateSaveStatus).
+
+   It stays flex-shrink:0 here and only becomes shrinkable inside the <=760px query below, so every
+   width that was never broken lays out exactly as before. Two other ways to say "the chip gives
+   last" were measured and rejected: weighting the icon strip heavily (flex-shrink:100) makes the
+   strip the ONLY item that yields, so #search-wrap keeps space it had GROWN into and the strip pays
+   for all of it (283px -> 189 at 950, 161 -> 60 at 820); and a small shrink factor on the chip
+   still nibbled 1-3px off it at those same widths, which is enough to show an ellipsis. */
+.save-status{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;min-width:0;white-space:nowrap;font-size:11.5px;color:var(--muted);padding:3px 8px;border:1px solid transparent;background:transparent}
+.save-status .ss-text{overflow:hidden;text-overflow:ellipsis;min-width:0}
 .save-status:hover{background:var(--bdr)}
-.save-status .ss-ic{font-size:11px;line-height:1}
+.save-status .ss-ic{font-size:11px;line-height:1;flex-shrink:0}   /* the glyph never shrinks: it is the state */
 .save-status[data-kind="saved"] .ss-ic{color:var(--ok,#3a9d5d)}
 .save-status[data-kind="saving"]{color:var(--muted)}
 .save-status[data-kind="unsaved"] .ss-ic,.save-status[data-kind="memory"] .ss-ic{color:var(--acc)}
@@ -258,7 +273,13 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 /* Per-strip: only the gap and, for the toolbar, the focus-ring escape. Everything structural is
    in .scroll-strip below — including display:flex, which is NOT optional: without it the strip is
    a block box and the buttons stack vertically (measured: the quick bar rendered 213px tall). */
-#tbtn-cluster{gap:7px;padding:5px 5px 0 0;margin:-5px -5px 0 0}
+/* #1560: the strip gives FIRST, and never gives everything. Both it and .save-status can shrink
+   now, and flex shrinks every shrinkable item in proportion -- so the chip started truncating at
+   786px while the strip still had room, which is backwards: scrolling the icons is the designed
+   degradation (UXP-258), truncating the save message is the fallback. A large shrink factor makes
+   the strip absorb effectively all of it until the floor below. The floor is one button, so the
+   strip can never collapse to nothing and leave the row with no visible icons at all (P2). */
+#tbtn-cluster{gap:7px;padding:5px 5px 0 0;margin:-5px -5px 0 0;min-width:44px}
 #eb-tools{gap:3px}
 #qb-tools{gap:4px}
 /* ── .scroll-strip: the one way a fixed bar yields (UXP-258, UXP-259) ────────────────────────
@@ -506,6 +527,36 @@ body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd:not([data-doc]){poin
    focus, so the hint is pinned to the viewport edges (position:fixed escapes the narrow
    #search-wrap parent) and bounded in height so a 25-row cheatsheet scrolls instead of running off
    a short screen (#587). */
+/* #1560: the toolbar's declutter breakpoint. The level control is the app's designated give in a
+   tight row -- it has a full alternate door in the File menu (#fm-levels-row), which is why the
+   phone sheet already hid it -- but it was hidden at <=560 while the row stops fitting at ~675.
+   In between, logo + chip + search(190px floor) + level exceeded the viewport on their own, so the
+   icon strip was laid out off-screen and nothing could scroll to it. Measured band: 561-675px,
+   8-11 controls with no hit-testable pixel.
+
+   WHY 760 rather than the ~675 edge. The level control is the first thing that should give: it is
+   the only element here with a complete alternate door (the File menu row), and it costs 137px. At
+   700-760 with it still shown the row is tight enough that the icon strip hits its floor and the
+   save message starts truncating -- so the breakpoint is set where the OTHER two stop having to
+   degrade, not merely where the row stops overflowing. It also carries headroom over an edge that
+   moves with the chip's text. */
+@media (max-width:760px){
+  #level-ctl{display:none}
+  #fm-levels-row{display:flex}   /* the level control lives in the File menu at these widths */
+  /* Only here can the chip give, and the tiny factor is what makes it give LAST. At an equal
+     factor flex shares the shrink in proportion to base size, so the chip lost 112px -> 79 at 760
+     while #tbtn-cluster still had 272px in hand -- the wrong one yielding. At .004 the strip runs
+     down to its 44px floor first and the chip gives only what is left after that. In the ordinary
+     "Saved just now" state that is nothing until ~561; the chip then sits at its content width with
+     no slack, so at a high device pixel ratio a pixel of metric difference can start the ellipsis a
+     little earlier (measured at dsf 6, 620px: "Saved just no..."). That is the intended last
+     resort -- the glyph and the tooltip still carry the state -- and the wide storage-blocked
+     string is what it really exists for. Above 760 the chip is flex-shrink:0, as it always was. */
+  .save-status{flex-shrink:.004}
+}
+/* NB placement: this MUST sit after the base `#level-ctl{display:flex}` rule. Same specificity,
+   so source order decides; declared earlier (next to .save-status) the base rule won and the
+   control stayed visible at every width -- which also un-hid it on phones. */
 @media(max-width:560px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 44px - env(safe-area-inset-top) - 12px)}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
@@ -1765,7 +1816,17 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 .io-field input{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px;outline:none;transition:border-color .12s,box-shadow .12s}
 .io-field input::placeholder{color:var(--muted)}/* UXP-107: no opacity; filled text is --fg, so --muted already reads lighter than typed input */
 .io-field input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--ring)}
-.io-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
+/* #1523: WRAP. Without it the row is a nowrap flex line justified to flex-end, so a footer
+   wider than the card overflows to the LEFT, off the card and off the screen. Nothing can
+   scroll to it: leftward overflow is invisible to scrollWidth (foot, #io-card and the
+   document all report scrollWidth === clientWidth), so scrollLeft and scrollIntoView are
+   both no-ops. Measured at 320px: Reusable packs' "+ New pack" had ZERO hit-testable
+   pixels, and the already-configured calendar's "Cancel" had zero too. Wrapping is the house
+   answer for a control row that can outgrow its box (.mt-baseheader, .mt-base-views, .cap-row,
+   #breadcrumb-row); .io-head above does NOT wrap, and does not need to -- it is an icon, a
+   title and an optional ? in a box wide enough for all three. .io-foot-stack is a column, so
+   the wrap is inert there. */
+.io-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:15px}
 .io-foot-stack{flex-direction:column;align-items:stretch}
 .io-foot-stack .io-btn{width:100%;text-align:center}
 .io-btn{font-family:var(--font);font-size:13px;font-weight:500;padding:7px 15px;border-radius:var(--r-md);border:1px solid var(--bdr);background:var(--bg);color:var(--fg);cursor:pointer;transition:background .12s,border-color .12s,filter .12s}
@@ -2502,8 +2563,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      (search collapsed to 0, last icon clipped). Declutter: the level control moves into
      the logo/file menu (#fm-levels), and search collapses to a tappable magnifier that
      expands to a full-width overlay on focus. The icon toggles then fit on one row. */
-  #level-ctl{display:none}
-  #fm-levels-row{display:flex}   /* level control lives in the menu on phones */
+  /* #1560: #level-ctl / #fm-levels-row moved to their own <=760px query (search for #1560),
+     because the width where they stop fitting is not 560. */
   /* collapsed search: a ~40px magnifier button; the input is hidden until focus */
   #search-wrap{flex:0 0 auto;width:40px;min-width:40px;height:40px}
   #search-box{width:40px;padding:0;border-color:transparent;background:transparent;cursor:pointer;color:transparent;height:40px}
@@ -21609,6 +21670,24 @@ function rangeSelectTo(id) {
   updateNodeSelBar();
 }
 
+// #1522: which remembered id the arrows act from, or null when neither is still on screen. A STALE
+// id is not a nullish one -- that is the whole bug. `adoptDoc` cleared `focusedId` and left
+// `selFocusId`/`selAnchorId` pointing into the DISCARDED document, so `selFocusId ?? selAnchorId ??
+// flatRows[0]` never reached its fallback, `flatRowStep` returned null on an id `flatIndex` had
+// never heard of, and the handler returned before `preventDefault()` -- the page scrolled while
+// nothing moved, which reads as "the key did something". `live` is the membership test. Pure.
+function rowCursorAnchorId(focusId, anchorId, live) {
+  const ok = id => id != null && !!live(id);
+  return ok(focusId) ? focusId : ok(anchorId) ? anchorId : null;
+}
+// Pure: where the cursor LANDS when the arrows fire with no live cursor in this document -- the near
+// end for the direction, rather than a step away from a row it was never on. (The old fallback
+// started at row 0 and stepped, so ArrowDown skipped the first row and ArrowUp fell off the front.)
+function rowCursorEntryIndex(dir, count) {
+  if (!Number.isInteger(count) || count <= 0) return null;
+  return dir > 0 ? 0 : count - 1;
+}
+
 function flatRowStep(id, dir, rows, idx) {
   rows = rows != null ? rows : flatRows;
   idx  = idx  != null ? idx  : flatIndex;
@@ -25258,6 +25337,7 @@ function closeIo() {
   if (ioCard.classList.contains('builder-open')) { closeBuilderWindow(); return; }
   ioBack.classList.remove('on');
   ioCard.classList.remove('guide-open');
+  ioCard.classList.remove('welcome');          // #1523: prevent leak across dialogs (as with the aria pair below)
   ioCard.innerHTML = ''; ioCancel = null;
   ioCard.removeAttribute('aria-label');
   ioCard.removeAttribute('aria-labelledby');   // UXP-181: prevent leak across dialogs
@@ -35532,6 +35612,11 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   _wsWarned = false;    // fresh doc → a later lost-access event may warn again
   _wsPromptSnooze = 0;  // #845: a dismissed prompt's snooze belongs to the outgoing doc, not this one
   focusedId = null;
+  // #1522: the row cursor and the selection belong to the OUTGOING document. `focusedId` was reset
+  // here and these three were not, so a swap left `selFocusId` naming a node this document has
+  // never contained: the arrows then moved nothing and scrolled the page instead, and the selection
+  // reported points that no longer existed (measured: 3 selected, 0 of them in the new document).
+  selectedIds.clear(); selAnchorId = null; selFocusId = null;
   clearTimeout(searchDebounce);
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0;
@@ -46410,7 +46495,15 @@ document.addEventListener('keydown', e => {
     if (!outlineOwnsKeys()) return;
     if (!flatRows.length) return;
     const dir = e.key === 'ArrowDown' ? 1 : -1;
-    const fromId = selFocusId ?? selAnchorId ?? flatRows[0].node.id;
+    // #1522: ask flatIndex, not the variable. `??` cannot see a stale id, and the defence belongs
+    // here as well as in adoptDoc: any future path that leaves a cursor behind gets a working arrow
+    // instead of a page scroll.
+    const fromId = rowCursorAnchorId(selFocusId, selAnchorId, id => flatIndex.has(id));
+    if (fromId == null) {
+      e.preventDefault();
+      moveRowCursor(flatRows[rowCursorEntryIndex(dir, flatRows.length)].node.id);
+      return;
+    }
     const nextId = flatRowStep(fromId, dir);
     if (!nextId) return;
     e.preventDefault();
