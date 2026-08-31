@@ -5548,3 +5548,74 @@ test('#1523 every dialog footer button stays inside the card and stays tappable 
     await ctx.close();
   }
 });
+
+// #1559: the layout sweep still MEASURES. This is the gate whose absence let the driver rot.
+//
+// The sweep used to be a fenced code block in guidance/ux-definition-of-done.md, copied into a
+// scratchpad on demand. Nothing ran it, so nothing could tell when it stopped working -- and it had
+// stopped: the first-run welcome chooser shipped after its numbers of record were taken, #io-back
+// then covered the viewport, and elementFromPoint returned the backdrop for every control, so every
+// non-dialog surface read 100% unreachable. It went stale silently instead of breaking loudly.
+//
+// WHAT THIS ASSERTS, AND WHAT IT DELIBERATELY DOES NOT. It proves the INSTRUMENT is alive: the seed
+// really clears the modal layer, the save chip really is frozen, the reach walk really judges
+// controls, and the cores really run in the page and agree with the same functions tests/test.mjs
+// pins. It does NOT assert the app is layout-clean at every width -- #toolbar-row currently is not
+// (#1560, a 561-660px band where the button cluster is unreachable), and baking that into a gate
+// would either freeze the bug in place or paint the instrument red for a defect it exists to find.
+// One width, verified clean and away from that band, carries the "a real surface measures sane"
+// half; the sweep itself is the tool for breadth.
+test('#1559 the layout sweep still measures: seed, freeze, and a live reach walk', { skip: skip() }, async () => {
+  const { SEED, MEASURE, SAVE_STATUS_FREEZE, SURFACES, rowFails, sharesLine, spillPx } =
+    await import('../tools/layout-sweep.mjs');
+  const control = SURFACES[0];
+  assert.equal(control.control, true, 'the first surface must be the control');
+
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 640 }, hasTouch: true, isMobile: true });
+  const pg = await ctx.newPage();
+  const errs = [];
+  pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+  await pg.goto(APP);
+  await pg.waitForSelector('#outline', { timeout: 10000 });
+  await pg.waitForTimeout(700);
+
+  // Before the seed, the chooser really is up -- otherwise the assertion after it proves nothing.
+  assert.equal(await pg.evaluate(() => document.getElementById('io-back').classList.contains('on')), true,
+    'the first-run chooser should be open before the seed; if it is not, the next assertion is vacuous');
+  await pg.evaluate(SEED);
+  await pg.waitForTimeout(400);
+  assert.equal(await pg.evaluate(() => document.getElementById('io-back').classList.contains('on')), false,
+    'SEED must clear the modal backdrop, or every control reads unreachable (the rot this gate exists for)');
+  assert.equal(await pg.evaluate(() => document.querySelector('#save-status .ss-text').textContent),
+    SAVE_STATUS_FREEZE, 'SEED must freeze the save chip, or geometry races autosave');
+
+  await pg.addScriptTag({ content: MEASURE });
+  const r = await pg.evaluate(sel => window.__measure(sel), control.sel);
+
+  // The reach walk must have JUDGED something. "unreachable: []" is also what a walk that skipped
+  // everything reports, and that is exactly how the old band filter hid #1523's zero-pixel button.
+  assert.ok(r.walked >= 5, `the reach walk judged only ${r.walked} controls; a walk that skips everything reports "clean"`);
+  assert.ok(r.kids >= 3, `expected the toolbar's children, measured ${r.kids}`);
+  assert.equal(r.lines, 1, 'the toolbar is one line at 1400px');
+  assert.deepEqual(r.overlaps, [], 'no overlaps at 1400px');
+  assert.deepEqual(r.unreachable, [], 'no unreachable control at 1400px');
+  assert.deepEqual(r.offscreen, [], 'nothing offscreen at 1400px');
+  assert.equal(rowFails(r, control), false, 'the control is clean at 1400px');
+
+  // The cores really ran in the page, and they are the same functions the unit suite pins. A page
+  // copy that had drifted would still produce a plausible-looking row, which is the whole problem
+  // this file exists to make visible.
+  const agree = await pg.evaluate(() => ({
+    line: sharesLine({ top: 0, bottom: 44, left: 0, right: 10 }, { top: 13, bottom: 31, left: 0, right: 10 }),
+    spill: spillPx({ left: 10, right: 655, top: 0, bottom: 44 }, 0, 620, 0, 0, false),
+  }));
+  assert.equal(agree.line, sharesLine({ top: 0, bottom: 44, left: 0, right: 10 }, { top: 13, bottom: 31, left: 0, right: 10 }),
+    'the in-page sharesLine must agree with the pinned one');
+  assert.equal(agree.spill, spillPx({ left: 10, right: 655, top: 0, bottom: 44 }, 0, 620, 0, 0, false),
+    'the in-page spillPx must agree with the pinned one');
+  assert.equal(agree.spill, 35, 'and both must give the measured answer');
+
+  assert.deepEqual(errs, [], 'no page errors while running the sweep');
+  await pg.close();
+  await ctx.close();
+});

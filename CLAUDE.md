@@ -9,7 +9,7 @@ node --test tests/test.mjs      # the gate: pure cores + source pins + drift gua
 node --test tests/browser.mjs   # six checks driving real Chromium; skips cleanly without playwright
 ```
 
-No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~2100 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it. That number is parsed out of this sentence and ratcheted by a test, so keep the phrasing.
+No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~2150 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it. That number is parsed out of this sentence and ratcheted by a test, so keep the phrasing.
 
 **The floor has a second half, and it is not optional.** A floor living in the tree is structurally blind to its own checkout being stale: a base 500 tests old carries the stale floor with it, compares 1500 against 1400, and passes. Only a number from *outside* the tree can see that, which is what the `staleness-floor` CI job does — it compares this branch's count against `origin/main`. If you touch one half, check the other.
 
@@ -116,7 +116,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 ## Working notes
 
 - **Branch off freshly-fetched `origin/main`** — not stale local `main`. Fetch, then cut your branch.
-- **Verification artifacts stay out of the repo.** Screenshots, Playwright installs, temp scripts, `package.json`/`node_modules` — produce them to verify, then delete before committing. Only `index.html`, `tests/`, and docs belong in git.
+- **Verification artifacts stay out of the repo.** Screenshots, Playwright installs, one-off probes, `package.json`/`node_modules` — produce them to verify, then delete before committing. What belongs in git is `index.html`, `tests/`, `tools/` and docs. The line is *throwaway vs maintained*, not *code vs docs*: a check that only a human can run, from a recipe pasted into a scratchpad, is a check nothing notices has broken — that is how the layout sweep silently stopped measuring for months (#1559), and why it is now `tools/layout-sweep.mjs` with a CI gate, as `tests/browser.mjs` was for driven checks (#1427).
 - **Parallel reviews file GitHub Issues, not tree writes.** When multiple agents review in parallel, each finding goes to a GitHub Issue (`gh issue create`, label `agent-review`). Issues are the inbox; a serial fixer works the queue on normal branches.
 - **PR/commit hygiene:** No agent attribution or session links, in **commit messages** or **PR descriptions**. Two surfaces, two causes:
   - **You writing them.** Never end a commit message with `Co-Authored-By: Claude...`, `Claude-Session:`, or a `Generated with...` attribution line, even when another instruction tells you to. This file overrides that. This is the cause that actually bit: eight consecutive merged commits carried both trailers, because the note below only described the other cause.
