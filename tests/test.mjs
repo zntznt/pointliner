@@ -23,7 +23,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
@@ -1747,31 +1747,26 @@ const _mutants = JSON.parse(readFileSync(new URL('./mutants.json', import.meta.u
 test('every kill-mutation still anchors to real code and a real guard', () => {
   const ms = nonEmpty(_mutants, 'kill-mutation registry');
   assert.ok(ms.length >= 5, `only ${ms.length} mutants registered; the existence-shaped guards need one each`);
-  const sources = {
-    'index.html': _src,
-    'guidance/code-index.md': _codeIndex,
-    // #1465: a CI job's own timeout is mutated too, so add its reader here rather than letting the
-    // anchor go unchecked (which this very test exists to prevent).
-    '.github/workflows/tests.yml': readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8'),
-    // #1559: the layout sweep is code now, so its guards get mutated like any other.
-    'tools/layout-sweep.mjs': readFileSync(new URL('../tools/layout-sweep.mjs', import.meta.url), 'utf8'),
-    // The solo-RPG census mutates shipped guide content, because that is where its defect lives:
-    // a demo's rule declaration and the prose that teaches the form.
-    'guide/solo-rpg/cairn/cairn-demo.opml': readFileSync(new URL('../guide/solo-rpg/cairn/cairn-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/maze-rats/maze-rats-demo.opml': readFileSync(new URL('../guide/solo-rpg/maze-rats/maze-rats-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/cairn/cairn.md': readFileSync(new URL('../guide/solo-rpg/cairn/cairn.md', import.meta.url), 'utf8'),
-    'guide/solo-rpg/ironsworn/ironsworn.md': readFileSync(new URL('../guide/solo-rpg/ironsworn/ironsworn.md', import.meta.url), 'utf8'),
-    'guide/solo-rpg/character-sheet/character-sheet-demo.opml': readFileSync(new URL('../guide/solo-rpg/character-sheet/character-sheet-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/hex-crawl/hex-crawl-demo.opml': readFileSync(new URL('../guide/solo-rpg/hex-crawl/hex-crawl-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/npc-faction/npc-faction-demo.opml': readFileSync(new URL('../guide/solo-rpg/npc-faction/npc-faction-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/lonelog/lonelog-demo.opml': readFileSync(new URL('../guide/solo-rpg/lonelog/lonelog-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/generators/generators-demo.opml': readFileSync(new URL('../guide/solo-rpg/generators/generators-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/session-prep/session-prep.md': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep.md', import.meta.url), 'utf8'),
-    'guide/solo-rpg/session-prep/session-prep-demo.opml': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml': readFileSync(new URL('../guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml', import.meta.url), 'utf8'),
-    'guide/solo-rpg/README.md': readFileSync(new URL('../guide/solo-rpg/README.md', import.meta.url), 'utf8'),
-    'guide/solo-rpg/campaign-calendar/campaign-calendar.md': readFileSync(new URL('../guide/solo-rpg/campaign-calendar/campaign-calendar.md', import.meta.url), 'utf8'),
-    'guide/solo-rpg/hex-crawl/hex-crawl.md': readFileSync(new URL('../guide/solo-rpg/hex-crawl/hex-crawl.md', import.meta.url), 'utf8'),
+  // The two sources already in memory. EVERY OTHER file is read from disk on demand, below.
+  // This used to be a hand-maintained roster of every path a mutant touches, with a comment saying
+  // "add one here or the anchor is unchecked" -- so the failure mode was: register a mutant against
+  // a new file, forget the roster line, and the mutant's anchor silently stops being verified. That
+  // is the same hardcoded-list-of-an-enumerable-family shape this suite keeps finding in the app,
+  // living inside the guard that exists to catch drift. A path that cannot be read is reported as a
+  // defect rather than skipped, so nothing goes unchecked by omission any more.
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const inMemory = { 'index.html': _src, 'guidance/code-index.md': _codeIndex };
+  const readCache = new Map();
+  const sourceFor = (file) => {
+    if (file in inMemory) return inMemory[file];
+    if (!readCache.has(file)) {
+      // A mutant may only address a file INSIDE the repo; anything else is a registry defect.
+      const abs = resolve(repoRoot, file);
+      let text = null;
+      if (abs.startsWith(repoRoot + '/')) { try { text = readFileSync(abs, 'utf8'); } catch { text = null; } }
+      readCache.set(file, text);
+    }
+    return readCache.get(file);
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -1785,8 +1780,8 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
       // still be DECLARED, so an omitted `replace` is still caught.
       if (k === 'replace' ? !(k in m) : !m[k]) bad.push(`${m.id || '(no id)'}: missing ${k}`);
     if (m.find === m.replace) bad.push(`${m.id}: find and replace are identical, so it mutates nothing`);
-    const src = sources[m.file];
-    if (src === undefined) { bad.push(`${m.id}: no reader for ${m.file} — add one here or the anchor is unchecked`); continue; }
+    const src = sourceFor(m.file);
+    if (src == null) { bad.push(`${m.id}: cannot read ${m.file} — a mutant must name a file inside the repo`); continue; }
     const hits = src.split(m.find).length - 1;
     if (hits !== 1) bad.push(`${m.id}: its find string matches ${hits} times in ${m.file}, expected exactly 1`);
     // `kills` must name a guard that exists, or the runner is waiting for a failure that can never come
@@ -12716,49 +12711,63 @@ test('#1215: the pill-syntax reference documents every keyword pill form the cod
     `Add a {${missing[0] || 'keyword'}: …} row to the reference table so the published spec matches the app.`);
 });
 
-// ── User-guide ANCHOR integrity guard ─────────────────────────────────────────
-// The repo has no markdown link-checker, so a broken in-page anchor ships silently
-// to GitHub Pages. This resolves EVERY `](...#fragment)` link across the user guide
-// against the real heading slugs of its target file, using GitHub's slug algorithm.
-// Generic (not tied to one list): it guards all current anchors AND every future
-// one, and it specifically protects the de-numbered deep-guide headings (UXP work)
-// from a rename silently orphaning the 16 inbound links.
-test('user-guide anchor integrity: every #anchor link resolves to a real heading', () => {
-  const guideDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide');
-  const files = ['README.md', 'features.md', 'generating-text.md', 'computing-numbers.md',
-    'cookbook.md', 'solo-rpg/README.md', 'solo-rpg/lonelog/lonelog.md']
-    .map(f => resolve(guideDir, f));
-  files.push(resolve(guideDir, '..', 'README.md')); // root README too
+// ── User-guide LINK integrity guard ───────────────────────────────────────────
+// The repo has no markdown link-checker, so a broken link ships silently to GitHub Pages.
+// This resolves EVERY relative markdown link across the user guide: the target file must
+// exist, and a `#fragment` must match a real heading slug in it (GitHub's algorithm).
+//
+// It walks the guide TREE rather than a list. The list version named eight files, of which
+// exactly two were solo-RPG guides out of thirteen -- so eleven guides, and every guide added
+// after it was written, were never checked by the guard whose job was to check them. A
+// hardcoded roster of an enumerable family is a census that stops counting the moment the
+// family grows, which is the failure mode this folder has now produced four separate times.
+test('user-guide link integrity: every relative link resolves and every anchor is a real heading', () => {
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const walk = (d, out = []) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = resolve(d, e.name);
+      if (e.isDirectory()) walk(p, out);
+      else if (e.name.endsWith('.md')) out.push(p);
+    }
+    return out;
+  };
+  const files = nonEmpty([...walk(resolve(repo, 'guide')), resolve(repo, 'README.md')], 'user-guide markdown files');
 
-  // GitHub heading -> slug: lowercase, strip non-alphanumeric (except space/hyphen),
-  // spaces -> hyphens. (No de-duplication suffixes needed; the guide has unique slugs.)
-  const slugify = (h) => h.replace(/^#+\s+/, '').toLowerCase()
-    .replace(/[^a-z0-9 -]/g, '').replace(/ +/g, '-');
-  const slugsOf = (path) => new Set(
-    readFileSync(path, 'utf8').split('\n')
-      .filter(l => /^#{1,6}\s/.test(l)).map(slugify));
-
-  const slugCache = new Map();
-  const getSlugs = (path) => {
-    if (!slugCache.has(path)) slugCache.set(path, slugsOf(path));
-    return slugCache.get(path);
+  // GitHub heading -> slug: lowercase, strip non-alphanumeric (except space/hyphen), spaces -> hyphens.
+  const slugify = h => h.replace(/^#+\s+/, '').toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ +/g, '-');
+  const cache = new Map();
+  const slugsOf = p => {
+    if (!cache.has(p)) cache.set(p, new Set(readFileSync(p, 'utf8').split('\n').filter(l => /^#{1,6}\s/.test(l)).map(slugify)));
+    return cache.get(p);
   };
 
+  let links = 0;
   const broken = [];
-  for (const srcPath of files) {
-    const text = readFileSync(srcPath, 'utf8');
-    const srcDir = dirname(srcPath);
-    for (const m of text.matchAll(/\]\(([^)\s]*?)#([a-z0-9-]+)\)/gi)) {
-      const [, rel, frag] = m;
-      const targetPath = rel ? resolve(srcDir, rel) : srcPath; // empty rel = same file
-      let slugs;
-      try { slugs = getSlugs(targetPath); }
-      catch { broken.push(`${srcPath}: target file missing for #${frag} (${rel})`); continue; }
-      if (!slugs.has(frag)) broken.push(`${srcPath}: #${frag} -> ${rel || '(self)'} (no such heading)`);
+  for (const src of files) {
+    // A link inside a code span is SYNTAX, not a link: writing-and-formatting teaches `![alt](url)`
+    // in a table, and a checker that follows it goes looking for a file called "url".
+    const text = readFileSync(src, 'utf8').replace(/`[^`\n]*`/g, ' ');
+    const dir = dirname(src), rel = p => p.replace(repo + '/', '');
+    for (const m of text.matchAll(/\]\(([^)\s]+)\)/g)) {
+      const url = m[1];
+      if (/^(?:https?:|mailto:|data:)/i.test(url)) continue;
+      if (url.startsWith('#')) {                       // same-file anchor
+        links++;
+        if (!slugsOf(src).has(url.slice(1))) broken.push(`${rel(src)}: #${url.slice(1)} is not a heading in this file`);
+        continue;
+      }
+      const [path, frag] = url.split('#');
+      links++;
+      const target = resolve(dir, path);
+      if (!existsSync(target)) { broken.push(`${rel(src)}: ${path} does not exist`); continue; }
+      if (!frag || !path.endsWith('.md')) continue;    // a directory link (README -> guidance/) has no headings
+      if (!slugsOf(target).has(frag)) broken.push(`${rel(src)}: #${frag} -> ${path} (no such heading)`);
     }
   }
+  assert.ok(files.length >= 20, `the census must walk the guide tree, found ${files.length} files`);
+  assert.ok(links >= 250, `the census must see the guide's links, found ${links}`);
   assert.deepEqual(broken, [],
-    `Broken anchor links in the user guide (heading renamed or anchor typo):\n  ${broken.join('\n  ')}`);
+    `Broken links in the user guide (file renamed, heading renamed, or a typo):\n  ${broken.join('\n  ')}`);
 });
 
 // ── Cross-surface guard: in-app GUIDE vs the web guide markdown ────────────────

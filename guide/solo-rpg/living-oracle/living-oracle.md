@@ -101,6 +101,28 @@ The last one is the payoff: a clue that is still open, drawn from your own inves
 is not making up content, it is reaching into what you already wrote and handing one piece back at
 random. That is the difference between a generator and a GM: a GM knows your world.
 
+## When the campaign outgrows one file
+
+The pool is one document, which is the right table right up until it is not: the cast ends up in
+`npcs.opml`, the threads in `campaign.opml`, and a roll in either one can only see half the world.
+Put the word **`folder`** before the colon and the draw widens to every note in a connected folder:
+
+```
+Who walks into the scene? {roll folder: #npc}
+```
+
+Same search, same pill, one extra word. Connect a folder from the **File** menu first (`Connect a
+folder…`, a Chromium-family browser thing), or take the `@` menu door, **Roll on your document**,
+which offers it as a checkbox, *Roll on the whole folder*, and shows the live pool size for both
+scopes before you commit. The other notes count **as they were last saved** on disk. With no folder
+connected the pill still rolls, on this document alone, and says so rather than pretending: it goes
+dashed and its tooltip reads "no folder is connected, so this rolled on the current document only."
+
+The switch is the word before the colon, never inside the search, so `{roll: folder}` still means
+"roll on a point containing the word folder." The demo below is one file, so it ships the
+single-document form; see [generating-text](../../generating-text.md#rolling-across-the-whole-folder)
+for the folder scope in full.
+
 ## Put it in a scene
 
 A single beat of play, all from your own campaign:

@@ -36,8 +36,8 @@
     </outline>
   </outline>
   <outline text="## The game's tables">
-    <outline text="Each table is a weighted pick. Declare one with the rule keyword, as `{rule name: option | option}`, then call it by name anywhere. A bare `name: option | option` is ordinary text and registers nothing. Replace the filler options with the SRD's entries, separated by bars; use weights to match a 2d6 table's distribution."/>
-    <outline text="{rule reaction: hostile | wary | neutral | curious | helpful}"/>
+    <outline text="Each table is a weighted pick. Declare one with the rule keyword, as `{rule name: option | option}`, then call it by name anywhere. A bare `name: option | option` is ordinary text and registers nothing. Replace the filler options with the SRD's entries, separated by bars. A number after an option is its weight, how many chances it gets against the others (no number means one), so the reaction table below carries the 3, 12, 15, 5, 1 spread of the 2d6 bands and rolls the curve rather than flat."/>
+    <outline text="{rule reaction: hostile 3 | wary 12 | neutral 15 | curious 5 | helpful 1}"/>
     <outline text="{rule omen: a cold draft | distant scratching | a fresh corpse | scratched warnings}"/>
     <outline text="Ask the room: reaction is {reaction}; an omen in the dark is {omen}."/>
   </outline>

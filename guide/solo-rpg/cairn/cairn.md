@@ -115,8 +115,20 @@ pill you click. The SRD's entries drop straight into the alternation:
 
 The `rule` keyword is what names it. A bare `reaction: hostile | wary` stays ordinary text and
 registers nothing, so the wrapper is not optional. Once a rule exists, call it by name anywhere
-as `{reaction}` or `{omen}`, so one table serves the whole document. For a table rolled on `2d6`
-with weighted results, use weights in the alternation to match the SRD's distribution.
+as `{reaction}` or `{omen}`, so one table serves the whole document.
+
+A table rolled on `2d6` is not flat, and the pill can match its curve: **put a number after an
+option and that is how many chances it gets** (no number means one). Two dice land in the
+2-3 / 4-6 / 7-9 / 10-11 / 12 bands 3, 12, 15, 5 and 1 times out of 36, so that reaction table is:
+
+```
+{rule reaction: hostile 3 | wary 12 | neutral 15 | curious 5 | helpful 1}
+```
+
+The demo ships its reaction table with exactly those weights; the flat version above is the same
+table before you match it to the dice. Click it enough and `neutral` comes up five times as often
+as `curious`, the way two dice would. Weights are ordinary numbers, so any SRD table with
+uneven odds transfers the same way: count the die faces in each row and write that count.
 
 > **This is where the SRD content lands.** The demo ships the pill structure with short filler
 > options written for this guide, not Cairn's own table entries. Working from your copy of the SRD,

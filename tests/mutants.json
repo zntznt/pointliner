@@ -2925,6 +2925,24 @@
       "find": "with the test `sum(weight) &lt;= 8 + might`",
       "replace": "with the test `sum(weight) &lt;= 10`",
       "kills": "a solo-RPG doc that quotes a check quotes the one its demo actually carries"
+    },
+    {
+      "id": "guide-link-anchor-orphaned",
+      "suite": "unit",
+      "why": "the old guard named eight files and checked two of the thirteen solo-RPG guides, so a cross-link into a renamed heading shipped from any of the other eleven without a word",
+      "file": "guide/solo-rpg/living-oracle/living-oracle.md",
+      "find": "generating-text.md#rolling-across-the-whole-folder",
+      "replace": "generating-text.md#rolling-across-the-folder",
+      "kills": "user-guide link integrity: every relative link resolves and every anchor is a real heading"
+    },
+    {
+      "id": "guide-link-target-missing",
+      "suite": "unit",
+      "why": "a relative link to a file that does not exist was not checked at all: the guard only ever resolved the #fragment half, so a renamed or mistyped FILE was invisible to it",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks.md",
+      "find": "campaign calendar](../campaign-calendar/campaign-calendar.md)",
+      "replace": "campaign calendar](../campaign-calendar/campaign_calendar.md)",
+      "kills": "user-guide link integrity: every relative link resolves and every anchor is a real heading"
     }
   ]
 }
