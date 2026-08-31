@@ -65,20 +65,25 @@ random-event roll included.
 
 ## Capture a mid-play idea to the inbox
 
-The **capture** door is the one that protects your flow. A toolbar **inbox button** opens a
-**Capture dialog** that overlays wherever you are. That is the whole point: it does not navigate
-you anywhere. You are mid-scene, an idea for a later beat arrives, you open capture, type it,
+The **capture** door is the one that protects your flow. A toolbar **inbox button** (or
+`Ctrl/Cmd+Shift+I`) toggles the **capture strip** open below the toolbar, with the document still
+visible and usable underneath. That is the whole point: it does not navigate you anywhere. You are mid-scene, an idea for a later beat arrives, you open capture, type it,
 press Enter, and you are back in the scene, the idea safely written down somewhere else.
 
-Where does it go? To a **designated inbox point**. You set the inbox once, from a point's bullet
-menu, **Set as inbox** (the same menu toggles it back off on the current inbox). After that,
-every capture appends **one point as that inbox's last child**. The dialog is Markdown-aware, so
+Where does it go? Nowhere you have to set up: with no inbox chosen, captures land at the top
+level of the document. When you want them somewhere specific, mark a point as an **inbox** from its
+bullet menu, **Set as inbox 1** (the same menu removes it again). There are ten numbered slots
+rather than one, so a
+campaign can keep a cast inbox and a threads inbox side by side, and `Ctrl/Cmd+Shift+1` through `0`
+open the strip aimed at a particular one. Every capture appends **one point at the end of that
+inbox**. The strip is Markdown-aware, so
 typing a `- [ ]` line captures a to-do, and it **stays open after each capture** with a running
 "Captured N" confirmation, so you can log two or three ideas in a row without breaking stride,
 Enter captures, Shift+Enter adds a line break.
 
-In the demo, the "Capture: a mid-play inbox" point is marked as the inbox, and it already holds
-three captured ideas as children so you can see the shape. The habit is: capture cheap, capture
+The demo does not preset an inbox, because nothing has to be set up for capture to work. Its
+"Capture: a mid-play inbox" point already holds three captured ideas as children so you can see the
+shape, and marking it as an inbox is the first thing "Run it yourself" has you do. The habit is: capture cheap, capture
 often and sort it out later, which is exactly what refile (below) is for.
 
 ---
@@ -88,8 +93,11 @@ often and sort it out later, which is exactly what refile (below) is for.
 The **journal** door gives every play session one dated home without you typing a date header.
 A toolbar **journal button** (or the `/journal` slash verb, or the `journal` block command from
 the `/` menu's Organize group) opens **today's entry**. Under the hood it finds or creates a
-top-level **Journal** home point, then finds or creates a **dated day point** under it in
-`YYYY-MM-DD` form and lands you there ready to write.
+top-level **Journal** home point, then nests the date under it a rung at a time, **year, then
+month, then day**, and lands you on the day point ready to write. So a session in August 2026 lives
+at `Journal > 2026 > 08 > 31`, and a year of play stays navigable instead of becoming a flat list of
+three hundred dated lines. The home is found at the **top level of the document**, so the demo keeps
+its `Journal` there rather than inside its own branch.
 
 This is the piece the [Lonelog case](../lonelog/lonelog.md) never mentions. That case teaches a
 hand-rolled session log, you type a `Scene:` header, you type the date, you nest your beats by
@@ -127,14 +135,15 @@ real document. A few things to try:
   template** (name it `session`). Then add an empty point and run `/template:session`, a fresh
   session structure drops in, no blank page.
 - **Set the inbox and capture.** Open the bullet menu on the "Capture: a mid-play inbox" point and
-  pick **Set as inbox**. Then click the toolbar inbox button, type an idea, press Enter and watch
-  it land as a child of that point while the dialog stays open for the next one. You never left
-  your scene.
-- **Open today's entry.** Click the toolbar journal button (or type `/journal`). It jumps you to
-  today's dated point under the `Journal` home, creating both if they are not there yet. Compare
-  that to the hand-typed date headers in the Lonelog case, this is the same idea, automated.
+  pick **Set as inbox 1**. Then click the toolbar inbox button, type an idea, press Enter and watch it
+  land inside that point while the strip stays open for the next one. You never left your scene.
+- **Open today's entry.** Type `/journal`. It takes you to today's point under the `Journal`
+  home, creating each rung of `year > month > day` that is not there yet. The toolbar journal
+  button is a different door: it opens the journal **strip**, where you type an entry without
+  leaving your place, and its date chips are what navigate. Compare either to the hand-typed date
+  headers in the Lonelog case, this is the same idea, automated.
 - **Refile a capture.** On one of the captured children, open the bullet menu and pick **Refile**,
-  then send it under the `Journal` day point or the Session subtree. The idea leaves the inbox and
+  then send it under a `Journal` day point or the Session subtree. The idea leaves the inbox and
   joins the fiction.
 - **Run the pills.** Click `{Yes 6 | No 6}` to ask the oracle, `{shuffle: complication | ally
   appears | clock ticks | quiet}` to draw a session-start event (a deck, so it draws each once

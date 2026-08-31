@@ -18,29 +18,33 @@
         </outline>
       </outline>
       <outline text="## Capture: a mid-play inbox" _id="prep0040">
-        <outline text="The toolbar inbox button opens a Capture dialog that overlays wherever you are, it never navigates you off the current scene. Each capture appends one point to a designated inbox. Mark any point as the inbox from its bullet menu (Set as inbox), then mid-scene, when an idea strikes, capture it and keep playing. Refile it into its scene later (bullet menu Refile, or /refile:TITLE). This point is the inbox for the demo." _id="prep0041">
+        <outline text="The toolbar inbox button (or Ctrl/Cmd+Shift+I) toggles the capture strip open below the toolbar, with the document still visible underneath, so it never navigates you off the current scene. Each capture appends one point to the end of a chosen inbox. Nothing is set up in this demo, and nothing has to be: with no inbox chosen, captures land at the top level of the document. To send them here instead, pick Set as inbox 1 from this point's bullet menu, then mid-scene, when an idea strikes, capture it and keep playing. Refile it into its scene later (bullet menu Refile, or /refile:TITLE)." _id="prep0041">
           <outline text="Captured: the merchant's cousin runs the ferry, could be the informant." _id="prep0042"/>
           <outline text="Captured: name for the abbey on the ridge, the Ashfast." _id="prep0043"/>
           <outline text="Captured: a clock for the flood, three segments." _id="prep0044"/>
         </outline>
       </outline>
       <outline text="## Journal mode: today's play entry" _id="prep0050">
-        <outline text="The toolbar journal button (or the /journal verb, or the journal block command) opens today's entry. It finds or creates a Journal home point and a dated day node under it (YYYY-MM-DD), so each play session is one dated entry. This is the built-in version of what the Lonelog case does by hand: instead of typing a date header yourself, one button lands you in today's node ready to write. Below is a Journal home with today already opened." _id="prep0051"/>
-        <outline text="Journal" _id="prep0060">
-          <outline text="2026-07-04" _id="prep0061">
-            <outline text="&gt; I open on a knock at the door, the debt come to collect. Oracle, is the collector alone? {Yes 6 | No 6}." _id="prep0062"/>
-            <outline text="=&gt; Two of them at the door. I stall and reach for the ledger. Random event to see if the scene turns: {2d6}." _id="prep0063"/>
-            <outline text="=&gt; Idea mid-scene, captured to the inbox so I can keep the beat moving, refile it after: the cousin on the ferry." _id="prep0064"/>
-          </outline>
-        </outline>
+        <outline text="The /journal verb (or the journal block command) opens today's entry. It finds or creates a Journal home point at the TOP LEVEL of the document, then nests the date under it as year, then month, then day, so each play session is one dated point and the entries stack in date order on their own. The toolbar journal button is a different door: it toggles the journal strip, a bar you type into, and its date chips are what navigate. This is the built-in version of what the Lonelog case does by hand. The Journal home sits at the bottom of this document, outside this branch, because that is where the door actually creates it." _id="prep0051"/>
       </outline>
       <outline text="## How to run it" _id="prep0070">
         <outline text="Stamp a session: save the Session subtree above as a template (its bullet menu, Save as template), then run /template:session on an empty point to drop a fresh copy in. A new session structure in one command, no blank page." _id="prep0071"/>
-        <outline text="Set the inbox and capture: open a point's bullet menu and pick Set as inbox (try the Capture inbox point above). Then click the toolbar inbox button, type an idea, press Enter. It lands as a child of the inbox and the dialog stays open for the next one, you never leave your scene." _id="prep0072"/>
-        <outline text="Open today's entry: click the toolbar journal button (or type /journal). It jumps you to today's dated node under the Journal home, creating both if they do not exist yet. One dated entry per session, built in." _id="prep0073"/>
+        <outline text="Set the inbox and capture: open a point's bullet menu and pick Set as inbox 1 (try the Capture inbox point above). Then click the toolbar inbox button, type an idea, press Enter. It lands as the last point inside the inbox and the strip stays open for the next one, you never leave your scene." _id="prep0072"/>
+        <outline text="Open today's entry: type /journal. It takes you to today's point under the Journal home, nested year, then month, then day, creating each rung if it does not exist yet. The toolbar journal button opens the journal strip instead, where you type an entry or click a date chip to jump. One dated entry per session, built in." _id="prep0073"/>
         <outline text="Refile a capture: on a captured point, open the bullet menu and pick Refile (or type /refile:TITLE), then choose the scene it belongs under. The idea moves out of the inbox and into the fiction where it lives." _id="prep0074"/>
         <outline text="Run a pill: click {Yes 6 | No 6} to ask the oracle, {shuffle: complication | ally appears | clock ticks | quiet} to draw a session-start event, or {2d6} for a random event roll. Each freezes its result, click again to re-run." _id="prep0075"/>
       </outline>
     </outline>
-  </body>
+  <outline text="Journal" _id="prep0060">
+  <outline text="2026" _id="prep0065">
+    <outline text="07" _id="prep0066">
+      <outline text="04" _id="prep0061">
+        <outline text="&gt; I open on a knock at the door, the debt come to collect. Oracle, is the collector alone? {Yes 6 | No 6}." _id="prep0062"/>
+        <outline text="=&gt; Two of them at the door. I stall and reach for the ledger. Random event to see if the scene turns: {2d6}." _id="prep0063"/>
+        <outline text="=&gt; Idea mid-scene, captured to the inbox so I can keep the beat moving, refile it after: the cousin on the ferry." _id="prep0064"/>
+      </outline>
+    </outline>
+  </outline>
+</outline>
+</body>
 </opml>

@@ -2772,6 +2772,24 @@
       "find": "bind the pick to a variable first: {w := {weapon}}.",
       "replace": "bind the pick to a variable first: {w := weapon}.",
       "kills": "a pick bound to a variable in a demo really binds"
+    },
+    {
+      "id": "solo-rpg-label-invented",
+      "suite": "unit",
+      "why": "session prep named three built-in doors and got all three wrong; a guide that bolds a control the app does not have sends the reader hunting the screen",
+      "file": "guide/solo-rpg/session-prep/session-prep.md",
+      "find": "pick **Set as inbox 1**.",
+      "replace": "pick **Mark as capture target**.",
+      "kills": "every UI label a solo-RPG guide puts in bold exists in the app"
+    },
+    {
+      "id": "solo-rpg-journal-home-renested",
+      "suite": "unit",
+      "why": "findOrCreateNamedHome scans root.children only, so a Journal home buried in the demo's own branch makes the journal door append a SECOND empty one -- the demo actively demonstrating the opposite of the feature",
+      "file": "guide/solo-rpg/session-prep/session-prep-demo.opml",
+      "find": "<outline text=\"04\" _id=\"prep0061\">",
+      "replace": "<outline text=\"2026-07-04\" _id=\"prep0061\">",
+      "kills": "a demo Journal home sits where the journal door looks"
     }
   ]
 }

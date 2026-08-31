@@ -1766,6 +1766,8 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/npc-faction/npc-faction-demo.opml': readFileSync(new URL('../guide/solo-rpg/npc-faction/npc-faction-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/lonelog/lonelog-demo.opml': readFileSync(new URL('../guide/solo-rpg/lonelog/lonelog-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/generators/generators-demo.opml': readFileSync(new URL('../guide/solo-rpg/generators/generators-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/session-prep/session-prep.md': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep.md', import.meta.url), 'utf8'),
+    'guide/solo-rpg/session-prep/session-prep-demo.opml': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep-demo.opml', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -30029,6 +30031,82 @@ test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)
   }
   assert.ok(checked >= 5, `the demos declare several {name := ...} bindings; this guard saw ${checked}`);
   assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
+});
+
+test('a demo Journal home sits where the journal door looks, in the shape it builds', () => {
+  // Two independent defects met in one subtree. findOrCreateNamedHome scans root.children ONLY, so
+  // the demo's Journal, buried three levels inside its own branch, was invisible to the door: click
+  // it on that exact file and the app appended a SECOND, empty top-level Journal, demonstrating the
+  // opposite of the feature. And findOrCreateDatedEntry nests year > month > day, while the demo
+  // drew a flat `2026-07-04`. A tidy-up that re-nests the home, or re-flattens the date, silently
+  // restores both, so the structure is pinned rather than the prose.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const file = resolve(dir, 'session-prep', 'session-prep-demo.opml');
+  const xml = readFileSync(file, 'utf8');
+
+  const body = xml.slice(xml.indexOf('<body>') + 6, xml.lastIndexOf('</body>'));
+  const stack = [{ text: '(root)', kids: [] }];
+  const rootNode = stack[0];
+  for (const m of body.matchAll(/<outline\b([^>]*?)(\/?)>|<\/outline>/g)) {
+    if (m[0] === '</outline>') { if (stack.length > 1) stack.pop(); continue; }
+    const t = /text="([^"]*)"/.exec(m[1]);
+    const node = { text: t ? t[1] : '', kids: [] };
+    stack[stack.length - 1].kids.push(node);
+    if (!m[2]) stack.push(node);
+  }
+  const home = rootNode.kids.find(k => k.text.trim() === 'Journal');
+  assert.ok(home, 'the Journal home must be a TOP-LEVEL point, because findOrCreateNamedHome only ' +
+    'scans root.children; nested anywhere else the journal door appends a second, empty one');
+
+  const year = nonEmpty(home.kids.filter(k => /^\d{4}$/.test(k.text.trim())), 'year rungs under Journal');
+  const month = nonEmpty(year[0].kids.filter(k => /^\d{2}$/.test(k.text.trim())), 'month rungs under the year');
+  const day = nonEmpty(month[0].kids.filter(k => /^\d{2}$/.test(k.text.trim())), 'day rungs under the month');
+  nonEmpty(day[0].kids, 'the day point must hold the session it is illustrating');
+  // and nothing anywhere may draw the flat form the app never builds
+  const flat = [...xml.matchAll(/text="(\d{4}-\d{2}-\d{2})"/g)].map(m => m[1]);
+  assert.deepEqual(flat, [], `the door nests year > month > day; a flat dated point is a shape it never creates: ${flat}`);
+});
+
+test('every UI label a solo-RPG guide puts in bold exists in the app', () => {
+  // Session prep named three built-in doors and got all three wrong: a "Capture dialog" that is a
+  // strip, a single "Set as inbox" where there are ten numbered slots, and a journal button that
+  // opens a bar rather than navigating. The labels are the checkable half, so they get a census: a
+  // guide that bolds a control name is telling the reader what to look for on screen.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const guides = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(n => ({ n, f: resolve(dir, n, `${n}.md`) }))
+      .filter(d => { try { readFileSync(d.f); return true; } catch { return false; } }),
+    'solo-rpg guides');
+  // The signal is not "bolded" -- credits and emphasis are bolded too, and a first draft of this
+  // census duly accused "**Yochai Gal**" and "**Changes have been made**". It is "bolded AND the
+  // reader is told to operate it": an interaction verb immediately before the bold. That is exactly
+  // the sentence that sends someone hunting the screen for a control, which is the failure here.
+  const VERB = /\b(click|press|pick|choose|open|select|toggle|hit|use)\b[^.\n]{0,30}$/i;
+  let checked = 0;
+  const missing = [];
+  for (const { n, f } of guides) {
+    const text = readFileSync(f, 'utf8');
+    for (const m of text.matchAll(/\*\*([^*\n]{3,40})\*\*/g)) {
+      const label = m[1].trim().replace(/[.,:;]$/, '');
+      const before = text.slice(Math.max(0, m.index - 60), m.index);
+      if (!VERB.test(before)) continue;
+      // ...and it has to LOOK like a control: an initial capital and at most four words. Without
+      // this the verb test alone accuses the bolded RESULT of an action ("Click the pill and it
+      // **draws one terrain and sets it aside**"), which names no control at all.
+      if (!/^[A-Z]/.test(label) || label.split(/\s+/).length > 4) continue;
+      checked++;
+      // A guide may write a menu PATH ("File, then Custom calendar"); each rung is its own label.
+      // The app spells a numbered slot "Set as inbox 1"; a guide may name the family without a digit.
+      const rungs = label.split(/,\s*then\s*/i).map(x => x.trim()).filter(Boolean);
+      const gone = rungs.filter(r => !src.includes(r) && !src.includes(r.replace(/ \d+$/, '')));
+      if (!gone.length) continue;
+      missing.push(`${n}.md: **${label}** names ${JSON.stringify(gone)}, which appears nowhere in index.html`);
+    }
+  }
+  assert.ok(checked >= 5, `the census must examine operated control names, examined ${checked}`);
+  assert.deepEqual(missing, [], 'a guide bolds a control the app does not have:\n  ' + missing.join('\n  '));
 });
 
 test('no solo-RPG guide tells the reader a bullet click folds a point', () => {
