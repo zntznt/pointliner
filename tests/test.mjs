@@ -16409,6 +16409,36 @@ test('#1552 every base-formula example in the guide computes through the real en
     'the changed-no-cell arm must be reachable: a formula that targets nothing leaves the grid alone');
 });
 
+// #1552 — the one guide claim that is ADVICE rather than an example, pinned to the parser that
+// makes it true. The action body ends "A roll takes a flat modifier, not a multiplier, so write
+// `2d6+10` rather than `2d6*10`", written after `{gold += {2d6}*10}` shipped in that entry and
+// rendered as literal text. #1452 renders every EXAMPLE in a real browser and would catch a broken
+// one again — but this sentence names its forms in prose, inside backticks, so no example-shaped
+// guard can see either of them. If the roll grammar ever grew a multiplier, the advice would
+// silently become wrong. Read the forms OUT of the copy rather than restating them here, so a
+// reworded sentence has to come back through this test.
+const { parseDice: _pdAdvice, evalMath: _emAdvice } = c;
+test('#1552 the action entry steers away from a multiplier only while the roll parser rejects one', () => {
+  const body = String((_GUIDE.find(e => e.id === 'action') || {}).body || '');
+  assert.ok(body, 'the action entry must exist for its advice to be pinned');
+  const m = /write `([^`]+)` rather than `([^`]+)`/.exec(body);
+  assert.ok(m, 'the action entry must still carry the flat-modifier advice in its "write X rather ' +
+    'than Y" form; if the sentence was reworded, re-point this guard at the new wording');
+  const [, good, bad] = m;
+  const scope = { str: 3 };
+  // Value equality on the parser's verdict, in BOTH directions: the recommended form has to be a
+  // roll the engine really parses, and the discouraged one has to be a form nothing resolves --
+  // parseDice for the roll path, evalMath for the plain-arithmetic path actionRhsValue falls back
+  // to. If either resolved, the button would work and the guide would be sending the reader away
+  // from something that does.
+  assert.notEqual(_pdAdvice(good, scope), null,
+    `the guide tells the reader to write ${good}, so the roll parser must accept it`);
+  assert.equal(_pdAdvice(bad, scope), null,
+    `the guide steers the reader away from ${bad}, but the roll parser now accepts it: the advice is stale`);
+  assert.equal(_emAdvice(bad, scope), null,
+    `the guide steers the reader away from ${bad}, but evalMath now resolves it: the advice is stale`);
+});
+
 // #1552 — the exemption the ratchet grants, made earnable.
 //
 // `ctl:` is read in exactly one place: the uncovered-example count below skips any example carrying

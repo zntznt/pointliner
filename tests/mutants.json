@@ -3177,6 +3177,15 @@
       "find": "roll them up on the parent with `sum`, `avg`, `count`, `min` or `max`",
       "replace": "roll them up on the parent with `sum` or `avg`",
       "kills": "subtree aggregation"
+    },
+    {
+      "id": "guide-action-multiplier-advice",
+      "suite": "unit",
+      "why": "the entry shipped `{gold += {2d6}*10}`, which renders as literal text; the replacement sentence names its two forms in prose, where no example-shaped guard can reach them",
+      "file": "index.html",
+      "find": "so write `2d6+10` rather than `2d6*10`",
+      "replace": "so write `2d6*10` rather than `2d6+10`",
+      "kills": "steers away from a multiplier"
     }
   ]
 }
