@@ -103,8 +103,10 @@ A few things to try once it is open:
 - **Tag a thread.** Add `#thread/torn-letter` to the consequence line, then click the tag to
   pull up every beat in the whole journal that touches that thread. This is the payoff Pointliner
   adds over a flat log: the record becomes queryable.
-- **Link an NPC.** Make a point for the merchant somewhere, then reference him from any beat with
-  a link. Backlinks will show you every scene he appears in.
+- **Link an NPC.** Make a point for the merchant somewhere, then type `[[` in any beat and pick
+  him from the list. His point then carries a **backlink** to every scene he appears in, so you can
+  read the campaign from his side as well as the journal's. See
+  [links and references](../../links-and-references.md) for the whole picture.
 
 ---
 

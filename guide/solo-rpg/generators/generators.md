@@ -160,9 +160,11 @@ real document with every pill live. A few things to try:
 - **Reweight the loot.** Click `{loot}` to feel the odds, then click into the `{rule loot: ...}`
   list and change a number. Bump the wand's weight up and watch it start showing. The whole
   economy is the numbers in that one line.
-- **Break the item field on purpose.** Delete the `{rule spear.damage: 1d8}` line, then roll the
-  weapon pill until it lands on a spear: `{weapon.damage}` goes undefined, which is exactly how you
-  learn that a field lives or dies with its sub-rule. Put the line back and it heals.
+- **Break the item field on purpose.** Delete the `{rule spear.damage: 1d8}` line, then click the
+  bound `{w := {weapon}}` pill until it draws a spear: `{w.damage}` goes undefined, which is exactly
+  how you learn that a field lives or dies with its sub-rule. Use the bound pair, not the bare
+  `{weapon}` and `{weapon.damage}`, or the two roll independently and you will be reading the damage
+  of a weapon you did not draw. Put the line back and it heals.
 - **Edit the lists to make them yours.** Click into the text of a rule point (say
   `{rule animal: Kraken | Wyrm | ...}`) and add, remove or reweight options. Keep the `rule`
   keyword when you edit: drop it and the rule unregisters, taking every `{animal}` pill in the

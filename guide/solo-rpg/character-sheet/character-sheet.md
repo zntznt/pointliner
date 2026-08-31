@@ -29,7 +29,7 @@ Pointliner gives you three tools for this, and the demo uses all three:
 - a **variable** to name a value (`{level := 3}`)
 - **math** to derive a new value from named ones (`{= level * 8}`)
 - a **rollup + check** to total a list of points and lint the total (`{= sum(weight)}` for the sum,
-  and a `check` of `sum(weight) <= 10` on the pack point)
+  and a `check` of `sum(weight) <= 8 + might` on the pack point)
 
 ---
 
@@ -82,7 +82,7 @@ sum you have to redo by hand every time you pick something up. In Pointliner the
 with the gear as its **direct children**, and each item carries a `weight` property:
 
 ```
-Carried load, carrying {= sum(weight)} of 10   (with a check: sum(weight) <= 10)
+Carried load, carrying {= sum(weight)} of {= 8 + might}   (with a check: sum(weight) <= 8 + might)
   Short bow {prop weight: 2}
   Quiver, twenty arrows {prop weight: 1}
   Hunting knife {prop weight: 1}
@@ -110,20 +110,24 @@ property chip that the rollup can see.
 
 ## The check: a rule that goes red when you overload
 
-The interesting part is on the pack point itself: it carries a **check** of `sum(weight) <= 10`.
+The interesting part is on the pack point itself: it carries a **check** of `sum(weight) <= 8 + might`.
 You add one from the point's bullet menu (**Add check**) or by typing **`/check`**, then writing the
 test; it is not a property you type inline, it gets its own small pass/fail chip below the point.
 
 A **check** is a linter for your document. It carries a comparison (a check *must* have one:
 `<=`, `<`, `>`, `>=`, `==`, `!=`), and it evaluates that comparison over the point and its
-children. Here it asks: **is the total carried weight 10 or under?** While it is, the chip sits
-quiet as a small muted tick. The moment the total crosses 10, the chip turns **red** and the point
+children. Here it asks: **is the total carried weight within the carry limit?** Note that the
+limit is not a hardcoded number: the check reads `might` the same way the derived numbers do, so a
+stronger character can carry more without anyone editing the rule. While the total is under, the
+chip sits
+quiet as a small green tick. The moment the total crosses the cap, the chip turns **red** and the point
 is flagged.
 
-Try it. The starting pack sums to 10, so the check passes. The demo has a spare line telling you
-to add an `Iron cook pot {prop weight: 2}` into the pack. Do that (or bump any weight up by one) and
-the total climbs to 12, `sum(weight) <= 10` becomes false, and the Carried load chip goes red.
-Drop something and it clears. The rule is written once and enforces itself forever after, exactly
+Try it. The starting pack sums to 10 and Might is 2, so the limit is 10 and the check passes on
+the nose. The demo has a spare line telling you to add an `Iron cook pot {prop weight: 2}` into the
+pack. Do that (or bump any weight up by one) and the total climbs to 12, the check becomes false,
+and the Carried load chip goes red. Now fix it the other way: raise `{might := 2}` to `4`. The limit
+becomes 12, and the same pack passes again without dropping a thing. The rule is written once and enforces itself forever after, exactly
 like the derived math, except the answer it computes is *pass or fail* instead of a number.
 
 Because a check is a real document-wide thing, you can also search **`is:failing`** to pull up
@@ -141,8 +145,9 @@ Open the [demo file](character-sheet-demo.opml) and poke at it:
   save move too, because they read the same name.
 - **Raise a stat and re-roll.** Bump `{might := 2}` to `4`, then click the attack roll
   (`{2d6+might}`) a few times. The modifier followed the stat.
-- **Overload the pack.** Add the cook-pot line, or edit any `{prop weight: N}` upward, until
-  `{= sum(weight)}` passes 10. The Carried load check flips to red. Remove the weight and it clears.
+- **Overload the pack.** Add the cook-pot line, or edit any `{prop weight: N}` upward, until the
+  carried total passes the limit on the Carried load point. The check flips to red. Remove the
+  weight and it clears, or raise `might` and watch the limit move instead.
 - **Find every problem at once.** Search `is:failing`. While the pack is overloaded, the check
   shows up in the results; fix it and it drops out.
 

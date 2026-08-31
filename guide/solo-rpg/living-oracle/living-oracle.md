@@ -130,8 +130,10 @@ that draw from all of them.
   Click again for another draw.
 - **Add to the pool live.** Add a fifth `#npc` point to the cast list, then roll again: the new NPC
   can now come up, with no other change.
-- **Freeze one.** The demo has a `{contact := {roll: #npc}}` line; click it to lock in a contact for
-  the scene, and see the later `{contact}` references follow.
+- **Freeze one.** The demo has a `{contact := {roll: #npc}}` line. It is *already* frozen: it drew
+  once when the file opened and the later `{contact}` references all read that same draw. Clicking it
+  re-rolls, and every reference follows the new draw at once, which is the point of binding the pick
+  to a name instead of writing `{roll: #npc}` three times.
 - **Roll a narrowed pool.** Try the `{roll: #clue is:todo}` pill to draw only a clue you have not
   resolved, then check off that clue and roll again to see it leave the pool.
 
