@@ -3,6 +3,11 @@
 
 # stray verification/build artifacts (this is a no-build, single-file repo —
 # any node_modules/package*.json come from throwaway test runs, never source)
-node_modules/
+#
+# No trailing slash: playwright is not a committed dependency, so running
+# tests/browser.mjs against an install that lives elsewhere means LINKING it in
+# (`ln -s /path/to/node_modules`). A symlink is a file, and `node_modules/`
+# matches only a directory, so the link showed up as untracked every time.
+node_modules
 package.json
 package-lock.json
