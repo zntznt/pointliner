@@ -2889,6 +2889,15 @@
       "find": "**Each pill is its own deck.**",
       "replace": "**Every terrain pill in the demo shares the one deck.**",
       "kills": "no solo-RPG guide claims two deck pills share one bag"
+    },
+    {
+      "id": "solo-rpg-search-query-invalid",
+      "suite": "unit",
+      "why": "a search the guide tells the reader to type is the worst shape of doc error here: `due:>=today` is rejected outright and returns nothing, while nothing on screen looks broken",
+      "file": "guide/solo-rpg/campaign-calendar/campaign-calendar.md",
+      "find": "search **`due:>today-1`**",
+      "replace": "search **`due:>=today`**",
+      "kills": "every search query a solo-RPG guide tells the reader to type actually parses"
     }
   ]
 }

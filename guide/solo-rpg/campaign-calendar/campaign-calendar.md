@@ -84,19 +84,21 @@ files itself in world time while a `due:` inside it stays a date you will actual
 If you want a log where everything, dates included, reads in world time, make its home point and
 choose **Set as chronicle** from its bullet menu.
 
-Two small touches worth stealing from the demo:
+One small touch worth stealing from the demo:
 
 - A point reading `It is {= asdate(today)}.` renders the current in-world date and follows the
   clock as you advance it: a campaign header that is never stale, made of one math pill.
-- Real-world bookkeeping stays out of world time by using things the calendar never touches: tag
-  session entries `#session-12`, or give them a free property like `played: 2026-07-12`. A free
-  property is just text, so it never collides with the world's dates. One document, one reality;
-  the fiction owns `due`, you own the margins.
+And one worth adding yourself, which the demo does not carry: keep real-world bookkeeping out of
+world time by using things the calendar never touches. Tag session entries `#session-12`, or give
+them a free property like `played: 2026-07-12`. A free property is just text, so it never collides
+with the world's dates. One document, one reality; the fiction owns `due`, you own the margins.
 
 ## Moving an existing campaign onto a calendar
 
 If you followed the clocks guide, your campaign document already has real-date threads. Before
-switching, search **`due:>today`** and note the handful of threads that are actually live; the
+switching, search **`due:>today-1`** and note the handful of threads that are actually live. The
+`-1` matters: `due:>today` is strict and would drop anything due *today*, which is exactly the
+thread most likely to still be live. The
 dead dates are history and can stay as text. Then set the calendar: the dialog checks every
 stored date first and tells you plainly how many would read differently and how many would
 become unreadable. Nothing is rewritten, ever; your text stays exactly as typed, undo reverses

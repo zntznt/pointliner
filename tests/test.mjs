@@ -30265,6 +30265,37 @@ test('a demo Journal home sits where the journal door looks, in the shape it bui
   assert.deepEqual(flat, [], `the door nests year > month > day; a flat dated point is a shape it never creates: ${flat}`);
 });
 
+test('every search query a solo-RPG guide tells the reader to type actually parses', () => {
+  // campaign-calendar told the reader to search `due:>today` to find live threads, and `>` is
+  // strict: a thread due TODAY is excluded and then classified by the next clause as dead history
+  // safe to leave behind. The working inclusive form is `due:>today-1`, and `due:>=today` -- the
+  // one a reader would guess -- is rejected outright. A search that silently returns the wrong set
+  // is the worst shape of doc error here, because nothing looks broken.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`])
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* optional */ }
+  nonEmpty(files, 'solo-rpg files');
+
+  let checked = 0;
+  const bad = [];
+  for (const { n, t } of files)
+    // backticked spans only: a query is always shown as code, and prose containing a colon is not one
+    for (const m of t.matchAll(/`([^`\n]+)`/g)) {
+      const q = m[1].trim();
+      // a search term is `field:value`, with the operator families this app ships
+      if (!/^(due|start|is|has|in|tag)\s*:/.test(q) && !/^#[\w/-]+(\s+\w+:\S+)+$/.test(q)) continue;
+      checked++;
+      const parsed = c.parseSearchQuery(q);
+      const invalid = (parsed || []).filter(term => term && term.kind === 'invalid');
+      if (invalid.length)
+        bad.push(`${n}: \`${q}\` does not parse (${invalid.map(x => x.raw || x.value).join(', ')})`);
+    }
+  assert.ok(checked >= 5, `the census must see search queries, saw ${checked}`);
+  assert.deepEqual(bad, [], 'a search the guide tells the reader to type:\n  ' + bad.join('\n  '));
+});
+
 test('no solo-RPG guide claims two deck pills share one bag', () => {
   // hex-crawl asserted "Every terrain pill in the demo shares the one deck (decks are keyed by
   // their content)". Nothing keys a deck by its text: makeSeqGen mints a fresh key per pill and the
