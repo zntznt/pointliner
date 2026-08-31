@@ -135,8 +135,11 @@ that draw from all of them.
 - **Roll a narrowed pool.** Try the `{roll: #clue is:todo}` pill to draw only a clue you have not
   resolved, then check off that clue and roll again to see it leave the pool.
 
-To build your own from nothing: tag a few points `#npc`, write `{roll: #npc}` anywhere, and you
-have a personal oracle. Everything else is the same idea pointed at a different tag.
+To build your own from nothing: tag a few points `#npc`, then add the pill. You can type
+`{roll: #npc}` anywhere, or take the visible door and pick **Roll on your document** from the `@`
+menu, which writes the same pill and lets you fill in the search rather than remember the form.
+Either way you have a personal oracle, and everything else in this case is the same idea pointed at
+a different tag.
 
 ---
 

@@ -26,7 +26,8 @@ for the board that holds them all. Nothing here is a new notation. It is the sam
 
 Pointliner has a built-in **clock** made for exactly this. You write it as `[o N/M]` inside a
 point's text (the letter `o`, a space, then how many of how many segments are filled), and it
-renders as a little quarter-fill ring gauge, `[o 3/6]` showing a three-quarters-ish `◑`. It is
+renders as a small ring gauge that fills in five faces, `○ ◔ ◑ ◕ ●`, so `[o 3/6]` shows the
+half-filled `◑`. It is
 the Blades-in-the-Dark / Ironsworn tension clock as a native piece, no extra machinery.
 
 There are two ways to drive it, and it is worth knowing which you want:
@@ -142,7 +143,7 @@ lists them.
   under Later. Editing a thread's `{date due: …}` moves it in the agenda live.
 - **Pull the board.** Search `#thread` to list every thread at once, then star the search to keep
   the chip. Click any result to jump straight to that thread and advance its clock. The embedded
-  `{query: #thread}` pill in the demo shows the same list without leaving the page.
+  `{query: #thread}` pill in the demo shows the same list without leaving the document.
 
 To build your own from scratch: make a point for a danger, put `[o /6]` at the end of its text and
 add a few `- [ ]` segment lines under it. Make a point for an open question, tag it `#thread` and

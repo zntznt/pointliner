@@ -20,10 +20,15 @@
   <outline text="## Progress tracks">
     <outline text="A vow, journey, or fight is a progress cookie over ten boxes. Check boxes as you advance; when it is time, count the filled boxes and roll the challenge dice against that number.">
       <outline text="Swear an iron vow: reach the drowned tower [/]">
-        <outline text="- [ ] box"/>
-        <outline text="- [ ] box"/>
         <outline text="- [x] box"/>
         <outline text="- [x] box"/>
+        <outline text="- [x] box"/>
+        <outline text="- [ ] box"/>
+        <outline text="- [ ] box"/>
+        <outline text="- [ ] box"/>
+        <outline text="- [ ] box"/>
+        <outline text="- [ ] box"/>
+        <outline text="- [ ] box"/>
         <outline text="- [ ] box"/>
       </outline>
       <outline text="Progress move when ready: roll {1d10} and {1d10} against the number of filled boxes above."/>

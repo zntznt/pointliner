@@ -83,7 +83,7 @@ what makes it a live ring, and a bare `[3/10]` is plain text.
 Swear an iron vow: reach the drowned tower  [/]
   - [ ] progress
   - [ ] progress
-  ... (ten boxes; check them off as you advance)
+  ... (ten boxes for a full track; check them off as you advance)
 ```
 
 When it is time to fulfil the vow, count the filled boxes and roll `{1d10}` and `{1d10}` against that

@@ -87,17 +87,20 @@ to Cairn's slots.
 
 ## Damage, armour and the death spiral
 
-Damage in Cairn hits **Hit Protection** first (luck and stamina); when that runs out, the rest comes
-off **Strength**, and low Strength means Strength saves to avoid dying. Track HP and STR as variables
-and subtract by editing them, with the damage roll as a pill:
+Damage in Cairn hits **Hit Protection** first (luck and stamina); when that runs out, the rest
+carries over into **Strength**. Any damage that reaches Strength forces a **Strength save** on the
+spot, whatever your Strength happens to be: it is the crossing that triggers it, not a low number.
+Track HP and STR as variables and subtract by editing them, with the damage roll as a pill:
 
 ```
 Goblin hits you for {1d6} damage. Subtract armour, take the rest off HP, then off STR.
 Blade: {1d8}    Club: {1d6}    Bow: {1d6}
 ```
 
-When Strength drops, make a Strength save (`{1d20}` at or under `str`) to see whether you hold on. The
-whole spiral is just dice pills read against the two variables.
+The moment damage takes anything off Strength, make that save (`{1d20}` at or under `str`) to see
+whether you hold on. Failing it is where a Cairn character dies, which is why the spiral is short
+and why armour and a full Hit Protection matter so much. The whole thing is just dice pills read
+against the two variables.
 
 ## The game's tables
 

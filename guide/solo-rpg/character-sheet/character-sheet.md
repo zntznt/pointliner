@@ -9,7 +9,7 @@ Most character sheets are dead paper. You write `Level 3`, then somewhere else y
 answer over. Change the level and every derived number is suddenly a lie until you go back
 and fix each one by hand.
 
-This guide builds a sheet that fixes itself. The stats are **variables**, the derived rows
+This guide builds a sheet that fixes itself. The stats are **variables**, the derived numbers
 are **math that reads those variables**, the pack total **adds up its own contents**, and an
 **encumbrance check** turns red the instant you carry too much. It is system-agnostic (no
 copyrighted game, just a hedge-scout named Kestrel and some plausible gear), so you can lift
@@ -52,7 +52,7 @@ you will look for it when you want to change it.
 
 ---
 
-## The derived rows: math that reads the stats
+## The derived numbers: math that reads the stats
 
 Directly below, the derived numbers never store a value of their own. They **compute** from
 the stats above:
@@ -65,7 +65,7 @@ Proficiency, half your level rounded up: {= ceil(level / 2)}
 
 `{= expression}` evaluates live. With `level` at 3, the hit-points pill shows `24`. It is not a
 stored `24`, it is a recipe: `level * 8`, computed every time the sheet renders. That is the whole
-payoff. Edit the `{level := 3}` pill to `{level := 5}` and the hit-points row becomes `40` on its
+payoff. Edit the `{level := 3}` pill to `{level := 5}` and the hit-points point becomes `40` on its
 own, with no second edit. Defense reads `grace`, proficiency reads `level`, and each one follows
 its source the same way.
 
@@ -102,8 +102,9 @@ weight, and the total recomputes. There is no cell you maintain and no formula t
 list *is* the data, and the sum reads the list.
 
 Second, `{prop weight: N}` on each item is how the weight gets there. It is an ordinary property
-written inline. You never hand-edit any JSON; you type `{prop weight: 2}` in the item's text and it
-becomes a small property chip that the rollup can see.
+written inline. You never hand-edit any JSON: type `{prop weight: 2}` in the item's text, or pick
+**Property** from the `@` menu and fill in the name and value, and either way it becomes a small
+property chip that the rollup can see.
 
 ---
 
@@ -136,7 +137,7 @@ difference between "I think I am fine" and "here are the three things that are a
 Open the [demo file](character-sheet-demo.opml) and poke at it:
 
 - **Change level and watch HP update.** Click the `{level := 3}` pill and set it to `5`. The
-  hit-points row (`{= level * 8}`) becomes `40` with no other edit. Proficiency and the level-scaled
+  hit-points point (`{= level * 8}`) becomes `40` with no other edit. Proficiency and the level-scaled
   save move too, because they read the same name.
 - **Raise a stat and re-roll.** Bump `{might := 2}` to `4`, then click the attack roll
   (`{2d6+might}`) a few times. The modifier followed the stat.
@@ -145,7 +146,7 @@ Open the [demo file](character-sheet-demo.opml) and poke at it:
 - **Find every problem at once.** Search `is:failing`. While the pack is overloaded, the check
   shows up in the results; fix it and it drops out.
 
-Nothing here is a new notation. Stats are variables, derived rows are math, the pack total is a
+Nothing here is a new notation. Stats are variables, derived numbers are math, the pack total is a
 child rollup, and the encumbrance rule is a check. It is the same `{…}` grammar the rest of Pointliner
 uses, pointed at a character sheet.
 
