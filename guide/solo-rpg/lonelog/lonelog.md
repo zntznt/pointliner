@@ -95,9 +95,11 @@ with the `{2d6}` rolls live. Click a roll to see it change; notice the prose lin
 
 A few things to try once it is open:
 
-- **Fold the scene.** Click the bullet of "Scene: The nervous merchant" to collapse the whole
-  beat list into one line. A long campaign becomes a tidy stack of scene headers you can open
-  one at a time.
+- **Fold the scene.** Click the chevron to the left of "Scene: The nervous merchant" (or press
+  `Ctrl/Cmd+.` on it) to collapse the whole beat list into one line. A long campaign becomes a
+  tidy stack of scene headers you can open one at a time. Clicking the **bullet** does something
+  else worth knowing: it zooms the document into that point alone, and Esc or the breadcrumb
+  brings you back.
 - **Tag a thread.** Add `#thread/torn-letter` to the consequence line, then click the tag to
   pull up every beat in the whole journal that touches that thread. This is the payoff Pointliner
   adds over a flat log: the record becomes queryable.

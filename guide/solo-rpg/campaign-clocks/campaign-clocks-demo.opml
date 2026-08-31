@@ -51,7 +51,7 @@
     <outline text="Narrow to what is on the clock this week with a saved search like: #thread due:week"/>
   </outline>
   <outline text="## How to run it">
-    <outline text="Tick a clock: click the bullet of a clock to open it, then check a segment box. The [o /6] ring beside the clock's title climbs on its own (or click the ring itself on a manual [o 3/6] clock). Fill the last box and read the fiction that the full clock triggers."/>
+    <outline text="Tick a clock: check one of its segment boxes. The [o /6] ring beside the clock's title climbs on its own (or click the ring itself on a manual [o 3/6] clock). Fill the last box and read the fiction that the full clock triggers."/>
     <outline text="Start a thread: make a point for the open question, tag it #thread, and set a date with {date due: today+3} (or a real date like {date due: 2026-12-21}). Open the agenda from the toolbar calendar to see it tick closer."/>
     <outline text="Work the board: search #thread to list every open thread, star it to keep the chip, and click any result to jump to that thread and advance its clock. Nothing here is new syntax: a clock is the built-in [o N/M] ring, a thread is a dated point, and the board is a saved search."/>
   </outline>

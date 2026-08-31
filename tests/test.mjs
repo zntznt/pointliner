@@ -1764,6 +1764,8 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/character-sheet/character-sheet-demo.opml': readFileSync(new URL('../guide/solo-rpg/character-sheet/character-sheet-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/hex-crawl/hex-crawl-demo.opml': readFileSync(new URL('../guide/solo-rpg/hex-crawl/hex-crawl-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/npc-faction/npc-faction-demo.opml': readFileSync(new URL('../guide/solo-rpg/npc-faction/npc-faction-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/lonelog/lonelog-demo.opml': readFileSync(new URL('../guide/solo-rpg/lonelog/lonelog-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/generators/generators-demo.opml': readFileSync(new URL('../guide/solo-rpg/generators/generators-demo.opml', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -29988,6 +29990,82 @@ test('EVERY solo-RPG demo resolves its own rule references (the census the last 
   }
   assert.ok(checked >= 20, `the census must actually examine call sites, examined ${checked}`);
   assert.deepEqual(broken, [], 'every {name} in a shipped demo must resolve:\n  ' + broken.join('\n  '));
+});
+
+test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)', () => {
+  // `{w := weapon}` reads `weapon` as a FORMULA, finds no variable of that name and resolves to
+  // nothing, so both {w} and {w.damage} stayed on the page as literal characters -- in the guide's
+  // own answer to the one problem it raises. The working form wraps the draw: `{w := {weapon}}`.
+  // Driven check rather than a source pin: collect the demo's rules and variables the way the app
+  // does, then confirm each declared pick actually names something that exists.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  let checked = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    const xml = readFileSync(file, 'utf8');
+    const texts = [...xml.matchAll(/text="([^"]*)"/g)].map(m => m[1]
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/&#10;/g, '\n').replace(/&amp;/g, '&')
+      .replace(/`[^`]*`/g, ' '));            // backticked illustrations never promote
+    const rules = new Set();
+    for (const t of texts) for (const m of t.matchAll(/\{rule\s+([^:}]+):/g)) {
+      const d = c.ruleDeclParts('rule ' + m[1] + ':x');
+      if (d) rules.add(d.name.toLowerCase());
+    }
+    // `{name := body}` where body is a BARE identifier is the trap: it is read as a formula.
+    for (const t of texts) for (const m of t.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^{}]*)\}/g)) {
+      const [, nm, rhs] = m;
+      const body = rhs.trim();
+      checked++;                                              // every binding the demos declare, so the
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(body)) continue;   // floor below measures that this guard RAN
+      if (rules.has(body.toLowerCase()))
+        bad.push(`${name}: {${nm} := ${body}} names the RULE "${body}" but reads it as a formula; wrap the draw as {${nm} := {${body}}}`);
+    }
+  }
+  assert.ok(checked >= 5, `the demos declare several {name := ...} bindings; this guard saw ${checked}`);
+  assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
+});
+
+test('no solo-RPG guide tells the reader a bullet click folds a point', () => {
+  // The bullet handler runs zoomInto(node.id) for every type except `para`, and the app fires a
+  // first-zoom toast explaining the gesture -- so the app ANNOUNCES one thing while three guides
+  // predicted the opposite, in the very first exercise of the declared on-ramp document. Folding is
+  // the separate .collapse-btn chevron (or Ctrl/Cmd+.). guide/getting-around.md documents both
+  // correctly, so the solo-RPG guides were the outliers.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const body = fnBody(src, 'attachBulletMenuGestures');
+  assert.match(body, /bullet\.addEventListener\('click'/, 'the bullet click handler lives here');
+  assert.match(body, /zoomInto\(node\.id\)/,
+    'the bullet still ZOOMS: if it ever folds instead, this guard is the thing to rewrite, not the guides');
+  assert.match(body, /node\.type === 'para'.*toggleFold/s,
+    'the one exception is a paragraph, which folds to its first line (guide/getting-around.md documents it)');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`]) {
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* not every folder has both */ }
+    }
+  nonEmpty(files, 'solo-rpg guide and demo files');
+  const bad = [];
+  for (const { n, t } of files)
+    for (const line of t.split('\n')) {
+      // a bullet click paired with a fold word, in either order, within one sentence
+      if (!/bullet/i.test(line)) continue;
+      for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+        if (!/\bbullets?\b/i.test(sentence)) continue;
+        if (!/\b(fold|folds|collapse|collapses|collapsed|open it)\b/i.test(sentence)) continue;
+        if (/zoom/i.test(sentence)) continue;             // a sentence that CONTRASTS the two is fine
+        if (/bullet menu|bullet's menu/i.test(sentence)) continue;   // the menu is a different affordance
+        bad.push(`${n}: ${sentence.trim().slice(0, 110)}`);
+      }
+    }
+  assert.deepEqual(bad, [], 'a bullet click zooms, it does not fold:\n  ' + bad.join('\n  '));
 });
 
 test('EVERY shipped demo is well-formed XML (an unescaped < or " truncates the file silently)', () => {

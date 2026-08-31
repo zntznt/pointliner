@@ -129,7 +129,7 @@ Open the [demo file](campaign-clocks-demo.opml) and it drops you into a small ca
 under pressure: three clocks partway filled, three threads with dates set and a board that
 lists them.
 
-- **Tick a clock.** Click the bullet of "The Ashguild moves against you" to open it, then check
+- **Tick a clock.** Its segments are already visible, so just check
   one of the empty segment boxes. Watch the `[o /6]` ring beside the title climb on its own. Fill
   the last box and read what a full clock is supposed to trigger. This is the core loop: a clock
   is just a checklist you have agreed to treat as a countdown.

@@ -35,9 +35,11 @@ The Greytine Vale
 ```
 
 That nesting is the whole trick, and Pointliner gives it to you for free. **Fold a region
-closed** (click its bullet) and the map shrinks to a tidy list of region names, the way a map
-looks from far away. **Open one** and you zoom into its hexes. A long crawl stays navigable
-because it is a tree you can collapse, not a flat wall of notes.
+closed** (click the chevron left of its bullet, or press `Ctrl/Cmd+.`) and the map shrinks to a
+tidy list of region names, the way a map looks from far away. **Open it again** and the hexes come
+back. Clicking the **bullet** is a different move with its own use here: it zooms the document into
+that region alone, so the rest of the Vale is out of the way while you work a single area. A long
+crawl stays navigable because it is a tree you can fold, not a flat wall of notes.
 
 To grow the map, you outline: press Tab to add a hex as a child of a region, or add a new
 region as a sibling. There is no separate "add to map" step. The map grows by writing.

@@ -24,7 +24,8 @@ It is the same `{…}` grammar as the rest of the guide, pointed at the blank-pa
 A Markov chain is the fancy-sounding trick behind most good name generators, and it fits in
 one pill. You give it a list of **syllable transitions**, each written `source→next`, and it
 walks them: start on the first syllable, hop to a random syllable that can follow it, hop
-again and stop when it runs out of exits. The path it took, joined up, is the name.
+again and stop when it runs out of exits. The pill shows you the path it took, with the arrows
+still between the syllables; you read the name by running them together.
 
 ```
 {markov: ka→la, la→sh, sh→ka, ka→ra, ra→n, n→dor, dor→a, a→ka}
@@ -32,7 +33,9 @@ again and stop when it runs out of exits. The path it took, joined up, is the na
 
 Read that as a little graph. From `ka` you can go to `la`, `ra`. From `sh` you can go to
 `ka` or, in the demo's fuller list, to `ael`. Click the pill and it grows a fresh path each
-time: Kalash, Karndor, Kalashael, whatever the walk stumbles into. The `→` is just the
+time: `ka→la→sh` for Kalash, `ka→ra→n→dor` for Karndor, whatever the walk stumbles into.
+Seeing the arrows is the point of the pill as much as the name is, because a chain that keeps
+producing the same three syllables is telling you which transitions to add. The `→` is just the
 literal arrow character in the text, nothing to escape. Add more transitions and the names
 get more varied; give a syllable two possible nexts and the chain has a real choice to make.
 
@@ -43,7 +46,8 @@ demo that snaps a prefix onto a suffix:
 {prefix}{suffix}
 ```
 
-Those are **two separate pills**, each reading its own named rule (`prefix:` and `suffix:`),
+Those are **two separate pills**, each reading its own named rule (`{rule prefix: ...}` and
+`{rule suffix: ...}`),
 and they roll independently. So `Ka` + `dros` gives Kadros, the next click gives Vorwyn or
 Malthas. It is cruder than the Markov walk, but it is instantly legible and easy to tune: the
 whole namespace lives in two lists you can read at a glance.
@@ -80,7 +84,7 @@ capitalized-and-articled version of every list.
 {animal.lower.s} lowercase, then pluralize (otters)
 ```
 
-The closed set is `cap`, `title`, `upper`, `lower`, `a`, `s`, `ed` and `ord`, and you can
+The closed set is `cap`, `title`, `upper`, `lower`, `a`, `s`, `ed`, `ord`, `poss` and `ing`, and you can
 **chain them left to right**, as `{animal.lower.s}` does: lowercase first, then pluralize the
 result. So "you push open the door to `{animal.a}`" reads naturally whether the walk lands on a
 consonant or a vowel, and you never keep two copies of a list in sync by hand.
@@ -126,10 +130,12 @@ One catch worth naming: two pills roll independently, so a bare `{weapon}` next 
 **bind the pick to a variable first**, then read the variable's fields:
 
 ```
-{w := weapon}   then   {w} for 1d8 or whatever {w.damage} matches
+{w := {weapon}}   then   {w} for the weapon and {w.damage} for its die
 ```
 
-`{w := weapon}` picks once and remembers, so `{w}` and `{w.damage}` both read the same draw. The
+`{w := {weapon}}` picks once and remembers, so `{w}` and `{w.damage}` both read the same draw.
+Note the inner braces: a bare `{w := weapon}` reads `weapon` as a formula rather than a draw, finds
+no variable by that name and quietly resolves to nothing, so both pills stay as literal text. The
 demo shows both forms so you can feel the difference.
 
 ---

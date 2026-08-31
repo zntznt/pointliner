@@ -2754,6 +2754,24 @@
       "find": "a &quot;No state&quot; lane instead",
       "replace": "a \"No state\" lane instead",
       "kills": "EVERY shipped demo is well-formed XML"
+    },
+    {
+      "id": "solo-rpg-bullet-folds-again",
+      "suite": "unit",
+      "why": "three guides told the reader a bullet click folds a point while the app zooms and even toasts to say so; the guard must bite on the prose, not just on the handler",
+      "file": "guide/solo-rpg/lonelog/lonelog-demo.opml",
+      "find": "Click the chevron left of a Scene line (or press Ctrl/Cmd+. on it) to fold the whole scene closed.",
+      "replace": "Click the bullet of a Scene line to fold the whole scene closed.",
+      "kills": "no solo-RPG guide tells the reader a bullet click folds a point"
+    },
+    {
+      "id": "solo-rpg-pick-bind-unwrapped",
+      "suite": "unit",
+      "why": "the guide's own answer to the independent-rolls problem was `{w := weapon}`, which reads the rule name as a formula and silently resolves to nothing, leaving {w} and {w.damage} as literal text",
+      "file": "guide/solo-rpg/generators/generators-demo.opml",
+      "find": "bind the pick to a variable first: {w := {weapon}}.",
+      "replace": "bind the pick to a variable first: {w := weapon}.",
+      "kills": "a pick bound to a variable in a demo really binds"
     }
   ]
 }
