@@ -1771,6 +1771,7 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml': readFileSync(new URL('../guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/README.md': readFileSync(new URL('../guide/solo-rpg/README.md', import.meta.url), 'utf8'),
     'guide/solo-rpg/campaign-calendar/campaign-calendar.md': readFileSync(new URL('../guide/solo-rpg/campaign-calendar/campaign-calendar.md', import.meta.url), 'utf8'),
+    'guide/solo-rpg/hex-crawl/hex-crawl.md': readFileSync(new URL('../guide/solo-rpg/hex-crawl/hex-crawl.md', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -30262,6 +30263,43 @@ test('a demo Journal home sits where the journal door looks, in the shape it bui
   // and nothing anywhere may draw the flat form the app never builds
   const flat = [...xml.matchAll(/text="(\d{4}-\d{2}-\d{2})"/g)].map(m => m[1]);
   assert.deepEqual(flat, [], `the door nests year > month > day; a flat dated point is a shape it never creates: ${flat}`);
+});
+
+test('no solo-RPG guide claims two deck pills share one bag', () => {
+  // hex-crawl asserted "Every terrain pill in the demo shares the one deck (decks are keyed by
+  // their content)". Nothing keys a deck by its text: makeSeqGen mints a fresh key per pill and the
+  // bag lives in that point's own sidecar, so seven terrain pills are seven independent bags and
+  // three of them can each deal marsh first. The section's whole premise -- "a plain random pick can
+  // hand you marsh five hexes running, a deck fixes that" -- fails across hexes for that reason.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const body = fnBody(src, 'makeSeqGen');
+  assert.ok(body, 'makeSeqGen is where a deck record is minted');
+  assert.match(body, /key:\s*key\s*\|\|\s*grammarKey\(\)/,
+    'a deck still takes a fresh key when none is passed; if decks ever become content-keyed, ' +
+    'this guard is what should be rewritten, and hex-crawl.md can say "shares one deck" again');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`])
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* optional */ }
+  nonEmpty(files, 'solo-rpg files');
+
+  let sentences = 0;
+  const bad = [];
+  for (const { n, t } of files)
+    for (const para of t.split(/\n\s*\n/)) {
+      const flat = para.replace(/\s*\n\s*/g, ' ');
+      if (!/\bdecks?\b/i.test(flat)) continue;
+      for (const sentence of flat.split(/(?<=[.!?])\s+/)) {
+        if (!/\bdecks?\b/i.test(sentence)) continue;
+        sentences++;
+        if (/keyed by (their )?content|share[sd]? (the |one )?(same )?deck|one deck|single .{0,20}bag/i.test(sentence))
+          bad.push(`${n}: ${sentence.trim().slice(0, 110)}`);
+      }
+    }
+  assert.ok(sentences >= 5, `the guard must examine sentences about decks, saw ${sentences}`);
+  assert.deepEqual(bad, [], 'each deck pill has its own bag:\n  ' + bad.join('\n  '));
 });
 
 test('a guide that walks the reader through a dialog names its required fields', () => {

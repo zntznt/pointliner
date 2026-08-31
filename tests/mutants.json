@@ -2880,6 +2880,15 @@
       "find": "Calendar name:             Calendar of the Vale\n",
       "replace": "",
       "kills": "a guide that walks the reader through a dialog names its required fields"
+    },
+    {
+      "id": "solo-rpg-deck-shared-again",
+      "suite": "unit",
+      "why": "hex-crawl claimed every terrain pill shares one deck because decks are \"keyed by their content\"; nothing keys a deck by its text, so the section's whole premise failed across hexes",
+      "file": "guide/solo-rpg/hex-crawl/hex-crawl.md",
+      "find": "**Each pill is its own deck.**",
+      "replace": "**Every terrain pill in the demo shares the one deck.**",
+      "kills": "no solo-RPG guide claims two deck pills share one bag"
     }
   ]
 }

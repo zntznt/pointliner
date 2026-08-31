@@ -38,7 +38,7 @@
         </outline>
       </outline>
       <outline text="## How to run it" _id="hex00070">
-        <outline text="Draw terrain: click a terrain pill and it pulls the next card from the deck. The deck gives each terrain once before any repeats, then reshuffles and tells you it did, so a region feels varied instead of all-marsh. Every terrain pill in the file shares the one deck." _id="hex00071"/>
+        <outline text="Draw terrain: click a terrain pill and it pulls the next card from its deck. Click the SAME pill repeatedly and it gives each terrain once before any repeats, then reshuffles and tells you it did. Each pill keeps its own bag, so two hexes can both open on marsh; the no-repeat promise is per pill, not across the map." _id="hex00071"/>
         <outline text="Roll an encounter: click a {2d6} pill to roll, click again to re-roll. It freezes its result so the log stays an honest record of what you got. Read it against the threshold on the same line (quiet on a low number, something stirs on a high one)." _id="hex00072"/>
         <outline text="Watch supplies add up: each hex carries a supplies property (the `{prop supplies: N}` pill). The `{= sum(supplies)}` pill sits ON the region point and totals the hexes directly under it, live, so editing a hex's number re-totals the region without any math on your part." _id="hex00073"/>
         <outline text="Grow the map: add a hex as a child point under a region (Tab to indent), give it a terrain draw, an encounter check, and a {prop supplies: N}. Add a whole new region as a sibling. The outline is the map, so the map grows by outlining." _id="hex00074"/>

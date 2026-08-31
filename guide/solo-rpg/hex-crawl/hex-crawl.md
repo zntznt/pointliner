@@ -57,13 +57,20 @@ random pick can hand you marsh five hexes running. A **deck** fixes that:
 
 This is a shuffle deck. Click the pill and it **draws one terrain and sets it aside.** The
 next click draws a different one. It keeps dealing each terrain exactly once, and only when
-the deck is empty does it **reshuffle and tell you** it did. So a stretch of country feels
-varied, six different terrains before any repeat, instead of the same card coming up by bad
-luck.
+the deck is empty does it **reshuffle and tell you** it did. So repeated clicks give you six
+different terrains before any repeat, instead of the same card coming up by bad luck.
 
-Every terrain pill in the demo shares the one deck (decks are keyed by their content), so the
-whole crawl draws from a single, self-balancing bag of terrain. There is a lighter cousin in
-the file too, the weather:
+**Each pill is its own deck.** A deck's state lives in the pill, not in the words, so seven
+terrain pills across the map are seven separate bags: no repeats within one pill's clicks, and
+no coordination at all between them. Three fresh bags can each deal marsh first. That is worth
+knowing before you build a map out of them, because the no-repeat guarantee people want from a
+deck is a guarantee *per pill*.
+
+Which points at how to use it. If you want the whole crawl drawing from one self-balancing bag,
+keep **one** terrain pill and click it as you enter each hex, writing the result into the hex.
+If you would rather each hex carry its own live pill, as the demo does, treat them as
+independent rolls that merely avoid repeating themselves. There is a lighter cousin in the file
+too, the weather:
 
 ```
 {cycle: clear | overcast | rain | fog}
@@ -144,8 +151,9 @@ aggregations work the same way if you want them: `{= avg(supplies)}`, `{= count(
 Open the [demo file](hex-crawl-demo.opml) in Pointliner (File menu, Open) and it comes up as a
 real document with every pill live. A few things to try:
 
-- **Draw a region's worth of terrain.** Click the terrain pill on each hex of the Fenlands and
-  watch the deck hand out different terrains, then announce its reshuffle when it runs dry.
+- **Empty a terrain deck.** Click **one** hex's terrain pill seven times. The first six clicks
+  deal all six terrains with no repeat, and the seventh reshuffles and says so. Clicking a
+  different hex's pill instead starts a fresh bag, which is the per-pill behaviour in action.
 - **Roll the daily loop.** Go to "The daily loop" section and click through it top to bottom:
   weather, push distance, terrain, encounter check. That is one day of play in about six clicks.
 - **Break the supply math on purpose.** Edit a hex's `{prop supplies: N}` to a bigger number
