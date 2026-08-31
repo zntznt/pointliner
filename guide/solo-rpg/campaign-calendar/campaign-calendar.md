@@ -22,6 +22,7 @@ Tuesday happened; it passes because you say it does.
 Open **File, then Custom calendar** and type the calendar as text:
 
 ```
+Calendar name:             Calendar of the Vale
 Months, one per line:      Firstfrost: 30
                            Deepwinter: 30
                            …
@@ -29,6 +30,10 @@ Week:                      Moonday Tilday Windday Seaday Hearthday Forgeday Rest
 Era, optional:             AE: 1200
 Today in this world:       1204-04-12
 ```
+
+**Calendar name**, **Months** and **Today in this world** are required; the dialog keeps its Save
+button disabled until all three are filled, so a blank name is the usual reason it will not let you
+through. The week and the era are optional.
 
 - **Months** are a name and a day count per line. Multi-word names work (`The Fading: 28`).
 - The **week** can be day names, a bare length like `10`, or `10: Sul Mol` to name only the
@@ -66,9 +71,18 @@ The demo drops you into a caravan campaign mid-journey. The loop:
 2. **Time passes.** Open the agenda (the toolbar calendar button). With a calendar active, a
    **Today chip** shows the in-world date; click it and let time pass: +1 day, +3 days, +1 week,
    or set an exact date. Watch the threads shift color as their deadlines approach.
-3. **Journal the day.** The journal button files the entry under the world's date
-   (`1204 › 04 › 12`), so the campaign log accumulates in campaign time. At the end of a
-   campaign this tree *is* the chronicle.
+3. **Journal the day.** Type `/journal` and the entry is filed under the world's date
+   (`Journal > 1204 > 04 > 12`), so the campaign log accumulates in campaign time. At the end of a
+   campaign this tree *is* the chronicle. (The toolbar journal button opens the journal strip
+   instead; `/journal` is the door that files the entry.)
+
+One wrinkle worth knowing, because it looks like a contradiction until you see the split. The
+journal's **entry tree** is named in world dates, as above. The **date properties** you write
+inside that subtree are read on the real calendar, because `calendarForNode` pins the journal
+subtree to Gregorian so a real-world reminder still means a real-world day. So a campaign journal
+files itself in world time while a `due:` inside it stays a date you will actually live through.
+If you want a log where everything, dates included, reads in world time, make its home point and
+choose **Set as chronicle** from its bullet menu.
 
 Two small touches worth stealing from the demo:
 
@@ -103,8 +117,8 @@ Open the [demo file](campaign-calendar-demo.opml):
   up the list. That is the whole heartbeat.
 - **Draw a road event.** The travel deck is a `{shuffle: …}` pill; click it to draw the day's
   event without repeats.
-- **Journal the day.** Hit the journal button and the entry lands under the world's date. Then
-  advance the clock again and journal again; the chronicle grows in world time.
+- **Journal the day.** Type `/journal` and the entry lands under the world's date. Then advance
+  the clock again and journal again; the chronicle grows in world time.
 - **Open File, Custom calendar** to see how the world is defined, and edit it live; the dialog
   warns you if a change would re-read your dates.
 

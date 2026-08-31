@@ -1770,6 +1770,7 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/session-prep/session-prep-demo.opml': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml': readFileSync(new URL('../guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/README.md': readFileSync(new URL('../guide/solo-rpg/README.md', import.meta.url), 'utf8'),
+    'guide/solo-rpg/campaign-calendar/campaign-calendar.md': readFileSync(new URL('../guide/solo-rpg/campaign-calendar/campaign-calendar.md', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -30261,6 +30262,49 @@ test('a demo Journal home sits where the journal door looks, in the shape it bui
   // and nothing anywhere may draw the flat form the app never builds
   const flat = [...xml.matchAll(/text="(\d{4}-\d{2}-\d{2})"/g)].map(m => m[1]);
   assert.deepEqual(flat, [], `the door nests year > month > day; a flat dated point is a shape it never creates: ${flat}`);
+});
+
+test('a guide that walks the reader through a dialog names its required fields', () => {
+  // campaign-calendar's FIRST instruction was blocked by a field it never mentioned: the Custom
+  // calendar dialog marks name, months and current as required and keeps its primary button
+  // disabled until all three are filled, and the guide's transcription showed four fields with the
+  // name missing. Everything downstream in that guide is gated behind a step that cannot complete.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const body = fnBody(src, 'openCalendarDialog');
+  assert.ok(body, 'openCalendarDialog is where the field list lives');
+  // Each field is `{ key: 'x', label: 'Y', ..., required: true }`, and some carry NESTED objects
+  // (the name field builds preset chips), so a flat [^{}] regex silently skipped exactly the field
+  // this defect was about: it found two of the three required fields and the guard passed over the
+  // gap. Scan with balanced braces, and cross-check the count against the source so a future field
+  // shape cannot quietly shrink the set again.
+  const required = [];
+  for (const m of body.matchAll(/\{\s*key:\s*'([a-z]+)'/g)) {
+    let depth = 0, end = m.index;
+    for (; end < body.length; end++) {
+      if (body[end] === '{') depth++;
+      else if (body[end] === '}' && --depth === 0) break;
+    }
+    const obj = body.slice(m.index, end + 1);
+    const label = /label:\s*'([^']+)'/.exec(obj);
+    if (label && /required:\s*true/.test(obj)) required.push({ key: m[1], label: label[1] });
+  }
+  nonEmpty(required, 'required fields on the Custom calendar dialog');
+  assert.equal(required.length, (body.match(/required:\s*true/g) || []).length,
+    'every required:true in the dialog must be attributed to a field; a mismatch means this scan is missing one');
+
+  const guide = readFileSync(
+    new URL('../guide/solo-rpg/campaign-calendar/campaign-calendar.md', import.meta.url), 'utf8');
+  // Scoped to the FENCED transcription, not the whole file: the block is what a reader copies while
+  // filling the dialog, and a field named only in surrounding prose is one they can still miss. It
+  // also keeps the guard honest -- a sentence added elsewhere must not be able to satisfy it.
+  const fences = nonEmpty(
+    [...guide.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map(m => m[1]),
+    'fenced blocks in campaign-calendar.md');
+  const transcription = fences.filter(f => /Months, one per line/.test(f)).join('\n');
+  assert.ok(transcription, 'the guide still transcribes the dialog in a fenced block');
+  const missing = required.filter(f => !transcription.includes(f.label));
+  assert.deepEqual(missing.map(f => f.label), [],
+    'campaign-calendar.md walks the reader through this dialog, so every required field has to appear in it');
 });
 
 test('every UI label a solo-RPG guide puts in bold exists in the app', () => {
