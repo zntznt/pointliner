@@ -5864,3 +5864,56 @@ test('a custom calendar moves the chronicle and the due dates, never the journal
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
+
+// The sibling of #1361, driven. A pill is expanded ONCE, at creation, so a rule declared above the
+// rules it calls freezes `{name?}` markers into its result and shows them raw. Four members of the
+// family did that under a tip reading "Click to re-generate"; two others already explained
+// themselves. Source pins cannot see this: the markers only exist in a document that LOADED in that
+// order, and the difference between the two states is what the pill SAYS.
+test('a pill frozen before its rule existed says so, and one click heals it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [
+      mkNode('{rule tavern: The {adjective} Crown}'),   // declared ABOVE what it calls
+      mkNode('{w := {weapon}}'),
+      mkNode('{rule sign: The {nosuch} House}'),        // …and one that will never resolve
+      mkNode('{rule adjective: Rusty | Salted}'),
+      mkNode('{rule weapon: sword | axe}'),
+    ];
+    for (const n of root.children) { nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    promoteLoadedShorthand(root); buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(400);
+
+  const read = () => pg.evaluate(() => [...document.querySelectorAll('.node-content [class*="-roll"], .node-content .var-pill')]
+    .map(e => ({ txt: e.textContent, marked: /gr-stale|var-stale/.test(e.className), tip: e.getAttribute('title') || '' })));
+
+  const before = await read();
+  const tavern = before.find(p => p.txt.startsWith('tavern'));
+  const pick   = before.find(p => p.txt.startsWith('w='));
+  const sign   = before.find(p => p.txt.startsWith('sign'));
+  const clean  = before.find(p => p.txt.startsWith('adjective'));
+
+  assert.match(tavern.txt, /\{adjective\?\}/, 'the load order must really freeze a marker, or nothing below is measured');
+  for (const [name, p] of [['rule', tavern], ['pick', pick], ['missing', sign]])
+    assert.equal(p.marked, true, `the ${name} pill must wear the mark, not only a tip`);
+  assert.match(tavern.tip, /has a value now/, 'a name that resolves NOW says a click will fix it');
+  // (the tip carries a trailing "Right-click for more…" hint, so match the phrase, not the end)
+  assert.match(pick.tip, /has a value now[^.]*\. Click to re-roll\b/, "…in the verb that pill's own gesture uses");
+  assert.match(sign.tip, /No rule or variable named "nosuch"/, 'a name that is still missing gets the plain-text sentence');
+  // The negative case, or "everything is marked" would pass this test just as well.
+  assert.equal(clean.marked, false, 'a pill that resolved cleanly must NOT be marked');
+  assert.doesNotMatch(clean.tip, /has a value now/);
+
+  // …and the advice is true: one click on the healable one resolves it and clears the mark.
+  await pg.evaluate(() => {
+    const el = [...document.querySelectorAll('.node-content .gr-roll')].find(e => e.textContent.startsWith('tavern'));
+    for (const t of ['mousedown', 'mouseup', 'click']) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+  });
+  await pg.waitForTimeout(400);
+  const after = (await read()).find(p => p.txt.startsWith('tavern'));
+  assert.doesNotMatch(after.txt, /\{adjective\?\}/, 'the click must actually re-generate: ' + after.txt);
+  assert.equal(after.marked, false, 'and the mark clears with it');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});

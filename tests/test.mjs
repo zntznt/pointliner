@@ -18450,6 +18450,81 @@ test('fnBody stops at its own closing brace: no body swallows a top-level functi
     'a one-line function opening with a regex must come back as exactly its own block');
 });
 
+// ── a frozen result that is only PARTLY unresolved (#1361's sibling) ──────────────────────────
+test('unresolvedRefs — the names inside {name?} markers, in order, deduped; keyword sentinels excluded', () => {
+  assert.deepEqual([...c.unresolvedRefs('The {adjective?} {noun?}')], ['adjective', 'noun']);
+  assert.deepEqual([...c.unresolvedRefs('{adjective?} and {adjective?}')], ['adjective'], 'deduped');
+  assert.deepEqual([...c.unresolvedRefs('The Rusty Crown')], [], 'a clean result reports nothing');
+  assert.deepEqual([...c.unresolvedRefs('')], []);
+  assert.deepEqual([...c.unresolvedRefs(null)], [], 'null is not a crash');
+  assert.deepEqual([...c.unresolvedRefs('{w.damage?}')], ['w.damage'], 'a dotted field read is one name');
+  // The keyword sentinels say a KEYWORD construct failed, not that a name is missing. Reporting
+  // them would tell the reader to `{rule meter: option | option}`, which is nonsense advice.
+  for (const kw of ['cond', 'COND', 'markov', 'est', 'meter'])
+    assert.deepEqual([...c.unresolvedRefs(`x {${kw}?} y`)], [], `{${kw}?} is a keyword sentinel, not a name`);
+});
+
+test('unresolvedNote — a name that resolves NOW says so; one that does not gets the plain-text sentence', () => {
+  const rules = Object.create(null); rules.adjective = 'Rusty | Salted';
+  const vars = Object.create(null); vars.hp = 12;
+
+  // resolves now → the #1361 case in a different tense: not missing, just older than the rule.
+  const late = c.unresolvedNote('The {adjective?} Crown', rules, vars, 're-generate');
+  assert.match(late, /adjective/);
+  assert.match(late, /has a value now/);
+  assert.match(late, /Click to re-generate$/, 'the advice ends in the verb its own pill offers');
+  assert.match(c.unresolvedNote('{adjective?}', rules, vars, 'draw again'), /Click to draw again$/);
+
+  // still missing → the SAME words plain text uses for the same miss, not a second phrasing.
+  const gone = c.unresolvedNote('The {nosuch?} House', rules, vars, 're-generate');
+  assert.equal(gone, c.braceAttemptReason('nosuch', rules, vars),
+    'a missing name must be explained exactly as it is when loose in a point (P1: one explanation)');
+
+  // a mix reports the MISSING one: a click fixes the other, and cannot fix this.
+  assert.equal(c.unresolvedNote('{adjective?} {nosuch?}', rules, vars, 're-generate'),
+    c.braceAttemptReason('nosuch', rules, vars));
+
+  // a variable counts as resolving it, not just a rule
+  assert.match(c.unresolvedNote('{hp?} left', rules, vars, 're-roll'), /has a value now/);
+  assert.equal(c.unresolvedNote('The Rusty Crown', rules, vars, 're-generate'), '', 'a clean result says nothing');
+});
+
+test('every pill that shows a FROZEN result explains an unresolved reference in it', () => {
+  // The census. A result is expanded once, at creation, so any pill that displays one can freeze a
+  // {name?} marker into it -- and before this, four members did, under chrome that said they were
+  // fine. The two that were right (the whole-result empty branch, and #1361's conditional) are the
+  // reason this is a sibling omission rather than a missing feature: the capability existed.
+  //
+  // Each row asserts the note is COMPUTED, CONSUMED and MARKED. The first draft asserted only that
+  // `unresolvedNote(` appeared in the body, and its kill-mutation survived: deleting the line that
+  // puts the note in the tip left the call in place, so the guard still passed while the pill went
+  // back to saying nothing. A call site is not a use.
+  const FAMILY = [
+    { fn: 'renderGrammarPill', verb: 're-generate', consumes: /: unresNote \? unresNote/,     marks: /stale \|\| unresNote \? ' gr-stale'/ },
+    { fn: 'renderSeqGenPill',  verb: 'draw again',  consumes: /: seqNote \? seqNote/,         marks: /seqNote \? ' gr-stale'/ },
+    { fn: 'renderVarPill',     verb: 're-roll',     consumes: /: pickNote \? pickNote/,       marks: /pickNote\) cls \+= ' var-stale'/ },
+  ];
+  const bad = [];
+  for (const { fn, verb, consumes, marks } of FAMILY) {
+    const body = fnBody(_src, fn);
+    if (!/unresolvedNote\s*\(/.test(body)) bad.push(`${fn} never asks for the note`);
+    else if (!body.includes(`'${verb}'`))   bad.push(`${fn} must ask with its own verb (${verb}), or the advice names a gesture it does not offer`);
+    if (!consumes.test(body)) bad.push(`${fn} computes the note and never shows it`);
+    if (!marks.test(body))    bad.push(`${fn} shows the note only in a tip, which is invisible until you hover`);
+  }
+  assert.deepEqual(bad, [], 'a pill that shows a frozen result and never explains its markers:\n  ' + bad.join('\n  '));
+
+  // The mark has to exist as a rule, or the class is decoration. Same --info dot as the grammar
+  // pill's, so one state reads one way (P1).
+  assert.match(_src, /\.var-pill\.var-stale::after\{content:''[^}]*background:var\(--info\)/,
+    'var-stale must actually paint the same --info dot the grammar pill uses');
+
+  // The escape that made the reason safe to put in an attribute at all: braceAttemptReason quotes
+  // the name it reports, and the pick pill interpolated its title raw.
+  assert.match(fnBody(_src, 'renderVarPill'), /title="\$\{escQ\(title\)\}"/,
+    'the pick pill must escape its title; the reason it now carries contains quotes');
+});
+
 test('todayISO returns YYYY-MM-DD shape', () => {
   const iso = c.todayISO();
   assert.match(iso, /^\d{4}-\d{2}-\d{2}$/);

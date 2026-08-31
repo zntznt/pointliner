@@ -2997,6 +2997,60 @@
       "find": "return formatEpochDays(dueDateToday(null), null); }",
       "replace": "return formatEpochDays(dueDateToday()); }",
       "kills": "a custom calendar moves the chronicle and the due dates, never the journal"
+    },
+    {
+      "id": "frozen-marker-unexplained",
+      "suite": "unit",
+      "why": "a rule pill frozen before its dependency existed showed `The {adjective?} {noun?}` raw under a tip reading \"Click to re-generate\", which is chrome for a pill that is fine",
+      "file": "index.html",
+      "find": "            : unresNote ? unresNote\n",
+      "replace": "",
+      "kills": "every pill that shows a FROZEN result explains an unresolved reference in it"
+    },
+    {
+      "id": "frozen-marker-deck-silent",
+      "suite": "unit",
+      "why": "a deck deals templates, so its drawn card can carry the same frozen marker; dropping its note leaves the one member whose pill has a different verb unexplained",
+      "file": "index.html",
+      "find": "    : seqNote ? seqNote\n",
+      "replace": "",
+      "kills": "every pill that shows a FROZEN result explains an unresolved reference in it"
+    },
+    {
+      "id": "frozen-marker-pick-silent",
+      "suite": "unit",
+      "why": "a pick freezes one draw, so {w := {weapon}} above the weapon rule freezes the marker and every later {w} reads it; dropping its note leaves that whole chain unexplained",
+      "file": "index.html",
+      "find": "      : pickNote ? pickNote\n",
+      "replace": "",
+      "kills": "every pill that shows a FROZEN result explains an unresolved reference in it"
+    },
+    {
+      "id": "frozen-marker-keyword-sentinel",
+      "suite": "unit",
+      "why": "the keyword sentinels ({meter?}, {cond?}) are not name lookups; reporting them tells the reader to declare a rule called meter, which is nonsense advice",
+      "file": "index.html",
+      "find": "    if (MARKER_KEYWORDS.has(name.toLowerCase())) continue;\n",
+      "replace": "",
+      "kills": "unresolvedRefs — the names inside {name?} markers, in order, deduped; keyword sentinels excluded"
+    },
+    {
+      "id": "frozen-marker-reason-forked",
+      "suite": "unit",
+      "why": "a missing name must be explained with the sentence plain text already uses; a second phrasing here is the two-explanations-for-one-failure drift P1 exists to stop",
+      "file": "index.html",
+      "find": "  if (missing) return braceAttemptReason(missing, rules || Object.create(null), vars || Object.create(null));",
+      "replace": "  if (missing) return `“${missing}” cannot be resolved. Click to ${verb}`;",
+      "kills": "unresolvedNote — a name that resolves NOW says so; one that does not gets the plain-text sentence"
+    },
+    {
+      "id": "frozen-marker-unmarked-driven",
+      "suite": "browser",
+      "why": "the driven half: without the dot the only signal is a tooltip, so a frozen marker is invisible until someone hovers the pill that looks fine",
+      "file": "index.html",
+      "find": "${stale || unresNote ? ' gr-stale' : ''}",
+      "replace": "${stale ? ' gr-stale' : ''}",
+      "kills": "a pill frozen before its rule existed says so, and one click heals it"
     }
   ]
 }

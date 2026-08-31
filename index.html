@@ -1172,6 +1172,10 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
    Result ink and pill chrome are untouched — identity at whisper level. */
 .gr-roll.gr-stale{position:relative}
 .gr-roll.gr-stale::after{content:'';position:absolute;top:-2px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--info);pointer-events:none}
+/* a frozen pick holding an unresolved {name?} wears the SAME --info dot as a stale grammar pill:
+   one state, one mark, so the tip is never the only thing that says so (P3-4) */
+.var-pill.var-stale{position:relative}
+.var-pill.var-stale::after{content:'';position:absolute;top:-2px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--info);pointer-events:none}
 /* #899: a folder-scoped roll running with NO folder connected drew from this document only —
    visibly degraded, same dashed language as .query-folder-off, tooltip says why (P4). */
 .gr-roll.gr-folder-off{border-style:dashed}
@@ -25904,6 +25908,48 @@ function condAttemptReason(body) {
   return 'A test needs a comparison, so and(…), or(…) and not(…) take comparisons of their own. Try {and(cost > 30, qty < 5): both | not both}.';
 }
 
+// unresolvedRefs(result) / unresolvedNote(...) — the SAME courtesy #1361 gave a conditional, for a
+// result that is only PARTLY unresolved.
+//
+// resolveBrace writes a `{name?}` marker wherever a name has no rule and no variable, and a record
+// is expanded ONCE, at creation. So a rule declared above the rules it calls freezes its markers
+// forever: `{rule tavern: The {adjective} {noun}}` written above `adjective` opens reading
+// "The {adjective?} {noun?}" on every load. The empty-state branch below could not see it, because
+// it tests the WHOLE result (`^\{…\?\}$`) and this result is mostly real text — so five members of
+// the family (rule, repeat, deck, contest-free pick, and any anonymous grammar) showed raw markers
+// under a tip that said "Click to re-generate", which is advice for a pill that is fine.
+//
+// Nothing new is minted for the copy. A name that still does not resolve gets braceAttemptReason,
+// the exact sentence plain text already gives for the same miss, so `{adjective}` is explained the
+// same way whether it is loose in a point or frozen inside a pill (P1). A name that DOES resolve
+// now is the #1361 case in a different tense: it is not missing, the pill is simply older than it.
+const MARKER_KEYWORDS = new Set(['cond', 'markov', 'est', 'meter']);   // keyword sentinels, not name lookups
+function unresolvedRefs(result) {
+  const out = [];
+  for (const m of String(result ?? '').matchAll(/\{([A-Za-z_][A-Za-z0-9_.]*)\?\}/g)) {
+    const name = m[1];
+    if (MARKER_KEYWORDS.has(name.toLowerCase())) continue;
+    if (!out.includes(name)) out.push(name);
+  }
+  return out;
+}
+// `verb` is the pill's own re-run word (re-generate / re-roll / draw again), so the advice matches
+// the gesture that pill actually offers. Returns '' for a clean result. Pure.
+function unresolvedNote(result, rules, vars, verb) {
+  const names = unresolvedRefs(result);
+  if (!names.length) return '';
+  const has = (n) => {
+    const base = String(n).split('.')[0].toLowerCase();
+    return !!((rules && rules[base]) || (vars && Object.prototype.hasOwnProperty.call(vars, base)));
+  };
+  // Report the one that is still MISSING first: that is the actionable half, and a click will not
+  // fix it. Naming the first (rather than all) follows braceAttemptReason's template arm, which
+  // names the first failing part so the reader is not left re-reading three groups.
+  const missing = names.find(n => !has(n));
+  if (missing) return braceAttemptReason(missing, rules || Object.create(null), vars || Object.create(null));
+  return `“${names[0]}” has a value now, but this was generated before it did. Click to ${verb}`;
+}
+
 // condEmptyMessage(cond, vars) — what a conditional whose TEST could not be read should say.
 //
 // #1361. `resolveBrace` returns `{COND?}` when a condition will not resolve, and renderGrammarPill
@@ -28483,7 +28529,11 @@ function renderSeqGenPill(key, g) {
   const deal = g.count > 1 ? g.count : 1;
   const modeLabel = g.mode + (deal > 1 ? ' ' + deal : '');
   const verb = ended ? '' : (g.mode === 'shuffle' ? (deal > 1 ? `deal ${deal}` : 'draw the next') : 'advance');
+  // A deck deals TEMPLATES, so the card it drew can carry an unresolved reference exactly as a
+  // rule's result can (`{shuffle: {adjective} | {noun}}` dealt above those rules). Same words.
+  const seqNote = ended ? '' : unresolvedNote(g.result, collectRules(), collectVars(), 'draw again');
   const cta = ended ? 'Spent. Edit to reset'
+    : seqNote ? seqNote
     : willRecycle ? 'Last card. Click to reshuffle and draw'
     : ('Click to ' + verb);
   // #827 item 6: a shuffle deck's position is invisible beyond the last-card whisper —
@@ -28492,7 +28542,7 @@ function renderSeqGenPill(key, g) {
   // is already voiced by the "Last card" cta. Display-layer only; draw state untouched.
   const left = g.mode === 'shuffle' && Array.isArray(g.bag) && g.bag.length > 0 && !ended
     ? `${g.bag.length} of ${g.items.length} cards left. ` : '';
-  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${left}${cta}"`
+  return `<span class="gr-roll gr-seq${ended ? ' gr-seq-end' : ''}${willRecycle ? ' gr-seq-last' : ''}${seqNote ? ' gr-stale' : ''}" data-key="${escQ(key)}" data-seq="${escQ(g.mode)}" contenteditable="false" tabindex="-1" title="Deck (${escQ(modeLabel)}). ${left}${cta}"`
     + ` aria-label="Deck (${escQ(modeLabel)}): ${escQ(ariaVal)}${willRecycle ? ' (last card)' : ''}. ${left}${cta}">`
     + `<span class="gr-ico"><i class="fa-solid fa-clone"></i></span>`
     + `<span class="gr-result">${escHtml(shown)}</span>`
@@ -28581,9 +28631,14 @@ function renderGrammarPill(key, g) {
   const scopeTip = !folderRoll ? '' : folderLive
     ? ' Rolls across the whole folder; other documents count as saved.'
     : ' Folder roll: no folder is connected, so this rolled on the current document only.';
+  // A result that is only PARTLY unresolved: the empty branch above cannot see it (it tests the
+  // whole result), so without this the pill shows `The {adjective?} {noun?}` under "Click to
+  // re-generate" — chrome that says nothing is wrong. Display layer only, like #1361.
+  const unresNote = (!emptyMark && !condEmpty) ? unresolvedNote(g.result, collectRules(), collectVars(), 're-generate') : '';
   const cta = (badFilter ? badFilter + ' Click to edit'
             : condEmpty ? condEmpty.cta
             : emptyMark ? 'Nothing matched yet. Click to try again, or add points that fit'
+            : unresNote ? unresNote
             : stale ? 'Inputs changed. Click to re-generate' : 'Click to re-generate') + scopeTip;
   const shownResult = condEmpty ? condEmpty.shown : emptyMark ? 'no match yet' : g.result;
   const scopeCls = folderRoll ? (folderLive ? ' gr-folder' : ' gr-folder-off') : '';
@@ -28600,7 +28655,7 @@ function renderGrammarPill(key, g) {
   // the plain grammar it now is, rather than naming a band it no longer rolls.
   const oracleBand = oracleBandLive(g);
   const kindLabel = oracleBand ? `Oracle (${escQ(oracleBand)})` : `Grammar${name ? ' ' + escQ(name) : ''}`;
-  return `<span class="gr-roll${stale ? ' gr-stale' : ''}${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${escQ(cta)}` : (oracleBand ? `Oracle (${escQ(oracleBand)}). ${escQ(cta)}` : escQ(cta))}"`
+  return `<span class="gr-roll${stale || unresNote ? ' gr-stale' : ''}${scopeCls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${name ? `{${escQ(name)}}. ${escQ(cta)}` : (oracleBand ? `Oracle (${escQ(oracleBand)}). ${escQ(cta)}` : escQ(cta))}"`
     + ` aria-label="${kindLabel}: ${escQ(shownResult)}. ${escQ(cta)}">`
     + `<span class="gr-ico"><i class="fa-solid fa-shuffle"></i></span>`
     + nameTag
@@ -31804,7 +31859,13 @@ function renderVarPill(key, v) {
     else if (vs && vs.margin === 0) { who = 'a tie'; marginLabel = 'tie'; }
     else if (vs)                { who = (vs.margin > 0 ? 'the left side' : 'the right side') + ' wins by ' + Math.abs(vs.margin); marginLabel = 'won by ' + Math.abs(vs.margin); }
     const leftWin = vs && !vs.mismatch && vs.margin > 0, rightWin = vs && !vs.mismatch && vs.margin < 0;
+    // A pick FREEZES one draw, so `{w := {weapon}}` written above the weapon rule freezes the
+    // marker with it and every later `{w}` reads it. Same note as the grammar pill, same words as
+    // plain text, and the pill wears .var-stale so the tip is not the only signal.
+    const pickNote = vs ? '' : unresolvedNote(rolled, collectRules(), collectVars(), 're-roll');
+    if (pickNote) cls += ' var-stale';
     const title = shadowed ? 'Shadowed by a later declaration of this name'
+      : pickNote ? pickNote
       : vs ? `Contest: ${who}${anon ? '' : ` (margin ${signed(vs.margin)}, which feeds math)`}. Click to re-roll${anon ? '' : ' · pencil to edit'}`
       : 'Click to re-roll · pencil to edit';
     // The value cell: a plain frozen pick shows its value; a contest shows both totals with the winner
@@ -31818,8 +31879,11 @@ function renderVarPill(key, v) {
       : escHtml(rolled);
     const aria = vs
       ? `Contest${anon ? '' : ' ' + escQ(v.name)}: ${vs.leftTotal} versus ${vs.rightTotal}, ${who}${anon ? '' : `, margin ${signed(vs.margin)}`}. Click to re-roll`
-      : `Random variable ${escQ(v.name)} = ${escQ(rolled)}. Click to re-roll`;
-    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${title}"`
+      : `Random variable ${escQ(v.name)} = ${escQ(rolled)}. ${pickNote ? escQ(pickNote) : 'Click to re-roll'}`;
+    // escQ the title: braceAttemptReason QUOTES the name it reports ("No rule or variable named
+    // \"adjective\"…"), which ends the attribute early if it goes in raw. #1361 fixed exactly this
+    // hole on the grammar pill; the same reason arrives here through the same door.
+    return `<span class="${cls}" data-key="${escQ(key)}" contenteditable="false" tabindex="-1" title="${escQ(title)}"`
       + ` aria-label="${aria}">`
       + (anon ? '' : `<span class="var-ico"><i class="fa-solid fa-dollar-sign"></i></span>`
         + `<span class="var-name">${escHtml(v.name)}</span>`

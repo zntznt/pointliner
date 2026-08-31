@@ -101,6 +101,13 @@ animal: fox | owl | dragon | toad
 *any* point in the document and get a color. (If two pills define the same name, the document
 wins over a plugin pack; otherwise last definition wins, so keep names unique.)
 
+**Order matters once, on the file you open.** A pill runs when it is made, and a file loads top
+down, so a rule written *above* the rules it calls is built before they exist: it opens showing
+`The {adjective?} {noun?}`, carries a small dot, and its tooltip says the name has a value now and a
+click will re-generate it. One click and it is right for good. If you would rather not think about
+it, declare the small rules first and the one that calls them last, the way the
+[generators demo](solo-rpg/generators/generators-demo.opml) does.
+
 A rule's choices can include **anything on this page**: dice, other rules, even math:
 
 ```
