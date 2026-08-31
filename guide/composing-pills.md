@@ -1,6 +1,6 @@
 # Composing pills
 
-*Part of the [generative & computational guide](README.md). How pills feed each other: side by
+*Part of the [Pointliner guide](README.md). How pills feed each other: side by
 side, through a variable, and through the tree.*
 
 Pills are not meant to be used one at a time. The whole engine is designed so one pill can

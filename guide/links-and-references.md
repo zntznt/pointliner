@@ -131,7 +131,7 @@ links to yet says so rather than showing a single lonely dot.
 Weave together a network of documents: link a project document to a person document, connect a meeting document to an
 action item in another file or build a topic index that points to documents across your whole library.
 
-In a [connected folder](features.md#linking-and-connecting-documents) the `[[` picker searches **all**
+In a [connected folder](files-and-export.md#working-with-a-folder-of-documents) the `[[` picker searches **all**
 your documents, not just the one you are in, so a link can reach a point in any file.
 
 **Mirrors work across documents too.** The empty-pipe form (`[[docId#id|]]`) embeds the other

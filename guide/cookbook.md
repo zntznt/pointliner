@@ -1,6 +1,6 @@
 # Cookbook
 
-*Part of the [generative & computational guide](README.md). Finished recipes: paste one into your
+*Part of the [Pointliner guide](README.md). Finished recipes: paste one into your
 document, push on it, keep what earns its stay. Each starts from an itch, not a feature; the
 features are named quietly on the way out.*
 

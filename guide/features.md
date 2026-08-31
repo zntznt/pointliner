@@ -100,7 +100,7 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 - **Random results log.** Turn on File menu, Log random results and every random result (dice, generators, tables, decks, chains, the oracle, pick-from-document, estimates) is also written to a dated log, each line linking back to the point that produced it, so re-using a pill never loses the record. Off by default; set a home point from the bullet menu. ([random results](dates-and-planning.md#random-results-log))
 - **Reproducible rolls.** File menu, Random seed fixes this document's dice, decks and rolls to a
   seed number, so a copy you share re-rolls the same session. Blank the field and rolls go back to
-  fresh randomness.
+  fresh randomness. ([random seed](generating-text.md#reproducible-rolls-random-seed))
 
 ## Computing with numbers
 
@@ -213,9 +213,10 @@ Turn the document into a lightweight planner.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 - **Browse tags.** File then Browse tags shows every hashtag as a tree with a count on each (nested
   tags under their parent); pick one to filter the document to it. ([hashtags](getting-around.md#hashtags))
-- **Bulk-tag by search.** Run a search, Shift+click the first and last match to select every one (or `Shift+Up` / `Shift+Down` from the row cursor), then Tag on the selection
-  bar adds one `#tag` to all of them at once. The migration on-ramp: make a freshly-imported wall of
-  text queryable in minutes instead of hand-tagging one bullet at a time.
+- **Bulk-tag by search.** Run a search, `Shift`-click the first and last match to select every one
+  (or `Shift+Up` / `Shift+Down` from the row cursor), then Tag on the selection bar adds one `#tag`
+  to all of them at once. The migration on-ramp: make a freshly-imported wall of text queryable in
+  minutes instead of hand-tagging one bullet at a time.
   ([selecting many](getting-around.md#selecting-many-points))
 - **Embedded queries.** Drop `{query: is:todo | due:week}` into a point for a live, self-updating
   list of matching points; reuses every search operator, click a result to jump. `{count: is:todo}`
@@ -238,7 +239,7 @@ Turn the document into a lightweight planner.
   Number format in its menu and set decimal places, a prefix like `$` and a suffix like ` kg` or `%`.
   Every cell and the Calculate total format alike; the stored value stays plain. Significant
   figures work here too, as an alternative to decimal places.
-  ([formatting numbers](writing-and-formatting.md#tables))
+  ([tables](writing-and-formatting.md#tables))
 - **Board view.** Show any base with a Status column as a kanban board: your sequence's states
   become the lanes, rows become cards, and moving a card writes the state back into the table.
   ([tables](writing-and-formatting.md#tables))

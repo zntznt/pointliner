@@ -1,8 +1,8 @@
 # Getting around
 
 *Part of the [Pointliner guide](README.md). The everyday outliner moves: navigating, searching,
-nesting and reshaping a document once it grows past one screen. None of this is about pills; it is
-the plain outliner you use without thinking about it.*
+nesting and reshaping a document once it grows past one screen. Most of this is the plain outliner
+you use without thinking about it; a few sections reach for a pill.*
 
 A Pointliner document is a tree of nested **points** (bullet points). The pages on
 [generating text](generating-text.md) and [computing numbers](computing-numbers.md) cover the live
@@ -257,8 +257,9 @@ title column stays a link (click it to jump to the point) and formula columns st
 
 ## Searching all your documents
 
-When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-documents)),
-search covers all of them at once, not just the one you are reading. Useful when you know something is
+When several documents are in the same folder (a [connected
+folder](files-and-export.md#working-with-a-folder-of-documents)), search covers all of them at
+once, not just the one you are reading. Useful when you know something is
 in your documents but cannot remember which file. Matches from other documents appear in a **Found in
 other documents** list; click one to jump straight there.
 

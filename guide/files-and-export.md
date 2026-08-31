@@ -48,8 +48,8 @@ and scroll position you left it at, not just after a reload but every time you s
 One file opens in one tab: you cannot open two tabs of the same document (they would share an identity and
 fight over the same file on disk).
 
-On other browsers the menu shows a copy-link invite to reopen in Chrome, Edge or a similar browser instead. (The deeper
-mechanics of folders are in the [feature
+On other browsers the menu shows a copy-link invite to reopen in Chrome, Edge or a similar browser instead. (The wider
+map of folder features is in the [feature
 overview](features.md#linking-and-connecting-documents).)
 
 ## Appearance and display

@@ -2,7 +2,8 @@
 
 *Part of the [Pointliner guide](README.md). Give your document real structure: headings and
 other point types, inline styling, tables, footnotes, links, images and per-point notes. Like
-[getting around](getting-around.md), this is the plain outliner, no pills required.*
+[getting around](getting-around.md), most of this is the plain outliner; the tables section reaches
+for a pill.*
 
 ---
 
@@ -134,6 +135,11 @@ Roles also help you enter values: while a **Date** cell is focused a small calen
 still works exactly as before; the cell menu (`Shift+F10`) has the same choices under **Set to**
 and **Pick a date**.
 
+A **Number** column can also carry a **format**. With the role set, open the column menu again and
+choose **Number format**: set decimal places (or significant figures instead of them), a prefix like
+`$` and a suffix like ` kg` or `%`. Every cell in the column and its **Calculate** total then read
+that way, while the value you typed stays plain.
+
 Once a column is marked **Status**, the base can show itself as a **board**: click **Board** in the
 strip above the grid and each state becomes a lane, each row a card (the other columns show on the
 card, dates as chips). Click a card (or press `Enter` on it) to move it to another lane, or drag it
@@ -149,7 +155,10 @@ more** line appears at the bottom; click it (or zoom into the base) to see every
 the cap only apply in the document; a zoomed-in base always shows in full. **Cards** is the third
 view: every row becomes a card in a grid, with the first column as the title and images as covers.
 A column of `{pick | one | of these}` pills becomes a deck of generative cards, each re-rollable
-with a click. With a **Date** column, the **Calendar** view places each row on a month
+with a click. Cards are **editable**: click a field to type in it, drag a card to reorder it,
+**New card** at the end adds one, and a card's own menu inserts one before or after, moves it or
+deletes it (a query base's cards, like its board, stay read-only). With a **Date** column, the
+**Calendar** view places each row on a month
 grid; rows without a date are counted below it, and the month arrows plus **Today** move you
 around.
 
@@ -256,7 +265,7 @@ text removes it.
 
 Open a point's menu and choose **Add note** (or **Edit note** if it already has one), or type `/note`
 to start or open the note without leaving the keyboard. Notes are searched along with the rest of your
-document, and you can hide them all with the **notes button** in the header; a small mark stays on each
+document, and you can hide them all with the **notes button** in the toolbar; a small mark stays on each
 noted point so you can click to peek.
 
 ---

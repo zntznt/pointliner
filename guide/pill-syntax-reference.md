@@ -38,7 +38,8 @@ Two things to know before the table:
 | `{markov: a→b, b→c}` | a typed Markov chain (comma-separated `from→to weight` transitions) | self |
 | `{rule Name: a \| b}` | declares a named, document-wide grammar rule you can call as `{Name}` | doc |
 | `{seq Name: active \| done}` | declares a named sequence (a workflow of states) | doc |
-| `{ref.mod}` | a text modifier on a rule/variable, or on a braced group like `{{a \| b}.cap}` (`cap`, `title`, `upper`, `lower`, `a` picks a or an, `s`, `ed`, `ing`, `poss`, `ord`) | doc |
+| `{ref.mod}` | a text modifier on a rule/variable: `cap`, `title`, `upper`, `lower`, `a` (picks a or an), `s`, `ed`, `ing`, `poss`, `ord` | doc |
+| `{{a \| b}.mod}` | the same text modifiers on a whole generator wrapped in one more brace (`{{ogre \| dragon}.a}` is "an ogre", `{{2d6}.ord}` is "6th") | self\* |
 | `{oracle: likely}` | a yes/no oracle over a likelihood band (`certain`/`likely`/`even`/`unlikely`/`impossible`) or a percentage (`{oracle: 70}`), optional `+ swing` | self |
 | `{roll: search-query}` | draws one random point matching the search (add `folder` before the colon to draw across the whole folder) | **doc** |
 
@@ -150,7 +151,8 @@ grammar is published, and the lossless round-trip is a plain-text format you own
 The other exports serve a different purpose and say so:
 
 - **Markdown** and **plain text** are one-way *snapshots* for sharing. Each pill is frozen to the
-  value it is showing (`{2d6}` becomes the number it rolled, `{= sum(cost)}` becomes the total). They
+  value it is showing (`{= sum(cost)}` becomes the total; a pill that carries a recipe exports the
+  recipe with it, so `{2d6}` comes out as `2d6 = 9`, or just `9` on a paragraph point). They
   read anywhere, but the live behavior does not come along.
 - **Shareable page** is a one-way snapshot as a web page: a clean, static page anyone opens in any
   browser with no app, where every pill shows the value it had when you exported.

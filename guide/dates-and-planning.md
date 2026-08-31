@@ -143,7 +143,7 @@ year, month or day to jump to that part of the journal. Type **`/journal`** to o
 entry directly. To keep the journal in a particular place, open any point's bullet menu and
 choose **Set as journal home**; entries then file themselves under that point.
 
-(When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
+(When a folder of documents is connected (a [folder](files-and-export.md#working-with-a-folder-of-documents)), the
 journal can instead write one file per day on disk. `Ctrl/Cmd+Shift+J` switches between the two
 modes and says which one it landed in.)
 

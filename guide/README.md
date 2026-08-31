@@ -94,7 +94,8 @@ The rest of this page is the friendly introduction to how pills behave.
 1. **Just type it.** `{2d6}`, `{a | b}`, `{= 5 * 8}` is the fastest path once you know the syntax.
 2. **The `{` menu.** Type an opening `{` in a point and a menu lists the pill forms (dice, picks,
    calculations, live lists, meters and the rest); choose one and a ready-to-edit scaffold drops in
-   with the first blank selected. The **Browse all pills** row opens the full picker.
+   with the first blank selected. The **Browse all pills** row opens the full picker, which is also
+   on the toolbar (the checklist button) and at `Ctrl/Cmd+K`.
 3. **The `@` menu** (type `@` in a point). A menu of inserters with **dialogs that teach the
    syntax** and show a live preview: Dice, Grammar, Roll table, Deck, Oracle, Markov, Math,
    Variable, Estimate and more. Great when you're learning or building something fiddly.

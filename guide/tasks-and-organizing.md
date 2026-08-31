@@ -188,6 +188,24 @@ before its name, so a property is recognizable at a glance. To change or remove 
 dialog. Like tag colors, it is purely visual and stored with the document; the property's text and
 searchability are untouched.
 
+## Add another like these
+
+When several points in a row share a shape, the same tags, the same properties, Pointliner can
+write the next one for you. You fill in the values; it writes the tags and the braces, so a grocery
+line is a description and a number rather than a line of syntax to remember.
+
+There are two doors and they do the same thing. A **+ Add** control appears on a heading whose
+points share a shape, so you can point at it. Or put the cursor on the list, on the point above it
+or on any point inside it, and run **`/addrow`**. The keyboard route is the one that still works
+when the list is long, when you are working without a mouse, or when you have quieted the extra
+controls with the [verbosity dial](getting-around.md#quiet-the-guidance-the-verbosity-dial).
+
+Either door opens a small form: a description, plus one blank per shared property. Fill it in and
+the new point lands at the end of the list with its tags and properties already live, so a total
+above it moves at once. The shape is read from the points already there, so the more alike they
+are, the better the guess; a list needs at least two points before there is a shape to copy, and if
+they share nothing yet Pointliner says so rather than guessing.
+
 ## Templates
 
 Stop rebuilding the same structure from scratch every time. Save a meeting-notes format, a weekly
@@ -223,6 +241,17 @@ to change which number each one answers to: drag a chip, or focus one and press 
 `Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1 through 10; a point's menu adds or removes
 an inbox slot too. The strip stays open after each capture with a running count, so you can empty your
 head in one sitting. `Enter` captures; `Shift+Enter` adds a line break; `Esc` closes.
+
+**Capture from a link.** With Pointliner installed as an app, or open from a web address, opening
+it with `?append=your text` in the address adds that text as a point, and sharing a page or a
+selection to it from your system share menu does the same. It arrives as plain text, never run as a
+pill, and the address is cleaned up so a reload cannot add it twice; with no inbox set it lands at
+the top level, like any other capture.
+
+**Capture from a link.** Opening Pointliner with `?append=your text` on the end of its address adds
+that text to your inbox as a point, and sharing a page or a selection to it from your system share
+menu does the same, as plain text. Both work on the web or in the installed app, not on a document
+opened as a local file.
 
 ## Nicknames (aliases)
 

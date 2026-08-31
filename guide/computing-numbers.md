@@ -1,6 +1,6 @@
 # Computing numbers
 
-*Part of the [generative & computational guide](README.md). This is the **Compute** family:
+*Part of the [Pointliner guide](README.md). This is the **Compute** family:
 pills that do math, including arithmetic, dates, sums that roll up your document, uncertain
 estimates, odds and simulation, and pass/fail checks.*
 
