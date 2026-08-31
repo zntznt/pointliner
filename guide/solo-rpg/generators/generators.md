@@ -23,8 +23,10 @@ It is the same `{…}` grammar as the rest of the guide, pointed at the blank-pa
 
 A Markov chain is the fancy-sounding trick behind most good name generators, and it fits in
 one pill. You give it a list of **syllable transitions**, each written `source→next`, and it
-walks them: start on the first syllable, hop to a random syllable that can follow it, hop
-again and stop when it runs out of exits. The path it took, joined up, is the name.
+walks them: start on the first syllable, hop to a random syllable that can follow it, and keep
+hopping for a fixed number of steps, **five by default**, stopping early only if it reaches a
+syllable with no exits. The pill shows you the path it took, with the arrows still between the
+syllables; you read the name by running them together.
 
 ```
 {markov: ka→la, la→sh, sh→ka, ka→ra, ra→n, n→dor, dor→a, a→ka}
@@ -32,7 +34,11 @@ again and stop when it runs out of exits. The path it took, joined up, is the na
 
 Read that as a little graph. From `ka` you can go to `la`, `ra`. From `sh` you can go to
 `ka` or, in the demo's fuller list, to `ael`. Click the pill and it grows a fresh path each
-time: Kalash, Karndor, Kalashael, whatever the walk stumbles into. The `→` is just the
+time: `ka→ra→n→dor→a→ka` reads as Karndoraka, `ka→la→sh→ka→ra→n` as Kalashkaran. Every syllable in
+that little chain has somewhere to go, so the walk never dead-ends and you always get six of them.
+If you want shorter names, give some syllables **no outgoing transition**: the walk stops the moment
+it reaches one. Seeing the arrows is the point of the pill as much as the name is, because a chain
+that keeps producing the same three syllables is telling you which transitions to add. The `→` is just the
 literal arrow character in the text, nothing to escape. Add more transitions and the names
 get more varied; give a syllable two possible nexts and the chain has a real choice to make.
 
@@ -43,7 +49,8 @@ demo that snaps a prefix onto a suffix:
 {prefix}{suffix}
 ```
 
-Those are **two separate pills**, each reading its own named rule (`prefix:` and `suffix:`),
+Those are **two separate pills**, each reading its own named rule (`{rule prefix: ...}` and
+`{rule suffix: ...}`),
 and they roll independently. So `Ka` + `dros` gives Kadros, the next click gives Vorwyn or
 Malthas. It is cruder than the Markov walk, but it is instantly legible and easy to tune: the
 whole namespace lives in two lists you can read at a glance.
@@ -80,7 +87,7 @@ capitalized-and-articled version of every list.
 {animal.lower.s} lowercase, then pluralize (otters)
 ```
 
-The closed set is `cap`, `title`, `upper`, `lower`, `a`, `s`, `ed` and `ord`, and you can
+The closed set is `cap`, `title`, `upper`, `lower`, `a`, `s`, `ed`, `ord`, `poss` and `ing`, and you can
 **chain them left to right**, as `{animal.lower.s}` does: lowercase first, then pluralize the
 result. So "you push open the door to `{animal.a}`" reads naturally whether the walk lands on a
 consonant or a vowel, and you never keep two copies of a list in sync by hand.
@@ -117,8 +124,8 @@ sub-rule, and you read the field back with `{item.field}`:
 
 Now "you loot a `{weapon}`, it hits for `{weapon.damage}`" pulls a weapon and its damage. The
 important rule to internalize: **`{item.field}` only resolves when the item that got picked has
-a matching `item.field:` sub-rule defined at a line start.** Drop the `axe.damage` line and an
-axe roll leaves the damage pill undefined. So every item you want to carry a field needs its own
+a matching `{rule item.field: ...}` sub-rule declared somewhere in the document.** Drop the
+`axe.damage` line and an axe roll leaves the damage pill undefined. So every item you want to carry a field needs its own
 sub-rule, which is exactly the structure that makes it reliable.
 
 One catch worth naming: two pills roll independently, so a bare `{weapon}` next to a bare
@@ -126,10 +133,15 @@ One catch worth naming: two pills roll independently, so a bare `{weapon}` next 
 **bind the pick to a variable first**, then read the variable's fields:
 
 ```
-{w := weapon}   then   {w} for 1d8 or whatever {w.damage} matches
+{w := {weapon}}   then   {w} for the weapon and {w.damage} for its die
 ```
 
-`{w := weapon}` picks once and remembers, so `{w}` and `{w.damage}` both read the same draw. The
+`{w := {weapon}}` picks once and remembers, so `{w}` and `{w.damage}` both read the same draw.
+Note the inner braces. A bare `{w := weapon}` reads `weapon` as a formula rather than a draw and
+finds no variable of that name, so the declaration lands as a `w = ?` pill and `{w}` and
+`{w.damage}` stay as literal text. The app does tell you: hovering either one gives a cue naming
+the fix. But a `?` where a weapon should be is easy to skim past, and the inner braces are what
+stop it happening. The
 demo shows both forms so you can feel the difference.
 
 ---
@@ -145,18 +157,22 @@ real document with every pill live. A few things to try:
 - **Roll a street of taverns.** Click `{tavern}` repeatedly. Every roll reaches down through
   `adjective`, `animal` and `noun`, so you get a fresh sign each time, and the modifier line
   shows the same lists capitalized, articled and pluralized.
-- **Reweight the loot.** Click `{loot}` to feel the odds, then click into the `loot:` list and
-  change a number. Bump the wand's weight up and watch it start showing. The whole economy is
-  the numbers in that one line.
-- **Break the item field on purpose.** Delete the `spear.damage:` line, then roll the weapon
-  pill until it lands on a spear: `{weapon.damage}` goes undefined, which is exactly how you
-  learn that a field lives or dies with its sub-rule. Put the line back and it heals.
-- **Edit the lists to make them yours.** Click the text next to any pill (say
-  `animal: Kraken | Wyrm | ...`) and add, remove or reweight options. Every `{animal}` pill in
-  the file reads the same rule, so one edit ripples through names and places alike.
-- **Add a whole new generator.** Write a point `spell: {adjective} {noun} of {animal}` at a line
-  start and reference it with `{spell}`. That is the entire recipe: a named rule is a point, a
-  reference is a pill, and modifiers and fields extend it without any new syntax.
+- **Reweight the loot.** Click `{loot}` to feel the odds, then click into the `{rule loot: ...}`
+  list and change a number. Bump the wand's weight up and watch it start showing. The whole
+  economy is the numbers in that one line.
+- **Break the item field on purpose.** Delete the `{rule spear.damage: 1d8}` line, then click the
+  bound `{w := {weapon}}` pill until it draws a spear: `{w.damage}` goes undefined, which is exactly
+  how you learn that a field lives or dies with its sub-rule. Use the bound pair, not the bare
+  `{weapon}` and `{weapon.damage}`, or the two roll independently and you will be reading the damage
+  of a weapon you did not draw. Put the line back and it heals.
+- **Edit the lists to make them yours.** Click into the text of a rule point (say
+  `{rule animal: Kraken | Wyrm | ...}`) and add, remove or reweight options. Keep the `rule`
+  keyword when you edit: drop it and the rule unregisters, taking every `{animal}` pill in the
+  file with it. Every `{animal}` pill reads the same rule, so one edit ripples through names and
+  places alike.
+- **Add a whole new generator.** Write a point `{rule spell: {adjective} {noun} of {animal}}` and
+  reference it with `{spell}`. That is the entire recipe: a named rule is a point, a reference is
+  a pill, and modifiers and fields extend it without any new syntax.
 
 ---
 

@@ -2673,6 +2673,384 @@
       "find": "  if (focusedInner) _vlPreservingFocus = true;\n  if (activeEl) activeEl.remove();",
       "replace": "  if (activeEl) activeEl.remove();",
       "kills": "#1557 scrolling an edited row out of the window and back does not commit the edit"
+    },
+    {
+      "id": "solo-rpg-census-bare-rule",
+      "suite": "unit",
+      "why": "the census must catch a demo table written as bare `name: a | b` -- the exact shape that shipped dead pills in cairn, maze-rats and ironsworn, and that #810 and the generators pin each caught in one file only",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "text=\"{rule reaction: ",
+      "replace": "text=\"reaction: ",
+      "kills": "EVERY solo-RPG demo resolves its own rule references"
+    },
+    {
+      "id": "solo-rpg-census-hyphen-rule",
+      "suite": "unit",
+      "why": "a hyphenated rule name is rejected by ruleDeclParts and fails SILENTLY as prose, so the census must accuse it too, not just the missing wrapper; the first draft of the census scanned only top-level braces and this mutant SURVIVED it",
+      "file": "guide/solo-rpg/maze-rats/maze-rats-demo.opml",
+      "find": "{rule spell_form: ",
+      "replace": "{rule spell-form: ",
+      "kills": "EVERY solo-RPG demo resolves its own rule references"
+    },
+    {
+      "id": "solo-rpg-guide-teaches-bare-rule",
+      "suite": "unit",
+      "why": "fixing the demos without the prose regenerates the bug: four guides told the reader to define `reaction: hostile | wary` with no rule keyword",
+      "file": "guide/solo-rpg/cairn/cairn.md",
+      "find": "{rule omen: a cold draft | distant scratching | a fresh corpse | scratched warnings}",
+      "replace": "omen: a cold draft | distant scratching | a fresh corpse | scratched warnings",
+      "kills": "no solo-RPG guide teaches the bare rule form"
+    },
+    {
+      "id": "solo-rpg-census-hyphen-consistent",
+      "suite": "unit",
+      "why": "the shape the first census MISSED: hyphenate the declaration AND its reference and both fell outside the identifier class, so an entirely dead demo passed. Only the `-` in IS_LOOKUP makes this reachable",
+      "file": "guide/solo-rpg/maze-rats/maze-rats-demo.opml",
+      "find": "{rule spell: a {spell_form} {spell_effect}}",
+      "replace": "{rule spell: a {spell-form} {spell-effect}}",
+      "kills": "EVERY solo-RPG demo resolves its own rule references"
+    },
+    {
+      "id": "solo-rpg-guide-loses-the-rule-form",
+      "suite": "unit",
+      "why": "the offenders half is a search for something that should NOT exist and reads the same whether the tree is clean or the phrasing drifted out of its filter; the positive floor is what still bites when a guide simply stops showing the working form",
+      "file": "guide/solo-rpg/ironsworn/ironsworn.md",
+      "find": "{rule action_oracle: strike | avenge | uncover | defend}\n{rule theme_oracle: risk | fortune | secret | shelter}",
+      "replace": "action_oracle: strike | avenge | uncover | defend\ntheme_oracle: risk | fortune | secret | shelter",
+      "kills": "no solo-RPG guide teaches the bare rule form"
+    },
+    {
+      "id": "solo-rpg-rollup-back-beside-the-items",
+      "suite": "unit",
+      "why": "the shape that shipped: the rollup authored as a SIBLING of the {prop} points instead of their parent, which renders \"nothing matched\" while the guide advertises a live total",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "text=\"Pack, {= sum(slots)} of 10 slots used\" _props=\"[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]\">\n        <outline text=\"Sword {prop slots: 1}\"/>",
+      "replace": "text=\"Pack\" _props=\"[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]\">\n        <outline text=\"Slots used: {= sum(slots)}\"/>\n        <outline text=\"Sword {prop slots: 1}\"/>",
+      "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
+    },
+    {
+      "id": "solo-rpg-rollup-subtree-scope-dropped",
+      "suite": "unit",
+      "why": "the Vale total spans two region levels, so dropping the subtree scope silently narrows it to direct children and it matches nothing -- the census must read the scope, not just the property name",
+      "file": "guide/solo-rpg/hex-crawl/hex-crawl-demo.opml",
+      "find": "{= sum(supplies, subtree)} of {rations}",
+      "replace": "{= sum(supplies)} of {rations}",
+      "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
+    },
+    {
+      "id": "solo-rpg-demo-raw-angle-bracket",
+      "suite": "unit",
+      "why": "the mistake I actually made twice while fixing this folder: a bare `<=` inside text=\"...\" leaves the OPML not well-formed, and both the suite and a lenient DOMParser stayed quiet about it",
+      "file": "guide/solo-rpg/character-sheet/character-sheet-demo.opml",
+      "find": "`sum(weight) &lt;= 8 + might`",
+      "replace": "`sum(weight) <= 8 + might`",
+      "kills": "EVERY shipped demo is well-formed XML"
+    },
+    {
+      "id": "solo-rpg-demo-raw-quote",
+      "suite": "unit",
+      "why": "the other half of the same mistake: a raw double quote inside a text attribute terminates it early, so everything after it is read as bogus attributes",
+      "file": "guide/solo-rpg/npc-faction/npc-faction-demo.opml",
+      "find": "a &quot;No state&quot; lane instead",
+      "replace": "a \"No state\" lane instead",
+      "kills": "EVERY shipped demo is well-formed XML"
+    },
+    {
+      "id": "solo-rpg-bullet-folds-again",
+      "suite": "unit",
+      "why": "three guides told the reader a bullet click folds a point while the app zooms and even toasts to say so; the guard must bite on the prose, not just on the handler",
+      "file": "guide/solo-rpg/lonelog/lonelog-demo.opml",
+      "find": "Click the chevron left of a Scene line (or press Ctrl/Cmd+. on it) to fold the whole scene closed.",
+      "replace": "Click the bullet of a Scene line to fold the whole scene closed.",
+      "kills": "no solo-RPG guide tells the reader a bullet click folds a point"
+    },
+    {
+      "id": "solo-rpg-pick-bind-unwrapped",
+      "suite": "unit",
+      "why": "the guide's own answer to the independent-rolls problem was `{w := weapon}`, which reads the rule name as a formula and silently resolves to nothing, leaving {w} and {w.damage} as literal text",
+      "file": "guide/solo-rpg/generators/generators-demo.opml",
+      "find": "bind the pick to a variable first: {w := {weapon}}.",
+      "replace": "bind the pick to a variable first: {w := weapon}.",
+      "kills": "a pick bound to a variable in a demo really binds"
+    },
+    {
+      "id": "solo-rpg-label-invented",
+      "suite": "unit",
+      "why": "session prep named three built-in doors and got all three wrong; a guide that bolds a control the app does not have sends the reader hunting the screen",
+      "file": "guide/solo-rpg/session-prep/session-prep.md",
+      "find": "pick **Set as inbox 1**.",
+      "replace": "pick **Mark as capture target**.",
+      "kills": "every UI label a solo-RPG guide puts in bold exists in the app"
+    },
+    {
+      "id": "solo-rpg-journal-home-renested",
+      "suite": "unit",
+      "why": "findOrCreateNamedHome scans root.children only, so a Journal home buried in the demo's own branch makes the journal door append a SECOND empty one -- the demo actively demonstrating the opposite of the feature",
+      "file": "guide/solo-rpg/session-prep/session-prep-demo.opml",
+      "find": "<outline text=\"04\" _id=\"prep0061\">",
+      "replace": "<outline text=\"2026-07-04\" _id=\"prep0061\">",
+      "kills": "a demo Journal home sits where the journal door looks"
+    },
+    {
+      "id": "solo-rpg-demo-self-indexes",
+      "suite": "unit",
+      "why": "campaign-clocks' headline thread board returned 16 points, five of them the demo's own instructions; a tag written into explanatory copy is indistinguishable from real content once the file is open",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "Work the board: search the thread tag to list every open thread",
+      "replace": "Work the board: search #thread to list every open thread",
+      "kills": "no solo-RPG demo indexes its own instructions as campaign content"
+    },
+    {
+      "id": "solo-rpg-demo-instruction-dated",
+      "suite": "unit",
+      "why": "an unescaped {date due: ...} in instructional copy materialises a real property, so the agenda nudged the reader about a sentence rather than a thread",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "and give it a `{date due: today+3}`, and it becomes a due-date chip",
+      "replace": "and give it a {date due: today+3}, and it becomes a due-date chip",
+      "kills": "no solo-RPG demo indexes its own instructions as campaign content"
+    },
+    {
+      "id": "solo-rpg-board-states-undeclared",
+      "suite": "unit",
+      "why": "the npc-faction board grouped nothing because no {seq ...} declared its factions; delete the pill and it reverts silently, since a base with no lanes still renders",
+      "file": "guide/solo-rpg/npc-faction/npc-faction-demo.opml",
+      "find": "<outline text=\"{seq Cast: UNDERCITY FREEPORT ASHCHURCH | GONE}\"/>",
+      "replace": "",
+      "kills": "a demo board that groups by a status column declares the states it groups into"
+    },
+    {
+      "id": "solo-rpg-check-scoped-to-nothing",
+      "suite": "unit",
+      "why": "a check expression is the OTHER place an aggregation is written, and the first draft of the placement census could not see it at all; a check scoped to nothing passes vacuously and reads as a healthy green tick",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;",
+      "replace": "&quot;val&quot;:&quot;sum(encumbrance) &lt;= 10&quot;",
+      "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
+    },
+    {
+      "id": "solo-rpg-progress-token-inert",
+      "suite": "unit",
+      "why": "ironsworn.md offered `[3/10]` as a manual progress cookie, which renders as literal characters with no P4 feedback, while campaign-clocks.md warns readers off that exact token",
+      "file": "guide/solo-rpg/ironsworn/ironsworn.md",
+      "find": "a parent point with a `[/]` over",
+      "replace": "a parent point with a `[3/10]` over",
+      "kills": "no solo-RPG guide teaches a progress token the renderer leaves as plain text"
+    },
+    {
+      "id": "solo-rpg-licence-back-to-mit",
+      "suite": "unit",
+      "why": "five places said MIT while LICENSE is AGPLv3, one of them inside a demo .opml where it is the whole notice an .opml-only reader gets; it is the single error here that misleads about legal obligations",
+      "file": "guide/solo-rpg/README.md",
+      "find": "Pointliner itself is licensed under the GNU AGPLv3",
+      "replace": "Pointliner itself is MIT licensed",
+      "kills": "the solo-RPG docs name the licence the repository actually ships"
+    },
+    {
+      "id": "solo-rpg-pick-bind-deleted",
+      "suite": "unit",
+      "why": "the bind guard only fires on a MALFORMED binding, so deleting the one it was written for would leave it passing over nothing; the positive floor is what notices",
+      "file": "guide/solo-rpg/generators/generators-demo.opml",
+      "find": "bind the pick to a variable first: {w := {weapon}}.",
+      "replace": "bind the pick to a variable first.",
+      "kills": "a pick bound to a variable in a demo really binds"
+    },
+    {
+      "id": "solo-rpg-demo-outline-unbalanced",
+      "suite": "unit",
+      "why": "an unclosed <outline> reparents everything after it, silently changing the tree shape that every rollup and board in this folder depends on; the attribute scan cannot see it at all",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "<outline text=\"Sword {prop slots: 1}\"/>",
+      "replace": "<outline text=\"Sword {prop slots: 1}\">",
+      "kills": "EVERY shipped demo is well-formed XML"
+    },
+    {
+      "id": "solo-rpg-demo-props-attr-broken",
+      "suite": "unit",
+      "why": "_props and _view carry JSON with quotes and angle brackets, so they break as easily as prose; a guard that reads only text=\"...\" would watch a malformed _view go straight past",
+      "file": "guide/solo-rpg/npc-faction/npc-faction-demo.opml",
+      "find": "_view=\"{&quot;kind&quot;:&quot;board&quot;,&quot;groupBy&quot;:1}\"",
+      "replace": "_view=\"{&quot;kind&quot;:&quot;board&quot;,&quot;groupBy&quot;:1, &quot;note&quot;:&quot;a < b&quot;}\"",
+      "kills": "EVERY shipped demo is well-formed XML"
+    },
+    {
+      "id": "solo-rpg-dialog-required-field-dropped",
+      "suite": "unit",
+      "why": "campaign-calendar's FIRST instruction was blocked by a required field it never mentioned, so everything downstream in that guide sat behind a step that cannot complete",
+      "file": "guide/solo-rpg/campaign-calendar/campaign-calendar.md",
+      "find": "Calendar name:             Calendar of the Vale\n",
+      "replace": "",
+      "kills": "a guide that walks the reader through a dialog names its required fields"
+    },
+    {
+      "id": "solo-rpg-deck-shared-again",
+      "suite": "unit",
+      "why": "hex-crawl claimed every terrain pill shares one deck because decks are \"keyed by their content\"; nothing keys a deck by its text, so the section's whole premise failed across hexes",
+      "file": "guide/solo-rpg/hex-crawl/hex-crawl.md",
+      "find": "**Each pill is its own deck.**",
+      "replace": "**Every terrain pill in the demo shares the one deck.**",
+      "kills": "no solo-RPG guide claims two deck pills share one bag"
+    },
+    {
+      "id": "solo-rpg-search-query-invalid",
+      "suite": "unit",
+      "why": "a search the guide tells the reader to type is the worst shape of doc error here: `due:>=today` is rejected outright and returns nothing, while nothing on screen looks broken",
+      "file": "guide/solo-rpg/campaign-calendar/campaign-calendar.md",
+      "find": "search **`due:>today-1`**",
+      "replace": "search **`due:>=today`**",
+      "kills": "every search query a solo-RPG guide tells the reader to type actually parses"
+    },
+    {
+      "id": "solo-rpg-clock-nothing-to-click",
+      "suite": "unit",
+      "why": "the demo taught \"click the ring\" while every clock in it was a computed [o /6] readout, which renders with no role=\"button\" and ignores the click entirely",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "The harbormaster's patience [o 2/6]",
+      "replace": "The harbormaster's patience [o /6]",
+      "kills": "a solo-RPG demo ships the clock its guide tells the reader to click"
+    },
+    {
+      "id": "solo-rpg-clock-token-eaten",
+      "suite": "unit",
+      "why": "an un-escaped token inside the sentence defining it gets rendered away, so the reader saw \"carries an o 0/6 clock\" instead of the notation the sentence was naming",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "carries an `[o /6]` clock",
+      "replace": "carries an [o /6] clock",
+      "kills": "a demo that NAMES a progress token in prose keeps the token inert"
+    },
+    {
+      "id": "solo-rpg-quoted-check-drifts",
+      "suite": "unit",
+      "why": "the check lives in _props where prose cannot see it, so the demo's how-to went on quoting a hardcoded `sum(weight) <= 10` after the shipped check began deriving its limit from a stat",
+      "file": "guide/solo-rpg/character-sheet/character-sheet-demo.opml",
+      "find": "with the test `sum(weight) &lt;= 8 + might`",
+      "replace": "with the test `sum(weight) &lt;= 10`",
+      "kills": "a solo-RPG doc that quotes a check quotes the one its demo actually carries"
+    },
+    {
+      "id": "guide-link-anchor-orphaned",
+      "suite": "unit",
+      "why": "the old guard named eight files and checked two of the thirteen solo-RPG guides, so a cross-link into a renamed heading shipped from any of the other eleven without a word",
+      "file": "guide/solo-rpg/living-oracle/living-oracle.md",
+      "find": "generating-text.md#rolling-across-the-whole-folder",
+      "replace": "generating-text.md#rolling-across-the-folder",
+      "kills": "user-guide link integrity: every relative link resolves and every anchor is a real heading"
+    },
+    {
+      "id": "guide-link-target-missing",
+      "suite": "unit",
+      "why": "a relative link to a file that does not exist was not checked at all: the guard only ever resolved the #fragment half, so a renamed or mistyped FILE was invisible to it",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks.md",
+      "find": "campaign calendar](../campaign-calendar/campaign-calendar.md)",
+      "replace": "campaign calendar](../campaign-calendar/campaign_calendar.md)",
+      "kills": "user-guide link integrity: every relative link resolves and every anchor is a real heading"
+    },
+    {
+      "id": "solo-rpg-cc-notice-swallows-the-app",
+      "suite": "unit",
+      "why": "an .opml handed to a reader carries no notice but its own, so a demo that offers itself under CC and never names the app's AGPLv3 reads as though the game's licence reaches the repository",
+      "file": "guide/solo-rpg/maze-rats/maze-rats-demo.opml",
+      "find": "This adaptation is offered under the same CC BY 4.0 terms, separate from Pointliner's AGPLv3 app licence. ",
+      "replace": "",
+      "kills": "every solo-RPG doc that names a CC licence also says which licence the APP is under"
+    },
+    {
+      "id": "guide-names-a-rule-bare",
+      "suite": "unit",
+      "why": "the canonical generating-text page told the reader to name a rule and showed the bare body, which typed into a point stays ordinary text so the {creature.a} it sets up never resolves",
+      "file": "guide/generating-text.md",
+      "find": "name a rule first (`{rule creature: ogre | dragon}`, or the same\n> line without the keyword inside the **`@` → Grammar** dialog)",
+      "replace": "name a rule first (`creature: ogre | dragon`)",
+      "kills": "no guide tells the reader to NAME a rule and then shows the form that names nothing"
+    },
+    {
+      "id": "solo-rpg-rule-declared-above-its-parts",
+      "suite": "unit",
+      "why": "a rule pill promoted before the rules it calls freezes {name?} markers into its stored result, so the demo about named rules opened reading \"tavern The {adjective?} {noun?}\" until someone clicked it",
+      "file": "guide/solo-rpg/generators/generators-demo.opml",
+      "find": "          <outline text=\"{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}\" _id=\"gen00023\"/>\n          <outline text=\"{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}\" _id=\"gen00024\"/>\n          <outline text=\"{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}\" _id=\"gen00025\"/>\n          <outline text=\"{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}\" _id=\"gen00022\"/>",
+      "replace": "          <outline text=\"{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}\" _id=\"gen00022\"/>\n          <outline text=\"{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}\" _id=\"gen00023\"/>\n          <outline text=\"{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}\" _id=\"gen00024\"/>\n          <outline text=\"{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}\" _id=\"gen00025\"/>",
+      "kills": "no demo declares a rule above a rule it calls, which freezes an unresolvable preview"
+    },
+    {
+      "id": "journal-day-refictioned",
+      "suite": "unit",
+      "why": "the journal and the roll log are IRL by decision (#653), and defaulting either seam to the active calendar filed a real-world entry under a fiction date the timeline then plotted 800 years out",
+      "file": "index.html",
+      "find": "function todayISO() { return formatEpochDays(dueDateToday(null), null); }",
+      "replace": "function todayISO() { return formatEpochDays(dueDateToday()); }",
+      "kills": "todayISO is the REAL day in the REAL calendar, even under a fiction calendar"
+    },
+    {
+      "id": "codemask-forgets-the-keyword",
+      "suite": "unit",
+      "why": "without the keyword half of the regex rule, `return /re/` scans as division and fnBody runs past its own closing brace -- seven functions came back wrong, one at 39x its true size, so any pin on them searched foreign code",
+      "file": "tests/test.mjs",
+      "find": "|| prevSig(i) === '' || afterKeyword(i))) {",
+      "replace": "|| prevSig(i) === '')) {",
+      "kills": "fnBody stops at its own closing brace: no body swallows a top-level function"
+    },
+    {
+      "id": "journal-day-refictioned-driven",
+      "suite": "browser",
+      "why": "the driven half of journal-day-refictioned: with the calendar defaulted back in, a real-world journal entry files under 1204/04/12 in a running document, which no source pin can see",
+      "file": "index.html",
+      "find": "return formatEpochDays(dueDateToday(null), null); }",
+      "replace": "return formatEpochDays(dueDateToday()); }",
+      "kills": "a custom calendar moves the chronicle and the due dates, never the journal"
+    },
+    {
+      "id": "frozen-marker-unexplained",
+      "suite": "unit",
+      "why": "a rule pill frozen before its dependency existed showed `The {adjective?} {noun?}` raw under a tip reading \"Click to re-generate\", which is chrome for a pill that is fine",
+      "file": "index.html",
+      "find": "            : unresNote ? unresNote\n",
+      "replace": "",
+      "kills": "every pill that shows a FROZEN result explains an unresolved reference in it"
+    },
+    {
+      "id": "frozen-marker-deck-silent",
+      "suite": "unit",
+      "why": "a deck deals templates, so its drawn card can carry the same frozen marker; dropping its note leaves the one member whose pill has a different verb unexplained",
+      "file": "index.html",
+      "find": "    : seqNote ? seqNote\n",
+      "replace": "",
+      "kills": "every pill that shows a FROZEN result explains an unresolved reference in it"
+    },
+    {
+      "id": "frozen-marker-pick-silent",
+      "suite": "unit",
+      "why": "a pick freezes one draw, so {w := {weapon}} above the weapon rule freezes the marker and every later {w} reads it; dropping its note leaves that whole chain unexplained",
+      "file": "index.html",
+      "find": "      : pickNote ? pickNote\n",
+      "replace": "",
+      "kills": "every pill that shows a FROZEN result explains an unresolved reference in it"
+    },
+    {
+      "id": "frozen-marker-keyword-sentinel",
+      "suite": "unit",
+      "why": "the keyword sentinels ({meter?}, {cond?}) are not name lookups; reporting them tells the reader to declare a rule called meter, which is nonsense advice",
+      "file": "index.html",
+      "find": "    if (MARKER_KEYWORDS.has(name.toLowerCase())) continue;\n",
+      "replace": "",
+      "kills": "unresolvedRefs — the names inside {name?} markers, in order, deduped; keyword sentinels excluded"
+    },
+    {
+      "id": "frozen-marker-reason-forked",
+      "suite": "unit",
+      "why": "a missing name must be explained with the sentence plain text already uses; a second phrasing here is the two-explanations-for-one-failure drift P1 exists to stop",
+      "file": "index.html",
+      "find": "  if (missing) return braceAttemptReason(missing, rules || Object.create(null), vars || Object.create(null));",
+      "replace": "  if (missing) return `“${missing}” cannot be resolved. Click to ${verb}`;",
+      "kills": "unresolvedNote — a name that resolves NOW says so; one that does not gets the plain-text sentence"
+    },
+    {
+      "id": "frozen-marker-unmarked-driven",
+      "suite": "browser",
+      "why": "the driven half: without the dot the only signal is a tooltip, so a frozen marker is invisible until someone hovers the pill that looks fine",
+      "file": "index.html",
+      "find": "${stale || unresNote ? ' gr-stale' : ''}",
+      "replace": "${stale ? ' gr-stale' : ''}",
+      "kills": "a pill frozen before its rule existed says so, and one click heals it"
     }
   ]
 }

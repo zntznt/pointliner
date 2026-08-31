@@ -22,7 +22,8 @@ game and want it running in Pointliner.
 > its publisher; this is an **adaptation** (the moves and oracle tables are restructured into
 > Pointliner points and `{…}` pills), and **changes have been made** from the original
 > layout and presentation. "Ironsworn" is used here descriptively to name the game; no logo or
-> artwork is reproduced. This guide itself is offered under the same CC BY 4.0 terms.
+> artwork is reproduced. This guide itself is offered under the same CC BY 4.0 terms, which is
+> separate from Pointliner's own AGPLv3 licence: that covers the app, not this game content.
 
 ---
 
@@ -60,23 +61,30 @@ to turn a roll around. Track it as a variable you edit as it changes:
 {momentum := 2}
 ```
 
-Raise or lower it by editing the number (or keep a small log of changes as child points). When you
-burn momentum, the rule is that you replace a challenge die result with your current momentum; in
-Pointliner you just read the `momentum` value against the challenge dice you rolled and take the win
-if it beats them.
+Raise or lower it by editing the number (or keep a small log of changes as child points).
+
+Burning is the part worth getting right, because it is a **cost**, not a free re-roll. On a weak hit
+or a miss, and only while your momentum is greater than your action score, you replace your **action
+score** with your momentum and read the roll again against the same two challenge dice. Beating both
+turns it into a strong hit; beating one is still only a weak hit, so burning does not guarantee a
+win. Then **momentum resets** to its reset value, +2 for a fresh character and lower once you carry
+debilities. In Pointliner that is two edits: read `momentum` against the challenge dice you already
+rolled, then set the variable back to its reset value.
 
 ## Progress tracks (vows, journeys, fights)
 
 A **progress track** is Ironsworn's box-ticking meter for a vow, a journey or a fight: you mark
 progress as you go, then make a **progress move** by rolling the challenge dice against the number of
-filled boxes. Pointliner's **progress cookie** is the natural fit: a parent point with a `[/]` (or a
-manual `[3/10]`) over 10 checkbox children, one per box.
+filled boxes. Pointliner's **progress cookie** is the natural fit: a parent point with a `[/]` over
+10 checkbox children, one per box, which counts them for you as you tick. If you would rather set
+the number by hand than keep ten children, use a **clock** instead and write `[o 3/10]`; the `o` is
+what makes it a live ring, and a bare `[3/10]` is plain text.
 
 ```
 Swear an iron vow: reach the drowned tower  [/]
   - [ ] progress
   - [ ] progress
-  ... (ten boxes; check them off as you advance)
+  ... (ten boxes for a full track; check them off as you advance)
 ```
 
 When it is time to fulfil the vow, count the filled boxes and roll `{1d10}` and `{1d10}` against that
@@ -90,14 +98,15 @@ fiction. A table is a weighted pick in Pointliner, so each oracle becomes one pi
 SRD's oracle entries drop straight into the alternation:
 
 ```
-Action oracle: {SRD ACTION ORACLE ENTRIES GO HERE, separated by | bars}
-Theme oracle:  {SRD THEME ORACLE ENTRIES GO HERE, separated by | bars}
+{rule action_oracle: strike | avenge | uncover | defend}
+{rule theme_oracle: risk | fortune | secret | shelter}
 ```
 
-For a two-word prompt (Ironsworn's classic Action + Theme spark), put two pills together:
-`{action-oracle} {theme-oracle}`. Define each as a **named rule** on its own point
-(`action-oracle: strike | avenge | ...`) and call it by name anywhere, so one table serves the whole
-document.
+The `rule` keyword is what names it. A bare `action_oracle: strike | avenge` stays ordinary text and
+registers nothing, so the wrapper is not optional, and a rule name may hold letters, digits and
+underscores but **not hyphens** (`action_oracle` works, `action-oracle` does not). Once a rule
+exists, call it by name anywhere, so one table serves the whole document. For a two-word prompt
+(Ironsworn's classic Action + Theme spark), put two calls together: `{action_oracle} {theme_oracle}`.
 
 A yes/no oracle with Ironsworn's likelihood odds is a weighted alternation too:
 `{Yes N | No M}`, with the weights set to the odds for the likelihood you pick (the SRD lists the
@@ -106,14 +115,17 @@ percentages; convert them to weights, for example an even chance is `{Yes 1 | No
 ## Putting the moves in
 
 Each Ironsworn **move** (Face Danger, Secure an Advantage, Compel, Strike and so on) has its own
-trigger and its strong/weak/miss outcomes. In the demo, each move is its own point: the move's text
-sits in the point (from the SRD), with an action-roll pill ready beneath it. To play a move, read its
-trigger, roll the action pill and read the outcome the SRD lists for your result.
+trigger and its strong/weak/miss outcomes. In the demo, each move is its own point: a marked slot
+for the move's text, with an action-roll pill ready beneath it. Paste the move's trigger and
+outcomes from your copy of the SRD into the slot, then play it by reading the trigger, rolling the
+action pill and reading the outcome the SRD lists for your result.
 
-> **This is where the SRD content lands.** The demo ships the move triggers and outcome text and the
-> oracle table entries taken from the Ironsworn SRD under CC BY 4.0 (attributed above). If you are
-> building your own from a fresh copy of the SRD, paste each move's text into its point and each
-> oracle's entries into its rule, and the pills around them are already wired.
+> **This is where the SRD content lands.** The demo ships the pill structure, not the SRD's own
+> text: each move is a marked slot, and the oracles carry short filler options written for this
+> guide. Working from your copy of the SRD, paste each move's text into its slot and replace the
+> filler inside each `{rule ...}` with that oracle's entries; the pills around them are already
+> wired, so an oracle goes live as soon as you edit its rule. Text you reproduce this way is used
+> under CC BY 4.0 (attributed above).
 
 ## Run it yourself
 

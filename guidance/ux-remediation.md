@@ -6460,3 +6460,117 @@ real text edit still writes, and the write contains the edit.
 A probe-calibration note: standing in for the folder **before** `adoptDoc` silently produced zero
 writes (adoptDoc resets workspace state), which looked exactly like a passing fix on the unfixed
 build. The shipped check sets up after loading, and says why.
+
+---
+
+## UXP-331 -- the journal filed in the fiction calendar, alone among everything that reads it
+
+**Status: shipped.** P4/P1. Copy and behaviour; no new control.
+
+### The defect, driven
+
+Open a document with a custom calendar (the campaign-calendar demo, Vale calendar, `current: 1181`)
+and type `/journal`. The entry filed under **`Journal > 1204 > 04 > 12`** -- the world's date. The
+journal strip's label said the same. `todayISO()` was `formatEpochDays(dueDateToday())` and BOTH
+seams default to `activeCalendar()`, so the day and its label were the fiction's.
+
+### Why it is a defect and not a preference
+
+Four places already treat the journal as real, and they were unanimous:
+
+- `resolveCalendarId` maps the journal subtree to `CAL_GREGORIAN` -- "journal subtree = IRL" (#653),
+  so every date **inside** it reads real while its own rungs were being named in the fiction.
+- the timeline's journal collector parses those rungs with a bare `Date.UTC` and says so in a
+  comment: *"Gregorian, regardless of any active fiction calendar"*. A `1204` rung was plotted in the
+  year 1204, eight centuries out.
+- `logRoll` stamps a wall-clock `HH:MM` under the day it files.
+- the **Chronicle** exists precisely to be the fiction-dated log: *"the journal records the day you
+  actually wrote an entry; a chronicle records the day you decide."* Both the in-app
+  `custom-calendars` help and `guide/dates-and-planning.md` state the rule outright.
+
+P1: one word, one meaning. "Journal" changed meaning with the document's calendar, which also made
+the Chronicle redundant in exactly the documents it was built for.
+
+### The fix
+
+`todayISO()` asks for the real day in the real calendar. Both `null`s are load-bearing -- the day
+(`dueDateToday(null)`) and the label (`formatEpochDays(…, null)`) -- and either one alone still
+reproduces the bug.
+
+### Verification
+
+`tests/test.mjs` 2231 green, `tests/browser.mjs` green. A pure test sets a fiction calendar live in
+the vm, asserts the fiction really is active (`dueDateToday() === 1181`, a document date reads
+`1204-04-12`) and that `todayISO()` is the real day against an independent oracle. A driven check
+files into a running document with a calendar set: the chronicle lands on 1204, the journal on this
+year, and a due date still reads 1204 -- the negative case, because a fix that made everything real
+would pass a test that only watched the journal. Two kill-mutations, one per arm.
+
+The census is read out of the source rather than listed: every function taking its day from
+`todayISO()` must not mint its own label beside it. Writing it turned up a flaw in `fnBody` --
+`codeMask` promised that a `/` after `return` opens a regex and only checked punctuation, so
+`return /re/` scanned as division and **seven of 1530 function bodies came back wrong**, `rowsToCsv`
+at 39x its true size. Any pin on those searched foreign code (the #1141 widened-haystack failure,
+arriving through the helper written to prevent it). Fixed, with its own census and mutant.
+
+**Known consequence, not migrated:** a document that already has fiction-dated journal entries keeps
+them where they are; new entries start a real-dated tree beside them. Silently rewriting a user's
+journal is worse than two trees, and the Chronicle is the supported home for the old one -- which is
+what the campaign-calendar demo now models (its world-dated "Journal" is bound as a chronicle).
+
+---
+
+## UXP-332 -- a pill frozen before its rule existed showed raw markers under chrome that said it was fine
+
+**Status: shipped.** P4/P1/P3. The sibling of #1361.
+
+### The defect, driven
+
+`{rule tavern: The {adjective} {noun}}` written **above** the rules it calls opens reading
+`tavern  The {adjective?} {noun?}` on every load, with the tip *"Click to re-generate"* -- advice for
+a pill that is fine. A record is expanded once, at creation, and `promoteLoadedShorthand` walks
+top-down, so the markers freeze in. One click fixes it, which is why it survived every review:
+whoever clicked it saw it working. The shipped generators demo -- the page whose subject is named
+rules -- opened this way.
+
+The empty-state branch could not see it: `emptyMark` tests whether the **whole** result is one marker
+(`^\{…\?\}$`), and this result is mostly real text. Driven across the family, 4 of 6 members were
+silent and 2 were already right:
+
+| pill | before | tip |
+|---|---|---|
+| rule / anonymous grammar | `The {adjective?} {noun?}` | "Click to re-generate" |
+| repeat `{2x: {adjective}}` | `{adjective?} {adjective?}` | "Click to re-generate" |
+| deck `{shuffle: {adjective} \| {noun}}` | `{adjective?}` | "Click to draw the next" |
+| pick `{w := {weapon}}` | `w={weapon?}` | "Click to re-roll" |
+| conditional | "can't tell yet" + reason | ✓ #1361 |
+| `{roll: …}` | "no match yet" + reason | ✓ |
+
+The capability existed and had been applied to two members. That is the sibling-omission shape, not a
+missing feature.
+
+### The fix
+
+`unresolvedRefs(result)` / `unresolvedNote(result, rules, vars, verb)`, both pure. **No new copy is
+minted:** a name that still does not resolve gets `braceAttemptReason`, the exact sentence plain text
+already gives for the same miss, so `{adjective}` is explained the same way loose in a point or
+frozen in a pill. A name that DOES resolve now is #1361 in a different tense -- *"'adjective' has a
+value now, but this was generated before it did. Click to re-generate"* -- with each pill asking in
+its own verb (re-generate / draw again / re-roll), so the advice names the gesture that pill offers.
+The pill also wears the `--info` dot it already uses for stale inputs, because a tip is invisible
+until you hover (P3-4); `.var-stale` paints the same dot as `.gr-stale`.
+
+While wiring it: the pick pill interpolated its `title` **raw**, and `braceAttemptReason` quotes the
+name it reports, so the reason would have ended the attribute early. That is the same hole #1361
+closed on the grammar pill, reached through the same door.
+
+### Verification
+
+Seeded pins for both cores (including the keyword sentinels -- `{meter?}`, `{cond?}` say a keyword
+construct failed, not that a name is missing, and reporting them would advise declaring a rule called
+`meter`). A driven check loads a document in the breaking order and asserts the mark, both messages,
+the untouched clean pill, and that one click really heals it. Five kill-mutations.
+
+The census earns its own note: its first draft asserted only that `unresolvedNote(` appeared in each
+renderer, and its mutation **survived** -- deleting the line that puts the note in the tip left the
+call in place. A call site is not a use; each row now asserts computed, consumed and marked.

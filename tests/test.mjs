@@ -23,8 +23,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { brotliDecompressSync } from 'node:zlib';
@@ -121,6 +121,9 @@ function between(src, startMarker, endMarker) {
 // Regex detection is the one genuinely hard case (`/["']/` looks like a string opener). Uses the
 // standard heuristic: a `/` is a regex only where a VALUE may start, i.e. after one of ( , = : [ ! &
 // | ? { } ; ~ + - * % ^ < > or `return`/`typeof`/`case`, else it is division or a comment opener.
+// The keywords after which a `/` can only open a regex, never divide: an operand cannot follow them.
+const REGEX_OK_KEYWORDS = new Set(['return', 'typeof', 'case', 'in', 'of', 'delete', 'void', 'instanceof',
+  'new', 'do', 'else', 'yield', 'await', 'throw']);
 function codeMask(src) {
   const mask = new Uint8Array(src.length);        // 1 = a brace here is a real block brace
   // An explicit stack, because the nesting is genuinely recursive: a template literal holds `${…}`
@@ -131,6 +134,18 @@ function codeMask(src) {
   const st = [{ k: 'code', depth: 0 }];
   const top = () => st[st.length - 1];
   const prevSig = (at) => { let j = at - 1; while (j >= 0 && /\s/.test(src[j])) j--; return j >= 0 ? src[j] : ''; };
+  // …and the KEYWORD half of the same rule, which the comment above promised and the code did not
+  // have. `return /^https?:\/\//i.test(x)` reads `n` as the previous significant character, which is
+  // not punctuation, so the regex was scanned as division: the mask desynchronised across the line
+  // and fnBody('isRemoteUrl') skipped that function's own closing brace and returned a body running
+  // hundreds of lines past it. A pin asserting `fnBody(src, f).includes(x)` then searched a haystack
+  // that was not f — the widened-window failure #1141 names, arriving through the helper built to
+  // prevent it. Only the word IMMEDIATELY before the slash counts, so `return a / b` stays division.
+  const afterKeyword = (at) => {
+    let j = at - 1; while (j >= 0 && /\s/.test(src[j])) j--;
+    const end = j + 1; while (j >= 0 && /[A-Za-z_$]/.test(src[j])) j--;
+    return REGEX_OK_KEYWORDS.has(src.slice(j + 1, end));
+  };
   let i = 0;
   while (i < src.length) {
     const t = top(), c = src[i], d = src[i + 1];
@@ -145,7 +160,7 @@ function codeMask(src) {
     if (c === '/' && d === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue; }
     if (c === '"' || c === "'") { const q = c; i++; while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; } i++; continue; }
     if (c === '`') { st.push({ k: 'tpl' }); i++; continue; }
-    if (c === '/' && ('(,=:[!&|?{};~+-*%^<>'.includes(prevSig(i)) || prevSig(i) === '')) {
+    if (c === '/' && ('(,=:[!&|?{};~+-*%^<>'.includes(prevSig(i)) || prevSig(i) === '' || afterKeyword(i))) {
       i++; let cls = false;
       while (i < src.length) {
         if (src[i] === '\\') { i += 2; continue; }
@@ -1747,14 +1762,26 @@ const _mutants = JSON.parse(readFileSync(new URL('./mutants.json', import.meta.u
 test('every kill-mutation still anchors to real code and a real guard', () => {
   const ms = nonEmpty(_mutants, 'kill-mutation registry');
   assert.ok(ms.length >= 5, `only ${ms.length} mutants registered; the existence-shaped guards need one each`);
-  const sources = {
-    'index.html': _src,
-    'guidance/code-index.md': _codeIndex,
-    // #1465: a CI job's own timeout is mutated too, so add its reader here rather than letting the
-    // anchor go unchecked (which this very test exists to prevent).
-    '.github/workflows/tests.yml': readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8'),
-    // #1559: the layout sweep is code now, so its guards get mutated like any other.
-    'tools/layout-sweep.mjs': readFileSync(new URL('../tools/layout-sweep.mjs', import.meta.url), 'utf8'),
+  // The two sources already in memory. EVERY OTHER file is read from disk on demand, below.
+  // This used to be a hand-maintained roster of every path a mutant touches, with a comment saying
+  // "add one here or the anchor is unchecked" -- so the failure mode was: register a mutant against
+  // a new file, forget the roster line, and the mutant's anchor silently stops being verified. That
+  // is the same hardcoded-list-of-an-enumerable-family shape this suite keeps finding in the app,
+  // living inside the guard that exists to catch drift. A path that cannot be read is reported as a
+  // defect rather than skipped, so nothing goes unchecked by omission any more.
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const inMemory = { 'index.html': _src, 'guidance/code-index.md': _codeIndex };
+  const readCache = new Map();
+  const sourceFor = (file) => {
+    if (file in inMemory) return inMemory[file];
+    if (!readCache.has(file)) {
+      // A mutant may only address a file INSIDE the repo; anything else is a registry defect.
+      const abs = resolve(repoRoot, file);
+      let text = null;
+      if (abs.startsWith(repoRoot + '/')) { try { text = readFileSync(abs, 'utf8'); } catch { text = null; } }
+      readCache.set(file, text);
+    }
+    return readCache.get(file);
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -1768,8 +1795,8 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
       // still be DECLARED, so an omitted `replace` is still caught.
       if (k === 'replace' ? !(k in m) : !m[k]) bad.push(`${m.id || '(no id)'}: missing ${k}`);
     if (m.find === m.replace) bad.push(`${m.id}: find and replace are identical, so it mutates nothing`);
-    const src = sources[m.file];
-    if (src === undefined) { bad.push(`${m.id}: no reader for ${m.file} — add one here or the anchor is unchecked`); continue; }
+    const src = sourceFor(m.file);
+    if (src == null) { bad.push(`${m.id}: cannot read ${m.file} — a mutant must name a file inside the repo`); continue; }
     const hits = src.split(m.find).length - 1;
     if (hits !== 1) bad.push(`${m.id}: its find string matches ${hits} times in ${m.file}, expected exactly 1`);
     // `kills` must name a guard that exists, or the runner is waiting for a failure that can never come
@@ -12699,49 +12726,63 @@ test('#1215: the pill-syntax reference documents every keyword pill form the cod
     `Add a {${missing[0] || 'keyword'}: …} row to the reference table so the published spec matches the app.`);
 });
 
-// ── User-guide ANCHOR integrity guard ─────────────────────────────────────────
-// The repo has no markdown link-checker, so a broken in-page anchor ships silently
-// to GitHub Pages. This resolves EVERY `](...#fragment)` link across the user guide
-// against the real heading slugs of its target file, using GitHub's slug algorithm.
-// Generic (not tied to one list): it guards all current anchors AND every future
-// one, and it specifically protects the de-numbered deep-guide headings (UXP work)
-// from a rename silently orphaning the 16 inbound links.
-test('user-guide anchor integrity: every #anchor link resolves to a real heading', () => {
-  const guideDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide');
-  const files = ['README.md', 'features.md', 'generating-text.md', 'computing-numbers.md',
-    'cookbook.md', 'solo-rpg/README.md', 'solo-rpg/lonelog/lonelog.md']
-    .map(f => resolve(guideDir, f));
-  files.push(resolve(guideDir, '..', 'README.md')); // root README too
+// ── User-guide LINK integrity guard ───────────────────────────────────────────
+// The repo has no markdown link-checker, so a broken link ships silently to GitHub Pages.
+// This resolves EVERY relative markdown link across the user guide: the target file must
+// exist, and a `#fragment` must match a real heading slug in it (GitHub's algorithm).
+//
+// It walks the guide TREE rather than a list. The list version named eight files, of which
+// exactly two were solo-RPG guides out of thirteen -- so eleven guides, and every guide added
+// after it was written, were never checked by the guard whose job was to check them. A
+// hardcoded roster of an enumerable family is a census that stops counting the moment the
+// family grows, which is the failure mode this folder has now produced four separate times.
+test('user-guide link integrity: every relative link resolves and every anchor is a real heading', () => {
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const walk = (d, out = []) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = resolve(d, e.name);
+      if (e.isDirectory()) walk(p, out);
+      else if (e.name.endsWith('.md')) out.push(p);
+    }
+    return out;
+  };
+  const files = nonEmpty([...walk(resolve(repo, 'guide')), resolve(repo, 'README.md')], 'user-guide markdown files');
 
-  // GitHub heading -> slug: lowercase, strip non-alphanumeric (except space/hyphen),
-  // spaces -> hyphens. (No de-duplication suffixes needed; the guide has unique slugs.)
-  const slugify = (h) => h.replace(/^#+\s+/, '').toLowerCase()
-    .replace(/[^a-z0-9 -]/g, '').replace(/ +/g, '-');
-  const slugsOf = (path) => new Set(
-    readFileSync(path, 'utf8').split('\n')
-      .filter(l => /^#{1,6}\s/.test(l)).map(slugify));
-
-  const slugCache = new Map();
-  const getSlugs = (path) => {
-    if (!slugCache.has(path)) slugCache.set(path, slugsOf(path));
-    return slugCache.get(path);
+  // GitHub heading -> slug: lowercase, strip non-alphanumeric (except space/hyphen), spaces -> hyphens.
+  const slugify = h => h.replace(/^#+\s+/, '').toLowerCase().replace(/[^a-z0-9 -]/g, '').replace(/ +/g, '-');
+  const cache = new Map();
+  const slugsOf = p => {
+    if (!cache.has(p)) cache.set(p, new Set(readFileSync(p, 'utf8').split('\n').filter(l => /^#{1,6}\s/.test(l)).map(slugify)));
+    return cache.get(p);
   };
 
+  let links = 0;
   const broken = [];
-  for (const srcPath of files) {
-    const text = readFileSync(srcPath, 'utf8');
-    const srcDir = dirname(srcPath);
-    for (const m of text.matchAll(/\]\(([^)\s]*?)#([a-z0-9-]+)\)/gi)) {
-      const [, rel, frag] = m;
-      const targetPath = rel ? resolve(srcDir, rel) : srcPath; // empty rel = same file
-      let slugs;
-      try { slugs = getSlugs(targetPath); }
-      catch { broken.push(`${srcPath}: target file missing for #${frag} (${rel})`); continue; }
-      if (!slugs.has(frag)) broken.push(`${srcPath}: #${frag} -> ${rel || '(self)'} (no such heading)`);
+  for (const src of files) {
+    // A link inside a code span is SYNTAX, not a link: writing-and-formatting teaches `![alt](url)`
+    // in a table, and a checker that follows it goes looking for a file called "url".
+    const text = readFileSync(src, 'utf8').replace(/`[^`\n]*`/g, ' ');
+    const dir = dirname(src), rel = p => p.replace(repo + '/', '');
+    for (const m of text.matchAll(/\]\(([^)\s]+)\)/g)) {
+      const url = m[1];
+      if (/^(?:https?:|mailto:|data:)/i.test(url)) continue;
+      if (url.startsWith('#')) {                       // same-file anchor
+        links++;
+        if (!slugsOf(src).has(url.slice(1))) broken.push(`${rel(src)}: #${url.slice(1)} is not a heading in this file`);
+        continue;
+      }
+      const [path, frag] = url.split('#');
+      links++;
+      const target = resolve(dir, path);
+      if (!existsSync(target)) { broken.push(`${rel(src)}: ${path} does not exist`); continue; }
+      if (!frag || !path.endsWith('.md')) continue;    // a directory link (README -> guidance/) has no headings
+      if (!slugsOf(target).has(frag)) broken.push(`${rel(src)}: #${frag} -> ${path} (no such heading)`);
     }
   }
+  assert.ok(files.length >= 20, `the census must walk the guide tree, found ${files.length} files`);
+  assert.ok(links >= 250, `the census must see the guide's links, found ${links}`);
   assert.deepEqual(broken, [],
-    `Broken anchor links in the user guide (heading renamed or anchor typo):\n  ${broken.join('\n  ')}`);
+    `Broken links in the user guide (file renamed, heading renamed, or a typo):\n  ${broken.join('\n  ')}`);
 });
 
 // ── Cross-surface guard: in-app GUIDE vs the web guide markdown ────────────────
@@ -18379,9 +18420,187 @@ test('due dates: front-door wiring (src pins)', () => {
 
 
 // ─── journal pure cores ───────────────────────────────────────────────────────
+test('fnBody stops at its own closing brace: no body swallows a top-level function', () => {
+  // The harness guarding itself. codeMask's comment claimed a `/` after `return`/`typeof`/`case`
+  // opens a regex; the code tested only the previous punctuation CHARACTER, so
+  // `return /^https?:\/\//i.test(x)` scanned as division, the mask desynchronised across the line,
+  // and fnBody skipped that function's own `}`. Seven of 1530 functions came back wrong -- five
+  // over-wide (rowsToCsv returned 5757 characters of a 147-character function, 39x its own size)
+  // and two truncated. Over-wide is the silent direction: `fnBody(src, f).includes(x)` then passes
+  // on code from a function that is not f, which is the widened-haystack failure #1141 names,
+  // arriving through the helper written to prevent it.
+  //
+  // A census, not a case: index.html declares every top-level function at column 0, so a body that
+  // contains one has run past its own end. Inner named functions are indented and unaffected.
+  const heads = nonEmpty([..._src.matchAll(/^function (\w+)\s*\(/gm)].map(m => m[1]), 'top-level functions');
+  assert.ok(heads.length > 500, `the census must see the whole source, found ${heads.length} functions`);
+  const bad = [];
+  for (const name of heads) {
+    let body;
+    try { body = fnBody(_src, name); } catch (e) { bad.push(`${name}: ${e.message}`); continue; }
+    const inner = body.slice(1).match(/\nfunction (\w+)\s*\(/);
+    if (inner) bad.push(`${name}'s body runs past its own end and into ${inner[1]}`);
+  }
+  assert.deepEqual(bad.slice(0, 8), [], 'fnBody over-ran, so every pin on these searched the wrong code:\n  ' + bad.join('\n  '));
+
+  // …and the specific shape that caused it, kept as a named case so the fix is legible. fnBody
+  // returns the BLOCK (from the opening brace), so the whole of this one-liner is 56 characters.
+  const one = fnBody(_src, 'isRemoteUrl');
+  assert.equal(one, "{ return /^https?:\\/\\//i.test(String(u || '').trim()); }",
+    'a one-line function opening with a regex must come back as exactly its own block');
+});
+
+// ── a frozen result that is only PARTLY unresolved (#1361's sibling) ──────────────────────────
+test('unresolvedRefs — the names inside {name?} markers, in order, deduped; keyword sentinels excluded', () => {
+  assert.deepEqual([...c.unresolvedRefs('The {adjective?} {noun?}')], ['adjective', 'noun']);
+  assert.deepEqual([...c.unresolvedRefs('{adjective?} and {adjective?}')], ['adjective'], 'deduped');
+  assert.deepEqual([...c.unresolvedRefs('The Rusty Crown')], [], 'a clean result reports nothing');
+  assert.deepEqual([...c.unresolvedRefs('')], []);
+  assert.deepEqual([...c.unresolvedRefs(null)], [], 'null is not a crash');
+  assert.deepEqual([...c.unresolvedRefs('{w.damage?}')], ['w.damage'], 'a dotted field read is one name');
+  // The keyword sentinels say a KEYWORD construct failed, not that a name is missing. Reporting
+  // them would tell the reader to `{rule meter: option | option}`, which is nonsense advice.
+  for (const kw of ['cond', 'COND', 'markov', 'est', 'meter'])
+    assert.deepEqual([...c.unresolvedRefs(`x {${kw}?} y`)], [], `{${kw}?} is a keyword sentinel, not a name`);
+});
+
+test('unresolvedNote — a name that resolves NOW says so; one that does not gets the plain-text sentence', () => {
+  const rules = Object.create(null); rules.adjective = 'Rusty | Salted';
+  const vars = Object.create(null); vars.hp = 12;
+
+  // resolves now → the #1361 case in a different tense: not missing, just older than the rule.
+  const late = c.unresolvedNote('The {adjective?} Crown', rules, vars, 're-generate');
+  assert.match(late, /adjective/);
+  assert.match(late, /has a value now/);
+  assert.match(late, /Click to re-generate$/, 'the advice ends in the verb its own pill offers');
+  assert.match(c.unresolvedNote('{adjective?}', rules, vars, 'draw again'), /Click to draw again$/);
+
+  // still missing → the SAME words plain text uses for the same miss, not a second phrasing.
+  const gone = c.unresolvedNote('The {nosuch?} House', rules, vars, 're-generate');
+  assert.equal(gone, c.braceAttemptReason('nosuch', rules, vars),
+    'a missing name must be explained exactly as it is when loose in a point (P1: one explanation)');
+
+  // a mix reports the MISSING one: a click fixes the other, and cannot fix this.
+  assert.equal(c.unresolvedNote('{adjective?} {nosuch?}', rules, vars, 're-generate'),
+    c.braceAttemptReason('nosuch', rules, vars));
+
+  // a variable counts as resolving it, not just a rule
+  assert.match(c.unresolvedNote('{hp?} left', rules, vars, 're-roll'), /has a value now/);
+  assert.equal(c.unresolvedNote('The Rusty Crown', rules, vars, 're-generate'), '', 'a clean result says nothing');
+});
+
+test('every pill that shows a FROZEN result explains an unresolved reference in it', () => {
+  // The census. A result is expanded once, at creation, so any pill that displays one can freeze a
+  // {name?} marker into it -- and before this, four members did, under chrome that said they were
+  // fine. The two that were right (the whole-result empty branch, and #1361's conditional) are the
+  // reason this is a sibling omission rather than a missing feature: the capability existed.
+  //
+  // Each row asserts the note is COMPUTED, CONSUMED and MARKED. The first draft asserted only that
+  // `unresolvedNote(` appeared in the body, and its kill-mutation survived: deleting the line that
+  // puts the note in the tip left the call in place, so the guard still passed while the pill went
+  // back to saying nothing. A call site is not a use.
+  const FAMILY = [
+    { fn: 'renderGrammarPill', verb: 're-generate', consumes: /: unresNote \? unresNote/,     marks: /stale \|\| unresNote \? ' gr-stale'/ },
+    { fn: 'renderSeqGenPill',  verb: 'draw again',  consumes: /: seqNote \? seqNote/,         marks: /seqNote \? ' gr-stale'/ },
+    { fn: 'renderVarPill',     verb: 're-roll',     consumes: /: pickNote \? pickNote/,       marks: /pickNote\) cls \+= ' var-stale'/ },
+  ];
+  const bad = [];
+  for (const { fn, verb, consumes, marks } of FAMILY) {
+    const body = fnBody(_src, fn);
+    if (!/unresolvedNote\s*\(/.test(body)) bad.push(`${fn} never asks for the note`);
+    else if (!body.includes(`'${verb}'`))   bad.push(`${fn} must ask with its own verb (${verb}), or the advice names a gesture it does not offer`);
+    if (!consumes.test(body)) bad.push(`${fn} computes the note and never shows it`);
+    if (!marks.test(body))    bad.push(`${fn} shows the note only in a tip, which is invisible until you hover`);
+  }
+  assert.deepEqual(bad, [], 'a pill that shows a frozen result and never explains its markers:\n  ' + bad.join('\n  '));
+
+  // The mark has to exist as a rule, or the class is decoration. Same --info dot as the grammar
+  // pill's, so one state reads one way (P1).
+  assert.match(_src, /\.var-pill\.var-stale::after\{content:''[^}]*background:var\(--info\)/,
+    'var-stale must actually paint the same --info dot the grammar pill uses');
+
+  // The escape that made the reason safe to put in an attribute at all: braceAttemptReason quotes
+  // the name it reports, and the pick pill interpolated its title raw.
+  assert.match(fnBody(_src, 'renderVarPill'), /title="\$\{escQ\(title\)\}"/,
+    'the pick pill must escape its title; the reason it now carries contains quotes');
+});
+
 test('todayISO returns YYYY-MM-DD shape', () => {
   const iso = c.todayISO();
   assert.match(iso, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('todayISO is the REAL day in the REAL calendar, even under a fiction calendar (#653: the journal is IRL)', () => {
+  // The journal and the roll log record what you ACTUALLY did, so their day rungs are Gregorian --
+  // #653 decided that and three separate places already depend on it: resolveCalendarId maps the
+  // journal subtree to CAL_GREGORIAN, the timeline's journal collector reads the rungs with a bare
+  // Date.UTC, and logRoll stamps a wall-clock HH:MM inside the day it files. todayISO defaulted BOTH
+  // of its seams to activeCalendar(), so in a custom-calendar document it NAMED those rungs in the
+  // fiction: an entry written today landed under 1204/04/12 and the timeline plotted it in the year
+  // 1204. The Chronicle is the fiction-dated log; the journal is not.
+  const cal = { id:'vale', name:'Calendar of the Vale', epochDay:0,
+    months: Array.from({ length:12 }, (_, i) => ({ name:'M' + (i + 1), days:30 })),
+    week: { length:7, days:['a','b','c','d','e','f','g'] },
+    eras: [{ name:'AE', yearZero:1200 }], current: 1181 };
+  // An INDEPENDENT oracle for "today": the same local y-m-d dueDateToday's wall-clock branch packs.
+  const now = new Date();
+  const realISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  c._context.__calFixture = cal;
+  try {
+    vm.runInContext('root.calendar = __calFixture; resetDocCaches();', c._context);
+    // the fiction really IS active — without this the assertion below could pass vacuously
+    assert.equal(c.dueDateToday(), 1181, 'the fixture calendar must be the active one');
+    assert.equal(c.formatEpochDays(c.dueDateToday()), '1204-04-12', 'a document date reads in the fiction');
+    // …and the journal's day ignores it, both halves: the DAY (dueDateToday(null)) and the LABEL
+    // (formatEpochDays(…, null)). Getting either wrong reproduces the bug on its own.
+    assert.equal(c.todayISO(), realISO, 'todayISO must be the real day in the real calendar');
+  } finally {
+    vm.runInContext('root.calendar = null; resetDocCaches();', c._context);
+  }
+});
+
+test('every journal and roll-log surface takes its day from todayISO, and none formats its own', () => {
+  // The census behind the fix above. One shared seam is the only reason a one-line change could
+  // repair six surfaces at once; a seventh that formatted its own date would re-open the defect for
+  // itself alone and nothing would notice, because every OTHER surface would still be right.
+  //
+  // The family is READ OUT OF THE SOURCE, not listed here. A hand-kept roster of an enumerable
+  // family is a census that stops counting the moment the family grows -- the exact shape this
+  // suite keeps finding in the app, and twice in its own guards.
+  let checked = 0;
+  const bad = [];
+  for (const m of _src.matchAll(/^function (\w+)\s*\(/gm)) {
+    const name = m[1];
+    let body;
+    try { body = fnBody(_src, name); } catch { continue; }
+    if (name === 'todayISO' || !/\btodayISO\(\)/.test(body)) continue;   // not a dated real-world surface
+    checked++;
+    // It may not mint its own label: formatEpochDays here would re-read the ACTIVE calendar and
+    // re-fiction the very rung todayISO just kept real.
+    if (/formatEpochDays\s*\(/.test(body))
+      bad.push(`${name} formats its own day beside todayISO()'s`);
+  }
+  assert.ok(checked >= 4, `the census must find the dated journal/roll-log surfaces, found ${checked}`);
+  assert.deepEqual(bad, [], 'a real-world log that dates itself:\n  ' + bad.join('\n  '));
+
+  // The reader side of the same contract, pinned so the pair cannot drift apart silently: the
+  // timeline parses journal rungs as Gregorian outright. If that ever stops being true, todayISO's
+  // two nulls need re-deciding with it.
+  assert.ok(/Gregorian, regardless of any active fiction calendar/.test(_src),
+    'the timeline no longer declares journal rungs Gregorian; re-examine todayISO with it');
+  assert.ok(fnBody(_src, 'todayISO').includes('formatEpochDays(dueDateToday(null), null)'),
+    'todayISO must ask for the real day AND the real calendar; either default re-fictions the journal');
+
+  // The same claim on the two surfaces a user reads. Both said "real" while the code said fiction,
+  // which is how the defect survived: every DOCUMENT was right, so a reader who checked the docs
+  // found agreement, and only the running app disagreed with all of them.
+  const inApp = between(_src, "id:'custom-calendars'", 'related:');
+  assert.match(inApp, /journal always reads the real calendar/,
+    "the in-app custom-calendars help must still say the journal is real, or the code's nulls lose their reason");
+  const dates = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'dates-and-planning.md'), 'utf8');
+  assert.match(dates.replace(/\s+/g, ' '), /journal\*\* always reads the \*\*real \(Gregorian\) calendar/,
+    'the dates guide must still say the journal is Gregorian; it and the code are one claim');
 });
 
 test('journalFileName: one file per day', () => {
@@ -29896,6 +30115,1018 @@ test('the shipped generators demo actually generates (its rules register on load
   // ({rule rulename: a | b | c} written as an illustration really did register `rulename`).
   for (const junk of ['rulename', 'itemname.field'])
     assert.ok(!rules[junk], `"${junk}" is an illustration and must be backtick-escaped, not declared`);
+});
+
+test('EVERY solo-RPG demo resolves its own rule references (the census the last two fixes lacked)', () => {
+  // THE THIRD TIME. This same bug -- a table written as bare `name: a | b` text, which registers
+  // nothing, so every {name} call site renders as literal characters -- has now been found and fixed
+  // three times: #810 (index.html's embedded example plus oracle-play-demo), the generators demo
+  // above, and cairn/maze-rats/ironsworn. Each earlier fix pinned only the files IT repaired and
+  // never looked sideways, so the next instance shipped with the suite green. #810 did not even
+  // reach oracle-play.md, one directory over, which still taught the dead form until this change.
+  // CLAUDE.md's own rule: "Check the SIBLINGS, not just the site ... where the family is enumerable
+  // from source, leave a census ratchet so the next omission fails a test." The family is
+  // readdirSync over guide/solo-rpg. This is that ratchet, and it is why a NEW demo cannot regress.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  assert.ok(demos.length >= 13, `expected the shipped 13+ demos, found ${demos.length}`);
+
+  // OPML text="" attributes, XML-unescaped, with backticked spans REMOVED. The demos are the only
+  // input, so a small reader beats dragging in a parser (fromOpml needs a DOMParser Node does not
+  // have). The backtick strip models what the app does: promoteLoadedShorthand
+  // leaves a backticked `{rule name: option | option}` as literal documentation rather than
+  // declaring a rule called `name`. Modelling that is not optional: while writing this fix that
+  // exact illustration went into three demo headers UNESCAPED, and it really did register a junk
+  // `name` rule in all three. A census that counts an illustration as a declaration calls that
+  // healthy. Bare keywords are correctly accused, not exempted -- {today}, {oracle}, {roll} and
+  // {shuffle} were each driven against the real app and every one renders as literal text.
+  const texts = xml => [...xml.matchAll(/text="([^"]*)"/g)].map(m => m[1]
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#10;/g, '\n').replace(/&amp;/g, '&')
+    .replace(/`[^`]*`/g, ' '));
+  // EVERY balanced {...} body, at EVERY depth. Top-level-only was the first draft, and the
+  // `solo-rpg-census-hyphen-rule` mutant SURVIVED it: a hyphenated `{rule spell-form: ...}` fails to
+  // register, but the reference that breaks is `{spell_form}` nested INSIDE `{rule spell: a
+  // {spell_form} {spell_effect}}`, which a top-level scan consumes as part of the outer body and
+  // never inspects. A guard that cannot see the call site cannot guard it.
+  const bodies = t => {
+    const out = [], stack = [];
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] === '{') stack.push(i);
+      else if (t[i] === '}' && stack.length) out.push(t.slice(stack.pop() + 1, i));
+    }
+    return out;
+  };
+  // A NAME LOOKUP and nothing else: a bare identifier, optionally dotted/modified. Every other
+  // {...} form (dice, {= math}, {a | b}, {kw: ...}, {x := 1}, {2x: ...}) is excluded by shape, so
+  // this census only ever accuses the thing it is about.
+  //
+  // HYPHENS ARE DELIBERATELY INCLUDED, and that is the whole point of the `-` in the class. A
+  // hyphenated name cannot be declared (ruleDeclParts rejects it) and cannot resolve, so a demo
+  // that spells BOTH its declaration and its reference with a hyphen is entirely dead -- and the
+  // first version of this census, whose identifier class had no `-`, skipped both halves and
+  // called that demo healthy. Matching hyphens means such a reference is always accused, which is
+  // correct: there is no way to make it resolve.
+  const IS_LOOKUP = /^[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/;
+
+  let checked = 0;
+  const broken = [];
+  for (const { name, file } of demos) {
+    const all = texts(readFileSync(file, 'utf8'));
+    const rules = Object.create(null), vars = Object.create(null);
+    for (const t of all) for (const b0 of bodies(t)) {
+      const b = b0.trim();                               // references are trimmed below; declarations must be too,
+      const d = c.ruleDeclParts(b);                      // or a legal `{ edge := 2 }` registers nothing and every
+      if (d) { rules[d.name.toLowerCase()] = true; continue; }   // {edge} in that demo is falsely accused
+      const v = /^([A-Za-z_][A-Za-z0-9_]*)\s*:=/.exec(b);   // {name := value}
+      if (v) vars[v[1].toLowerCase()] = true;
+    }
+    for (const t of all) for (const b of bodies(t)) {
+      const body = b.trim();
+      if (!IS_LOOKUP.test(body)) continue;
+      if (c.parseDice(body)) continue;                   // d20, 2d6 read as a lookup-shaped token
+      const base = body.split('.')[0].toLowerCase();
+      const dotted = body.toLowerCase();
+      checked++;
+      if (rules[dotted] || rules[base] || vars[dotted] || vars[base]) continue;
+      broken.push(`${name}: {${body}} has no {rule ${base}: ...} or {${base} := ...} in its own demo`);
+    }
+  }
+  assert.ok(checked >= 20, `the census must actually examine call sites, examined ${checked}`);
+  assert.deepEqual(broken, [], 'every {name} in a shipped demo must resolve:\n  ' + broken.join('\n  '));
+});
+
+test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)', () => {
+  // `{w := weapon}` reads `weapon` as a FORMULA, finds no variable of that name and resolves to
+  // nothing, so both {w} and {w.damage} stayed on the page as literal characters -- in the guide's
+  // own answer to the one problem it raises. The working form wraps the draw: `{w := {weapon}}`.
+  // Driven check rather than a source pin: collect the demo's rules and variables the way the app
+  // does, then confirm each declared pick actually names something that exists.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  let checked = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    const xml = readFileSync(file, 'utf8');
+    const texts = [...xml.matchAll(/text="([^"]*)"/g)].map(m => m[1]
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+      .replace(/&#10;/g, '\n').replace(/&amp;/g, '&')
+      .replace(/`[^`]*`/g, ' '));            // backticked illustrations never promote
+    const rules = new Set();
+    for (const t of texts) for (const m of t.matchAll(/\{rule\s+([^:}]+):/g)) {
+      const d = c.ruleDeclParts('rule ' + m[1] + ':x');
+      if (d) rules.add(d.name.toLowerCase());
+    }
+    // `{name := body}` where body is a BARE identifier is the trap: it is read as a formula.
+    for (const t of texts) for (const m of t.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\s*:=\s*([^{}]*)\}/g)) {
+      const [, nm, rhs] = m;
+      const body = rhs.trim();
+      checked++;                                              // every binding the demos declare, so the
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(body)) continue;   // floor below measures that this guard RAN
+      if (rules.has(body.toLowerCase()))
+        bad.push(`${name}: {${nm} := ${body}} names the RULE "${body}" but reads it as a formula; wrap the draw as {${nm} := {${body}}}`);
+    }
+  }
+  assert.ok(checked >= 5, `the demos declare several {name := ...} bindings; this guard saw ${checked}`);
+  assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
+  // ...and a POSITIVE floor. Everything above only fires on a MALFORMED binding, so deleting the
+  // one binding this defect was found in would leave the guard passing over nothing. The generators
+  // demo is where the trap lives and where the working form has to keep being demonstrated.
+  const gen = readFileSync(resolve(dir, 'generators', 'generators-demo.opml'), 'utf8');
+  assert.match(gen, /\{[A-Za-z_][A-Za-z0-9_]*\s*:=\s*\{[^{}]+\}\}/,
+    'the generators demo must keep demonstrating a pick bound with the inner braces, {w := {weapon}}');
+});
+
+test('the solo-RPG docs name the licence the repository actually ships', () => {
+  // Five places under guide/solo-rpg said Pointliner is MIT licensed while LICENSE is AGPLv3, and
+  // one of them was inside cairn-demo.opml, where it is the whole licence notice an .opml-only
+  // reader receives. It is the one error in this folder that misleads about legal obligations
+  // rather than about a feature, and it had been wrong since the folder shipped, so it gets a guard
+  // read out of LICENSE itself rather than a hardcoded string.
+  const licence = readFileSync(new URL('../LICENSE', import.meta.url), 'utf8');
+  const isAGPL = /GNU AFFERO GENERAL PUBLIC LICENSE/i.test(licence);
+  assert.ok(isAGPL, 'LICENSE is no longer AGPLv3; this guard and the docs both need rewriting');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  const walk = d => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const full = resolve(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(md|opml)$/.test(e.name)) files.push({ n: e.name, t: readFileSync(full, 'utf8') });
+    }
+  };
+  walk(dir);
+  nonEmpty(files, 'solo-rpg documentation files');
+
+  const wrong = [];
+  let mentions = 0;
+  for (const { n, t } of files)
+    for (const m of t.matchAll(/[^.\n]{0,90}Pointliner[^.\n]{0,90}licen[cs]e[^.\n]{0,40}/gi)) {
+      const sentence = m[0];
+      mentions++;
+      // The claim is about Pointliner's OWN licence, so it must not name a different one. CC terms
+      // legitimately appear in the same breath as the game content they cover, hence the AND.
+      if (/\bMIT\b/.test(sentence)) wrong.push(`${n}: ${sentence.trim().slice(0, 100)}`);
+    }
+  assert.ok(mentions >= 3, `the folder states Pointliner's licence in several places; saw ${mentions}`);
+  assert.deepEqual(wrong, [], 'LICENSE is AGPLv3; these say otherwise:\n  ' + wrong.join('\n  '));
+});
+
+test('every solo-RPG doc that names a CC licence also says which licence the APP is under', () => {
+  // The other half of the licence guard above. Three guides adapt an openly-licensed game and two
+  // of them ended with "This guide itself is offered under the same CC BY 4.0 terms" and stopped
+  // there, which reads as though the CC terms reach the repository. Only cairn carried the sentence
+  // that says they do not. The demos matter more, not less: an .opml a reader was handed carries no
+  // other notice at all, so the file that travels alone is the file that has to be complete.
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  assert.ok(/GNU AFFERO GENERAL PUBLIC LICENSE/i.test(readFileSync(resolve(repo, 'LICENSE'), 'utf8')),
+    'LICENSE is no longer AGPLv3; this guard and every notice it checks need rewriting');
+
+  const dir = resolve(repo, 'guide', 'solo-rpg');
+  const files = [];
+  const walk = d => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const full = resolve(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(md|opml)$/.test(e.name)) files.push({ n: relative(dir, full), t: readFileSync(full, 'utf8') });
+    }
+  };
+  walk(dir);
+  nonEmpty(files, 'solo-rpg documentation files');
+
+  let claiming = 0;
+  const silent = [];
+  for (const { n, t } of files) {
+    if (!/\bCC BY(?:-SA)?\b|Creative Commons/i.test(t)) continue;   // nothing borrowed, nothing to disentangle
+    claiming++;
+    if (!/\bAGPL/i.test(t)) silent.push(`${n}: names a Creative Commons licence and never says Pointliner is AGPLv3`);
+  }
+  assert.ok(claiming >= 6, `the census must find the CC-licensed docs, found ${claiming}`);
+  assert.deepEqual(silent, [], "a borrowed licence with no word on the app's own:\n  " + silent.join('\n  '));
+});
+
+test('no solo-RPG guide teaches a progress token the renderer leaves as plain text', () => {
+  // ironsworn.md offered `[3/10]` as a "manual" progress cookie. COOKIE_ANY accepts [/] and [%] with
+  // an optional scope word or digit INSIDE the brackets, and CLOCK_RE needs the `o` prefix, so a
+  // bare bracket-fraction renders as literal characters with no P4 feedback at all. campaign-clocks
+  // warns readers off that exact token, so the two guides contradicted each other.
+  // The two shapes are restated here rather than eval'd out of the source, because pulling a regex
+  // literal back out of a file with a regex is exactly the kind of cleverness that breaks quietly.
+  // The source pins below are what keep this restatement honest: change either definition in
+  // index.html and this test fails, pointing at itself.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(src.includes(String.raw`COOKIE_ANY = /\[(?:\/|%)(?:self|children|subtree|\d+)?\]/`),
+    'COOKIE_ANY has changed shape; update the restatement below to match');
+  assert.ok(src.includes(String.raw`CLOCK_RE = /\[o (\d*)\/(\d+)\]/g`),
+    'CLOCK_RE has changed shape; update the restatement below to match');
+  const COOKIE = /\[(?:\/|%)(?:self|children|subtree|\d+)?\]/;
+  const CLOCK = /\[o (\d*)\/(\d+)\]/;
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`])
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* optional */ }
+  nonEmpty(files, 'solo-rpg files');
+
+  let seen = 0;
+  const dead = [];
+  for (const { n, t } of files)
+    for (const m of t.matchAll(/\[[^\]\n]{1,12}\]/g)) {
+      const tok = m[0];
+      if (/^\[\[/.test(tok) || /^\[[ x]\]$/i.test(tok)) continue;   // an internal link or a to-do box
+      if (!/[\/%]/.test(tok)) continue;                              // only progress-shaped tokens
+      if (/[A-Z]/.test(tok)) continue;                               // a metavariable placeholder: [o N/M]
+      seen++;
+      if (COOKIE.test(tok) || CLOCK.test(tok)) continue;
+      // A guide may SHOW the dead form to warn readers off it, which campaign-clocks does on
+      // purpose; that sentence is the opposite of the defect, so read the surrounding words.
+      const around = t.slice(Math.max(0, m.index - 130), m.index + 130);
+      if (/plain text|not a (clock|cookie)|is inert|does nothing|literal/i.test(around)) continue;
+      dead.push(`${n}: ${tok} renders as plain text (a cookie is [/], a clock is [o 3/10])`);
+    }
+  assert.ok(seen >= 4, `the census must see progress tokens, saw ${seen}`);
+  assert.deepEqual([...new Set(dead)], [], 'an inert progress token:\n  ' + [...new Set(dead)].join('\n  '));
+});
+
+test('a solo-RPG demo ships the clock its guide tells the reader to click', () => {
+  // Two drive modes, one control. A clock with a WRITTEN count renders role="button" and answers a
+  // click (Shift-click steps back); a COMPUTED [o /M] is a readout of its checkbox children, carries
+  // no role and is inert to that gesture. campaign-clocks taught both modes, told the reader twice to
+  // click a ring, and shipped four clocks of which every one was computed -- so the gesture the guide
+  // described could not be performed anywhere in the file it shipped with. Prose alone cannot tell
+  // you that: both modes spell the same token, and both render a ring that looks identical.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(src.includes(String.raw`CLOCK_RE = /\[o (\d*)\/(\d+)\]/g`),
+    'CLOCK_RE has changed shape; update the restatement below to match');
+  assert.ok(src.includes('<span class="clock clock-computed${full}" aria-label='),
+    'the computed clock span has changed; re-check that it is still NOT a control');
+  assert.ok(src.includes('<span class="clock${full}" role="button" ${INLINE_CTL}'),
+    'the manual clock span has changed; re-check that it is still the clickable one');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const cases = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, md: resolve(dir, name, `${name}.md`), demo: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(c => { try { readFileSync(c.md); readFileSync(c.demo); return true; } catch { return false; } }),
+    'solo-rpg guide/demo pairs');
+
+  // parseClock's bounds, restated: an out-of-range count is not a clock at all, it stays literal
+  // text, so [o 9/6] would ship a "clickable ring" that is three plain characters.
+  const manualClocks = (t) => [...t.replace(/`[^`]*`/g, ' ').matchAll(/\[o (\d+)\/(\d+)\]/g)]
+    .filter(m => { const d = Number(m[1]), tot = Number(m[2]); return tot >= 1 && tot <= 99 && d <= tot; });
+
+  let taught = 0;
+  const bad = [];
+  for (const { name, md, demo } of cases) {
+    const guide = readFileSync(md, 'utf8'), xml = readFileSync(demo, 'utf8');
+    const demoText = [...xml.matchAll(/text="([^"]*)"/g)].map(m => m[1]).join('\n');
+    // "click the ring" in either half: the guide teaches it, and the demo's own how-to repeats it.
+    const teaches = [guide, demoText].filter(t => /\bclick[^.\n]{0,40}\bring\b/i.test(t));
+    if (!teaches.length) continue;
+    taught++;
+    if (!manualClocks(demoText).length)
+      bad.push(`${name}: the docs say to click a ring, but the demo ships no manual [o N/M] clock ` +
+        `(every ring in it is a computed readout, which carries no role="button" and ignores a click)`);
+  }
+  assert.ok(taught >= 1, `the census must find a guide that teaches the click, found ${taught}`);
+  assert.deepEqual(bad, [], 'a clock gesture with nothing to perform it on:\n  ' + bad.join('\n  '));
+});
+
+test('a demo that NAMES a progress token in prose keeps the token inert', () => {
+  // Backticks stop the render (driven: `[o /6]` comes out as <code>, [o /6] comes out as a ring), so
+  // an un-escaped token inside an explanatory sentence gets EATEN by the thing it is explaining:
+  // campaign-clocks shipped "A clock is one point whose text carries an [o /6] clock", which the
+  // reader saw as "carries an o 0/6 clock" -- the notation missing from its own definition, plus two
+  // stray clickable rings sitting in prose. Every gauge the demos ship on purpose ends the line it
+  // measures; a token that keeps a sentence going after it is a MENTION, and a mention needs the
+  // backticks. (This is the [...] half of a rule already enforced for {...} elsewhere in this file.)
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  const LIVE = /\[o \d*\/\d+\]|\[(?:\/|%)(?:self|children|subtree|\d+)?\]/g;
+
+  let live = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/text="([^"]*)"/g)) {
+      const t = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      if (/^\s*-\s*\[[ x]\]/i.test(t)) continue;                       // a checkbox child, not a gauge
+      const masked = t.replace(/`[^`]*`/g, s => ' '.repeat(s.length));  // code spans render literally
+      for (const g of masked.matchAll(LIVE)) {
+        live++;
+        const after = t.slice(g.index + g[0].length);
+        if (/^\s*[A-Za-z]/.test(after))
+          bad.push(`${name}: ${g[0]} renders as a gauge mid-sentence -> ${JSON.stringify(t.slice(Math.max(0, g.index - 40), g.index + 40))}`);
+      }
+    }
+  }
+  assert.ok(live >= 5, `the census must see live progress tokens in the demos, saw ${live}`);
+  assert.deepEqual(bad, [], 'a named token the renderer ate:\n  ' + bad.join('\n  '));
+});
+
+test('a demo board that groups by a status column declares the states it groups into', () => {
+  // The npc-faction board grouped nothing: lanes come from knownStates(), which is the four
+  // built-ins plus whatever a sequence pill declares, and the demo declared none, so all four NPCs
+  // sat in a "No state" lane while the guide explained that CAPITALS made them lanes. Delete the
+  // {seq ...} pill again and the board silently reverts -- silently, because a base with no lanes
+  // still renders. So the declaration is pinned to the base that needs it.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  const BUILT_IN = new Set(['todo', 'next', 'waiting', 'done']);
+  let boards = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    const xml = readFileSync(file, 'utf8');
+    // Every sequence this document declares, kept SEPARATE. boardLanes picks exactly one owning
+    // sequence -- the one matching the first non-empty value in the grouped column -- and builds
+    // lanes from that sequence's states alone, so a value declared by a DIFFERENT sequence still
+    // lands in "No state". A first draft pooled every declared state into one set and would have
+    // called a two-sequence document healthy.
+    const sequences = [{ name: '(built-in)', states: [...BUILT_IN] }];
+    for (const m of xml.matchAll(/text="([^"]*)"/g)) {
+      const t = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      for (const b of t.matchAll(/\{seq\s+([^}]*)\}/g)) {
+        const d = c.seqDeclParts('seq ' + b[1]);
+        if (d) sequences.push({ name: d.name, states: d.states.map(x => String(x).toLowerCase()) });
+      }
+    }
+    // a base opening on a board, grouped by a column: every value in that column must be a state
+    for (const tag of xml.matchAll(/<outline\b([^>]*?)\/?>/g)) {
+      const attrs = tag[1];
+      if (!/_type="base"/.test(attrs)) continue;
+      const view = /_view="([^"]*)"/.exec(attrs);
+      if (!view || !/board/.test(view[1])) continue;
+      const gb = /groupBy&quot;:(\d+)/.exec(view[1]);
+      if (!gb) continue;
+      const col = Number(gb[1]);
+      const text = (/text="([^"]*)"/.exec(attrs) || [, ''])[1].replace(/&#10;/g, '\n').replace(/&quot;/g, '"');
+      const rows = text.split('\n').slice(2).filter(r => r.trim().startsWith('|'));
+      boards++;
+      const values = nonEmpty(rows, `${name} board rows`)
+        .map(r => (r.split('|').slice(1, -1).map(x => x.trim())[col] || '').toLowerCase());
+      const first = values.find(Boolean);
+      const owner = sequences.find(sq => sq.states.includes(first)) || sequences[0];
+      for (const v of values) {
+        if (!v || owner.states.includes(v)) continue;
+        const elsewhere = sequences.find(sq => sq !== owner && sq.states.includes(v));
+        bad.push(elsewhere
+          ? `${name}: board is owned by sequence "${owner.name}" but "${v}" belongs to "${elsewhere.name}", so that card lands in "No state"`
+          : `${name}: board groups by "${v}" but no {seq ...} declares it, so that card lands in "No state"`);
+      }
+    }
+  }
+  assert.ok(boards >= 1, `the guard must find a board-view base, found ${boards}`);
+  assert.deepEqual([...new Set(bad)], [], 'a board must declare the states it groups into:\n  ' + [...new Set(bad)].join('\n  '));
+});
+
+test('no solo-RPG demo indexes its own instructions as campaign content', () => {
+  // campaign-clocks shipped a headline "search the thread tag" board that returned 16 points, of
+  // which five were the demo's own instructions and one of its due dates sat on a prose header, so
+  // the agenda nudged the reader about a sentence. A tag or a date written into explanatory copy is
+  // indistinguishable from real content once the file is open.
+  //
+  // NOTE ON BACKTICKS, because it is counter-intuitive and cost a round to learn: escaping does NOT
+  // help here. tagHit runs its regex over the point's RAW TEXT, so `#thread` in backticks still
+  // matches a tag search even though it renders as literal code. Prose has to avoid the token
+  // itself. Backticks DO stop {date due: ...} from materialising a property, which is a different
+  // pipeline (promoteLoadedShorthand), so both fixes appear in that demo for different reasons.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  // An instruction reads as one: it addresses the reader or describes the demo.
+  const INSTRUCTIONAL = /\b(click|search|type|press|open|pick|choose|add|try|watch|note that|this demo|the demo below|in this demo|so you can see)\b/i;
+  let scanned = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/text="([^"]*)"/g)) {
+      const t = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      if (!INSTRUCTIONAL.test(t)) continue;
+      scanned++;
+      // A live tag in instructional copy joins the very index the instruction talks about. A tag
+      // INSIDE a {...} body does not: promoteLoadedShorthand moves it into the pill's sidecar, so
+      // the loaded point's text no longer carries it ({query: #thread} is the legitimate case).
+      const outsideBraces = t.replace(/\{[^{}]*\}/g, ' ');
+      // The lookbehind MATCHES tagHit's exactly, backtick included as an ordinary character rather
+      // than an escape. A first draft exempted `#thread` in backticks, which was the one thing this
+      // guard's own comment says does not work: tagHit's lookbehind is (?<![a-zA-Z0-9]) with no
+      // backtick, so a backticked tag still answers a tag search. Exempting it would have made the
+      // guard agree with the mistake instead of the engine.
+      for (const tag of outsideBraces.matchAll(/(?<![a-zA-Z0-9])#([a-z][\w-]*)(?![\w-])/gi))
+        bad.push(`${name}: instructional point carries a live #${tag[1]} tag -> ${JSON.stringify(t.slice(0, 70))}`);
+      // a date pill in instructional copy materialises a real due property and reaches the agenda
+      for (const d of t.matchAll(/\{date\s+(due|start)\s*:/g)) {
+        const at = d.index;
+        if (t.lastIndexOf('`', at) > t.lastIndexOf('`', Math.max(0, at - 200)) && /`[^`]*$/.test(t.slice(0, at))) continue;  // inside a code span
+        bad.push(`${name}: instructional point declares a real ${d[1]} date -> ${JSON.stringify(t.slice(0, 70))}`);
+      }
+    }
+  }
+  assert.ok(scanned >= 15, `the census must see instructional points, saw ${scanned}`);
+  assert.deepEqual(bad, [], 'demo instructions must not index themselves as content:\n  ' + bad.join('\n  '));
+});
+
+test('a demo Journal home sits where the journal door looks, in the shape it builds', () => {
+  // Two independent defects met in one subtree. findOrCreateNamedHome scans root.children ONLY, so
+  // the demo's Journal, buried three levels inside its own branch, was invisible to the door: click
+  // it on that exact file and the app appended a SECOND, empty top-level Journal, demonstrating the
+  // opposite of the feature. And findOrCreateDatedEntry nests year > month > day, while the demo
+  // drew a flat `2026-07-04`. A tidy-up that re-nests the home, or re-flattens the date, silently
+  // restores both, so the structure is pinned rather than the prose.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const file = resolve(dir, 'session-prep', 'session-prep-demo.opml');
+  const xml = readFileSync(file, 'utf8');
+
+  const body = xml.slice(xml.indexOf('<body>') + 6, xml.lastIndexOf('</body>'));
+  const stack = [{ text: '(root)', kids: [] }];
+  const rootNode = stack[0];
+  for (const m of body.matchAll(/<outline\b([^>]*?)(\/?)>|<\/outline>/g)) {
+    if (m[0] === '</outline>') { if (stack.length > 1) stack.pop(); continue; }
+    const t = /text="([^"]*)"/.exec(m[1]);
+    const node = { text: t ? t[1] : '', kids: [] };
+    stack[stack.length - 1].kids.push(node);
+    if (!m[2]) stack.push(node);
+  }
+  const home = rootNode.kids.find(k => k.text.trim() === 'Journal');
+  assert.ok(home, 'the Journal home must be a TOP-LEVEL point, because findOrCreateNamedHome only ' +
+    'scans root.children; nested anywhere else the journal door appends a second, empty one');
+
+  const year = nonEmpty(home.kids.filter(k => /^\d{4}$/.test(k.text.trim())), 'year rungs under Journal');
+  const month = nonEmpty(year[0].kids.filter(k => /^\d{2}$/.test(k.text.trim())), 'month rungs under the year');
+  const day = nonEmpty(month[0].kids.filter(k => /^\d{2}$/.test(k.text.trim())), 'day rungs under the month');
+  nonEmpty(day[0].kids, 'the day point must hold the session it is illustrating');
+  // and nothing anywhere may draw the flat form the app never builds
+  const flat = [...xml.matchAll(/text="(\d{4}-\d{2}-\d{2})"/g)].map(m => m[1]);
+  assert.deepEqual(flat, [], `the door nests year > month > day; a flat dated point is a shape it never creates: ${flat}`);
+});
+
+test('every search query a solo-RPG guide tells the reader to type actually parses', () => {
+  // campaign-calendar told the reader to search `due:>today` to find live threads, and `>` is
+  // strict: a thread due TODAY is excluded and then classified by the next clause as dead history
+  // safe to leave behind. The working inclusive form is `due:>today-1`, and `due:>=today` -- the
+  // one a reader would guess -- is rejected outright. A search that silently returns the wrong set
+  // is the worst shape of doc error here, because nothing looks broken.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`])
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* optional */ }
+  nonEmpty(files, 'solo-rpg files');
+
+  let checked = 0;
+  const bad = [];
+  for (const { n, t } of files)
+    // backticked spans only: a query is always shown as code, and prose containing a colon is not one
+    for (const m of t.matchAll(/`([^`\n]+)`/g)) {
+      const q = m[1].trim();
+      // a search term is `field:value`, with the operator families this app ships
+      if (!/^(due|start|is|has|in|tag)\s*:/.test(q) && !/^#[\w/-]+(\s+\w+:\S+)+$/.test(q)) continue;
+      checked++;
+      const parsed = c.parseSearchQuery(q);
+      const invalid = (parsed || []).filter(term => term && term.kind === 'invalid');
+      if (invalid.length)
+        bad.push(`${n}: \`${q}\` does not parse (${invalid.map(x => x.raw || x.value).join(', ')})`);
+    }
+  assert.ok(checked >= 5, `the census must see search queries, saw ${checked}`);
+  assert.deepEqual(bad, [], 'a search the guide tells the reader to type:\n  ' + bad.join('\n  '));
+});
+
+test('no solo-RPG guide claims two deck pills share one bag', () => {
+  // hex-crawl asserted "Every terrain pill in the demo shares the one deck (decks are keyed by
+  // their content)". Nothing keys a deck by its text: makeSeqGen mints a fresh key per pill and the
+  // bag lives in that point's own sidecar, so seven terrain pills are seven independent bags and
+  // three of them can each deal marsh first. The section's whole premise -- "a plain random pick can
+  // hand you marsh five hexes running, a deck fixes that" -- fails across hexes for that reason.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const body = fnBody(src, 'makeSeqGen');
+  assert.ok(body, 'makeSeqGen is where a deck record is minted');
+  assert.match(body, /key:\s*key\s*\|\|\s*grammarKey\(\)/,
+    'a deck still takes a fresh key when none is passed; if decks ever become content-keyed, ' +
+    'this guard is what should be rewritten, and hex-crawl.md can say "shares one deck" again');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`])
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* optional */ }
+  nonEmpty(files, 'solo-rpg files');
+
+  let sentences = 0;
+  const bad = [];
+  for (const { n, t } of files)
+    for (const para of t.split(/\n\s*\n/)) {
+      const flat = para.replace(/\s*\n\s*/g, ' ');
+      if (!/\bdecks?\b/i.test(flat)) continue;
+      for (const sentence of flat.split(/(?<=[.!?])\s+/)) {
+        if (!/\bdecks?\b/i.test(sentence)) continue;
+        sentences++;
+        if (/keyed by (their )?content|share[sd]? (the |one )?(same )?deck|one deck|single .{0,20}bag/i.test(sentence))
+          bad.push(`${n}: ${sentence.trim().slice(0, 110)}`);
+      }
+    }
+  assert.ok(sentences >= 5, `the guard must examine sentences about decks, saw ${sentences}`);
+  assert.deepEqual(bad, [], 'each deck pill has its own bag:\n  ' + bad.join('\n  '));
+});
+
+test('a guide that walks the reader through a dialog names its required fields', () => {
+  // campaign-calendar's FIRST instruction was blocked by a field it never mentioned: the Custom
+  // calendar dialog marks name, months and current as required and keeps its primary button
+  // disabled until all three are filled, and the guide's transcription showed four fields with the
+  // name missing. Everything downstream in that guide is gated behind a step that cannot complete.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const body = fnBody(src, 'openCalendarDialog');
+  assert.ok(body, 'openCalendarDialog is where the field list lives');
+  // Each field is `{ key: 'x', label: 'Y', ..., required: true }`, and some carry NESTED objects
+  // (the name field builds preset chips), so a flat [^{}] regex silently skipped exactly the field
+  // this defect was about: it found two of the three required fields and the guard passed over the
+  // gap. Scan with balanced braces, and cross-check the count against the source so a future field
+  // shape cannot quietly shrink the set again.
+  const required = [];
+  for (const m of body.matchAll(/\{\s*key:\s*'([a-z]+)'/g)) {
+    let depth = 0, end = m.index;
+    for (; end < body.length; end++) {
+      if (body[end] === '{') depth++;
+      else if (body[end] === '}' && --depth === 0) break;
+    }
+    const obj = body.slice(m.index, end + 1);
+    const label = /label:\s*'([^']+)'/.exec(obj);
+    if (label && /required:\s*true/.test(obj)) required.push({ key: m[1], label: label[1] });
+  }
+  nonEmpty(required, 'required fields on the Custom calendar dialog');
+  assert.equal(required.length, (body.match(/required:\s*true/g) || []).length,
+    'every required:true in the dialog must be attributed to a field; a mismatch means this scan is missing one');
+
+  const guide = readFileSync(
+    new URL('../guide/solo-rpg/campaign-calendar/campaign-calendar.md', import.meta.url), 'utf8');
+  // Scoped to the FENCED transcription, not the whole file: the block is what a reader copies while
+  // filling the dialog, and a field named only in surrounding prose is one they can still miss. It
+  // also keeps the guard honest -- a sentence added elsewhere must not be able to satisfy it.
+  const fences = nonEmpty(
+    [...guide.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map(m => m[1]),
+    'fenced blocks in campaign-calendar.md');
+  const transcription = fences.filter(f => /Months, one per line/.test(f)).join('\n');
+  assert.ok(transcription, 'the guide still transcribes the dialog in a fenced block');
+  const missing = required.filter(f => !transcription.includes(f.label));
+  assert.deepEqual(missing.map(f => f.label), [],
+    'campaign-calendar.md walks the reader through this dialog, so every required field has to appear in it');
+});
+
+test('every UI label a solo-RPG guide puts in bold exists in the app', () => {
+  // Session prep named three built-in doors and got all three wrong: a "Capture dialog" that is a
+  // strip, a single "Set as inbox" where there are ten numbered slots, and a journal button that
+  // opens a bar rather than navigating. The labels are the checkable half, so they get a census: a
+  // guide that bolds a control name is telling the reader what to look for on screen.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const guides = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(n => ({ n, f: resolve(dir, n, `${n}.md`) }))
+      .filter(d => { try { readFileSync(d.f); return true; } catch { return false; } }),
+    'solo-rpg guides');
+  // The signal is not "bolded" -- credits and emphasis are bolded too, and a first draft of this
+  // census duly accused "**Yochai Gal**" and "**Changes have been made**". It is "bolded AND the
+  // reader is told to operate it": an interaction verb immediately before the bold. That is exactly
+  // the sentence that sends someone hunting the screen for a control, which is the failure here.
+  const VERB = /\b(click|press|pick|choose|open|select|toggle|hit|use)\b[^.\n]{0,30}$/i;
+  // A plain src.includes() over 1.3 MB is the vacuity shape CLAUDE.md names by example: almost any
+  // short phrase appears SOMEWHERE, including inside this file's own guide copy and comments, so a
+  // guard built on it passes for reasons unrelated to the UI. Search only the places a control name
+  // can actually come from: quoted string literals and template literals in the app's own source.
+  const strings = nonEmpty(
+    [...src.matchAll(/'((?:[^'\\\n]|\\.){2,60})'|"((?:[^"\\\n]|\\.){2,60})"|`((?:[^`\\]|\\.){2,60})`/g)]
+      .map(m => m[1] ?? m[2] ?? m[3]),
+    'string literals in index.html');
+  const haystack = new Set(strings);
+  const joined = strings.join('\u0000');
+  const inUi = label => haystack.has(label) || joined.includes(label);
+  let checked = 0;
+  const missing = [];
+  for (const { n, f } of guides) {
+    const text = readFileSync(f, 'utf8');
+    for (const m of text.matchAll(/\*\*([^*\n]{3,40})\*\*/g)) {
+      const label = m[1].trim().replace(/[.,:;]$/, '');
+      const before = text.slice(Math.max(0, m.index - 60), m.index);
+      if (!VERB.test(before)) continue;
+      // ...and it has to LOOK like a control: an initial capital and at most four words. Without
+      // this the verb test alone accuses the bolded RESULT of an action ("Click the pill and it
+      // **draws one terrain and sets it aside**"), which names no control at all.
+      if (!/^[A-Z]/.test(label) || label.split(/\s+/).length > 4) continue;
+      checked++;
+      // A guide may write a menu PATH ("File, then Custom calendar"); each rung is its own label.
+      // The app spells a numbered slot "Set as inbox 1"; a guide may name the family without a digit.
+      const rungs = label.split(/,\s*then\s*/i).map(x => x.trim()).filter(Boolean);
+      const gone = rungs.filter(r => !inUi(r) && !inUi(r.replace(/ \d+$/, '')));
+      if (!gone.length) continue;
+      missing.push(`${n}.md: **${label}** names ${JSON.stringify(gone)}, which appears nowhere in index.html`);
+    }
+  }
+  assert.ok(checked >= 5, `the census must examine operated control names, examined ${checked}`);
+  assert.deepEqual(missing, [], 'a guide bolds a control the app does not have:\n  ' + missing.join('\n  '));
+});
+
+test('no solo-RPG guide tells the reader a bullet click folds a point', () => {
+  // The bullet handler runs zoomInto(node.id) for every type except `para`, and the app fires a
+  // first-zoom toast explaining the gesture -- so the app ANNOUNCES one thing while three guides
+  // predicted the opposite, in the very first exercise of the declared on-ramp document. Folding is
+  // the separate .collapse-btn chevron (or Ctrl/Cmd+.). guide/getting-around.md documents both
+  // correctly, so the solo-RPG guides were the outliers.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const body = fnBody(src, 'attachBulletMenuGestures');
+  assert.match(body, /bullet\.addEventListener\('click'/, 'the bullet click handler lives here');
+  assert.match(body, /zoomInto\(node\.id\)/,
+    'the bullet still ZOOMS: if it ever folds instead, this guard is the thing to rewrite, not the guides');
+  assert.match(body, /node\.type === 'para'.*toggleFold/s,
+    'the one exception is a paragraph, which folds to its first line (guide/getting-around.md documents it)');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`]) {
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* not every folder has both */ }
+    }
+  nonEmpty(files, 'solo-rpg guide and demo files');
+  const bad = [];
+  let sentences = 0;
+  for (const { n, t } of files) {
+    // Flow the file before splitting: a line-by-line scan is disarmed by ordinary markdown reflow,
+    // which is exactly the edit most likely to happen to a paragraph nobody is thinking about.
+    for (const para of t.split(/\n\s*\n/)) {
+      const line = para.replace(/\s*\n\s*/g, ' ');
+      if (!/bullet/i.test(line)) continue;
+      for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+        sentences++;
+        if (!/\bbullets?\b/i.test(sentence)) continue;
+        if (!/\b(fold|folds|collapse|collapses|collapsed|open it)\b/i.test(sentence)) continue;
+        if (/zoom/i.test(sentence)) continue;             // a sentence that CONTRASTS the two is fine
+        if (/bullet menu|bullet's menu/i.test(sentence)) continue;   // the menu is a different affordance
+        // A sentence may mention the bullet while naming the RIGHT control -- "the chevron left of
+        // its bullet" is the correct instruction and says "bullet" only to locate the chevron.
+        if (/chevron|Ctrl\/Cmd\+\.|collapse-btn/i.test(sentence)) continue;
+        bad.push(`${n}: ${sentence.trim().slice(0, 110)}`);
+      }
+    }
+  }
+  assert.ok(sentences >= 10, `the guard must examine sentences that mention a bullet, saw ${sentences}`);
+  assert.deepEqual(bad, [], 'a bullet click zooms, it does not fold:\n  ' + bad.join('\n  '));
+});
+
+test('EVERY shipped demo is well-formed XML (an unescaped < or " truncates the file silently)', () => {
+  // Twice while fixing this folder I typed a bare `<=` and a bare `"` inside a text="..." attribute.
+  // Neither showed up as a failure: the suite was green, and the browser's DOMParser is lenient
+  // enough that the demo still LOOKED fine while content after the bad token was being dropped. An
+  // OPML the app cannot parse is the worst failure this folder has, because File > Open just fails,
+  // so it gets the cheapest possible guard rather than a subtle one.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  const bad = [];
+  for (const { name, file } of demos) {
+    const xml = readFileSync(file, 'utf8');
+    // EVERY attribute, not just text. _props and _view carry JSON with quotes and angle brackets in
+    // it, so they are at least as easy to break by hand as the prose is, and a first draft that
+    // looked only at text="..." would have watched a malformed _view go by.
+    for (const m of xml.matchAll(/\s[A-Za-z_][\w:.-]*="([^"]*)"/g)) {
+      const v = m[1];
+      if (v.includes('<')) bad.push(`${name}: raw "<" in a text attribute -> ${JSON.stringify(v.slice(Math.max(0, v.indexOf('<') - 40), v.indexOf('<') + 20))}`);
+      for (const amp of v.matchAll(/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/g))
+        bad.push(`${name}: raw "&" in a text attribute -> ${JSON.stringify(v.slice(Math.max(0, amp.index - 40), amp.index + 20))}`);
+    }
+    // A raw `"` inside a value ends it early and the rest of the sentence is then read as
+    // attributes. Counting quotes does NOT catch it -- a quoted PHRASE adds two, so parity stays
+    // even, which is how the mutant for this survived the first draft of this guard. Check the
+    // attribute layer itself: strip well-formed name="value" pairs off each tag and require that
+    // nothing but whitespace and an optional `/` is left. Prose read as attributes leaves words.
+    let depth = 0, minDepth = 0;
+    for (const tag of xml.matchAll(/<outline\b([^>]*?)(\/?)>|<\/outline>/g)) {
+      if (tag[0] === '</outline>') { depth--; minDepth = Math.min(minDepth, depth); continue; }
+      const rest = tag[1].replace(/\s+[A-Za-z_][\w:.-]*="[^"]*"/g, '').trim();
+      if (rest && rest !== '/')
+        bad.push(`${name}: an <outline> tag has a raw quote in a value, so ${JSON.stringify(rest.slice(0, 60))} is being read as attributes`);
+      if (!tag[2]) depth++;
+    }
+    // Balance, which the attribute scan cannot see at all: an unclosed or over-closed <outline>
+    // reparents everything after it, and a demo whose tree silently changes shape is the failure
+    // this whole folder's rollups and boards depend on not happening.
+    if (depth !== 0) bad.push(`${name}: <outline> tags are unbalanced (${depth > 0 ? depth + ' unclosed' : -depth + ' extra closing'})`);
+    if (minDepth < 0) bad.push(`${name}: a </outline> closes a tag that was never opened`);
+  }
+  assert.deepEqual(bad, [], 'a demo OPML is not well-formed, so File > Open drops content or fails:\n  ' + bad.join('\n  '));
+});
+
+test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it', () => {
+  // The second family defect in this folder, and the same shape as the rule census: `{= sum(prop)}`
+  // reads the points BELOW the one holding it, and eight of the nine rollups in the shipped demos
+  // were authored as SIBLINGS of the {prop} points, so they rendered "nothing matched" while the
+  // guides advertised a live total. The one that worked was the only one on a true parent.
+  //
+  // This walks the real nesting rather than trusting indentation: a rollup on point P must find at
+  // least one `{prop NAME: ...}` among P's children (or anywhere below P when the scope is
+  // `subtree`). It cannot check the VALUE without an engine, but placement is the whole defect.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+
+  // Minimal OPML tree from the shipped files: <outline text="..."> with children, self-closing or not.
+  const parse = xml => {
+    const root = { text: '', kids: [] }, stack = [root];
+    const tag = /<outline\b([^>]*?)(\/?)>|<\/outline>/g;
+    let m;
+    while ((m = tag.exec(xml))) {
+      if (m[0] === '</outline>') { if (stack.length > 1) stack.pop(); continue; }
+      const attrs = m[1], selfClosing = m[2] === '/';
+      const t = /text="([^"]*)"/.exec(attrs);
+      const props = /_props="([^"]*)"/.exec(attrs);
+      const checks = [];
+      if (props) {
+        const raw = props[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        try { for (const pr of JSON.parse(raw)) if (pr && pr.key === 'check' && pr.val) checks.push(String(pr.val)); }
+        catch { checks.push(raw); }   // unparseable is still worth scanning rather than silently skipping
+      }
+      const node = {
+        text: (t ? t[1] : '')
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+          .replace(/&#10;/g, '\n').replace(/&amp;/g, '&'),
+        checks, kids: [],
+      };
+      stack[stack.length - 1].kids.push(node);
+      if (!selfClosing) stack.push(node);
+    }
+    return root;
+  };
+  // Backticked spans are documentation, not pills -- the app leaves them literal, so a prose point
+  // that MENTIONS sum() is not a rollup. Three such mentions really did render "nothing matched"
+  // in the shipped demos until they were escaped, which is exactly why this strips them.
+  const live = t => t.replace(/`[^`]*`/g, ' ');
+  const propNames = node => [...live(node.text).matchAll(/\{prop\s+([A-Za-z_][A-Za-z0-9_]*)\s*:/g)].map(x => x[1].toLowerCase());
+  const below = (node, deep) => {
+    const out = [];
+    const walk = (n, depth) => {
+      for (const k of n.kids) {
+        out.push(...propNames(k));
+        if (deep) walk(k, depth + 1);
+      }
+    };
+    walk(node, 0);
+    return out;
+  };
+
+  let rollups = 0;
+  const orphans = [];
+  for (const { name, file } of demos) {
+    const walk = node => {
+      // Both halves: the {= ...} readout AND the check expression carried in _props, which is the
+      // other place an aggregation is written and which the first draft of this census could not
+      // see at all -- a check scoped to nothing passes vacuously and reads as a healthy green tick.
+      const exprs = live(node.text) + ' ' + (node.checks || []).join(' ');
+      // The scope token mirrors resolveScopeDepth: self | children | subtree | a depth >= 1. The
+      // first draft matched only [a-z]+, so `sum(x, 2)` fell out of the pattern entirely and a
+      // numeric-depth rollup was invisible to this census rather than checked by it.
+      for (const agg of exprs.matchAll(/(?:\{=\s*)?\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*([A-Za-z]+|\d+)\s*)?\)/g)) {
+        const [, fn, prop, scope] = agg;
+        const tok = (scope || 'children').toLowerCase();
+        const depth = tok === 'self' ? 0 : tok === 'children' ? 1
+          : tok === 'subtree' ? Infinity : /^\d+$/.test(tok) ? Number(tok) : null;
+        if (depth === null) continue;         // not a scope the engine accepts; not this guard's business
+        if (depth === 0) continue;            // `self` reads the point's own words, not its descendants
+        rollups++;
+        const found = below(node, depth > 1);
+        if (!found.includes(prop.toLowerCase()))
+          orphans.push(`${name}: {= ${fn}(${prop}${scope ? ', ' + scope : ''})} on ${JSON.stringify(node.text.slice(0, 55))} has no {prop ${prop}: ...} beneath it`);
+      }
+      node.kids.forEach(walk);
+    };
+    parse(readFileSync(file, 'utf8')).kids.forEach(walk);
+  }
+  assert.ok(rollups >= 5, `the census must actually find rollups, found ${rollups}`);
+  assert.deepEqual(orphans, [], 'a rollup totals the points BELOW it; these have none:\n  ' + orphans.join('\n  '));
+});
+
+test('no demo declares a rule above a rule it calls, which freezes an unresolvable preview', () => {
+  // The generators demo -- the page whose whole subject is named rules -- opened with
+  // "tavern  The {adjective?} {noun?}" on every fresh load, because its composite rule sat ABOVE the
+  // three rules it calls. makeGrammarRoll runs the rule ONCE at creation and stores the result, and
+  // promoteLoadedShorthand walks the tree top-down, so a rule promoted before its parts expands
+  // against a rule set that does not have them yet and freezes the {name?} markers into the record.
+  // One click fixes it, which is exactly why it survives review: whoever clicks it sees it working.
+  // The app knows this shape (#1361 gave the CONDITIONAL case its own empty-state copy); a rule pill
+  // still shows the raw markers, so a demo must not walk into it.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(fnBody(src, 'makeGrammarRoll').includes('runGrammar(def, origin, null, null, deps)'),
+    'makeGrammarRoll no longer expands once at creation; re-check whether ordering still matters');
+  assert.ok(fnBody(src, 'promoteLoadedShorthand').includes('for (const c of node.children || []) walk(c);'),
+    'the load promotion no longer walks children in order; re-check whether ordering still matters');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+
+  let calls = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    // Backticked spans are prose about the syntax, not declarations -- they promote to nothing.
+    const xml = readFileSync(file, 'utf8').replace(/`[^`]*`/g, ' ');
+    const at = new Map();                       // rule name -> position of its FIRST declaration
+    const decls = [];
+    for (const m of xml.matchAll(/\{rule\s+([A-Za-z_][\w.]*)\s*:/g)) {
+      const rule = m[1].toLowerCase();
+      if (!at.has(rule)) at.set(rule, m.index);
+      // the declaration's body: brace-matched from its opening, so a nested {call} cannot end it
+      let d = 0, end = m.index;
+      while (end < xml.length) { if (xml[end] === '{') d++; else if (xml[end] === '}' && --d === 0) break; end++; }
+      decls.push({ rule, at: m.index, body: xml.slice(m.index, end + 1) });
+    }
+    for (const d of decls)
+      for (const r of d.body.matchAll(/\{([A-Za-z_][\w.]*)(?:\.[a-z]+)?\}/g)) {
+        const ref = r[1].toLowerCase();
+        if (!at.has(ref) || ref === d.rule) continue;
+        calls++;
+        if (at.get(ref) > d.at)
+          bad.push(`${name}: {rule ${d.rule}} calls {${ref}}, which is declared BELOW it, so the ${d.rule} pill opens showing {${ref}?}`);
+      }
+  }
+  assert.ok(calls >= 3, `the census must see rules calling rules, saw ${calls}`);
+  assert.deepEqual([...new Set(bad)], [], 'a rule pill that opens unresolved:\n  ' + [...new Set(bad)].join('\n  '));
+});
+
+test('a solo-RPG doc that quotes a check quotes the one its demo actually carries', () => {
+  // The check lives in the demo's _props, invisible in the outline text, so prose about it drifts
+  // silently: character-sheet's carry limit became `{= 8 + might}` and the demo's own how-to still
+  // told the reader the test was `sum(weight) <= 10`. Both were plausible, only one was in the file,
+  // and a reader who typed the quoted one got a check that stops following the stat -- the exact
+  // copy-instead-of-compute failure the guide is written to argue against.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const cases = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, md: resolve(dir, name, `${name}.md`), demo: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(c => { try { readFileSync(c.demo); return true; } catch { return false; } }),
+    'solo-rpg demos');
+  const unesc = t => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#10;/g, '\n').replace(/&amp;/g, '&');
+  const norm = e => e.replace(/\s+/g, ' ').trim().toLowerCase();
+  // An aggregation compared against something: the shape a check must have (evalCheck needs a
+  // comparison), and the shape prose quotes. The tail stops at what closes a quotation in either
+  // format -- a backtick, a bold marker, a bracket or the end of the sentence.
+  const CHECK = /\b(?:sum|avg|count|min|max)\s*\([^()]*\)\s*(?:<=|>=|==|!=|<|>)\s*[^`*)\]"\n]{1,32}/g;
+
+  let quoted = 0;
+  const bad = [];
+  for (const { name, md, demo } of cases) {
+    const xml = readFileSync(demo, 'utf8');
+    const real = new Set();
+    for (const m of xml.matchAll(/_props="([^"]*)"/g)) {
+      try { for (const pr of JSON.parse(unesc(m[1]))) if (pr && pr.key === 'check' && pr.val) real.add(norm(String(pr.val))); }
+      catch { /* a malformed _props is the XML guard's business, not this one */ }
+    }
+    if (!real.size) continue;   // a demo with no check has nothing for its prose to drift from
+    const prose = [[...xml.matchAll(/text="([^"]*)"/g)].map(m => unesc(m[1])).join('\n')];
+    try { prose.push(readFileSync(md, 'utf8')); } catch { /* guide is optional */ }
+    for (const t of prose)
+      for (const m of t.matchAll(CHECK)) {
+        quoted++;
+        const e = norm(m[0].replace(/[.,;]+$/, ''));
+        if (!real.has(e))
+          bad.push(`${name}: the docs quote a check of "${e}", but the demo carries ${[...real].map(r => `"${r}"`).join(', ')}`);
+      }
+  }
+  assert.ok(quoted >= 4, `the census must find quoted checks, found ${quoted}`);
+  assert.deepEqual([...new Set(bad)], [], 'a quoted check the demo does not carry:\n  ' + [...new Set(bad)].join('\n  '));
+});
+
+test('no solo-RPG guide teaches the bare rule form that registers nothing', () => {
+  // The other half of the same defect, and the half that regenerates it: four guides told the reader
+  // to "define a named rule on its own point (`reaction: hostile | wary`)". Fixing the demos without
+  // the prose just means the next author retypes the dead form. A guide may still SHOW the bare form
+  // as an explicit counter-example, which always reads "a bare ... stays ordinary text".
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(n => ({ n, f: resolve(dir, n, `${n}.md`) }))
+      .filter(d => { try { readFileSync(d.f); return true; } catch { return false; } }),
+    'solo-rpg guides');
+  const offenders = [];
+  for (const { n, f } of files) {
+    const text = readFileSync(f, 'utf8');
+    // Anchor on the DEFECT, not on one phrasing. The first draft matched three bolded spellings of
+    // "named rule", which meant its kill-mutation only ever proved the filter fires on the exact
+    // sentence the mutation wrote. What actually ships broken is a DECLARATION-SHAPED example that
+    // ruleDeclParts rejects, offered to the reader as something to type: `reaction: hostile | wary`.
+    // So look for that shape wherever it appears, in a code span or a fence.
+    // Carry each span's real offset: indexOf(cand) finds the FIRST occurrence in the file, which is
+    // not necessarily this one, and returns -1 whenever the span was normalised at all -- either way
+    // the counter-example window below would be read from the wrong place.
+    const spans = [];
+    for (const m of text.matchAll(/`([^`\n]+)`/g)) spans.push({ raw: m[1], at: m.index });
+    for (const m of text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
+      let off = m.index + m[0].indexOf('\n') + 1;
+      for (const ln of m[1].split('\n')) { spans.push({ raw: ln, at: off }); off += ln.length + 1; }
+    }
+    for (const { raw, at } of spans) {
+      const cand = raw.trim();
+      // declaration-shaped: a bare identifier, a colon, then alternatives separated by bars
+      if (!/^[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*\S.*\|/.test(cand)) continue;
+      if (/^(rule|seq|prop|date|query|count|roll|shuffle|cycle|once|stopping|markov|oracle)\b/i.test(cand)) continue;
+      if (c.ruleDeclParts('rule ' + cand)) {
+        // it WOULD be a legal rule if wrapped, which is exactly the trap
+        // Whitespace-normalised, because these guides hard-wrap at ~100 columns and the phrase that
+        // marks a counter-example ("stays ordinary text") lands across the line break as often as not.
+        // A tight window on purpose. A counter-example says so IMMEDIATELY ("a bare `x: a | b` stays
+        // ordinary text"); widen this and the paragraph explaining the rule form starts exempting
+        // the fence above it, which is exactly where a real regression would sit.
+        const around = text.slice(Math.max(0, at - 60), at + 90).replace(/\s+/g, ' ');
+        if (/stays ordinary text|registers nothing|is not a|plain text|does not register/i.test(around)) continue;  // a counter-example
+        offenders.push(`${n}.md: \`${cand.slice(0, 70)}\` is declaration-shaped but has no {rule ...} wrapper, so it registers nothing`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], 'a guide names "a named rule" without showing {rule ...}:\n  ' + offenders.join('\n  '));
+
+  // ...and a POSITIVE floor, because the check above searches for something that should NOT exist,
+  // and such a check reads identically whether the tree is clean or the phrasing simply drifted out
+  // of its filter. These five guides are the ones that teach a table, and each must show the working
+  // form in a FENCED BLOCK -- the thing a reader copies -- not merely mention it in prose. Fenced is
+  // the load-bearing word: `{rule ...}` inline in a sentence is a reference to the form, while the
+  // fence is where the guide hands the reader something to type. It is also what makes this floor
+  // provable: ironsworn.md mentions the form inline as well, so a floor that accepted any mention
+  // could not be killed by editing its fence.
+  const teach = ['cairn', 'maze-rats', 'ironsworn', 'oracle-play', 'generators'];
+  const fenced = n => (readFileSync(resolve(dir, n, `${n}.md`), 'utf8').match(/```[\s\S]*?```/g) || [])
+    .some(block => block.includes('{rule '));
+  assert.deepEqual(teach.filter(n => !fenced(n)), [],
+    'these guides teach named tables and must show the {rule ...} form in a fenced block');
+});
+
+test('no guide tells the reader to NAME a rule and then shows the form that names nothing', () => {
+  // The wider half of the solo-RPG rule census, which was scoped to one folder while the canonical
+  // page carried the same trap: "If you want a modified random pick, name a rule first
+  // (`creature: ogre | dragon`)". Typed into a point that is ordinary text and `{creature.a}` never
+  // resolves. Scoped to the INSTRUCTION rather than the shape, because the bare form is the real
+  // syntax of the `@` -> Grammar dialog -- generating-text and cookbook show it correctly a dozen
+  // times, and a census over the shape alone would have to exempt all of them by guesswork.
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const walk = (d, out = []) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = resolve(d, e.name);
+      if (e.isDirectory()) walk(p, out); else if (e.name.endsWith('.md')) out.push(p);
+    }
+    return out;
+  };
+  const files = nonEmpty(walk(resolve(repo, 'guide')), 'user-guide markdown files');
+  const TELLS = /\b(name|define|declare|make|create|write)\w*\b[^.]{0,40}\brule\b/i;
+
+  let told = 0;
+  const bad = [];
+  for (const f of files) {
+    const name = relative(repo, f);
+    // Mask code spans before splitting into sentences: `sword.damage: 1d8` is full of sentence
+    // enders, and a split through one puts the instruction in a different sentence from the form
+    // it is instructing about -- which is the one pairing this guard exists to see.
+    const spans = [];
+    const masked = readFileSync(f, 'utf8').replace(/`[^`\n]+`/g, m => `\u0000${spans.push(m) - 1}\u0000`);
+    for (const raw of masked.split(/(?<=[.!?])\s+|\n\n+/)) {
+      if (!TELLS.test(raw)) continue;
+      told++;
+      const sentence = raw.replace(/\u0000(\d+)\u0000/g, (_, i) => spans[Number(i)]).replace(/\s+/g, ' ');
+      // Two ways to be right: say where the bare form goes (the dialog), or show the keyword.
+      if (/dialog|\{rule\b|stays ordinary text|registers nothing|plain text/i.test(sentence)) continue;
+      for (const m of sentence.matchAll(/`([^`\n]+)`/g)) {
+        const cand = m[1].trim();
+        // declaration-shaped, and legal the moment it is wrapped -- which is exactly the trap
+        if (!/^[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*\S.*\|/.test(cand)) continue;
+        if (/^(rule|seq|prop|date|query|count|roll|shuffle|cycle|once|stopping|markov|oracle)\b/i.test(cand)) continue;
+        if (!c.ruleDeclParts('rule ' + cand)) continue;
+        bad.push(`${name}: "${sentence.slice(0, 110)}" -- \`${cand.slice(0, 50)}\` registers nothing typed into a point`);
+      }
+    }
+  }
+  assert.ok(told >= 5, `the census must find sentences that tell the reader to name a rule, found ${told}`);
+  assert.deepEqual(bad, [], 'an instruction to name a rule, shown in the form that does not:\n  ' + bad.join('\n  '));
 });
 
 test('the oracle near-miss cue names bands that exist', () => {

@@ -5819,3 +5819,101 @@ test('#1557 scrolling an edited row out of the window and back does not commit t
     'the exitEdit counter must be live — a deliberate blur has to move it, or the zero above proved nothing');
   await pg.close();
 });
+
+// #653 — the two logs, driven. The journal and the roll log are IRL by decision (resolveCalendarId
+// pins the journal subtree to CAL_GREGORIAN, the timeline reads its rungs with a bare Date.UTC);
+// the Chronicle is the fiction-dated one. todayISO defaulted both of its seams to the ACTIVE
+// calendar, so in a custom-calendar document the journal filed under the world's date -- a source
+// pin cannot see this, because the defaulting is invisible at the call site and only the running
+// document has a calendar at all.
+test('a custom calendar moves the chronicle and the due dates, never the journal', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [mkNode('a thread'), mkNode('World log')];
+    for (const n of root.children) { nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    root.calendar = { id:'vale', name:'Calendar of the Vale', epochDay:0,
+      months: Array.from({ length:12 }, (_, i) => ({ name:'M' + (i + 1), days:30 })),
+      week: { length:7, days:['a','b','c','d','e','f','g'] },
+      eras: [{ name:'AE', yearZero:1200 }], current: 1181 };
+    root.calendars = { vale: root.calendar };
+    root.gamelog = { targetId: root.children[1].id, calendarId: 'vale' };
+    buildIndex(root); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+
+  const r = await pg.evaluate(() => {
+    const first = n => (n.text || '').split('\n', 1)[0].trim();
+    openJournalEntry();          // the real-world log
+    openChronicleDate();         // the in-world log, at its cursor
+    const home = t => root.children.find(c => first(c) === t);
+    const rungs = h => { const out = []; let n = h; while (n && (n.children || []).length) { n = n.children[0]; out.push(first(n)); } return out; };
+    return {
+      fictionDate: formatEpochDays(dueDateToday()),          // what a document date reads
+      journal: rungs(home('Journal')).slice(0, 3),
+      chronicle: rungs(home('World log')).slice(0, 3),
+      realYear: String(new Date().getFullYear()),
+    };
+  });
+
+  // The fiction really is live, or every assertion below passes on a document with no calendar.
+  assert.match(r.fictionDate, /^1204-/, 'a document date must read in the fiction calendar: ' + r.fictionDate);
+  // The chronicle is the fiction-dated log — the sibling that must NOT move with this fix.
+  assert.equal(r.chronicle[0], '1204', 'the chronicle files under the world year: ' + r.chronicle.join('/'));
+  // …and the journal is not.
+  assert.equal(r.journal[0], r.realYear, 'the journal files under the real year: ' + r.journal.join('/'));
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// The sibling of #1361, driven. A pill is expanded ONCE, at creation, so a rule declared above the
+// rules it calls freezes `{name?}` markers into its result and shows them raw. Four members of the
+// family did that under a tip reading "Click to re-generate"; two others already explained
+// themselves. Source pins cannot see this: the markers only exist in a document that LOADED in that
+// order, and the difference between the two states is what the pill SAYS.
+test('a pill frozen before its rule existed says so, and one click heals it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [
+      mkNode('{rule tavern: The {adjective} Crown}'),   // declared ABOVE what it calls
+      mkNode('{w := {weapon}}'),
+      mkNode('{rule sign: The {nosuch} House}'),        // …and one that will never resolve
+      mkNode('{rule adjective: Rusty | Salted}'),
+      mkNode('{rule weapon: sword | axe}'),
+    ];
+    for (const n of root.children) { nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    promoteLoadedShorthand(root); buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(400);
+
+  const read = () => pg.evaluate(() => [...document.querySelectorAll('.node-content [class*="-roll"], .node-content .var-pill')]
+    .map(e => ({ txt: e.textContent, marked: /gr-stale|var-stale/.test(e.className), tip: e.getAttribute('title') || '' })));
+
+  const before = await read();
+  const tavern = before.find(p => p.txt.startsWith('tavern'));
+  const pick   = before.find(p => p.txt.startsWith('w='));
+  const sign   = before.find(p => p.txt.startsWith('sign'));
+  const clean  = before.find(p => p.txt.startsWith('adjective'));
+
+  assert.match(tavern.txt, /\{adjective\?\}/, 'the load order must really freeze a marker, or nothing below is measured');
+  for (const [name, p] of [['rule', tavern], ['pick', pick], ['missing', sign]])
+    assert.equal(p.marked, true, `the ${name} pill must wear the mark, not only a tip`);
+  assert.match(tavern.tip, /has a value now/, 'a name that resolves NOW says a click will fix it');
+  // (the tip carries a trailing "Right-click for more…" hint, so match the phrase, not the end)
+  assert.match(pick.tip, /has a value now[^.]*\. Click to re-roll\b/, "…in the verb that pill's own gesture uses");
+  assert.match(sign.tip, /No rule or variable named "nosuch"/, 'a name that is still missing gets the plain-text sentence');
+  // The negative case, or "everything is marked" would pass this test just as well.
+  assert.equal(clean.marked, false, 'a pill that resolved cleanly must NOT be marked');
+  assert.doesNotMatch(clean.tip, /has a value now/);
+
+  // …and the advice is true: one click on the healable one resolves it and clears the mark.
+  await pg.evaluate(() => {
+    const el = [...document.querySelectorAll('.node-content .gr-roll')].find(e => e.textContent.startsWith('tavern'));
+    for (const t of ['mousedown', 'mouseup', 'click']) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+  });
+  await pg.waitForTimeout(400);
+  const after = (await read()).find(p => p.txt.startsWith('tavern'));
+  assert.doesNotMatch(after.txt, /\{adjective\?\}/, 'the click must actually re-generate: ' + after.txt);
+  assert.equal(after.marked, false, 'and the mark clears with it');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});

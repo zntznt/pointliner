@@ -12,7 +12,7 @@ counting. That proxy works, but it means your campaign's deadlines live on Earth
 A **custom calendar** removes the proxy. You give the document your world's months, week, and
 era, and every date in it changes citizenship: due dates are written and read in the world's own
 year-month-day, the agenda's month grid takes the world's shape (a ten-day week really shows ten
-columns), and the journal files its entries under the world's date. Time stops passing because
+columns), and a **chronicle** files its entries under the world's date. Time stops passing because
 Tuesday happened; it passes because you say it does.
 
 ---
@@ -22,6 +22,7 @@ Tuesday happened; it passes because you say it does.
 Open **File, then Custom calendar** and type the calendar as text:
 
 ```
+Calendar name:             Calendar of the Vale
 Months, one per line:      Firstfrost: 30
                            Deepwinter: 30
                            …
@@ -29,6 +30,10 @@ Week:                      Moonday Tilday Windday Seaday Hearthday Forgeday Rest
 Era, optional:             AE: 1200
 Today in this world:       1204-04-12
 ```
+
+**Calendar name**, **Months** and **Today in this world** are required; the dialog keeps its Save
+button disabled until all three are filled, so a blank name is the usual reason it will not let you
+through. The week and the era are optional.
 
 - **Months** are a name and a day count per line. Multi-word names work (`The Fading: 28`).
 - The **week** can be day names, a bare length like `10`, or `10: Sul Mol` to name only the
@@ -66,23 +71,36 @@ The demo drops you into a caravan campaign mid-journey. The loop:
 2. **Time passes.** Open the agenda (the toolbar calendar button). With a calendar active, a
    **Today chip** shows the in-world date; click it and let time pass: +1 day, +3 days, +1 week,
    or set an exact date. Watch the threads shift color as their deadlines approach.
-3. **Journal the day.** The journal button files the entry under the world's date
-   (`1204 › 04 › 12`), so the campaign log accumulates in campaign time. At the end of a
-   campaign this tree *is* the chronicle.
+3. **Log the day in world time.** Make the point that will hold the campaign log, open its bullet
+   menu and choose **Set as chronicle**. A **Chronicle** button joins the toolbar; its bar works
+   like the journal's, except the date is a cursor you steer with `◂` and `▸`. Type an entry and it
+   files under the world's date (`Chronicle > 1204 > 04 > 12`), so the campaign log accumulates in
+   campaign time. The demo ships one already set, holding the caravan's first day.
 
-Two small touches worth stealing from the demo:
+**Two logs, and the split is the point.** The **chronicle** is dated in the world: it is the log of
+what happened to the caravan. The **journal** stays real: `/journal` files under the day you
+actually wrote, because it records *you writing*, not the fiction. That is not a wrinkle, it is why
+both exist, and it runs all the way down: `calendarForNode` reads every date inside the journal
+subtree on the real calendar too, so a `due:` you set yourself there is still a day you will live
+through. Keep session notes in the journal and the campaign in the chronicle and neither has to
+lie about which clock it runs on.
+
+One small touch worth stealing from the demo:
 
 - A point reading `It is {= asdate(today)}.` renders the current in-world date and follows the
   clock as you advance it: a campaign header that is never stale, made of one math pill.
-- Real-world bookkeeping stays out of world time by using things the calendar never touches: tag
-  session entries `#session-12`, or give them a free property like `played: 2026-07-12`. A free
-  property is just text, so it never collides with the world's dates. One document, one reality;
-  the fiction owns `due`, you own the margins.
+
+And one worth adding yourself, which the demo does not carry: keep real-world bookkeeping out of
+world time by using things the calendar never touches. Tag session entries `#session-12`, or give
+them a free property like `played: 2026-07-12`. A free property is just text, so it never collides
+with the world's dates. One document, one reality; the fiction owns `due`, you own the margins.
 
 ## Moving an existing campaign onto a calendar
 
 If you followed the clocks guide, your campaign document already has real-date threads. Before
-switching, search **`due:>today`** and note the handful of threads that are actually live; the
+switching, search **`due:>today-1`** and note the handful of threads that are actually live. The
+`-1` matters: `due:>today` is strict and would drop anything due *today*, which is exactly the
+thread most likely to still be live. The
 dead dates are history and can stay as text. Then set the calendar: the dialog checks every
 stored date first and tells you plainly how many would read differently and how many would
 become unreadable. Nothing is rewritten, ever; your text stays exactly as typed, undo reverses
@@ -103,8 +121,14 @@ Open the [demo file](campaign-calendar-demo.opml):
   up the list. That is the whole heartbeat.
 - **Draw a road event.** The travel deck is a `{shuffle: …}` pill; click it to draw the day's
   event without repeats.
-- **Journal the day.** Hit the journal button and the entry lands under the world's date. Then
-  advance the clock again and journal again; the chronicle grows in world time.
+- **Read the board.** Under the threads sits `{query: #thread}`, a live list of every thread in
+  the document. Advance the clock and it re-sorts itself with them, so the board is never a copy
+  you maintain. It is the same search the [clocks case](../campaign-clocks/campaign-clocks.md)
+  stars in the search bar, embedded in the document instead.
+- **Log a day, twice.** Click the toolbar's **Chronicle** button and type a line: it files under
+  the world's date, into the Chronicle of the Salt Road. Then type `/journal` and write another:
+  that one lands under today's real date, in its own Journal. Advance the clock and repeat, and the
+  chronicle grows in world time while the journal keeps its own count of the evenings you played.
 - **Open File, Custom calendar** to see how the world is defined, and edit it live; the dialog
   warns you if a change would re-read your dates.
 
@@ -119,11 +143,21 @@ keep, and it does, three ways:
   laptop date you must mentally translate at the table
 - **time is yours**: the campaign advances when the story does, three days in one evening or
   nothing for a month of Tuesdays, and every urgency color follows the story's clock
-- **the chronicle assembles itself**: a journal keyed by world dates is the campaign document
+- **the chronicle assembles itself**: a log keyed by world dates is the campaign document
   every play-report writer wishes they had kept from session one
 
 If your game lives comfortably on real dates, keep them; the proxy is honest and simpler. The
 calendar is for when the world's time *is* part of the fiction, and then it is the difference
 between tracking a campaign and inhabiting one.
+
+---
+
+## Credit
+
+The **Calendar of Harptos** is used above as one worked example of a real published calendar,
+because it is the one most readers will already know. It belongs to the **Forgotten Realms**
+setting, a trademark of **Wizards of the Coast**; this guide names its months and festivals only to
+show what you would type into the dialog, reproduces none of its text, and is neither affiliated
+with nor endorsed by them. Any calendar you invent works exactly the same way.
 
 **Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

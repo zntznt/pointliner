@@ -101,6 +101,13 @@ animal: fox | owl | dragon | toad
 *any* point in the document and get a color. (If two pills define the same name, the document
 wins over a plugin pack; otherwise last definition wins, so keep names unique.)
 
+**Order matters once, on the file you open.** A pill runs when it is made, and a file loads top
+down, so a rule written *above* the rules it calls is built before they exist: it opens showing
+`The {adjective?} {noun?}`, carries a small dot, and its tooltip says the name has a value now and a
+click will re-generate it. One click and it is right for good. If you would rather not think about
+it, declare the small rules first and the one that calls them last, the way the
+[generators demo](solo-rpg/generators/generators-demo.opml) does.
+
 A rule's choices can include **anything on this page**: dice, other rules, even math:
 
 ```
@@ -166,7 +173,9 @@ Modifiers **chain**, left to right:
 ```
 
 > Modifiers attach to a **rule or variable name**, not to a bare `{a|b}` or a dice roll. If you
-> want a modified random pick, name a rule first (`creature: ogre | dragon`) then `{creature.a}`.
+> want a modified random pick, name a rule first (`{rule creature: ogre | dragon}`, or the same
+> line without the keyword inside the **`@` → Grammar** dialog) then `{creature.a}`, which comes out
+> "an ogre" or "a dragon".
 
 *Known limits (mostly heuristics, not a dictionary): `a`/`an` looks at the first letter
 ("an hour" / "a university" come out wrong); `.s` and `.ed` know the **common irregulars**
@@ -330,7 +339,9 @@ against the document's variables.
 ## Items with fields: `{item.field}`
 
 Sometimes a picked thing has *properties*. Define an item as a set of dotted sub-rules, then read a
-field:
+field. The block below is what you paste into the **`@` → Grammar** dialog, one rule per line; typed
+straight into a point, each line needs the keyword, `{rule sword.damage: 1d8}`, or it stays ordinary
+text and registers nothing:
 
 ```
 weapon: sword | axe

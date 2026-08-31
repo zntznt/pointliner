@@ -35,9 +35,11 @@ The Greytine Vale
 ```
 
 That nesting is the whole trick, and Pointliner gives it to you for free. **Fold a region
-closed** (click its bullet) and the map shrinks to a tidy list of region names, the way a map
-looks from far away. **Open one** and you zoom into its hexes. A long crawl stays navigable
-because it is a tree you can collapse, not a flat wall of notes.
+closed** (click the chevron left of its bullet, or press `Ctrl/Cmd+.`) and the map shrinks to a
+tidy list of region names, the way a map looks from far away. **Open it again** and the hexes come
+back. Clicking the **bullet** is a different move with its own use here: it zooms the document into
+that region alone, so the rest of the Vale is out of the way while you work a single area. A long
+crawl stays navigable because it is a tree you can fold, not a flat wall of notes.
 
 To grow the map, you outline: press Tab to add a hex as a child of a region, or add a new
 region as a sibling. There is no separate "add to map" step. The map grows by writing.
@@ -55,13 +57,20 @@ random pick can hand you marsh five hexes running. A **deck** fixes that:
 
 This is a shuffle deck. Click the pill and it **draws one terrain and sets it aside.** The
 next click draws a different one. It keeps dealing each terrain exactly once, and only when
-the deck is empty does it **reshuffle and tell you** it did. So a stretch of country feels
-varied, six different terrains before any repeat, instead of the same card coming up by bad
-luck.
+the deck is empty does it **reshuffle and tell you** it did. So repeated clicks give you six
+different terrains before any repeat, instead of the same card coming up by bad luck.
 
-Every terrain pill in the demo shares the one deck (decks are keyed by their content), so the
-whole crawl draws from a single, self-balancing bag of terrain. There is a lighter cousin in
-the file too, the weather:
+**Each pill is its own deck.** A deck's state lives in the pill, not in the words, so seven
+terrain pills across the map are seven separate bags: no repeats within one pill's clicks, and
+no coordination at all between them. Three fresh bags can each deal marsh first. That is worth
+knowing before you build a map out of them, because the no-repeat guarantee people want from a
+deck is a guarantee *per pill*.
+
+Which points at how to use it. If you want the whole crawl drawing from one self-balancing bag,
+keep **one** terrain pill and click it as you enter each hex, writing the result into the hex.
+If you would rather each hex carry its own live pill, as the demo does, treat them as
+independent rolls that merely avoid repeating themselves. There is a lighter cousin in the file
+too, the weather:
 
 ```
 {cycle: clear | overcast | rain | fog}
@@ -113,22 +122,25 @@ shown as a small chip and searchable later. Then, on the region point, a single 
 them:
 
 ```
-Rations spent crossing the Fenlands: {= sum(supplies)}
+Region: The Fenlands (west of the ford), {= sum(supplies)} rations spent
+  Hex 0101: ... {prop supplies: 1}
+  Hex 0102: ... {prop supplies: 2}
+  Hex 0103: ... {prop supplies: 3}
 ```
 
 `{= sum(supplies)}` **adds up the `supplies` property of the region's direct children**, the
 hexes right underneath it, and shows the total. It is **live**: change a hex's number and the
 region's total re-computes on its own, no arithmetic in your head. It only sees direct
-children, so it totals one region's hexes, not the whole tree. To get a true grand total for
-the Vale, give each region its own `{prop supplies: N}` subtotal and `{= sum(supplies)}` at
-the Vale level over the regions, the same trick one layer up. The demo also declares a
-starting pool as a variable:
+children, so it totals one region's hexes, not the whole tree. For a true grand total across
+every region at once, widen the scope instead of duplicating subtotals: `{= sum(supplies, subtree)}`
+on the Vale point reaches every hex at any depth. The demo carries both, so you can see the
+difference. The demo also declares a starting pool as a variable:
 
 ```
-{rations := 10}
+{rations := 14}
 ```
 
-so you can show spent-against-total, `{= sum(supplies)} of {rations}`, at a glance. Other
+so you can show spent-against-total, `{= sum(supplies, subtree)} of {rations}`, at a glance. Other
 aggregations work the same way if you want them: `{= avg(supplies)}`, `{= count(supplies)}`,
 `{= max(supplies)}`.
 
@@ -139,8 +151,9 @@ aggregations work the same way if you want them: `{= avg(supplies)}`, `{= count(
 Open the [demo file](hex-crawl-demo.opml) in Pointliner (File menu, Open) and it comes up as a
 real document with every pill live. A few things to try:
 
-- **Draw a region's worth of terrain.** Click the terrain pill on each hex of the Fenlands and
-  watch the deck hand out different terrains, then announce its reshuffle when it runs dry.
+- **Empty a terrain deck.** Click **one** hex's terrain pill seven times. The first six clicks
+  deal all six terrains with no repeat, and the seventh reshuffles and says so. Clicking a
+  different hex's pill instead starts a fresh bag, which is the per-pill behaviour in action.
 - **Roll the daily loop.** Go to "The daily loop" section and click through it top to bottom:
   weather, push distance, terrain, encounter check. That is one day of play in about six clicks.
 - **Break the supply math on purpose.** Edit a hex's `{prop supplies: N}` to a bigger number

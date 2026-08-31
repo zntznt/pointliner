@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Playing Cairn in Pointliner</title></head><body>
 <outline text="# Playing Cairn in Pointliner">
-  <outline text="Cairn's system wired into Pointliner pills: saves, damage, slot inventory, and the game's tables, all live in one file. Cairn has no built-in oracle, so pair it with the Oracle play case for yes/no questions. See cairn.md for the walkthrough. The dice and inventory pills are complete; the SRD table entries drop into the marked slots. Every pill here is live, click one to run it."/>
-  <outline text="Adapted from Cairn by Yochai Gal, used under CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0). Changes made: the tables and procedures are restructured into outline points and pills. Because Cairn is ShareAlike, the adapted Cairn material here is likewise CC BY-SA 4.0 (separate from Pointliner's MIT app licence). Cairn is named descriptively; no logo or art is reproduced.">
-    <outline text="Paste table entries from your copy of the Cairn SRD into the marked slots below; the pills around them are already wired. Reproduced Cairn tables carry the ShareAlike terms."/>
+  <outline text="Cairn's system wired into Pointliner pills: saves, damage, slot inventory, and the game's tables, all live in one file. Cairn has no built-in oracle, so pair it with the Oracle play case for yes/no questions. See cairn.md for the walkthrough. The dice and inventory pills are complete, and the tables carry short filler options you replace with the SRD's own entries. Every pill here is live, click one to run it."/>
+  <outline text="Adapted from Cairn by Yochai Gal, used under CC BY-SA 4.0 (creativecommons.org/licenses/by-sa/4.0). Changes made: the tables and procedures are restructured into outline points and pills. Because Cairn is ShareAlike, the adapted Cairn material here is likewise CC BY-SA 4.0 (separate from Pointliner's AGPLv3 app licence). Cairn is named descriptively; no logo or art is reproduced.">
+    <outline text="The tables below hold filler options written for this demo, not Cairn's own entries. Replace the filler inside each `{rule ...}` with the entries from your copy of the SRD; every pill is already wired, so a table updates the moment you edit its rule. Reproduced Cairn tables carry the ShareAlike terms."/>
   </outline>
   <outline text="## A character in three rolls">
     <outline text="Roll three attributes on 3d6 and Hit Protection on 1d6, then set the variables so the rest of the sheet reads them."/>
@@ -19,9 +19,8 @@
     </outline>
   </outline>
   <outline text="## Inventory and encumbrance">
-    <outline text="Cairn's inventory is a slot system. Each item carries a slots property, the pack totals them, and a check flags an overload. Add the check from the Pack point's bullet menu (Add check) or with /check.">
-      <outline text="Pack (has a check: sum(slots) under or equal 10)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]">
-        <outline text="Slots used: {= sum(slots)}"/>
+    <outline text="Cairn's inventory is a slot system. Each item carries a slots property, the pack totals them, and a check flags an overload. The total sits on the Pack point itself, because a rollup reads the points BELOW it: as a sibling of the items it would find nothing. Add the check from the Pack point's bullet menu (Add check) or with /check.">
+      <outline text="Pack, {= sum(slots)} of 10 slots used" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]">
         <outline text="Sword {prop slots: 1}"/>
         <outline text="Torches, three {prop slots: 1}"/>
         <outline text="Rope, fifty feet {prop slots: 1}"/>
@@ -37,9 +36,9 @@
     </outline>
   </outline>
   <outline text="## The game's tables">
-    <outline text="Each table is a weighted pick. Define one as a named rule on its own line, then call it by name anywhere. Replace the placeholder options with the SRD's entries, separated by bars; use weights to match a 2d6 table's distribution."/>
-    <outline text="reaction: (paste SRD Reaction entries here) | hostile | wary | neutral | curious | helpful"/>
-    <outline text="omen: (paste SRD Omen entries here) | a cold draft | distant scratching | a fresh corpse | scratched warnings"/>
+    <outline text="Each table is a weighted pick. Declare one with the rule keyword, as `{rule name: option | option}`, then call it by name anywhere. A bare `name: option | option` is ordinary text and registers nothing. Replace the filler options with the SRD's entries, separated by bars. A number after an option is its weight, how many chances it gets against the others (no number means one), so the reaction table below carries the 3, 12, 15, 5, 1 spread of the 2d6 bands and rolls the curve rather than flat."/>
+    <outline text="{rule reaction: hostile 3 | wary 12 | neutral 15 | curious 5 | helpful 1}"/>
+    <outline text="{rule omen: a cold draft | distant scratching | a fresh corpse | scratched warnings}"/>
     <outline text="Ask the room: reaction is {reaction}; an omen in the dark is {omen}."/>
   </outline>
   <outline text="## Run it yourself">

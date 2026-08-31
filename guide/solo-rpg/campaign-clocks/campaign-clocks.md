@@ -26,7 +26,8 @@ for the board that holds them all. Nothing here is a new notation. It is the sam
 
 Pointliner has a built-in **clock** made for exactly this. You write it as `[o N/M]` inside a
 point's text (the letter `o`, a space, then how many of how many segments are filled), and it
-renders as a little quarter-fill ring gauge, `[o 3/6]` showing a three-quarters-ish `◑`. It is
+renders as a small ring gauge that fills in five faces, `○ ◔ ◑ ◕ ●`, so `[o 3/6]` shows the
+half-filled `◑`. It is
 the Blades-in-the-Dark / Ironsworn tension clock as a native piece, no extra machinery.
 
 There are two ways to drive it, and it is worth knowing which you want:
@@ -57,8 +58,10 @@ The ring beside the title reads `[o 0/6]`, then climbs as you tick boxes, and wh
 goes `- [x]` it fills to `●` and the fiction it promised happens. Six segments, six boxes, no
 arithmetic.
 
-Seed a clock partway just by writing the number: `[o 3/6]` starts three segments in (the flood in
-the demo begins there). The count must be `N/M` with the `o` prefix, `[o 3/6]`, not a bare
+Seed a clock partway just by writing the number: `[o 3/6]` starts three segments in. Only a
+clock with a written number is clickable, which is the trade between the two modes: the
+harbormaster clock in the demo is a manual `[o 2/6]` you click, while the counted `[o /6]` ones
+move only when you tick a box. The count must be `N/M` with the `o` prefix, `[o 3/6]`, not a bare
 `[3/6]` (a bare bracket-fraction is plain text). If you prefer a percent face for a "how much of
 this still holds" gauge, the `[/]` and `[%]` **progress cookies** count the same checkbox children
 and render a fraction or a percent instead of a ring, `[%]` reading nicely for the cover-story
@@ -102,11 +105,15 @@ Notice the `#thread` tag on each one. That is not decoration, it is the hook for
 ## The board: one search for every open thread
 
 The point of tagging every thread `#thread` is that you can pull them all up at once. Type
-`#thread` into the search box and Pointliner lists every thread point in the document, wherever
+`#thread` into the search box and Pointliner lists every point carrying that tag, wherever
 it lives. That is your pressure board, assembled on demand.
 
 Then **star that search to save it.** The saved search becomes a one-click chip you can re-run
 at the top of every session, so "show me everything on the clock" is a click, not a retype.
+A tag is **inherited by a point's children**, so the search returns each thread *and* the
+segments and beats nested under it. That is usually what you want when you are working one
+thread, and it is why the count is larger than the number of threads.
+
 Narrow it when you want to: `#thread due:week` shows only the threads coming due in the next
 seven days, which is often the only list that matters at the table.
 
@@ -126,19 +133,23 @@ in the search bar, one embedded in the document. Use whichever fits how you play
 ## Run it yourself
 
 Open the [demo file](campaign-clocks-demo.opml) and it drops you into a small campaign already
-under pressure: three clocks partway filled, three threads with dates set and a board that
-lists them.
+under pressure: four clocks partway filled (three counted, one manual), three threads with dates
+set and a board that lists them.
 
-- **Tick a clock.** Click the bullet of "The Ashguild moves against you" to open it, then check
+- **Tick a clock.** Its segments are already visible, so just check
   one of the empty segment boxes. Watch the `[o /6]` ring beside the title climb on its own. Fill
   the last box and read what a full clock is supposed to trigger. This is the core loop: a clock
   is just a checklist you have agreed to treat as a countdown.
+- **Click a ring instead.** The harbormaster clock has no boxes under it, just a written
+  `[o 2/6]`. Click its ring to advance a segment and Shift-click to step back, and watch the
+  number in the point's text change with it. That is the whole of the manual mode: no children to
+  keep, and the gauge is the control.
 - **Watch a thread come due.** Open the agenda (the toolbar calendar button) and you will see the
   dated threads sorted by urgency. The `today+3` one sits near the top; the fixed-date comet waits
   under Later. Editing a thread's `{date due: …}` moves it in the agenda live.
 - **Pull the board.** Search `#thread` to list every thread at once, then star the search to keep
   the chip. Click any result to jump straight to that thread and advance its clock. The embedded
-  `{query: #thread}` pill in the demo shows the same list without leaving the page.
+  `{query: #thread}` pill in the demo shows the same list without leaving the document.
 
 To build your own from scratch: make a point for a danger, put `[o /6]` at the end of its text and
 add a few `- [ ]` segment lines under it. Make a point for an open question, tag it `#thread` and

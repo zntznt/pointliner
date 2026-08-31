@@ -294,7 +294,7 @@ export function loadCores() {
     'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','capturePayloadOf','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
     'colonlessGenerateKeyword','colonlessGenerateAttempt',   // #1501: a generate keyword one colon short of its form
-    'classifyBraceBody','braceAttemptReason','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteBraceBodyIn','renderVarPill','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
+    'classifyBraceBody','braceAttemptReason','unresolvedRefs','unresolvedNote','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteBraceBodyIn','renderVarPill','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
     'nameSetSignature','pendingBraceMessage',   // #1357: the retry-promotion gate + its report
     'affordanceDirtyIds',                       // #1281: which rows a commit can change the doors on
     'pillTitleWithMenu',                        // #1373: joining a pill tooltip to the menu tip

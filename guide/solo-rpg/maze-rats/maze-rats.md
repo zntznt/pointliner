@@ -22,21 +22,28 @@ rolling in Pointliner.
 > <https://creativecommons.org/licenses/by/4.0/>. **Changes have been made** (the tables and
 > procedures are restructured into Pointliner points and `{…}` pills). "Maze Rats" is
 > used descriptively to name the game; no logo or artwork is reproduced. This guide itself is
-> offered under the same CC BY 4.0 terms.
+> offered under the same CC BY 4.0 terms, which is separate from Pointliner's own AGPLv3 licence:
+> that covers the app, not this game content.
 
 ---
 
 ## A character in one roll
 
-A Maze Rats character is about as fast as it gets: your abilities come from a single spread of dice
-and everything else is a quick roll or a table. The three ability categories are rolled and the best
-stat is the highest; roll them and note the modifiers (Maze Rats derives a small plus-or-minus for
-each). Roll the pool with one pill:
+A Maze Rats character is about as fast as it gets: a spread of six-siders, a health roll, and
+everything after that is a table. One pill rolls the whole spread, and a dice pill shows **every
+face it rolled** alongside the total, so you read the individual dice off it and assign them the way
+the book says:
 
 ```
 Roll your stats: {6d6}
-Health: {1d6}
+Health: {1d6}   then set it: {hp := 4}
 ```
+
+`{6d6}` reads out as `6d6 3 3 6 3 6 2 = 23`, the faces in the order they fell. If you would rather
+have six independent results with no total attached, `{6x: {1d6}}` repeats one die six times
+instead. The repeat form takes any template, not just a die (see
+[Do it N times](../../generating-text.md#do-it-n-times-repeat)); [Ironsworn](../ironsworn/ironsworn.md)
+uses the same `{2x: {1d10}}` for its pair of challenge dice.
 
 Put your final modifiers in variables so saves read them:
 
@@ -48,11 +55,13 @@ Put your final modifiers in variables so saves read them:
 
 ## Saves
 
-Maze Rats resolves risk with a **2d6 roll**: roll `2d6`, add the relevant ability modifier and beat a
-target (a standard difficulty, higher for harder tasks). One line:
+Maze Rats resolves risk with a **2d6 roll**: roll `2d6`, add the relevant ability modifier, and
+**10 or higher succeeds**. The target does not move with the difficulty; that flat 10 is one of the
+things the game is built around, so the interesting decisions stay in the fiction rather than in
+picking a number. One line:
 
 ```
-Strength save: {2d6} + {str} (beat the target for the task)
+Strength save: {2d6} + {str} (10 or higher succeeds)
 ```
 
 Click the dice, add the modifier shown and compare to the difficulty. Change a modifier in one place
@@ -67,30 +76,39 @@ click for a result. The book's entries drop straight into the alternation, and b
 picks uniformly you do not even need the two-digit read; one click gives you a result.
 
 ```
-Monster: {SRD MONSTER TABLE ENTRIES GO HERE, separated by | bars}
-Spell:   {SRD SPELL TABLE ENTRIES GO HERE, separated by | bars}
-Room:    {SRD ROOM TABLE ENTRIES GO HERE, separated by | bars}
+{rule monster: goblin | skeleton | giant rat | cave lurker | bandit}
+{rule room: empty | a trap | old bones | a locked chest | running water}
 ```
 
-Define each as a **named rule** on its own point (`monster: goblin | skeleton | ...`) and call it by
-name anywhere, so one table serves the whole document. Maze Rats' signature move is **combining two
-tables** for an emergent result, its spells are literally built by rolling on two word-lists. That is
-two pills side by side, or a rule that calls two others:
+The `rule` keyword is what names it. A bare `monster: goblin | skeleton` stays ordinary text and
+registers nothing, so the wrapper is not optional, and a rule name may hold letters, digits and
+underscores but **not hyphens** (`spell_form` works, `spell-form` does not). Once a rule exists, call
+it by name anywhere as `{monster}` or `{room}`, so one table serves the whole document.
+
+Maze Rats' signature move is **combining two tables** for an emergent result, its spells are literally
+built by rolling on two word-lists. That is two pills side by side, or a rule that calls two others:
 
 ```
-spell: a {spell-form} of {spell-effect}
+{rule spell_form: bolt | cloud | ward | veil | swarm}
+{rule spell_effect: of fire | of silence | of thorns | of the void | of mending}
+{rule spell: a {spell_form} {spell_effect}}
 ```
 
-Roll `{spell}` and you get a fresh improvised spell every click, the exact Maze Rats trick, now live.
+Roll `{spell}` and you get "a cloud of silence", a fresh improvised spell every click, the exact Maze
+Rats trick, now live. The "of" lives in the effect list rather than in `spell`, so an effect that
+does not want one ("that screams") still reads correctly.
 
-> **This is where the book's content lands.** The demo ships table entries taken from Maze Rats under
-> CC BY 4.0 (attributed above). If you are building from a fresh copy, paste each table's entries into
-> its rule, and the pills around them are already wired.
+> **This is where the book's content lands.** The demo ships the pill structure with short filler
+> options written for this guide, not Maze Rats' own table entries. Working from your copy, replace
+> the filler inside each `{rule ...}` with that table's entries; the pills around them are already
+> wired, so a table goes live as soon as you edit its rule.
 
 ## Combat, fast
 
 Combat in Maze Rats is quick: roll to hit against a save, roll damage, done. Damage is a die by weapon,
-and you track health by editing a variable down. The whole exchange is a couple of pills:
+and you track health by editing a variable down. Roll `{1d6}` once for your starting health, then
+put the number in a variable of its own: the dice pill re-rolls every time you click it, so it
+cannot be the thing you are tracking. The whole exchange is a couple of pills:
 
 ```
 Attack: {2d6} + {str}    Damage: {1d6}
@@ -102,9 +120,9 @@ just the dice and one variable.
 ## Run it yourself
 
 - **Make a character:** roll `{6d6}` for stats and `{1d6}` for health, set the modifier variables.
-- **Take a risk:** roll `{2d6}` plus a modifier and beat the target.
-- **Generate anything:** click a table pill for a monster, spell or room (once the entries are
-  pasted); click a two-table spell for an improvised one.
+- **Take a risk:** roll `{2d6}` plus a modifier and look for 10 or higher.
+- **Generate anything:** click a table pill for a monster or room, and click `{spell}` for an
+  improvised one, then swap the filler for the book's own entries.
 - **Fight:** roll to hit, roll damage, edit health down.
 
 Everything is one offline file you own. Maze Rats is almost all tables, so once you paste them in, this

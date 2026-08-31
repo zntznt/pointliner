@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2143 declarations in 158 sections across 17 domains.**
+**2146 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1408,6 +1408,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `splitCondTop` — splitCondTop(str, sep) — splitTopLevel plus QUOTE awareness, for the conditional only. #1363.
 - `condAttempt` — condAttempt(body) — TRUE when a body reads as an attempted TEST that condParts refused.
 - `condAttemptReason` — condAttemptReason(body) — the P4 half of condAttempt: name the fix, not just the miss (the house
+- `MARKER_KEYWORDS` — unresolvedRefs(result) / unresolvedNote(...) — the SAME courtesy #1361 gave a conditional, for a
+- `unresolvedRefs`
+- `unresolvedNote` — `verb` is the pill's own re-run word (re-generate / re-roll / draw again), so the advice matches
 - `condEmptyMessage` — condEmptyMessage(cond, vars) — what a conditional whose TEST could not be read should say.
 - `strCondVerdict` — String-equality conditional arm (#540). A conditional's test is normally an evalMath
 

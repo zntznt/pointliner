@@ -51,9 +51,9 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 | **Living character sheet** | Stats as variables that feed derived numbers, an inventory that totals its own weight and an encumbrance check that flips red when overloaded | [character-sheet/character-sheet.md](character-sheet/character-sheet.md) | [character-sheet/character-sheet-demo.opml](character-sheet/character-sheet-demo.opml) |
 | **Campaign clocks and threads** | Progress-cookie clocks that fill as you check segments, threads that tick on a date and surface in the agenda and a live query pulling every open thread | [campaign-clocks/campaign-clocks.md](campaign-clocks/campaign-clocks.md) | [campaign-clocks/campaign-clocks-demo.opml](campaign-clocks/campaign-clocks-demo.opml) |
 | **The campaign calendar** | The world on its own calendar: months, week, and era you define, threads due in world time, a clock you advance from the agenda, and a journal that chronicles in campaign dates | [campaign-calendar/campaign-calendar.md](campaign-calendar/campaign-calendar.md) | [campaign-calendar/campaign-calendar-demo.opml](campaign-calendar/campaign-calendar-demo.opml) |
-| **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks and oracles, with the SRD's moves and tables dropped into the pill structure (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
-| **Cairn in Pointliner** | A rules-light OSR system in pills: 3d6 attributes as variables, d20 roll-under saves, a slot inventory with an overload check, HP-then-Strength damage and the game's tables (CC BY-SA 4.0, Yochai Gal) | [cairn/cairn.md](cairn/cairn.md) | [cairn/cairn-demo.opml](cairn/cairn-demo.opml) |
-| **Maze Rats in Pointliner** | A table-driven OSR generator in pills: 2d6 saves off modifier variables, and the game's many random tables as one-click picks, including its two-list improvised-spell trick (CC BY 4.0, Ben Milton) | [maze-rats/maze-rats.md](maze-rats/maze-rats.md) | [maze-rats/maze-rats-demo.opml](maze-rats/maze-rats-demo.opml) |
+| **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks and oracles, with the pill structure ready for the SRD's own moves and oracle entries (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
+| **Cairn in Pointliner** | A rules-light OSR system in pills: 3d6 attributes as variables, d20 roll-under saves, a slot inventory with an overload check, HP-then-Strength damage and its tables ready for the SRD's entries (CC BY-SA 4.0, Yochai Gal) | [cairn/cairn.md](cairn/cairn.md) | [cairn/cairn-demo.opml](cairn/cairn-demo.opml) |
+| **Maze Rats in Pointliner** | A table-driven OSR generator in pills: 2d6 saves off modifier variables, and its random tables as one-click picks ready for the book's entries, including the two-list improvised-spell trick (CC BY 4.0, Ben Milton) | [maze-rats/maze-rats.md](maze-rats/maze-rats.md) | [maze-rats/maze-rats-demo.opml](maze-rats/maze-rats-demo.opml) |
 
 Each is one nested branch you can open, poke at and rebuild into your own.
 
@@ -76,24 +76,40 @@ you want the document to do more than sit there.
 
 ## Credits and licensing of referenced systems
 
-Some examples adapt existing community notations and oracle styles. Where they do, the
-source and its author are credited in that example's guide. For systems that are **not**
-openly licensed, only the functional idea is adapted, and the original text and
-specifications are linked, not reproduced (this is how the Lonelog example works).
+Some examples adapt existing community notations and oracle styles. Where they do, the source and
+its author are credited in that example's guide. Where a system is **not** openly licensed, only
+the functional idea is adapted and the original text is linked rather than reproduced.
 
-For a system released under an **open licence**, the example may reproduce more, within that
-licence's terms and with its attribution:
+Every system referenced here happens to be openly licensed, so the example may reproduce more,
+within that licence's terms and with its attribution. Each of those licences covers **that game's
+material only**; Pointliner itself is under the **GNU AGPLv3** ([LICENSE](../../LICENSE)), and
+adapting a game into a guide here does not put the app under the game's licence or the game under
+the app's:
 
 - The **Ironsworn** example adapts the Ironsworn System Reference Document by **Shawn Tomkin**,
   used under **CC BY 4.0** (<https://creativecommons.org/licenses/by/4.0/>).
 - The **Cairn** example adapts **Cairn** by **Yochai Gal**, used under **CC BY-SA 4.0**
   (<https://creativecommons.org/licenses/by-sa/4.0/>). Because Cairn is **ShareAlike**, the
-  adapted Cairn material in that example is itself licensed CC BY-SA 4.0 (this is separate from
-  Pointliner's MIT app licence, which covers the code, not the game content).
+  adapted Cairn material in that example is itself licensed CC BY-SA 4.0.
 - The **Maze Rats** example adapts **Maze Rats** by **Ben Milton**, used under **CC BY 4.0**
   (<https://creativecommons.org/licenses/by/4.0/>).
+- The **Lonelog** example adapts the notation by **Roberto Bisceglie**, published under
+  **CC BY-SA 4.0**. It deliberately reproduces none of the specification, using only the bare
+  functional markers plus examples written for this guide, and links to the source instead.
+- The **campaign calendar** example points at the Forgotten Realms **Calendar of Harptos** as one
+  worked example of a custom calendar. It names months and festivals to say what you would type
+  and reproduces no text; Forgotten Realms is a trademark of Wizards of the Coast, used here
+  descriptively and with no affiliation.
+- The **oracle play** example's apparatus (a chaos factor, an interrupt check, meaning tables) is
+  the common vocabulary of solo play popularised by **Mythic GM Emulator** by **Tana Pigeon**. The
+  tables and wording here are original; the idea is not, and the credit belongs there.
 
 Each carries the required attribution, notes that changes were made and uses the game's name
 descriptively (no logo or artwork). Please support the creators whose work these examples point to.
 
-Pointliner itself is MIT licensed (see [LICENSE](../../LICENSE)).
+**Licensing of these files.** Pointliner itself is licensed under the GNU AGPLv3 (see
+[LICENSE](../../LICENSE)), which covers the code. The adapted game content in this folder carries
+the licence of the system it adapts, as listed above, which is why the Ironsworn and Maze Rats
+guides offer themselves under CC BY 4.0 and the Cairn guide under CC BY-SA 4.0. Those are grants
+over the adapted material in those files, made alongside the repository licence rather than in
+place of it.

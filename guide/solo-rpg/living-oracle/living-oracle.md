@@ -101,6 +101,28 @@ The last one is the payoff: a clue that is still open, drawn from your own inves
 is not making up content, it is reaching into what you already wrote and handing one piece back at
 random. That is the difference between a generator and a GM: a GM knows your world.
 
+## When the campaign outgrows one file
+
+The pool is one document, which is the right table right up until it is not: the cast ends up in
+`npcs.opml`, the threads in `campaign.opml`, and a roll in either one can only see half the world.
+Put the word **`folder`** before the colon and the draw widens to every note in a connected folder:
+
+```
+Who walks into the scene? {roll folder: #npc}
+```
+
+Same search, same pill, one extra word. Connect a folder from the **File** menu first (`Connect a
+folder…`, a Chromium-family browser thing), or take the `@` menu door, **Roll on your document**,
+which offers it as a checkbox, *Roll on the whole folder*, and shows the live pool size for both
+scopes before you commit. The other notes count **as they were last saved** on disk. With no folder
+connected the pill still rolls, on this document alone, and says so rather than pretending: it goes
+dashed and its tooltip reads "no folder is connected, so this rolled on the current document only."
+
+The switch is the word before the colon, never inside the search, so `{roll: folder}` still means
+"roll on a point containing the word folder." The demo below is one file, so it ships the
+single-document form; see [generating-text](../../generating-text.md#rolling-across-the-whole-folder)
+for the folder scope in full.
+
 ## Put it in a scene
 
 A single beat of play, all from your own campaign:
@@ -130,13 +152,18 @@ that draw from all of them.
   Click again for another draw.
 - **Add to the pool live.** Add a fifth `#npc` point to the cast list, then roll again: the new NPC
   can now come up, with no other change.
-- **Freeze one.** The demo has a `{contact := {roll: #npc}}` line; click it to lock in a contact for
-  the scene, and see the later `{contact}` references follow.
+- **Freeze one.** The demo has a `{contact := {roll: #npc}}` line. It is *already* frozen: it drew
+  once when the file opened and the later `{contact}` references all read that same draw. Clicking it
+  re-rolls, and every reference follows the new draw at once, which is the point of binding the pick
+  to a name instead of writing `{roll: #npc}` three times.
 - **Roll a narrowed pool.** Try the `{roll: #clue is:todo}` pill to draw only a clue you have not
   resolved, then check off that clue and roll again to see it leave the pool.
 
-To build your own from nothing: tag a few points `#npc`, write `{roll: #npc}` anywhere, and you
-have a personal oracle. Everything else is the same idea pointed at a different tag.
+To build your own from nothing: tag a few points `#npc`, then add the pill. You can type
+`{roll: #npc}` anywhere, or take the visible door and pick **Roll on your document** from the `@`
+menu, which writes the same pill and lets you fill in the search rather than remember the form.
+Either way you have a personal oracle, and everything else in this case is the same idea pointed at
+a different tag.
 
 ---
 

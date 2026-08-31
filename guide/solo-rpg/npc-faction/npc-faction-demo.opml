@@ -1,24 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>NPC and faction tracker</title></head><body>
 <outline text="# NPC and faction tracker">
-  <outline text="A living cast for a solo campaign. The base below is an interactive table (a /base): click a cell to edit, and use the switcher at its top left to flip it to a Board grouped by faction. See npc-faction.md for the walkthrough."/>
+  <outline text="A living cast for a solo campaign. The base below is an interactive table (a /base) that opens on its Board view, grouped into faction lanes. Switch to Table at its top left to edit cells, or to Cards. Calendar stays dimmed until a column is marked as a Date, and this cast has none. See npc-faction.md for the walkthrough."/>
   <outline text="## The cast">
-    <outline text="The Faction column is marked as Status (its values are UPPERCASE so they read as states), so the Board view groups the cast into faction lanes. Click Board in the base switcher, then drag a card (or Alt+Left/Right on a focused card) to move an NPC between factions as loyalties shift."/>
+    <outline text="One thing makes the Board group by faction: the factions are declared as a state set by the pill below. Once they are declared Pointliner reads the Faction column as a Status column on its own, and this demo also marks it by hand so the file says what it means. Capitals are only a reading convention: a value becomes a lane because it is a declared state, so an undeclared faction lands in a &quot;No state&quot; lane instead. Drag a card (or Alt+Left/Right on a focused card) to move an NPC between factions as loyalties shift."/>
+    <outline text="{seq Cast: UNDERCITY FREEPORT ASHCHURCH | GONE}"/>
+    <outline text="The states left of the bar are the factions in play; anything right of it reads as finished, which is what GONE is for: an NPC who is dead, fled or written out. A sequence needs at least one state on each side of the bar."/>
     <outline _type="base" _colrole="[null,&quot;status&quot;,null,null]" _view="{&quot;kind&quot;:&quot;board&quot;,&quot;groupBy&quot;:1}" text="| NPC | Faction | Disposition | Tie |&#10;|---|---|---|---|&#10;| Vex the Fence | UNDERCITY | wary | owes you a favor |&#10;| Mara Coil | FREEPORT | ally | your old crewmate |&#10;| Prior Aldous | ASHCHURCH | hostile | wants the relic |&#10;| Sig One-Eye | UNDERCITY | neutral | sells information |"/>
   </outline>
   <outline text="## Scene beats that link to the cast">
-    <outline text="In your own game, give each NPC their own point in the outline (outside the base) and link scene beats to it with [[. The NPC's point then shows a backlink to every scene that mentions them, so you can navigate both ways. Here are two example NPC points and beats that link to them."/>
-    <outline text="Vex the Fence">
-      <outline text="You slipped Vex a coded note under the bridge. She read it, burned it, and named a price: {2d6} silver. Tag the thread #relic so you can pull every beat that touches it later."/>
+    <outline text="In your own game, give each NPC their own point in the outline (outside the base) and link scene beats to it by typing `[[` and picking the point. The NPC's point then shows a backlink to every scene that mentions them, so you can navigate both ways. The two beats below carry real links: open Vex the Fence and its Linked from panel lists the scene."/>
+    <outline text="Vex the Fence" _id="npc00010">
+      <outline text="You slipped [[#npc00010|Vex]] a coded note under the bridge. She read it, burned it, and named a price: {2d6} silver. Tag the thread #relic so you can pull every beat that touches it later."/>
     </outline>
-    <outline text="Prior Aldous #relic">
-      <outline text="The Prior's people were watching the docks. An oracle to see if he moved first: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}. Note what it says and move the scene."/>
+    <outline text="Prior Aldous #relic" _id="npc00020">
+      <outline text="[[#npc00020|The Prior]]'s people were watching the docks. An oracle to see if he moved first: {Yes, and 1 | Yes 6 | Yes, but 3 | No, but 3 | No 6 | No, and 1}. Note what it says and move the scene."/>
     </outline>
   </outline>
   <outline text="## How to run it">
-    <outline text="Add an NPC: click into the base and type a new row, or press Alt+Shift+Down on a cell to insert one. Set their Faction to one of your lanes (or a new one) and it appears on the Board."/>
+    <outline text="Add an NPC: click into the base and type a new row, or press Alt+Shift+Down on a cell to insert one. Set their Faction to one of the declared lanes and the card appears there. For a faction that does not exist yet, add it to the `{seq Cast: ...}` pill first, or the card lands in &quot;No state&quot;."/>
     <outline text="Track a relationship shift: change the Disposition cell, or move the card to a new faction lane on the Board. The table is the truth, so both views always agree."/>
-    <outline text="Find everyone in a faction: search faction:Undercity, or click the Undercity lane on the Board. Tag beats with #relic (or any thread) and click the tag to pull every scene that touches it."/>
+    <outline text="Find everyone in a faction: read the lane. The roster lives in base rows rather than points, so a search cannot pick a row out of it, and the Board lane IS the answer to &quot;who is in the Undercity&quot;. Search is for the NPC points and beats outside the base: tag them with a thread tag (the beats below use one) and click the tag to pull every scene that touches it."/>
   </outline>
 </outline>
 </body></opml>

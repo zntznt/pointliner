@@ -10,22 +10,20 @@
         <outline text="Wandering encounter check (2d6, 9 or less is quiet): {2d6}" _id="hex00013"/>
         <outline text="If something stirs, what is it? {a lone traveler | tracks, fresh | a wary beast | a hidden cache | distant smoke | signs of a camp}" _id="hex00014"/>
         <outline text="Distance you can push before dusk, in hexes: {1d6}" _id="hex00015"/>
-        <outline text="Rations in your pack at the start (a variable the days draw down): {rations := 10}" _id="hex00016"/>
+        <outline text="Rations in your pack at the start (a variable the days draw down): {rations := 14}" _id="hex00016"/>
       </outline>
-      <outline text="## The map: the Greytine Vale" _id="hex00020">
-        <outline text="This is the nesting the demo is really about. The Vale is a point. Each region under it is a point. Each hex under a region is a point, and each hex carries what you discovered plus a supplies-used property. Fold a region closed to see the map shrink to its edges, open one to zoom into its hexes." _id="hex00021"/>
-        <outline text="Region: The Fenlands (west of the ford)" _id="hex00030">
+      <outline text="## The map: the Greytine Vale, {= sum(supplies, subtree)} of {rations} rations spent" _id="hex00020">
+        <outline text="This is the nesting the demo is really about. The Vale is a point. Each region under it is a point. Each hex under a region is a point, and each hex carries what you discovered plus a supplies-used property. Fold a region closed (the chevron left of its bullet) to see the map shrink to its edges, and open it again to bring the hexes back. Clicking the bullet is a different move: it zooms the document into that region alone." _id="hex00021"/>
+        <outline text="Region: The Fenlands (west of the ford), {= sum(supplies)} rations spent" _id="hex00030">
           <outline text="Hex 0101 (entered): terrain {shuffle: forest | hills | marsh | ruins | river | open plain}. A shallow crossing, reeds to the horizon. {prop supplies: 1}" _id="hex00031"/>
           <outline text="Hex 0102: terrain {shuffle: forest | hills | marsh | ruins | river | open plain}. Encounter check {2d6}, you spot {a lone traveler | tracks, fresh | a wary beast | a hidden cache | distant smoke | signs of a camp}. {prop supplies: 2}" _id="hex00032"/>
           <outline text="Hex 0103: terrain {shuffle: forest | hills | marsh | ruins | river | open plain}. Slow, sucking ground costs an extra ration. {prop supplies: 3}" _id="hex00033"/>
-          <outline text="Rations spent crossing the Fenlands: {= sum(supplies)} (totals the supplies property on the hexes directly under this region)" _id="hex00034"/>
         </outline>
-        <outline text="Region: The Ashen Ridge (climbing east)" _id="hex00040">
+        <outline text="Region: The Ashen Ridge (climbing east), {= sum(supplies)} rations spent" _id="hex00040">
           <outline text="Hex 0201: terrain {shuffle: forest | hills | marsh | ruins | river | open plain}. Thin air, a long view back over the fens. {prop supplies: 2}" _id="hex00041"/>
           <outline text="Hex 0202: terrain {shuffle: forest | hills | marsh | ruins | river | open plain}. Encounter check {2d6}. A cairn marks the pass. {prop supplies: 2}" _id="hex00042"/>
-          <outline text="Rations spent on the Ridge: {= sum(supplies)}" _id="hex00043"/>
         </outline>
-        <outline text="Rations spent across the whole Vale so far (this rolls up the region subtotals): {= sum(supplies)} of {rations}. Note: this level totals the supplies property on its DIRECT children, so give each region a supplies subtotal property if you want a true grand total (shown in the guide)." _id="hex00050"/>
+        <outline text="Two scopes, one keyword. A region totals the hexes directly under it with `{= sum(supplies)}`. The Vale heading above reaches every hex at any depth with `{= sum(supplies, subtree)}`. Both live on the point whose children they count, which is the whole trick: a rollup beside the list reads nothing." _id="hex00050"/>
       </outline>
       <outline text="## The daily loop (one day, played through)" _id="hex00060">
         <outline text="Day 3. Weather: {cycle: clear | overcast | rain | fog}. You break camp at the edge of Hex 0103." _id="hex00061"/>
@@ -40,9 +38,9 @@
         </outline>
       </outline>
       <outline text="## How to run it" _id="hex00070">
-        <outline text="Draw terrain: click a terrain pill and it pulls the next card from the deck. The deck gives each terrain once before any repeats, then reshuffles and tells you it did, so a region feels varied instead of all-marsh. Every terrain pill in the file shares the one deck." _id="hex00071"/>
+        <outline text="Draw terrain: click a terrain pill and it pulls the next card from its deck. Click the SAME pill repeatedly and it gives each terrain once before any repeats, then reshuffles and tells you it did. Each pill keeps its own bag, so two hexes can both open on marsh; the no-repeat promise is per pill, not across the map." _id="hex00071"/>
         <outline text="Roll an encounter: click a {2d6} pill to roll, click again to re-roll. It freezes its result so the log stays an honest record of what you got. Read it against the threshold on the same line (quiet on a low number, something stirs on a high one)." _id="hex00072"/>
-        <outline text="Watch supplies add up: each hex carries a supplies property (the {prop supplies: N} pill). The {= sum(supplies)} pill on a region totals the hexes directly under it, live, so editing a hex's number re-totals the region without any math on your part." _id="hex00073"/>
+        <outline text="Watch supplies add up: each hex carries a supplies property (the `{prop supplies: N}` pill). The `{= sum(supplies)}` pill sits ON the region point and totals the hexes directly under it, live, so editing a hex's number re-totals the region without any math on your part." _id="hex00073"/>
         <outline text="Grow the map: add a hex as a child point under a region (Tab to indent), give it a terrain draw, an encounter check, and a {prop supplies: N}. Add a whole new region as a sibling. The outline is the map, so the map grows by outlining." _id="hex00074"/>
       </outline>
     </outline>

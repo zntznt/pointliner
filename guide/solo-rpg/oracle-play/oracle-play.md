@@ -43,9 +43,12 @@ Between scenes, roll to see whether events break in. Keep a **chaos** variable f
 things are, then let it weight an interrupt roll. Higher chaos, more interruptions.
 
 ```
-chaos = 3                        (a variable, 1 = calm … 5 = chaos)
+{chaos := 3}                     (a variable, 1 = calm … 5 = chaos)
 {proceed | interrupted {= chaos}}
 ```
+
+`{name := value}` is the declaration; a bare `chaos = 3` is ordinary text and declares nothing, so
+the roll below it would have no weight to read.
 
 The `{= chaos}` weight is read at roll time, so raising `chaos` to 5 makes "interrupted" more
 likely without editing the roll. That weight-is-an-expression move is the
@@ -59,10 +62,15 @@ just the [name-generator two-rule pattern](../../generating-text.md#name-things-
 name you know it by:
 
 ```
-meaning: {action} {subject}
-action: hide | reveal | pursue | abandon | protect | betray
-subject: a secret | an ally | a debt | a route | a rumor | a relic
+{rule action: hide | reveal | pursue | abandon | protect | betray}
+{rule subject: a secret | an ally | a debt | a route | a rumor | a relic}
+{rule meaning: {action} {subject}}
 ```
+
+The `rule` keyword is what names it. A bare `meaning: {action} {subject}` stays ordinary text and
+registers nothing, so the wrapper is not optional. (The demo takes the simpler road and ships the
+two lists as plain inline picks, which needs no rule at all; reach for named rules once you want to
+call the same table from several places.)
 
 Click `{meaning}` and read the pair loosely: "reveal a debt", "pursue a route". You are reading for
 inspiration, not instruction, so let the pairing suggest rather than dictate.
@@ -78,7 +86,7 @@ A shuffle deck draws each item once, then reshuffles and tells you when it has (
 "Deck reshuffled" note), so you always know when you have been through the whole list.
 
 One thing to know: a deck draws without repeats only as its own standalone pill. If you fold a
-`{shuffle: ...}` inside a named rule (like `meaning: {shuffle: hide | reveal} {subject}`), it turns
+`{shuffle: ...}` inside a named rule (like `{rule meaning: {shuffle: hide | reveal} {subject}}`), it turns
 into an ordinary random pick, so repeats can come back. Keep the deck as its own pill when the
 no-repeat behavior matters.
 
@@ -111,11 +119,23 @@ happened* on it.
 A single played beat, start to finish:
 
 1. Ask: `@` Oracle, "Likely + swing" → **Yes, but**.
-2. It is a yes with a catch, but what catch? Click `{meaning}` → "protect a debt".
+2. It is a yes with a catch, but what catch? Click the meaning table's two picks in the demo, or
+   `{meaning}` if you named the rules yourself → "protect a debt".
 3. Read it: the merchant will help, but only to clear a debt he owes someone worse.
 4. End the scene, bump `chaos` if it went sideways, then roll `{proceed | interrupted {= chaos}}`.
 5. If interrupted, pull `{shuffle: …threads…}` to see which thread barges in.
 
-The demo has all five pieces wired so you can click through the loop.
+The demo has these pieces wired so you can click through the loop, with the meaning table in its
+two-inline-picks form rather than as a named rule.
+
+---
+
+## Credit
+
+The apparatus this case is built on, a **chaos factor** that weights an interrupt check, and
+**meaning tables** read as a two-word spark, is the common vocabulary of solo play, and it was
+popularised by **Mythic Game Master Emulator** by **Tana Pigeon** (Word Mill Games). The tables and
+wording here are original and no text is reproduced, but the idea is not ours and the credit
+belongs there. If this loop suits how you play, the original is worth owning.
 
 **Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

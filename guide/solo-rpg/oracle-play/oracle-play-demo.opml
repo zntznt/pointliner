@@ -24,7 +24,7 @@
       </outline>
       <outline text="How to use this demo" _id="orp00040">
         <outline text="Click any pill to run it. The interrupt check reads {= chaos} live, so edit chaos above and the odds shift. The thread deck draws each thread once, then reshuffles (it tells you when). Edit any list by clicking the text next to the pill." _id="orp00041"/>
-        <outline text="Nothing here is a new syntax: the swing oracle is a weighted list, the interrupt is dynamic odds, the meaning table is a two-rule grammar, and the thread deck is a shuffle deck. See oracle-play.md." _id="orp00042"/>
+        <outline text="Nothing here is a new syntax: the swing oracle is a weighted list, the interrupt is dynamic odds, the meaning table is a pair of inline picks, and the thread deck is a shuffle deck. See oracle-play.md." _id="orp00042"/>
       </outline>
     </outline>
   </body>
