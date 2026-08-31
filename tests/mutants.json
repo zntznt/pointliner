@@ -2637,6 +2637,33 @@
       "find": "#qb-tools{gap:4px}",
       "replace": "#qb-tools{gap:4px}\n#xx-tools{gap:2px}",
       "kills": "#1560 every .scroll-strip bar is a swept surface, so this defect cannot recur unmeasured"
+    },
+    {
+      "id": "index-check-folded-back-behind-the-suite",
+      "suite": "unit",
+      "why": "this is the exact arrangement that failed: a wedge in the ten-minute step reports the one-second check `skipped`, and a stale index went unreported on a live PR",
+      "file": ".github/workflows/tests.yml",
+      "find": "      - run: node --test tests/test.mjs\n\n  # #1557:",
+      "replace": "      - run: node --test tests/test.mjs\n      - run: python3 tools/symbol-index.py --check\n\n  # #1557:",
+      "kills": "#1557 the fast offline guards do not sit downstream of the suite"
+    },
+    {
+      "id": "drift-guards-second-check-skippable",
+      "suite": "unit",
+      "why": "without !cancelled() a failing hook self-check skips the index check, reproducing the same hiding one level down",
+      "file": ".github/workflows/tests.yml",
+      "find": "      - if: ${{ !cancelled() }}\n        run: python3 tools/symbol-index.py --check",
+      "replace": "      - run: python3 tools/symbol-index.py --check",
+      "kills": "#1557 the fast offline guards do not sit downstream of the suite"
+    },
+    {
+      "id": "drift-guards-goes-online",
+      "suite": "unit",
+      "why": "node-tests exists to be the offline gate; the job split must not smuggle a network dependency onto the common path",
+      "file": ".github/workflows/tests.yml",
+      "find": "      - run: node .claude/hooks/check-pr-conformance.test.mjs\n      # #1430:",
+      "replace": "      - run: npm install --no-save playwright@1.49.1\n      - run: node .claude/hooks/check-pr-conformance.test.mjs\n      # #1430:",
+      "kills": "#1557 the fast offline guards do not sit downstream of the suite"
     }
   ]
 }

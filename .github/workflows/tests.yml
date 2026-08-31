@@ -33,6 +33,25 @@ jobs:
           node-version: 22
       # Node 22 resolves a bare directory as a module; pass the explicit path.
       - run: node --test tests/test.mjs
+
+  # #1557: two sub-second, offline checks that share NOTHING with the suite above. They used to be
+  # steps 5 and 6 of node-tests, and that is a trap rather than a tidy grouping: when the suite
+  # WEDGED on #1557 -- 2049 tests in five seconds, then silence -- timeout-minutes killed the job at
+  # ten minutes and GitHub reported both of these `skipped`. The symbol index was in fact STALE on
+  # that PR, and nothing said so. A one-second gate was lost to a ten-minute one it has no
+  # relationship with, and because a timed-out job is reported `cancelled` rather than `failure`,
+  # nothing about the run read as broken either.
+  #
+  # Splitting them out also means an ordinary red suite no longer hides them: three signals instead
+  # of one. Both are offline, so this job keeps node-tests' no-network property.
+  drift-guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5   # measured ~2s; these read files, they do not run a suite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       # #1130: the PreToolUse hook has its own self-check, which until now nothing
       # ran. A guard whose test is never executed rots exactly like the guard it
       # tests, so CI runs it. It spawns the hook as a subprocess rather than
@@ -43,7 +62,12 @@ jobs:
       # mode this repo has now written down twice (#1129 a rule with no reader,
       # #1166 a build script CI never ran). Offline and fast, so it stays on the
       # common path rather than becoming a weekly job nobody watches.
-      - run: python3 tools/symbol-index.py --check
+      #
+      # `!cancelled()` because the step above can fail: without it, a broken hook self-check would
+      # skip this one and hide the drift, which is the same mistake this job exists to undo, one
+      # level down. (Not `always()`, which would also run it on a real cancellation.)
+      - if: ${{ !cancelled() }}
+        run: python3 tools/symbol-index.py --check
 
   # A guard that CANNOT FAIL is indistinguishable from a passing guard in every report CI produces,
   # and measured over one session roughly one new guard in six was exactly that -- always the same
