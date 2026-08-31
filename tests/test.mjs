@@ -15911,14 +15911,24 @@ test('subtree aggregation: render + export + front-door wiring (src pins)', () =
   // #610 trimmed the math dialog hint (it duplicated the guide); the front door for the min/max
   // rollup is now the concept-guide `rollups` entry, reached via the dialog's ? button. Pin the
   // guide body, not the hint, so the feature keeps a discoverable home after the trim.
-  // #1552: pinned to the ENTRY naming all five reducers, not to one literal sentence. The old
-  // `_src.includes('sum, avg, count, min or max')` broke the moment the body backticked those
-  // tokens (the house rule says to), even though the front door it guards was untouched — a pin
-  // that fails on formatting is a pin that will be silenced rather than fixed.
+  // #1552, second attempt. The original `_src.includes('sum, avg, count, min or max')` broke the
+  // moment the body backticked those tokens, which the house rule requires — a pin that fails on
+  // formatting gets silenced rather than fixed. But the first replacement over-corrected into the
+  // shape CLAUDE.md warns about, a claim checked over a search space far larger than its subject:
+  // it asked whether `min` and `max` appear ANYWHERE in the entry, and they do, in the examples
+  // (`min(cost, subtree)`). Deleting both from the sentence this guards left the suite GREEN.
+  // Measured, not reasoned about.
+  //
+  // So: the BODY only (examples are a different promise), backticks normalised away, and the
+  // ENUMERATION asserted rather than the words. Formatting-tolerant and still specific.
   const rollupsEntry = nonEmpty(between(_src, "{ id:'rollups', cat:", "\n  { id:'"), 'the rollups GUIDE entry');
-  for (const reducer of ['sum', 'avg', 'count', 'min', 'max'])
-    assert.match(rollupsEntry, new RegExp('`' + reducer + '`|\\b' + reducer + '\\b'),
-      `concept-guide rollups entry must document ${reducer} (the front door after #610 trimmed the math hint)`);
+  const rollupsBody = nonEmpty((rollupsEntry.match(/body:"((?:[^"\\]|\\.)*)"/) || [])[1] || '',
+    "the rollups entry's body string");
+  const reducerList = rollupsBody.replace(/`/g, '');
+  assert.match(reducerList, /sum, avg, count, min or max/,
+    'the concept-guide rollups BODY must enumerate all five reducers together — it is the front ' +
+    'door for the min/max rollup after #610 trimmed the math dialog hint, and naming them in the ' +
+    'examples alone does not teach that they exist');
 });
 
 test('#557 firstEmptyRollup — flags a sum/avg over an empty prop scope; excludes count; ignores non-rollups', () => {
