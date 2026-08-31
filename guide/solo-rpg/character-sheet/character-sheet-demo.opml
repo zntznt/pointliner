@@ -40,7 +40,7 @@
   <outline text="## How to run it">
     <outline text="Change a stat and watch the sheet move. Click Level above, set it to 5, and the hit points row ({= level * 8}) jumps to forty on its own. The attack roll ({2d6+might}) reads Might the same way, so raising a raw stat raises every row that uses it."/>
     <outline text="Watch the check catch a problem. The Carried load chip runs `sum(weight)` over the pack items directly under it and passes while the total is ten or under. Add the cook pot line (or bump any weight up), the total on the Carried load point crosses ten, and the chip turns red. Take something out and it clears. Search is:failing to find every check that is currently red across the whole document."/>
-    <outline text="Nothing here is new syntax. Stats are variables (name colon-equals value), derived rows are math that reads them (equals then an expression), the pack total is a child rollup (`{= sum(weight)}` on the point above the items, each carrying a weight property), and the encumbrance rule is a check on the Carried load point (add one from its bullet menu, or type /check, with the test `sum(weight) <= 10`). See character-sheet.md."/>
+    <outline text="Nothing here is new syntax. Stats are variables (name colon-equals value), derived rows are math that reads them (equals then an expression), the pack total is a child rollup (`{= sum(weight)}` on the point above the items, each carrying a weight property), and the encumbrance rule is a check on the Carried load point (add one from its bullet menu, or type /check, with the test `sum(weight) &lt;= 10`). See character-sheet.md."/>
   </outline>
 </outline>
 </body></opml>

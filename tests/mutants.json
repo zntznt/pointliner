@@ -2736,6 +2736,24 @@
       "find": "{= sum(supplies, subtree)} of {rations}",
       "replace": "{= sum(supplies)} of {rations}",
       "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
+    },
+    {
+      "id": "solo-rpg-demo-raw-angle-bracket",
+      "suite": "unit",
+      "why": "the mistake I actually made twice while fixing this folder: a bare `<=` inside text=\"...\" leaves the OPML not well-formed, and both the suite and a lenient DOMParser stayed quiet about it",
+      "file": "guide/solo-rpg/character-sheet/character-sheet-demo.opml",
+      "find": "`sum(weight) &lt;= 10`",
+      "replace": "`sum(weight) <= 10`",
+      "kills": "EVERY shipped demo is well-formed XML"
+    },
+    {
+      "id": "solo-rpg-demo-raw-quote",
+      "suite": "unit",
+      "why": "the other half of the same mistake: a raw double quote inside a text attribute terminates it early, so everything after it is read as bogus attributes",
+      "file": "guide/solo-rpg/npc-faction/npc-faction-demo.opml",
+      "find": "a &quot;No state&quot; lane instead",
+      "replace": "a \"No state\" lane instead",
+      "kills": "EVERY shipped demo is well-formed XML"
     }
   ]
 }

@@ -1763,6 +1763,7 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/ironsworn/ironsworn.md': readFileSync(new URL('../guide/solo-rpg/ironsworn/ironsworn.md', import.meta.url), 'utf8'),
     'guide/solo-rpg/character-sheet/character-sheet-demo.opml': readFileSync(new URL('../guide/solo-rpg/character-sheet/character-sheet-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/hex-crawl/hex-crawl-demo.opml': readFileSync(new URL('../guide/solo-rpg/hex-crawl/hex-crawl-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/npc-faction/npc-faction-demo.opml': readFileSync(new URL('../guide/solo-rpg/npc-faction/npc-faction-demo.opml', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -29987,6 +29988,42 @@ test('EVERY solo-RPG demo resolves its own rule references (the census the last 
   }
   assert.ok(checked >= 20, `the census must actually examine call sites, examined ${checked}`);
   assert.deepEqual(broken, [], 'every {name} in a shipped demo must resolve:\n  ' + broken.join('\n  '));
+});
+
+test('EVERY shipped demo is well-formed XML (an unescaped < or " truncates the file silently)', () => {
+  // Twice while fixing this folder I typed a bare `<=` and a bare `"` inside a text="..." attribute.
+  // Neither showed up as a failure: the suite was green, and the browser's DOMParser is lenient
+  // enough that the demo still LOOKED fine while content after the bad token was being dropped. An
+  // OPML the app cannot parse is the worst failure this folder has, because File > Open just fails,
+  // so it gets the cheapest possible guard rather than a subtle one.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  const bad = [];
+  for (const { name, file } of demos) {
+    const xml = readFileSync(file, 'utf8');
+    // Inside a text="..." attribute, `<` and `&` must be entities and `"` must not appear at all.
+    for (const m of xml.matchAll(/text="([^"]*)"/g)) {
+      const v = m[1];
+      if (v.includes('<')) bad.push(`${name}: raw "<" in a text attribute -> ${JSON.stringify(v.slice(Math.max(0, v.indexOf('<') - 40), v.indexOf('<') + 20))}`);
+      for (const amp of v.matchAll(/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/g))
+        bad.push(`${name}: raw "&" in a text attribute -> ${JSON.stringify(v.slice(Math.max(0, amp.index - 40), amp.index + 20))}`);
+    }
+    // A raw `"` inside a value ends it early and the rest of the sentence is then read as
+    // attributes. Counting quotes does NOT catch it -- a quoted PHRASE adds two, so parity stays
+    // even, which is how the mutant for this survived the first draft of this guard. Check the
+    // attribute layer itself: strip well-formed name="value" pairs off each tag and require that
+    // nothing but whitespace and an optional `/` is left. Prose read as attributes leaves words.
+    for (const tag of xml.matchAll(/<outline\b([^>]*)>/g)) {
+      const rest = tag[1].replace(/\s+[A-Za-z_][\w:.-]*="[^"]*"/g, '').trim();
+      if (rest && rest !== '/')
+        bad.push(`${name}: an <outline> tag has a raw quote in a value, so ${JSON.stringify(rest.slice(0, 60))} is being read as attributes`);
+    }
+  }
+  assert.deepEqual(bad, [], 'a demo OPML is not well-formed, so File > Open drops content or fails:\n  ' + bad.join('\n  '));
 });
 
 test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it', () => {
