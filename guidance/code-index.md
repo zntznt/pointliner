@@ -23,6 +23,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `makeDocCache` — makeDocCache(name, compute) — the sanctioned door for a NEW whole-tree cache: the standard
 
 ## model
+- `__probeRequiredChecks1565`
 
 - `root`
 - `focusedId`
