@@ -150,6 +150,11 @@ Open the [demo file](character-sheet-demo.opml) and poke at it:
   weight and it clears, or raise `might` and watch the limit move instead.
 - **Find every problem at once.** Search `is:failing`. While the pack is overloaded, the check
   shows up in the results; fix it and it drops out.
+- **Play in the same file.** The demo ends with a Scene point carrying two inline picks,
+  `You cut the trail of {a wounded stag | a lone rider | something with too many feet}` and a
+  second one for which way it leads. Click either to redraw it. The sheet and the play are the same
+  document and the same `{…}` grammar, so the scene you roll sits directly under the numbers it
+  will spend.
 
 Nothing here is a new notation. Stats are variables, derived numbers are math, the pack total is a
 child rollup, and the encumbrance rule is a check. It is the same `{…}` grammar the rest of Pointliner

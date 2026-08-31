@@ -30123,6 +30123,85 @@ test('no solo-RPG guide teaches a progress token the renderer leaves as plain te
   assert.deepEqual([...new Set(dead)], [], 'an inert progress token:\n  ' + [...new Set(dead)].join('\n  '));
 });
 
+test('a solo-RPG demo ships the clock its guide tells the reader to click', () => {
+  // Two drive modes, one control. A clock with a WRITTEN count renders role="button" and answers a
+  // click (Shift-click steps back); a COMPUTED [o /M] is a readout of its checkbox children, carries
+  // no role and is inert to that gesture. campaign-clocks taught both modes, told the reader twice to
+  // click a ring, and shipped four clocks of which every one was computed -- so the gesture the guide
+  // described could not be performed anywhere in the file it shipped with. Prose alone cannot tell
+  // you that: both modes spell the same token, and both render a ring that looks identical.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(src.includes(String.raw`CLOCK_RE = /\[o (\d*)\/(\d+)\]/g`),
+    'CLOCK_RE has changed shape; update the restatement below to match');
+  assert.ok(src.includes('<span class="clock clock-computed${full}" aria-label='),
+    'the computed clock span has changed; re-check that it is still NOT a control');
+  assert.ok(src.includes('<span class="clock${full}" role="button" ${INLINE_CTL}'),
+    'the manual clock span has changed; re-check that it is still the clickable one');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const cases = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, md: resolve(dir, name, `${name}.md`), demo: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(c => { try { readFileSync(c.md); readFileSync(c.demo); return true; } catch { return false; } }),
+    'solo-rpg guide/demo pairs');
+
+  // parseClock's bounds, restated: an out-of-range count is not a clock at all, it stays literal
+  // text, so [o 9/6] would ship a "clickable ring" that is three plain characters.
+  const manualClocks = (t) => [...t.replace(/`[^`]*`/g, ' ').matchAll(/\[o (\d+)\/(\d+)\]/g)]
+    .filter(m => { const d = Number(m[1]), tot = Number(m[2]); return tot >= 1 && tot <= 99 && d <= tot; });
+
+  let taught = 0;
+  const bad = [];
+  for (const { name, md, demo } of cases) {
+    const guide = readFileSync(md, 'utf8'), xml = readFileSync(demo, 'utf8');
+    const demoText = [...xml.matchAll(/text="([^"]*)"/g)].map(m => m[1]).join('\n');
+    // "click the ring" in either half: the guide teaches it, and the demo's own how-to repeats it.
+    const teaches = [guide, demoText].filter(t => /\bclick[^.\n]{0,40}\bring\b/i.test(t));
+    if (!teaches.length) continue;
+    taught++;
+    if (!manualClocks(demoText).length)
+      bad.push(`${name}: the docs say to click a ring, but the demo ships no manual [o N/M] clock ` +
+        `(every ring in it is a computed readout, which carries no role="button" and ignores a click)`);
+  }
+  assert.ok(taught >= 1, `the census must find a guide that teaches the click, found ${taught}`);
+  assert.deepEqual(bad, [], 'a clock gesture with nothing to perform it on:\n  ' + bad.join('\n  '));
+});
+
+test('a demo that NAMES a progress token in prose keeps the token inert', () => {
+  // Backticks stop the render (driven: `[o /6]` comes out as <code>, [o /6] comes out as a ring), so
+  // an un-escaped token inside an explanatory sentence gets EATEN by the thing it is explaining:
+  // campaign-clocks shipped "A clock is one point whose text carries an [o /6] clock", which the
+  // reader saw as "carries an o 0/6 clock" -- the notation missing from its own definition, plus two
+  // stray clickable rings sitting in prose. Every gauge the demos ship on purpose ends the line it
+  // measures; a token that keeps a sentence going after it is a MENTION, and a mention needs the
+  // backticks. (This is the [...] half of a rule already enforced for {...} elsewhere in this file.)
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  const LIVE = /\[o \d*\/\d+\]|\[(?:\/|%)(?:self|children|subtree|\d+)?\]/g;
+
+  let live = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/text="([^"]*)"/g)) {
+      const t = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      if (/^\s*-\s*\[[ x]\]/i.test(t)) continue;                       // a checkbox child, not a gauge
+      const masked = t.replace(/`[^`]*`/g, s => ' '.repeat(s.length));  // code spans render literally
+      for (const g of masked.matchAll(LIVE)) {
+        live++;
+        const after = t.slice(g.index + g[0].length);
+        if (/^\s*[A-Za-z]/.test(after))
+          bad.push(`${name}: ${g[0]} renders as a gauge mid-sentence -> ${JSON.stringify(t.slice(Math.max(0, g.index - 40), g.index + 40))}`);
+      }
+    }
+  }
+  assert.ok(live >= 5, `the census must see live progress tokens in the demos, saw ${live}`);
+  assert.deepEqual(bad, [], 'a named token the renderer ate:\n  ' + bad.join('\n  '));
+});
+
 test('a demo board that groups by a status column declares the states it groups into', () => {
   // The npc-faction board grouped nothing: lanes come from knownStates(), which is the four
   // built-ins plus whatever a sequence pill declares, and the demo declared none, so all four NPCs
@@ -30610,6 +30689,49 @@ test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it
   }
   assert.ok(rollups >= 5, `the census must actually find rollups, found ${rollups}`);
   assert.deepEqual(orphans, [], 'a rollup totals the points BELOW it; these have none:\n  ' + orphans.join('\n  '));
+});
+
+test('a solo-RPG doc that quotes a check quotes the one its demo actually carries', () => {
+  // The check lives in the demo's _props, invisible in the outline text, so prose about it drifts
+  // silently: character-sheet's carry limit became `{= 8 + might}` and the demo's own how-to still
+  // told the reader the test was `sum(weight) <= 10`. Both were plausible, only one was in the file,
+  // and a reader who typed the quoted one got a check that stops following the stat -- the exact
+  // copy-instead-of-compute failure the guide is written to argue against.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const cases = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, md: resolve(dir, name, `${name}.md`), demo: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(c => { try { readFileSync(c.demo); return true; } catch { return false; } }),
+    'solo-rpg demos');
+  const unesc = t => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#10;/g, '\n').replace(/&amp;/g, '&');
+  const norm = e => e.replace(/\s+/g, ' ').trim().toLowerCase();
+  // An aggregation compared against something: the shape a check must have (evalCheck needs a
+  // comparison), and the shape prose quotes. The tail stops at what closes a quotation in either
+  // format -- a backtick, a bold marker, a bracket or the end of the sentence.
+  const CHECK = /\b(?:sum|avg|count|min|max)\s*\([^()]*\)\s*(?:<=|>=|==|!=|<|>)\s*[^`*)\]"\n]{1,32}/g;
+
+  let quoted = 0;
+  const bad = [];
+  for (const { name, md, demo } of cases) {
+    const xml = readFileSync(demo, 'utf8');
+    const real = new Set();
+    for (const m of xml.matchAll(/_props="([^"]*)"/g)) {
+      try { for (const pr of JSON.parse(unesc(m[1]))) if (pr && pr.key === 'check' && pr.val) real.add(norm(String(pr.val))); }
+      catch { /* a malformed _props is the XML guard's business, not this one */ }
+    }
+    if (!real.size) continue;   // a demo with no check has nothing for its prose to drift from
+    const prose = [[...xml.matchAll(/text="([^"]*)"/g)].map(m => unesc(m[1])).join('\n')];
+    try { prose.push(readFileSync(md, 'utf8')); } catch { /* guide is optional */ }
+    for (const t of prose)
+      for (const m of t.matchAll(CHECK)) {
+        quoted++;
+        const e = norm(m[0].replace(/[.,;]+$/, ''));
+        if (!real.has(e))
+          bad.push(`${name}: the docs quote a check of "${e}", but the demo carries ${[...real].map(r => `"${r}"`).join(', ')}`);
+      }
+  }
+  assert.ok(quoted >= 4, `the census must find quoted checks, found ${quoted}`);
+  assert.deepEqual([...new Set(bad)], [], 'a quoted check the demo does not carry:\n  ' + [...new Set(bad)].join('\n  '));
 });
 
 test('no solo-RPG guide teaches the bare rule form that registers nothing', () => {

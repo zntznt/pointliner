@@ -58,8 +58,10 @@ The ring beside the title reads `[o 0/6]`, then climbs as you tick boxes, and wh
 goes `- [x]` it fills to `●` and the fiction it promised happens. Six segments, six boxes, no
 arithmetic.
 
-Seed a clock partway just by writing the number: `[o 3/6]` starts three segments in (the flood in
-the demo begins there). The count must be `N/M` with the `o` prefix, `[o 3/6]`, not a bare
+Seed a clock partway just by writing the number: `[o 3/6]` starts three segments in. Only a
+clock with a written number is clickable, which is the trade between the two modes: the
+harbormaster clock in the demo is a manual `[o 2/6]` you click, while the counted `[o /6]` ones
+move only when you tick a box. The count must be `N/M` with the `o` prefix, `[o 3/6]`, not a bare
 `[3/6]` (a bare bracket-fraction is plain text). If you prefer a percent face for a "how much of
 this still holds" gauge, the `[/]` and `[%]` **progress cookies** count the same checkbox children
 and render a fraction or a percent instead of a ring, `[%]` reading nicely for the cover-story
@@ -131,13 +133,17 @@ in the search bar, one embedded in the document. Use whichever fits how you play
 ## Run it yourself
 
 Open the [demo file](campaign-clocks-demo.opml) and it drops you into a small campaign already
-under pressure: three clocks partway filled, three threads with dates set and a board that
-lists them.
+under pressure: four clocks partway filled (three counted, one manual), three threads with dates
+set and a board that lists them.
 
 - **Tick a clock.** Its segments are already visible, so just check
   one of the empty segment boxes. Watch the `[o /6]` ring beside the title climb on its own. Fill
   the last box and read what a full clock is supposed to trigger. This is the core loop: a clock
   is just a checklist you have agreed to treat as a countdown.
+- **Click a ring instead.** The harbormaster clock has no boxes under it, just a written
+  `[o 2/6]`. Click its ring to advance a segment and Shift-click to step back, and watch the
+  number in the point's text change with it. That is the whole of the manual mode: no children to
+  keep, and the gauge is the control.
 - **Watch a thread come due.** Open the agenda (the toolbar calendar button) and you will see the
   dated threads sorted by urgency. The `today+3` one sits near the top; the fixed-date comet waits
   under Later. Editing a thread's `{date due: …}` moves it in the agenda live.

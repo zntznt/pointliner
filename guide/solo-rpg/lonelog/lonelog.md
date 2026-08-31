@@ -82,12 +82,12 @@ Scene: The nervous merchant
   ? Is he hiding something?  (likely)
   d: {2d6}
   -> Yes, and...
-  => He freezes, then forces a smile. Something is back there, and it scares him.
+  => He freezes, then forces a smile. Something is back there, and it scares him. #thread/torn-letter
   > I lean in and lower my voice: "I can help, if you tell me what it is."
   ? Does he trust me enough to talk?
   d: {2d6}
   -> No, but...
-  => He won't say it aloud, but he slides a torn scrap of paper across the table.
+  => He won't say it aloud, but he slides a torn scrap of paper across the table. #thread/torn-letter
 ```
 
 Open the [demo file](lonelog-demo.opml) and you will find exactly this scene as a real document,
@@ -100,9 +100,10 @@ A few things to try once it is open:
   tidy stack of scene headers you can open one at a time. Clicking the **bullet** does something
   else worth knowing: it zooms the document into that point alone, and Esc or the breadcrumb
   brings you back.
-- **Tag a thread.** Add `#thread/torn-letter` to the consequence line, then click the tag to
-  pull up every beat in the whole journal that touches that thread. This is the payoff Pointliner
-  adds over a flat log: the record becomes queryable.
+- **Follow a thread.** The three consequence lines already carry `#thread/torn-letter`. Click
+  the tag on any of them to pull up every beat in the whole journal that touches that thread,
+  across both scenes. Tag a beat of your own the same way and it joins the list. This is the
+  payoff Pointliner adds over a flat log: the record becomes queryable.
 - **Link an NPC.** Make a point for the merchant somewhere, then type `[[` in any beat and pick
   him from the list. His point then carries a **backlink** to every scene he appears in, so you can
   read the campaign from his side as well as the journal's. See

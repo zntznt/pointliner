@@ -2742,8 +2742,8 @@
       "suite": "unit",
       "why": "the mistake I actually made twice while fixing this folder: a bare `<=` inside text=\"...\" leaves the OPML not well-formed, and both the suite and a lenient DOMParser stayed quiet about it",
       "file": "guide/solo-rpg/character-sheet/character-sheet-demo.opml",
-      "find": "`sum(weight) &lt;= 10`",
-      "replace": "`sum(weight) <= 10`",
+      "find": "`sum(weight) &lt;= 8 + might`",
+      "replace": "`sum(weight) <= 8 + might`",
       "kills": "EVERY shipped demo is well-formed XML"
     },
     {
@@ -2898,6 +2898,33 @@
       "find": "search **`due:>today-1`**",
       "replace": "search **`due:>=today`**",
       "kills": "every search query a solo-RPG guide tells the reader to type actually parses"
+    },
+    {
+      "id": "solo-rpg-clock-nothing-to-click",
+      "suite": "unit",
+      "why": "the demo taught \"click the ring\" while every clock in it was a computed [o /6] readout, which renders with no role=\"button\" and ignores the click entirely",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "The harbormaster's patience [o 2/6]",
+      "replace": "The harbormaster's patience [o /6]",
+      "kills": "a solo-RPG demo ships the clock its guide tells the reader to click"
+    },
+    {
+      "id": "solo-rpg-clock-token-eaten",
+      "suite": "unit",
+      "why": "an un-escaped token inside the sentence defining it gets rendered away, so the reader saw \"carries an o 0/6 clock\" instead of the notation the sentence was naming",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "carries an `[o /6]` clock",
+      "replace": "carries an [o /6] clock",
+      "kills": "a demo that NAMES a progress token in prose keeps the token inert"
+    },
+    {
+      "id": "solo-rpg-quoted-check-drifts",
+      "suite": "unit",
+      "why": "the check lives in _props where prose cannot see it, so the demo's how-to went on quoting a hardcoded `sum(weight) <= 10` after the shipped check began deriving its limit from a stat",
+      "file": "guide/solo-rpg/character-sheet/character-sheet-demo.opml",
+      "find": "with the test `sum(weight) &lt;= 8 + might`",
+      "replace": "with the test `sum(weight) &lt;= 10`",
+      "kills": "a solo-RPG doc that quotes a check quotes the one its demo actually carries"
     }
   ]
 }
