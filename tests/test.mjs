@@ -27874,6 +27874,29 @@ test('#1427 CI runs the browser smoke, and installs what it needs', () => {
     'and carries no network dependency — that separation is the reason there are two jobs');
 });
 
+test('#1557 the fast offline guards do not sit downstream of the suite', () => {
+  // node-tests carries timeout-minutes:10 on a step that measures ~15s. When that step WEDGED on
+  // #1557 -- 2049 tests in five seconds, then no output for ten minutes -- GitHub killed the job and
+  // reported every later step `skipped`. Those steps were two sub-second checks with no relationship
+  // to the suite, and one of them (the symbol-index golden file) was ACTUALLY STALE on that PR with
+  // nothing to say so. A timed-out job is reported `cancelled` rather than `failure`, so the run did
+  // not read as broken either. Hence: their own job.
+  const suite = between(_wfTests, '\n  node-tests:', '\n  drift-guards:');
+  assert.match(suite, /node --test tests\/test\.mjs/, 'node-tests must still run the suite');
+  const CHEAP = nonEmpty(['check-pr-conformance.test.mjs', 'symbol-index.py --check'], 'the fast offline checks');
+  for (const c of CHEAP)
+    assert.ok(!suite.includes(c),
+      `${c} must not sit behind the suite — a wedge there reports it "skipped", which reads as neither pass nor fail`);
+  const guards = between(_wfTests, '\n  drift-guards:', '\n  mutation:');
+  for (const c of CHEAP) assert.ok(guards.includes(c), `${c} must run in the drift-guards job`);
+  // The same mistake one level down: without this, a failing hook self-check skips the index check
+  // and hides the drift exactly as the wedge did.
+  assert.match(guards, /if: \$\{\{ !cancelled\(\) \}\}\s*\n\s*run: python3 tools\/symbol-index\.py --check/,
+    'the index check must still run when the step before it fails');
+  // And the split must not have cost the offline property that is node-tests' whole reason to exist.
+  assert.ok(!/npm install|playwright/.test(guards), 'drift-guards must stay offline');
+});
+
 // A wedged runner is invisible: GitHub's default job timeout is 360 minutes, so a job stuck inside
 // its one step reports "in_progress" for hours and reads exactly like a slow suite. #1465's PR sat
 // an hour on `mutation`, a job that finishes in six minutes. A census, not a spot check: a NEW job
