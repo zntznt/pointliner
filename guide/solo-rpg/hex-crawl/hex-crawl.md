@@ -113,22 +113,24 @@ shown as a small chip and searchable later. Then, on the region point, a single 
 them:
 
 ```
-Rations spent crossing the Fenlands: {= sum(supplies)}
+Region: The Fenlands (west of the ford), {= sum(supplies)} rations spent
+  Hex 0101: ... {prop supplies: 1}
+  Hex 0102: ... {prop supplies: 2}
 ```
 
 `{= sum(supplies)}` **adds up the `supplies` property of the region's direct children**, the
 hexes right underneath it, and shows the total. It is **live**: change a hex's number and the
 region's total re-computes on its own, no arithmetic in your head. It only sees direct
-children, so it totals one region's hexes, not the whole tree. To get a true grand total for
-the Vale, give each region its own `{prop supplies: N}` subtotal and `{= sum(supplies)}` at
-the Vale level over the regions, the same trick one layer up. The demo also declares a
-starting pool as a variable:
+children, so it totals one region's hexes, not the whole tree. For a true grand total across
+every region at once, widen the scope instead of duplicating subtotals: `{= sum(supplies, subtree)}`
+on the Vale point reaches every hex at any depth. The demo carries both, so you can see the
+difference. The demo also declares a starting pool as a variable:
 
 ```
 {rations := 10}
 ```
 
-so you can show spent-against-total, `{= sum(supplies)} of {rations}`, at a glance. Other
+so you can show spent-against-total, `{= sum(supplies, subtree)} of {rations}`, at a glance. Other
 aggregations work the same way if you want them: `{= avg(supplies)}`, `{= count(supplies)}`,
 `{= max(supplies)}`.
 

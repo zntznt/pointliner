@@ -1761,6 +1761,8 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/maze-rats/maze-rats-demo.opml': readFileSync(new URL('../guide/solo-rpg/maze-rats/maze-rats-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/cairn/cairn.md': readFileSync(new URL('../guide/solo-rpg/cairn/cairn.md', import.meta.url), 'utf8'),
     'guide/solo-rpg/ironsworn/ironsworn.md': readFileSync(new URL('../guide/solo-rpg/ironsworn/ironsworn.md', import.meta.url), 'utf8'),
+    'guide/solo-rpg/character-sheet/character-sheet-demo.opml': readFileSync(new URL('../guide/solo-rpg/character-sheet/character-sheet-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/hex-crawl/hex-crawl-demo.opml': readFileSync(new URL('../guide/solo-rpg/hex-crawl/hex-crawl-demo.opml', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -29985,6 +29987,78 @@ test('EVERY solo-RPG demo resolves its own rule references (the census the last 
   }
   assert.ok(checked >= 20, `the census must actually examine call sites, examined ${checked}`);
   assert.deepEqual(broken, [], 'every {name} in a shipped demo must resolve:\n  ' + broken.join('\n  '));
+});
+
+test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it', () => {
+  // The second family defect in this folder, and the same shape as the rule census: `{= sum(prop)}`
+  // reads the points BELOW the one holding it, and eight of the nine rollups in the shipped demos
+  // were authored as SIBLINGS of the {prop} points, so they rendered "nothing matched" while the
+  // guides advertised a live total. The one that worked was the only one on a true parent.
+  //
+  // This walks the real nesting rather than trusting indentation: a rollup on point P must find at
+  // least one `{prop NAME: ...}` among P's children (or anywhere below P when the scope is
+  // `subtree`). It cannot check the VALUE without an engine, but placement is the whole defect.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+
+  // Minimal OPML tree from the shipped files: <outline text="..."> with children, self-closing or not.
+  const parse = xml => {
+    const root = { text: '', kids: [] }, stack = [root];
+    const tag = /<outline\b([^>]*?)(\/?)>|<\/outline>/g;
+    let m;
+    while ((m = tag.exec(xml))) {
+      if (m[0] === '</outline>') { if (stack.length > 1) stack.pop(); continue; }
+      const attrs = m[1], selfClosing = m[2] === '/';
+      const t = /text="([^"]*)"/.exec(attrs);
+      const node = {
+        text: (t ? t[1] : '')
+          .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+          .replace(/&#10;/g, '\n').replace(/&amp;/g, '&'),
+        kids: [],
+      };
+      stack[stack.length - 1].kids.push(node);
+      if (!selfClosing) stack.push(node);
+    }
+    return root;
+  };
+  // Backticked spans are documentation, not pills -- the app leaves them literal, so a prose point
+  // that MENTIONS sum() is not a rollup. Three such mentions really did render "nothing matched"
+  // in the shipped demos until they were escaped, which is exactly why this strips them.
+  const live = t => t.replace(/`[^`]*`/g, ' ');
+  const propNames = node => [...live(node.text).matchAll(/\{prop\s+([A-Za-z_][A-Za-z0-9_]*)\s*:/g)].map(x => x[1].toLowerCase());
+  const below = (node, deep) => {
+    const out = [];
+    const walk = (n, depth) => {
+      for (const k of n.kids) {
+        out.push(...propNames(k));
+        if (deep) walk(k, depth + 1);
+      }
+    };
+    walk(node, 0);
+    return out;
+  };
+
+  let rollups = 0;
+  const orphans = [];
+  for (const { name, file } of demos) {
+    const walk = node => {
+      for (const agg of live(node.text).matchAll(/\{=\s*(sum|avg|count|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*([a-z]+)\s*)?\)/g)) {
+        const [, fn, prop, scope] = agg;
+        rollups++;
+        const found = below(node, scope === 'subtree');
+        if (!found.includes(prop.toLowerCase()))
+          orphans.push(`${name}: {= ${fn}(${prop}${scope ? ', ' + scope : ''})} on ${JSON.stringify(node.text.slice(0, 55))} has no {prop ${prop}: ...} beneath it`);
+      }
+      node.kids.forEach(walk);
+    };
+    parse(readFileSync(file, 'utf8')).kids.forEach(walk);
+  }
+  assert.ok(rollups >= 5, `the census must actually find rollups, found ${rollups}`);
+  assert.deepEqual(orphans, [], 'a rollup totals the points BELOW it; these have none:\n  ' + orphans.join('\n  '));
 });
 
 test('no solo-RPG guide teaches the bare rule form that registers nothing', () => {

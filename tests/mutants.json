@@ -2718,6 +2718,24 @@
       "find": "{rule action_oracle: strike | avenge | uncover | defend}\n{rule theme_oracle: risk | fortune | secret | shelter}",
       "replace": "action_oracle: strike | avenge | uncover | defend\ntheme_oracle: risk | fortune | secret | shelter",
       "kills": "no solo-RPG guide teaches the bare rule form"
+    },
+    {
+      "id": "solo-rpg-rollup-back-beside-the-items",
+      "suite": "unit",
+      "why": "the shape that shipped: the rollup authored as a SIBLING of the {prop} points instead of their parent, which renders \"nothing matched\" while the guide advertises a live total",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "text=\"Pack, {= sum(slots)} of 10 slots used\" _props=\"[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]\">\n        <outline text=\"Sword {prop slots: 1}\"/>",
+      "replace": "text=\"Pack\" _props=\"[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]\">\n        <outline text=\"Slots used: {= sum(slots)}\"/>\n        <outline text=\"Sword {prop slots: 1}\"/>",
+      "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
+    },
+    {
+      "id": "solo-rpg-rollup-subtree-scope-dropped",
+      "suite": "unit",
+      "why": "the Vale total spans two region levels, so dropping the subtree scope silently narrows it to direct children and it matches nothing -- the census must read the scope, not just the property name",
+      "file": "guide/solo-rpg/hex-crawl/hex-crawl-demo.opml",
+      "find": "{= sum(supplies, subtree)} of {rations}",
+      "replace": "{= sum(supplies)} of {rations}",
+      "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
     }
   ]
 }

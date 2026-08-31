@@ -19,9 +19,8 @@
     </outline>
   </outline>
   <outline text="## Inventory and encumbrance">
-    <outline text="Cairn's inventory is a slot system. Each item carries a slots property, the pack totals them, and a check flags an overload. Add the check from the Pack point's bullet menu (Add check) or with /check.">
-      <outline text="Pack (has a check: sum(slots) under or equal 10)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]">
-        <outline text="Slots used: {= sum(slots)}"/>
+    <outline text="Cairn's inventory is a slot system. Each item carries a slots property, the pack totals them, and a check flags an overload. The total sits on the Pack point itself, because a rollup reads the points BELOW it: as a sibling of the items it would find nothing. Add the check from the Pack point's bullet menu (Add check) or with /check.">
+      <outline text="Pack, {= sum(slots)} of 10 slots used" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;}]">
         <outline text="Sword {prop slots: 1}"/>
         <outline text="Torches, three {prop slots: 1}"/>
         <outline text="Rope, fifty feet {prop slots: 1}"/>

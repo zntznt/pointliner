@@ -82,8 +82,7 @@ sum you have to redo by hand every time you pick something up. In Pointliner the
 with the gear as its **direct children**, and each item carries a `weight` property:
 
 ```
-Carried load          (with a check: sum(weight) <= 10)
-  Total carried right now: {= sum(weight)}
+Carried load, carrying {= sum(weight)} of 10   (with a check: sum(weight) <= 10)
   Short bow {prop weight: 2}
   Quiver, twenty arrows {prop weight: 1}
   Hunting knife {prop weight: 1}
@@ -94,7 +93,10 @@ Carried load          (with a check: sum(weight) <= 10)
 
 Two things are happening on that pack point.
 
-First, `{= sum(weight)}` is a **child-property rollup**. It walks the point's direct children,
+First, `{= sum(weight)}` is a **child-property rollup**, and it lives **on the pack point itself**,
+not on a line beside the gear. That placement is the whole of it: a rollup walks the points BELOW
+the one holding it, so written as a sibling of the items it matches nothing and reads zero. It walks
+the point's direct children,
 reads each one's `weight` property and adds them. It is live: add an item, remove one or edit a
 weight, and the total recomputes. There is no cell you maintain and no formula to drag down. The
 list *is* the data, and the sum reads the list.

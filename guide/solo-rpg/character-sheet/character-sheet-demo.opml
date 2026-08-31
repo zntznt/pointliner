@@ -23,8 +23,7 @@
       <outline text="Save under pressure (2d6, beat 8 plus level scaling): {2d6} vs {= 8 + level}"/>
     </outline>
     <outline text="## Pack (the total adds itself, load ten or under)">
-      <outline text="Carried load (stays green while the total is ten or under)" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(weight) &lt;= 10&quot;}]">
-        <outline text="Total carried right now: {= sum(weight)}"/>
+      <outline text="Carried load, carrying {= sum(weight)} of 10" _props="[{&quot;key&quot;:&quot;check&quot;,&quot;val&quot;:&quot;sum(weight) &lt;= 10&quot;}]">
         <outline text="Short bow {prop weight: 2}"/>
         <outline text="Quiver, twenty arrows {prop weight: 1}"/>
         <outline text="Hunting knife {prop weight: 1}"/>
@@ -32,7 +31,7 @@
         <outline text="Bedroll and cloak {prop weight: 2}"/>
         <outline text="Rations, three days {prop weight: 1}"/>
       </outline>
-      <outline text="Add one more heavy item to see the check flip. Copy this into the pack: Iron cook pot {prop weight: 2}. The sum climbs to eleven and the Carried load chip goes red."/>
+      <outline text="Add one more heavy item to see the check flip. Copy this into the pack: Iron cook pot {prop weight: 2}. The sum climbs to twelve and the Carried load chip goes red."/>
     </outline>
     <outline text="## Scene: a name for the tracks">
       <outline text="You cut the trail of {a wounded stag | a lone rider | something with too many feet}. Which way does it lead? {deeper in | back toward the road | in a slow circle}."/>
@@ -40,8 +39,8 @@
   </outline>
   <outline text="## How to run it">
     <outline text="Change a stat and watch the sheet move. Click Level above, set it to 5, and the hit points row ({= level * 8}) jumps to forty on its own. The attack roll ({2d6+might}) reads Might the same way, so raising a raw stat raises every row that uses it."/>
-    <outline text="Watch the check catch a problem. The Carried load chip runs sum(weight) over the pack items directly under it and passes while the total is ten or under. Add the cook pot line (or bump any weight up), and the total ({= sum(weight)}) crosses ten, so the chip turns red. Take something out and it clears. Search is:failing to find every check that is currently red across the whole document."/>
-    <outline text="Nothing here is new syntax. Stats are variables (name colon-equals value), derived rows are math that reads them (equals then an expression), the pack total is a child rollup ({= sum(weight)} over items that each carry a weight property), and the encumbrance rule is a check on the Carried load point (add one from its bullet menu, or type /check, with the test sum(weight) under-or-equal 10). See character-sheet.md."/>
+    <outline text="Watch the check catch a problem. The Carried load chip runs `sum(weight)` over the pack items directly under it and passes while the total is ten or under. Add the cook pot line (or bump any weight up), the total on the Carried load point crosses ten, and the chip turns red. Take something out and it clears. Search is:failing to find every check that is currently red across the whole document."/>
+    <outline text="Nothing here is new syntax. Stats are variables (name colon-equals value), derived rows are math that reads them (equals then an expression), the pack total is a child rollup (`{= sum(weight)}` on the point above the items, each carrying a weight property), and the encumbrance rule is a check on the Carried load point (add one from its bullet menu, or type /check, with the test `sum(weight) <= 10`). See character-sheet.md."/>
   </outline>
 </outline>
 </body></opml>
