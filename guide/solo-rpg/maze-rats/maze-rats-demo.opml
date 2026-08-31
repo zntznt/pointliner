@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Playing Maze Rats in Pointliner</title></head><body>
 <outline text="# Playing Maze Rats in Pointliner">
-  <outline text="Maze Rats wired into Pointliner: stats, 2d6 saves, and above all its random tables, all live pills. Maze Rats is almost all tables, so it is one of the best Pointliner fits here. See maze-rats.md for the walkthrough. The dice, stat and table pills are all live; the tables carry filler options you replace with the book's own entries. Every pill here is live, click one to run it."/>
+  <outline text="Maze Rats wired into Pointliner: stats, 2d6 saves, and above all its random tables, all live pills. Maze Rats is almost all tables, so it is one of the best Pointliner fits here. See maze-rats.md for the walkthrough. The dice, stat and table pills are complete; the tables carry filler options you replace with the book's own entries. Every pill here is live, click one to run it."/>
   <outline text="Adapted from Maze Rats by Ben Milton, used under CC BY 4.0 (creativecommons.org/licenses/by/4.0). Changes made: the tables and procedures are restructured into outline points and pills. Maze Rats is named descriptively; no logo or art is reproduced.">
     <outline text="The tables below hold filler options written for this demo, not the book's own entries. Replace the filler inside each `{rule ...}` with the entries from your copy; every pill is already wired, so a table updates the moment you edit its rule."/>
   </outline>
