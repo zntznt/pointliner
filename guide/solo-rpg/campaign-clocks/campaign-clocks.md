@@ -102,11 +102,15 @@ Notice the `#thread` tag on each one. That is not decoration, it is the hook for
 ## The board: one search for every open thread
 
 The point of tagging every thread `#thread` is that you can pull them all up at once. Type
-`#thread` into the search box and Pointliner lists every thread point in the document, wherever
+`#thread` into the search box and Pointliner lists every point carrying that tag, wherever
 it lives. That is your pressure board, assembled on demand.
 
 Then **star that search to save it.** The saved search becomes a one-click chip you can re-run
 at the top of every session, so "show me everything on the clock" is a click, not a retype.
+A tag is **inherited by a point's children**, so the search returns each thread *and* the
+segments and beats nested under it. That is usually what you want when you are working one
+thread, and it is why the count is larger than the number of threads.
+
 Narrow it when you want to: `#thread due:week` shows only the threads coming due in the next
 seven days, which is often the only list that matters at the table.
 

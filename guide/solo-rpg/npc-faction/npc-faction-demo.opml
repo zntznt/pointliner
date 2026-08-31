@@ -20,7 +20,7 @@
   <outline text="## How to run it">
     <outline text="Add an NPC: click into the base and type a new row, or press Alt+Shift+Down on a cell to insert one. Set their Faction to one of the declared lanes and the card appears there. For a faction that does not exist yet, add it to the `{seq Cast: ...}` pill first, or the card lands in &quot;No state&quot;."/>
     <outline text="Track a relationship shift: change the Disposition cell, or move the card to a new faction lane on the Board. The table is the truth, so both views always agree."/>
-    <outline text="Find everyone in a faction: read the lane. The roster lives in base rows rather than points, so a search cannot pick a row out of it, and the Board lane IS the answer to &quot;who is in the Undercity&quot;. Search is for the NPC points and beats outside the base: tag them with #relic (or any thread) and click the tag to pull every scene that touches it."/>
+    <outline text="Find everyone in a faction: read the lane. The roster lives in base rows rather than points, so a search cannot pick a row out of it, and the Board lane IS the answer to &quot;who is in the Undercity&quot;. Search is for the NPC points and beats outside the base: tag them with a thread tag (the beats below use one) and click the tag to pull every scene that touches it."/>
   </outline>
 </outline>
 </body></opml>

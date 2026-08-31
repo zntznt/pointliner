@@ -25,12 +25,12 @@
       </outline>
       <outline text="Tracker" _id="llg00040">
         <outline text="Gold: {= 50 + 12}" _id="llg00041"/>
-        <outline text="Open threads: click #thread/torn-letter on any beat to gather them" _id="llg00042"/>
+        <outline text="Open threads: click the thread tag on any beat to gather them" _id="llg00042"/>
       </outline>
       <outline text="How to use this demo" _id="llg00050">
         <outline text="Click a {2d6} pill to re-roll it. Notice the prose lines never change, only the rolls do, and only when you click." _id="llg00051"/>
         <outline text="Click the chevron left of a Scene line (or press Ctrl/Cmd+. on it) to fold the whole scene closed. A long campaign becomes a stack of scene headers. Clicking the bullet zooms into that scene instead; Esc brings you back." _id="llg00052"/>
-        <outline text="Click a #thread/torn-letter tag to pull up every beat that touches that thread across the whole journal." _id="llg00053"/>
+        <outline text="Click the thread tag on any beat to pull up every beat that touches that thread across the whole journal." _id="llg00053"/>
         <outline text="See lonelog.md (next to this file) for the full walkthrough." _id="llg00054"/>
       </outline>
     </outline>

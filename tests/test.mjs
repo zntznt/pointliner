@@ -1768,6 +1768,7 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/generators/generators-demo.opml': readFileSync(new URL('../guide/solo-rpg/generators/generators-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/session-prep/session-prep.md': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep.md', import.meta.url), 'utf8'),
     'guide/solo-rpg/session-prep/session-prep-demo.opml': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml': readFileSync(new URL('../guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -30031,6 +30032,50 @@ test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)
   }
   assert.ok(checked >= 5, `the demos declare several {name := ...} bindings; this guard saw ${checked}`);
   assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
+});
+
+test('no solo-RPG demo indexes its own instructions as campaign content', () => {
+  // campaign-clocks shipped a headline "search the thread tag" board that returned 16 points, of
+  // which five were the demo's own instructions and one of its due dates sat on a prose header, so
+  // the agenda nudged the reader about a sentence. A tag or a date written into explanatory copy is
+  // indistinguishable from real content once the file is open.
+  //
+  // NOTE ON BACKTICKS, because it is counter-intuitive and cost a round to learn: escaping does NOT
+  // help here. tagHit runs its regex over the point's RAW TEXT, so `#thread` in backticks still
+  // matches a tag search even though it renders as literal code. Prose has to avoid the token
+  // itself. Backticks DO stop {date due: ...} from materialising a property, which is a different
+  // pipeline (promoteLoadedShorthand), so both fixes appear in that demo for different reasons.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  // An instruction reads as one: it addresses the reader or describes the demo.
+  const INSTRUCTIONAL = /\b(click|search|type|press|open|pick|choose|add|try|watch|note that|this demo|the demo below|in this demo|so you can see)\b/i;
+  let scanned = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/text="([^"]*)"/g)) {
+      const t = m[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      if (!INSTRUCTIONAL.test(t)) continue;
+      scanned++;
+      // A live tag in instructional copy joins the very index the instruction talks about. A tag
+      // INSIDE a {...} body does not: promoteLoadedShorthand moves it into the pill's sidecar, so
+      // the loaded point's text no longer carries it ({query: #thread} is the legitimate case).
+      const outsideBraces = t.replace(/\{[^{}]*\}/g, ' ');
+      for (const tag of outsideBraces.matchAll(/(?<![a-zA-Z0-9`])#([a-z][\w-]*)(?![\w-])/gi))
+        bad.push(`${name}: instructional point carries a live #${tag[1]} tag -> ${JSON.stringify(t.slice(0, 70))}`);
+      // a date pill in instructional copy materialises a real due property and reaches the agenda
+      for (const d of t.matchAll(/\{date\s+(due|start)\s*:/g)) {
+        const at = d.index;
+        if (t.lastIndexOf('`', at) > t.lastIndexOf('`', Math.max(0, at - 200)) && /`[^`]*$/.test(t.slice(0, at))) continue;  // inside a code span
+        bad.push(`${name}: instructional point declares a real ${d[1]} date -> ${JSON.stringify(t.slice(0, 70))}`);
+      }
+    }
+  }
+  assert.ok(scanned >= 15, `the census must see instructional points, saw ${scanned}`);
+  assert.deepEqual(bad, [], 'demo instructions must not index themselves as content:\n  ' + bad.join('\n  '));
 });
 
 test('a demo Journal home sits where the journal door looks, in the shape it builds', () => {

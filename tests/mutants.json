@@ -2790,6 +2790,24 @@
       "find": "<outline text=\"04\" _id=\"prep0061\">",
       "replace": "<outline text=\"2026-07-04\" _id=\"prep0061\">",
       "kills": "a demo Journal home sits where the journal door looks"
+    },
+    {
+      "id": "solo-rpg-demo-self-indexes",
+      "suite": "unit",
+      "why": "campaign-clocks' headline thread board returned 16 points, five of them the demo's own instructions; a tag written into explanatory copy is indistinguishable from real content once the file is open",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "Work the board: search the thread tag to list every open thread",
+      "replace": "Work the board: search #thread to list every open thread",
+      "kills": "no solo-RPG demo indexes its own instructions as campaign content"
+    },
+    {
+      "id": "solo-rpg-demo-instruction-dated",
+      "suite": "unit",
+      "why": "an unescaped {date due: ...} in instructional copy materialises a real property, so the agenda nudged the reader about a sentence rather than a thread",
+      "file": "guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml",
+      "find": "and give it a `{date due: today+3}`, and it becomes a due-date chip",
+      "replace": "and give it a {date due: today+3}, and it becomes a due-date chip",
+      "kills": "no solo-RPG demo indexes its own instructions as campaign content"
     }
   ]
 }
