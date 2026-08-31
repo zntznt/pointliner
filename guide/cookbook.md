@@ -180,7 +180,7 @@ Deep-clean this weekend: {cycle: kitchen | bathroom | windows | fridge | oven}
 Click to advance: it never re-rolls, it takes the next turn in order, and its place is saved with
 the document, so next weekend picks up exactly where this one left off. If strict order breeds
 dread, swap `cycle` for `shuffle` and it deals every item once in random order before starting
-over. These are sequence pills.
+over. These are deck pills (`cycle` and `shuffle` modes).
 
 ## 9. A pros-and-cons list that finally votes
 

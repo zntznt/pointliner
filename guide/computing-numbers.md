@@ -19,7 +19,7 @@ Ordinary arithmetic, the operators you'd expect:
 ```
 {= 2 + 3 * 4}        → 14   (× before +)
 {= (2 + 3) * 4}      → 20
-{= 2 ^ 10}           → 1024 (power)
+{= 2 ^ 10}           → 1,024 (power)
 {= 17 % 5}           → 2    (remainder)
 {= sqrt(144)}        → 12
 ```
@@ -29,7 +29,7 @@ You can use `×` `÷` `−` and `√` if you like typing them; `pi`, `e`, `tau` 
 
 ### Show just the value
 
-By default a math pill shows its recipe and its result together, like `sum(cost) = 70000`, so you can
+By default a math pill shows its recipe and its result together, like `sum(cost) = 70,000`, so you can
 read the calculation at a glance. Sometimes you want only the number, so it reads like part of the
 sentence: a live word count in a chapter heading, a total in a title. Open the pill (click it, or its
 edit pencil) and check **Show value only** in the dialog. The pill then renders just the result,
@@ -45,6 +45,9 @@ number). For money or units, open the pill and set a **format** in the dialog:
 
 - **Decimal places** fixes how many digits show after the point (`2` for money, so `1200` reads
   `1,200.00`). Blank rounds automatically.
+- **Significant figures** counts the digits that carry meaning, ignoring leading zeros, so `3` shows
+  `0.0124` and `1,240` alike. It is an alternative to decimal places, not an addition: setting one
+  clears the other.
 - **Prefix** goes in front (`$` → `$1,200.00`).
 - **Suffix** goes after (` kg` → `12 kg`, or `%`).
 
@@ -87,10 +90,14 @@ flip one with `not(x)`. Nonzero counts as true; the result is `1`/`0`, so logic 
 number goes:
 
 ```
-{= and(hp > 0, gold > 0)}         → 1 only when both hold
+{= and(hp > 0, gold > 0)}         → ✓ only when both hold
 {= if(or(hp < 5, cursed), 0, 1)}  works inside if(…) too
-{= not(done)}                     → 1 when done is 0
+{= not(done)}                     → ✓ when done is 0
 ```
+
+When an expression using a comparison or `and`/`or`/`not` comes out as exactly `1` or `0`, the pill
+shows **✓** or **✗** rather than the digit, so a pass reads as a pass. The value underneath is still
+`1`/`0`, so it still adds up and composes like any number.
 
 ---
 
@@ -100,9 +107,9 @@ There are two ways to convert. The pair-functions named `from2to` are handy for 
 ones, including temperature (a shift, not a ratio, so it stays a function):
 
 ```
-{= c2f(20)}      → 68      Celsius to Fahrenheit (and f2c the other way)
-{= km2mi(10)}    → 6.21    and mi2km, m2ft, ft2m, cm2in, in2cm
-{= kg2lb(70)}    → 154.3   lb2kg
+{= c2f(20)}      → 68          Celsius to Fahrenheit (and f2c the other way)
+{= km2mi(10)}    → 6.2137119   and mi2km, m2ft, ft2m, cm2in, in2cm
+{= kg2lb(70)}    → 154.32358   lb2kg
 {= mph2kmh(60)}  kmh2mph, l2gal, gal2l
 ```
 
@@ -116,7 +123,7 @@ whole table of built-in units. Many are ready with nothing to set up:
 {= convert(90, min, hr)}   time: s, min, hr, day, week
 ```
 
-A conversion on its own **rounds to four significant figures** so the answer is readable at a
+A `convert()` on its own **rounds to four significant figures** so the answer is readable at a
 glance: `180 mi` is `289.7 km`, not `289.68192`. Four *significant figures* rather than a fixed
 number of decimals, because that keeps working when the answer is small: `1 in` is `0.02540 m`,
 where two decimal places would have shown you `0.03`. A whole number stays whole, and a very large
@@ -180,15 +187,15 @@ known new moon. A **bare** `{= moonphase(…)}` pill shows the matching glyph �
 compose it (`{= floor(moonphase(due, 28, 0) * 8)}`) to get the phase number instead. For a
 second moon, add another call with its own `period` and `offset`.
 
-`year`, `month`, `day`, `quarter`, `age`, `eom` and `addmonths` follow a **custom calendar**
-when the document has one; `weeknum` (ISO) and `workdaysbetween` (Mon-Fri) use the ordinary
-Mon-Sun week.
+`year`, `month`, `day`, `weekday`, `quarter`, `age`, `eom` and `addmonths` follow a **custom
+calendar** when the document has one (`weekday` then counts from that calendar's own first day, not
+Sunday); `weeknum` (ISO) and `workdaysbetween` (Mon-Fri) use the ordinary Mon-Sun week.
 
 A math result that's a date renders as an **ISO date** automatically when you wrap it in
 `asdate(...)`:
 
 ```
-{= asdate(today + 90)}     → 2026-09-13
+{= asdate(date(2026, 6, 15) + 90)}     → 2026-09-13
 ```
 
 > Dates also live as point **properties** (`start` / `due`) with their own scheduling UI; see the
@@ -202,8 +209,8 @@ Declare a variable once and reference it bare inside an expression. The operator
 
 ```
 {r := 5}
-{= 2 * pi * r}     → 31.4   (circumference)
-{= pi * r^2}       → 78.5   (area)
+{= 2 * pi * r}     → 31.415927   (circumference)
+{= pi * r^2}       → 78.539816   (area)
 ```
 
 (A single `=` is not a declaration. `{r = 5}` stays plain text, and `{beast = dragon|wyrm}` is worse:
@@ -213,7 +220,8 @@ There is a dialog too, **`@` → Variable**, which asks for the name and the val
 
 Variables can reference other variables (`{area := pi*r^2}`). Change `r` and every dependent pill
 updates live. To see every variable in the document with its current value, open the **Variables
-panel**: type `/variables`, press `Ctrl/Cmd+Shift+V`, or use the toolbar. A variable that holds *text* (a quoted string or a random pick, both below) can't be
+panel**: type `/variables` or press `Ctrl/Cmd+Shift+V`. A variable that holds *text* (a quoted
+string or a random pick, both below) can't be
 used as a number; it fails visibly rather than guessing.
 
 **Where a declaration applies.**
@@ -227,8 +235,9 @@ A `{name}` reference resolves to the nearest `{name := …}` declared above it, 
 mean different things in different parts of a long document.
 
 The right side can name another variable, not just a literal: `{total := base}` makes `total` track
-`base`, and `{markup := cost * 1.2}` is a live formula. It keeps working even if you declare it before
-the variable it points at, the value fills in (and updates) as soon as that variable exists.
+`base`, and `{markup := cost * 1.2}` is a live formula. You can write it before `base` exists; the
+value fills in (and updates) as soon as `base` is declared. `base` has to end up **above** the pill
+though, since values resolve top to bottom.
 
 **A variable can hold text, not just a number.** Put it in quotes and the value is that exact string,
 useful for a name you reuse, a label, a status word:
@@ -345,7 +354,11 @@ By default a roll-up counts the **direct children**. Add a scope to reach deeper
 {= sum(cost, subtree)}   total every descendant, all the way down
 {= sum(cost, 2)}         reach two levels down (children + grandchildren)
 {= sum(cost, children)}  the direct children (same as no scope)
+{= sum(cost, document)}  the whole document, from any point
 ```
+
+`min` and `max` take the word scopes only. `min(cost, 2)` is the ordinary two-value min, the smaller
+of `cost` and 2, so write `min(cost, subtree)` when you mean depth.
 
 It recomputes **live** as you add, remove or edit children, like a spreadsheet column total.
 You can combine aggregations with the rest of math: `{= sum(cost) / count(cost)}` is the average
@@ -365,7 +378,7 @@ any depth below, instead of the direct children:
 {= count("is:todo")}          how many open tasks below (count needs no property)
 ```
 
-The quoted search takes all the usual [operators](links-and-references.md) (`is:todo`, `#tag`,
+The quoted search takes all the usual [operators](getting-around.md#searching-and-filtering) (`is:todo`, `#tag`,
 `-has:owner`, `due:overdue`, and so on), so the query is the filter and the property is what you
 add up. **Round brackets do not group a search.** Write each alternative out in
 full instead. `is:todo -(is:done | has:owner)` looks for the literal text `(is:done`; the form that
@@ -414,8 +427,9 @@ To search the entire document from anywhere, including a point with nothing unde
 
 This is the door for a status line that lives on its own point, off to one side of the work it
 reports on. If a quoted-search reducer sits on a point that has **nothing below it** and you have
-not widened it, the pill reads `0 in scope` instead of a silent `0`, to tell you it needs a parent
-or a `, document` / `, folder` scope, rather than looking broken.
+not widened it, the pill says so instead of showing a silent `0`: it reads `0 here · 12 in document`
+when the same search does match elsewhere, and `0 in scope` when it matches nothing at all. Either
+way it names the fix in its tooltip, rather than looking broken.
 
 **Count words, not properties.** The same `{= …}` form also counts prose over a **scope** instead
 of a property:
@@ -460,8 +474,8 @@ They do arithmetic, and the uncertainty propagates:
 the rest of the number system:
 
 ```
-cost_low = 20
-cost_high = 40
+{cost_low := 20}
+{cost_high := 40}
 {cost_low to cost_high}     a range driven by declared bounds
 {units * (5 to 10)}         scale an uncertain unit cost by a variable count
 ```
@@ -506,7 +520,7 @@ adds a ten percent margin on top of your ninetieth-percentile figure. The thresh
 variable, which is usually how the question actually reads:
 
 ```
-budget = 450
+{budget := 450}
 {= chanceover(cost, budget)}  the odds you go over budget
 ```
 
@@ -623,7 +637,9 @@ Packing [/]      → Packing [2/5]
 Packing [%]      → Packing [40%]
 ```
 
-It counts each checkbox in the point plus each child task, and updates as you tick things off.
+It counts each checkbox in the point plus each child task, and updates as you tick things off. A
+bare `[/]` reaches the direct children only. Write `[/subtree]` to count every level beneath the
+point, or `[/2]` to reach that many levels; `[%subtree]` and `[%2]` do the same for the percentage.
 It's plain text in the point, so there's no setup, and it round-trips through save for free.
 
 ---

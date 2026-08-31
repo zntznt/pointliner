@@ -24,7 +24,10 @@ works.
 
 ## Your first pill (30 seconds)
 
-1. Open Pointliner and click into the empty point. Type `Treasure: {2d6} gold`.
+The very first time you open Pointliner, a welcome card offers ready-made examples. Pick **Start
+with a blank document** (or press `Escape`) to get an empty page.
+
+1. Click into the empty point. Type `Treasure: {2d6} gold`.
 2. Press `Enter` (or click a different point) to **click away**. The `{2d6}` becomes a dice pill
    showing a rolled number, e.g. **Treasure: 7 gold**.
 3. **Click the pill.** It re-rolls. Click again, a new number each time.
@@ -43,7 +46,8 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
   styling, tables, footnotes, images, emoji and per-point notes. (The full
   [emoji shortcode reference](emoji-shortcodes.md) lists every `:name:`.)
 - **[Getting around](getting-around.md)** is the everyday outliner: navigating, searching, nesting,
-  zoom, hashtags. The plain outliner moves, no pills involved.
+  zoom, hashtags, plus the live search pills (`{query:}`, `{count:}`) and the query bases that
+  build on search.
 - **[Tasks and organizing](tasks-and-organizing.md)** is to-dos, custom workflows, properties,
   progress bars, templates, quick capture and aliases.
 - **[Dates and planning](dates-and-planning.md)** is scheduling points, the agenda and calendar,
@@ -51,9 +55,10 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
 - **[Links and references](links-and-references.md)** is `[[` links with live titles, backlinks,
   unlinked mentions and links across a folder of documents.
 - **[Files and export](files-and-export.md)** is saving, a folder of documents, appearance, and sharing
-  or exporting (Markdown, plain text, self-contained HTML). Your work is always plain text you own,
-  and its **Taking your work elsewhere** section is the no-lock-in exit story: OPML for a full-fidelity
-  archive you can reopen, Markdown/text for readable snapshots, HTML to hand someone a live copy.
+  or exporting (Markdown, plain text, Shareable page, self-contained HTML). Your work is always plain
+  text you own, and its **Taking your work elsewhere** section is the no-lock-in exit story: OPML for a
+  full-fidelity archive you can reopen, Markdown, text or a Shareable page for readable snapshots,
+  HTML to hand someone a live copy.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides for the pill families above.
 - **[Composing pills](composing-pills.md)** shows how to put pills together (side by side,
@@ -72,28 +77,33 @@ The rest of this page is the friendly introduction to how pills behave.
 ## How pills behave (learn this once)
 
 - **Click the pill** and it does its thing again: re-rolls the dice, re-picks the table, advances
-  the deck, re-samples the estimate. Math and variables **recompute on their own** when something
-  they depend on changes.
+  the deck, re-samples the estimate. Math and formula variables **recompute on their own** when
+  something they depend on changes.
 - **A roll stays put.** A dice/table/deck pill *freezes* its result so your document is stable; it
-  only changes when **you** click it. (Math, variables and rollups are the live ones.)
+  only changes when **you** click it. (Math, rollups and formula variables are the live ones; a
+  random-pick or estimate variable freezes the same way and only changes when you click its
+  declaration.)
 - **Edit the text, not the pill.** Click the words next to a pill to enter the point; the pill
   unfolds to its `{â€¦}` source so you can retype it. Click away to re-pill.
 - **Keyboard:** a focused pill responds to **Enter / Space** (same as a click).
 
 ---
 
-## Three ways to add one
+## Four ways to add one
 
 1. **Just type it.** `{2d6}`, `{a | b}`, `{= 5 * 8}` is the fastest path once you know the syntax.
-2. **The `@` menu** (type `@` in a point). A menu of inserters with **dialogs that teach the
+2. **The `{` menu.** Type an opening `{` in a point and a menu lists the pill forms (dice, picks,
+   calculations, live lists, meters and the rest); choose one and a ready-to-edit scaffold drops in
+   with the first blank selected. The **Browse all pills** row opens the full picker.
+3. **The `@` menu** (type `@` in a point). A menu of inserters with **dialogs that teach the
    syntax** and show a live preview: Dice, Grammar, Roll table, Deck, Oracle, Markov, Math,
    Variable, Estimate and more. Great when you're learning or building something fiddly.
-3. **The `/` menu** for point-level things, e.g. **`/check`** (add a pass/fail constraint) and
+4. **The `/` menu** for point-level things, e.g. **`/check`** (add a pass/fail constraint) and
    **`/due`** (schedule dates).
 
-> **The `?` button (bottom-right) opens the Concept guide**, the app's one help surface. It
-> lands on the keyboard reference, and its left list covers every feature with examples. The
-> File menu's **Help & guide** row opens the same panel. This guide is the *learn-it*; the
+> **The `?` button (bottom-right) opens the Concept guide**, landing on its keyboard shortcuts;
+> every feature is explained with examples in the topics beside them. The same window opens with
+> `Ctrl/Cmd+Shift+/` and from the File menu as **Help & guide**. This guide is the *learn-it*; the
 > Concept guide is the *look-it-up*.
 > When the hints start to feel like noise, `Ctrl/Cmd+Shift+.` dials the app down through
 > [Guided, Standard and Lean](getting-around.md#quiet-the-guidance-the-verbosity-dial).

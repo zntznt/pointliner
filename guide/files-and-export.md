@@ -15,8 +15,10 @@ To keep a file on disk that you own and can back up, press **`Ctrl/Cmd+S`**. Or 
 
 **Starting a new document replaces the one on screen.** If the current document has anything in it,
 Pointliner asks first. The one it replaces is kept as a restore point: **File** then **Restore earlier
-version** brings it back. That is one snapshot, not a history, so save anything you want to keep
-properly (`Ctrl/Cmd+S`, or a connected folder).
+version** brings it back. The same row is your net for an ordinary mistake: it also rolls back to a
+snapshot Pointliner takes automatically about every five minutes as you work. Either way it is one
+snapshot, not a history, so save anything you want to keep properly (`Ctrl/Cmd+S`, or a connected
+folder).
 
 ## Working with a folder of documents
 
@@ -60,6 +62,9 @@ color, widen the editing column for a big screen or tuck completed tasks out of 
 - **Done points** is the checkmark button in the toolbar. Finished to-dos and `DONE` points stay
   in the document, struck through, until you turn the button off to hide them; a badge on the
   button then counts what is hidden, and turning it back on brings them back.
+- **Toolbar features**, in the File menu under **Settings**, lists the optional toolbar buttons.
+  Click one to show or hide it, and drag it by its handle (or press `Alt+Up` / `Alt+Down`) to
+  reorder. The choice is remembered in this browser.
 
 ## Exporting and sharing
 
@@ -80,7 +85,9 @@ README, or create a portable archive. From the **File** menu:
 You do not have to export the whole document. To export just a part: open a point's **bullet menu**
 and choose **Export to Markdown** (that point and everything under it), or **select several points**
 and use **Export .md** on the selection bar. The file is named after the first point, and pills are
-frozen to their current values (the same one-way snapshot as the full Markdown export).
+frozen to their current values (the same one-way snapshot as the full Markdown export). A point
+holding same-shaped rows with properties (a budget, an inventory) offers one more: **Export table to
+CSV**, one row per point and a column per property, values frozen.
 
 **Leave scaffolding out.** If a point is planning material, not prose (a variable declaration, a
 note to self, a private section), open its **bullet menu** and choose **Exclude from export**: all
@@ -113,8 +120,10 @@ ways out depending on what you want to keep:
   [Pill syntax reference](pill-syntax-reference.md) documents both the `{…}` grammar and this format.
 - **Markdown and plain text are readable snapshots.** They are meant for posting, sharing, or
   pasting into another app, so they are **one-way**: each pill is frozen to the value it is showing
-  at export time. A `{2d6}` becomes the number it last rolled, `{= sum(cost)}` becomes the total,
-  a grammar pill becomes the text it generated. You get a clean, ordinary document that reads
+  at export time. `{= sum(cost)}` becomes the total and a grammar pill becomes the text it
+  generated; a pill that carries a recipe (a roll, an estimate, a variable you declared) exports the
+  recipe with it, so `{2d6}` comes out as `2d6 = 9`. On a **paragraph** point those flatten to the
+  result alone (`9`), so exported prose reads clean. You get a clean, ordinary document that reads
   anywhere, but the live behavior does not come along (that is the point of a snapshot). The
   **Shareable page** is the same snapshot as a web page instead of source text: still one-way,
   still frozen, but it keeps your headings, to-dos and bars looking the way they look here.

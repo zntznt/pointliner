@@ -47,30 +47,53 @@ work on **any line of any point**, including headings and quotes.
 ```
 **bold**        *italic*        `code`
 ~~strikethrough~~               ++underline++
+==highlight==   H~2~O           X^2^
 ```
 
-You can also skip the marks: select some text and press **Cmd/Ctrl+B**, **I** or **U** to wrap it in
-bold, italic or underline. It is the same result as typing the marks yourself.
+The last line is a highlight, a subscript and a superscript: `~x~` drops below the line and `^x^`
+lifts above it.
+
+You can also skip the marks: select some text and a small toolbar appears over the selection, with a
+button for bold, italic, underline, code, strikethrough and highlight, plus **Link** and **Convert
+to footnote**. `Ctrl/Cmd+B`, `I` and `U` wrap the selection in bold, italic or underline from the
+keyboard. It is the same result as typing the marks yourself; subscript and superscript are the two
+you can only type.
 
 **Code marks also keep pills literal.** Anything inside backticks stays plain text, so if you want to
 *write about* a pill, for example a note that says "type `` `{2d6}` `` to roll dice", wrap it in
 backticks and it shows the literal `{2d6}` instead of turning into a rolled pill. Without the
 backticks, a `{2d6}` you type becomes a live pill when you click away; with them, it stays as text.
 
+## Definition lists
+
+Lay out terms and their meanings so they read as a glossary rather than a flat list: a rules
+reference, a cast of characters, an ingredient list, the jargon at the front of a project. Write the
+term on its own line, then each meaning on the line below it, starting with a colon and a space.
+
+```
+Oracle
+: a table you roll on
+: also, a yes or no answer
+```
+
+One term can carry several meanings, each on its own `: ` line, and you can stack as many
+term-and-meaning pairs in one point as you need. The term shows in bold with its meanings indented
+under it in quieter ink.
+
 ## Emoji
 
 Type a colon to drop in an emoji. As you type `:` and part of a name (`:fire`, `:tada`, `:check`),
 a small menu opens at your cursor listing the matches with their glyphs; use the arrow keys and
 `Enter` (or click) to pick one, the same as the tag and link menus. The menu matches anywhere in the
-name, not just the start, so `:face` finds every face and `:sword` finds `:crossed_swords:`. You can
+name, not just the start, so `:face` finds every face and `:swords` finds `:crossed_swords:`. You can
 also just type the full shortcode (`:sparkles:`) and it turns into the emoji when you finish it.
-There are around 500 shortcodes covering the everyday set (faces, hands, `:fire:`, `:star:`,
+There are around 570 shortcodes covering the everyday set (faces, hands, `:fire:`, `:star:`,
 `:rocket:`, `:warning:`, `:check:`, weather, food, travel) plus a solo-RPG lean for a game journal:
 `:dice:` 🎲, `:sword:` ⚔️, `:shield:` 🛡️, `:dragon:` 🐉, `:skull:` 💀, `:wizard:` 🧙, `:castle:` 🏰,
 `:scroll:` 📜, `:potion:` ⚗️, `:crown:` 👑 and more. The
 [emoji shortcode reference](emoji-shortcodes.md) lists every name, grouped by theme. For anything
-outside the set, your operating system's own emoji picker (`Ctrl/Cmd+.` on most systems) browses
-everything.
+outside the set, your operating system's own emoji picker (`Ctrl+Cmd+Space` on macOS, `Win+.` on
+Windows) browses everything; `Ctrl/Cmd+.` belongs to Pointliner, where it collapses a point.
 
 ## Tables
 
@@ -92,9 +115,10 @@ into the rows. Static tables can also carry a spreadsheet formula line; see
 [table formulas](computing-numbers.md#table-formulas-briefly).
 
 Base cells take **pills** the same way a point does: type `{2d6}`, `{= price * 1.1}` or `{Orc.HP}`
-in a cell and it becomes the live pill when you leave the cell (the cell's `@` menu inserts the
-same things by dialog). While a cell is being edited it shows the raw token; leave the cell and it
-renders. Anything that does not promote stays literal text, the usual escape hatch.
+in a cell and it becomes the live pill when you leave the cell (the cell's `@` menu builds a dice
+roll, a roll table, a grammar or Markov chain, a roll on your document, math, a variable, a link or
+an image by dialog). While a cell is being edited it shows its `{…}` source; leave the cell and it
+renders. Anything that does not become a pill stays literal text, the usual escape hatch.
 
 A base column can also be given a **display role** from its Column menu (**Show as**): a **Status**
 column renders known state keywords as colored chips (including states from your own
@@ -163,7 +187,7 @@ column operation (Calculate, formulas, Show as, sorting, widths) works by finger
 Deleting a column or row stays in the column menu (open it with `Shift+F10` on a cell), so a stray
 keystroke never destroys data. That same cell menu also lists the focused cell's **pill actions**:
 a cell holding a `{2d6}` pill shows Re-roll, Edit and Freeze rows there, since a focused cell shows
-the raw token with nothing to click.
+the `{…}` source with nothing to click.
 
 ## Footnotes, links and images
 
@@ -171,8 +195,14 @@ Annotate a claim without cluttering the main text, link out to a source or embed
 Footnotes are useful for research notes and annotated reading: the mark stays small while the note
 stays out of the way.
 
-Type **`@`** and choose **Footnote**, **Link** or **Image**. (For links *between points* in your
-own document, see [Links and references](links-and-references.md#linking-points) instead.)
+Type **`@`** and choose **Footnote**, **Cite footnote**, **Link** or **Image**. (For links *between
+points* in your own document, see [Links and references](links-and-references.md#linking-points)
+instead.)
+
+To cite one source more than once, choose **Cite footnote** and pick the note you already wrote.
+Open the **File menu** and choose **Footnotes** to see every footnote in the document with how many
+times each is used; from there you can jump to one, copy its link to cite it again, or delete one
+nothing points at.
 
 A footnote mark you added but never wrote is shown in muted ink with a dotted underline, so you can
 see at a glance which ones are still waiting. Those unfinished marks are **left out of an exported

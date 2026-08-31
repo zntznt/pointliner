@@ -1,7 +1,7 @@
 # Generating text
 
-*Part of the [generative & computational guide](README.md). This is the **Generate**
-family: pills that make random text (dice, tables, name generators, decks, oracles).*
+*Part of the [Pointliner guide](README.md). This is the **Generate** family: pills that make random
+text (dice, tables, name generators, decks, oracles).*
 
 Everything here is one syntax: **`{curly braces}`**. Type something inside `{…}`, click away
 from the point, and it becomes a **pill**. Click the pill to roll it again. Click the words
@@ -94,14 +94,17 @@ color:  red | blue | green | gold
 animal: fox | owl | dragon | toad
 ```
 
-- The **`origin`** line is what the pill shows: here, e.g. *"a gold dragon"*.
+- The **first** line is what the pill shows: here `origin`, e.g. *"a gold dragon"*. The name
+  `origin` is only a convention; put the line you want shown first, or name a different one in the
+  dialog's **Start rule** field.
 - `{color}` and `{animal}` are **rule calls**: the engine substitutes a random pick from each.
 - Rules can call rules, which call rules. The engine expands recursively until it bottoms out in
   plain text.
 
 **Rule names are document-wide.** Once a grammar pill defines `color`, you can write `{color}` in
 *any* point in the document and get a color. (If two pills define the same name, the document
-wins over a plugin pack; otherwise last definition wins, so keep names unique.)
+wins over a [reusable pack](features.md#files-sharing-and-offline); otherwise last definition wins,
+so keep names unique.)
 
 **Order matters once, on the file you open.** A pill runs when it is made, and a file loads top
 down, so a rule written *above* the rules it calls is built before they exist: it opens showing
@@ -203,7 +206,8 @@ Emit one text when a comparison holds, another when it doesn't:
 ```
 
 - Left of the `:` is a comparison (`>`, `>=`, `<`, `<=`, `==`, `!=`), usually against a
-  **variable** (here `hp`).
+  **variable** (here `hp`; see [variables](#store-a-value-and-reuse-it-variables) for how to make
+  one).
 - Right of the `:` is `then | else`. The `else` is optional: `{hp>0: still standing}` emits
   nothing when false.
 
@@ -223,10 +227,11 @@ the story:
 The guard {mood == "angry": attacks on sight | {mood == "afraid": flees | waves you through}}.
 ```
 
-The unquoted side is a variable; matching ignores capitalization (`"Angry"` and `angry` are the
-same). Only `==` and `!=` compare text; `<` and `>` stay numeric. Keep compared values to simple
-words (a quoted value containing `:` or `|` won't survive the template split). Re-roll the pick
-and the branch re-judges, same as the crit check below.
+The unquoted side is a variable, declared here with `:=` (see
+[variables](#store-a-value-and-reuse-it-variables)); matching ignores capitalization (`"Angry"` and
+`angry` are the same). Only `==` and `!=` compare text; `<` and `>` stay numeric. Keep compared
+values to simple words (a quoted value containing `:` or `|` won't survive the template split).
+Re-roll the pick and the branch re-judges, same as the crit check below.
 
 ### Test a captured roll (crits and checks)
 
@@ -373,12 +378,12 @@ The {w} deals {w.damage} damage and weighs {w.weight} lb.
 A field read takes [modifiers](#shape-the-words-modifiers) too, chained after the field:
 
 ```
-{w.name.cap}       → "Sword"      (capitalize the field)
-{weapon.damage.ord}
+{w.weight.ord}     → "3rd"        (ordinal of the field)
+{weapon.damage.upper}
 ```
 
 One field, then any number of modifiers. (Two fields deep, like `{a.b.c}` where `b` and `c` are
-both fields, isn't a thing; you'll get the `{…?}` marker.)
+both fields, isn't a thing; the braces just stay ordinary text instead of becoming a pill.)
 
 The same dotted read also reaches **variable bases**: mark a base so each row declares variables,
 and `{Orc.HP}` reads the HP cell of the Orc row, live (with a named base, `{Monsters.Orc.HP}`).
@@ -429,10 +434,10 @@ Keep a list of open threads, NPCs or ideas as ordinary points, then roll:
 
 ```
 Open threads
-  The letter is unsigned
-  Someone is following me
-  The well ran dry
-Advance one: {roll: is:todo}
+  The letter is unsigned #thread
+  Someone is following me #thread
+  The well ran dry #thread
+Advance one: {roll: #thread}
 ```
 
 The search is a normal search string (words, `#tag`, `is:todo`, `key:value`). `{roll:}` searches
@@ -486,10 +491,25 @@ You can also **type an oracle by its band name**, no dialog needed:
 ```
 {oracle: likely}           → the same Yes 3 | No 1 pill the dialog builds
 {oracle: even + swing}     → the six-way answer (Yes and / Yes / Yes but / No but / No / No and)
+{oracle: 70}               → your own odds: the same pill as Yes 70 | No 30
 ```
 
-The bands are `certain`, `likely`, `even`, `unlikely`, `impossible` (any capitalization). The pill
-is a normal oracle: it edits back to its `{Yes N | No M}` odds, which you can then tune by hand.
+The bands are `certain`, `likely`, `even`, `unlikely`, `impossible` (any capitalization), or a whole
+number from 0 to 100 for a percentage of your own. The pill is a normal oracle: it edits back to the
+words you typed, `{oracle: likely}`; change its odds and it becomes a plain `{Yes N | No M}` pick.
+
+---
+
+## Reproducible rolls (random seed)
+
+Rolls are normally fresh randomness, so two people opening the same file and clicking the same pill
+get different results. When you want them to match, give the document a **seed**: the **File** menu,
+then **Random seed**, then a whole number. From then on **dice, decks and `{roll:}` draws** follow
+that seed, so a copy shared at the same seed replays the same session. Leave the field blank to turn
+it back off.
+
+A seed changes future rolls, not the ones already frozen on the page, so re-roll a pill to draw the
+next value in the seeded sequence. The seed is saved with the document.
 
 ---
 

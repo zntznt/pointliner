@@ -25,11 +25,17 @@ Reshape the document as your thinking changes: reorder points and change how dee
   right to indent (nest it under the point above), left to outdent (pop it out to its parent's
   level). A small direction chip appears as you swipe, and the move commits when you release past it.
   While you are editing a point, a **bar above the keyboard** gives one-tap **insert a pill, a to-do
-  toggle (make the line tickable, or plain again), outdent, indent, move up and move down**, the
-  easiest way to reshape on a phone. To move a point by dragging, drag its bullet: release between
+  toggle (make the line tickable, or plain again), outdent, indent, move up, move down and undo**,
+  with a **Done** button at its end to leave edit mode, the easiest way to reshape on a phone. To
+  move a point by dragging, drag its bullet: release between
   two rows to reorder it, or release to the right of a row to nest it under that row. You can also
   use **Move up** / **Move down** in the bullet's menu. Swiping
   straight up or down just scrolls the page as usual.
+
+**Fold the whole outline at once.** The toolbar's **1 / 2 / 3 / All** buttons show only that many
+levels of the current view and collapse everything deeper; **All** expands it again. `Ctrl/Cmd+1`
+through `Ctrl/Cmd+6` do the same from the keyboard, though a browser may reserve those keys, so the
+buttons are the dependable door. On a narrow screen they move into the File menu as **Show levels**.
 
 ## Zoom into a point
 
@@ -75,12 +81,13 @@ to a one-line peek ending in an ellipsis, so a page of long notes stays scannabl
 again to show the whole thing, or just click the text to edit it (editing always shows the full
 paragraph). The folded state is saved with the document.
 
-A paragraph is prose-first in one more way: any pills inside it are drawn **lighter**, without the
-usual capsule, icon or dice breakdown, so a generated sentence reads as a sentence rather than a row
-of widgets (they still work: hover shows a faint tint, click re-rolls). And when you export a
-paragraph to Markdown or plain text, each pill flattens to just its **result** (`9`, not `2d6 = 9`),
-so the exported prose reads clean. Pills in ordinary bullets keep their full capsule and export their
-recipe, as before.
+A paragraph is prose-first in one more way: pills inside it are drawn **lighter**, without the usual
+capsule, icon or dice breakdown, so a generated sentence reads as a sentence rather than a row of
+widgets (they still work: hover shows a faint tint, click re-rolls). A `{= …}` math pill keeps its
+capsule until you check **Show value only** on it. And when you export a paragraph to Markdown or
+plain text, each pill flattens to just its **result** (`9`, not `2d6 = 9`), so the exported prose
+reads clean. Pills in ordinary bullets keep their full capsule and export their recipe, as before;
+a math pill exports just its number either way.
 
 ## Browsing without editing
 
@@ -101,8 +108,9 @@ delete the lot.
 
 Start a selection by `Shift`-clicking a point (a contiguous range), `Ctrl`/`Cmd`-clicking points to
 pick them out of order or pressing `Shift+Up` / `Shift+Down` from the keyboard. A selection bar
-appears at the bottom showing how many points are selected, with a button
-for each bulk action: Copy, Indent, Outdent, State, Dates, Check, Properties, Turn into and Delete.
+appears at the bottom showing how many points are selected, with a button for each bulk action:
+Copy, Export .md, Indent, Outdent, State, Dates, Check, Properties, Tag, Turn into, Refile and
+Delete, plus a ✕ to clear the selection.
 From the keyboard, `Ctrl/Cmd+C` copies, `Ctrl/Cmd+X` cuts, and `Ctrl/Cmd+V` pastes the points;
 `Tab` / `Shift+Tab` indent or outdent the selection; `Delete` removes it and `Esc` clears it.
 `Ctrl/Cmd+Shift+S` cycles the to-do state and `Ctrl/Cmd+Shift+P` cycles the priority across every
@@ -129,7 +137,8 @@ Keyboard-first: type `/refile` for the searchable tree, or name the destination 
 Find anything in a large document without scrolling. Narrow to a topic, surface all open tasks or
 spot everything that is overdue.
 
-Type words in the search box and **every word must appear**. The operators:
+Press `Ctrl/Cmd+F` to jump to the search box. Type words there and **every word must appear**.
+The operators:
 
 - `-word` excludes a word.
 - `a | b` matches either side (OR). Put spaces around the pipe; words on each side still combine
@@ -142,9 +151,15 @@ Type words in the search box and **every word must appear**. The operators:
 - `is:leaf` / `is:parent`, `is:collapsed` / `is:expanded` filter by structure and fold state.
 - `is:pill` finds a point carrying any pill; `is:random` narrows to the re-rollable ones (dice,
   generators). `has:dice` (and `has:math`, `has:est`, `has:grammar`, `has:markov`, `has:var`,
-  `has:seq`) find a specific kind; `has:children` / `has:footnote` find sub-points or a footnote.
-- `state:waiting` filters by a status keyword; `due:today` / `due:overdue` filter by date, and
-  `due:week` / `due:month` catch anything due within the next seven or 30 days (also `start:week` / `start:month`).
+  `has:seq`, `has:query`) find a specific kind; `has:children` / `has:footnote` find sub-points or
+  a footnote.
+- `state:waiting` filters by a status keyword; `due:today`, `due:tomorrow`, `due:overdue` and an
+  exact `due:2026-09-01` filter by date, and so do the relative `due:today+7` and the bounds
+  `due:<2026-09-01` / `due:>today+30`. `due:week` / `due:month` catch anything due within the next
+  seven or 30 days, **not counting anything already overdue**: add `| due:overdue` to get both. All
+  of these work on `start:` too.
+- `priority:a` (also `b` and `c`) filters by a to-do's priority; `priority:none` finds to-dos without
+  one and `priority:any` finds those with one.
 - `is:scheduled` / `is:unscheduled` split points by whether they have a date at all; `is:overdue`
   finds points past their deadline and not done (the due date, or the start if there is no due).
   `is:held` finds points in their sequence's held band (blocked or waiting, like `#WAITING`).
@@ -155,12 +170,15 @@ Type words in the search box and **every word must appear**. The operators:
 - `has:link` / `has:backlink` find points that contain a link or are linked to by another point
   (within this document); `is:broken` finds points holding a link whose target no longer exists.
   `has:tag` matches any tagged point.
-- `has:key` / `key:value` filter by a property; `key:>N` (also `<`, `>=`, `<=`) compares a numeric
-  property, like `cost:>100` or `score:<=3.5`.
+- `has:key` / `key:value` filter by a property; quote a value that has spaces, like
+  `area:"Home Reno"`. `key:>N` (also `<`, `>=`, `<=`) compares a numeric property, like `cost:>100`
+  or `score:<=3.5`.
 
 You do not have to remember any of this. In **Guided**, focusing the search box opens a cheatsheet
-of the operators above; click any example to add it to what you have already typed, so you can stack
-filters by picking them. From the keyboard it is a single stop: one `Tab` from the search box lands
+of the operators above; click any filter example to add it to what you have already typed, so you
+can stack filters by picking them. The dimmed last rows, which show `{query:}`, `{count:}`,
+`{roll:}` and `/querybase`, are syntax reminders rather than clickable filters. From the keyboard it
+is a single stop: one `Tab` from the search box lands
 on the examples, the arrow keys move between them (`Home` and `End` jump to the ends), `Enter` adds
 the one you are on, and `Esc` puts you back in the search box with your query intact.
 
@@ -241,8 +259,8 @@ title column stays a link (click it to jump to the point) and formula columns st
 
 When several documents are in the same folder (a [connected folder](features.md#linking-and-connecting-documents)),
 search covers all of them at once, not just the one you are reading. Useful when you know something is
-in your documents but cannot remember which file. Matches from other documents appear in a **Found in other
-notes** list; click one to jump straight there.
+in your documents but cannot remember which file. Matches from other documents appear in a **Found in
+other documents** list; click one to jump straight there.
 
 ## Hashtags
 
@@ -286,8 +304,9 @@ rest of the table controls.
 
 Pointliner starts chatty, with hints, tooltips and menus that teach you the syntax. Once you know the
 commands, you can turn the explaining down and keep just the app. Press `Ctrl/Cmd+Shift+.` to move to a
-quieter level and `Ctrl/Cmd+Shift+,` to move back toward more guidance (or open the File menu and use the
-verbosity row, which shows the current level as a dot track). Three levels cycle:
+quieter level and `Ctrl/Cmd+Shift+,` to move back toward more guidance (or open the File menu and pick a
+level in the **Guidance** card, which names the three levels and marks the current one). Three levels
+cycle:
 
 - **Guided** (the default): everything is shown, empty-point hints, the search cheatsheet, pill tooltips,
   and the full `/` and `@` menus.

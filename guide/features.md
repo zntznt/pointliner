@@ -27,14 +27,16 @@ The everyday outliner. This is the part you use without thinking about it.
   size you pick. ([image size](writing-and-formatting.md#image-size))
 - **Secret and spoiler blocks.** Start a line with `>!` to hide it behind a blur until you click
   or press it to reveal. ([secret blocks](writing-and-formatting.md#secret-and-spoiler-blocks))
-- **Emoji.** Type `:` and a name (`:fire`, `:tada`) to pick from a menu, or type the full
-  `:shortcode:`. Around 500 names, including a solo-RPG set for a game journal (`:dragon:`,
-  `:sword:`, `:dice:`). ([emoji](writing-and-formatting.md#emoji), full
+- **Emoji.** Type `:` and a name (`:fire`, `:star`) to pick from a menu, or type the full
+  `:shortcode:`. 567 names covering 525 emoji, including a solo-RPG set for a game journal
+  (`:dragon:`, `:sword:`, `:dice:`). ([emoji](writing-and-formatting.md#emoji), full
   [reference](emoji-shortcodes.md))
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
   with `[#A]` priorities. ([to-dos](tasks-and-organizing.md#to-dos-and-tasks))
 - **Collapse and zoom.** Fold any branch; click a bullet to zoom in and work on just that subtree.
   A **paragraph's** bullet instead collapses it to just its first line, so long notes stay scannable.
+  The toolbar's **Show levels** control (1, 2, 3 or All) sets the whole outline's depth at once and
+  collapses everything deeper; on a narrow screen it moves into the File menu.
   ([zoom](getting-around.md#zoom-into-a-point) · [collapse a paragraph](getting-around.md#collapse-a-paragraph-to-its-first-line))
 - **Reorder by dragging** (mouse or touch), or move points with the keyboard.
   ([moving and nesting](getting-around.md#moving-and-nesting-points))
@@ -50,8 +52,10 @@ The everyday outliner. This is the part you use without thinking about it.
   with the document.
 - **Click anywhere to edit.** Click any empty part of a point and you are typing there.
 - **Touch quick bar.** On a phone or tablet, a bottom bar keeps the essentials under your
-  thumb: capture, a new point, a new point with the `@` insert menu, and help. While you
-  edit, it swaps for a bar of structural controls (indent, move, insert).
+  thumb: capture, a new point, a new point with the `@` insert menu, a **Roll templates** menu that
+  drops a ready-to-edit `{2d6}`, `{oracle: likely}` or `{roll: #tag}` without hunting for braces on
+  a soft keyboard, undo, and help. While you edit, it swaps for a bar of structural controls
+  (indent, move, insert).
 - **Small controls are bigger than they look on touch.** Chips, toggles, close buttons and the
   fold arrow all take a comfortable tap on a phone even where the visible control is small. The
   target grows, not the design, so nothing shifts and no control starts stealing its neighbor's
@@ -74,6 +78,9 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
   ([templates](generating-text.md#glue-pieces-into-one-name-templates))
 - **Roll dice.** `{2d6}`, `{1d20+5}`, plus exploding, keep-highest, Fate and success pools.
   ([dice](generating-text.md#roll-dice-ndm))
+- **Contested rolls.** `{hit := 2d6+str vs 2d6+def}` rolls both sides at once and shows each total
+  and the margin, the winner's lead; the margin is a number math can read (`{= hit > 0}` is true
+  when the first side won). Either side can be a fixed target: `{check := 2d6 vs 15}`.
 - **Named rules.** Build a name generator or loot table once, reuse it anywhere.
   ([rules](generating-text.md#name-things-youll-reuse-rules))
 - **Shape words.** `{beast.a}` becomes "an ogre"; pluralize, capitalize, past tense, possessive,
@@ -91,6 +98,9 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 - **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (anywhere in it, like a search), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every note in a connected folder.
   ([roll on your document](generating-text.md#roll-on-your-own-document))
 - **Random results log.** Turn on File menu, Log random results and every random result (dice, generators, tables, decks, chains, the oracle, pick-from-document, estimates) is also written to a dated log, each line linking back to the point that produced it, so re-using a pill never loses the record. Off by default; set a home point from the bullet menu. ([random results](dates-and-planning.md#random-results-log))
+- **Reproducible rolls.** File menu, Random seed fixes this document's dice, decks and rolls to a
+  seed number, so a copy you share re-rolls the same session. Blank the field and rolls go back to
+  fresh randomness.
 
 ## Computing with numbers
 
@@ -109,7 +119,9 @@ A live calculator that can see your document. Math pills recompute on their own.
   then Custom units. Do date math (`{= daysuntil(due)}`).
   ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))
 - **Number formatting.** Results group thousands automatically (`840,000`); set decimal places, a
-  prefix (`$`) or a suffix (`kg`) per pill for money or units. ([format](computing-numbers.md#format-the-number))
+  prefix (`$`) or a suffix (`kg`) per pill for money or units, or significant figures in place of
+  decimals when the numbers span very different sizes.
+  ([format](computing-numbers.md#format-the-number))
 - **Roll numbers up the tree.** `{= sum(cost)}` totals a property across child points, live, like a
   spreadsheet column, and `{= sum("#task", cost)}` totals it over everything matching a live search.
   Add `, document` (or `, folder`) to search the whole document or folder from any point.
@@ -133,15 +145,16 @@ A live calculator that can see your document. Math pills recompute on their own.
   answer the dice engine (which rolls with replacement) cannot give. `{= simulate(2000, 2d6+3, >= 10)}`
   rolls a dice expression N times and returns the percentage that clear a bar, for the messy rolls with
   no tidy formula. Both are plain percentages that compose: `{= round(hypergeom(60, 12, 7, 3))}%`.
-  And `{= wilsonlow(wins, games)}` / `{= wilsonhigh(wins, games)}` give the honest 95% range around a
-  rate from a small sample, so 12 wins in 20 games reads "60% (39 to 78%)" instead of a false-flat 60%.
+  And `{= round(wilsonlow(wins, games))}` / `{= round(wilsonhigh(wins, games))}` give the honest
+  95% range around a rate from a small sample, so 12 wins in 20 games reads "60% (39 to 78%)"
+  instead of a false-flat 60%.
 - **Self-checking documents.** Attach a rule like `sum(cost) <= budget`; the point flags itself when
   it breaks. Structure is testable too: `count("-has:hp") == 0` means every point below carries hp.
   ([constraints](computing-numbers.md#make-the-document-check-itself-constraints))
 - **Progress cookies.** Drop `[/]` or `[%]` for a live tally of checkboxes and child to-dos.
+  ([progress](computing-numbers.md#progress-bars))
 - **Progress clocks.** Drop `[o 0/6]` for a segmented tension clock you fill by hand, click to
   advance. ([progress clocks](tasks-and-organizing.md#progress-clocks))
-  ([progress](computing-numbers.md#progress-bars))
 - **Meters.** Drop `{meter: hp/hpmax}` for a bar of a number against its maximum (HP, spell
   slots, any gauge), read live from the point's properties. Either side can be a live calculation,
   so `{meter: words(subtree)/1000}` is a writing goal that fills as you write.
@@ -223,7 +236,8 @@ Turn the document into a lightweight planner.
   Calendar light up with nothing to set. ([tables](writing-and-formatting.md#tables))
 - **Column number format.** A Number column can read as money, a measurement or a percentage: choose
   Number format in its menu and set decimal places, a prefix like `$` and a suffix like ` kg` or `%`.
-  Every cell and the Calculate total format alike; the stored value stays plain.
+  Every cell and the Calculate total format alike; the stored value stays plain. Significant
+  figures work here too, as an alternative to decimal places.
   ([formatting numbers](writing-and-formatting.md#tables))
 - **Board view.** Show any base with a Status column as a kanban board: your sequence's states
   become the lanes, rows become cards, and moving a card writes the state back into the table.
@@ -323,9 +337,9 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   documented in one place, so your grammar and your data are portable text you own.
   ([pill syntax reference](pill-syntax-reference.md))
 - **Exclude from export.** Flag a point (and its subtree) to skip every export format, Markdown,
-  plain text and Web page alike, so scaffolding and planning notes stay out of a shared copy. Only
-  the OPML save keeps it. Excluding a variable declaration is called out after a Web page export,
-  since that format stays live and recomputes.
+  plain text, Shareable page and Web page alike, so scaffolding and planning notes stay out of a
+  shared copy. Only the OPML save keeps it. Excluding a variable declaration is called out after a
+  Web page export, since that format stays live and recomputes.
   ([exporting](files-and-export.md#exporting-and-sharing))
 - **Shareable page (read-only).** Export a single static `.html` page anyone opens in any browser with
   no app, where every pill shows the value it had when you saved: a total is its number, a roll its
@@ -353,22 +367,24 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   the same dialog and your text is waiting. It comes back only where it belongs, so a draft you
   abandoned while inserting something new never overwrites an existing pill you later open to edit,
   and a half-typed schedule stays with the point it was meant for.
-- **Start from an example.** File then **Start from an example** drops a ready-made, fully live
-  example into your document. There are twelve: solo-RPG starters (a campaign oracle that rolls on
-  your own cast and threads, an oracle-driven scene loop, a self-computing character sheet) and
-  general-purpose ones (a project tracker, a reading log, a life dashboard, a weekly meal planner, a
-  trip planner with a calendar view, a decision helper, a study and flashcards page, a home
-  inventory, and a worldbuilding and writing kit). Click any pill inside to play, then delete it when
-  you are done. More worked examples live in the [solo RPG guides](solo-rpg/README.md).
+- **Templates and examples.** File then **Templates & examples** drops a ready-made, fully live
+  example into your document. There are fourteen: creative and game starters (a campaign oracle that
+  rolls on your own cast and threads, a living character sheet, a game design workbench, a series
+  bible) and general-purpose ones (a project planner, a reading log, research notes, a week
+  dashboard, a weekly meal planner, a home inventory, a household budget, freelance costing, a
+  decision helper, and a study and flashcards page). Click any pill inside to play, then delete it
+  when you are done. More worked examples live in the [solo RPG guides](solo-rpg/README.md).
 - **A front door on the very first run.** The first time you open Pointliner, a short welcome offers
   the same examples as one-click starting points, plus a blank document and a live guided tour. Pick
   one and you land in a working document in that domain, with every pill already live. Close it (or
   press `Escape`) and you get the blank canvas instead, ready to type. It appears only on a genuinely
   first run: once you have a document, reopening goes straight back to your work.
 - **All commands.** One searchable window over every point command, generator, calculation and
-  pill. Open it from the toolbar (the checklist button), with `Ctrl/Cmd+K`, or by typing `/builder`
-  (in Guided mode, `/` and `@` open it too; `{` opens the pill menu, whose Browse all pills row leads here). Type to filter, arrow to browse, Enter to insert; the
-  side pane explains each command as you go.
+  pill. Open it from the toolbar (the checklist button), with `Ctrl/Cmd+K`, or by typing `/builder`;
+  it opens on **Patterns**, ten ready-made recipes you lift and edit in place, four of which drop
+  example rows underneath so the pill computes a real answer on arrival. (In Guided mode, `/` and
+  `@` open it too; the menu on a bare `{` has a **Browse all pills** row.) Type to filter, arrow to
+  browse, Enter to insert; the side pane explains each command as you go.
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.
 - **Verbosity dial.** `Ctrl/Cmd+Shift+.` cycles Guided (all hints shown), Standard (beginner hints and
   tooltips off, menus and pencils kept), and Lean (the keyboard canvas: menus and pencils hidden, still
@@ -383,12 +399,14 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   behave.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
   the two deep guides.
+- **[Composing pills](composing-pills.md)** shows how to put pills together: side by side, through
+  a variable, and through the tree.
 - **[Cookbook](cookbook.md)** has copy-paste recipes that each start from an everyday itch: a plan
   sized in honest ranges, a budget that flags itself wherever the costs hide, a reading pile that
   only offers what is left, journal prompts that refuse autopilot, and more.
 - **[Solo RPG guides](solo-rpg/README.md)** show the generators, oracle and journal
   working together at the table, with importable demo files.
 
-> Inside the app, the **`?` button** (bottom-right) opens the **Concept guide**, the one help
-> surface: a keyboard reference plus every feature explained with examples. This page is the
-> *overview*; the guide is the *look-it-up*.
+> Inside the app, the **`?` button** (bottom-right) opens the **Concept guide**: shortcuts on its
+> first page and every feature explained with examples beside them. The File menu reaches the same
+> panel as **Help & guide**. This page is the *overview*; that is the *look-it-up*.

@@ -16,7 +16,7 @@ Type **`[[`** and pick the point to link to. Two things make these links low-mai
 - **The link always shows the current title**, so renaming a point keeps every link to it correct.
   The picker writes this form: `[[#id]]`, a title reference.
 - **Add an empty pipe** (`[[#id|]]`) and the linked point's content appears *inline* wherever the
-  link is placed (a live transclusion, not just a reference). You do not have to type the pipe: in
+  link is placed (a live mirror, not just a reference). You do not have to type the pipe: in
   the `[[` picker, **Shift+Enter** (or **Shift+click** a result) inserts the embed form instead of a
   reference. Plain Enter still references, so embedding stays an explicit choice.
 
@@ -28,6 +28,13 @@ levers keep it bounded: **collapse** a point in the source and the mirror hides 
 a "+N more, open the source" note. A mirror *inside a sentence* stays a single line, so prose
 never breaks; a mirror inside a mirrored subtree shows as a title, so two notes mirroring each
 other never loop. Click anywhere on the block to jump to the source.
+
+**Following a link** is a click. While you are editing the point a link is plain text instead, so
+put the caret in it and press `Ctrl/Cmd+Shift+Enter`; either way it jumps to the target, switching
+document first when the link crosses files, and says so rather than moving you if the target is
+gone. Going the other way, **Copy link** in a point's bullet menu (or `Ctrl/Cmd+Shift+L`) puts a
+ready-to-paste `[[#id]]` on the clipboard, in the cross-document `[[docId#id]]` form when a folder
+is connected.
 
 A point is also findable under other names if you give it [aliases](tasks-and-organizing.md#nicknames-aliases),
 so the `[[` picker finds the right point whichever name you reach for.
@@ -60,7 +67,7 @@ Both lists also surface **mentions of the title that are not linked yet**, so yo
 connect them with one click.
 
 In a [connected folder](files-and-export.md#working-with-a-folder-of-documents) the panel adds an
-**Unlinked references in other notes** section: places in your *other* documents that mention this
+**Unlinked references in other documents** section: places in your *other* documents that mention this
 point by name without linking it, so you can spot where a topic is discussed but not yet connected.
 These are view-only (click a row to open that document); the one-click Link button is for same-document
 mentions only, since linking a mention in another file would mean writing into a document you do not
@@ -86,7 +93,8 @@ graph walks your points in the order you wrote them.
 A point that links to a **deleted** target shows as a red dot, so a dangling reference is visible
 rather than silently missing. Open one and it tells you what is gone and which points still link to
 it, using the caption you gave the link, so you know where to go and fix it. The **Broken links**
-report in the command menu lists every one of them at once. Points with no links (and no unlinked mentions, below) do not appear,
+report in the File menu lists every one of them at once. Points with no links (and no unlinked
+mentions, below) do not appear,
 keeping the graph a web rather than a scatter of unconnected dots. The graph is a live rendering of
 your links, so it is always current: link two points and they join the next time you open it.
 
@@ -104,7 +112,7 @@ where more links run between the two (hover it for the exact count). Your curren
 ring so you can see where you are, and clicking a document opens it. A link that points at a document
 no longer in the folder shows as a red dot, same as a deleted point. Documents with no cross-document
 links stay off the map, and the toggle only appears when the folder actually has several documents.
-It is the map of your notebook, one level up from the map of a document.
+It is the map of your folder, one level up from the map of a document.
 
 A third view, **Nearby**, answers a smaller question: *what is close to the point I am on?* It draws
 that point, ringed, plus everything within **two steps** of it, following links in both directions
@@ -121,7 +129,7 @@ links to yet says so rather than showing a single lonely dot.
 ## Links across documents
 
 Weave together a network of documents: link a project document to a person document, connect a meeting document to an
-action item in another file or build a topic index that points to pages across your whole library.
+action item in another file or build a topic index that points to documents across your whole library.
 
 In a [connected folder](features.md#linking-and-connecting-documents) the `[[` picker searches **all**
 your documents, not just the one you are in, so a link can reach a point in any file.
@@ -139,7 +147,7 @@ that project's points, not the ones where you are reading it.
 
 ## Find broken links
 
-When you delete or rename the point a link pointed at, the link goes stale: it renders with a dashed
+When you delete or rename the point a link pointed at, the link goes stale: it renders with a dotted
 underline instead of a solid one. A single stale link is easy to spot, but across a growing document
 or a whole folder they are easy to lose track of.
 

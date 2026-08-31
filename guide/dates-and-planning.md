@@ -38,6 +38,12 @@ the same point keeps recurring. The cadence is anchored to the due date, not to 
 off, so finishing a day late does not drift the schedule. A completion always announces where it
 landed ("Rescheduled to ...").
 
+That Repeat field is for **one** task that keeps coming back. To lay down a whole **series** of
+separate dated to-dos at once (a planting every two weeks through the season, a filing on a fixed
+cadence), open a point's bullet menu and choose **Repeating dates**: give it what repeats, a start
+date, an interval in days and an end date, and it generates one dated to-do per occurrence, all of
+them in the agenda. They are ordinary points, so you can edit, reschedule or delete any of them.
+
 ## Agenda and calendar
 
 See all your upcoming work without scrolling the document. Click the **calendar button** in the
@@ -76,10 +82,11 @@ previous and next months peeking in at the sides (the same size as the centered 
 jump to it. The **‹‹** and **››** buttons jump a whole month (Week) or year (Month).
 
 Turn on **Done** to include completed points; toggle **Running** to show or hide started work; turn
-on **Overdue** to focus every view on just the late items. Below the dated rows, an **Actions** row
-gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the work you have
-not scheduled yet still has a home; the same list is a search away with `state:next` or `is:todo`.
-Click any item to jump straight to it.
+on **Overdue** to focus every view on just the late items. Beside those filters, a **Sort** chip
+reorders the List between date (the default) and priority, so `[#A]` work rises to the top. Below
+the dated rows, an **Actions** row gathers your undated next-actions (any `#NEXT` or `#TODO` point
+with no date), so the work you have not scheduled yet still has a home; the same list is a search
+away with `state:next` or `is:todo`. Click any item to jump straight to it.
 
 Pointliner has no background reminders or notifications: it runs entirely offline with no server, so
 the agenda is where you come to check what is due, rather than something that pings you. A one-off
@@ -94,7 +101,7 @@ earliest to the far future, grouped by month. It is the view for a long project 
 notes, where you want to browse the arc ("the launch, the decision, the milestone, in the order they
 landed") instead of searching for a date you only half-remember.
 
-It draws from **three kinds of dated point**, so a whole day sits on one line:
+It draws from **up to four kinds of dated point**, so a whole day sits on one line:
 
 - **Tasks**, anything with a start or due date, the same scheduled points the agenda plans.
 - **Journal**, each daily entry from your [journal](#daily-journal), so what actually happened lands
@@ -102,12 +109,15 @@ It draws from **three kinds of dated point**, so a whole day sits on one line:
 - **Lore**, any point carrying a `when` or `date` property, for world events that are not tasks: a
   founding, a battle, a comet. Add `when: 1247-03-02` (or `date:`) to a point and it takes its place
   in the chronicle.
+- **Chronicle**, each entry from a [chronicle](#the-chronicle-a-dated-log) when you have set one up,
+  dated in its own calendar. This kind appears only once a chronicle is bound.
 
 Open it from the **hourglass button** in the toolbar. A row of **source toggles** (Tasks, Journal,
-Lore) sits at the top; click one to show or hide that kind, so you can read the planned schedule alone,
-the journal alone, or the whole braided history. Each entry shows its date and title, colored by
-urgency (a past-due task reads red), with done points struck through and start-only points marked with
-a small `▸`; journal and lore entries carry a small source tag. Click any entry to jump to that point;
+Lore, and Chronicle when one is set) sits at the top; click one to show or hide that kind, so you
+can read the planned schedule alone, the journal alone, or the whole braided history. Each entry
+shows its date and title, colored by urgency (a past-due task reads red), with done points struck
+through and start-only points marked with a small `▸`; journal, lore and chronicle entries carry a
+small source tag. Click any entry to jump to that point;
 press `Esc` to close. It opens scrolled near today, so a long history starts at "now" rather than at
 year one.
 
@@ -130,10 +140,12 @@ Entries file themselves by date under a **Journal** point, nested year then mont
 toolbar book button toggles the **Journal bar**: type a point and press Enter to file it under
 today's entry without leaving your place. The bar shows the date it is saving to; click the
 year, month or day to jump to that part of the journal. Type **`/journal`** to open today's
-entry directly.
+entry directly. To keep the journal in a particular place, open any point's bullet menu and
+choose **Set as journal home**; entries then file themselves under that point.
 
 (When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
-journal can instead write one file per day on disk.)
+journal can instead write one file per day on disk. `Ctrl/Cmd+Shift+J` switches between the two
+modes and says which one it landed in.)
 
 ## Random results log
 
@@ -197,7 +209,9 @@ text:
   (`The Fading: 28`).
 - **Week**: day names (`Moonday Tilday Windday...`), a bare length like `10`, or `10: Sul Mol` to
   name just the first days. Blank keeps a 7-day week.
-- **Era**, optional: `AE: 1200` makes year 4 display as `1204 AE`.
+- **Era**, optional: `AE: 1200` offsets the year, so the calendar's year 4 reads as 1204. Dates show
+  as `1204-04-12` and month headings as `Firstfrost 1204`; the era name itself appears in the
+  dialog's preview, not on the dates.
 - **Today in this world**: the calendar's current date, like `1204-04-12`. An alternate calendar has
   no wall clock, so this is the day your dates, urgency colors, and agenda count from.
 
