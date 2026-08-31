@@ -1760,6 +1760,7 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/cairn/cairn-demo.opml': readFileSync(new URL('../guide/solo-rpg/cairn/cairn-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/maze-rats/maze-rats-demo.opml': readFileSync(new URL('../guide/solo-rpg/maze-rats/maze-rats-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/cairn/cairn.md': readFileSync(new URL('../guide/solo-rpg/cairn/cairn.md', import.meta.url), 'utf8'),
+    'guide/solo-rpg/ironsworn/ironsworn.md': readFileSync(new URL('../guide/solo-rpg/ironsworn/ironsworn.md', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -29906,8 +29907,10 @@ test('the shipped generators demo actually generates (its rules register on load
 test('EVERY solo-RPG demo resolves its own rule references (the census the last two fixes lacked)', () => {
   // THE THIRD TIME. This same bug -- a table written as bare `name: a | b` text, which registers
   // nothing, so every {name} call site renders as literal characters -- has now been found and fixed
-  // three times: #810 (oracle-play-demo), the generators demo above, and cairn/maze-rats/ironsworn.
-  // Each earlier fix pinned exactly the ONE file it repaired, so the next instance shipped green.
+  // three times: #810 (index.html's embedded example plus oracle-play-demo), the generators demo
+  // above, and cairn/maze-rats/ironsworn. Each earlier fix pinned only the files IT repaired and
+  // never looked sideways, so the next instance shipped with the suite green. #810 did not even
+  // reach oracle-play.md, one directory over, which still taught the dead form until this change.
   // CLAUDE.md's own rule: "Check the SIBLINGS, not just the site ... where the family is enumerable
   // from source, leave a census ratchet so the next omission fails a test." The family is
   // readdirSync over guide/solo-rpg. This is that ratchet, and it is why a NEW demo cannot regress.
@@ -29948,16 +29951,24 @@ test('EVERY solo-RPG demo resolves its own rule references (the census the last 
   // A NAME LOOKUP and nothing else: a bare identifier, optionally dotted/modified. Every other
   // {...} form (dice, {= math}, {a | b}, {kw: ...}, {x := 1}, {2x: ...}) is excluded by shape, so
   // this census only ever accuses the thing it is about.
-  const IS_LOOKUP = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+  //
+  // HYPHENS ARE DELIBERATELY INCLUDED, and that is the whole point of the `-` in the class. A
+  // hyphenated name cannot be declared (ruleDeclParts rejects it) and cannot resolve, so a demo
+  // that spells BOTH its declaration and its reference with a hyphen is entirely dead -- and the
+  // first version of this census, whose identifier class had no `-`, skipped both halves and
+  // called that demo healthy. Matching hyphens means such a reference is always accused, which is
+  // correct: there is no way to make it resolve.
+  const IS_LOOKUP = /^[A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z_][A-Za-z0-9_-]*)*$/;
 
   let checked = 0;
   const broken = [];
   for (const { name, file } of demos) {
     const all = texts(readFileSync(file, 'utf8'));
     const rules = Object.create(null), vars = Object.create(null);
-    for (const t of all) for (const b of bodies(t)) {
-      const d = c.ruleDeclParts(b);                      // {rule NAME: rhs} -- the only form that registers
-      if (d) { rules[d.name.toLowerCase()] = true; continue; }
+    for (const t of all) for (const b0 of bodies(t)) {
+      const b = b0.trim();                               // references are trimmed below; declarations must be too,
+      const d = c.ruleDeclParts(b);                      // or a legal `{ edge := 2 }` registers nothing and every
+      if (d) { rules[d.name.toLowerCase()] = true; continue; }   // {edge} in that demo is falsely accused
       const v = /^([A-Za-z_][A-Za-z0-9_]*)\s*:=/.exec(b);   // {name := value}
       if (v) vars[v[1].toLowerCase()] = true;
     }
@@ -29997,6 +30008,20 @@ test('no solo-RPG guide teaches the bare rule form that registers nothing', () =
     }
   }
   assert.deepEqual(offenders, [], 'a guide names "a named rule" without showing {rule ...}:\n  ' + offenders.join('\n  '));
+
+  // ...and a POSITIVE floor, because the check above searches for something that should NOT exist,
+  // and such a check reads identically whether the tree is clean or the phrasing simply drifted out
+  // of its filter. These five guides are the ones that teach a table, and each must show the working
+  // form in a FENCED BLOCK -- the thing a reader copies -- not merely mention it in prose. Fenced is
+  // the load-bearing word: `{rule ...}` inline in a sentence is a reference to the form, while the
+  // fence is where the guide hands the reader something to type. It is also what makes this floor
+  // provable: ironsworn.md mentions the form inline as well, so a floor that accepted any mention
+  // could not be killed by editing its fence.
+  const teach = ['cairn', 'maze-rats', 'ironsworn', 'oracle-play', 'generators'];
+  const fenced = n => (readFileSync(resolve(dir, n, `${n}.md`), 'utf8').match(/```[\s\S]*?```/g) || [])
+    .some(block => block.includes('{rule '));
+  assert.deepEqual(teach.filter(n => !fenced(n)), [],
+    'these guides teach named tables and must show the {rule ...} form in a fenced block');
 });
 
 test('the oracle near-miss cue names bands that exist', () => {

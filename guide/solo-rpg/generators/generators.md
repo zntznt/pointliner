@@ -151,7 +151,7 @@ real document with every pill live. A few things to try:
 - **Break the item field on purpose.** Delete the `{rule spear.damage: 1d8}` line, then roll the
   weapon pill until it lands on a spear: `{weapon.damage}` goes undefined, which is exactly how you
   learn that a field lives or dies with its sub-rule. Put the line back and it heals.
-- **Edit the lists to make them yours.** Click a rule pill to edit it back into text (say
+- **Edit the lists to make them yours.** Click into the text of a rule point (say
   `{rule animal: Kraken | Wyrm | ...}`) and add, remove or reweight options. Keep the `rule`
   keyword when you edit: drop it and the rule unregisters, taking every `{animal}` pill in the
   file with it. Every `{animal}` pill reads the same rule, so one edit ripples through names and

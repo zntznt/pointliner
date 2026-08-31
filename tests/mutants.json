@@ -2679,8 +2679,8 @@
       "suite": "unit",
       "why": "the census must catch a demo table written as bare `name: a | b` -- the exact shape that shipped dead pills in cairn, maze-rats and ironsworn, and that #810 and the generators pin each caught in one file only",
       "file": "guide/solo-rpg/cairn/cairn-demo.opml",
-      "find": "text=\"{rule reaction: hostile | wary | neutral | curious | helpful}\"",
-      "replace": "text=\"reaction: hostile | wary | neutral | curious | helpful\"",
+      "find": "text=\"{rule reaction: ",
+      "replace": "text=\"reaction: ",
       "kills": "EVERY solo-RPG demo resolves its own rule references"
     },
     {
@@ -2688,8 +2688,8 @@
       "suite": "unit",
       "why": "a hyphenated rule name is rejected by ruleDeclParts and fails SILENTLY as prose, so the census must accuse it too, not just the missing wrapper; the first draft of the census scanned only top-level braces and this mutant SURVIVED it",
       "file": "guide/solo-rpg/maze-rats/maze-rats-demo.opml",
-      "find": "text=\"{rule spell_form: bolt | cloud | ward | veil | swarm}\"",
-      "replace": "text=\"{rule spell-form: bolt | cloud | ward | veil | swarm}\"",
+      "find": "{rule spell_form: ",
+      "replace": "{rule spell-form: ",
       "kills": "EVERY solo-RPG demo resolves its own rule references"
     },
     {
@@ -2697,10 +2697,27 @@
       "suite": "unit",
       "why": "fixing the demos without the prose regenerates the bug: four guides told the reader to define `reaction: hostile | wary` with no rule keyword",
       "file": "guide/solo-rpg/cairn/cairn.md",
-      "find": "The `rule` keyword is what names it. A bare `reaction: hostile | wary` stays ordinary text and",
-      "replace": "Define each as a **named rule** on its own point (`reaction: hostile | wary`) and it works, and",
+      "find": "The `rule` keyword is what names it. A bare",
+      "replace": "Define each as a **named rule** on its own point and it works. A bare",
+      "kills": "no solo-RPG guide teaches the bare rule form"
+    },
+    {
+      "id": "solo-rpg-census-hyphen-consistent",
+      "suite": "unit",
+      "why": "the shape the first census MISSED: hyphenate the declaration AND its reference and both fell outside the identifier class, so an entirely dead demo passed. Only the `-` in IS_LOOKUP makes this reachable",
+      "file": "guide/solo-rpg/maze-rats/maze-rats-demo.opml",
+      "find": "{rule spell: a {spell_form} {spell_effect}}",
+      "replace": "{rule spell: a {spell-form} {spell-effect}}",
+      "kills": "EVERY solo-RPG demo resolves its own rule references"
+    },
+    {
+      "id": "solo-rpg-guide-loses-the-rule-form",
+      "suite": "unit",
+      "why": "the offenders half is a search for something that should NOT exist and reads the same whether the tree is clean or the phrasing drifted out of its filter; the positive floor is what still bites when a guide simply stops showing the working form",
+      "file": "guide/solo-rpg/ironsworn/ironsworn.md",
+      "find": "{rule action_oracle: strike | avenge | uncover | defend}\n{rule theme_oracle: risk | fortune | secret | shelter}",
+      "replace": "action_oracle: strike | avenge | uncover | defend\ntheme_oracle: risk | fortune | secret | shelter",
       "kills": "no solo-RPG guide teaches the bare rule form"
     }
-
   ]
 }

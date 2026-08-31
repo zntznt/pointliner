@@ -107,9 +107,10 @@ percentages; convert them to weights, for example an even chance is `{Yes 1 | No
 ## Putting the moves in
 
 Each Ironsworn **move** (Face Danger, Secure an Advantage, Compel, Strike and so on) has its own
-trigger and its strong/weak/miss outcomes. In the demo, each move is its own point: the move's text
-sits in the point (from the SRD), with an action-roll pill ready beneath it. To play a move, read its
-trigger, roll the action pill and read the outcome the SRD lists for your result.
+trigger and its strong/weak/miss outcomes. In the demo, each move is its own point: a marked slot
+for the move's text, with an action-roll pill ready beneath it. Paste the move's trigger and
+outcomes from your copy of the SRD into the slot, then play it by reading the trigger, rolling the
+action pill and reading the outcome the SRD lists for your result.
 
 > **This is where the SRD content lands.** The demo ships the pill structure, not the SRD's own
 > text: each move is a marked slot, and the oracles carry short filler options written for this

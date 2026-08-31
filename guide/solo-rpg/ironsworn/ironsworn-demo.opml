@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>Playing Ironsworn in Pointliner</title></head><body>
 <outline text="# Playing Ironsworn in Pointliner">
-  <outline text="Ironsworn's system wired into Pointliner pills: action rolls, momentum, progress tracks, and oracles, all live in one file. See ironsworn.md for the walkthrough. The dice and tracking pills are complete; the SRD move text and oracle entries drop into the marked slots. Every pill here is live, click one to run it."/>
+  <outline text="Ironsworn's system wired into Pointliner pills: action rolls, momentum, progress tracks, and oracles, all live in one file. See ironsworn.md for the walkthrough. The dice, tracking and oracle pills are all live; the moves are marked slots for the SRD's own text, and the oracles carry filler you replace with the SRD's entries. Every pill here is live, click one to run it."/>
   <outline text="Adapted from the Ironsworn System Reference Document by Shawn Tomkin, used under CC BY 4.0 (creativecommons.org/licenses/by/4.0). Changes made: the moves and oracle tables are restructured into outline points and pills. Ironsworn is named descriptively; no logo or art is reproduced.">
     <outline text="Each move below is a marked slot for its SRD text, and the oracles hold filler options written for this demo. Paste each move's text into its slot, and replace the filler inside each `{rule ...}` with that oracle's entries; every pill is already wired, so an oracle updates the moment you edit its rule."/>
   </outline>
@@ -47,7 +47,7 @@
     </outline>
   </outline>
   <outline text="## Run it yourself">
-    <outline text="Click the action and challenge pills to roll a move. Check a progress box, then roll against the track when it fills. Click an oracle pill for a result once you have pasted the SRD entries. Edit momentum and edge as they change. Add the moves and oracles you use most, and it is your Ironsworn table."/>
+    <outline text="Click the action and challenge pills to roll a move. Check a progress box, then roll against the track when it fills. Click an oracle pill for a result, then swap its filler for the SRD's own entries. Edit momentum and edge as they change. Add the moves and oracles you use most, and it is your Ironsworn table."/>
   </outline>
 </outline>
 </body></opml>
