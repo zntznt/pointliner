@@ -5619,3 +5619,120 @@ test('#1559 the layout sweep still measures: seed, freeze, and a live reach walk
   await pg.close();
   await ctx.close();
 });
+
+// #1560: every toolbar control is hit-testable at every width, and the level control's alternate
+// door really works where the toolbar one is gone.
+//
+// The row could not stop overflowing: #save-status was flex-shrink:0, #level-ctl is flex-shrink:0
+// by design, #search-wrap carries a 190px floor -- so logo + chip + search + level exceeded the
+// viewport on their own and #tbtn-cluster, the element built to absorb the squeeze, was laid out
+// PAST the right edge. Measured 5px of strip at x 650 in a 620px window, 8-11 controls with no
+// hit-testable pixel across 561-675px, and the trigger was ordinary: the save chip gains 38px when
+// autosave lands, so the app was clickable for a second after load and then was not.
+//
+// Source pins cannot see any of that -- the CSS was "present" the whole time. This drives it.
+// Widths are chosen either side of both breakpoints, including 560/561 where the phone sheet takes
+// over, because an off-by-one there would leave a one-pixel-wide broken band.
+test('#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing', { skip: skip() }, async () => {
+  const { SEED } = await import('../tools/layout-sweep.mjs');
+  for (const width of [820, 760, 700, 620, 580, 561, 560, 390]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 700 }, hasTouch: true, isMobile: true });
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(700);
+    await pg.evaluate(SEED);            // also freezes the save chip, so this does not race autosave
+    await pg.waitForTimeout(350);
+
+    const g = await pg.evaluate(async () => {
+      // These buttons are MEANT to be reached by swiping, so each one is revealed in turn and then
+      // judged. Scrolling the strip ONCE to its far end is not the same test: it hides the near-end
+      // buttons, and reported 6 dead controls at 820px, a width that is demonstrably fine.
+      const strip = document.getElementById('tbtn-cluster');
+      strip.style.scrollBehavior = 'auto';
+      const dead = [];
+      const btns = [...document.querySelectorAll('#toolbar-row button')].filter(b => b.getBoundingClientRect().width > 0);
+      for (const el of btns) {
+        if (strip.contains(el)) {
+          el.scrollIntoView({ block: 'nearest', inline: 'center' });
+          await new Promise(r => setTimeout(r, 40));
+        }
+        const q = el.getBoundingClientRect();
+        const L = Math.max(q.left, 0), R = Math.min(q.right, innerWidth);
+        const T = Math.max(q.top, 0), B = Math.min(q.bottom, innerHeight);
+        if (R - L < 1 || B - T < 1) { dead.push(el.id || String(el.className).split(' ')[0]); continue; }
+        const t = document.elementFromPoint(Math.round((L + R) / 2), Math.round((T + B) / 2));
+        if (!t || !(t === el || el.contains(t))) dead.push(el.id || String(el.className).split(' ')[0]);
+      }
+      const lvl = document.getElementById('level-ctl');
+      return { dead, count: btns.length, strip: strip.clientWidth,
+               stripRight: Math.round(strip.getBoundingClientRect().right), innerWidth,
+               levelInToolbar: getComputedStyle(lvl).display !== 'none',
+               fmRow: getComputedStyle(document.getElementById('fm-levels-row')).display !== 'none' };
+    });
+
+    assert.ok(g.count >= 5, `${width}: expected the toolbar's buttons, found ${g.count} — a walk over nothing reports clean`);
+    assert.deepEqual(g.dead, [], `${width}: ${g.dead.length} toolbar control(s) with no hit-testable pixel`);
+    // The strip must be ON screen and wide enough to show a control, not merely scrollable in
+    // principle. Its 5px remnant at x 650 in a 620px window satisfied "scrollable" and was useless.
+    assert.ok(g.strip >= 44, `${width}: the icon strip is ${g.strip}px — below the one-button floor`);
+    assert.ok(g.stripRight <= g.innerWidth + 1, `${width}: the icon strip ends at ${g.stripRight}, past the ${g.innerWidth}px viewport`);
+    // Exactly one home for the level control at any width: moved, never removed, never duplicated.
+    assert.equal(g.levelInToolbar, width > 760, `${width}: the toolbar level control should be ${width > 760 ? 'shown' : 'hidden'}`);
+    assert.equal(g.fmRow, !g.levelInToolbar, `${width}: the File-menu level row must be shown exactly when the toolbar one is not`);
+    assert.deepEqual(errs, [], `${width}: no page errors`);
+    await pg.close();
+    await ctx.close();
+  }
+});
+
+// The alternate door has to WORK, not just render. #1560 hides the toolbar level control across a
+// 200px band, so this drives the File-menu one: scroll to it, tap it, and watch the outline change.
+test('#1560 the File-menu level control is tappable and actually changes the level', { skip: skip() }, async () => {
+  const { SEED } = await import('../tools/layout-sweep.mjs');
+  const ctx = await browser.newContext({ viewport: { width: 620, height: 700 }, hasTouch: true, isMobile: true });
+  const pg = await ctx.newPage();
+  await pg.goto(APP);
+  await pg.waitForSelector('#outline', { timeout: 10000 });
+  await pg.waitForTimeout(700);
+  await pg.evaluate(SEED);
+  await pg.evaluate(() => {
+    const par = root.children[0], kid = mkNode('Nested child'); kid.type = 'ul';
+    par.children = [kid]; nodeMap.set(kid.id, kid); parentMap.set(kid.id, par);
+    markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+
+  const r = await pg.evaluate(async () => {
+    const before = document.querySelectorAll('.node-content').length;
+    openFileMenu();
+    await new Promise(r => setTimeout(r, 400));
+    const btn = document.querySelector('#fm-levels .lvl-btn[data-lvl="1"]');
+    // #fm-pane is the scroller and it scrolls SMOOTHLY: a scrollIntoView plus a short wait moves a
+    // fraction of the distance and the control reads unreachable when it is merely still moving.
+    for (let e = btn.parentElement; e; e = e.parentElement) {
+      const s = getComputedStyle(e);
+      if (['auto', 'scroll'].includes(s.overflowY) && e.scrollHeight > e.clientHeight + 1) {
+        e.style.scrollBehavior = 'auto'; e.scrollTop = e.scrollHeight;
+      }
+      if (e === document.body) break;
+    }
+    await new Promise(r => setTimeout(r, 250));
+    const q = btn.getBoundingClientRect();
+    const hit = document.elementFromPoint(Math.round(q.left + q.width / 2), Math.round(q.top + q.height / 2));
+    const tappable = !!hit && (hit === btn || btn.contains(hit));
+    btn.click();
+    await new Promise(r => setTimeout(r, 400));
+    return { before, tappable, h: Math.round(q.height), name: btn.getAttribute('aria-label'),
+             after: document.querySelectorAll('.node-content').length };
+  });
+
+  assert.equal(r.tappable, true, 'the File-menu level button must be hit-testable once scrolled to');
+  assert.ok(r.h >= 24, `the File-menu level button is ${r.h}px tall — below the 24px tap floor`);
+  assert.equal(r.name, 'Show 1 level', 'and it must carry its accessible name');
+  assert.ok(r.after < r.before, `pressing it must collapse the outline (${r.before} -> ${r.after} points)`);
+  await pg.close();
+  await ctx.close();
+});

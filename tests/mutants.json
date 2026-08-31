@@ -2556,6 +2556,87 @@
       "find": "  if (right - left < 1 || bottom - top < 1) return null;",
       "replace": "",
       "kills": "#1559 probePoint aims at the visible part of a control, clipped by what clips it"
+    },
+    {
+      "id": "toolbar-declutter-back-to-560",
+      "suite": "browser",
+      "why": "driven: the whole defect is that 560 is not the width where the row stops fitting; the CSS looks correct either way",
+      "file": "index.html",
+      "find": "@media (max-width:760px){\n  #level-ctl{display:none}",
+      "replace": "@media (max-width:560px){\n  #level-ctl{display:none}",
+      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
+    },
+    {
+      "id": "strip-loses-its-one-button-floor",
+      "suite": "browser",
+      "why": "driven: without it the strip collapses to 5px -- technically scrollable, no visible front door",
+      "file": "index.html",
+      "find": "margin:-5px -5px 0 0;min-width:44px}",
+      "replace": "margin:-5px -5px 0 0}",
+      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
+    },
+    {
+      "id": "level-door-removed-not-moved",
+      "suite": "browser",
+      "why": "driven: hiding the toolbar control without showing the File-menu row deletes the capability instead of relocating it (P2)",
+      "file": "index.html",
+      "find": "  #fm-levels-row{display:flex}   /* the level control lives in the File menu at these widths */\n",
+      "replace": "",
+      "kills": "#1560 every toolbar control is reachable at every width, and the level door moves rather than vanishing"
+    },
+    {
+      "id": "chip-cannot-yield",
+      "suite": "unit",
+      "why": "min-width:0 is what lets a flex item shrink below its content; without it the chip stays rigid and the row overflows again",
+      "file": "index.html",
+      "find": "gap:5px;flex-shrink:0;min-width:0;white-space:nowrap",
+      "replace": "gap:5px;flex-shrink:0;white-space:nowrap",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "chip-shrinks-at-every-width",
+      "suite": "unit",
+      "why": "the factor is scoped to the band on purpose; applied globally it nibbles the chip at widths that were never broken",
+      "file": "index.html",
+      "find": "  .save-status{flex-shrink:.004}\n",
+      "replace": "",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "save-glyph-shrinks-away",
+      "suite": "unit",
+      "why": "the glyph IS the state; letting it shrink would drop the warning mark in exactly the case it exists to announce",
+      "file": "index.html",
+      "find": ".save-status .ss-ic{font-size:11px;line-height:1;flex-shrink:0}",
+      "replace": ".save-status .ss-ic{font-size:11px;line-height:1}",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "chip-text-clips-without-ellipsis",
+      "suite": "unit",
+      "why": "shrinking the chip without text-overflow just cuts the sentence mid-glyph with no cue that more exists",
+      "file": "index.html",
+      "find": ".save-status .ss-text{overflow:hidden;text-overflow:ellipsis;min-width:0}\n",
+      "replace": "",
+      "kills": "#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last"
+    },
+    {
+      "id": "fm-level-door-unnamed",
+      "suite": "browser",
+      "why": "driven: the toolbar control is hidden across a 200px band, so the door it moves to has to carry its name",
+      "file": "index.html",
+      "find": "<div id=\"fm-levels\" role=\"group\" aria-label=\"Show levels\">\n            <button class=\"lvl-btn\" data-lvl=\"1\" aria-label=\"Show 1 level\">1</button>",
+      "replace": "<div id=\"fm-levels\" role=\"group\" aria-label=\"Show levels\">\n            <button class=\"lvl-btn\" data-lvl=\"1\">1</button>",
+      "kills": "#1560 the File-menu level control is tappable and actually changes the level"
+    },
+    {
+      "id": "fourth-scroll-strip-ships-unmeasured",
+      "suite": "unit",
+      "why": "census ratchet: a new bar sharing the recipe that carried this defect must not arrive without a sweep surface watching where its controls land",
+      "file": "index.html",
+      "find": "#qb-tools{gap:4px}",
+      "replace": "#qb-tools{gap:4px}\n#xx-tools{gap:2px}",
+      "kills": "#1560 every .scroll-strip bar is a swept surface, so this defect cannot recur unmeasured"
     }
   ]
 }

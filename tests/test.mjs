@@ -174,6 +174,17 @@ function maskFor(src) {
   return maskFor._m.get(src);
 }
 
+// The CSS-rule counterpart of fnBody: the declaration block introduced by a literal selector.
+// Throws when the selector is gone, so a pin naming a rule that no longer exists fails loudly
+// instead of quietly matching nothing.
+function fnBody0(src, selectorOpen) {
+  const i = src.indexOf(selectorOpen);
+  if (i < 0) throw new Error(`fnBody0: no \`${selectorOpen}\` in the source`);
+  const j = src.indexOf('}', i);
+  if (j < 0) throw new Error(`fnBody0: \`${selectorOpen}\` is never closed`);
+  return src.slice(i, j + 1);
+}
+
 function fnBody(src, name) {
   const start = src.indexOf('function ' + name + '(');
   if (start < 0) throw new Error(
@@ -34743,4 +34754,73 @@ test('#1559 the sweep ships the fixtures and the freezes that its own findings d
   const page = src.slice(src.indexOf('window.__measure'));
   for (const n of ['sharesLine', 'spillPx', 'isLost', 'inMeasureBand'])
     assert.match(page, new RegExp('\\b' + n + '\\('), `__measure must call ${n}`);
+});
+
+test('#1560 the toolbar row can no longer overflow: the level control declutters, the strip has a floor, the chip yields last', () => {
+  // The row had no way to stop overflowing. #save-status was flex-shrink:0, #level-ctl is
+  // flex-shrink:0 by design, and #search-wrap carries a 190px floor -- so logo + chip + search +
+  // level could exceed the viewport on their own, and #tbtn-cluster (the element built to absorb
+  // the squeeze) was laid out PAST the right edge with nothing able to scroll to it. Measured band
+  // 561-675px, 8-11 controls with no hit-testable pixel; 5px of strip at x 650 in a 620px window.
+
+  // 1. The chip can give. Newline-anchored and matched whole so a nearby comment quoting the rule
+  //    cannot satisfy the pin (#1518's guard went vacuous exactly that way).
+  const CHIP = '\n.save-status{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;min-width:0;white-space:nowrap;';
+  assert.ok(_src.includes(CHIP),
+    '.save-status must carry min-width:0 (and stay flex-shrink:0 at wide widths, where nothing was broken)');
+  assert.ok(_src.includes('.save-status .ss-text{overflow:hidden;text-overflow:ellipsis;min-width:0}'),
+    'the chip text must be able to ellipsize, or shrinking the chip just clips it');
+  // The glyph is the state, so it must NOT shrink. Without this the warning mark would be the
+  // first thing to vanish in exactly the state it exists to announce.
+  assert.match(fnBody0(_src, '.save-status .ss-ic{'), /flex-shrink:0/,
+    'the save glyph must never shrink');
+
+  // 2. The declutter query. Both halves, and at the same breakpoint: hiding the toolbar control
+  //    without showing the File-menu row would remove the capability rather than move it (P2).
+  const q = between(_src, '@media (max-width:760px){', '\n}');
+  assert.match(q, /#level-ctl\{display:none\}/, 'the level control must leave the toolbar at <=760px');
+  assert.match(q, /#fm-levels-row\{display:flex\}/, 'and its File-menu row must appear at the same breakpoint');
+  assert.match(q, /\.save-status\{flex-shrink:\.004\}/,
+    'the chip becomes shrinkable only inside the band; a tiny factor makes it give LAST');
+  // The old, too-narrow breakpoint must not still be doing this job somewhere else.
+  const phone = between(_src, '@media(max-width:560px){', '\n}');
+  assert.ok(!/#level-ctl\{display:none\}/.test(phone),
+    'the phone sheet must not ALSO hide the level control -- two homes for one rule is how this drifts');
+
+  // 3. The strip never collapses to nothing. A 5px window on a 417px strip has no visible front
+  //    door (P2) even though every button is technically scrollable into it.
+  assert.ok(_src.includes('#tbtn-cluster{gap:7px;padding:5px 5px 0 0;margin:-5px -5px 0 0;min-width:44px}'),
+    '#tbtn-cluster needs a one-button floor');
+
+  // 4. The alternate door is a real one: labelled buttons, not a bare segmented strip. This is what
+  //    makes hiding the toolbar control a MOVE rather than a removal.
+  const row = between(_src, 'id="fm-levels-row"', '</div>\n        </div>');
+  const labels = nonEmpty([...row.matchAll(/aria-label="Show [^"]+"/g)], 'File-menu level buttons');
+  assert.ok(labels.length >= 4, `expected the four level buttons to carry names, found ${labels.length}`);
+  assert.match(row, /role="group"/, 'the File-menu level control must be a named group');
+});
+
+test('#1560 every .scroll-strip bar is a swept surface, so this defect cannot recur unmeasured', async () => {
+  // The census. Three bars share the .scroll-strip recipe -- a frame that must not change height,
+  // holding more controls than a narrow screen fits -- so all three carry the shape this defect
+  // had: the strip yields, and if the row overruns anyway the strip is placed off-screen.
+  //
+  // The negative case is measured, not assumed. #edit-bar and #quick-bar are clean at all 12 widths
+  // in the sweep, so they get NO min-width floor here: #tbtn-cluster shares its row with a chip, a
+  // search field and a level control that together can overrun it, and those two do not. Adding the
+  // floor to all three "to complete the set" would be cargo cult.
+  //
+  // What must hold is that each one is actually SWEPT, so a fourth bar cannot arrive with nobody
+  // measuring where its controls land.
+  const { SURFACES } = await import('../tools/layout-sweep.mjs');
+  const strips = nonEmpty([...between(_src, '/* Per-strip: only the gap', '.scroll-strip{')
+    .matchAll(/^#([\w-]+)\{gap:/gm)].map(m => m[1]), '.scroll-strip users');
+  assert.equal(strips.length, 3, `expected the three scroll-strip bars, found ${strips.join(', ')}`);
+  const swept = SURFACES.map(x => x.sel).join(' ');
+  const HOST = { 'tbtn-cluster': '#toolbar-row', 'eb-tools': '#edit-bar', 'qb-tools': '#quick-bar' };
+  for (const id of strips) {
+    const host = HOST[id];
+    assert.ok(host, `a new scroll-strip bar (#${id}) has no known host — add it here and to the sweep`);
+    assert.ok(swept.includes(host), `${host} must be a surface in tools/layout-sweep.mjs, or #${id} ships unmeasured`);
+  }
 });

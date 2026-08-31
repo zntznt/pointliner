@@ -229,9 +229,24 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 .dirty .dirty-dot{display:block}
 /* #1268: the save-status affordance. Quiet by default (it reassures, it must never nag), a warm check
    when saved, a warning tint only when the notes truly live in memory alone. One non-wrapping chip. */
-.save-status{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;white-space:nowrap;font-size:11.5px;color:var(--muted);padding:3px 8px;border:1px solid transparent;background:transparent}
+/* #1560: the chip YIELDS. It was flex-shrink:0, so its text pushed the row wider instead of
+   giving, and the toolbar's icon strip -- the one element designed to absorb the squeeze -- was
+   pushed past the viewport entirely: measured 5px wide at x 650 in a 620px window, with 9 controls
+   having no hit-testable pixel. Its width is not a constant either (Saved -> "Saved just now" is
+   +38px, the storage-blocked string +109px), so a row that only fits at one chip state is a row
+   that breaks when autosave lands. Shrinking with an ellipsis keeps the glyph, which is what
+   carries the alarm, and the full sentence is already in title + aria-label (updateSaveStatus).
+
+   It stays flex-shrink:0 here and only becomes shrinkable inside the <=760px query below, so every
+   width that was never broken lays out exactly as before. Two other ways to say "the chip gives
+   last" were measured and rejected: weighting the icon strip heavily (flex-shrink:100) makes the
+   strip the ONLY item that yields, so #search-wrap keeps space it had GROWN into and the strip pays
+   for all of it (283px -> 189 at 950, 161 -> 60 at 820); and a small shrink factor on the chip
+   still nibbled 1-3px off it at those same widths, which is enough to show an ellipsis. */
+.save-status{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;min-width:0;white-space:nowrap;font-size:11.5px;color:var(--muted);padding:3px 8px;border:1px solid transparent;background:transparent}
+.save-status .ss-text{overflow:hidden;text-overflow:ellipsis;min-width:0}
 .save-status:hover{background:var(--bdr)}
-.save-status .ss-ic{font-size:11px;line-height:1}
+.save-status .ss-ic{font-size:11px;line-height:1;flex-shrink:0}   /* the glyph never shrinks: it is the state */
 .save-status[data-kind="saved"] .ss-ic{color:var(--ok,#3a9d5d)}
 .save-status[data-kind="saving"]{color:var(--muted)}
 .save-status[data-kind="unsaved"] .ss-ic,.save-status[data-kind="memory"] .ss-ic{color:var(--acc)}
@@ -258,7 +273,13 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 /* Per-strip: only the gap and, for the toolbar, the focus-ring escape. Everything structural is
    in .scroll-strip below — including display:flex, which is NOT optional: without it the strip is
    a block box and the buttons stack vertically (measured: the quick bar rendered 213px tall). */
-#tbtn-cluster{gap:7px;padding:5px 5px 0 0;margin:-5px -5px 0 0}
+/* #1560: the strip gives FIRST, and never gives everything. Both it and .save-status can shrink
+   now, and flex shrinks every shrinkable item in proportion -- so the chip started truncating at
+   786px while the strip still had room, which is backwards: scrolling the icons is the designed
+   degradation (UXP-258), truncating the save message is the fallback. A large shrink factor makes
+   the strip absorb effectively all of it until the floor below. The floor is one button, so the
+   strip can never collapse to nothing and leave the row with no visible icons at all (P2). */
+#tbtn-cluster{gap:7px;padding:5px 5px 0 0;margin:-5px -5px 0 0;min-width:44px}
 #eb-tools{gap:3px}
 #qb-tools{gap:4px}
 /* ── .scroll-strip: the one way a fixed bar yields (UXP-258, UXP-259) ────────────────────────
@@ -506,6 +527,36 @@ body:not(.v-standard):not(.v-lean) #search-hint .sh-row kbd:not([data-doc]){poin
    focus, so the hint is pinned to the viewport edges (position:fixed escapes the narrow
    #search-wrap parent) and bounded in height so a 25-row cheatsheet scrolls instead of running off
    a short screen (#587). */
+/* #1560: the toolbar's declutter breakpoint. The level control is the app's designated give in a
+   tight row -- it has a full alternate door in the File menu (#fm-levels-row), which is why the
+   phone sheet already hid it -- but it was hidden at <=560 while the row stops fitting at ~675.
+   In between, logo + chip + search(190px floor) + level exceeded the viewport on their own, so the
+   icon strip was laid out off-screen and nothing could scroll to it. Measured band: 561-675px,
+   8-11 controls with no hit-testable pixel.
+
+   WHY 760 rather than the ~675 edge. The level control is the first thing that should give: it is
+   the only element here with a complete alternate door (the File menu row), and it costs 137px. At
+   700-760 with it still shown the row is tight enough that the icon strip hits its floor and the
+   save message starts truncating -- so the breakpoint is set where the OTHER two stop having to
+   degrade, not merely where the row stops overflowing. It also carries headroom over an edge that
+   moves with the chip's text. */
+@media (max-width:760px){
+  #level-ctl{display:none}
+  #fm-levels-row{display:flex}   /* the level control lives in the File menu at these widths */
+  /* Only here can the chip give, and the tiny factor is what makes it give LAST. At an equal
+     factor flex shares the shrink in proportion to base size, so the chip lost 112px -> 79 at 760
+     while #tbtn-cluster still had 272px in hand -- the wrong one yielding. At .004 the strip runs
+     down to its 44px floor first and the chip gives only what is left after that. In the ordinary
+     "Saved just now" state that is nothing until ~561; the chip then sits at its content width with
+     no slack, so at a high device pixel ratio a pixel of metric difference can start the ellipsis a
+     little earlier (measured at dsf 6, 620px: "Saved just no..."). That is the intended last
+     resort -- the glyph and the tooltip still carry the state -- and the wide storage-blocked
+     string is what it really exists for. Above 760 the chip is flex-shrink:0, as it always was. */
+  .save-status{flex-shrink:.004}
+}
+/* NB placement: this MUST sit after the base `#level-ctl{display:flex}` rule. Same specificity,
+   so source order decides; declared earlier (next to .save-status) the base rule won and the
+   control stayed visible at every width -- which also un-hid it on phones. */
 @media(max-width:560px){#search-hint{position:fixed;top:calc(44px + env(safe-area-inset-top) + 6px);left:8px;right:auto;transform:none;min-width:min(300px,calc(100vw - 16px));max-width:calc(100vw - 16px);max-height:calc(100vh - 44px - env(safe-area-inset-top) - 12px)}}
 @media(max-width:560px){#search-key{display:none}}
 #search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px;display:none;line-height:1;border:none;background:transparent;padding:0}
@@ -2512,8 +2563,8 @@ body{padding-top:calc(44px + env(safe-area-inset-top))}
      (search collapsed to 0, last icon clipped). Declutter: the level control moves into
      the logo/file menu (#fm-levels), and search collapses to a tappable magnifier that
      expands to a full-width overlay on focus. The icon toggles then fit on one row. */
-  #level-ctl{display:none}
-  #fm-levels-row{display:flex}   /* level control lives in the menu on phones */
+  /* #1560: #level-ctl / #fm-levels-row moved to their own <=760px query (search for #1560),
+     because the width where they stop fitting is not 560. */
   /* collapsed search: a ~40px magnifier button; the input is hidden until focus */
   #search-wrap{flex:0 0 auto;width:40px;min-width:40px;height:40px}
   #search-box{width:40px;padding:0;border-color:transparent;background:transparent;cursor:pointer;color:transparent;height:40px}
