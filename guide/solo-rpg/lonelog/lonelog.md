@@ -138,4 +138,4 @@ notebook is right there, and that is genuinely fine.
   Lonelog, not a copy of the notation specification.
 - **Lonelog tooling / Obsidian plugin:** Christopher Hardiman,
   <https://github.com/ChristopherHardiman/lonelog>.
-- **Pointliner:** MIT, see [LICENSE](../../../LICENSE).
+- **Pointliner:** GNU AGPLv3, see [LICENSE](../../../LICENSE).

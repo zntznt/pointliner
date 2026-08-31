@@ -117,8 +117,8 @@ sub-rule, and you read the field back with `{item.field}`:
 
 Now "you loot a `{weapon}`, it hits for `{weapon.damage}`" pulls a weapon and its damage. The
 important rule to internalize: **`{item.field}` only resolves when the item that got picked has
-a matching `item.field:` sub-rule defined at a line start.** Drop the `axe.damage` line and an
-axe roll leaves the damage pill undefined. So every item you want to carry a field needs its own
+a matching `{rule item.field: ...}` sub-rule declared somewhere in the document.** Drop the
+`axe.damage` line and an axe roll leaves the damage pill undefined. So every item you want to carry a field needs its own
 sub-rule, which is exactly the structure that makes it reliable.
 
 One catch worth naming: two pills roll independently, so a bare `{weapon}` next to a bare
@@ -145,18 +145,20 @@ real document with every pill live. A few things to try:
 - **Roll a street of taverns.** Click `{tavern}` repeatedly. Every roll reaches down through
   `adjective`, `animal` and `noun`, so you get a fresh sign each time, and the modifier line
   shows the same lists capitalized, articled and pluralized.
-- **Reweight the loot.** Click `{loot}` to feel the odds, then click into the `loot:` list and
-  change a number. Bump the wand's weight up and watch it start showing. The whole economy is
-  the numbers in that one line.
-- **Break the item field on purpose.** Delete the `spear.damage:` line, then roll the weapon
-  pill until it lands on a spear: `{weapon.damage}` goes undefined, which is exactly how you
+- **Reweight the loot.** Click `{loot}` to feel the odds, then click into the `{rule loot: ...}`
+  list and change a number. Bump the wand's weight up and watch it start showing. The whole
+  economy is the numbers in that one line.
+- **Break the item field on purpose.** Delete the `{rule spear.damage: 1d8}` line, then roll the
+  weapon pill until it lands on a spear: `{weapon.damage}` goes undefined, which is exactly how you
   learn that a field lives or dies with its sub-rule. Put the line back and it heals.
-- **Edit the lists to make them yours.** Click the text next to any pill (say
-  `animal: Kraken | Wyrm | ...`) and add, remove or reweight options. Every `{animal}` pill in
-  the file reads the same rule, so one edit ripples through names and places alike.
-- **Add a whole new generator.** Write a point `spell: {adjective} {noun} of {animal}` at a line
-  start and reference it with `{spell}`. That is the entire recipe: a named rule is a point, a
-  reference is a pill, and modifiers and fields extend it without any new syntax.
+- **Edit the lists to make them yours.** Click a rule pill to edit it back into text (say
+  `{rule animal: Kraken | Wyrm | ...}`) and add, remove or reweight options. Keep the `rule`
+  keyword when you edit: drop it and the rule unregisters, taking every `{animal}` pill in the
+  file with it. Every `{animal}` pill reads the same rule, so one edit ripples through names and
+  places alike.
+- **Add a whole new generator.** Write a point `{rule spell: {adjective} {noun} of {animal}}` and
+  reference it with `{spell}`. That is the entire recipe: a named rule is a point, a reference is
+  a pill, and modifiers and fields extend it without any new syntax.
 
 ---
 

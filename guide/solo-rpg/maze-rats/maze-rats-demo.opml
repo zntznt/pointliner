@@ -3,7 +3,7 @@
 <outline text="# Playing Maze Rats in Pointliner">
   <outline text="Maze Rats wired into Pointliner: stats, 2d6 saves, and above all its random tables, all live pills. Maze Rats is almost all tables, so it is one of the best Pointliner fits here. See maze-rats.md for the walkthrough. The dice and stat pills are complete; the book's table entries drop into the marked slots. Every pill here is live, click one to run it."/>
   <outline text="Adapted from Maze Rats by Ben Milton, used under CC BY 4.0 (creativecommons.org/licenses/by/4.0). Changes made: the tables and procedures are restructured into outline points and pills. Maze Rats is named descriptively; no logo or art is reproduced.">
-    <outline text="Paste table entries from your copy of Maze Rats into the marked slots below; the pills around them are already wired."/>
+    <outline text="The tables below hold filler options written for this demo, not the book's own entries. Replace the filler inside each `{rule ...}` with the entries from your copy; every pill is already wired, so a table updates the moment you edit its rule."/>
   </outline>
   <outline text="## A character in one roll">
     <outline text="Roll your stats from one pool and note the modifiers, then set them as variables so saves read them."/>
@@ -19,16 +19,16 @@
     </outline>
   </outline>
   <outline text="## The tables">
-    <outline text="Each table is a weighted pick, one click for a result. Define one as a named rule on its own line, then call it by name anywhere. Replace the placeholder options with the book's entries, separated by bars."/>
-    <outline text="monster: (paste Maze Rats monster entries here) | goblin | skeleton | giant rat | cave lurker | bandit"/>
-    <outline text="room: (paste Maze Rats room entries here) | empty | a trap | old bones | a locked chest | running water"/>
+    <outline text="Each table is a weighted pick, one click for a result. Declare one with the rule keyword, as `{rule name: option | option}`, then call it by name anywhere. A bare `name: option | option` is ordinary text and registers nothing. Replace the filler options with the book's entries, separated by bars."/>
+    <outline text="{rule monster: goblin | skeleton | giant rat | cave lurker | bandit}"/>
+    <outline text="{rule room: empty | a trap | old bones | a locked chest | running water}"/>
     <outline text="Roll the room: {room}. What is in it: a {monster} guarding it."/>
   </outline>
   <outline text="## Improvised spells (the signature trick)">
     <outline text="Maze Rats builds spells by combining two word-lists. That is a rule that calls two others, so one click gives a fresh spell every time. Replace the filler words with the book's form and effect lists."/>
-    <outline text="spell_form: (paste form words) | bolt | cloud | ward | veil | swarm"/>
-    <outline text="spell_effect: (paste effect words) | of fire | of silence | of thorns | of the void | of mending"/>
-    <outline text="spell: a {spell_form} {spell_effect}"/>
+    <outline text="{rule spell_form: bolt | cloud | ward | veil | swarm}"/>
+    <outline text="{rule spell_effect: of fire | of silence | of thorns | of the void | of mending}"/>
+    <outline text="{rule spell: a {spell_form} {spell_effect}}"/>
     <outline text="Cast something improvised: {spell}. Click it again for a new one."/>
   </outline>
   <outline text="## Combat, fast">

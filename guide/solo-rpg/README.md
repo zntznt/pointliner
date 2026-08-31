@@ -89,11 +89,11 @@ licence's terms and with its attribution:
 - The **Cairn** example adapts **Cairn** by **Yochai Gal**, used under **CC BY-SA 4.0**
   (<https://creativecommons.org/licenses/by-sa/4.0/>). Because Cairn is **ShareAlike**, the
   adapted Cairn material in that example is itself licensed CC BY-SA 4.0 (this is separate from
-  Pointliner's MIT app licence, which covers the code, not the game content).
+  Pointliner's AGPLv3 app licence, which covers the code, not the game content).
 - The **Maze Rats** example adapts **Maze Rats** by **Ben Milton**, used under **CC BY 4.0**
   (<https://creativecommons.org/licenses/by/4.0/>).
 
 Each carries the required attribution, notes that changes were made and uses the game's name
 descriptively (no logo or artwork). Please support the creators whose work these examples point to.
 
-Pointliner itself is MIT licensed (see [LICENSE](../../LICENSE)).
+Pointliner itself is licensed under the GNU AGPLv3 (see [LICENSE](../../LICENSE)).

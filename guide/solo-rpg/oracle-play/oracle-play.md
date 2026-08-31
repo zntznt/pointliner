@@ -59,10 +59,15 @@ just the [name-generator two-rule pattern](../../generating-text.md#name-things-
 name you know it by:
 
 ```
-meaning: {action} {subject}
-action: hide | reveal | pursue | abandon | protect | betray
-subject: a secret | an ally | a debt | a route | a rumor | a relic
+{rule action: hide | reveal | pursue | abandon | protect | betray}
+{rule subject: a secret | an ally | a debt | a route | a rumor | a relic}
+{rule meaning: {action} {subject}}
 ```
+
+The `rule` keyword is what names it. A bare `meaning: {action} {subject}` stays ordinary text and
+registers nothing, so the wrapper is not optional. (The demo takes the simpler road and ships the
+two lists as plain inline picks, which needs no rule at all; reach for named rules once you want to
+call the same table from several places.)
 
 Click `{meaning}` and read the pair loosely: "reveal a debt", "pursue a route". You are reading for
 inspiration, not instruction, so let the pairing suggest rather than dictate.
@@ -78,7 +83,7 @@ A shuffle deck draws each item once, then reshuffles and tells you when it has (
 "Deck reshuffled" note), so you always know when you have been through the whole list.
 
 One thing to know: a deck draws without repeats only as its own standalone pill. If you fold a
-`{shuffle: ...}` inside a named rule (like `meaning: {shuffle: hide | reveal} {subject}`), it turns
+`{shuffle: ...}` inside a named rule (like `{rule meaning: {shuffle: hide | reveal} {subject}}`), it turns
 into an ordinary random pick, so repeats can come back. Keep the deck as its own pill when the
 no-repeat behavior matters.
 

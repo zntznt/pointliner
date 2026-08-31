@@ -23,7 +23,7 @@ running in Pointliner.
 > <https://creativecommons.org/licenses/by-sa/4.0/>. **Changes have been made** (the tables and
 > procedures are restructured into Pointliner points and `{…}` pills). Because Cairn is
 > ShareAlike, **the adapted Cairn material in this guide and demo is likewise licensed CC BY-SA
-> 4.0** (this is separate from Pointliner's own MIT licence, which covers the app, not this game
+> 4.0** (this is separate from Pointliner's own AGPLv3 licence, which covers the app, not this game
 > content). "Cairn" is used descriptively to name the game; no logo or artwork is reproduced.
 
 ---
@@ -103,18 +103,20 @@ omens, weather and the referee tools in the SRD. Each table is a weighted pick i
 pill you click. The SRD's entries drop straight into the alternation:
 
 ```
-Reaction (2d6-ish table): {SRD REACTION ENTRIES GO HERE, separated by | bars}
-Dungeon omen: {SRD OMEN ENTRIES GO HERE, separated by | bars}
+{rule reaction: hostile | wary | neutral | curious | helpful}
+{rule omen: a cold draft | distant scratching | a fresh corpse | scratched warnings}
 ```
 
-Define each as a **named rule** on its own point (`reaction: hostile | wary | ...`) and call it by
-name anywhere, so one table serves the whole document. For a table rolled on `2d6` with weighted
-results, use weights in the alternation to match the SRD's distribution.
+The `rule` keyword is what names it. A bare `reaction: hostile | wary` stays ordinary text and
+registers nothing, so the wrapper is not optional. Once a rule exists, call it by name anywhere
+as `{reaction}` or `{omen}`, so one table serves the whole document. For a table rolled on `2d6`
+with weighted results, use weights in the alternation to match the SRD's distribution.
 
-> **This is where the SRD content lands.** The demo ships table entries taken from the Cairn SRD under
-> CC BY-SA 4.0 (attributed above). If you are building from a fresh copy of the SRD, paste each
-> table's entries into its rule, and the pills around them are already wired. Remember that reproduced
-> Cairn tables carry the ShareAlike terms.
+> **This is where the SRD content lands.** The demo ships the pill structure with short filler
+> options written for this guide, not Cairn's own table entries. Working from your copy of the SRD,
+> replace the filler inside each `{rule ...}` with that table's entries; the pills around them are
+> already wired, so a table goes live as soon as you edit its rule. Cairn tables you reproduce this
+> way carry the ShareAlike terms (attributed above).
 
 ## Run it yourself
 
@@ -123,7 +125,7 @@ results, use weights in the alternation to match the SRD's distribution.
 - **Take a risk:** roll `{1d20}` for a save and read it against the attribute variable.
 - **Carry your gear:** add items with a `slots` property; watch the Pack check go red when overloaded.
 - **Fight:** roll the weapon die, take damage off HP then STR and save when Strength runs low.
-- **Ask the room:** click a table pill (once you have pasted the SRD entries) for a reaction or omen.
+- **Ask the room:** click a table pill for a reaction or omen, then swap the filler for the SRD's own entries.
 
 Everything is one offline file you own. Change the stats, restock the pack, add the tables you use
 most, and it becomes your Cairn character.

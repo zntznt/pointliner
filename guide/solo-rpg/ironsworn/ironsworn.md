@@ -90,14 +90,15 @@ fiction. A table is a weighted pick in Pointliner, so each oracle becomes one pi
 SRD's oracle entries drop straight into the alternation:
 
 ```
-Action oracle: {SRD ACTION ORACLE ENTRIES GO HERE, separated by | bars}
-Theme oracle:  {SRD THEME ORACLE ENTRIES GO HERE, separated by | bars}
+{rule action_oracle: strike | avenge | uncover | defend}
+{rule theme_oracle: risk | fortune | secret | shelter}
 ```
 
-For a two-word prompt (Ironsworn's classic Action + Theme spark), put two pills together:
-`{action-oracle} {theme-oracle}`. Define each as a **named rule** on its own point
-(`action-oracle: strike | avenge | ...`) and call it by name anywhere, so one table serves the whole
-document.
+The `rule` keyword is what names it. A bare `action_oracle: strike | avenge` stays ordinary text and
+registers nothing, so the wrapper is not optional, and a rule name may hold letters, digits and
+underscores but **not hyphens** (`action_oracle` works, `action-oracle` does not). Once a rule
+exists, call it by name anywhere, so one table serves the whole document. For a two-word prompt
+(Ironsworn's classic Action + Theme spark), put two calls together: `{action_oracle} {theme_oracle}`.
 
 A yes/no oracle with Ironsworn's likelihood odds is a weighted alternation too:
 `{Yes N | No M}`, with the weights set to the odds for the likelihood you pick (the SRD lists the
@@ -110,10 +111,12 @@ trigger and its strong/weak/miss outcomes. In the demo, each move is its own poi
 sits in the point (from the SRD), with an action-roll pill ready beneath it. To play a move, read its
 trigger, roll the action pill and read the outcome the SRD lists for your result.
 
-> **This is where the SRD content lands.** The demo ships the move triggers and outcome text and the
-> oracle table entries taken from the Ironsworn SRD under CC BY 4.0 (attributed above). If you are
-> building your own from a fresh copy of the SRD, paste each move's text into its point and each
-> oracle's entries into its rule, and the pills around them are already wired.
+> **This is where the SRD content lands.** The demo ships the pill structure, not the SRD's own
+> text: each move is a marked slot, and the oracles carry short filler options written for this
+> guide. Working from your copy of the SRD, paste each move's text into its slot and replace the
+> filler inside each `{rule ...}` with that oracle's entries; the pills around them are already
+> wired, so an oracle goes live as soon as you edit its rule. Text you reproduce this way is used
+> under CC BY 4.0 (attributed above).
 
 ## Run it yourself
 

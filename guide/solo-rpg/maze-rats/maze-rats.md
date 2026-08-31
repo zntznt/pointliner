@@ -67,25 +67,32 @@ click for a result. The book's entries drop straight into the alternation, and b
 picks uniformly you do not even need the two-digit read; one click gives you a result.
 
 ```
-Monster: {SRD MONSTER TABLE ENTRIES GO HERE, separated by | bars}
-Spell:   {SRD SPELL TABLE ENTRIES GO HERE, separated by | bars}
-Room:    {SRD ROOM TABLE ENTRIES GO HERE, separated by | bars}
+{rule monster: goblin | skeleton | giant rat | cave lurker | bandit}
+{rule room: empty | a trap | old bones | a locked chest | running water}
 ```
 
-Define each as a **named rule** on its own point (`monster: goblin | skeleton | ...`) and call it by
-name anywhere, so one table serves the whole document. Maze Rats' signature move is **combining two
-tables** for an emergent result, its spells are literally built by rolling on two word-lists. That is
-two pills side by side, or a rule that calls two others:
+The `rule` keyword is what names it. A bare `monster: goblin | skeleton` stays ordinary text and
+registers nothing, so the wrapper is not optional, and a rule name may hold letters, digits and
+underscores but **not hyphens** (`spell_form` works, `spell-form` does not). Once a rule exists, call
+it by name anywhere as `{monster}` or `{room}`, so one table serves the whole document.
+
+Maze Rats' signature move is **combining two tables** for an emergent result, its spells are literally
+built by rolling on two word-lists. That is two pills side by side, or a rule that calls two others:
 
 ```
-spell: a {spell-form} of {spell-effect}
+{rule spell_form: bolt | cloud | ward | veil | swarm}
+{rule spell_effect: of fire | of silence | of thorns | of the void | of mending}
+{rule spell: a {spell_form} {spell_effect}}
 ```
 
-Roll `{spell}` and you get a fresh improvised spell every click, the exact Maze Rats trick, now live.
+Roll `{spell}` and you get "a cloud of silence", a fresh improvised spell every click, the exact Maze
+Rats trick, now live. The "of" lives in the effect list rather than in `spell`, so an effect that
+does not want one ("that screams") still reads correctly.
 
-> **This is where the book's content lands.** The demo ships table entries taken from Maze Rats under
-> CC BY 4.0 (attributed above). If you are building from a fresh copy, paste each table's entries into
-> its rule, and the pills around them are already wired.
+> **This is where the book's content lands.** The demo ships the pill structure with short filler
+> options written for this guide, not Maze Rats' own table entries. Working from your copy, replace
+> the filler inside each `{rule ...}` with that table's entries; the pills around them are already
+> wired, so a table goes live as soon as you edit its rule.
 
 ## Combat, fast
 
@@ -103,8 +110,8 @@ just the dice and one variable.
 
 - **Make a character:** roll `{6d6}` for stats and `{1d6}` for health, set the modifier variables.
 - **Take a risk:** roll `{2d6}` plus a modifier and beat the target.
-- **Generate anything:** click a table pill for a monster, spell or room (once the entries are
-  pasted); click a two-table spell for an improvised one.
+- **Generate anything:** click a table pill for a monster or room, and click `{spell}` for an
+  improvised one, then swap the filler for the book's own entries.
 - **Fight:** roll to hit, roll damage, edit health down.
 
 Everything is one offline file you own. Maze Rats is almost all tables, so once you paste them in, this
