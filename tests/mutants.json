@@ -2664,6 +2664,15 @@
       "find": "      - run: node .claude/hooks/check-pr-conformance.test.mjs\n      # #1430:",
       "replace": "      - run: npm install --no-save playwright@1.49.1\n      - run: node .claude/hooks/check-pr-conformance.test.mjs\n      # #1430:",
       "kills": "#1557 the fast offline guards do not sit downstream of the suite"
+    },
+    {
+      "id": "focus-guard-armed-after-the-surgery",
+      "suite": "browser",
+      "why": "driven: this is #1557's ordering exactly. The flag still EXISTS and both source pins stay green, so only a real scroll can tell the two orderings apart -- one exitEdit per scroll away and back, with an undo entry the user never earned",
+      "file": "index.html",
+      "find": "  if (focusedInner) _vlPreservingFocus = true;\n  if (activeEl) activeEl.remove();",
+      "replace": "  if (activeEl) activeEl.remove();",
+      "kills": "#1557 scrolling an edited row out of the window and back does not commit the edit"
     }
   ]
 }
