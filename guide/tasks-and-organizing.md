@@ -119,6 +119,34 @@ exports as its bar and count (an icon row exports as the bar, since a flat file 
 
 ---
 
+## Action buttons
+
+A meter *shows* a number. An **action button** *changes* one. Write a stat name, an operator and an
+amount, and you get a pill you click to apply it, so a live session can spend, take damage or reset
+without retyping the number every time.
+
+```
+{hp -= 1d6}      →   click: roll a fresh hit and take it off
+{gold += 50}     →   click: add 50
+{hp = hpmax}     →   click: refill to the maximum
+```
+
+The operators are `+=`, `-=`, `*=`, `/=` and `=` to set outright. The amount on the right is a live
+expression rather than a plain number, so anything the number engine can work out is fair game:
+
+```
+{hp -= 1d6+str}     roll and add a stat
+{gold += 2d6*10}    a rolled payout
+{hp -= 2|4|6}       pick one of three amounts
+```
+
+It writes to the nearest match it can find: the property on this point, or on a point above it, or a
+variable of that name. One click is one change, and one undo takes it back.
+
+Insert one from the menu with `@action`.
+
+---
+
 ## Properties
 
 Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and

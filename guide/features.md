@@ -146,6 +146,10 @@ A live calculator that can see your document. Math pills recompute on their own.
   slots, any gauge), read live from the point's properties. Either side can be a live calculation,
   so `{meter: words(subtree)/1000}` is a writing goal that fills as you write.
   ([meters](tasks-and-organizing.md#meters))
+- **Action buttons.** Where a meter shows a number, `{hp -= 1d6}` **changes** one: a pill you click to
+  spend, take damage or refill, so a live session never retypes a stat. `+=`, `-=`, `*=`, `/=` and `=`,
+  with a live expression on the right (`{gold += 2d6*10}`). One click, one undo.
+  ([action buttons](tasks-and-organizing.md#action-buttons))
 - **Variables.** Declare a value once, reference it everywhere; change it and dependents update.
   The Variables panel (`/variables` or `Ctrl/Cmd+Shift+V`) lists them all with live values.
   ([variables](computing-numbers.md#variables-in-math))

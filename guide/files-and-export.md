@@ -85,10 +85,10 @@ frozen to their current values (the same one-way snapshot as the full Markdown e
 **Leave scaffolding out.** If a point is planning material, not prose (a variable declaration, a
 note to self, a private section), open its **bullet menu** and choose **Exclude from export**: all
 four **Export a copy** formats skip that point and everything under it, Markdown, plain text,
-Shareable page and Web page alike. Your **OPML save** is the one thing that keeps it, which is the division the feature
-rests on: the save is your backup, the exports are what you hand to someone else. An excluded point
-shows a faint ring on its bullet so you can see at a glance what a shared copy will leave out;
-choose **Include in export** to undo it.
+Shareable page and Web page alike. Your **OPML save** is the one thing that keeps it, which is the
+division the feature rests on: the save is your backup, the exports are what you hand to someone
+else. An excluded point shows a faint ring on its bullet so you can see at a glance what a shared
+copy will leave out; choose **Include in export** to undo it.
 
 **Excluding a variable declaration is the case to watch.** Markdown and plain text freeze pills to
 the values they are showing, so a frozen number survives the exclusion. The Web page export stays
@@ -115,7 +115,9 @@ ways out depending on what you want to keep:
   pasting into another app, so they are **one-way**: each pill is frozen to the value it is showing
   at export time. A `{2d6}` becomes the number it last rolled, `{= sum(cost)}` becomes the total,
   a grammar pill becomes the text it generated. You get a clean, ordinary document that reads
-  anywhere, but the live behavior does not come along (that is the point of a snapshot).
+  anywhere, but the live behavior does not come along (that is the point of a snapshot). The
+  **Shareable page** is the same snapshot as a web page instead of source text: still one-way,
+  still frozen, but it keeps your headings, to-dos and bars looking the way they look here.
 - **The self-contained HTML keeps everything live for someone without the app.** It packs the whole
   app and your document into one file that re-rolls and recomputes on their machine, no install and
   no account. It is the way to hand a working generator or tracker to a person who does not use

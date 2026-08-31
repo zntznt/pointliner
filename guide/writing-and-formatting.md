@@ -179,6 +179,20 @@ see at a glance which ones are still waiting. Those unfinished marks are **left 
 copy** rather than printed as stray brackets in the middle of your sentence, and the export tells you
 how many it left out.
 
+### Pictures from the web
+
+A picture kept beside your document always shows. A picture at a web address does not, until you say
+so. Loading one would tell the site hosting it what you are reading, so a new document starts with web
+images **off**: in place of the picture you get a small placeholder reading **"Click to allow web
+images"**. Activate it, by clicking or by tabbing to it and pressing `Enter`, and you are asked once
+whether to allow web images in this document. Allow them and every web picture in it loads from then
+on.
+
+The same switch sits in the **File** menu under **Settings**, as **Web images**, so you can turn it
+back off and the document is private again. It is a per-document choice: allowing pictures in one
+document does not allow them anywhere else. If you insert a web image while they are off, you are
+asked right then rather than being left with a placeholder you did not expect.
+
 ### Image size
 
 An image sits inside the reading column by default. Put a size in quotes after the address to

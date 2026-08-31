@@ -55,6 +55,7 @@ Two things to know before the table:
 | `{query: is:todo}` | lists the points matching a live search | **doc** |
 | `{count: #tag}` | counts the points matching a live search | **doc** |
 | `{meter: hp/hpmax}` | a segmented bar of a numeric property (also icon pools: `{meter: hp/5 hearts}`) | doc |
+| `{hp -= 1d6}` | an action button: click to apply a change to the nearest property or variable of that name (`+=`, `-=`, `*=`, `/=`, `=`; the amount is a live expression) | doc |
 
 **Declared config** (writes to the point and leaves no inline pill; the value shows as a chip):
 
@@ -97,7 +98,7 @@ one form rather than another:
 6. `{markov: …}`
 7. `{seq Name: …}`, then `{rule Name: …}` (named declarations)
 8. `{prop key: …}`, then `{date due|start: …}` (property writes)
-9. `{query: …}`, `{count: …}`, `{roll: …}`, `{oracle: …}`, `{meter: …}`
+9. `{query: …}`, `{count: …}`, `{roll: …}`, `{oracle: …}`, `{meter: …}`, then `{stat += …}` (an action button)
 10. `{Nx: …}` (repeat), `{ref.mod}` (modifier), `{base.field}` (field reads)
 11. dice, then the estimate sub-language
 12. a bare `{a | b}` alternation, then a bare `{Name}` rule call

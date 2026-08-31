@@ -50,15 +50,17 @@ name from parts, wrap the whole thing in **one more brace** and it becomes a sin
 re-rolls as a unit:
 
 ```
-{{Ael | Bor | Cael}{ric | wyn | dor}}     →  Borwyn, Caelric, Aeldor …
-{{Grey | Salt | Storm}haven}              →  Salthaven, Greyhaven …
+{{Ael|Bor|Cael}{ric|wyn|dor}}             →  Borwyn, Caelric, Aeldor …
+{{Grey|Salt|Storm}haven}                  →  Salthaven, Greyhaven …
 {{adj} {beast}}                           →  one two-word phrase from your rules
 ```
 
-Plain letters glue directly onto a brace group (`haven` above); spaces are fine between groups.
-Every piece has to be a real generator or a known rule, and every word must touch a brace; a
-sentence with loose words around a brace stays ordinary text, so prose is never captured by
-accident.
+Plain letters glue directly onto a brace group (`haven` above). Spaces are fine **between**
+groups, as in `{{adj} {beast}}` above, but not **inside** one: write `{Ael|Bor|Cael}`, never
+`{Ael | Bor | Cael}`. Every piece has to be a real generator or a known rule, and every word must
+touch a brace; a space around a bar leaves `|` sitting on its own, touching nothing, and the whole
+thing stays ordinary text instead of becoming one pill. That is the same guard that keeps a
+sentence with loose words around a brace from being captured as a generator by accident.
 
 ---
 

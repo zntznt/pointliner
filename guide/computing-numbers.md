@@ -70,9 +70,15 @@ Call a function with parentheses. The big ones:
 **Conditionals**, two equivalent forms:
 
 ```
-{= hp > 0 ? "alive" : "dead"}     ternary
+{= hp > 0 ? hp : 0}               ternary
 {= if(hp > 0, hp, 0)}             function form
 ```
+
+Both branches have to be **numbers**. Math is numbers only, so a quoted word in either branch does
+not compute and the `{…}` stays plain text instead of becoming a pill. When the answer you want is a
+**word**, use the conditional brace instead, `{hp > 0: alive | dead}`, which is on the generate side
+and takes text on both branches (see
+[Say different things in different cases](generating-text.md#say-different-things-in-different-cases-conditionals)).
 
 Comparisons (`> >= < <= == !=`) return `1`/`0`, so they compose with arithmetic.
 
