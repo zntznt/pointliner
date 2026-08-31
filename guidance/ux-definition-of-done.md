@@ -370,13 +370,15 @@ the fixed reach column found on its first run, not an instrument artefact:
 | 24 of 25 surfaces | **clean at all 12 widths** |
 | `#toolbar-row` (the CONTROL) at 620 | `spill 37` on `#level-ctl`, `lvl-all` offscreen, 9 controls with no hit-testable pixel — **#1560** |
 
-`#1560` is a **561–660px** band where the button cluster is squeezed to 5px and laid out past the
+`#1560` was a **561–675px** band where the button cluster was squeezed to 5px and laid out past the
 viewport. The standard width list steps 700 → 620 → 560, so it lands on only one width inside that
-band; it was characterised by stepping 5px at a time. Because the control fails there, "all green"
-cannot be read as "instrument healthy" at those widths until #1560 is fixed — which is why
-`tests/browser.mjs` gates the instrument at 1400px and asserts the *measurement machinery* works
-(seed clears the modal layer, chip frozen, `walked > 0`, cores agree with the pinned ones) rather
-than asserting the app is clean everywhere.
+band; it was characterised by stepping 5px at a time.
+
+**Fixed, and the sweep is now 300 rows / 0 failing** — every surface clean at every width for the
+first time. `tests/browser.mjs` still gates the *instrument* (seed clears the modal layer, chip
+frozen, `walked > 0`, cores agree with the pinned ones) rather than asserting the app is clean
+everywhere: a green sweep is evidence about the app, and the gate's job is to keep the sweep
+honest, which are different claims.
 
 The last two rows exist so neither gets re-filed. A by-design `flex-wrap` and an intended overlay
 both look exactly like defects in a table of numbers; what distinguishes them is that they are
