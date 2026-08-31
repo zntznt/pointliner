@@ -195,6 +195,41 @@ strings before writing one; match them exactly.
   how. Wrap an inline syntax token the prose names in backticks (`` `is:todo` ``) so it reads
   as code, not prose.
 
+**Run the gloss, do not read it.** Reading the code proves the syntax exists; only RUNNING it proves
+the sentence is true. A third pass executed all 496 examples against the pure cores and the errors it
+found were invisible to every existing guard, because each guard asks "does this parse" and none asks
+"is the gloss honest". Three shapes recur:
+
+- **A claimed OUTPUT that is wrong.** `{= convert(10, km, mi)}` was glossed "(6.21)"; the pill renders
+  `6.214`. `Suffix: kg` was glossed "reads 12 kg"; `formatNumDisplay` concatenates the suffix verbatim,
+  so it reads `12kg` unless you type the leading space.
+- **A capability the engine does not have.** The `math` body listed "percentages" among the base
+  calculator's powers. `evalMath('200 * 10%')` is `null` — `%` is modulo and nothing else, which the
+  same sentence already claimed correctly two clauses earlier.
+- **A promise the bare form does not keep.** `gen-conditions` said an item detail keeps related facts
+  together "so the description is always consistent". Run `{weapon.name} {weapon.damage}` 400 times
+  and 186 of them are a longsword doing 1d10: `resolveField` re-picks on every reference, and only the
+  frozen form the examples show is consistent. The body promised what the examples had to work around.
+
+**The guide can outlive the bug it documents.** `gen-modifiers` taught two workarounds — "'a hour' is a
+known quirk" and "'child' becomes 'childs'" — for behaviour the app has since fixed. `applyMods` now
+consults `ARTICLE_AN` and `IRREGULAR_PLURALS` and returns "an hour" and "children". Stale copy that
+teaches a workaround is worse than none: it costs the reader work the app no longer needs.
+
+**Findability is a body problem.** `matchEntry` builds one lowercased haystack per entry (title +
+category label + body + searchText + every syn and desc) and does a plain `includes` of the WHOLE
+query. No tokens, no stemming, no ranking. So "sum a column" misses a body that says "sum a whole
+column", and an entry is reachable only by words physically present in it. Measured over 435 realistic
+queries, the hit rate was 35%; two entries (`workspace-search`, `roll-log`) were found by NONE of
+their own. That is why the rule is to work the synonym into the prose, and why `ctl:` and `bodyHtml()`
+are not a substitute: neither is indexed.
+
+**Four surfaces teach these features, and only one pin held them together.** The in-app GUIDE, the
+`guide/*.md` docs (user-facing, linked from the README), the command `desc:` strings, and dialog help
+all drift. A third pass found a markdown doc denying a shipped capability, another reporting a bug
+that no longer exists, and a keybind taught in markdown that no handler binds. When you change a fact
+here, grep the other three.
+
 **Verify every fact against `index.html` before writing** — exact menu labels, exact
 keybinds, exact syntax tokens. Do not invent capabilities; if you're unsure a detail
 ships, leave it out. A wrong keybind in the guide is worse than an absent entry.

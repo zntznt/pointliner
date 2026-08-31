@@ -29424,8 +29424,18 @@ test('#824: /base on a table-bearing point converts in place via promoteStaticTa
     'createBaseAt must route an existing table through promoteStaticTable');
 });
 test('#826: Esc closes the guide from the nav and the reading pane', () => {
-  assert.match(_fix6, /ArrowRight'\) \{ e\.preventDefault\(\); pane\.focus\(\); \}[\s\S]{0,400}Escape'\) \{ e\.stopPropagation\(\); close\(\); \}/, 'nav Esc must close');
-  assert.match(_fix6, /pane\.addEventListener\('keydown', e => \{\s*\n\s*if \(e\.key === 'Escape'\) \{ e\.stopPropagation\(\); close\(\); \}/, 'pane Esc must close');
+  // #1552: asserted per HANDLER rather than by adjacency. The original pinned "ArrowRight ... within
+  // 400 characters ... Escape" and "pane keydown IMMEDIATELY followed by Escape", so adding any
+  // branch between them broke a pin whose subject — Esc closes from both surfaces — was untouched.
+  // Adjacency is not the contract; which handler binds the key is. Each slice below is the body of
+  // one listener, so an Esc branch moved to the OTHER handler still fails.
+  const navBody = nonEmpty(between(_fix6, "nav.addEventListener('keydown'", "pane.addEventListener('keydown'"),
+    "the guide nav's keydown handler");
+  const paneBody = nonEmpty(windowAfter(_fix6, "pane.addEventListener('keydown'", 900),
+    "the guide pane's keydown handler");
+  for (const [where, body] of [['nav', navBody], ['pane', paneBody]])
+    assert.match(body, /e\.key === 'Escape'\) \{ e\.stopPropagation\(\); close\(\); \}/,
+      `${where} Esc must close the guide`);
 });
 test('#823: the first bullet-click zoom flashes a one-time explanation', () => {
   assert.ok(_fix6.includes('let _zoomToastShown = false;'), 'session flag missing');

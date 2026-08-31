@@ -196,7 +196,7 @@ Turn the document into a lightweight planner.
   ([full guide](getting-around.md#searching-and-filtering) · [hashtags](getting-around.md#hashtags))
 - **Browse tags.** File then Browse tags shows every hashtag as a tree with a count on each (nested
   tags under their parent); pick one to filter the document to it. ([hashtags](getting-around.md#hashtags))
-- **Bulk-tag by search.** Run a search, `Ctrl/Cmd+A` to select every match, then Tag on the selection
+- **Bulk-tag by search.** Run a search, Shift+click the first and last match to select every one (or `Shift+Up` / `Shift+Down` from the row cursor), then Tag on the selection
   bar adds one `#tag` to all of them at once. The migration on-ramp: make a freshly-imported wall of
   text queryable in minutes instead of hand-tagging one bullet at a time.
   ([selecting many](getting-around.md#selecting-many-points))
@@ -363,7 +363,7 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   first run: once you have a document, reopening goes straight back to your work.
 - **All commands.** One searchable window over every point command, generator, calculation and
   pill. Open it from the toolbar (the checklist button), with `Ctrl/Cmd+K`, or by typing `/builder`
-  (in Guided mode, `/`, `@` or `{` open it too). Type to filter, arrow to browse, Enter to insert; the
+  (in Guided mode, `/` and `@` open it too; `{` opens the pill menu, whose Browse all pills row leads here). Type to filter, arrow to browse, Enter to insert; the
   side pane explains each command as you go.
 - **Installable.** Served over https it is a PWA, so "Install" gives you a standalone offline app.
 - **Verbosity dial.** `Ctrl/Cmd+Shift+.` cycles Guided (all hints shown), Standard (beginner hints and
@@ -385,6 +385,6 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
 - **[Solo RPG guides](solo-rpg/README.md)** show the generators, oracle and journal
   working together at the table, with importable demo files.
 
-> Inside the app, the **`?` button** (bottom-right) is the always-there cheat sheet, and the
-> **Concept guide** button explains every feature with examples. This page is the *overview*; those
-> are the *look-it-up*.
+> Inside the app, the **`?` button** (bottom-right) opens the **Concept guide**, the one help
+> surface: a keyboard reference plus every feature explained with examples. This page is the
+> *overview*; the guide is the *look-it-up*.
