@@ -33,7 +33,7 @@
           <outline text="{rule mace.damage: 1d6}" _id="gen00054"/>
           <outline text="{rule spear.damage: 1d8}" _id="gen00055"/>
         </outline>
-        <outline text="To keep the weapon and its damage in agreement across two pills, bind the pick to a variable first: {w := {weapon}}. The inner braces matter, because a bare `{w := weapon}` reads weapon as a formula rather than a draw and resolves to nothing. Then both {w} and {w.damage} read the same draw. (Without the bind, each {weapon} pill rolls on its own.)" _id="gen00060"/>
+        <outline text="To keep the weapon and its damage in agreement across two pills, bind the pick to a variable first: {w := {weapon}}. The inner braces matter: a bare `{w := weapon}` reads weapon as a formula rather than a draw, so it lands as a w = ? pill and the two pills below stay as text. Then both {w} and {w.damage} read the same draw. (Without the bind, each {weapon} pill rolls on its own.)" _id="gen00060"/>
       </outline>
       <outline text="## Run it yourself" _id="gen00070">
         <outline text="Click any pill to reroll it. The Markov name grows a new path each click, the tavern picks a fresh sign, the loot table rolls against its weights, and the weapon draws with its matching damage." _id="gen00071"/>

@@ -34,9 +34,11 @@ syllables; you read the name by running them together.
 
 Read that as a little graph. From `ka` you can go to `la`, `ra`. From `sh` you can go to
 `ka` or, in the demo's fuller list, to `ael`. Click the pill and it grows a fresh path each
-time: `ka→la→sh` for Kalash, `ka→ra→n→dor` for Karndor, whatever the walk stumbles into.
-Seeing the arrows is the point of the pill as much as the name is, because a chain that keeps
-producing the same three syllables is telling you which transitions to add. The `→` is just the
+time: `ka→ra→n→dor→a→ka` reads as Karndoraka, `ka→la→sh→ka→ra→n` as Kalashkaran. Every syllable in
+that little chain has somewhere to go, so the walk never dead-ends and you always get six of them.
+If you want shorter names, give some syllables **no outgoing transition**: the walk stops the moment
+it reaches one. Seeing the arrows is the point of the pill as much as the name is, because a chain
+that keeps producing the same three syllables is telling you which transitions to add. The `→` is just the
 literal arrow character in the text, nothing to escape. Add more transitions and the names
 get more varied; give a syllable two possible nexts and the chain has a real choice to make.
 
@@ -135,8 +137,11 @@ One catch worth naming: two pills roll independently, so a bare `{weapon}` next 
 ```
 
 `{w := {weapon}}` picks once and remembers, so `{w}` and `{w.damage}` both read the same draw.
-Note the inner braces: a bare `{w := weapon}` reads `weapon` as a formula rather than a draw, finds
-no variable by that name and quietly resolves to nothing, so both pills stay as literal text. The
+Note the inner braces. A bare `{w := weapon}` reads `weapon` as a formula rather than a draw and
+finds no variable of that name, so the declaration lands as a `w = ?` pill and `{w}` and
+`{w.damage}` stay as literal text. The app does tell you: hovering either one gives a cue naming
+the fix. But a `?` where a weapon should be is easy to skim past, and the inner braces are what
+stop it happening. The
 demo shows both forms so you can feel the difference.
 
 ---

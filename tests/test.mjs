@@ -30377,8 +30377,10 @@ test('EVERY shipped demo is well-formed XML (an unescaped < or " truncates the f
   const bad = [];
   for (const { name, file } of demos) {
     const xml = readFileSync(file, 'utf8');
-    // Inside a text="..." attribute, `<` and `&` must be entities and `"` must not appear at all.
-    for (const m of xml.matchAll(/text="([^"]*)"/g)) {
+    // EVERY attribute, not just text. _props and _view carry JSON with quotes and angle brackets in
+    // it, so they are at least as easy to break by hand as the prose is, and a first draft that
+    // looked only at text="..." would have watched a malformed _view go by.
+    for (const m of xml.matchAll(/\s[A-Za-z_][\w:.-]*="([^"]*)"/g)) {
       const v = m[1];
       if (v.includes('<')) bad.push(`${name}: raw "<" in a text attribute -> ${JSON.stringify(v.slice(Math.max(0, v.indexOf('<') - 40), v.indexOf('<') + 20))}`);
       for (const amp of v.matchAll(/&(?!(?:amp|lt|gt|quot|apos|#\d+);)/g))
@@ -30510,11 +30512,37 @@ test('no solo-RPG guide teaches the bare rule form that registers nothing', () =
     'solo-rpg guides');
   const offenders = [];
   for (const { n, f } of files) {
-    for (const line of readFileSync(f, 'utf8').split('\n')) {
-      // "named rule" prose that hands the reader a declaration WITHOUT the `rule` keyword.
-      if (!/named \*\*rule\*\*|\*\*named rule\*\*|as a named rule/.test(line)) continue;
-      if (/\{rule /.test(line)) continue;                       // names the working form: fine
-      offenders.push(`${n}.md: ${line.trim().slice(0, 100)}`);
+    const text = readFileSync(f, 'utf8');
+    // Anchor on the DEFECT, not on one phrasing. The first draft matched three bolded spellings of
+    // "named rule", which meant its kill-mutation only ever proved the filter fires on the exact
+    // sentence the mutation wrote. What actually ships broken is a DECLARATION-SHAPED example that
+    // ruleDeclParts rejects, offered to the reader as something to type: `reaction: hostile | wary`.
+    // So look for that shape wherever it appears, in a code span or a fence.
+    // Carry each span's real offset: indexOf(cand) finds the FIRST occurrence in the file, which is
+    // not necessarily this one, and returns -1 whenever the span was normalised at all -- either way
+    // the counter-example window below would be read from the wrong place.
+    const spans = [];
+    for (const m of text.matchAll(/`([^`\n]+)`/g)) spans.push({ raw: m[1], at: m.index });
+    for (const m of text.matchAll(/```[a-z]*\n([\s\S]*?)```/g)) {
+      let off = m.index + m[0].indexOf('\n') + 1;
+      for (const ln of m[1].split('\n')) { spans.push({ raw: ln, at: off }); off += ln.length + 1; }
+    }
+    for (const { raw, at } of spans) {
+      const cand = raw.trim();
+      // declaration-shaped: a bare identifier, a colon, then alternatives separated by bars
+      if (!/^[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*\S.*\|/.test(cand)) continue;
+      if (/^(rule|seq|prop|date|query|count|roll|shuffle|cycle|once|stopping|markov|oracle)\b/i.test(cand)) continue;
+      if (c.ruleDeclParts('rule ' + cand)) {
+        // it WOULD be a legal rule if wrapped, which is exactly the trap
+        // Whitespace-normalised, because these guides hard-wrap at ~100 columns and the phrase that
+        // marks a counter-example ("stays ordinary text") lands across the line break as often as not.
+        // A tight window on purpose. A counter-example says so IMMEDIATELY ("a bare `x: a | b` stays
+        // ordinary text"); widen this and the paragraph explaining the rule form starts exempting
+        // the fence above it, which is exactly where a real regression would sit.
+        const around = text.slice(Math.max(0, at - 60), at + 90).replace(/\s+/g, ' ');
+        if (/stays ordinary text|registers nothing|is not a|plain text|does not register/i.test(around)) continue;  // a counter-example
+        offenders.push(`${n}.md: \`${cand.slice(0, 70)}\` is declaration-shaped but has no {rule ...} wrapper, so it registers nothing`);
+      }
     }
   }
   assert.deepEqual(offenders, [], 'a guide names "a named rule" without showing {rule ...}:\n  ' + offenders.join('\n  '));

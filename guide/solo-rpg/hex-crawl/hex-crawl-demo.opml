@@ -13,7 +13,7 @@
         <outline text="Rations in your pack at the start (a variable the days draw down): {rations := 14}" _id="hex00016"/>
       </outline>
       <outline text="## The map: the Greytine Vale, {= sum(supplies, subtree)} of {rations} rations spent" _id="hex00020">
-        <outline text="This is the nesting the demo is really about. The Vale is a point. Each region under it is a point. Each hex under a region is a point, and each hex carries what you discovered plus a supplies-used property. Fold a region closed to see the map shrink to its edges, open one to zoom into its hexes." _id="hex00021"/>
+        <outline text="This is the nesting the demo is really about. The Vale is a point. Each region under it is a point. Each hex under a region is a point, and each hex carries what you discovered plus a supplies-used property. Fold a region closed (the chevron left of its bullet) to see the map shrink to its edges, and open it again to bring the hexes back. Clicking the bullet is a different move: it zooms the document into that region alone." _id="hex00021"/>
         <outline text="Region: The Fenlands (west of the ford), {= sum(supplies)} rations spent" _id="hex00030">
           <outline text="Hex 0101 (entered): terrain {shuffle: forest | hills | marsh | ruins | river | open plain}. A shallow crossing, reeds to the horizon. {prop supplies: 1}" _id="hex00031"/>
           <outline text="Hex 0102: terrain {shuffle: forest | hills | marsh | ruins | river | open plain}. Encounter check {2d6}, you spot {a lone traveler | tracks, fresh | a wary beast | a hidden cache | distant smoke | signs of a camp}. {prop supplies: 2}" _id="hex00032"/>

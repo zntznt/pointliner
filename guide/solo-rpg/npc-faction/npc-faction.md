@@ -15,7 +15,9 @@ column roles, properties and links with backlinks.
 
 ## The roster is a base
 
-Open the demo and you will see a `/base`: an editable grid of NPCs, one row each, with columns
+Open the demo and it comes up as a faction **board**, which is the view this case exists to show.
+Click **Table** in the switcher at its top left and the `/base` underneath is an editable grid of
+NPCs, one row each, with columns
 for **NPC, Faction, Disposition and Tie**. Click any cell to edit it. Add a row by typing at
 the bottom, or press `Alt+Shift+Down` on a cell to insert one. This is your living roster:
 everyone the character has met, in one place you can sort and search.

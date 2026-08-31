@@ -2697,8 +2697,8 @@
       "suite": "unit",
       "why": "fixing the demos without the prose regenerates the bug: four guides told the reader to define `reaction: hostile | wary` with no rule keyword",
       "file": "guide/solo-rpg/cairn/cairn.md",
-      "find": "The `rule` keyword is what names it. A bare",
-      "replace": "Define each as a **named rule** on its own point and it works. A bare",
+      "find": "{rule omen: a cold draft | distant scratching | a fresh corpse | scratched warnings}",
+      "replace": "omen: a cold draft | distant scratching | a fresh corpse | scratched warnings",
       "kills": "no solo-RPG guide teaches the bare rule form"
     },
     {
@@ -2861,6 +2861,15 @@
       "file": "guide/solo-rpg/cairn/cairn-demo.opml",
       "find": "<outline text=\"Sword {prop slots: 1}\"/>",
       "replace": "<outline text=\"Sword {prop slots: 1}\">",
+      "kills": "EVERY shipped demo is well-formed XML"
+    },
+    {
+      "id": "solo-rpg-demo-props-attr-broken",
+      "suite": "unit",
+      "why": "_props and _view carry JSON with quotes and angle brackets, so they break as easily as prose; a guard that reads only text=\"...\" would watch a malformed _view go straight past",
+      "file": "guide/solo-rpg/npc-faction/npc-faction-demo.opml",
+      "find": "_view=\"{&quot;kind&quot;:&quot;board&quot;,&quot;groupBy&quot;:1}\"",
+      "replace": "_view=\"{&quot;kind&quot;:&quot;board&quot;,&quot;groupBy&quot;:1, &quot;note&quot;:&quot;a < b&quot;}\"",
       "kills": "EVERY shipped demo is well-formed XML"
     }
   ]
