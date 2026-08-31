@@ -97,6 +97,21 @@ Since #1552 the guard runs in **three** registries and **both directions**:
   syntax with no command), and the same hole means a RENAMED command leaves its old id behind while
   the guard stays green and `builderGuideEntry` silently stops resolving the new one.
 
+Three further structural guards landed with the second pass, each closing a hole that was silent:
+
+- **A `cat` naming no `CATS` row** orphans the entry — `openGuide` filters per CATS row, so it renders
+  in no group and vanishes from the nav, reachable only by a deep link. This doc warned about it
+  twice and nothing pinned it; every other guard (`related`, `covers`, the AP arms) stays green
+  through it. Both directions are now asserted, since an empty CATS row renders a bare header.
+- **`ctl:` is an exemption, and it is now earned.** It is read in exactly one place — the
+  uncovered-example ratchet skips any example carrying it — and nothing else in the repo reads it.
+  24 examples claimed it and nothing checked the control existed, so `ctl:'anything'` silenced the
+  ratchet for free. It must now name text the app really shows.
+- **The chord guard was blind to `e.code`.** It parsed `.key` only, so five digit-chord families
+  (capture to inbox, set inbox, jump to a tab, collapse to level) read as unbound. Nothing failed
+  only because no example taught one; the moment `collapse` did, a live binding was accused. A digit
+  RANGE in a syn now holds only if every digit in it is bound.
+
 The tests slice the GUIDE array between `const GUIDE = [` and the stable `// GUIDE-END`
 boundary marker (kept in `index.html` right after the array's closing `];`), and each asserts
 it found a non-empty registry block and a non-empty covers set, so a renamed/moved const fails
@@ -148,6 +163,16 @@ strings before writing one; match them exactly.
   two lines up says `Ctrl/Cmd+S`. Three examples in `saving` and `import` did exactly that until
   #1552; the AP guard now reads the SOURCE for it, since by the time the array is evaluated the hole
   is already filled and a parsed-value check cannot fail (its kill-mutation caught that).
+- **Backtick every syntax token the prose names.** This is the rule the guide broke most widely: 26
+  entries named `{meter: hp/hpmax}`, `/refile:top`, `[o 0/6]`, `is:failing`, `@image` completely bare
+  while a neighbour wrapped the identical token, which is a P1 break, not a cosmetic one. It is now
+  swept: slash verbs are 31 backticked to 0 bare. Do NOT wrap a token in an `examples[].desc` —
+  `guideBodyHtml` runs on `body` only, so a backtick in a desc renders as a backtick.
+- **Say what the app says.** Vocabulary is not just point/pill/document: check the label. The
+  `collapse` entry shipped titled "Folding points" and using fold/unfold throughout, and the app has
+  never said "fold" for this — the chevron's title and aria-label are Collapse/Expand, the essential
+  row is "Collapse / expand", the File row is "Show levels". Worse, "folding" sits one letter from
+  "folder", the top of the hierarchy. It is "Collapsing points" now.
 - **There is no markdown in a body.** `guideBodyHtml` does two things: split on `\n\n`, and turn a
   backtick pair into `<code>`; `escHtml` runs before both. So `**bold**` and `*italic*` reach the
   reader as literal asterisks — which is what the `hashtags` entry shipped until #1552. The house
