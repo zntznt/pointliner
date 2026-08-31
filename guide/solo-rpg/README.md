@@ -76,24 +76,37 @@ you want the document to do more than sit there.
 
 ## Credits and licensing of referenced systems
 
-Some examples adapt existing community notations and oracle styles. Where they do, the
-source and its author are credited in that example's guide. For systems that are **not**
-openly licensed, only the functional idea is adapted, and the original text and
-specifications are linked, not reproduced (this is how the Lonelog example works).
+Some examples adapt existing community notations and oracle styles. Where they do, the source and
+its author are credited in that example's guide. Where a system is **not** openly licensed, only
+the functional idea is adapted and the original text is linked rather than reproduced.
 
-For a system released under an **open licence**, the example may reproduce more, within that
-licence's terms and with its attribution:
+Every system referenced here happens to be openly licensed, so the example may reproduce more,
+within that licence's terms and with its attribution:
 
 - The **Ironsworn** example adapts the Ironsworn System Reference Document by **Shawn Tomkin**,
   used under **CC BY 4.0** (<https://creativecommons.org/licenses/by/4.0/>).
 - The **Cairn** example adapts **Cairn** by **Yochai Gal**, used under **CC BY-SA 4.0**
   (<https://creativecommons.org/licenses/by-sa/4.0/>). Because Cairn is **ShareAlike**, the
-  adapted Cairn material in that example is itself licensed CC BY-SA 4.0 (this is separate from
-  Pointliner's AGPLv3 app licence, which covers the code, not the game content).
+  adapted Cairn material in that example is itself licensed CC BY-SA 4.0.
 - The **Maze Rats** example adapts **Maze Rats** by **Ben Milton**, used under **CC BY 4.0**
   (<https://creativecommons.org/licenses/by/4.0/>).
+- The **Lonelog** example adapts the notation by **Roberto Bisceglie**, published under
+  **CC BY-SA 4.0**. It deliberately reproduces none of the specification, using only the bare
+  functional markers plus examples written for this guide, and links to the source instead.
+- The **campaign calendar** example points at the Forgotten Realms **Calendar of Harptos** as one
+  worked example of a custom calendar. It names months and festivals to say what you would type
+  and reproduces no text; Forgotten Realms is a trademark of Wizards of the Coast, used here
+  descriptively and with no affiliation.
+- The **oracle play** example's apparatus (a chaos factor, an interrupt check, meaning tables) is
+  the common vocabulary of solo play popularised by **Mythic GM Emulator** by **Tana Pigeon**. The
+  tables and wording here are original; the idea is not, and the credit belongs there.
 
 Each carries the required attribution, notes that changes were made and uses the game's name
 descriptively (no logo or artwork). Please support the creators whose work these examples point to.
 
-Pointliner itself is licensed under the GNU AGPLv3 (see [LICENSE](../../LICENSE)).
+**Licensing of these files.** Pointliner itself is licensed under the GNU AGPLv3 (see
+[LICENSE](../../LICENSE)), which covers the code. The adapted game content in this folder carries
+the licence of the system it adapts, as listed above, which is why the Ironsworn and Maze Rats
+guides offer themselves under CC BY 4.0 and the Cairn guide under CC BY-SA 4.0. Those are grants
+over the adapted material in those files, made alongside the repository licence rather than in
+place of it.

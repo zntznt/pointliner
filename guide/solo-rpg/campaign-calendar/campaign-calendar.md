@@ -126,4 +126,14 @@ If your game lives comfortably on real dates, keep them; the proxy is honest and
 calendar is for when the world's time *is* part of the fiction, and then it is the difference
 between tracking a campaign and inhabiting one.
 
+---
+
+## Credit
+
+The **Calendar of Harptos** is used above as one worked example of a real published calendar,
+because it is the one most readers will already know. It belongs to the **Forgotten Realms**
+setting, a trademark of **Wizards of the Coast**; this guide names its months and festivals only to
+show what you would type into the dialog, reproduces none of its text, and is neither affiliated
+with nor endorsed by them. Any calendar you invent works exactly the same way.
+
 **Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

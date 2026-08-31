@@ -121,6 +121,16 @@ A single played beat, start to finish:
 4. End the scene, bump `chaos` if it went sideways, then roll `{proceed | interrupted {= chaos}}`.
 5. If interrupted, pull `{shuffle: …threads…}` to see which thread barges in.
 
-The demo has all five pieces wired so you can click through the loop.
+The demo has these pieces wired so you can click through the loop.
+
+---
+
+## Credit
+
+The apparatus this case is built on, a **chaos factor** that weights an interrupt check, and
+**meaning tables** read as a two-word spark, is the common vocabulary of solo play, and it was
+popularised by **Mythic Game Master Emulator** by **Tana Pigeon** (Word Mill Games). The tables and
+wording here are original and no text is reproduced, but the idea is not ours and the credit
+belongs there. If this loop suits how you play, the original is worth owning.
 
 **Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

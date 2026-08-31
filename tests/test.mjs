@@ -1769,6 +1769,7 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'guide/solo-rpg/session-prep/session-prep.md': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep.md', import.meta.url), 'utf8'),
     'guide/solo-rpg/session-prep/session-prep-demo.opml': readFileSync(new URL('../guide/solo-rpg/session-prep/session-prep-demo.opml', import.meta.url), 'utf8'),
     'guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml': readFileSync(new URL('../guide/solo-rpg/campaign-clocks/campaign-clocks-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/README.md': readFileSync(new URL('../guide/solo-rpg/README.md', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -30032,6 +30033,42 @@ test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)
   }
   assert.ok(checked >= 5, `the demos declare several {name := ...} bindings; this guard saw ${checked}`);
   assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
+});
+
+test('the solo-RPG docs name the licence the repository actually ships', () => {
+  // Five places under guide/solo-rpg said Pointliner is MIT licensed while LICENSE is AGPLv3, and
+  // one of them was inside cairn-demo.opml, where it is the whole licence notice an .opml-only
+  // reader receives. It is the one error in this folder that misleads about legal obligations
+  // rather than about a feature, and it had been wrong since the folder shipped, so it gets a guard
+  // read out of LICENSE itself rather than a hardcoded string.
+  const licence = readFileSync(new URL('../LICENSE', import.meta.url), 'utf8');
+  const isAGPL = /GNU AFFERO GENERAL PUBLIC LICENSE/i.test(licence);
+  assert.ok(isAGPL, 'LICENSE is no longer AGPLv3; this guard and the docs both need rewriting');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  const walk = d => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const full = resolve(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(md|opml)$/.test(e.name)) files.push({ n: e.name, t: readFileSync(full, 'utf8') });
+    }
+  };
+  walk(dir);
+  nonEmpty(files, 'solo-rpg documentation files');
+
+  const wrong = [];
+  let mentions = 0;
+  for (const { n, t } of files)
+    for (const m of t.matchAll(/[^.\n]{0,90}Pointliner[^.\n]{0,90}licen[cs]e[^.\n]{0,40}/gi)) {
+      const sentence = m[0];
+      mentions++;
+      // The claim is about Pointliner's OWN licence, so it must not name a different one. CC terms
+      // legitimately appear in the same breath as the game content they cover, hence the AND.
+      if (/\bMIT\b/.test(sentence)) wrong.push(`${n}: ${sentence.trim().slice(0, 100)}`);
+    }
+  assert.ok(mentions >= 3, `the folder states Pointliner's licence in several places; saw ${mentions}`);
+  assert.deepEqual(wrong, [], 'LICENSE is AGPLv3; these say otherwise:\n  ' + wrong.join('\n  '));
 });
 
 test('no solo-RPG guide teaches a progress token the renderer leaves as plain text', () => {

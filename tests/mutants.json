@@ -2835,6 +2835,15 @@
       "find": "a parent point with a `[/]` over",
       "replace": "a parent point with a `[3/10]` over",
       "kills": "no solo-RPG guide teaches a progress token the renderer leaves as plain text"
+    },
+    {
+      "id": "solo-rpg-licence-back-to-mit",
+      "suite": "unit",
+      "why": "five places said MIT while LICENSE is AGPLv3, one of them inside a demo .opml where it is the whole notice an .opml-only reader gets; it is the single error here that misleads about legal obligations",
+      "file": "guide/solo-rpg/README.md",
+      "find": "Pointliner itself is licensed under the GNU AGPLv3",
+      "replace": "Pointliner itself is MIT licensed",
+      "kills": "the solo-RPG docs name the licence the repository actually ships"
     }
   ]
 }
