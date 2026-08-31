@@ -1742,13 +1742,20 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     // #1465: a CI job's own timeout is mutated too, so add its reader here rather than letting the
     // anchor go unchecked (which this very test exists to prevent).
     '.github/workflows/tests.yml': readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8'),
+    // #1559: the layout sweep is code now, so its guards get mutated like any other.
+    'tools/layout-sweep.mjs': readFileSync(new URL('../tools/layout-sweep.mjs', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
   const bad = [];
   for (const m of ms) {
     for (const k of ['id', 'suite', 'why', 'file', 'find', 'replace', 'kills'])
-      if (!m[k]) bad.push(`${m.id || '(no id)'}: missing ${k}`);
+      // `replace` may legitimately be EMPTY: deleting a line is a mutation, and often the most
+      // honest one -- "the guard is gone" rather than "the guard says something else". Requiring a
+      // truthy value forced deletion mutants to anchor on a neighbouring line instead, which makes
+      // them brittle to edits that have nothing to do with what they test (#1559). The field must
+      // still be DECLARED, so an omitted `replace` is still caught.
+      if (k === 'replace' ? !(k in m) : !m[k]) bad.push(`${m.id || '(no id)'}: missing ${k}`);
     if (m.find === m.replace) bad.push(`${m.id}: find and replace are identical, so it mutates nothing`);
     const src = sources[m.file];
     if (src === undefined) { bad.push(`${m.id}: no reader for ${m.file} — add one here or the anchor is unchecked`); continue; }
@@ -1760,6 +1767,17 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
   assert.deepEqual(bad, [],
     'the kill-mutation registry has drifted from the code it mutates. A mutant that no longer ' +
     'applies makes its guard look protected when nothing tested it');
+
+  // The field check above allows an empty `replace` (a deletion). Prove it still catches an
+  // OMITTED one, or loosening it would have quietly turned the whole check off.
+  const fieldsOf = m => ['id', 'suite', 'why', 'file', 'find', 'replace', 'kills']
+    .filter(k => (k === 'replace' ? !(k in m) : !m[k]));
+  assert.deepEqual(fieldsOf({ id: 'x', suite: 'unit', why: 'w', file: 'f', find: 'a', replace: '', kills: 'k' }), [],
+    'an empty replace is a deletion mutant and must be accepted');
+  assert.deepEqual(fieldsOf({ id: 'x', suite: 'unit', why: 'w', file: 'f', find: 'a', kills: 'k' }), ['replace'],
+    'an OMITTED replace must still be caught');
+  assert.deepEqual(fieldsOf({ id: 'x', suite: 'unit', why: 'w', file: 'f', find: '', replace: 'b', kills: 'k' }), ['find'],
+    'an empty find is still a defect -- it would match everywhere');
 });
 
 test('#1430 the symbol index covers every pure core the test suite already knows about', () => {
@@ -34585,4 +34603,144 @@ test('#1523 the dialog footer wraps, and the welcome class cannot ride along to 
   // ...and the class still scopes real rules, so removing it is a behaviour change rather than a no-op.
   assert.ok(_src.includes('#io-card.welcome{width:640px'),
     'the welcome class must still scope the wider-card rule, or this pin proves nothing');
+});
+
+// ── #1559: the layout sweep's geometry cores ─────────────────────────────────
+// These are the functions tools/layout-sweep.mjs stringifies INTO the page, so what is pinned here
+// is literally what runs in the browser -- a second in-page copy would be free to drift, which is
+// the failure this whole issue is about. Seeded with the real measurements from #1523 and #1559.
+test('#1559 sharesLine: two boxes share a line when they overlap vertically, not when their tops are close', async () => {
+  const { sharesLine } = await import('../tools/layout-sweep.mjs');
+  const box = (top, bottom) => ({ top, bottom, left: 0, right: 10 });
+  // The case the magic `< 12` threshold got wrong: #save-status sits 13px down inside a 44px
+  // #toolbar-row and wraps nothing. Tops differ by 13; the boxes overlap; it is ONE line.
+  assert.equal(sharesLine(box(0, 44), box(13, 31)), true,
+    'a short child centred inside a tall row is on that row, however far down its top sits');
+  // And a genuine wrap is still two lines: the second row starts below the first.
+  assert.equal(sharesLine(box(0, 33), box(41, 74)), false, 'a wrapped second row does not overlap the first');
+  // Touching edges are not an overlap (the > 1 margin keeps rounding noise out).
+  assert.equal(sharesLine(box(0, 30), box(30, 60)), false, 'boxes that merely touch are two lines');
+  assert.equal(sharesLine(box(0, 30), box(28, 60)), true, 'a real 2px overlap is one line');
+});
+
+test('#1559 spillPx discounts a negative margin and a child that absorbs its own overflow', async () => {
+  const { spillPx } = await import('../tools/layout-sweep.mjs');
+  const box = (left, right) => ({ left, right, top: 0, bottom: 44 });
+  // Plain overflow past the right content edge.
+  assert.equal(spillPx(box(10, 120), 0, 100, 0, 0, false), 20, 'a child past the right edge spills by the difference');
+  // #tbtn-cluster's `margin:-5px -5px 0 0` lets a focus ring escape the clip; 5px past is legitimate.
+  assert.equal(spillPx(box(10, 105), 0, 100, 0, -5, false), 0, 'a negative margin is not spill');
+  // A POSITIVE margin must not be borrowed as a discount, or any spill could be excused.
+  assert.equal(spillPx(box(10, 120), 0, 100, 0, 8, false), 20, 'a positive margin discounts nothing');
+  // #1559: the child scrolls its own content, so its overflow is absorbed, not lost.
+  assert.equal(spillPx(box(10, 655), 0, 620, 0, 0, true), 0, 'a child that absorbs its overflow is not spilling');
+  // ...and the same box WITHOUT the strip is a real 35px spill. Without this pair the discount
+  // above would be indistinguishable from a function that always returns 0.
+  assert.equal(spillPx(box(10, 655), 0, 620, 0, 0, false), 35, 'the same overflow with nothing to scroll IS spill');
+  // Leftward escape is measured too -- the #1523 direction, which scrollWidth cannot see.
+  assert.equal(spillPx(box(-90, 22), 0, 300, 0, 0, false), 90, 'a child off the LEFT edge spills by that much');
+  assert.equal(spillPx(box(10, 90), 0, 100, 0, 0, false), 0, 'a child fully inside does not spill');
+});
+
+test('#1559 isLost: past the viewport only counts when nothing can scroll it back', async () => {
+  const { isLost } = await import('../tools/layout-sweep.mjs');
+  const box = (left, right) => ({ left, right, top: 0, bottom: 44 });
+  assert.equal(isLost(box(600, 723), 700, false), true, 'past the right edge with no scroller is lost');
+  // Correction #5: icons scrolled out of a .scroll-strip are reachable by swiping.
+  assert.equal(isLost(box(600, 723), 700, true), false, 'scrolled-out of a strip is not lost');
+  assert.equal(isLost(box(-90, 22), 320, false), true, 'off the LEFT edge is lost too (#1523)');
+  assert.equal(isLost(box(10, 300), 320, false), false, 'inside the viewport is not lost');
+});
+
+test('#1559 inMeasureBand keeps a control pushed out of its host and skips a popup below it', async () => {
+  const { inMeasureBand } = await import('../tools/layout-sweep.mjs');
+  // Both cases are real, both measured. The host is a 39px dialog footer at y 400..439.
+  const host = { top: 400, bottom: 439, left: 16, right: 304 };
+  // #1523: "+ New pack" shoved off the left of the card. Its centre is OUTSIDE the host rect, so
+  // the old centre-in-host test skipped it -- and it had SEVEN hit-testable pixels. Same row, ours.
+  assert.equal(inMeasureBand(host, { top: 400, bottom: 439, left: -90, right: 22 }), true,
+    'a control pushed out of its host horizontally is still on its row, and must be judged');
+  // The popup correction #4 exists to exclude: the search hint opens BELOW its wrap. Measured
+  // vertical overlaps for its controls ran -25 to -689px.
+  const wrap = { top: 8, bottom: 36, left: 280, right: 500 };
+  assert.equal(inMeasureBand(wrap, { top: 61, bottom: 83, left: 267, right: 305 }), false,
+    'a popup that opens below the host is not part of the host row');
+  // The focused #search-box grows past its wrap by design and stays on the row: still judged,
+  // and it was verified hit-testable at its own centre at every width.
+  assert.equal(inMeasureBand(wrap, { top: 8, bottom: 36, left: 280, right: 872 }), true,
+    'a field that outgrows its wrap horizontally is still on the row');
+});
+
+test('#1559 probePoint aims at the visible part of a control, clipped by what clips it', async () => {
+  const { probePoint } = await import('../tools/layout-sweep.mjs');
+  const view = { top: 0, left: 0, right: 360, bottom: 640 };
+  // Ordinary case: fully visible, so the probe is the box centre.
+  assert.deepEqual({ ...probePoint({ top: 100, bottom: 140, left: 10, right: 110 }, view) }, { x: 60, y: 120 });
+  // #btn-restore: a 137px row at y 553..690 inside a pane ending at 588, in a 640px window. The box
+  // centre (621) and the VIEWPORT-clipped centre (596) both land past the pane and hit the backdrop;
+  // clipped to the pane the probe lands on the 35px that is actually showing.
+  const pane = { top: 103, left: 9, right: 351, bottom: 588 };
+  const row = { top: 553, bottom: 690, left: 173, right: 337 };
+  // The claim is which SIDE of the pane's edge each probe lands on, not an exact pixel.
+  assert.ok(probePoint(row, view).y > pane.bottom,
+    'clipped only by the window, the probe still lands past the pane and would hit the backdrop');
+  const y = probePoint(row, pane).y;
+  assert.ok(y > row.top && y < pane.bottom,
+    `clipped by the pane, the probe lands on the visible strip (got ${y}, wanted ${row.top}..${pane.bottom})`);
+  // Nothing visible at all is null, not a coordinate off-window -- the honest answer.
+  assert.equal(probePoint({ top: 688, bottom: 897, left: 173, right: 297 }, pane), null,
+    'a control entirely past its clip has nothing to aim at');
+  assert.equal(probePoint({ top: 100, bottom: 140, left: -200, right: -10 }, view), null,
+    'a control entirely off the left has nothing to aim at');
+  // A 1px sliver is not a target (the < 1 floor), but 2px is.
+  assert.equal(probePoint({ top: 587.5, bottom: 700, left: 20, right: 100 }, pane), null, 'a sub-pixel sliver is nothing to aim at');
+  assert.ok(probePoint({ top: 586, bottom: 700, left: 20, right: 100 }, pane), 'a 2px sliver is still a target');
+});
+
+test('#1559 rowFails honours a surface that DECLARES it reflows, and fails one that does not', async () => {
+  const { rowFails } = await import('../tools/layout-sweep.mjs');
+  const clean = { overlaps: [], offscreen: [], unreachable: [], past: 0, spill: 0, lines: 1 };
+  assert.equal(rowFails(clean, {}), false, 'a clean row passes');
+  assert.equal(rowFails({ ...clean, lines: 2 }, {}), true, 'an UNdeclared second line fails');
+  assert.equal(rowFails({ ...clean, lines: 2 }, { wraps: true }), false, 'a declared wrap is the design, not a defect');
+  assert.equal(rowFails({ ...clean, spill: 37 }, {}), true, 'spill fails');
+  assert.equal(rowFails({ ...clean, spill: 37 }, { overflows: true }), false, 'a declared overflow is exempt');
+  // `wraps` must not become a blanket exemption: a declared-wrapping surface still fails on reach.
+  assert.equal(rowFails({ ...clean, lines: 2, unreachable: ['btn-notes'] }, { wraps: true }), true,
+    'declaring a wrap does not excuse an unreachable control');
+  assert.equal(rowFails({ ...clean, offscreen: ['lvl-all'] }, { wraps: true, overflows: true }), true,
+    'no declaration excuses a control that is offscreen with nothing to scroll it back');
+  // A surface that did not render is reported as such, never as clean OR as failing.
+  assert.equal(rowFails({ missing: true }, {}), false, 'a missing surface is not a failure verdict');
+  assert.equal(rowFails({ hidden: true }, {}), false, 'a surface hidden at this width is not a failure verdict');
+});
+
+test('#1559 the sweep ships the fixtures and the freezes that its own findings depend on', async () => {
+  const m = await import('../tools/layout-sweep.mjs');
+  const src = readFileSync(new URL('../tools/layout-sweep.mjs', import.meta.url), 'utf8');
+  // The SEED must dismiss the welcome chooser. This is the exact rot that made the old recipe stop
+  // measuring: #io-back covers the viewport and every control reads unreachable.
+  assert.match(m.SEED, /closeIo\(\)/, 'SEED must close any open dialog');
+  assert.match(m.SEED, /io-back[\s\S]{0,60}classList\.remove\('on'\)/, 'SEED must clear the modal backdrop');
+  // The save chip must be frozen, or geometry races autosave (a 38px swing that flipped a verdict).
+  assert.ok(m.SAVE_STATUS_FREEZE && m.SEED.includes(JSON.stringify(m.SAVE_STATUS_FREEZE)),
+    'SEED must freeze #save-status to SAVE_STATUS_FREEZE');
+  // #1523: a dialog footer is one surface per document state. The 2-button seed alone is what let
+  // a 4-button footer with zero hit-testable pixels look swept.
+  const feet = nonEmpty(m.SURFACES.filter(s => s.sel === '.io-foot'), '.io-foot surfaces');
+  assert.ok(feet.length >= 5, `expected the .io-foot states to be swept separately, found ${feet.length}`);
+  assert.ok(feet.some(s => /packs/i.test(s.note)) && feet.some(s => /calendar/i.test(s.note))
+         && feet.some(s => /units/i.test(s.note)),
+    'the 3- and 4-button footer states must each be seeded, not just the 2-button one');
+  // Exactly one control, and it is first -- the whole discipline depends on reading it first.
+  const controls = m.SURFACES.filter(s => s.control);
+  assert.equal(controls.length, 1, 'exactly one surface may be the control');
+  assert.equal(m.SURFACES[0], controls[0], 'the control must be the first surface listed');
+  // The cores that run in the page are the cores pinned above, by construction.
+  for (const f of nonEmpty(m.CORES, 'exported cores'))
+    assert.ok(m.MEASURE.includes(f.toString()), `${f.name} must be stringified into the page verbatim`);
+  // ...and the page half must actually CALL each one, or the cores are tested decoration (#1133).
+  const page = src.slice(src.indexOf('window.__measure'));
+  for (const n of ['sharesLine', 'spillPx', 'isLost', 'inMeasureBand'])
+    assert.match(page, new RegExp('\\b' + n + '\\('), `__measure must call ${n}`);
 });

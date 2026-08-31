@@ -2475,6 +2475,87 @@
       "find": "  ioCard.classList.remove('welcome');          // #1523: prevent leak across dialogs (as with the aria pair below)\n  ioCard.innerHTML = ''; ioCancel = null;",
       "replace": "  ioCard.innerHTML = ''; ioCancel = null;",
       "kills": "#1523 every dialog footer button stays inside the card and stays tappable at phone widths"
+    },
+    {
+      "id": "band-back-to-centre-in-host",
+      "suite": "unit",
+      "why": "the O1 blind spot: a control shoved out of its host has its centre outside it, so the old test skipped the very failure the reach column is for",
+      "file": "tools/layout-sweep.mjs",
+      "find": "export function inMeasureBand(hostRect, rect) {\n  return sharesLine(hostRect, rect);\n}",
+      "replace": "export function inMeasureBand(hostRect, rect) {\n  const cx = rect.left + (rect.right - rect.left) / 2, cy = rect.top + (rect.bottom - rect.top) / 2;\n  return cx >= hostRect.left - 1 && cx <= hostRect.right + 1 && cy >= hostRect.top - 1 && cy <= hostRect.bottom + 1;\n}",
+      "kills": "#1559 inMeasureBand keeps a control pushed out of its host and skips a popup below it"
+    },
+    {
+      "id": "spill-ignores-a-scrolling-child",
+      "suite": "unit",
+      "why": "without the discount the CONTROL fails on #tbtn-cluster, which absorbs its own overflow; a driver that cries wolf gets ignored",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (absorbsOwnOverflow) return 0;\n",
+      "replace": "",
+      "kills": "#1559 spillPx discounts a negative margin and a child that absorbs its own overflow"
+    },
+    {
+      "id": "spill-discounts-everything",
+      "suite": "unit",
+      "why": "the mirror of the above: a discount that always fires reports every surface clean, which is the failure mode this whole issue is about",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (absorbsOwnOverflow) return 0;\n  const mr = Math.min(0, marginRight || 0), ml = Math.min(0, marginLeft || 0);",
+      "replace": "  if (absorbsOwnOverflow) return 0;\n  const mr = marginRight || 0, ml = marginLeft || 0;",
+      "kills": "#1559 spillPx discounts a negative margin and a child that absorbs its own overflow"
+    },
+    {
+      "id": "shares-line-back-to-the-magic-12",
+      "suite": "unit",
+      "why": "the threshold a short vertically-centred child exceeds without wrapping; it failed the CONTROL at five widths",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;",
+      "replace": "  return Math.abs(a.top - b.top) < 12;",
+      "kills": "#1559 sharesLine: two boxes share a line when they overlap vertically, not when their tops are close"
+    },
+    {
+      "id": "sweep-loses-the-save-chip-freeze",
+      "suite": "unit",
+      "why": "HAPPENED-shaped: without the freeze the geometry races autosave, and a 38px swing flipped a verdict between two runs",
+      "file": "tools/layout-sweep.mjs",
+      "find": "    if (tx) tx.textContent = ${JSON.stringify(SAVE_STATUS_FREEZE)};\n",
+      "replace": "",
+      "kills": "#1559 the sweep ships the fixtures and the freezes that its own findings depend on"
+    },
+    {
+      "id": "sweep-drops-a-footer-state",
+      "suite": "unit",
+      "why": "the #1523 lesson: seeding only the 2-button footer is what let a 4-button one with zero hit-testable pixels look swept",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  { sel: '.io-foot', touch: true,  wraps: true, note: 'calendar ALREADY SET, 3 btn', setup: `\n      applyCalendarChange(buildCalendarFromFields({ months:'Firstfrost: 30', week:'', eras:'', current:'1-01-01' }));\n      openCalendarDialog();` },\n",
+      "replace": "",
+      "kills": "#1559 the sweep ships the fixtures and the freezes that its own findings depend on"
+    },
+    {
+      "id": "sweep-seed-stops-dismissing-the-chooser",
+      "suite": "browser",
+      "why": "driven: this is the exact rot that silently stopped the old recipe measuring -- #io-back covers the viewport and every control reads unreachable",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (typeof closeIo === 'function') closeIo();\n  document.getElementById('io-back')?.classList.remove('on');\n",
+      "replace": "",
+      "kills": "#1559 the layout sweep still measures: seed, freeze, and a live reach walk"
+    },
+    {
+      "id": "probe-aims-at-the-box-centre",
+      "suite": "unit",
+      "why": "the centre of a control taller than its pane lands past the pane and hits the backdrop, so a plainly tappable control reads unreachable",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  const left = Math.max(rect.left, clip.left), right = Math.min(rect.right, clip.right);\n  const top = Math.max(rect.top, clip.top), bottom = Math.min(rect.bottom, clip.bottom);",
+      "replace": "  const left = rect.left, right = rect.right;\n  const top = rect.top, bottom = rect.bottom;",
+      "kills": "#1559 probePoint aims at the visible part of a control, clipped by what clips it"
+    },
+    {
+      "id": "probe-invents-a-target-for-an-invisible-control",
+      "suite": "unit",
+      "why": "without the empty-intersection guard a control entirely off-screen gets a coordinate anyway, and reads reachable",
+      "file": "tools/layout-sweep.mjs",
+      "find": "  if (right - left < 1 || bottom - top < 1) return null;",
+      "replace": "",
+      "kills": "#1559 probePoint aims at the visible part of a control, clipped by what clips it"
     }
   ]
 }
