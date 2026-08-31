@@ -72,13 +72,14 @@ each item carries a `slots` property, the pack totals them, and a check flags an
 Pack, {= sum(slots)} of 10 slots used   (with a check: sum(slots) <= 10)
   Sword {prop slots: 1}
   Torches, three {prop slots: 1}
-  Rope, 50ft {prop slots: 1}
+  Rope, fifty feet {prop slots: 1}
   Rations {prop slots: 1}
 ```
 
 The `{= sum(slots)}` rollup totals the items. Note where it sits: **on the Pack point, not beside
-the items**. A rollup reads the points below the one holding it, so the same pill written as a
-sibling of the items finds nothing and reads zero. Add a **check** of `sum(slots) <= 10` on the same
+the items**. A bare rollup reads the point's **direct children**, so the same pill written as a
+sibling of the items finds nothing and reads zero. (Add `, subtree` when you want it to reach every
+level below instead, the way the [hex-crawl](../hex-crawl/hex-crawl.md) case totals a whole region.) Add a **check** of `sum(slots) <= 10` on the same
 Pack point (from its bullet menu, "Add check", or `/check`) and its chip goes red the moment you are
 overloaded.
 This is the same machinery as the [character sheet](../character-sheet/character-sheet.md) case, tuned

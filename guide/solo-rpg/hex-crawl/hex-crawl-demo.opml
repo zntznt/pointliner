@@ -10,7 +10,7 @@
         <outline text="Wandering encounter check (2d6, 9 or less is quiet): {2d6}" _id="hex00013"/>
         <outline text="If something stirs, what is it? {a lone traveler | tracks, fresh | a wary beast | a hidden cache | distant smoke | signs of a camp}" _id="hex00014"/>
         <outline text="Distance you can push before dusk, in hexes: {1d6}" _id="hex00015"/>
-        <outline text="Rations in your pack at the start (a variable the days draw down): {rations := 10}" _id="hex00016"/>
+        <outline text="Rations in your pack at the start (a variable the days draw down): {rations := 14}" _id="hex00016"/>
       </outline>
       <outline text="## The map: the Greytine Vale, {= sum(supplies, subtree)} of {rations} rations spent" _id="hex00020">
         <outline text="This is the nesting the demo is really about. The Vale is a point. Each region under it is a point. Each hex under a region is a point, and each hex carries what you discovered plus a supplies-used property. Fold a region closed to see the map shrink to its edges, open one to zoom into its hexes." _id="hex00021"/>

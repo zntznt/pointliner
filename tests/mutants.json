@@ -2808,6 +2808,24 @@
       "find": "and give it a `{date due: today+3}`, and it becomes a due-date chip",
       "replace": "and give it a {date due: today+3}, and it becomes a due-date chip",
       "kills": "no solo-RPG demo indexes its own instructions as campaign content"
+    },
+    {
+      "id": "solo-rpg-board-states-undeclared",
+      "suite": "unit",
+      "why": "the npc-faction board grouped nothing because no {seq ...} declared its factions; delete the pill and it reverts silently, since a base with no lanes still renders",
+      "file": "guide/solo-rpg/npc-faction/npc-faction-demo.opml",
+      "find": "<outline text=\"{seq Cast: UNDERCITY FREEPORT ASHCHURCH | GONE}\"/>",
+      "replace": "",
+      "kills": "a demo board that groups by a status column declares the states it groups into"
+    },
+    {
+      "id": "solo-rpg-check-scoped-to-nothing",
+      "suite": "unit",
+      "why": "a check expression is the OTHER place an aggregation is written, and the first draft of the placement census could not see it at all; a check scoped to nothing passes vacuously and reads as a healthy green tick",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;",
+      "replace": "&quot;val&quot;:&quot;sum(encumbrance) &lt;= 10&quot;",
+      "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
     }
   ]
 }

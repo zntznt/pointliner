@@ -118,6 +118,7 @@ them:
 Region: The Fenlands (west of the ford), {= sum(supplies)} rations spent
   Hex 0101: ... {prop supplies: 1}
   Hex 0102: ... {prop supplies: 2}
+  Hex 0103: ... {prop supplies: 3}
 ```
 
 `{= sum(supplies)}` **adds up the `supplies` property of the region's direct children**, the
@@ -129,7 +130,7 @@ on the Vale point reaches every hex at any depth. The demo carries both, so you 
 difference. The demo also declares a starting pool as a variable:
 
 ```
-{rations := 10}
+{rations := 14}
 ```
 
 so you can show spent-against-total, `{= sum(supplies, subtree)} of {rations}`, at a glance. Other

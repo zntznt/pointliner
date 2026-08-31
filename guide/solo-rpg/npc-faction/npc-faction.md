@@ -20,17 +20,18 @@ for **NPC, Faction, Disposition and Tie**. Click any cell to edit it. Add a row 
 the bottom, or press `Alt+Shift+Down` on a cell to insert one. This is your living roster:
 everyone the character has met, in one place you can sort and search.
 
-Two settings make the same rows a board, and both are needed. First the **Faction** column is
-marked as a **Status** column: put the cursor in a Faction cell and press `Alt+R` until the column
-shows as Status, or use the column menu's **Show as**. Second, the factions have to be **declared
-states**, which is one pill sitting above the base:
+One thing makes the same rows a board: the factions have to be **declared states**, which is a
+single pill sitting above the base:
 
 ```
 {seq Cast: UNDERCITY FREEPORT ASHCHURCH | GONE}
 ```
 
-Capitals are only a reading convention; a value becomes a lane because it is a declared state, and
-an undeclared faction lands in a "No state" lane no matter how you spell it. A sequence needs at
+Once they are declared, Pointliner reads the Faction column as a **Status** column on its own, so
+there is no second setting to remember. (You can still mark it by hand, and the demo does, so the
+file says what it means: put the cursor in a Faction cell and press `Alt+R`, or use the column
+menu's **Show as**.) Capitals are only a reading convention; a value becomes a lane because it is a
+declared state, and an undeclared faction lands in a "No state" lane no matter how you spell it. A sequence needs at
 least one state on each side of the bar, and everything right of the bar reads as finished, which
 is what `GONE` is for: an NPC who is dead, fled or written out.
 
@@ -68,14 +69,18 @@ so the mechanical and the fictional stay in the same log, the same as the journa
   Search is for what lives outside the base: tag scene beats with a thread like `#relic` and click
   the tag to pull up every beat that touches it.
 - **Grow it:** add a column (`Alt+Shift+Right` on a cell) for a Location or a Debt, and mark a
-  Date column as **Date** to unlock the Calendar view for scheduled reprisals. Status is what gates
-  the Board; Date is what gates the Calendar.
+  Date column as **Date** to unlock the Calendar view for scheduled reprisals. Until a column is
+  marked that way the Calendar button stays dimmed, as it is in this demo. Status is what gates the
+  Board; Date is what gates the Calendar.
 
 The whole roster is one branch of one document. Delete the parts you do not want, rename the
 factions to yours, and it is your campaign's tracker.
 
-Once your cast lives here, you can **roll on it**: tag the people `#npc` and a `{roll: #npc}` pill
-draws a random one when you need to know who shows up. [The living oracle](../living-oracle/living-oracle.md)
-turns this roster into a solo-play oracle that draws from your own campaign.
+You can also **roll on your cast**, with one caveat worth knowing: `{roll: ...}` draws a whole
+**point**, and base rows are not points, so it cannot pick a row out of the table. It draws from
+the per-NPC points you keep beside the base, the ones the scene beats link to. Tag those `#npc` and
+a `{roll: #npc}` pill tells you who shows up.
+[The living oracle](../living-oracle/living-oracle.md) turns that habit into a solo-play oracle
+that draws from your own campaign.
 
 **Back to:** [Solo RPG guides](../README.md) · [the guide](../../README.md).

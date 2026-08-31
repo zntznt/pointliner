@@ -30034,6 +30034,56 @@ test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)
   assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
 });
 
+test('a demo board that groups by a status column declares the states it groups into', () => {
+  // The npc-faction board grouped nothing: lanes come from knownStates(), which is the four
+  // built-ins plus whatever a sequence pill declares, and the demo declared none, so all four NPCs
+  // sat in a "No state" lane while the guide explained that CAPITALS made them lanes. Delete the
+  // {seq ...} pill again and the board silently reverts -- silently, because a base with no lanes
+  // still renders. So the declaration is pinned to the base that needs it.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  const BUILT_IN = new Set(['todo', 'next', 'waiting', 'done']);
+  let boards = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    const xml = readFileSync(file, 'utf8');
+    // every state this document declares, via the one form that registers
+    const declared = new Set();
+    for (const m of xml.matchAll(/text="([^"]*)"/g)) {
+      const t = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      for (const b of t.matchAll(/\{seq\s+([^}]*)\}/g)) {
+        const d = c.seqDeclParts('seq ' + b[1]);
+        if (d) for (const st of d.states) declared.add(String(st).toLowerCase());
+      }
+    }
+    // a base opening on a board, grouped by a column: every value in that column must be a state
+    for (const tag of xml.matchAll(/<outline\b([^>]*?)\/?>/g)) {
+      const attrs = tag[1];
+      if (!/_type="base"/.test(attrs)) continue;
+      const view = /_view="([^"]*)"/.exec(attrs);
+      if (!view || !/board/.test(view[1])) continue;
+      const gb = /groupBy&quot;:(\d+)/.exec(view[1]);
+      if (!gb) continue;
+      const col = Number(gb[1]);
+      const text = (/text="([^"]*)"/.exec(attrs) || [, ''])[1].replace(/&#10;/g, '\n').replace(/&quot;/g, '"');
+      const rows = text.split('\n').slice(2).filter(r => r.trim().startsWith('|'));
+      boards++;
+      for (const r of nonEmpty(rows, `${name} board rows`)) {
+        const cells = r.split('|').slice(1, -1).map(x => x.trim());
+        const v = (cells[col] || '').toLowerCase();
+        if (!v || BUILT_IN.has(v) || declared.has(v)) continue;
+        bad.push(`${name}: board groups by "${cells[col]}" but no {seq ...} declares it, so that card lands in "No state"`);
+      }
+    }
+  }
+  assert.ok(boards >= 1, `the guard must find a board-view base, found ${boards}`);
+  assert.deepEqual([...new Set(bad)], [], 'a board must declare the states it groups into:\n  ' + [...new Set(bad)].join('\n  '));
+});
+
 test('no solo-RPG demo indexes its own instructions as campaign content', () => {
   // campaign-clocks shipped a headline "search the thread tag" board that returned 16 points, of
   // which five were the demo's own instructions and one of its due dates sat on a prose header, so
@@ -30252,11 +30302,18 @@ test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it
       if (m[0] === '</outline>') { if (stack.length > 1) stack.pop(); continue; }
       const attrs = m[1], selfClosing = m[2] === '/';
       const t = /text="([^"]*)"/.exec(attrs);
+      const props = /_props="([^"]*)"/.exec(attrs);
+      const checks = [];
+      if (props) {
+        const raw = props[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        try { for (const pr of JSON.parse(raw)) if (pr && pr.key === 'check' && pr.val) checks.push(String(pr.val)); }
+        catch { checks.push(raw); }   // unparseable is still worth scanning rather than silently skipping
+      }
       const node = {
         text: (t ? t[1] : '')
           .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
           .replace(/&#10;/g, '\n').replace(/&amp;/g, '&'),
-        kids: [],
+        checks, kids: [],
       };
       stack[stack.length - 1].kids.push(node);
       if (!selfClosing) stack.push(node);
@@ -30284,7 +30341,11 @@ test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it
   const orphans = [];
   for (const { name, file } of demos) {
     const walk = node => {
-      for (const agg of live(node.text).matchAll(/\{=\s*(sum|avg|count|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*([a-z]+)\s*)?\)/g)) {
+      // Both halves: the {= ...} readout AND the check expression carried in _props, which is the
+      // other place an aggregation is written and which the first draft of this census could not
+      // see at all -- a check scoped to nothing passes vacuously and reads as a healthy green tick.
+      const exprs = live(node.text) + ' ' + (node.checks || []).join(' ');
+      for (const agg of exprs.matchAll(/(?:\{=\s*)?\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*([a-z]+)\s*)?\)/g)) {
         const [, fn, prop, scope] = agg;
         rollups++;
         const found = below(node, scope === 'subtree');

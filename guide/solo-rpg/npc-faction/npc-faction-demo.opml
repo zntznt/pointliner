@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0"><head><title>NPC and faction tracker</title></head><body>
 <outline text="# NPC and faction tracker">
-  <outline text="A living cast for a solo campaign. The base below is an interactive table (a /base) that opens on its Board view, grouped into faction lanes: click a cell to edit, and use the switcher at its top left for Table, Cards or Calendar. See npc-faction.md for the walkthrough."/>
+  <outline text="A living cast for a solo campaign. The base below is an interactive table (a /base) that opens on its Board view, grouped into faction lanes. Switch to Table at its top left to edit cells, or to Cards. Calendar stays dimmed until a column is marked as a Date, and this cast has none. See npc-faction.md for the walkthrough."/>
   <outline text="## The cast">
     <outline text="Two things make the Board group by faction. The Faction column is marked as a Status column, and the factions themselves are declared as a state set by the pill below. Capitals are only a reading convention: a value becomes a lane because it is a declared state, so an undeclared faction lands in a &quot;No state&quot; lane instead. Drag a card (or Alt+Left/Right on a focused card) to move an NPC between factions as loyalties shift."/>
     <outline text="{seq Cast: UNDERCITY FREEPORT ASHCHURCH | GONE}"/>

@@ -121,7 +121,7 @@ is flagged.
 
 Try it. The starting pack sums to 10, so the check passes. The demo has a spare line telling you
 to add an `Iron cook pot {prop weight: 2}` into the pack. Do that (or bump any weight up by one) and
-the total climbs to 11, `sum(weight) <= 10` becomes false, and the Carried load chip goes red.
+the total climbs to 12, `sum(weight) <= 10` becomes false, and the Carried load chip goes red.
 Drop something and it clears. The rule is written once and enforces itself forever after, exactly
 like the derived math, except the answer it computes is *pass or fail* instead of a number.
 
