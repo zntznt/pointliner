@@ -6,9 +6,9 @@
 
 Cairn is a rules-light OSR adventure game by Yochai Gal, built for the classic loop of careful
 dungeon exploration, risky saves and hard-won treasure. Its rules are released free under an open
-Creative Commons licence, which is what lets this guide adapt the system into Pointliner's points and pills
-and live pills: your saves, damage, inventory and the game's many little tables all roll and compute
-in the same file you keep your journal in.
+Creative Commons licence, which is what lets this guide adapt the system into Pointliner's points and live
+pills: your saves, damage, inventory and the game's many little tables all roll and compute in the
+same file you keep your journal in.
 
 Cairn has no built-in oracle (it expects a referee), so on your own you pair it with an oracle: the
 [Oracle play](../oracle-play/oracle-play.md) case gives you a yes/no oracle and a meaning table in

@@ -43,9 +43,12 @@ Between scenes, roll to see whether events break in. Keep a **chaos** variable f
 things are, then let it weight an interrupt roll. Higher chaos, more interruptions.
 
 ```
-chaos = 3                        (a variable, 1 = calm … 5 = chaos)
+{chaos := 3}                     (a variable, 1 = calm … 5 = chaos)
 {proceed | interrupted {= chaos}}
 ```
+
+`{name := value}` is the declaration; a bare `chaos = 3` is ordinary text and declares nothing, so
+the roll below it would have no weight to read.
 
 The `{= chaos}` weight is read at roll time, so raising `chaos` to 5 makes "interrupted" more
 likely without editing the roll. That weight-is-an-expression move is the
@@ -116,12 +119,14 @@ happened* on it.
 A single played beat, start to finish:
 
 1. Ask: `@` Oracle, "Likely + swing" → **Yes, but**.
-2. It is a yes with a catch, but what catch? Click `{meaning}` → "protect a debt".
+2. It is a yes with a catch, but what catch? Click the meaning table's two picks in the demo, or
+   `{meaning}` if you named the rules yourself → "protect a debt".
 3. Read it: the merchant will help, but only to clear a debt he owes someone worse.
 4. End the scene, bump `chaos` if it went sideways, then roll `{proceed | interrupted {= chaos}}`.
 5. If interrupted, pull `{shuffle: …threads…}` to see which thread barges in.
 
-The demo has these pieces wired so you can click through the loop.
+The demo has these pieces wired so you can click through the loop, with the meaning table in its
+two-inline-picks form rather than as a named rule.
 
 ---
 

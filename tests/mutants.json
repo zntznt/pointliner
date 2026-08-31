@@ -2961,6 +2961,15 @@
       "find": "name a rule first (`{rule creature: ogre | dragon}`, or the same\n> line without the keyword inside the **`@` → Grammar** dialog)",
       "replace": "name a rule first (`creature: ogre | dragon`)",
       "kills": "no guide tells the reader to NAME a rule and then shows the form that names nothing"
+    },
+    {
+      "id": "solo-rpg-rule-declared-above-its-parts",
+      "suite": "unit",
+      "why": "a rule pill promoted before the rules it calls freezes {name?} markers into its stored result, so the demo about named rules opened reading \"tavern The {adjective?} {noun?}\" until someone clicked it",
+      "file": "guide/solo-rpg/generators/generators-demo.opml",
+      "find": "          <outline text=\"{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}\" _id=\"gen00023\"/>\n          <outline text=\"{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}\" _id=\"gen00024\"/>\n          <outline text=\"{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}\" _id=\"gen00025\"/>\n          <outline text=\"{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}\" _id=\"gen00022\"/>",
+      "replace": "          <outline text=\"{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}\" _id=\"gen00022\"/>\n          <outline text=\"{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}\" _id=\"gen00023\"/>\n          <outline text=\"{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}\" _id=\"gen00024\"/>\n          <outline text=\"{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}\" _id=\"gen00025\"/>",
+      "kills": "no demo declares a rule above a rule it calls, which freezes an unresolvable preview"
     }
   ]
 }

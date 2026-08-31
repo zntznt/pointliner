@@ -30733,6 +30733,56 @@ test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it
   assert.deepEqual(orphans, [], 'a rollup totals the points BELOW it; these have none:\n  ' + orphans.join('\n  '));
 });
 
+test('no demo declares a rule above a rule it calls, which freezes an unresolvable preview', () => {
+  // The generators demo -- the page whose whole subject is named rules -- opened with
+  // "tavern  The {adjective?} {noun?}" on every fresh load, because its composite rule sat ABOVE the
+  // three rules it calls. makeGrammarRoll runs the rule ONCE at creation and stores the result, and
+  // promoteLoadedShorthand walks the tree top-down, so a rule promoted before its parts expands
+  // against a rule set that does not have them yet and freezes the {name?} markers into the record.
+  // One click fixes it, which is exactly why it survives review: whoever clicks it sees it working.
+  // The app knows this shape (#1361 gave the CONDITIONAL case its own empty-state copy); a rule pill
+  // still shows the raw markers, so a demo must not walk into it.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(fnBody(src, 'makeGrammarRoll').includes('runGrammar(def, origin, null, null, deps)'),
+    'makeGrammarRoll no longer expands once at creation; re-check whether ordering still matters');
+  assert.ok(fnBody(src, 'promoteLoadedShorthand').includes('for (const c of node.children || []) walk(c);'),
+    'the load promotion no longer walks children in order; re-check whether ordering still matters');
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+
+  let calls = 0;
+  const bad = [];
+  for (const { name, file } of demos) {
+    // Backticked spans are prose about the syntax, not declarations -- they promote to nothing.
+    const xml = readFileSync(file, 'utf8').replace(/`[^`]*`/g, ' ');
+    const at = new Map();                       // rule name -> position of its FIRST declaration
+    const decls = [];
+    for (const m of xml.matchAll(/\{rule\s+([A-Za-z_][\w.]*)\s*:/g)) {
+      const rule = m[1].toLowerCase();
+      if (!at.has(rule)) at.set(rule, m.index);
+      // the declaration's body: brace-matched from its opening, so a nested {call} cannot end it
+      let d = 0, end = m.index;
+      while (end < xml.length) { if (xml[end] === '{') d++; else if (xml[end] === '}' && --d === 0) break; end++; }
+      decls.push({ rule, at: m.index, body: xml.slice(m.index, end + 1) });
+    }
+    for (const d of decls)
+      for (const r of d.body.matchAll(/\{([A-Za-z_][\w.]*)(?:\.[a-z]+)?\}/g)) {
+        const ref = r[1].toLowerCase();
+        if (!at.has(ref) || ref === d.rule) continue;
+        calls++;
+        if (at.get(ref) > d.at)
+          bad.push(`${name}: {rule ${d.rule}} calls {${ref}}, which is declared BELOW it, so the ${d.rule} pill opens showing {${ref}?}`);
+      }
+  }
+  assert.ok(calls >= 3, `the census must see rules calling rules, saw ${calls}`);
+  assert.deepEqual([...new Set(bad)], [], 'a rule pill that opens unresolved:\n  ' + [...new Set(bad)].join('\n  '));
+});
+
 test('a solo-RPG doc that quotes a check quotes the one its demo actually carries', () => {
   // The check lives in the demo's _props, invisible in the outline text, so prose about it drifts
   // silently: character-sheet's carry limit became `{= 8 + might}` and the demo's own how-to still

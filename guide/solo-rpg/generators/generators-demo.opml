@@ -14,10 +14,10 @@
       </outline>
       <outline text="## Places (named rules and modifiers)" _id="gen00020">
         <outline text="Name a tavern by referencing a rule that references two more: {tavern}. Rules are defined below by points that read `{rule rulename: option | option}`." _id="gen00021">
-          <outline text="{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}" _id="gen00022"/>
           <outline text="{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}" _id="gen00023"/>
           <outline text="{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}" _id="gen00024"/>
           <outline text="{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}" _id="gen00025"/>
+          <outline text="{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}" _id="gen00022"/>
         </outline>
         <outline text="Modifiers reshape a reference with a dotted suffix. Capitalize the sign that hangs outside: {animal.cap}. Add the right article so it reads naturally: you push open the door to {animal.a}. Shout the name to the room: {noun.upper}!" _id="gen00030"/>
         <outline text="Chain modifiers left to right. A weathered sign, painted long ago, still reads: {adjective.title}. Pluralize a beast for the tavern's cellar of pickled {animal.lower.s}." _id="gen00031"/>

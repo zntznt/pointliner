@@ -88,6 +88,7 @@ One small touch worth stealing from the demo:
 
 - A point reading `It is {= asdate(today)}.` renders the current in-world date and follows the
   clock as you advance it: a campaign header that is never stale, made of one math pill.
+
 And one worth adding yourself, which the demo does not carry: keep real-world bookkeeping out of
 world time by using things the calendar never touches. Tag session entries `#session-12`, or give
 them a free property like `played: 2026-07-12`. A free property is just text, so it never collides
@@ -119,6 +120,10 @@ Open the [demo file](campaign-calendar-demo.opml):
   up the list. That is the whole heartbeat.
 - **Draw a road event.** The travel deck is a `{shuffle: …}` pill; click it to draw the day's
   event without repeats.
+- **Read the board.** Under the threads sits `{query: #thread}`, a live list of every thread in
+  the document. Advance the clock and it re-sorts itself with them, so the board is never a copy
+  you maintain. It is the same search the [clocks case](../campaign-clocks/campaign-clocks.md)
+  stars in the search bar, embedded in the document instead.
 - **Journal the day.** Type `/journal` and the entry lands under the world's date. Then advance
   the clock again and journal again; the chronicle grows in world time.
 - **Open File, Custom calendar** to see how the world is defined, and edit it live; the dialog
