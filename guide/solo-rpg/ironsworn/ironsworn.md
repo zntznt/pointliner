@@ -22,7 +22,8 @@ game and want it running in Pointliner.
 > its publisher; this is an **adaptation** (the moves and oracle tables are restructured into
 > Pointliner points and `{…}` pills), and **changes have been made** from the original
 > layout and presentation. "Ironsworn" is used here descriptively to name the game; no logo or
-> artwork is reproduced. This guide itself is offered under the same CC BY 4.0 terms.
+> artwork is reproduced. This guide itself is offered under the same CC BY 4.0 terms, which is
+> separate from Pointliner's own AGPLv3 licence: that covers the app, not this game content.
 
 ---
 

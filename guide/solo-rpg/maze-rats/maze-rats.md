@@ -22,21 +22,28 @@ rolling in Pointliner.
 > <https://creativecommons.org/licenses/by/4.0/>. **Changes have been made** (the tables and
 > procedures are restructured into Pointliner points and `{…}` pills). "Maze Rats" is
 > used descriptively to name the game; no logo or artwork is reproduced. This guide itself is
-> offered under the same CC BY 4.0 terms.
+> offered under the same CC BY 4.0 terms, which is separate from Pointliner's own AGPLv3 licence:
+> that covers the app, not this game content.
 
 ---
 
 ## A character in one roll
 
-A Maze Rats character is about as fast as it gets: your abilities come from a single spread of dice
-and everything else is a quick roll or a table. The three ability categories are rolled and the best
-stat is the highest; roll them and note the modifiers (Maze Rats derives a small plus-or-minus for
-each). Roll the pool with one pill:
+A Maze Rats character is about as fast as it gets: a spread of six-siders, a health roll, and
+everything after that is a table. One pill rolls the whole spread, and a dice pill shows **every
+face it rolled** alongside the total, so you read the individual dice off it and assign them the way
+the book says:
 
 ```
 Roll your stats: {6d6}
 Health: {1d6}   then set it: {hp := 4}
 ```
+
+`{6d6}` reads out as `6d6 3 3 6 3 6 2 = 23`, the faces in the order they fell. If you would rather
+have six independent results with no total attached, `{6x: {1d6}}` repeats one die six times
+instead. The repeat form takes any template, not just a die (see
+[Do it N times](../../generating-text.md#do-it-n-times-repeat)); [Ironsworn](../ironsworn/ironsworn.md)
+uses the same `{2x: {1d10}}` for its pair of challenge dice.
 
 Put your final modifiers in variables so saves read them:
 

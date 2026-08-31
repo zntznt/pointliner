@@ -81,7 +81,10 @@ its author are credited in that example's guide. Where a system is **not** openl
 the functional idea is adapted and the original text is linked rather than reproduced.
 
 Every system referenced here happens to be openly licensed, so the example may reproduce more,
-within that licence's terms and with its attribution:
+within that licence's terms and with its attribution. Each of those licences covers **that game's
+material only**; Pointliner itself is under the **GNU AGPLv3** ([LICENSE](../../LICENSE)), and
+adapting a game into a guide here does not put the app under the game's licence or the game under
+the app's:
 
 - The **Ironsworn** example adapts the Ironsworn System Reference Document by **Shawn Tomkin**,
   used under **CC BY 4.0** (<https://creativecommons.org/licenses/by/4.0/>).

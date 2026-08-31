@@ -166,7 +166,9 @@ Modifiers **chain**, left to right:
 ```
 
 > Modifiers attach to a **rule or variable name**, not to a bare `{a|b}` or a dice roll. If you
-> want a modified random pick, name a rule first (`creature: ogre | dragon`) then `{creature.a}`.
+> want a modified random pick, name a rule first (`{rule creature: ogre | dragon}`, or the same
+> line without the keyword inside the **`@` → Grammar** dialog) then `{creature.a}`, which comes out
+> "an ogre" or "a dragon".
 
 *Known limits (mostly heuristics, not a dictionary): `a`/`an` looks at the first letter
 ("an hour" / "a university" come out wrong); `.s` and `.ed` know the **common irregulars**
@@ -330,7 +332,9 @@ against the document's variables.
 ## Items with fields: `{item.field}`
 
 Sometimes a picked thing has *properties*. Define an item as a set of dotted sub-rules, then read a
-field:
+field. The block below is what you paste into the **`@` → Grammar** dialog, one rule per line; typed
+straight into a point, each line needs the keyword, `{rule sword.damage: 1d8}`, or it stays ordinary
+text and registers nothing:
 
 ```
 weapon: sword | axe

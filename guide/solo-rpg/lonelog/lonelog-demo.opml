@@ -3,7 +3,7 @@
   <head><title>Lonelog-style solo journal (Pointliner demo)</title></head>
   <body>
     <outline text="Lonelog-style solo journal" _id="llg00001">
-      <outline text="A demo of a Lonelog-inspired session log in Pointliner. Markers: &gt; do, ? ask, d: roll, -&gt; answer, =&gt; consequence. The {2d6} rolls are live, click one to re-roll. Lonelog notation by Roberto Bisceglie (CC BY-SA 4.0): https://lonelog.itch.io/lonelog" _id="llg00002"/>
+      <outline text="A demo of a Lonelog-inspired session log in Pointliner. Markers: &gt; do, ? ask, d: roll, -&gt; answer, =&gt; consequence. The {2d6} rolls are live, click one to re-roll. Lonelog notation by Roberto Bisceglie (CC BY-SA 4.0, separate from Pointliner's AGPLv3 app licence): https://lonelog.itch.io/lonelog" _id="llg00002"/>
       <outline text="Scene: The nervous merchant" _id="llg00010">
         <outline text="&gt; I sit down across from the merchant and ask about the back room." _id="llg00011"/>
         <outline text="? Is he hiding something?  (likely)" _id="llg00012"/>

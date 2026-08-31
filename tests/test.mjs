@@ -24,7 +24,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { brotliDecompressSync } from 'node:zlib';
@@ -30088,6 +30088,39 @@ test('the solo-RPG docs name the licence the repository actually ships', () => {
   assert.deepEqual(wrong, [], 'LICENSE is AGPLv3; these say otherwise:\n  ' + wrong.join('\n  '));
 });
 
+test('every solo-RPG doc that names a CC licence also says which licence the APP is under', () => {
+  // The other half of the licence guard above. Three guides adapt an openly-licensed game and two
+  // of them ended with "This guide itself is offered under the same CC BY 4.0 terms" and stopped
+  // there, which reads as though the CC terms reach the repository. Only cairn carried the sentence
+  // that says they do not. The demos matter more, not less: an .opml a reader was handed carries no
+  // other notice at all, so the file that travels alone is the file that has to be complete.
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  assert.ok(/GNU AFFERO GENERAL PUBLIC LICENSE/i.test(readFileSync(resolve(repo, 'LICENSE'), 'utf8')),
+    'LICENSE is no longer AGPLv3; this guard and every notice it checks need rewriting');
+
+  const dir = resolve(repo, 'guide', 'solo-rpg');
+  const files = [];
+  const walk = d => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const full = resolve(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(md|opml)$/.test(e.name)) files.push({ n: relative(dir, full), t: readFileSync(full, 'utf8') });
+    }
+  };
+  walk(dir);
+  nonEmpty(files, 'solo-rpg documentation files');
+
+  let claiming = 0;
+  const silent = [];
+  for (const { n, t } of files) {
+    if (!/\bCC BY(?:-SA)?\b|Creative Commons/i.test(t)) continue;   // nothing borrowed, nothing to disentangle
+    claiming++;
+    if (!/\bAGPL/i.test(t)) silent.push(`${n}: names a Creative Commons licence and never says Pointliner is AGPLv3`);
+  }
+  assert.ok(claiming >= 6, `the census must find the CC-licensed docs, found ${claiming}`);
+  assert.deepEqual(silent, [], "a borrowed licence with no word on the app's own:\n  " + silent.join('\n  '));
+});
+
 test('no solo-RPG guide teaches a progress token the renderer leaves as plain text', () => {
   // ironsworn.md offered `[3/10]` as a "manual" progress cookie. COOKIE_ANY accepts [/] and [%] with
   // an optional scope word or digit INSIDE the brackets, and CLOCK_RE needs the `o` prefix, so a
@@ -30804,6 +30837,53 @@ test('no solo-RPG guide teaches the bare rule form that registers nothing', () =
     .some(block => block.includes('{rule '));
   assert.deepEqual(teach.filter(n => !fenced(n)), [],
     'these guides teach named tables and must show the {rule ...} form in a fenced block');
+});
+
+test('no guide tells the reader to NAME a rule and then shows the form that names nothing', () => {
+  // The wider half of the solo-RPG rule census, which was scoped to one folder while the canonical
+  // page carried the same trap: "If you want a modified random pick, name a rule first
+  // (`creature: ogre | dragon`)". Typed into a point that is ordinary text and `{creature.a}` never
+  // resolves. Scoped to the INSTRUCTION rather than the shape, because the bare form is the real
+  // syntax of the `@` -> Grammar dialog -- generating-text and cookbook show it correctly a dozen
+  // times, and a census over the shape alone would have to exempt all of them by guesswork.
+  const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const walk = (d, out = []) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = resolve(d, e.name);
+      if (e.isDirectory()) walk(p, out); else if (e.name.endsWith('.md')) out.push(p);
+    }
+    return out;
+  };
+  const files = nonEmpty(walk(resolve(repo, 'guide')), 'user-guide markdown files');
+  const TELLS = /\b(name|define|declare|make|create|write)\w*\b[^.]{0,40}\brule\b/i;
+
+  let told = 0;
+  const bad = [];
+  for (const f of files) {
+    const name = relative(repo, f);
+    // Mask code spans before splitting into sentences: `sword.damage: 1d8` is full of sentence
+    // enders, and a split through one puts the instruction in a different sentence from the form
+    // it is instructing about -- which is the one pairing this guard exists to see.
+    const spans = [];
+    const masked = readFileSync(f, 'utf8').replace(/`[^`\n]+`/g, m => `\u0000${spans.push(m) - 1}\u0000`);
+    for (const raw of masked.split(/(?<=[.!?])\s+|\n\n+/)) {
+      if (!TELLS.test(raw)) continue;
+      told++;
+      const sentence = raw.replace(/\u0000(\d+)\u0000/g, (_, i) => spans[Number(i)]).replace(/\s+/g, ' ');
+      // Two ways to be right: say where the bare form goes (the dialog), or show the keyword.
+      if (/dialog|\{rule\b|stays ordinary text|registers nothing|plain text/i.test(sentence)) continue;
+      for (const m of sentence.matchAll(/`([^`\n]+)`/g)) {
+        const cand = m[1].trim();
+        // declaration-shaped, and legal the moment it is wrapped -- which is exactly the trap
+        if (!/^[A-Za-z_][A-Za-z0-9_.-]*\s*:\s*\S.*\|/.test(cand)) continue;
+        if (/^(rule|seq|prop|date|query|count|roll|shuffle|cycle|once|stopping|markov|oracle)\b/i.test(cand)) continue;
+        if (!c.ruleDeclParts('rule ' + cand)) continue;
+        bad.push(`${name}: "${sentence.slice(0, 110)}" -- \`${cand.slice(0, 50)}\` registers nothing typed into a point`);
+      }
+    }
+  }
+  assert.ok(told >= 5, `the census must find sentences that tell the reader to name a rule, found ${told}`);
+  assert.deepEqual(bad, [], 'an instruction to name a rule, shown in the form that does not:\n  ' + bad.join('\n  '));
 });
 
 test('the oracle near-miss cue names bands that exist', () => {

@@ -2943,6 +2943,24 @@
       "find": "campaign calendar](../campaign-calendar/campaign-calendar.md)",
       "replace": "campaign calendar](../campaign-calendar/campaign_calendar.md)",
       "kills": "user-guide link integrity: every relative link resolves and every anchor is a real heading"
+    },
+    {
+      "id": "solo-rpg-cc-notice-swallows-the-app",
+      "suite": "unit",
+      "why": "an .opml handed to a reader carries no notice but its own, so a demo that offers itself under CC and never names the app's AGPLv3 reads as though the game's licence reaches the repository",
+      "file": "guide/solo-rpg/maze-rats/maze-rats-demo.opml",
+      "find": "This adaptation is offered under the same CC BY 4.0 terms, separate from Pointliner's AGPLv3 app licence. ",
+      "replace": "",
+      "kills": "every solo-RPG doc that names a CC licence also says which licence the APP is under"
+    },
+    {
+      "id": "guide-names-a-rule-bare",
+      "suite": "unit",
+      "why": "the canonical generating-text page told the reader to name a rule and showed the bare body, which typed into a point stays ordinary text so the {creature.a} it sets up never resolves",
+      "file": "guide/generating-text.md",
+      "find": "name a rule first (`{rule creature: ogre | dragon}`, or the same\n> line without the keyword inside the **`@` → Grammar** dialog)",
+      "replace": "name a rule first (`creature: ogre | dragon`)",
+      "kills": "no guide tells the reader to NAME a rule and then shows the form that names nothing"
     }
   ]
 }
