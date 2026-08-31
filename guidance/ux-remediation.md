@@ -6574,3 +6574,69 @@ the untouched clean pill, and that one click really heals it. Five kill-mutation
 The census earns its own note: its first draft asserted only that `unresolvedNote(` appeared in each
 renderer, and its mutation **survived** -- deleting the line that puts the note in the tip left the
 call in place. A call site is not a use; each row now asserts computed, consumed and marked.
+
+---
+
+## UXP-333 -- the concept guide has no headings, in a 97-topic reference (#1552)
+
+**Status: open.** P3. Found while driving the guide panel for #1552; not closed by that change.
+
+### The defect, driven
+
+`document.querySelectorAll('#io-card h1,h2,h3,h4,h5,h6,[role="heading"]')` returns **[]** with the
+guide open. `.guide-entry-title` is a `div` and `.guide-cat-badge` is a `div`, so the AX tree reads
+them as one merged run (`text: Getting around Hashtags`). The ten nav category headers
+(`.guide-nav-group`) are bare `div`s too, so the nav snapshot is a flat `text: Shortcuts` then five
+buttons, `text: Getting around` then 13 buttons, with no grouping and no heading.
+
+Heading navigation is a primary way to move through reference content, and in the app's largest
+reference surface it finds nothing.
+
+### Why it was not closed in #1552
+
+Both candidate fixes touch CSS as well as markup, and one is a cross-surface decision:
+`guidance/design-language.md` describes `.guide-nav-group` as the shared **eyebrow recipe**
+(UXP-154) used on other surfaces, so changing its element is not local to the guide. The options are
+(a) `role="heading" aria-level` on `.guide-entry-title` and `.guide-nav-group`, or (b) real `<h2>` /
+`<h3>` with the type ramp restated. (b) is the better AX outcome and the larger diff.
+
+---
+
+## UXP-334 -- the builder's See-also chips drop focus to `<body>` (#1552)
+
+**Status: open.** P3. Found while driving #1552; a fix was attempted, measured, and rejected.
+
+### The defect, driven
+
+Open the builder (`#btn-builder`), select the `@ Dice roll` row, focus the first
+`.guide-related-chip`, press Enter. The pane navigates ("Ready-made patterns" -> "All commands") and
+`document.activeElement` becomes **BODY**. The mouse path and the keyboard path also differ: a click
+ends on `DIV.builder-item.active`, Enter ends on BODY. The guide panel's own chips do not do this.
+
+### Why it was not closed in #1552
+
+The direct analogue of the guide's fix -- `renderBuilderPaneInto(...)` then
+`container.setAttribute('tabindex','-1'); container.focus();` -- **broke navigation outright**: with
+that patch a mouse click on the second chip left the title on "Ready-made patterns" instead of
+advancing. Something in the builder re-renders on focus and fights the naive fix. Whoever takes this
+must drive **both** paths, not just the keyboard one. Site: the
+`container.querySelectorAll('.guide-related-chip')` loop below `renderBuilderPaneInto`.
+
+---
+
+## UXP-335 -- Escape with a query means two things in two identical panels (#1552)
+
+**Status: open, and it is a decision, not a bug.** P1.
+
+### The split, driven
+
+Type `zzzqqq` into the guide search and press Escape once: the guide **closes** and the query is
+discarded. The File menu's keydown handler does the opposite on purpose --
+`if (onSearch && search.value) { search.value=''; fmApplySearch(''); return; }` -- so the first
+Escape **clears** and the second closes.
+
+Both are defensible and both were chosen deliberately. #826 made Escape-from-anywhere close the
+guide because "Esc, Esc, nothing happened" read as broken, and the essential shortcut row promises
+`Esc: close panel`. But the two panels are the same two-pane shape, and P1 says a key means the same
+thing everywhere, so one of them should give. Filed so the split is a recorded decision rather than
+an accident; no edit proposed either way.
