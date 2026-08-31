@@ -555,7 +555,7 @@
       "suite": "unit",
       "why": "a key with no row in the shortcuts reference is syntax-only at the floor (P2)",
       "file": "index.html",
-      "find": "{ id:'nav-panel',   essential:true, essSection:'Navigate', keys:['F6','\u21e7+F6'],     essLabel:'Go to the open panel (Footnotes, Linked from, Variables) and back' },",
+      "find": "{ id:'nav-panel',   essential:true, essSection:'Navigate', keys:['F6','⇧+F6'],     essLabel:'Go to the open panel (Footnotes, Linked from, Variables) and back' },",
       "replace": "{ id:'nav-panel',   essential:false, essSection:'Navigate', keys:['F6'],     essLabel:'Panels' },",
       "kills": "the ring covers the whole family"
     },
@@ -580,7 +580,7 @@
     {
       "id": "code-block-leaks-the-token",
       "suite": "unit",
-      "why": "the pure core already existed and the code block did not call it \u2014 a tested core proves nothing about its call site, which was the whole of #1463 A4",
+      "why": "the pure core already existed and the code block did not call it — a tested core proves nothing about its call site, which was the whole of #1463 A4",
       "file": "index.html",
       "find": "  return codeBlockParts(unfoldTokensIn(textForDisplay(node), node));",
       "replace": "  return codeBlockParts(textForDisplay(node));",
@@ -670,7 +670,7 @@
     {
       "id": "bib-import-does-not-opt-in",
       "suite": "unit",
-      "why": "the capability exists and the import does not ask for it \u2014 a tested core proves nothing about its call site",
+      "why": "the capability exists and the import does not ask for it — a tested core proves nothing about its call site",
       "file": "index.html",
       "find": "    node.footnotes = [{ key: mk, text: cite, stable: true }];",
       "replace": "    node.footnotes = [{ key: mk, text: cite }];",
@@ -735,8 +735,8 @@
       "suite": "unit",
       "why": "the disproved claim standing unretracted at the gate is what talks the next reader into rebuilding the bug",
       "file": "index.html",
-      "find": "  // #1496: `<body>` holds focus is NOT \"exactly the stranded state and nothing else\" \u2014 this comment",
-      "replace": "  // #1496: gated on `<body>` holding focus, which is exactly the stranded state \u2014 this comment",
+      "find": "  // #1496: `<body>` holds focus is NOT \"exactly the stranded state and nothing else\" — this comment",
+      "replace": "  // #1496: gated on `<body>` holding focus, which is exactly the stranded state — this comment",
       "kills": "the row-cursor Enter yields to any handler that already acted"
     },
     {
@@ -868,9 +868,9 @@
     {
       "id": "qbase-toast-glyph-name",
       "suite": "unit",
-      "why": "stripMd substitutes a glyph for a pill, so the toast named the point \u201cPayroll \ud83d\udda9\u201d -- a name no one can read or hear",
+      "why": "stripMd substitutes a glyph for a pill, so the toast named the point “Payroll 🖩” -- a name no one can read or hear",
       "file": "index.html",
-      "find": "    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill (\"Payroll \ud83d\udda9\"); displayText says what the row shows\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
+      "find": "    const title = (displayText(src) || '(untitled)').slice(0, 40);   // #1526: stripMd only glyphs a pill (\"Payroll 🖩\"); displayText says what the row shows\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "replace": "    const title = (stripMd(textForDisplay(src)) || '(untitled)').slice(0, 40);\n    const stillMatches = qbaseModel(node).qids.includes(nid);",
       "kills": "the query-base cell toast names the point the way the grid does"
     },
@@ -1115,7 +1115,7 @@
       "file": "index.html",
       "find": "      commitTodoDone(t, wasDone);   // #1502: a repeating point rolls forward here too",
       "replace": "      t.checked = todoDoneFromText(t.text);",
-      "kills": "rollForwardRepeat \u2014 wiring"
+      "kills": "rollForwardRepeat — wiring"
     },
     {
       "id": "bulk-cycle-door-bypasses-the-writer",
@@ -1124,7 +1124,7 @@
       "file": "index.html",
       "find": "      n.text = next; commitTodoDone(n, wasDone); changed++;",
       "replace": "      n.text = next; n.checked = todoDoneFromText(next); changed++;",
-      "kills": "rollForwardRepeat \u2014 wiring"
+      "kills": "rollForwardRepeat — wiring"
     },
     {
       "id": "row-cursor-door-bypasses-the-writer",
@@ -1133,7 +1133,7 @@
       "file": "index.html",
       "find": "    commitTodoDone(node, wasDone);   // #1502: the row cursor must mean what edit mode means",
       "replace": "    node.checked = todoDoneFromText(node.text);",
-      "kills": "rollForwardRepeat \u2014 wiring"
+      "kills": "rollForwardRepeat — wiring"
     },
     {
       "id": "writer-rolls-a-point-already-done",
@@ -1421,7 +1421,7 @@
       "file": "index.html",
       "find": "      more.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); expand(); } });",
       "replace": "      ;",
-      "kills": "the day\u2019s expand button and the day cell both answer the keyboard"
+      "kills": "the day’s expand button and the day cell both answer the keyboard"
     },
     {
       "id": "agenda-less-keyboard-dead",
@@ -1430,7 +1430,7 @@
       "file": "index.html",
       "find": "      less.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse(); } });",
       "replace": "      ;",
-      "kills": "the day\u2019s expand/collapse buttons answer the keyboard"
+      "kills": "the day’s expand/collapse buttons answer the keyboard"
     },
     {
       "id": "agenda-cell-drops-focus-on-enter",
@@ -1439,7 +1439,7 @@
       "file": "index.html",
       "find": "          createDatedPointOnInbox(ep);\n        });\n      }",
       "replace": "          ;\n        });\n      }",
-      "kills": "the day\u2019s expand button and the day cell both answer the keyboard"
+      "kills": "the day’s expand button and the day cell both answer the keyboard"
     },
     {
       "id": "agenda-cell-fires-behind-its-children",
@@ -1457,7 +1457,7 @@
       "file": "index.html",
       "find": "      more.addEventListener('mousedown', e => { e.preventDefault(); expand(); });   // #1508: and its twin",
       "replace": "      more.addEventListener('mousedown', e => { e.preventDefault(); _agExpandedDay = epochDay; repaint(); });",
-      "kills": "the day\u2019s expand/collapse buttons answer the keyboard"
+      "kills": "the day’s expand/collapse buttons answer the keyboard"
     },
     {
       "id": "zoomed-count-unqualified",
@@ -1777,7 +1777,7 @@
     {
       "id": "tab-close-pointer-steals-the-caret",
       "suite": "unit",
-      "why": "the \u2715 preventDefaults its mousedown to keep the caret; pulling focus into the strip undoes that",
+      "why": "the ✕ preventDefaults its mousedown to keep the caret; pulling focus into the strip undoes that",
       "file": "index.html",
       "find": "closeDocTab(name); });",
       "replace": "closeDocTab(name, { refocus: true }); });",
@@ -1804,7 +1804,7 @@
     {
       "id": "tab-cycle-stops-cycling",
       "suite": "unit",
-      "why": "clamping the arrows must not quietly clamp Ctrl/Cmd+Shift+] too -- \u00a73 calls that one a cycle",
+      "why": "clamping the arrows must not quietly clamp Ctrl/Cmd+Shift+] too -- §3 calls that one a cycle",
       "file": "index.html",
       "find": "  return tabs[(i + dir + tabs.length) % tabs.length];",
       "replace": "  return tabs[Math.max(0, Math.min(tabs.length - 1, i + dir))];",
@@ -2164,7 +2164,7 @@
     {
       "id": "strip-toggle-still-unreachable",
       "suite": "unit",
-      "why": "\u00a73 documents the toggle chord as the way to close the strip, and it could not",
+      "why": "§3 documents the toggle chord as the way to close the strip, and it could not",
       "file": "index.html",
       "find": "  if (shift && (k === 'i' || k === 'j')) return true;   // the strips' own toggles (Inbox, Journal)",
       "replace": "  ;",
@@ -3051,6 +3051,141 @@
       "find": "${stale || unresNote ? ' gr-stale' : ''}",
       "replace": "${stale ? ' gr-stale' : ''}",
       "kills": "a pill frozen before its rule existed says so, and one click heals it"
+    },
+    {
+      "id": "guide-pattern-covers-dropped",
+      "suite": "unit",
+      "why": "the PATTERN_RECIPES half of the drift guard: drop one pattern id from covers and the guard must notice, the way it failed to notice all ten for the whole life of the pattern palette",
+      "file": "index.html",
+      "find": "covers:['pat-dice','pat-contest',",
+      "replace": "covers:['pat-contest',",
+      "kills": "every PATTERN_RECIPES (@ pattern) id is covered"
+    },
+    {
+      "id": "guide-covers-phantom",
+      "suite": "unit",
+      "why": "the reverse direction: a covers id naming no command must fail. This is the exact shape that let covers:['deflist'] document a command that never existed",
+      "file": "index.html",
+      "find": "covers:['footnote','cite','link','image'],",
+      "replace": "covers:['footnote','cite','link','image','nosuchcommand'],",
+      "kills": "every covers:[…] id names a real command"
+    },
+    {
+      "id": "guide-base-formula-broken-ref",
+      "suite": "unit",
+      "why": "the base-formula examples must be COMPUTED, not merely present: break one reference and the engine must reject it",
+      "file": "index.html",
+      "find": "{ syn:'$3=$1*$2',               desc:'column formula: quantity times unit price, every row' },",
+      "replace": "{ syn:'$3=$1*nosuchname',       desc:'column formula: quantity times unit price, every row' },",
+      "kills": "every base-formula example in the guide computes through the real engine"
+    },
+    {
+      "id": "guide-literal-markdown",
+      "suite": "unit",
+      "why": "the arm that is a rendering bug, not a preference: guideBodyHtml implements no emphasis, so **bold** in a body reaches the reader as asterisks. This is the exact defect the guard was written from",
+      "file": "index.html",
+      "find": "body:\"Label points by topic, status or project",
+      "replace": "body:\"**Label** points by topic, status or project",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-british-spelling",
+      "suite": "unit",
+      "why": "AP is American English; a reintroduced British spelling must fail rather than drift back in the way six of them already had",
+      "file": "index.html",
+      "find": "desc:'10 kilometers in miles (6.214)'",
+      "replace": "desc:'10 kilometres in miles (6.214)'",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-key-glyph-in-entry",
+      "suite": "unit",
+      "why": "a concept entry spelling a key with a glyph reads ⌘ on a Mac and Ctrl elsewhere; ${MOD} in an example is how it happened three times",
+      "file": "index.html",
+      "find": "{ syn:'Ctrl/Cmd+O',           desc:'open a saved file' }",
+      "replace": "{ syn:`${MOD}+O`,           desc:'open a saved file' }",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-single-asterisk-emphasis",
+      "suite": "unit",
+      "why": "the markdown arm's OTHER half. The **bold** mutant above kills only the double-delimiter alternative; the single-asterisk one was guarded by a lookbehind that refused a `*` after a space, i.e. every emphasis in running prose. This is the exact `*itself*` the arm was written from, and it survived",
+      "file": "index.html",
+      "find": "carries a tag of its own,",
+      "replace": "carries a tag *of its own*,",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-british-in-title",
+      "suite": "unit",
+      "why": "a title is copy the reader reads in the left nav, and it was outside every AP arm; the same hole covered example syns",
+      "file": "index.html",
+      "find": "title:'Hashtags',",
+      "replace": "title:'Hashtags and colours',",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-glyph-typed-into-a-body",
+      "suite": "unit",
+      "why": "the glyph arm's parsed half, which no mutant reached: the registered one mutates a syn into a ${MOD} template and is killed by the SOURCE check, so a glyph typed straight into a body was unproven",
+      "file": "index.html",
+      "find": "followed by a word anywhere in a point",
+      "replace": "followed by a word (or press ⇧+3) anywhere in a point",
+      "kills": "AP house style is enforced in GUIDE copy"
+    },
+    {
+      "id": "guide-base-formula-wrong-value",
+      "suite": "unit",
+      "why": "the base-formula guard's real failure mode. The registered mutant breaks a NAME, which errors; a wrong REFERENCE does not. Org reads an out-of-range row as blank, so this computes 3 where the guide promises 10 and the old no-#ERR-and-something-moved check passed",
+      "file": "index.html",
+      "find": "syn:'@4$2=@2$2+@3$2'",
+      "replace": "syn:'@4$2=@2$2+@9$2'",
+      "kills": "every base-formula example in the guide computes through the real engine"
+    },
+    {
+      "id": "guide-orphaned-category",
+      "suite": "unit",
+      "why": "the failure concept-guide.md warns about twice and nothing pinned: a cat naming no CATS row makes openGuide render the entry in no group, so it vanishes from the nav while every other guard stays green",
+      "file": "index.html",
+      "find": "{ id:'collapse', cat:'getting-around',",
+      "replace": "{ id:'collapse', cat:'getting-arround',",
+      "kills": "every entry cat names a real CATS row"
+    },
+    {
+      "id": "guide-ctl-exemption-unearned",
+      "suite": "unit",
+      "why": "ctl: is read in exactly one place — it exempts an example from the uncovered-example ratchet — and nothing checked the control existed, so the exemption could be taken for free",
+      "file": "index.html",
+      "find": "ctl:'Show levels',",
+      "replace": "ctl:'Show levels but renamed',",
+      "kills": "names a control the app really shows"
+    },
+    {
+      "id": "guide-chord-code-binding-blind",
+      "suite": "unit",
+      "why": "the chord guard read only `.key`, so the whole `e.code` idiom (five Digit chord families) was invisible: a live binding read as unbound and a rotted one would not be caught",
+      "file": "index.html",
+      "find": "/^Digit[1-6]$/.test(e.code)",
+      "replace": "/^Digit[7-8]$/.test(e.code)",
+      "kills": "every keyboard chord the guide teaches is one the app actually binds"
+    },
+    {
+      "id": "guide-rollups-front-door-narrowed",
+      "suite": "unit",
+      "why": "the min/max front door, and the reason this guard has now been written three times. The original pinned a literal sentence and broke on backticking; the fix over-corrected to 'does min appear anywhere in the entry', which the EXAMPLES satisfy, so deleting min/max from the sentence left the suite green. This mutation is that exact deletion",
+      "file": "index.html",
+      "find": "roll them up on the parent with `sum`, `avg`, `count`, `min` or `max`",
+      "replace": "roll them up on the parent with `sum` or `avg`",
+      "kills": "subtree aggregation"
+    },
+    {
+      "id": "guide-action-multiplier-advice",
+      "suite": "unit",
+      "why": "the entry shipped `{gold += {2d6}*10}`, which renders as literal text; the replacement sentence names its two forms in prose, where no example-shaped guard can reach them",
+      "file": "index.html",
+      "find": "so write `2d6+10` rather than `2d6*10`",
+      "replace": "so write `2d6*10` rather than `2d6+10`",
+      "kills": "steers away from a multiplier"
     }
   ]
 }

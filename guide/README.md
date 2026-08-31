@@ -91,10 +91,10 @@ The rest of this page is the friendly introduction to how pills behave.
 3. **The `/` menu** for point-level things, e.g. **`/check`** (add a pass/fail constraint) and
    **`/due`** (schedule dates).
 
-> **The `?` button (bottom-right) opens the shortcuts & syntax cheat sheet**: keys and the
-> common pill forms on one screen. For the full feature reference with examples, open the
-> **Concept guide** (the "Concept guide ›" button at the bottom of that panel, also in the
-> File menu). This guide is the *learn-it*; the `?` panel and Concept guide are the *look-it-up*.
+> **The `?` button (bottom-right) opens the Concept guide**, the app's one help surface. It
+> lands on the keyboard reference, and its left list covers every feature with examples. The
+> File menu's **Help & guide** row opens the same panel. This guide is the *learn-it*; the
+> Concept guide is the *look-it-up*.
 > When the hints start to feel like noise, `Ctrl/Cmd+Shift+.` dials the app down through
 > [Guided, Standard and Lean](getting-around.md#quiet-the-guidance-the-verbosity-dial).
 

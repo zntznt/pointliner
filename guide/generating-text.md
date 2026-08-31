@@ -176,9 +176,14 @@ Modifiers **chain**, left to right:
 > want a modified random pick, name a rule first (`{rule creature: ogre | dragon}`, or the same
 > line without the keyword inside the **`@` → Grammar** dialog) then `{creature.a}`, which comes out
 > "an ogre" or "a dragon".
+>
+> A whole braced group DOES take one: wrap the pick in one more brace and put the modifier outside
+> it. `{{ogre|dragon}.a}` comes out "an ogre" or "a dragon", and it works on a roll too, so
+> `{{2d6}.a}` reads "a 7" or "an 8". The bare forms above are what has no name to attach to.
 
-*Known limits (mostly heuristics, not a dictionary): `a`/`an` looks at the first letter
-("an hour" / "a university" come out wrong); `.s` and `.ed` know the **common irregulars**
+*Known limits (mostly heuristics, not a dictionary): `a`/`an` looks at the first letter but
+checks a list of common exceptions first ("an hour" and "a university" come out right; a rarer
+one may not); `.s` and `.ed` know the **common irregulars**
 (`child` → "children", `go` → "went", `die` → "dice") and fall back to the regular English
 rules for everything else, so an uncommon irregular still comes out regular; title-case
 splits on spaces only; `.ing` doubles a final consonant-vowel-consonant regardless of

@@ -55,7 +55,7 @@ overview](features.md#linking-and-connecting-documents).)
 Tune how the document looks and what it shows: switch to dark mode for night work, pick an accent
 color, widen the editing column for a big screen or tuck completed tasks out of the way.
 
-- The **theme, color and width** controls live in the File menu under **Appearance**. Theme cycles
+- The **theme, color and width** controls live in the File menu under **Settings**. Theme cycles
   system, then light, then dark on each click.
 - **Done points** is the checkmark button in the toolbar. Finished to-dos and `DONE` points stay
   in the document, struck through, until you turn the button off to hide them; a badge on the
@@ -70,6 +70,9 @@ README, or create a portable archive. From the **File** menu:
   block, keeping its line breaks, its language and its text exactly as you wrote it (pills as the
   source you typed, not the value they happen to show), because a code block is literal text and a
   reader is meant to copy it. Paste that Markdown back in and it arrives as a code block again.
+- **Shareable page** is a read-only web page: a clean, static page anyone opens in any browser
+  with no app, where every pill shows the value it had when you saved. Send this one when someone
+  just needs to read your work.
 - **Web page (HTML)** packs the entire app and your document into one file. It works offline,
   opens in any browser and keeps all the interactive features (dice, generators and calculations)
   live, so the person you hand it to can re-roll and recompute on their own machine.
@@ -81,8 +84,8 @@ frozen to their current values (the same one-way snapshot as the full Markdown e
 
 **Leave scaffolding out.** If a point is planning material, not prose (a variable declaration, a
 note to self, a private section), open its **bullet menu** and choose **Exclude from export**: all
-three **Export a copy** formats skip that point and everything under it, Markdown, plain text and
-Web page alike. Your **OPML save** is the one thing that keeps it, which is the division the feature
+four **Export a copy** formats skip that point and everything under it, Markdown, plain text,
+Shareable page and Web page alike. Your **OPML save** is the one thing that keeps it, which is the division the feature
 rests on: the save is your backup, the exports are what you hand to someone else. An excluded point
 shows a faint ring on its bullet so you can see at a glance what a shared copy will leave out;
 choose **Include in export** to undo it.

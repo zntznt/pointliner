@@ -107,7 +107,7 @@ budget. Any math the point can compute works as a value or a max.
 Add a style word at the end for a row of icons instead of a bar:
 
 ```
-{meter: hp/5 hearts}     →    a row of five hearts, three filled and two dimmed
+{meter: 3/5 hearts}      →    a row of five hearts, three filled and two dimmed
 ```
 
 The styles are `dots`, `boxes`, `hearts`, `skulls`, `stars`, `shields` and `droplets`. Filled

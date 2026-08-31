@@ -5917,3 +5917,63 @@ test('a pill frozen before its rule existed says so, and one click heals it', { 
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
+
+// #1552 — the guide nav's ends, DRIVEN. A source pin cannot see this: Home/End/ArrowLeft were all
+// bound-looking absences rather than broken code, and the measurement that found them was a browser
+// one — with 97 topics in the nav, Home, End, PageUp and PageDown each moved focus NOWHERE, so the
+// last category was 90-odd ArrowDowns away, and ArrowRight into the reading pane was a ONE-WAY trip.
+// ux-discipline §3 requires Home/End of a roving overlay group ("Ends CLAMP, never wrap"), and the
+// File menu one panel over had bound them all along, so it was also a P1 split between two lists
+// that look identical. PageUp/PageDown stay unbound on purpose (the File menu does not bind them).
+// This asserts on WHERE FOCUS WENT, which is the only thing that distinguishes a live binding from
+// a handler nobody can reach.
+test('#1552 the guide nav answers Home/End, and ArrowLeft returns from the reading pane',
+  { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.click('#sc-toggle');
+  await pg.waitForTimeout(400);
+
+  const at = () => pg.evaluate(() => {
+    const a = document.activeElement;
+    return { cls: (a && a.className) || '', text: ((a && a.textContent) || '').trim().slice(0, 40) };
+  });
+
+  const navBtns = await pg.evaluate(() => document.querySelectorAll('#io-card .guide-nav-btn').length);
+  assert.ok(navBtns > 40, `the guide nav should hold every topic (got ${navBtns}) — did the panel not open?`);
+
+  await pg.keyboard.press('Tab');            // search box -> first nav button
+  await pg.waitForTimeout(150);
+  const first = await at();
+  assert.match(first.cls, /guide-nav-btn/, 'Tab from the search box must land in the nav');
+
+  await pg.keyboard.press('End');
+  await pg.waitForTimeout(200);
+  const last = await at();
+  assert.match(last.cls, /guide-nav-btn/, 'End must keep focus in the nav');
+  assert.notEqual(last.text, first.text, 'End must MOVE focus, not sit still (the defect this pins)');
+  const lastLabel = await pg.evaluate(() => {
+    const b = document.querySelectorAll('#io-card .guide-nav-btn');
+    return (b[b.length - 1].textContent || '').trim().slice(0, 40);
+  });
+  assert.equal(last.text, lastLabel, 'End must land on the LAST topic, and clamp there');
+
+  await pg.keyboard.press('End');            // clamps, never wraps (§3)
+  await pg.waitForTimeout(150);
+  assert.equal((await at()).text, lastLabel, 'End again must clamp on the last topic, not wrap');
+
+  await pg.keyboard.press('Home');
+  await pg.waitForTimeout(200);
+  assert.equal((await at()).text, first.text, 'Home must return to the first topic');
+
+  // ArrowRight into the pane, ArrowLeft back out — the round trip that used to be one-way.
+  await pg.keyboard.press('ArrowRight');
+  await pg.waitForTimeout(200);
+  const pane = await at();
+  assert.match(pane.cls, /guide-pane/, 'ArrowRight must move focus into the reading pane');
+  await pg.keyboard.press('ArrowLeft');
+  await pg.waitForTimeout(200);
+  const back = await at();
+  assert.match(back.cls, /guide-nav-btn/, 'ArrowLeft must bring focus back to the nav, not strand it on the pane');
+
+  assert.deepEqual(pageErrors, [], 'the guide panel must drive without page errors');
+});

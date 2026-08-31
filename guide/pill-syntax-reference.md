@@ -36,7 +36,7 @@ Two things to know before the table:
 | `{markov: a→b, b→c}` | a typed Markov chain (comma-separated `from→to weight` transitions) | self |
 | `{rule Name: a \| b}` | declares a named, document-wide grammar rule you can call as `{Name}` | doc |
 | `{seq Name: active \| done}` | declares a named sequence (a workflow of states) | doc |
-| `{ref.mod}` | a text modifier on a rule/variable (`cap`, `title`, `upper`, `lower`, `a`/`an`, `s`, `ed`, `ing`, `poss`, `ord`) | doc |
+| `{ref.mod}` | a text modifier on a rule/variable, or on a braced group like `{{a \| b}.cap}` (`cap`, `title`, `upper`, `lower`, `a`, `s`, `ed`, `ing`, `poss`, `ord`) | doc |
 | `{oracle: likely}` | a yes/no oracle over a likelihood band (`certain`/`likely`/`even`/`unlikely`/`impossible`), optional `+ swing` | self |
 | `{roll: search-query}` | draws one random point matching the search (add `folder` before the colon to draw across the whole folder) | **doc** |
 
