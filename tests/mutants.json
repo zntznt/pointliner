@@ -3186,6 +3186,24 @@
       "find": "so write `2d6+10` rather than `2d6*10`",
       "replace": "so write `2d6*10` rather than `2d6+10`",
       "kills": "steers away from a multiplier"
+    },
+    {
+      "id": "concept-guide-drops-a-bulk-action",
+      "suite": "unit",
+      "why": "census ratchet over an enumerable family: the selection bar's buttons are readable straight from the DOM, so the help entry listing them must go red when one it named is dropped, instead of silently going stale as it already had (Export .md and Refile were both missing)",
+      "file": "index.html",
+      "find": "bulk action: Copy, Export .md, Indent",
+      "replace": "bulk action: Copy, Indent",
+      "kills": "#1285b the concept guide names every bulk action the selection bar has"
+    },
+    {
+      "id": "concept-guide-claims-phantom-select-all",
+      "suite": "unit",
+      "why": "existence shape checked over the whole source: help text may claim a keybinding only if a handler implements it, and this entry once told people to press Ctrl/Cmd+A to select every search match when no key-'a' handler has ever existed in this file",
+      "file": "index.html",
+      "find": "Shift+click the first and last match to select them all (or Shift+Up and Shift+Down from the row cursor)",
+      "replace": "press Ctrl/Cmd+A to select every match",
+      "kills": "#1285b the concept guide names every bulk action the selection bar has"
     }
   ]
 }

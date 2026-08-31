@@ -22372,6 +22372,25 @@ test('#1285 the Tag button is wired (multi-select bar → bulk tag every selecte
   assert.ok(b.includes('pushUndo()'), 'one undo reverts the whole bulk tag');
 });
 
+test('#1285b the concept guide names every bulk action the selection bar has (census + no phantom select-all)', () => {
+  // The bar's buttons are enumerable from source, so the help entry that lists them gets a ratchet:
+  // a new nsb-* button nobody documents fails HERE instead of shipping a stale help entry. The entry
+  // had drifted twice over: it omitted Export .md and Refile, and it told people to press Ctrl/Cmd+A
+  // to select every search match, a binding that has never existed anywhere in this file (the only
+  // `selectAll` is a text-range select inside the inline filename rename).
+  const bar = between(_src, 'id="nsb-count"', 'id="nsb-clear"');
+  const labels = nonEmpty([...bar.matchAll(/id="nsb-[a-z-]+"[^>]*>([^<]+)</g)]
+    .map(m => m[1].replace(/[\u2192\u2190]/g, '').trim())
+    .filter(l => l && !/^\d+ selected$/.test(l)), 'selection-bar button labels');
+  const entry = between(_src, "id:'multi-select'", "\n  { id:'");
+  for (const l of labels) assert.ok(entry.includes(l), `the concept guide names the "${l}" bulk action`);
+  // Two-way, so it stays honest in both directions: the help may claim a Ctrl/Cmd+A select-all only
+  // if a key handler actually implements one. Re-adding the claim fails; implementing it passes.
+  const claims = /Ctrl\/Cmd\+A\b/.test(_src);
+  const bound = /\.key\s*===?\s*['"]a['"]|['"]KeyA['"]|keyCode\s*===?\s*65/.test(_src);
+  assert.equal(claims, bound, 'help text claims Ctrl/Cmd+A only if a key handler implements it');
+});
+
 test('#1309 count-of-a-tag is surfaced where the tagging user is (toast nudge + tag-led examples)', () => {
   // The bulk-tag toast teaches that the tag is now countable (the panel re-run miss).
   assert.ok(fnBody(_src, 'bulkAddTag').includes('{count: #${t}} anywhere for a live count'),
