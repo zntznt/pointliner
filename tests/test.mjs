@@ -30033,6 +30033,12 @@ test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)
   }
   assert.ok(checked >= 5, `the demos declare several {name := ...} bindings; this guard saw ${checked}`);
   assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
+  // ...and a POSITIVE floor. Everything above only fires on a MALFORMED binding, so deleting the
+  // one binding this defect was found in would leave the guard passing over nothing. The generators
+  // demo is where the trap lives and where the working form has to keep being demonstrated.
+  const gen = readFileSync(resolve(dir, 'generators', 'generators-demo.opml'), 'utf8');
+  assert.match(gen, /\{[A-Za-z_][A-Za-z0-9_]*\s*:=\s*\{[^{}]+\}\}/,
+    'the generators demo must keep demonstrating a pick bound with the inner braces, {w := {weapon}}');
 });
 
 test('the solo-RPG docs name the licence the repository actually ships', () => {
@@ -30132,13 +30138,17 @@ test('a demo board that groups by a status column declares the states it groups 
   const bad = [];
   for (const { name, file } of demos) {
     const xml = readFileSync(file, 'utf8');
-    // every state this document declares, via the one form that registers
-    const declared = new Set();
+    // Every sequence this document declares, kept SEPARATE. boardLanes picks exactly one owning
+    // sequence -- the one matching the first non-empty value in the grouped column -- and builds
+    // lanes from that sequence's states alone, so a value declared by a DIFFERENT sequence still
+    // lands in "No state". A first draft pooled every declared state into one set and would have
+    // called a two-sequence document healthy.
+    const sequences = [{ name: '(built-in)', states: [...BUILT_IN] }];
     for (const m of xml.matchAll(/text="([^"]*)"/g)) {
       const t = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
       for (const b of t.matchAll(/\{seq\s+([^}]*)\}/g)) {
         const d = c.seqDeclParts('seq ' + b[1]);
-        if (d) for (const st of d.states) declared.add(String(st).toLowerCase());
+        if (d) sequences.push({ name: d.name, states: d.states.map(x => String(x).toLowerCase()) });
       }
     }
     // a base opening on a board, grouped by a column: every value in that column must be a state
@@ -30153,11 +30163,16 @@ test('a demo board that groups by a status column declares the states it groups 
       const text = (/text="([^"]*)"/.exec(attrs) || [, ''])[1].replace(/&#10;/g, '\n').replace(/&quot;/g, '"');
       const rows = text.split('\n').slice(2).filter(r => r.trim().startsWith('|'));
       boards++;
-      for (const r of nonEmpty(rows, `${name} board rows`)) {
-        const cells = r.split('|').slice(1, -1).map(x => x.trim());
-        const v = (cells[col] || '').toLowerCase();
-        if (!v || BUILT_IN.has(v) || declared.has(v)) continue;
-        bad.push(`${name}: board groups by "${cells[col]}" but no {seq ...} declares it, so that card lands in "No state"`);
+      const values = nonEmpty(rows, `${name} board rows`)
+        .map(r => (r.split('|').slice(1, -1).map(x => x.trim())[col] || '').toLowerCase());
+      const first = values.find(Boolean);
+      const owner = sequences.find(sq => sq.states.includes(first)) || sequences[0];
+      for (const v of values) {
+        if (!v || owner.states.includes(v)) continue;
+        const elsewhere = sequences.find(sq => sq !== owner && sq.states.includes(v));
+        bad.push(elsewhere
+          ? `${name}: board is owned by sequence "${owner.name}" but "${v}" belongs to "${elsewhere.name}", so that card lands in "No state"`
+          : `${name}: board groups by "${v}" but no {seq ...} declares it, so that card lands in "No state"`);
       }
     }
   }
@@ -30195,7 +30210,12 @@ test('no solo-RPG demo indexes its own instructions as campaign content', () => 
       // INSIDE a {...} body does not: promoteLoadedShorthand moves it into the pill's sidecar, so
       // the loaded point's text no longer carries it ({query: #thread} is the legitimate case).
       const outsideBraces = t.replace(/\{[^{}]*\}/g, ' ');
-      for (const tag of outsideBraces.matchAll(/(?<![a-zA-Z0-9`])#([a-z][\w-]*)(?![\w-])/gi))
+      // The lookbehind MATCHES tagHit's exactly, backtick included as an ordinary character rather
+      // than an escape. A first draft exempted `#thread` in backticks, which was the one thing this
+      // guard's own comment says does not work: tagHit's lookbehind is (?<![a-zA-Z0-9]) with no
+      // backtick, so a backticked tag still answers a tag search. Exempting it would have made the
+      // guard agree with the mistake instead of the engine.
+      for (const tag of outsideBraces.matchAll(/(?<![a-zA-Z0-9])#([a-z][\w-]*)(?![\w-])/gi))
         bad.push(`${name}: instructional point carries a live #${tag[1]} tag -> ${JSON.stringify(t.slice(0, 70))}`);
       // a date pill in instructional copy materialises a real due property and reaches the agenda
       for (const d of t.matchAll(/\{date\s+(due|start)\s*:/g)) {
@@ -30260,6 +30280,17 @@ test('every UI label a solo-RPG guide puts in bold exists in the app', () => {
   // reader is told to operate it": an interaction verb immediately before the bold. That is exactly
   // the sentence that sends someone hunting the screen for a control, which is the failure here.
   const VERB = /\b(click|press|pick|choose|open|select|toggle|hit|use)\b[^.\n]{0,30}$/i;
+  // A plain src.includes() over 1.3 MB is the vacuity shape CLAUDE.md names by example: almost any
+  // short phrase appears SOMEWHERE, including inside this file's own guide copy and comments, so a
+  // guard built on it passes for reasons unrelated to the UI. Search only the places a control name
+  // can actually come from: quoted string literals and template literals in the app's own source.
+  const strings = nonEmpty(
+    [...src.matchAll(/'((?:[^'\\\n]|\\.){2,60})'|"((?:[^"\\\n]|\\.){2,60})"|`((?:[^`\\]|\\.){2,60})`/g)]
+      .map(m => m[1] ?? m[2] ?? m[3]),
+    'string literals in index.html');
+  const haystack = new Set(strings);
+  const joined = strings.join('\u0000');
+  const inUi = label => haystack.has(label) || joined.includes(label);
   let checked = 0;
   const missing = [];
   for (const { n, f } of guides) {
@@ -30276,7 +30307,7 @@ test('every UI label a solo-RPG guide puts in bold exists in the app', () => {
       // A guide may write a menu PATH ("File, then Custom calendar"); each rung is its own label.
       // The app spells a numbered slot "Set as inbox 1"; a guide may name the family without a digit.
       const rungs = label.split(/,\s*then\s*/i).map(x => x.trim()).filter(Boolean);
-      const gone = rungs.filter(r => !src.includes(r) && !src.includes(r.replace(/ \d+$/, '')));
+      const gone = rungs.filter(r => !inUi(r) && !inUi(r.replace(/ \d+$/, '')));
       if (!gone.length) continue;
       missing.push(`${n}.md: **${label}** names ${JSON.stringify(gone)}, which appears nowhere in index.html`);
     }
@@ -30307,18 +30338,27 @@ test('no solo-RPG guide tells the reader a bullet click folds a point', () => {
     }
   nonEmpty(files, 'solo-rpg guide and demo files');
   const bad = [];
-  for (const { n, t } of files)
-    for (const line of t.split('\n')) {
-      // a bullet click paired with a fold word, in either order, within one sentence
+  let sentences = 0;
+  for (const { n, t } of files) {
+    // Flow the file before splitting: a line-by-line scan is disarmed by ordinary markdown reflow,
+    // which is exactly the edit most likely to happen to a paragraph nobody is thinking about.
+    for (const para of t.split(/\n\s*\n/)) {
+      const line = para.replace(/\s*\n\s*/g, ' ');
       if (!/bullet/i.test(line)) continue;
       for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+        sentences++;
         if (!/\bbullets?\b/i.test(sentence)) continue;
         if (!/\b(fold|folds|collapse|collapses|collapsed|open it)\b/i.test(sentence)) continue;
         if (/zoom/i.test(sentence)) continue;             // a sentence that CONTRASTS the two is fine
         if (/bullet menu|bullet's menu/i.test(sentence)) continue;   // the menu is a different affordance
+        // A sentence may mention the bullet while naming the RIGHT control -- "the chevron left of
+        // its bullet" is the correct instruction and says "bullet" only to locate the chevron.
+        if (/chevron|Ctrl\/Cmd\+\.|collapse-btn/i.test(sentence)) continue;
         bad.push(`${n}: ${sentence.trim().slice(0, 110)}`);
       }
     }
+  }
+  assert.ok(sentences >= 10, `the guard must examine sentences that mention a bullet, saw ${sentences}`);
   assert.deepEqual(bad, [], 'a bullet click zooms, it does not fold:\n  ' + bad.join('\n  '));
 });
 
@@ -30349,11 +30389,19 @@ test('EVERY shipped demo is well-formed XML (an unescaped < or " truncates the f
     // even, which is how the mutant for this survived the first draft of this guard. Check the
     // attribute layer itself: strip well-formed name="value" pairs off each tag and require that
     // nothing but whitespace and an optional `/` is left. Prose read as attributes leaves words.
-    for (const tag of xml.matchAll(/<outline\b([^>]*)>/g)) {
+    let depth = 0, minDepth = 0;
+    for (const tag of xml.matchAll(/<outline\b([^>]*?)(\/?)>|<\/outline>/g)) {
+      if (tag[0] === '</outline>') { depth--; minDepth = Math.min(minDepth, depth); continue; }
       const rest = tag[1].replace(/\s+[A-Za-z_][\w:.-]*="[^"]*"/g, '').trim();
       if (rest && rest !== '/')
         bad.push(`${name}: an <outline> tag has a raw quote in a value, so ${JSON.stringify(rest.slice(0, 60))} is being read as attributes`);
+      if (!tag[2]) depth++;
     }
+    // Balance, which the attribute scan cannot see at all: an unclosed or over-closed <outline>
+    // reparents everything after it, and a demo whose tree silently changes shape is the failure
+    // this whole folder's rollups and boards depend on not happening.
+    if (depth !== 0) bad.push(`${name}: <outline> tags are unbalanced (${depth > 0 ? depth + ' unclosed' : -depth + ' extra closing'})`);
+    if (minDepth < 0) bad.push(`${name}: a </outline> closes a tag that was never opened`);
   }
   assert.deepEqual(bad, [], 'a demo OPML is not well-formed, so File > Open drops content or fails:\n  ' + bad.join('\n  '));
 });
@@ -30426,10 +30474,18 @@ test('EVERY solo-RPG rollup has the properties it totals BELOW it, not beside it
       // other place an aggregation is written and which the first draft of this census could not
       // see at all -- a check scoped to nothing passes vacuously and reads as a healthy green tick.
       const exprs = live(node.text) + ' ' + (node.checks || []).join(' ');
-      for (const agg of exprs.matchAll(/(?:\{=\s*)?\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*([a-z]+)\s*)?\)/g)) {
+      // The scope token mirrors resolveScopeDepth: self | children | subtree | a depth >= 1. The
+      // first draft matched only [a-z]+, so `sum(x, 2)` fell out of the pattern entirely and a
+      // numeric-depth rollup was invisible to this census rather than checked by it.
+      for (const agg of exprs.matchAll(/(?:\{=\s*)?\b(sum|avg|count|min|max)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:,\s*([A-Za-z]+|\d+)\s*)?\)/g)) {
         const [, fn, prop, scope] = agg;
+        const tok = (scope || 'children').toLowerCase();
+        const depth = tok === 'self' ? 0 : tok === 'children' ? 1
+          : tok === 'subtree' ? Infinity : /^\d+$/.test(tok) ? Number(tok) : null;
+        if (depth === null) continue;         // not a scope the engine accepts; not this guard's business
+        if (depth === 0) continue;            // `self` reads the point's own words, not its descendants
         rollups++;
-        const found = below(node, scope === 'subtree');
+        const found = below(node, depth > 1);
         if (!found.includes(prop.toLowerCase()))
           orphans.push(`${name}: {= ${fn}(${prop}${scope ? ', ' + scope : ''})} on ${JSON.stringify(node.text.slice(0, 55))} has no {prop ${prop}: ...} beneath it`);
       }

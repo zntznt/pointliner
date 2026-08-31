@@ -5,7 +5,7 @@
     <outline text="# Generators: names, places, loot" _id="gen00001">
       <outline text="On-demand content for when you draw a blank. Three generators built on Pointliner's grammar engine: a Markov name chain, a rule-based tavern generator with modifiers, and a weighted loot table with hierarchical items. Every {…} pill is live, click one to reroll. See generators.md for the walkthrough." _id="gen00002"/>
       <outline text="## Names (a Markov chain)" _id="gen00010">
-        <outline text="A Markov chain learns which sound follows which and walks the transitions. Click to grow a fresh name: {markov: ka→la, la→sh, sh→ka, ka→ra, ra→n, n→dor, dor→a, a→ka, sh→ael, ael→wyn, wyn→dros, dros→a}" _id="gen00011"/>
+        <outline text="A Markov chain learns which sound follows which and walks the transitions, five hops by default. The pill shows the path with its arrows; read the name by running the syllables together. Click to grow a fresh one: {markov: ka→la, la→sh, sh→ka, ka→ra, ra→n, n→dor, dor→a, a→ka, sh→ael, ael→wyn, wyn→dros, dros→a}" _id="gen00011"/>
         <outline text="The syntax is a list of syllable transitions, source→next, separated by commas. The chain starts on the first syllable and hops to a random next each step, so ka can lead to la, ra, or nowhere (an end)." _id="gen00012"/>
         <outline text="Prefer a rule-based builder? Snap a prefix onto a suffix: {prefix}{suffix}. The two pills roll independently, so you get Kadros, Vorwyn, Malthas, and so on." _id="gen00013">
           <outline text="{rule prefix: Ka | Vor | Mal | Ael | Ser | Thal | Bryn}" _id="gen00014"/>

@@ -31,7 +31,7 @@
         <outline text="Bedroll and cloak {prop weight: 2}"/>
         <outline text="Rations, three days {prop weight: 1}"/>
       </outline>
-      <outline text="Add one more heavy item to see the check flip. Copy this into the pack: Iron cook pot {prop weight: 2}. The sum climbs to twelve and the Carried load chip goes red."/>
+      <outline text="Add one more heavy item to see the check flip. Copy this into the pack: Iron cook pot `{prop weight: 2}`. The sum climbs to twelve and the Carried load chip goes red."/>
     </outline>
     <outline text="## Scene: a name for the tracks">
       <outline text="You cut the trail of {a wounded stag | a lone rider | something with too many feet}. Which way does it lead? {deeper in | back toward the road | in a slow circle}."/>

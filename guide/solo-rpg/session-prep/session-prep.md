@@ -91,8 +91,8 @@ often and sort it out later, which is exactly what refile (below) is for.
 ## Drop into today's entry with journal mode
 
 The **journal** door gives every play session one dated home without you typing a date header.
-A toolbar **journal button** (or the `/journal` slash verb, or the `journal` block command from
-the `/` menu's Organize group) opens **today's entry**. Under the hood it finds or creates a
+The `/journal` slash verb (or the `journal` block command from the `/` menu's Organize group)
+opens **today's entry**. Under the hood it finds or creates a
 top-level **Journal** home point, then nests the date under it a rung at a time, **year, then
 month, then day**, and lands you on the day point ready to write. So a session in August 2026 lives
 at `Journal > 2026 > 08 > 31`, and a year of play stays navigable instead of becoming a flat list of
@@ -101,12 +101,12 @@ its `Journal` there rather than inside its own branch.
 
 This is the piece the [Lonelog case](../lonelog/lonelog.md) never mentions. That case teaches a
 hand-rolled session log, you type a `Scene:` header, you type the date, you nest your beats by
-hand, and it works. But Pointliner has this built in: the journal button is the real feature
-that automates the dated-entry part of that workflow. One click lands you in today's point under
+hand, and it works. But Pointliner has this built in: the journal door is the real feature
+that automates the dated-entry part of that workflow. One command lands you in today's point under
 a tidy `Journal` tree, so the "start a new dated entry" step is done for you and your day-to-day
 logs stack up in date order on their own.
 
-In the demo, the `Journal` point holds a `2026-07-04` day point with a few beats already written,
+In the demo, the top-level `Journal` point holds `2026 > 07 > 04` with a few beats already written,
 oracle and random-event pills live inside them, so you can see what today's entry looks like once
 you are in it.
 

@@ -2844,6 +2844,24 @@
       "find": "Pointliner itself is licensed under the GNU AGPLv3",
       "replace": "Pointliner itself is MIT licensed",
       "kills": "the solo-RPG docs name the licence the repository actually ships"
+    },
+    {
+      "id": "solo-rpg-pick-bind-deleted",
+      "suite": "unit",
+      "why": "the bind guard only fires on a MALFORMED binding, so deleting the one it was written for would leave it passing over nothing; the positive floor is what notices",
+      "file": "guide/solo-rpg/generators/generators-demo.opml",
+      "find": "bind the pick to a variable first: {w := {weapon}}.",
+      "replace": "bind the pick to a variable first.",
+      "kills": "a pick bound to a variable in a demo really binds"
+    },
+    {
+      "id": "solo-rpg-demo-outline-unbalanced",
+      "suite": "unit",
+      "why": "an unclosed <outline> reparents everything after it, silently changing the tree shape that every rollup and board in this folder depends on; the attribute scan cannot see it at all",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "<outline text=\"Sword {prop slots: 1}\"/>",
+      "replace": "<outline text=\"Sword {prop slots: 1}\">",
+      "kills": "EVERY shipped demo is well-formed XML"
     }
   ]
 }

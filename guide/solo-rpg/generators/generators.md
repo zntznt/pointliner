@@ -23,9 +23,10 @@ It is the same `{…}` grammar as the rest of the guide, pointed at the blank-pa
 
 A Markov chain is the fancy-sounding trick behind most good name generators, and it fits in
 one pill. You give it a list of **syllable transitions**, each written `source→next`, and it
-walks them: start on the first syllable, hop to a random syllable that can follow it, hop
-again and stop when it runs out of exits. The pill shows you the path it took, with the arrows
-still between the syllables; you read the name by running them together.
+walks them: start on the first syllable, hop to a random syllable that can follow it, and keep
+hopping for a fixed number of steps, **five by default**, stopping early only if it reaches a
+syllable with no exits. The pill shows you the path it took, with the arrows still between the
+syllables; you read the name by running them together.
 
 ```
 {markov: ka→la, la→sh, sh→ka, ka→ra, ra→n, n→dor, dor→a, a→ka}
