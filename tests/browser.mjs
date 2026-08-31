@@ -5736,3 +5736,86 @@ test('#1560 the File-menu level control is tappable and actually changes the lev
   await pg.close();
   await ctx.close();
 });
+
+// #1557: scrolling an edited row out of the virtual window and back must not commit the edit.
+//
+// `renderWindow` tears the row out of the DOM and puts it back. Removing or moving a focused
+// element blurs it, and the `.node-content` blur handler commits: `_vlPreservingFocus` exists so
+// that blur is ignored, and it only works if it is armed AROUND the mutation rather than around the
+// focus restore afterwards. #1557 moved the arming to the wrong side of the surgery, and the
+// measured result was one `exitEdit` per scroll away and back -- 1, 2, then 3 over three round
+// trips against 0 on main, with an undo entry and a dice sidecar record materialised from a scroll.
+//
+// Nothing caught it. The pins for this are `_src.includes('_vlPreservingFocus')` and a regex for
+// the early return, and both stayed green while the guard was inert -- the vacuous-existence shape
+// CLAUDE.md names. Presence of the flag says nothing about WHERE it is set, which is the entire bug.
+// So this drives it instead: only a real scroll can tell the two orderings apart.
+test('#1557 scrolling an edited row out of the window and back does not commit the edit', { skip: skip() }, async () => {
+  const pg = await fresh();
+
+  // Long enough that the window genuinely virtualises and row 5 leaves it on one scroll.
+  await pg.evaluate(() => {
+    root.children = [];
+    for (let i = 0; i < 400; i++) {
+      const n = mkNode('Point number ' + i); n.type = 'ul';
+      root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    }
+    markDirty(); render();
+    // Count commits without changing behaviour. exitEdit is a top-level function declaration, so
+    // the global binding is what the blur handler resolves; the vacuity check at the end proves
+    // this wrapper is actually live rather than silently bypassed.
+    window.__exits = 0;
+    const orig = window.exitEdit;
+    window.exitEdit = function (...a) { window.__exits++; return orig.apply(this, a); };
+  });
+  await pg.waitForTimeout(400);
+
+  const before = await pg.evaluate(async () => {
+    const t = root.children[5];
+    const el = document.querySelector(`.node-content[data-id="${t.id}"]`);
+    el.scrollIntoView({ block: 'center' });
+    await new Promise(r => setTimeout(r, 150));
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    el.focus();
+    if (!el.dataset.editing) enterEdit(el, t);
+    await new Promise(r => setTimeout(r, 150));
+    document.execCommand('insertText', false, ' EDITED');
+    await new Promise(r => setTimeout(r, 150));
+    return { id: t.id, caret: getCaretOffset(el), editing: !!el.dataset.editing,
+             winStart, undo: undoStack.length, exits: window.__exits };
+  });
+  assert.equal(before.editing, true, 'the row must actually be in edit mode before we scroll');
+  assert.equal(before.exits, 0, 'nothing has committed yet');
+
+  await pg.evaluate(() => window.scrollTo(0, window.innerHeight * 1.5));
+  await pg.waitForTimeout(500);
+  const away = await pg.evaluate(() => ({ winStart, parked: _vlParkedIdx }));
+  await pg.evaluate(() => window.scrollTo(0, 0));
+  await pg.waitForTimeout(600);
+
+  const back = await pg.evaluate((id) => {
+    const el = document.querySelector(`.node-content[data-id="${id}"]`);
+    let caret = null; try { caret = el ? getCaretOffset(el) : null; } catch (_) {}
+    return { caret, editing: !!el?.dataset.editing, activeIsContent: document.activeElement === el,
+             undo: undoStack.length, exits: window.__exits, winStart };
+  }, before.id);
+
+  // The path was actually exercised. Without these the whole check passes trivially on a document
+  // that never virtualised or a scroll that never moved the window.
+  assert.notEqual(away.winStart, before.winStart, 'the scroll must actually move the virtual window');
+  assert.ok(away.parked != null, 'the edited row must actually park while it is out of the window');
+
+  assert.equal(back.exits, 0, 'scrolling an edited row away and back must not call exitEdit');
+  assert.equal(back.undo, before.undo, 'and must not record an undo entry the user did not earn');
+  assert.equal(back.editing, true, 'the row is still being edited');
+  assert.equal(back.activeIsContent, true, 'and still holds focus');
+  assert.equal(back.caret, before.caret, 'with the caret where it was');
+
+  // Inverse vacuity: `exits === 0` is also what a dead counter reports. Force a real commit and
+  // watch it move, so the zero above means "did not happen" rather than "was never watched".
+  await pg.evaluate((id) => document.querySelector(`.node-content[data-id="${id}"]`)?.blur(), before.id);
+  await pg.waitForTimeout(400);
+  assert.ok(await pg.evaluate(() => window.__exits) >= 1,
+    'the exitEdit counter must be live — a deliberate blur has to move it, or the zero above proved nothing');
+  await pg.close();
+});
