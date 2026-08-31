@@ -1755,6 +1755,11 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     '.github/workflows/tests.yml': readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8'),
     // #1559: the layout sweep is code now, so its guards get mutated like any other.
     'tools/layout-sweep.mjs': readFileSync(new URL('../tools/layout-sweep.mjs', import.meta.url), 'utf8'),
+    // The solo-RPG census mutates shipped guide content, because that is where its defect lives:
+    // a demo's rule declaration and the prose that teaches the form.
+    'guide/solo-rpg/cairn/cairn-demo.opml': readFileSync(new URL('../guide/solo-rpg/cairn/cairn-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/maze-rats/maze-rats-demo.opml': readFileSync(new URL('../guide/solo-rpg/maze-rats/maze-rats-demo.opml', import.meta.url), 'utf8'),
+    'guide/solo-rpg/cairn/cairn.md': readFileSync(new URL('../guide/solo-rpg/cairn/cairn.md', import.meta.url), 'utf8'),
   };
   const testNames = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8')
     + readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
@@ -29896,6 +29901,102 @@ test('the shipped generators demo actually generates (its rules register on load
   // ({rule rulename: a | b | c} written as an illustration really did register `rulename`).
   for (const junk of ['rulename', 'itemname.field'])
     assert.ok(!rules[junk], `"${junk}" is an illustration and must be backtick-escaped, not declared`);
+});
+
+test('EVERY solo-RPG demo resolves its own rule references (the census the last two fixes lacked)', () => {
+  // THE THIRD TIME. This same bug -- a table written as bare `name: a | b` text, which registers
+  // nothing, so every {name} call site renders as literal characters -- has now been found and fixed
+  // three times: #810 (oracle-play-demo), the generators demo above, and cairn/maze-rats/ironsworn.
+  // Each earlier fix pinned exactly the ONE file it repaired, so the next instance shipped green.
+  // CLAUDE.md's own rule: "Check the SIBLINGS, not just the site ... where the family is enumerable
+  // from source, leave a census ratchet so the next omission fails a test." The family is
+  // readdirSync over guide/solo-rpg. This is that ratchet, and it is why a NEW demo cannot regress.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+  assert.ok(demos.length >= 13, `expected the shipped 13+ demos, found ${demos.length}`);
+
+  // OPML text="" attributes, XML-unescaped, with backticked spans REMOVED. The demos are the only
+  // input, so a small reader beats dragging in a parser (fromOpml needs a DOMParser Node does not
+  // have). The backtick strip models what the app does: promoteLoadedShorthand
+  // leaves a backticked `{rule name: option | option}` as literal documentation rather than
+  // declaring a rule called `name`. Modelling that is not optional: while writing this fix that
+  // exact illustration went into three demo headers UNESCAPED, and it really did register a junk
+  // `name` rule in all three. A census that counts an illustration as a declaration calls that
+  // healthy. Bare keywords are correctly accused, not exempted -- {today}, {oracle}, {roll} and
+  // {shuffle} were each driven against the real app and every one renders as literal text.
+  const texts = xml => [...xml.matchAll(/text="([^"]*)"/g)].map(m => m[1]
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#10;/g, '\n').replace(/&amp;/g, '&')
+    .replace(/`[^`]*`/g, ' '));
+  // EVERY balanced {...} body, at EVERY depth. Top-level-only was the first draft, and the
+  // `solo-rpg-census-hyphen-rule` mutant SURVIVED it: a hyphenated `{rule spell-form: ...}` fails to
+  // register, but the reference that breaks is `{spell_form}` nested INSIDE `{rule spell: a
+  // {spell_form} {spell_effect}}`, which a top-level scan consumes as part of the outer body and
+  // never inspects. A guard that cannot see the call site cannot guard it.
+  const bodies = t => {
+    const out = [], stack = [];
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] === '{') stack.push(i);
+      else if (t[i] === '}' && stack.length) out.push(t.slice(stack.pop() + 1, i));
+    }
+    return out;
+  };
+  // A NAME LOOKUP and nothing else: a bare identifier, optionally dotted/modified. Every other
+  // {...} form (dice, {= math}, {a | b}, {kw: ...}, {x := 1}, {2x: ...}) is excluded by shape, so
+  // this census only ever accuses the thing it is about.
+  const IS_LOOKUP = /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+
+  let checked = 0;
+  const broken = [];
+  for (const { name, file } of demos) {
+    const all = texts(readFileSync(file, 'utf8'));
+    const rules = Object.create(null), vars = Object.create(null);
+    for (const t of all) for (const b of bodies(t)) {
+      const d = c.ruleDeclParts(b);                      // {rule NAME: rhs} -- the only form that registers
+      if (d) { rules[d.name.toLowerCase()] = true; continue; }
+      const v = /^([A-Za-z_][A-Za-z0-9_]*)\s*:=/.exec(b);   // {name := value}
+      if (v) vars[v[1].toLowerCase()] = true;
+    }
+    for (const t of all) for (const b of bodies(t)) {
+      const body = b.trim();
+      if (!IS_LOOKUP.test(body)) continue;
+      if (c.parseDice(body)) continue;                   // d20, 2d6 read as a lookup-shaped token
+      const base = body.split('.')[0].toLowerCase();
+      const dotted = body.toLowerCase();
+      checked++;
+      if (rules[dotted] || rules[base] || vars[dotted] || vars[base]) continue;
+      broken.push(`${name}: {${body}} has no {rule ${base}: ...} or {${base} := ...} in its own demo`);
+    }
+  }
+  assert.ok(checked >= 20, `the census must actually examine call sites, examined ${checked}`);
+  assert.deepEqual(broken, [], 'every {name} in a shipped demo must resolve:\n  ' + broken.join('\n  '));
+});
+
+test('no solo-RPG guide teaches the bare rule form that registers nothing', () => {
+  // The other half of the same defect, and the half that regenerates it: four guides told the reader
+  // to "define a named rule on its own point (`reaction: hostile | wary`)". Fixing the demos without
+  // the prose just means the next author retypes the dead form. A guide may still SHOW the bare form
+  // as an explicit counter-example, which always reads "a bare ... stays ordinary text".
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(n => ({ n, f: resolve(dir, n, `${n}.md`) }))
+      .filter(d => { try { readFileSync(d.f); return true; } catch { return false; } }),
+    'solo-rpg guides');
+  const offenders = [];
+  for (const { n, f } of files) {
+    for (const line of readFileSync(f, 'utf8').split('\n')) {
+      // "named rule" prose that hands the reader a declaration WITHOUT the `rule` keyword.
+      if (!/named \*\*rule\*\*|\*\*named rule\*\*|as a named rule/.test(line)) continue;
+      if (/\{rule /.test(line)) continue;                       // names the working form: fine
+      offenders.push(`${n}.md: ${line.trim().slice(0, 100)}`);
+    }
+  }
+  assert.deepEqual(offenders, [], 'a guide names "a named rule" without showing {rule ...}:\n  ' + offenders.join('\n  '));
 });
 
 test('the oracle near-miss cue names bands that exist', () => {

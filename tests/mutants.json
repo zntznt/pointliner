@@ -2673,6 +2673,34 @@
       "find": "  if (focusedInner) _vlPreservingFocus = true;\n  if (activeEl) activeEl.remove();",
       "replace": "  if (activeEl) activeEl.remove();",
       "kills": "#1557 scrolling an edited row out of the window and back does not commit the edit"
+    },
+    {
+      "id": "solo-rpg-census-bare-rule",
+      "suite": "unit",
+      "why": "the census must catch a demo table written as bare `name: a | b` -- the exact shape that shipped dead pills in cairn, maze-rats and ironsworn, and that #810 and the generators pin each caught in one file only",
+      "file": "guide/solo-rpg/cairn/cairn-demo.opml",
+      "find": "text=\"{rule reaction: hostile | wary | neutral | curious | helpful}\"",
+      "replace": "text=\"reaction: hostile | wary | neutral | curious | helpful\"",
+      "kills": "EVERY solo-RPG demo resolves its own rule references"
+    },
+    {
+      "id": "solo-rpg-census-hyphen-rule",
+      "suite": "unit",
+      "why": "a hyphenated rule name is rejected by ruleDeclParts and fails SILENTLY as prose, so the census must accuse it too, not just the missing wrapper; the first draft of the census scanned only top-level braces and this mutant SURVIVED it",
+      "file": "guide/solo-rpg/maze-rats/maze-rats-demo.opml",
+      "find": "text=\"{rule spell_form: bolt | cloud | ward | veil | swarm}\"",
+      "replace": "text=\"{rule spell-form: bolt | cloud | ward | veil | swarm}\"",
+      "kills": "EVERY solo-RPG demo resolves its own rule references"
+    },
+    {
+      "id": "solo-rpg-guide-teaches-bare-rule",
+      "suite": "unit",
+      "why": "fixing the demos without the prose regenerates the bug: four guides told the reader to define `reaction: hostile | wary` with no rule keyword",
+      "file": "guide/solo-rpg/cairn/cairn.md",
+      "find": "The `rule` keyword is what names it. A bare `reaction: hostile | wary` stays ordinary text and",
+      "replace": "Define each as a **named rule** on its own point (`reaction: hostile | wary`) and it works, and",
+      "kills": "no solo-RPG guide teaches the bare rule form"
     }
+
   ]
 }
