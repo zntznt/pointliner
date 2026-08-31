@@ -2826,6 +2826,15 @@
       "find": "&quot;val&quot;:&quot;sum(slots) &lt;= 10&quot;",
       "replace": "&quot;val&quot;:&quot;sum(encumbrance) &lt;= 10&quot;",
       "kills": "EVERY solo-RPG rollup has the properties it totals BELOW it"
+    },
+    {
+      "id": "solo-rpg-progress-token-inert",
+      "suite": "unit",
+      "why": "ironsworn.md offered `[3/10]` as a manual progress cookie, which renders as literal characters with no P4 feedback, while campaign-clocks.md warns readers off that exact token",
+      "file": "guide/solo-rpg/ironsworn/ironsworn.md",
+      "find": "a parent point with a `[/]` over",
+      "replace": "a parent point with a `[3/10]` over",
+      "kills": "no solo-RPG guide teaches a progress token the renderer leaves as plain text"
     }
   ]
 }

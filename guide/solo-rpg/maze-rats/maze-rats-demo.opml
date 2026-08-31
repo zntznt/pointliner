@@ -8,7 +8,8 @@
   <outline text="## A character in one roll">
     <outline text="Roll your stats from one pool and note the modifiers, then set them as variables so saves read them."/>
     <outline text="Roll your stats: {6d6}"/>
-    <outline text="Health: {1d6}"/>
+    <outline text="Health, rolled once: {1d6}"/>
+    <outline text="Health, the number you track: {hp := 4}"/>
     <outline text="Set your final ability modifiers: {str := 1}, {dex := 0}, {wil := 2}."/>
   </outline>
   <outline text="## Saves">
@@ -34,7 +35,7 @@
   <outline text="## Combat, fast">
     <outline text="Roll to hit, roll damage, edit health down. No spreadsheet, just dice and one variable.">
       <outline text="Attack: {2d6} + {str}   Damage: {1d6}"/>
-      <outline text="Health: track it as a number you edit down as you take hits."/>
+      <outline text="Health: edit the hp variable down as you take hits. The {1d6} above is only the roll that set it; clicking a dice pill re-rolls it, so the variable is what holds the value."/>
     </outline>
   </outline>
   <outline text="## Run it yourself">

@@ -35,7 +35,7 @@ each). Roll the pool with one pill:
 
 ```
 Roll your stats: {6d6}
-Health: {1d6}
+Health: {1d6}   then set it: {hp := 4}
 ```
 
 Put your final modifiers in variables so saves read them:
@@ -48,11 +48,13 @@ Put your final modifiers in variables so saves read them:
 
 ## Saves
 
-Maze Rats resolves risk with a **2d6 roll**: roll `2d6`, add the relevant ability modifier and beat a
-target (a standard difficulty, higher for harder tasks). One line:
+Maze Rats resolves risk with a **2d6 roll**: roll `2d6`, add the relevant ability modifier, and
+**10 or higher succeeds**. The target does not move with the difficulty; that flat 10 is one of the
+things the game is built around, so the interesting decisions stay in the fiction rather than in
+picking a number. One line:
 
 ```
-Strength save: {2d6} + {str} (beat the target for the task)
+Strength save: {2d6} + {str} (10 or higher succeeds)
 ```
 
 Click the dice, add the modifier shown and compare to the difficulty. Change a modifier in one place
@@ -97,7 +99,9 @@ does not want one ("that screams") still reads correctly.
 ## Combat, fast
 
 Combat in Maze Rats is quick: roll to hit against a save, roll damage, done. Damage is a die by weapon,
-and you track health by editing a variable down. The whole exchange is a couple of pills:
+and you track health by editing a variable down. Roll `{1d6}` once for your starting health, then
+put the number in a variable of its own: the dice pill re-rolls every time you click it, so it
+cannot be the thing you are tracking. The whole exchange is a couple of pills:
 
 ```
 Attack: {2d6} + {str}    Damage: {1d6}
@@ -109,7 +113,7 @@ just the dice and one variable.
 ## Run it yourself
 
 - **Make a character:** roll `{6d6}` for stats and `{1d6}` for health, set the modifier variables.
-- **Take a risk:** roll `{2d6}` plus a modifier and beat the target.
+- **Take a risk:** roll `{2d6}` plus a modifier and look for 10 or higher.
 - **Generate anything:** click a table pill for a monster or room, and click `{spell}` for an
   improvised one, then swap the filler for the book's own entries.
 - **Fight:** roll to hit, roll damage, edit health down.

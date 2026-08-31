@@ -60,17 +60,24 @@ to turn a roll around. Track it as a variable you edit as it changes:
 {momentum := 2}
 ```
 
-Raise or lower it by editing the number (or keep a small log of changes as child points). When you
-burn momentum, the rule is that you replace a challenge die result with your current momentum; in
-Pointliner you just read the `momentum` value against the challenge dice you rolled and take the win
-if it beats them.
+Raise or lower it by editing the number (or keep a small log of changes as child points).
+
+Burning is the part worth getting right, because it is a **cost**, not a free re-roll. On a weak hit
+or a miss, and only while your momentum is greater than your action score, you replace your **action
+score** with your momentum and read the roll again against the same two challenge dice. Beating both
+turns it into a strong hit; beating one is still only a weak hit, so burning does not guarantee a
+win. Then **momentum resets** to its reset value, +2 for a fresh character and lower once you carry
+debilities. In Pointliner that is two edits: read `momentum` against the challenge dice you already
+rolled, then set the variable back to its reset value.
 
 ## Progress tracks (vows, journeys, fights)
 
 A **progress track** is Ironsworn's box-ticking meter for a vow, a journey or a fight: you mark
 progress as you go, then make a **progress move** by rolling the challenge dice against the number of
-filled boxes. Pointliner's **progress cookie** is the natural fit: a parent point with a `[/]` (or a
-manual `[3/10]`) over 10 checkbox children, one per box.
+filled boxes. Pointliner's **progress cookie** is the natural fit: a parent point with a `[/]` over
+10 checkbox children, one per box, which counts them for you as you tick. If you would rather set
+the number by hand than keep ten children, use a **clock** instead and write `[o 3/10]`; the `o` is
+what makes it a live ring, and a bare `[3/10]` is plain text.
 
 ```
 Swear an iron vow: reach the drowned tower  [/]

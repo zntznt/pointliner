@@ -30034,6 +30034,50 @@ test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)
   assert.deepEqual(bad, [], 'a pick binding that silently resolves to nothing:\n  ' + bad.join('\n  '));
 });
 
+test('no solo-RPG guide teaches a progress token the renderer leaves as plain text', () => {
+  // ironsworn.md offered `[3/10]` as a "manual" progress cookie. COOKIE_ANY accepts [/] and [%] with
+  // an optional scope word or digit INSIDE the brackets, and CLOCK_RE needs the `o` prefix, so a
+  // bare bracket-fraction renders as literal characters with no P4 feedback at all. campaign-clocks
+  // warns readers off that exact token, so the two guides contradicted each other.
+  // The two shapes are restated here rather than eval'd out of the source, because pulling a regex
+  // literal back out of a file with a regex is exactly the kind of cleverness that breaks quietly.
+  // The source pins below are what keep this restatement honest: change either definition in
+  // index.html and this test fails, pointing at itself.
+  const src = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.ok(src.includes(String.raw`COOKIE_ANY = /\[(?:\/|%)(?:self|children|subtree|\d+)?\]/`),
+    'COOKIE_ANY has changed shape; update the restatement below to match');
+  assert.ok(src.includes(String.raw`CLOCK_RE = /\[o (\d*)\/(\d+)\]/g`),
+    'CLOCK_RE has changed shape; update the restatement below to match');
+  const COOKIE = /\[(?:\/|%)(?:self|children|subtree|\d+)?\]/;
+  const CLOCK = /\[o (\d*)\/(\d+)\]/;
+
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const files = [];
+  for (const d of readdirSync(dir, { withFileTypes: true }).filter(x => x.isDirectory()).map(x => x.name).sort())
+    for (const f of [`${d}.md`, `${d}-demo.opml`])
+      try { files.push({ n: `${d}/${f}`, t: readFileSync(resolve(dir, d, f), 'utf8') }); } catch { /* optional */ }
+  nonEmpty(files, 'solo-rpg files');
+
+  let seen = 0;
+  const dead = [];
+  for (const { n, t } of files)
+    for (const m of t.matchAll(/\[[^\]\n]{1,12}\]/g)) {
+      const tok = m[0];
+      if (/^\[\[/.test(tok) || /^\[[ x]\]$/i.test(tok)) continue;   // an internal link or a to-do box
+      if (!/[\/%]/.test(tok)) continue;                              // only progress-shaped tokens
+      if (/[A-Z]/.test(tok)) continue;                               // a metavariable placeholder: [o N/M]
+      seen++;
+      if (COOKIE.test(tok) || CLOCK.test(tok)) continue;
+      // A guide may SHOW the dead form to warn readers off it, which campaign-clocks does on
+      // purpose; that sentence is the opposite of the defect, so read the surrounding words.
+      const around = t.slice(Math.max(0, m.index - 130), m.index + 130);
+      if (/plain text|not a (clock|cookie)|is inert|does nothing|literal/i.test(around)) continue;
+      dead.push(`${n}: ${tok} renders as plain text (a cookie is [/], a clock is [o 3/10])`);
+    }
+  assert.ok(seen >= 4, `the census must see progress tokens, saw ${seen}`);
+  assert.deepEqual([...new Set(dead)], [], 'an inert progress token:\n  ' + [...new Set(dead)].join('\n  '));
+});
+
 test('a demo board that groups by a status column declares the states it groups into', () => {
   // The npc-faction board grouped nothing: lanes come from knownStates(), which is the four
   // built-ins plus whatever a sequence pill declares, and the demo declared none, so all four NPCs
