@@ -121,6 +121,9 @@ function between(src, startMarker, endMarker) {
 // Regex detection is the one genuinely hard case (`/["']/` looks like a string opener). Uses the
 // standard heuristic: a `/` is a regex only where a VALUE may start, i.e. after one of ( , = : [ ! &
 // | ? { } ; ~ + - * % ^ < > or `return`/`typeof`/`case`, else it is division or a comment opener.
+// The keywords after which a `/` can only open a regex, never divide: an operand cannot follow them.
+const REGEX_OK_KEYWORDS = new Set(['return', 'typeof', 'case', 'in', 'of', 'delete', 'void', 'instanceof',
+  'new', 'do', 'else', 'yield', 'await', 'throw']);
 function codeMask(src) {
   const mask = new Uint8Array(src.length);        // 1 = a brace here is a real block brace
   // An explicit stack, because the nesting is genuinely recursive: a template literal holds `${…}`
@@ -131,6 +134,18 @@ function codeMask(src) {
   const st = [{ k: 'code', depth: 0 }];
   const top = () => st[st.length - 1];
   const prevSig = (at) => { let j = at - 1; while (j >= 0 && /\s/.test(src[j])) j--; return j >= 0 ? src[j] : ''; };
+  // …and the KEYWORD half of the same rule, which the comment above promised and the code did not
+  // have. `return /^https?:\/\//i.test(x)` reads `n` as the previous significant character, which is
+  // not punctuation, so the regex was scanned as division: the mask desynchronised across the line
+  // and fnBody('isRemoteUrl') skipped that function's own closing brace and returned a body running
+  // hundreds of lines past it. A pin asserting `fnBody(src, f).includes(x)` then searched a haystack
+  // that was not f — the widened-window failure #1141 names, arriving through the helper built to
+  // prevent it. Only the word IMMEDIATELY before the slash counts, so `return a / b` stays division.
+  const afterKeyword = (at) => {
+    let j = at - 1; while (j >= 0 && /\s/.test(src[j])) j--;
+    const end = j + 1; while (j >= 0 && /[A-Za-z_$]/.test(src[j])) j--;
+    return REGEX_OK_KEYWORDS.has(src.slice(j + 1, end));
+  };
   let i = 0;
   while (i < src.length) {
     const t = top(), c = src[i], d = src[i + 1];
@@ -145,7 +160,7 @@ function codeMask(src) {
     if (c === '/' && d === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue; }
     if (c === '"' || c === "'") { const q = c; i++; while (i < src.length && src[i] !== q) { if (src[i] === '\\') i++; i++; } i++; continue; }
     if (c === '`') { st.push({ k: 'tpl' }); i++; continue; }
-    if (c === '/' && ('(,=:[!&|?{};~+-*%^<>'.includes(prevSig(i)) || prevSig(i) === '')) {
+    if (c === '/' && ('(,=:[!&|?{};~+-*%^<>'.includes(prevSig(i)) || prevSig(i) === '' || afterKeyword(i))) {
       i++; let cls = false;
       while (i < src.length) {
         if (src[i] === '\\') { i += 2; continue; }
@@ -18405,9 +18420,112 @@ test('due dates: front-door wiring (src pins)', () => {
 
 
 // ─── journal pure cores ───────────────────────────────────────────────────────
+test('fnBody stops at its own closing brace: no body swallows a top-level function', () => {
+  // The harness guarding itself. codeMask's comment claimed a `/` after `return`/`typeof`/`case`
+  // opens a regex; the code tested only the previous punctuation CHARACTER, so
+  // `return /^https?:\/\//i.test(x)` scanned as division, the mask desynchronised across the line,
+  // and fnBody skipped that function's own `}`. Seven of 1530 functions came back wrong -- five
+  // over-wide (rowsToCsv returned 5757 characters of a 147-character function, 39x its own size)
+  // and two truncated. Over-wide is the silent direction: `fnBody(src, f).includes(x)` then passes
+  // on code from a function that is not f, which is the widened-haystack failure #1141 names,
+  // arriving through the helper written to prevent it.
+  //
+  // A census, not a case: index.html declares every top-level function at column 0, so a body that
+  // contains one has run past its own end. Inner named functions are indented and unaffected.
+  const heads = nonEmpty([..._src.matchAll(/^function (\w+)\s*\(/gm)].map(m => m[1]), 'top-level functions');
+  assert.ok(heads.length > 500, `the census must see the whole source, found ${heads.length} functions`);
+  const bad = [];
+  for (const name of heads) {
+    let body;
+    try { body = fnBody(_src, name); } catch (e) { bad.push(`${name}: ${e.message}`); continue; }
+    const inner = body.slice(1).match(/\nfunction (\w+)\s*\(/);
+    if (inner) bad.push(`${name}'s body runs past its own end and into ${inner[1]}`);
+  }
+  assert.deepEqual(bad.slice(0, 8), [], 'fnBody over-ran, so every pin on these searched the wrong code:\n  ' + bad.join('\n  '));
+
+  // …and the specific shape that caused it, kept as a named case so the fix is legible. fnBody
+  // returns the BLOCK (from the opening brace), so the whole of this one-liner is 56 characters.
+  const one = fnBody(_src, 'isRemoteUrl');
+  assert.equal(one, "{ return /^https?:\\/\\//i.test(String(u || '').trim()); }",
+    'a one-line function opening with a regex must come back as exactly its own block');
+});
+
 test('todayISO returns YYYY-MM-DD shape', () => {
   const iso = c.todayISO();
   assert.match(iso, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('todayISO is the REAL day in the REAL calendar, even under a fiction calendar (#653: the journal is IRL)', () => {
+  // The journal and the roll log record what you ACTUALLY did, so their day rungs are Gregorian --
+  // #653 decided that and three separate places already depend on it: resolveCalendarId maps the
+  // journal subtree to CAL_GREGORIAN, the timeline's journal collector reads the rungs with a bare
+  // Date.UTC, and logRoll stamps a wall-clock HH:MM inside the day it files. todayISO defaulted BOTH
+  // of its seams to activeCalendar(), so in a custom-calendar document it NAMED those rungs in the
+  // fiction: an entry written today landed under 1204/04/12 and the timeline plotted it in the year
+  // 1204. The Chronicle is the fiction-dated log; the journal is not.
+  const cal = { id:'vale', name:'Calendar of the Vale', epochDay:0,
+    months: Array.from({ length:12 }, (_, i) => ({ name:'M' + (i + 1), days:30 })),
+    week: { length:7, days:['a','b','c','d','e','f','g'] },
+    eras: [{ name:'AE', yearZero:1200 }], current: 1181 };
+  // An INDEPENDENT oracle for "today": the same local y-m-d dueDateToday's wall-clock branch packs.
+  const now = new Date();
+  const realISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  c._context.__calFixture = cal;
+  try {
+    vm.runInContext('root.calendar = __calFixture; resetDocCaches();', c._context);
+    // the fiction really IS active — without this the assertion below could pass vacuously
+    assert.equal(c.dueDateToday(), 1181, 'the fixture calendar must be the active one');
+    assert.equal(c.formatEpochDays(c.dueDateToday()), '1204-04-12', 'a document date reads in the fiction');
+    // …and the journal's day ignores it, both halves: the DAY (dueDateToday(null)) and the LABEL
+    // (formatEpochDays(…, null)). Getting either wrong reproduces the bug on its own.
+    assert.equal(c.todayISO(), realISO, 'todayISO must be the real day in the real calendar');
+  } finally {
+    vm.runInContext('root.calendar = null; resetDocCaches();', c._context);
+  }
+});
+
+test('every journal and roll-log surface takes its day from todayISO, and none formats its own', () => {
+  // The census behind the fix above. One shared seam is the only reason a one-line change could
+  // repair six surfaces at once; a seventh that formatted its own date would re-open the defect for
+  // itself alone and nothing would notice, because every OTHER surface would still be right.
+  //
+  // The family is READ OUT OF THE SOURCE, not listed here. A hand-kept roster of an enumerable
+  // family is a census that stops counting the moment the family grows -- the exact shape this
+  // suite keeps finding in the app, and twice in its own guards.
+  let checked = 0;
+  const bad = [];
+  for (const m of _src.matchAll(/^function (\w+)\s*\(/gm)) {
+    const name = m[1];
+    let body;
+    try { body = fnBody(_src, name); } catch { continue; }
+    if (name === 'todayISO' || !/\btodayISO\(\)/.test(body)) continue;   // not a dated real-world surface
+    checked++;
+    // It may not mint its own label: formatEpochDays here would re-read the ACTIVE calendar and
+    // re-fiction the very rung todayISO just kept real.
+    if (/formatEpochDays\s*\(/.test(body))
+      bad.push(`${name} formats its own day beside todayISO()'s`);
+  }
+  assert.ok(checked >= 4, `the census must find the dated journal/roll-log surfaces, found ${checked}`);
+  assert.deepEqual(bad, [], 'a real-world log that dates itself:\n  ' + bad.join('\n  '));
+
+  // The reader side of the same contract, pinned so the pair cannot drift apart silently: the
+  // timeline parses journal rungs as Gregorian outright. If that ever stops being true, todayISO's
+  // two nulls need re-deciding with it.
+  assert.ok(/Gregorian, regardless of any active fiction calendar/.test(_src),
+    'the timeline no longer declares journal rungs Gregorian; re-examine todayISO with it');
+  assert.ok(fnBody(_src, 'todayISO').includes('formatEpochDays(dueDateToday(null), null)'),
+    'todayISO must ask for the real day AND the real calendar; either default re-fictions the journal');
+
+  // The same claim on the two surfaces a user reads. Both said "real" while the code said fiction,
+  // which is how the defect survived: every DOCUMENT was right, so a reader who checked the docs
+  // found agreement, and only the running app disagreed with all of them.
+  const inApp = between(_src, "id:'custom-calendars'", 'related:');
+  assert.match(inApp, /journal always reads the real calendar/,
+    "the in-app custom-calendars help must still say the journal is real, or the code's nulls lose their reason");
+  const dates = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'dates-and-planning.md'), 'utf8');
+  assert.match(dates.replace(/\s+/g, ' '), /journal\*\* always reads the \*\*real \(Gregorian\) calendar/,
+    'the dates guide must still say the journal is Gregorian; it and the code are one claim');
 });
 
 test('journalFileName: one file per day', () => {

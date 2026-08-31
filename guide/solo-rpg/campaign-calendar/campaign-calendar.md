@@ -12,7 +12,7 @@ counting. That proxy works, but it means your campaign's deadlines live on Earth
 A **custom calendar** removes the proxy. You give the document your world's months, week, and
 era, and every date in it changes citizenship: due dates are written and read in the world's own
 year-month-day, the agenda's month grid takes the world's shape (a ten-day week really shows ten
-columns), and the journal files its entries under the world's date. Time stops passing because
+columns), and a **chronicle** files its entries under the world's date. Time stops passing because
 Tuesday happened; it passes because you say it does.
 
 ---
@@ -71,18 +71,19 @@ The demo drops you into a caravan campaign mid-journey. The loop:
 2. **Time passes.** Open the agenda (the toolbar calendar button). With a calendar active, a
    **Today chip** shows the in-world date; click it and let time pass: +1 day, +3 days, +1 week,
    or set an exact date. Watch the threads shift color as their deadlines approach.
-3. **Journal the day.** Type `/journal` and the entry is filed under the world's date
-   (`Journal > 1204 > 04 > 12`), so the campaign log accumulates in campaign time. At the end of a
-   campaign this tree *is* the chronicle. (The toolbar journal button opens the journal strip
-   instead; `/journal` is the door that files the entry.)
+3. **Log the day in world time.** Make the point that will hold the campaign log, open its bullet
+   menu and choose **Set as chronicle**. A **Chronicle** button joins the toolbar; its bar works
+   like the journal's, except the date is a cursor you steer with `◂` and `▸`. Type an entry and it
+   files under the world's date (`Chronicle > 1204 > 04 > 12`), so the campaign log accumulates in
+   campaign time. The demo ships one already set, holding the caravan's first day.
 
-One wrinkle worth knowing, because it looks like a contradiction until you see the split. The
-journal's **entry tree** is named in world dates, as above. The **date properties** you write
-inside that subtree are read on the real calendar, because `calendarForNode` pins the journal
-subtree to Gregorian so a real-world reminder still means a real-world day. So a campaign journal
-files itself in world time while a `due:` inside it stays a date you will actually live through.
-If you want a log where everything, dates included, reads in world time, make its home point and
-choose **Set as chronicle** from its bullet menu.
+**Two logs, and the split is the point.** The **chronicle** is dated in the world: it is the log of
+what happened to the caravan. The **journal** stays real: `/journal` files under the day you
+actually wrote, because it records *you writing*, not the fiction. That is not a wrinkle, it is why
+both exist, and it runs all the way down: `calendarForNode` reads every date inside the journal
+subtree on the real calendar too, so a `due:` you set yourself there is still a day you will live
+through. Keep session notes in the journal and the campaign in the chronicle and neither has to
+lie about which clock it runs on.
 
 One small touch worth stealing from the demo:
 
@@ -124,8 +125,10 @@ Open the [demo file](campaign-calendar-demo.opml):
   the document. Advance the clock and it re-sorts itself with them, so the board is never a copy
   you maintain. It is the same search the [clocks case](../campaign-clocks/campaign-clocks.md)
   stars in the search bar, embedded in the document instead.
-- **Journal the day.** Type `/journal` and the entry lands under the world's date. Then advance
-  the clock again and journal again; the chronicle grows in world time.
+- **Log a day, twice.** Click the toolbar's **Chronicle** button and type a line: it files under
+  the world's date, into the Chronicle of the Salt Road. Then type `/journal` and write another:
+  that one lands under today's real date, in its own Journal. Advance the clock and repeat, and the
+  chronicle grows in world time while the journal keeps its own count of the evenings you played.
 - **Open File, Custom calendar** to see how the world is defined, and edit it live; the dialog
   warns you if a change would re-read your dates.
 
@@ -140,7 +143,7 @@ keep, and it does, three ways:
   laptop date you must mentally translate at the table
 - **time is yours**: the campaign advances when the story does, three days in one evening or
   nothing for a month of Tuesdays, and every urgency color follows the story's clock
-- **the chronicle assembles itself**: a journal keyed by world dates is the campaign document
+- **the chronicle assembles itself**: a log keyed by world dates is the campaign document
   every play-report writer wishes they had kept from session one
 
 If your game lives comfortably on real dates, keep them; the proxy is honest and simpler. The

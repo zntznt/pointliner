@@ -6104,7 +6104,19 @@ function auditCalendarSwitch(rootNode, oldCal, newCal) {
 
 // ─── journal / daily-notes pure cores ────────────────────────────────────────
 // todayISO() — pure, but depends on current time. Returns 'YYYY-MM-DD'.
-function todayISO() { return formatEpochDays(dueDateToday()); }
+//
+// BOTH nulls are load-bearing and mean the same thing: the REAL day, in the REAL calendar.
+// This is the day label for the two logs that record what you actually did — the journal (six
+// call sites) and the roll log — and #653 already decided those are IRL: resolveCalendarId maps
+// the journal subtree to CAL_GREGORIAN so every date INSIDE it reads real, the timeline's journal
+// collector reads the rungs with `Date.UTC(...)  // Gregorian, regardless of any active fiction
+// calendar`, logRoll stamps a wall-clock HH:MM under the day it files, and the Chronicle exists
+// precisely to be the fiction-dated log ("the journal records the day you actually wrote an
+// entry; a chronicle records the day you decide"). Defaulting either argument to activeCalendar()
+// NAMED those real-world rungs in the fiction calendar while everything that read them back
+// assumed Gregorian, so a journal entry in a custom-calendar document filed under 1204/04/12 and
+// the timeline plotted it in the year 1204.
+function todayISO() { return formatEpochDays(dueDateToday(null), null); }
 
 // journalFileName(iso) — pure, Node-testable. One file per day: iso + '.opml'.
 function journalFileName(iso) { return iso + '.opml'; }

@@ -2970,6 +2970,33 @@
       "find": "          <outline text=\"{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}\" _id=\"gen00023\"/>\n          <outline text=\"{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}\" _id=\"gen00024\"/>\n          <outline text=\"{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}\" _id=\"gen00025\"/>\n          <outline text=\"{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}\" _id=\"gen00022\"/>",
       "replace": "          <outline text=\"{rule tavern: The {adjective} {animal} | The {animal} and {animal} | The {adjective} {noun}}\" _id=\"gen00022\"/>\n          <outline text=\"{rule adjective: Rusty | Salted | Gilded | Crooked | Weeping | Drowned | Broken}\" _id=\"gen00023\"/>\n          <outline text=\"{rule animal: Kraken | Wyrm | Magpie | Boar | Otter | Raven | Toad}\" _id=\"gen00024\"/>\n          <outline text=\"{rule noun: Anchor | Lantern | Crown | Coin | Barrel | Compass}\" _id=\"gen00025\"/>",
       "kills": "no demo declares a rule above a rule it calls, which freezes an unresolvable preview"
+    },
+    {
+      "id": "journal-day-refictioned",
+      "suite": "unit",
+      "why": "the journal and the roll log are IRL by decision (#653), and defaulting either seam to the active calendar filed a real-world entry under a fiction date the timeline then plotted 800 years out",
+      "file": "index.html",
+      "find": "function todayISO() { return formatEpochDays(dueDateToday(null), null); }",
+      "replace": "function todayISO() { return formatEpochDays(dueDateToday()); }",
+      "kills": "todayISO is the REAL day in the REAL calendar, even under a fiction calendar"
+    },
+    {
+      "id": "codemask-forgets-the-keyword",
+      "suite": "unit",
+      "why": "without the keyword half of the regex rule, `return /re/` scans as division and fnBody runs past its own closing brace -- seven functions came back wrong, one at 39x its true size, so any pin on them searched foreign code",
+      "file": "tests/test.mjs",
+      "find": "|| prevSig(i) === '' || afterKeyword(i))) {",
+      "replace": "|| prevSig(i) === '')) {",
+      "kills": "fnBody stops at its own closing brace: no body swallows a top-level function"
+    },
+    {
+      "id": "journal-day-refictioned-driven",
+      "suite": "browser",
+      "why": "the driven half of journal-day-refictioned: with the calendar defaulted back in, a real-world journal entry files under 1204/04/12 in a running document, which no source pin can see",
+      "file": "index.html",
+      "find": "return formatEpochDays(dueDateToday(null), null); }",
+      "replace": "return formatEpochDays(dueDateToday()); }",
+      "kills": "a custom calendar moves the chronicle and the due dates, never the journal"
     }
   ]
 }
