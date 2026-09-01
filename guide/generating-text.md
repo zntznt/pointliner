@@ -156,6 +156,61 @@ Click the pill to re-roll. (All of this is also in the **`@` → Dice** dialog.)
 
 ---
 
+## Contested rolls: `{A vs B}`
+
+The commonest tabletop resolution is a roll against a roll: an attack against a defense, a contest
+against a contest. Put **`vs`** between the two sides and one pill rolls both at once, freezes them
+together and reads the **margin**, the winner's lead.
+
+```
+{hit := 2d6+str vs 2d6+def}
+```
+
+The pill shows each side's total and the verdict, reading `9 vs 7 · won by 2`. Clicking re-rolls
+both sides as one event, so the two are never a pair of pills you compare by eye.
+
+Naming it (the `{name := …}` form above) is what lets the rest of the document read the margin. It
+is an ordinary number in math:
+
+```
+{= hit}          the margin itself
+{= hit > 0}      ✓ when the first side won
+{= hit * 5}      damage scaled by how decisively it won
+{= max(hit, 0)}  a loss clamped to zero
+```
+
+Degrees of success fall straight out of that number, so you rarely need a table for them.
+
+**Either side can be a fixed target** instead of a roll: a number for a set difficulty, or one of
+your own variables.
+
+```
+{check := 2d6+str vs 15}      against a flat difficulty
+{check := 2d6+str vs ac}      against a variable
+```
+
+With one side fixed the pill reads from the roll's point of view, `beat by 3` or `short by 6` or
+`met it`, because a static target does not "win".
+
+**It works at every level**, because each side collapses to one total before the subtraction. A
+success pool against a success pool gives the **net successes**:
+
+```
+{clash := 6d10>=7 vs 5d10>=7}
+```
+
+**You do not need a name.** A bare `{2d6+2 vs 2d6+1}` drops a one-off pill that just shows who won.
+It feeds no math, which is the trade: nothing else can reference it.
+
+> **Compare like with like.** A sum on one side and a success pool on the other subtracts pips from
+> successes, which means nothing. The pill still computes, but wears a dashed edge and reads `mixed`
+> instead of handing you a confident wrong number.
+
+Type `{` and choose **contest** for a scaffold to fill in, or lift a whole worked line from
+**Patterns** in the all-commands window (`Ctrl/Cmd+K`).
+
+---
+
 ## Shape the words (modifiers)
 
 A `.modifier` after a rule or variable transforms its text. This is how you get *"an ogre"*

@@ -12763,6 +12763,15 @@ const MATH_CLAIMS = {
   '2 * pi * r':                     { shows: '31.415927', vars: { r: 5 } },
   'pi * r^2':                       { shows: '78.539816', vars: { r: 5 } },
   'STR + 2':                        { shows: '16',        vars: { str: 14 } },
+  // The Wilson pair: a rate's 95% range. Three samples on purpose -- the small one the guide leads
+  // with, the ten-times-larger one at the SAME rate (the point of the section: the range, not the
+  // rate, is what the sample buys), and the all-wins edge the textbook formula gets wrong.
+  'round(wilsonlow(12, 20))':       { shows: '39' },
+  'round(wilsonhigh(12, 20))':      { shows: '78' },
+  'round(wilsonlow(120, 200))':     { shows: '53' },
+  'round(wilsonhigh(120, 200))':    { shows: '67' },
+  'round(wilsonlow(20, 20))':       { shows: '84' },
+  'round(wilsonhigh(20, 20))':      { shows: '100' },
   // Two claims carry a per-pill number format instead of a bare render; fmt is the third argument
   // formatMathDisplay already takes, so they go through the same path with parseNumFmt's output.
   '1200':                           { shows: '$1,200.00', fmt: ['2', '$', '', ''] },

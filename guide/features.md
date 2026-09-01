@@ -82,6 +82,7 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 - **Contested rolls.** `{hit := 2d6+str vs 2d6+def}` rolls both sides at once and shows each total
   and the margin, the winner's lead; the margin is a number math can read (`{= hit > 0}` is true
   when the first side won). Either side can be a fixed target: `{check := 2d6 vs 15}`.
+  ([contested rolls](generating-text.md#contested-rolls-a-vs-b))
 - **Named rules.** Build a name generator or loot table once, reuse it anywhere.
   ([rules](generating-text.md#name-things-youll-reuse-rules))
 - **Shape words.** `{beast.a}` becomes "an ogre"; pluralize, capitalize, past tense, possessive,
