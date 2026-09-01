@@ -3240,6 +3240,60 @@
       "find": "\u2192  $1,200.00",
       "replace": "\u2192  $1200.00",
       "kills": "user-guide values"
+    },
+    {
+      "id": "guide-app-value-wrong-number",
+      "suite": "unit",
+      "why": "the in-app guide's stated number must match what the engine renders. The browser sweep (#1452) proved every example becomes a live PILL and would pass a pill showing 999; nothing read the number until this guard",
+      "file": "index.html",
+      "find": "shows 120 and recomputes",
+      "replace": "shows 121 and recomputes",
+      "kills": "every number the in-app concept guide states"
+    },
+    {
+      "id": "guide-app-value-claim-unanswered",
+      "suite": "unit",
+      "why": "totality: a NEW value claim in the in-app guide must be answered rather than absorbed, the property that stops this guard decaying into a fixed list of the numbers someone once checked",
+      "file": "index.html",
+      "find": "20 is what percent of 80",
+      "replace": "20 is what percent of 80 (25)",
+      "kills": "every number the in-app concept guide states"
+    },
+    {
+      "id": "guide-app-value-gloss-copy-rewritten",
+      "suite": "unit",
+      "why": "a gloss's probes pin the ENGINE, so rewriting the sentence the gloss describes is invisible to them; states pins the copy. Without this half a gloss is a rubber stamp",
+      "file": "index.html",
+      "find": "0=Sun\u20266=Sat",
+      "replace": "1=Sun\u20267=Sat",
+      "kills": "every number the in-app concept guide states"
+    },
+    {
+      "id": "guide-app-value-declares-input",
+      "suite": "unit",
+      "why": "the map feeds STR+2 an input of 14 because the guide's own copy gives the reader `STR: 14`; without this the map could invent whatever input makes its answer come out right",
+      "file": "index.html",
+      "find": "give a point a `STR: 14` property",
+      "replace": "give a point a `STR: 15` property",
+      "kills": "every number the in-app concept guide states"
+    },
+    {
+      "id": "guide-app-underline-word-not-drawn",
+      "suite": "unit",
+      "why": "the shipped defect this guard was built on: the broken-link entry promised a dashed underline while .node-link-broken has always drawn underline dotted, and the markdown guide said dotted",
+      "file": "index.html",
+      "find": "dotted underline. To round them all up",
+      "replace": "dashed underline. To round them all up",
+      "kills": "the underline the concept guide promises"
+    },
+    {
+      "id": "guide-app-underline-rule-drifted",
+      "suite": "unit",
+      "why": "isolates the identity arm: changing the rule adds dashed to the drawn set, so the census containment arm still passes and only the .node-link-broken pin notices the guide now names a style that rule no longer draws",
+      "file": "index.html",
+      "find": ".node-link-broken{color:var(--del);text-decoration:underline dotted",
+      "replace": ".node-link-broken{color:var(--del);text-decoration:underline dashed",
+      "kills": "the underline the concept guide promises"
     }
   ]
 }
