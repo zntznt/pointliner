@@ -572,9 +572,10 @@ pill, so the roll-up is dialog-made.
 
 ## Odds and simulation
 
-Two probability questions the dice and rollups don't answer on their own. Both live in a `{= …}`
-pill and return a plain **percentage**, so they compose with everything else like any other number.
-Reach for either from the `{` menu (**odds** and **simulate**).
+Three questions about odds the dice and rollups don't answer on their own. All three live in a
+`{= …}` pill and return a plain **percentage**, so they compose with everything else like any other
+number. The first two have a `{` menu entry (**odds** and **simulate**); the third completes by name
+inside a `{= …}`.
 
 ### Drawing without replacement (`hypergeom`)
 
@@ -610,9 +611,45 @@ threshold you'd otherwise work out on scratch paper. The comparator can be `>=`,
 reads as the question it is.
 
 The simulation is **seeded**, so the number holds still between edits rather than flickering; a
-larger `N` is a steadier estimate.
+larger `N` is a steadier estimate, up to 20,000 trials, which is where it stops. Ask for a million
+and you get exactly the answer 20,000 gives, because the pill recomputes on every render and a
+bigger sample costs time it cannot pay back.
 
-Both are ordinary numbers, so round them and add a sign the way you would any odds:
+### The honest range around a rate (`wilsonlow` / `wilsonhigh`)
+
+A rate out of a small sample is not the number it looks like. Twelve wins in 20 games is 60 percent,
+but 20 games is not many, and the true rate could be a good deal worse or better.
+`{= wilsonlow(wins, games)}` and `{= wilsonhigh(wins, games)}` give the **95 percent range** around
+that rate, so you can see how much room the sample leaves:
+
+```
+{= round(wilsonlow(12, 20))}     → 39
+{= round(wilsonhigh(12, 20))}    → 78
+```
+
+So you can write 12 of 20 as "60% (39 to 78%)", which is an honest way of saying "probably better
+than a coin flip, and that is about all 20 games can tell you". Play 200 games at the same rate and
+the range tightens to somewhere a claim can live:
+
+```
+{= round(wilsonlow(120, 200))}   → 53
+{= round(wilsonhigh(120, 200))}  → 67
+```
+
+This is the **Wilson interval**, which stays sane at the edges where the textbook formula does not.
+A perfect 20 for 20 does not read as a confident 100 percent, because the low end says how little
+20 games really prove:
+
+```
+{= round(wilsonlow(20, 20))}     → 84
+{= round(wilsonhigh(20, 20))}    → 100
+```
+
+Reach for it before you trust a win rate, a conversion rate or a hit rate: it is the difference
+between a real edge and noise. Both names complete as you type them inside a `{= …}`, like any
+other function.
+
+All three are ordinary numbers, so round them and add a sign the way you would any odds:
 
 ```
 {= round(hypergeom(60, 12, 7, 3))}%     a clean percentage in a sentence
