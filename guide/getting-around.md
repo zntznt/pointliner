@@ -76,10 +76,10 @@ filtered board answers less than a filtered list, and the switch says so while i
 
 Zooming into a lone **paragraph** is pointless, so a paragraph's bullet does something more useful:
 it **collapses the paragraph to just its first line**. Click a paragraph's bullet (or press
-`Ctrl/Cmd+Enter`, or choose **Collapse to first line** from its menu) and a long paragraph folds down
+`Ctrl/Cmd+Enter`, or choose **Collapse to first line** from its menu) and a long paragraph collapses
 to a one-line peek ending in an ellipsis, so a page of long notes stays scannable. Click the bullet
 again to show the whole thing, or just click the text to edit it (editing always shows the full
-paragraph). The folded state is saved with the document.
+paragraph). The collapsed state is saved with the document.
 
 A paragraph is prose-first in one more way: pills inside it are drawn **lighter**, without the usual
 capsule, icon or dice breakdown, so a generated sentence reads as a sentence rather than a row of
@@ -148,7 +148,7 @@ The operators:
 - `is:done` / `is:todo` / `is:note` / `is:failing` / `is:passing` filter structurally (finished, open,
   has a note, a failing or passing check). `is:passing` is not the opposite of `is:failing`: a point
   with no check at all is neither.
-- `is:leaf` / `is:parent`, `is:collapsed` / `is:expanded` filter by structure and fold state.
+- `is:leaf` / `is:parent`, `is:collapsed` / `is:expanded` filter by structure and collapse state.
 - `is:pill` finds a point carrying any pill; `is:random` narrows to the re-rollable ones (dice,
   generators). `has:dice` (and `has:math`, `has:est`, `has:grammar`, `has:markov`, `has:var`,
   `has:seq`, `has:query`) find a specific kind; `has:children` / `has:footnote` find sub-points or

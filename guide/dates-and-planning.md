@@ -220,7 +220,7 @@ each field checks your lines as you type and shows what "today" resolves to befo
 
 Once active, the document speaks that calendar: due and start dates read and write the calendar's own
 year-month-day (`due: 1204-04-12`), the agenda's month and week views take its shape (a 10-day week
-really shows ten columns), the date picker in the Schedule dialog renders its months, and date math
+really shows 10 columns), the date picker in the Schedule dialog renders its months, and date math
 like `{= daysuntil(due)}` counts its days. Relative dates (`today+3`, `tomorrow`) mean days in that calendar.
 (Your [journal](#daily-journal) is the one part that stays on the real calendar, so it keeps tracking
 actual days; see [two calendars in one document](#two-calendars-in-one-document) below.)

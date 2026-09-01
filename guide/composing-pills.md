@@ -1,7 +1,7 @@
 # Composing pills
 
 *Part of the [Pointliner guide](README.md). How pills feed each other: side by
-side, through a variable, and through the tree.*
+side, through a variable and through the tree.*
 
 Pills are not meant to be used one at a time. The whole engine is designed so one pill can
 feed another: a variable holds a die roll, a condition reads that variable, a math pill reads
@@ -121,7 +121,7 @@ equivalent. They sit next to each other and the reader gets both views.
 
 ## What's next
 
-The [cookbook](cookbook.md) has ten copy-paste recipes that demonstrate every pattern at
+The [cookbook](cookbook.md) has 10 copy-paste recipes that demonstrate every pattern at
 work in a finished document. The [generating text](generating-text.md) and
 [computing numbers](computing-numbers.md) guides cover the individual pill forms that
 compose into these patterns.

@@ -57,7 +57,7 @@ The everyday outliner. This is the part you use without thinking about it.
   a soft keyboard, undo, and help. While you edit, it swaps for a bar of structural controls
   (indent, move, insert).
 - **Small controls are bigger than they look on touch.** Chips, toggles, close buttons and the
-  fold arrow all take a comfortable tap on a phone even where the visible control is small. The
+  collapse arrow all take a comfortable tap on a phone even where the visible control is small. The
   target grows, not the design, so nothing shifts and no control starts stealing its neighbor's
   taps. On a mouse, everything stays exactly as it was.
 
@@ -141,7 +141,7 @@ A live calculator that can see your document. Math pills recompute on their own.
   `{cost}` and `{cost * 2}` the same draw, so a model moves as one piece.
   ([estimates](computing-numbers.md#uncertain-values-estimates))
 - **Odds and simulation.** `{= hypergeom(60, 12, 7, 3)}` is the chance of drawing at least three of
-  twelve good cards in a seven-card hand from a sixty-card deck, the honest draw-without-replacement
+  12 good cards in a seven-card hand from a 60-card deck, the honest draw-without-replacement
   answer the dice engine (which rolls with replacement) cannot give. `{= simulate(2000, 2d6+3, >= 10)}`
   rolls a dice expression N times and returns the percentage that clear a bar, for the messy rolls with
   no tidy formula. Both are plain percentages that compose: `{= round(hypergeom(60, 12, 7, 3))}%`.
@@ -195,7 +195,7 @@ Turn the document into a lightweight planner.
 - **Chronicle.** A log dated on a day you choose: a journal twin whose date is a movable cursor
   (step it with ◂ / ▸ or jump to a date), so you log entries in a custom calendar, not the real one.
   ([chronicle](dates-and-planning.md#the-chronicle-a-dated-log))
-- **Custom calendars.** Give a document its own calendar (your months, week, and era) and every
+- **Custom calendars.** Give a document its own calendar (your months, week and era) and every
   date and agenda view speaks it; advance the clock from the agenda. The journal stays on the
   real calendar, and you can set one subtree as a chronicle with its own calendar, so real and
   custom-calendar dates coexist in one document. ([custom calendars](dates-and-planning.md#custom-calendars))
@@ -282,8 +282,8 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   ([linking points](links-and-references.md#linking-points) · [backlinks](links-and-references.md#backlinks))
 - **Mirrors and subtree embeds.** `[[#id|]]` embeds a point's content inline; alone on its line it
   embeds the point **and everything under it**, so an overview note composes whole sections without
-  copying (source folds bound it; long subtrees cap at 40 rows). In the `[[` picker, Shift+Enter (or
-  Shift+click) embeds instead of referencing.
+  copying (collapsing in the source bounds it; long subtrees cap at 40 rows). In the `[[` picker,
+  Shift+Enter (or Shift+click) embeds instead of referencing.
   ([linking points](links-and-references.md#linking-points))
 - **Link graph.** See your document as a browsable web of its links instead of a list, and jump to
   any point by recognizing it. It also draws a dashed line between points that mention each other by
@@ -330,7 +330,7 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
 - **Bibliography import you can cite from.** A BibTeX `.bib` file comes in as a section of sources:
   each entry is a point titled by the work, its citation kept as that point's footnote, the year and
   the cite key as properties. The source keeps the name your reference manager knows it by, so citing
-  it anywhere is just writing that name (`[^ives2019]`), and ten claims citing one source share one
+  it anywhere is just writing that name (`[^ives2019]`), and 10 claims citing one source share one
   citation. It reads the file once and writes no bibliography: this is not a reference manager.
   ([footnotes](writing-and-formatting.md#footnotes-links-and-images))
 - **Published grammar + lossless format.** Every `{…}` pill form, the order they are matched, the
@@ -369,7 +369,7 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   abandoned while inserting something new never overwrites an existing pill you later open to edit,
   and a half-typed schedule stays with the point it was meant for.
 - **Templates and examples.** File then **Templates & examples** drops a ready-made, fully live
-  example into your document. There are fourteen: creative and game starters (a campaign oracle that
+  example into your document. There are 14: creative and game starters (a campaign oracle that
   rolls on your own cast and threads, a living character sheet, a game design workbench, a series
   bible) and general-purpose ones (a project planner, a reading log, research notes, a week
   dashboard, a weekly meal planner, a home inventory, a household budget, freelance costing, a
@@ -382,7 +382,7 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   first run: once you have a document, reopening goes straight back to your work.
 - **All commands.** One searchable window over every point command, generator, calculation and
   pill. Open it from the toolbar (the checklist button), with `Ctrl/Cmd+K`, or by typing `/builder`;
-  it opens on **Patterns**, ten ready-made recipes you lift and edit in place, four of which drop
+  it opens on **Patterns**, 10 ready-made recipes you lift and edit in place, four of which drop
   example rows underneath so the pill computes a real answer on arrival. (In Guided mode, `/` and
   `@` open it too; the menu on a bare `{` has a **Browse all pills** row.) Type to filter, arrow to
   browse, Enter to insert; the side pane explains each command as you go.

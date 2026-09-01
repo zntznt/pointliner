@@ -141,7 +141,7 @@ rides along as an underscore-prefixed attribute holding small JSON:
 
 - `_dice`, `_grammar`, `_math`, `_vars`, `_query`, `_est`, `_seq`, `_markov` for the pill records
 - `_props` for properties (including dates), plus base config (`_view`, `_colrole`, `_colfmt`, …)
-- document-level configuration (saved searches, appearance, calendars, and so on) rides on the head
+- document-level configuration (saved searches, appearance, calendars and so on) rides on the head
 
 Because it is ordinary text you can read and keep, your document outlives the app: the format is
 documented here, the pill grammar is the closed set above, and any tool can read the outline even if

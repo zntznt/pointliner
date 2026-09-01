@@ -24,7 +24,7 @@ Type **`[[`** and pick the point to link to. Two things make these links low-mai
 linked point's content appears *with everything under it*, indented like the source, so an
 overview or structure note can compose whole sections of other points without copying them. Two
 levers keep it bounded: **collapse** a point in the source and the mirror hides its children too
-(fold in the source to control what the mirror shows), and long subtrees cap at **40 rows** with
+(collapse in the source to control what the mirror shows), and long subtrees cap at **40 rows** with
 a "+N more, open the source" note. A mirror *inside a sentence* stays a single line, so prose
 never breaks; a mirror inside a mirrored subtree shows as a title, so two notes mirroring each
 other never loop. Click anywhere on the block to jump to the source.
@@ -138,8 +138,9 @@ your documents, not just the one you are in, so a link can reach a point in any 
 document's point right where you write it, the same live-mirror move as inside one document: a
 character sheet in one file can show inside a session log in another, a definition can appear inside
 every document that needs it. On its own line it brings the point's **whole subtree** along (same
-rules as the same-document form: source folds bound it, 40-row cap), so an index note can compose
-sections from several files. The embedded copy shows the point **as it was last saved** in its file
+rules as the same-document form: collapsing in the source bounds it, 40-row cap), so an index note
+can compose sections from several files. The embedded copy shows the point **as it was last saved**
+in its file
 (another document is its file on disk, so the mirror follows the file). Hover the mirror to see which
 document it comes from; click it to open the source. Links, tallies and searches inside the mirrored
 point resolve in **their own document**, so a query pill mirrored from a project file still counts

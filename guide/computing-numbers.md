@@ -156,7 +156,7 @@ Then convert across your table like any other unit:
 ```
 
 A bare name starts a new dimension of its own; `name = number unit` relates it to a built-in
-(`m`, `kg`, `l`, `s`, and their friends) or to a unit you defined on an earlier line. Reopen the
+(`m`, `kg`, `l`, `s` and their friends) or to a unit you defined on an earlier line. Reopen the
 dialog any time to edit, or **Clear units** to remove them (the built-ins always stay).
 
 ---
@@ -327,7 +327,7 @@ work the same way), live as cells change, rolled cells included. The dialog prev
 the base will declare and warns about anything it has to skip (a row it can't name, a column that
 matches a text modifier). A `$` badge on the base shows the feature is on; click it to change the
 name, or use the bullet menu's **Stop using rows as variables** to turn it off. In the Variables
-panel, a base's names fold under one collapsible header so your own variables stay in front.
+panel, a base's names collapse under one header so your own variables stay in front.
 
 ---
 
@@ -379,7 +379,7 @@ any depth below, instead of the direct children:
 ```
 
 The quoted search takes all the usual [operators](getting-around.md#searching-and-filtering) (`is:todo`, `#tag`,
-`-has:owner`, `due:overdue`, and so on), so the query is the filter and the property is what you
+`-has:owner`, `due:overdue` and so on), so the query is the filter and the property is what you
 add up. **Round brackets do not group a search.** Write each alternative out in
 full instead. `is:todo -(is:done | has:owner)` looks for the literal text `(is:done`; the form that
 works is `is:todo -is:done -has:owner`, and for the other shape, `is:todo -has:owner | is:todo -#x`.
@@ -516,7 +516,7 @@ A named range answers more than "roughly how much". Anywhere in the document:
 ```
 
 These are ordinary numbers, so they compose with everything else: `{= percentile(cost, 90) * 1.1}`
-adds a ten percent margin on top of your ninetieth-percentile figure. The threshold can be another
+adds a 10 percent margin on top of your ninetieth-percentile figure. The threshold can be another
 variable, which is usually how the question actually reads:
 
 ```
