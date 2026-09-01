@@ -3899,8 +3899,13 @@ test('#1508 the day’s expand button and the day cell both answer the keyboard'
   });
   await pg.waitForTimeout(900);
 
+  // `button.agd-more`, not `.agd-more`: a SIDE-MONTH day renders the same class as an inert <div>
+  // (fillAgendaDay: createElement(expandable ? 'button' : 'div'), and the side months pass
+  // expandable:false). When today also falls inside a side month's trailing or leading week -- the
+  // first and last days of a month -- both cells overflow, and a bare `.agd-more` read whichever
+  // came first in DOM order, so this test failed on those dates and only those. Keep the tag on it.
   const more = await pg.evaluate(() => {
-    const el = document.querySelector('.agd-more');
+    const el = document.querySelector('button.agd-more');
     return el ? { tag: el.tagName, label: el.getAttribute('aria-label') } : null;
   });
   assert.ok(more, 'precondition: the overflowing day renders its "+N more" control');
@@ -3908,14 +3913,14 @@ test('#1508 the day’s expand button and the day cell both answer the keyboard'
   assert.match(more.label, /more point/, 'precondition: and it is labelled for assistive tech');
 
   const press = async (key) => {
-    await pg.evaluate(() => document.querySelector('.agd-more')?.focus());
-    const ok = await pg.evaluate(() => document.activeElement === document.querySelector('.agd-more'));
+    await pg.evaluate(() => document.querySelector('button.agd-more')?.focus());
+    const ok = await pg.evaluate(() => document.activeElement === document.querySelector('button.agd-more'));
     assert.equal(ok, true, 'precondition: the control takes focus');
     await pg.keyboard.press(key);
     await pg.waitForTimeout(300);
     return pg.evaluate(() => ({
       expanded: document.querySelectorAll('.agd-expanded').length,
-      label: document.querySelector('.agd-more')?.getAttribute('aria-label') || null,
+      label: document.querySelector('button.agd-more')?.getAttribute('aria-label') || null,
     }));
   };
   // Enter expands the day; the control becomes its collapse twin, and Space works there too
@@ -3926,7 +3931,7 @@ test('#1508 the day’s expand button and the day cell both answer the keyboard'
   assert.equal(afterSpace.expanded, 0, 'Space on the collapse twin must collapse it: both keys, both twins');
 
   // and the MOUSE path is untouched, which is the half that always worked
-  await pg.evaluate(() => document.querySelector('.agd-more')
+  await pg.evaluate(() => document.querySelector('button.agd-more')
     ?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })));
   await pg.waitForTimeout(300);
   assert.equal(await pg.evaluate(() => document.querySelectorAll('.agd-expanded').length), 1,
