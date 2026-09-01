@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2146 declarations in 158 sections across 17 domains.**
+**2148 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -494,6 +494,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `versusSideKind` — The kind of one side WITHOUT rolling — 'roll' | 'fixed' | null — for classify/promote validity checks
 - `versusValid` — A contest is valid iff BOTH sides resolve to a number — a roll, a constant, or a variable/formula. So
 - `rollVersus` — Roll one contest: resolve each side (a roll collapses to a pip sum or success count; a fixed side is
+- `versusVerdict` — #1243/#1571: the verdict a contest reads out, from its stored record alone. Pure -- no DOM, no
 - `makeDiceRoll` — Build a fresh roll record from raw user input; null if the formula is invalid.
 - `diceBreakdownHTML` — Inline HTML for the formula breakdown — handles exploding, keep/drop, Fate, and
 - `diceTotalStr` — Displayed total for a dice record — success pools show "N succ", Fate shows a
@@ -1898,6 +1899,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `PRUNABLE_SIDECARS` — Drop every sidecar record whose inline token no longer appears in node.text — the
 - `pruneArtifacts` — #1507: returns what it DROPPED, `{sidecar: [record,…]}` or null. This is the one place in the app
 - `restoreArtifacts` — Put records back, skipping any key the point already carries. The caller prunes straight after, so
+- `mergeDropped` — #1571: union two `dropped` maps by record key, per sidecar kind. The prune that runs INSIDE
 - `pruneDice` — Drop dice records whose [[dice:KEY]] token no longer appears in the text.
 - `rerollMarkov` — Re-walk a markov chain in place (click handler), keeping its definition.
 - `editMarkov` — Open the editor for an existing chain; on submit, replace its def + re-walk.

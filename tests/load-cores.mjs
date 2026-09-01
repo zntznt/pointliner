@@ -162,7 +162,7 @@ export function loadCores() {
 
   const need = [
     'parseDice', 'rollParsed', 'diceExprStr', 'mathHasDice', 'freezeDiceInExpr', 'rollDiceTerm',
-    'parseVersus', 'versusKind', 'rollVersus', 'versusSide', 'versusSideKind', 'versusValid', 'rollPickRecord',   // #1243 opposed/margin rolls (contest cores; sides may be a roll, a constant, or a variable)
+    'parseVersus', 'versusKind', 'rollVersus', 'versusSide', 'versusSideKind', 'versusValid', 'rollPickRecord', 'versusVerdict',   // #1243 opposed/margin rolls (contest cores; sides may be a roll, a constant, or a variable)
     'checkQuery',           // #1195: the query embedded in a check, for the reveal-offenders affordance
     'deepCloneNodeNewIds', '_cloneNodeNewIds', 'remapClonedLinks', 'uid',   // clone + internal-link remap
     'distReadout', 'sampleGenerator', 'distChanceAtLeast', 'distChanceAtMost', 'pickOneHit',   // distribution peek
@@ -282,7 +282,7 @@ export function loadCores() {
     'deriveTypeFromText','isTaskFirst','todoDoneFromText','rederiveFromText','continuationPrefix','toggleTaskLine',
     'taskShortcutAt','taskShortcutSay',   // #1471: what Ctrl/Cmd+Shift+X does, and what it says about it
     'cloneArtifactSidecars','mergeArtifactSidecars',
-    'pruneArtifacts','restoreArtifacts',        // #1507: what a prune DROPPED, and putting it back
+    'pruneArtifacts','restoreArtifacts','mergeDropped',   // #1507: what a prune DROPPED, and putting it back; #1571 unions two such reports
     'firstTaskChecked','setFirstTaskChecked',   // bulk checkbox toggle cores
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates','filterBraceForms',

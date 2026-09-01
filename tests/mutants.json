@@ -1401,8 +1401,8 @@
       "suite": "unit",
       "why": "without the prune after the restore, redo would leave the records behind as orphans -- the same asymmetry pointed the other way",
       "file": "index.html",
-      "find": "      if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }\n      pruneArtifacts(node);",
-      "replace": "      if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }",
+      "find": "      const orphaned = pruneArtifacts(node);",
+      "replace": "      const orphaned = null;",
       "kills": "the undo entry carries the orphans"
     },
     {
@@ -3294,6 +3294,78 @@
       "find": ".node-link-broken{color:var(--del);text-decoration:underline dotted",
       "replace": ".node-link-broken{color:var(--del);text-decoration:underline dashed",
       "kills": "the underline the concept guide promises"
+    },
+    {
+      "id": "paste-points-not-promoted",
+      "suite": "browser",
+      "why": "the paste path built its points with mkNode() and never promoted them, so only the LAST pasted line went live (focusNode puts it in edit mode and exitEdit converts on the way out) while every earlier line stayed literal {\u2026} and saved that way -- on guide/cookbook.md's documented paste-the-block-in path",
+      "file": "index.html",
+      "find": "  pastedTops.forEach(promoteLoadedShorthand);\n",
+      "replace": "",
+      "kills": "every pasted line becomes a live pill"
+    },
+    {
+      "id": "paste-promotion-after-the-index",
+      "suite": "unit",
+      "why": "promoting AFTER buildIndex leaves the index holding the raw shorthand; the ordering is load-bearing and an ordering pin that cannot fail is the #1133 shape",
+      "file": "index.html",
+      "find": "  pastedTops.forEach(promoteLoadedShorthand);\n  buildIndex(root, null);",
+      "replace": "  buildIndex(root, null);\n  pastedTops.forEach(promoteLoadedShorthand);",
+      "kills": "a pasted point gets the same"
+    },
+    {
+      "id": "undo-redo-drops-its-own-orphans",
+      "suite": "browser",
+      "why": "applyEntry ran the prune and discarded its return, so the first Ctrl+Z threw away exactly what the next Ctrl+Shift+Z needed and all eight prunable sidecars came back as a (missing data) pill that then autosaved. #1507 taught prune to report and taught exitEdit to listen; this caller was never taught",
+      "file": "index.html",
+      "find": "      if (orphaned) {\n        let carried = null;",
+      "replace": "      if (false && orphaned) {\n        let carried = null;",
+      "kills": "undo then redo keeps the pill record"
+    },
+    {
+      "id": "undo-redo-orphans-clobber-the-edit",
+      "suite": "unit",
+      "why": "replacing rather than merging loses the records the ORIGINAL edit orphaned, which is a different set from the ones the undo orphans; a point can lose one pill to the edit and another to the undo",
+      "file": "index.html",
+      "find": "const merged = JSON.stringify(mergeDropped(carried, orphaned));",
+      "replace": "const merged = JSON.stringify(orphaned);",
+      "kills": "undo/redo keeps what ITS OWN prune orphaned"
+    },
+    {
+      "id": "contest-left-fixed-margin-reversed",
+      "suite": "browser",
+      "why": "the shipped defect: with a fixed target on the LEFT the pill printed 'short by 2' while {= L} handed math +2 and {= L > 0} lit a tick on a failed roll. The right-fixed half was correct, so the two halves of the guide's promised 'either side can be a fixed target' behaved oppositely",
+      "file": "index.html",
+      "find": "    margin: (!ls.roll !== !rs.roll) && !ls.roll ? rs.total - ls.total : ls.total - rs.total,",
+      "replace": "    margin: ls.total - rs.total,",
+      "kills": "a left-fixed contest agrees with the number it feeds math"
+    },
+    {
+      "id": "contest-verdict-read-from-the-margin",
+      "suite": "unit",
+      "why": "deriving the verdict from the stored margin rather than the totals makes every contest saved BEFORE this fix start lying, since those records carry a left-right margin even when one side is fixed",
+      "file": "index.html",
+      "find": "  const diff = vs.leftTotal - vs.rightTotal;                  // the two-sided reading",
+      "replace": "  const diff = Number(vs.margin) || 0;                        // the two-sided reading",
+      "kills": "versusVerdict reads the totals"
+    },
+    {
+      "id": "contest-freeze-has-no-arm",
+      "suite": "browser",
+      "why": "without a contest arm frozenTokenText falls through to the resolved varMap, where a contest is not a plain number: an anonymous one becomes ' = ?' and a named one its bare margin. Freeze to text writes that into the LIVE document behind a success toast",
+      "file": "index.html",
+      "find": "  if (rec.versus) {\n    const v = rec.versus, verdict = versusVerdict(v);",
+      "replace": "  if (false && rec.versus) {\n    const v = rec.versus, verdict = versusVerdict(v);",
+      "kills": "freezing or exporting a contest keeps it"
+    },
+    {
+      "id": "contest-winner-read-from-the-margin",
+      "suite": "unit",
+      "why": "the margin now points the ROLL's way on a left-fixed contest, so a renderer that picks the winner from it emphasises the losing side; the winner has to come off the totals, which never flip",
+      "file": "index.html",
+      "find": "    const leftWin = !!verdict.leftWin, rightWin = !!verdict.rightWin;",
+      "replace": "    const leftWin = vs && vs.margin > 0, rightWin = vs && vs.margin < 0;",
+      "kills": "the pill and the export read the same verdict"
     }
   ]
 }
