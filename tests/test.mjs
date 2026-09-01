@@ -12829,6 +12829,172 @@ test('user-guide values: every {= expr} → result in guide/*.md renders that re
   }
 });
 
+// ── In-app concept-guide VALUE guard ──────────────────────────────────────────
+// The guard above reads the markdown corpus. The OTHER machine→human surface is `const GUIDE` in
+// index.html, comparable in size (about 109k characters of body prose plus 472 syn/desc example
+// pairs), and nothing was reading its numbers. What it DID have was the browser sweep (#1452),
+// which proves every `{…}` example becomes a live pill: presence, not value. A `{= 3 * 40}` that
+// rendered a pill reading 999 passed it, exactly as `{= km2mi(10)} → 6.21` passed everything
+// before MATH_CLAIMS existed.
+//
+// The extractor keys on a NOVEL NUMBER rather than an arrow, because the in-app guide writes its
+// claims as prose ("`{= 3 * 40}` shows 120") and there is no punctuation to key on. A claim is a
+// math pill whose accompanying copy states a number the expression does not already contain. That
+// rule is what keeps `{= chanceover(cost, 500)}` "the percentage chance it lands over 500" and
+// `{= hypergeom(60, 12, 7, 3)}` "at least 3 of 12 key cards in an opening 7" out of the census:
+// every number there is an ARGUMENT read back, not an output promised.
+//
+// GUIDE_VALUE_CLAIMS is TOTAL in both directions, like MATH_CLAIMS: a new claim fails until it is
+// answered, a deleted one fails as stale, and `shows` is checked against the ENGINE, so editing
+// the guide and the map to the same wrong number still goes red. Where the copy's numbers really
+// are the claim's SUBJECT rather than its output, the entry says `gloss` — and then must carry
+// `probes`, expression/result pairs that test what the gloss actually asserts. A gloss without
+// teeth is how "those numbers are only examples" becomes a rubber stamp: "0=Sun…6=Sat" is a
+// falsifiable claim about weekday(), so it is pinned on a real Sunday and a real Saturday.
+const GUIDE_VALUE_CLAIMS = {
+  '{= 3 * 40}':             { shows: '120' },
+  '{prop cost: 60 * 3.50}': { shows: '210' },
+  '{= 70000 * 12}':         { shows: '840,000' },
+  '{= convert(2, gp, cp)}': { shows: '200', units: MATH_CLAIM_UNITS },
+  '{= convert(10, km, mi)}':{ shows: '6.214' },
+  // The guide states the property this reads two sentences earlier; `declares` pins the map's
+  // 14 to the guide's own `STR: 14` rather than letting the map invent a convenient input.
+  '{= STR + 2}':            { shows: '16', vars: { str: 14 }, declares: 'give a point a `STR: 14` property' },
+  '{= roundto(x, 5)}': {
+    gloss: '5, 25 and 0.5 are step sizes offered, not the pill\'s output',
+    states: ['nearest 5, 25 or 0.5'],
+    probes: [['roundto(12, 5)', '10'], ['roundto(112, 25)', '100'], ['roundto(12.3, 0.5)', '12.5']] },
+  '{= and(a > 0, b > 0)}': {
+    gloss: 'the 1 is the truth value and(), or() and not() return, over placeholder operands',
+    states: ['1 when every test holds'],
+    probes: [['and(1 > 0, 2 > 0)', '1'], ['and(1 > 0, 0 > 0)', '0'],
+             ['or(0 > 0, 1 > 0)', '1'], ['not(0)', '1']] },
+  '{= weekday(today)}': {
+    gloss: '0=Sun…6=Sat names the scale weekday() returns on, not today\'s answer',
+    states: ['0=Sun', '6=Sat'],
+    probes: [['weekday(date(2026, 6, 14))', '0'], ['weekday(date(2026, 6, 20))', '6']] },
+  '{= wilsonhigh(wins, games)}': {
+    gloss: '12 wins in 20 games is the worked example the sentence carries; the pill takes names',
+    states: ['12 wins in 20 games', 'a flat 60%', '60% (39 to 78%)'],
+    probes: [['12 / 20 * 100', '60'],
+             ['round(wilsonlow(12, 20))', '39'], ['round(wilsonhigh(12, 20))', '78']] },
+};
+
+// The `{=` / `{prop name:` wrapper is written by the guide; the engine wants what is inside it.
+const guideClaimExpr = (tok) => tok.replace(/^\{(?:=|prop\s+[^:]+:)\s*/, '').replace(/\s*\}$/, '');
+const guideClaimNums = (s) => (s.match(/\d[\d,]*(?:\.\d+)?/g) || []).map(x => x.replace(/,/g, ''));
+
+// Every math pill in the GUIDE that carries copy stating a number the expression does not contain.
+// Prose and `desc:` are scanned together because the guide makes the same promise in both voices.
+function guideValueClaims() {
+  const g = nonEmpty(between(_src, 'const GUIDE = [', '// GUIDE-END'), 'the GUIDE source block');
+  const marks = [...g.matchAll(/\{\s*id:'([^']+)'/g)].map(m => ({ id: m[1], at: m.index }));
+  marks.forEach((m, i) => { m.end = i + 1 < marks.length ? marks[i + 1].at : g.length; });
+  const out = [];
+  for (const e of nonEmpty(marks, 'GUIDE entries')) {
+    const chunk = g.slice(e.at, e.end);
+    const bm = /\bbody:\s*"((?:\\.|[^"\\])*)"/.exec(chunk);
+    const body = bm ? bm[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : '';
+    // A backticked math pill in prose, plus the copy that follows it in the same sentence run.
+    for (const m of body.matchAll(/`(\{(?:=|prop )[^`]*\})`([^`]{0,130})/g))
+      out.push({ id: e.id, where: 'body', tok: m[1], ctx: m[2], hay: body });
+    // An example row: `syn` is the pill, `desc` is the copy.
+    for (const m of chunk.matchAll(/\{\s*syn:\s*(['"])((?:\\.|(?!\1)[^\\])*)\1\s*,\s*desc:\s*(['"])((?:\\.|(?!\3)[^\\])*)\3/g))
+      if (/\{(?:=|prop )/.test(m[2])) out.push({ id: e.id, where: 'desc', tok: m[2], ctx: m[4], hay: body + '\n' + m[4] });
+  }
+  const claims = [];
+  for (const o of out) {
+    const inExpr = new Set(guideClaimNums(o.tok));
+    const novel = guideClaimNums(o.ctx).filter(n => !inExpr.has(n));
+    if (novel.length) claims.push({ ...o, novel });
+  }
+  return claims;
+}
+
+test('#1569 every number the in-app concept guide states for a pill is the number the engine renders', () => {
+  const claims = nonEmpty(guideValueClaims(), 'value claims in the in-app concept guide');
+  assert.ok(claims.length >= 10,
+    `only ${claims.length} value claims scanned out of the GUIDE — the body/desc extraction broke, ` +
+    'and a guard that finds nothing certifies everything');
+  const seen = new Set();
+  for (const { id, where, tok, ctx, hay, novel } of claims) {
+    const spec = GUIDE_VALUE_CLAIMS[tok];
+    assert.ok(spec, `the ${id} entry's ${where} states ${JSON.stringify(novel[0])} for ${tok}, and ` +
+      'GUIDE_VALUE_CLAIMS has no entry for it. Add one with the value the engine really renders, or ' +
+      'mark it a gloss WITH probes — a new claim must be answered, not absorbed');
+    seen.add(tok);
+    const expr = guideClaimExpr(tok);
+    // The whole sentence, not just the `STR: 14` fragment: the same entry says `STR: 14` twice, so a
+    // fragment pin passes while the sentence that actually hands the reader that input is rewritten.
+    if (spec.declares) assert.ok(hay.includes(spec.declares),
+      `GUIDE_VALUE_CLAIMS feeds ${tok} the inputs behind "${spec.declares}", which the ${id} entry no ` +
+      'longer states. The map may not invent an input the guide does not give the reader');
+    if (spec.gloss) {
+      // A gloss says the copy's numbers are the claim's SUBJECT rather than the pill's output. Two
+      // halves, and a gloss carrying only one is toothless: `states` pins the sentence the gloss is
+      // describing (rewrite "0=Sun…6=Sat" as "1=Sun…7=Sat" and the probes below never notice),
+      // `probes` pin what that sentence asserts against the engine.
+      for (const lit of nonEmpty(spec.states || [], `the copy behind the ${tok} gloss`))
+        assert.ok(hay.includes(lit),
+          `the ${id} entry no longer says ${JSON.stringify(lit)}, which is the sentence ` +
+          `GUIDE_VALUE_CLAIMS glosses ${tok} against. Re-read the copy and re-answer the claim`);
+      for (const [pe, want] of nonEmpty(spec.probes || [], `probes behind the ${tok} gloss`))
+        assert.equal(renderMathClaim(pe, spec), want,
+          `the ${id} entry glosses ${tok} as "${spec.gloss}", but ${pe} renders ` +
+          `${JSON.stringify(renderMathClaim(pe, spec))}, not ${JSON.stringify(want)}`);
+      continue;
+    }
+    // The engine is the authority: the map cannot certify a wrong number.
+    assert.equal(renderMathClaim(expr, spec), spec.shows,
+      `GUIDE_VALUE_CLAIMS says ${tok} shows ${JSON.stringify(spec.shows)}, but the render path disagrees`);
+    // …and the guide has to be quoting that same number. The claim is stated first, so the first
+    // novel number in the copy is the promise; anything else means the sentence was rewritten.
+    assert.equal(novel[0], spec.shows.replace(/,/g, ''),
+      `the ${id} entry's ${where} reads ${JSON.stringify(ctx.trim().slice(0, 60))} for ${tok}, ` +
+      `but it renders ${JSON.stringify(spec.shows)}`);
+  }
+  for (const k of Object.keys(GUIDE_VALUE_CLAIMS))
+    assert.ok(seen.has(k), `GUIDE_VALUE_CLAIMS still carries ${k}, which no longer states a value in the GUIDE. Remove the stale entry`);
+});
+
+// ── In-app concept-guide DECORATION guard ─────────────────────────────────────
+// The value guard above reads numbers. The other thing the guide states about a pill or a link is
+// how it LOOKS, and that rots the same way with nothing watching: the broken-link entry promised a
+// "dashed underline" for a stale link while `.node-link-broken` has drawn `underline dotted` all
+// along, and guide/links-and-references.md said dotted. Two surfaces, one CSS rule, and the app's
+// own guide was the one that was wrong.
+//
+// Two arms, because each catches a different edit. The census is a set containment: the app
+// declares exactly one underline STYLE, and the guide may only name a style the CSS really
+// declares — so renaming the guide's word to one nothing draws fails, and adding `underline wavy`
+// to the CSS legitimately widens what the guide may say. The identity pin is the one that bites:
+// the entry that describes a stale link must name the style `.node-link-broken` itself carries,
+// so changing the rule and not the guide (or the reverse) goes red, which "some rule somewhere
+// draws a dotted underline" would never do.
+test('#1569 the underline the concept guide promises is the one the stylesheet draws', () => {
+  const g = nonEmpty(between(_src, 'const GUIDE = [', '// GUIDE-END'), 'the GUIDE source block');
+  // Every `text-decoration:` in the file EXCEPT the guide's own prose. Not `between(_src, '<style',
+  // '</style>')`: the first `<style` in this file is inside a CSP comment, so that window closed on
+  // the embedded-font block and found no rule at all — a scan that reads the wrong region reports an
+  // empty set, and an empty set of drawn styles would have failed every word the guide uses.
+  const css = _src.replace(g, '');
+
+  const drawn = new Set([...css.matchAll(/text-decoration:\s*underline\s+([a-z-]+)/g)].map(m => m[1]));
+  assert.ok(drawn.size >= 1, 'no `text-decoration: underline <style>` rule found — the CSS scan broke');
+  const named = [...new Set([...g.matchAll(/\b(dashed|dotted|solid|wavy|double)\s+underline/g)].map(m => m[1]))];
+  assert.deepEqual(nonEmpty(named, 'underline styles the guide names').filter(w => !drawn.has(w)), [],
+    `the concept guide promises an underline style the stylesheet never draws (it draws: ${[...drawn].join(', ')}). ` +
+    'Either the rule changed and the guide did not, or the guide picked a word from the wrong family');
+
+  const rule = nonEmpty(between(_src, '.node-link-broken{', '}'), 'the .node-link-broken rule');
+  const style = /text-decoration:\s*underline\s+([a-z-]+)/.exec(rule);
+  assert.ok(style, '.node-link-broken no longer sets an underline style — re-point this pin at whatever draws a stale link');
+  const entry = nonEmpty(between(g, "id:'broken-links'", '] }'), "the broken-links guide entry");
+  assert.match(entry, new RegExp(`\\b${style[1]}\\s+underline\\b`),
+    `.node-link-broken draws a ${style[1]} underline, but the broken-links guide entry does not say ${style[1]}. ` +
+    'A reader looking for the mark the guide named will not find it on screen');
+});
+
 // ── User-guide LINK integrity guard ───────────────────────────────────────────
 // The repo has no markdown link-checker, so a broken link ships silently to GitHub Pages.
 // This resolves EVERY relative markdown link across the user guide: the target file must
