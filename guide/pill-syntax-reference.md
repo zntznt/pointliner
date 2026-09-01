@@ -83,8 +83,10 @@ rules (`name: a | b`), Markov transitions (`State -> Target weight`), the estima
 (`lo to hi`, `normal`, `uniform`), the table formula row (`#+TBLFM:`), the status headline
 (`#TODO [#A] body`), the search-query mini-language (the same words used by `{query:}` / `{count:}` /
 `{roll:}`), the progress cookie and clock (`[/]`, `[%]`, `[o N/M]`), and dates as `start`/`due`
-properties. Each is documented in its own guide (see [the guide index](README.md)); this page is the
-inventory, not the tutorial.
+properties.
+
+Each is documented in its own guide (see [the guide index](README.md)); this page is the inventory,
+not the tutorial.
 
 ---
 
@@ -132,9 +134,11 @@ unfinished pill and vanishes rather than leaking its braces into the reading tex
 
 Every pill above is stored in your document as plain text plus a small record. When you **save**
 (File menu, or a connected folder's auto-save), Pointliner writes an **OPML** file, and OPML is the
-**full-fidelity, keep-everything format**: it is the one export you can open **back into the app**
-(File, Open) with every pill still live, every property, date, note, link and base exactly as you
-left them. Nothing is lost and nothing is frozen.
+**full-fidelity, keep-everything format**.
+
+It is the one export you can open **back into the app** (File, Open) with every pill still live,
+every property, date, note, link and base exactly as you left them. Nothing is lost and nothing is
+frozen.
 
 How it keeps them: OPML is a plain, open XML outline. Each point is an `<outline>`; each pill's record
 rides along as an underscore-prefixed attribute holding small JSON:

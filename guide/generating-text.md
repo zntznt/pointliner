@@ -10,11 +10,14 @@ next to it to edit the `{…}` back.
 If you'd rather not memorize syntax, you have two doors. Type an opening **`{`** in a point and a
 menu lists every pill form you can build (a dice roll, a random pick, a calculation, a live list,
 a meter and the rest); type a word to filter, press Enter, and it drops in a ready-to-edit scaffold
-with the first blank selected. The same menu keeps completing as you write inside a pill (function
-names in a calculation, filters like `is:todo` in a live search, your own rule names once you define
-them), and a small help mark on a suggestion opens its guide entry. Or type **`@`** for a **dialog
-for every generator** (Dice, Grammar, Roll table, Deck, Oracle, Markov, Variable) with a live preview.
-This page is the *why* behind both.
+with the first blank selected.
+
+The same menu keeps completing as you write inside a pill (function names in a calculation, filters
+like `is:todo` in a live search, your own rule names once you define them), and a small help mark on
+a suggestion opens its guide entry.
+
+Or type **`@`** for a **dialog for every generator** (Dice, Grammar, Roll table, Deck, Oracle,
+Markov, Variable) with a live preview. This page is the *why* behind both.
 
 ---
 
@@ -57,10 +60,12 @@ re-rolls as a unit:
 
 Plain letters glue directly onto a brace group (`haven` above). Spaces are fine **between**
 groups, as in `{{adj} {beast}}` above, but not **inside** one: write `{Ael|Bor|Cael}`, never
-`{Ael | Bor | Cael}`. Every piece has to be a real generator or a known rule, and every word must
-touch a brace; a space around a bar leaves `|` sitting on its own, touching nothing, and the whole
-thing stays ordinary text instead of becoming one pill. That is the same guard that keeps a
-sentence with loose words around a brace from being captured as a generator by accident.
+`{Ael | Bor | Cael}`.
+
+Every piece has to be a real generator or a known rule, and every word must touch a brace; a space
+around a bar leaves `|` sitting on its own, touching nothing, and the whole thing stays ordinary text
+instead of becoming one pill. That is the same guard that keeps a sentence with loose words around a
+brace from being captured as a generator by accident.
 
 ---
 
@@ -109,9 +114,10 @@ so keep names unique.)
 **Order matters once, on the file you open.** A pill runs when it is made, and a file loads top
 down, so a rule written *above* the rules it calls is built before they exist: it opens showing
 `The {adjective?} {noun?}`, carries a small dot, and its tooltip says the name has a value now and a
-click will re-generate it. One click and it is right for good. If you would rather not think about
-it, declare the small rules first and the one that calls them last, the way the
-[generators demo](solo-rpg/generators/generators-demo.opml) does.
+click will re-generate it. One click and it is right for good.
+
+If you would rather not think about it, declare the small rules first and the one that calls them
+last, the way the [generators demo](solo-rpg/generators/generators-demo.opml) does.
 
 A rule's choices can include **anything on this page**: dice, other rules, even math:
 
@@ -189,11 +195,12 @@ Modifiers **chain**, left to right:
 *Known limits (mostly heuristics, not a dictionary): `a`/`an` looks at the first letter but
 checks a list of common exceptions first ("an hour" and "a university" come out right; a rarer
 one may not); `.s` and `.ed` know the **common irregulars**
-(`child` → "children", `go` → "went", `die` → "dice") and fall back to the regular English
-rules for everything else, so an uncommon irregular still comes out regular; title-case
-splits on spaces only; `.ing` doubles a final consonant-vowel-consonant regardless of
-stress ("run" → "running" is right, "visit" → "visitting" is wrong); a grammar field named
-`poss` or `ing` is shadowed by the modifier, like every modifier name.*
+(`child` → "children", `go` → "went", `die` → "dice") and fall back to the regular English rules for
+everything else, so an uncommon irregular still comes out regular.*
+
+*Title-case splits on spaces only; `.ing` doubles a final consonant-vowel-consonant regardless of
+stress ("run" → "running" is right, "visit" → "visitting" is wrong); a grammar field named `poss` or
+`ing` is shadowed by the modifier, like every modifier name.*
 
 ---
 
@@ -229,9 +236,11 @@ The guard {mood == "angry": attacks on sight | {mood == "afraid": flees | waves 
 
 The unquoted side is a variable, declared here with `:=` (see
 [variables](#store-a-value-and-reuse-it-variables)); matching ignores capitalization (`"Angry"` and
-`angry` are the same). Only `==` and `!=` compare text; `<` and `>` stay numeric. Keep compared
-values to simple words (a quoted value containing `:` or `|` won't survive the template split).
-Re-roll the pick and the branch re-judges, same as the crit check below.
+`angry` are the same).
+
+Only `==` and `!=` compare text; `<` and `>` stay numeric. Keep compared values to simple words (a
+quoted value containing `:` or `|` won't survive the template split). Re-roll the pick and the branch
+re-judges, same as the crit check below.
 
 ### Test a captured roll (crits and checks)
 
@@ -249,9 +258,11 @@ DC 12 and shown either way. Use `r >= 12` instead of `r + mod >= 12` to check th
 
 To make a new attack, click the `r` pill (new die), then the verdict pill (it re-judges whatever
 `r` currently shows). Both freeze between clicks, like dice, so a resolved check stays on the page
-exactly as it landed; clicking only the verdict pill re-judges the same roll. If you re-roll `r`
-and leave the verdict alone, the verdict pill grows a small dot at its corner and its tooltip
-reads "Inputs changed. Click to re-generate.", so a stale verdict never passes for a current one.
+exactly as it landed; clicking only the verdict pill re-judges the same roll.
+
+If you re-roll `r` and leave the verdict alone, the verdict pill grows a small dot at its corner and
+its tooltip reads "Inputs changed. Click to re-generate.", so a stale verdict never passes for a
+current one.
 
 ---
 
@@ -504,9 +515,10 @@ words you typed, `{oracle: likely}`; change its odds and it becomes a plain `{Ye
 
 Rolls are normally fresh randomness, so two people opening the same file and clicking the same pill
 get different results. When you want them to match, give the document a **seed**: the **File** menu,
-then **Random seed**, then a whole number. From then on **dice, decks and `{roll:}` draws** follow
-that seed, so a copy shared at the same seed replays the same session. Leave the field blank to turn
-it back off.
+then **Random seed**, then a whole number.
+
+From then on **dice, decks and `{roll:}` draws** follow that seed, so a copy shared at the same seed
+replays the same session. Leave the field blank to turn it back off.
 
 A seed changes future rolls, not the ones already frozen on the page, so re-roll a pill to draw the
 next value in the seeded sequence. The seed is saved with the document.

@@ -31,11 +31,13 @@ You can use `×` `÷` `−` and `√` if you like typing them; `pi`, `e`, `tau` 
 
 By default a math pill shows its recipe and its result together, like `sum(cost) = 70,000`, so you can
 read the calculation at a glance. Sometimes you want only the number, so it reads like part of the
-sentence: a live word count in a chapter heading, a total in a title. Open the pill (click it, or its
-edit pencil) and check **Show value only** in the dialog. The pill then renders just the result,
-chrome-free, blending into the surrounding text. The formula is not lost: it stays in the point and
-comes back the moment you edit the pill again. A pill that cannot compute still shows its loud error,
-so a failure never hides behind a bare number.
+sentence: a live word count in a chapter heading, a total in a title.
+
+Open the pill (click it, or its edit pencil) and check **Show value only** in the dialog. The pill
+then renders just the result, chrome-free, blending into the surrounding text.
+
+The formula is not lost: it stays in the point and comes back the moment you edit the pill again. A
+pill that cannot compute still shows its loud error, so a failure never hides behind a bare number.
 
 ### Format the number
 
@@ -78,9 +80,10 @@ Call a function with parentheses. The big ones:
 ```
 
 Both branches have to be **numbers**. Math is numbers only, so a quoted word in either branch does
-not compute and the `{…}` stays plain text instead of becoming a pill. When the answer you want is a
-**word**, use the conditional brace instead, `{hp > 0: alive | dead}`, which is on the generate side
-and takes text on both branches (see
+not compute and the `{…}` stays plain text instead of becoming a pill.
+
+When the answer you want is a **word**, use the conditional brace instead, `{hp > 0: alive | dead}`,
+which is on the generate side and takes text on both branches (see
 [Say different things in different cases](generating-text.md#say-different-things-in-different-cases-conditionals)).
 
 Comparisons (`> >= < <= == !=`) return `1`/`0`, so they compose with arithmetic.
@@ -126,15 +129,19 @@ whole table of built-in units. Many are ready with nothing to set up:
 A `convert()` on its own **rounds to four significant figures** so the answer is readable at a
 glance: `180 mi` is `289.7 km`, not `289.68192`. Four *significant figures* rather than a fixed
 number of decimals, because that keeps working when the answer is small: `1 in` is `0.02540 m`,
-where two decimal places would have shown you `0.03`. A whole number stays whole, and a very large
-or very small result keeps its full precision rather than lose digits. To choose the precision
-yourself, use the number format on the pill (see [format the number](#format-the-number)).
+where two decimal places would have shown you `0.03`.
+
+A whole number stays whole, and a very large or very small result keeps its full precision rather
+than lose digits. To choose the precision yourself, use the number format on the pill (see
+[format the number](#format-the-number)).
 
 Conversions only work **within one dimension**: converting a length to a mass is left unresolved
-(shown as `#ERR`) rather than guessed. The result is an ordinary number, so it composes with the
-rest of math: `{= convert(weight, kg, lb) * price_per_lb}`. **A conversion you have composed into a
-bigger sum keeps its full precision**, so the rounding is only ever what you see, never what is
-calculated with.
+(shown as `#ERR`) rather than guessed.
+
+The result is an ordinary number, so it composes with the rest of math:
+`{= convert(weight, kg, lb) * price_per_lb}`. **A conversion you have composed into a bigger sum
+keeps its full precision**, so the rounding is only ever what you see, never what is calculated
+with.
 
 ### Your own units
 
@@ -183,9 +190,11 @@ constant **`today`** is the anchor:
 
 **Moons.** `moonphase(date, period, offset)` gives the fraction 0..1 through a lunar cycle
 (0 = new, 0.5 = full): `period` is the cycle length in days, `offset` is the epoch-day of a
-known new moon. A **bare** `{= moonphase(…)}` pill shows the matching glyph 🌑🌒🌓🌔🌕🌖🌗🌘;
-compose it (`{= floor(moonphase(due, 28, 0) * 8)}`) to get the phase number instead. For a
-second moon, add another call with its own `period` and `offset`.
+known new moon.
+
+A **bare** `{= moonphase(…)}` pill shows the matching glyph 🌑🌒🌓🌔🌕🌖🌗🌘; compose it
+(`{= floor(moonphase(due, 28, 0) * 8)}`) to get the phase number instead. For a second moon, add
+another call with its own `period` and `offset`.
 
 `year`, `month`, `day`, `weekday`, `quarter`, `age`, `eom` and `addmonths` follow a **custom
 calendar** when the document has one (`weekday` then counts from that calendar's own first day, not
@@ -249,13 +258,17 @@ useful for a name you reuse, a label, a status word:
 
 Without quotes a bare word is read as a generator rule, not text, so quote anything you mean
 literally. Options split on the bar make a **random pick** instead (`{tone := warm | cool}`, re-rolls
-on click). A text variable is for writing and generators; it can't be used inside `{= …}` math (math
-is numbers only, and a text value there fails visibly rather than guessing). A pick whose result is a
-**number** works in math, though: `{r := 1d20}` captures one die roll, and `{= r + 5}` or a
-conditional like `{r == 20: Critical!}` can then read it (see
+on click).
+
+A text variable is for writing and generators; it can't be used inside `{= …}` math (math is numbers
+only, and a text value there fails visibly rather than guessing).
+
+A pick whose result is a **number** works in math, though: `{r := 1d20}` captures one die roll, and
+`{= r + 5}` or a conditional like `{r == 20: Critical!}` can then read it (see
 [Test a captured roll](generating-text.md#test-a-captured-roll-crits-and-checks) for the full
-crit-check pattern). You can also build any of
-these from the **`@` → Variable** dialog if you prefer a form to typing.
+crit-check pattern).
+
+You can also build any of these from the **`@` → Variable** dialog if you prefer a form to typing.
 
 ### Properties are variables too, and they inherit
 
@@ -273,16 +286,19 @@ Character
 ```
 
 The **nearest** value wins: a point's own property overrides the same key on an ancestor, and a
-nearer ancestor overrides a farther one. So a scene with its own `STR: 20` reads **22**, not 16. This
-is the natural way to keep a character sheet, a per-section config or any set of values that a
-subtree should share. (Only numbers inherit, and only *down* the tree; a value on a sibling or a
-child is not in scope.)
+nearer ancestor overrides a farther one. So a scene with its own `STR: 20` reads **22**, not 16.
+
+This is the natural way to keep a character sheet, a per-section config or any set of values that a
+subtree should share. Only numbers inherit, and only *down* the tree; a value on a sibling or a child
+is not in scope.
 
 **Order does not matter.** You can write the formula first and supply the value afterwards. A
 `{= STR + 2}` typed before anything is called `STR` stays plain text and says why, and the moment you
 add the property (or declare the variable), it becomes a live pill on its own and the app tells you
-how many points started working. So following the advice in that message is enough; you never have to
-go back and retype the formula.
+how many points started working.
+
+So following the advice in that message is enough; you never have to go back and retype the
+formula.
 
 ---
 
@@ -312,22 +328,26 @@ Cells follow one simple rule:
 
 **Want a rolled, re-rollable value? Make the cell a pill.** Type `{2d6}` in the cell and it
 becomes a dice pill when you leave it; the pill's frozen roll is the variable's value, and
-clicking the pill re-rolls it, updating every reference. A grammar pill works the same way for
-text (a `{undead | humanoid}` cell gives a re-rollable Type). From the keyboard, the base's
-bullet menu lists a Re-roll entry for each pill in the base.
+clicking the pill re-rolls it, updating every reference.
+
+A grammar pill works the same way for text (a `{undead | humanoid}` cell gives a re-rollable Type).
+From the keyboard, the base's bullet menu lists a Re-roll entry for each pill in the base.
 
 The first column works too: `{Orc.Name}` is the display name exactly as typed ("Hill Giant" keeps
 its space and caps), so `{Orc.Name.s}` says "Orcs" using the usual
 [text modifiers](generating-text.md#shape-the-words-modifiers).
 
 Give the base a **name** in the dialog to file every row under it, like `{Monsters.Orc.HP}`. That
-keeps two bases that both have an `Orc` row from colliding. A named base can also **total a
-column**: `{= sum(Monsters.HP)}` adds the HP cell of every row (`avg`, `count`, `min` and `max`
-work the same way), live as cells change, rolled cells included. The dialog previews every name
-the base will declare and warns about anything it has to skip (a row it can't name, a column that
-matches a text modifier). A `$` badge on the base shows the feature is on; click it to change the
-name, or use the bullet menu's **Stop using rows as variables** to turn it off. In the Variables
-panel, a base's names collapse under one header so your own variables stay in front.
+keeps two bases that both have an `Orc` row from colliding.
+
+A named base can also **total a column**: `{= sum(Monsters.HP)}` adds the HP cell of every row
+(`avg`, `count`, `min` and `max` work the same way), live as cells change, rolled cells included. The
+dialog previews every name the base will declare and warns about anything it has to skip (a row it
+can't name, a column that matches a text modifier).
+
+A `$` badge on the base shows the feature is on; click it to change the name, or use the bullet
+menu's **Stop using rows as variables** to turn it off. In the Variables panel, a base's names
+collapse under one header so your own variables stay in front.
 
 ---
 
@@ -380,12 +400,16 @@ any depth below, instead of the direct children:
 
 The quoted search takes all the usual [operators](getting-around.md#searching-and-filtering) (`is:todo`, `#tag`,
 `-has:owner`, `due:overdue` and so on), so the query is the filter and the property is what you
-add up. **Round brackets do not group a search.** Write each alternative out in
-full instead. `is:todo -(is:done | has:owner)` looks for the literal text `(is:done`; the form that
-works is `is:todo -is:done -has:owner`, and for the other shape, `is:todo -has:owner | is:todo -#x`.
-A search that carries a bracket says so rather than quietly returning nothing. A bare name stays the child-position rollup (`sum(cost)`), so the two never collide. An
-empty match reduces to zero (or nothing for `min`/`max`), the same as `count("...")`, since a
-search matching nothing right now is a valid, changing answer.
+add up.
+
+**Round brackets do not group a search.** Write each alternative out in full instead.
+`is:todo -(is:done | has:owner)` looks for the literal text `(is:done`; the form that works is
+`is:todo -is:done -has:owner`, and for the other shape, `is:todo -has:owner | is:todo -#x`. A search
+that carries a bracket says so rather than quietly returning nothing.
+
+A bare name stays the child-position rollup (`sum(cost)`), so the two never collide. An empty match
+reduces to zero (or nothing for `min`/`max`), the same as `count("...")`, since a search matching
+nothing right now is a valid, changing answer.
 
 **`here("...")` asks the same question about THIS point.** Where `count("...")` counts the points
 below, `here("...")` answers 1 when the point the pill is written on matches the search, and 0 when
@@ -428,8 +452,9 @@ To search the entire document from anywhere, including a point with nothing unde
 This is the door for a status line that lives on its own point, off to one side of the work it
 reports on. If a quoted-search reducer sits on a point that has **nothing below it** and you have
 not widened it, the pill says so instead of showing a silent `0`: it reads `0 here · 12 in document`
-when the same search does match elsewhere, and `0 in scope` when it matches nothing at all. Either
-way it names the fix in its tooltip, rather than looking broken.
+when the same search does match elsewhere, and `0 in scope` when it matches nothing at all.
+
+Either way it names the fix in its tooltip, rather than looking broken.
 
 **Count words, not properties.** The same `{= …}` form also counts prose over a **scope** instead
 of a property:
@@ -534,9 +559,11 @@ a percentile is a single number, which is exactly why it is allowed through.
 **Rolling up estimates:** like `sum(cost)`, an estimate can aggregate **children's uncertain
 properties** with `sum(effort)` / `avg(effort)` over child points whose `effort` property is itself an
 estimate. That's how you Fermi-estimate a whole project from uncertain parts (see the
-[Cookbook](cookbook.md)). Author this roll-up through **`@` then Estimate** (type `sum(effort)` in the
-dialog): unlike the `{lo to hi}` constructors, a bare `{sum(effort)}` you type inline does **not**
-promote to an estimate pill, so the roll-up is dialog-made.
+[Cookbook](cookbook.md)).
+
+Author this roll-up through **`@` then Estimate** (type `sum(effort)` in the dialog): unlike the
+`{lo to hi}` constructors, a bare `{sum(effort)}` you type inline does **not** promote to an estimate
+pill, so the roll-up is dialog-made.
 
 > Estimates are a **separate engine** from `{= …}` math (a distribution isn't a single number), so
 > you can't put an estimate inside a `{= …}` expression; it fails visibly if you try.
@@ -580,8 +607,10 @@ expression they accept works here, keep-highest and pools included:
 Reach for it when there's no tidy formula: a messy combination of dice, an unusual keep rule, or a
 threshold you'd otherwise work out on scratch paper. The comparator can be `>=`, `>`, `<=`, `<`,
 `==` or `!=`, and the threshold can be a declared variable, so `{= simulate(2000, atk, >= ac)}`
-reads as the question it is. The simulation is **seeded**, so the number holds still between edits
-rather than flickering; a larger `N` is a steadier estimate.
+reads as the question it is.
+
+The simulation is **seeded**, so the number holds still between edits rather than flickering; a
+larger `N` is a steadier estimate.
 
 Both are ordinary numbers, so round them and add a sign the way you would any odds:
 
@@ -614,10 +643,11 @@ count("is:todo") <= 5      no more than five open tasks in this section
 **Quote the argument and `count` changes meaning**: a bare name (`count(score)`) counts children
 carrying that property, while a quoted search (`count("is:todo #urgent")`) counts every point
 below this one matching it, any depth, with all the usual operators. Existence rules fall out of
-the negation: `count("-has:owner") == 0` reads "nothing below is missing an owner". The other
-reducers take the same quoted-search form with a property to add up, so a check can assert a
-budget over a live query: `sum("#task", cost) <= budget`, or `max("is:todo", cost) <= cap`. (One
-limit: the quoted search can't itself contain a `"quoted phrase"`.) The same forms work in `{= …}`
+the negation: `count("-has:owner") == 0` reads "nothing below is missing an owner".
+
+The other reducers take the same quoted-search form with a property to add up, so a check can assert
+a budget over a live query: `sum("#task", cost) <= budget`, or `max("is:todo", cost) <= cap`. One
+limit: the quoted search can't itself contain a `"quoted phrase"`. The same forms work in `{= …}`
 math pills for a live subtree tally.
 
 The point grows a small chip: a muted **✓** when it passes, a visible flag when it **fails** or
