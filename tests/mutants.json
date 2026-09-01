@@ -3366,6 +3366,60 @@
       "find": "    const leftWin = !!verdict.leftWin, rightWin = !!verdict.rightWin;",
       "replace": "    const leftWin = vs && vs.margin > 0, rightWin = vs && vs.margin < 0;",
       "kills": "the pill and the export read the same verdict"
+    },
+    {
+      "id": "doc-tab-chord-shift-blind",
+      "suite": "browser",
+      "why": "the shipped defect: `ctrl && e.shiftKey && e.key===']'` is unsatisfiable because Shift makes the browser send '}', so both advertised document-tab chords did nothing for their whole life",
+      "file": "index.html",
+      "find": "(e.key===']' || e.key==='}')",
+      "replace": "(e.key===']')",
+      "kills": "the document-tab chords actually reach their handler"
+    },
+    {
+      "id": "doc-tab-pin-accepts-the-dead-shape",
+      "suite": "unit",
+      "why": "the ORIGINAL source pin spelled the unsatisfiable condition and was green over a dead chord for its whole life; the pin must now require both characters or it goes back to certifying nothing",
+      "file": "index.html",
+      "find": "(e.key==='[' || e.key==='{')",
+      "replace": "(e.key==='[')",
+      "kills": "document tabs: strip is gated on workspaceDir"
+    },
+    {
+      "id": "task-checkbox-unnamed",
+      "suite": "browser",
+      "why": "without the aria-label Chromium reports role=checkbox name=\"\" and a screen-reader user meets a list of identical unnamed boxes with no way to tell which to-do each one ticks",
+      "file": "index.html",
+      "find": " aria-label=\"${escQ(taskName || 'To-do')}\"",
+      "replace": "",
+      "kills": "a to-do checkbox announces which to-do it ticks"
+    },
+    {
+      "id": "task-checkbox-named-after-the-whole-line",
+      "suite": "unit",
+      "why": "a point can carry several to-dos, so naming each box after the whole line puts the reader back where they started; the name has to be the task",
+      "file": "index.html",
+      "find": "const taskName = stripInlineMd(tm[2] || '')",
+      "replace": "const taskName = stripInlineMd(inner || '')",
+      "kills": "a to-do checkbox is named after its own to-do"
+    },
+    {
+      "id": "chooser-drawn-as-a-verdict",
+      "suite": "browser",
+      "why": "the shipped defect: isBoolPill fires on a comparison anywhere, so the guide's own {= if(stock>0, price, 0)} rendered a cross for an out-of-stock item and announced \"false\" over a price of 0",
+      "file": "index.html",
+      "find": "const isBoolPill = (fresh === 0 || fresh === 1) && !isChooser",
+      "replace": "const isBoolPill = (fresh === 0 || fresh === 1)",
+      "kills": "a chooser pill shows the value it picked"
+    },
+    {
+      "id": "chooser-if-not-word-boundaried",
+      "suite": "unit",
+      "why": "without the word boundary any name ending in \"if\" (gif, diff) reads as a chooser and stops being a verdict, which is the same over-broad match this fix exists to narrow",
+      "file": "index.html",
+      "find": "return e.includes('?') || /\\bif\\s*\\(/i.test(e);",
+      "replace": "return e.includes('?') || /if\\s*\\(/i.test(e);",
+      "kills": "a chooser answers with the value it picked"
     }
   ]
 }

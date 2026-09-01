@@ -6161,3 +6161,83 @@ test('#1571 freezing or exporting a contest keeps it, instead of writing a quest
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
+
+// #1572: three defects the live drive found, all of them invisible to a source pin for the same
+// reason -- the code was PRESENT and simply did not do what it claimed. Two of them had a green pin
+// sitting over them the whole time.
+
+test('#1572 the document-tab chords actually reach their handler', { skip: skip() }, async () => {
+  // `ctrl && e.shiftKey && e.key===']'` is unsatisfiable: Shift is required, and with Shift held the
+  // browser delivers `}`. So both advertised chords did nothing for their whole life, and the source
+  // pin that guarded them SPELLED THE UNSATISFIABLE CONDITION, so it was green throughout.
+  // cycleDocTab needs two open tabs and a connected folder, neither of which a file:// page has, so
+  // this spies the handler: what was broken is the chord REACHING it, not what it then does.
+  const pg = await fresh();
+  assert.equal(await pg.evaluate(() => typeof window.cycleDocTab), 'function',
+    'cycleDocTab must be reachable as a global for this spy to mean anything');
+  await pg.evaluate(() => { window.__calls = []; window.cycleDocTab = (dir) => window.__calls.push(dir); });
+  await pg.keyboard.press('Control+Shift+BracketRight');
+  await pg.waitForTimeout(150);
+  await pg.keyboard.press('Control+Shift+BracketLeft');
+  await pg.waitForTimeout(150);
+  assert.deepEqual(await pg.evaluate(() => window.__calls), [1, -1],
+    'Ctrl/Cmd+Shift+] must cycle forward and Ctrl/Cmd+Shift+[ back');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1572 a to-do checkbox announces which to-do it ticks', { skip: skip() }, async () => {
+  // Chromium reported role=checkbox, name="" on every one of them.
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('- [ ] Buy milk', { delay: 5 });
+  await pg.waitForTimeout(250);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(400);
+  const box = await pg.evaluate(() => {
+    const cb = document.querySelector('.md-task-check');
+    return cb ? { aria: cb.getAttribute('aria-label'), role: cb.type } : null;
+  });
+  assert.ok(box, 'a checkbox must render');
+  assert.equal(box.aria, 'Buy milk', 'the name is the to-do, not empty and not the raw markdown');
+  // The ACCESSIBILITY TREE, not just the attribute: an aria-label the AX tree ignores is no name.
+  const ax = await pg.accessibility.snapshot();
+  const walk = (n, out = []) => { if (n.role === 'checkbox') out.push(n.name); (n.children || []).forEach(ch => walk(ch, out)); return out; };
+  assert.deepEqual(walk(ax), ['Buy milk'], 'and Chromium reports exactly that name for the checkbox');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1572 a chooser pill shows the value it picked, even when that value is 0 or 1', { skip: skip() }, async () => {
+  // The guide's own verbatim example, in the ordinary out-of-stock case: the answer is the number 0
+  // (this item costs nothing because there is none), and the pill said ✗ and announced "false".
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('Stock {stock := 0} Price {price := 25} Line {= if(stock>0, price, 0)}', { delay: 4 });
+  await pg.waitForTimeout(400);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(500);
+  const chooser = await pg.evaluate(() => {
+    const e = [...document.querySelectorAll('.math-roll')].pop();
+    return { shown: e.innerText.replace(/\s+/g, ' ').trim(), aria: e.getAttribute('aria-label') };
+  });
+  assert.match(chooser.shown, /=\s*0$/, 'the pill shows the chosen number: ' + chooser.shown);
+  assert.doesNotMatch(chooser.shown, /[✓✗]/, 'never a verdict glyph for a chosen quantity');
+  assert.match(chooser.aria, /=\s*0\./, 'and announces the number, not "false": ' + chooser.aria);
+
+  // The negative control, in the SAME page: a real test must still read as a verdict, or this
+  // "fix" would just have deleted the ✓/✗ feature the guide documents.
+  await blankWithCaret(pg);
+  await pg.keyboard.type('Alive {hp := 3} {= hp > 0}', { delay: 4 });
+  await pg.waitForTimeout(350);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(450);
+  const test0 = await pg.evaluate(() => {
+    const e = [...document.querySelectorAll('.math-roll')].pop();
+    return { shown: e.innerText.replace(/\s+/g, ' ').trim(), aria: e.getAttribute('aria-label') };
+  });
+  assert.match(test0.shown, /✓/, 'a comparison still reads as a pass: ' + test0.shown);
+  assert.match(test0.aria, /true/, 'and still announces true');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});

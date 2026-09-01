@@ -11629,6 +11629,50 @@ test('#1332 a comparison/boolean math pill renders a pass/fail glyph, not bare 1
   assert.ok(_src.includes('.math-bool-true .math-result') && _src.includes('.math-bool-false .math-result'), 'pass/fail colored to the check palette (ok/bad)');
 });
 
+// #1572: the to-do checkbox carried NO accessible name -- Chromium reported role=checkbox, name=""
+// -- so a screen-reader user met a list of identical unnamed boxes and could not tell which to-do
+// each one ticked. The label text sits right beside it as a sibling; nothing associated the two.
+test('#1572 a to-do checkbox is named after its own to-do', () => {
+  const rli = fnBody(_src, 'renderListItem');
+  assert.match(rli, /const taskName = stripInlineMd\(tm\[2\] \|\| ''\)/,
+    'the name comes from the task text, stripped of its markdown so it is read as words');
+  assert.match(rli, /aria-label="\$\{escQ\(taskName \|\| 'To-do'\)\}"/,
+    'and is escaped onto the input, with a fallback for the empty `- [ ] ` line a person types first');
+  assert.ok(rli.indexOf('const taskName') < rli.indexOf('aria-label="${escQ(taskName'),
+    'derived before it is used');
+  // The name must be the TASK, not the whole point: a point can hold several to-dos, and naming
+  // them all after the line would put the reader back where they started.
+  assert.doesNotMatch(rli, /aria-label="\$\{escQ\(inner/, 'not the whole list item');
+});
+
+// #1572: the glyph rule above fired on a comparison ANYWHERE in the expression, so a chooser whose
+// chosen number happened to be 0 or 1 was drawn as a pass/fail. The in-app guide's own verbatim
+// example `{= if(stock>0, price, 0)}` therefore read `= ✗` for an ordinary out-of-stock item and was
+// announced "false" over what is really a price of 0 -- with no escape, since dispVal discards the
+// pill's number format. A chooser answers with a quantity; only a test answers with a verdict.
+test('#1572 a chooser answers with the value it picked, so it is never a pass/fail glyph', () => {
+  assert.equal(c.isChooserExpr('if(stock>0, price, 0)'), true, 'the function form');
+  assert.equal(c.isChooserExpr('stock > 0 ? price : 0'), true, 'the ternary');
+  assert.equal(c.isChooserExpr('IF(a>b, 1, 0)'), true, 'case-insensitively');
+  // The things that must STAY glyphs: these are tests, and the guide documents them as ✓/✗.
+  assert.equal(c.isChooserExpr('and(hp > 0, gold > 0)'), false);
+  assert.equal(c.isChooserExpr('not(done)'), false);
+  assert.equal(c.isChooserExpr('hp > 0'), false);
+  assert.equal(c.isChooserExpr('2 + 2'), false);
+  // Word-boundaried, or every name ENDING in "if" would stop being a verdict. Both of these are
+  // plausible variable/function names and neither is a chooser.
+  assert.equal(c.isChooserExpr('gif(x)'), false, 'a name ending in "if" is not an if()');
+  assert.equal(c.isChooserExpr('diff(a)'), false);
+  assert.equal(c.isChooserExpr(''), false, 'and nothing is not a chooser');
+  assert.equal(c.isChooserExpr(null), false);
+
+  // #1133, the call site: a tested core proves nothing about whether anything reads it.
+  const rmp = fnBody(_src, 'renderMathPill');
+  assert.ok(rmp.includes('const isChooser = isChooserExpr(m.expr);'), 'renderMathPill asks the core');
+  assert.match(rmp, /const isBoolPill = \(fresh === 0 \|\| fresh === 1\) && !isChooser/,
+    'and a chooser is excluded from the glyph rule');
+});
+
 test('Slice 1: a divide-by-zero renders an informative #ERR, not a confident ∞ (src pin)', () => {
   const rmp = fnBody(_src, 'renderMathPill');
   assert.ok(rmp.includes('if (!Number.isFinite(fresh)) {'), 'a non-finite result is guarded');
@@ -13256,8 +13300,16 @@ test('document tabs: strip is gated on workspaceDir, keyboard-cycle wired + docu
   assert.ok(/if \(!workspaceDir \|\| !openTabs\.length\)/.test(_src),
     'renderDocTabs is not gated on workspaceDir + a non-empty tab list');
   // Next/prev-tab chords call cycleDocTab, alongside the existing global chords.
-  assert.ok(/ctrl && e\.shiftKey && e\.key===']'/.test(_src) && /ctrl && e\.shiftKey && e\.key==='\['/.test(_src),
-    'Ctrl/Cmd+Shift+] / [ tab-cycle handlers not found');
+  // #1572: this pin used to spell the condition as `e.key===']'` -- the exact shape that could
+  // NEVER match, because Shift is required and Shift makes the browser send `}`. So the pin was
+  // green on a chord that did nothing for its whole life. It now requires BOTH characters, which is
+  // what makes the chord reachable; the driven check in tests/browser.mjs presses the keys.
+  for (const [close, shifted] of [[']', '}'], ['[', '{']]) {
+    const cond = new RegExp(`ctrl && e\\.shiftKey && \\(e\\.key==='\\${close}' \\|\\| e\\.key==='\\${shifted}'\\)`);
+    assert.ok(cond.test(_src),
+      `the Ctrl/Cmd+Shift+${close} tab-cycle handler must accept BOTH ${close} and ${shifted}: with ` +
+      `Shift held the browser delivers ${shifted}, so a condition naming only ${close} is unsatisfiable`);
+  }
   assert.ok(_src.includes('function cycleDocTab'), 'cycleDocTab not found');
   // ARIA tablist semantics (P3) and keyboard activation alongside pointer (caret invariant).
   assert.ok(_src.includes('role="tablist"') && _src.includes("setAttribute('role', 'tab')"),
@@ -35111,10 +35163,19 @@ test('#1571 a one-sided contest stores the margin the roll sees, not the left si
   assert.equal(both.margin, -5, 'two fixed values keep left - right');
   // The sign is the whole point: a left-fixed roll UNDER its target must be negative, or
   // `{= L > 0}` lights a tick on a failure.
-  const under = c.rollVersus('20', '2d6', {});
-  assert.ok(under.margin < 0, `a roll under a left-hand target is negative, got ${under.margin}`);
-  const over = c.rollVersus('2', '2d6', {});
-  assert.ok(over.margin > 0, `a roll over a left-hand target is positive, got ${over.margin}`);
+  //
+  // d1 dice, not 2d6. The first draft asserted `rollVersus('2', '2d6').margin > 0` on the reasoning
+  // that a roll always beats a target of 2 -- but 2d6's MINIMUM is 2, so snake eyes made the margin
+  // exactly 0 and the assertion failed about one run in thirty-six. It passed locally and through two
+  // CI runs before biting. That is the same "a random value is not an assertion" shape this file
+  // warns about at the dice re-roll check, and I had just removed it from the driven twin of THIS
+  // test while leaving it here.
+  const under = c.rollVersus('20', '1d1+5', {});      // roll 6 against 20
+  assert.equal(under.margin, -14, 'a roll under a left-hand target is negative');
+  const over = c.rollVersus('2', '1d1+5', {});        // roll 6 against 2
+  assert.equal(over.margin, 4, 'and a roll over one is positive');
+  const met = c.rollVersus('6', '1d1+5', {});         // roll 6 against 6
+  assert.equal(met.margin, 0, 'and meeting it exactly is zero, not a sign');
 });
 
 test('#1571 the pill and the export read the same verdict, and freeze keeps the contest', () => {

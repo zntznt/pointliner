@@ -9200,7 +9200,13 @@ function renderListItem(inner, taskNo) {
     // (bullet, pill pencils) needs a real sibling element. display:none except under
     // hover:none, where it overlays the checkbox zone at ~40px; it carries the same
     // data-task so the mousedown toggle path treats it exactly like the box itself.
-    return `<li class="md-task"><span class="md-task-pad" data-task="${taskNo.n}" aria-hidden="true"></span><input type="checkbox" class="md-task-check" contenteditable="false" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
+    // #1572: the box carried NO accessible name -- Chromium reported role=checkbox, name="" -- so a
+    // screen-reader user met three identical unnamed checkboxes in a list and could not tell which
+    // to-do each one ticked. The label text is right there as a sibling but nothing associated it.
+    // stripInlineMd, so the name is the words rather than their markdown; the fallback matters
+    // because an empty `- [ ] ` line is a real thing a person types before writing the task.
+    const taskName = stripInlineMd(tm[2] || '').replace(/\s+/g, ' ').trim();
+    return `<li class="md-task"><span class="md-task-pad" data-task="${taskNo.n}" aria-hidden="true"></span><input type="checkbox" class="md-task-check" contenteditable="false" aria-label="${escQ(taskName || 'To-do')}" data-task="${taskNo.n++}"${checked?' checked':''}>${mdInline(tm[2] || '')}</li>`;
   }
   return `<li>${mdInline(inner)}</li>`;
 }
@@ -30645,6 +30651,14 @@ function moonGlyph(phase) {
 }
 // Glyph-format only a BARE moonphase call (the whole expression), so composing it for the raw number
 // works: moonphase(d, 28, 0) → 🌒, but moonphase(d, 28, 0) * 8 or floor(moonphase(…) * 8) → a number.
+// #1572: does this expression CHOOSE a value rather than test one? A ternary or if() answers with
+// the branch it picked, so its result is a quantity even when that quantity happens to be 0 or 1 --
+// and 0 is the standard "else". Pure and DOM-free so the rule is testable on its own; renderMathPill
+// reads it to decide whether a 0/1 may be drawn as a pass/fail glyph.
+function isChooserExpr(expr) {
+  const e = String(expr || '');
+  return e.includes('?') || /\bif\s*\(/i.test(e);
+}
 function isMoonExpr(expr) { return /^\s*moonphase\s*\(.*\)\s*$/i.test(expr || ''); }
 // #983: a BARE convert (the whole expression) rounds for display. Same rule as isMoonExpr above and
 // for the same reason: replaceConvert substitutes the converted number back into the expression as
@@ -31695,7 +31709,14 @@ function renderMathPill(key, m, opts = {}) {
   // or and/or/not/xor) AND the value is exactly 1 or 0, show a pass/fail glyph instead of the number. A numeric
   // result that merely passes through a comparison sub-term (e.g. (a>b)+2 → 2) is not 0/1, so it stays a number;
   // moon/date displays are excluded. Assistive tech gets the words, not the glyph.
-  const isBoolPill = (fresh === 0 || fresh === 1) && !isMoonExpr(m.expr) && !isDateExpr(m.expr)
+  // #1572: a CHOOSER returns the value it picked, not a truth value, and 0 is the standard "else".
+  // The test below looks for a comparison ANYWHERE in the expression, so a ternary or if() whose
+  // chosen number happened to be 0 or 1 was rendered as a glyph: the in-app guide's own verbatim
+  // example `{= if(stock>0, price, 0)}` showed `= ✗` for an ordinary out-of-stock item and was
+  // announced "false" over what is really a price of 0. There was no way out either -- dispVal
+  // discards m.fmt, so a pill the author formatted as $0.00 still read ✗.
+  const isChooser = isChooserExpr(m.expr);
+  const isBoolPill = (fresh === 0 || fresh === 1) && !isChooser && !isMoonExpr(m.expr) && !isDateExpr(m.expr)
     && (/(?:[<>]=?|[=!]=)/.test(m.expr) || /\b(?:and|or|not|xor)\s*\(/i.test(m.expr));
   const dispVal = isBoolPill ? (fresh === 1 ? '✓' : '✗') : display;
   const ariaVal = isBoolPill ? (fresh === 1 ? 'true' : 'false') : display;
@@ -44480,7 +44501,7 @@ const GUIDE = [
     ] },
   { id:'odds', cat:'compute',
     title:'Odds & simulation',
-    body:"Two questions the dice and roll-ups do not answer on their own: the odds of a draw WITHOUT replacement, and the odds a random roll clears a bar. Both are ordinary numbers, so they live in a `{= …}` pill beside your other math and read as a percentage.\n\n`{= hypergeom(pop, successes, draws, atleast)}` is the chance of drawing AT LEAST `atleast` of the good things when you take `draws` from a pile of `pop` of which `successes` are good, and put none back. \"Odds I see at least three of my 12 key cards in an opening seven from a 60-card deck\" is `hypergeom(60, 12, 7, 3)`; \"odds I draw the antidote before three cards are gone\" is the same shape. This is a different calculation from the dice engine, which rolls WITH replacement, so it is the honest answer for anything you deal from a finite pile.\n\n`{= simulate(N, roll, over a bar)}` rolls a dice expression `N` times and reports the percentage that clear the bar: `{= simulate(2000, 2d6+3, >= 10)}` is roughly how often two dice plus three beat a target of 10. It runs the very same dice engine your `{2d6}` pills roll with, so any expression they accept works here, including keep-highest and pools. Reach for it when there is no tidy probability formula: a messy combination of dice, an unusual keep rule, a threshold you would otherwise work out on scratch paper.\n\nBoth return a plain percentage, so round it and add a sign the way you would any odds: `{= round(hypergeom(60, 12, 7, 3))}%`. The simulation is seeded, so the number holds still between edits rather than flickering, and a larger `N` is a steadier estimate up to 20,000 trials, which is where it stops. Ask for a million and you get exactly the answer 20,000 gives, since the pill recomputes on every render and a bigger sample costs time it cannot pay back. Give the threshold as a declared variable and the question reads as a sentence: `{= simulate(2000, 2d6+3, >= ac)}`. The roll itself stays written out, because the simulation re-rolls it thousands of times and needs the dice, not one frozen result.\n\nAnd when a rate comes from a SMALL sample of real results, `{= wilsonlow(wins, games)}` and `{= wilsonhigh(wins, games)}` give the honest 95% range around it, so 12 wins in 20 games reads not as a flat 60% but as \"60% (39 to 78%)\", wide, because 20 games is not many. This is the Wilson interval, which stays sane at the edges (a perfect 20 for 20 reads 84 to 100%, not a flat 100%). Use it to tell a real edge from noise before you trust a win rate.",
+    body:"Three questions the dice and roll-ups do not answer on their own: the odds of a draw WITHOUT replacement, the odds a random roll clears a bar, and how much a rate from a small sample really tells you. All three are ordinary numbers, so they live in a `{= …}` pill beside your other math and read as a percentage.\n\n`{= hypergeom(pop, successes, draws, atleast)}` is the chance of drawing AT LEAST `atleast` of the good things when you take `draws` from a pile of `pop` of which `successes` are good, and put none back. \"Odds I see at least three of my 12 key cards in an opening seven from a 60-card deck\" is `hypergeom(60, 12, 7, 3)`; \"odds I draw the antidote before three cards are gone\" is the same shape. This is a different calculation from the dice engine, which rolls WITH replacement, so it is the honest answer for anything you deal from a finite pile.\n\n`{= simulate(N, roll, over a bar)}` rolls a dice expression `N` times and reports the percentage that clear the bar: `{= simulate(2000, 2d6+3, >= 10)}` is roughly how often two dice plus three beat a target of 10. It runs the very same dice engine your `{2d6}` pills roll with, so any expression they accept works here, including keep-highest and pools. Reach for it when there is no tidy probability formula: a messy combination of dice, an unusual keep rule, a threshold you would otherwise work out on scratch paper.\n\nAll three return a plain percentage, so round it and add a sign the way you would any odds: `{= round(hypergeom(60, 12, 7, 3))}%`. The simulation is seeded, so the number holds still between edits rather than flickering, and a larger `N` is a steadier estimate up to 20,000 trials, which is where it stops. Ask for a million and you get exactly the answer 20,000 gives, since the pill recomputes on every render and a bigger sample costs time it cannot pay back. Give the threshold as a declared variable and the question reads as a sentence: `{= simulate(2000, 2d6+3, >= ac)}`. The roll itself stays written out, because the simulation re-rolls it thousands of times and needs the dice, not one frozen result.\n\nAnd when a rate comes from a SMALL sample of real results, `{= wilsonlow(wins, games)}` and `{= wilsonhigh(wins, games)}` give the honest 95% range around it, so 12 wins in 20 games reads not as a flat 60% but as \"60% (39 to 78%)\", wide, because 20 games is not many. This is the Wilson interval, which stays sane at the edges (a perfect 20 for 20 reads 84 to 100%, not a flat 100%). Use it to tell a real edge from noise before you trust a win rate.",
     related:['math','estimates','dice'],
     examples:[
       { syn:'{= hypergeom(60, 12, 7, 3)}', desc:'odds of at least 3 of 12 key cards in an opening 7' },
@@ -46560,8 +46581,11 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (ctrl && e.shiftKey && (e.key==='J' || e.key==='j')) { e.preventDefault(); cycleJournalMode(); return; }
-  if (ctrl && e.shiftKey && e.key===']') { e.preventDefault(); cycleDocTab(1); return; }
-  if (ctrl && e.shiftKey && e.key==='[') { e.preventDefault(); cycleDocTab(-1); return; }
+  // #1572: with Shift held the browser delivers `}` and `{`, never `]` and `[`, so both of these
+  // conditions were unsatisfiable and the chords the Shortcuts panel advertises did nothing at all.
+  // Accept either character, exactly as the help chord above already does for Shift+/ -> ?.
+  if (ctrl && e.shiftKey && (e.key===']' || e.key==='}')) { e.preventDefault(); cycleDocTab(1); return; }
+  if (ctrl && e.shiftKey && (e.key==='[' || e.key==='{')) { e.preventDefault(); cycleDocTab(-1); return; }
   // Alt/Option+1..9 jumps to the Nth open document tab. Use e.code (layout-independent):
   // on macOS Option+digit yields a special glyph in e.key (Option+1 → "¡"), so key-based
   // matching would miss. Gated to when a workspace folder is connected and has tabs; the
