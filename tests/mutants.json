@@ -3204,6 +3204,42 @@
       "find": "Shift+click the first and last match to select them all (or Shift+Up and Shift+Down from the row cursor)",
       "replace": "press Ctrl/Cmd+A to select every match",
       "kills": "#1285b the concept guide names every bulk action the selection bar has"
+    },
+    {
+      "id": "guide-value-km2mi-regressed",
+      "suite": "unit",
+      "why": "the exact defect that shipped: km2mi formats through formatMathResult (7 s.f.), not the convert() formatter nine lines below it, and no test read a stated numeric output",
+      "file": "guide/computing-numbers.md",
+      "find": "{= km2mi(10)}    \u2192 6.2137119",
+      "replace": "{= km2mi(10)}    \u2192 6.21",
+      "kills": "user-guide values"
+    },
+    {
+      "id": "guide-value-kg2lb-regressed",
+      "suite": "unit",
+      "why": "the second half of the same shipped defect, kept separate so fixing one formatter family cannot quietly leave the other unguarded",
+      "file": "guide/computing-numbers.md",
+      "find": "{= kg2lb(70)}    \u2192 154.32358",
+      "replace": "{= kg2lb(70)}    \u2192 154.3",
+      "kills": "user-guide values"
+    },
+    {
+      "id": "guide-value-claim-unanswered",
+      "suite": "unit",
+      "why": "totality: a NEW documented claim must be answered rather than silently absorbed, which is the property that stops this guard decaying into a fixed list of the values someone happened to check once",
+      "file": "guide/computing-numbers.md",
+      "find": "{= sqrt(144)}        \u2192 12",
+      "replace": "{= sqrt(169)}        \u2192 13",
+      "kills": "user-guide values"
+    },
+    {
+      "id": "guide-value-per-pill-format-regressed",
+      "suite": "unit",
+      "why": "the per-pill format claims reach formatMathDisplay's third argument, a path the first draft of this guard skipped entirely; without this the two format lines could drift while the guard still reported full coverage",
+      "file": "guide/computing-numbers.md",
+      "find": "\u2192  $1,200.00",
+      "replace": "\u2192  $1200.00",
+      "kills": "user-guide values"
     }
   ]
 }

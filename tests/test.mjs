@@ -12726,6 +12726,109 @@ test('#1215: the pill-syntax reference documents every keyword pill form the cod
     `Add a {${missing[0] || 'keyword'}: …} row to the reference table so the published spec matches the app.`);
 });
 
+// ── User-guide VALUE guard ────────────────────────────────────────────────────
+// The drift guards above read NAMES: closed lists that must enumerate the same members as the code.
+// Nothing read a stated numeric OUTPUT, and that is the hole two shipped defects sat in --
+// `{= km2mi(10)} → 6.21` and `{= kg2lb(70)} → 154.3`, both off because the km2mi family formats
+// through formatMathResult (7 s.f.) while the convert() nine lines below it formats through
+// formatConvertResult (4 s.f.). Two formatters, one file, and no test that ran either.
+//
+// Two things make this guard hard to fake:
+//   * It renders through the REAL path, not evalMath alone. A `{= convert(…)}` is substituted to a
+//     number by replaceConvert BEFORE evalMath sees it, and the ORIGINAL expression then chooses the
+//     display form (date / moon / convert / grouped number). Comparing raw evalMath output would
+//     accuse `convert(10, km, mi) → 6.214` and `asdate(…) → 2026-09-13`, both of which are correct.
+//   * MATH_CLAIMS is TOTAL in both directions and cannot rubber-stamp. Every claim in the corpus
+//     must have an entry (a new one fails until someone answers it), every entry must still be in
+//     the corpus (a deleted claim fails as stale), and each entry's `shows` is checked against the
+//     ENGINE, so editing the doc and the map to the same wrong number still goes red.
+// A claim whose stated result is prose ("✓ only when both hold") is marked `prose` and still pins
+// its engine value; the marking only says the line is not quoting a literal render.
+const MATH_CLAIM_UNITS = 'cp\nsp = 10 cp\ngp = 10 sp\nleague = 3 mi';   // the guide's own Custom units block
+const MATH_CLAIMS = {
+  '2 + 3 * 4':                      { shows: '14' },
+  '(2 + 3) * 4':                    { shows: '20' },
+  '2 ^ 10':                         { shows: '1,024' },
+  '17 % 5':                         { shows: '2' },
+  'sqrt(144)':                      { shows: '12' },
+  '70000 * 12':                     { shows: '840,000' },
+  'c2f(20)':                        { shows: '68' },
+  'km2mi(10)':                      { shows: '6.2137119' },
+  'kg2lb(70)':                      { shows: '154.32358' },
+  'convert(10, km, mi)':            { shows: '6.214' },
+  'convert(70, kg, lb)':            { shows: '154.3' },
+  'convert(2, gp, cp)':             { shows: '200',       units: MATH_CLAIM_UNITS },
+  'convert(5, league, km)':         { shows: '24.14',     units: MATH_CLAIM_UNITS },
+  'asdate(date(2026, 6, 15) + 90)': { shows: '2026-09-13' },
+  '2 * pi * r':                     { shows: '31.415927', vars: { r: 5 } },
+  'pi * r^2':                       { shows: '78.539816', vars: { r: 5 } },
+  'STR + 2':                        { shows: '16',        vars: { str: 14 } },
+  // Two claims carry a per-pill number format instead of a bare render; fmt is the third argument
+  // formatMathDisplay already takes, so they go through the same path with parseNumFmt's output.
+  '1200':                           { shows: '$1,200.00', fmt: ['2', '$', '', ''] },
+  'weight':                         { shows: '12 kg',     vars: { weight: 12 }, fmt: ['', '', ' kg', ''] },
+  'and(hp > 0, gold > 0)':          { shows: '1', vars: { hp: 3, gold: 5 }, prose: true },
+  'not(done)':                      { shows: '1', vars: { done: 0 },        prose: true },
+};
+
+// Mirrors index.html's own order: convert() substituted first (expandAggExpr does this with the
+// doc's unit table), then evalMath, then formatMathDisplay against the ORIGINAL expression.
+function renderMathClaim(expr, spec) {
+  const vars = spec.vars || {};
+  const table = spec.units ? { ...c.unitTable(), ...c.parseUnitDecls(spec.units).value } : c.unitTable();
+  let e = /\bconvert\s*\(/i.test(expr) ? c.replaceConvert(expr, v => c.evalMath(v, vars), table) : expr;
+  e = c.expandAggExpr(e, null, vars);
+  const v = c.evalMath(e, vars);
+  const fmt = spec.fmt ? c.parseNumFmt(...spec.fmt) : undefined;
+  return v === null ? null : c.formatMathDisplay(v, expr, fmt);
+}
+
+function mathClaimsInGuide() {
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide');
+  const out = [], candidates = [];
+  for (const f of readdirSync(dir).filter(x => x.endsWith('.md'))) {
+    readFileSync(resolve(dir, f), 'utf8').split('\n').forEach((line, i) => {
+      // Every line that pairs a {= …} with an arrow is making a claim. Collected separately so the
+      // test can assert the extractor accounted for ALL of them: the first draft of this regex
+      // silently skipped the two per-pill-format lines, which is how a guard quietly covers less
+      // than it appears to.
+      if (/\{=/.test(line) && /(?:→|->)/.test(line)) candidates.push(`${f}:${i + 1}`);
+      const m = /\{=\s*([^}]+?)\s*\}(.*?)(?:→|->)\s*(\S.*?)\s*$/.exec(line);
+      if (m) out.push({ file: f, line: i + 1, expr: m[1], claimed: m[3] });
+    });
+  }
+  return { out, candidates };
+}
+
+test('user-guide values: every {= expr} → result in guide/*.md renders that result through the real path', () => {
+  const { out, candidates } = mathClaimsInGuide();
+  const found = nonEmpty(out, 'documented {= …} → result claims');
+  assert.equal(found.length, candidates.length,
+    `the extractor read ${found.length} of ${candidates.length} lines that pair a {= …} with an arrow. ` +
+    `Every such line is a claim; widen the pattern rather than letting one go unchecked.`);
+  const seen = new Set();
+  for (const { file, line, expr, claimed } of found) {
+    const spec = MATH_CLAIMS[expr];
+    assert.ok(spec, `${file}:${line} documents {= ${expr}} but MATH_CLAIMS has no entry for it. ` +
+      `Add one with the value the engine really renders -- a new claim must be answered, not absorbed.`);
+    seen.add(expr);
+    // The engine is the authority: the map cannot certify a wrong number.
+    assert.equal(renderMathClaim(expr, spec), spec.shows,
+      `${file}:${line} MATH_CLAIMS says {= ${expr}} shows ${JSON.stringify(spec.shows)}, but the render path disagrees`);
+    const stated = claimed.split(/\s{2,}|\s+\(/)[0].trim();
+    if (spec.prose) {
+      assert.ok(!/^[\d,.\-]+$/.test(stated),
+        `${file}:${line} {= ${expr}} is marked prose but now states the bare number ${JSON.stringify(stated)}; drop the prose flag and pin the value`);
+    } else {
+      assert.equal(stated, spec.shows,
+        `${file}:${line} documents {= ${expr}} → ${JSON.stringify(stated)}, but it renders ${JSON.stringify(spec.shows)}`);
+    }
+  }
+  for (const k of Object.keys(MATH_CLAIMS)) {
+    assert.ok(seen.has(k), `MATH_CLAIMS still carries {= ${k}}, which no longer appears in guide/*.md. Remove the stale entry.`);
+  }
+});
+
 // ── User-guide LINK integrity guard ───────────────────────────────────────────
 // The repo has no markdown link-checker, so a broken link ships silently to GitHub Pages.
 // This resolves EVERY relative markdown link across the user guide: the target file must
