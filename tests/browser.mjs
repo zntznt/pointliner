@@ -6241,3 +6241,128 @@ test('#1572 a chooser pill shows the value it picked, even when that value is 0 
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
+
+// #1573: two more from the live drive. The first is a silent, un-undoable mutation of the reader's
+// document; the second is a sentence that describes the wrong arithmetic to a screen reader.
+
+test('#1573 zooming into a childless point does not leave a point behind', { skip: skip() }, async () => {
+  // render() mints a child so a zoomed childless point has somewhere to type. Nothing removed it,
+  // so zoom in and straight back out and the document has grown by an empty point -- with no undo
+  // entry (measured: undoStack.length 0) and autosaved into the file.
+  const pg = await fresh();
+  const tree = () => pg.evaluate(() => {
+    const w = (n, d = 0, o = []) => { o.push('  '.repeat(d) + JSON.stringify(n.text)); (n.children || []).forEach(c => w(c, d + 1, o)); return o; };
+    return root.children.flatMap(n => w(n));
+  });
+  const seedDoc = (lines) => pg.evaluate((ls) => {
+    const stack = [root]; root.children = [];
+    for (const raw of ls) {
+      const depth = Math.floor(raw.match(/^ */)[0].length / 2);
+      const n = mkNode(raw.trim());
+      (stack[depth] || root).children.push(n); stack[depth + 1] = n;
+    }
+    buildIndex(root); markDirty(); render();
+  }, lines);
+
+  await seedDoc(['Alpha', '  Leaf', 'Beta']);
+  const before = await tree();
+  await pg.evaluate(() => zoomInto(root.children[0].children[0].id));
+  await pg.waitForTimeout(350);
+  await pg.evaluate(() => zoomTo(null));
+  await pg.waitForTimeout(350);
+  assert.deepEqual(await tree(), before, 'a round trip through a childless point must change nothing');
+
+  // Zooming childless -> ANOTHER point cleans up too, not only zooming out.
+  await seedDoc(['Alpha', '  Leaf', 'Beta']);
+  await pg.evaluate(() => zoomInto(root.children[0].children[0].id));
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => zoomInto(root.children[1].id));
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => zoomTo(null));
+  await pg.waitForTimeout(300);
+  assert.deepEqual(await tree(), before, 'and neither does a hop to a different point');
+
+  // THE THREE THINGS THAT MUST NOT BREAK. The minted point is load-bearing: a blank document needs
+  // one to type into, and a point the reader actually wrote in is theirs.
+  await pg.evaluate(() => { root.children = []; buildIndex(root); markDirty(); render(); });
+  await pg.waitForTimeout(300);
+  assert.deepEqual(await tree(), ['""'], 'a blank document still gets its one point to type into');
+
+  await seedDoc(['Alpha', '  Leaf', 'Beta']);
+  await pg.evaluate(() => zoomInto(root.children[0].children[0].id));
+  await pg.waitForTimeout(350);
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.keyboard.type('real content', { delay: 4 });
+  await pg.waitForTimeout(250);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => zoomTo(null));
+  await pg.waitForTimeout(350);
+  assert.deepEqual(await tree(), ['"Alpha"', '  "Leaf"', '    "real content"', '"Beta"'],
+    'a point the reader typed into is theirs and stays');
+
+  await seedDoc(['Alpha', '  Kid one', 'Beta']);
+  const withKids = await tree();
+  await pg.evaluate(() => zoomInto(root.children[0].id));
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => zoomTo(null));
+  await pg.waitForTimeout(300);
+  assert.deepEqual(await tree(), withKids, 'a point that already has children is untouched');
+
+  // An EMPTY child the reader made is still theirs. This is the case the _provisional mark exists
+  // for, and without it the first draft of this test passed anyway: the "typed into it" case above
+  // is non-empty, so it survives with or without the mark, and the mark was untested. An empty
+  // point is a legitimate thing to have made -- a placeholder waiting for words.
+  await pg.evaluate(() => {
+    root.children = [mkNode('Alpha'), mkNode('Beta')];
+    root.children[0].children = [mkNode('')];          // the reader's own empty child, unmarked
+    buildIndex(root); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+  const withEmptyKid = await tree();
+  assert.deepEqual(withEmptyKid, ['"Alpha"', '  ""', '"Beta"'], 'the fixture is what this claims to test');
+  await pg.evaluate(() => zoomInto(root.children[0].id));
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => zoomTo(null));
+  await pg.waitForTimeout(300);
+  assert.deepEqual(await tree(), withEmptyKid,
+    'an empty child the reader created must survive the round trip -- only render\'s own is cleaned up');
+
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1573 an action pill announces the arithmetic it actually does', { skip: skip() }, async () => {
+  // Every operator was described by one ADDITIVE template, so `{hp *= 2}` announced
+  // "change hp by * 2" -- and that string is the accessible name and the hover tooltip both.
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('HP {hp := 10} A {hp += 2} B {hp -= 2} C {hp *= 2} D {hp /= 2} E {hp = 10}', { delay: 3 });
+  await pg.waitForTimeout(400);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(500);
+  const pills = await pg.evaluate(() => [...document.querySelectorAll('.act-pill')].map(e => ({
+    shown: e.innerText.replace(/\s+/g, ' ').trim(),
+    aria: e.getAttribute('aria-label'),
+    title: e.getAttribute('title'),
+  })));
+  assert.deepEqual(pills.map(p => p.aria), [
+    'Action, add 2 to hp. Click to apply.',
+    'Action, subtract 2 from hp. Click to apply.',
+    'Action, multiply hp by 2. Click to apply.',
+    'Action, divide hp by 2. Click to apply.',
+    'Action, set hp to 10. Click to apply.',
+  ], 'each operator gets the sentence for its own arithmetic');
+  // The tooltip carries the SAME sentence: both are built from one string, so a reader who hovers
+  // and a reader who listens are never told different things. Compared against the phrase itself
+  // rather than by stripping one from the other -- the aria puts a full stop after the phrase and
+  // the title does not, and a sloppy strip compares "add 2 to hp." against "add 2 to hp".
+  const PHRASES = ['add 2 to hp', 'subtract 2 from hp', 'multiply hp by 2', 'divide hp by 2', 'set hp to 10'];
+  assert.deepEqual(pills.map(p => p.title), PHRASES.map(x => `Click to apply: ${x}`),
+    'the tooltip is the same phrase the accessible name uses');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
