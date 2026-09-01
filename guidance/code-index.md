@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2148 declarations in 158 sections across 17 domains.**
+**2149 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1683,7 +1683,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `isDateExpr`
 - `MOON_GLYPHS` — #649: a bare moonphase(…) pill displays its 0..1 result as a moon glyph (like asdate → an ISO
 - `moonGlyph`
-- `isMoonExpr` — Glyph-format only a BARE moonphase call (the whole expression), so composing it for the raw number
+- `isChooserExpr` — Glyph-format only a BARE moonphase call (the whole expression), so composing it for the raw number
+- `isMoonExpr`
 - `isConvertExpr` — #983: a BARE convert (the whole expression) rounds for display. Same rule as isMoonExpr above and
 - `formatConvertResult` — 4 significant figures, not N decimal places. Two decimals reads fine at 289.68 and destroys
 - `formatMathDisplay`

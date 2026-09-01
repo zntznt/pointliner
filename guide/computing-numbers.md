@@ -102,6 +102,10 @@ When an expression using a comparison or `and`/`or`/`not` comes out as exactly `
 shows **✓** or **✗** rather than the digit, so a pass reads as a pass. The value underneath is still
 `1`/`0`, so it still adds up and composes like any number.
 
+A **chooser** is the exception: `if(…)` and the ternary answer with the value they picked, so
+`{= if(stock > 0, price, 0)}` shows `0` when the shelf is empty rather than a cross. The test inside
+it is still a test; the answer is a number you chose.
+
 ---
 
 ## Units
