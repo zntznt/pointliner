@@ -11629,6 +11629,82 @@ test('#1332 a comparison/boolean math pill renders a pass/fail glyph, not bare 1
   assert.ok(_src.includes('.math-bool-true .math-result') && _src.includes('.math-bool-false .math-result'), 'pass/fail colored to the check palette (ok/bad)');
 });
 
+// #1573: render() mints a child when the viewport is empty, so a zoomed childless point has
+// somewhere to type. Nothing ever removed it, so zooming in and straight back out grew the document
+// by an empty point -- no pushUndo, no announcement, and autosaved into the reader's file. Driven,
+// undoStack.length was 0 afterwards: not even undoable.
+test('#1573 the point render mints for an empty viewport is cleaned up when that viewport is left', () => {
+  const rn = fnBody(_src, 'render');
+  // ONE choke point. Ten places assign focusedId and five are real zoom gestures; cleaning up at
+  // each of them is the omission-by-sibling this repo keeps producing, so the check lives where
+  // they all pass through and keys on the viewport CHANGING.
+  assert.match(rn, /if \(focusedId !== _lastViewport\) \{ dropProvisionalChild\(_lastViewport\); _lastViewport = focusedId; \}/,
+    'render notices the viewport changed and cleans up the one it is leaving');
+  assert.ok(rn.indexOf('dropProvisionalChild(_lastViewport)') < rn.indexOf('createChildModel(vp)'),
+    'the cleanup runs BEFORE this render can mint a new one, or it would eat the point it just made');
+  assert.match(rn, /n\._provisional = true;/, 'and the minted point is marked as render\'s own');
+
+  const drop = fnBody(_src, 'dropProvisionalChild');
+  assert.match(drop, /if \(!only\._provisional\) return;/,
+    'only a point RENDER minted is ever removed -- one the reader made with Enter pushes undo and is theirs');
+  assert.match(drop, /vp\.children\.length !== 1/, 'and only when it is still the lone child');
+  // Emptiness re-checked at removal time rather than trusted from the mark: type into it and it is
+  // a real point. Every carrier of content is consulted, not just the text.
+  assert.match(drop, /\(only\.text \|\| ''\)\.trim\(\)/, 'text');
+  assert.match(drop, /\(only\.children \|\| \[\]\)\.length/, 'children');
+  assert.match(drop, /\(only\.props \|\| \[\]\)\.length/, 'properties');
+  assert.match(drop, /ARTIFACT_SIDECARS\.some/, 'and every pill sidecar, read from the shared list rather than re-spelled');
+  assert.match(drop, /nodeMap\.delete\(only\.id\); parentMap\.delete\(only\.id\);/,
+    'the index is cleaned too, or the id keeps resolving to a point no longer in the tree');
+
+  // The mark must NOT reach the file. toOpml writes a fixed attribute whitelist, so this is true by
+  // construction -- pinned because a future author adding a generic attribute walk would break it.
+  assert.doesNotMatch(fnBody(_src, 'toOpml'), /_provisional/,
+    'a transient mark must never be serialized');
+});
+
+// #1573: the action pill's sentence is its accessible name AND its hover tooltip, and it was built
+// from ONE additive template for every arithmetic operator: `change ${target} by ${op[0]} ${rhs}`.
+// So `{hp *= 2}` announced "change hp by * 2" -- the word "by" says addition, the sign says multiply
+// -- and `{hp /= 2}` the same. Measured on the live pill, in every verbosity tier.
+test('#1573 every action operator gets a sentence that describes what it does', () => {
+  assert.equal(c.actionPillDesc('=', 'hp', '10'), 'set hp to 10');
+  assert.equal(c.actionPillDesc('+=', 'hp', '2'), 'add 2 to hp');
+  assert.equal(c.actionPillDesc('-=', 'hp', '2'), 'subtract 2 from hp');
+  assert.equal(c.actionPillDesc('*=', 'hp', '2'), 'multiply hp by 2',
+    'the defect: multiplication described with the additive "change … by" template');
+  assert.equal(c.actionPillDesc('/=', 'hp', '2'), 'divide hp by 2');
+  // The amount can be a whole pill, resolved at click; the sentence carries it verbatim.
+  assert.equal(c.actionPillDesc('-=', 'hp', '{1d6}'), 'subtract {1d6} from hp');
+
+  // CENSUS RATCHET against the parser's OWN operator list. ACTION_RE is the canonical source of
+  // what a person can type; a sixth operator added there and not here would fall to the generic
+  // branch and start announcing arithmetic it does not do, which is this defect again.
+  // Selected by SHAPE, not by position: ACTION_RE's first group is the target name, and anchoring
+  // on "the first parenthesis" read that instead and compared variable-name syntax against operators.
+  const reLine = nonEmpty(/const ACTION_RE = .*/.exec(_src)?.[0] || '', 'the ACTION_RE declaration');
+  const groups = [...reLine.matchAll(/\(([^)]+)\)/g)].map(m => m[1]);
+  const opGroup = nonEmpty(groups.filter(g => g.split('|').every(x => x.endsWith('='))),
+    "ACTION_RE's operator alternation (every alternative ends in '=')");
+  const ops = opGroup[0].split('|').map(o => o.replace(/\\/g, ''));
+  assert.deepEqual(host([...ops].sort()), ['*=', '+=', '-=', '/=', '='],
+    'the parser accepts exactly these five; if that changed, this test must too');
+  const phrased = nonEmpty(
+    [...(between(_src, 'const ACTION_PHRASE = {', '};').matchAll(/'([^']+)':/g))].map(m => m[1]),
+    'ACTION_PHRASE keys');
+  assert.deepEqual(host([...phrased].sort()), host([...ops].sort()),
+    'every operator the parser accepts must have its own phrase, or it announces as generic arithmetic');
+  // And the generic branch really is unreachable for them -- a phrase that fell back would read
+  // "change hp by *= 2", which is the shape this fixes.
+  for (const op of ops)
+    assert.doesNotMatch(c.actionPillDesc(op, 'hp', '2'), /^change /,
+      `${op} fell through to the generic phrase`);
+
+  // #1133, the call site.
+  assert.ok(_src.includes('const desc = actionPillDesc(act.op, act.target, act.rhs);'),
+    'the pill builds its sentence from the core rather than re-deriving one inline');
+});
+
 // #1572: the to-do checkbox carried NO accessible name -- Chromium reported role=checkbox, name=""
 // -- so a screen-reader user met a list of identical unnamed boxes and could not tell which to-do
 // each one ticked. The label text sits right beside it as a sibling; nothing associated the two.

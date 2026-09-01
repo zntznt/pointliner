@@ -4730,6 +4730,25 @@ function formatMeter(value, max) {
 // and run live; nothing is frozen. Pure parse; null = not an action body.
 //   {HP -= damage} · {gold += 50} · {ammo -= 1} · {HP = HPmax}
 const ACTION_RE = /^([A-Za-z_][\w-]*)\s*(\+=|-=|\*=|\/=|=)\s*(\S[\s\S]*)$/;
+// #1573: one sentence per operator, because they are not one operation. This was built from a
+// single ADDITIVE template -- `change ${target} by ${op[0]} ${rhs}` -- so `{hp *= 2}` announced
+// "change hp by * 2" and `{hp /= 2}` "change hp by / 2": the word "by" says addition while the sign
+// says multiply, and that sentence is the accessible name AND the hover tooltip, in every verbosity
+// tier. The additive members were no better as English ("change hp by + 2"), so the whole family
+// gets a real phrase rather than only the two that were wrong.
+// Keyed off ACTION_RE's own operator list; a test ratchets the two together so a sixth operator
+// cannot ship reading as arithmetic it does not do.
+const ACTION_PHRASE = {
+  '=':  (t, v) => `set ${t} to ${v}`,
+  '+=': (t, v) => `add ${v} to ${t}`,
+  '-=': (t, v) => `subtract ${v} from ${t}`,
+  '*=': (t, v) => `multiply ${t} by ${v}`,
+  '/=': (t, v) => `divide ${t} by ${v}`,
+};
+function actionPillDesc(op, target, rhs) {
+  const phrase = ACTION_PHRASE[op];
+  return phrase ? phrase(target, rhs) : `change ${target} by ${op} ${rhs}`;
+}
 function parseActionPill(body) {
   const m = ACTION_RE.exec(String(body == null ? '' : body).trim());
   if (!m) return null;
@@ -8569,8 +8588,7 @@ function mdInline(s) {
           const body = s.slice(i + 1, end);
           const act = parseActionPill(body);
           if (act) {
-            const arith = act.op === '=' ? '' : ' ' + act.op[0];   // "-=","+=" → the bare arithmetic sign for the label
-            const desc = act.op === '=' ? `set ${act.target} to ${act.rhs}` : `change ${act.target} by${arith} ${act.rhs}`;
+            const desc = actionPillDesc(act.op, act.target, act.rhs);
             const label = `${act.target} ${act.op} ${act.rhs}`;
             out += stash(`<span class="act-pill" role="button" ${INLINE_CTL} data-act-body="${escQ(body)}" title="Click to apply: ${escQ(desc)}" aria-label="Action, ${escQ(desc)}. Click to apply.">${escHtml(label)}</span>`);
             i = end + 1;
@@ -10571,6 +10589,21 @@ function commitActiveEdit() {
   if (activeContentId == null) return;
   document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
 }
+// #1573: drop the point render() minted for an empty viewport, once that viewport is left.
+// Emptiness is re-checked HERE rather than trusted from the mark, so a provisional point the reader
+// typed into is a real point and stays; one they typed into and cleared again is empty and goes.
+function dropProvisionalChild(vpId) {
+  const vp = vpId ? nodeById(vpId) : null;
+  if (!vp || !Array.isArray(vp.children) || vp.children.length !== 1) return;
+  const only = vp.children[0];
+  if (!only._provisional) return;
+  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;
+  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return;
+  vp.children.length = 0;
+  nodeMap.delete(only.id); parentMap.delete(only.id);
+  markDirty();
+}
+
 function zoomInto(id) {
   focusedId = id; render();   // render() commits any active edit
   // #816 (agent-review, UXP-210): land keyboard focus IN the zoomed view — Ctrl+Enter used
@@ -10853,7 +10886,16 @@ function mkSep() { const s=document.createElement('span'); s.className='crumb-se
 // ══════════════════════════ DOMAIN: Render & bases ══════════════════════════
 // ─── render ──────────────────────────────────────────────────────────────────
 
+// #1573: the viewport render() last drew. Ten places assign `focusedId`, five of them real zoom
+// gestures, so cleaning up the minted point at each of them is the omission-by-sibling this repo
+// keeps producing. render() is the one door they all pass through.
+let _lastViewport = null;
 function render() {
+  // #1573: the viewport changed since the last draw, so the point render() minted for the OLD one
+  // has served its purpose. Before that view is gone is the only moment we still know which point
+  // it was. A snapshot restore (undo) re-points focusedId at a tree where that node no longer
+  // exists, and nodeById then returns nothing, so the guard inside handles it.
+  if (focusedId !== _lastViewport) { dropProvisionalChild(_lastViewport); _lastViewport = focusedId; }
   // Self-protect (the single guard for the whole "navigate/restructure while
   // editing" bug class): a full render destroys the live editing element below
   // (container.innerHTML=''; a fresh vlist). Unless the trigger re-enters edit
@@ -11036,6 +11078,13 @@ function render() {
   let firstChildId = null;
   if (flatRows.length === 0 && !searchQuery) {
     const n = createChildModel(vp);
+    // #1573: mark it as OURS. Nothing ever removed this point, so zooming into a childless point
+    // and straight back out left an empty child behind -- with no pushUndo, no announcement, and
+    // autosaved into the reader's file. The mark is what separates a point render minted from one
+    // the reader made with Enter (which pushes undo), so the cleanup can never eat a real one. It
+    // is deliberately NOT serialized: toOpml writes a fixed attribute whitelist, so a provisional
+    // point that somehow survives to a save lands as an ordinary empty point rather than a ghost.
+    n._provisional = true;
     firstChildId = n.id;
     flatten(vp);
   }

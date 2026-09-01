@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2149 declarations in 158 sections across 17 domains.**
+**2153 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -213,6 +213,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## action pills: {HP -= damage} → click-to-apply a mutation to a named stat
 
 - `ACTION_RE` — The generative/compute engines READ; an action pill WRITES. Unlike a declaration
+- `ACTION_PHRASE` — #1573: one sentence per operator, because they are not one operation. This was built from a
+- `actionPillDesc`
 - `parseActionPill`
 - `actionRhsValue` — The right side of an action, as a number, rolling the GENERATIVE engine when it's there so
 - `actionNewValue` — The value an action pill writes: `current OP rhs`, with the right side resolved through
@@ -606,6 +608,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## zoom / breadcrumb
 
 - `commitActiveEdit` — Commit any in-progress edit (flush text + refold artifacts via exitEdit's blur
+- `dropProvisionalChild` — #1573: drop the point render() minted for an empty viewport, once that viewport is left.
 - `zoomInto`
 - `zoomTo`
 - `ZOOM_TITLE_MIN` — Fit the zoomed point's title inside its max height (--zoom-title-max). Shrink the font
@@ -638,6 +641,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 ## render
 
+- `_lastViewport` — #1573: the viewport render() last drew. Ten places assign `focusedId`, five of them real zoom
 - `render`
 - `_lastRenderFocusedId`
 

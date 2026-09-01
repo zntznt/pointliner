@@ -3420,6 +3420,51 @@
       "find": "return e.includes('?') || /\\bif\\s*\\(/i.test(e);",
       "replace": "return e.includes('?') || /if\\s*\\(/i.test(e);",
       "kills": "a chooser answers with the value it picked"
+    },
+    {
+      "id": "zoom-mints-a-point-and-keeps-it",
+      "suite": "browser",
+      "why": "the shipped defect: render() minted a child for an empty viewport and nothing removed it, so zooming into a childless point and straight back out grew the document by an empty point, with no pushUndo and autosaved into the reader's file",
+      "file": "index.html",
+      "find": "  if (focusedId !== _lastViewport) { dropProvisionalChild(_lastViewport); _lastViewport = focusedId; }\n",
+      "replace": "",
+      "kills": "zooming into a childless point does not leave a point behind"
+    },
+    {
+      "id": "zoom-cleanup-eats-a-real-point",
+      "suite": "browser",
+      "why": "without the _provisional mark the cleanup cannot tell render's point from one the reader made with Enter, and removing an empty child the reader created is a worse bug than the one being fixed",
+      "file": "index.html",
+      "find": "  if (!only._provisional) return;",
+      "replace": "",
+      "kills": "zooming into a childless point does not leave a point behind"
+    },
+    {
+      "id": "zoom-cleanup-trusts-the-mark",
+      "suite": "unit",
+      "why": "emptiness must be re-checked at removal time, not trusted from the mark: a reader who types into the minted point has made it a real point and it must stay",
+      "file": "index.html",
+      "find": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;",
+      "replace": "  if ((only.children || []).length || (only.props || []).length) return;",
+      "kills": "the point render mints for an empty viewport is cleaned up"
+    },
+    {
+      "id": "action-pill-one-additive-template",
+      "suite": "browser",
+      "why": "the shipped defect: every arithmetic operator described by one additive template, so {hp *= 2} announced 'change hp by * 2' -- the word 'by' says addition while the sign says multiply -- as both the accessible name and the tooltip",
+      "file": "index.html",
+      "find": "  '*=': (t, v) => `multiply ${t} by ${v}`,",
+      "replace": "  '*=': (t, v) => `change ${t} by * ${v}`,",
+      "kills": "an action pill announces the arithmetic it actually does"
+    },
+    {
+      "id": "action-phrase-drops-an-operator",
+      "suite": "unit",
+      "why": "census: an operator ACTION_RE accepts but ACTION_PHRASE does not falls through to the generic branch and starts announcing arithmetic it does not do, which is this defect returning",
+      "file": "index.html",
+      "find": "  '/=': (t, v) => `divide ${t} by ${v}`,\n",
+      "replace": "",
+      "kills": "every action operator gets a sentence that describes what it does"
     }
   ]
 }
