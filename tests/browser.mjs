@@ -5998,11 +5998,16 @@ test('#1571 every pasted line becomes a live pill, not just the last one', { ski
   // onboarding path -- and a per-line workaround (visit each pasted point by hand) is not one.
   const pg = await fresh();
   await blankWithCaret(pg);
-  await pg.evaluate(async () => {
-    await navigator.clipboard.writeText(
-      'Session log\nDamage {2d6}\nCost {= 3 * 40}\nColour {red | blue}\nLast line {2d6}');
+  // A synthetic `paste` event, NOT navigator.clipboard + Control+V: the OS clipboard needs a
+  // permission CI's Chromium denies ("Write permission denied"), and it is not the app's code
+  // anyway. This dispatches what handlePaste actually receives, through the real listener that
+  // `content.addEventListener('paste', …)` registers.
+  await pg.evaluate(() => {
+    const el = document.querySelector('.node-content[data-editing]') || document.querySelector('.node-content');
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'Session log\nDamage {2d6}\nCost {= 3 * 40}\nColour {red | blue}\nLast line {2d6}');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
   });
-  await pg.keyboard.press('Control+V');
   await pg.waitForTimeout(600);
   await pg.keyboard.press('Escape');
   await pg.waitForTimeout(600);
