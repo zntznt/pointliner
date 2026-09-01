@@ -132,7 +132,11 @@ jobs:
   # above does not, and stays the offline gate.
   browser-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 25   # measured ~7min (install + 40 driven checks)
+    # #1572: the estimate this carried ("~7min, 40 driven checks") described a suite that has since
+    # doubled to 91 checks; measured 13min on a healthy runner and 17min on a slow one, so 25 left
+    # under 1.5x headroom on a bad day and a run has already been killed by it. Raised, and the
+    # number now says what it counted so the next person can tell whether it has drifted again.
+    timeout-minutes: 40   # measured ~13min healthy / ~17min slow (install + 91 driven checks)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -6088,11 +6088,20 @@ test('#1571 a left-fixed contest agrees with the number it feeds math', { skip: 
   // right the whole time -- so the two halves of the guide's promised "either side can be a fixed
   // target" behaved oppositely. A target of 7 against 2d6 makes all three outcomes common, so this
   // does not pass by only ever seeing one branch.
+  // A d1 always rolls 1, so each of these forces ONE outcome with certainty. The first draft rolled
+  // {L := 7 vs 2d6} twenty-two times and HOPED to see all three, which is both slow and a latent
+  // flake: "met it" needs an exact 7, so ~2% of runs would have missed it and failed on the census
+  // rather than on the defect. Three certain cases beat twenty-two hopeful ones.
+  const CASES = [
+    ['1d1+9', 'beat by 3', 3],    // roll 10 against a target of 7
+    ['1d1+6', 'met it', 0],       // roll 7
+    ['1d1', 'short by 6', -6],    // roll 1
+  ];
   const pg = await fresh();
-  const seen = new Set(), bad = [];
-  for (let i = 0; i < 22; i++) {
+  const bad = [];
+  for (const [roll, label, margin] of CASES) {
     await blankWithCaret(pg);
-    await pg.keyboard.type('Duel {L := 7 vs 2d6} m {= L} w {= L > 0}', { delay: 3 });
+    await pg.keyboard.type(`Duel {L := 7 vs ${roll}} m {= L} w {= L > 0}`, { delay: 3 });
     await pg.waitForTimeout(300);
     await pg.keyboard.press('Escape');
     await pg.waitForTimeout(360);
@@ -6102,16 +6111,14 @@ test('#1571 a left-fixed contest agrees with the number it feeds math', { skip: 
                maths: [...document.querySelectorAll('.math-roll')].map(e => e.innerText.replace(/\s+/g, ' ').trim()),
                target: rec.versus.leftTotal, roll: rec.versus.rightTotal, rolled: Number(rec.rolled) };
     });
-    const kind = (r.pill.match(/(beat|short|met)/) || [])[1];
-    seen.add(kind);
+    if (!r.pill.includes(label)) bad.push(`${r.pill}: expected the verdict "${label}"`);
+    if (r.rolled !== margin) bad.push(`${r.pill}: margin ${r.rolled}, expected ${margin} (roll - target)`);
     if (r.rolled !== r.roll - r.target)
       bad.push(`${r.pill}: margin ${r.rolled} is not roll(${r.roll}) - target(${r.target})`);
     const wantTick = r.rolled > 0;
     if ((r.maths[1] || '').includes('✓') !== wantTick)
       bad.push(`${r.pill}: "${r.maths[1]}" contradicts the verdict`);
   }
-  assert.deepEqual([...seen].sort(), ['beat', 'met', 'short'],
-    'all three verdicts must occur, or this passed by only exercising one branch: ' + [...seen]);
   assert.deepEqual(bad, [], 'the verdict and the math value must agree:\n  ' + bad.join('\n  '));
   assert.deepEqual(pageErrors, []);
   await pg.close();
