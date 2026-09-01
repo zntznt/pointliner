@@ -5982,3 +5982,182 @@ test('#1552 the guide nav answers Home/End, and ArrowLeft returns from the readi
 
   assert.deepEqual(pageErrors, [], 'the guide panel must drive without page errors');
 });
+
+// #1571: the two data-loss defects a source pin structurally cannot reach, because in both of them
+// `node.text` is byte-identical before and after and only the RENDER differs.
+//
+// Found by driving, not by reading: the app has ~2245 unit tests and 87 driven checks, and both of
+// these sat under all of them. That is the #1427 case restated -- presence is not proof -- and it is
+// why they are pinned HERE rather than in a scratch script nobody runs twice.
+
+test('#1571 every pasted line becomes a live pill, not just the last one', { skip: skip() }, async () => {
+  // handlePaste built its points with mkNode() and never promoted them, so exactly ONE line went
+  // live: the last, because focusNode puts that one in edit mode and exitEdit converts on the way
+  // out. Every earlier line stayed literal `{…}` text and was SAVED that way. guide/cookbook.md's
+  // whole delivery mechanism is "paste the block in", so the omission sat on the documented
+  // onboarding path -- and a per-line workaround (visit each pasted point by hand) is not one.
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  // A synthetic `paste` event, NOT navigator.clipboard + Control+V: the OS clipboard needs a
+  // permission CI's Chromium denies ("Write permission denied"), and it is not the app's code
+  // anyway. This dispatches what handlePaste actually receives, through the real listener that
+  // `content.addEventListener('paste', …)` registers.
+  await pg.evaluate(() => {
+    const el = document.querySelector('.node-content[data-editing]') || document.querySelector('.node-content');
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'Session log\nDamage {2d6}\nCost {= 3 * 40}\nColour {red | blue}\nLast line {2d6}');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await pg.waitForTimeout(600);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(600);
+
+  const r = await pg.evaluate(() => ({
+    texts: root.children.map(n => n.text),
+    records: root.children.map(n => (n.dice || []).length + (n.math || []).length + (n.grammar || []).length),
+  }));
+  // Four of the five lines carry a brace; the plain first line is the control that must NOT gain one.
+  assert.equal(r.texts.length, 5, 'the paste must land as five points');
+  assert.deepEqual(r.texts.filter(t => t.includes('{')), [],
+    'no pasted line may keep raw {…} shorthand: ' + JSON.stringify(r.texts));
+  assert.deepEqual(r.records, [0, 1, 1, 1, 1],
+    'each brace-carrying line gets exactly one record, and the plain line gets none');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1571 undo then redo keeps the pill record, on every prunable sidecar', { skip: skip() }, async () => {
+  // applyEntry ran pruneArtifacts and threw the return value away, so the first Ctrl+Z discarded
+  // exactly what the next Ctrl+Shift+Z needed. All EIGHT families came back as "(missing data)" and
+  // autosaved that way. Asserted on the FROZEN VALUE, not just "a pill exists": a re-rolled pill
+  // would also be a loss, and the value is what proves the original record came back rather than a
+  // fresh one being minted.
+  const KINDS = [
+    ['dice',    'Damage {2d6}'],
+    ['math',    'Ferry {= 40 * 2}'],
+    ['grammar', 'Colour {red | blue}'],
+    ['vars',    'HP {hp := 10}'],
+    ['est',     'Travel {2 to 5}'],
+    ['seq',     'State {seq s: A|B}'],
+    ['markov',  'Chain {markov: sunny→cloudy, cloudy→sunny}'],
+    ['queries', 'Open {count: is:todo}'],
+  ];
+  const pg = await fresh();
+  const lost = [], vacuous = [];
+  for (const [kind, line] of KINDS) {
+    await blankWithCaret(pg);
+    await pg.keyboard.type(line, { delay: 5 });
+    await pg.waitForTimeout(300);
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(350);
+    const before = await pg.evaluate(() => ({
+      screen: document.querySelector('.node-content').innerText.replace(/\s+/g, ' ').trim(),
+      text: root.children[0].text,
+    }));
+    // A row whose brace never promoted would pass every assertion below while testing nothing.
+    if (before.text.includes('{')) { vacuous.push(kind); continue; }
+
+    await pg.keyboard.press('Control+z');
+    await pg.waitForTimeout(350);
+    await pg.keyboard.press('Control+Shift+z');
+    await pg.waitForTimeout(400);
+    // applyEntry ends in focusNode, so the point is back in EDIT mode, where artifacts legitimately
+    // unfold to `{…}`. Reading the screen there compares an unfolded buffer against a folded render
+    // and reports a loss that is not one.
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(350);
+
+    const after = await pg.evaluate(() => ({
+      screen: document.querySelector('.node-content').innerText.replace(/\s+/g, ' ').trim(),
+      bad: document.querySelectorAll('[aria-label*="missing data"], .math-bad, .dice-bad, .gr-bad, .var-bad, .est-bad, .mk-bad').length,
+    }));
+    if (after.bad || after.screen !== before.screen)
+      lost.push(`${kind}: "${before.screen}" -> "${after.screen}"${after.bad ? ' (bad pill)' : ''}`);
+  }
+  assert.deepEqual(vacuous, [],
+    'these lines never promoted, so their rows proved nothing: ' + vacuous.join(', '));
+  assert.deepEqual(lost, [],
+    'undo->redo must restore the pill AND its frozen value:\n  ' + lost.join('\n  '));
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1571 a left-fixed contest agrees with the number it feeds math', { skip: skip() }, async () => {
+  // The pill printed "short by 2" while `{= L}` handed math +2 and `{= L > 0}` lit a TICK on a
+  // failed roll. Only the stored margin was wrong -- the label was derived from the totals and was
+  // right the whole time -- so the two halves of the guide's promised "either side can be a fixed
+  // target" behaved oppositely. A target of 7 against 2d6 makes all three outcomes common, so this
+  // does not pass by only ever seeing one branch.
+  // A d1 always rolls 1, so each of these forces ONE outcome with certainty. The first draft rolled
+  // {L := 7 vs 2d6} twenty-two times and HOPED to see all three, which is both slow and a latent
+  // flake: "met it" needs an exact 7, so ~2% of runs would have missed it and failed on the census
+  // rather than on the defect. Three certain cases beat twenty-two hopeful ones.
+  const CASES = [
+    ['1d1+9', 'beat by 3', 3],    // roll 10 against a target of 7
+    ['1d1+6', 'met it', 0],       // roll 7
+    ['1d1', 'short by 6', -6],    // roll 1
+  ];
+  const pg = await fresh();
+  const bad = [];
+  for (const [roll, label, margin] of CASES) {
+    await blankWithCaret(pg);
+    await pg.keyboard.type(`Duel {L := 7 vs ${roll}} m {= L} w {= L > 0}`, { delay: 3 });
+    await pg.waitForTimeout(300);
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(360);
+    const r = await pg.evaluate(() => {
+      const rec = root.children[0].vars.find(v => v.versus);
+      return { pill: document.querySelector('.var-versus').innerText.replace(/\s+/g, ' ').trim(),
+               maths: [...document.querySelectorAll('.math-roll')].map(e => e.innerText.replace(/\s+/g, ' ').trim()),
+               target: rec.versus.leftTotal, roll: rec.versus.rightTotal, rolled: Number(rec.rolled) };
+    });
+    if (!r.pill.includes(label)) bad.push(`${r.pill}: expected the verdict "${label}"`);
+    if (r.rolled !== margin) bad.push(`${r.pill}: margin ${r.rolled}, expected ${margin} (roll - target)`);
+    if (r.rolled !== r.roll - r.target)
+      bad.push(`${r.pill}: margin ${r.rolled} is not roll(${r.roll}) - target(${r.target})`);
+    const wantTick = r.rolled > 0;
+    if ((r.maths[1] || '').includes('✓') !== wantTick)
+      bad.push(`${r.pill}: "${r.maths[1]}" contradicts the verdict`);
+  }
+  assert.deepEqual(bad, [], 'the verdict and the math value must agree:\n  ' + bad.join('\n  '));
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1571 freezing or exporting a contest keeps it, instead of writing a question mark', { skip: skip() }, async () => {
+  // frozenTokenText's var arm read the resolved varMap, where a contest is not a plain number: an
+  // ANONYMOUS one froze to " = ?" and a NAMED one to its bare margin. Not export-only -- "Freeze to
+  // text" writes that string into the LIVE document behind a "Pill frozen to text." toast, which is
+  // a silent success claim over total data loss (P4).
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.keyboard.type('Duel {2d6 vs 2d6} and {hit := 2d6 vs 2d6}', { delay: 4 });
+  await pg.waitForTimeout(400);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(500);
+
+  const r = await pg.evaluate(() => ({
+    screen: document.querySelector('.node-content').innerText.replace(/\s+/g, ' ').trim(),
+    markdown: toMarkdown(root).trim(),
+    plain: toPlainText(root).trim(),
+  }));
+  // The export has to carry BOTH totals and the verdict, exactly as the screen reads them.
+  const body = r.screen.replace(/^Duel /, '');
+  assert.ok(/\d+ vs \d+ · (won by \d+|tie|mixed)/.test(r.markdown),
+    'markdown must keep both totals and the verdict, got: ' + r.markdown);
+  assert.ok(r.markdown.includes(body), `markdown must read as the screen does.\n  screen: ${r.screen}\n  md:     ${r.markdown}`);
+  assert.equal(r.plain.replace(/^Duel /, ''), body, 'and plain text must agree with it');
+  assert.doesNotMatch(r.markdown, /=\s*\?/, 'and never the "= ?" the anonymous contest used to become');
+
+  // The live-document door, which is the destructive one.
+  const frozen = await pg.evaluate(() => {
+    const n = root.children[0];
+    const m = /\[\[var:([a-z0-9]+)\]\]/i.exec(n.text);       // the ANONYMOUS contest, the total-loss case
+    freezePillToText(n, 'var', m[1]);
+    return n.text;
+  });
+  assert.ok(/\d+ vs \d+ · (won by \d+|tie|mixed)/.test(frozen),
+    'Freeze to text must write the contest the pill was showing, got: ' + frozen);
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});

@@ -190,7 +190,8 @@ your own variables.
 ```
 
 With one side fixed the pill reads from the roll's point of view, `beat by 3` or `short by 6` or
-`met it`, because a static target does not "win".
+`met it`, because a static target does not "win". The margin follows the roll for the same reason, so
+`{= check > 0}` is ✓ exactly when the roll beat its target, whichever side you wrote the target on.
 
 **It works at every level**, because each side collapses to one total before the subtraction. A
 success pool against a success pool gives the **net successes**:

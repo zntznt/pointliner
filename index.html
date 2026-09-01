@@ -8896,11 +8896,43 @@ function rollVersus(left, right, vars = {}) {
     left, right,
     leftTotal: ls.total, rightTotal: rs.total,
     leftParts: ls.parts, rightParts: rs.parts,
-    margin: ls.total - rs.total,
+    // #1571: with exactly ONE side a fixed target, the margin is the ROLL's, not the left side's.
+    // The pill already reads from the roll's point of view ("beat by 3" / "short by 6"), and both
+    // guides say "the margin is how far over or under you landed" -- but the number handed to math
+    // stayed left - right, so a named `{L := 10 vs 2d6}` printed "short by 2" while `{= L}` gave +2
+    // and `{= L > 0}` lit a tick on a failed roll. Two rolls, or two fixed values, keep left - right,
+    // which is what "the left side wins by N" means.
+    margin: (!ls.roll !== !rs.roll) && !ls.roll ? rs.total - ls.total : ls.total - rs.total,
     leftKind: ls.kind, rightKind: rs.kind,
     mismatch: ls.roll && rs.roll && ls.kind !== rs.kind,
     leftFixed: !ls.roll, rightFixed: !rs.roll,
   };
+}
+
+// #1243/#1571: the verdict a contest reads out, from its stored record alone. Pure -- no DOM, no
+// globals -- so the pill's value cell, its tooltip, its accessible name AND its frozen/exported text
+// all read ONE source. It used to be inline in the var-pill renderer, which is exactly why
+// frozenTokenText had no way to produce it and froze a whole contest to "?" (#1571).
+//
+// Everything here is derived from the TOTALS, never from the stored `margin`: a record written
+// before #1571 carries a left - right margin even when one side is fixed, and the label still has to
+// read correctly for it. Who won is read off the totals for the same reason -- on a left-fixed
+// contest the margin and the winner disagree by design.
+function versusVerdict(vs) {
+  if (!vs) return null;
+  const oneFixed = !!vs.leftFixed !== !!vs.rightFixed;
+  const diff = vs.leftTotal - vs.rightTotal;                  // the two-sided reading
+  const beat = oneFixed && vs.leftFixed ? -diff : diff;       // the ROLL's reading, when one side is static
+  const leftWin = !vs.mismatch && diff > 0, rightWin = !vs.mismatch && diff < 0;
+  if (vs.mismatch)
+    return { who: 'mixed dice kinds, so the margin is unreliable', marginLabel: 'mixed', leftWin: false, rightWin: false };
+  if (oneFixed)
+    return { who: beat === 0 ? 'the roll meets the target' : beat > 0 ? 'the roll beats it by ' + beat : 'the roll is short by ' + (-beat),
+             marginLabel: beat === 0 ? 'met it' : beat > 0 ? 'beat by ' + beat : 'short by ' + (-beat),
+             leftWin, rightWin };
+  if (diff === 0) return { who: 'a tie', marginLabel: 'tie', leftWin: false, rightWin: false };
+  return { who: (diff > 0 ? 'the left side' : 'the right side') + ' wins by ' + Math.abs(diff),
+           marginLabel: 'won by ' + Math.abs(diff), leftWin, rightWin };
 }
 
 // Build a fresh roll record from raw user input; null if the formula is invalid.
@@ -21098,15 +21130,27 @@ function handlePaste(e, node, content) {
   function insDeep(item, par) {
     const nn = mkNode(item.text); par.children.push(nn); newNodes.push(nn);
     item.children.forEach(ch => insDeep(ch, nn));
+    return nn;
   }
   function ins(items, tp, ai) {
-    items.forEach((it, i) => {
+    return items.map((it, i) => {
       const nn = mkNode(it.text); tp.children.splice(ai+1+i, 0, nn); newNodes.push(nn);
       it.children.forEach(ch => insDeep(ch, nn));
+      return nn;
     });
   }
-  parsed[0].children.forEach(ch => insDeep(ch, node));
-  ins(parsed.slice(1), parent, idx);
+  // Only the TOPS: promoteLoadedShorthand walks the whole subtree, so promoting every entry of
+  // newNodes would re-walk each nested point once per ancestor.
+  const pastedTops = parsed[0].children.map(ch => insDeep(ch, node));
+  pastedTops.push(...ins(parsed.slice(1), parent, idx));
+  // #1571: a pasted point gets the SAME {…} -> pill promotion that the CSV branch above
+  // (built.forEach) and the Patterns door (insertRecipe) already run on the points THEY build.
+  // Without it exactly one pasted line went live — the last, because focusNode puts that one in
+  // edit mode and exitEdit converts on the way out — while every earlier line stayed literal text
+  // and was saved to the file that way. guide/cookbook.md's whole delivery mechanism is "paste the
+  // block in", so the omission sat on the documented onboarding path. The paste TARGET is not
+  // promoted here: it is mid-edit with a live buffer, and exitEdit already converts it.
+  pastedTops.forEach(promoteLoadedShorthand);
   buildIndex(root, null);
   markDirty(); render();
   if (newNodes.length) {
@@ -31849,16 +31893,12 @@ function renderVarPill(key, v) {
     // The signed margin still lives in the title/aria (and, for a NAMED contest, feeds math).
     // A roll against ONE fixed target (a DC / a variable) reads from the ROLL's point of view — "beat by"
     // / "short by" — since a static target does not "win". Two rolls (or two fixed values) read "won by".
-    const oneFixed = vs && (vs.leftFixed !== vs.rightFixed);
-    const rollTotal = vs && (vs.leftFixed ? vs.rightTotal : vs.leftTotal);
-    const beat = vs && (rollTotal - (vs.leftFixed ? vs.leftTotal : vs.rightTotal));
-    let who, marginLabel;
-    if (vs && vs.mismatch)      { who = 'mixed dice kinds, so the margin is unreliable'; marginLabel = 'mixed'; }
-    else if (vs && oneFixed)    { who = beat === 0 ? 'the roll meets the target' : beat > 0 ? 'the roll beats it by ' + beat : 'the roll is short by ' + (-beat);
-                                  marginLabel = beat === 0 ? 'met it' : beat > 0 ? 'beat by ' + beat : 'short by ' + (-beat); }
-    else if (vs && vs.margin === 0) { who = 'a tie'; marginLabel = 'tie'; }
-    else if (vs)                { who = (vs.margin > 0 ? 'the left side' : 'the right side') + ' wins by ' + Math.abs(vs.margin); marginLabel = 'won by ' + Math.abs(vs.margin); }
-    const leftWin = vs && !vs.mismatch && vs.margin > 0, rightWin = vs && !vs.mismatch && vs.margin < 0;
+    // #1571: one source for the verdict, shared with the export. `leftWin`/`rightWin` used to read
+    // the MARGIN, which now points the roll's way on a left-fixed contest -- reading it here would
+    // have emphasised the losing side. versusVerdict reads the totals, which never flip.
+    const verdict = versusVerdict(vs) || {};
+    const who = verdict.who, marginLabel = verdict.marginLabel;
+    const leftWin = !!verdict.leftWin, rightWin = !!verdict.rightWin;
     // A pick FREEZES one draw, so `{w := {weapon}}` written above the weapon rule freezes the
     // marker with it and every later `{w}` reads it. Same note as the grammar pill, same words as
     // plain text, and the pill wears .var-stale so the tip is not the only signal.
@@ -34316,6 +34356,25 @@ function restoreArtifacts(node, dropped) {
     node[k] = [...(node[k] || []), ...dropped[k].filter(r => !have.has(r.key))];
   }
 }
+// #1571: union two `dropped` maps by record key, per sidecar kind. The prune that runs INSIDE
+// applyEntry orphans records of its own, and what it reports has to JOIN whatever the original edit
+// already carried rather than replace it -- one point can lose one pill to the edit and a different
+// one to the undo. Left wins on a duplicate key, since it is the older and more complete record.
+// Pure, DOM-free, and returns a fresh object rather than mutating either side.
+function mergeDropped(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  const out = {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const seen = new Set(), list = [];
+    for (const r of [...(a[k] || []), ...(b[k] || [])]) {
+      if (!r || seen.has(r.key)) continue;
+      seen.add(r.key); list.push(r);
+    }
+    out[k] = list;
+  }
+  return out;
+}
 // Drop dice records whose [[dice:KEY]] token no longer appears in the text.
 function pruneDice(node) {
   if (!node.dice?.length) return;
@@ -35508,7 +35567,22 @@ function applyEntry(entry, intoStack, dir) {
       // back so the record survives, redoing takes the token away so it is dropped again. A `dir`
       // branch here would be two behaviours to keep in step, and the token is already the authority.
       if (entry.dropped) { try { restoreArtifacts(node, JSON.parse(entry.dropped)); } catch (_) {} }
-      pruneArtifacts(node);
+      // #1571: THIS prune orphans records too, and its return value was thrown away -- so the very
+      // first Ctrl+Z discarded exactly what the very next Ctrl+Shift+Z needed, and every one of the
+      // eight prunable sidecars came back as a "(missing data)" pill that then autosaved. #1507
+      // taught prune to REPORT what it destroys and taught `exitEdit` to listen; this caller, which
+      // runs the same prune, was never taught. Merging onto the entry (the same object that was just
+      // pushed onto the opposite stack) means the reverse direction offers the records back and
+      // prunes them against the text IT restores -- still one path for both directions, no `dir`
+      // branch, with the token left as the authority.
+      const orphaned = pruneArtifacts(node);
+      if (orphaned) {
+        let carried = null;
+        try { carried = entry.dropped ? JSON.parse(entry.dropped) : null; } catch (_) {}
+        const merged = JSON.stringify(mergeDropped(carried, orphaned));
+        entry.size += merged.length - (entry.dropped ? entry.dropped.length : 0);   // keep trimStack honest
+        entry.dropped = merged;
+      }
       rederiveFromText(node);   // type AND checked (audit #2: was type-only, so an undone to-do vanished with Show-Done off)
     }
     markDirty(); render();
@@ -37564,6 +37638,18 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
     const samples = varDistDraw(dRec, EST_N, varMap);
     const dist = samples ? formatDist(samples, dRec.fmt || null) : '#ERR';   // #1115: same format as the pill
     return (rec.expr && !prose) ? `${rec.name} ≈ ${dist}` : dist;
+  }
+  // #1571: a CONTEST is the other var sub-kind whose value is not a plain number, and it fell
+  // straight through to the generic arm below. An ANONYMOUS one froze to " = ?" (varMap[''] is
+  // undefined) and a NAMED one to its bare margin, losing both totals and the verdict. Same shape as
+  // the distribution case above and the same remedy: read the sidecar lane rather than the resolved
+  // map, and freeze to what the PILL shows. This is not export-only -- "Freeze to text" writes this
+  // string into the live document, so the generic arm was destroying a roll behind a
+  // "Pill frozen to text." toast (P4), and it reached every display sink besides.
+  if (rec.versus) {
+    const v = rec.versus, verdict = versusVerdict(v);
+    const body = `${v.leftTotal} vs ${v.rightTotal} · ${verdict ? verdict.marginLabel : ''}`.trim();
+    return (rec.name && !prose) ? `${rec.name} = ${body}` : body;
   }
   const val = varMap[(rec.name || '').toLowerCase()];
   const valStr = val !== undefined ? formatVarValue(val) : '?';

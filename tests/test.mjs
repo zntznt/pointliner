@@ -36,6 +36,13 @@ const c = loadCores();
 // prototypes differ from the host's and strict deepEqual rejects them despite
 // identical structure. Normalize to plain host-realm values before comparing.
 const host = (x) => JSON.parse(JSON.stringify(x));
+// indexOf that refuses to return -1: a missing anchor makes every `a < b` ordering check read as
+// "true" by accident, which is a pin that cannot fail.
+const nonEmptyIdx = (hay, needle) => {
+  const i = hay.indexOf(needle);
+  if (i < 0) throw new Error(`anchor not found, so the check that uses it would be vacuous: ${needle}`);
+  return i;
+};
 
 // #452: STRUCTURAL source-pin — return the body of `function name(...) { … }` by brace
 // matching from its declaration, so a pin asserts a substring is present ANYWHERE in the
@@ -34995,6 +35002,158 @@ test('#1507 restoreArtifacts puts records back without duplicating what is alrea
   assert.deepEqual(host(n.dice.map(r => r.key)), ['d1'], 'a sidecar the point did not have is created');
   c.restoreArtifacts(n, null);
   assert.equal(n.math.length, 2, 'null is a no-op');
+});
+
+// #1571: #1507 taught the prune to REPORT what it destroys, and taught `exitEdit` to listen. The
+// OTHER caller that runs the same prune -- applyEntry, i.e. undo and redo themselves -- discarded
+// the report, so the very first Ctrl+Z threw away exactly what the very next Ctrl+Shift+Z needed.
+// Driven, all EIGHT prunable sidecars came back as a "(missing data)" pill, and that pill autosaved.
+// The sibling rule again: the capability existed, applied to one of the two callers of the same
+// function. mergeDropped is the piece that lets the second caller join rather than clobber.
+test('#1571 mergeDropped unions two prune reports by key, per sidecar kind', () => {
+  assert.deepEqual(host(c.mergeDropped({ dice: [{ key: 'a' }] }, { math: [{ key: 'b' }] })),
+    { dice: [{ key: 'a' }], math: [{ key: 'b' }] }, 'kinds only one side carries survive');
+  assert.deepEqual(host(c.mergeDropped({ dice: [{ key: 'a', v: 1 }] }, { dice: [{ key: 'a', v: 2 }, { key: 'c' }] })),
+    { dice: [{ key: 'a', v: 1 }, { key: 'c' }] },
+    'a key on both sides is kept once, and the LEFT (older, more complete) record wins');
+  // Null handling is the reason this is a function and not an inline spread: an edit that orphaned
+  // nothing carries no `dropped`, and the undo that follows it usually orphans everything.
+  assert.deepEqual(host(c.mergeDropped(null, { dice: [{ key: 'z' }] })), { dice: [{ key: 'z' }] }, 'null left');
+  assert.deepEqual(host(c.mergeDropped({ dice: [{ key: 'z' }] }, null)), { dice: [{ key: 'z' }] }, 'null right');
+  assert.equal(c.mergeDropped(null, null), null, 'nothing on either side stays nothing');
+  // It must not mutate either argument: `a` is the entry's own parsed payload, and the caller
+  // re-serializes the RESULT. Mutating `a` in place would work by accident until it did not.
+  const a = { dice: [{ key: 'a' }] }, b = { dice: [{ key: 'b' }] };
+  c.mergeDropped(a, b);
+  assert.deepEqual(host(a), { dice: [{ key: 'a' }] }, 'the left argument is untouched');
+  assert.deepEqual(host(b), { dice: [{ key: 'b' }] }, 'and so is the right');
+});
+
+test('#1571 undo/redo keeps what ITS OWN prune orphaned, on the entry', () => {
+  const ap = fnBody(_src, 'applyEntry');
+  const win = between(ap, 'entry.dropped', 'rederiveFromText');
+  // The capture. Reading the return value is the whole fix: the call was there and its answer
+  // thrown away, which is why every source pin on "applyEntry prunes" stayed green through the bug.
+  assert.match(win, /const orphaned = pruneArtifacts\(node\);/,
+    'applyEntry KEEPS what its prune dropped rather than discarding the return value');
+  assert.match(win, /entry\.dropped = merged;/,
+    'and writes it back onto the entry, which is the same object just pushed onto the opposite stack');
+  assert.match(win, /mergeDropped\(carried, orphaned\)/,
+    'joining what the original edit carried rather than clobbering it');
+  // Still ONE path for both directions (#1507's rule), now including the capture.
+  assert.doesNotMatch(win, /dir === /,
+    'the capture is direction-agnostic too: the token stays the authority on what belongs');
+  // The stack budget has to count the payload it now carries, or trimStack under-counts an entry
+  // that can grow by every record a point held.
+  assert.match(win, /entry\.size \+= merged\.length - \(entry\.dropped \? entry\.dropped\.length : 0\)/,
+    'and the entry size is adjusted, so trimStack still measures what it is holding');
+});
+
+// #1571: two contest defects that no #1243 test asserted, which is why both shipped.
+//
+//  (a) A NAMED contest with a fixed target on the LEFT printed a verdict and fed math the OPPOSITE
+//      sign: `{L := 10 vs 2d6}` read "short by 2" while `{= L}` gave +2 and `{= L > 0}` lit a tick
+//      on a failed roll. The display was right the whole time -- the renderer derived its label from
+//      the TOTALS -- so only the stored margin was wrong, and only the half that reaches math.
+//  (b) freeze/export destroyed a contest outright: an anonymous one became " = ?" and a named one
+//      its bare margin, because frozenTokenText's var arm read the resolved varMap and a contest is
+//      not a plain number there. Same shape as #952's distribution case, one lane over.
+//
+// The verdict is now ONE pure core read by the pill, the tooltip, the accessible name and the
+// export, rather than four re-derivations of the same four branches.
+test('#1571 versusVerdict reads the totals, so the label and the winner never flip', () => {
+  const mk = (lt, rt, lf, rf, mm) => ({ leftTotal: lt, rightTotal: rt, leftFixed: lf, rightFixed: rf, mismatch: !!mm });
+  const V = (...a) => host(c.versusVerdict(mk(...a)));
+
+  // Two rolls: left - right, and the winner is the bigger total.
+  assert.equal(V(9, 7, false, false).marginLabel, 'won by 2');
+  assert.equal(V(9, 7, false, false).leftWin, true);
+  assert.equal(V(7, 9, false, false).rightWin, true);
+  assert.equal(V(7, 7, false, false).marginLabel, 'tie');
+
+  // ONE fixed side reads from the ROLL, whichever side the roll is on. This is the pair that
+  // disagreed: the right-fixed half was correct and shipped, the left-fixed half was not.
+  assert.equal(V(18, 15, false, true).marginLabel, 'beat by 3', 'roll on the left, over the target');
+  assert.equal(V(10, 15, false, true).marginLabel, 'short by 5', 'roll on the left, under it');
+  assert.equal(V(10, 11, true, false).marginLabel, 'beat by 1', 'roll on the RIGHT, over the target');
+  assert.equal(V(10, 9, true, false).marginLabel, 'short by 1', 'roll on the RIGHT, under it');
+  assert.equal(V(10, 10, true, false).marginLabel, 'met it');
+
+  // Both fixed is not "one side fixed": it keeps the two-sided reading.
+  assert.equal(V(10, 15, true, true).marginLabel, 'won by 5');
+  // A mismatch says so instead of quoting a number that means nothing.
+  assert.equal(V(9, 3, false, false, true).marginLabel, 'mixed');
+  assert.equal(V(9, 3, false, false, true).leftWin, false, 'and highlights neither side');
+  assert.equal(c.versusVerdict(null), null, 'no record, no verdict');
+
+  // ROBUST TO OLD RECORDS. A contest saved before this fix carries a left - right margin even when
+  // one side is fixed. The verdict must still read correctly for it, which is why nothing here
+  // consults `margin` -- if it did, every already-saved left-fixed contest would start lying.
+  const stale = mk(10, 9, true, false); stale.margin = 1;   // the pre-#1571 sign
+  assert.equal(host(c.versusVerdict(stale)).marginLabel, 'short by 1',
+    'the label is derived from the totals, so a stale stored margin cannot corrupt it');
+});
+
+test('#1571 a one-sided contest stores the margin the roll sees, not the left side', () => {
+  // rollVersus is where the number that reaches math is decided. Driven with a fixed left target,
+  // the pill said "short by 2" and `{= L}` said +2; this is that number.
+  const roll = (l, r) => c.rollVersus(l, r, {});
+  for (let i = 0; i < 40; i++) {
+    const lf = roll('10', '2d6');                 // fixed target on the LEFT, roll on the right
+    assert.equal(lf.margin, lf.rightTotal - lf.leftTotal,
+      'left-fixed: the margin is roll - target, matching the "beat by / short by" the pill prints');
+    const rf = roll('2d6', '10');                 // the mirror, which was always right
+    assert.equal(rf.margin, rf.leftTotal - rf.rightTotal, 'right-fixed: roll - target');
+    const two = roll('2d6', '2d6');               // neither fixed: the two-sided reading
+    assert.equal(two.margin, two.leftTotal - two.rightTotal, 'two rolls: left - right');
+  }
+  const both = roll('10', '15');                  // both fixed is NOT one-sided
+  assert.equal(both.margin, -5, 'two fixed values keep left - right');
+  // The sign is the whole point: a left-fixed roll UNDER its target must be negative, or
+  // `{= L > 0}` lights a tick on a failure.
+  const under = c.rollVersus('20', '2d6', {});
+  assert.ok(under.margin < 0, `a roll under a left-hand target is negative, got ${under.margin}`);
+  const over = c.rollVersus('2', '2d6', {});
+  assert.ok(over.margin > 0, `a roll over a left-hand target is positive, got ${over.margin}`);
+});
+
+test('#1571 the pill and the export read the same verdict, and freeze keeps the contest', () => {
+  // #1133, the call site. A tested core proves nothing about whether anything calls it.
+  const rv = fnBody(_src, 'renderVarPill');
+  assert.match(rv, /const verdict = versusVerdict\(vs\) \|\| \{\}/,
+    'the pill reads the shared core rather than re-deriving four branches inline');
+  assert.match(rv, /const leftWin = !!verdict\.leftWin, rightWin = !!verdict\.rightWin/,
+    'including WHICH SIDE to emphasise -- reading the margin here would highlight the loser on a left-fixed contest');
+  assert.doesNotMatch(rv, /vs\.margin > 0/,
+    'and the renderer no longer decides a winner from the margin, which now points the roll’s way');
+
+  const ft = fnBody(_src, 'frozenTokenText');
+  assert.match(ft, /if \(rec\.versus\) \{/,
+    'freeze/export has a contest arm at all -- without one it fell through to the varMap lookup');
+  assert.match(ft, /versusVerdict\(v\)/, 'and reads the same verdict the pill shows');
+  assert.ok(ft.indexOf('if (rec.versus) {') < ft.indexOf('const val = varMap['),
+    'BEFORE the generic var arm, which is the arm that produced " = ?" for an anonymous contest');
+});
+
+test('#1571 a pasted point gets the same {…} promotion the other insert doors run', () => {
+  // The paste path built its points with mkNode() and never promoted them, so exactly ONE pasted
+  // line went live: the last, because focusNode puts that one in edit mode and exitEdit converts on
+  // the way out. guide/cookbook.md's delivery mechanism is "paste the block in", so this sat on the
+  // documented onboarding path. Census over the insert doors, because the capability was already in
+  // two of the three: a fourth door added without the promotion is the same bug again.
+  const hp = fnBody(_src, 'handlePaste');
+  assert.match(hp, /pastedTops\.forEach\(promoteLoadedShorthand\)/,
+    'the multi-line paste path promotes the points it inserts');
+  // Measured from `const pastedTops` onward: the CSV branch earlier in the same function has its own
+  // buildIndex(root, null), and comparing against THAT one made the check read backwards.
+  const tail = hp.slice(nonEmptyIdx(hp, 'const pastedTops'));
+  assert.ok(tail.indexOf('pastedTops.forEach(promoteLoadedShorthand)') < tail.indexOf('buildIndex(root, null)'),
+    'before buildIndex, so the index registers the promoted text rather than the raw shorthand');
+  // The CSV branch of the same function, and the Patterns door, are the siblings it was missing.
+  assert.match(hp, /built\.forEach\(promoteLoadedShorthand\)/,
+    'the CSV branch of the same function still promotes (it always did -- it is the sibling)');
+  assert.match(fnBody(_src, 'insertRecipe'), /nodes\.forEach\(promoteLoadedShorthand\)/,
+    'and so does the Patterns door');
 });
 
 test('#1507 the undo entry carries the orphans, and the text decides which come back', () => {
