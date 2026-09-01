@@ -27,17 +27,20 @@ Two things to know before the table:
 | You type | It does | Reads |
 |---|---|---|
 | `{2d6}`, `{4d6kh3}`, `{2d6!}`, `{4dF}` | rolls dice (`NdM`, plus `!` explode, `rK` reroll ≤K, `kh`/`kl`/`dh`/`dl N` keep/drop, `>=N` targets) | self |
+| `{2d{sides}}`, `{{n}d6}` | a die whose count or faces come from a `{…}` (a variable, a rule, a pick) | self\* |
+| `{2d6 vs 2d6}`, `{2d6+str vs 12}` | a contest: rolls both sides and reads the margin (a side may be dice, a number or a variable) | self\* |
 | `{a \| b \| c}` | picks one at random | self |
 | `{a \| b 2 \| c}` | weighted pick (a weight is a number, or a `{= expr}` for dynamic odds) | self\* |
-| `{Bram\|Isolde}{ Ashford\|Vane}` | glues two picks into one (name generators) | self |
+| `{{Bram\|Isolde} {Ashford\|Vane}}` | glues the picks into one pill that re-rolls as a unit (name generators); the outer brace is what joins them | self |
 | `{cond: then \| else}` | emits `then` when the comparison holds, else `else` (else optional) | self\* |
 | `{shuffle: a \| b \| c}` | deals from a deck without repeats; `{cycle: …}` runs the list in order and loops, `{once: …}` runs it once and stops, `{stopping: …}` runs it once and holds the last | self |
 | `{Nx: template}` | repeats the template N times (N a number 1 to 99, or a dice roll like `{2d4x: …}`) | self |
 | `{markov: a→b, b→c}` | a typed Markov chain (comma-separated `from→to weight` transitions) | self |
 | `{rule Name: a \| b}` | declares a named, document-wide grammar rule you can call as `{Name}` | doc |
 | `{seq Name: active \| done}` | declares a named sequence (a workflow of states) | doc |
-| `{ref.mod}` | a text modifier on a rule/variable, or on a braced group like `{{a \| b}.cap}` (`cap`, `title`, `upper`, `lower`, `a`, `s`, `ed`, `ing`, `poss`, `ord`) | doc |
-| `{oracle: likely}` | a yes/no oracle over a likelihood band (`certain`/`likely`/`even`/`unlikely`/`impossible`), optional `+ swing` | self |
+| `{ref.mod}` | a text modifier on a rule/variable: `cap`, `title`, `upper`, `lower`, `a` (picks a or an), `s`, `ed`, `ing`, `poss`, `ord` | doc |
+| `{{a \| b}.mod}` | the same text modifiers on a whole generator wrapped in one more brace (`{{ogre \| dragon}.a}` is "an ogre", `{{2d6}.ord}` is "6th") | self\* |
+| `{oracle: likely}` | a yes/no oracle over a likelihood band (`certain`/`likely`/`even`/`unlikely`/`impossible`) or a percentage (`{oracle: 70}`), optional `+ swing` | self |
 | `{roll: search-query}` | draws one random point matching the search (add `folder` before the colon to draw across the whole folder) | **doc** |
 
 **Compute** (live; recomputes on its own when something it reads changes):
@@ -45,9 +48,10 @@ Two things to know before the table:
 | You type | It does | Reads |
 |---|---|---|
 | `{= 2 * 19}` | evaluates the expression (`+ − × ÷ ^ %`, `sqrt`, `pi`/`e`/`tau`, and more) | self\* |
-| `{= sum(cost)}` | rolls a property up the point's children (`sum`/`avg`/`count`/`min`/`max`) | **doc** |
+| `{= sum(cost)}` | rolls a property up the point's children (`sum`/`avg`/`count`/`min`/`max`), or a wider scope with a second argument (`sum(cost, subtree)`) | **doc** |
 | `{= sum("query", cost)}` | rolls a property up every point matching a search | **doc** |
-| `{= convert(2, km, mi)}` | converts between declared units | self |
+| `{= words(subtree)}` | counts words in this point and below (`subtree`/`self`/`children`; add `, notes` to count notes too) | **doc** |
+| `{= convert(2, km, mi)}` | converts between units (length, mass, volume and time are built in; you can declare your own) | self\* |
 | `{name := expr}` | declares a variable (a formula, or a random pick frozen once) | doc |
 | `{name}` | reads a declared variable | **doc** |
 | `{row.field}`, `{base.row.field}` | reads a cell from a variable base (a table used as data) | **doc** |
@@ -55,6 +59,7 @@ Two things to know before the table:
 | `{query: is:todo}` | lists the points matching a live search | **doc** |
 | `{count: #tag}` | counts the points matching a live search | **doc** |
 | `{meter: hp/hpmax}` | a segmented bar of a numeric property (also icon pools: `{meter: hp/5 hearts}`) | doc |
+| `{hp -= 1d6}` | an action button: click to apply a change to the nearest property or variable of that name (`+=`, `-=`, `*=`, `/=`, `=`; the amount is a live expression) | doc |
 
 **Declared config** (writes to the point and leaves no inline pill; the value shows as a chip):
 
@@ -78,8 +83,10 @@ rules (`name: a | b`), Markov transitions (`State -> Target weight`), the estima
 (`lo to hi`, `normal`, `uniform`), the table formula row (`#+TBLFM:`), the status headline
 (`#TODO [#A] body`), the search-query mini-language (the same words used by `{query:}` / `{count:}` /
 `{roll:}`), the progress cookie and clock (`[/]`, `[%]`, `[o N/M]`), and dates as `start`/`due`
-properties. Each is documented in its own guide (see [the guide index](README.md)); this page is the
-inventory, not the tutorial.
+properties.
+
+Each is documented in its own guide (see [the guide index](README.md)); this page is the inventory,
+not the tutorial.
 
 ---
 
@@ -91,16 +98,18 @@ one form rather than another:
 
 1. a quoted string `{"…"}` (the text-value escape wins first)
 2. `{= …}` (an expression)
-3. `{… := …}` (a variable declaration)
+3. `{… := …}` (a variable declaration), then a bare `{A vs B}` (a contest)
 4. `{cond: … | …}` (a conditional, matched before the `|` splitters)
 5. `{shuffle|cycle|once|stopping: …}` (a deck)
 6. `{markov: …}`
 7. `{seq Name: …}`, then `{rule Name: …}` (named declarations)
 8. `{prop key: …}`, then `{date due|start: …}` (property writes)
-9. `{query: …}`, `{count: …}`, `{roll: …}`, `{oracle: …}`, `{meter: …}`
+9. `{query: …}`, `{count: …}`, `{roll: …}`, `{oracle: …}`, `{meter: …}`, then `{stat += …}` (an action button)
 10. `{Nx: …}` (repeat), `{ref.mod}` (modifier), `{base.field}` (field reads)
 11. dice, then the estimate sub-language
 12. a bare `{a | b}` alternation, then a bare `{Name}` rule call
+13. `{{a|b}.cap}` (a modifier on a whole generator), `{2d{sides}}` (a parametrized die), then the
+    glue template `{{a|b}{c|d}}`
 
 A body that matches none of these stays as **plain literal text** (see the escape hatches below).
 
@@ -125,16 +134,18 @@ unfinished pill and vanishes rather than leaking its braces into the reading tex
 
 Every pill above is stored in your document as plain text plus a small record. When you **save**
 (File menu, or a connected folder's auto-save), Pointliner writes an **OPML** file, and OPML is the
-**full-fidelity, keep-everything format**: it is the one export you can open **back into the app**
-(File, Open) with every pill still live, every property, date, note, link and base exactly as you
-left them. Nothing is lost and nothing is frozen.
+**full-fidelity, keep-everything format**.
+
+It is the one export you can open **back into the app** (File, Open) with every pill still live,
+every property, date, note, link and base exactly as you left them. Nothing is lost and nothing is
+frozen.
 
 How it keeps them: OPML is a plain, open XML outline. Each point is an `<outline>`; each pill's record
 rides along as an underscore-prefixed attribute holding small JSON:
 
 - `_dice`, `_grammar`, `_math`, `_vars`, `_query`, `_est`, `_seq`, `_markov` for the pill records
 - `_props` for properties (including dates), plus base config (`_view`, `_colrole`, `_colfmt`, …)
-- document-level configuration (saved searches, appearance, calendars, and so on) rides on the head
+- document-level configuration (saved searches, appearance, calendars and so on) rides on the head
 
 Because it is ordinary text you can read and keep, your document outlives the app: the format is
 documented here, the pill grammar is the closed set above, and any tool can read the outline even if
@@ -144,11 +155,19 @@ grammar is published, and the lossless round-trip is a plain-text format you own
 The other exports serve a different purpose and say so:
 
 - **Markdown** and **plain text** are one-way *snapshots* for sharing. Each pill is frozen to the
-  value it is showing (`{2d6}` becomes the number it rolled, `{= sum(cost)}` becomes the total). They
+  value it is showing (`{= sum(cost)}` becomes the total; a pill that carries a recipe exports the
+  recipe with it, so `{2d6}` comes out as `2d6 = 9`, or just `9` on a paragraph point). They
   read anywhere, but the live behavior does not come along.
+- **Shareable page** is a one-way snapshot as a web page: a clean, static page anyone opens in any
+  browser with no app, where every pill shows the value it had when you exported.
 - **Web page (HTML)** packs the whole app plus your document into one self-contained file that
   re-rolls and recomputes on someone else's machine, with no install and no account. It is how you
   hand a working generator or tracker to a person who does not use Pointliner.
 
 For a full archive you can reopen, use the OPML save. For a readable copy, export Markdown. To hand
-someone a live copy, export the Web page. See [Files and export](files-and-export.md) for the details.
+someone a page they only need to read, export the Shareable page; to hand them a live copy, export
+the Web page. See [Files and export](files-and-export.md) for the details.
+
+---
+
+**Back to:** [the guide](README.md).

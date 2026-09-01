@@ -12,9 +12,10 @@ Type a colon and part of a name (`:drag`) to open a picker, or type the whole sh
 column shows the glyph, the second its main shortcode, the third the other names for the same
 glyph.
 
-There are 567 shortcodes covering 525 emoji. The last section is a solo-RPG
-lean for a game journal (dice, swords, monsters, keeps and loot), the set Pointliner leans on that
-a general emoji list would not carry.
+There are 567 shortcodes covering 525 emoji. The last section is a solo-RPG lean for a game
+journal (swords, monsters, keeps and loot), the set Pointliner leans on that a general emoji list
+would not carry. The dice shortcodes share their glyph with `:game_die:`, so `:dice:`, `:d6:` and
+`:die:` are listed with it in the Activity section.
 
 > This page is generated from the app, so it always matches what you can type. If you are editing
 > it by hand, you are editing the wrong place: change the `EMOJI` map in `index.html` and
@@ -139,7 +140,7 @@ a general emoji list would not carry.
 | 🙂 | `:slightly_smiling_face:` |  |
 | 🙃 | `:upside_down_face:` |  |
 
-## More Faces / Reactions
+## More faces / reactions
 
 | | Shortcode | Also |
 |---|---|---|
@@ -181,7 +182,7 @@ a general emoji list would not carry.
 | 🥲 | `:smiling_tear:` |  |
 | 😜 | `:wink2:` |  |
 
-## Hands / Gestures / Body
+## Hands / gestures / body
 
 | | Shortcode | Also |
 |---|---|---|
@@ -217,7 +218,7 @@ a general emoji list would not carry.
 | 🧑 | `:person:` | `:adult:` |
 | 🧒 | `:child:` |  |
 
-## Status / Marks / Symbols
+## Status / marks / symbols
 
 | | Shortcode | Also |
 |---|---|---|
@@ -284,7 +285,7 @@ a general emoji list would not carry.
 | 🔚 | `:end:` |  |
 | 🔛 | `:on:` |  |
 
-## Time / Weather / Sky
+## Time / weather / sky
 
 | | Shortcode | Also |
 |---|---|---|
@@ -322,7 +323,7 @@ a general emoji list would not carry.
 | 🌌 | `:night_stars:` | `:milky_way:` |
 | 🌠 | `:shooting_star:` |  |
 
-## Nature / Animals
+## Nature / animals
 
 | | Shortcode | Also |
 |---|---|---|
@@ -380,7 +381,7 @@ a general emoji list would not carry.
 | 🏜️ | `:desert:` |  |
 | 🏖️ | `:beach:` |  |
 
-## Food / Drink
+## Food / drink
 
 | | Shortcode | Also |
 |---|---|---|
@@ -430,7 +431,7 @@ a general emoji list would not carry.
 | 🍵 | `:tea:` |  |
 | 🧂 | `:salt:` |  |
 
-## Travel / Places / Objects
+## Travel / places / objects
 
 | | Shortcode | Also |
 |---|---|---|
@@ -485,7 +486,7 @@ a general emoji list would not carry.
 | 🔬 | `:microscope:` |  |
 | 🛰️ | `:satellite:` |  |
 
-## Work / Documents / Money
+## Work / documents / money
 
 | | Shortcode | Also |
 |---|---|---|
@@ -532,7 +533,7 @@ a general emoji list would not carry.
 | ⛏️ | `:pick:` |  |
 | 🪓 | `:axe:` |  |
 
-## Activity / Games / Misc
+## Activity / games / misc
 
 | | Shortcode | Also |
 |---|---|---|
@@ -568,7 +569,7 @@ a general emoji list would not carry.
 | 🎬 | `:clapper:` |  |
 | 🎞️ | `:film:` |  |
 
-## The Solo-RPG Game-Journal Lean (The Characteristic Set)
+## The solo-RPG game-journal lean (the characteristic set)
 
 | | Shortcode | Also |
 |---|---|---|

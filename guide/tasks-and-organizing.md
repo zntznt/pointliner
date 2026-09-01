@@ -2,7 +2,8 @@
 
 *Part of the [Pointliner guide](README.md). Turn a document into a working system: to-dos and
 custom workflows, structured properties, progress bars, reusable templates, quick capture and
-aliases. Like [getting around](getting-around.md), this is the plain outliner, no pills required.*
+aliases. Like [getting around](getting-around.md), most of this is the plain outliner; a few sections
+reach for a pill.*
 
 ---
 
@@ -20,21 +21,29 @@ Turn any point into a task two ways:
 The easiest path is **`/todo`**, which writes the status for you. Click the colored badge to change
 the status or set a **priority** (`A`, `B` or `C`), or from the keyboard press `Ctrl/Cmd+Shift+S` to
 cycle the state and `Ctrl/Cmd+Shift+P` to cycle the priority (the same chords work across a whole
-[selection](getting-around.md#selecting-many-points)). Press `Enter` on a task and the next point is a
-task too, so running off a list is fast.
+[selection](getting-around.md#selecting-many-points)).
+
+`Ctrl/Cmd+Shift+X` turns the line into a to-do, or ticks and unticks one that already is; on a point
+that uses a status word instead, the state cycle stays in charge. Press `Enter` on a task and the
+next point is a task too, so running off a list is fast.
+
+Once a point has two or more children, its bullet menu can **sort** them: by state and priority (open
+before done, `A` before `B` before `C`, unmarked last), by due or start date when a child carries one,
+or alphabetically. A sort touches only the direct children, and undo takes it back.
 
 ## Custom workflows
 
 Define a workflow that matches the way you actually work: move articles through
-`DRAFT → REVIEW → PUBLISHED`, support requests through `OPEN → IN PROGRESS → RESOLVED` or any
+`DRAFT → REVIEW → PUBLISHED`, support requests through `OPEN → IN_PROGRESS → RESOLVED` or any
 process with distinct stages.
 
 Give the workflow a name and its states. Type `{seq Flow: BACKLOG DOING | SHIPPED}` to declare one
 inline, or use the `@` → **Sequence** dialog. **States are separated by spaces, and the `|` marks where
-done begins** (a comma between states is the common slip, and the pill will say so). States to the
-right of the `|` count as **done**, so they feed the progress bar and the `is:done` filter
-automatically. Once declared, apply any state with `/`
-(for example `/BACKLOG`), the same way you set `#TODO`.
+done begins** (a comma between states is the common slip, and the pill will say so).
+
+A state is one word, so join a two-word stage with an underscore, `IN_PROGRESS`. States to the right
+of the `|` count as **done**, so they feed the progress bar and the `is:done` filter automatically.
+Once declared, apply any state with `/` (for example `/BACKLOG`), the same way you set `#TODO`.
 
 Need a **blocked** stage? Add a second `|` for a held band, like `{seq Flow: DOING | BLOCKED | SHIPPED}`.
 Points in that middle band read as waiting, not a live next-action, so they sort out of the agenda's
@@ -47,9 +56,14 @@ glance. As you check off the tasks underneath, the count updates automatically, 
 tracking.
 
 ```
-[/]      a count, like 2/5
-[%]      a percentage
+[/]           a count, like 2/5
+[%]           a percentage
+[/subtree]    count every level below, not just the direct children
+[/2]          reach two levels down
 ```
+
+A bare `[/]` counts the direct children only. The same scopes work on the percentage, so `[%subtree]`
+and `[%2]` widen it the same way.
 
 (See also [Computing numbers](computing-numbers.md#progress-bars) for how progress bars compose
 with the rest of the math.)
@@ -91,7 +105,7 @@ reads them.
 
 ```
 hp: 8   hpmax: 12
-{meter: hp/hpmax}    →    ██████░░░░ 8/12
+{meter: hp/hpmax}    →    ███████░░░ 8/12
 ```
 
 The bar updates live as the properties change. You can fix the maximum with a number,
@@ -102,7 +116,10 @@ number, the meter shows a small `{meter?}` marker instead of a wrong bar.
 Either side can also be a live calculation, so a meter doubles as a goal. Write
 `{meter: words(subtree)/1000}` under a point and the bar tracks your word count toward a 1,000 word
 target, filling as you write beneath it; `{meter: sum(cost)/budget}` watches spending against a
-budget. Any math the point can compute works as a value or a max.
+budget.
+
+Any math the point can compute works as a value or a max; `words(subtree)` and `sum(cost)` are
+covered in [Computing numbers](computing-numbers.md#roll-a-number-up-your-document-aggregation).
 
 Add a style word at the end for a row of icons instead of a bar:
 
@@ -119,32 +136,88 @@ exports as its bar and count (an icon row exports as the bar, since a flat file 
 
 ---
 
+## Action buttons
+
+A meter *shows* a number. An **action button** *changes* one. Write a stat name, an operator and an
+amount, and you get a pill you click to apply it, so a live session can spend, take damage or reset
+without retyping the number every time.
+
+```
+{hp -= 1d6}      →   click: roll a fresh hit and take it off
+{gold += 50}     →   click: add 50
+{hp = hpmax}     →   click: refill to the maximum
+```
+
+The operators are `+=`, `-=`, `*=`, `/=` and `=` to set outright. The amount on the right is a live
+expression rather than a plain number, so anything the number engine can work out is fair game:
+
+```
+{hp -= 1d6+str}     roll and add a stat
+{gold += 2d6*10}    a rolled payout
+{hp -= 2|4|6}       pick one of three amounts
+```
+
+It writes to the nearest match it can find: the property on this point, or on a point above it, or a
+variable of that name. One click is one change, and one undo takes it back.
+
+Insert one from the menu with `@action`.
+
+---
+
 ## Properties
 
 Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and
 total by them later. Each property is a **key and a value**, shown as a small pill below the point.
 
 Open a point's menu and choose **Add property** to open the editor; type a key and a value, then
-**Save**. Click any property pill to edit it again. To add several at once, **paste a list of
-`key: value` lines** into the key field (a character stat block, a set of line items) and each line
-becomes its own property, no adding rows one at a time. Keyboard-first: type `/prop:owner=zeo` to set a
-property inline with no dialog, or bare `/prop` to drop a fill-in-the-blank `{prop key: value}` stub
-with the cursor waiting on the blank. Search by them with
-[`has:key`](getting-around.md#searching-and-filtering) to find every point that has a property, or
-`key:value` to match an exact one. Child properties feed the [roll-up
+**Save**. Click any property pill to edit it again.
+
+To add several at once, **paste a list of `key: value` lines** into the key field (a character stat
+block, a set of line items) and each line becomes its own property, no adding rows one at a time.
+
+Keyboard-first: type `/prop:owner=zeo` to set a property inline with no dialog, or bare `/prop` to
+drop an empty `{prop : }` stub with the cursor on the key blank: type the key, then the value.
+
+Search by them with [`has:key`](getting-around.md#searching-and-filtering) to find every point that
+has a property, or `key:value` to match an exact one. Child properties feed the [roll-up
 totals](computing-numbers.md#roll-a-number-up-your-document-aggregation).
 
 A **numeric** property is also a named variable you can compute with, not just a fact to filter on.
-Give a point a `str: 14` property and a `{= str + 2}` pill on it reads 16, no declaration needed. And
-properties inherit **down** the document: a pill or a [check](computing-numbers.md#make-the-document-check-itself-constraints)
-on a child point can read a property set on any ancestor (a scene under a `budget: 12` project sees
-`budget`). The nearest value wins, so the point's own property beats an ancestor's.
+Give a point a `str: 14` property and a `{= str + 2}` pill on it reads 16, no declaration needed.
+
+Properties also inherit **down** the document: a pill or a
+[check](computing-numbers.md#make-the-document-check-itself-constraints) on a child point can read a
+property set on any ancestor (a scene under a `budget: 12` project sees `budget`). The nearest value
+wins, so the point's own property beats an ancestor's.
 
 **Give a property an icon.** Open **File then Tag & property styling**, type a property key and pick
 an icon (a dollar sign for `cost`, a calendar for `due`). Every chip for that key then shows the icon
-before its name, so a property is recognizable at a glance. To change or remove it, revisit the same
-dialog. Like tag colors, it is purely visual and stored with the document; the property's text and
-searchability are untouched.
+before its name, so a property is recognizable at a glance.
+
+To change or remove it, revisit the same dialog. Like tag colors, it is purely visual and stored with
+the document; the property's text and searchability are untouched.
+
+## Add another like these
+
+When several points in a row share a shape, the same tags, the same properties, Pointliner can
+write the next one for you. You fill in the values; it writes the tags and the braces, so a grocery
+line is a description and a number rather than a line of syntax to remember.
+
+There are two doors and they do the same thing. A **+ Add** control appears on a heading whose
+points share a shape, so you can point at it. Or put the cursor on the list, on the point above it
+or on any point inside it, and run **`/addrow`**.
+
+The keyboard route is the one that still works when the list is long, when you are working without a
+mouse, or when you have quieted the extra controls with the
+[verbosity dial](getting-around.md#quiet-the-guidance-the-verbosity-dial).
+
+Either door opens a small form: a description, plus one blank per shared property. Fill it in and
+the new point lands at the end of the list with its tags and properties already live, so a total
+above it moves at once.
+
+The shape is read from the points already there, so the more alike they are, the better the guess. A
+list needs at least two points before there is a shape to copy, and if they share nothing yet
+Pointliner says so rather than guessing.
 
 ## Templates
 
@@ -170,17 +243,34 @@ Markdown-aware, so a typed `- [ ]` becomes a to-do.
 Capture is a **toolbar strip**, not a pop-up dialog. Press `Ctrl/Cmd+Shift+I` (or the toolbar
 **inbox button**) to toggle it open below the toolbar with the cursor already in its input, while the
 document stays fully visible and usable underneath, so you insert without interrupting your work.
+
 `Ctrl/Cmd+Shift+1` through `0` open it targeting **inbox 1 through 10**. If a numbered slot has no
-inbox yet and a point is selected, that point **becomes** that inbox. While the strip is open the same
-keys switch the destination (they move the selector, they do not reopen it). Click the **pencil** on the
-destination to open the inbox manager, and click the destination **name** itself to zoom into that inbox
-point. In the manager, each inbox chip works the same way: click its **number badge** to make it the
-capture target, or click its **name** to zoom into that inbox's point (each inbox is a different place).
-**Reorder** the inbox chips
-to change which number each one answers to: drag a chip, or focus one and press `Alt+Left` / `Alt+Right`.
-`Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1 through 10; a point's menu adds or removes
-an inbox slot too. The strip stays open after each capture with a running count, so you can empty your
-head in one sitting. `Enter` captures; `Shift+Enter` adds a line break; `Esc` closes.
+inbox yet and a point is selected, that point **becomes** that inbox. While the strip is open the
+same keys switch the destination: they move the selector, they do not reopen it.
+
+Click the destination **name** to open the inbox manager, and the small **arrow** beside it to jump
+to that inbox's point. In the manager, a chip's **number badge** or its **name** both make that inbox
+the capture target, while its own **arrow** jumps to that inbox's point (each inbox is a different
+place) and its **✕** removes it.
+
+**Reorder** the inbox chips to change which number each one answers to: drag a chip, or focus one and
+press `Alt+Left` / `Alt+Right`. `Ctrl/Cmd+Alt+1` through `0` sets the current point as inbox 1
+through 10; a point's menu adds or removes an inbox slot too.
+
+The strip stays open after each capture with a running count, so you can empty your head in one
+sitting. `Enter` captures; `Shift+Enter` adds a line break; `Esc` closes.
+
+**Capture from a link.** With Pointliner installed as an app, or open from a web address, opening
+it with `?append=your text` in the address adds that text as a point, and sharing a page or a
+selection to it from your system share menu does the same.
+
+It arrives as plain text, never run as a pill, and the address is cleaned up so a reload cannot add
+it twice. With no inbox set it lands at the top level, like any other capture.
+
+**Capture from a link.** Opening Pointliner with `?append=your text` on the end of its address adds
+that text to your inbox as a point, and sharing a page or a selection to it from your system share
+menu does the same, as plain text. Both work on the web or in the installed app, not on a document
+opened as a local file.
 
 ## Nicknames (aliases)
 

@@ -38,6 +38,15 @@ the same point keeps recurring. The cadence is anchored to the due date, not to 
 off, so finishing a day late does not drift the schedule. A completion always announces where it
 landed ("Rescheduled to ...").
 
+That Repeat field is for **one** task that keeps coming back. To lay down a whole **series** of
+separate dated to-dos at once (a planting every two weeks through the season, a filing on a fixed
+cadence), open a point's bullet menu and choose **Repeating dates**.
+
+Give it what repeats, a start date, an interval in days and an end date, and it generates one dated
+to-do per occurrence, all of them in the agenda.
+
+They are ordinary points, so you can edit, reschedule or delete any of them.
+
 ## Agenda and calendar
 
 See all your upcoming work without scrolling the document. Click the **calendar button** in the
@@ -71,15 +80,19 @@ appearing to work, and the agenda stays on this document.
 
 In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
 do, y done**) and lists the active ones first; when a day has more than fit, click its **more** to
-expand that day in place and see them all. On a wide screen the **Month** view also shows the
-previous and next months peeking in at the sides (the same size as the centered one); click either to
-jump to it. The **‹‹** and **››** buttons jump a whole month (Week) or year (Month).
+expand that day in place and see them all.
+
+On a wide screen the **Month** view also shows the previous and next months peeking in at the sides
+(the same size as the centered one); click either to jump to it. The **‹‹** and **››** buttons jump a
+whole month (Week) or year (Month).
 
 Turn on **Done** to include completed points; toggle **Running** to show or hide started work; turn
-on **Overdue** to focus every view on just the late items. Below the dated rows, an **Actions** row
-gathers your undated next-actions (any `#NEXT` or `#TODO` point with no date), so the work you have
-not scheduled yet still has a home; the same list is a search away with `state:next` or `is:todo`.
-Click any item to jump straight to it.
+on **Overdue** to focus every view on just the late items. Beside those filters, a **Sort** chip
+reorders the List between date (the default) and priority, so `[#A]` work rises to the top.
+
+Below the dated rows, an **Actions** row gathers your undated next-actions (any `#NEXT` or `#TODO`
+point with no date), so the work you have not scheduled yet still has a home; the same list is a
+search away with `state:next` or `is:todo`. Click any item to jump straight to it.
 
 Pointliner has no background reminders or notifications: it runs entirely offline with no server, so
 the agenda is where you come to check what is due, rather than something that pings you. A one-off
@@ -90,11 +103,13 @@ and re-opens when you complete it.
 
 See the whole story of your document in time order. Where the agenda is a planner for what is coming
 up, the **timeline** is the history: every dated point laid out in one chronological list from the
-earliest to the far future, grouped by month. It is the view for a long project or a big set of
-notes, where you want to browse the arc ("the launch, the decision, the milestone, in the order they
-landed") instead of searching for a date you only half-remember.
+earliest to the far future, grouped by month.
 
-It draws from **three kinds of dated point**, so a whole day sits on one line:
+It is the view for a long project or a big set of notes, where you want to browse the arc ("the
+launch, the decision, the milestone, in the order they landed") instead of searching for a date you
+only half-remember.
+
+It draws from **up to four kinds of dated point**, so a whole day sits on one line:
 
 - **Tasks**, anything with a start or due date, the same scheduled points the agenda plans.
 - **Journal**, each daily entry from your [journal](#daily-journal), so what actually happened lands
@@ -102,14 +117,19 @@ It draws from **three kinds of dated point**, so a whole day sits on one line:
 - **Lore**, any point carrying a `when` or `date` property, for world events that are not tasks: a
   founding, a battle, a comet. Add `when: 1247-03-02` (or `date:`) to a point and it takes its place
   in the chronicle.
+- **Chronicle**, each entry from a [chronicle](#the-chronicle-a-dated-log) when you have set one up,
+  dated in its own calendar. This kind appears only once a chronicle is bound.
 
 Open it from the **hourglass button** in the toolbar. A row of **source toggles** (Tasks, Journal,
-Lore) sits at the top; click one to show or hide that kind, so you can read the planned schedule alone,
-the journal alone, or the whole braided history. Each entry shows its date and title, colored by
-urgency (a past-due task reads red), with done points struck through and start-only points marked with
-a small `▸`; journal and lore entries carry a small source tag. Click any entry to jump to that point;
-press `Esc` to close. It opens scrolled near today, so a long history starts at "now" rather than at
-year one.
+Lore, and Chronicle when one is set) sits at the top; click one to show or hide that kind, so you
+can read the planned schedule alone, the journal alone, or the whole braided history.
+
+Each entry shows its date and title, colored by urgency (a past-due task reads red), with done points
+struck through and start-only points marked with a small `▸`; journal, lore and chronicle entries
+carry a small source tag.
+
+Click any entry to jump to that point; press `Esc` to close. It opens scrolled near today, so a long
+history starts at "now" rather than at year one.
 
 From the keyboard the whole list is a single stop, however long it is. `Tab` lands you on the first
 entry, then the arrow keys move between entries, `Home` and `End` jump to the very first and very
@@ -126,14 +146,18 @@ whole archive and reads as a chronicle.
 Keep a running log of what you worked on, decisions you made or anything worth noting each day.
 
 Entries file themselves by date under a **Journal** point, nested year then month then day
-(`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your document. The
-toolbar book button toggles the **Journal bar**: type a point and press Enter to file it under
-today's entry without leaving your place. The bar shows the date it is saving to; click the
-year, month or day to jump to that part of the journal. Type **`/journal`** to open today's
-entry directly.
+(`2026 › 06 › 16`), so over time you build a tidy, searchable diary inside your document.
 
-(When a folder of documents is connected (a [folder](features.md#linking-and-connecting-documents)), the
-journal can instead write one file per day on disk.)
+The toolbar book button toggles the **Journal bar**: type a point and press Enter to file it under
+today's entry without leaving your place. The bar shows the date it is saving to; click the year,
+month or day to jump to that part of the journal. Type **`/journal`** to open today's entry directly.
+
+To keep the journal in a particular place, open any point's bullet menu and choose **Set as journal
+home**; entries then file themselves under that point.
+
+(When a folder of documents is connected (a [folder](files-and-export.md#working-with-a-folder-of-documents)), the
+journal can instead write one file per day on disk. `Ctrl/Cmd+Shift+J` switches between the two
+modes and says which one it landed in.)
 
 ## Random results log
 
@@ -141,13 +165,16 @@ Every generating pill normally keeps only its latest result: click a dice pill o
 and the previous answer is replaced. When you are playing a solo game or want a record of what
 actually happened, that record is the whole point, so Pointliner can log every roll as it happens.
 
-Turn it on with the **toolbar button** (or the **File menu, Log random results**). While it is on, **every** random or generated
-result is also written to a **Random results** log the instant it happens, and each line links back to
-the point that produced it. This covers all of the generating
-pills at once: dice, generators and named tables, decks, chains, the yes/no oracle, pick from your
-document, and estimates. Deterministic pills (a math total, a query count, a meter) never log, because
-they do not change on their own. Entries file themselves by date exactly like the journal (`2026 › 07 › 19`),
-each line reading the time, what was rolled and the result:
+Turn it on with the **toolbar button** (or the **File menu, Log random results**). While it is on,
+**every** random or generated result is also written to a **Random results** log the instant it
+happens, and each line links back to the point that produced it.
+
+This covers all of the generating pills at once: dice, generators and named tables, decks, chains,
+the yes/no oracle, pick from your document, and estimates. Deterministic pills (a math total, a query
+count, a meter) never log, because they do not change on their own.
+
+Entries file themselves by date exactly like the journal (`2026 › 07 › 19`), each line reading the
+time, what was rolled and the result:
 
 ```
 14:32 · 2d6 → 9
@@ -179,11 +206,14 @@ in the toolbar.
 
 Open it and a bar appears like the journal's, with one difference: the date is a **cursor** you steer.
 The **◂** and **▸** buttons step one day back or forward (honoring the calendar's own months and week),
-and clicking the date jumps to a day you name. Type an entry and press Enter to file it under the
-cursor's date, nested year then month then day in that calendar, the same tidy structure as the
-journal. Chronicle entries show on the [timeline](#timeline) as their own **Chronicle** source, dated
-in the custom calendar and toggleable on their own, so the real-day notes and the chosen-day entries
-sit side by side without ever being confused for each other.
+and clicking the date jumps to a day you name.
+
+Type an entry and press Enter to file it under the cursor's date, nested year then month then day in
+that calendar, the same tidy structure as the journal.
+
+Chronicle entries show on the [timeline](#timeline) as their own **Chronicle** source, dated in the
+custom calendar and toggleable on their own, so the real-day notes and the chosen-day entries sit
+side by side without ever being confused for each other.
 
 ---
 
@@ -197,7 +227,9 @@ text:
   (`The Fading: 28`).
 - **Week**: day names (`Moonday Tilday Windday...`), a bare length like `10`, or `10: Sul Mol` to
   name just the first days. Blank keeps a 7-day week.
-- **Era**, optional: `AE: 1200` makes year 4 display as `1204 AE`.
+- **Era**, optional: `AE: 1200` offsets the year, so the calendar's year 4 reads as 1204. Dates show
+  as `1204-04-12` and month headings as `Firstfrost 1204`; the era name itself appears in the
+  dialog's preview, not on the dates.
 - **Today in this world**: the calendar's current date, like `1204-04-12`. An alternate calendar has
   no wall clock, so this is the day your dates, urgency colors, and agenda count from.
 
@@ -206,20 +238,24 @@ each field checks your lines as you type and shows what "today" resolves to befo
 
 Once active, the document speaks that calendar: due and start dates read and write the calendar's own
 year-month-day (`due: 1204-04-12`), the agenda's month and week views take its shape (a 10-day week
-really shows ten columns), the date picker in the Schedule dialog renders its months, and date math
-like `{= daysuntil(due)}` counts its days. Relative dates (`today+3`, `tomorrow`) mean days in that calendar.
-(Your [journal](#daily-journal) is the one part that stays on the real calendar, so it keeps tracking
-actual days; see [two calendars in one document](#two-calendars-in-one-document) below.)
+really shows 10 columns), the date picker in the Schedule dialog renders its months, and date math
+like `{= daysuntil(due)}` counts its days.
+
+Relative dates (`today+3`, `tomorrow`) mean days in that calendar.
+
+Your [journal](#daily-journal) is the one part that stays on the real calendar, so it keeps tracking
+actual days; see [two calendars in one document](#two-calendars-in-one-document) below.
 
 **Let time pass** from the agenda: with a calendar active, a **Today** chip shows the calendar's current
 date; click it to advance the clock (+1 day, +3 days, +1 week) or set an exact date. Advancing never
 touches your points, it just moves "now", and every date label follows.
 
 **Changing or removing a calendar re-reads every stored date.** Dates are saved as the text you
-typed, so a date written under one calendar can mean a different day (or nothing) under another. The
-dialog checks first and tells you how many dates would read differently or become unreadable; your
-text is never modified, undo reverses the switch, and an unreadable date stays visible on its point
-with a warning tint until you re-date it.
+typed, so a date written under one calendar can mean a different day (or nothing) under another.
+
+The dialog checks first and tells you how many dates would read differently or become unreadable;
+your text is never modified, undo reverses the switch, and an unreadable date stays visible on its
+point with a warning tint until you re-date it.
 
 To use a published setting's calendar (Harptos, Golarion, and friends), keep its wiki open and type
 the month list in; it takes about two minutes. One honest caveat: calendars with leap days or

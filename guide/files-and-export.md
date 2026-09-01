@@ -15,8 +15,11 @@ To keep a file on disk that you own and can back up, press **`Ctrl/Cmd+S`**. Or 
 
 **Starting a new document replaces the one on screen.** If the current document has anything in it,
 Pointliner asks first. The one it replaces is kept as a restore point: **File** then **Restore earlier
-version** brings it back. That is one snapshot, not a history, so save anything you want to keep
-properly (`Ctrl/Cmd+S`, or a connected folder).
+version** brings it back.
+
+The same row is your net for an ordinary mistake: it also rolls back to a snapshot Pointliner takes
+automatically about every five minutes as you work. Either way it is one snapshot, not a history, so
+save anything you want to keep properly (`Ctrl/Cmd+S`, or a connected folder).
 
 ## Working with a folder of documents
 
@@ -24,16 +27,22 @@ Keep a whole library of documents in one folder on your computer and move betwee
 tabs: a project document, a daily log, a person page, each its own file but searchable and
 [linkable](links-and-references.md#links-across-documents) together.
 
-Connect a folder once (**Chrome, Edge or a similar browser only**) and every document saves to disk as you type and reopens
-right where you left it after a reload. Connecting never overwrites what is already in the folder: with a
-blank document, connecting to a folder that already holds a document under the same name simply opens that
-document; a document with real content saves under a fresh name instead when its name is taken. A **tab strip** appears under the toolbar with the documents
-you have open: click a tab to switch, the `×` to close it or the `+` to open another. `Ctrl/Cmd+Shift+]`
-and `[` step to the next and previous tab, and `Alt+1` through `Alt+9` jump straight to that numbered
-tab. The strip is a **single Tab stop** however many documents are open: Tab into it, then `←`/`→`
-move along it, `Home` and `End` reach the ends, `Enter` opens the tab you are on and `Delete`
-closes it. Tabs are the documents you have opened (not the whole folder),
-and they reappear after a reload. From the **File** menu:
+Connect a folder once (**Chrome, Edge or a similar browser only**) and every document saves to disk
+as you type and reopens right where you left it after a reload.
+
+Connecting never overwrites what is already in the folder: with a blank document, connecting to a
+folder that already holds a document under the same name simply opens that document; a document with
+real content saves under a fresh name instead when its name is taken.
+
+A **tab strip** appears under the toolbar with the documents you have open: click a tab to switch,
+the `×` to close it or the `+` to open another. `Ctrl/Cmd+Shift+]` and `[` step to the next and
+previous tab, and `Alt+1` through `Alt+9` jump straight to that numbered tab.
+
+The strip is a **single Tab stop** however many documents are open: Tab into it, then `←`/`→` move
+along it, `Home` and `End` reach the ends, `Enter` opens the tab you are on and `Delete` closes it.
+Tabs are the documents you have opened (not the whole folder), and they reappear after a reload.
+
+From the **File** menu:
 
 - **Switch document** to see all the documents in the folder, jump to one, add a fresh **+ New
   document** (it asks you to name it) or delete an old one.
@@ -46,8 +55,8 @@ and scroll position you left it at, not just after a reload but every time you s
 One file opens in one tab: you cannot open two tabs of the same document (they would share an identity and
 fight over the same file on disk).
 
-On other browsers the menu shows a copy-link invite to reopen in Chrome, Edge or a similar browser instead. (The deeper
-mechanics of folders are in the [feature
+On other browsers the menu shows a copy-link invite to reopen in Chrome, Edge or a similar browser instead. (The wider
+map of folder features is in the [feature
 overview](features.md#linking-and-connecting-documents).)
 
 ## Appearance and display
@@ -60,6 +69,9 @@ color, widen the editing column for a big screen or tuck completed tasks out of 
 - **Done points** is the checkmark button in the toolbar. Finished to-dos and `DONE` points stay
   in the document, struck through, until you turn the button off to hide them; a badge on the
   button then counts what is hidden, and turning it back on brings them back.
+- **Toolbar features**, in the File menu under **Settings**, lists the optional toolbar buttons.
+  Click one to show or hide it, and drag it by its handle (or press `Alt+Up` / `Alt+Down`) to
+  reorder. The choice is remembered in this browser.
 
 ## Exporting and sharing
 
@@ -82,18 +94,25 @@ and choose **Export to Markdown** (that point and everything under it), or **sel
 and use **Export .md** on the selection bar. The file is named after the first point, and pills are
 frozen to their current values (the same one-way snapshot as the full Markdown export).
 
+A point holding same-shaped rows with properties (a budget, an inventory) offers one more: **Export
+table to CSV**, one row per point and a column per property, values frozen.
+
 **Leave scaffolding out.** If a point is planning material, not prose (a variable declaration, a
 note to self, a private section), open its **bullet menu** and choose **Exclude from export**: all
 four **Export a copy** formats skip that point and everything under it, Markdown, plain text,
-Shareable page and Web page alike. Your **OPML save** is the one thing that keeps it, which is the division the feature
-rests on: the save is your backup, the exports are what you hand to someone else. An excluded point
-shows a faint ring on its bullet so you can see at a glance what a shared copy will leave out;
-choose **Include in export** to undo it.
+Shareable page and Web page alike.
+
+Your **OPML save** is the one thing that keeps it, which is the division the feature rests on: the
+save is your backup, the exports are what you hand to someone else.
+
+An excluded point shows a faint ring on its bullet so you can see at a glance what a shared copy will
+leave out; choose **Include in export** to undo it.
 
 **Excluding a variable declaration is the case to watch.** Markdown and plain text freeze pills to
 the values they are showing, so a frozen number survives the exclusion. The Web page export stays
 live and recomputes on the other person's machine, so a point that reads a variable declared inside
 an excluded section has nothing to read there and shows its "no variable named that" note instead.
+
 You are told when this happens: the message after the export names the variables the copy lost, and
 counts any links that now point at something the copy does not contain. Move the declaration to a
 point you are keeping, or leave it out on purpose.
@@ -113,9 +132,13 @@ ways out depending on what you want to keep:
   [Pill syntax reference](pill-syntax-reference.md) documents both the `{…}` grammar and this format.
 - **Markdown and plain text are readable snapshots.** They are meant for posting, sharing, or
   pasting into another app, so they are **one-way**: each pill is frozen to the value it is showing
-  at export time. A `{2d6}` becomes the number it last rolled, `{= sum(cost)}` becomes the total,
-  a grammar pill becomes the text it generated. You get a clean, ordinary document that reads
-  anywhere, but the live behavior does not come along (that is the point of a snapshot).
+  at export time. `{= sum(cost)}` becomes the total and a grammar pill becomes the text it
+  generated; a pill that carries a recipe (a roll, an estimate, a variable you declared) exports the
+  recipe with it, so `{2d6}` comes out as `2d6 = 9`. On a **paragraph** point those flatten to the
+  result alone (`9`), so exported prose reads clean. You get a clean, ordinary document that reads
+  anywhere, but the live behavior does not come along (that is the point of a snapshot). The
+  **Shareable page** is the same snapshot as a web page instead of source text: still one-way,
+  still frozen, but it keeps your headings, to-dos and bars looking the way they look here.
 - **The self-contained HTML keeps everything live for someone without the app.** It packs the whole
   app and your document into one file that re-rolls and recomputes on their machine, no install and
   no account. It is the way to hand a working generator or tracker to a person who does not use
