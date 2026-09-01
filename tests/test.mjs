@@ -35163,10 +35163,19 @@ test('#1571 a one-sided contest stores the margin the roll sees, not the left si
   assert.equal(both.margin, -5, 'two fixed values keep left - right');
   // The sign is the whole point: a left-fixed roll UNDER its target must be negative, or
   // `{= L > 0}` lights a tick on a failure.
-  const under = c.rollVersus('20', '2d6', {});
-  assert.ok(under.margin < 0, `a roll under a left-hand target is negative, got ${under.margin}`);
-  const over = c.rollVersus('2', '2d6', {});
-  assert.ok(over.margin > 0, `a roll over a left-hand target is positive, got ${over.margin}`);
+  //
+  // d1 dice, not 2d6. The first draft asserted `rollVersus('2', '2d6').margin > 0` on the reasoning
+  // that a roll always beats a target of 2 -- but 2d6's MINIMUM is 2, so snake eyes made the margin
+  // exactly 0 and the assertion failed about one run in thirty-six. It passed locally and through two
+  // CI runs before biting. That is the same "a random value is not an assertion" shape this file
+  // warns about at the dice re-roll check, and I had just removed it from the driven twin of THIS
+  // test while leaving it here.
+  const under = c.rollVersus('20', '1d1+5', {});      // roll 6 against 20
+  assert.equal(under.margin, -14, 'a roll under a left-hand target is negative');
+  const over = c.rollVersus('2', '1d1+5', {});        // roll 6 against 2
+  assert.equal(over.margin, 4, 'and a roll over one is positive');
+  const met = c.rollVersus('6', '1d1+5', {});         // roll 6 against 6
+  assert.equal(met.margin, 0, 'and meeting it exactly is zero, not a sign');
 });
 
 test('#1571 the pill and the export read the same verdict, and freeze keeps the contest', () => {
