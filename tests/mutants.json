@@ -3465,6 +3465,15 @@
       "find": "  '/=': (t, v) => `divide ${t} by ${v}`,\n",
       "replace": "",
       "kills": "every action operator gets a sentence that describes what it does"
+    },
+    {
+      "id": "roll-answer-keeps-a-stray-label",
+      "suite": "unit",
+      "why": "a demo Trait wearing a second label: the pill still resolves, the pool is still right, and the ANSWER comes back with a hashtag stuck to it",
+      "file": "guide/solo-rpg/triple-o/triple-o-demo.opml",
+      "find": "text=\"Grew up on a farm #trait\"",
+      "replace": "text=\"Grew up on a farm #trait #bran\"",
+      "kills": "no {roll:} in a demo can answer with a label still stuck to the text"
     }
   ]
 }
