@@ -30925,6 +30925,79 @@ test('a pick bound to a variable in a demo really binds (the {w := weapon} trap)
     'the generators demo must keep demonstrating a pick bound with the inner braces, {w := {weapon}}');
 });
 
+test('no {roll:} in a demo can answer with a label still stuck to the text', () => {
+  // Found by DRIVING, not by reading: the triple-o demo shipped its Traits wearing two labels each
+  // (`Grew up on a farm #trait #bran`), and every static guard in this file called that healthy --
+  // the tags are live, the query parses, the pill resolves, the pool is right. What is wrong is the
+  // ANSWER. A roll strips only the labels its own query named (stripQueryTags) and hands back the
+  // rest, so `{roll: #trait}` came out of the oracle as "Grew up on a farm #bran" and a stray
+  // hashtag landed in the middle of the scene. The fix is one label per point plus the character
+  // label on the parent, because a label already reaches everything below it.
+  //
+  // The family is enumerable -- every {roll:} in every demo -- so this is the ratchet. It is built
+  // on the engine's own pool rather than a restatement: queryHits IS what the pill calls, and each
+  // string it returns is already rollLabel'd, which is literally the text a reader will see. A
+  // hand-rolled inheritance model here would drift from the walk's own rules (a hit that matches
+  // only by inheritance, underneath another hit, is dropped) and start accusing working pills.
+  const dir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guide', 'solo-rpg');
+  const demos = nonEmpty(
+    readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name).sort()
+      .map(name => ({ name, file: resolve(dir, name, `${name}-demo.opml`) }))
+      .filter(d => { try { readFileSync(d.file); return true; } catch { return false; } }),
+    'solo-rpg demo files');
+
+  const unesc = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#10;/g, '\n').replace(/&amp;/g, '&');
+  // A tree in the shape queryHits walks: ids so a pill can be excluded from its own pool, children
+  // so the ancestor tag chain is real.
+  const parse = xml => {
+    const rootNode = { id: 'root', text: '', children: [] };
+    const stack = [rootNode];
+    let seq = 0;
+    for (const m of xml.matchAll(/<outline\b([^>]*?)(\/?)>|<\/outline>/g)) {
+      if (m[0] === '</outline>') { if (stack.length > 1) stack.pop(); continue; }
+      const t = /text="([^"]*)"/.exec(m[1]);
+      const node = { id: 'n' + (++seq), text: unesc(t ? t[1] : ''), children: [] };
+      stack[stack.length - 1].children.push(node);
+      if (!m[2]) stack.push(node);
+    }
+    return rootNode;
+  };
+  // The matcher's own left anchor, so `C#4` and an escaped `\#x` are not read as tags.
+  const STRAY = /(?<![a-zA-Z0-9])#[a-z][\w-]*/i;
+
+  let queries = 0, answers = 0;
+  const dirty = [];
+  for (const { name, file } of demos) {
+    const rootNode = parse(readFileSync(file, 'utf8'));
+    const points = [];
+    (function walk(n) { for (const k of n.children) { points.push(k); walk(k); } })(rootNode);
+    for (const host of points)
+      // Backticked spans stay literal, so a roll shown as documentation is not a pill.
+      for (const m of host.text.replace(/`[^`]*`/g, ' ').matchAll(/\{roll(?:\s+folder)?:\s*([^{}]*)\}/g)) {
+        const expr = m[1].trim();
+        const terms = c.parseSearchQuery(expr);
+        // Only a POSITIVE tag term is stripped from the answer, so only such a query can leave one
+        // behind; `is:`/`due:` rolls have nothing to strip and nothing to accuse.
+        if (!terms.some(t => t.kind === 'tag' && !t.neg)) continue;
+        queries++;
+        for (const label of c.queryHits(expr, rootNode, host.id, rootNode)) {
+          answers++;
+          if (STRAY.test(label))
+            dirty.push(`${name}: {roll: ${expr}} can answer ${JSON.stringify(label)}`);
+        }
+      }
+  }
+  // Two floors, because one is not enough here. The query count proves the census found the pills;
+  // the ANSWER count proves each of those pills actually has a pool -- a roll that draws from
+  // nothing passes a stray-tag check for the same reason an empty rollup passes a budget check.
+  assert.ok(queries >= 3, `the census must see tag-shaped roll pills, saw ${queries}`);
+  assert.ok(answers >= 10, `those pills must have real pools to answer from, saw ${answers} answers`);
+  assert.deepEqual([...new Set(dirty)], [],
+    'a roll strips only the labels its query named; these answer with another one attached:\n  ' +
+    [...new Set(dirty)].join('\n  '));
+});
+
 test('the solo-RPG docs name the licence the repository actually ships', () => {
   // Five places under guide/solo-rpg said Pointliner is MIT licensed while LICENSE is AGPLv3, and
   // one of them was inside cairn-demo.opml, where it is the whole licence notice an .opml-only

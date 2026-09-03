@@ -38,6 +38,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 - **Trackers (organize a campaign):** NPC and faction tracker, Hex-crawl travel log, The campaign calendar.
 - **Computing (let the numbers run themselves):** Living character sheet, Campaign clocks and threads.
 - **A full system:** Ironsworn, Cairn and Maze Rats (their rules wired into pills, adapted from their open licences).
+- **Emulating the party:** Triple-O, for running a published module solo from the GM's seat.
 
 | Case | What it shows | Guide | Demo |
 |---|---|---|---|
@@ -54,6 +55,7 @@ on-ramp. After that the cases stand alone, so read whichever fits what you are r
 | **Ironsworn in Pointliner** | A full open-licence system wired into pills: the action roll, momentum, progress tracks and oracles, with the pill structure ready for the SRD's own moves and oracle entries (CC BY 4.0, Shawn Tomkin) | [ironsworn/ironsworn.md](ironsworn/ironsworn.md) | [ironsworn/ironsworn-demo.opml](ironsworn/ironsworn-demo.opml) |
 | **Cairn in Pointliner** | A rules-light OSR system in pills: 3d6 attributes as variables, d20 roll-under saves, a slot inventory with an overload check, HP-then-Strength damage and its tables ready for the SRD's entries (CC BY-SA 4.0, Yochai Gal) | [cairn/cairn.md](cairn/cairn.md) | [cairn/cairn-demo.opml](cairn/cairn-demo.opml) |
 | **Maze Rats in Pointliner** | A table-driven OSR generator in pills: 2d6 saves off modifier variables, and its random tables as one-click picks ready for the book's entries, including the two-list improvised-spell trick (CC BY 4.0, Ben Milton) | [maze-rats/maze-rats.md](maze-rats/maze-rats.md) | [maze-rats/maze-rats-demo.opml](maze-rats/maze-rats-demo.opml) |
+| **Triple-O in Pointliner** | The solo setup inverted: you GM and the dice play the party. The Check as a weighted pick, Traits as points you can roll on, the Trait Sheet as a status board, and all thirteen of the zine's d66 tables shipped complete (CC BY-SA 4.0, Cezar Capacle) | [triple-o/triple-o.md](triple-o/triple-o.md) | [triple-o/triple-o-demo.opml](triple-o/triple-o-demo.opml) |
 
 Each is one nested branch you can open, poke at and rebuild into your own.
 
@@ -93,6 +95,11 @@ the app's:
   adapted Cairn material in that example is itself licensed CC BY-SA 4.0.
 - The **Maze Rats** example adapts **Maze Rats** by **Ben Milton**, used under **CC BY 4.0**
   (<https://creativecommons.org/licenses/by/4.0/>).
+- The **Triple-O** example adapts **Triple-O: The Player Character Emulator** by **Cezar Capacle**,
+  used under **CC BY-SA 4.0** (<https://creativecommons.org/licenses/by-sa/4.0/>). Because Triple-O
+  is **ShareAlike**, the adapted Triple-O material in that example is itself licensed CC BY-SA 4.0.
+  It is the one example here that reproduces a game's tables in full rather than leaving filler,
+  which that licence permits and which the example's own notice attributes.
 - The **Lonelog** example adapts the notation by **Roberto Bisceglie**, published under
   **CC BY-SA 4.0**. It deliberately reproduces none of the specification, using only the bare
   functional markers plus examples written for this guide, and links to the source instead.
@@ -110,6 +117,6 @@ descriptively (no logo or artwork). Please support the creators whose work these
 **Licensing of these files.** Pointliner itself is licensed under the GNU AGPLv3 (see
 [LICENSE](../../LICENSE)), which covers the code. The adapted game content in this folder carries
 the licence of the system it adapts, as listed above, which is why the Ironsworn and Maze Rats
-guides offer themselves under CC BY 4.0 and the Cairn guide under CC BY-SA 4.0. Those are grants
+guides offer themselves under CC BY 4.0 and the Cairn and Triple-O guides under CC BY-SA 4.0. Those are grants
 over the adapted material in those files, made alongside the repository licence rather than in
 place of it.
