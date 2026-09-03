@@ -31,6 +31,9 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { createServer } from 'node:http';
+import { readFileSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 
 const APP = 'file://' + join(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
 
@@ -6365,4 +6368,202 @@ test('#1573 an action pill announces the arithmetic it actually does', { skip: s
     'the tooltip is the same phrase the accessible name uses');
   assert.deepEqual(pageErrors, []);
   await pg.close();
+});
+
+// ── the offline shell: service-worker behaviour ──────────────────────────────────────────────────
+// Unlike every other check in this file these serve the real tree over HTTP, because file:// is not
+// a secure context and cannot register a service worker at all. They exist because the SW is the
+// one part of this repo where a source pin is worth almost nothing: the shipped handler LOOKED like
+// a correct network-first-with-fallback and, on the connection it was written for, used its cache
+// exactly never.
+//
+// TWO MEASUREMENT TRAPS ARE BAKED IN HERE, both of which produced confident wrong numbers first:
+//   1. Chromium's page-level CDP throttling does NOT reach the service worker's target. Throttle
+//      that way and the SW fetches at full speed while the report says "one bar", so every profile
+//      returns the same time. Throttling has to happen at the wire, which is why this is a real
+//      server that paces its own writes.
+//   2. Timing alone cannot tell you WHICH copy was served. These assert on a build marker stamped
+//      into the document instead, so "served from cache" is an identity, not an inference from a
+//      stopwatch that a loaded CI box can invalidate.
+function swOrigin() {
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const CHUNK = 16 * 1024;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const state = { kbps: 0, marker: 'A', failShell: false, swSuffix: '' };
+  const srv = createServer(async (req, res) => {
+    const u = req.url.split('?')[0];
+    const path = u === '/' ? '/index.html' : u;
+    const isShell = path === '/index.html';
+    if (isShell && state.failShell) { res.writeHead(503); res.end('no'); return; }
+    let body;
+    try { body = readFileSync(join(ROOT, path)); } catch { res.writeHead(404); res.end('nf'); return; }
+    if (path === '/service-worker.js' && state.swSuffix) {
+      // Shipping a NEW BUILD, which is the only way to reach the destructive path: an update whose
+      // script is byte-identical installs nothing, so the old cache is never deleted and a check
+      // built on it passes over the defect. Bumping CACHE_VERSION is what makes the update real.
+      body = Buffer.from(String(body).replace(/(const CACHE_VERSION = '[^']+)'/, `$1-${state.swSuffix}'`));
+    }
+    const head = { 'cache-control': 'no-cache', 'content-type':
+      isShell ? 'text/html' : path.endsWith('.js') ? 'application/javascript'
+      : path.endsWith('.svg') ? 'image/svg+xml' : 'text/plain' };
+    if (isShell) {
+      // The marker rides in a meta so a served page can be traced to its origin. It must survive
+      // whatever the app does to document.title, which is why it is not the title.
+      body = Buffer.from(String(body).replace('<head>', `<head><meta name="x-build" content="${state.marker}">`));
+      body = gzipSync(body);                       // exactly what the real host does, and the reason
+      head['content-encoding'] = 'gzip';           // the handler must not copy response headers
+    }
+    res.writeHead(200, head);
+    if (!state.kbps) { res.end(body); return; }
+    const per = (CHUNK * 8) / (state.kbps * 1024) * 1000;
+    for (let i = 0; i < body.length; i += CHUNK) {
+      if (!res.write(body.subarray(i, i + CHUNK))) await new Promise((r) => res.once('drain', r));
+      await sleep(per);
+    }
+    res.end();
+  });
+  return {
+    state,
+    listen: () => new Promise((r) => srv.listen(0, '127.0.0.1', () => r(`http://127.0.0.1:${srv.address().port}/`))),
+    close: () => new Promise((r) => srv.close(r)),
+  };
+}
+
+// Load the app and wait until the SW has actually finished precaching, not merely registered.
+async function swWarm(pg, url) {
+  await pg.goto(url, { waitUntil: 'load', timeout: 120000 });
+  await pg.waitForSelector('#outline', { timeout: 120000 });
+  await pg.evaluate(() => navigator.serviceWorker.ready);
+  for (let i = 0; i < 100; i++) {
+    const n = await pg.evaluate(async () => {
+      const k = await caches.keys();
+      return k.length ? (await (await caches.open(k[0])).keys()).length : 0;
+    });
+    if (n >= 2) return true;
+    await pg.waitForTimeout(200);
+  }
+  return false;
+}
+const swBuildOf = (pg) => pg.evaluate(() => {
+  const m = document.querySelector('meta[name=x-build]');
+  return m ? m.content : '(none)';
+});
+const swCachePaths = (pg) => pg.evaluate(async () => {
+  const out = [];
+  for (const k of await caches.keys())
+    for (const r of await (await caches.open(k)).keys()) out.push(new URL(r.url).pathname);
+  return out.sort();
+});
+
+test('SW: a slow-but-alive link serves the CACHED app instead of waiting for the download', { skip: skip() }, async () => {
+  // THE defect. The old handler was `fetch(req).catch(() => caches.match(...))`, and .catch() only
+  // fires when the network REJECTS. A weak connection does not reject, it crawls — so the fallback
+  // was unreachable and every open re-downloaded the whole ~3.4 MB app with a perfect copy sitting
+  // unused on the device. Measured then: warm cache and no service worker at all took the same time.
+  const origin = swOrigin();
+  const url = await origin.listen();
+  const ctx = await browser.newContext();
+  try {
+    const pg = await ctx.newPage();
+    assert.ok(await swWarm(pg, url), 'the service worker must finish precaching before this means anything');
+    // A NEW build is now live, and the link goes bad. Serving 'B' proves the cache answered;
+    // serving 'C' proves it waited for the network, which is the bug.
+    origin.state.marker = 'C';
+    origin.state.kbps = 1200;                       // alive, just far too slow to be worth waiting for
+    const slow = await ctx.newPage();
+    const t0 = Date.now();
+    await slow.goto(url, { waitUntil: 'commit', timeout: 180000 });
+    await slow.waitForSelector('#outline', { timeout: 180000 });
+    const elapsed = Date.now() - t0;
+    assert.equal(await swBuildOf(slow), 'A',
+      'a slow link must be answered from the cache (build A); build C means the handler waited for ' +
+      'the network, which is the timeout failing to fire — most likely because the race is on ' +
+      'fetch() (headers) rather than on the body');
+    // Timing is the secondary check and deliberately loose: identity above is the real assertion,
+    // and a loaded CI box must not be able to turn this red on its own.
+    assert.ok(elapsed < 30000, `served from cache but took ${elapsed} ms, which is not a fallback at all`);
+    assert.deepEqual(pageErrors, []);
+  } finally { await ctx.close(); await origin.close(); }
+});
+
+test('SW: a healthy link still serves the LIVE build, so the timeout is not cache-first', { skip: skip() }, async () => {
+  // The guarantee the timeout must not buy its speed with. service-worker.js promises an install
+  // is never trapped on a stale build; a timeout that fires too eagerly (or a handler quietly
+  // rewritten to cache-first) breaks exactly that, and would still pass the check above.
+  const origin = swOrigin();
+  const url = await origin.listen();
+  const ctx = await browser.newContext();
+  try {
+    const pg = await ctx.newPage();
+    assert.ok(await swWarm(pg, url), 'the service worker must finish precaching first');
+    origin.state.marker = 'B';                      // a new build ships; the link is fine
+    const fast = await ctx.newPage();
+    await fast.goto(url, { waitUntil: 'commit', timeout: 60000 });
+    await fast.waitForSelector('#outline', { timeout: 60000 });
+    assert.equal(await swBuildOf(fast), 'B',
+      'a healthy open must get the LIVE build; build A means the cache won a race it should lose, ' +
+      'which is the stale-install trap the file header promises does not exist');
+    assert.deepEqual(pageErrors, []);
+  } finally { await ctx.close(); await origin.close(); }
+});
+
+test('SW: a precache that fails does not destroy the working offline copy', { skip: skip() }, async () => {
+  // install used Promise.allSettled for every entry, so a precache in which every fetch failed
+  // still RESOLVED. install reported success, activate deleted the previous cache, and the app was
+  // left with no offline copy and nothing said so — strictly worse than before the update, and
+  // silent until the next load on a good connection.
+  //
+  // THE VERSION BUMP BELOW IS THE WHOLE TEST. A first draft called update() against a byte-identical
+  // script: the browser installs nothing, activate never runs, the cache is trivially untouched, and
+  // the check passed cleanly against the very code it was written to catch. It only became a guard
+  // once the served worker actually changed version.
+  const origin = swOrigin();
+  const url = await origin.listen();
+  const ctx = await browser.newContext();
+  try {
+    const pg = await ctx.newPage();
+    assert.ok(await swWarm(pg, url), 'the service worker must finish precaching first');
+    const before = await swCachePaths(pg);
+    assert.ok(before.includes('/index.html'), `the warm cache must hold the shell, got ${JSON.stringify(before)}`);
+
+    // The shell now 503s while the service-worker script itself still serves: a flaky link during
+    // an update, which is when this defect bites.
+    origin.state.failShell = true;
+    origin.state.swSuffix = 'next';       // a genuinely new version, or nothing installs at all
+    await pg.evaluate(async () => {
+      const r = await navigator.serviceWorker.getRegistration();
+      try { await r.update(); } catch (_) { /* a failed install is the POINT */ }
+    });
+    await pg.waitForTimeout(4000);
+    assert.deepEqual(await swCachePaths(pg), before,
+      'a failed precache must leave the previous cache untouched; losing /index.html here is the ' +
+      'app silently losing the ability to open offline at all');
+
+    origin.state.failShell = false;
+    await ctx.setOffline(true);
+    const off = await ctx.newPage();
+    await off.goto(url, { waitUntil: 'load', timeout: 60000 });
+    await off.waitForSelector('#outline', { timeout: 60000 });
+    assert.equal(await swBuildOf(off), 'A', 'the offline open must be served the cached build');
+    await ctx.setOffline(false);
+  } finally { await ctx.close(); await origin.close(); }
+});
+
+test('SW: the shell is cached once, not under two spellings of the same URL', { skip: skip() }, async () => {
+  // './' and './index.html' are different URLs holding identical bytes. Precaching both pulled the
+  // whole ~3.4 MB document twice on top of the page load itself, on a file whose size is the reason
+  // any of this matters. Asserted on the real cache rather than on the SHELL constant, because the
+  // constant is what a source pin already covers and this is the part it cannot see.
+  const origin = swOrigin();
+  const url = await origin.listen();
+  const ctx = await browser.newContext();
+  try {
+    const pg = await ctx.newPage();
+    assert.ok(await swWarm(pg, url), 'the service worker must finish precaching first');
+    const paths = await swCachePaths(pg);
+    const html = paths.filter((p) => p === '/' || p.endsWith('.html'));
+    assert.deepEqual(html, ['/index.html'],
+      `exactly one copy of the document belongs in the cache, found ${JSON.stringify(html)}`);
+    assert.deepEqual(pageErrors, []);
+  } finally { await ctx.close(); await origin.close(); }
 });

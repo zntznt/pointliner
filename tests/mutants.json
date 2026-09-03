@@ -3474,6 +3474,42 @@
       "find": "text=\"Grew up on a farm #trait\"",
       "replace": "text=\"Grew up on a farm #trait #bran\"",
       "kills": "no {roll:} in a demo can answer with a label still stuck to the text"
+    },
+    {
+      "id": "sw-race-on-headers-not-body",
+      "suite": "unit",
+      "why": "the shipped-shaped defect: racing fetch() alone times the HANDSHAKE, so on a link with fast headers and a crawling body the network always wins and the timeout can never fire -- a timeout that looks correct and is decorative",
+      "file": "service-worker.js",
+      "find": "        const body = await res.arrayBuffer();",
+      "replace": "        const body = res.body;",
+      "kills": "the navigation timeout races the DOWNLOAD, not the handshake"
+    },
+    {
+      "id": "sw-nav-copies-response-headers",
+      "suite": "unit",
+      "why": "the rebuilt Response inherits content-encoding: gzip and the compressed content-length while its body is already decoded, so the browser is handed a decoded body labelled as compressed",
+      "file": "service-worker.js",
+      "find": "          headers: { 'content-type': res.headers.get('content-type') || 'text/html; charset=utf-8' },",
+      "replace": "          headers: res.headers,",
+      "kills": "the navigation timeout races the DOWNLOAD, not the handshake"
+    },
+    {
+      "id": "sw-precache-swallows-failure",
+      "suite": "unit",
+      "why": "the exact code that shipped: allSettled reports success over a precache in which every fetch failed, activate then deletes the last working cache, and the app loses offline entirely in silence",
+      "file": "service-worker.js",
+      "find": "    await cache.addAll([SHELL]);",
+      "replace": "    await Promise.allSettled([cache.add(SHELL)]);",
+      "kills": "the service worker precache cannot report success over a failure"
+    },
+    {
+      "id": "sw-shell-spelled-two-ways",
+      "suite": "unit",
+      "why": "the shell cached under a URL the navigate handler does not read back, which is how the same 3.4 MB document came to be downloaded twice per visit",
+      "file": "service-worker.js",
+      "find": "const SHELL = './index.html';",
+      "replace": "const SHELL = './';",
+      "kills": "the service worker caches ONE copy of the shell"
     }
   ]
 }
