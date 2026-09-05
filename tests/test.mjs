@@ -12573,13 +12573,16 @@ const _rootFile = (name) => readFileSync(resolve(dirname(fileURLToPath(import.me
 test('the service worker keeps navigations NETWORK-first (freshness model, not just its comment)', () => {
   const sw = _rootFile('service-worker.js');
   const nav = sw.slice(sw.indexOf("req.mode === 'navigate'"));
-  const handler = nav.slice(0, nav.indexOf('return;'));
-  // The behaviour: fetch() leads, caches.match() is only reachable from its .catch().
-  assert.ok(/event\.respondWith\(\s*fetch\(req\)\.catch\(/.test(handler),
-    'navigations must be fetch()-first with the cache in .catch() — a cache-first navigate handler ' +
-    'traps an installed copy on a stale build, which is the one thing the header promises it does not do');
+  const handler = nav.slice(0, nav.indexOf('\n    return;'));
+  // The behaviour: the network leads and the cache is only ever reached from the failure path.
+  // Pinned by ORDER rather than by one spelling of the expression -- this assertion used to
+  // require the literal `fetch(req).catch(`, which made the shape the contract instead of the
+  // property, and the shape had to change to fix a defect the property never described.
   assert.ok(handler.indexOf('fetch(req)') < handler.indexOf('caches.match'),
     'the network call must precede the cache lookup in the navigate path');
+  assert.ok(/catch[\s\S]{0,200}caches\.match\(SHELL\)/.test(handler),
+    'the cached shell must be reachable only from the catch arm — a cache-first navigate handler ' +
+    'traps an installed copy on a stale build, which is the one thing the header promises it does not do');
   // The comment: this contradicted the code until 2026-08-02 — the header said network-first (right),
   // the inline comment said cache-first (wrong), so whoever read the handler first would "fix" the
   // correct code in the wrong direction. Pin the words too, since the words are what misled.
@@ -12589,6 +12592,105 @@ test('the service worker keeps navigations NETWORK-first (freshness model, not j
     'the comment above the navigate handler must say network-first, matching the code and the file header');
   assert.ok(!/serve the cached shell so it works offline,\s*\/\/\s*falling back to the network/.test(sw),
     'the old cache-first comment is back — it describes the opposite of what this handler does');
+});
+
+test('the navigation timeout races the DOWNLOAD, not the handshake', () => {
+  // The defect this pins is the one that made the whole timeout decorative, and it is invisible
+  // by inspection: `Promise.race([fetch(req), timer])` LOOKS like a network timeout and is not
+  // one. fetch() settles when the response HEADERS arrive, so on the connection this exists for
+  // -- weak cellular, headers in 300 ms and a body that crawls behind them -- the network wins
+  // the race instantly and the page still takes as long as it ever did. Measured before the fix:
+  // a fully warm cache gave time-to-usable identical to having no service worker at all.
+  // The fix is to read the body to completion INSIDE the raced arm. Anyone "simplifying" that
+  // await away restores a timeout that can never fire, so it is pinned by name.
+  const sw = _rootFile('service-worker.js');
+  const nav = sw.slice(sw.indexOf("req.mode === 'navigate'"));
+  const handler = nav.slice(0, nav.indexOf('\n    return;'));
+
+  const race = handler.indexOf('Promise.race');
+  assert.ok(race > 0, 'the navigate handler still races the network against a timer');
+  const netArm = handler.slice(handler.indexOf('fetch(req)'), race);
+  assert.match(netArm, /await\s+res\.arrayBuffer\(\)/,
+    'the raced network arm must read the body to completion (await res.arrayBuffer()); racing the ' +
+    'fetch() promise alone times the handshake and never the download, which is a timeout that cannot fire');
+
+  // A bounded, sane timeout. Zero would serve the cache always (cache-first by the back door);
+  // a minute would be indistinguishable from no timeout on the link this is for.
+  const ms = /const NET_TIMEOUT_MS = (\d+);/.exec(sw);
+  assert.ok(ms, 'the navigate timeout must be a named constant, not a magic number in the race');
+  const ohno = Number(ms[1]);
+  assert.ok(ohno >= 500 && ohno <= 15000,
+    `NET_TIMEOUT_MS is ${ohno} ms: outside 500-15000 it is either cache-first in disguise or no timeout at all`);
+  assert.ok(handler.includes('NET_TIMEOUT_MS'), 'the race must use the named constant');
+
+  // The rebuilt Response must NOT inherit the original headers. The body handed to it is already
+  // decoded while `content-encoding: gzip` and the COMPRESSED content-length are still in those
+  // headers -- every real host sends them, this app's own does -- so copying them wholesale hands
+  // the browser a decoded body labelled as compressed.
+  assert.ok(/headers:\s*\{\s*'content-type'/.test(netArm),
+    'the reconstructed Response must set only content-type');
+  assert.ok(!/headers:\s*res\.headers/.test(netArm),
+    'copying res.headers onto a decoded body re-declares it as gzip-encoded');
+});
+
+test('the service worker precache cannot report success over a failure', () => {
+  // The shipped defect: install used Promise.allSettled for EVERY shell entry, so a precache in
+  // which every fetch failed still resolved. install reported success, activate then deleted the
+  // previous version's cache, and the app was left with no offline copy at all and nothing said
+  // so. Reproduced end to end: the cache went from ['/', '/index.html', '/icon.svg'] to
+  // ['/icon.svg'] on a version bump over a flaky link, and offline open then failed outright.
+  //
+  // The fix is a REQUIRED entry (addAll rejects -> install fails -> this version never activates
+  // -> activate never runs -> the last working cache survives and is retried next visit). The
+  // coupling is what makes it safe, so both halves are pinned together.
+  const sw = _rootFile('service-worker.js');
+  const install = between(sw, "addEventListener('install'", "addEventListener('activate'");
+  assert.ok(install, 'the install handler is still where the precache lives');
+
+  assert.match(install, /await cache\.addAll\(\[SHELL\]\)/,
+    'the shell must be precached with addAll, which REJECTS on failure and so fails the install; ' +
+    'allSettled here reports success over a total failure and the activate handler then deletes ' +
+    'the last working offline copy');
+  // ...and the tolerant path must not be able to swallow the shell with it. Ordering is asserted
+  // over CODE with the comments stripped: this block explains the allSettled defect by name, and
+  // the first draft read that explanation as the call and failed on its own prose.
+  const code = install.replace(/^\s*\/\/.*$/gm, '');
+  const settled = code.indexOf('Promise.allSettled');
+  assert.ok(settled > 0 && settled > code.indexOf('addAll([SHELL])'),
+    'the optional assets are settled AFTER the required shell, never around it');
+  assert.match(code.slice(settled), /OPTIONAL/,
+    'allSettled may only cover OPTIONAL entries — anything the offline shell needs must be required');
+  assert.ok(!/allSettled\(\s*\[?\s*SHELL/.test(code),
+    'the shell must never go through the tolerant path');
+
+  // The other half of the coupling: activate deletes old caches, and is only reachable because
+  // install succeeded. A comment is not enough here, so pin that the deletion still lives in
+  // activate rather than migrating somewhere install cannot gate.
+  const activate = sw.slice(sw.indexOf("addEventListener('activate'"), sw.indexOf("addEventListener('fetch'"));
+  assert.match(activate, /caches\.delete\(k\)/,
+    'old-cache deletion belongs in activate, which install failure gates; moved anywhere else a ' +
+    'failed precache could delete a working copy again');
+});
+
+test('the service worker caches ONE copy of the shell, not two spellings of it', () => {
+  // './' and './index.html' are different URLs holding identical bytes. Precaching both made a
+  // first visit pull the whole ~3.4 MB document twice on top of the page load itself — counted at
+  // the server, three full transfers for one visit, on a file whose whole point is that it is big.
+  const sw = _rootFile('service-worker.js');
+  const decl = /const SHELL = ([^;]+);/.exec(sw);
+  assert.ok(decl, 'SHELL still names what the offline fallback serves');
+  const shell = decl[1].trim();
+  assert.equal(shell, "'./index.html'",
+    'SHELL must be the single index.html entry; a list (or a second "./" spelling) downloads the ' +
+    'same bytes twice per visit and the navigate handler only ever reads one of them');
+
+  // And the handler must actually read that one entry, rather than keeping a second lookup alive
+  // for a URL nothing caches any more (a fallback that can only ever miss).
+  const nav = sw.slice(sw.indexOf("req.mode === 'navigate'"));
+  const handler = nav.slice(0, nav.indexOf('\n    return;'));
+  const lookups = [...handler.matchAll(/caches\.match\(([^)]*)\)/g)].map(m => m[1].trim());
+  assert.deepEqual(lookups, ['SHELL'],
+    `the navigate fallback must look up SHELL and nothing else, got ${JSON.stringify(lookups)}`);
 });
 
 test('manifest.webmanifest colours are real palette homes, not orphan values', () => {
