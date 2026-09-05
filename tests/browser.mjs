@@ -3245,7 +3245,19 @@ test('#1501 a colon-less generate keyword survives whole, and the repair does no
     });
     await pg.keyboard.type(text, { delay: 12 });
     await pg.keyboard.press('Escape');
-    await pg.waitForTimeout(2200);   // past NUDGE_YIELD_MS, so a first-pill nudge would have landed
+    const escapedAt = Date.now();
+    // WAIT FOR THE CUE, not for a number. This was a flat waitForTimeout(2200), which is a bet on
+    // how fast the runner is, and the bet has now been lost twice in CI on the same assertion --
+    // once on main at 4d913df and once on the service-worker branch -- while passing every time
+    // locally. The cue is what the assertions below actually read, so wait for the thing itself.
+    // Swallow the timeout rather than throwing here: if it genuinely never paints, the assertion
+    // below is the one that should report it, in its own words.
+    await pg.waitForSelector('.brace-attempt', { timeout: 15000 }).catch(() => {});
+    // ...and still sit out the whole nudge window regardless, because the negative assertion below
+    // (a failed form is NEVER announced as a success, P4-1) only means anything once a first-pill
+    // nudge would have had time to land. NUDGE_YIELD_MS is 1500; 2200 keeps the original margin.
+    const remaining = 2200 - (Date.now() - escapedAt);
+    if (remaining > 0) await pg.waitForTimeout(remaining);
   };
   await type('M2 {3x {a|b}}');
 
