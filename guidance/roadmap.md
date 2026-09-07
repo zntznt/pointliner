@@ -272,7 +272,11 @@ sugar onto the persistent variable system, not the reverted scope.)
   verbatim was reverted; the shipped one uses original bands. **IP guardrail (still binding for any
   future tweak):** odds bands and any result/word tables must be **original or user-defined** — do
   **not** copy specific values from any published oracle system; the mechanic is fine, only the data
-  has to be your own.
+  has to be your own. **Scope (2026-09):** this is an IP rule and openly-licensed material is
+  outside it — a CC BY / CC BY-SA source may have its values reproduced in full, on that licence's
+  terms and with its attribution. The app's own bands stay original regardless, because no licence
+  covered them; the exemption is about *sourced* data, not about relaxing this pill.
+  See `product-identity.md` §5, which states the same scope.
 - **Dice:** reroll-once (`rK`) — ✅ shipped (`4d6r1`). Still open: extend success pools with
   bane/botch counting (`generative-status.md` marks bane/botch won't-do).
 - **Math:** more `evalMath` primitives as wanted (date-format variants, more units) — all
