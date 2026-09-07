@@ -168,7 +168,18 @@ def main():
     b64_brands = subset_to_woff2_b64(brands_ttf, sorted(brands.values())) if brands else ""
 
     # ── emit the style block (matches the existing fa-embed format) ────────────
+    # ATTRIBUTION, and it has to be emitted HERE rather than added by hand. Font Awesome's own
+    # answer to "do I need to attribute?" is that the downloaded files already carry comments
+    # saying so -- true of the files this script fetches, and untrue of what it produces, because
+    # subsetting to woff2 and base64-ing it strips every comment. So the notice the upstream files
+    # carried has to be put back, or the shipped index.html redistributes CC BY 4.0 icons and an
+    # SIL OFL 1.1 font with no attribution anywhere in the artifact.
+    # Emitted by the script (not spliced in afterwards) so verify-fa-embed.py, which compares the
+    # block's non-payload text byte-for-byte against this output, keeps passing.
     out = ['<style id="fa-embed">']
+    out.append('/*! Font Awesome Free 6.5.2 subset · fontawesome.com'
+               ' · icons: CC BY 4.0 · fonts: SIL OFL 1.1 · code: MIT'
+               ' · (c) Fonticons, Inc. */')
     out.append(f'@font-face{{font-family:"Font Awesome 6 Free";font-style:normal;font-weight:900;font-display:block;src:url("data:font/woff2;base64,{b64_solid}") format("woff2")}}')
     if b64_regular:
         out.append(f'@font-face{{font-family:"Font Awesome 6 Free";font-style:normal;font-weight:400;font-display:block;src:url("data:font/woff2;base64,{b64_regular}") format("woff2")}}')

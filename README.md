@@ -126,4 +126,18 @@ the design language, UX standard, and architecture notes that every change follo
 
 ---
 
-[AGPLv3](LICENSE)
+## Licence
+
+Pointliner is [AGPLv3](LICENSE).
+
+**Third-party material bundled in `index.html`:** a subset of
+[Font Awesome Free](https://fontawesome.com) 6.5.2, © Fonticons, Inc. Icons are under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), fonts under
+[SIL OFL 1.1](https://scripts.sil.org/OFL), code under MIT. The subset is rebuilt by
+`tools/build-fa-subset.py`, which emits this attribution into the embedded block, because
+subsetting to woff2 strips the comments the upstream files carry it in.
+
+**Third-party material adapted in `guide/solo-rpg/`:** several worked examples adapt
+openly-licensed tabletop games, each credited with its licence and changes in that example's own
+guide and demo file. See [`guide/solo-rpg/README.md`](guide/solo-rpg/README.md). Those grants
+cover the adapted game content only; the app stays AGPLv3.
