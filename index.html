@@ -22285,6 +22285,26 @@ function recipeToNodes(recipe) {
   }
   return [mkNode(recipe.line)];
 }
+// #1267: where a recipe's `sel` sits in its point's text, as [start, end), or null. The value to
+// overtype always lives INSIDE the pill, so only an occurrence within a {…} run counts: "Party gold
+// {= sum(gold)}" selects the `gold` in the sum, not the one in the label, which a plain indexOf picked.
+// Pure; null when there is no such occurrence (the caller then leaves the caret where it is).
+function recipeSelRange(text, sel) {
+  if (typeof text !== 'string' || typeof sel !== 'string' || !sel) return null;
+  const inside = [];
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    inside[i] = depth > 0 && text[i] !== '{' && text[i] !== '}';
+    if (text[i] === '}' && depth > 0) depth--;
+  }
+  for (let at = text.indexOf(sel); at >= 0; at = text.indexOf(sel, at + 1)) {
+    let ok = true;
+    for (let k = at; k < at + sel.length; k++) if (!inside[k]) { ok = false; break; }
+    if (ok) return [at, at + sel.length];
+  }
+  return null;
+}
 // #1267: drop a recipe as a working line/block. If the current point is empty it fills IN PLACE (no
 // orphan blank line above); otherwise the recipe lands as the next sibling below. The subtree is
 // promoted so its {…} render as live pills, then the caret selects the first value to overtype. One
@@ -22315,15 +22335,15 @@ function insertRecipe(recipe, curId) {
   markDirty();
   render();
   focusNode(focusId);
+  // Only on the point focusNode put into edit mode: display mode shows each pill's RESULT, so a match
+  // there is a coincidence ("Party gold sum(gold)=16") and there is nothing editable to select.
+  // selectLogicalRange counts characters exactly as editableText does (pill = token, <br> = 1).
   if (recipe.sel) requestAnimationFrame(() => {
     try {
-      const el = document.querySelector(`.node-content[data-id="${focusId}"]`);
+      const el = document.querySelector(`.node-content[data-id="${focusId}"][data-editing]`);
       if (!el) return;
-      const raw = editableText(el);
-      const i = raw.indexOf(recipe.sel);
-      if (i < 0) return;
-      const s = domSelectionForChars(el, i, i + recipe.sel.length);
-      if (s) document.getSelection().setBaseAndExtent(s.node, s.off, s.enode, s.eoff);
+      const r = recipeSelRange(editableText(el), recipe.sel);
+      if (r) selectLogicalRange(el, r[0], r[1]);
     } catch (_) {}
   });
 }
@@ -36665,7 +36685,10 @@ async function connectAdoptExisting(dir, name) {
   try { fh = await dir.getFileHandle(name); fileRoot = fromOpml(await (await fh.getFile()).text()); }
   catch (_) { fileRoot = null; }
   if (fileRoot) {
-    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });   // renders, marks clean, sets the title
+    // No restoreFocusId: this path only runs when the current doc is blank, so there is no zoom that
+    // belongs to the file being opened. It used to pass one that was never declared in this scope,
+    // and the ReferenceError failed every connect-by-opening with the folder already half-connected.
+    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });   // renders, marks clean, sets the title
     await anchorWorkspaceFile();       // sync-safety: anchor to the version we just read
     startWorkspaceWatch();             // sync-safety: watch the connected file
     await idbSet(WORKSPACE_KEY, { dir, name });
@@ -46050,7 +46073,10 @@ function showNestedDialog(cmd, pane) {
   try { setCaretByOffset(st.content, off); } catch (_) {}
   markDirty();
   _dialogRoot = pane;
-  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); if (searchEl && searchEl.isConnected) searchEl.focus(); };   // #1464: focus returns with the pane
+  // #1464: focus returns with the pane. This function is not inside openBuilder, so the builder's
+  // `searchEl` is not in scope here: look the box up. Referencing the bare name threw a
+  // ReferenceError on every Escape/Cancel from a clicked row, and focus fell behind the modal.
+  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); const searchEl = ioCard.querySelector('.builder-search'); if (searchEl && searchEl.isConnected) searchEl.focus(); };
   _dialogGuideCmd = cmd;
   insertInlineArtifact(cmd.id, st.nodeId, st.content);
 }
@@ -46252,6 +46278,11 @@ function openBuilder(trigger) {
         pnode.text = stripTriggerRun(builderSpliceText(pnode),        // #1396
           builderSpliceOffset(pnode, pst.offset), pst.query.length).text;
       }
+      // insertRecipe focuses the dropped point and selects its first value, so disarm the chrome-return
+      // BEFORE closing: closeBuilder schedules it a frame out, where it put the caret back in the point
+      // the builder was opened from, the recipe's point left edit mode, and the selection never landed.
+      // Same reason closeBuilder disarms it after builderRestoreTrigger.
+      chromeReturn = null;
       closeBuilder();
       insertRecipe(cmd._recipe, pst.nodeId);
       return;
@@ -46327,11 +46358,11 @@ function openBuilder(trigger) {
         try {
           const caret = spliceOff + cmd._brace.sel[0];
           setCaretByOffset(st.content, caret);
-          if (cmd._brace.sel[1] > cmd._brace.sel[0]) {
-            const [s, e] = [spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]];
-            const sel = domSelectionForChars(st.content, s, e);
-            if (sel) { const r = new Range(); r.setStart(sel.node, sel.off); r.setEnd(sel.enode, sel.eoff); document.getSelection().setBaseAndExtent(sel.node, sel.off, sel.enode, sel.eoff); }
-          }
+          // Select the scaffold's placeholder so the first keystroke replaces it, as the inline { menu
+          // does (braceApply). This called a domSelectionForChars that never existed; the enclosing try
+          // swallowed the ReferenceError, so the placeholder was never selected and nothing said so.
+          if (cmd._brace.sel[1] > cmd._brace.sel[0])
+            selectLogicalRange(st.content, spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]);
         } catch (_) {}
         markDirty();
         scheduleReconcile();

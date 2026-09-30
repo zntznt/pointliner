@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { brotliDecompressSync } from 'node:zlib';
 import { loadCores } from './load-cores.mjs';
+import { inlineScripts, atPosition, allowedGlobals, CONFUSABLE_GLOBALS } from '../tools/check-undefined-names.mjs';
 
 const c = loadCores();
 
@@ -22147,6 +22148,48 @@ test('#1267 recipeToNodes — a line drops one point; a block drops a parent ove
   assert.ok(chk && chk.val === 'sum(cost) <= 100', 'the check becomes a real check prop on the parent');
 });
 
+test('#1267 recipeSelRange: the first value is found INSIDE the pill, not wherever the word first appears', () => {
+  const rs = (t, s) => host(c.recipeSelRange(t, s));
+  // The case a plain indexOf got wrong: the label shares the word, and the label comes first.
+  assert.deepEqual(rs('Party gold {= sum(gold)}', 'gold'), [18, 22], 'the gold in the sum, not the label');
+  assert.deepEqual(rs('Damage {2d6}', '2d6'), [8, 11]);
+  assert.deepEqual(rs('x {y} {x}', 'x'), [7, 8], 'a later pill is searched when the first match is outside');
+  assert.deepEqual(rs('Attack {swing := 2d6+2 vs 2d6+1}', '2d6+2'), [17, 22]);
+  assert.equal(rs('gold only', 'gold'), null, 'no pill: nothing to select');
+  assert.equal(rs('a {x}', '{x}'), null, 'the braces themselves are not the value');
+  assert.equal(rs('{a} b', 'a} b'), null, 'a match that runs out of the pill does not count');
+  assert.equal(rs(null, 'a'), null);
+  assert.equal(rs('a', ''), null);
+  assert.equal(rs('a', null), null);
+});
+
+test('#1267 every recipe that selects a first value finds it inside its own pill (census)', () => {
+  const withSel = nonEmpty((_PATTERN_RECIPES || []).filter(r => r.sel), 'recipes that select a first value');
+  for (const r of withSel) {
+    const text = r.line || r.block.parent;
+    const at = c.recipeSelRange(text, r.sel);
+    assert.ok(at, `${r.id}: its sel ${JSON.stringify(r.sel)} must sit inside a pill of ${JSON.stringify(text)}`);
+    assert.equal(text.slice(at[0], at[1]), r.sel, `${r.id}: the range covers exactly the sel`);
+  }
+  // Not vacuous: the set really contains a recipe a plain indexOf would have mis-selected.
+  assert.ok(withSel.some(r => { const t = r.line || r.block.parent; return t.indexOf(r.sel) !== c.recipeSelRange(t, r.sel)[0]; }),
+    'at least one shipped recipe (pat-sum) has its sel word outside the pill first');
+});
+
+test('#1267 the recipe drop selects through recipeSelRange, and the builder does not take the caret back', () => {
+  // The selection used to call a domSelectionForChars that never existed, inside a try that swallowed
+  // the ReferenceError. The driven check in browser.mjs proves the behaviour; these pin the call sites
+  // so the unit gate sees a regression too.
+  const ir = fnBody(_src, 'insertRecipe');
+  assert.ok(ir.includes('recipeSelRange(editableText(el), recipe.sel)'), 'the drop finds the value with the pill-aware core');
+  assert.ok(ir.includes('selectLogicalRange(el, r[0], r[1])'), 'and selects it with the shared logical-range helper');
+  assert.ok(ir.includes('[data-editing]'), 'only on a point in edit mode, where the pill shows its source');
+  // applyBuilder: closeBuilder schedules the chrome-return a frame out, so it must be disarmed first.
+  const branch = between(fnBody(_src, 'applyBuilder'), "if (cmd.type === 'pattern' && cmd._recipe) {", 'insertRecipe(cmd._recipe, pst.nodeId);');
+  assert.ok(nonEmptyIdx(branch, 'chromeReturn = null;') < nonEmptyIdx(branch, 'closeBuilder();'),
+    'the pattern branch disarms the chrome-return BEFORE closeBuilder');
+});
+
 test('#1267 palette is wired into the Builder (Patterns section, front-door lead, recipe apply path)', () => {
   assert.ok(/for \(const r of PATTERN_RECIPES\)/.test(_src), 'the Builder pool ingests the recipes');
   assert.ok(/type: 'pattern', _section: 'Patterns'/.test(_src), 'recipes form their own Patterns section');
@@ -28905,6 +28948,47 @@ test('every CI job in tests.yml is bounded by a timeout', () => {
   });
   assert.deepEqual(unbounded, [],
     'a CI job with no timeout-minutes can wedge for six hours and still look like it is working');
+});
+
+// ── the undefined-name gate (tools/check-undefined-names.mjs) ────────────────────────────────────
+// The lint itself needs ESLint, which CI installs for its own job. What can be proved offline, here,
+// is everything the gate's verdict depends on besides ESLint: that it reads the RIGHT code at the
+// RIGHT positions, and that CI runs it in the mode that first proves it can fail.
+test('undefined-name gate: it lints the real app script, at index.html coordinates', () => {
+  const scripts = nonEmpty(inlineScripts(_src), 'inline JavaScript found in index.html');
+  const app = scripts.find(s => s.code.includes('function connectAdoptExisting('));
+  assert.ok(app, 'the app script is among what the gate lints');
+  // The XML data island is not code: nothing linted starts on its line.
+  const islandLine = _src.slice(0, nonEmptyIdx(_src, '<script type="application/xml" id="pl-embedded-doc">')).split('\n').length;
+  assert.ok(scripts.every(s => s.line !== islandLine), 'the XML data island is never linted as JavaScript');
+  // A finding's line must be index.html's line, or the report points somewhere else.
+  const padded = atPosition(app.code, app.line, app.col);
+  const at = padded.indexOf('function connectAdoptExisting(');
+  assert.equal(padded.slice(0, at).split('\n').length, _src.slice(0, _src.indexOf('function connectAdoptExisting(')).split('\n').length,
+    'a declaration is reported on the line it has in index.html');
+});
+
+test('undefined-name gate: comments, data islands and src scripts are not code; modules are modules', () => {
+  const html = '<!-- mentions <script>no()</script> -->\n<script type="application/xml">x</script>\n'
+    + '<script src="a.js"></script>\n<SCRIPT>one()</SCRIPT>\n<script type="module">two()</script>';
+  assert.deepEqual(host(inlineScripts(html).map(s => [s.code, s.line, s.module])), [['one()', 4, false], ['two()', 5, true]]);
+  // The confusable window globals are exactly what a missing `const name` would silently read.
+  const g = allowedGlobals({ name: false, status: false, event: false, document: false, window: false });
+  assert.deepEqual(Object.keys(g).sort(), ['document', 'window'], 'name/status/event must not resolve as globals');
+  const mustDeny = nonEmpty(['name', 'status', 'event', 'top', 'parent', 'length'], 'window globals that are everyday local names');
+  assert.deepEqual(mustDeny.filter(k => !CONFUSABLE_GLOBALS.includes(k)), [], 'each is denied');
+});
+
+test('undefined-name gate: CI runs it after proving it can fail, on the versions the tool names', () => {
+  const steps = _wfTests.slice(nonEmptyIdx(_wfTests, '\n  undefined-names:'));
+  assert.ok(/run: node tools\/check-undefined-names\.mjs --self-test\n/.test(steps),
+    'the job runs the gate WITH --self-test, which must see it fail on known cases before a pass counts');
+  const pinned = (txt) => (/eslint@(\d+\.\d+\.\d+) globals@(\d+\.\d+\.\d+)/.exec(txt) || []).slice(1).join(' ');
+  const tool = readFileSync(new URL('../tools/check-undefined-names.mjs', import.meta.url), 'utf8');
+  assert.ok(pinned(steps), 'CI pins exact eslint and globals versions');
+  assert.equal(pinned(tool), pinned(steps), 'the versions the tool tells a developer to install are the ones CI runs');
+  // It needs the network, so it must not sit among the jobs pinned offline.
+  assert.ok(_wfTests.indexOf('\n  undefined-names:') > _wfTests.indexOf('\n  browser-smoke:'), 'after browser-smoke, outside the offline span');
 });
 
 test('#1427 a skipped browser smoke cannot pass in CI', () => {

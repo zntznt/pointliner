@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2153 declarations in 158 sections across 17 domains.**
+**2154 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1240,6 +1240,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `rollPaletteOpen`
 - `pickRollTemplate`
 - `recipeToNodes` — #1267: turn a PATTERN_RECIPES entry into model node(s). A line recipe is one point; a block recipe
+- `recipeSelRange` — #1267: where a recipe's `sel` sits in its point's text, as [start, end), or null. The value to
 - `insertRecipe` — #1267: drop a recipe as a working line/block. If the current point is empty it fills IN PLACE (no
 - `selectedNodes` — Bulk edit a multi-selection the same way the bullet popup edits one point: the
 - `applyTodoCycleToNodes` — LEAN FLOOR: apply a to-do text-mutator (cycleTodoState / cycleTodoPriority) to every node in a list,

@@ -151,3 +151,24 @@ jobs:
       - run: node --test tests/browser.mjs
         env:
           POINTLINER_REQUIRE_BROWSER: '1'
+
+  # Undefined names in the shipped code: ESLint's `no-undef` and nothing else, over every inline
+  # <script> in index.html plus service-worker.js. A source pin proves a name is PRESENT; it cannot
+  # see that the name resolves to nothing, and this repo kept shipping exactly that, pinned one name
+  # at a time (findById, flashError, then restoreFocusId, searchEl and domSelectionForChars at once,
+  # two of them inside a try that swallowed the ReferenceError). Scope analysis is the only check
+  # that sees the whole class.
+  #
+  # After browser-smoke because it needs the network (the jobs above it are pinned offline). The
+  # versions are pinned here AND in the tool's header, and a test holds the two equal. --self-test
+  # runs first and must see the gate fail on known cases, or a pass below would prove nothing.
+  undefined-names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5   # measured ~1s for the check; the install is most of it
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save --no-package-lock eslint@10.11.0 globals@17.12.0
+      - run: node tools/check-undefined-names.mjs --self-test

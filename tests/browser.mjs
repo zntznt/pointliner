@@ -6579,3 +6579,222 @@ test('SW: the shell is cached once, not under two spellings of the same URL', { 
     assert.deepEqual(pageErrors, []);
   } finally { await ctx.close(); await origin.close(); }
 });
+
+// ── folder connect: opening a document that is already there (#839) ─────────────────────────────
+// Served over HTTP for the same reason as the SW checks: the folder here is a REAL directory handle
+// from the origin-private file system, which file:// cannot reach. A real handle matters: the path
+// ends by storing the folder in IndexedDB, and a hand-built stand-in cannot be structured-cloned, so
+// a test built on one has to stub the very step that proves the connect finished.
+//
+// connectAdoptExisting passed `restoreFocusId` to adoptDoc from a scope that never declared it. The
+// ReferenceError reached connectWorkspace's catch, so EVERY connect-by-opening failed with "Could
+// not connect folder: restoreFocusId is not defined", after workspaceDir had already been set. Every
+// source pin on the function passed throughout, because they assert the function is present.
+test('#839 connecting a folder that already holds this document opens it', { skip: skip() }, async () => {
+  const origin = swOrigin();
+  const url = await origin.listen();
+  const ctx = await browser.newContext({ serviceWorkers: 'block' });
+  try {
+    const pg = await ctx.newPage();
+    const errs = [];
+    pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await pg.goto(url);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(700);
+    await pg.keyboard.press('Escape');          // dismiss the first-run welcome
+    await pg.waitForTimeout(250);
+    const r = await pg.evaluate(async () => {
+      const name = workspaceFileName(root, fileName);
+      const blank = docIsBlank(root) || _showingExamples;
+      const opfs = await navigator.storage.getDirectory();
+      const dir = await opfs.getDirectoryHandle('adopt-' + Date.now(), { create: true });
+      const opml = '<?xml version="1.0"?><opml version="2.0"><head><title>Notebook</title></head>'
+        + '<body><outline text="Written on another machine"/></body></opml>';
+      const fh = await dir.getFileHandle(name, { create: true });
+      const w = await fh.createWritable(); await w.write(opml); await w.close();
+      window.showDirectoryPicker = async () => dir;   // the picker is the only thing not real here
+      await connectWorkspace();
+      await new Promise(res => setTimeout(res, 300));
+      const onDisk = await (await (await dir.getFileHandle(name)).getFile()).text();
+      return { blank, name, rows: root.children.map(n => n.text), backing: workspaceFile && workspaceFile.name,
+        flash: document.getElementById('flash-hint')?.textContent ?? null, untouched: onDisk === opml };
+    });
+    assert.ok(r.blank, 'precondition: a fresh profile is blank, which is what routes connect to the adopt path');
+    assert.deepEqual(r.rows, ['Written on another machine'], 'the document already in the folder is the one now open');
+    assert.equal(r.backing, r.name, 'and that file is now the folder-backed document');
+    assert.equal(r.flash, 'Folder connected. Opened “' + r.name.replace(/\.opml$/, '') + '”',
+      'the user is told it opened, not that the connect failed');
+    assert.ok(r.untouched, 'opening must leave the file byte-for-byte as it was');
+    assert.deepEqual(errs, []);
+  } finally { await ctx.close(); await origin.close(); }
+});
+
+// ── #1464, the sibling: a nested dialog opened by CLICKING a builder row ─────────────────────────
+// The builder reaches the dialog harness two ways. Enter on a row goes through applyBuilder, whose
+// _dialogCancel runs inside openBuilder where the search box is in scope. A click (or focus entering
+// the pane) goes through showNestedDialog, a top-level function, whose copy of the same line named
+// `searchEl` from a scope it cannot see. Every Escape or Cancel from a clicked row threw, and focus
+// fell to the point BEHIND the still-open modal -- #1464 exactly, on the path its fix did not reach.
+// The existing #1464 check drives the Enter path only, which is why this one drives the click.
+//
+// The family is enumerated from the same predicate loadPaneForCmd routes on, and every member is
+// browsed in ONE builder session (click, leave, click the next), which is how the list is used.
+// `var` is the measured exception: its dialog closes the builder outright and hands the caret back
+// to the point, so nothing is stranded; it is pinned as that, not skipped.
+test('#1464 leaving a dialog opened by clicking a builder row returns focus to the builder, on every member', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  const pointId = await pg.evaluate(() => activeContentId);
+  await pg.keyboard.type('@', { delay: 25 }); await pg.waitForTimeout(450);
+  assert.equal(await pg.evaluate(() => document.activeElement.classList.contains('builder-search')), true,
+    'precondition: @ at the start of a point opens the builder');
+  const family = await pg.evaluate(() => [...new Map(builderCmdPool('@')
+    .filter(c => c.trigger === '@' && c.type === 'insert' && !BUILDER_FORMS[c.id] && !BUILDER_FORMS['@' + c.id])
+    .map(c => [c.id, { id: c.id, label: c.label, desc: c.desc || '' }])).values()]);
+  assert.ok(family.length >= 10, `the nested-dialog family should be most of the @ inserts, found ${family.length}`);
+
+  const clickRow = async (m) => {
+    await pg.fill('.builder-search', m.label); await pg.waitForTimeout(250);
+    const box = await pg.evaluate(({ label, desc }) => {
+      const it = [...ioCard.querySelectorAll('.builder-item')].find(e =>
+        e.querySelector('.cmd-label')?.textContent === label && e.querySelector('.cmd-desc')?.textContent === desc);
+      if (!it) return null;
+      it.scrollIntoView({ block: 'center' });
+      const r = it.getBoundingClientRect(); return { x: r.x + 20, y: r.y + r.height / 2 };
+    }, m);
+    if (!box) return false;
+    await pg.mouse.click(box.x, box.y); await pg.waitForTimeout(350);
+    return pg.evaluate(() => typeof _dialogCancel === 'function' && !!_dialogRoot);
+  };
+  const after = () => pg.evaluate(() => ({
+    focus: document.activeElement.className || document.activeElement.tagName,
+    builderOpen: !!ioCard.querySelector('.builder-search'),
+  }));
+
+  // The measured exception, taken FIRST on a fresh builder: `var` closes the builder and returns the
+  // caret to the point. Browsing Progress/Clock/footnote first changes this (UXP-336: a click on those
+  // rows inserts), so the order is deliberate, not incidental.
+  const v = family.find(m => m.id === 'var');
+  assert.ok(v, 'var is in the family (it is the one member pinned as an exception)');
+  assert.ok(await clickRow(v), 'var: clicking its row opens its dialog');
+  await pg.evaluate(() => _dialogRoot.querySelector('input,select,textarea,button')?.focus());
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+  assert.deepEqual(await pg.evaluate(() => ({ builderOpen: !!ioCard.querySelector('.builder-search'),
+    inPoint: document.activeElement.classList.contains('node-content') ? document.activeElement.dataset.id : null })),
+    { builderOpen: false, inPoint: pointId }, 'var: Escape closes the builder and hands the caret back to the point');
+
+  // Every other member, browsed in one session.
+  await blankWithCaret(pg);
+  await pg.keyboard.type('@', { delay: 25 }); await pg.waitForTimeout(450);
+  const bad = [], cancelled = [];
+  for (const m of family.filter(m => m.id !== 'var')) {
+    for (const how of ['Escape', 'Cancel']) {
+      if (!await clickRow(m)) { bad.push(`${m.id}: clicking its row did not open its dialog in the pane`); break; }
+      const e0 = pageErrors.length;
+      if (how === 'Escape') {
+        await pg.evaluate(() => _dialogRoot.querySelector('input,select,textarea,button')?.focus());
+        await pg.keyboard.press('Escape');
+      } else {
+        const has = await pg.evaluate(() => {
+          const b = [..._dialogRoot.querySelectorAll('button')].find(b => b.textContent.trim() === 'Cancel');
+          if (b) b.click(); return !!b;
+        });
+        if (!has) {   // no Cancel on this dialog: leave the way the Escape pass did (already checked) and move on
+          await pg.evaluate(() => _dialogRoot.querySelector('input,select,textarea,button')?.focus());
+          await pg.keyboard.press('Escape'); await pg.waitForTimeout(300); continue;
+        }
+        cancelled.push(m.id);
+      }
+      await pg.waitForTimeout(350);
+      const r = await after();
+      const errs = pageErrors.slice(e0);
+      if (!/builder-search/.test(r.focus) || !r.builderOpen || errs.length)
+        bad.push(`${m.id} via ${how}: focus on ${JSON.stringify(r.focus)}, builder ${r.builderOpen ? 'open' : 'closed'}${errs.length ? ', ' + errs.join('; ') : ''}`);
+    }
+  }
+  assert.deepEqual(bad, [], 'leaving a clicked row must hand focus back to the builder search, with no page error');
+  assert.ok(cancelled.length > 0, 'at least one member has a Cancel button, so the onCancel door is driven and not only Escape');
+
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// ── #1267: a dropped scaffold selects its first value, so the first keystroke replaces it ─────────
+// Two doors, one promise, and neither kept it. Both called a `domSelectionForChars` that never
+// existed, inside a try that swallowed the ReferenceError, so the placeholder was never selected and
+// typing landed in FRONT of it: `{Q2d6}`, `sum(Qprop)`. The recipe door had a second fault behind the
+// first: closeBuilder schedules the chrome-return a frame out, which took the caret back to the point
+// the builder was opened from, so even a working selection landed on a point no longer in edit mode.
+// Every member of each family is driven, enumerated from the app's own data.
+test('#1267 every recipe drop selects its first value inside the pill, and typing replaces it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const recipes = await pg.evaluate(() => PATTERN_RECIPES.filter(r => r.sel)
+    .map(r => ({ id: r.id, label: r.label, desc: r.desc, text: r.line || r.block.parent, sel: r.sel })));
+  assert.ok(recipes.length >= 5, `the recipe family should be the whole Patterns set, found ${recipes.length}`);
+  const bad = [], typed = {};
+  for (const r of recipes) {
+    await blankWithCaret(pg);
+    await pg.keyboard.type('@', { delay: 25 }); await pg.waitForTimeout(450);
+    await pg.fill('.builder-search', r.label); await pg.waitForTimeout(250);
+    // label AND description: "Dice roll" is also the name of the @dice command, which ranks first
+    const box = await pg.evaluate(({ label, desc }) => {
+      const it = [...ioCard.querySelectorAll('.builder-item')].find(e =>
+        e.querySelector('.cmd-label')?.textContent === label && e.querySelector('.cmd-desc')?.textContent === desc);
+      if (!it) return null;
+      it.scrollIntoView({ block: 'center' });
+      const b = it.getBoundingClientRect(); return { x: b.x + 20, y: b.y + b.height / 2 };
+    }, r);
+    if (!box) { bad.push(`${r.id}: no builder row`); continue; }
+    await pg.mouse.dblclick(box.x, box.y); await pg.waitForTimeout(450);
+    const got = await pg.evaluate(() => getSelection().toString());
+    await pg.keyboard.type('Q'); await pg.waitForTimeout(150);
+    const after = typed[r.id] = await pg.evaluate(() => nodeById(activeContentId)?.text ?? null);
+    const want = await pg.evaluate(({ text, sel }) => { const at = recipeSelRange(text, sel); return at && text.slice(0, at[0]) + 'Q' + text.slice(at[1]); }, r);
+    if (got !== r.sel || after !== want)
+      bad.push(`${r.id}: selected ${JSON.stringify(got)} (want ${JSON.stringify(r.sel)}), typing gave ${JSON.stringify(after)} (want ${JSON.stringify(want)})`);
+  }
+  assert.deepEqual(bad, [], 'a dropped recipe must select its first value and the first keystroke must replace it');
+  // The case that needed the pill-aware search, as a literal rather than through the core: the
+  // label keeps its word and the sum's property is what gets replaced.
+  assert.equal(typed['pat-sum'], 'Party gold {= sum(Q)}', 'pat-sum: typing replaces the property in the sum, not the label');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1267 every { picker scaffold selects its placeholder, and typing replaces it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const forms = await pg.evaluate(() => [...new Map(builderCmdPool('{')
+    .filter(c => c._brace && Array.isArray(c._brace.sel) && c._brace.sel[1] > c._brace.sel[0]
+      && !BUILDER_FORMS[c.id] && !BUILDER_FORMS['@' + c.id])
+    .map(c => [c.id, { id: c.id, label: c.label, insert: c._brace.insert, sel: c._brace.sel }])).values()]);
+  assert.ok(forms.length >= 10, `the scaffold family should be most of the { picker, found ${forms.length}`);
+  const bad = [];
+  for (const f of forms) {
+    await blankWithCaret(pg);
+    // The real door: { opens the inline menu, whose last row hands off to the full picker.
+    await pg.keyboard.type('Damage {', { delay: 25 }); await pg.waitForTimeout(400);
+    await pg.keyboard.press('ArrowUp'); await pg.waitForTimeout(120);
+    const browse = await pg.evaluate(() => braceState && braceState.matches[braceState.activeIdx]?.group);
+    if (browse !== 'browse') { bad.push(`${f.id}: ArrowUp did not reach the Browse row (got ${browse})`); continue; }
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+    await pg.fill('.builder-search', f.label); await pg.waitForTimeout(250);
+    for (let k = 0; k < 8; k++) {
+      if (await pg.evaluate(l => document.querySelector('.builder-item.active .cmd-label')?.textContent === l, f.label)) break;
+      await pg.keyboard.press('ArrowDown'); await pg.waitForTimeout(60);
+    }
+    const onRow = await pg.evaluate(l => document.querySelector('.builder-item.active .cmd-label')?.textContent === l, f.label);
+    if (!onRow) { bad.push(`${f.id}: could not make its row the active one`); await pg.keyboard.press('Escape'); continue; }
+    await pg.evaluate(() => document.querySelector('.builder-search').focus());
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(450);
+    const want = f.insert.slice(f.sel[0], f.sel[1]);
+    const got = await pg.evaluate(() => getSelection().toString());
+    await pg.keyboard.type('Q'); await pg.waitForTimeout(150);
+    const after = await pg.evaluate(() => root.children[0].text);
+    const wantAfter = 'Damage ' + f.insert.slice(0, f.sel[0]) + 'Q' + f.insert.slice(f.sel[1]);
+    if (got !== want || after !== wantAfter)
+      bad.push(`${f.id}: selected ${JSON.stringify(got)} (want ${JSON.stringify(want)}), typing gave ${JSON.stringify(after)} (want ${JSON.stringify(wantAfter)})`);
+  }
+  assert.deepEqual(bad, [], 'a scaffold from the { picker must select its placeholder and the first keystroke must replace it');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});

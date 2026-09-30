@@ -7,9 +7,10 @@ A single-file, offline, vanilla-JS outliner. Every point can generate (`{2d6}`) 
 ```bash
 node --test tests/test.mjs      # the gate: pure cores + source pins + drift guards, offline
 node --test tests/browser.mjs   # six checks driving real Chromium; skips cleanly without playwright
+node tools/check-undefined-names.mjs --self-test   # undefined names in the shipped code; needs eslint (see the tool's header)
 ```
 
-No build, lint, or typecheck — it's one file. The test count serves as a staleness floor: if fewer than ~2150 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it. That number is parsed out of this sentence and ratcheted by a test, so keep the phrasing.
+No build or typecheck — it's one file. The one lint is ESLint's `no-undef`, and only that: a name read but never declared throws only when its line runs, often inside a `try` that swallows it, and source pins cannot see it (they prove a name is present, not that it resolves). CI runs it in the `undefined-names` job. The test count serves as a staleness floor: if fewer than ~2150 tests pass, your base is stale. Raise this when it drifts more than a hundred or so behind — it sat at ~1400 while the suite reached 1915, so a base 500 tests old passed the check whose whole job was to fail it. That number is parsed out of this sentence and ratcheted by a test, so keep the phrasing.
 
 **The floor has a second half, and it is not optional.** A floor living in the tree is structurally blind to its own checkout being stale: a base 500 tests old carries the stale floor with it, compares 1500 against 1400, and passes. Only a number from *outside* the tree can see that, which is what the `staleness-floor` CI job does — it compares this branch's count against `origin/main`. If you touch one half, check the other.
 
