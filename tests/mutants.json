@@ -3591,6 +3591,51 @@
       "find": "    if (!/\\bsrc\\s*=/i.test(attrs) && JS_TYPES.has(type)) {",
       "replace": "    if (!/\\bsrc\\s*=/i.test(attrs)) {",
       "kills": "undefined-name gate: it lints the real app script"
+    },
+    {
+      "id": "uxp336-click-runs-the-insert",
+      "suite": "browser",
+      "why": "routing a click by the old predicate sends progress/clock/footnote to showNestedDialog, whose insertInlineArtifact IS their insert: a preview put the pill in the point",
+      "file": "index.html",
+      "find": "    const kind = builderPaneKind(cmd);   // UXP-336: a click previews; it never runs a direct insert",
+      "replace": "    const kind = (BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id]) ? 'form' : (cmd.trigger === '@' && cmd.type === 'insert') ? 'dialog' : 'guide';",
+      "kills": "UXP-336 a direct-insert builder row previews on click, and applying inserts it once, on every member"
+    },
+    {
+      "id": "uxp336-click-bypasses-the-predicate",
+      "suite": "unit",
+      "why": "loadPaneForCmd deciding for itself is how click and apply came to disagree about what a dialog is",
+      "file": "index.html",
+      "find": "    const kind = builderPaneKind(cmd);   // UXP-336: a click previews; it never runs a direct insert",
+      "replace": "    const kind = (BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id]) ? 'form' : (cmd.trigger === '@' && cmd.type === 'insert') ? 'dialog' : 'guide';",
+      "kills": "UXP-336 both builder doors route through builderPaneKind"
+    },
+    {
+      "id": "uxp336-apply-strands-the-builder",
+      "suite": "browser",
+      "why": "with the old predicate a direct insert takes the dialog branch: it inserts but the builder stays open and focus sits on the point behind it",
+      "file": "index.html",
+      "find": "    if (builderPaneKind(cmd) === 'dialog') {",
+      "replace": "    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id] && !BUILDER_FORMS['@' + cmd.id]) {",
+      "kills": "UXP-336 a direct-insert builder row previews on click, and applying inserts it once, on every member"
+    },
+    {
+      "id": "uxp336-apply-bypasses-the-predicate",
+      "suite": "unit",
+      "why": "applyBuilder deciding for itself is how click and apply came to disagree about what a dialog is",
+      "file": "index.html",
+      "find": "    if (builderPaneKind(cmd) === 'dialog') {",
+      "replace": "    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id] && !BUILDER_FORMS['@' + cmd.id]) {",
+      "kills": "UXP-336 both builder doors route through builderPaneKind"
+    },
+    {
+      "id": "uxp336-action-inserts-nothing",
+      "suite": "browser",
+      "why": "with no action branch, choosing Action button removed the trigger and inserted nothing, from every door",
+      "file": "index.html",
+      "find": "  } else if (id === 'action') {",
+      "replace": "  } else if (id === 'action-removed') {",
+      "kills": "UXP-336 @action from the inline @ menu inserts a working action instead of nothing"
     }
   ]
 }

@@ -6645,8 +6645,8 @@ an accident; no edit proposed either way.
 
 ## UXP-336 -- a single click on a builder row inserts Progress, Clock or a footnote
 
-**Status: open.** P1 / P4. Found while driving the nested-dialog focus fix (the `searchEl`
-ReferenceError in `showNestedDialog`); not in that fix's scope.
+**Status: shipped.** P1 / P4 / P3. Found while driving the nested-dialog focus fix (the `searchEl`
+ReferenceError in `showNestedDialog`); not in that fix's scope. Fix and verification below.
 
 ### The defect, driven
 
@@ -6680,3 +6680,58 @@ A click previews and never mutates the document (P1: the gesture means the same 
 and applying still announces what it did (P4). Drive all 18 members; the census in `tests/browser.mjs`
 (`leaving a dialog opened by clicking a builder row`) already enumerates them and can take the
 assertion "the point is unchanged after one click".
+
+### Measured before fixing: the click was one face of a family defect
+
+Driven on `main` for all 18 `@` rows through three gestures (click, double-click, Enter):
+
+| rows | click (preview) | double-click (apply) | Enter (apply) |
+|---|---|---|---|
+| progress, clock | inserts | inserts **twice**, garbled: `[/]/]`, `[o 0/6]o 0/6]` | inserts; builder stays open, focus on the point behind it |
+| footnote | inserts, mints a footnote | mints **two**, text `[^a]^b]` | inserts; builder stays open |
+| action | nothing | **nothing inserted**, builder stays open | same |
+| the other 14 | their dialog in the pane | unchanged by this fix | unchanged |
+
+`@action` had no branch in `insertInlineArtifact` at all, so it was a silent no-op from the inline
+`@` menu too: Enter removed `@action` and inserted nothing.
+
+### The fix
+
+One predicate, two doors. `builderPaneKind(cmd)` (pure) answers `form` / `dialog` / `guide`, and both
+`loadPaneForCmd` (a click, or focus entering the pane) and `applyBuilder` (Enter, double-click) branch
+on it, so a click can no longer run what only applying should. `DIRECT_INSERTS` names the `@` inserts
+that open no dialog. Their rows now preview the guide entry, and applying them takes the existing
+strip, `closeBuilder`, insert path: it lands once, the builder closes, and the caret sits after the
+pill. `@action` gets a branch that inserts `{hp -= 1d6}`, the working action the `{` menu's own
+`action` form already inserts (no new syntax; the same dual pattern as meter and convert).
+
+### Verification
+
+- **Census (unit):** `insertInlineArtifact`'s branches that open no dialog or picker are exactly
+  `DIRECT_INSERTS`, and every `INSERT_CMDS` id has a branch or a named, checked exemption (`table`),
+  so the next dialog-less branch or branch-less command fails a test instead of shipping.
+- **Driven:** every direct-insert row by click (point untouched, no dialog in the pane), double-click
+  and Enter (inserted exactly once, builder closed, caret after the insert). The family is enumerated
+  with `builderPaneKind`, and a new member fails until its expected insert is stated. `@action` from
+  the inline menu. The #1464 nested-dialog census now enumerates with the same predicate, and the 14
+  dialog rows measured identical before and after.
+- **Mutants:** each door routed by the old predicate (unit and browser), and the `action` branch
+  removed. All killed for the stated reason.
+
+---
+
+## UXP-337 -- applying Cite with no footnotes leaves the builder open over the hint
+
+**Status: open.** P4 / P3. Found while measuring UXP-336's family; not in its scope.
+
+`cite` is a dialog row (`openCitePicker`). With at least one footnote, a click or Enter replaces the
+builder with the Cite picker, which works. With **none**, `openCitePicker` flashes "No footnotes to
+cite yet. Choose Footnote to write one first." and returns, and the builder stays open with focus on
+the point behind it, the same stranding shape as #1464. Measured identically before and after
+UXP-336.
+
+### Target
+
+With nothing to cite, the row should say so where the user is looking (the builder pane, or the Cite
+row itself) and keep focus in the builder, or close the builder before the hint. Drive both states
+(no footnotes, one footnote) and both doors (click, Enter).

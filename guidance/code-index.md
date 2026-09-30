@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2154 declarations in 158 sections across 17 domains.**
+**2156 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1325,6 +1325,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `convertBaseToText`
 - `findFirstTableRange` — Find the FIRST static pipe-table block in a point's text, returning its [l0, l1)
 - `announceDebut` — Insert an inline artifact at the current caret (used by the "@" menu).
+- `DIRECT_INSERTS` — UXP-336: the @ inserts that open NO dialog. For these, insertInlineArtifact is the insert itself,
+- `builderPaneKind` — UXP-336: what the builder's right pane shows for a command, and so what applying it does. One
 - `insertInlineArtifact`
 
 ## "@" insert menu inside base cells

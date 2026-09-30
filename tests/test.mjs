@@ -22190,6 +22190,47 @@ test('#1267 the recipe drop selects through recipeSelRange, and the builder does
     'the pattern branch disarms the chrome-return BEFORE closeBuilder');
 });
 
+// ── UXP-336: a builder row previews on click; only applying it inserts ─────────────────────────
+test('UXP-336 builderPaneKind: a click previews, and only a real dialog is run from the pane', () => {
+  const at = (id) => c.builderPaneKind({ id, trigger: '@', type: 'insert' });
+  assert.equal(c.builderPaneKind(null), null);
+  assert.equal(at('meter'), 'form', 'a BUILDER_FORMS command shows its form');
+  assert.equal(at('dice'), 'dialog', 'a dialog command shows its dialog, which inserts nothing until it submits');
+  assert.equal(at('cite'), 'dialog', 'cite opens a picker: a dialog, not a direct insert');
+  for (const id of ['progress', 'clock', 'footnote', 'action'])
+    assert.equal(at(id), 'guide', `${id} inserts directly, so its row previews the guide entry`);
+  assert.equal(c.builderPaneKind({ id: 'todo', trigger: '/', type: 'block' }), 'guide', 'a / command is never an @ dialog');
+});
+
+test('UXP-336 census: the dialog-less @ inserts are exactly DIRECT_INSERTS, and every @ command lands somewhere', () => {
+  // Read insertInlineArtifact's branches. A branch that opens no dialog or picker IS the insert, so
+  // the builder must never call it to preview; that is what DIRECT_INSERTS tells builderPaneKind.
+  const body = fnBody(_src, 'insertInlineArtifact');
+  const heads = nonEmpty([...body.matchAll(/(?:if|else if) \(id === '([\w-]+)'\) \{/g)], 'insertInlineArtifact branches');
+  const branches = heads.map((m, i) => ({ id: m[1], body: body.slice(m.index, i + 1 < heads.length ? heads[i + 1].index : body.length) }));
+  const dialogless = branches.filter(b => !/\bopen\w*(?:Dialog|Picker)\(/.test(b.body)).map(b => b.id).sort();
+  const direct = [...between(_src, 'const DIRECT_INSERTS = new Set([', '])').matchAll(/'([\w-]+)'/g)].map(m => m[1]).sort();
+  assert.deepEqual(direct, dialogless, 'every branch that inserts without a dialog is listed in DIRECT_INSERTS, and nothing else is');
+  // The other half: @action had NO branch, so choosing it removed the trigger and inserted nothing,
+  // from both the @ menu and the builder. Every @ command has a branch or a named, checked exemption.
+  const ids = nonEmpty([...between(_src, 'const INSERT_CMDS = [', '\n];').matchAll(/^\s*\{ id:\s*'([\w-]+)'/gm)].map(m => m[1]), 'INSERT_CMDS ids');
+  const EXEMPT = { table: "trigger === '@' && cmd.id === 'table'" };   // slashApply opens the grid picker
+  for (const [id, handler] of Object.entries(EXEMPT)) assert.ok(_src.includes(handler), `${id}: its exemption names a handler that exists`);
+  const have = new Set(branches.map(b => b.id));
+  assert.deepEqual(ids.filter(id => !have.has(id) && !(id in EXEMPT)), [], 'an @ command with no branch is a silent no-op');
+});
+
+test('UXP-336 both builder doors route through builderPaneKind, and @action inserts what the { menu does', () => {
+  const load = fnBody(_src, 'loadPaneForCmd');
+  assert.ok(load.includes('builderPaneKind(cmd)'), 'a click (or focus entering the pane) routes through the one predicate');
+  assert.ok(fnBody(_src, 'applyBuilder').includes("if (builderPaneKind(cmd) === 'dialog') {"), 'and so does applying');
+  const actionBranch = between(fnBody(_src, 'insertInlineArtifact'), "} else if (id === 'action') {", '} else if (');
+  const atInsert = (/applyInlineInsertion\(nodeId, offset, '([^']+)'\)/.exec(actionBranch) || [])[1];
+  const braceInsert = (/label:'action',.*?insert:'([^']+)'/.exec(_src) || [])[1];
+  assert.ok(atInsert && braceInsert, 'both action inserts are found');
+  assert.equal(atInsert, braceInsert, 'the @ door and the { door insert the same working action');
+});
+
 test('#1267 palette is wired into the Builder (Patterns section, front-door lead, recipe apply path)', () => {
   assert.ok(/for \(const r of PATTERN_RECIPES\)/.test(_src), 'the Builder pool ingests the recipes');
   assert.ok(/type: 'pattern', _section: 'Patterns'/.test(_src), 'recipes form their own Patterns section');
