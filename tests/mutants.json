@@ -3510,6 +3510,69 @@
       "find": "const SHELL = './index.html';",
       "replace": "const SHELL = './';",
       "kills": "the service worker caches ONE copy of the shell"
+    },
+    {
+      "id": "adopt-undeclared-focus-id",
+      "suite": "browser",
+      "why": "connectAdoptExisting passed a restoreFocusId no scope declared: the ReferenceError failed every connect-by-opening while every source pin on the function stayed green",
+      "file": "index.html",
+      "find": "    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh });   // renders, marks clean, sets the title",
+      "replace": "    adoptDoc(fileRoot, { fileName: name, fileHandle: fh, workspaceFile: fh, restoreFocusId });   // renders, marks clean, sets the title",
+      "kills": "#839 connecting a folder that already holds this document opens it"
+    },
+    {
+      "id": "nested-dialog-cancel-out-of-scope",
+      "suite": "browser",
+      "why": "#1464's focus return was copied into showNestedDialog, where the builder's searchEl is not in scope: every Escape/Cancel from a CLICKED row threw and focus fell behind the modal, while the Enter-path copy and its mutant stayed green",
+      "file": "index.html",
+      "find": "  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); const searchEl = ioCard.querySelector('.builder-search'); if (searchEl && searchEl.isConnected) searchEl.focus(); };",
+      "replace": "  _dialogCancel = () => { builderRestoreTrigger(); renderBuilderPane(cmd); if (searchEl && searchEl.isConnected) searchEl.focus(); };",
+      "kills": "#1464 leaving a dialog opened by clicking a builder row returns focus to the builder, on every member"
+    },
+    {
+      "id": "recipe-sel-plain-indexof",
+      "suite": "unit",
+      "why": "a plain indexOf selects the first occurrence of the value anywhere in the point, which for pat-sum is the word in its LABEL, not the one in the pill",
+      "file": "index.html",
+      "find": "      const r = recipeSelRange(editableText(el), recipe.sel);",
+      "replace": "      const raw = editableText(el), i = raw.indexOf(recipe.sel), r = i < 0 ? null : [i, i + recipe.sel.length];",
+      "kills": "the recipe drop selects through recipeSelRange"
+    },
+    {
+      "id": "recipe-chrome-return-after-close",
+      "suite": "unit",
+      "why": "disarming the chrome-return AFTER closeBuilder is too late: closeBuilder has already scheduled it, and a frame later it takes the caret back to the point the builder was opened from",
+      "file": "index.html",
+      "find": "      chromeReturn = null;\n      closeBuilder();\n      insertRecipe(cmd._recipe, pst.nodeId);",
+      "replace": "      closeBuilder();\n      chromeReturn = null;\n      insertRecipe(cmd._recipe, pst.nodeId);",
+      "kills": "the recipe drop selects through recipeSelRange"
+    },
+    {
+      "id": "recipe-selection-never-made",
+      "suite": "browser",
+      "why": "the original fault: the recipe drop called a domSelectionForChars that never existed, inside a try that swallowed the ReferenceError, so no recipe ever selected its first value",
+      "file": "index.html",
+      "find": "      if (r) selectLogicalRange(el, r[0], r[1]);",
+      "replace": "      if (r) domSelectionForChars(el, r[0], r[1]);",
+      "kills": "#1267 every recipe drop selects its first value inside the pill, and typing replaces it"
+    },
+    {
+      "id": "recipe-caret-taken-back",
+      "suite": "browser",
+      "why": "without the disarm, closeBuilder's chrome-return fires a frame after insertRecipe and puts the caret back in the point the builder was opened from, so the recipe's point leaves edit mode and nothing is selected",
+      "file": "index.html",
+      "find": "      chromeReturn = null;\n      closeBuilder();\n      insertRecipe(cmd._recipe, pst.nodeId);",
+      "replace": "      closeBuilder();\n      insertRecipe(cmd._recipe, pst.nodeId);",
+      "kills": "#1267 every recipe drop selects its first value inside the pill, and typing replaces it"
+    },
+    {
+      "id": "brace-picker-selection-never-made",
+      "suite": "browser",
+      "why": "the original fault: the { picker called a domSelectionForChars that never existed, so the placeholder was never selected and typing landed in front of it ({Q2d6})",
+      "file": "index.html",
+      "find": "            selectLogicalRange(st.content, spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]);",
+      "replace": "            domSelectionForChars(st.content, spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]);",
+      "kills": "#1267 every { picker scaffold selects its placeholder, and typing replaces it"
     }
   ]
 }

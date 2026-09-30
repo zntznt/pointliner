@@ -6640,3 +6640,43 @@ guide because "Esc, Esc, nothing happened" read as broken, and the essential sho
 `Esc: close panel`. But the two panels are the same two-pane shape, and P1 says a key means the same
 thing everywhere, so one of them should give. Filed so the split is a recorded decision rather than
 an accident; no edit proposed either way.
+
+---
+
+## UXP-336 -- a single click on a builder row inserts Progress, Clock or a footnote
+
+**Status: open.** P1 / P4. Found while driving the nested-dialog focus fix (the `searchEl`
+ReferenceError in `showNestedDialog`); not in that fix's scope.
+
+### The defect, driven
+
+Type `@` at the start of a blank point, search `Progress`, and **click** the row once. In the builder
+a click selects a row and shows it in the pane; double-click (or Enter) applies it (the comment on the
+`nav` `dblclick` listener says so). For 15 of the 18 `@` commands routed to `showNestedDialog` that
+holds: the pane shows the command's dialog and the point is untouched. For three of them the click
+**edits the document**:
+
+| command | the point after one click |
+|---|---|
+| `progress` | `[/]` |
+| `clock` | `[o 0/6]` |
+| `footnote` | `[^<id>]` |
+
+Escape does not undo it, and closing the builder keeps it. Focus then lands on the toolbar's
+verbosity control (`.v-guided`), not the point. The same stale state also affects the next dialog:
+browse Progress, then click `Define a variable` and press Escape, and focus lands on `.v-guided` as
+well, where on a fresh builder it returns to the point. Measured identically before and after the
+`searchEl` fix, so that fix neither caused nor changed it.
+
+### Why
+
+`loadPaneForCmd` routes every dialog-less `@` insert to `showNestedDialog`, which ends in
+`insertInlineArtifact(cmd.id, ...)`. For commands whose insert has no dialog, that call **is** the
+insert. A preview gesture ran the apply path.
+
+### Target
+
+A click previews and never mutates the document (P1: the gesture means the same thing on every row),
+and applying still announces what it did (P4). Drive all 18 members; the census in `tests/browser.mjs`
+(`leaving a dialog opened by clicking a builder row`) already enumerates them and can take the
+assertion "the point is unchanged after one click".

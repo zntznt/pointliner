@@ -22147,6 +22147,48 @@ test('#1267 recipeToNodes — a line drops one point; a block drops a parent ove
   assert.ok(chk && chk.val === 'sum(cost) <= 100', 'the check becomes a real check prop on the parent');
 });
 
+test('#1267 recipeSelRange: the first value is found INSIDE the pill, not wherever the word first appears', () => {
+  const rs = (t, s) => host(c.recipeSelRange(t, s));
+  // The case a plain indexOf got wrong: the label shares the word, and the label comes first.
+  assert.deepEqual(rs('Party gold {= sum(gold)}', 'gold'), [18, 22], 'the gold in the sum, not the label');
+  assert.deepEqual(rs('Damage {2d6}', '2d6'), [8, 11]);
+  assert.deepEqual(rs('x {y} {x}', 'x'), [7, 8], 'a later pill is searched when the first match is outside');
+  assert.deepEqual(rs('Attack {swing := 2d6+2 vs 2d6+1}', '2d6+2'), [17, 22]);
+  assert.equal(rs('gold only', 'gold'), null, 'no pill: nothing to select');
+  assert.equal(rs('a {x}', '{x}'), null, 'the braces themselves are not the value');
+  assert.equal(rs('{a} b', 'a} b'), null, 'a match that runs out of the pill does not count');
+  assert.equal(rs(null, 'a'), null);
+  assert.equal(rs('a', ''), null);
+  assert.equal(rs('a', null), null);
+});
+
+test('#1267 every recipe that selects a first value finds it inside its own pill (census)', () => {
+  const withSel = nonEmpty((_PATTERN_RECIPES || []).filter(r => r.sel), 'recipes that select a first value');
+  for (const r of withSel) {
+    const text = r.line || r.block.parent;
+    const at = c.recipeSelRange(text, r.sel);
+    assert.ok(at, `${r.id}: its sel ${JSON.stringify(r.sel)} must sit inside a pill of ${JSON.stringify(text)}`);
+    assert.equal(text.slice(at[0], at[1]), r.sel, `${r.id}: the range covers exactly the sel`);
+  }
+  // Not vacuous: the set really contains a recipe a plain indexOf would have mis-selected.
+  assert.ok(withSel.some(r => { const t = r.line || r.block.parent; return t.indexOf(r.sel) !== c.recipeSelRange(t, r.sel)[0]; }),
+    'at least one shipped recipe (pat-sum) has its sel word outside the pill first');
+});
+
+test('#1267 the recipe drop selects through recipeSelRange, and the builder does not take the caret back', () => {
+  // The selection used to call a domSelectionForChars that never existed, inside a try that swallowed
+  // the ReferenceError. The driven check in browser.mjs proves the behaviour; these pin the call sites
+  // so the unit gate sees a regression too.
+  const ir = fnBody(_src, 'insertRecipe');
+  assert.ok(ir.includes('recipeSelRange(editableText(el), recipe.sel)'), 'the drop finds the value with the pill-aware core');
+  assert.ok(ir.includes('selectLogicalRange(el, r[0], r[1])'), 'and selects it with the shared logical-range helper');
+  assert.ok(ir.includes('[data-editing]'), 'only on a point in edit mode, where the pill shows its source');
+  // applyBuilder: closeBuilder schedules the chrome-return a frame out, so it must be disarmed first.
+  const branch = between(fnBody(_src, 'applyBuilder'), "if (cmd.type === 'pattern' && cmd._recipe) {", 'insertRecipe(cmd._recipe, pst.nodeId);');
+  assert.ok(nonEmptyIdx(branch, 'chromeReturn = null;') < nonEmptyIdx(branch, 'closeBuilder();'),
+    'the pattern branch disarms the chrome-return BEFORE closeBuilder');
+});
+
 test('#1267 palette is wired into the Builder (Patterns section, front-door lead, recipe apply path)', () => {
   assert.ok(/for \(const r of PATTERN_RECIPES\)/.test(_src), 'the Builder pool ingests the recipes');
   assert.ok(/type: 'pattern', _section: 'Patterns'/.test(_src), 'recipes form their own Patterns section');
