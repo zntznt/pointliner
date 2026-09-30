@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { brotliDecompressSync } from 'node:zlib';
 import { loadCores } from './load-cores.mjs';
+import { inlineScripts, atPosition, allowedGlobals, CONFUSABLE_GLOBALS } from '../tools/check-undefined-names.mjs';
 
 const c = loadCores();
 
@@ -28947,6 +28948,47 @@ test('every CI job in tests.yml is bounded by a timeout', () => {
   });
   assert.deepEqual(unbounded, [],
     'a CI job with no timeout-minutes can wedge for six hours and still look like it is working');
+});
+
+// ── the undefined-name gate (tools/check-undefined-names.mjs) ────────────────────────────────────
+// The lint itself needs ESLint, which CI installs for its own job. What can be proved offline, here,
+// is everything the gate's verdict depends on besides ESLint: that it reads the RIGHT code at the
+// RIGHT positions, and that CI runs it in the mode that first proves it can fail.
+test('undefined-name gate: it lints the real app script, at index.html coordinates', () => {
+  const scripts = nonEmpty(inlineScripts(_src), 'inline JavaScript found in index.html');
+  const app = scripts.find(s => s.code.includes('function connectAdoptExisting('));
+  assert.ok(app, 'the app script is among what the gate lints');
+  // The XML data island is not code: nothing linted starts on its line.
+  const islandLine = _src.slice(0, nonEmptyIdx(_src, '<script type="application/xml" id="pl-embedded-doc">')).split('\n').length;
+  assert.ok(scripts.every(s => s.line !== islandLine), 'the XML data island is never linted as JavaScript');
+  // A finding's line must be index.html's line, or the report points somewhere else.
+  const padded = atPosition(app.code, app.line, app.col);
+  const at = padded.indexOf('function connectAdoptExisting(');
+  assert.equal(padded.slice(0, at).split('\n').length, _src.slice(0, _src.indexOf('function connectAdoptExisting(')).split('\n').length,
+    'a declaration is reported on the line it has in index.html');
+});
+
+test('undefined-name gate: comments, data islands and src scripts are not code; modules are modules', () => {
+  const html = '<!-- mentions <script>no()</script> -->\n<script type="application/xml">x</script>\n'
+    + '<script src="a.js"></script>\n<SCRIPT>one()</SCRIPT>\n<script type="module">two()</script>';
+  assert.deepEqual(host(inlineScripts(html).map(s => [s.code, s.line, s.module])), [['one()', 4, false], ['two()', 5, true]]);
+  // The confusable window globals are exactly what a missing `const name` would silently read.
+  const g = allowedGlobals({ name: false, status: false, event: false, document: false, window: false });
+  assert.deepEqual(Object.keys(g).sort(), ['document', 'window'], 'name/status/event must not resolve as globals');
+  const mustDeny = nonEmpty(['name', 'status', 'event', 'top', 'parent', 'length'], 'window globals that are everyday local names');
+  assert.deepEqual(mustDeny.filter(k => !CONFUSABLE_GLOBALS.includes(k)), [], 'each is denied');
+});
+
+test('undefined-name gate: CI runs it after proving it can fail, on the versions the tool names', () => {
+  const steps = _wfTests.slice(nonEmptyIdx(_wfTests, '\n  undefined-names:'));
+  assert.ok(/run: node tools\/check-undefined-names\.mjs --self-test\n/.test(steps),
+    'the job runs the gate WITH --self-test, which must see it fail on known cases before a pass counts');
+  const pinned = (txt) => (/eslint@(\d+\.\d+\.\d+) globals@(\d+\.\d+\.\d+)/.exec(txt) || []).slice(1).join(' ');
+  const tool = readFileSync(new URL('../tools/check-undefined-names.mjs', import.meta.url), 'utf8');
+  assert.ok(pinned(steps), 'CI pins exact eslint and globals versions');
+  assert.equal(pinned(tool), pinned(steps), 'the versions the tool tells a developer to install are the ones CI runs');
+  // It needs the network, so it must not sit among the jobs pinned offline.
+  assert.ok(_wfTests.indexOf('\n  undefined-names:') > _wfTests.indexOf('\n  browser-smoke:'), 'after browser-smoke, outside the offline span');
 });
 
 test('#1427 a skipped browser smoke cannot pass in CI', () => {

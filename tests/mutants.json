@@ -3573,6 +3573,24 @@
       "find": "            selectLogicalRange(st.content, spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]);",
       "replace": "            domSelectionForChars(st.content, spliceOff + cmd._brace.sel[0], spliceOff + cmd._brace.sel[1]);",
       "kills": "#1267 every { picker scaffold selects its placeholder, and typing replaces it"
+    },
+    {
+      "id": "undefined-names-gate-unproven",
+      "suite": "unit",
+      "why": "without --self-test the job can pass while linting nothing (the first draft did exactly that: flat config matched no .html filename and returned a notice instead of findings)",
+      "file": ".github/workflows/tests.yml",
+      "find": "      - run: node tools/check-undefined-names.mjs --self-test",
+      "replace": "      - run: node tools/check-undefined-names.mjs",
+      "kills": "undefined-name gate: CI runs it after proving it can fail"
+    },
+    {
+      "id": "undefined-names-lints-the-data-island",
+      "suite": "unit",
+      "why": "a script tag is not JavaScript because it is a script tag: the application/xml island would be parsed as code, and a document embedded there would fail the gate for being a document",
+      "file": "tools/check-undefined-names.mjs",
+      "find": "    if (!/\\bsrc\\s*=/i.test(attrs) && JS_TYPES.has(type)) {",
+      "replace": "    if (!/\\bsrc\\s*=/i.test(attrs)) {",
+      "kills": "undefined-name gate: it lints the real app script"
     }
   ]
 }
