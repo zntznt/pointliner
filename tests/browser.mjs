@@ -6637,7 +6637,8 @@ test('#839 connecting a folder that already holds this document opens it', { ski
 // fell to the point BEHIND the still-open modal -- #1464 exactly, on the path its fix did not reach.
 // The existing #1464 check drives the Enter path only, which is why this one drives the click.
 //
-// The family is enumerated from the same predicate loadPaneForCmd routes on, and every member is
+// The family is enumerated with builderPaneKind, the predicate loadPaneForCmd routes on (UXP-336
+// took the direct inserts out of it: their rows preview and open no dialog), and every member is
 // browsed in ONE builder session (click, leave, click the next), which is how the list is used.
 // `var` is the measured exception: its dialog closes the builder outright and hands the caret back
 // to the point, so nothing is stranded; it is pinned as that, not skipped.
@@ -6649,7 +6650,7 @@ test('#1464 leaving a dialog opened by clicking a builder row returns focus to t
   assert.equal(await pg.evaluate(() => document.activeElement.classList.contains('builder-search')), true,
     'precondition: @ at the start of a point opens the builder');
   const family = await pg.evaluate(() => [...new Map(builderCmdPool('@')
-    .filter(c => c.trigger === '@' && c.type === 'insert' && !BUILDER_FORMS[c.id] && !BUILDER_FORMS['@' + c.id])
+    .filter(c => builderPaneKind(c) === 'dialog')
     .map(c => [c.id, { id: c.id, label: c.label, desc: c.desc || '' }])).values()]);
   assert.ok(family.length >= 10, `the nested-dialog family should be most of the @ inserts, found ${family.length}`);
 
@@ -6671,9 +6672,9 @@ test('#1464 leaving a dialog opened by clicking a builder row returns focus to t
     builderOpen: !!ioCard.querySelector('.builder-search'),
   }));
 
-  // The measured exception, taken FIRST on a fresh builder: `var` closes the builder and returns the
-  // caret to the point. Browsing Progress/Clock/footnote first changes this (UXP-336: a click on those
-  // rows inserts), so the order is deliberate, not incidental.
+  // The measured exception, taken first on a fresh builder: `var` closes the builder and returns the
+  // caret to the point. (Before UXP-336, browsing Progress, Clock or footnote first changed this,
+  // because a click on those rows inserted.)
   const v = family.find(m => m.id === 'var');
   assert.ok(v, 'var is in the family (it is the one member pinned as an exception)');
   assert.ok(await clickRow(v), 'var: clicking its row opens its dialog');
@@ -6795,6 +6796,79 @@ test('#1267 every { picker scaffold selects its placeholder, and typing replaces
       bad.push(`${f.id}: selected ${JSON.stringify(got)} (want ${JSON.stringify(want)}), typing gave ${JSON.stringify(after)} (want ${JSON.stringify(wantAfter)})`);
   }
   assert.deepEqual(bad, [], 'a scaffold from the { picker must select its placeholder and the first keystroke must replace it');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// ── UXP-336: a direct-insert builder row previews on a click and inserts once when applied ───────
+// progress, clock and footnote open no dialog: insertInlineArtifact IS their insert. The builder
+// called it to PREVIEW a clicked row, so a click put the pill in the point, a double-click (click,
+// then apply) put it in twice and garbled it (`[/]/]`, two footnotes minted), and Enter inserted but
+// left the builder open with focus on the point behind it. @action had no branch at all and inserted
+// nothing from any door. The family is every row builderPaneKind previews as a guide entry, and each
+// member must say what it inserts: a new one fails here until someone decides.
+test('UXP-336 a direct-insert builder row previews on click, and applying inserts it once, on every member', { skip: skip() }, async () => {
+  const INSERTS = { progress: /^\[\/\]$/, clock: /^\[o 0\/6\]$/, action: /^\{hp -= 1d6\}$/, footnote: /^\[\^[a-z0-9]+\]$/ };
+  const pg = await fresh();
+  const family = await pg.evaluate(() => [...new Map(builderCmdPool('@')
+    .filter(c => c.trigger === '@' && c.type === 'insert' && builderPaneKind(c) === 'guide')
+    .map(c => [c.id, { id: c.id, label: c.label, desc: c.desc || '' }])).values()]);
+  assert.deepEqual(family.map(m => m.id).filter(id => !(id in INSERTS)), [],
+    'every direct-insert row states what it inserts (add it to INSERTS)');
+  assert.ok(family.length >= 4, `found ${family.length} direct-insert rows`);
+  const openOn = async (m) => {
+    await blankWithCaret(pg);
+    await pg.keyboard.type('@', { delay: 25 }); await pg.waitForTimeout(450);
+    await pg.fill('.builder-search', m.label); await pg.waitForTimeout(250);
+    return pg.evaluate(({ label, desc }) => {
+      const it = [...ioCard.querySelectorAll('.builder-item')].find(e =>
+        e.querySelector('.cmd-label')?.textContent === label && e.querySelector('.cmd-desc')?.textContent === desc);
+      if (!it) return null;
+      it.scrollIntoView({ block: 'center' });
+      const r = it.getBoundingClientRect(); return { x: r.x + 20, y: r.y + r.height / 2 };
+    }, m);
+  };
+  const look = () => pg.evaluate(() => ({ text: root.children.map(n => n.text).join(' | '),
+    builderOpen: !!ioCard.querySelector('.builder-search'), dialog: !!_dialogRoot,
+    caret: document.activeElement.classList.contains('node-content') ? [getCaretOffset(document.activeElement), editableText(document.activeElement).length] : null }));
+  const bad = [];
+  for (const m of family) {
+    // 1. a click previews: the point is untouched and the pane holds no dialog
+    let box = await openOn(m);
+    if (!box) { bad.push(`${m.id}: no builder row`); continue; }
+    await pg.mouse.click(box.x, box.y); await pg.waitForTimeout(400);
+    let r = await look();
+    if (r.text !== '@' || !r.builderOpen || r.dialog) bad.push(`${m.id} click: point ${JSON.stringify(r.text)}, builder ${r.builderOpen ? 'open' : 'closed'}${r.dialog ? ', a dialog in the pane' : ''}`);
+    // 2. applying (double-click, and Enter) inserts exactly once and closes the builder
+    for (const how of ['dblclick', 'Enter']) {
+      box = await openOn(m);
+      if (how === 'dblclick') await pg.mouse.dblclick(box.x, box.y);
+      else {
+        await pg.mouse.click(box.x, box.y); await pg.waitForTimeout(200);   // make it the active row
+        await pg.evaluate(() => document.querySelector('.builder-search').focus());
+        await pg.keyboard.press('Enter');
+      }
+      await pg.waitForTimeout(450);
+      r = await look();
+      if (!INSERTS[m.id].test(r.text) || r.builderOpen) bad.push(`${m.id} ${how}: point ${JSON.stringify(r.text)}, builder ${r.builderOpen ? 'open' : 'closed'}`);
+      // the caret is in the point, after what was inserted (a footnote hands focus to its note instead)
+      if (m.id !== 'footnote' && !(r.caret && r.caret[0] === r.caret[1] && r.caret[1] > 0)) bad.push(`${m.id} ${how}: caret ${JSON.stringify(r.caret)}, not after the insert`);
+      await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);
+    }
+  }
+  assert.deepEqual(bad, [], 'a click previews a direct-insert row; applying it inserts once and closes the builder');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('UXP-336 @action from the inline @ menu inserts a working action instead of nothing', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.evaluate(() => { verbosity = 'standard'; });   // the inline menu is the Standard tier's @ door
+  await pg.keyboard.type('@action', { delay: 30 }); await pg.waitForTimeout(400);
+  assert.equal(await pg.evaluate(() => slashState && slashState.matches[slashState.activeIdx]?.id), 'action', 'the menu offers Action button first');
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(400);
+  assert.equal(await pg.evaluate(() => root.children[0].text), '{hp -= 1d6}');
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });

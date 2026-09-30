@@ -24473,6 +24473,24 @@ function announceDebut(type, rec, node) {
   }
   announce(msg);
 }
+// UXP-336: the @ inserts that open NO dialog. For these, insertInlineArtifact is the insert itself,
+// so the builder must not call it to PREVIEW a row: a single click used to put the pill in the
+// point (and a double-click, click then apply, put it in twice). A census test reads the branches
+// below and fails if a dialog-less branch is added without being listed here. meter and convert
+// belong for the same reason; the builder routes them to their BUILDER_FORMS form before this matters.
+const DIRECT_INSERTS = new Set(['progress', 'clock', 'footnote', 'action', 'meter', 'convert']);
+// UXP-336: what the builder's right pane shows for a command, and so what applying it does. One
+// answer for both doors: loadPaneForCmd (a click, or focus entering the pane) and applyBuilder
+// (Enter, double-click) branch on this, so a click can never run what only applying should.
+//   'form'   an embedded BUILDER_FORMS form
+//   'dialog' the command's own dialog, rendered into the pane (nothing is inserted until it submits)
+//   'guide'  the guide entry; applying inserts directly and closes the builder
+function builderPaneKind(cmd) {
+  if (!cmd) return null;
+  if (BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id]) return 'form';
+  if (cmd.trigger === '@' && cmd.type === 'insert' && !DIRECT_INSERTS.has(cmd.id)) return 'dialog';
+  return 'guide';
+}
 function insertInlineArtifact(id, nodeId, content) {
   const node = nodeById(nodeId);
   if (!node) return;
@@ -24670,6 +24688,11 @@ function insertInlineArtifact(id, nodeId, content) {
     // a clock is plain text in the same [...] family (no sidecar) — insert [o 0/6],
     // the Blades default; edit the 6 for any size, click a segment to advance. #646.
     applyInlineInsertion(nodeId, offset, '[o 0/6]');
+  } else if (id === 'action') {
+    // UXP-336: an action pill is plain {…} text (no sidecar). Insert the working example that the brace
+    // menu's own `action` form inserts, the same dual pattern as meter below. This had no branch at all, so
+    // choosing Action button from the @ menu or the builder removed the trigger and inserted nothing.
+    applyInlineInsertion(nodeId, offset, '{hp -= 1d6}');
   } else if (id === 'meter') {
     // a meter is plain text (no sidecar), computed live. agent-review: insert the LITERAL
     // {meter: 8/12} — a working bar you edit in place — not the property-bound {meter: hp/hpmax},
@@ -46291,8 +46314,10 @@ function openBuilder(trigger) {
     const node = nodeById(st.nodeId);
     if (!node || !st.content) { closeBuilder(); return; }
     // Commands that open the standard dialog harness: render the dialog form
-    // in the right pane via _dialogRoot so it stays embedded in the builder.
-    if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id] && !BUILDER_FORMS['@' + cmd.id]) {
+    // in the right pane via _dialogRoot so it stays embedded in the builder. A direct insert
+    // (UXP-336) is not one: it falls through to the shared strip + closeBuilder + insert below, so
+    // it lands once, the builder closes, and the caret is in the point rather than behind the modal.
+    if (builderPaneKind(cmd) === 'dialog') {
       // If form is already showing from browse, just submit it
       if (_dialogFormEl && !_dialogFormEl.disabled) { _dialogFormEl.click(); return; }
       // Otherwise strip trigger text and open the form
@@ -46483,13 +46508,10 @@ function openBuilder(trigger) {
     }
     if (!cmd) return;
     if (_restoreState) builderRestoreTrigger();
-    if (BUILDER_FORMS[cmd.id] || BUILDER_FORMS['@' + cmd.id]) {
-      showBuilderForm(cmd, pane);
-    } else if (cmd.trigger === '@' && cmd.type === 'insert' && !BUILDER_FORMS[cmd.id]) {
-      showNestedDialog(cmd, pane);
-    } else {
-      renderBuilderPane(cmd);
-    }
+    const kind = builderPaneKind(cmd);   // UXP-336: a click previews; it never runs a direct insert
+    if (kind === 'form') showBuilderForm(cmd, pane);
+    else if (kind === 'dialog') showNestedDialog(cmd, pane);
+    else renderBuilderPane(cmd);
   }
   pane.addEventListener('focus', () => {
     const vis = visibleCmds();
