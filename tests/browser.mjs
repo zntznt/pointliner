@@ -3242,8 +3242,26 @@ test('#1501 a colon-less generate keyword survives whole, and the repair does no
       const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
       window.__live = []; const el = document.getElementById('a11y-live');
       new MutationObserver(() => window.__live.push(el.textContent)).observe(el, { childList: true, characterData: true, subtree: true });
+      // DIAGNOSIS, not assertion. This check has failed in CI on unrelated PRs (4d913df, run 1694,
+      // PR #1577) and never locally -- not in the full suite, not on CI's own Chromium 131, not
+      // under 6x CPU throttling. On #1577 the cue did not paint in a 15 s wait, so it is not slow
+      // painting. Two shapes remain and fit every observation, because edit mode shows the raw
+      // text and so the text asserts pass either way: (a) the Escape never committed (an inline
+      // menu or some other layer took it), or (b) it committed and something re-entered edit
+      // before the first poll. These listeners only record; they change nothing. On failure they
+      // go into the assertion message, since CI prints only that.
+      window.__trace = []; const t0 = performance.now();
+      const at = () => Math.round(performance.now() - t0);
+      document.addEventListener('focusin', ev => window.__trace.push({ at: at(), ev: 'focusin',
+        on: (ev.target.tagName + '.' + ev.target.className).slice(0, 60), stack: (new Error().stack || '').split('\n').slice(2, 7).map(x => x.trim().split(' ')[1]).join(' < ') }), true);
+      new MutationObserver(ms => { for (const m of ms) window.__trace.push({ at: at(), ev: m.target.dataset.editing ? 'edit-on' : 'edit-off', row: m.target.dataset.id }); })
+        .observe(document.getElementById('outline'), { subtree: true, attributes: true, attributeFilter: ['data-editing'] });
     });
     await pg.keyboard.type(text, { delay: 12 });
+    await pg.evaluate(() => { window.__atEscape = {
+      menus: INLINE_MENU_NAV.map((m, i) => (m.open() ? i : -1)).filter(i => i >= 0),
+      active: (document.activeElement.tagName + '.' + document.activeElement.className).slice(0, 60),
+      overlay: getComputedStyle(document.getElementById('io-back')).display, t: window.__trace.length }; });
     await pg.keyboard.press('Escape');
     const escapedAt = Date.now();
     // WAIT FOR THE CUE, not for a number. This was a flat waitForTimeout(2200), which is a bet on
@@ -3266,11 +3284,18 @@ test('#1501 a colon-less generate keyword survives whole, and the repair does no
     rendered: document.querySelector('.node-content')?.innerText.replace(/\s+/g, ' ').trim(),
     attempt: !!document.querySelector('.brace-attempt'),
     said: window.__live.filter(Boolean),
+    diag: { atEscape: window.__atEscape, afterEscape: window.__trace.slice(window.__atEscape.t),
+      editingNow: !!document.querySelector('.node-content[data-editing]'),
+      active: (document.activeElement.tagName + '.' + document.activeElement.className).slice(0, 60),
+      classify: classifyBraceBody('3x {a|b}', collectRules(), collectVars()),
+      row: document.querySelector('.node-content')?.innerHTML.slice(0, 240) },
   }));
   assert.equal(after.text, 'M2 {3x {a|b}}', 'the form must survive whole, not be taken apart around a promoted inner pill');
   assert.doesNotMatch(after.text, /\[\[grammar:/, 'nothing inside it may be promoted');
   assert.equal(after.rendered, 'M2 {3x {a|b}}', 'and it reads back as what was typed');
-  assert.equal(after.attempt, true, 'it carries the attempt cue, the way {rule x {a|b}} already does');
+  assert.equal(after.attempt, true, 'it carries the attempt cue, the way {rule x {a|b}} already does. '
+    + 'Diagnosis (menus open at Escape are INLINE_MENU_NAV indexes; afterEscape is every focus and edit-mode change since): '
+    + JSON.stringify(after.diag));
   assert.ok(after.said.some(m => /needs a colon after 3x/.test(m)),
     `the cue must say what is wrong, got ${JSON.stringify(after.said)}`);
   for (const m of after.said) assert.doesNotMatch(m, /Nice, that is a live pill/,
