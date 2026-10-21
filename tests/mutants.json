@@ -3807,6 +3807,87 @@
       "find": "  _checkVerdicts.clear();\n  autosaveDisabled = false; storageWarnState = null;",
       "replace": "  autosaveDisabled = false; storageWarnState = null;",
       "kills": "#1581 the check-flip memory belongs to one document"
+    },
+    {
+      "id": "inbox-head-drops-empty-slots",
+      "suite": "unit",
+      "why": "the #1582 defect itself: a per-item validator on the head read filters the empty-slot nulls, so every inbox past an empty slot moves down a number after a reopen",
+      "file": "index.html",
+      "find": "const slots = normalizeInboxSlots(headJSONArray(doc, '_inboxes'));",
+      "replace": "const slots = headJSONArray(doc, '_inboxes', s => typeof s === 'string').slice(0, 10);",
+      "kills": "#1582 a sparse inbox list keeps every slot number through the OPML head, seeded"
+    },
+    {
+      "id": "fromopml-bypasses-inbox-reader",
+      "suite": "unit",
+      "why": "the shared reader is tested on its own; only the call-site pin sees fromOpml go back to an inline filter",
+      "file": "index.html",
+      "find": "  const inboxes = inboxSlotsFromHead(doc);",
+      "replace": "  const inboxes = headJSONArray(doc, '_inboxes', s => typeof s === 'string').slice(0, 10);",
+      "kills": "#1582 every door that reads or writes the slot list goes through normalizeInboxSlots"
+    },
+    {
+      "id": "toopml-writes-raw-inbox-list",
+      "suite": "unit",
+      "why": "a raw list writes trailing nulls, and an element for a document with no inbox at all",
+      "file": "index.html",
+      "find": "headEl('_inboxes', normalizeInboxSlots(r.inboxes))",
+      "replace": "headEl('_inboxes', r.inboxes)",
+      "kills": "#1582 every door that reads or writes the slot list goes through normalizeInboxSlots"
+    },
+    {
+      "id": "autosave-restore-skips-inbox-normalize",
+      "suite": "unit",
+      "why": "the JSON restore is the other load path; without the call a tampered or stale autosave lands a list the OPML reader would never produce",
+      "file": "index.html",
+      "find": "  root.inboxes = normalizeInboxSlots(root.inboxes); // #1582: the same slot list the OPML reader produces, empty slots kept in place\n",
+      "replace": "",
+      "kills": "#1582 every door that reads or writes the slot list goes through normalizeInboxSlots"
+    },
+    {
+      "id": "set-inbox-slot-skips-normalize",
+      "suite": "unit",
+      "why": "setting a slot must land the same canonical list the reader produces",
+      "file": "index.html",
+      "find": "  root.inboxes = normalizeInboxSlots(list);\n",
+      "replace": "  root.inboxes = list;\n",
+      "kills": "#1582 every door that reads or writes the slot list goes through normalizeInboxSlots"
+    },
+    {
+      "id": "remove-inbox-slot-leaves-tail",
+      "suite": "unit",
+      "why": "removing the last slot behind an empty one leaves a trailing null, so Add inbox offers a different number before and after a reopen",
+      "file": "index.html",
+      "find": "  root.inboxes = normalizeInboxSlots(root.inboxes);   // #1582: removing the last slot behind an empty one must not leave a trailing null\n",
+      "replace": "",
+      "kills": "#1582 every door that reads or writes the slot list goes through normalizeInboxSlots"
+    },
+    {
+      "id": "reopen-shifts-inbox-slots",
+      "suite": "browser",
+      "why": "the #1582 defect driven end to end: Ctrl+Alt+3, Save, Open, and the chord for inbox 3 no longer names the point",
+      "file": "index.html",
+      "find": "const slots = normalizeInboxSlots(headJSONArray(doc, '_inboxes'));",
+      "replace": "const slots = headJSONArray(doc, '_inboxes', s => typeof s === 'string').slice(0, 10);",
+      "kills": "#1582 an inbox set past an empty slot keeps its number through Save and Open"
+    },
+    {
+      "id": "census-inbox-reader-compacts",
+      "suite": "browser",
+      "why": "the round-trip census must see the document field that motivated it",
+      "file": "index.html",
+      "find": "const slots = normalizeInboxSlots(headJSONArray(doc, '_inboxes'));",
+      "replace": "const slots = headJSONArray(doc, '_inboxes', s => typeof s === 'string').slice(0, 10);",
+      "kills": "#1582 census: every document and point field toOpml saves"
+    },
+    {
+      "id": "census-colw-reader-compacts",
+      "suite": "browser",
+      "why": "the same defect on a sibling sparse array (base column widths, px|null per column): the census reaches point fields too",
+      "file": "index.html",
+      "find": "if (Array.isArray(a)) n.colW = a;",
+      "replace": "if (Array.isArray(a)) n.colW = a.filter(x => x != null);",
+      "kills": "#1582 census: every document and point field toOpml saves"
     }
   ]
 }

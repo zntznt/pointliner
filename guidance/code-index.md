@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2162 declarations in 158 sections across 17 domains.**
+**2164 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -994,6 +994,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `captureDest` — The live reader both surfaces share. Returns `root` for the top level, never null.
 - `captureDestSay` — P4/P3: changing the target changes WHERE YOUR NEXT CAPTURE GOES, and the chord did it in silence
 - `inboxSlotOf`
+- `normalizeInboxSlots` — #1582: the ONE canonical form of the slot list, shared by every reader and writer. Slot N is
+- `inboxSlotsFromHead` — The OPML head's slot list, as fromOpml reads it. A file from before multi-inbox carries a single
 - `setInboxSlot` — Set slot N to a point id (extending the list with empty slots if needed, capped at 10).
 - `removeInboxSlot`
 - `reorderInboxList` — Reorder the inbox list so a chip's SLOT NUMBER (which capture key it answers to) changes: pull the id

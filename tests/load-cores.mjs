@@ -336,6 +336,7 @@ export function loadCores() {
     'stripExitPlan',                             // #1515: which exit a toolbar strip takes when it closes
     'insertSigilNeedsSpace',                     // #1516: does a deliberate @ insertion need a separating space first
     'captureDestSlotId','captureDestSay',        // #1517: where a capture targeting a slot lands, and what the change says
+    'normalizeInboxSlots','inboxSlotsFromHead',  // #1582: the one canonical slot list, and the OPML head reader that keeps empty slots
     'panelFloorPx',                              // #1518: how far a bottom-docked panel must lift to clear the screen's bottom
     'stripChordPasses',                          // #1519: which keys a transient strip lets through to the global handler
     'caretKeepPlan',                             // #1521: whether a re-render hands the caret back, and where to
