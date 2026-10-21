@@ -11650,11 +11650,10 @@ test('#1573 the point render mints for an empty viewport is cleaned up when that
     'only a point RENDER minted is ever removed -- one the reader made with Enter pushes undo and is theirs');
   assert.match(drop, /vp\.children\.length !== 1/, 'and only when it is still the lone child');
   // Emptiness re-checked at removal time rather than trusted from the mark: type into it and it is
-  // a real point. Every carrier of content is consulted, not just the text.
-  assert.match(drop, /\(only\.text \|\| ''\)\.trim\(\)/, 'text');
-  assert.match(drop, /\(only\.children \|\| \[\]\)\.length/, 'children');
-  assert.match(drop, /\(only\.props \|\| \[\]\)\.length/, 'properties');
-  assert.match(drop, /ARTIFACT_SIDECARS\.some/, 'and every pill sidecar, read from the shared list rather than re-spelled');
+  // a real point. #1580: every carrier of content is consulted through the ONE shared predicate,
+  // whose field list is censused against toOpml below. The hand-kept text/children/props/sidecars
+  // list that stood here missed qbase, so zooming out deleted a query base built on this point.
+  assert.match(drop, /if \(!isEmptyPoint\(only\)\) return;/, 'emptiness is the shared predicate, not a list kept here');
   assert.match(drop, /nodeMap\.delete\(only\.id\); parentMap\.delete\(only\.id\);/,
     'the index is cleaned too, or the id keeps resolving to a point no longer in the tree');
 
@@ -11662,6 +11661,135 @@ test('#1573 the point render mints for an empty viewport is cleaned up when that
   // construction -- pinned because a future author adding a generic attribute walk would break it.
   assert.doesNotMatch(fnBody(_src, 'toOpml'), /_provisional/,
     'a transient mark must never be serialized');
+});
+
+// #1580: dropProvisionalChild decided "empty" from a hand-kept list (text, children, props, the pill
+// sidecars) and never looked at qbase. qbaseCreateAt turns an empty point into a query base IN PLACE
+// and stamps nothing, so Ctrl+Enter, Ctrl+K, Query base, Create, Escape deleted the base the reader
+// had just built, autosaved, and one undo brought back an empty point with no query. Driven on
+// origin/main. The fix is one predicate whose field list is checked against what toOpml SAVES, so a
+// field the save path learns to persist cannot be missing from the emptiness test.
+test('#1580 a point is empty only when nothing toOpml would save for it holds anything', () => {
+  // Every per-point field toOpml writes, read out of toOpml itself. Each one must be classified
+  // below; a new persisted field fails here until someone decides whether a reader authored it.
+  const persisted = [...new Set([...fnBody(_src, 'toOpml').matchAll(/\bn\.([A-Za-z_]\w*)/g)].map(m => m[1]))];
+  // CONTENT: something a reader made. The sample is a value toOpml would write.
+  const CONTENT = {
+    text: 'Venue', note: 'Remember to call the venue', props: [{ key: 'cost', val: '5' }], children: [c.mkNode('kid')],
+    dice: [{ key: 'd1' }], markov: [{ key: 'm1' }], math: [{ key: 'x1' }], vars: [{ key: 'v1' }],
+    grammar: [{ key: 'g1' }], est: [{ key: 'e1' }], seq: [{ key: 's1' }], query: [{ key: 'q1', expr: 'is:todo' }],
+    qbase: { expr: 'is:todo', cols: [{ name: 'Title', field: 'title' }] }, varbase: {}, view: { kind: 'board' },
+    colW: [null, 120], colRole: [null, 'title'], colFmt: [null, { decimals: 2 }],
+  };
+  // STATE: how a point is shown or where it sits. Set on a placeholder, it is still a placeholder,
+  // and treating it as content would stop the minted point from ever being cleaned up.
+  const STATE = { id: 'x1', type: 'base', checked: true, collapsed: true, folded: true, cards: true, noexport: true, baseRows: 5 };
+  const unclassified = nonEmpty(persisted, 'fields toOpml persists').filter(k => !(k in CONTENT) && !(k in STATE));
+  assert.deepEqual(unclassified, [],
+    'toOpml now saves a per-point field this census has not classified. Add it to CONTENT (and to POINT_CONTENT_FIELDS in index.html) or to STATE');
+  for (const [k, v] of Object.entries(CONTENT)) {
+    const n = c.mkNode(''); n[k] = v;
+    assert.equal(c.isEmptyPoint(n), false, `a point holding only ${k} is not empty`);
+    assert.equal(c.pointHasOwnContent(n), k !== 'children', `${k} is the point's OWN content (children are not)`);
+  }
+  for (const [k, v] of Object.entries(STATE)) {
+    const n = c.mkNode(''); n[k] = v;
+    assert.equal(c.isEmptyPoint(n), true, `${k} alone does not make a placeholder into content`);
+  }
+  // Every pill sidecar is covered, including the legacy per-node footnotes toOpml no longer writes
+  // but a loaded old file can still carry until migrateFootnotesToStore lifts them.
+  const sidecars = nonEmpty((/const ARTIFACT_SIDECARS = \[([^\]]+)\]/.exec(_src)?.[1] || '').match(/[a-z]+/g) || [], 'ARTIFACT_SIDECARS');
+  for (const k of sidecars) {
+    const n = c.mkNode(''); n[k] = [{ key: 'r1' }];
+    assert.equal(c.isEmptyPoint(n), false, `the ${k} sidecar counts`);
+  }
+
+  // The negative cases: a fresh placeholder, and the shapes toOpml itself declines to write.
+  assert.equal(c.isEmptyPoint(c.mkNode('')), true, 'the point render mints (mkNode) is empty');
+  assert.equal(c.isEmptyPoint(c.mkNode('  \n ')), true, 'whitespace-only text is empty');
+  const blankNote = c.mkNode(''); blankNote.note = '   ';
+  assert.equal(c.isEmptyPoint(blankNote), true, 'a whitespace-only note is empty');
+  const nullCols = c.mkNode(''); nullCols.colW = [null, null]; nullCols.colRole = [null]; nullCols.colFmt = [];
+  assert.equal(c.isEmptyPoint(nullCols), true, 'an all-null column array is not saved, so it is not content');
+  assert.equal(c.isEmptyPoint(null), true);
+  // The created/edited stamps. Typing `/` or `@` stamps even a fresh point (the builder's blur commits
+  // the trigger as an edit), so /template, which must still replace the point it was typed into,
+  // asks with ignoreStamps. Everyone else keeps counting them, as before: measured, ignoring them
+  // sends an `@` Patterns drop into an in-place fill that loses the recipe through the builder.
+  const stampedOnly = c.mkNode(''); c.stampEdit(stampedOnly);
+  assert.equal(stampedOnly.props.length, 2, 'the fixture: both stamps are present');
+  assert.equal(c.isEmptyPoint(stampedOnly), false, 'by default the stamps count, unchanged');
+  assert.equal(c.isEmptyPoint(stampedOnly, { ignoreStamps: true }), true, 'a door that stamped the point itself can look past them');
+  const stampedReal = c.mkNode(''); c.stampEdit(stampedReal); stampedReal.props.push({ key: 'cost', val: '5' });
+  assert.equal(c.isEmptyPoint(stampedReal, { ignoreStamps: true }), false, 'but never past a real property');
+  const stampedNote = c.mkNode(''); stampedNote.note = 'call'; c.stampEdit(stampedNote);
+  assert.equal(c.isEmptyPoint(stampedNote, { ignoreStamps: true }), false, 'or a note');
+
+  // The reported shape, exactly as qbaseCreateAt leaves an empty point: no text, no props, no children.
+  const base = c.mkNode(''); base.type = 'base'; base.checked = false; base.qbase = { expr: 'is:todo', cols: [{ name: 'Title', field: 'title' }] };
+  assert.equal(c.isEmptyPoint(base), false, 'a query base built on an empty point is content');
+  // And the refuted half of the finding, kept honest: a note committed through the editor is stamped,
+  // so it was never the bug -- but a note with no stamp (another outliner's OPML) is content too.
+  const stamped = c.mkNode(''); stamped.note = 'call'; c.stampEdit(stamped);
+  assert.equal(c.isEmptyPoint(stamped), false);
+});
+
+test('#1580 docIsBlank counts a query base and authored document config as content', () => {
+  const doc = (...kids) => { const r = c.mkRoot(); r.children.push(...kids); return r; };
+  const qb = c.mkNode(''); qb.type = 'base'; qb.qbase = { expr: 'is:todo', cols: [{ name: 'Title', field: 'title' }] };
+  assert.equal(c.docIsBlank(doc(qb)), false, 'a document whose only point is a query base is not blank');
+  const deep = c.mkNode(''); const leaf = c.mkNode(''); leaf.view = { kind: 'board' }; deep.children.push(leaf);
+  assert.equal(c.docIsBlank(doc(deep)), false, 'own content anywhere in the tree counts');
+  assert.equal(c.docIsBlank(doc(c.mkNode(''), c.mkNode(''))), true, 'a tree of placeholders is still blank');
+
+  // Document-level config, censused against toOpml's head the same way the point fields are.
+  const persisted = [...new Set([...fnBody(_src, 'toOpml').matchAll(/\br\.([A-Za-z_]\w*)/g)].map(m => m[1]))];
+  const CONFIG = {
+    footnotes: [{ id: 'f1', text: 'Source' }], savedSearches: ['#tag'], templates: [{ name: 't', node: {} }], plugins: [{ id: 'p1' }],
+    appearance: { tags: { urgent: 'red' }, props: {} }, calendar: { name: 'Harptos', months: [{ name: 'Hammer', days: 30 }] },
+    calendars: { harptos: { name: 'Harptos' } }, units: { gp: { factor: 1, dim: 'coin' } },
+  };
+  // Identity, preferences and bindings: a blank document carries them too (docId is minted at boot).
+  const NOT = { docId: 'd1', seed: 42, journal: { mode: 'file', targetId: null }, rollLog: { on: true, targetId: null },
+    gamelog: { targetId: 'x', calendarId: 'harptos' }, inboxes: ['x'], allowWebImages: true, text: 'Title', children: [] };
+  const unclassified = nonEmpty(persisted, 'root fields toOpml persists').filter(k => !(k in CONFIG) && !(k in NOT));
+  assert.deepEqual(unclassified, [], 'toOpml now saves a document field docIsBlank has not classified');
+  for (const [k, v] of Object.entries(CONFIG)) {
+    const r = doc(c.mkNode('')); r[k] = v;
+    assert.equal(c.docIsBlank(r), false, `a document holding only ${k} is not blank`);
+  }
+  for (const [k, v] of Object.entries(NOT)) {
+    if (k === 'children') continue;
+    const r = doc(c.mkNode('')); r[k] = v;
+    assert.equal(c.docIsBlank(r), true, `${k} alone does not make a blank document worth keeping`);
+  }
+  // The fresh-boot defaults (mkRoot's empty arrays and maps) are not config.
+  assert.equal(c.docIsBlank(doc(c.mkNode(''))), true, 'the fresh-boot document stays blank');
+});
+
+test('#1580 every door that discards or fills an "empty" point asks isEmptyPoint', () => {
+  // The family: a point judged empty is removed (the minted point), replaced (a stamped template) or
+  // filled in place (a Patterns recipe, a pasted spreadsheet). Each kept its own list, and each list
+  // missed something toOpml saves. All four now share the predicate the census above holds honest.
+  assert.match(fnBody(_src, 'dropProvisionalChild'), /if \(!isEmptyPoint\(only\)\) return;/, 'the minted point');
+  assert.match(fnBody(_src, 'stampTemplate'), /if \(isEmptyPoint\(cur, \{ ignoreStamps: true \}\)\) parent\.children\.splice\(idx, 1, clone\);/,
+    'a template replaces the point only when it is empty -- the old check (text + children) replaced a point carrying a note or ' +
+    'properties -- and looks past the stamps its own / door wrote, or it would stop replacing a fresh point');
+  assert.match(fnBody(_src, 'insertRecipe'), /const curEmpty = cur && cur !== root && isEmptyPoint\(cur\);/, 'a Patterns recipe');
+  assert.match(fnBody(_src, 'handlePaste'), /const curEmpty = node !== root && isEmptyPoint\(node\);/, 'a pasted spreadsheet');
+  assert.match(fnBody(_src, 'docIsBlank'), /const blank = n => !pointHasOwnContent\(n\) && \(n\.children \|\| \[\]\)\.every\(blank\);/,
+    'the whole-document check walks the same predicate');
+});
+
+test('#1580 a copy of the minted point is the reader\'s, so it never carries the mark', () => {
+  // The mark is what lets render's cleanup remove a point without an undo step. A duplicate, a paste
+  // or a stamped template is a point the reader made, so a copy must not inherit it.
+  const src = c.mkNode(''); src._provisional = true;
+  const kid = c.mkNode(''); kid._provisional = true; src.children.push(kid);
+  const clone = c.deepCloneNodeNewIds(src);
+  assert.equal('_provisional' in clone, false, 'the copy is not render\'s own');
+  assert.equal('_provisional' in clone.children[0], false, 'nor is any point inside it');
+  assert.equal(src._provisional, true, 'the source keeps its mark');
 });
 
 // #1573: the action pill's sentence is its accessible name AND its hover tooltip, and it was built

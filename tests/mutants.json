@@ -3444,9 +3444,90 @@
       "suite": "unit",
       "why": "emptiness must be re-checked at removal time, not trusted from the mark: a reader who types into the minted point has made it a real point and it must stay",
       "file": "index.html",
-      "find": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;",
-      "replace": "  if ((only.children || []).length || (only.props || []).length) return;",
+      "find": "  if (!isEmptyPoint(only)) return;",
+      "replace": "",
       "kills": "the point render mints for an empty viewport is cleaned up"
+    },
+    {
+      "id": "provisional-drop-hand-list",
+      "suite": "unit",
+      "why": "the reported bug: back to a field list kept inside dropProvisionalChild, which never looked at qbase, so a query base built on the minted point is deleted on zoom out",
+      "file": "index.html",
+      "find": "  if (!isEmptyPoint(only)) return;",
+      "replace": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;\n  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return;",
+      "kills": "#1580 every door that discards or fills"
+    },
+    {
+      "id": "provisional-drop-hand-list-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: Ctrl+K, Query base, Create, Escape and the base is gone",
+      "file": "index.html",
+      "find": "  if (!isEmptyPoint(only)) return;",
+      "replace": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;\n  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return;",
+      "kills": "#1580 a query base built on the point a zoom minted survives the zoom out"
+    },
+    {
+      "id": "template-replaces-a-noted-point",
+      "suite": "unit",
+      "why": "/template replaced any point with no text and no children, so a point carrying a note or properties was overwritten and the note was lost",
+      "file": "index.html",
+      "find": "  if (isEmptyPoint(cur, { ignoreStamps: true })) parent.children.splice(idx, 1, clone);",
+      "replace": "  if (cur.text.trim() === '' && !cur.children.length) parent.children.splice(idx, 1, clone);",
+      "kills": "#1580 every door that discards or fills"
+    },
+    {
+      "id": "template-counts-its-own-stamps",
+      "suite": "unit",
+      "why": "the negative case: typing / stamps a fresh point before /template runs, so a check that counts the stamps stops replacing the point the command was typed into and leaves a stray blank",
+      "file": "index.html",
+      "find": "isEmptyPoint(cur, { ignoreStamps: true })",
+      "replace": "isEmptyPoint(cur)",
+      "kills": "#1580 every door that discards or fills"
+    },
+    {
+      "id": "recipe-fills-a-noted-point",
+      "suite": "unit",
+      "why": "a Patterns recipe filled a point with no text in place, so a note on it ended up attached to the recipe",
+      "file": "index.html",
+      "find": "const curEmpty = cur && cur !== root && isEmptyPoint(cur);",
+      "replace": "const curEmpty = cur && cur !== root && !(cur.text || '').trim() && !(cur.props || []).length && !(cur.children || []).length;",
+      "kills": "#1580 every door that discards or fills"
+    },
+    {
+      "id": "paste-fills-a-noted-point",
+      "suite": "unit",
+      "why": "a pasted spreadsheet filled a point with no text in place, so a note on it ended up attached to the table",
+      "file": "index.html",
+      "find": "const curEmpty = node !== root && isEmptyPoint(node);",
+      "replace": "const curEmpty = node !== root && !(node.text || '').trim() && !(node.props || []).length && !(node.children || []).length;",
+      "kills": "#1580 every door that discards or fills"
+    },
+    {
+      "id": "doc-blank-hand-list",
+      "suite": "unit",
+      "why": "docIsBlank back on text, note and props only: a document holding just a query base reads blank and connect opens the folder's file over it",
+      "file": "index.html",
+      "find": "  const blank = n => !pointHasOwnContent(n) && (n.children || []).every(blank);",
+      "replace": "  const blank = n => !((n.text || '').trim()) && !((n.note || '').trim()) && !((n.props || []).length) && (n.children || []).every(blank);",
+      "kills": "#1580 every door that discards or fills"
+    },
+    {
+      "id": "point-census-misses-a-new-field",
+      "suite": "unit",
+      "why": "the census must fail when toOpml learns to save a per-point field nobody classified, or the emptiness predicate drifts from the save path again",
+      "file": "index.html",
+      "find": "    if (n.noexport)  attrs += ` _noexport=\"true\"`;",
+      "replace": "    if (n.noexport)  attrs += ` _noexport=\"true\"`;\n    if (n.mood)      attrs += ` _mood=\"${ex(n.mood)}\"`;",
+      "kills": "#1580 a point is empty only when nothing toOpml would save"
+    },
+    {
+      "id": "doc-census-misses-a-new-field",
+      "suite": "unit",
+      "why": "the same census for document fields: a new head element must be classified for docIsBlank",
+      "file": "index.html",
+      "find": "headEl('_footnotes', r.footnotes) + ",
+      "replace": "headEl('_footnotes', r.footnotes) + headEl('_theme', r.theme) + ",
+      "kills": "#1580 docIsBlank counts a query base and authored document config"
     },
     {
       "id": "action-pill-one-additive-template",

@@ -6439,6 +6439,157 @@ test('#1573 zooming into a childless point does not leave a point behind', { ski
   await pg.close();
 });
 
+// #1580: the cleanup above judged "empty" from a field list kept inside dropProvisionalChild (text,
+// children, props, the pill sidecars). The command browser builds a query base on the minted point
+// IN PLACE and stamps nothing, so this exact sequence deleted the base on zoom out, autosaved the
+// loss, and one undo gave back an empty point with no query. Measured on origin/main: kids 0.
+test('#1580 a query base built on the point a zoom minted survives the zoom out, and saves', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => { root.children = [mkNode('Alpha'), mkNode('Beta')]; buildIndex(root); markDirty(); render(); });
+  await pg.waitForTimeout(250);
+  const [alpha, beta] = await pg.evaluate(() => root.children.map(n => n.id));
+  const kids = (id) => pg.evaluate((i) => nodeById(i).children.map(k => ({ text: k.text, qbase: k.qbase?.expr ?? null, mark: !!k._provisional })), id);
+  await pg.evaluate((id) => { const c = document.querySelector(`.node-content[data-id="${id}"]`); enterEdit(c, nodeById(id)); c.focus(); activeContentId = id; }, alpha);
+  await pg.keyboard.press('Control+Enter');                    // zoom in: render mints a point to type into
+  await pg.waitForTimeout(400);
+  assert.deepEqual(await kids(alpha), [{ text: '', qbase: null, mark: true }], 'the fixture: one point, and render minted it');
+
+  await pg.keyboard.press('Control+k'); await pg.waitForTimeout(400);
+  await pg.keyboard.type('query base', { delay: 3 }); await pg.waitForTimeout(300);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  assert.equal(await pg.evaluate(() => document.querySelector('#io-card .io-title')?.textContent), 'New query base');
+  await pg.keyboard.type('is:todo', { delay: 3 }); await pg.waitForTimeout(150);
+  await pg.evaluate(() => [...document.querySelectorAll('#io-card button')].find(b => b.textContent.trim() === 'Create').click());
+  await pg.waitForTimeout(500);
+  const built = await pg.evaluate((id) => { const k = nodeById(id).children[0]; return { type: k.type, text: k.text, props: (k.props || []).length }; }, alpha);
+  assert.deepEqual(built, { type: 'base', text: '', props: 0 },
+    'the base is built in place and unstamped: exactly the shape the old list read as empty');
+
+  await pg.evaluate(() => document.activeElement?.blur()); await pg.waitForTimeout(150);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);    // zoom out
+  assert.equal(await pg.evaluate(() => focusedId), null, 'Escape zoomed out');
+  assert.deepEqual((await kids(alpha)).map(k => k.qbase), ['is:todo'], 'the query base is still there after the zoom out');
+  const saved = await pg.evaluate((id) => {
+    const back = fromOpml(toOpml(root)).children[0].children[0];
+    flushPendingAutosave();
+    const j = JSON.parse(localStorage.getItem(AUTOSAVE_KEY));
+    const a = j.root.children.find(n => n.id === id);
+    return { opml: back?.qbase?.expr ?? null, autosave: a?.children?.[0]?.qbase?.expr ?? null };
+  }, alpha);
+  assert.deepEqual(saved, { opml: 'is:todo', autosave: 'is:todo' }, 'and it reaches the file and the autosave');
+
+  // THE NEGATIVE CASE: a minted point nobody touched is still cleaned up.
+  await pg.evaluate((id) => zoomInto(id), beta); await pg.waitForTimeout(350);
+  assert.equal((await kids(beta)).length, 1, 'zooming into Beta mints one point');
+  await pg.evaluate(() => zoomTo(null)); await pg.waitForTimeout(350);
+  assert.deepEqual(await kids(beta), [], 'and an untouched one is removed on the way out');
+
+  // A COPY of the minted point is the reader's: Ctrl+D it, Backspace the original, zoom out. The
+  // mark used to ride along in the clone's {...node} spread, so the cleanup ate the copy.
+  await pg.evaluate((id) => zoomInto(id), beta); await pg.waitForTimeout(400);
+  const minted = await pg.evaluate((id) => nodeById(id).children[0].id, beta);
+  await pg.keyboard.press('Control+d'); await pg.waitForTimeout(400);
+  await pg.evaluate((id) => { const c = document.querySelector(`.node-content[data-id="${id}"]`); if (!c.dataset.editing) enterEdit(c, nodeById(id)); c.focus(); activeContentId = id; }, minted);
+  await pg.keyboard.press('Backspace'); await pg.waitForTimeout(300);
+  assert.deepEqual(await kids(beta), [{ text: '', qbase: null, mark: false }], 'the copy is left, unmarked');
+  await pg.evaluate(() => document.activeElement?.blur()); await pg.waitForTimeout(150);
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+  assert.equal((await kids(beta)).length, 1, 'a point the reader made by duplicating survives the zoom out');
+
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// #1580, the siblings: each door that REPLACES or FILLS a point it judges empty kept its own list.
+// /template's read text and children only, so a point holding a note was replaced and the note lost
+// (driven on origin/main); a Patterns drop and a pasted table filled such a point in place, so the
+// note ended up on the recipe or the table. All three now ask isEmptyPoint, and each is measured on
+// a plain point too, which must behave exactly as it did before the change.
+test('#1580 a point carrying a note is not empty to /template, a Patterns drop or a pasted table', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const rows = () => pg.evaluate(() => root.children.map(n => ({ text: n.text.replace(/\[\[[a-z]+:[^\]]+\]\]/g, '[pill]'), note: n.note || '', kids: (n.children || []).length })));
+  const caretIn = (i) => pg.evaluate((ix) => {
+    const n = root.children[ix]; const c = document.querySelector(`.node-content[data-id="${n.id}"]`);
+    if (!c.dataset.editing) enterEdit(c, n); c.focus(); activeContentId = n.id;
+  }, i);
+  // Another outliner's OPML: a note on a point with no text, and no stamp properties.
+  const imported = () => pg.evaluate(() => {
+    root.children = fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>t</title></head><body>'
+      + '<outline text="" _note="Imported note"/><outline text="Next"/></body></opml>').children;
+    buildIndex(root); markDirty(); render();
+  });
+  const plain = () => pg.evaluate(() => { root.children = [mkNode(''), mkNode('Next')]; buildIndex(root); markDirty(); render(); });
+
+  // /template, with the note committed through the real note editor.
+  await pg.evaluate(() => { root.templates = [{ name: 'Card', node: mkNode('Stamped card') }]; });
+  await plain(); await pg.waitForTimeout(200);
+  await pg.evaluate(() => openNoteEditor(root.children[0].id)); await pg.waitForTimeout(250);
+  await pg.keyboard.type('Remember to call the venue', { delay: 3 });
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(300);
+  await caretIn(0);
+  await pg.keyboard.type('/template:Card', { delay: 3 }); await pg.waitForTimeout(300);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  assert.deepEqual((await rows()).map(r => [r.text, r.note]),
+    [['', 'Remember to call the venue'], ['Stamped card', ''], ['Next', '']], '/template keeps the noted point and stamps below it');
+  await plain(); await pg.waitForTimeout(200);
+  await caretIn(0);
+  await pg.keyboard.type('/template:Card', { delay: 3 }); await pg.waitForTimeout(300);
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(500);
+  assert.deepEqual((await rows()).map(r => r.text), ['Stamped card', 'Next'], 'an empty point is still replaced');
+
+  // A Patterns drop. The row is double-clicked as #1267 does; the builder is opened by Ctrl+K for the
+  // noted point, because typing `@` stamps the point it is typed into (the builder's blur commits the
+  // trigger) and the stamps alone already kept the old check off it. Through Ctrl+K nothing stamps,
+  // and the old check filled the noted point in place, where the recipe was lost outright.
+  const dropRecipe = async (door) => {
+    await caretIn(0);
+    if (door === '@') await pg.keyboard.type('@', { delay: 25 });
+    else await pg.keyboard.press('Control+k');
+    await pg.waitForTimeout(450);
+    const r = await pg.evaluate(() => ({ label: PATTERN_RECIPES[0].label, desc: PATTERN_RECIPES[0].desc }));
+    await pg.fill('.builder-search', r.label); await pg.waitForTimeout(250);
+    const box = await pg.evaluate(({ label, desc }) => {
+      const it = [...ioCard.querySelectorAll('.builder-item')].find(e =>
+        e.querySelector('.cmd-label')?.textContent === label && e.querySelector('.cmd-desc')?.textContent === desc);
+      if (!it) return null;
+      it.scrollIntoView({ block: 'center' });
+      const b = it.getBoundingClientRect(); return { x: b.x + 20, y: b.y + b.height / 2 };
+    }, r);
+    assert.ok(box, 'the Patterns row is in the builder');
+    await pg.mouse.dblclick(box.x, box.y); await pg.waitForTimeout(450);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(300);
+  };
+  await imported(); await pg.waitForTimeout(200);
+  await dropRecipe('ctrl+k');
+  let got = await rows();
+  assert.deepEqual([got.length, got[0].text, got[0].note], [3, '', 'Imported note'], 'the noted point is left alone and the recipe lands below it');
+  assert.ok(got[1].text.startsWith('Damage') && !got[1].note, 'the recipe is its own point, carrying no stranger\'s note');
+  // The negative: a plain point still gets its recipe through the @ door, exactly as before (the
+  // stamps still count for this door, so it lands below as it always has; #1267 drives the family).
+  await plain(); await pg.waitForTimeout(200);
+  await dropRecipe('@');
+  got = await rows();
+  assert.equal(got.filter(r => r.text.startsWith('Damage')).length, 1, 'a plain point still receives the recipe');
+
+  // A pasted spreadsheet (#1324's in-place fill).
+  const pasteTable = () => pg.evaluate(() => {
+    const c = document.querySelector(`.node-content[data-id="${root.children[0].id}"]`);
+    const dt = new DataTransfer(); dt.setData('text/plain', 'name\tcost\nsword\t10\nshield\t5');
+    c.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await imported(); await pg.waitForTimeout(200);
+  await caretIn(0); await pasteTable(); await pg.waitForTimeout(400);
+  got = await rows();
+  assert.deepEqual(got.map(r => [r.note, r.kids]), [['Imported note', 0], ['', 2], ['', 0]], 'the table lands below the noted point');
+  await plain(); await pg.waitForTimeout(200);
+  await caretIn(0); await pasteTable(); await pg.waitForTimeout(400);
+  got = await rows();
+  assert.deepEqual(got.map(r => r.kids), [2, 0], 'an empty point is still filled in place');
+
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 test('#1573 an action pill announces the arithmetic it actually does', { skip: skip() }, async () => {
   // Every operator was described by one ADDITIVE template, so `{hp *= 2}` announced
   // "change hp by * 2" -- and that string is the accessible name and the hover tooltip both.
@@ -6716,6 +6867,54 @@ test('#839 connecting a folder that already holds this document opens it', { ski
     assert.ok(r.untouched, 'opening must leave the file byte-for-byte as it was');
     assert.deepEqual(errs, []);
   } finally { await ctx.close(); await origin.close(); }
+});
+
+// #1580: the adopt path above is right only for a document with nothing to lose, and docIsBlank's
+// own list decided that: text, notes and properties. A document holding only a query base, or only a
+// calendar set up before the first point, read as blank, so connect opened the folder's file over it
+// with no restore point. Driven on origin/main, both were replaced by "From the folder".
+test('#1580 connecting a folder never opens its file over a query base or a calendar', { skip: skip() }, async () => {
+  const origin = swOrigin();
+  const url = await origin.listen();
+  try {
+    for (const kind of ['query base', 'calendar']) {
+      const ctx = await browser.newContext({ serviceWorkers: 'block' });
+      const pg = await ctx.newPage();
+      const errs = [];
+      pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+      await pg.goto(url);
+      await pg.waitForSelector('#outline', { timeout: 10000 });
+      await pg.waitForTimeout(700);
+      await pg.keyboard.press('Escape');
+      await pg.waitForTimeout(250);
+      const r = await pg.evaluate(async (kind) => {
+        root.children = [mkNode('')]; buildIndex(root); markDirty(); render();
+        if (kind === 'query base') qbaseCreateAt(root.children[0].id, 'is:todo', [{ name: 'Title', field: 'title' }]);
+        else { root.calendar = normalizeCalendar({ name: 'Harptos', months: [{ name: 'Hammer', days: 30 }], weekdays: ['One'] }); markDirty(); }
+        const name = workspaceFileName(root, fileName);
+        const opfs = await navigator.storage.getDirectory();
+        const dir = await opfs.getDirectoryHandle('keep-' + Date.now(), { create: true });
+        const opml = '<?xml version="1.0"?><opml version="2.0"><head><title>Notebook</title></head>'
+          + '<body><outline text="From the folder"/></body></opml>';
+        const fh = await dir.getFileHandle(name, { create: true });
+        const w = await fh.createWritable(); await w.write(opml); await w.close();
+        window.showDirectoryPicker = async () => dir;
+        await connectWorkspace();
+        await new Promise(res => setTimeout(res, 300));
+        const onDisk = await (await (await dir.getFileHandle(name)).getFile()).text();
+        return { name, backing: workspaceFile && workspaceFile.name, untouched: onDisk === opml,
+          qbase: root.children[0]?.qbase?.expr ?? null, calendar: root.calendar?.name ?? null,
+          rows: root.children.map(n => n.text) };
+      }, kind);
+      assert.notEqual(r.backing, r.name, `${kind}: the document is saved under a new name, not swapped for the folder's file`);
+      assert.ok(r.untouched, `${kind}: and the folder's file is left as it was`);
+      if (kind === 'query base') assert.equal(r.qbase, 'is:todo', 'the query base is still the open document');
+      else assert.equal(r.calendar, 'Harptos', 'the calendar is still on the open document');
+      assert.ok(!r.rows.includes('From the folder'), `${kind}: the folder's document did not replace it`);
+      assert.deepEqual(errs, []);
+      await ctx.close();
+    }
+  } finally { await origin.close(); }
 });
 
 // ── #1464, the sibling: a nested dialog opened by CLICKING a builder row ─────────────────────────
