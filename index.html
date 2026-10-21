@@ -10592,13 +10592,14 @@ function commitActiveEdit() {
 // #1573: drop the point render() minted for an empty viewport, once that viewport is left.
 // Emptiness is re-checked HERE rather than trusted from the mark, so a provisional point the reader
 // typed into is a real point and stays; one they typed into and cleared again is empty and goes.
+// #1580: re-checked through isEmptyPoint, not a list kept here. That list missed qbase, so a query
+// base built on this point from the command browser (which stamps nothing) was deleted on zoom out.
 function dropProvisionalChild(vpId) {
   const vp = vpId ? nodeById(vpId) : null;
   if (!vp || !Array.isArray(vp.children) || vp.children.length !== 1) return;
   const only = vp.children[0];
   if (!only._provisional) return;
-  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;
-  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return;
+  if (!isEmptyPoint(only)) return;
   vp.children.length = 0;
   nodeMap.delete(only.id); parentMap.delete(only.id);
   markDirty();
@@ -17039,6 +17040,9 @@ function openCitePicker(nodeId, offset) {
 // Stamp a fresh copy of a saved template as a new point. Replaces the invoking
 // point when it's empty and childless (typed /template on a blank line); otherwise
 // inserts as the next sibling. Mirrors createBaseAt's blur-before-mutate discipline.
+// #1580: "empty" is isEmptyPoint. The check here read text and children only, so /template on a
+// point with no text but a note or properties replaced the point and the note went with it. It
+// ignores the edit stamps, because typing `/` stamps even a fresh point before this runs.
 function stampTemplate(nodeId, name) {
   const tpl = findTemplate(mergedTemplates(), name);   // #583: pack templates are stampable too (doc wins on a name tie)
   if (!tpl) return;
@@ -17056,7 +17060,7 @@ function stampTemplate(nodeId, name) {
   pushUndo();
   const idx = parent.children.findIndex(c => c.id === nodeId);
   if (idx === -1) return; // invoking point not under its parent (shouldn't happen) — don't splice blind
-  if (cur.text.trim() === '' && !cur.children.length) parent.children.splice(idx, 1, clone); // replace empty point
+  if (isEmptyPoint(cur, { ignoreStamps: true })) parent.children.splice(idx, 1, clone); // replace empty point (the / door stamped it)
   else parent.children.splice(idx + 1, 0, clone);                                            // else insert after
   buildIndex(root, null); // re-index the whole stamped subtree (clone + descendants)
   markDirty();
@@ -21189,7 +21193,7 @@ function handlePaste(e, node, content) {
       pushUndo();
       const idx0 = parent0.children.findIndex(c => c.id === node.id);
       // an empty point fills IN PLACE (no orphan blank line above), mirroring insertRecipe/#1267
-      const curEmpty = node !== root && !(node.text || '').trim() && !(node.props || []).length && !(node.children || []).length;
+      const curEmpty = node !== root && isEmptyPoint(node);   // #1580: the shared predicate (insertRecipe's twin)
       let focusId;
       if (curEmpty) {
         const src = built[0];
@@ -21858,8 +21862,12 @@ function remapClonedLinks(node, idMap) {
 function _cloneNodeNewIds(node, idMap) {
   const newId = uid();
   idMap.set(node.id, newId);
+  // #1580: `_provisional` marks the one point render minted for an empty view, which is what lets
+  // dropProvisionalChild remove it with no undo step. A copy is a point the reader made, so it
+  // never inherits the mark.
+  const { _provisional, ...own } = node;
   return {
-    ...node,
+    ...own,
     id: newId,
     // deep-copy per-node data so the clone doesn't share mutable arrays. Footnotes are doc-level now
     // (Phase A), but a clone still carries any LEGACY per-node footnotes so the import path
@@ -22351,7 +22359,7 @@ function insertRecipe(recipe, curId) {
   const nodes = recipeToNodes(recipe);
   pushUndo();
   let focusId;
-  const curEmpty = cur && cur !== root && !(cur.text || '').trim() && !(cur.props || []).length && !(cur.children || []).length;
+  const curEmpty = cur && cur !== root && isEmptyPoint(cur);   // #1580: the shared predicate, so a note-only point is not overwritten
   if (cur && curEmpty) {
     const src = nodes[0];
     cur.text = src.text; cur.props = src.props || []; cur.children = src.children || [];
@@ -34682,6 +34690,44 @@ function mergeArtifactSidecars(srcNode, dst) {
   }
 }
 
+// #1580: is this point a placeholder, or did a reader put something in it? ONE answer, shared by
+// every door that removes, replaces or fills a point it judges empty (dropProvisionalChild,
+// stampTemplate, insertRecipe, the spreadsheet paste) and by docIsBlank. Each of those kept its own
+// field list, and each list missed something the save path keeps: qbaseCreateAt builds a query base
+// IN PLACE on an empty point and stamps nothing, so zooming out of a fresh view deleted the base the
+// reader had just made.
+//
+// The fields are the ones toOpml writes for a point (plus the legacy per-point footnotes an old file
+// can still carry until they are lifted into the store), minus `children` (judged by isEmptyPoint, so
+// docIsBlank can walk them itself) and minus pure STATE: id, type, checked, collapsed, folded, cards,
+// noexport and baseRows say how a point is shown, and a placeholder carrying one is still a
+// placeholder. A test reads toOpml and fails on any persisted field left unclassified, so this list
+// cannot drift from what a save keeps.
+const POINT_CONTENT_FIELDS = ['text', 'note', 'props', ...ARTIFACT_SIDECARS, 'qbase', 'varbase', 'view', 'colW', 'colRole', 'colFmt'];
+// A field holds something when toOpml would write it: non-blank text, an array with a non-null entry
+// (an all-null colW is skipped on save), or any other set value.
+//
+// `ignoreStamps` is for a door that stamps the point itself before it asks. Typing `/` or `@` opens
+// the builder, whose blur commits the trigger character as an edit, so exitEdit writes the
+// created/edited stamps onto a fresh point (traced: openBuilder, blur, exitEdit, stampEdit). Those
+// two show no chip (hasVisibleProps) and are not the reader's. The default still counts them, as
+// every other caller did before: measured, ignoring them routes an `@` Patterns drop into its
+// in-place fill, which loses the recipe through the builder (a separate defect), where the stamps
+// currently send it to the next point instead.
+function pointHasOwnContent(n, { ignoreStamps = false } = {}) {
+  return !!n && POINT_CONTENT_FIELDS.some(k => {
+    const v = n[k];
+    if (k === 'props' && ignoreStamps) return Array.isArray(v) && v.some(p => p && !TIMESTAMP_KEYS.has(String(p.key || '').trim().toLowerCase()));
+    if (typeof v === 'string') return v.trim() !== '';
+    if (Array.isArray(v)) return v.some(x => x != null);
+    return !!v;
+  });
+}
+// Empty means no own content and no children: the shape of a fresh mkNode and of the point render mints.
+function isEmptyPoint(n, opts) {
+  return !pointHasOwnContent(n, opts) && !((n && n.children) || []).length;
+}
+
 function insertSiblingAfter(id) {
   const parent = parentOf(id);
   if (!parent) return;
@@ -36300,11 +36346,20 @@ function uniqueWorkspaceName(existing, base) {
 // fresh-boot document. connectWorkspace uses this to decide that connecting a blank doc
 // to a folder that already holds a file under the derived name means OPENING that
 // document, never writing over it. (Node-testable; no DOM.)
+// #1580: a point counts through pointHasOwnContent, the predicate every "is it empty" door shares;
+// the old text/note/props check called a document holding only a query base blank, and connect then
+// opened the folder's file over it. Document config counts the way toOpml decides to write it, so a
+// calendar, units or footnotes set up before the first point are not discarded either, while mkRoot's
+// empty defaults and the identity and preference fields (docId, seed, journal, rollLog) still read
+// as blank. A test censuses toOpml's head so a new document field cannot go unclassified.
 function docIsBlank(doc) {
   if (!doc) return true;
   if ((doc.savedSearches || []).length || (doc.templates || []).length || (doc.plugins || []).length) return false;
-  const blank = n => !((n.text || '').trim()) && !((n.note || '').trim())
-    && !((n.props || []).length) && (n.children || []).every(blank);
+  const app = doc.appearance;
+  if ((doc.footnotes || []).length || doc.calendar || Object.keys(doc.calendars || {}).length
+    || Object.keys(doc.units || {}).length
+    || (app && (Object.keys(app.tags || {}).length || Object.keys(app.props || {}).length))) return false;
+  const blank = n => !pointHasOwnContent(n) && (n.children || []).every(blank);
   return (doc.children || []).every(blank);
 }
 

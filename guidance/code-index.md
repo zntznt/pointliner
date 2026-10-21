@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2159 declarations in 158 sections across 17 domains.**
+**2162 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1926,6 +1926,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `ARTIFACT_SIDECARS` — Token-keyed sidecars (the 8 with prune functions). Cloned whole onto a split's new
 - `cloneArtifactSidecars`
 - `mergeArtifactSidecars` — Merge counterpart (UXP-68): append a merged-away point's sidecar records onto the
+- `POINT_CONTENT_FIELDS` — #1580: is this point a placeholder, or did a reader put something in it? ONE answer, shared by
+- `pointHasOwnContent` — A field holds something when toOpml would write it: non-blank text, an array with a non-null entry
+- `isEmptyPoint` — Empty means no own content and no children: the shape of a fresh mkNode and of the point render mints.
 - `insertSiblingAfter`
 - `mergeUpInto` — UXP-68: Backspace at offset 0 of a non-empty point merges it UP into the previous
 - `caretOffsetIfEditing` — #814 (agent-review, UXP-207): a structural op on the point being edited preserves the
