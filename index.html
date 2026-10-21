@@ -10082,7 +10082,7 @@ function toOpml(r) {
   const calsHas = r.calendars && Object.keys(r.calendars).length;
   const gamelogHas = r.gamelog && r.gamelog.targetId != null;
   const unitsHas = r.units && typeof r.units === 'object' && Object.keys(r.units).length;   // #875: declared units only, built-ins never serialized
-  const headCfg = headEl('_footnotes', r.footnotes) + headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', r.inboxes) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (r.seed != null ? headEl('_seed', String(r.seed >>> 0)) : '') + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '') + (r.allowWebImages ? headEl('_allowwebimages', '1') : '');   // #1325: per-doc web-image opt-in
+  const headCfg = headEl('_footnotes', r.footnotes) + headEl('_savedSearches', r.savedSearches) + headEl('_templates', r.templates) + headEl('_inboxes', normalizeInboxSlots(r.inboxes)) + headEl('_plugins', r.plugins) + (appHas ? headEl('_appearance', JSON.stringify(r.appearance)) : '') + (r.calendar ? headEl('_calendar', JSON.stringify(r.calendar)) : '') + (calsHas ? headEl('_calendars', JSON.stringify(r.calendars)) : '') + (gamelogHas ? headEl('_gamelog', JSON.stringify(r.gamelog)) : '') + (unitsHas ? headEl('_units', JSON.stringify(r.units)) : '') + headEl('_docid', r.docId) + (r.seed != null ? headEl('_seed', String(r.seed >>> 0)) : '') + (journalHas ? headEl('_journal', JSON.stringify(r.journal)) : '') + (rollLogHas ? headEl('_rolllog', JSON.stringify(r.rollLog)) : '') + (r.allowWebImages ? headEl('_allowwebimages', '1') : '');   // #1325: per-doc web-image opt-in
   return `<?xml version="1.0" encoding="UTF-8"?>
 <opml version="2.0">
   <head><title>${ex(r.text||'Pointliner')}</title><dateModified>${new Date().toUTCString()}</dateModified>${headCfg}</head>
@@ -10310,10 +10310,9 @@ function fromOpml(xml) {
   const footnotes = headJSONArray(doc, '_footnotes', f => f && typeof f.id === 'string' && typeof f.text === 'string');
   const savedSearches = headJSONArray(doc, '_savedSearches', s => typeof s === 'string');
   const templates     = headJSONArray(doc, '_templates', t => t && typeof t.name === 'string' && t.node);
-  // Multi-inbox: an ordered list of up to 10 point ids (slot N = inboxes[N-1]). Migrate the
-  // legacy single <_inbox> pointer into slot 1 if the new <_inboxes> array isn't present.
-  let inboxes = headJSONArray(doc, '_inboxes', s => typeof s === 'string').slice(0, 10);
-  if (!inboxes.length) { const legacy = doc.querySelector('head > _inbox')?.textContent?.trim(); if (legacy) inboxes = [legacy]; }
+  // Multi-inbox: an ordered list of up to 10 point ids (slot N = inboxes[N-1]), empty slots kept in
+  // place (#1582), or the legacy single <_inbox> pointer migrated into slot 1.
+  const inboxes = inboxSlotsFromHead(doc);
   const journalRaw    = doc.querySelector('head > _journal')?.textContent?.trim();
   const journal       = (() => { try { const j = JSON.parse(journalRaw || 'null'); return (j && typeof j.mode === 'string') ? j : { mode: 'append', targetId: null }; } catch(_) { return { mode: 'append', targetId: null }; } })();
   // #918: the roll-log config — { on, targetId }. Validated to booleans/string-or-null so a
@@ -17623,21 +17622,40 @@ function captureDestSay(slot, label) {
   return label ? `Capturing to inbox ${n}: ${label}` : `Inbox ${n} is not set. Captures land at the top level.`;
 }
 function inboxSlotOf(nodeId) { const i = (root.inboxes || []).indexOf(nodeId); return i < 0 ? 0 : i + 1; }
+// #1582: the ONE canonical form of the slot list, shared by every reader and writer. Slot N is
+// list[N-1], so an empty slot is a POSITIONAL null, not garbage: [null, null, id] means "inbox 3 is
+// id". The OPML reader used to filter entries with `s => typeof s === 'string'`, which dropped those
+// nulls, so a save and reopen moved every inbox past an empty slot down a number. Anything that is
+// not a point id becomes an empty slot (the slots after it keep their numbers), the list stops at
+// MAX_INBOXES, and trailing empties are trimmed so the persisted list stays tight. Pure.
+function normalizeInboxSlots(list) {
+  if (!Array.isArray(list)) return [];
+  const out = list.slice(0, MAX_INBOXES).map(x => (typeof x === 'string' && x ? x : null));
+  while (out.length && out[out.length - 1] === null) out.pop();
+  return out;
+}
+// The OPML head's slot list, as fromOpml reads it. A file from before multi-inbox carries a single
+// <_inbox> pointer instead, which migrates into slot 1. Pure over a parsed document.
+function inboxSlotsFromHead(doc) {
+  const slots = normalizeInboxSlots(headJSONArray(doc, '_inboxes'));
+  if (slots.length) return slots;
+  const legacy = doc.querySelector('head > _inbox')?.textContent?.trim();
+  return legacy ? [legacy] : [];
+}
 // Set slot N to a point id (extending the list with empty slots if needed, capped at 10).
 function setInboxSlot(slot, nodeId) {
   if (slot < 1 || slot > MAX_INBOXES) return;
   const list = (root.inboxes || []).slice();
   while (list.length < slot) list.push(null);
   list[slot - 1] = nodeId;
-  root.inboxes = list.map(x => x || null);
-  // trim trailing empties so the persisted list stays tight
-  while (root.inboxes.length && !root.inboxes[root.inboxes.length - 1]) root.inboxes.pop();
+  root.inboxes = normalizeInboxSlots(list);
   markDirty();
 }
 function removeInboxSlot(slot) {
   if (!root.inboxes || slot < 1 || slot > root.inboxes.length) return;
   pushUndo(); // doc-level config rides the root snapshot, same as template forget (UXP-82)
   root.inboxes.splice(slot - 1, 1);
+  root.inboxes = normalizeInboxSlots(root.inboxes);   // #1582: removing the last slot behind an empty one must not leave a trailing null
   markDirty();
 }
 // Reorder the inbox list so a chip's SLOT NUMBER (which capture key it answers to) changes: pull the id
@@ -47786,6 +47804,7 @@ function applyAutosaveData(data) {
   root.calendar = normalizeCalendar(root.calendar); // #527: same hole as appearance — a tampered/stale autosave calendar must re-validate here or every date-chip render throws
   if (root.units) root.units = normalizeUnits(root.units) || undefined; // #875: same re-validate for a tampered/stale autosave units table
   normalizeCalendarBindings(root); // #653: guarantee {calendars, gamelog} shape + re-validate each named calendar (a pre-feature or tampered autosave has none / could be broken)
+  root.inboxes = normalizeInboxSlots(root.inboxes); // #1582: the same slot list the OPML reader produces, empty slots kept in place
   migrateNodePrefixes(root);
   migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
   applyDocSeed();              // #1243: seed the session RNG from this doc's seed (or Math.random if none)

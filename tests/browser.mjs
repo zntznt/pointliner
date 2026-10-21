@@ -5132,6 +5132,139 @@ test('#1517 the chip, the tree and the toast agree on where a capture went', { s
   await pg.close();
 });
 
+// #1582: an empty slot is a positional null (slot N = inboxes[N-1]). toOpml wrote the nulls and
+// fromOpml filtered them out, so after Save and Open the inbox set as 3 answered to 1: the chord for
+// 3 captured to the top level and the chord for 1 captured into a point nobody had made inbox 1.
+// Driven through the real chords and the real Save/Open code, with only the file picker faked.
+test('#1582 an inbox set past an empty slot keeps its number through Save and Open', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    window.__disk = null;
+    const handle = { name: 'inboxes.opml', kind: 'file',
+      async createWritable() { let buf = ''; return { async write(t) { buf += t; }, async close() { window.__disk = buf; } }; },
+      async getFile() { return new File([window.__disk], 'inboxes.opml', { type: 'text/x-opml' }); },
+      async queryPermission() { return 'granted'; }, async requestPermission() { return 'granted'; } };
+    window.showSaveFilePicker = async () => handle;
+    window.showOpenFilePicker = async () => [handle];
+    root.children = ['Alpha', 'Beta', 'Gamma'].map(t => mkNode(t));
+    root.inboxes = [];
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    const el = [...document.querySelectorAll('.node-content[data-id]')].find(e => nodeById(e.dataset.id).text === 'Gamma');
+    const n = nodeById(el.dataset.id); enterEdit(el, n); el.focus(); activeContentId = n.id;
+  });
+  await pg.waitForTimeout(150);
+  await pg.keyboard.press('Control+Alt+Digit3');
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(200);
+  const slots = () => pg.evaluate(() => (root.inboxes || []).map(id => (id ? nodeById(id)?.text ?? '(gone)' : null)));
+  assert.deepEqual(await slots(), [null, null, 'Gamma'], 'precondition: the chord set inbox 3 and left 1 and 2 empty');
+
+  await pg.keyboard.press('Control+s');
+  await pg.waitForTimeout(600);
+  assert.match(await pg.evaluate(() => window.__disk || ''), /<_inboxes>\[null,null,&quot;[^&]+&quot;\]<\/_inboxes>/,
+    'the file keeps the empty slots');
+  await pg.keyboard.press('Control+o');
+  await pg.waitForTimeout(800);
+  assert.equal(await pg.evaluate(() => fileName), 'inboxes.opml', 'the document was reopened from the file');
+  assert.deepEqual(await slots(), [null, null, 'Gamma'], 'and inbox 3 is still inbox 3 after the reopen');
+
+  // The user-visible half: what each capture chord now targets. Nothing is current, so an empty
+  // slot cannot adopt a point and has to say it is empty.
+  const idle = () => pg.evaluate(() => { activeContentId = null; selFocusId = null; selAnchorId = null; document.activeElement?.blur?.(); });
+  const chip = () => pg.evaluate(() => document.querySelector('.cap-dest-name-btn')?.textContent.trim() ?? null);
+  await idle();
+  await pg.keyboard.press('Control+Shift+Digit3');
+  await pg.waitForTimeout(500);
+  assert.equal(await chip(), '3 Gamma', 'the chord for inbox 3 names Gamma');
+  await pg.keyboard.type('milk', { delay: 5 });
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(400);
+  assert.deepEqual(await pg.evaluate(() => root.children.map(c => c.text + '[' + c.children.map(k => k.text).join(',') + ']')),
+    ['Alpha[]', 'Beta[]', 'Gamma[milk]'], 'and a capture through it lands in Gamma');
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(300);
+  await idle();
+  await pg.keyboard.press('Control+Shift+Digit1');
+  await pg.waitForTimeout(500);
+  assert.equal(await chip(), 'top level', 'the chord for inbox 1 still has no inbox, as before the save');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// #1582 census: every field toOpml SAVES must come back from fromOpml exactly as it went in. The
+// fields are read out of toOpml's own source, so a field the save path learns to write fails here
+// until it has a sample and survives the trip. Each sample must also CHANGE the file, or a sample the
+// writer skips as a default would pass the round trip by never being written.
+test('#1582 census: every document and point field toOpml saves comes back from fromOpml as it went in', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const src = toOpml.toString();
+    const fields = re => [...new Set([...src.matchAll(re)].map(m => m[1]))];
+    const docFields = fields(/\br\.([A-Za-z_]\w*)/g), pointFields = fields(/\bn\.([A-Za-z_]\w*)/g);
+    const cal = normalizeCalendar({ name: 'Harptos', months: [{ name: 'Hammer', days: 30 }, { name: 'Alturiak', days: 30 }] });
+    const kid = mkNode('Kid'); kid.id = 'census-kid';
+    const DOC = {
+      text: 'Census & <title>', footnotes: [{ id: 'f1', text: 'Source & "quote"' }], savedSearches: ['#tag', 'is:todo'],
+      templates: [{ name: 'Weekly', node: { text: 'T', children: [] } }],
+      inboxes: [null, null, 'census-pt'],   // the sparse list #1582 lost; a dense one hides the bug
+      plugins: [{ id: 'pack1', name: 'Pack' }],
+      appearance: normalizeAppearance({ tags: { urgent: APPEARANCE_COLORS[0] }, props: { cost: APPEARANCE_ICONS[0] } }),
+      calendar: cal, calendars: { harptos: cal }, gamelog: { targetId: 'census-kid', calendarId: 'harptos', cursor: 3 },
+      units: normalizeUnits({ gp: { dim: 'coin', ratio: 1 }, sp: { dim: 'coin', ratio: 0.1 } }),
+      docId: 'census-doc', seed: 1582, journal: { mode: 'file', targetId: 'census-kid' },
+      rollLog: { on: true, targetId: 'census-kid' }, allowWebImages: true,
+    };
+    const POINT = {
+      id: 'census-pt', text: 'Census & "point" <b>', type: 'todo', checked: true, collapsed: true, folded: true, cards: true, noexport: true,
+      note: 'a note\nwith a second line', props: [{ key: 'cost', val: '5' }],
+      dice: [{ key: 'd1', expr: '2d6' }], markov: [{ key: 'm1' }], math: [{ key: 'x1', expr: '1+1' }], vars: [{ key: 'v1', name: 'hp', expr: '10' }],
+      grammar: [{ key: 'g1' }], est: [{ key: 'e1' }], seq: [{ key: 's1' }], query: [{ key: 'q1', expr: 'is:todo' }],
+      colW: [null, 120], colRole: [null, 'title'], colFmt: [null, { decimals: 2 }],   // sparse too, the same shape as inboxes
+      qbase: { expr: 'is:todo', cols: [{ name: 'Title', field: 'title' }] }, varbase: { name: 'stats' },
+      view: { kind: 'board', groupBy: 1 }, baseRows: 5,
+    };
+    const build = (docOverride = {}, pointOverride = {}) => {
+      const d = mkRoot();
+      const p = mkNode(''); Object.assign(p, POINT, pointOverride); p.children = [kid];
+      Object.assign(d, DOC, docOverride); d.children = [p];
+      return d;
+    };
+    const file = d => toOpml(d).replace(/<dateModified>.*?<\/dateModified>/, '');
+    const full = build(), written = file(full);
+    const back = fromOpml(toOpml(full)), backPt = back.children[0];
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const out = { docFields, pointFields, docSamples: Object.keys(DOC).concat('children'), pointSamples: Object.keys(POINT).concat('children'),
+      unwritten: [], trips: [] };
+    for (const k of Object.keys(DOC)) {
+      if (same(file(build({ [k]: mkRoot()[k] })), written)) out.unwritten.push('document.' + k);
+      out.trips.push({ field: 'document.' + k, sent: JSON.stringify(full[k]), got: JSON.stringify(back[k]) });
+    }
+    for (const k of Object.keys(POINT)) {
+      if (same(file(build({}, { [k]: mkNode('')[k] })), written)) out.unwritten.push('point.' + k);
+      out.trips.push({ field: 'point.' + k, sent: JSON.stringify(full.children[0][k]), got: JSON.stringify(backPt[k]) });
+    }
+    out.kid = backPt.children.map(c => c.id + ':' + c.text);
+    return out;
+  });
+  // sized first: an enumeration that silently went empty would classify nothing and pass
+  assert.ok(r.docFields.length >= 15 && r.pointFields.length >= 20, `the field scan found ${r.docFields.length} document and ${r.pointFields.length} point fields`);
+  const unclassified = (have, samples) => have.filter(k => !samples.includes(k));
+  assert.deepEqual(unclassified(r.docFields, r.docSamples), [], 'toOpml saves a document field this census has no sample for: add one to DOC');
+  assert.deepEqual(unclassified(r.pointFields, r.pointSamples), [], 'toOpml saves a point field this census has no sample for: add one to POINT');
+  assert.deepEqual(r.docSamples.filter(k => !r.docFields.includes(k)), [], 'a DOC sample names a field toOpml no longer saves');
+  assert.deepEqual(r.pointSamples.filter(k => !r.pointFields.includes(k)), [], 'a POINT sample names a field toOpml no longer saves');
+  assert.deepEqual(r.unwritten, [], 'each sample must change the file, or its round trip proves nothing');
+  assert.equal(r.trips.length, r.docSamples.length + r.pointSamples.length - 2, 'one round trip per sample');
+  for (const t of r.trips) assert.deepEqual(JSON.parse(t.got ?? 'null'), JSON.parse(t.sent), `${t.field} must survive Save and Open`);
+  assert.deepEqual(r.kid, ['census-kid:Kid'], 'children: the point keeps its child');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 // 75. #1518 — `#fn-panel` docked at `bottom:0` under the opaque (z-640) touch quick bar, so the
 // whole footnote editor was invisible: 53px overlap, the panel's only interactive row entirely
 // inside the bar, and `elementFromPoint` on that row returning `qb-capture`. The editor was FOCUSED

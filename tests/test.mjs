@@ -15054,6 +15054,81 @@ test('capture: inboxes round-trip through the OPML head (up to 10 slots)', () =>
   assert.ok(xml.includes('_id="' + a.id + '"') && xml.includes('_id="' + b.id + '"'), 'inbox point _id must round-trip');
 });
 
+// #1582: slot N is inboxes[N-1], so an EMPTY slot is a positional null, not garbage. toOpml kept the
+// nulls and fromOpml filtered them out as invalid entries, so after a save and reopen every inbox past
+// an empty slot moved down: inbox 3 became inbox 1, Ctrl/Cmd+Shift+3 said "Inbox 3 is not set", and
+// Ctrl/Cmd+Shift+1 captured into a point nobody had made inbox 1. The JSON autosave kept the nulls, so
+// only the file path lost them, which is why it looked intermittent.
+test('#1582 normalizeInboxSlots keeps an empty slot where it is and trims only the tail', () => {
+  const n = x => host(c.normalizeInboxSlots(x));
+  assert.deepEqual(n([null, null, 'g']), [null, null, 'g'], 'the issue\'s own case: inbox 3 stays inbox 3');
+  assert.deepEqual(n(['a', null, 'b']), ['a', null, 'b'], 'a hole in the middle stays a hole');
+  assert.deepEqual(n(['a', 'b']), ['a', 'b'], 'a dense list, which is every file the old reader ever re-saved, loads unchanged');
+  assert.deepEqual(n(['a', null, null]), ['a'], 'trailing empties trim, the invariant setInboxSlot always kept');
+  assert.deepEqual(n([null]), [], 'all-empty is no inboxes');
+  assert.deepEqual(n([null, 5, '', {}, 'e']), [null, null, null, null, 'e'],
+    'anything that is not a point id is an EMPTY SLOT, so every slot after it keeps its number');
+  assert.deepEqual(n(Array.from({ length: 12 }, (_, i) => 'p' + i)), Array.from({ length: 10 }, (_, i) => 'p' + i), 'ten slots at most');
+  for (const bad of [undefined, null, 'x', {}, 3]) assert.deepEqual(n(bad), [], `a non-list (${JSON.stringify(bad)}) is no inboxes`);
+  const odd = [null, 'a', null, 7, 'b', null];
+  assert.deepEqual(n(n(odd)), n(odd), 'idempotent, so a list that went through it once is already canonical');
+});
+
+// The head as fromOpml reaches it: querySelector('head > _x').textContent, with the entity decoding a
+// real XML parser does for what toOpml's ex() escapes. Only the head, and only headEl's shape.
+function opmlHeadDoc(xml) {
+  const head = xml.split('</head>')[0];
+  const unex = t => t.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&#10;/g, '\n').replace(/&#9;/g, '\t').replace(/&#13;/g, '\r').replace(/&amp;/g, '&');
+  return { querySelector(sel) {
+    const tag = /^head > (_\w+)$/.exec(sel)?.[1];
+    const m = tag && new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(head);
+    return m ? { textContent: unex(m[1]) } : null;
+  } };
+}
+
+test('#1582 a sparse inbox list keeps every slot number through the OPML head, seeded', () => {
+  let s = 1582;   // mulberry32: deterministic, so a failure names a list you can reproduce
+  const rnd = () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const lists = Array.from({ length: 400 }, (_, i) => Array.from({ length: 1 + Math.floor(rnd() * 12) }, (_, k) => (rnd() < 0.45 ? null : `p${i}_${k}`)));
+  const holeBeforeFilled = lists.filter(l => l.some((x, k) => !x && l.slice(k + 1, 10).some(Boolean)));
+  assert.ok(holeBeforeFilled.length >= 100, `the generator must exercise the defect: only ${holeBeforeFilled.length} lists had an empty slot before a filled one`);
+  for (const list of nonEmpty(lists, 'the generated slot lists')) {
+    const root = c.mkRoot(); root.inboxes = list.slice();
+    const xml = c.toOpml(root);
+    const back = host(c.inboxSlotsFromHead(opmlHeadDoc(xml)));
+    const want = host(c.normalizeInboxSlots(list));
+    assert.deepEqual(back, want, `round trip of ${JSON.stringify(list)}`);
+    for (let slot = 1; slot <= 10; slot++)
+      assert.equal(c.captureDestSlotId(back, slot), list[slot - 1] || null, `slot ${slot} of ${JSON.stringify(list)} after reopening`);
+    // the writer emits the canonical form too: no trailing null, and no element at all for no inboxes
+    const emitted = opmlHeadDoc(xml).querySelector('head > _inboxes');
+    if (want.length) assert.equal(emitted?.textContent, JSON.stringify(want), `bytes written for ${JSON.stringify(list)}`);
+    else assert.equal(emitted, null, `${JSON.stringify(list)} holds no inbox, so nothing is written`);
+  }
+});
+
+test('#1582 a file from before the slot list still opens its one inbox as inbox 1', () => {
+  const doc = head => opmlHeadDoc(`<opml><head>${head}</head><body></body></opml>`);
+  assert.deepEqual(host(c.inboxSlotsFromHead(doc('<_inbox>abc</_inbox>'))), ['abc'], 'the legacy single pointer migrates into slot 1');
+  assert.deepEqual(host(c.inboxSlotsFromHead(doc('<_inboxes>[null,null,&quot;g&quot;]</_inboxes><_inbox>abc</_inbox>'))), [null, null, 'g'],
+    'the slot list wins when both are present');
+  assert.deepEqual(host(c.inboxSlotsFromHead(doc('<_inboxes>[null]</_inboxes><_inbox>abc</_inbox>'))), ['abc'], 'an all-empty list falls back to the legacy pointer, as before');
+  assert.deepEqual(host(c.inboxSlotsFromHead(doc('<_inboxes>{oops</_inboxes>'))), [], 'malformed JSON is no inboxes, never a throw');
+  assert.deepEqual(host(c.inboxSlotsFromHead(doc(''))), [], 'a document with neither has no inboxes');
+});
+
+test('#1582 every door that reads or writes the slot list goes through normalizeInboxSlots', () => {
+  assert.match(fnBody(_src, 'fromOpml'), /const inboxes = inboxSlotsFromHead\(doc\);/, 'File > Open, a workspace swap and an embedded snapshot all read it here');
+  assert.match(fnBody(_src, 'inboxSlotsFromHead'), /normalizeInboxSlots\(headJSONArray\(doc, '_inboxes'\)\)/,
+    'with no per-item validator: the old one, `s => typeof s === \'string\'`, is the filter that dropped the empty slots');
+  assert.match(fnBody(_src, 'toOpml'), /headEl\('_inboxes', normalizeInboxSlots\(r\.inboxes\)\)/, 'the writer emits the same canonical form');
+  assert.match(fnBody(_src, 'applyAutosaveData'), /root\.inboxes = normalizeInboxSlots\(root\.inboxes\);/, 'the JSON restore lands on it too');
+  assert.match(fnBody(_src, 'setInboxSlot'), /root\.inboxes = normalizeInboxSlots\(list\);/, 'setting a slot');
+  assert.match(fnBody(_src, 'removeInboxSlot'), /root\.inboxes = normalizeInboxSlots\(root\.inboxes\);/,
+    'removing the last slot behind an empty one left a trailing null, so "Add inbox" offered a different number before and after a reopen');
+});
+
 test('capture: UI wiring + front doors present (src pins)', () => {
   // new array head element + legacy single-inbox migration on load
   assert.ok(_src.includes("headJSONArray(doc, '_inboxes'"), 'fromOpml parse of _inboxes missing');
