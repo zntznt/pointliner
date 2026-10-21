@@ -17724,7 +17724,8 @@ test('ancestor inheritance is wired at the math pill + check chip, own-node at t
   assert.ok(/resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), vmap\)/.test(_src),
     'math pill scope inherits via resolveNodeScope + ancestorsOf');
   // buildCheckChip passes ancestorsOf(node) to evalCheck
-  assert.ok(/evalCheck\(node, globalVarMap, ancestorsOf\(node\)\)/.test(_src),
+  // (#1581: over collectVars(), the live map is:failing reads, not the render snapshot globalVarMap)
+  assert.ok(/evalCheck\(node, collectVars\(\), ancestorsOf\(node\)\)/.test(fnBody(_src, 'buildCheckChip')),
     'check chip verdict inherits ancestor props');
   // the query-base row engine stays own-node (documented boundary): still the bare merge
   assert.ok(/const scope = Object\.assign\(Object\.create\(null\), vars, nodePropVars\(n\)\)/.test(_src),
@@ -17838,6 +17839,56 @@ test('#574: is:failing / is:passing see ancestor-inherited props, agreeing with 
   assert.equal(c.evalCheck(child, {}, c.ancestorsOf(child)), 'fail');
   assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'failing' }, child, [], {}), true);
   assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'passing' }, child, [], {}), false);
+});
+
+// #1581: is:failing / is:passing defaulted their variables to `globalVarMap`, which is a snapshot
+// renderContentHTML takes when a ROW paints. The search runs in flatten(), before any row exists, and
+// a filter that shows nothing paints nothing, so the snapshot never refreshed: with `{limit := 100}`
+// changed to 10, `is:failing` kept showing no rows while the check was failing. Driven on 01145bc:
+// truth 'fail', rows [] after two renders, globalVarMap.limit 100 against collectVars().limit 10.
+// The live document goes through the vm (the collectVars rootNode pattern cannot reach a DEFAULT).
+function with1581Doc(fn) {
+  const tree = { id: 'r1581', text: '', props: [], children: [
+    { id: 'd1581', text: 'Budget [[var:k1581]]', vars: [{ key: 'k1581', name: 'limit', expr: '100' }], props: [], children: [] },
+    { id: 'p1581', text: 'Plan', props: [{ key: 'check', val: 'sum(cost) <= limit' }], children: [
+      { id: 'i1581', text: 'Item', props: [{ key: 'cost', val: '50' }], children: [] } ] } ] };
+  c._context.__t1581 = tree;
+  vm.runInContext('root = __t1581; buildIndex(root, null); resetDocCaches(); globalVarMap = collectVars();', c._context);
+  try { return fn(tree, tree.children[1]); }
+  finally { vm.runInContext('root = mkRoot(); buildIndex(root, null); globalVarMap = {}; _checkVerdicts.clear(); resetDocCaches();', c._context); }
+}
+// The budget drops and markDirty bumps the generation, and nothing repaints (so the render snapshot
+// still holds 100). resetDocCaches is markDirty's `_varsVer++` without the stubbed-DOM noise.
+function drop1581Limit(tree) { tree.children[0].vars[0].expr = '10'; c._context.resetDocCaches(); }
+
+test('#1581 is:failing / is:passing answer from the variables as they are now, not as the last render saw them', () => {
+  with1581Doc((tree, plan) => {
+    const q = s => c.parseSearchQuery(s);
+    assert.equal(c.queryMatchesNode(q('is:passing'), plan), true, 'baseline: 50 <= 100 passes');
+    drop1581Limit(tree);
+    assert.equal(vm.runInContext('globalVarMap.limit', c._context), 100, 'precondition: the render snapshot is stale');
+    assert.equal(c.evalCheck(plan, c.collectVars(), c.ancestorsOf(plan)), 'fail', 'the truth: 50 > 10');
+    assert.equal(c.queryMatchesNode(q('is:failing'), plan), true, 'is:failing must see the current limit');
+    assert.equal(c.queryMatchesNode(q('is:passing'), plan), false, 'and is:passing must stop matching');
+    assert.equal(c.termMatchesNode({ neg: false, kind: 'is', value: 'failing' }, plan, []), true,
+      'the term matcher defaults the same way (it is called bare by nothing today, so its default must not lie either)');
+    // The call site: the search box's matcher passes NO variables, so the default is the whole fix.
+    vm.runInContext("searchQuery = 'is:failing'; searchQueryLC = searchQuery; searchTerms = parseSearchQuery(searchQuery);", c._context);
+    try {
+      assert.equal(c._context.nodeMatchesSearch(plan), true, 'nodeMatchesSearch (the search box and exitEdit) answers from the current values');
+    } finally { vm.runInContext("searchQuery = ''; searchQueryLC = ''; searchTerms = [];", c._context); }
+  });
+});
+
+test('#1581 the check chip reads the same current map as the search, so the two cannot disagree', () => {
+  // #574 already holds that the chip and is:failing give one verdict. They now read one map too: the
+  // chip used the render snapshot, which repaintComputedDependents reaches outside any render setup.
+  with1581Doc((tree, plan) => {
+    drop1581Limit(tree);
+    vm.runInContext('buildCheckChip(__t1581.children[1]);', c._context);
+    assert.equal(vm.runInContext('_checkVerdicts.get("p1581")', c._context), 'fail',
+      'the chip must say failing once the limit it reads has dropped');
+  });
 });
 
 // ── F5-lite: count("query") — structural checks via the substitution model ──
@@ -33266,9 +33317,121 @@ test('DOC_CACHES derived protocol: every readable cache invalidates on the gener
   // The reset family is exercised too: a bump must run every registered reset without throwing
   // (their Maps exist in the stubbed context), and the entries must carry one or the other.
   for (const e of c.docCaches())
-    assert.ok(e.read || e.reset || ['varMapAt','renderPosVarMaps','inferredColRoles','varBaseDefs','mtModelRead','searchBlob'].includes(String(e.name)),
+    assert.ok(e.read || e.reset || ['varMapAt','renderPosVarMaps','inferredColRoles','varBaseDefs','mtModelRead','searchBlob','countDescendants'].includes(String(e.name)),
       `${e.name}: neither read nor reset, and not on the named per-node allowlist ` +
       '(per-node caches self-check _varsVer inline; each carries its own bespoke test)');
+});
+
+test('#1581 doc-cache countDescendants: one count per generation, recounted after the bump', () => {
+  // The collapse badge's subtree count, memoized per node object on _varsVer (#451 item 6). It was
+  // already correct by its own key; what it lacked was the registry entry, so the census below could
+  // not see it. Same protocol as searchBlob: the negative control proves it caches at all.
+  const bump = c._context.resetDocCaches;
+  const leaf = id => ({ id, text: id, children: [] });
+  const n = { id: 'cd1581', text: 'p', children: [{ id: 'cd1581a', text: 'a', children: [leaf('cd1581b')] }] };
+  bump();
+  assert.equal(c.countDescendants(n), 2, 'every descendant, any depth');
+  n.children.push(leaf('cd1581c'));
+  assert.equal(c.countDescendants(n), 2, 'negative control: no bump, no recount');
+  bump();
+  assert.equal(c.countDescendants(n), 3, 'a generation bump must recount');
+});
+
+test('#1581 wsDocVars clears with resetDocCaches, as the folder memos beside it do', () => {
+  // Keyed on workspaceIndex.gen, which is monotonic (++_wsIndexGen on every rebuild), so it was
+  // correct already; it now registers the same doc-swap reset _qrfMemo and _qpfMemo carry.
+  const e = c.docCaches().find(x => String(x.name) === 'wsDocVars');
+  assert.ok(e && typeof e.reset === 'function', 'wsDocVars must register a reset');
+  vm.runInContext('_wsVarsMemo.set("ws1581", { gen: 7, vars: {} });', c._context);
+  c._context.resetDocCaches();
+  assert.equal(vm.runInContext('_wsVarsMemo.has("ws1581")', c._context), false, 'resetDocCaches must clear it');
+});
+
+test('#1581 the check-flip memory belongs to one document: adoptDoc clears it, resetDocCaches must not', () => {
+  // _checkVerdicts remembers each chip's last verdict so a FLIP is announced. Keyed by node id, it
+  // outlived a document swap, so opening a copy of a file (same ids) announced "Check failing" for a
+  // verdict that never changed in front of the user. adoptDoc is the single runtime swap chokepoint.
+  assert.match(fnBody(_src, 'adoptDoc'), /_checkVerdicts\.clear\(\);/,
+    'adoptDoc must forget the outgoing document\'s verdicts');
+  // It is deliberately NOT a DOC_CACHES reset. resetDocCaches also runs on undo/redo (restoreSnapshot)
+  // and on every promoted declaration inside exitEdit, so a registered reset would wipe the memory on
+  // exactly the edits whose flips must be announced. Measured: with the reset registered, an undo
+  // that turned a failing check back to passing said nothing.
+  assert.ok(!nonEmpty(c.docCaches(), 'DOC_CACHES').some(x => /verdict/i.test(String(x.name))), 'the flip memory must not be a DOC_CACHES reset');
+  vm.runInContext('_checkVerdicts.set("cv1581", "pass");', c._context);
+  try {
+    c._context.resetDocCaches();
+    assert.equal(vm.runInContext('_checkVerdicts.get("cv1581")', c._context), 'pass',
+      'the memory survives resetDocCaches, so an undo still announces the flip it causes');
+  } finally { vm.runInContext('_checkVerdicts.delete("cv1581");', c._context); }
+});
+
+// #1581 SP-5: three tree-derived caches sat outside DOC_CACHES, and the parity test above could not
+// see them, because it only compares caches that already carry a marker. This is the census the
+// parity test assumes: it enumerates module-level caches FROM SOURCE, in two arms, and each must
+// carry a `// doc-cache:` marker (on its declaration line or in the comment block directly above it),
+// be built by makeDocCache, or be named below with the reason it is not document data.
+test('#1581 census: every module-level cache is in DOC_CACHES or named as exempt, with why', () => {
+  const lines = _src.split('\n');
+  const declLine = new Map();   // identifier -> index of its top-level declaration line
+  lines.forEach((l, i) => {
+    if (!/^(?:let|const|var)\s/.test(l)) return;
+    for (const m of l.matchAll(/(?:^(?:let|const|var)\s+|,\s*)([A-Za-z_$][\w$]*)\s*=(?!=)/g))
+      if (!declLine.has(m[1])) declLine.set(m[1], i);
+  });
+  const marked = i => {
+    if (lines[i].includes('// doc-cache: ') || lines[i].includes('makeDocCache(')) return true;
+    for (let j = i - 1; j >= 0 && /^\s*\/\//.test(lines[j]); j--) if (lines[j].includes('// doc-cache: ')) return true;
+    return false;
+  };
+  const EXEMPT = {
+    DOC_CACHES: 'the registry itself',
+    heightCache: 'measured row heights in px for virtualization: re-measured on mount, cleared on resize',
+    _aggColReCache: "a compiled matcher per 'base.col' string: a pure function of its key",
+    _tagReCache: 'a compiled tag regex per tag string: a pure function of its key',
+    _wsScanCache: "the folder scan, keyed on each file's lastModified and size: a changed file re-parses",
+    _graphUnlinkedCache: 'one graph open: openGraph resets it, the graph is a summoned snapshot',
+  };
+  for (const name of Object.keys(EXEMPT))
+    assert.ok(declLine.has(name), `${name} is exempt but no longer declared at module level: drop the exemption`);
+  const bad = [];
+  // Arm 1, generation-stamped: anything assigned `= _varsVer` is a _varsVer-keyed cache by definition.
+  const stamps = nonEmpty([...new Set([..._src.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*_varsVer\b/g)].map(m => m[1]))],
+    'identifiers stamped with _varsVer');
+  assert.ok(stamps.length >= 15, `the stamp arm found only ${stamps.length}; did the stamp form change?`);
+  for (const s of stamps) {
+    if (!declLine.has(s)) bad.push(`${s} is stamped with _varsVer but has no module-level declaration`);
+    else if (!marked(declLine.get(s))) bad.push(`${s} is stamped with _varsVer and has no doc-cache marker`);
+  }
+  // Arm 2, named: a module-level Cache/Memo the stamp arm cannot see (keyed on a workspace gen, an id).
+  const named = nonEmpty([...declLine.keys()].filter(id => /cache|memo/i.test(id)), 'module-level cache-named declarations');
+  assert.ok(named.length >= 20, `the name arm found only ${named.length}`);
+  for (const id of named)
+    if (!EXEMPT[id] && !marked(declLine.get(id))) bad.push(`${id} looks like a cache and is neither registered nor exempt`);
+  assert.deepEqual(bad, [], 'register each in DOC_CACHES at its declaration (marker + regDocCache), ' +
+    'or, if it holds no document data, add it to EXEMPT with the reason:\n  ' + bad.join('\n  '));
+});
+
+// #1581 SP-2, as a family: globalVarMap and globalRuleMap are SNAPSHOTS the render setup takes
+// (renderContentHTML, mtInlineSetup, rerollInEdit), current only while a render is painting. Read
+// anywhere else, they are whatever the last row painted saw, and that is how is:failing went stale.
+// The registered collectors (collectVars / collectRules, keyed on _varsVer) are the live read. Every
+// code read of a snapshot must sit inside a function on its render-path list; a new reader elsewhere
+// fails here instead of shipping a stale answer.
+test('#1581 census: the render-time variable snapshots are read only inside a render', () => {
+  const code = s => s.split('\n').filter(l => !/^\s*(?:\/\/|\/\*|\*)/.test(l)).map(l => l.replace(/\s\/\/\s.*$/, '')).join('\n');
+  const reads = (s, name) => (code(s).match(new RegExp('\\b' + name + '\\b(?!\\s*=(?!=))', 'g')) || []).length;
+  const RENDER_PATH = {
+    globalVarMap: ['renderContentHTML', 'mdInline', 'renderEstPill', 'renderMathPill'],
+    globalRuleMap: ['mdInline'],
+  };
+  for (const [snap, fns] of Object.entries(RENDER_PATH)) {
+    const inRender = fns.map(f => [f, reads(fnBody(_src, f), snap)]);
+    for (const [f, n] of inRender) assert.ok(n >= 1, `${f} no longer reads ${snap}: take it off the render-path list`);
+    const total = reads(_src, snap), inside = inRender.reduce((a, [, n]) => a + n, 0);
+    assert.equal(total, inside, `${snap} is read ${total - inside} time(s) outside a render: ` +
+      'outside renderContentHTML and the pill renderers it calls, read collectVars() / collectRules() instead');
+  }
 });
 
 test('collectPropKeys contract: dual-mode collector, before and after the factory move', () => {

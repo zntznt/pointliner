@@ -366,7 +366,7 @@ Implemented:
   aggregations (`sum`/`avg`/`count(prop)`). `evalCheck(node, vars)` → `'pass'`/`'fail'`/`'error'`/
   `null`: child aggregations are substituted first (`expandAggExpr`), then evalMath runs against
   `{ ...vars, ...own-numeric-props }` — the point's own numeric props (`nodePropVars`, finite
-  `Number` only; the `check`/date keys excluded) **win** over doc variables (`globalVarMap`), and
+  `Number` only; the `check`/date keys excluded) **win** over doc variables (`collectVars()`), and
   evalMath's own constants (`today`) win over both. `1` → pass, `0` → fail, `null` (malformed /
   missing-or-non-numeric ref) → **error**. The point shows a live **pass/fail/error chip**
   (`buildCheckChip`): pass is a muted `✓` (P4 — never silent), fail is `--bad`, error is a distinct
@@ -377,9 +377,10 @@ Implemented:
   chips, a scope-teaching hint, and a **live preview** that runs `evalCheck` against the current
   point and *explains why* an expression can't evaluate (`mathErrorReason`). **`is:failing`** is a
   new value in the existing `is:` search family — the doc-wide lint filter, matching a node whose
-  check **fails or errors** (`termMatchesNode`/`queryMatchesNode` gained a `vars` param defaulting to
-  `globalVarMap`). Front doors: the `/check` slash verb ("Check"), the bullet-menu "Add / edit check"
-  door, the chip, and the `?` panel + focus-shown search-legend rows. `check` is reserved like
+  check **fails or errors** (`termMatchesNode`/`queryMatchesNode` gained a `vars` param; left unset,
+  the check branches read `collectVars()`, never the render snapshot `globalVarMap`, #1581). Front
+  doors: the `/check` slash verb ("Check"), the bullet-menu "Add / edit check" door, the chip, and
+  the `?` panel + focus-shown search-legend rows. `check` is reserved like
   `DATE_KEYS` — hidden from the generic Properties editor and merged back untouched on save; it
   round-trips through `_props` for free (no new OPML work). Pure cores `evalCheck`/`nodePropVars`/
   `checkExprOf`. **Numeric** extremal/range checks (`max(cost) <= cap`, `min(score) >= 1`,

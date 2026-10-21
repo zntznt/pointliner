@@ -470,7 +470,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `grammarRenderList`
 - `cookieNode` — The node currently being rendered, so mdInline can compute a [/] / [%]
 - `withHostScope` — withHostScope(node, fn) — run fn with cookieNode set to the host point, restoring whatever was
-- `globalVarMap` — Collected variable map {name: value} for the current render; updated by
+- `globalVarMap` — Collected variable map {name: value} for the current render; a SNAPSHOT of collectVars() taken by
 - `globalRuleMap`
 - `renderVarMap` — Positional (per-node) variable map for the node currently rendering — the variables
 - `renderPosVarMap`
