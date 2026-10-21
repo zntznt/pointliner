@@ -7211,7 +7211,7 @@ function renderContentHTML(node) {
   // Positional resolution (Stage B): this node's pills resolve {name} against the variables
   // visible AT this node (declarations above it), not the document-wide last-wins map. The
   // render-path readers (renderVarPill, the math-pill eval below) use renderVarMap; search /
-  // check eval keep using the document-wide globalVarMap.
+  // check eval use the document-wide collectVars() (#1581: never this snapshot, see globalVarMap).
   renderVarMap      = varMapAt(node);
   renderPosVarMap   = renderPosVarMaps(node);   // #767: per-pill positional maps when this point declares vars inline
   // Pass the RAW text (with any `# `, `> ` prefix intact) so mdToHtml renders the
@@ -7258,8 +7258,9 @@ function renderContentHTML(node) {
   // #451: clear the two per-node render globals this block used to omit. queryRenderList is
   // per-node context (→ null, like the sidecar lists); renderVarMap is POSITIONAL scope, so
   // reset it to the document-wide map (its declared default), the value readers outside a
-  // node render expect. globalVarMap is DELIBERATELY left set — it's the document-wide map
-  // that search / check eval read outside render (see the save/restore note above).
+  // node render expect. globalVarMap is left set, but it is a snapshot of THIS render: search and
+  // check eval outside a render read collectVars() instead, because a filter that paints no row
+  // never refreshes it (#1581).
   queryRenderList   = null;
   renderVarMap      = globalVarMap;
   renderPosVarMap   = null;
@@ -8698,13 +8699,16 @@ function withHostScope(node, fn) {
   cookieNode = node || null;
   try { return fn(); } finally { cookieNode = save; }
 }
-// Collected variable map {name: value} for the current render; updated by
-// collectVars(), used by renderMathPill and renderVarPill at display time.
+// Collected variable map {name: value} for the current render; a SNAPSHOT of collectVars() taken by
+// the render setup (renderContentHTML, mtInlineSetup, rerollInEdit), read by mdInline and the pill
+// renderers it calls. #1581: current only while a render is painting. Anything that can run outside
+// one (search, check chips, the Check dialog) reads collectVars(), which is the registered,
+// _varsVer-keyed cache; a census test fails on a new reader outside the render path.
 let globalVarMap = {};
-let globalRuleMap = null; // document-wide grammar rule map, cached per _varsVer — the globalVarMap twin for collectRules()
+let globalRuleMap = null; // document-wide grammar rule map, cached per _varsVer — the globalVarMap twin for collectRules() (render-only, like globalVarMap)
 // Positional (per-node) variable map for the node currently rendering — the variables
 // VISIBLE AT that node (declarations above it), set by renderContentHTML via varMapAt(node).
-// The render-path pill readers use this; search / check eval use globalVarMap (document-wide).
+// The render-path pill readers use this; search / check eval use collectVars() (document-wide).
 // Defaults to globalVarMap so any reader outside a node render still resolves globally.
 let renderVarMap = {};
 let renderPosVarMap = null;   // #767: per-pill positional var maps (key -> map) for the node being rendered; null = share renderVarMap
@@ -14610,7 +14614,9 @@ function mtInitGlobal() {
 // subtree walk — so on a large doc the render re-walks the same subtrees every frame. The
 // count only changes on a structural edit, which bumps _varsVer (markDirty), so a
 // generation-guarded per-node Map is safe. The recursion reuses cached children for free.
-let _descCache = new Map(), _descCacheVer = -1;
+// Keyed by node OBJECT, so a foreign tree's nodes never collide with the live doc's (#1581).
+let _descCache = new Map(), _descCacheVer = -1; // doc-cache: countDescendants (per-node; see DOC_CACHES)
+regDocCache('countDescendants', {});
 function countDescendants(n) {
   if (_descCacheVer !== _varsVer) { _descCache = new Map(); _descCacheVer = _varsVer; }
   const hit = _descCache.get(n);
@@ -15072,13 +15078,20 @@ function buildPropsArea(node) {
 // Last-seen check verdict per node id — so a re-eval that FLIPS the verdict (a child
 // edit pushes a budget over) announces the change to assistive tech (P3/P4), while an
 // unchanged or first-seen verdict stays quiet.
+// #1581: per DOCUMENT, so adoptDoc clears it (ids repeat across copies of a file, and a reopened copy
+// announced a "flip" against the previous document). Deliberately NOT a DOC_CACHES reset: this is
+// memory, not a recomputable cache, and resetDocCaches also runs on undo/redo and on every promoted
+// declaration, which are exactly the edits whose flips must still be announced.
 const _checkVerdicts = new Map();
 
 // The constraint chip: evaluates the point's `check` and renders a pass/fail/error
 // verdict (P4 — fail AND error are visible; pass is a muted ✓, not silent). Routes
 // to the Check dialog on click/Enter. Returns null when the point has no check.
 function buildCheckChip(node) {
-  const verdict = evalCheck(node, globalVarMap, ancestorsOf(node)); // #461: inherit ancestor props
+  // #1581: collectVars(), the map is:failing reads, so the chip and the search cannot disagree. The
+  // render snapshot globalVarMap is not current here: repaintComputedDependents calls this outside
+  // any render setup.
+  const verdict = evalCheck(node, collectVars(), ancestorsOf(node)); // #461: inherit ancestor props
   if (!verdict) { _checkVerdicts.delete(node.id); return null; }
   const prev = _checkVerdicts.get(node.id);
   _checkVerdicts.set(node.id, verdict);
@@ -15996,11 +16009,14 @@ function openCheckDialog(nodeId, targets = null, prefill = '') {
         preview: expr => {
           const v = (expr || '').trim();
           if (!v) return '<span style="color:var(--muted)">Leave blank to remove the check.</span>';
-          const verdict = evalCheck(previewNode(v), globalVarMap);
+          // #1581: the live map, not the render snapshot. Driven on 01145bc: with the filter
+          // showing no rows, a dropped limit left this preview saying "passes" for a failing check.
+          const vars = collectVars();
+          const verdict = evalCheck(previewNode(v), vars);
           const expanded = escHtml(expandAggExpr(v, node));
           if (verdict === 'pass') return `<span style="color:var(--ok)">✓ passes</span> <span style="color:var(--muted)">· ${expanded}</span>`;
           if (verdict === 'fail') return `<span style="color:var(--bad)">✗ fails</span> <span style="color:var(--muted)">· ${expanded}</span>`;
-          const scope = Object.assign(Object.create(null), globalVarMap, nodePropVars(node));
+          const scope = Object.assign(Object.create(null), vars, nodePropVars(node));
           const why = mathErrorReason(expandAggExpr(v, node), scope);
           const reason = mathReasonPhrase(why, expandAggExpr(v, node)) || 'a syntax error';
           return `<span style="color:var(--warn)">⚠ can’t evaluate</span> <span style="color:var(--muted)">· ${reason}</span>`;
@@ -18834,7 +18850,11 @@ function searchTermProblems(terms, opts) {
 }
 
 // Does one term hit this node (negation NOT applied here)? Pure given seqs + vars
-// (vars feeds the is:failing check eval; defaults to the live globalVarMap).
+// (vars feeds the is:failing / is:passing check eval). Like `links`, it is NOT defaulted in the
+// signature: only those two branches fall back to collectVars(), the live document's cached map, so
+// a text query never pays for it. #1581: the fallback used to be the render snapshot globalVarMap.
+// The search runs in flatten(), before any row paints, and a filter that shows nothing paints
+// nothing, so the snapshot stayed one edit behind and is:failing showed no rows for a failing check.
 /* `ancTagText` is the tag text inherited from this node's ancestors, already state-stripped and
    pre-joined into one string. A STRING, not an ancestors array, and threaded rather than looked up,
    for two reasons:
@@ -18849,7 +18869,7 @@ function searchTermProblems(terms, opts) {
       re-deriving the chain per node would be O(depth).
 
    The default keeps non-walking callers (nodeMatchesSearch on a live node) correct with no change. */
-function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
+function termMatchesNode(term, node, seqs, vars, links,
                          ancTagText = ancestorTagText(ancestorsOf(node), knownStates())) {
   // QX-6: `links` is the doc-wide link index (collectLinks: outgoing/backlinks/broken),
   // threaded like seqs/vars. It is NOT defaulted in the signature: only the two branches
@@ -18899,13 +18919,13 @@ function termMatchesNode(term, node, seqs, vars = globalVarMap, links,
       // chip and must not read as an error here. ancestorsOf degrades to [] for a
       // node outside the live index (an explicit test tree, a foreign workspace
       // doc), which keeps this matcher's pure own-node behavior for those callers.
-      const v = evalCheck(node, vars, ancestorsOf(node));
+      const v = evalCheck(node, vars || collectVars(), ancestorsOf(node));
       return v === 'fail' || v === 'error';
     }
     // QX-1: is:passing is the symmetry fill for is:failing. NOT the same as
     // -is:failing: evalCheck returns null for a check-less point, so -is:failing also
     // matches un-checked points; is:passing requires an actual passing check.
-    if (term.value === 'passing') return evalCheck(node, vars, ancestorsOf(node)) === 'pass';   // #574: same scope as the chip
+    if (term.value === 'passing') return evalCheck(node, vars || collectVars(), ancestorsOf(node)) === 'pass';   // #574: same scope as the chip
     // QX-1: structural + artifact axes — all pure reads of the node object.
     if (term.value === 'leaf')      return !(node.children || []).length;
     if (term.value === 'parent')    return (node.children || []).length > 0;
@@ -19082,7 +19102,7 @@ function searchBlob(node) {
 
 // AND of all terms; a negated term must NOT match. Empty term list matches
 // nothing (callers gate on the raw query string anyway). Pure given seqs.
-function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap, links, ancTagText) {
+function queryMatchesNode(terms, node, seqs = allSequences(), vars, links, ancTagText) {   // vars: see termMatchesNode (#1581)
   if (!terms || !terms.length) return false;
   // QX-5: {kind:'or'} markers split the flat term list into clauses of ANDed terms;
   // the query matches when ANY clause does (OR binds looser than the implicit AND;
@@ -24134,7 +24154,7 @@ function slashApply() {
     if (expr) {
       const cur = nodeById(nodeId); if (!cur) return;
       pushUndo(); setCheckProp(cur, expr); markDirty(); render();
-      const verdict = evalCheck(cur, globalVarMap);
+      const verdict = evalCheck(cur, collectVars());   // #1581: the live map; the render may have painted no row
       flashHint(verdict === 'error'
         ? "Check set, but it can't evaluate yet: " + expr
         : 'Check set: ' + expr);
@@ -28406,7 +28426,10 @@ function findNodeInRoot(rootNode, id) {
 // with an explicit root is pure and UNCACHED, so the mirror render path must not re-walk a
 // foreign tree on every render pass; the generation key means a rescan (or refreshOwnDocInIndex)
 // invalidates for free. The live doc routes to its own per-_varsVer cache (identity path).
-let _wsVarsMemo = new Map();   // docId -> { gen, vars }
+// gen is monotonic (++_wsIndexGen), so the key alone is sound; the reset is the doc-swap clear its
+// folder-memo siblings (_qrfMemo, _qpfMemo) carry, so resetDocCaches covers it too (#1581).
+let _wsVarsMemo = new Map();   // doc-cache: wsDocVars (docId -> { gen, vars }; see DOC_CACHES)
+regDocCache('wsDocVars', { reset: () => _wsVarsMemo.clear() });
 function wsDocVars(docId) {
   if (root && (root.docId || '') === docId) return collectVars();
   const gen = workspaceIndex?.gen || 0;
@@ -35898,7 +35921,7 @@ function pickerRefusedMessage(what, fallback) {
 // Per-document state RESET here (the switcher will later make exactly these
 // per-doc): root · fileHandle · fileName · workspaceFile · dirty · focusedId ·
 // searchQuery/searchQueryLC/searchTerms · undoStack/redoStack ·
-// autosaveDisabled · storageWarnState.
+// autosaveDisabled · storageWarnState · _checkVerdicts.
 // App-wide prefs NOT touched (they survive a swap): showDone · showNotes ·
 // forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
 // agendaShowDone.
@@ -35944,6 +35967,10 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   clearTimeout(searchDebounce);
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0;
+  // #1581: the check chips' last verdicts belong to the OUTGOING document. Ids repeat across copies
+  // of a file, so without this the first paint of a reopened copy announced "Check failing" against
+  // a verdict the user never saw change. (Not a DOC_CACHES reset: see _checkVerdicts.)
+  _checkVerdicts.clear();
   autosaveDisabled = false; storageWarnState = null;
   renderFileName();
   updateTitle();

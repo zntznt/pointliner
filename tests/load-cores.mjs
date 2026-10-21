@@ -170,6 +170,7 @@ export function loadCores() {
     'scrollCueClasses',     // UXP-259: which edge fades a .scroll-strip shows
     'tagHit', 'stripStateTags', 'ancestorTagText', 'tagScanText', 'extendAncTagText',   // tag inheritance
     'searchBlob',           // doc-cache: the text-term haystack
+    'countDescendants',     // #1581 doc-cache: the collapse badge's subtree count (per node, per generation)
     'restoreFailMessage',   // #1136: a failed boot restore names the reason
     'storageAdvice',        // #1113: which storage warning applies, and is there a durable copy
     'pickerOutcome','pickerRefusedMessage',   // #1112: refused picker vs user cancel

@@ -3762,6 +3762,51 @@
       "find": "  if (familyNameAttempt(body)) return 'invalid';",
       "replace": "  ;",
       "kills": "#1538 {deck: …} teaches the mode and never becomes a pill"
+    },
+    {
+      "id": "search-vars-default-snapshot",
+      "suite": "unit",
+      "why": "the original #1581 shape: a matcher's DEFAULT reads the render snapshot, in the parameter list where no function body (and so no fnBody pin) can see it",
+      "file": "index.html",
+      "find": "function queryMatchesNode(terms, node, seqs = allSequences(), vars, links, ancTagText) {",
+      "replace": "function queryMatchesNode(terms, node, seqs = allSequences(), vars = globalVarMap, links, ancTagText) {",
+      "kills": "#1581 census: the render-time variable snapshots are read only inside a render"
+    },
+    {
+      "id": "check-chip-reads-snapshot",
+      "suite": "unit",
+      "why": "a snapshot read inside a non-render function body: the chip goes back to the map is:failing no longer reads, and the two can disagree",
+      "file": "index.html",
+      "find": "const verdict = evalCheck(node, collectVars(), ancestorsOf(node)); // #461: inherit ancestor props",
+      "replace": "const verdict = evalCheck(node, globalVarMap, ancestorsOf(node)); // #461: inherit ancestor props",
+      "kills": "#1581 census: the render-time variable snapshots are read only inside a render"
+    },
+    {
+      "id": "desc-cache-unregistered",
+      "suite": "unit",
+      "why": "a _varsVer-stamped cache with neither marker nor registration passes the parity test, which compares only caches that already carry a marker",
+      "file": "index.html",
+      "find": "let _descCache = new Map(), _descCacheVer = -1; // doc-cache: countDescendants (per-node; see DOC_CACHES)\nregDocCache('countDescendants', {});",
+      "replace": "let _descCache = new Map(), _descCacheVer = -1;",
+      "kills": "#1581 census: every module-level cache is in DOC_CACHES or named as exempt"
+    },
+    {
+      "id": "ws-vars-memo-unregistered",
+      "suite": "unit",
+      "why": "a memo keyed on something other than _varsVer is invisible to the stamp arm; only the name arm can see it",
+      "file": "index.html",
+      "find": "let _wsVarsMemo = new Map();   // doc-cache: wsDocVars (docId -> { gen, vars }; see DOC_CACHES)\nregDocCache('wsDocVars', { reset: () => _wsVarsMemo.clear() });",
+      "replace": "let _wsVarsMemo = new Map();   // docId -> { gen, vars }",
+      "kills": "#1581 census: every module-level cache is in DOC_CACHES or named as exempt"
+    },
+    {
+      "id": "check-verdicts-outlive-doc",
+      "suite": "unit",
+      "why": "without the clear, a reopened copy of a file (same ids) announces a check flip against the previous document",
+      "file": "index.html",
+      "find": "  _checkVerdicts.clear();\n  autosaveDisabled = false; storageWarnState = null;",
+      "replace": "  autosaveDisabled = false; storageWarnState = null;",
+      "kills": "#1581 the check-flip memory belongs to one document"
     }
   ]
 }

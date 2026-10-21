@@ -486,6 +486,66 @@ test('#1443 a point that matches only by an inherited tag is still a match', { s
   assert.equal(r.length, 3, 'and the untagged branch stays out entirely');
 });
 
+// #1581: is:failing read its variables from a snapshot taken when a ROW painted. The filter runs
+// before any row exists, and a filter showing nothing paints nothing, so a budget the check reads
+// could drop and the list stayed empty through every render, undo and redo. Driven on 01145bc.
+async function budgetDoc(pg) {
+  await pg.evaluate(() => {
+    const d = mkNode('Budget {limit := 100}');
+    const plan = mkNode('Plan'); setCheckProp(plan, 'sum(cost) <= limit');
+    const kid = mkNode('Item'); setProp(kid, 'cost', '50');
+    plan.children = [kid]; root.children = [d, plan];
+    promoteLoadedShorthand(root); buildIndex(root, null); resetDocCaches(); markDirty(); render();
+  });
+}
+test('#1581 is:failing answers from the variables as they are now, even when it showed no rows', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await budgetDoc(pg);
+  const r = await pg.evaluate(() => {
+    const shown = () => flatRows.map(x => x.node.text);
+    applySearch('is:failing');
+    const before = shown();
+    pushUndo(); root.children[0].vars[0].expr = '10'; markDirty(); render();
+    const dropped = shown();
+    undo(); const undone = shown();
+    redo(); const redone = shown();
+    applySearch('is:passing'); const passing = shown();
+    applySearch('');
+    return { before, dropped, undone, redone, passing };
+  });
+  assert.deepEqual(r.before, [], 'baseline: 50 <= 100 is not failing');
+  assert.deepEqual(r.dropped, ['Plan'], 'the limit dropped to 10, so the check fails and is:failing must show it');
+  assert.deepEqual(r.undone, [], 'undo puts the limit back, and the list must follow');
+  assert.deepEqual(r.redone, ['Plan'], 'and redo brings it back again');
+  assert.deepEqual(r.passing, [], 'is:passing must not list a failing check');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1581 reopening a copy of the file is silent about checks; undo still announces its flip', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await budgetDoc(pg);
+  const r = await pg.evaluate(() => {
+    const said = [];
+    const orig = window.announce;
+    window.announce = (m, ...rest) => { said.push(m); return orig(m, ...rest); };
+    const take = () => said.splice(0).filter(m => /^Check /.test(m));
+    // the same document saved with a lower limit: same ids, a verdict the user never saw change
+    const copy = JSON.parse(JSON.stringify(root)); copy.children[0].vars[0].expr = '10';
+    adoptDoc(copy, { fileName: 'copy.opml' });
+    const opened = take();
+    pushUndo(); root.children[0].vars[0].expr = '100'; markDirty(); render();
+    const edited = take();
+    undo(); const undone = take();
+    window.announce = orig;
+    return { opened, edited, undone };
+  });
+  assert.deepEqual(r.opened, [], 'opening a document must not announce a flip against the previous one');
+  assert.deepEqual(r.edited, ['Check passing on Plan'], 'an edit that flips the check is announced');
+  assert.deepEqual(r.undone, ['Check failing on Plan'], 'and so is the undo of it, so the memory must survive resetDocCaches');
+  await pg.close();
+});
+
 // 12. import formats -- the sniff picks the right PARSER, and the import reaches the doc store.
 // A source pin cannot see this class: `indexOf('sniffBibtex') < indexOf('sniffDelimited')` stayed
 // green with the branch disabled (`false && sniffBibtex(text)`), because the substring never moved.
