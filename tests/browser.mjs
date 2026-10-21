@@ -3740,6 +3740,70 @@ test('#1505 a brace that is about to be deleted says so, and one that stays stil
   assert.doesNotMatch(stays.said, /removed/, 'and never that it will be deleted');
 });
 
+// 62b. #1538 — `deck` is the family name, not a keyword. {deck: a | b | c} froze a pill reading
+// "deck: a" a third of the time, and {deck: } leaked its braces with no word at all. Driven for the
+// #1505 reason: what is said as the `}` lands and what is done on exit are two moments no source pin
+// spans. The two neighbours that DO work are measured beside it, so the fix cannot land on them.
+test('#1538 {deck: …} teaches the mode and never becomes a pill, while {shuffle: …} still deals', { skip: skip() }, async () => {
+  const drive = async (body) => {
+    const pg = await fresh();
+    await pg.evaluate(() => {
+      const n = mkNode(''); n.type = 'ul';
+      root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0];
+      c.focus(); activeContentId = c.dataset.id;
+      const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    });
+    await pg.waitForTimeout(200);
+    await pg.keyboard.type('Draw {' + body + '}');   // the announcement fires on the closing }
+    await pg.waitForTimeout(350);
+    const said = await pg.evaluate(() => (document.getElementById('a11y-live')?.textContent || '').trim());
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(350);
+    const after = await pg.evaluate(() => {
+      const n = root.children[0], row = document.querySelector('.node-content');
+      const cue = row ? [...row.querySelectorAll('.brace-attempt')] : [];
+      return {
+        text: n.text,
+        grammar: (n.grammar || []).map(g => ({ mode: g.mode || null, origin: g.origin || null, def: g.def || null })),
+        shown: row ? row.textContent : '',
+        cues: cue.length, reason: cue[0] ? cue[0].dataset.reason : '',
+      };
+    });
+    await pg.close();
+    return { said, ...after };
+  };
+  const CUE = /^Deck is the family name, not a mode\. Pick a mode: try \{shuffle: a \| b \| c\}, or cycle, once or stopping\./;
+
+  // the reported shape, with a list: no pill, the text kept whole, the cue on it and spoken
+  const list = await drive('deck: a | b | c');
+  assert.equal(list.text, 'Draw {deck: a | b | c}', 'the text stays exactly as typed');
+  assert.deepEqual(list.grammar, [], 'no grammar record: this used to be a pill reading "deck: a"');
+  assert.doesNotMatch(list.shown, /^Draw deck: [abc]$/, 'and nothing on screen shows the frozen coin flip');
+  assert.equal(list.cues, 1, 'it wears the .brace-attempt cue, so the braces are marked, not leaked');
+  assert.match(list.reason, CUE, 'whose reason teaches the mode');
+  assert.match(list.said, CUE, 'and the same sentence is announced as the } lands');
+  assert.match(list.said, /It stays plain text\.$/, 'with the outcome that really happens');
+
+  // empty: consumed like {shuffle: }, and it says so instead of vanishing in silence
+  const empty = await drive('deck: ');
+  assert.equal(empty.text, 'Draw ', '{deck: } is consumed, never left as raw braces');
+  assert.equal(empty.cues, 0);
+  assert.match(empty.said, CUE, 'it teaches the mode');
+  assert.match(empty.said, /This empty pill is removed when you leave the point\.$/, 'and says the text goes');
+
+  // THE CONTROLS. A real deck still deals, and a rule NAMED deck is still a rule.
+  const deck = await drive('shuffle: a | b | c');
+  assert.match(deck.text, /^Draw \[\[grammar:[a-z0-9]+\]\]$/, '{shuffle: …} still promotes');
+  assert.deepEqual(deck.grammar.map(g => g.mode), ['shuffle'], 'to a deck, with its mode');
+  assert.doesNotMatch(deck.said, /family name/, 'and is never told it is a family name');
+  const rule = await drive('rule deck: a | b');
+  assert.match(rule.text, /^Draw \[\[grammar:[a-z0-9]+\]\]$/, '{rule deck: …} still promotes');
+  assert.deepEqual(rule.grammar.map(g => g.origin), ['deck'], 'to a rule registered as deck');
+  assert.deepEqual(pageErrors, []);
+});
+
 // 63. #1506 — a dialog Save that REFUSES was a total no-op: an ENABLED button, pressed, writing
 // nothing, saying nothing, changing nothing on screen. Driven, because the finding IS what a press
 // does: the validity cores are already tested and prove nothing about whether pressing Save tells

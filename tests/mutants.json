@@ -3636,6 +3636,51 @@
       "find": "  } else if (id === 'action') {",
       "replace": "  } else if (id === 'action-removed') {",
       "kills": "UXP-336 @action from the inline @ menu inserts a working action instead of nothing"
+    },
+    {
+      "id": "family-name-added-without-a-cue",
+      "suite": "unit",
+      "why": "the next omission, simulated: deck got in exactly this way, a word mapped to ANOTHER keyword's form with nothing to catch {word: a | b} becoming a coin flip",
+      "file": "index.html",
+      "find": "  deck:     'shuffle: a | b | c',\n",
+      "replace": "  deck:     'shuffle: a | b | c',\n  bag:      'shuffle: a | b | c',\n",
+      "kills": "#1538 census: a word the cue tables teach through another keyword is a registered family name"
+    },
+    {
+      "id": "deck-cue-drops-a-mode",
+      "suite": "unit",
+      "why": "Deck names all four modes (P1); a cue naming two teaches half the family, and the check is an includes-shaped claim",
+      "file": "index.html",
+      "find": "or cycle, once or stopping.",
+      "replace": "or cycle.",
+      "kills": "#1538 the deck cue names every mode"
+    },
+    {
+      "id": "deck-documented-as-a-form",
+      "suite": "unit",
+      "why": "the fix the issue proposed and the owner declined: publishing {deck: …} would ship a form that does not exist (P5)",
+      "file": "guide/pill-syntax-reference.md",
+      "find": "| `{shuffle: a \\| b \\| c}` | deals from a deck without repeats;",
+      "replace": "| `{shuffle: a \\| b \\| c}` or `{deck: a \\| b \\| c}` | deals from a deck without repeats;",
+      "kills": "#1538 the deck cue names every mode, and a family name is never published as a keyword"
+    },
+    {
+      "id": "deck-stub-leaks-its-braces",
+      "suite": "unit",
+      "why": "with the family names out of the predicate, {deck: } is the one member of the empty family left leaking its braces, which is the reported symptom",
+      "file": "index.html",
+      "find": "EMPTY_STUB_KEYWORDS.concat(Object.keys(FAMILY_NAME_CUE)).join('|')",
+      "replace": "EMPTY_STUB_KEYWORDS.join('|')",
+      "kills": "#1213: an empty-bodied keyword pill is consumed, not left as raw leaking braces"
+    },
+    {
+      "id": "deck-cue-unspoken",
+      "suite": "browser",
+      "why": "classified as an ordinary pick, {deck: a | b | c} gets a preview instead of the cue: nothing marks it and nothing is announced",
+      "file": "index.html",
+      "find": "  if (familyNameAttempt(body)) return 'invalid';",
+      "replace": "  ;",
+      "kills": "#1538 {deck: …} teaches the mode and never becomes a pill"
     }
   ]
 }

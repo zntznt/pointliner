@@ -20500,7 +20500,10 @@ test('LEAN-FLOOR: {date due: VALUE} promotes to the date prop (valid), clears (e
 test('#1213: an empty-bodied keyword pill is consumed, not left as raw leaking braces', () => {
   const mk = () => ({ text: '', props: [], grammar: [], math: [], query: [], dice: [], est: [], vars: [] });
   // STRIP: a recognized keyword with an empty tail (and bare {= }) → consumed ('')
-  for (const body of ['roll:', 'roll: ', '=', '= ', 'count:', 'query:', 'shuffle:', 'cycle:', 'once:', 'stopping:', 'markov:', 'oracle:']) {
+  // #1538: and the family name. `deck` is not a keyword, which is exactly why {deck: } was the one
+  // member left leaking its braces; it is consumed through the same predicate as {shuffle: }.
+  for (const body of ['roll:', 'roll: ', '=', '= ', 'count:', 'query:', 'shuffle:', 'cycle:', 'once:', 'stopping:', 'markov:', 'oracle:',
+                      'deck:', 'deck: ']) {
     assert.equal(c.promoteBraceBody(mk(), body), '', `empty {${body}} must be consumed, never left as raw braces`);
   }
   // PRESERVE valid pills — the guard only fires on an EMPTY tail
@@ -35952,6 +35955,121 @@ test('#1505 the announcement and the live cue both route through the one outcome
   assert.match(fnBody(_src, 'checkInlineHighlight'),
     /if \(braceBodyIsEmptyStub\(body\)\) announce\(braceAttemptAnnounce\(body, braceRules, braceScope\)\)/,
     'a stub that classifies as prose is still announced, or it is deleted in silence');
+});
+
+// ─── #1538: `deck` is the family name, not a keyword ─────────────────────────────────────────
+// The issue read `deck` as a shipped synonym of shuffle that #1213 had missed. Measured, it was never
+// a keyword: SEQ_MODES is shuffle | cycle | once | stopping, and "Deck" is only the label the @ and {
+// menus give the family. So {deck: a | b | c} reached the alternation branch and froze a pill reading
+// "deck: a" a third of the time, and {deck: } leaked its braces with no word. The owner's call is to
+// teach the fix, not mint a synonym (P1: Deck keeps naming all four modes; P5: no new form).
+const FAMILY_NAMES = [...between(_src, 'const FAMILY_NAME_CUE = {', '};').matchAll(/^\s*([a-z]+):\s*'/gm)].map(m => m[1]);
+test('#1538 a family name used as a keyword is an attempt, never a pill reading "deck: a"', () => {
+  const mk = () => ({ text: '', props: [], grammar: [], math: [], query: [], dice: [], est: [], vars: [] });
+  const cue = c.braceAttemptReason('deck: a | b | c', {}, {});
+  assert.match(cue, /^Deck is the family name/, 'the cue names the mistake: the word is a family name');
+  assert.ok(cue.includes('{shuffle: a | b | c}'), 'and shows a form that works');
+  assert.ok(!/\{deck/i.test(cue), 'and never offers {deck…} back, which is the form that does not exist');
+  assert.equal(c.classifyBraceBody('shuffle: a | b | c', {}, {}), 'artifact', 'the form the cue offers really parses');
+
+  // With a list: an attempt (the cue and the anti-shred guard), and it stays text. Before this it
+  // classified 'artifact' and promoted to an anonymous grammar whose def was `origin: deck: a | b | c`.
+  for (const body of ['deck: a | b | c', 'deck:a|b', 'DECK: a | b', 'Deck : a | b | c', 'deck: a', 'deck: {a|b}']) {
+    const n = mk();
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'invalid', `{${body}} is an attempt at a deck, not a pick`);
+    assert.equal(c.promoteBraceBody(n, body), null, `{${body}} stays text so the cue can teach the mode`);
+    assert.equal(n.grammar.length, 0, `{${body}} must not leave a grammar record behind`);
+    assert.equal(c.braceAttemptReason(body, {}, {}), cue, `{${body}} says the one sentence for the word`);
+    assert.equal(c.braceAttemptAnnounce(body, {}, {}), cue + ' It stays plain text.', `{${body}} says what happens to it`);
+  }
+  // Empty: consumed like {shuffle: }, by the same predicate, and it says so while there is still time.
+  for (const body of ['deck:', 'deck: ', 'DECK:   ', ' deck: ']) {
+    assert.equal(c.braceBodyIsEmptyStub(body), true, `{${body}} is an empty stub`);
+    assert.equal(c.promoteBraceBody(mk(), body), '', `{${body}} is consumed, never left as leaking braces`);
+    assert.equal(c.emptyStubAnnounce(body), cue + ' This empty pill is removed when you leave the point.');
+    assert.equal(c.braceAttemptAnnounce(body, {}, {}), c.emptyStubAnnounce(body), 'the live cue routes through the stub sentence');
+  }
+  // One word, one sentence: bare, with a colon, and one colon short all teach the same fix. The
+  // colon-less cue used to say "This needs a colon after deck", which sends the reader to the mistake.
+  for (const body of ['deck', 'deck {a|b}', 'deck: ']) {
+    assert.equal(c.braceAttemptReason(body, {}, {}), cue, `{${body}} agrees with {deck: …}`);
+  }
+  assert.equal(c.braceAttemptReason('shuffle {a|b}', {}, {}), 'This needs a colon after shuffle: try {shuffle: a | b | c}.',
+    'a real keyword one colon short keeps its own cue');
+
+  // THE NEGATIVES, measured: everything near `deck` that does work must keep working.
+  const seq = mk();
+  assert.match(c.promoteBraceBody(seq, 'shuffle: a | b | c') || '', /^\[\[grammar:/, 'a real deck still promotes');
+  assert.equal(seq.grammar[0].mode, 'shuffle', 'as a deck, with its mode');
+  const rule = mk();
+  assert.equal(c.classifyBraceBody('rule deck: a | b', {}, {}), 'artifact', 'a rule NAMED deck is a real rule');
+  assert.match(c.promoteBraceBody(rule, 'rule deck: a | b') || '', /^\[\[grammar:/);
+  assert.equal(rule.grammar[0].origin, 'deck', 'and it registers under its name');
+  const v = mk();
+  assert.match(c.promoteBraceBody(v, 'deck := a | b') || '', /^\[\[var:/, 'a variable named deck is a real variable');
+  assert.equal(v.vars[0].name, 'deck');
+  assert.equal(c.classifyBraceBody('deck A | deck B', {}, {}), 'artifact', 'the word inside an ordinary pick is untouched');
+  for (const body of ['rule deck: a', 'deck := 5', 'deck:= a | b', 'decks: a | b', 'deck A | deck B', 'deck', 'deck.cap', '']) {
+    assert.equal(c.familyNameAttempt(body), null, `{${body}} is not the family name used as a keyword`);
+  }
+  for (const body of [cue, c.braceAttemptAnnounce('deck: ', {}, {})]) {
+    assert.ok(!/—/.test(body), 'AP punctuation, no em dashes');
+    assert.ok(!/\bnode\b/.test(body), 'user-facing copy says point');
+  }
+});
+
+test('#1538 the deck cue names every mode, and a family name is never published as a keyword', () => {
+  const families = nonEmpty(FAMILY_NAMES, 'FAMILY_NAME_CUE entries');
+  const cue = c.braceAttemptReason('deck: ', {}, {});
+  // Deck means all four modes (P1). A fifth mode added to SEQ_MODES has to be named here too, or the
+  // cue goes back to teaching part of the family.
+  const modes = nonEmpty([...(/const SEQ_MODES = \[([^\]]+)\]/.exec(_src)?.[1] || '').matchAll(/'([a-z]+)'/g)].map(m => m[1]), 'SEQ_MODES');
+  for (const mode of modes) assert.match(cue, new RegExp(`\\b${mode}\\b`), `the deck cue must name the ${mode} mode`);
+  // P5: a family name is not a form. Not a mode, not in the keyword list the #1215 guard holds to the
+  // reference, and not documented there. Each of those is the "fix" this issue decided against.
+  const ref = readFileSync(_guidePath('pill-syntax-reference.md'), 'utf8');
+  for (const f of families) {
+    assert.ok(!modes.includes(f), `${f} must not become a mode`);
+    assert.ok(!STUB_KEYWORDS.includes(f), `${f} must not join EMPTY_STUB_KEYWORDS, the published keyword list`);
+    assert.doesNotMatch(ref, new RegExp(`\\{${f}\\s*:`, 'i'), `the syntax reference must not document {${f}: …}`);
+  }
+  // No two words share a sentence (the #1505 rule), across the keywords AND the family names.
+  const said = [...STUB_KEYWORDS, ...families].map(k => c.emptyStubAnnounce(`${k}: `)).concat(c.emptyStubAnnounce('= '));
+  assert.equal(new Set(said).size, said.length, 'a family name borrowing a keyword\'s sentence, or the reverse');
+});
+
+// CENSUS RATCHET. `deck` got in through a table: GENERATE_FORM_HINT maps it to the SHUFFLE form, and
+// NEAR_MISS points it at {shuffle: …}. A word the app offers by pointing at ANOTHER keyword's form is
+// a family name, and every family name needs the cue, or {word: a | b} is a coin flip again.
+test('#1538 census: a word the cue tables teach through another keyword is a registered family name', () => {
+  const families = nonEmpty(FAMILY_NAMES, 'FAMILY_NAME_CUE entries');
+  const hints = nonEmpty([...between(_src, 'const GENERATE_FORM_HINT = {', '};').matchAll(/^\s*([a-z]+):\s*'([^']+)'/gm)]
+    .map(m => [m[1], m[2]]), 'GENERATE_FORM_HINT entries');
+  for (const [word, form] of hints) {
+    if (form.toLowerCase().startsWith(word + ':')) continue;   // its own keyword
+    assert.ok(families.includes(word), `GENERATE_FORM_HINT teaches "${word}" through {${form}}, so it needs a FAMILY_NAME_CUE entry`);
+  }
+  const nearMiss = nonEmpty([...between(fnBody(_src, 'braceAttemptReason'), 'const NEAR_MISS = {', '};').matchAll(/^\s*([a-z]+):/gm)]
+    .map(m => m[1]), 'NEAR_MISS entries');
+  let notBrace = 0;
+  for (const word of nearMiss) {
+    const offered = /\{([a-z]+)[\s:]/i.exec(c.braceAttemptReason(word, {}, {}));
+    if (!offered) { notBrace++; continue; }   // the cue offers no brace form at all ({clock}: a bracket clock)
+    if (offered[1].toLowerCase() === word) continue;
+    assert.ok(families.includes(word), `{${word}} is taught through {${offered[1]}…}, so it needs a FAMILY_NAME_CUE entry`);
+  }
+  // measured, not assumed: clock is the one NEAR_MISS word whose cue points away from braces, so
+  // {clock: a | b} is the general {name: a | b} behaviour rather than this family. Pinned so that
+  // widening the family to it is a decision someone makes, not a gap nobody saw.
+  assert.equal(notBrace, 1, 'exactly one NEAR_MISS word (clock) offers no brace form');
+  assert.doesNotMatch(c.braceAttemptReason('clock', {}, {}), /\{/, 'and that word is clock');
+  // and every registered name actually behaves as one, through every door
+  for (const f of families) {
+    assert.equal(c.classifyBraceBody(`${f}: a | b | c`, {}, {}), 'invalid', `{${f}: …} is an attempt`);
+    assert.equal(c.promoteBraceBody({ text: '', props: [], grammar: [] }, `${f}: a | b | c`), null, `{${f}: …} stays text`);
+    assert.equal(c.braceBodyIsEmptyStub(`${f}: `), true, `{${f}: } is consumed like any empty stub`);
+    assert.match(c.braceAttemptReason(`${f}: a | b | c`, {}, {}), new RegExp(`^${f}\\b`, 'i'), `{${f}: …} names the word it is about`);
+  }
 });
 
 test('#1353 Phase 3: the Variables panel names a kind the value cannot show', () => {

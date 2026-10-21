@@ -20211,6 +20211,32 @@ const GENERATE_FORM_HINT = {
   meter:    'meter: hp/hpmax',
 };
 const COLON_COMMIT_KEYWORDS = Object.keys(GENERATE_FORM_HINT);
+// #1538: a FAMILY NAME is not a keyword, so it gets a teaching cue instead of a pill.
+// `deck` is the name of the family the four modes belong to (SEQ_MODES: shuffle, cycle, once,
+// stopping). The @ menu and the { menu label the family "Deck" and insert {shuffle: …}; the table
+// above maps `deck` to the shuffle form for the same reason. It was never a keyword, so typed with a
+// colon it parsed as nothing: {deck: a | b | c} fell through to the alternation branch and froze a
+// pill reading "deck: a" a third of the time, and {deck: } left its braces in the prose in silence,
+// the glitch #1213 exists to stop.
+// The owner's call (#1538) is to TEACH THE FIX rather than mint a synonym: Deck keeps naming all four
+// modes (P1) and no new form ships (P5). So these words are kept OUT of EMPTY_STUB_KEYWORDS on
+// purpose. That list is the shipped keyword set, and the #1215 guard rightly fails any entry the
+// syntax reference does not document; documenting {deck: …} would publish a form that does not
+// exist. Instead every door reads this one table: classifyBraceBody calls the body an attempt,
+// braceAttemptReason says this sentence, promoteBraceBodyIn leaves it as text, and the empty-stub
+// predicate consumes the empty one exactly like {shuffle: }. One sentence per word, bare or not.
+// (Not a `// ──` section marker on purpose: this sits inside the brace-classifier section, and a
+// marker would move every declaration below it, classifyBraceBody included, into a section of its own.)
+const FAMILY_NAME_CUE = {
+  deck: 'Deck is the family name, not a mode. Pick a mode: try {shuffle: a | b | c}, or cycle, once or stopping.',
+};
+// `deck:` and `deck: …`, never `deck := …` (a variable named deck) and never `rule deck: …` (a rule).
+const FAMILY_NAME_RE = new RegExp('^(' + Object.keys(FAMILY_NAME_CUE).join('|') + ')\\s*:(?!=)', 'i');
+// The family name a body uses as if it were a keyword, lowercased, or null. Pure.
+function familyNameAttempt(body) {
+  const m = FAMILY_NAME_RE.exec(String(body ?? '').trim());
+  return m ? m[1].toLowerCase() : null;
+}
 const REPEAT_KEYWORD_RE = /^(?:\d+|\d+d\d+)x$/i;   // {3x: …} / {2d4x: …} — the repeat keyword is a count
 function colonlessGenerateKeyword(body) {
   const m = /^\s*([A-Za-z]+|\d+x|\d+d\d+x)(\s+)([\s\S]*)$/.exec(String(body || ''));
@@ -20283,6 +20309,9 @@ function classifyBraceBody(body, rules, vars) {
   // `{shuffle: a, b | c}` parses and stays a real pill. Verified, not assumed.)
   if (/^shuffle\s*:/i.test(body)) return 'invalid';
   if (/^markov\s*:/i.test(body)) return 'invalid';
+  // #1538: a family name with a colon ({deck: a | b | c}) is an attempt at a deck, not a pick
+  // between "deck: a" and "b". Saying so here is what keeps it off the alternation line below.
+  if (familyNameAttempt(body)) return 'invalid';
   // {seq Flow: A B | C} — KEYWORD-COMMIT, like oracle/meter/rule. Once a body opens with `seq `, a
   // tail that will not parse is INVALID. This closes two different failures at once: a broken tail
   // WITH a pipe used to reach the alternation branch and become a nonsense pill (`seq Growth: Seed,
@@ -20476,7 +20505,9 @@ function templateParts(body, rules, vars) {
 // branch and advised the reader about {shuffle: …}, a form they had not typed.
 const EMPTY_STUB_KEYWORDS = ['roll', 'count', 'query', 'shuffle', 'cycle', 'once', 'stopping',
                              'markov', 'oracle', 'seq', 'rule'];
-const EMPTY_STUB_RE = new RegExp('^(?:=|(?:' + EMPTY_STUB_KEYWORDS.join('|') + ')\\s*:)\\s*$', 'i');
+// #1538: the family names join the PREDICATE (an empty {deck: } vanishes like {shuffle: } and says
+// why) but not the keyword list, which the #1215 guard holds to the published reference.
+const EMPTY_STUB_RE = new RegExp('^(?:=|(?:' + EMPTY_STUB_KEYWORDS.concat(Object.keys(FAMILY_NAME_CUE)).join('|') + ')\\s*:)\\s*$', 'i');
 // Pure. The single source of truth for "promotion will consume this body to nothing"; promoteBraceBodyIn
 // tests the same predicate, so there is one answer to that question rather than two.
 function braceBodyIsEmptyStub(body) { return EMPTY_STUB_RE.test(String(body ?? '').trim()); }
@@ -20501,7 +20532,7 @@ function emptyStubAnnounce(body) {
   const b = String(body ?? '').trim();
   if (!braceBodyIsEmptyStub(b)) return null;
   const kw = b[0] === '=' ? '=' : b.slice(0, b.indexOf(':')).trim().toLowerCase();
-  const form = EMPTY_STUB_FORM[kw];
+  const form = EMPTY_STUB_FORM[kw] || FAMILY_NAME_CUE[kw];   // #1538: {deck: } teaches the mode
   // The OUTCOME clause is the whole point of #1505: it names what actually happens to the text,
   // and it says it while there is still time to fill the pill in.
   return (form ? form + ' ' : '') + 'This empty pill is removed when you leave the point.';
@@ -20534,16 +20565,22 @@ function braceAttemptReason(body, rules, vars) {
     oracle:  'An oracle needs an odds word: try {oracle: likely} (or certain, even, unlikely, impossible).',
     roll:    'A roll needs something to roll on: try {roll: #tag} to pick a random point with that tag.',
     shuffle: 'A shuffle needs a list to deal from: try {shuffle: a | b | c}.',
-    deck:    'A deck needs a list to deal from: try {shuffle: a | b | c}.',
+    deck:    FAMILY_NAME_CUE.deck,   // #1538: one sentence for the word, bare or with a colon
     clock:   'A clock is not a brace pill. Type a bracket clock like [o 0/6], then click it to advance.',
   };
   const nm = NEAR_MISS[body.toLowerCase()];
   if (nm) return nm;
+  // #1538: the same family name WITH a colon, {deck: a | b | c} or an empty {deck: }. It said "could
+  // not be created", which names no fix; the word is the mistake, so name the modes it stands for.
+  const fam = familyNameAttempt(body);
+  if (fam) return FAMILY_NAME_CUE[fam];
   // #1501: the same keywords one punctuation mark short. The NEAR_MISS map above only covers the
   // BARE word ({oracle}); this is `{shuffle {a|b}}` — the keyword, an argument, and no colon. It
   // used to say nothing at all, because the body classified as prose and the inner brace was
   // promoted around it. Name the missing colon and show the form, the way the rule branch does.
   const ck = colonlessGenerateKeyword(body);
+  // #1538: "needs a colon after deck" would send the reader to {deck: …}, which is the mistake above.
+  if (ck && FAMILY_NAME_CUE[ck]) return FAMILY_NAME_CUE[ck];
   if (ck) return `This needs a colon after ${ck}: try {`
     + (REPEAT_KEYWORD_RE.test(ck) ? `${ck}: {a|b}` : GENERATE_FORM_HINT[ck]) + '}.';
   // UXP-254: a dice-shaped typo. Pattern-matched rather than keyed like the entries above, because
@@ -29340,6 +29377,10 @@ function promoteBraceBodyIn(node, body) {
     const rec = makeSeqGen(sp.mode, sp.items, undefined, sp.count);
     if (rec) { (node.grammar ||= []).push(rec); return `[[grammar:${rec.key}]]`; }
   }
+  // #1538: the family name used as a mode, {deck: a | b | c}. Stays literal so the cue can teach the
+  // mode; without this the alternation branch below froze it into a pill reading "deck: a". (The
+  // empty {deck: } never gets here: the stub guard at the top consumes it.)
+  if (familyNameAttempt(body)) return null;
   // typed markov chain: {markov: a→b, b→c} → an anonymous, typed markov pill. The
   // `markov:` keyword is sniffed (like the sequence modes) so it never reaches the
   // alternation / bare-name paths below. A NAMED chain stays a dialog feature.

@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2156 declarations in 158 sections across 17 domains.**
+**2159 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1139,6 +1139,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `isQuotedLiteral` — The ONE quote-literal test the three lockstep functions share (#521/#522). A body is a
 - `GENERATE_FORM_HINT` — #1501: the generate keywords whose form commits on a COLON -- {shuffle: a | b}, {3x: template},
 - `COLON_COMMIT_KEYWORDS`
+- `FAMILY_NAME_CUE` — #1538: a FAMILY NAME is not a keyword, so it gets a teaching cue instead of a pill.
+- `FAMILY_NAME_RE` — `deck:` and `deck: …`, never `deck := …` (a variable named deck) and never `rule deck: …` (a rule).
+- `familyNameAttempt` — The family name a body uses as if it were a keyword, lowercased, or null. Pure.
 - `REPEAT_KEYWORD_RE`
 - `colonlessGenerateKeyword`
 - `colonlessGenerateAttempt`
@@ -1149,7 +1152,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## #1505: what a body that is about to be DELETED says about itself
 
 - `EMPTY_STUB_KEYWORDS` — The #1213 stub guard consumes an empty-bodied keyword pill ({= }, {roll: }, {count: }…) rather
-- `EMPTY_STUB_RE`
+- `EMPTY_STUB_RE` — #1538: the family names join the PREDICATE (an empty {deck: } vanishes like {shuffle: } and says
 - `braceBodyIsEmptyStub` — Pure. The single source of truth for "promotion will consume this body to nothing"; promoteBraceBodyIn
 - `EMPTY_STUB_FORM` — Each keyword's own form, matching guide/pill-syntax-reference.md. `=` is keyed by its symbol
 - `emptyStubAnnounce` — The sentence for an empty stub, or null if this body is not one. Pure; no DOM.
