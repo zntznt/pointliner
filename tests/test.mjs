@@ -29892,6 +29892,65 @@ test('#1583 census: hasFSA is read only where the question really is "does the A
   }
 });
 
+// #1583, the regression the fix itself opened. Chromium rejects a second show*Picker call made while
+// one is open with NotAllowedError "File picker already active", and pickerOutcome reads any
+// non-AbortError as a refusal. Before #1583 that cost one stray message; once a refusal GOVERNS Save it
+// would turn Save into a download until reload, from nothing more than a fast double ⌘S.
+test('#1583 pickerOutcome: a picker that is already open is busy, never a refusal', () => {
+  const ACTIVE = "Failed to execute 'showSaveFilePicker' on 'Window': File picker already active.";
+  assert.equal(c.pickerOutcome({ errName: 'NotAllowedError', elapsedMs: 0, message: ACTIVE }), 'busy',
+    "Chromium's own wording: the second line of defence, for a call that reached the browser anyway");
+  assert.equal(c.pickerOutcome({ errName: 'NotAllowedError', elapsedMs: 0, message: 'Not allowed' }), 'refused',
+    'any other NotAllowedError is still a refusal');
+  assert.equal(c.pickerOutcome({ errName: 'NotAllowedError', elapsedMs: 0 }), 'refused', 'and so is one with no message');
+  assert.equal(c.pickerOutcome({ errName: 'AbortError', elapsedMs: 1, message: ACTIVE }), 'refused',
+    'only a NotAllowedError is read for the wording; the AbortError rules are unchanged');
+});
+
+test('#1583 runPicker admits one picker at a time, and frees the slot after success and failure', async () => {
+  // THE GUARD ITSELF, driven through the real function: a second call while one is open must not
+  // reach the browser at all, so there is no error to misread in the first place.
+  let calls = 0, release;
+  const first = c.runPicker(() => { calls++; return new Promise(r => { release = r; }); });
+  const second = await c.runPicker(() => { calls++; return 'second'; });
+  assert.equal(second.outcome, 'busy', 'a second picker while one is open answers busy');
+  assert.equal(second.ok, false);
+  assert.equal(calls, 1, 'and the second picker was never opened');
+  release('picked');
+  const one = await first;
+  assert.equal(one.ok, true); assert.equal(one.value, 'picked');
+  const third = await c.runPicker(() => { calls++; return 'third'; });
+  assert.equal(third.value, 'third', 'the slot is free again once the first picker settles');
+  const failed = await c.runPicker(() => { calls++; throw Object.assign(new Error('x'), { name: 'AbortError' }); });
+  assert.notEqual(failed.outcome, 'busy');
+  const fourth = await c.runPicker(() => { calls++; return 'fourth'; });
+  assert.equal(fourth.value, 'fourth', 'and free again after a picker that failed');
+  assert.equal(calls, 4);
+});
+
+test('#1583 every picker goes through runPicker, and every caller acts only on a refusal', () => {
+  // Bypass census: a show*Picker call that skipped runPicker would skip the guard too.
+  const code = _src.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+  const calls = code.match(/\bwindow\.show(?:OpenFile|SaveFile|Directory)Picker\(/g) || [];
+  const routed = code.match(/runPicker\(\(\) => window\.show(?:OpenFile|SaveFile|Directory)Picker\(/g) || [];
+  assert.equal(nonEmpty(calls, 'picker calls').length, routed.length, 'every picker call is wrapped in runPicker');
+  // The callers, by name: a fourth would have to be added here.
+  const CALLERS = ['openFile', 'saveAsFile', 'connectWorkspace'];
+  assert.equal((code.match(/(?<!function )\brunPicker\(/g) || []).length, CALLERS.length, 'runPicker has exactly these callers');
+  for (const fn of nonEmpty(CALLERS, 'runPicker callers')) {
+    const body = fnBody(_src, fn);
+    assert.match(body, /runPicker\(/, `${fn} calls runPicker`);
+    // Its failure branch: nothing but a refusal-gated action and a return. So 'busy' and
+    // 'cancelled' both fall through to a quiet return -- no message, no download, no fsaOk.
+    const m = body.match(/if \(!(\w+)\.ok\) \{([\s\S]*?)\n\s*\}\n/);
+    assert.ok(m, `${fn} has an if (!picked.ok) branch`);
+    const lines = m[2].split('\n').map(l => l.replace(/\/\/.*$/, '').trim()).filter(Boolean);
+    assert.equal(lines.length, 2, `${fn}: one refusal-gated action and a return, got ${JSON.stringify(lines)}`);
+    assert.ok(lines[0].startsWith(`if (${m[1]}.outcome === 'refused') `), `${fn}: the only action is gated on a refusal`);
+    assert.equal(lines[1], 'return;', `${fn}: everything else returns quietly`);
+  }
+});
+
 test('#1112 reconnectWorkspace stops swallowing a denied permission', () => {
   // Found while mapping this: a bare `catch (_) {}` swallowed EVERY error, and a denied prompt had
   // no branch at all, so "Reconnect folder" could be clicked forever with no response.

@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2171 declarations in 158 sections across 17 domains.**
+**2172 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2026,7 +2026,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `OPML_TYPE`
 - `PICKER_REFUSAL_MS` — #1112: did the picker get REFUSED, or did the user cancel it? The two are indistinguishable by
 - `pickerOutcome`
-- `runPicker` — Run a picker and classify its failure. Returns { ok, value, outcome } -- outcome is null on
+- `_pickerInFlight` — Run a picker and classify its failure. Returns { ok, value, outcome } -- outcome is null on
+- `runPicker`
 - `pickerRefusedMessage` — The message a refused picker earns. Names the browser as the cause and the way out, rather than
 - `adoptDoc` — The single runtime chokepoint for making `newRoot` the live document. Every
 - `newFile`

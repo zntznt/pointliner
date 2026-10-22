@@ -1082,6 +1082,9 @@ refused profile behaves as the no-API tier: one explanation, then a download on 
 still teaches nothing, and the learned "no" lasts until a reload, like `opfsOk`. A census pins every
 remaining `hasFSA` read as feature detection; Open deliberately still retries, because it has no
 picker-free door known to work where the picker is refused, and its message names drag-and-drop.
+Because a refusal now has consequences, `runPicker` admits one picker at a time: a second call while
+one is open answers `busy` without reaching the browser, whose "File picker already active" error
+would otherwise read as a refusal after a fast double ⌘S.
 
 ### UXP-257 ✓ An estimate rendered `7.00e+5`, which cannot go in front of a client 🟡 [estimates] (RESOLVED 2026-07-28)
 

@@ -35972,23 +35972,39 @@ const OPML_TYPE = { description:'Outline file', accept:{'text/x-opml':['.opml']}
 // fixed. 250ms sits 250x above the measured refusal and well under any real dismissal, so both
 // errors are unlikely and the cheap one is the survivor.
 const PICKER_REFUSAL_MS = 250;
-function pickerOutcome({ errName, elapsedMs } = {}) {
+function pickerOutcome({ errName, elapsedMs, message } = {}) {
+  // #1583: Chromium's answer to a second picker opened while one is already showing. runPicker's
+  // flag stops that call reaching the browser at all; this is the second line of defence for one that
+  // got there anyway. Busy, not refused: the picker on screen proves the capability.
+  if (errName === 'NotAllowedError' && /already active/i.test(String(message || ''))) return 'busy';
   if (errName !== 'AbortError') return 'refused';
   return (Number(elapsedMs) >= 0 && Number(elapsedMs) < PICKER_REFUSAL_MS) ? 'refused' : 'cancelled';
 }
 
 // Run a picker and classify its failure. Returns { ok, value, outcome } -- outcome is null on
-// success, else 'cancelled' | 'refused'. Callers decide what to do; this only answers "what
+// success, else 'cancelled' | 'refused' | 'busy'. Callers decide what to do; this only answers "what
 // happened", so the decision stays in one testable place (#1112).
+//
+// #1583: ONE picker at a time. Chromium rejects a picker opened while another is showing with
+// NotAllowedError "File picker already active", and pickerOutcome reads a NotAllowedError as a
+// refusal. Once a refusal governs Save, a fast double ⌘S (or File, Save, then ⌘S) would have turned
+// Save into a download until reload. So a second call answers 'busy' WITHOUT opening anything, and
+// 'busy' never touches fsaOk. Every caller acts only on 'refused', so busy is a quiet no-op: the
+// picker already on screen is the feedback.
+let _pickerInFlight = false;
 async function runPicker(fn) {
+  if (_pickerInFlight) return { ok: false, error: null, outcome: 'busy' };
+  _pickerInFlight = true;
   const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   try {
     return { ok: true, value: await fn(), outcome: null };
   } catch (e) {
     const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    const outcome = pickerOutcome({ errName: e && e.name, elapsedMs: t1 - t0 });
+    const outcome = pickerOutcome({ errName: e && e.name, elapsedMs: t1 - t0, message: e && e.message });
     if (outcome === 'refused') fsaOk = false;   // capability learned by experience, as opfsOk is (#1113)
     return { ok: false, error: e, outcome };
+  } finally {
+    _pickerInFlight = false;
   }
 }
 // The message a refused picker earns. Names the browser as the cause and the way out, rather than

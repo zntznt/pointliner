@@ -4014,6 +4014,51 @@
       "find": "    if (outcome === 'refused') fsaOk = false;",
       "replace": "    if (outcome === 'refused') {}",
       "kills": "a refused picker is asked once"
+    },
+    {
+      "id": "picker-guard-removed",
+      "suite": "unit",
+      "why": "#1583: without the in-flight flag a second picker reaches the browser, whose 'File picker already active' NotAllowedError reads as a refusal and turns Save into a download until reload",
+      "file": "index.html",
+      "find": "  if (_pickerInFlight) return { ok: false, error: null, outcome: 'busy' };\n",
+      "replace": "",
+      "kills": "runPicker admits one picker at a time"
+    },
+    {
+      "id": "picker-guard-never-released",
+      "suite": "unit",
+      "why": "#1583: a flag that is not released in finally makes every picker after the first answer busy forever",
+      "file": "index.html",
+      "find": "  } finally {\n    _pickerInFlight = false;\n  }\n}",
+      "replace": "  } finally {\n  }\n}",
+      "kills": "runPicker admits one picker at a time"
+    },
+    {
+      "id": "picker-already-active-refused",
+      "suite": "unit",
+      "why": "#1583: the second line of defence; Chromium's 'File picker already active' must classify as busy, not as a refusal",
+      "file": "index.html",
+      "find": "  if (errName === 'NotAllowedError' && /already active/i.test(String(message || ''))) return 'busy';\n",
+      "replace": "",
+      "kills": "a picker that is already open is busy, never a refusal"
+    },
+    {
+      "id": "picker-caller-acts-on-busy",
+      "suite": "unit",
+      "why": "#1583: a caller that acts on anything but a refusal would show the refusal message and download on 'busy'",
+      "file": "index.html",
+      "find": "        if (picked.outcome === 'refused') { flashError(pickerRefusedMessage('saving',",
+      "replace": "        if (picked.outcome !== 'cancelled') { flashError(pickerRefusedMessage('saving',",
+      "kills": "every caller acts only on a refusal"
+    },
+    {
+      "id": "picker-guard-removed-driven",
+      "suite": "browser",
+      "why": "#1583 driven: two Saves back to back with the first picker still open; without the flag the second opens another picker",
+      "file": "index.html",
+      "find": "  if (_pickerInFlight) return { ok: false, error: null, outcome: 'busy' };\n",
+      "replace": "",
+      "kills": "a second Save while the picker is open is busy"
     }
   ]
 }
