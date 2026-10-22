@@ -2977,7 +2977,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
    2px accent ring (the app's one focus indicator), instead of the per-browser default. */
 .collapse-btn:focus-visible,.crumb:focus-visible,.fn-key:focus-visible,#storage-warn-close:focus-visible,
 .bullet:focus-visible,.lvl-btn:focus-visible,.tbtn-toggle:focus-visible,.io-btn:focus-visible,.io-chip:focus-visible,
-.dice-edit:focus-visible,.mk-edit:focus-visible,.gr-edit:focus-visible,
+.var-pick-card:focus-visible,.dice-edit:focus-visible,.mk-edit:focus-visible,.gr-edit:focus-visible,
 .math-edit:focus-visible,.var-edit:focus-visible,.est-edit:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 /* menu rows: inset ring so the scrollable panel doesn't clip it (matches #bpop) */
 #file-menu .cmd-item:focus-visible,.mt-col-item:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
@@ -25166,18 +25166,22 @@ function insertAndSelect(el, before, word, after) {
 // mousedown+preventDefault keeps the field's caret intact (the caret invariant); after inserting,
 // refresh the preview (input event) and refocus. Both openInsertDialog's field loop and the
 // bespoke var dialog route through here, so a future change (keyboard, aria) lands in one place.
+// #1586: that keyboard change is the twin below. A <button> fires `click` on Enter/Space and never
+// `mousedown`, so every chip used to be a Tab stop that did nothing. One closure for both gestures,
+// so they cannot drift: the keyboard leaves the same value, selection and focus as the mouse.
 function buildChipRow(chips, inp, afterInsert) {
   const row = document.createElement('div'); row.className = 'io-chips';
   chips.forEach(chip => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'io-chip'; b.textContent = chip.label;
     b.title = chip.title || 'Insert';   // a chip may fill the form, not just insert (P4) — let it say so
-    b.addEventListener('mousedown', e => {
-      e.preventDefault();
+    const act = () => {
       if (typeof chip.insert === 'function') chip.insert(inp); else insertAtCaret(inp, chip.insert);
       inp.dispatchEvent(new Event('input', { bubbles: false }));
       if (afterInsert) afterInsert();
       inp.focus();
-    });
+    };
+    b.addEventListener('mousedown', e => { e.preventDefault(); act(); });
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
     row.appendChild(b);
   });
   return row;
@@ -32902,27 +32906,54 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   });
 
   // Known-variable picker (only when vars exist)
+  // #1586: the cards were click-only <div>s with no tabindex, role or name, and the picked one said so
+  // by colour alone. They keep their click (the keyboard is added beside the mouse path, never by
+  // converting the control) and gain the Phase 1 kit: role=button, a name, aria-pressed for the pick,
+  // and Enter/Space through the SAME closure as the click. The grid is ONE roving Tab stop with the
+  // arrows inside it (roveIndex/roveTo), because a document can declare dozens of variables and a
+  // Tab stop per card would stand between the user and the Name field.
   let cardEls = [];
+  // the pick, said three ways that must not drift apart: the ring, aria-pressed, and the Tab stop
+  const markPicked = card => cardEls.forEach(c => {
+    const on = c === card;
+    c.classList.toggle('selected', on);
+    c.setAttribute('aria-pressed', String(on));
+    c.setAttribute('tabindex', on ? '0' : '-1');
+  });
   if (allDefs.length > 0) {
     const sec = document.createElement('div'); sec.className = 'io-field';
     const lab = document.createElement('label'); lab.textContent = 'Known variables';
     const grid = document.createElement('div'); grid.className = 'var-pick-grid';
-    allDefs.forEach(({ name: nm, expr: ex, val }) => {
+    grid.setAttribute('role', 'group'); grid.setAttribute('aria-label', 'Known variables');
+    allDefs.forEach(({ name: nm, expr: ex, val }, i) => {
       const card = document.createElement('div'); card.className = 'var-pick-card';
       card.title = `${nm} = ${ex}`;
+      const shown = val !== undefined ? formatVarValue(val) : '?';
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', i === 0 ? '0' : '-1');   // one Tab stop for the grid (roveIndex)
+      card.setAttribute('aria-pressed', 'false');
+      card.setAttribute('aria-label', `Use variable ${nm}` + (val !== undefined ? `, value ${shown}` : ''));
       const nameEl = document.createElement('div'); nameEl.className = 'var-pick-name'; nameEl.textContent = '$' + nm;
-      const valEl  = document.createElement('div'); valEl.className  = 'var-pick-val';  valEl.textContent  = val !== undefined ? formatVarValue(val) : '?';
+      const valEl  = document.createElement('div'); valEl.className  = 'var-pick-val';  valEl.textContent  = shown;
       card.append(nameEl, valEl);
-      card.addEventListener('click', () => {
-        cardEls.forEach(c => c.classList.remove('selected'));
-        card.classList.add('selected');
+      const pick = () => {
+        markPicked(card);
         setMode(typeof val === 'string' ? 'pick' : 'formula'); // pick values are strings
         nameInp.value = nm; exprInp.value = ex;
         nameInp.dispatchEvent(new Event('input')); exprInp.dispatchEvent(new Event('input'));
         validate();
-      });
+      };
+      card.addEventListener('click', pick);
+      card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
       cardEls.push(card);
       grid.appendChild(card);
+    });
+    grid.addEventListener('keydown', e => {
+      const at = cardEls.indexOf(document.activeElement);
+      const to = roveIndex(e.key, at, cardEls.length);   // shared core: arrows step, Home/End, ends clamp
+      if (to === null) return;
+      e.preventDefault();
+      roveTo(cardEls[at], cardEls[to]);
     });
     sec.append(lab, grid); ioCard.appendChild(sec);
   }
@@ -33090,7 +33121,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   // Highlight the card matching the pre-filled name (edit mode)
   if (name) {
     const match = cardEls.find(c => c.title.startsWith(name.toLowerCase() + ' ') || c.title.startsWith(name + ' '));
-    match?.classList.add('selected');
+    if (match) markPicked(match);   // #1586: pressed, and the group's Tab stop, not only the ring
   }
 
   setMode(mode); // applies label/placeholder/hint/button text, then validates + previews

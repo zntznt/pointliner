@@ -38173,3 +38173,199 @@ test('#1560 every .scroll-strip bar is a swept surface, so this defect cannot re
     assert.ok(swept.includes(host), `${host} must be a surface in tools/layout-sweep.mjs, or #${id} ships unmeasured`);
   }
 });
+
+// ─── #1586: a control that acts on mousedown answers the keyboard too (census) ─────────────────
+// A <button> fires `click` on Enter/Space and NEVER `mousedown`, so a focusable control whose only
+// action is a mousedown listener works for the mouse and is dead to the keyboard however well it is
+// labelled: the #1021 shape, and a source pin cannot see it because the handler is present. #1508
+// ratcheted the agenda's renderers, #1542 found the selection toolbar and #1586 the insert-dialog
+// chips, each by hand, because nothing enumerated the family. This does: EVERY mousedown listener in
+// the app, judged inside the named function that builds it (the scope #1542's lead found was needed:
+// a fixed line window misread the agenda's batched [el, fn] loop as ten missing twins).
+
+// The innermost named function declaration around a source position, or null for top-level code.
+// Declarations only (a line that STARTS with `function`), so a comment or a string that mentions
+// "function x(" cannot open a bogus span; braces are counted on the #1370 code mask.
+function enclosingFn(src) {
+  const mask = maskFor(src);
+  const spans = [];
+  for (const m of src.matchAll(/^[ \t]*(?:async\s+)?function\s+([\w$]+)\s*\(/gm)) {
+    let i = m.index + m[0].length - 1, depth = 0, afterParams = -1;
+    for (; i < src.length; i++) {
+      if (src[i] === '(') depth++;
+      else if (src[i] === ')' && --depth === 0) { afterParams = i + 1; break; }
+    }
+    let open = src.indexOf('{', afterParams);
+    while (open >= 0 && !mask[open]) open = src.indexOf('{', open + 1);
+    let d = 0, close = -1;
+    for (let j = open; j >= 0 && j < src.length; j++) {
+      if (!mask[j]) continue;
+      if (src[j] === '{') d++;
+      else if (src[j] === '}' && --d === 0) { close = j; break; }
+    }
+    if (open >= 0 && close > open) spans.push({ name: m[1], open, close });
+  }
+  return at => spans.reduce((best, s) => (s.open < at && at < s.close && (!best || s.open > best.open) ? s : best), null);
+}
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// `recv.addEventListener('keydown'` in scope, or the batched `[recv, fn]` nav loop (#1508's shape)
+const hasKeyTwin = (scope, recv) => new RegExp(`(?<![\\w$.])${reEsc(recv)}\\.addEventListener\\('keydown'`).test(scope)
+  || new RegExp(`\\[\\s*${reEsc(recv)}\\s*,`).test(scope);
+
+// Every `X.addEventListener('mousedown', e => …)` with its handler body and its enclosing function.
+function mousedownSites(src) {
+  const mask = maskFor(src);
+  const within = enclosingFn(src);
+  const sites = [];
+  const RE = /(?<![\w$.])((?:[\w$]+\.)*[\w$]+(?:\('[^']*'\))?)\.addEventListener\('mousedown', *(?:\w+|\(\w*\)) *=> */g;
+  for (const m of src.matchAll(RE)) {
+    const at = m.index + m[0].length;
+    let body = null;
+    if (src[at] === '{') {
+      let d = 0;
+      for (let j = at; j < src.length; j++) {
+        if (!mask[j]) continue;
+        if (src[j] === '{') d++;
+        else if (src[j] === '}' && --d === 0) { body = src.slice(at + 1, j); break; }
+      }
+    } else {
+      // an expression handler: the rest of its line, less the call's own `)` (and a capture flag)
+      body = src.slice(at, src.indexOf('\n', at)).replace(/\s*\/\/.*$/, '').replace(/(?:,\s*true)?\);?\s*$/, '');
+    }
+    const fn = within(m.index);
+    sites.push({ recv: m[1], body, fn: fn ? fn.name : '(top)', scope: fn ? src.slice(fn.open, fn.close) : src });
+  }
+  return sites;
+}
+
+// Does a mousedown handler DO anything, or only guard the caret (preventDefault / stopPropagation,
+// possibly behind an `if (e.target.closest(…))`)? A guard has no keyboard twin to owe: the control's
+// action lives on a click or on the container, and a button's click already answers Enter/Space.
+function mousedownActs(body) {
+  const residue = body
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\b\w+\.(?:preventDefault|stopPropagation)\(\)/g, '')
+    .replace(/\.closest\([^)]*\)/g, '')
+    .replace(/\b(?:if|return|switch|while|for)\s*\(/g, '');
+  return /[\w$\])]\s*\(/.test(residue) || /(?:^|[^=!<>])=(?![=>])/.test(residue);
+}
+
+test('#1586 every mousedown that acts has a keyboard twin, or a named and checked reason (census)', () => {
+  const sites = nonEmpty(mousedownSites(_src), 'mousedown listeners');
+  // Completeness first: a listener written in a shape this reader cannot parse (a named handler, a
+  // `function` expression) would drop out of the census silently, so the count must match exactly.
+  assert.equal(sites.length, (_src.match(/\.addEventListener\('mousedown'/g) || []).length,
+    'every mousedown listener must be readable by the census; a new handler shape needs teaching here');
+  assert.ok(sites.length >= 90, `the census should see the whole family, found ${sites.length}`);
+
+  // Containers and caret-owned pickers own the keyboard for their rows, so the row's mousedown is
+  // the pointer half of a pair whose keyboard half lives elsewhere. Each reason carries a PROOF that
+  // must still be in the source: an exemption whose evidence is gone is a lie, and fails here.
+  const BPOP = /else if \(e\.key === 'Enter' \|\| e\.key === ' '\) \{ e\.preventDefault\(\); document\.activeElement\?\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true \}\)\); \}\n  else if \(e\.key === 'Escape'\) \{ e\.preventDefault\(\); e\.stopPropagation\(\); hideBpop\(\);/;
+  const COLPANEL = /else if \(e\.key === 'Enter' \|\| e\.key === ' '\) \{ e\.preventDefault\(\); document\.activeElement\?\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true \}\)\); \}\n  else if \(e\.key === 'Escape'\) \{ e\.preventDefault\(\); hideColPanel\(\); \}/;
+  const EXEMPT = {
+    'mkCmdItem:div':        { why: '#bpop rows (Enter/Space dispatch the row mousedown) and slash rows (aria-activedescendant, the caret owns the keys)', proof: BPOP },
+    'showBulletPopup:btn':  { why: '#bpop type buttons: the menu dispatches mousedown on Enter/Space', proof: BPOP },
+    'showSelTypeMenu:btn':  { why: 'built into #bpop, focus moved in on open', proof: /bpop\.querySelector\('\.bpop-type'\)\?\.focus\(\);/ },
+    'showTodoPicker:chip':  { why: 'the state picker lives in #bpop, whose item list includes .tp-chip', proof: /bpop\.querySelectorAll\('\.bpop-type, \.cmd-item, \.tp-chip'\)/ },
+    'mtMenuBuilder:item':   { why: '#mt-colpanel rows: the panel dispatches mousedown on Enter/Space', proof: COLPANEL },
+    'renderLinkMenu:item':  { why: 'the [[ picker: aria-activedescendant, the caret owns the keys', proof: /lpState\.content\?\.setAttribute\('aria-activedescendant'/ },
+    'renderBraceMenu:el':   { why: 'the { picker: aria-activedescendant', proof: /braceState\.content\?\.setAttribute\('aria-activedescendant'/ },
+    'renderBraceMenu:help': { why: 'the F1 twin for the highlighted row (ux-discipline §3)', proof: /if \(e\.key==='F1' && m\.help\)/ },
+    'renderTagMenu:el':     { why: 'the # picker: aria-activedescendant', proof: /tagState\.content\?\.setAttribute\('aria-activedescendant'/ },
+    'renderEmojiMenu:el':   { why: 'the : picker: aria-activedescendant', proof: /emojiState\.content\?\.setAttribute\('aria-activedescendant'/ },
+    'renderSizePicker:cell': { why: 'the table size grid: arrows size it and Enter creates, from the caret', proof: /if \(e\.key==='Enter'\|\|e\.key==='Tab'\) \{ e\.preventDefault\(\); sizePickerConfirm\(\); return; \}/ },
+    'renderTreeRows:row':   { why: 'the point-tree picker: its search box owns ↑/↓/Enter (activedescendant)', proof: /search\.setAttribute\('aria-activedescendant', 'tp-opt-' \+ activeIdx\)/ },
+    'showCellEditorPop:b':  { why: 'the status popover is the pointer path; the cell’s Shift+F10 menu "Set to" rows are its keyboard twin', proof: /addSection\('Set to', true\);/ },
+    'showCellEditorPop:none': { why: 'its Clear, twinned by the same menu’s Clear row', proof: /addItem\('Clear', \{ active: curVal === '', onApply/ },
+    "(top):document.getElementById('btn-graph')": { why: 'a pre-click snapshot of the caret, not the action; the button’s own click is what Enter/Space fire', proof: /document\.getElementById\('btn-graph'\)\.addEventListener\('click', toggleGraph\);/ },
+  };
+  // #1542: KNOWN GAP, deliberately allowlisted and NOT fixed here: the selection toolbar's format,
+  // link and footnote icons act on mousedown with no keyboard twin, which leaves 5 of its 9 actions
+  // without a keyboard path. It needs a focus model for a floating toolbar first (#1542). This list
+  // may only SHRINK: the day one of these gains a twin, its entry goes stale and fails below, and a
+  // NEW twin-less site anywhere fails the census rather than joining this list quietly.
+  const KNOWN_GAP_1542 = new Set(['buildSelTb:ic', 'buildSelTb:linkIc', 'buildSelTb:fnIc']);
+
+  const dead = [], used = new Set(), twins = new Set();
+  for (const s of sites) {
+    if (!mousedownActs(s.body)) continue;                                   // a caret guard, no action
+    if (s.recv === 'document' || s.recv === 'window') continue;            // the page itself: dismissal, bookkeeping
+    const key = `${s.fn}:${s.recv}`;
+    if (hasKeyTwin(s.scope, s.recv)) { twins.add(key); continue; }
+    if (EXEMPT[key] || KNOWN_GAP_1542.has(key)) { used.add(key); continue; }
+    dead.push(key);
+  }
+  assert.deepEqual(dead, [],
+    'a control acts on mousedown with no keyboard twin. If it can take focus, Enter and Space do nothing (#1021); ' +
+    'add the keydown beside the mousedown through one shared closure, or record why its container owns the keys');
+  for (const k of Object.keys(EXEMPT)) {
+    assert.ok(used.has(k), `stale exemption: ${k} no longer acts without a twin, so remove it from EXEMPT`);
+    assert.match(_src, EXEMPT[k].proof, `${k}: the evidence for "${EXEMPT[k].why}" is gone, so the exemption is no longer true`);
+  }
+  for (const k of KNOWN_GAP_1542) {
+    assert.ok(used.has(k), `${k} has a keyboard twin now (or moved): take it off the #1542 allowlist`);
+  }
+  // and the two #1586 sites are counted as twinned BY the census, not merely present
+  assert.ok(twins.has('buildChipRow:b'), 'the insert-dialog chip is a twinned control');
+});
+
+// The other half of the family: a <div>/<span> with a click listener and nothing else is mouse-only
+// by construction (it cannot take focus), which is what the Known variables cards were.
+test('#1586 every click-only control built from a div or span is focusable, has a role and a key twin (census)', () => {
+  const within = enclosingFn(_src);
+  const NATIVE = new Set(['button', 'input', 'a', 'select', 'textarea', 'summary']);
+  const EXEMPT = {
+    'renderTreeRows:row':   'the point-tree picker: its search box owns ↑/↓/Enter (activedescendant)',
+    'renderTreeRows:twist': 'the same picker: ←/→ from the search box expand and collapse',
+  };
+  assert.match(_src, /search\.setAttribute\('aria-activedescendant', 'tp-opt-' \+ activeIdx\)/,
+    'the evidence for the tree-picker exemptions');
+  const built = [], bad = [], used = new Set();
+  for (const m of _src.matchAll(/(?<![\w$.])([\w$]+)\.addEventListener\('click'/g)) {
+    const fn = within(m.index);
+    if (!fn) continue;                         // static markup is wired at top level; out of this census
+    const scope = _src.slice(fn.open, fn.close), r = reEsc(m[1]);
+    const made = scope.match(new RegExp(`(?<![\\w$.])${r}\\s*=\\s*document\\.createElement\\('(\\w+)'\\)`));
+    if (!made || NATIVE.has(made[1])) continue;
+    const key = `${fn.name}:${m[1]}`;
+    built.push(key);
+    const ok = new RegExp(`(?<![\\w$.])${r}\\.(?:setAttribute\\('tabindex'|tabIndex\\s*=)`).test(scope)
+            && new RegExp(`(?<![\\w$.])${r}\\.setAttribute\\('role'`).test(scope)
+            && hasKeyTwin(scope, m[1]);
+    if (ok) continue;
+    if (EXEMPT[key]) { used.add(key); continue; }
+    bad.push(key);
+  }
+  assert.ok(nonEmpty(built, 'click-only built controls').length >= 10, `the census should see the family, found ${built.length}`);
+  assert.deepEqual(bad, [], 'a <div>/<span> that acts on click needs tabindex, a role and an Enter/Space keydown (P3-1, P3-2)');
+  for (const k of Object.keys(EXEMPT)) assert.ok(used.has(k), `stale exemption: ${k}`);
+  assert.ok(built.includes('openVarDialog:card'), 'the Known variables card is in the family it is judged by');
+});
+
+// The two fixes themselves, pinned at the call site.
+test('#1586 the chip and the variable card each run ONE action from both gestures', () => {
+  const chip = fnBody(_src, 'buildChipRow');
+  assert.match(chip, /b\.addEventListener\('mousedown', e => \{ e\.preventDefault\(\); act\(\); \}\);/,
+    'the chip keeps mousedown + preventDefault, so the field keeps its caret (P3-3)');
+  assert.match(chip, /b\.addEventListener\('keydown', e => \{ if \(e\.key === 'Enter' \|\| e\.key === ' '\) \{ e\.preventDefault\(\); act\(\); \} \}\);/,
+    'and Enter/Space run the same closure');
+  assert.doesNotMatch(chip, /addEventListener\('click'/, 'never converted to click (the caret invariant)');
+  assert.match(between(chip, 'const act = () => {', '};'), /inp\.focus\(\);/,
+    'the action ends in the field for either gesture, which is where the mouse always left the user');
+
+  const vd = fnBody(_src, 'openVarDialog');
+  assert.match(vd, /card\.setAttribute\('role', 'button'\);/);
+  assert.match(vd, /card\.setAttribute\('aria-label', `Use variable \$\{nm\}`/, 'named for the variable it fills in (P3-1)');
+  assert.match(vd, /card\.addEventListener\('click', pick\);/, 'the mouse path is the click it always was');
+  assert.match(vd, /card\.addEventListener\('keydown', e => \{ if \(e\.key === 'Enter' \|\| e\.key === ' '\) \{ e\.preventDefault\(\); pick\(\); \} \}\);/);
+  const mark = between(vd, 'const markPicked = card =>', '});');
+  assert.match(mark, /c\.classList\.toggle\('selected', on\);/);
+  assert.match(mark, /c\.setAttribute\('aria-pressed', String\(on\)\);/, 'the pick is not colour alone (P3-4)');
+  assert.match(mark, /c\.setAttribute\('tabindex', on \? '0' : '-1'\);/, 'and the group’s one Tab stop sits on it');
+  assert.match(vd, /if \(match\) markPicked\(match\);/, 'edit mode marks its card the same way, not just the ring');
+  assert.match(vd, /const to = roveIndex\(e\.key, at, cardEls\.length\);/, 'arrows rove through the shared core');
+  assert.match(vd, /roveTo\(cardEls\[at\], cardEls\[to\]\);/);
+  assert.match(fnBody0(_src, '.var-pick-card:focus-visible'), /outline:2px solid var\(--acc\)/,
+    'a new focus stop shows the standard ring (P3-3)');
+});

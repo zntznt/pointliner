@@ -4059,6 +4059,69 @@
       "find": "  if (_pickerInFlight) return { ok: false, error: null, outcome: 'busy' };\n",
       "replace": "",
       "kills": "a second Save while the picker is open is busy"
+    },
+    {
+      "id": "chip-keyboard-twin-removed",
+      "suite": "unit",
+      "why": "#1586: the insert-dialog chip back to mousedown-only, a Tab stop that does nothing; the census must name it",
+      "file": "index.html",
+      "find": "    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });\n",
+      "replace": "",
+      "kills": "#1586 every mousedown that acts has a keyboard twin"
+    },
+    {
+      "id": "mousedown-census-new-dead-site",
+      "suite": "unit",
+      "why": "#1586: a NEW control converted to mousedown with no keyboard twin (the template picker row) must fail the census, not join an allowlist",
+      "file": "index.html",
+      "find": "      pick.addEventListener('click', () => { closeIo(); stampTemplate(nodeId, tpl.name); });",
+      "replace": "      pick.addEventListener('mousedown', e => { e.preventDefault(); closeIo(); stampTemplate(nodeId, tpl.name); });",
+      "kills": "#1586 every mousedown that acts has a keyboard twin"
+    },
+    {
+      "id": "mousedown-census-1542-closed",
+      "suite": "unit",
+      "why": "#1586: the #1542 allowlist may only shrink; a toolbar icon that gains a twin must force its entry off the list",
+      "file": "index.html",
+      "find": "  fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });\n",
+      "replace": "  fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });\n  fnIc.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); convertToFootnote(); } });\n",
+      "kills": "#1586 every mousedown that acts has a keyboard twin"
+    },
+    {
+      "id": "mousedown-census-proof-gone",
+      "suite": "unit",
+      "why": "#1586: an exemption is only as true as its evidence; with focus no longer moved into the selection type menu, its rows are dead and the census must say so",
+      "file": "index.html",
+      "find": "    bpop.querySelector('.bpop-type')?.focus();\n  });\n}",
+      "replace": "  });\n}",
+      "kills": "#1586 every mousedown that acts has a keyboard twin"
+    },
+    {
+      "id": "var-card-unfocusable",
+      "suite": "unit",
+      "why": "#1586: a Known variables card with no tabindex is the #1021 shape, its keydown present and unreachable",
+      "file": "index.html",
+      "find": "      card.setAttribute('tabindex', i === 0 ? '0' : '-1');   // one Tab stop for the grid (roveIndex)\n",
+      "replace": "",
+      "kills": "#1586 every click-only control built from a div or span"
+    },
+    {
+      "id": "chip-keyboard-twin-removed-driven",
+      "suite": "browser",
+      "why": "#1586 driven: with the twin gone, Enter on a chip leaves the field untouched while the mouse fills it",
+      "file": "index.html",
+      "find": "    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });\n",
+      "replace": "",
+      "kills": "#1586 an insert-dialog chip does from Enter and Space exactly what it does from the mouse"
+    },
+    {
+      "id": "var-card-roving-removed-driven",
+      "suite": "browser",
+      "why": "#1586 driven: without the roving handler the arrows do not move between Known variables cards",
+      "file": "index.html",
+      "find": "      roveTo(cardEls[at], cardEls[to]);\n",
+      "replace": "",
+      "kills": "#1586 the Known variables cards are one Tab stop"
     }
   ]
 }

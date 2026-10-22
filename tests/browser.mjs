@@ -7670,3 +7670,180 @@ test('#1583 a second Save while the picker is open is busy, not a refusal', { sk
     } finally { await ctx.close(); }
   }
 });
+
+// #1586 A11Y-1: every insert-dialog chip (`.io-chip`, built by `buildChipRow`) acted on `mousedown`
+// only. A <button> fires `click` on Enter/Space and never `mousedown`, so each chip was a Tab stop
+// that did nothing: the #1021 shape, in about fourteen dialogs at once. The check is an EQUIVALENCE
+// over the whole chip set of each consumer, not one hand-picked chip: from the same field state, the
+// keyboard must leave exactly what the mouse leaves (value, selection, where focus is). Three
+// dialogs, because they are the three shapes the helper serves: an ACT chip on an <input> (dice), an
+// ACT chip that selects a placeholder in a <textarea> (Markov), and a TEACH string chip in the one
+// dialog that calls buildChipRow by hand (Variable).
+test('#1586 an insert-dialog chip does from Enter and Space exactly what it does from the mouse', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const DIALOGS = [
+    ['dice',     () => openDiceDialog({ title: 'Dice', onResult() {} }),                 '2d6'],
+    ['markov',   () => openMarkovDialog({ title: 'Markov', onResult() {} }),             'A -> B 1'],
+    ['variable', () => openVarDialog({ title: 'Variable', onResult() {} }),              '2*'],
+  ];
+  for (const [label, open, seed] of DIALOGS) {
+    await pg.evaluate(open);
+    await pg.waitForTimeout(400);
+    const n = await pg.evaluate(() => document.querySelectorAll('#io-card .io-chip').length);
+    assert.ok(n >= 2, `${label}: precondition, the dialog renders its chip row (${n})`);
+    // One chip's field, read back the way a user would meet it.
+    const read = () => pg.evaluate(() => {
+      const f = document.activeElement;
+      const fld = window.__fld;
+      return { value: fld.value, sel: [fld.selectionStart, fld.selectionEnd],
+        onField: f === fld, open: ioBack.classList.contains('on') };
+    });
+    const reset = (i) => pg.evaluate(([i, seed]) => {
+      const chip = document.querySelectorAll('#io-card .io-chip')[i];
+      const fld = chip.closest('.io-field').querySelector('input, textarea');
+      window.__fld = fld;
+      fld.focus(); fld.value = seed; fld.setSelectionRange(seed.length, seed.length);
+      return { label: chip.textContent, role: chip.getAttribute('role') || chip.tagName, name: chip.textContent.trim() };
+    }, [i, seed]);
+    for (let i = 0; i < n; i++) {
+      // the mouse, which always worked: mousedown with the caret held in the field
+      const chip = await reset(i);
+      assert.equal(chip.role, 'BUTTON', `${label} "${chip.label}": a native button, so its role is exposed`);
+      assert.ok(chip.name, `${label} chip ${i}: and it has an accessible name`);
+      await pg.evaluate((i) => document.querySelectorAll('#io-card .io-chip')[i]
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })), i);
+      await pg.waitForTimeout(60);
+      const mouse = await read();
+      assert.notEqual(mouse.value, seed, `${label} "${chip.label}": precondition, the mouse changes the field`);
+      // the keyboard, from the same state: Tab stop on the chip, then the key
+      for (const key of ['Enter', 'Space']) {
+        await reset(i);
+        await pg.evaluate((i) => document.querySelectorAll('#io-card .io-chip')[i].focus(), i);
+        const onChip = await pg.evaluate((i) => document.activeElement === document.querySelectorAll('#io-card .io-chip')[i], i);
+        assert.equal(onChip, true, `${label} "${chip.label}": precondition, the chip takes focus`);
+        await pg.keyboard.press(key);
+        await pg.waitForTimeout(60);
+        const kb = await read();
+        assert.deepEqual(kb, mouse, `${label} "${chip.label}": ${key} must leave what the mouse leaves`);
+      }
+    }
+    // and Tab really does reach the row from the field: the chip is a stop, not only script-focusable
+    await reset(0);
+    await pg.keyboard.press('Tab');
+    const tabbed = await pg.evaluate(() => document.activeElement === document.querySelectorAll('#io-card .io-chip')[0]);
+    assert.equal(tabbed, true, `${label}: Tab from the field lands on its first chip, a real stop`);
+    await pg.evaluate(() => closeIo());
+    await pg.waitForTimeout(250);
+  }
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// #1586 A11Y-3: the Variable dialog's "Known variables" cards were click-only <div>s: no tabindex,
+// no role, no name, and the selected one said so by colour alone. Driven, because a handler on an
+// unfocusable element passes any source pin (#1021). The cards are ONE roving Tab stop (a document
+// can declare dozens of variables, which as Tab stops would stand between the user and the Name
+// field), with the arrows moving inside it: the standing roveIndex pattern.
+test('#1586 the Known variables cards are one Tab stop, arrows move, and Enter or Space picks like a click', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    root.children = [];
+    for (const t of ['{hp := 10}', '{dmg := 2*3}', '{mood := "calm"}']) {
+      const n = mkNode(t); n.type = 'ul'; root.children.push(n); nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    }
+    promoteLoadedShorthand(root); buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(300);
+  const docBefore = await pg.evaluate(() => JSON.stringify(root.children.map(c => c.text)));
+  await pg.evaluate(() => openVarDialog({ title: 'Variable', onResult() {} }));
+  await pg.waitForTimeout(400);
+  const state = () => pg.evaluate(() => {
+    const cards = [...document.querySelectorAll('.var-pick-card')];
+    const [nameInp, exprInp] = document.querySelectorAll('#io-card input[type=text]');
+    const a = document.activeElement;
+    return {
+      ae: cards.indexOf(a) >= 0 ? 'card' + cards.indexOf(a) : (a === nameInp ? 'name' : a.tagName + '.' + a.className),
+      name: nameInp.value, expr: exprInp.value,
+      mode: document.querySelector('.io-seg-btn.on')?.textContent,
+      pressed: cards.map(c => c.getAttribute('aria-pressed')),
+      stops: cards.map(c => c.getAttribute('tabindex')),
+      open: ioBack.classList.contains('on'),
+    };
+  });
+  const cards = await pg.evaluate(() => [...document.querySelectorAll('.var-pick-card')].map(c => ({
+    role: c.getAttribute('role'), label: c.getAttribute('aria-label'), name: c.querySelector('.var-pick-name').textContent.slice(1),
+  })));
+  assert.equal(cards.length, 3, 'precondition: one card per declared variable');
+  for (const c of cards) {
+    assert.equal(c.role, 'button', `card ${c.name}: announced as a button`);
+    assert.match(c.label || '', new RegExp(`\\b${c.name}\\b`), `card ${c.name}: and named for the variable it fills in`);
+  }
+  const s0 = await state();
+  assert.equal(s0.ae, 'name', 'precondition: the dialog opens on the Name field');
+  assert.deepEqual(s0.stops.filter(t => t === '0').length, 1, 'exactly one card is the group’s Tab stop');
+  assert.deepEqual(s0.pressed, ['false', 'false', 'false'], 'and none is pressed before a pick');
+
+  // Shift+Tab from Name lands on the group, and Enter picks that card
+  await pg.keyboard.press('Shift+Tab');
+  const s1 = await state();
+  assert.equal(s1.ae, 'card0', 'Shift+Tab from Name reaches the cards');
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(150);
+  const s2 = await state();
+  assert.equal(s2.name, cards[0].name, 'Enter fills in the name');
+  assert.notEqual(s2.expr, '', 'and the value');
+  assert.deepEqual(s2.pressed, ['true', 'false', 'false'], 'the pick is announced as pressed, not shown by colour alone');
+  assert.equal(s2.ae, 'card0', 'focus stays on the card, where a click leaves it');
+  assert.equal(s2.open, true, 'and Enter picked a card, it did not submit or close the dialog');
+
+  // an arrow moves within the group and carries the Tab stop with it; Space picks there
+  await pg.keyboard.press('ArrowRight');
+  const s3 = await state();
+  assert.equal(s3.ae, 'card1', 'ArrowRight moves to the next card');
+  assert.deepEqual(s3.stops, ['-1', '0', '-1'], 'and the single Tab stop follows focus');
+  assert.equal(s3.name, cards[0].name, 'moving does not pick');
+  await pg.keyboard.press('Space');
+  await pg.waitForTimeout(150);
+  const s4 = await state();
+  assert.equal(s4.name, cards[1].name, 'Space picks the focused card');
+  assert.deepEqual(s4.pressed, ['false', 'true', 'false'], 'and the pressed state moves with the pick');
+  await pg.keyboard.press('End');
+  assert.equal((await state()).ae, 'card2', 'End reaches the last card');
+  await pg.keyboard.press('Home');
+  assert.equal((await state()).ae, 'card0', 'Home the first');
+  await pg.keyboard.press('ArrowLeft');
+  assert.equal((await state()).ae, 'card0', 'and the ends clamp rather than wrap (roveIndex)');
+
+  // ONE Tab stop: Tab leaves the group for the Name field instead of walking the cards
+  await pg.keyboard.press('Tab');
+  assert.equal((await state()).ae, 'name', 'Tab leaves the whole group in one press');
+
+  // the keyboard pick is the click pick: same form state from the same start
+  await pg.evaluate(() => document.querySelectorAll('.var-pick-card')[2].click());
+  await pg.waitForTimeout(150);
+  const byMouse = await state();
+  await pg.evaluate(() => document.querySelectorAll('.var-pick-card')[0].click());
+  await pg.waitForTimeout(100);
+  await pg.evaluate(() => document.querySelectorAll('.var-pick-card')[2].focus());
+  await pg.keyboard.press('Enter');
+  await pg.waitForTimeout(150);
+  const byKey = await state();
+  for (const k of ['name', 'expr', 'mode', 'pressed']) {
+    assert.deepEqual(byKey[k], byMouse[k], `Enter and a click leave the same ${k}`);
+  }
+  assert.equal(byKey.mode, 'Random pick', 'a text variable switches the value type, by either door');
+  assert.equal(await pg.evaluate(() => JSON.stringify(root.children.map(c => c.text))), docBefore,
+    'no key reached the document behind the dialog');
+  await pg.evaluate(() => closeIo());
+  await pg.waitForTimeout(250);
+
+  // edit mode: the card for the variable being edited is the pressed one, and holds the Tab stop
+  await pg.evaluate(() => openVarDialog({ title: 'Variable', name: 'dmg', expr: '2*3', onResult() {} }));
+  await pg.waitForTimeout(400);
+  const ed = await state();
+  const di = cards.findIndex(c => c.name === 'dmg');
+  assert.equal(ed.pressed[di], 'true', 'editing dmg presses its card');
+  assert.equal(ed.stops[di], '0', 'and Shift+Tab from Name lands on it, not on the first card');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
