@@ -6432,6 +6432,23 @@ function stampEdit(node, now = nowStamp()) {
   setDateProp(node, EDITED_KEY, now);
 }
 
+// #1596: does this commit stamp the point, and what does the next commit judge against? An edit is
+// judged against the text the point held when the reader began it (`prevText`, or `carried` when an
+// earlier commit handed one on). Opening the command browser takes focus from the point, and that
+// blur commits whatever the point holds, INCLUDING the trigger the reader typed to open it (`/`, `@`,
+// the `{` of a Browse). The trigger is the browser's, not the point's: an apply strips it and a
+// dismissal hands the typed run back. So the blur was stamping created/edited on a point nobody had
+// changed, and every later "is this point empty?" saw content (an `@` Patterns drop left a blank
+// point above the recipe). `builderOwn` is the point's text minus the run the browser holds, or null
+// when no browser holds this point. The blur stamps only for what the reader typed besides the
+// trigger, and carries that text on, so what the browser leaves in the point (a command applied,
+// the typed run handed back) is judged when the reader leaves the point again. Pure.
+function editStampVerdict({ text, prevText, carried = null, builderOwn = null }) {
+  const base = carried != null ? carried : prevText;
+  if (builderOwn != null) return { stamp: builderOwn !== base, carry: builderOwn };
+  return { stamp: text !== base, carry: null };
+}
+
 // Opted-in /-verbs that take a typed ":value" (the keyboard bridge that skips the
 // dialog). Gated narrowly: a colon after any OTHER verb stays plain text (P1). `due`
 // and `start` set a date; `check`/`alias` set a reserved property; `template` stamps.
@@ -17128,7 +17145,8 @@ function openCitePicker(nodeId, offset) {
 // inserts as the next sibling. Mirrors createBaseAt's blur-before-mutate discipline.
 // #1580: "empty" is isEmptyPoint. The check here read text and children only, so /template on a
 // point with no text but a note or properties replaced the point and the note went with it. It
-// ignores the edit stamps, because typing `/` stamps even a fresh point before this runs.
+// ignores the edit stamps, which a point typed into and cleared again still carries (see
+// pointHasOwnContent). #1596: typing `/` no longer stamps the point, so a fresh one has none.
 function stampTemplate(nodeId, name) {
   const tpl = findTemplate(mergedTemplates(), name);   // #583: pack templates are stampable too (doc wins on a name tie)
   if (!tpl) return;
@@ -17146,8 +17164,8 @@ function stampTemplate(nodeId, name) {
   pushUndo();
   const idx = parent.children.findIndex(c => c.id === nodeId);
   if (idx === -1) return; // invoking point not under its parent (shouldn't happen) — don't splice blind
-  if (isEmptyPoint(cur, { ignoreStamps: true })) parent.children.splice(idx, 1, clone); // replace empty point (the / door stamped it)
-  else parent.children.splice(idx + 1, 0, clone);                                            // else insert after
+  if (isEmptyPoint(cur, { ignoreStamps: true })) parent.children.splice(idx, 1, clone); // replace an empty point (its stamps are not content)
+  else parent.children.splice(idx + 1, 0, clone);                                       // else insert after
   buildIndex(root, null); // re-index the whole stamped subtree (clone + descendants)
   markDirty();
   render();
@@ -21009,6 +21027,21 @@ let _suppressPruneOnFlush = false;
 // and does a whole-tree render so the new point actually appears, instead of the
 // partial single-node re-render that would leave the sibling stub invisible.
 let _pendingFullRender = false;
+// #1596: the text a point's edit is judged against once the command browser has taken focus from it
+// ({ id, text }, or null). See editStampVerdict. Set by the blur that opens the browser, read and
+// cleared by that point's next commit.
+let _editStampCarry = null;
+// #1596: the point's text without the trigger run the open command browser holds, or null when the
+// browser is not open on this point. builderState.offset is in edit coordinates and the node has
+// refolded by the time exitEdit stamps, so the run is cut the way an apply cuts it (#1396). The front
+// door (Ctrl+K, the toolbar, /builder) typed no trigger, so nothing is cut.
+function builderOwnText(node) {
+  const st = builderState;
+  if (!st || st.nodeId !== node.id || !ioCard.classList.contains('builder-open')) return null;
+  if (!st.trigger) return node.text;
+  const text = builderSpliceText(node), off = builderSpliceOffset(node, st.offset);
+  return stripTriggerRun(text, off, (st.query || '').length).text;
+}
 function exitEdit(content, node) {
   // Record where the caret stood (unfolded coordinates) so a chrome excursion —
   // search / file menu / help — can restore it on Escape (armChromeReturn).
@@ -21195,7 +21228,12 @@ function exitEdit(content, node) {
   // #467: stamp created/edited only when the point's own text actually changed (same signal
   // recordTextEdit uses for undo). Structural moves + child edits never reach here, so they
   // don't stamp — "edited" means "I changed what this point says".
-  if (node.text !== prevText) stampEdit(node);
+  // #1596: the trigger that opened the command browser is not something the point says (editStampVerdict).
+  const carried = _editStampCarry && _editStampCarry.id === node.id ? _editStampCarry.text : null;
+  const sv = editStampVerdict({ text: node.text, prevText, carried, builderOwn: builderOwnText(node) });
+  if (sv.carry != null) _editStampCarry = { id: node.id, text: sv.carry };
+  else if (carried != null) _editStampCarry = null;
+  if (sv.stamp) stampEdit(node);
   recordTextEdit(node.id, prevText, node.text, propsJsonBefore, JSON.stringify(node.props || []), droppedHere); // O(1) undo entry, only if changed
   // #1357: the retry's rewrites are recorded AFTER the user's own edit, so the first undo takes
   // the promotions back off and the second takes the value away. The other order would leave one
@@ -21335,10 +21373,14 @@ function handlePaste(e, node, content) {
     const built = tableToPoints(text, delim).points;
     const parent0 = parentOf(node.id) || root;
     if (built.length && parent0) {
+      // #1595: leave text-edit first, as insertRecipe does (#1594). The paste arrives while this point
+      // is being edited, and render() below commits that live edit before it redraws: exitEdit read
+      // the editor's empty buffer back over the filled point, and the table's title was lost.
+      commitActiveEdit();
       pushUndo();
       const idx0 = parent0.children.findIndex(c => c.id === node.id);
       // an empty point fills IN PLACE (no orphan blank line above), mirroring insertRecipe/#1267
-      const curEmpty = node !== root && isEmptyPoint(node);   // #1580: the shared predicate (insertRecipe's twin)
+      const curEmpty = node !== root && isEmptyPoint(node, { ignoreStamps: true });   // #1580: the shared predicate (insertRecipe's twin); #1596: a fill looks past the stamps
       let focusId;
       if (curEmpty) {
         const src = built[0];
@@ -22503,12 +22545,19 @@ function recipeSelRange(text, sel) {
 // orphan blank line above); otherwise the recipe lands as the next sibling below. The subtree is
 // promoted so its {…} render as live pills, then the caret selects the first value to overtype. One
 // pushUndo, so a single Undo removes the whole drop.
+// #1594: leave text-edit FIRST, the discipline stampTemplate, createBaseAt and qbaseCreateAt keep.
+// closeBuilder hands focus back to the point the browser was opened from, which re-enters edit with
+// the point's pre-recipe buffer. render() below commits a live edit before it redraws, so on an
+// in-place fill exitEdit read that empty buffer back over the recipe: measured, Ctrl+K and a Patterns
+// recipe on a fresh point left the point empty. Committing here, before the point is judged or
+// written, means the commit sees only what the reader typed.
 function insertRecipe(recipe, curId) {
+  commitActiveEdit();
   const cur = (curId && nodeById(curId)) || (focusedId && nodeById(focusedId)) || null;
   const nodes = recipeToNodes(recipe);
   pushUndo();
   let focusId;
-  const curEmpty = cur && cur !== root && isEmptyPoint(cur);   // #1580: the shared predicate, so a note-only point is not overwritten
+  const curEmpty = cur && cur !== root && isEmptyPoint(cur, { ignoreStamps: true });   // #1580: the shared predicate, so a note-only point is not overwritten; #1596: a fill looks past the stamps
   if (cur && curEmpty) {
     const src = nodes[0];
     cur.text = src.text; cur.props = src.props || []; cur.children = src.children || [];
@@ -25102,6 +25151,11 @@ function applyInlineReplace(nodeId, start, end, str) {
   const prev = node.text;
   node.text = node.text.slice(0, a) + str + node.text.slice(b);
   recordTextEdit(nodeId, prev, node.text); // keep the change undoable
+  // #1596: an inserted pill or link changes what the point says, so it stamps like typed text. The
+  // splice writes node.text directly and the next commit starts from the spliced text, so exitEdit
+  // never sees this change. In Guided it was only ever stamped by the blur that opened the command
+  // browser, which committed the `@` as an edit; that blur no longer stamps a trigger.
+  if (node.text !== prev) stampEdit(node);
   markDirty();
   render();
   // enterEdit (below) unfolds inline-able tokens to shorter {…} text, shifting
@@ -34911,13 +34965,17 @@ const POINT_CONTENT_FIELDS = ['text', 'note', 'props', ...ARTIFACT_SIDECARS, 'qb
 // A field holds something when toOpml would write it: non-blank text, an array with a non-null entry
 // (an all-null colW is skipped on save), or any other set value.
 //
-// `ignoreStamps` is for a door that stamps the point itself before it asks. Typing `/` or `@` opens
-// the builder, whose blur commits the trigger character as an edit, so exitEdit writes the
-// created/edited stamps onto a fresh point (traced: openBuilder, blur, exitEdit, stampEdit). Those
-// two show no chip (hasVisibleProps) and are not the reader's. The default still counts them, as
-// every other caller did before: measured, ignoring them routes an `@` Patterns drop into its
-// in-place fill, which loses the recipe through the builder (a separate defect), where the stamps
-// currently send it to the next point instead.
+// `ignoreStamps` is for the doors that FILL or REPLACE a point in place: /template, a Patterns recipe
+// and a pasted spreadsheet. The created/edited stamps show no chip (hasVisibleProps), so a point the
+// reader typed into and cleared again looks exactly like a fresh one while it still carries them.
+// Counting them sent a recipe or a table below that blank line, which is the orphan the in-place fill
+// exists to avoid, while /template and /base filled the same point (measured, #1596). A fill writes
+// the point's props or replaces the point, so the stamps leave with the placeholder they described.
+// A note or any other property still counts. The default (counting them) is what the doors that
+// remove a point or judge a document blank have always used, and this does not revisit them.
+//
+// #1596: typing `/` or `@` no longer stamps the point it is typed into (editStampVerdict), so a fresh
+// point reaches these doors with no stamps at all. ignoreStamps is not a workaround for that any more.
 function pointHasOwnContent(n, { ignoreStamps = false } = {}) {
   return !!n && POINT_CONTENT_FIELDS.some(k => {
     const v = n[k];

@@ -6960,9 +6960,9 @@ test('#1580 a point carrying a note is not empty to /template, a Patterns drop o
   assert.deepEqual((await rows()).map(r => r.text), ['Stamped card', 'Next'], 'an empty point is still replaced');
 
   // A Patterns drop. The row is double-clicked as #1267 does; the builder is opened by Ctrl+K for the
-  // noted point, because typing `@` stamps the point it is typed into (the builder's blur commits the
-  // trigger) and the stamps alone already kept the old check off it. Through Ctrl+K nothing stamps,
-  // and the old check filled the noted point in place, where the recipe was lost outright.
+  // noted point, because typing `@` used to stamp the point it is typed into (#1596), and the stamps
+  // alone kept the old check off it. Through Ctrl+K nothing stamps, and the old check filled the
+  // noted point in place, where the recipe was lost outright (#1594).
   const dropRecipe = async (door) => {
     await caretIn(0);
     if (door === '@') await pg.keyboard.type('@', { delay: 25 });
@@ -6986,12 +6986,12 @@ test('#1580 a point carrying a note is not empty to /template, a Patterns drop o
   let got = await rows();
   assert.deepEqual([got.length, got[0].text, got[0].note], [3, '', 'Imported note'], 'the noted point is left alone and the recipe lands below it');
   assert.ok(got[1].text.startsWith('Damage') && !got[1].note, 'the recipe is its own point, carrying no stranger\'s note');
-  // The negative: a plain point still gets its recipe through the @ door, exactly as before (the
-  // stamps still count for this door, so it lands below as it always has; #1267 drives the family).
+  // The negative: a plain point still gets its recipe through the @ door, now IN PLACE: typing `@` no
+  // longer stamps it (#1596), so it is empty and nothing is left above the recipe.
   await plain(); await pg.waitForTimeout(200);
   await dropRecipe('@');
   got = await rows();
-  assert.equal(got.filter(r => r.text.startsWith('Damage')).length, 1, 'a plain point still receives the recipe');
+  assert.deepEqual(got.map(r => r.text.slice(0, 6)), ['Damage', 'Next'], 'a plain point receives the recipe in place');
 
   // A pasted spreadsheet (#1324's in-place fill).
   const pasteTable = () => pg.evaluate(() => {
@@ -7008,6 +7008,195 @@ test('#1580 a point carrying a note is not empty to /template, a Patterns drop o
   got = await rows();
   assert.deepEqual(got.map(r => r.kids), [2, 0], 'an empty point is still filled in place');
 
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// ── #1594 / #1596: a Patterns recipe on a blank point fills it in place, from every door ────────
+// Two defects met here. (#1596) Typing `/`, `@` or the `{` of a Browse opens the command browser,
+// the browser takes focus, and the point's blur committed the trigger as an edit: created/edited were
+// stamped onto a point nobody had changed, so the recipe's "is this point empty?" said no and the
+// recipe landed BELOW, leaving the blank point above it. (#1594) Through the doors that type no
+// trigger (Ctrl+K, the toolbar, /builder) the point stayed empty and the in-place fill ran, but
+// closeBuilder had handed focus back to the point, and the render() after the fill committed that
+// editor's empty buffer over the recipe: the recipe was lost and the point stayed empty. The doors
+// are the ones the census in tests/test.mjs enumerates; a point carrying a note is the negative.
+test('#1596 a recipe chosen on a blank point fills it in place, through every door that opens the command browser', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const recipe = await pg.evaluate(() => ({ label: PATTERN_RECIPES[0].label, desc: PATTERN_RECIPES[0].desc, sel: PATTERN_RECIPES[0].sel }));
+  const DOORS = {
+    '/': () => pg.keyboard.type('/', { delay: 25 }),
+    '@': () => pg.keyboard.type('@', { delay: 25 }),
+    '{ Browse': async () => {
+      await pg.keyboard.type('{', { delay: 25 }); await pg.waitForTimeout(400);
+      await pg.keyboard.press('ArrowUp'); await pg.waitForTimeout(120); await pg.keyboard.press('Enter');
+    },
+    'Ctrl+K': () => pg.keyboard.press('Control+k'),
+    'toolbar': () => pg.click('#btn-builder'),
+    '/builder': async () => { await pg.keyboard.type('/builder', { delay: 25 }); await pg.waitForTimeout(350); await pg.keyboard.press('Enter'); },
+  };
+  const setup = (kind) => pg.evaluate((kind) => {
+    root.children = kind === 'note'
+      ? fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>t</title></head><body>'
+        + '<outline text="" _note="Imported note"/><outline text="Next"/></body></opml>').children
+      : [mkNode(''), mkNode('Next')];
+    buildIndex(root, null); markDirty(); render();
+    const n = root.children[0], c = document.querySelector(`.node-content[data-id="${n.id}"]`);
+    enterEdit(c, n); c.focus(); activeContentId = n.id;
+    return n.id;
+  }, kind);
+  const point = (id) => pg.evaluate((id) => {
+    const n = nodeById(id);
+    return n && { text: n.text, note: n.note || '', stamps: (n.props || []).filter(p => TIMESTAMP_KEYS.has(p.key)).length };
+  }, id);
+  const bad = [];
+  for (const [door, open] of Object.entries(DOORS)) for (const kind of ['fresh', 'note']) {
+    const id = await setup(kind); await pg.waitForTimeout(200);
+    await open(); await pg.waitForTimeout(450);
+    if (!await pg.evaluate(() => ioCard.classList.contains('builder-open'))) { bad.push(`${door} ${kind}: the browser did not open`); continue; }
+    // The source of #1596: the browser holds the point now, and the point must not be stamped for it.
+    const held = await point(id);
+    if (held.stamps) bad.push(`${door} ${kind}: opening the browser stamped the point`);
+    await pg.fill('.builder-search', recipe.label); await pg.waitForTimeout(250);
+    const box = await pg.evaluate(({ label, desc }) => {
+      const it = [...ioCard.querySelectorAll('.builder-item')].find(e =>
+        e.querySelector('.cmd-label')?.textContent === label && e.querySelector('.cmd-desc')?.textContent === desc);
+      if (!it) return null;
+      it.scrollIntoView({ block: 'center' });
+      const b = it.getBoundingClientRect(); return { x: b.x + 20, y: b.y + b.height / 2 };
+    }, recipe);
+    if (!box) { bad.push(`${door} ${kind}: no Patterns row`); await pg.keyboard.press('Escape'); continue; }
+    await pg.mouse.dblclick(box.x, box.y); await pg.waitForTimeout(450);
+    const sel = await pg.evaluate(() => getSelection().toString());
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    const got = await pg.evaluate(() => root.children.map(n => n.id));
+    const p = await point(id);
+    if (kind === 'fresh') {
+      // in place: the same point now holds the recipe, nothing is left above it, the value is selected
+      if (got.length !== 2 || got[0] !== id || !p.text.startsWith('Damage'))
+        bad.push(`${door} fresh: the recipe did not fill the point in place (${got.length} points, first ${JSON.stringify(p && p.text)})`);
+      if (sel !== recipe.sel) bad.push(`${door} fresh: selected ${JSON.stringify(sel)}, want ${JSON.stringify(recipe.sel)}`);
+    } else {
+      // the negative: a point with a note is not empty, so the recipe lands below and the point is untouched
+      const below = await pg.evaluate(() => root.children[1] && root.children[1].text);
+      if (got.length !== 3 || got[0] !== id || p.text !== '' || p.note !== 'Imported note' || !String(below).startsWith('Damage'))
+        bad.push(`${door} note: want the noted point untouched and the recipe below it, got ${got.length} points, ${JSON.stringify(p)}`);
+      if (p.stamps) bad.push(`${door} note: the noted point was stamped although nothing in it changed`);
+    }
+  }
+  assert.deepEqual(bad, [], 'every door must fill a blank point in place and leave a noted point alone');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// #1596: the other half of the stamp rule. Opening the command browser is not an edit, and every real
+// edit made through it still is: what the reader typed before it opened, a command it applied, a pill
+// it inserted, and the typing a dismissal hands back. Two of these were already wrong before the fix
+// in the other direction (Ctrl+K's handed-back typing and Standard's inserted pill never stamped), and
+// the inserted pill in Guided was stamped only by the trigger's blur, so it is the case to watch.
+test('#1596 opening the command browser stamps nothing, and every real edit through it still stamps', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const start = (tier) => pg.evaluate((tier) => {
+    setVerbosity(tier);
+    root.children = [mkNode(''), mkNode('Next')]; buildIndex(root, null); markDirty(); render();
+    const n = root.children[0], c = document.querySelector(`.node-content[data-id="${n.id}"]`);
+    enterEdit(c, n); c.focus(); activeContentId = n.id;
+  }, tier);
+  const typeIn = async (s) => { await pg.keyboard.type(s, { delay: 25 }); await pg.waitForTimeout(400); };
+  const press = async (k) => { await pg.keyboard.press(k); await pg.waitForTimeout(400); };
+  const CASES = [
+    ['typing Hello', 'guided', async () => { await typeIn('Hello'); }, true],
+    ['/ then Escape (the slash stays)', 'guided', async () => { await typeIn('/'); await press('Escape'); }, true],
+    ['/note then Escape (the typing is handed back)', 'guided', async () => { await typeIn('/note'); await press('Escape'); }, true],
+    ['Ctrl+K, note, Escape (the typing is handed back)', 'guided', async () => { await press('Control+k'); await typeIn('note'); await press('Escape'); }, true],
+    ['/todo applied', 'guided', async () => { await typeIn('/todo'); await press('Enter'); }, true],
+    ['@progress inserted (Guided)', 'guided', async () => { await typeIn('@progress'); await press('Enter'); }, true],
+    ['@progress inserted (Standard)', 'standard', async () => { await typeIn('@progress'); await press('Enter'); }, true],
+    ['Hi typed, then Ctrl+K and Escape', 'guided', async () => { await typeIn('Hi'); await press('Control+k'); await press('Escape'); }, true],
+    ['Ctrl+K then Escape', 'guided', async () => { await press('Control+k'); await press('Escape'); }, false],
+    // a command that changes nothing in the point: the trigger is stripped and the panel opens
+    ['/ then Variables', 'guided', async () => { await typeIn('/'); await pg.fill('.builder-search', 'variables'); await pg.waitForTimeout(250); await press('Enter'); }, false],
+  ];
+  const bad = [];
+  for (const [name, tier, act, want] of CASES) {
+    await start(tier); await pg.waitForTimeout(200);
+    await act();
+    await pg.evaluate(() => commitActiveEdit()); await pg.waitForTimeout(200);   // leave the point
+    const got = await pg.evaluate(() => {
+      const n = root.children[0];
+      return { text: n.text, stamps: (n.props || []).filter(p => TIMESTAMP_KEYS.has(p.key)).map(p => p.key).sort().join(',') };
+    });
+    if ((got.stamps === 'created,edited') !== want) bad.push(`${name}: ${want ? 'not stamped' : 'stamped'} (${JSON.stringify(got)})`);
+  }
+  assert.deepEqual(bad, [], 'a stamp follows a change to what the point says, and only that');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// #1595 / #1596: the other doors that fill a point in place. A pasted spreadsheet filled an empty point
+// and then lost the table's title, the same stale-buffer commit as #1594. A point the reader typed into
+// and cleared again keeps created/edited and looks blank, and /template and /base filled it while a
+// Patterns recipe and a paste went below it, leaving the blank line the in-place fill exists to avoid.
+test('#1595 a pasted table keeps its title, and a cleared point is blank to every door that fills in place', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => { root.templates = [{ name: 'Card', node: mkNode('Stamped card') }]; });
+  const caret = (at = 0) => pg.evaluate((at) => {
+    const n = root.children[0], c = document.querySelector(`.node-content[data-id="${n.id}"]`);
+    if (!c.dataset.editing) enterEdit(c, n); c.focus(); activeContentId = n.id;
+    setCaretByOffset(c, at);
+  }, at);
+  const blank = async (cleared) => {
+    await pg.evaluate(() => { root.children = [mkNode(''), mkNode('Next')]; buildIndex(root, null); markDirty(); render(); });
+    await pg.waitForTimeout(200); await caret(); await pg.waitForTimeout(120);
+    if (!cleared) return;
+    await pg.keyboard.type('Draft', { delay: 10 });
+    await pg.evaluate(() => commitActiveEdit()); await pg.waitForTimeout(150);
+    await caret(5); await pg.waitForTimeout(100);
+    for (let i = 0; i < 5; i++) await pg.keyboard.press('Backspace');
+    await pg.evaluate(() => commitActiveEdit()); await pg.waitForTimeout(150);
+    await caret(); await pg.waitForTimeout(150);
+  };
+  const paste = () => pg.evaluate(() => {
+    const c = document.querySelector(`.node-content[data-id="${root.children[0].id}"]`);
+    const dt = new DataTransfer(); dt.setData('text/plain', 'name\tcost\nsword\t10\nshield\t5');
+    c.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  const recipe = async () => {
+    await pg.keyboard.type('@', { delay: 25 }); await pg.waitForTimeout(450);
+    const r = await pg.evaluate(() => ({ label: PATTERN_RECIPES[0].label, desc: PATTERN_RECIPES[0].desc }));
+    await pg.fill('.builder-search', r.label); await pg.waitForTimeout(250);
+    // label AND description: "Dice roll" is also the @dice command, which Enter would pick
+    const box = await pg.evaluate(({ label, desc }) => {
+      const it = [...ioCard.querySelectorAll('.builder-item')].find(e =>
+        e.querySelector('.cmd-label')?.textContent === label && e.querySelector('.cmd-desc')?.textContent === desc);
+      if (!it) return null;
+      it.scrollIntoView({ block: 'center' });
+      const b = it.getBoundingClientRect(); return { x: b.x + 20, y: b.y + b.height / 2 };
+    }, r);
+    assert.ok(box, 'the Patterns row is in the builder');
+    await pg.mouse.dblclick(box.x, box.y); await pg.waitForTimeout(450);
+  };
+  const template = async () => { await pg.keyboard.type('/template:Card', { delay: 20 }); await pg.waitForTimeout(350); await pg.keyboard.press('Enter'); await pg.waitForTimeout(450); };
+  const tops = () => pg.evaluate(() => root.children.map(n => n.text.replace(/\[\[[a-z]+:[^\]]+\]\]/g, '[pill]')));
+
+  // The reported shape: the title survives the in-place fill.
+  await blank(false); await paste(); await pg.waitForTimeout(400);
+  await pg.keyboard.press('Escape'); await pg.evaluate(() => commitActiveEdit()); await pg.waitForTimeout(200);
+  let kids = await pg.evaluate(() => root.children.map(n => (n.children || []).length));
+  assert.deepEqual(await tops(), ['## Imported table', 'Next'], 'the pasted table fills the point and keeps its title');
+  assert.deepEqual(kids, [2, 0], 'with its rows under it');
+
+  const bad = [];
+  for (const [door, act, want] of [['paste', paste, '## Imported table'], ['Patterns', recipe, 'Damage [pill]'], ['/template', template, 'Stamped card']]) {
+    await blank(true);
+    const stamped = await pg.evaluate(() => (root.children[0].props || []).map(p => p.key).sort().join(','));
+    if (stamped !== 'created,edited') { bad.push(`${door}: the fixture did not stamp the cleared point (${stamped})`); continue; }
+    await act(); await pg.waitForTimeout(300);
+    await pg.keyboard.press('Escape'); await pg.evaluate(() => commitActiveEdit()); await pg.waitForTimeout(200);
+    const got = await tops();
+    if (JSON.stringify(got) !== JSON.stringify([want, 'Next'])) bad.push(`${door}: ${JSON.stringify(got)}`);
+  }
+  assert.deepEqual(bad, [], 'a cleared point is filled in place by every door, with nothing left above');
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });

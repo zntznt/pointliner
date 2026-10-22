@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2179 declarations in 158 sections across 17 domains.**
+**2182 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -348,6 +348,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `parseBaseSlash` — parseBaseSlash(query) — pure. LEAN FLOOR: /base:RxC (e.g. /base:3x4) → { rows, cols } clamped to a
 - `setDateProp` — Set (or, with a falsy val, leave untouched) one date property on a node, replacing
 - `stampEdit` — #467: stamp the point's timestamps. `created` is set only if absent (first content);
+- `editStampVerdict` — #1596: does this commit stamp the point, and what does the next commit judge against? An edit is
 - `SLASH_ARG_VERBS` — Opted-in /-verbs that take a typed ":value" (the keyboard bridge that skips the
 - `parseSlashQuery` — parseSlashQuery(rawQuery, trigger) — pure, Node-testable. Splits a captured slash
 - `setCheckProp` — Set (or, with an empty val, clear) the reserved `check` constraint property.
@@ -1180,6 +1181,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `enterEdit`
 - `_suppressPruneOnFlush` — When applyInlineReplace flushes the active edit mid-insert (its `ed.blur()`), the
 - `_pendingFullRender` — Set when a STRUCTURAL change happens mid-edit (e.g. link-and-create adds a new
+- `_editStampCarry` — #1596: the text a point's edit is judged against once the command browser has taken focus from it
+- `builderOwnText` — #1596: the point's text without the trigger run the open command browser holds, or null when the
 - `exitEdit`
 - `isComputedNode` — #801 (agent-review, UXP-194): repaint visible points whose DISPLAY depends on
 - `repaintComputedDependents`

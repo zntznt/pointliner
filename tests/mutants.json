@@ -3478,10 +3478,10 @@
     {
       "id": "template-counts-its-own-stamps",
       "suite": "unit",
-      "why": "the negative case: typing / stamps a fresh point before /template runs, so a check that counts the stamps stops replacing the point the command was typed into and leaves a stray blank",
+      "why": "the negative case: a point typed into and cleared again keeps created/edited and shows nothing, so a check that counts the stamps stops replacing it and leaves a stray blank above the template (#1596 kept this; typing / no longer stamps a fresh point)",
       "file": "index.html",
-      "find": "isEmptyPoint(cur, { ignoreStamps: true })",
-      "replace": "isEmptyPoint(cur)",
+      "find": "  if (isEmptyPoint(cur, { ignoreStamps: true })) parent",
+      "replace": "  if (isEmptyPoint(cur)) parent",
       "kills": "#1580 every door that discards or fills"
     },
     {
@@ -3489,7 +3489,7 @@
       "suite": "unit",
       "why": "a Patterns recipe filled a point with no text in place, so a note on it ended up attached to the recipe",
       "file": "index.html",
-      "find": "const curEmpty = cur && cur !== root && isEmptyPoint(cur);",
+      "find": "const curEmpty = cur && cur !== root && isEmptyPoint(cur, { ignoreStamps: true });",
       "replace": "const curEmpty = cur && cur !== root && !(cur.text || '').trim() && !(cur.props || []).length && !(cur.children || []).length;",
       "kills": "#1580 every door that discards or fills"
     },
@@ -3498,7 +3498,7 @@
       "suite": "unit",
       "why": "a pasted spreadsheet filled a point with no text in place, so a note on it ended up attached to the table",
       "file": "index.html",
-      "find": "const curEmpty = node !== root && isEmptyPoint(node);",
+      "find": "const curEmpty = node !== root && isEmptyPoint(node, { ignoreStamps: true });",
       "replace": "const curEmpty = node !== root && !(node.text || '').trim() && !(node.props || []).length && !(node.children || []).length;",
       "kills": "#1580 every door that discards or fills"
     },
@@ -3528,6 +3528,141 @@
       "find": "headEl('_footnotes', r.footnotes) + ",
       "replace": "headEl('_footnotes', r.footnotes) + headEl('_theme', r.theme) + ",
       "kills": "#1580 docIsBlank counts a query base and authored document config"
+    },
+    {
+      "id": "recipe-fill-before-the-edit-commits",
+      "suite": "unit",
+      "why": "#1594: insertRecipe judged and filled the point while closeBuilder's refocus held it in edit, and the render() after the fill committed the empty buffer over the recipe",
+      "file": "index.html",
+      "find": "  commitActiveEdit();\n  const cur = (curId",
+      "replace": "  const cur = (curId",
+      "kills": "#1594 census: every door that fills a point it judges empty"
+    },
+    {
+      "id": "recipe-fill-before-the-edit-commits-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: Ctrl+K (or any door) and a Patterns recipe on a fresh point, and the recipe is gone",
+      "file": "index.html",
+      "find": "  commitActiveEdit();\n  const cur = (curId",
+      "replace": "  const cur = (curId",
+      "kills": "#1596 a recipe chosen on a blank point fills it in place"
+    },
+    {
+      "id": "paste-fill-before-the-edit-commits",
+      "suite": "unit",
+      "why": "#1595: the spreadsheet paste filled the point it was pasted into while that point was still being edited, and render() wrote the empty buffer over the table's title",
+      "file": "index.html",
+      "find": "      commitActiveEdit();\n      pushUndo();\n      const idx0",
+      "replace": "      pushUndo();\n      const idx0",
+      "kills": "#1594 census: every door that fills a point it judges empty"
+    },
+    {
+      "id": "paste-fill-before-the-edit-commits-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: a pasted table fills an empty point and its title is gone",
+      "file": "index.html",
+      "find": "      commitActiveEdit();\n      pushUndo();\n      const idx0",
+      "replace": "      pushUndo();\n      const idx0",
+      "kills": "#1595 a pasted table keeps its title"
+    },
+    {
+      "id": "recipe-fill-counts-stamps",
+      "suite": "unit",
+      "why": "a Patterns recipe on a point typed into and cleared again went below it, leaving the blank line the in-place fill exists to avoid",
+      "file": "index.html",
+      "find": "isEmptyPoint(cur, { ignoreStamps: true });   // #1580",
+      "replace": "isEmptyPoint(cur);   // #1580",
+      "kills": "#1594 census: every door that fills a point it judges empty"
+    },
+    {
+      "id": "unclassified-empty-door",
+      "suite": "unit",
+      "why": "a new door that judges a point empty must be classified as a fill (leave the edit first, look past the stamps) or a removal, or the next one ships without either",
+      "file": "index.html",
+      "find": "function insertSiblingAfter(id) {\n  const parent = parentOf(id);",
+      "replace": "function insertSiblingAfter(id) {\n  if (isEmptyPoint(nodeById(id))) return;\n  const parent = parentOf(id);",
+      "kills": "#1594 census: every door that fills a point it judges empty"
+    },
+    {
+      "id": "trigger-blur-stamps-again",
+      "suite": "unit",
+      "why": "#1596: the commit stops asking what the open command browser holds, so the blur stamps the trigger as an edit and a fresh point is no longer empty",
+      "file": "index.html",
+      "find": "builderOwn: builderOwnText(node) });",
+      "replace": "builderOwn: null });",
+      "kills": "#1596 exitEdit judges the stamp over the excursion"
+    },
+    {
+      "id": "trigger-blur-stamps-again-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: typing / or @ stamps the point and the recipe lands below it",
+      "file": "index.html",
+      "find": "builderOwn: builderOwnText(node) });",
+      "replace": "builderOwn: null });",
+      "kills": "#1596 a recipe chosen on a blank point fills it in place"
+    },
+    {
+      "id": "stamp-carry-never-read",
+      "suite": "unit",
+      "why": "without the carried text, what the browser leaves in the point (the typing a dismissal hands back, a slash left behind) is judged against the re-entry text and never stamps",
+      "file": "index.html",
+      "find": "  const carried = _editStampCarry && _editStampCarry.id === node.id ? _editStampCarry.text : null;",
+      "replace": "  const carried = null;",
+      "kills": "#1596 exitEdit judges the stamp over the excursion"
+    },
+    {
+      "id": "stamp-carry-never-read-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: /note then Escape leaves /note in the point unstamped",
+      "file": "index.html",
+      "find": "  const carried = _editStampCarry && _editStampCarry.id === node.id ? _editStampCarry.text : null;",
+      "replace": "  const carried = null;",
+      "kills": "#1596 opening the command browser stamps nothing"
+    },
+    {
+      "id": "inserted-pill-unstamped",
+      "suite": "unit",
+      "why": "an inserted pill writes node.text directly and no commit sees it; in Guided only the trigger's blur ever stamped it, so without this it never stamps in any tier",
+      "file": "index.html",
+      "find": "  if (node.text !== prev) stampEdit(node);\n  markDirty();",
+      "replace": "  markDirty();",
+      "kills": "#1596 exitEdit judges the stamp over the excursion"
+    },
+    {
+      "id": "inserted-pill-unstamped-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: @progress in Guided and in Standard leaves the point unstamped",
+      "file": "index.html",
+      "find": "  if (node.text !== prev) stampEdit(node);\n  markDirty();",
+      "replace": "  markDirty();",
+      "kills": "#1596 opening the command browser stamps nothing"
+    },
+    {
+      "id": "verdict-blind-to-the-browser",
+      "suite": "unit",
+      "why": "the pure verdict back to the old rule: the blur compares the text with the trigger in it, so the trigger alone stamps the point",
+      "file": "index.html",
+      "find": "  if (builderOwn != null) return { stamp: builderOwn !== base, carry: builderOwn };\n",
+      "replace": "",
+      "kills": "#1596 a command-browser excursion stamps the point only when"
+    },
+    {
+      "id": "undriven-builder-door",
+      "suite": "unit",
+      "why": "a new door that opens the command browser on a point must be driven by the #1596 check, or its blur can stamp again unseen",
+      "file": "index.html",
+      "find": "function insertSiblingAfter(id) {\n  const parent = parentOf(id);",
+      "replace": "function insertSiblingAfter(id) {\n  if (id === '#never') { builderState = { nodeId: id }; openBuilder('@'); }\n  const parent = parentOf(id);",
+      "kills": "#1596 census: every door that opens the command browser on a point is driven"
+    },
+    {
+      "id": "template-counts-stamps-driven",
+      "suite": "browser",
+      "why": "why /template keeps ignoreStamps after #1596: a point typed into and cleared again still carries created/edited, and counting them leaves the blank point above the template",
+      "file": "index.html",
+      "find": "  if (isEmptyPoint(cur, { ignoreStamps: true })) parent",
+      "replace": "  if (isEmptyPoint(cur)) parent",
+      "kills": "#1595 a pasted table keeps its title, and a cleared point is blank"
     },
     {
       "id": "action-pill-one-additive-template",
