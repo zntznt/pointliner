@@ -6750,3 +6750,30 @@ UXP-336.
 With nothing to cite, the row should say so where the user is looking (the builder pane, or the Cite
 row itself) and keep focus in the builder, or close the builder before the hint. Drive both states
 (no footnotes, one footnote) and both doors (click, Enter).
+
+---
+
+## UXP-338 -- inside the builder, the insert-dialog chips have no keyboard door at all (#1586)
+
+**Status: open.** P3. Found while driving #1586; not in its scope, because the fix needs a focus
+decision rather than the keyboard twin #1586 added.
+
+### The defect, driven
+
+#1586 gave every `.io-chip` (built by `buildChipRow`) an Enter/Space twin beside its `mousedown`, so
+in a standalone insert dialog Tab reaches a chip and Enter or Space does what a click does. In the
+**builder**, which is where Guided's `@` lands, the same dialog is rendered nested (`_dialogRoot`),
+and `openInsertDialog` then sets `tabindex="-1"` on every non-footer button in its fields ("so the
+user tabs directly between text inputs and the Cancel/Insert buttons", f3e747f). Driven: type `@`,
+search `Dice`, Tab into the pane; all 13 chips carry `tabindex="-1"` and the Tab walk goes
+field, Cancel, Roll, preview, guide chips. Nothing moves focus onto a chip, so the twin is never
+reached. Everything a chip writes can still be typed into the field, which is why this is a missing
+door and not a blocker.
+
+### Target
+
+A keyboard door to the chips inside the builder that keeps what f3e747f wanted (Tab is not flooded
+by thirteen chips). The standing answer is the roving group (ux-discipline §3: one Tab stop for the
+row, arrows inside it, `roveIndex`), which is what #1586 gave the Variable dialog's Known variables
+cards. Drive both the nested and the standalone dialog: they share `buildChipRow`, and the
+standalone dialog currently makes every chip a Tab stop.
