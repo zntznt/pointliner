@@ -4122,6 +4122,87 @@
       "find": "      roveTo(cardEls[at], cardEls[to]);\n",
       "replace": "",
       "kills": "#1586 the Known variables cards are one Tab stop"
+    },
+    {
+      "id": "keyword-commit-promoted-anyway",
+      "suite": "unit",
+      "why": "#1591: the reported bug, restored. Promotion stops asking whether a keyword committed, so {meter: a | b} is announced as staying plain text and then frozen into a pill reading \"meter: a\"",
+      "file": "index.html",
+      "find": "  if (keywordCommitted(body)) return null;\n",
+      "replace": "",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "keyword-commit-unclassified",
+      "suite": "unit",
+      "why": "#1591: the other walk. The classifier stops asking, so {rule: a | b} previews as a pill and then stays text, the same split in reverse",
+      "file": "index.html",
+      "find": "  if (keywordCommitted(body)) return 'invalid';\n",
+      "replace": "",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "next-keyword-skips-the-commit",
+      "suite": "unit",
+      "why": "#1591: the next keyword, simulated. A new keyword-commit sniff in the classifier with no matching entry in the commit lists is exactly how meter, oracle and markov drifted apart; the census reads the sniffs, so it must notice",
+      "file": "index.html",
+      "find": "  if (/^markov\\s*:/i.test(body)) return 'invalid';\n",
+      "replace": "  if (/^markov\\s*:/i.test(body)) return 'invalid';\n  if (/^stat\\s*:/i.test(body)) return 'invalid';\n",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "name-commit-drops-prop",
+      "suite": "unit",
+      "why": "#1591: {prop : a | b} classifies as an attempt through the classifier's own /^prop\\s/ sniff; with prop out of the commit list, promotion makes the pill again",
+      "file": "index.html",
+      "find": "const NAME_COMMIT_KEYWORDS = ['seq', 'rule', 'prop'];",
+      "replace": "const NAME_COMMIT_KEYWORDS = ['seq', 'rule'];",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "deck-modes-share-one-sentence",
+      "suite": "unit",
+      "why": "#1591/#1505: once cycle, once and stopping can be called attempts, the old shared sentence sends all three to {shuffle: …}; the guard is an includes-shaped claim about each mode's own form",
+      "file": "index.html",
+      "find": "  if (deckMode) return EMPTY_STUB_FORM[deckMode[1].toLowerCase()];",
+      "replace": "  if (deckMode) return 'A deck needs a list to deal from: try {shuffle: a | b | c}.';",
+      "kills": "#1591 a reserved keyword with a tail its parser rejects stays text"
+    },
+    {
+      "id": "keyword-commit-promoted-anyway-driven",
+      "suite": "browser",
+      "why": "#1591 driven: what is announced as the } lands and what is done on exit are two moments no source pin spans; without the promotion guard {oracle: a | b | c} becomes a pill reading \"oracle: a\"",
+      "file": "index.html",
+      "find": "  if (keywordCommitted(body)) return null;\n",
+      "replace": "",
+      "kills": "#1591 a keyword with a tail its parser rejects stays text as announced"
+    },
+    {
+      "id": "colonless-phrase-commits-again",
+      "suite": "unit",
+      "why": "#1591 review: a space commits the name-taking keywords again, so {rule of thumb | rule of law} counts as keyword syntax and an ordinary pick is turned into plain text",
+      "file": "index.html",
+      "find": "  + ')\\\\s*:(?!=)\\\\s*\\\\S|(?:' + NAME_COMMIT_KEYWORDS.join('|') + ')\\\\s+[^:|{}]*:(?!=))', 'i');",
+      "replace": "  + ')\\\\s*:(?!=)\\\\s*\\\\S|(?:' + NAME_COMMIT_KEYWORDS.join('|') + ')\\\\s)', 'i');",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "colonless-rule-pick-reflagged",
+      "suite": "unit",
+      "why": "#1591 review: the classifier's rule arm re-flags a colon-less phrase, so {rule word | other} is announced as staying plain text and then becomes the pill, the original contradiction in the other direction",
+      "file": "index.html",
+      "find": "  if (/^rule\\s/i.test(body) && !colonlessKeywordPick(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';",
+      "replace": "  if (/^rule\\s/i.test(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "colonless-seq-pick-kept-as-text",
+      "suite": "unit",
+      "why": "#1591 review: promotion's seq arm keeps a colon-less phrase as text while the classifier previews the pick, so {seq word | other} promises a pill and never makes one",
+      "file": "index.html",
+      "find": "  if (/^seq\\s/i.test(body) && !colonlessKeywordPick(body)) return null;",
+      "replace": "  if (/^seq\\s/i.test(body)) return null;",
+      "kills": "#1591 census: for every reserved keyword"
     }
   ]
 }

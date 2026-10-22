@@ -20399,18 +20399,21 @@ function classifyBraceBody(body, rules, vars) {
   // WITH a pipe used to reach the alternation branch and become a nonsense pill (`seq Growth: Seed,
   // Sprout | Bloom` promoted to a coin flip between the literal strings "seq Growth: Seed, Sprout"
   // and "Bloom"), while one WITHOUT a pipe classified 'literal' and said nothing at all.
-  if (/^seq\s/i.test(body)) return seqDeclParts(body) ? 'artifact' : 'invalid';
+  // #1591: unless it is a colon-less pick that only starts with the word ({seq of events | timeline}).
+  if (/^seq\s/i.test(body) && !colonlessKeywordPick(body)) return seqDeclParts(body) ? 'artifact' : 'invalid';
   // {rule tavern: The {adj} {noun}} — a typed named grammar declaration. KEYWORD-COMMIT (the
   // oracle/meter shape): once the body opens with `rule `, a tail that will not parse is INVALID,
   // never prose. That verdict is what earns it the .brace-attempt cue and, more importantly, what
   // engages promoteInlineShorthand's anti-shred guard — without it a broken {rule x: The {a} {b}}
   // classifies 'literal' and the walk descends to promote its inner braces as orphan pills.
-  if (/^rule\s/i.test(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';
+  // #1591: a colon-less pick that only starts with the word ({rule of thumb | rule of law}) is not one.
+  if (/^rule\s/i.test(body) && !colonlessKeywordPick(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';
   if (propDeclParts(body)) return 'artifact';                          // {prop owner: zeo} (LEAN FLOOR)
   // {prop …} committed to the keyword but has no `key: value` → an ATTEMPT, not prose (the same
   // keyword-commit shuffle/markov/seq/rule/oracle/meter already carry, UXP-253). Without it a
   // `{prop hp}` (no colon) or `{prop : 5}` (no key) fell through to 'literal' and leaked raw braces.
-  if (/^prop\s/i.test(body)) return 'invalid';
+  // #1591: except a colon-less pick that only starts with the word ({prop up | lean on}).
+  if (/^prop\s/i.test(body) && !colonlessKeywordPick(body)) return 'invalid';
   const dd0 = dateDeclParts(body);                                     // {date due: friday} (LEAN FLOOR)
   // lockstep with promoteBraceBody (#407): an unparseable value stays literal on exit,
   // so the edit surface must say so LIVE (gr-bad) instead of promising a promotion.
@@ -20475,6 +20478,8 @@ function classifyBraceBody(body, rules, vars) {
   // last before the alternation fall-through, so every legitimate colon form above (roll/query/
   // count/oracle/prop/date/seq/rule/markov/shuffle/meter/action) has already claimed its body.
   if (condAttempt(body)) return 'invalid';
+  // #1591: a keyword committed and nothing above accepted its tail, so it is an attempt, not a pick.
+  if (keywordCommitted(body)) return 'invalid';
   if (splitTopLevel(body, '|').length > 1) return 'artifact';           // {a|b}
   if (/^[a-z_][\w]*$/i.test(body)) {                                    // {rule} / {var}
     const low = body.toLowerCase();
@@ -20593,6 +20598,30 @@ const EMPTY_STUB_RE = new RegExp('^(?:=|(?:' + EMPTY_STUB_KEYWORDS.concat(Object
 // Pure. The single source of truth for "promotion will consume this body to nothing"; promoteBraceBodyIn
 // tests the same predicate, so there is one answer to that question rather than two.
 function braceBodyIsEmptyStub(body) { return EMPTY_STUB_RE.test(String(body ?? '').trim()); }
+// #1591: the keywords that take a NAME before their colon ({rule tavern: …}). Every keyword commits only
+// on its colon: `kw:` for all of them, and `kw name:` for these three, where the name holds no `|` or
+// brace, so the colon belongs to the keyword and not to some later alternative. No colon, no keyword
+// syntax: {rule of thumb | rule of law} is a pick, exactly like {markov chain | random walk}.
+const NAME_COMMIT_KEYWORDS = ['seq', 'rule', 'prop'];
+// An EMPTY tail after a bare `kw:` is never matched: that body belongs to the stub guard above.
+const KEYWORD_COMMIT_RE = new RegExp('^(?:(?:' + [...new Set([...EMPTY_STUB_KEYWORDS, ...COLON_COMMIT_KEYWORDS, ...NAME_COMMIT_KEYWORDS])].join('|')
+  + ')\\s*:(?!=)\\s*\\S|(?:' + NAME_COMMIT_KEYWORDS.join('|') + ')\\s+[^:|{}]*:(?!=))', 'i');
+// #1591: did this body COMMIT to a reserved keyword? Both walks ask it immediately before their
+// alternation arm, so a body reaching it is one its keyword's own parser already turned down. Without
+// it the two walks disagreed: classifyBraceBody called {oracle: a | b | c}, {markov: a | b} and
+// {meter: a | b} attempts and announced "It stays plain text", and promoteBraceBodyIn, which had no
+// keyword return ahead of that arm, made a pill showing the literal "meter: a". The #1359 split again.
+// A test reads this family back from every list the source keeps and from the classifier's own
+// keyword sniffs, so a keyword added to any of them cannot skip this question. Pure.
+function keywordCommitted(body) { return KEYWORD_COMMIT_RE.test(String(body ?? '').trim()); }
+// #1591: a colon-less body with a top-level `|` that merely STARTS with seq, rule or prop. It is an
+// ordinary pick, so the space-commit arms of both walks step aside for it. They used to flag
+// {rule of thumb | rule of law} and {prop up | lean on} as attempts ("It stays plain text") while
+// promotion made the pill. Without a pipe they keep their verdict: {prop hp} is still an attempt, and
+// {rule x {a|b}} still is too, which is what keeps its inner pick from being shredded. Pure.
+function colonlessKeywordPick(body) {
+  return !keywordCommitted(body) && splitTopLevel(String(body ?? '').trim(), '|').length > 1;
+}
 // Each keyword's own form, matching guide/pill-syntax-reference.md. `=` is keyed by its symbol
 // because that is its keyword. A test asserts every keyword in the list above has an entry.
 const EMPTY_STUB_FORM = {
@@ -20672,7 +20701,8 @@ function braceAttemptReason(body, rules, vars) {
   if (dm) return `Dice need a number of sides: try {${dm[1]}d6}. "${dm[2]}" is not a number.`;
   // A {rule …} that classified invalid: the keyword committed, so the tail is what went wrong.
   // Name the shape rather than the parser, and separate the two ways it fails.
-  if (/^rule\s/i.test(body)) {
+  // #1591: `[\s:]` so the colon with no name, {rule: a | b}, gets the first of them.
+  if (/^rule[\s:]/i.test(body)) {
     const rm = /^rule\s+([^:]+?)\s*:(.*)$/i.exec(body);
     if (!rm || !rm[1].trim()) return 'A rule needs a name before the colon: try {rule tavern: The Rusty Flagon}.';
     if (!rm[2].trim()) return 'A rule named "' + rm[1].trim() + '" needs something after the colon: try {rule ' + rm[1].trim() + ': option | option}.';
@@ -20681,7 +20711,8 @@ function braceAttemptReason(body, rules, vars) {
   // A {seq …} that classified invalid. The separators are the whole difficulty here, so lead with
   // them, and where the fix is mechanical (commas) hand back the corrected line rather than
   // describing it. States are separated by SPACES; `|` marks where done begins.
-  if (/^seq\s/i.test(body)) {
+  // #1591: `[\s:]` so the colon with no name, {seq: a | b}, is asked for its name.
+  if (/^seq[\s:]/i.test(body)) {
     const sm = /^seq\s+([^:]*?)\s*:(.*)$/i.exec(body);
     if (!sm || !sm[1].trim()) return 'A sequence needs a name before the colon: try {seq Flow: TODO | DONE}.';
     const name = sm[1].trim(), tail = (sm[2] || '').trim();
@@ -20703,15 +20734,17 @@ function braceAttemptReason(body, rules, vars) {
     if (verb === 'roll')  return had + 'A roll needs something to roll on: try {roll: #tag} to pick a random point with that tag.';
     return had + 'A query needs a search after the colon: try {query: is:todo}.';
   }
-  // {prop …} with no key: value.
-  if (/^prop\s/i.test(body)) return 'A property needs a key and a value: try {prop hp: 12}.';
+  // {prop …} with no key: value. #1591: and {prop: …}, the colon with no key.
+  if (/^prop[\s:]/i.test(body)) return 'A property needs a key and a value: try {prop hp: 12}.';
   // {oracle: <bad band>} — the odds words are a closed set; list them (the bare-{oracle} NEAR_MISS
   // above never fires here because this body carries a tail after the colon).
   if (/^oracle\s*:/i.test(body)) return 'An oracle takes an odds word: certain, likely, even, unlikely or impossible. Try {oracle: likely}.';
   // {meter: <bad recipe>}
   if (/^meter\s*:/i.test(body)) return 'A meter reads a value over its max: try {meter: hp/hpmax} or {meter: 8/12}.';
-  // {shuffle|cycle|once|stopping: <bad list>}
-  if (/^(?:shuffle|cycle|once|stopping)\s*:/i.test(body)) return 'A deck needs a list to deal from: try {shuffle: a | b | c}.';
+  // {shuffle|cycle|once|stopping: <bad list>}. #1591: each mode in its own words (#1505's rule). This
+  // sent all four to {shuffle: …}, which nobody heard while only shuffle could be called an attempt.
+  const deckMode = /^(shuffle|cycle|once|stopping)\s*:/i.exec(body);
+  if (deckMode) return EMPTY_STUB_FORM[deckMode[1].toLowerCase()];
   // {markov: <no arrows>}
   if (/^markov\s*:/i.test(body)) return 'A markov chain links states with arrows: try {markov: a→b, b→c}.';
   if (/^[a-z_][\w]*$/i.test(body)) {                                   // {rumor} — a bare name
@@ -29519,7 +29552,8 @@ function promoteBraceBodyIn(node, body) {
   // Keyword committed but the tail did not parse: stay literal so the cue can explain it. Without
   // this the body falls through to the alternation branch far below, which happily reads
   // `seq Growth: Seed, Sprout | Bloom` as two alternatives and freezes a nonsense pill.
-  if (/^seq\s/i.test(body)) return null;
+  // #1591: the classifier's seq arm steps aside for a colon-less pick ({seq of events | timeline}), so this does too.
+  if (/^seq\s/i.test(body) && !colonlessKeywordPick(body)) return null;
   // typed NAMED grammar declaration: {rule tavern: The {adj} {noun}} → a registered [[grammar:KEY]]
   // pill callable as {tavern} anywhere in the document. The typed twin of the @/Grammar dialog, and
   // the last of the three declaration forms to get one ({name := expr} and {seq Name: …} already
@@ -29682,6 +29716,9 @@ function promoteBraceBodyIn(node, body) {
   // (that separation is exactly why a body could classify one way and promote another). Placed
   // immediately before the alternation arm, so every keyword form above still claims its own body.
   if (condAttempt(body)) return null;   // stays literal text; the .brace-attempt cue says why
+  // #1591: the same question the classifier asks before its alternation line. Without it {meter: a | b}
+  // was announced as staying plain text and then frozen into a pill reading "meter: a".
+  if (keywordCommitted(body)) return null;
   // inline alternation: {a | b 2 | c} → an anonymous grammar. `anon` keeps its
   // synthetic `origin` rule out of the document-wide namespace (UXP-33) — the user
   // never declared `origin`, so it must not become a callable `{origin}` elsewhere.
