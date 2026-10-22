@@ -32,7 +32,7 @@ Reshape the document as your thinking changes: reorder points and change how dee
   use **Move up** / **Move down** in the bullet's menu. Swiping
   straight up or down just scrolls the page as usual.
 
-**Fold the whole outline at once.** The toolbar's **1 / 2 / 3 / All** buttons show only that many
+**Collapse the whole outline at once.** The toolbar's **1 / 2 / 3 / All** buttons show only that many
 levels of the current view and collapse everything deeper; **All** expands it again. `Ctrl/Cmd+1`
 through `Ctrl/Cmd+6` do the same from the keyboard, though a browser may reserve those keys, so the
 buttons are the dependable door. On a narrow screen they move into the File menu as **Show levels**.
@@ -84,7 +84,7 @@ shows the full paragraph). The collapsed state is saved with the document.
 
 A paragraph is prose-first in one more way: pills inside it are drawn **lighter**, without the usual
 capsule, icon or dice breakdown, so a generated sentence reads as a sentence rather than a row of
-widgets (they still work: hover shows a faint tint, click re-rolls). A `{= …}` math pill keeps its
+pills (they still work: hover shows a faint tint, click re-rolls). A `{= …}` math pill keeps its
 capsule until you check **Show value only** on it.
 
 When you export a paragraph to Markdown or plain text, each pill flattens to just its **result**
@@ -127,7 +127,7 @@ selected point at once (the same two chords cycle a single point while you are e
 ## Refile a point
 
 Move a point and everything under it to a new home far across the document: drop a stray idea into the
-right project, tuck a finished item under an archive or pull a buried note up to the top.
+right project, tuck a finished point under an archive or pull a buried note up to the top.
 
 Open the point's menu and choose **Refile** to browse the whole document as a searchable tree: type to
 filter to a destination, walk it with the arrow keys, then press `Enter` to move the point there as

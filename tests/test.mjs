@@ -1559,8 +1559,10 @@ test('#1509 the empty state says what the zoom is hiding, and only then', () => 
   assert.match(E('propagation', 1, true, false), /Press Esc to clear$/, 'keeping the recovery it always had');
   // the negatives: unchanged wording everywhere the zoom is not the reason
   assert.equal(E('x', 0, false, false), 'Nothing matches “x”. Press Esc to clear');
-  assert.equal(E('x', 0, false, true), 'Nothing in this note matches “x”. Press Esc to clear',
-    'the workspace wording is untouched');
+  // #1587: with a folder connected the empty state names the DOCUMENT, the level it searched (the
+  // folder's other documents are a different search). It used to say "note", which §1 bans for it.
+  assert.equal(E('x', 0, false, true), 'Nothing in this document matches “x”. Press Esc to clear',
+    'the workspace wording names the document');
   assert.equal(E('x', 0, true, false), 'Nothing matches “x”. Press Esc to clear',
     'zoomed with nothing elsewhere is not blamed on the zoom');
 });
@@ -22776,7 +22778,8 @@ test('#1268 the reassurance copy states all three facts (saves itself, you own i
     'the Welcome intro carries ownership + autosave + restore');
   const saving = between(_src, "id:'saving', cat:'files'", "related:['export'");
   assert.ok(/kept for you automatically/.test(saving), 'the guide states versions are kept before you need them');
-  assert.ok(/connect a folder and keep a library/.test(saving), 'the guide names the scaling ceiling and points at the folder model');
+  // #1587: "a library of documents" was the banned folder synonym; the pointer to the folder model stays
+  assert.ok(/connect a folder and keep several documents in it/.test(saving), 'the guide names the scaling ceiling and points at the folder model');
 });
 
 test('UXP-235: a bare block takes a marker only when it has children to hold', () => {
@@ -27019,6 +27022,124 @@ test('UXP-251 V-1: user-facing copy does not call the document an outline', () =
   // The legitimate senses must SURVIVE — a blanket ban on the word would be the wrong fix.
   assert.ok(_src.includes("vlist.setAttribute('aria-label', 'Outline')"),
     'the tree view is legitimately called the outline and must not be "corrected"');
+});
+
+// #1587: the V-1 census. UXP-251 pinned the strings it fixed and nothing else, so the same banned
+// words came back on surfaces nobody read: the search empty state called the document a "note",
+// a pill tooltip called the folder "the notebook", the agenda said "items" beside two toggles that
+// say "points", and the PWA manifest (which no guard read at all) said "widgets" and "markdown".
+// This reads EVERY surface a user reads -- the manifest, README + the guide/ tree, the guide's demo
+// documents, the in-app GUIDE, the command pool, and every string literal and element text the app
+// can show -- and fails on a banned word in its banned SENSE.
+//
+// Precision over reach. "note", "outline", "item" and "fold" all have legitimate senses (a point's
+// note, the outline as the tree view, a loot item, folding a festival into a month), so those rules
+// are CLOSED LISTS of the shapes that mean the document, folder, point or collapse -- the #1552
+// British-spelling approach: a list accuses nothing it was not told to. "widget", "library" and a
+// lowercase "markdown" have no legitimate sense in copy, so those are bare-word bans. Anything the
+// rules must not accuse goes in ALLOW, with its reason; an entry that no longer matches anything
+// fails too, so the list cannot rot into blanket immunity.
+test('#1587 V-1 census: no banned synonym for document, folder, point, pill or collapse in user-facing copy', () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const surfaces = [];   // [where, text]
+
+  // 1) the PWA manifest: install prompts and OS app listings show its name and description
+  const mf = JSON.parse(_rootFile('manifest.webmanifest'));
+  for (const k of ['name', 'short_name', 'description']) surfaces.push([`manifest.webmanifest ${k}`, String(mf[k] ?? '')]);
+
+  // 2) README + guide/**/*.md prose, and the text of every guide demo document. Code spans, fences,
+  // link targets and HTML comments are blanked IN PLACE (same length, newlines kept) so a reported
+  // line number is the real one; a lowercase `markdown` in a code span is a filename, not prose.
+  const blank = (s) => s.replace(/[^\n]/g, ' ');
+  const prose = (t) => t.replace(/```[\s\S]*?```/g, blank).replace(/`[^`\n]*`/g, blank)
+    .replace(/\]\([^)]*\)/g, blank).replace(/^\s*\[[^\]]+\]:.*$/gm, blank).replace(/<!--[\s\S]*?-->/g, blank);
+  const unxml = (s) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const docs = [resolve(root, 'README.md')];
+  (function walk(dir) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = resolve(dir, e.name);
+      if (e.isDirectory()) walk(p); else if (/\.md$|-demo\.opml$/.test(e.name)) docs.push(p);
+    }
+  })(resolve(root, 'guide'));
+  for (const f of nonEmpty(docs, 'README and guide documents')) {
+    const rel = relative(root, f), txt = readFileSync(f, 'utf8');
+    if (rel.endsWith('.opml')) {
+      for (const m of txt.matchAll(/\btext="([^"]*)"/g))
+        surfaces.push([`${rel}:${txt.slice(0, m.index).split('\n').length}`, unxml(m[1])]);
+    } else surfaces.push([rel, prose(txt)]);
+  }
+
+  // 3) the in-app concept guide: what the ? panel renders. `syn` is exempt (it is typed syntax or a
+  // control's own name, and a control's name is read in 5 below, where it is defined).
+  for (const e of nonEmpty(_GUIDE.filter(x => x.id), 'GUIDE entries'))
+    for (const [w, v] of [['title', e.title], ['body', e.body], ...(e.examples || []).map((x, i) => [`ex[${i}].desc`, x.desc])])
+      if (typeof v === 'string') surfaces.push([`GUIDE[${e.id}].${w}`, v.replace(/`[^`]*`/g, blank)]);
+
+  // 4) every command's label and description (the / and @ menus, All commands)
+  for (const cmd of nonEmpty(c.builderCmdPool(null), 'the command pool'))
+    surfaces.push([`command[${cmd.id}]`, `${cmd.label || ''}\n${cmd.desc || ''}`]);
+
+  // 5) everything else the app can SHOW: string literals and element text, outside the GUIDE block,
+  // with comments, styles and data URIs removed first (comments are internal and exempt). Only a
+  // literal with two words in it is prose; `fold-btn` or `text/markdown` is an identifier. A word
+  // may be a template hole: `${n} notes` is a label the user reads.
+  const app = _SRC_NO_GUIDE.replace(DATA_URI_RE, '""').replace(/<style[^>]*>[\s\S]*?<\/style>/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '').replace(/(?<!:)\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  let appStrings = 0;
+  for (const re of [/'((?:[^'\\\n]|\\.)*)'/g, /"((?:[^"\\\n]|\\.)*)"/g, /`([^`\n]*)`/g, />([^<>{}]{1,300})</g])
+    for (const m of app.matchAll(re))
+      if (/[\w}]{2,}\s+[A-Za-z]{2,}/.test(m[1])) { appStrings++; surfaces.push(['index.html', unxml(m[1])]); }
+  assert.ok(appStrings > 3000, `the app-string extraction must find the app's copy, found ${appStrings}`);
+
+  // The rules. A space in a pattern matches any run of whitespace, so a phrase hard-wrapped across
+  // two markdown lines is still one phrase.
+  const P = (src, flags = 'gi') => new RegExp(src.replace(/ /g, '\\s+'), flags);
+  const RULES = [
+    { id: 'widget', say: 'pill', re: P('\\bwidgets?\\b') },
+    { id: 'markdown', say: '"Markdown" (a proper noun, §8)', re: P('(?<![\\w./-])markdown(?![\\w-])', 'g') },
+    { id: 'library', say: 'folder', re: P('\\blibrar(?:y|ies)\\b') },
+    // folder-sense only: "a paper notebook" is the physical object the solo-RPG guides compare against
+    { id: 'notebook', say: 'folder', re: P('\\b(?:your|the|this|whole|connected) notebooks?\\b') },
+    // "the outline" (the tree view) and "outliner" (the app) stay legal; these are the DOCUMENT
+    { id: 'outline', say: 'document', re: P('\\b(?:Pointliner|blank|new|your(?: own)?(?: whole)?) outlines?\\b|\\boutlines? (?:someone|you) shared\\b|\\boutline file\\b') },
+    // a point's note, a footnote's note and plain English ("note that…", "a note to self") stay
+    // legal; these are the shapes that meant the DOCUMENT, or the zoomed page
+    { id: 'note', say: 'document (or "page" for the zoomed point)', re: P([
+      '\\bin this note\\b', '\\bthis note alone\\b', '\\bits own note\\b', '\\byour own notes\\b', '\\bnotes live\\b',
+      '\\b(?:other|different|connected) notes?\\b', '\\b(?:every|each) note in\\b', '\\bpoint or note\\b',
+      '\\b(?:foot of|sits in|sits under) the note\\b', "\\bthe note's own\\b", '\\bnote set\\b', '\\bspans many notes\\b',
+      '\\$\\{[^}]*\\} notes\\b',
+    ].join('|')) },
+    // a loot item, a line item, a deck's items and an item field stay legal; these mean a POINT
+    { id: 'item', say: 'point', re: P('\\b(?:overdue|late|done|completed|finished|started|running|dated|undated|tagged|priciest|cheapest) items?\\b|\\bitems? it holds\\b|\\bclick any item\\b') },
+    // "unfold"/"refold" are code; "folder" is a different word; these mean COLLAPSE
+    { id: 'fold', say: 'collapse / expand', re: P('(?<![\\w-])fold(?:s|ed|ing)?\\b') },
+  ];
+  const ALLOW = [
+    { rule: 'notebook', at: 'guide/solo-rpg/lonelog/lonelog.md', re: P('the notebook is right there'),
+      why: 'the paper notebook the guide is honest about preferring, not the folder' },
+    { rule: 'library', at: 'index.html', re: P('the library books'), why: 'quoted user content: a sample to-do in a starter' },
+    { rule: 'fold', at: 'guide/', re: P('folding each festival into'), why: 'merging festival days into a month, not collapsing' },
+    { rule: 'fold', at: 'guide/solo-rpg/oracle-play/oracle-play.md', re: P('If you fold a'),
+      why: 'nesting a deck inside a named rule, not collapsing' },
+  ];
+  const used = new Map(ALLOW.map(a => [a, 0]));
+  const bad = [];
+  for (const [where, text] of nonEmpty(surfaces, 'user-facing surfaces')) {
+    for (const r of RULES) {
+      let t = text;
+      for (const a of ALLOW) if (a.rule === r.id && where.startsWith(a.at))
+        t = t.replace(a.re, m => { used.set(a, used.get(a) + 1); return blank(m); });
+      for (const m of t.matchAll(r.re)) {
+        const line = where.endsWith('.md') ? ':' + t.slice(0, m.index).split('\n').length : '';
+        bad.push(`${where}${line} says "${m[0].replace(/\s+/g, ' ')}" (say ${r.say}): …${t.slice(Math.max(0, m.index - 40), m.index + 50).replace(/\s+/g, ' ')}…`);
+      }
+    }
+  }
+  assert.deepEqual(bad, [], 'ux-discipline §1 / V-1: use the user-facing term. If a hit is a legitimate ' +
+    'sense of the word, add it to ALLOW with its reason; do not loosen the rule');
+  const stale = ALLOW.filter(a => !used.get(a)).map(a => `${a.rule} @ ${a.at}: ${a.re}`);
+  assert.deepEqual(stale, [], 'an ALLOW entry matches nothing any more: delete it, or it becomes blanket immunity');
 });
 
 test('UXP-250 the Guided command menu teaches, not just names', () => {

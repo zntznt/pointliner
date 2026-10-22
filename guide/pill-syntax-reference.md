@@ -14,7 +14,7 @@ Two things to know before the table:
   to unfold it back to its `{…}` source and retype it. Nothing is a black box.
 - **Self-contained vs. document-reading.** Some pills compute from only what is inside their own
   braces (a `{2d6}` needs nothing else). Others read the rest of your document (a `{= sum(cost)}`
-  adds up the point's children; a `{roll: #tag}` draws from your whole outline). The **Reads** column
+  adds up the point's children; a `{roll: #tag}` draws from your whole document). The **Reads** column
   below marks which is which. It matters when you move a pill: a self-contained pill works anywhere; a
   document-reading pill needs its context to come along.
 

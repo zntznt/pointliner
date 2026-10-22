@@ -105,7 +105,7 @@ random. That is the difference between a generator and a GM: a GM knows your wor
 
 The pool is one document, which is the right table right up until it is not: the cast ends up in
 `npcs.opml`, the threads in `campaign.opml`, and a roll in either one can only see half the world.
-Put the word **`folder`** before the colon and the draw widens to every note in a connected folder:
+Put the word **`folder`** before the colon and the draw widens to every document in a connected folder:
 
 ```
 Who walks into the scene? {roll folder: #npc}
@@ -114,7 +114,7 @@ Who walks into the scene? {roll folder: #npc}
 Same search, same pill, one extra word. Connect a folder from the **File** menu first (`Connect a
 folder…`, a Chromium-family browser thing), or take the `@` menu door, **Roll on your document**,
 which offers it as a checkbox, *Roll on the whole folder*, and shows the live pool size for both
-scopes before you commit. The other notes count **as they were last saved** on disk. With no folder
+scopes before you commit. The other documents count **as they were last saved** on disk. With no folder
 connected the pill still rolls, on this document alone, and says so rather than pretending: it goes
 dashed and its tooltip reads "no folder is connected, so this rolled on the current document only."
 

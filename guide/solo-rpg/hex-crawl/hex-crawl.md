@@ -34,12 +34,12 @@ The Greytine Vale
     Hex 0202
 ```
 
-That nesting is the whole trick, and Pointliner gives it to you for free. **Fold a region
-closed** (click the chevron left of its bullet, or press `Ctrl/Cmd+.`) and the map shrinks to a
+That nesting is the whole trick, and Pointliner gives it to you for free. **Collapse a
+region** (click the chevron left of its bullet, or press `Ctrl/Cmd+.`) and the map shrinks to a
 tidy list of region names, the way a map looks from far away. **Open it again** and the hexes come
 back. Clicking the **bullet** is a different move with its own use here: it zooms the document into
 that region alone, so the rest of the Vale is out of the way while you work a single area. A long
-crawl stays navigable because it is a tree you can fold, not a flat wall of notes.
+crawl stays navigable because it is a tree you can collapse, not a flat wall of notes.
 
 To grow the map, you outline: press Tab to add a hex as a child of a region, or add a new
 region as a sibling. There is no separate "add to map" step. The map grows by writing.
@@ -170,12 +170,12 @@ real document with every pill live. A few things to try:
 ## Why do this in Pointliner
 
 A hex-crawl on paper is a grid and a pencil, and that is a fine thing. What Pointliner adds is
-that the map **computes and folds**:
+that the map **computes and collapses**:
 
 - the terrain deck deals without repeats and reshuffles itself, so you get variety for free
 - the dice are real and freeze once rolled, so the log is a trustworthy record
 - the supply total is live math over the hexes, not mental arithmetic you redo every leg
-- the whole map folds and unfolds, so a 50-hex crawl stays a navigable tree
+- the whole map collapses and expands, so a 50-hex crawl stays a navigable tree
 - tags and links turn the log into something you can interrogate later, every hex on this
   ridge, every open thread, every hard encounter
 
