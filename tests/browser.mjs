@@ -3547,6 +3547,12 @@ test('#1536 a copy that falls back to execCommand gives the caret back', { skip:
       if (m === 'resolve') navigator.clipboard.writeText = () => Promise.resolve();
       if (m === 'reject') navigator.clipboard.writeText = () => new Promise((_, rej) => setTimeout(() => rej(new Error('Document is not focused')), 5));
       if (m === 'absent') { try { Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true }); } catch (_) {} }
+      // #1585: the fallback now REPORTS execCommand's answer, and that answer depends on the
+      // environment (user activation, headless policy) exactly as the API's does, so it is pinned
+      // the same way: the real command still runs, because the focus it borrows is what this check
+      // is about, and its answer is fixed. A refused answer is #1585's own check, below.
+      const realExec = document.execCommand.bind(document);
+      document.execCommand = (cmd, ...rest) => { const r = realExec(cmd, ...rest); return cmd === 'copy' ? true : r; };
       const mk = t => { const n = mkNode(t); n.type = 'ul'; return n; };
       root.children = [mk('Damage to the orc'), mk('Second point')];
       root.children.forEach(n => { nodeMap.set(n.id, n); parentMap.set(n.id, root); });
@@ -3624,6 +3630,147 @@ test('#1536 a copy that falls back to execCommand gives the caret back', { skip:
   // scheduling, not of the app. The caret claim belongs to route A, where the point never loses
   // focus and there is no race to lose -- and it is pinned there exactly, in all three environments.
   // What this route owns is the defect CI actually caught, asserted above: focus, never <body>.
+});
+
+// 60b. #1585 -- every copy door claimed a success it had not checked. copySelection swallowed a
+// refused write and flashed "Copied 3 points" anyway; the shared fallback ignored execCommand's
+// `false`, which is how that command usually says no, so a refused copy still said "Link copied" and
+// a throw said nothing; the base-cell copy said nothing either way; and Ctrl+X never wrote the
+// system clipboard at all. Driven with the clipboard FORCED three ways (the #1536 lesson: the real
+// API resolves locally and rejects in CI, so an unstubbed run is a different test in each place):
+// the API resolving, the API refusing with execCommand answering false, and no API with
+// execCommand throwing. What each door SAID is read through the app's own two channels.
+test('#1585 every copy door says what the clipboard did, and a refused cut can be got back', { skip: skip() }, async () => {
+  const POINTS = ['Damage to the orc', 'Second point', 'Third point'];
+  const setup = async (mode) => {
+    const pg = await fresh();
+    await pg.evaluate((m) => {
+      window.__wrote = []; window.__said = [];
+      const hint = flashHint, err = flashError;
+      window.flashHint = (msg, replay) => { window.__said.push(['hint', msg]); return hint(msg, replay); };
+      window.flashError = (msg) => { window.__said.push(['error', msg]); return err(msg); };
+      if (m === 'ok') navigator.clipboard.writeText = (t) => { window.__wrote.push(t); return Promise.resolve(); };
+      if (m === 'false') navigator.clipboard.writeText = () => new Promise((_, rej) => setTimeout(() => rej(new Error('NotAllowedError')), 5));
+      if (m === 'throw') Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+      const realExec = document.execCommand.bind(document);
+      document.execCommand = (cmd, ...rest) => {
+        if (cmd !== 'copy') return realExec(cmd, ...rest);
+        if (m === 'throw') throw new Error('SecurityError');
+        return false;
+      };
+    }, mode);
+    return pg;
+  };
+  const seedPoints = (pg) => pg.evaluate((pts) => {
+    root.children = pts.map(t => { const n = mkNode(t); n.type = 'ul'; return n; });
+    buildIndex(root, null); markDirty(); render();
+    return root.children[0].id;
+  }, POINTS);
+  const seedBase = (pg) => pg.evaluate(() => {
+    const n = mkNode(['| Task | Cost |', '| --- | --- |', '| Roof | 1200 |', '| Paint | 300 |'].join('\n'));
+    n.type = 'base'; root.children = [n]; buildIndex(root, null); markDirty(); render();
+    return n.id;
+  });
+  const editFirst = (pg) => pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  const selectTwo = async (pg) => {
+    await editFirst(pg); await pg.waitForTimeout(200);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    await pg.keyboard.press('Shift+ArrowDown'); await pg.waitForTimeout(400);
+  };
+  const menuRow = async (pg, label) => {
+    const focusRow = (l) => pg.evaluate((l) => {
+      const el = [...document.querySelectorAll('#bpop .bpop-type, #bpop .cmd-item')]
+        .find(e => (e.innerText || '').split('\n').map(x => x.trim()).includes(l));
+      if (!el) return false; el.focus(); return document.activeElement === el;
+    }, l);
+    if (!(await focusRow(label))) {                       // the base copy rows sit under More actions
+      assert.ok(await focusRow('More actions'), 'precondition: the base menu has More actions');
+      await pg.keyboard.press('Enter'); await pg.waitForTimeout(300);
+      assert.ok(await focusRow(label), `precondition: the base menu offers ${label}`);
+    }
+    await pg.keyboard.press('Enter');
+  };
+  const DOORS = {
+    'Copy link': {
+      run: async (pg) => { const id = await seedPoints(pg); await pg.waitForTimeout(200); await editFirst(pg); await pg.waitForTimeout(200);
+        await pg.keyboard.press('Control+Shift+L'); return `[[#${id}]]`; },
+      ok: /^Link copied$/, fail: /^The browser blocked the clipboard, so the link was not copied\./ },
+    'Copy points': {
+      run: async (pg) => { await seedPoints(pg); await pg.waitForTimeout(200); await selectTwo(pg);
+        await pg.keyboard.press('Control+c'); return '- Damage to the orc\n- Second point'; },
+      ok: /^Copied 2 points$/, fail: /^Copied 2 points for pasting inside Pointliner only\./ },
+    'Cut points': {
+      run: async (pg) => { await seedPoints(pg); await pg.waitForTimeout(200); await selectTwo(pg);
+        await pg.keyboard.press('Control+x'); return '- Damage to the orc\n- Second point'; },
+      ok: /^Cut 2 points\. /, fail: /^Cut 2 points for pasting inside Pointliner only\..*\+Z to undo\.$/ },
+    'Footnote Copy': {
+      run: async (pg) => { await pg.evaluate(() => {
+          const n = mkNode('Claim [^fnA]'); n.type = 'ul'; root.children = [n]; root.footnotes = [{ id: 'fnA', text: 'A source' }];
+          buildIndex(root, null); markDirty(); render(); showFootnotesReport(); });
+        await pg.waitForTimeout(400);
+        assert.ok(await pg.evaluate(() => { const b = [...document.querySelectorAll('button')]
+          .find(x => /^Copy the link for footnote/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); return !!b; }),
+          'precondition: the Footnotes manager offers Copy');
+        return '[^fnA]'; },
+      ok: /^Footnote link copied\./, fail: /^The browser blocked the clipboard, so the footnote link was not copied\./ },
+    'Copy as Markdown': {
+      run: async (pg) => { const id = await seedBase(pg); await pg.waitForTimeout(300);
+        await pg.evaluate((id) => showBulletPopup(id, document.querySelector('.bullet')), id); await pg.waitForTimeout(300);
+        await menuRow(pg, 'Copy as Markdown');
+        return '| Task | Cost |\n| --- | --- |\n| Roof | 1200 |\n| Paint | 300 |'; },
+      ok: /^Copied as Markdown$/, fail: /^The browser blocked the clipboard, so the table was not copied\./ },
+    'Copy cells': {
+      run: async (pg) => { await seedBase(pg); await pg.waitForTimeout(300);
+        const a = await pg.locator('.mt-cell[data-r="1"][data-c="0"]').boundingBox();
+        const b = await pg.locator('.mt-cell[data-r="2"][data-c="1"]').boundingBox();
+        await pg.mouse.move(a.x + 5, a.y + 5); await pg.mouse.down();
+        await pg.mouse.move(b.x + 5, b.y + 5, { steps: 5 }); await pg.mouse.up(); await pg.waitForTimeout(200);
+        await pg.keyboard.press('Control+c'); return 'Roof\t1200\nPaint\t300'; },
+      ok: /^Copied 4 cells$/, fail: /^The browser blocked the clipboard, so the cells were not copied\./ },
+  };
+  const read = (pg) => pg.evaluate(() => {
+    const el = document.getElementById('flash-hint');
+    // an empty hint is flashError creating the shared toast element on first use, not a message
+    return { said: window.__said.filter(s => s[1]), wrote: window.__wrote, shown: (el?.textContent || '').trim(),
+             red: /--bad/.test(el?.style.cssText || ''), points: root.children.map(n => n.text) };
+  });
+  const bad = [];
+  for (const [door, d] of Object.entries(DOORS)) {
+    for (const mode of ['ok', 'false', 'throw']) {
+      const pg = await setup(mode);
+      const text = await d.run(pg);
+      await pg.waitForTimeout(450);
+      const r = await read(pg);
+      const where = `${door} (${mode})`;
+      // per page: fresh() resets the list, and the base-cell copy used to leave an unhandled rejection
+      if (pageErrors.length) bad.push(`${where}: the page threw: ${JSON.stringify(pageErrors)}`);
+      const errors = r.said.filter(s => s[0] === 'error');
+      if (mode === 'ok') {
+        if (!r.said.some(s => s[0] === 'hint' && d.ok.test(s[1]))) bad.push(`${where}: no success said, got ${JSON.stringify(r.said)}`);
+        if (errors.length) bad.push(`${where}: a landed copy said an error: ${JSON.stringify(errors)}`);
+        if (r.wrote[r.wrote.length - 1] !== text) bad.push(`${where}: the clipboard got ${JSON.stringify(r.wrote)}, not ${JSON.stringify(text)}`);
+      } else {
+        const last = r.said[r.said.length - 1];
+        if (!last || last[0] !== 'error' || !d.fail.test(last[1])) bad.push(`${where}: the last word was not the door's failure: ${JSON.stringify(r.said)}`);
+        // cut's own "Cut 2 points. ⌘+Z to undo" is true (they WERE cut, and held); every other door
+        // must not have claimed a copy at all
+        if (door !== 'Cut points' && r.said.some(s => s[0] === 'hint' && d.ok.test(s[1]))) bad.push(`${where}: claimed success: ${JSON.stringify(r.said)}`);
+        if (!r.red || !d.fail.test(r.shown)) bad.push(`${where}: the toast on screen is not the error: ${JSON.stringify(r.shown)}`);
+        if (door === 'Cut points') {
+          // DATA SAFETY: the points left the outline, and the in-app paste the message names brings them back
+          if (r.points.join('|') !== 'Third point') bad.push(`${where}: the cut removed ${JSON.stringify(r.points)}`);
+          await pg.keyboard.press('Control+v'); await pg.waitForTimeout(400);
+          const back = await pg.evaluate(() => root.children.map(n => n.text));
+          if (back.filter(t => t === 'Damage to the orc' || t === 'Second point').length !== 2) bad.push(`${where}: Ctrl+V did not bring the cut points back: ${JSON.stringify(back)}`);
+        }
+      }
+      await pg.close();
+    }
+  }
+  assert.deepEqual(bad, [], 'every copy door reports what the clipboard actually did');
 });
 
 // 61. #1504 — a repeat phrase with NO due and NO start date is inert: rollForwardRepeat has always

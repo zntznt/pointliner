@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2164 declarations in 158 sections across 17 domains.**
+**2168 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -631,6 +631,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `ptsLabel` — Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
 - `countPoints`
 - `fallbackCopy` — #1536: BORROWED FOCUS IS RETURNED (P3). A textarea has to be focused to be selected, and removing
+- `clipboardWriteVia` — #1585: THE clipboard write, as a pure decision over injected parts so it runs in Node. Resolves
+- `writeClipboard` — The only place the app touches the system clipboard (a census in tests/test.mjs holds that).
+- `clipboardFailMessage` — #1585: what a refused clipboard write says, one sentence per door (#1500: one failure, one
 - `zoomOut`
 - `renderBreadcrumb`
 - `crumbLabel` — A base has no prose title (its text is the table markdown), so show a clean label
@@ -795,7 +798,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `baseFrozenMarkdown` — Portable copy serializers (pure, text-in/text-out → unit-testable). "Frozen" bakes
 - `baseRecipeMarkdown`
-- `copyTextToClipboard` — Generic clipboard write + confirmation toast (navigator.clipboard with the same
+- `copyTextToClipboard` — Generic clipboard write + its report (#1585): the hint only when the write landed, the door's
 - `mtClearSelection`
 - `mtSelRect`
 - `mtApplySelection`
@@ -1211,6 +1214,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `_cloneNodeNewIds`
 - `serializeNodesToText`
 - `copySelection`
+- `cutSelection` — #1585: Ctrl+X is copy, then remove (P1: the guide and the shortcut list pair "copy / cut"), so it
 - `exportSelectionToMarkdown` — Export the selected points (top-level only, so a selected child isn't duplicated under
 - `deleteSelected`
 - `indentSelected`

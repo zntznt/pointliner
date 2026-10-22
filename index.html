@@ -10678,12 +10678,7 @@ function copyNodeLink(id) {
   // In a workspace, emit the portable cross-doc form so a paste into another doc links
   // across; in its home doc it resolves same-doc via the renderCrossLinkPill delegation (CF-2).
   const token = (workspaceDir && root.docId) ? `[[${root.docId}#${id}]]` : `[[#${id}]]`;   // #805: title reference, not a transclusion
-  const done = () => flashHint('Link copied');
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(token).then(done, () => fallbackCopy(token, done));
-  } else {
-    fallbackCopy(token, done);
-  }
+  copyTextToClipboard(token, 'Link copied', clipboardFailMessage('link'));   // #1585: "Link copied" only when it was
 }
 // Minimal transient confirmation toast (no persistent chrome). Self-styled so it
 // needs no CSS rule; respects the theme via custom properties.
@@ -10823,7 +10818,13 @@ function countPoints(node) { let c = 1; for (const ch of node.children || []) c 
 // in a real browser: with the write resolving, focus is back in the point 50ms after Copy link; with
 // it rejecting, focus is on <body> and stays there. Restored on the failure path too, because that is
 // the path this whole function IS.
-function fallbackCopy(text, after) {
+//
+// #1585: AND IT SAYS WHETHER IT WORKED. `execCommand('copy')` reports a refusal by RETURNING false
+// (unsupported, disabled, no user activation) far more often than by throwing, and this used to
+// discard that value, so a refused copy fell out of the try into the caller's "Link copied", while a
+// throw said nothing at all. It now returns the command's own answer (false on a throw) and announces
+// nothing: the door reports, from this answer, through writeClipboard.
+function fallbackCopy(text) {
   const prev = document.activeElement;
   // The caret is recorded as the app's own LOGICAL offset, not a DOM Range: borrowing focus blurs the
   // point, which refolds it and replaces the text node a Range would be anchored to (measured:
@@ -10838,15 +10839,50 @@ function fallbackCopy(text, after) {
     // which moves the insertion point a copy was never supposed to touch.
     if (caret != null) { try { setCaretByOffset(prev, caret); } catch (_) {} }
   };
+  let ok = false, ta = null;
   try {
-    const ta = document.createElement('textarea');
+    ta = document.createElement('textarea');
     ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-    giveItBack();
-    if (after) after();   // still only on success: a throw must not claim "Link copied"
-  } catch (_) { giveItBack(); }
+    ok = document.execCommand('copy') === true;
+  } catch (_) { ok = false; }
+  if (ta && ta.parentNode) ta.parentNode.removeChild(ta);   // a throw used to leave it behind
+  giveItBack();
+  return ok;
+}
+
+// #1585: THE clipboard write, as a pure decision over injected parts so it runs in Node. Resolves
+// true only when the text really reached the clipboard: the async API resolved, or it was missing or
+// refused and the execCommand fallback answered exactly `true`. Every other outcome is false. It
+// never rejects, so a door's `.then` is the whole story. With no API the fallback runs
+// SYNCHRONOUSLY, still inside the user's gesture, which execCommand needs; a synchronous throw from
+// the API falls back exactly like a rejection.
+function clipboardWriteVia(text, api, execCopy) {
+  const fallback = () => { try { return execCopy(text) === true; } catch (_) { return false; } };
+  if (!api || typeof api.writeText !== 'function') return Promise.resolve(fallback());
+  let pending;
+  try { pending = api.writeText(text); } catch (_) { return Promise.resolve(fallback()); }
+  return Promise.resolve(pending).then(() => true, () => fallback());
+}
+// The only place the app touches the system clipboard (a census in tests/test.mjs holds that).
+function writeClipboard(text) { return clipboardWriteVia(String(text), navigator.clipboard, fallbackCopy); }
+
+// #1585: what a refused clipboard write says, one sentence per door (#1500: one failure, one
+// sentence), each naming a way forward that was driven before it was written down. `n` and `mod`
+// are for the two point doors, whose points are still held for an in-app paste. Pure.
+function clipboardFailMessage(door, n, mod) {
+  const blocked = 'The browser blocked the clipboard';
+  const them = n === 1 ? 'it' : 'them';
+  switch (door) {
+    case 'link':     return `${blocked}, so the link was not copied. To link to this point, type [[ in another point and pick it.`;
+    case 'page':     return `${blocked}, so the page link was not copied. Copy it from the address bar instead.`;
+    case 'footnote': return `${blocked}, so the footnote link was not copied. To cite it again, choose Cite footnote from the @ menu.`;
+    case 'table':    return `${blocked}, so the table was not copied. To save it instead, select its point and choose Export .md.`;
+    case 'cells':    return `${blocked}, so the cells were not copied. Click into a cell to select and copy its text by hand.`;
+    case 'copy':     return `Copied ${ptsLabel(n)} for pasting inside Pointliner only. ${blocked}, so paste ${them} here with ${mod}+V.`;
+    case 'cut':      return `Cut ${ptsLabel(n)} for pasting inside Pointliner only. ${blocked}, so paste ${them} here with ${mod}+V, or press ${mod}+Z to undo.`;
+  }
+  return `${blocked}, so nothing was copied. Try again.`;
 }
 function zoomOut() {
   if (!focusedId) return;
@@ -12952,14 +12988,14 @@ function baseRecipeMarkdown(text) {
   return serializeTable(model) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
 }
 
-// Generic clipboard write + confirmation toast (navigator.clipboard with the same
-// execCommand fallback copyNodeLink uses when the async API is unavailable).
-function copyTextToClipboard(text, hint) {
-  const done = () => flashHint(hint);
-  if (navigator.clipboard?.writeText)
-    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
-  else
-    fallbackCopy(text, done);
+// Generic clipboard write + its report (#1585): the hint only when the write landed, the door's
+// own failure sentence through the error channel otherwise. Resolves to whether it landed.
+function copyTextToClipboard(text, hint, fail) {
+  return writeClipboard(text).then(ok => {
+    if (ok) flashHint(hint);
+    else flashError(fail || clipboardFailMessage());
+    return ok;
+  });
 }
 
 function mtClearSelection() {
@@ -14601,7 +14637,11 @@ function mtInitGlobal() {
       const node = nodeById(mtSel.nodeId); if (!node) return;
       const m = mtModel(node), b = mtSelRect(), out = [];
       for (let r=b.r0;r<=b.r1;r++) { const row=[]; for (let c=b.c0;c<=b.c1;c++) row.push(m.rows[r][c]||''); out.push(row.join('\t')); }
-      navigator.clipboard?.writeText(out.join('\n'));
+      // #1585: this copy said nothing either way. It owns the key now (no native copy racing it
+      // afterwards), and says what landed.
+      e.preventDefault();
+      const cells = (b.r1 - b.r0 + 1) * (b.c1 - b.c0 + 1);
+      copyTextToClipboard(out.join('\n'), `Copied ${cells === 1 ? '1 cell' : cells + ' cells'}`, clipboardFailMessage('cells'));
     } else if (e.key === 'Escape') {
       mtClearSelection();
     }
@@ -16982,7 +17022,7 @@ function showFootnotesReport() {
       copy.textContent = 'Copy';
       copy.title = 'Copy this footnote’s link';
       copy.setAttribute('aria-label', `Copy the link for footnote ${r.number != null ? r.number : '(unreferenced)'} to paste and cite it again`);
-      copy.addEventListener('click', () => copyTextToClipboard(`[^${r.id}]`, 'Footnote link copied. Paste it into a point to cite this footnote again.'));
+      copy.addEventListener('click', () => copyTextToClipboard(`[^${r.id}]`, 'Footnote link copied. Paste it into a point to cite this footnote again.', clipboardFailMessage('footnote')));
 
       const del = document.createElement('button'); del.className = 'io-btn xsm' + (r.number == null ? ' danger' : ''); del.type = 'button';
       setIcon(del, { fa: 'fa-solid fa-trash-can', fb: '🗑' });
@@ -21957,10 +21997,27 @@ function copySelection() {
   const tops = getTopLevelSelected();
   if (!tops.length) return;
   nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };
-  const text = serializeNodesToText(tops);
-  navigator.clipboard?.writeText(text).catch(() => {});
+  const count = tops.reduce((n, t) => n + countPoints(t), 0);
+  // #1585: "Copied N points" only once the system clipboard has them. A refused write used to be
+  // swallowed here and the success flashed regardless, so a paste into another app got whatever was
+  // there before. The points are still held for an in-app paste, and the failure says so.
+  copyTextToClipboard(serializeNodesToText(tops), `Copied ${ptsLabel(count)}`, clipboardFailMessage('copy', count, MOD));
   clearSelection();
-  flashHint(`Copied ${ptsLabel(tops.reduce((n, t) => n + countPoints(t), 0))}`);
+}
+
+// #1585: Ctrl+X is copy, then remove (P1: the guide and the shortcut list pair "copy / cut"), so it
+// writes the system clipboard exactly as copy does; it used to fill only the in-app clipboard. The
+// points can never be lost to a refused write: they are held for an in-app paste BEFORE anything is
+// removed, the removal is one undo step, and a refused write says both of those out loud.
+function cutSelection() {
+  if (selectedIds.size === 0) return;
+  const tops = getTopLevelSelected();
+  if (!tops.length) return;
+  nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };
+  const count = tops.reduce((n, t) => n + countPoints(t), 0);
+  const wrote = writeClipboard(serializeNodesToText(tops));   // started inside the gesture
+  deleteSelected('Cut');                                      // says "Cut N points. ⌘+Z to undo"
+  wrote.then(ok => { if (!ok) flashError(clipboardFailMessage('cut', count, MOD)); });
 }
 
 // Export the selected points (top-level only, so a selected child isn't duplicated under
@@ -23444,7 +23501,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
               const tn = nodeById(tid);
               return (tn && stripMd(textForDisplay(tn))) || '(untitled)';
             });
-          copyTextToClipboard(md, 'Copied as Markdown'); hideBpop();
+          copyTextToClipboard(md, 'Copied as Markdown', clipboardFailMessage('table')); hideBpop();
         } },
     );
   } else if (isBase) {
@@ -23457,9 +23514,9 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
           if (content) { enterEdit(content, node); content.focus(); }
         } },
       { sec:'Base', icon:{ fa:'fa-solid fa-file-export', fb:'↧' }, label:'Copy as Markdown',
-        fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as Markdown'); hideBpop(); } },
+        fn: () => { copyTextToClipboard(baseFrozenMarkdown(node.text), 'Copied as Markdown', clipboardFailMessage('table')); hideBpop(); } },
       { sec:'Base', icon:{ fa:'fa-solid fa-calculator', fb:'∑' }, label:'Copy with formulas',
-        fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas'); hideBpop(); } },
+        fn: () => { copyTextToClipboard(baseRecipeMarkdown(node.text), 'Copied with formulas', clipboardFailMessage('table')); hideBpop(); } },
       // Variable base (bases-direction §7b): the front door for projecting rows as
       // document variables. Authored bases only (this arm never runs for a query base).
       { sec:'Base', icon:{ fa:'fa-solid fa-dollar-sign', fb:'$' },
@@ -43507,10 +43564,9 @@ document.getElementById('btn-workspace-disconnect').addEventListener('click', ()
 // the menu. Replaces the former inline "Copy link" button, which forced the row , and so
 // the whole menu , wider.
 document.getElementById('workspace-invite').addEventListener('click', () => {
-  const url = location.href;
-  const done = () => flashHint('Link copied. Save your document to a file first, then open it in Chrome or Edge and open the file there.');
-  if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done).catch(() => fallbackCopy(url, done)); }
-  else { fallbackCopy(url, done); }   // UX audit: actually copy (was a false-success claim with no clipboard)
+  copyTextToClipboard(location.href,
+    'Link copied. Save your document to a file first, then open it in Chrome or Edge and open the file there.',
+    clipboardFailMessage('page'));   // #1585: the success only when the copy landed
   closeFileMenu();
 });
 document.getElementById('btn-export-md').addEventListener('click', () => { exportMarkdown(); closeFileMenu(); });
@@ -46898,12 +46954,7 @@ document.addEventListener('keydown', e => {
   if (ctrl && (e.key==='y' || (e.shiftKey && (e.key==='z' || e.key==='Z')))) { e.preventDefault(); redo(); }
   // multi-select shortcuts
   if (ctrl && e.key==='c' && !e.shiftKey && selectedIds.size > 0) { e.preventDefault(); copySelection(); }
-  if (ctrl && e.key==='x' && selectedIds.size > 0) {
-    e.preventDefault();
-    const tops = getTopLevelSelected();
-    nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };
-    deleteSelected('Cut');
-  }
+  if (ctrl && e.key==='x' && selectedIds.size > 0) { e.preventDefault(); cutSelection(); }
   if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {
     e.preventDefault();
     const el = document.activeElement?.closest?.('.node[data-id]');
