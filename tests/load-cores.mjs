@@ -362,6 +362,7 @@ export function loadCores() {
     'resolveScopeDepth','collectScoped',
     'evalCheck','nodePropVars','resolveNodeScope','checkExprOf','hasVisibleProps','buildIndex','ancestorsOf',
     'nowStamp','parseStamp','timestampOf','stampEdit','formatStampDisplay',
+    'editStampVerdict',   // #1596: the stamp is judged over the whole edit, and the command browser's trigger is not part of it
     'rngFromSeed','parseUncertain','sampleUncertain','distSummary','sparkline','formatDist',
     'estParts','makeEstRoll','estChildPropExpr','renderEstPill',
     'upsertTemplate','removeTemplate','findTemplate','deepCloneNodeNewIds',

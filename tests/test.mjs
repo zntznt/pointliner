@@ -12006,14 +12006,14 @@ test('#1580 a point is empty only when nothing toOpml would save for it holds an
   const nullCols = c.mkNode(''); nullCols.colW = [null, null]; nullCols.colRole = [null]; nullCols.colFmt = [];
   assert.equal(c.isEmptyPoint(nullCols), true, 'an all-null column array is not saved, so it is not content');
   assert.equal(c.isEmptyPoint(null), true);
-  // The created/edited stamps. Typing `/` or `@` stamps even a fresh point (the builder's blur commits
-  // the trigger as an edit), so /template, which must still replace the point it was typed into,
-  // asks with ignoreStamps. Everyone else keeps counting them, as before: measured, ignoring them
-  // sends an `@` Patterns drop into an in-place fill that loses the recipe through the builder.
+  // The created/edited stamps. A point typed into and cleared again keeps them and shows nothing, so the
+  // doors that fill or replace a point in place (/template, a Patterns recipe, a pasted spreadsheet)
+  // ask with ignoreStamps (#1596). The doors that remove a point or judge a document blank keep
+  // counting them, as before.
   const stampedOnly = c.mkNode(''); c.stampEdit(stampedOnly);
   assert.equal(stampedOnly.props.length, 2, 'the fixture: both stamps are present');
   assert.equal(c.isEmptyPoint(stampedOnly), false, 'by default the stamps count, unchanged');
-  assert.equal(c.isEmptyPoint(stampedOnly, { ignoreStamps: true }), true, 'a door that stamped the point itself can look past them');
+  assert.equal(c.isEmptyPoint(stampedOnly, { ignoreStamps: true }), true, 'a fill-in-place door looks past them');
   const stampedReal = c.mkNode(''); c.stampEdit(stampedReal); stampedReal.props.push({ key: 'cost', val: '5' });
   assert.equal(c.isEmptyPoint(stampedReal, { ignoreStamps: true }), false, 'but never past a real property');
   const stampedNote = c.mkNode(''); stampedNote.note = 'call'; c.stampEdit(stampedNote);
@@ -12068,11 +12068,159 @@ test('#1580 every door that discards or fills an "empty" point asks isEmptyPoint
   assert.match(fnBody(_src, 'dropProvisionalChild'), /if \(!isEmptyPoint\(only\)\) return;/, 'the minted point');
   assert.match(fnBody(_src, 'stampTemplate'), /if \(isEmptyPoint\(cur, \{ ignoreStamps: true \}\)\) parent\.children\.splice\(idx, 1, clone\);/,
     'a template replaces the point only when it is empty -- the old check (text + children) replaced a point carrying a note or ' +
-    'properties -- and looks past the stamps its own / door wrote, or it would stop replacing a fresh point');
-  assert.match(fnBody(_src, 'insertRecipe'), /const curEmpty = cur && cur !== root && isEmptyPoint\(cur\);/, 'a Patterns recipe');
-  assert.match(fnBody(_src, 'handlePaste'), /const curEmpty = node !== root && isEmptyPoint\(node\);/, 'a pasted spreadsheet');
+    'properties -- and looks past the stamps a cleared point keeps, or it leaves that blank line above the template');
+  assert.match(fnBody(_src, 'insertRecipe'), /const curEmpty = cur && cur !== root && isEmptyPoint\(cur, \{ ignoreStamps: true \}\);/, 'a Patterns recipe');
+  assert.match(fnBody(_src, 'handlePaste'), /const curEmpty = node !== root && isEmptyPoint\(node, \{ ignoreStamps: true \}\);/, 'a pasted spreadsheet');
   assert.match(fnBody(_src, 'docIsBlank'), /const blank = n => !pointHasOwnContent\(n\) && \(n\.children \|\| \[\]\)\.every\(blank\);/,
     'the whole-document check walks the same predicate');
+});
+
+// #1596: typing `/` or `@` into a point opens the command browser, the browser takes focus, and the
+// point's blur committed the trigger character as an edit. exitEdit compared that text to where the
+// edit began and stamped created/edited onto a point the reader had not changed, so every later
+// "is this point empty?" saw content: an `@` Patterns drop on a fresh point landed BELOW it and left
+// the blank point above. The stamp is now judged over the whole excursion: the blur stamps only what
+// the reader typed besides the trigger, and what the browser leaves in the point is judged when the
+// reader leaves it again. Simulated here over seeded excursions with the app's own trigger-run math.
+test('#1596 a command-browser excursion stamps the point only when the point ends up saying something else', () => {
+  const rng = c.rngFromSeed(1596);
+  const pick = a => a[Math.floor(rng() * a.length)];
+  // One edit session with a browser excursion in it: returns whether the point was stamped and what
+  // it finally says. `start` is the text when the edit began; the reader types `typed`, then the
+  // trigger and its query at the end, the browser opens (the blur), an outcome lands, the point is
+  // edited again and left.
+  const session = (verdict, start, typed, trigger, query, outcome) => {
+    const off = (start + typed).length;
+    const atBlur = start + typed + trigger + query;
+    const own = c.stripTriggerRun(atBlur, off, query.length).text;
+    const blur = verdict({ text: atBlur, prevText: start, carried: null, builderOwn: own });
+    const final = outcome === 'apply' ? own
+      : outcome === 'insert' ? own + '[[dice:k1]]'
+      : outcome === 'dismiss-typed' ? c.restoreTypedRun(atBlur, off, query.length, 'note').text
+      : atBlur;                                       // dismissed with an empty box: the trigger stays
+    // re-entry starts a new edit at `final`; leaving it commits with the carried text
+    const leave = verdict({ text: final, prevText: final, carried: blur.carry, builderOwn: null });
+    return { stamped: blur.stamp || leave.stamp, final, carry: leave.carry };
+  };
+  const cases = [];
+  for (let i = 0; i < 400; i++) cases.push([pick(['', 'Damage [[dice:k1]]', 'Hi']), pick(['', '', 'x ']),
+    pick(['/', '@', '{']), pick(['', '', 'to']), pick(['apply', 'insert', 'dismiss-typed', 'dismiss-empty'])]);
+  let empties = 0;
+  for (const [start, typed, trigger, query, outcome] of nonEmpty(cases, 'seeded excursions')) {
+    const r = session(c.editStampVerdict, start, typed, trigger, query, outcome);
+    assert.equal(r.stamped, r.final !== start,
+      `${JSON.stringify([start, typed, trigger, query, outcome])}: stamped exactly when the point now says something else`);
+    assert.equal(r.carry, null, 'leaving the point consumes the carried text');
+    if (!typed && outcome === 'apply') empties++;
+  }
+  assert.ok(empties >= 20, `the reported shape (nothing typed but the trigger, then an apply) must be in the sample: ${empties}`);
+
+  // The reported case, literally: a fresh point, `@`, a Patterns recipe that empties the trigger run.
+  const blur = c.editStampVerdict({ text: '@', prevText: '', builderOwn: '' });
+  assert.deepEqual(host(blur), { stamp: false, carry: '' }, 'opening the browser on a fresh point stamps nothing');
+  // The old rule, for contrast: the blur compared the text with the trigger in it.
+  assert.equal(session(({ text, prevText }) => ({ stamp: text !== prevText, carry: null }), '', '', '@', '', 'apply').stamped, true,
+    'the defect: the trigger alone stamped the point');
+  // A genuine edit is unchanged: no browser, a different text stamps; the same text does not.
+  assert.deepEqual(host(c.editStampVerdict({ text: 'Hello', prevText: '' })), { stamp: true, carry: null });
+  assert.deepEqual(host(c.editStampVerdict({ text: 'Hello', prevText: 'Hello' })), { stamp: false, carry: null });
+  // Text typed BEFORE the browser opened is the reader's and stamps at the blur, not later.
+  assert.deepEqual(host(c.editStampVerdict({ text: 'Hi /to', prevText: '', builderOwn: 'Hi ' })), { stamp: true, carry: 'Hi ' });
+  // A carried text wins over the re-entry baseline, in both directions.
+  assert.equal(c.editStampVerdict({ text: '/note', prevText: '/note', carried: '' }).stamp, true, 'a dismissal that handed the typing back stamps');
+  assert.equal(c.editStampVerdict({ text: '', prevText: 'stale', carried: '' }).stamp, false, 'an apply that left the point as it was does not');
+});
+
+test('#1596 exitEdit judges the stamp over the excursion, and inserted pills stamp too', () => {
+  const ex = fnBody(_src, 'exitEdit');
+  assert.match(ex, /const sv = editStampVerdict\(\{ text: node\.text, prevText, carried, builderOwn: builderOwnText\(node\) \}\);/,
+    'the commit asks the verdict, passing what the open browser holds of this point');
+  assert.match(ex, /if \(sv\.carry != null\) _editStampCarry = \{ id: node\.id, text: sv\.carry \};\n  else if \(carried != null\) _editStampCarry = null;\n  if \(sv\.stamp\) stampEdit\(node\);/,
+    'the carried text is handed on by the blur, consumed by the next commit of the same point, and the stamp follows the verdict');
+  assert.match(ex, /const carried = _editStampCarry && _editStampCarry\.id === node\.id \? _editStampCarry\.text : null;/,
+    'only this point\'s carried text is read');
+  assert.doesNotMatch(ex, /if \(node\.text !== prevText\) stampEdit\(node\);/, 'the trigger-blind comparison is gone');
+  const own = fnBody(_src, 'builderOwnText');
+  assert.match(own, /if \(!st \|\| st\.nodeId !== node\.id \|\| !ioCard\.classList\.contains\('builder-open'\)\) return null;/,
+    'only while the browser is open on THIS point');
+  assert.match(own, /const text = builderSpliceText\(node\), off = builderSpliceOffset\(node, st\.offset\);/,
+    'the run is cut in folded coordinates, the way an apply cuts it (#1396)');
+  assert.match(own, /return stripTriggerRun\(text, off, \(st\.query \|\| ''\)\.length\)\.text;/, 'with the shared trigger-run math');
+  // An inserted pill or link writes node.text directly, so no commit ever saw it. In Guided the `@`
+  // blur used to stamp it by accident; in Standard it never stamped at all.
+  assert.match(fnBody(_src, 'applyInlineReplace'), /recordTextEdit\(nodeId, prev, node\.text\);[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if \(node\.text !== prev\) stampEdit\(node\);/,
+    'the one writer for every inserted pill and link stamps the change');
+});
+
+// #1594 / #1595: a door that fills a point IN PLACE and then calls render() must leave the edit first.
+// render() commits a live edit before it redraws, and exitEdit writes the editor's buffer over
+// node.text. insertRecipe never left it: closeBuilder hands focus back to the point, so Ctrl+K and a
+// Patterns recipe on a fresh point lost the recipe. The spreadsheet paste never left it either, and
+// the table's title was lost. stampTemplate, createBaseAt and qbaseCreateAt always did. The family is
+// every call site of isEmptyPoint, so a new door that judges a point empty fails here until it is
+// classified, and a fill must also look past the stamps a cleared point keeps (#1596).
+test('#1594 census: every door that fills a point it judges empty leaves the edit first and looks past the stamps', () => {
+  const enc = enclosingFn(_src);
+  const code = maskFor(_src);   // #1370: a call in CODE, never one a comment or a string mentions
+  const sites = nonEmpty([..._src.matchAll(/\bisEmptyPoint\(/g)].map(m => m.index)
+    .filter(i => code[i] === 2 && _src.slice(i - 9, i) !== 'function '), 'isEmptyPoint call sites');
+  // FILL: writes into, or replaces, the point it judged. REMOVE: discards it, no fill, no render of it.
+  const FILL = new Set(['stampTemplate', 'insertRecipe', 'handlePaste']);
+  const REMOVE = new Set(['dropProvisionalChild']);
+  const leaves = /commitActiveEdit\(\);|document\.querySelector\(`\.node-content\[data-id="\$\{nodeId\}"\]\[data-editing\]`\)\??\.blur\(\)|if \(el\) el\.blur\(\);/;
+  const seen = new Set();
+  for (const at of sites) {
+    const fn = enc(at);
+    assert.ok(fn, `an isEmptyPoint call outside any named function at ${at}`);
+    seen.add(fn.name);
+    assert.ok(FILL.has(fn.name) || REMOVE.has(fn.name),
+      `${fn.name} judges a point empty and is not classified. If it fills or replaces the point in place, add it to FILL ` +
+      '(it must leave the edit first and pass { ignoreStamps: true }); if it removes it, add it to REMOVE');
+    if (!FILL.has(fn.name)) continue;
+    const call = _src.slice(at, _src.indexOf(')', at) + 1);
+    assert.match(call, /\{ ignoreStamps: true \}/, `${fn.name}: a fill looks past the created/edited stamps a cleared point keeps`);
+    const before = _src.slice(fn.open, at);
+    assert.match(before, leaves, `${fn.name}: leaves the edit before it judges or writes the point, or render() writes the stale buffer back`);
+  }
+  assert.deepEqual([...seen].sort(), [...FILL, ...REMOVE].sort(), 'every classified door is still a door');
+  // The text-judged in-place doors are not isEmptyPoint callers, so they are named: both leave the edit first.
+  for (const name of ['createBaseAt', 'qbaseCreateAt']) {
+    const body = fnBody(_src, name);
+    assert.ok(leaves.test(body) && body.search(leaves) < body.indexOf('pushUndo();'), `${name}: leaves the edit before it writes`);
+  }
+});
+
+// #1596: the doors that open the command browser on a point. Each one's blur is the one that used to
+// stamp, and each drops into the in-place fill, so each is driven by the browser check. The family is
+// every caller of openBuilder and every reference to launchBuilder; a new one fails here until the
+// browser check drives it.
+test('#1596 census: every door that opens the command browser on a point is driven', () => {
+  const enc = enclosingFn(_src);
+  const DOORS = {
+    'checkSlash': ['/', '@'],             // typed in Guided (the touch Insert-a-pill button types the same `@`)
+    'braceApply': ['{ Browse'],
+    'launchBuilder': [],                  // the front door itself; its callers are below
+    'slashApply': ['/builder'],
+    'Ctrl+K': ['Ctrl+K'],
+    'btn-builder': ['toolbar'],
+  };
+  const code = maskFor(_src);   // #1370: references in CODE only; the comments name both functions often
+  const inCode = i => code[i] === 2 && _src.slice(i - 9, i) !== 'function ';
+  const opens = nonEmpty([..._src.matchAll(/\bopenBuilder\(/g)].map(m => m.index).filter(inCode), 'openBuilder call sites');
+  const found = new Set();
+  for (const at of opens) found.add(enc(at)?.name || 'top level');
+  for (const m of nonEmpty([..._src.matchAll(/\blaunchBuilder\b/g)], 'launchBuilder references')) {
+    if (!inCode(m.index)) continue;
+    const line = _src.slice(_src.lastIndexOf('\n', m.index) + 1, _src.indexOf('\n', m.index));
+    const fn = enc(m.index)?.name;
+    found.add(/e\.key==='k'/.test(line) ? 'Ctrl+K' : /'btn-builder'/.test(line) ? 'btn-builder' : fn || 'top level');
+  }
+  assert.deepEqual([...found].sort(), Object.keys(DOORS).sort(),
+    'a door opens the command browser that this census does not name: drive it in the #1596 browser check and add it here');
+  const browser = readFileSync(new URL('./browser.mjs', import.meta.url), 'utf8');
+  const driven = between(browser, "'#1596 a recipe chosen on a blank point fills it in place, through every door", '\n});\n');
+  for (const door of nonEmpty(Object.values(DOORS).flat(), 'driven doors'))
+    assert.ok(driven.includes(`'${door}':`), `the browser check drives the ${door} door`);
 });
 
 test('#1580 a copy of the minted point is the reader\'s, so it never carries the mark', () => {
