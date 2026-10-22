@@ -33,6 +33,54 @@ import { inlineScripts, atPosition, allowedGlobals, CONFUSABLE_GLOBALS } from '.
 
 const c = loadCores();
 
+// ── shared fixtures, every one declared BEFORE the first test (#1609) ─────────────────────────────
+// A test that reads a module-level `const` declared further down passes in a full run and throws
+// "Cannot access '_src' before initialization" when it runs ALONE, which is exactly how each
+// mutant's fast path runs its guard (`--test-name-pattern`, tools/mutation-check.mjs). node:test
+// starts the registered tests as soon as this module first yields, and a top-level `await` is a
+// yield: there was one mid-file, so the first test to MATCH ran while everything below it was
+// still uninitialised. On main at 8d95b81, 150 tests read four such bindings (`_src`, `_htmlPath`,
+// `NC`, `_fStarters`), and all 150 threw when run alone. 10 registered mutants named one of them as
+// their guard, which therefore failed on an UNMUTATED tree: those "killed" verdicts proved nothing.
+// The `await` is gone and the fixtures live here; the census test '#1609 no test reads a
+// module-level binding declared below it' keeps it that way.
+const _htmlPath = process.env.POINTLINER_HTML
+  || resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
+const _src = readFileSync(_htmlPath, 'utf8');
+// The #565 starter-gallery pins read this one.
+const _fStarters = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+
+const RAW_HTML = readFileSync(
+  process.env.POINTLINER_HTML || new URL('../index.html', import.meta.url), 'utf8');
+// Comment-stripped view: HTML comments, /*…*/ blocks, and //-to-EOL. Comments are exempt from the
+// copy rules, so every drift guard below reads THIS rather than the raw file.
+//
+// #1132 — two bugs lived here, and both were SILENT. Every consumer is a collect-then-
+// assert.deepEqual(bad, []) guard, so a shrinking input is indistinguishable from a clean codebase.
+//
+//   1. Block comments were stripped BEFORE line comments. A `//` comment containing the text
+//      `#thread/*` opened a block comment that ran to the next real `*/` 1,527 lines later,
+//      deleting 88,290 chars: 72 function declarations, 19 flashHint calls, 27 aria-labels. The
+//      em-dash ban was blind over the whole capture/inbox/journal region.
+//   2. The embedded Font Awesome subset is src:url("data:font/woff2;base64,…"). Base64 uses `/`,
+//      so `//` inside it matched the line rule and stripped to end of line. The three longest
+//      "line comments" in the file were 108,933 / 89,741 / 38,614 chars of font data.
+//
+// Fixed by redacting quoted data URIs first, then stripping LINE comments before BLOCK comments so
+// a line comment consumes its own `/*`. This is still regex approximation, not a JS tokenizer: a
+// `/*` inside a string literal would still mislead it. That residual risk is why stripSpans below
+// exists — it makes any future runaway LOUD instead of silently narrowing every guard downstream.
+const DATA_URI_RE = /"data:[^"]*"/g;
+const RAW_NO_DATA = RAW_HTML.replace(DATA_URI_RE, '"data:REDACTED"');
+const _ncSpans = [];
+const _strip = (src, re) => src.replace(re, m => { _ncSpans.push(m); return ''; });
+const NC = (() => {
+  let s = _strip(RAW_NO_DATA, /<!--[\s\S]*?-->/g);
+  s = _strip(s, /(?<!:)\/\/[^\n]*/g);          // line comments FIRST (see bug 1)
+  s = _strip(s, /\/\*[\s\S]*?\*\//g);
+  return s;
+})();
+
 // Arrays/objects returned by the cores live in the vm context's realm, so their
 // prototypes differ from the host's and strict deepEqual rejects them despite
 // identical structure. Normalize to plain host-realm values before comparing.
@@ -235,6 +283,94 @@ function fnBody(src, name) {
     else if (ch === '}') { depth--; if (depth === 0) return src.slice(open, i + 1); }
   }
   return src.slice(open);   // unbalanced (shouldn't happen) → from the open brace onward
+}
+
+// #1609: every test that reads a module-level binding declared BELOW it. Such a read passes in a
+// full run and throws a TDZ ReferenceError whenever the test starts before the module has finished
+// evaluating, which node:test does the moment the module yields at a top-level `await`. A read
+// through a module-level `function` counts too (one level deep: the test calls it, it reads the
+// binding). A name the test itself, or a block around it, declares or takes as a parameter is its
+// own and is skipped; a name in a string, comment or regex is not a read (codeMask). The one way it
+// errs is toward silence: a test that ALSO binds the name somewhere inside is treated as shadowing.
+function lateBindingReads(src) {
+  const mask = codeMask(src);
+  const esc = (s) => s.replace(/\$/g, '\\$');
+  const lineOf = (i) => src.slice(0, i).split('\n').length;
+  // Block structure in one sweep: brace depth at every position, and each code `{` with its `}`.
+  const depth = new Int32Array(src.length), opens = [], closeOf = new Map();
+  for (let i = 0, d = 0, st = []; i < src.length; i++) {
+    if (mask[i] === 1 && src[i] === '}') { d--; if (st.length) closeOf.set(st.pop(), i); }
+    depth[i] = d;
+    if (mask[i] === 1 && src[i] === '{') { d++; st.push(i); opens.push(i); }
+  }
+  const enclosing = (p) => opens.filter(o => o < p && closeOf.get(o) > p);
+  const prevSig = (at) => { let j = at - 1; while (j >= 0 && /\s/.test(src[j])) j--; return src[j] || ''; };
+  const code = (from, to) => { let s = ''; for (let k = from; k < to; k++) s += mask[k] ? src[k] : ' '; return s; };
+  const parenEnd = (open) => {
+    for (let j = open, d = 0; j < src.length; j++) {
+      if (mask[j] !== 2) continue;
+      if (src[j] === '(') d++; else if (src[j] === ')' && !--d) return j;
+    }
+    return src.length;
+  };
+  // Free identifier READS in a span: code positions only, and not a property (`.x`, `?.x`). A spread
+  // IS a read, though it also follows a dot: three of the 150 were `[..._src.matchAll(…)]`.
+  const reads = (from, to) => {
+    const out = new Set(), re = /(?<![\w$])(?<!(?<!\.\.)\.)[A-Za-z_$][\w$]*/g;
+    re.lastIndex = from;
+    for (let m; (m = re.exec(src)) && m.index < to;) if (mask[m.index] === 2) out.add(m[0]);
+    return out;
+  };
+  // Does this (code-only) text bind `name` itself: a declaration, a destructured name, a parameter?
+  const binds = (text, name) => {
+    const n = esc(name), w = `(?<![\\w$])(?<!(?<!\\.\\.)\\.)${n}(?![\\w$])`;
+    return new RegExp(`\\b(?:const|let|var|function|class)\\s+${n}(?![\\w$])`).test(text)
+      || new RegExp(`\\b(?:const|let|var)\\s*[{\\[][^=;]*?${w}[^=;]*?[}\\]]\\s*=`).test(text)
+      || new RegExp(`\\b(?:function\\b[^(]*|catch\\s*)\\(([^()]*?)${w}`).test(text)
+      || new RegExp(`\\(([^()]*?)${w}[^()]*\\)\\s*=>`).test(text)
+      || new RegExp(`${w}\\s*=>`).test(text);
+  };
+  // Module-level lexical declarations: depth 0, at a statement start (not a `for (const x of …)` head).
+  const decls = [];
+  for (const m of src.matchAll(/\b(?:const|let|class)\s+(\{[^}]*\}|\[[^\]]*\]|[A-Za-z_$][\w$]*)/g)) {
+    if (mask[m.index] !== 2 || depth[m.index] !== 0 || prevSig(m.index) === '(') continue;
+    const names = /^[{[]/.test(m[1])
+      ? [...m[1].matchAll(/(?:^|[{,[]\s*)(?:[\w$]+\s*:\s*)?([A-Za-z_$][\w$]*)/g)].map(x => x[1])
+      : [m[1]];
+    for (const name of names) decls.push({ name, at: m.index });
+  }
+  // The test functions: `test`, plus every local alias of node:test's `test` (`ltest` in this file).
+  const testFns = new Set(['test']);
+  for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]node:test['"]/g))
+    for (const a of m[1].matchAll(/\btest\s+as\s+([A-Za-z_$][\w$]*)/g)) testFns.add(a[1]);
+  const tests = [];
+  for (const m of src.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\(/g)) {
+    if (!testFns.has(m[1]) || mask[m.index] !== 2) continue;
+    const open = m.index + m[1].length, end = parenEnd(open);
+    const title = (src.slice(open + 1, open + 400).match(/^\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/) || [])[2] || '(computed name)';
+    tests.push({ at: m.index, end, title, reads: reads(open + 1, end) });
+  }
+  // Module-level function declarations: hoisted, so callable from a test above the binding they read.
+  const fns = [];
+  for (const m of src.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
+    if (mask[m.index] !== 2 || depth[m.index] !== 0) continue;
+    let o = parenEnd(m.index + m[0].length - 1);
+    while (o < src.length && mask[o] !== 1) o++;
+    const end = closeOf.get(o) ?? src.length;
+    fns.push({ name: m[1], at: m.index, end, reads: reads(o, end) });
+  }
+  const own = (t, name) => binds(code(t.at, t.end), name) || enclosing(t.at).some(o => binds(code(o, t.at), name));
+  const out = [];
+  for (const d of decls) {
+    const via = fns.filter(f => f.reads.has(d.name) && !binds(code(f.at, f.end), d.name));
+    for (const t of tests) {
+      if (t.at > d.at) break;
+      const direct = t.reads.has(d.name) && !own(t, d.name);
+      const f = direct ? null : via.find(f => t.reads.has(f.name) && !own(t, f.name));
+      if (direct || f) out.push({ name: d.name, via: f ? f.name : null, test: t.title, line: lineOf(t.at), declLine: lineOf(d.at) });
+    }
+  }
+  return { decls, tests, out };
 }
 
 // ── dice: parsing ──────────────────────────────────────────────────────────
@@ -1826,6 +1962,43 @@ test('every kill-mutation still anchors to real code and a real guard', () => {
     'an OMITTED replace must still be caught');
   assert.deepEqual(fieldsOf({ id: 'x', suite: 'unit', why: 'w', file: 'f', find: '', replace: 'b', kills: 'k' }), ['find'],
     'an empty find is still a defect -- it would match everywhere');
+});
+
+// #1609: a census, not a spot check. Every test must be able to run ALONE, because that is how the
+// mutation tool runs every guard it judges, and a guard that throws a TDZ ReferenceError on its own
+// reads as "killed" whatever the mutant did. See the shared-fixtures note at the top of this file.
+test('#1609 no test reads a module-level binding declared below it (each test can run alone)', () => {
+  // The census must SEE each shape it exists to catch and pass over the safe ones, or the empty
+  // lists below would mean nothing.
+  const probe = [
+    "import { test as t2 } from 'node:test';",
+    "test('reads it directly', () => late + 1);",
+    "t2('reads it under an alias', () => late);",
+    "test('reads it through a helper', () => helper());",
+    "test('spreads it', () => [...late]);",
+    "test('only reads a property of that name', () => Math.late);",
+    "{ const late = 2; test('declares its own in a block', () => late); }",
+    "test('takes it as a parameter', () => [1].map(late => late));",
+    "test('only names it in a string', () => 'late');",
+    'function helper() { return late; }',
+    'const late = 1;',
+    "test('reads it after the declaration', () => late);",
+  ].join('\n');
+  assert.deepEqual(lateBindingReads(probe).out.map(v => (v.via ? `${v.test} (via ${v.via})` : v.test)),
+    ['reads it directly', 'reads it under an alias', 'reads it through a helper (via helper)', 'spreads it'],
+    'the census must flag the four late reads and nothing else');
+  for (const [file, floor] of [['test.mjs', 2000], ['browser.mjs', 50]]) {
+    const src = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+    const census = lateBindingReads(src);
+    assert.ok(nonEmpty(census.tests, `tests found in ${file}`).length >= floor,
+      `only ${census.tests.length} tests found in ${file}: the census has stopped seeing them`);
+    nonEmpty(census.decls, `module-level declarations found in ${file}`);
+    assert.deepEqual(census.out.map(v =>
+      `${file}:${v.line} '${v.test}' reads ${v.name}${v.via ? ` through ${v.via}()` : ''}, declared at line ${v.declLine}`), [],
+    'these tests read a module-level binding declared BELOW them. Each passes in a full run and throws ' +
+    '"Cannot access before initialization" when run alone, which is how a mutant\'s guard runs. ' +
+    'Move the declaration up to the shared fixtures at the top of the file.');
+  }
 });
 
 test('#1430 the symbol index covers every pure core the test suite already knows about', () => {
@@ -6432,7 +6605,9 @@ test('renderEstPill — frozen summary + aria-label = mean±CI, sparkline aria-h
 import { test as ltest } from 'node:test';
 import assert2 from 'node:assert/strict';
 {
-  const c2 = (await import('./load-cores.mjs')).loadCores();
+  // Not `(await import(...)).loadCores()`: a top-level await is a yield, and node:test starts the
+  // tests registered above it while everything below is still uninitialised (#1609).
+  const c2 = loadCores();
   const host2 = (x) => JSON.parse(JSON.stringify(x));
   const mk2 = (text) => { const n = c2.mkNode(''); n.text = text; return n; };
 
@@ -12465,9 +12640,7 @@ test('doc-cache: every _varsVer-keyed collector caches within a generation and r
 // renaming a handler, restructuring onKeyDown, or removing a chord without
 // updating docs. Not a spec for behavior — a wire-trip for drift.
 
-const _htmlPath = process.env.POINTLINER_HTML
-  || resolve(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
-const _src = readFileSync(_htmlPath, 'utf8');
+// `_htmlPath` and `_src` are declared at the top of this file (#1609).
 
 // Glyph names that appear in the source as PROSE, not as a live reference — each one is comment
 // text explaining why the app deliberately wears a DIFFERENT glyph. A name may only join this list
@@ -23204,36 +23377,8 @@ test('collectRules — an explicit root walks that tree, bypassing the live cach
 // commit.
 // (readFileSync is already imported at the top of this file.)
 
-const RAW_HTML = readFileSync(
-  process.env.POINTLINER_HTML || new URL('../index.html', import.meta.url), 'utf8');
-// Comment-stripped view: HTML comments, /*…*/ blocks, and //-to-EOL. Comments are exempt from the
-// copy rules, so every drift guard below reads THIS rather than the raw file.
-//
-// #1132 — two bugs lived here, and both were SILENT. Every consumer is a collect-then-
-// assert.deepEqual(bad, []) guard, so a shrinking input is indistinguishable from a clean codebase.
-//
-//   1. Block comments were stripped BEFORE line comments. A `//` comment containing the text
-//      `#thread/*` opened a block comment that ran to the next real `*/` 1,527 lines later,
-//      deleting 88,290 chars: 72 function declarations, 19 flashHint calls, 27 aria-labels. The
-//      em-dash ban was blind over the whole capture/inbox/journal region.
-//   2. The embedded Font Awesome subset is src:url("data:font/woff2;base64,…"). Base64 uses `/`,
-//      so `//` inside it matched the line rule and stripped to end of line. The three longest
-//      "line comments" in the file were 108,933 / 89,741 / 38,614 chars of font data.
-//
-// Fixed by redacting quoted data URIs first, then stripping LINE comments before BLOCK comments so
-// a line comment consumes its own `/*`. This is still regex approximation, not a JS tokenizer: a
-// `/*` inside a string literal would still mislead it. That residual risk is why stripSpans below
-// exists — it makes any future runaway LOUD instead of silently narrowing every guard downstream.
-const DATA_URI_RE = /"data:[^"]*"/g;
-const RAW_NO_DATA = RAW_HTML.replace(DATA_URI_RE, '"data:REDACTED"');
-const _ncSpans = [];
-const _strip = (src, re) => src.replace(re, m => { _ncSpans.push(m); return ''; });
-const NC = (() => {
-  let s = _strip(RAW_NO_DATA, /<!--[\s\S]*?-->/g);
-  s = _strip(s, /(?<!:)\/\/[^\n]*/g);          // line comments FIRST (see bug 1)
-  s = _strip(s, /\/\*[\s\S]*?\*\//g);
-  return s;
-})();
+// RAW_HTML, RAW_NO_DATA and NC (the comment-stripped view every guard below reads) are declared
+// at the top of this file, with the account of how the stripper once failed (#1132, #1609).
 
 test('#1132 the comment stripper has not silently eaten the source', () => {
   // THE GUARD ON THE GUARD. Four drift guards read NC and all of them pass vacuously on a shrinking
@@ -29790,6 +29935,24 @@ test('every CI job in tests.yml is bounded by a timeout', () => {
     'a CI job with no timeout-minutes can wedge for six hours and still look like it is working');
 });
 
+// #1597: Node 23 changed `node --test`'s default reporter, the mutation tool parsed the old one, and
+// every verdict on current Node read BROKEN while CI, pinned to Node 22, stayed green. The tool now
+// names its reporter and proves its whole reading with --self-test. Two halves keep that honest, and
+// each is the #1133 vacuity on its own: the self-test must run on the NEWEST Node, where the next
+// change of default will land first, and the tool must refuse to judge until it has passed.
+test('#1597 the mutation verdicts are proved on the current Node, and proved before they are trusted', () => {
+  const job = between(_wfTests, '\n  mutation-current-node:', '\n  staleness-floor:');
+  assert.match(job, /\n {10}node-version: current\n/,
+    'the self-test job must run the newest Node release, not the pinned one the rest of CI uses');
+  assert.match(job, /\n {6}- run: node tools\/mutation-check\.mjs --self-test\n/,
+    'and it must run the self-test, which is what sees a child run being read wrongly');
+  const tool = readFileSync(new URL('../tools/mutation-check.mjs', import.meta.url), 'utf8');
+  const main = tool.slice(nonEmptyIdx(tool, '// ── main ──'));
+  const proved = nonEmptyIdx(main, '\nif (!selfTest()) process.exit(1);\n');
+  assert.ok(proved < nonEmptyIdx(main, '\nfor (const m of selected) results.push(judge('),
+    'every real run must pass the self-test before it judges a single mutant');
+});
+
 // ── the undefined-name gate (tools/check-undefined-names.mjs) ────────────────────────────────────
 // The lint itself needs ESLint, which CI installs for its own job. What can be proved offline, here,
 // is everything the gate's verdict depends on besides ESLint: that it reads the RIGHT code at the
@@ -31103,7 +31266,7 @@ test('#827: FN2 arity-aware dispatch + redo accepts lowercase z', () => {
 // A source-shape pin (fromOpml needs a real DOMParser, absent in Node): every
 // gallery entry is present, each embeds a single `# heading` OPML subtree, and
 // the user-facing copy carries no em dash (the house punctuation rule).
-const _fStarters = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+// `_fStarters` is declared at the top of this file (#1609).
 test('starters (#565) — gallery entries present, heading-rooted, em-dash-free', () => {
   const start = _fStarters.indexOf('const STARTERS = [');
   const block = _fStarters.slice(start, _fStarters.indexOf('\n];', start));

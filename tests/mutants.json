@@ -4410,6 +4410,42 @@
       "find": "  if (!opml) return;   // no embed → a normal doc, nothing to restore or report",
       "replace": "  return;",
       "kills": "#1584 a self-contained export opens as the document it was saved from"
+    },
+    {
+      "id": "late-read-goes-unseen",
+      "suite": "unit",
+      "why": "#1609: a test reading a module-level const declared BELOW it throws a TDZ ReferenceError when run alone, which is how every mutant's guard runs; the census must see one in the real file, not only in its probe",
+      "file": "tests/test.mjs",
+      "find": "    const src = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');",
+      "replace": "    const src = file === 'test.mjs' ? _suiteSelf : readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');",
+      "kills": "#1609 no test reads a module-level binding declared below it"
+    },
+    {
+      "id": "mutation-self-test-pinned-back",
+      "suite": "unit",
+      "why": "#1597: on the pinned Node 22 the old default reporter is still TAP, so a self-test that runs only there cannot see the next change of default",
+      "file": ".github/workflows/tests.yml",
+      "find": "          node-version: current",
+      "replace": "          node-version: 22",
+      "kills": "#1597 the mutation verdicts are proved on the current Node"
+    },
+    {
+      "id": "mutation-self-test-not-run",
+      "suite": "unit",
+      "why": "#1597: a current-Node job that does not run the self-test proves nothing about how the tool reads a child run",
+      "file": ".github/workflows/tests.yml",
+      "find": "      - run: node tools/mutation-check.mjs --self-test",
+      "replace": "      - run: node tools/mutation-check.mjs --list",
+      "kills": "#1597 the mutation verdicts are proved on the current Node"
+    },
+    {
+      "id": "mutation-judges-before-proving",
+      "suite": "unit",
+      "why": "#1597: without the preflight a run on a Node whose output the tool misreads reports every mutant wrongly instead of refusing",
+      "file": "tools/mutation-check.mjs",
+      "find": "if (!selfTest()) process.exit(1);\n",
+      "replace": "",
+      "kills": "#1597 the mutation verdicts are proved on the current Node"
     }
   ]
 }

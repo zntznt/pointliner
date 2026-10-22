@@ -89,7 +89,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # The tool runs its own --self-test first and refuses to judge any mutant if that fails.
       - run: node tools/mutation-check.mjs
+
+  # #1597: the same self-test on the NEWEST Node release. Every job here pins Node 22, and Node 22
+  # still defaults `node --test` to TAP when stdout is not a terminal. Node 23 changed that default
+  # to `spec`, which made every mutation verdict read BROKEN on current Node while this workflow
+  # stayed green: the change was invisible from the pinned version. The self-test is what sees that
+  # class (a child run read wrongly), so it is the one thing worth running on `current`. The suite
+  # and the registry stay on the pinned version; a new release is not a reason for them to change.
+  mutation-current-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5   # measured ~2s for the self-test; the Node download is most of it
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: current
+      - run: node tools/mutation-check.mjs --self-test
 
   # The other half of the staleness guard. tests/test.mjs enforces a floor, but a floor committed in
   # the tree is structurally blind to its own checkout being stale: a base 500 tests old carries the
