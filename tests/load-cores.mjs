@@ -174,6 +174,7 @@ export function loadCores() {
     'restoreFailMessage',   // #1136: a failed boot restore names the reason
     'storageAdvice',        // #1113: which storage warning applies, and is there a durable copy
     'pickerOutcome','pickerRefusedMessage',   // #1112: refused picker vs user cancel
+    'saveRoute','fmStatusLine','runPicker',   // #1583: what Save does by capability, the status line that says so, one picker at a time
     'estNumFmt','distHeadline',   // #1115: the estimate number, and the shared mean (p5 – p95) line
     'isComputedNode',       // #1109: does a point's render depend on document-wide state
     'docCaches', 'makeDocCache', 'regDocCache',   // the DOC_CACHES registry
