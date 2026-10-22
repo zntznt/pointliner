@@ -527,8 +527,8 @@ variable system, so there is no new syntax to learn.
 
 ### Rolling across the whole folder
 
-If your NPCs live in five different notes, one document is the wrong table. With a folder connected,
-put `folder` before the colon and the roll draws from every note in it:
+If your NPCs live in five different documents, one document is the wrong table. With a folder connected,
+put `folder` before the colon and the roll draws from every document in it:
 
 ```
 Who shows up? {roll folder: #npc}
@@ -538,7 +538,7 @@ The `@` → **Roll on your document** menu has the same thing as a checkbox ("Ro
 folder"), and its live count tells you how big the pool is before you commit: *0 matching points* in
 this document, *2 matching points across the folder*.
 
-Two things worth knowing. The other notes count **as they were last saved** on disk, the same rule
+Two things worth knowing. The other documents count **as they were last saved** on disk, the same rule
 every folder-wide feature follows. And with no folder connected the pill still works, but it draws
 from this document alone and says so: it goes dashed and its tooltip reads "no folder is connected,
 so this rolled on the current document only."

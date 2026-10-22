@@ -34,7 +34,7 @@ The everyday outliner. This is the part you use without thinking about it.
   [reference](emoji-shortcodes.md))
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
   with `[#A]` priorities. ([to-dos](tasks-and-organizing.md#to-dos-and-tasks))
-- **Collapse and zoom.** Fold any branch; click a bullet to zoom in and work on just that subtree.
+- **Collapse and zoom.** Collapse any branch; click a bullet to zoom in and work on just that subtree.
   A **paragraph's** bullet instead collapses it to just its first line, so long notes stay scannable.
   The toolbar's **Show levels** control (1, 2, 3 or All) sets the whole outline's depth at once and
   collapses everything deeper; on a narrow screen it moves into the File menu.
@@ -97,7 +97,7 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 - **Markov chains and a yes/no oracle** for organic sequences and solo-play decisions; type an
   oracle as `{oracle: likely}`.
   ([Markov](generating-text.md#markov-chains) · [oracle](generating-text.md#yesno-oracle))
-- **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (anywhere in it, like a search), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every note in a connected folder.
+- **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (anywhere in it, like a search), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every document in a connected folder.
   ([roll on your document](generating-text.md#roll-on-your-own-document))
 - **Random results log.** Turn on File menu, Log random results and every random result (dice, generators, tables, decks, chains, the oracle, pick-from-document, estimates) is also written to a dated log, each line linking back to the point that produced it, so re-using a pill never loses the record. Off by default; set a home point from the bullet menu. ([random results](dates-and-planning.md#random-results-log))
 - **Reproducible rolls.** File menu, Random seed fixes this document's dice, decks and rolls to a
@@ -269,8 +269,8 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
 - **Nearby graph.** Open the link graph with the cursor in a point and a Nearby view shows just
   that point and everything within two steps of it, across your documents.
   ([link graph](links-and-references.md#link-graph))
-- **Backlinks under the note.** Zoom into a point and everything that links to it is listed at the
-  foot of the note, under its children, always present.
+- **Backlinks on the zoomed page.** Zoom into a point and everything that links to it is listed at the
+  foot of the page, under its children, always present.
   ([backlinks](links-and-references.md#backlinks))
 - **Browsing without editing.** `Esc` stops editing without losing your place: the point keeps a soft
   row cursor, the arrows walk it through the document, and `Enter` edits the point it is on. Every
@@ -327,7 +327,7 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   your current document, live and undo-able, without replacing anything. A spreadsheet lands as a
   section of rows with each column after the first attached as a property, numbers kept as numbers
   (a `$` or thousands comma and all), so you can click `+ Total` on the heading to sum a column with no
-  formula typed. This is how you pull a piece of one document (or an outline someone shared) into
+  formula typed. This is how you pull a piece of one document (or a document someone shared) into
   another; Open replaces the whole document, Import only ever adds.
 - **Bibliography import you can cite from.** A BibTeX `.bib` file comes in as a section of sources:
   each entry is a point titled by the work, its citation kept as that point's footnote, the year and

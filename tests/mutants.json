@@ -2760,8 +2760,8 @@
       "suite": "unit",
       "why": "three guides told the reader a bullet click folds a point while the app zooms and even toasts to say so; the guard must bite on the prose, not just on the handler",
       "file": "guide/solo-rpg/lonelog/lonelog-demo.opml",
-      "find": "Click the chevron left of a Scene line (or press Ctrl/Cmd+. on it) to fold the whole scene closed.",
-      "replace": "Click the bullet of a Scene line to fold the whole scene closed.",
+      "find": "Click the chevron left of a Scene line (or press Ctrl/Cmd+. on it) to collapse the whole scene.",
+      "replace": "Click the bullet of a Scene line to collapse the whole scene.",
       "kills": "no solo-RPG guide tells the reader a bullet click folds a point"
     },
     {
@@ -4203,6 +4203,69 @@
       "find": "  if (/^seq\\s/i.test(body) && !colonlessKeywordPick(body)) return null;",
       "replace": "  if (/^seq\\s/i.test(body)) return null;",
       "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "vocab-census-manifest",
+      "suite": "unit",
+      "why": "#1587: no guard read the PWA manifest, which is how its \"widgets\" shipped; the census must read it",
+      "file": "manifest.webmanifest",
+      "find": "live pills that roll and compute",
+      "replace": "inline generative widgets",
+      "kills": "#1587 V-1 census"
+    },
+    {
+      "id": "vocab-census-app-tooltip",
+      "suite": "unit",
+      "why": "#1587: an app string literal (the agenda Overdue tooltip) must be on the census, and \"items\" for points must bite",
+      "file": "index.html",
+      "find": "overdueT.title = 'Focus on overdue points only';",
+      "replace": "overdueT.title = 'Focus on overdue items only';",
+      "kills": "#1587 V-1 census"
+    },
+    {
+      "id": "vocab-census-note-for-document",
+      "suite": "unit",
+      "why": "#1587: \"note\" for the document must bite even though \"note\" is legal for a point's note",
+      "file": "index.html",
+      "find": "Find links whose target point or document is gone",
+      "replace": "Find links whose target point or note is gone",
+      "kills": "#1587 V-1 census"
+    },
+    {
+      "id": "vocab-census-guide-entry",
+      "suite": "unit",
+      "why": "#1587: a GUIDE body must be on the census, and \"notebook\" for the folder must bite",
+      "file": "index.html",
+      "find": "It is the map of your folder, one level up",
+      "replace": "It is the map of your notebook, one level up",
+      "kills": "#1587 V-1 census"
+    },
+    {
+      "id": "vocab-census-guide-markdown",
+      "suite": "unit",
+      "why": "#1587: the guide/ markdown tree must be on the census, and \"fold\" for collapse must bite",
+      "file": "guide/getting-around.md",
+      "find": "**Collapse the whole outline at once.**",
+      "replace": "**Fold the whole outline at once.**",
+      "kills": "#1587 V-1 census"
+    },
+    {
+      "id": "vocab-census-demo-opml",
+      "suite": "unit",
+      "why": "#1587: the guide's demo documents are user-facing too; the bullet guard skips this sentence (it names the chevron), so only the census can catch it",
+      "file": "guide/solo-rpg/hex-crawl/hex-crawl-demo.opml",
+      "find": "Collapse a region (the chevron left of its bullet)",
+      "replace": "Fold a region closed (the chevron left of its bullet)",
+      "kills": "#1587 V-1 census"
+    },
+    {
+      "id": "vocab-census-stale-allow",
+      "suite": "unit",
+      "why": "#1587: an ALLOW entry that matches nothing must fail, or the allowlist rots into blanket immunity",
+      "file": "guide/solo-rpg/oracle-play/oracle-play.md",
+      "find": "If you fold a",
+      "replace": "If you nest a",
+      "kills": "#1587 V-1 census"
     }
   ]
 }

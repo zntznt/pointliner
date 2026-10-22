@@ -53,10 +53,10 @@ See all your upcoming work without scrolling the document. Click the **calendar 
 toolbar to open the agenda below the breadcrumb (click it again to close).
 
 A compact **List** is always shown, ordered by urgency (most overdue and soonest-due first, with
-done items sunk to the end) so nothing gets lost. Beside it, a single **view switcher** opens one
+done points sunk to the end) so nothing gets lost. Beside it, a single **view switcher** opens one
 deeper view at a time below the List (click the active one again to return to just the List):
 
-- **Week** , a seven-day planner spread; overdue items are gathered in a leading **Earlier** column.
+- **Week** , a seven-day planner spread; overdue points are gathered in a leading **Earlier** column.
 - **Month** , a full month calendar. Hover a day (or, on touch, look for the corner **+**) to schedule a new point for that day: it opens the capture bar with the due date preloaded (a **due …** chip you can dismiss), so you type the point, pick or confirm the inbox it lands in, and press Capture without leaving the calendar.
 - **Timeline** , a Gantt-style view of overlapping tasks. A Titles chip cycles the name-column width (narrow, default, wide); on desktop you can also drag the dotted separator.
 
@@ -78,7 +78,7 @@ line says so ("across 4 of 5 documents") rather than quietly leaving it out.
 Folders need Chrome, Edge or a similar browser. Without one the chip explains that instead of
 appearing to work, and the agenda stays on this document.
 
-In **Week** and **Month**, every day box is the same size. Each shows how many items it holds (**x to
+In **Week** and **Month**, every day box is the same size. Each shows how many points it holds (**x to
 do, y done**) and lists the active ones first; when a day has more than fit, click its **more** to
 expand that day in place and see them all.
 
@@ -87,12 +87,12 @@ On a wide screen the **Month** view also shows the previous and next months peek
 whole month (Week) or year (Month).
 
 Turn on **Done** to include completed points; toggle **Running** to show or hide started work; turn
-on **Overdue** to focus every view on just the late items. Beside those filters, a **Sort** chip
+on **Overdue** to focus every view on just the late points. Beside those filters, a **Sort** chip
 reorders the List between date (the default) and priority, so `[#A]` work rises to the top.
 
 Below the dated rows, an **Actions** row gathers your undated next-actions (any `#NEXT` or `#TODO`
 point with no date), so the work you have not scheduled yet still has a home; the same list is a
-search away with `state:next` or `is:todo`. Click any item to jump straight to it.
+search away with `state:next` or `is:todo`. Click any point to jump straight to it.
 
 Pointliner has no background reminders or notifications: it runs entirely offline with no server, so
 the agenda is where you come to check what is due, rather than something that pings you. A one-off

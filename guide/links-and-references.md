@@ -50,14 +50,14 @@ See the full web of what connects to an idea: not just what you linked *from* th
 everything across your documents that links *to* it. Useful in a personal wiki or research notes when you
 want to know what else depends on or references a concept.
 
-**Zoom into a point** and its Linked from list sits at the foot of the note, under its children, as
-part of the page rather than in a bar over it. It is always there, and when nothing links to the
+**Zoom into a point** and its Linked from list sits at the foot of the page, under its children,
+rather than in a bar over it. It is always there, and when nothing links to the
 point yet it says so instead of showing an empty space.
 
 On the plain outline the same list **rises from the bottom of the screen** as you work, following
 whichever point holds the cursor, and only when something links to it, so a document without links
 stays uncluttered. While you are zoomed in, that bar is reserved for a child point you move to that
-has links of its own; the note's own list stays where you can read it.
+has links of its own; the page's own list stays where you can read it.
 
 Each row shows a **line of context** from the source under its title, the words around the link, so
 you can see what that point says about this one without visiting it.
@@ -68,7 +68,7 @@ From the keyboard, press **`F6`** to step from the point you are working in into
 `Tab` means indent everywhere in the outline, so `F6` is the key that crosses into a panel: it walks
 the open panels in turn (Footnotes, Linked from, Variables), and one more press takes you back to the
 point with the cursor where you left it. `Esc` from the list does the same. It works the same way on
-the zoomed page, where the list sits in the note.
+the zoomed page, where the list sits under the children.
 
 Both lists also surface **mentions of the title that are not linked yet**, so you can
 connect them with one click.
@@ -146,7 +146,7 @@ says so rather than showing a single lonely dot.
 ## Links across documents
 
 Weave together a network of documents: link a project document to a person document, connect a meeting document to an
-action item in another file or build a topic index that points to documents across your whole library.
+action item in another file or build a topic index that points to documents across your whole folder.
 
 In a [connected folder](files-and-export.md#working-with-a-folder-of-documents) the `[[` picker searches **all**
 your documents, not just the one you are in, so a link can reach a point in any file.

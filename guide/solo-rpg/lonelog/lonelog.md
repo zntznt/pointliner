@@ -45,7 +45,7 @@ later you can still read the log and see exactly how each moment resolved.
 
 In Pointliner, **each beat is a point** (one line in the document), and a scene is just a
 parent point with its beats nested under it. That nesting is the one thing Pointliner adds for
-free: a paper log is flat, but a nested document lets you fold a whole scene closed, or zoom into one.
+free: a paper log is flat, but a nested document lets you collapse a whole scene, or zoom into one.
 
 ---
 
@@ -95,7 +95,7 @@ with the `{2d6}` rolls live. Click a roll to see it change; notice the prose lin
 
 A few things to try once it is open:
 
-- **Fold the scene.** Click the chevron to the left of "Scene: The nervous merchant" (or press
+- **Collapse the scene.** Click the chevron to the left of "Scene: The nervous merchant" (or press
   `Ctrl/Cmd+.` on it) to collapse the whole beat list into one line. A long campaign becomes a
   tidy stack of scene headers you can open one at a time. Clicking the **bullet** does something
   else worth knowing: it zooms the document into that point alone, and Esc or the breadcrumb
@@ -121,7 +121,7 @@ What you get back is a log that **does things**:
 
 - the dice are real and roll in place, so there is no copying numbers around
 - a roll you commit stays frozen as a record, so the journal is trustworthy
-- scenes nest and fold, so a long campaign stays navigable
+- scenes nest and collapse, so a long campaign stays navigable
 - tags and links turn the journal into something you can *interrogate* later: every beat with
   this NPC, every open thread, every failed roll
 - a running total or a tracked resource can be live math (`{= gold + 50}`) instead of mental

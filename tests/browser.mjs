@@ -7679,7 +7679,7 @@ test('#1583 a refused picker is asked once: Save then downloads, the menu stops 
       assert.equal(after.saveRow, 'none', 'the Save row stops offering the picker, as on the no-API tier');
       assert.equal(after.status, 'Unsaved changes. ' + after.key + ' downloads a copy',
         'the status line says what Save will do, and no longer says Reopen');
-      assert.match(after.nudge || '', /Your notes live in this browser only/,
+      assert.match(after.nudge || '', /Your document lives in this browser only/,
         'the backup nudge treats a refused profile as the weakest durability tier it is');
       assert.deepEqual(pageErrors, []);
     } finally { await ctx.close(); }

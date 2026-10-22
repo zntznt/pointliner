@@ -1,7 +1,7 @@
 {
   "name": "Pointliner",
   "short_name": "Pointliner",
-  "description": "A single-file, offline outliner with a markdown editor and inline generative widgets.",
+  "description": "A single-file, offline outliner with a Markdown editor and live pills that roll and compute.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -23,7 +23,7 @@ save anything you want to keep properly (`Ctrl/Cmd+S`, or a connected folder).
 
 ## Working with a folder of documents
 
-Keep a whole library of documents in one folder on your computer and move between them the way you would
+Keep all your documents in one folder on your computer and move between them the way you would
 tabs: a project document, a daily log, a person page, each its own file but searchable and
 [linkable](links-and-references.md#links-across-documents) together.
 
