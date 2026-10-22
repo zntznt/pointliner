@@ -185,7 +185,7 @@ function codeMask(src) {
       if (t.depth === 0 && t.fromTpl) { st.pop(); i++; continue; }   // closes `${…}`, not a block
       mask[i] = 1; t.depth--; i++; continue;
     }
-    i++;
+    mask[i] = 2; i++;   // #1584: any other CODE character (2, so brace users, which test for 1, are unchanged)
   }
   return mask;
 }
@@ -1832,8 +1832,9 @@ test('#1430 the symbol index covers every pure core the test suite already knows
   // Cross-registry parity. `need[]` in load-cores.mjs is the OTHER symbol registry in this repo,
   // and two registries that do not agree are worse than one: a name in `need[]` but absent from the
   // index means the extractor is missing a declaration FORM, not that the function does not exist.
-  const needBlock = between(_loadCoresSrc, 'const need = [', '\n  ];');
-  const names = nonEmpty([...needBlock.matchAll(/'([A-Za-z_$][\w$]*)'/g)].map(m => m[1]), 'load-cores need[]');
+  // #1584: and its `wired` list, the DOM-touching names it loads for tests under the same lookup
+  const needBlock = between(_loadCoresSrc, 'const need = [', '\n  ];') + between(_loadCoresSrc, 'const wired = [', '\n  ];');
+  const names = nonEmpty([...needBlock.matchAll(/'([A-Za-z_$][\w$]*)'/g)].map(m => m[1]), 'load-cores need[] + wired[]');
   const indexed = new Set([...nonEmpty([..._codeIndex.matchAll(/^- `([^`]+)`/gm)], 'index entries')]
     .map(m => m[1]));
   const missing = names.filter(n => !indexed.has(n));
@@ -2430,7 +2431,7 @@ test('the two {roll:} resolution chokepoints are wrapped in withHostScope', () =
   const w = fnBody(_src, 'withHostScope');
   assert.ok(/const save = cookieNode;/.test(w) && /finally \{ cookieNode = save; \}/.test(w),
     'withHostScope saves and restores, never strands a mutated global');
-  assert.ok(/return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body\)\)/.test(_src),
+  assert.ok(/return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body, flashHint\)\)/.test(_src),
     'promotion (blur, base cell, OPML load, starter insert) resolves under the host scope');
   const rg = fnBody(_src, 'rerollGrammar');
   assert.ok(/withHostScope\(node, \(\) => runGrammar\(g\.def, g\.origin, null, null, deps\)\)/.test(rg),
@@ -4795,7 +4796,12 @@ test('toOpml — base column number formats serialize to _colfmt; absent when al
   assert.ok(!c.toOpml(plain).includes('_colfmt='), 'all-default formats should NOT serialize');
 });
 
-// ── C1: self-contained HTML export (embed/extract data-island round-trip) ────
+// ── C1: self-contained HTML export (the data-island writer) ─────────────────────
+// #1584: the island's READER is the browser's HTML parser (restoreEmbeddedDoc takes its
+// textContent), so the round trip is driven in tests/browser.mjs. A regex model of that reader used
+// to live in the app as "the inverse" and was what these tests read back through; nothing called it.
+// What the writer owes the parser is checked here: the island holds exactly the OPML, and nothing in
+// the OPML can end the element early (the parser stops at the first `</script`, case-insensitive).
 const SHELL = '<!DOCTYPE html>\n<html><head><style>.x{}</style></head><body>\n'
   + '<script type="application/xml" id="pl-embedded-doc"></script>\n'
   + '<div id="outline"></div>\n<script>var z = 1;</script>\n</body></html>';
@@ -4809,20 +4815,19 @@ test('embedOpmlIntoHtml injects OPML into the empty data-island, leaving the res
   assert.ok(out.startsWith('<!DOCTYPE html>'), 'doctype preserved');
 });
 
-test('extractEmbeddedOpml is the inverse of embed (round-trip); empty island → empty string', () => {
+test('embedOpmlIntoHtml writes a real document into the island, whole, and nothing that ends it early', () => {
   const opml = c.toOpml((() => { const r = c.mkRoot(); r.children.push(c.mkNode('point #tag')); return r; })());
   const out = c.embedOpmlIntoHtml(SHELL, opml);
-  assert.equal(c.extractEmbeddedOpml(out), opml.trim(), 'embed→extract must round-trip the OPML');
-  assert.equal(c.extractEmbeddedOpml(SHELL), '', 'an empty island extracts to empty string');
-  // the round-tripped OPML still carries the point text verbatim (fromOpml itself needs a
-  // DOMParser the Node harness lacks — its re-parse is covered by the browser verification)
-  assert.ok(c.extractEmbeddedOpml(out).includes('point #tag'), 'extracted OPML must carry the point');
+  assert.ok(out.includes('id="pl-embedded-doc">' + opml + '</script>'), 'the island holds exactly the OPML');
+  assert.ok(opml.includes('point #tag'), 'and the OPML carries the point');
+  assert.ok(!/<\/script/i.test(opml), 'no `</script` inside it, so the parser reads all of it');
 });
 
 test('embed re-injects over an already-filled island (idempotent re-export)', () => {
   const first = c.embedOpmlIntoHtml(SHELL, '<opml><body><outline text="a"/></body></opml>');
   const second = c.embedOpmlIntoHtml(first, '<opml><body><outline text="b"/></body></opml>');
-  assert.equal(c.extractEmbeddedOpml(second), '<opml><body><outline text="b"/></body></opml>');
+  assert.ok(second.includes('id="pl-embedded-doc"><opml><body><outline text="b"/></body></opml></script>'),
+    'the island holds the new payload');
   assert.ok(!second.includes('text="a"'), 'stale payload must be replaced, not appended');
 });
 
@@ -7544,21 +7549,30 @@ test('planTablePromote: invalid range or non-table block → null (caller bails,
 });
 
 // ── table-aware paste: a pasted markdown table lands as ONE point ─────────────
-const { splitPastedPoints, tableBlockEnd } = c;
+// #1584: these pinned splitPastedPoints, a flat twin of the paste that nothing called. They now pin
+// parseMLlines, which handlePaste DOES call. Measured on 20,009 seeded pastes before the switch: the
+// two grouped every table block identically (1,926 blocks, 0 differences); the flat list differed in
+// 68% of pastes, every one of them parseMLlines doing its own job (list markers, indentation, trim).
+const { parseMLlines, tableBlockEnd } = c;
+// the paste's top-level points as text, failing if any of them nested (none of these should)
+const pastePoints = (text) => host(parseMLlines(text.split('\n'))).map(it => {
+  assert.deepEqual(it.children, [], `"${it.text}" must land as a top-level point`);
+  return it.text;
+});
 
-test('splitPastedPoints: a pure table paste → ONE point (grid + trailing #+TBLFM intact)', () => {
+test('paste (parseMLlines): a pure table paste → ONE point (grid + trailing #+TBLFM intact)', () => {
   const text = '| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n#+TBLFM: $2=$1*2';
-  assert.deepEqual(host(splitPastedPoints(text)), [text]); // single grouped entry, recipe line included
+  assert.deepEqual(pastePoints(text), [text]); // single grouped entry, recipe line included
 });
 
-test('splitPastedPoints: a base "Copy as markdown" block → one static-table point', () => {
+test('paste (parseMLlines): a base "Copy as markdown" block → one static-table point', () => {
   const text = '| Name | Qty |\n| --- | --- |\n| Apple | 3 |';
-  assert.deepEqual(host(splitPastedPoints(text)), [text]);
+  assert.deepEqual(pastePoints(text), [text]);
 });
 
-test('splitPastedPoints: prose + table + prose → prose split into points, table grouped as one', () => {
+test('paste (parseMLlines): prose + table + prose → prose split into points, table grouped as one', () => {
   const text = 'Intro line\nSecond line\n| A | B |\n| --- | --- |\n| 1 | 2 |\nAfter line';
-  assert.deepEqual(host(splitPastedPoints(text)), [
+  assert.deepEqual(pastePoints(text), [
     'Intro line',
     'Second line',
     '| A | B |\n| --- | --- |\n| 1 | 2 |',
@@ -7566,19 +7580,25 @@ test('splitPastedPoints: prose + table + prose → prose split into points, tabl
   ]);
 });
 
-test('splitPastedPoints: two blank-separated tables → two grouped entries (blank is not a point)', () => {
+test('paste (parseMLlines): two blank-separated tables → two grouped entries (blank is not a point)', () => {
   const t1 = '| A |\n| --- |\n| 1 |';
   const t2 = '| X | Y |\n| --- | --- |\n| 9 | 8 |';
-  assert.deepEqual(host(splitPastedPoints(t1 + '\n\n' + t2)), [t1, t2]); // blank line ends the first block
+  assert.deepEqual(pastePoints(t1 + '\n\n' + t2), [t1, t2]); // blank line ends the first block
 });
 
-test('splitPastedPoints: plain multi-line non-table text → one entry per line (unchanged)', () => {
-  assert.deepEqual(host(splitPastedPoints('alpha\nbeta\ngamma')), ['alpha', 'beta', 'gamma']);
+test('paste (parseMLlines): plain multi-line non-table text → one entry per line (unchanged)', () => {
+  assert.deepEqual(pastePoints('alpha\nbeta\ngamma'), ['alpha', 'beta', 'gamma']);
 });
 
-test('splitPastedPoints: prose-with-pipes is NOT a table (GFM-strict, no delimiter row)', () => {
+test('paste (parseMLlines): prose-with-pipes is NOT a table (GFM-strict, no delimiter row)', () => {
   const text = 'a | b | c\nd | e | f'; // looks tabular but the 2nd line is not a :?-+:? delimiter
-  assert.deepEqual(host(splitPastedPoints(text)), ['a | b | c', 'd | e | f']);
+  assert.deepEqual(pastePoints(text), ['a | b | c', 'd | e | f']);
+});
+
+test('paste (parseMLlines): what the flat twin never did, list markers strip and indentation nests', () => {
+  const tree = host(parseMLlines('- one\n  - two\n| A |\n| --- |\n| 1 |'.split('\n')));
+  assert.deepEqual(tree.map(t => t.text), ['one', '| A |\n| --- |\n| 1 |'], 'a table after a list starts a new top-level point');
+  assert.deepEqual(tree[0].children.map(t => t.text), ['two'], 'the indented item nests under the one above it');
 });
 
 test('tableBlockEnd: returns the block end (with #+TBLFM); -1 when no table starts at i', () => {
@@ -7728,11 +7748,13 @@ test('mtColumnLabel: header text, markdown stripped, blank fallback', () => {
   assert.equal(c.mtColumnLabel({ aligns: [], rows: [] }, 0), 'Column 1');   // no header row
 });
 
-// mtApplyAggregate is DOM-adjacent but its DOM calls no-op through vm stubs,
-// so the node.text mutation is fully testable. We verify the stale-value fix:
-// setting a column to None must blank its total cell, not leave a stale literal.
-const { mtApplyAggregate } = c;
-// Helper: minimal node object matching what mtApplyAggregate expects.
+// #1584: mtAggregateText is the pure half of Calculate (mtApplyAggregate is its DOM door: undo,
+// recompute, repaint, focus, the sentence). These used to call the door and rely on the vm stub to
+// swallow its DOM calls; now they test the text it writes, and nothing is swallowed.
+// We verify the stale-value fix: setting a column to None must blank its total cell, not leave a
+// stale literal.
+const calcCol = (node, colIdx, fn) => { node.text = c.mtAggregateText(node, colIdx, fn); };
+// Helper: minimal node object matching what mtAggregateText expects.
 function makeTblNode(text) {
   return { id: 'n1', text, dice:[], markov:[], math:[], vars:[], grammar:[] };
 }
@@ -7741,9 +7763,9 @@ const TWO_SUM_TEXT =
   '| A | B |\n| --- | --- |\n| 3 | 4 |\n| 5 | 6 |\n| 8 | 10 |\n' +
   '#+TBLFM: @>$1=vsum(@2$1..@-1$1) :: @>$2=vsum(@2$2..@-1$2)';
 
-test('mtApplyAggregate: None blanks total cell, footer row stays while other aggregate remains', () => {
+test('mtAggregateText: None blanks total cell, footer row stays while other aggregate remains', () => {
   const node = makeTblNode(TWO_SUM_TEXT);
-  mtApplyAggregate(node, 0, 'none');          // clear col A (0-based index 0 = col1 1)
+  calcCol(node, 0, 'none');          // clear col A (0-based index 0 = col1 1)
   const tblfm = c.extractTblfm(node.text);
   const model = c.parseTable(c.stripTblfm(node.text));
   const last  = model.rows[model.rows.length - 1];
@@ -7754,10 +7776,10 @@ test('mtApplyAggregate: None blanks total cell, footer row stays while other agg
   assert.equal(mtColAggKind(tblfm, 2), 'sum');
 });
 
-test('mtApplyAggregate: None on both columns removes the footer row entirely', () => {
+test('mtAggregateText: None on both columns removes the footer row entirely', () => {
   const node = makeTblNode(TWO_SUM_TEXT);
-  mtApplyAggregate(node, 0, 'none');
-  mtApplyAggregate(node, 1, 'none');
+  calcCol(node, 0, 'none');
+  calcCol(node, 1, 'none');
   const tblfm = c.extractTblfm(node.text);
   assert.equal(mtHasFooter(tblfm), false);    // no formulas left → row gone
   const model = c.parseTable(c.stripTblfm(node.text));
@@ -11016,14 +11038,18 @@ test('lastAutosaveSavedAt: returns 0 for malformed JSON', () => {
 // (scanWorkspace/refreshWorkspaceIndex) reads fromOpml, which needs a real DOMParser,
 // so it is browser-side and verified via a throwaway mock-dir Playwright harness.
 
+// #1584: `label` is undefined with no pipe, '' with an empty one. These two pins used to say both
+// were '', the collapse #805 removed from the renderer because it turned every plain link into a
+// mirror. The tested parser kept it, and nothing called the tested parser, so nothing noticed.
+const lt = (raw) => { const t = c.parseLinkToken(raw); return t && { docId: t.docId, nodeId: t.nodeId, label: t.label }; };
 test('parseLinkToken: same-doc form (no docId)', () => {
-  assert.deepEqual(host(c.parseLinkToken('[[#n1]]')), { docId: null, nodeId: 'n1', label: '' });
-  assert.deepEqual(host(c.parseLinkToken('[[#n1|]]')), { docId: null, nodeId: 'n1', label: '' });
-  assert.deepEqual(host(c.parseLinkToken('[[#n1|See it]]')), { docId: null, nodeId: 'n1', label: 'See it' });
+  assert.deepEqual(lt('[[#n1]]'), { docId: null, nodeId: 'n1', label: undefined }, 'no pipe: a live-title reference (#805)');
+  assert.deepEqual(lt('[[#n1|]]'), { docId: null, nodeId: 'n1', label: '' }, 'an empty pipe: a mirror (#805)');
+  assert.deepEqual(lt('[[#n1|See it]]'), { docId: null, nodeId: 'n1', label: 'See it' });
 });
 
 test('parseLinkToken: cross-doc form (with docId)', () => {
-  assert.deepEqual(host(c.parseLinkToken('[[docb#m2]]')), { docId: 'docb', nodeId: 'm2', label: '' });
+  assert.deepEqual(lt('[[docb#m2]]'), { docId: 'docb', nodeId: 'm2', label: undefined });
   assert.deepEqual(host(c.parseLinkToken('[[docb#m2|Other doc]]')), { docId: 'docb', nodeId: 'm2', label: 'Other doc' });
   // label may contain spaces and punctuation (anything but ] and newline)
   assert.deepEqual(host(c.parseLinkToken('[[abc123#x9|a, b & c]]')), { docId: 'abc123', nodeId: 'x9', label: 'a, b & c' });
@@ -11039,6 +11065,97 @@ test('parseLinkToken: malformed / non-link tokens → null', () => {
   assert.equal(c.parseLinkToken(''), null);
   assert.equal(c.parseLinkToken(null), null);
   assert.equal(c.parseLinkToken(undefined), null);
+});
+
+// #1584: every reader of a link token, against one independent reading of the grammar. The readers
+// used to carry seven hand copies of it, and the tested one (parseLinkToken) was the one nothing
+// called. Measured before the fix on 40,043 seeded strings: the copies agreed on the grammar
+// everywhere except a caption holding the other form, where the renderer (two passes, cross-doc
+// first) and collectLinks (a same-doc-only regex) each disagreed with the workspace index. The
+// oracle is a hand scanner, not a regex, so the readers are not being compared with themselves.
+function refLinkTokens(s) {
+  const out = [], an = (ch) => ch !== undefined && /[a-z0-9]/i.test(ch);
+  for (let i = s.indexOf('[['); i >= 0; ) {
+    let j = i + 2; const d0 = j;
+    while (an(s[j])) j++;
+    const docId = j > d0 ? s.slice(d0, j) : null;
+    let ok = s[j] === '#', nodeId = '', label;
+    if (ok) { const n0 = ++j; while (an(s[j])) j++; nodeId = s.slice(n0, j); ok = nodeId !== ''; }
+    if (ok && s[j] === '|') { const l0 = ++j; while (j < s.length && s[j] !== ']' && s[j] !== '\n') j++; label = s.slice(l0, j); }
+    if (ok && s[j] === ']' && s[j + 1] === ']') { out.push({ at: i, end: j + 2, docId, nodeId, label }); i = s.indexOf('[[', j + 2); }
+    else i = s.indexOf('[[', i + 1);
+  }
+  return out;
+}
+test('#1584 every link-token reader reads a token the way the grammar does (seeded corpus)', () => {
+  let seed = 1584;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32;
+  // Only characters the link grammar cares about: mdInline's earlier passes (code, footnotes,
+  // markdown links, cookies) own `, ^, (, ), /, %, so a corpus with them would test those passes.
+  const FRAG = ['[[', ']]', '[', ']', '#', '|', 'n1', 'x9', 'docb', 'AB', 'a', ' ', '\n', '-', '.', '0', 'é'];
+  const corpus = ['[[#n1]]', '[[#n1|]]', '[[#n1|See it]]', '[[docb#m2]]', '[[docb#m2|]]', '[[#]]', '[[docb#]]',
+    '[[#ABC]]', '[[DOCB#N1|Cap]]', '[[#n1|a|b]]', '[[#n1|line\nbreak]]', '[[[[#a]]]]', '[[#a]][[#b]]', ' [[#n1]] ',
+    '[[d#n|[[#x]]', '[[#n|[[d#y]]', '[[#n|[[#y]]', '[[d#n|x]] [[#y]]', '[[#a b]]', '[[ #a]]', '[[doc-b#a]]', '[[#a|é ✓]]'];
+  const VALID = ['[[#n1]]', '[[#n1|x]]', '[[docb#n1]]', '[[docb#n1|]]'];
+  for (let i = 0; i < 1500; i++) {
+    let t = ''; for (let k = 1 + Math.floor(rnd() * 8); k > 0; k--) t += FRAG[Math.floor(rnd() * FRAG.length)];
+    corpus.push(t);
+    let v = VALID[Math.floor(rnd() * VALID.length)];
+    for (let k = 1 + Math.floor(rnd() * 3); k > 0; k--) {
+      const at = Math.floor(rnd() * (v.length + 1)), f = FRAG[Math.floor(rnd() * FRAG.length)], r = rnd();
+      v = r < 0.4 ? v.slice(0, at) + f + v.slice(at) : r < 0.7 ? v.slice(0, at) + v.slice(at + 1) : v + ' ' + VALID[Math.floor(rnd() * VALID.length)];
+    }
+    corpus.push(v);
+  }
+  const ctx = c._context;
+  const saved = { renderLinkPill: ctx.renderLinkPill, renderCrossLinkPill: ctx.renderCrossLinkPill };
+  let drawn = [];
+  ctx.renderLinkPill = (nodeId, label) => { drawn.push({ docId: null, nodeId, label }); return 'L'; };
+  ctx.renderCrossLinkPill = (docId, nodeId, label) => { drawn.push({ docId, nodeId, label }); return 'X'; };
+  const bad = [];
+  let tokens = 0;
+  try {
+    for (const s of nonEmpty(corpus, 'link corpus')) {
+      const ref = refLinkTokens(s); tokens += ref.length;
+      const say = (reader, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) bad.push({ reader, s, got, want }); };
+      // the one-token reader (the paste door's question)
+      const whole = ref.length === 1 && ref[0].at === 0 && ref[0].end === s.length ? ref[0] : null;
+      const p = c.parseLinkToken(s);
+      say('parseLinkToken', p && [p.docId, p.nodeId, p.label === undefined ? '(no pipe)' : p.label],
+        whole && [whole.docId, whole.nodeId, whole.label === undefined ? '(no pipe)' : whole.label]);
+      // the renderer
+      drawn = [];
+      c.mdInline(s);
+      say('mdInline', drawn.map(t => [t.docId, t.nodeId, t.label === undefined ? '(no pipe)' : t.label]),
+        ref.map(t => [t.docId, t.nodeId, t.label === undefined ? '(no pipe)' : t.label]));
+      // the has:link filter
+      say('has:link', c.termMatchesNode({ kind: 'has', value: 'link' }, { text: s }, []), ref.length > 0);
+      // collectLinks (this document's links) and the workspace index (every link)
+      const root = { id: 'r0', text: '', children: [{ id: 'p1', text: s, children: [] }] };
+      say('collectLinks', host(c.collectLinks(root).outgoing.p1 || []),
+        ref.filter(t => !t.docId).map(t => ({ target: t.nodeId, label: t.label ?? '', mirror: t.label === '' })));
+      const ws = c.buildWorkspaceIndex([{ docId: 'own', name: 'own.opml', root }]);
+      say('buildWorkspaceIndex', host(ws.outgoing).map(e => [e.dstDocId, e.dstNodeId]),
+        ref.map(t => [t.docId || 'own', t.nodeId]));
+      // graph labels resolve every caption-less token, and only those
+      if (!s.includes('\n')) {
+        const asked = [];
+        c.graphNodeLabel(s, (id, d) => { asked.push([d, id]); return ''; });
+        say('graphNodeLabel', asked, ref.filter(t => !t.label).map(t => [t.docId || '', t.nodeId]));
+      }
+      // the caret reader, at every offset
+      for (let off = 0; off <= s.length; off++) {
+        const hit = ref.find(t => t.end >= off);
+        const want = hit && hit.at <= off ? [hit.docId, hit.nodeId, hit.label ?? '', hit.at, hit.end] : null;
+        const tk = c.tokenUnderCaret(s, off);
+        if (JSON.stringify(tk && [tk.docId, tk.nodeId, tk.label, tk.start, tk.end]) !== JSON.stringify(want)) {
+          say('tokenUnderCaret @' + off, tk && [tk.docId, tk.nodeId, tk.label, tk.start, tk.end], want); break;
+        }
+      }
+    }
+  } finally { Object.assign(ctx, saved); }
+  assert.ok(tokens > 1000, `the corpus must actually hold link tokens, found ${tokens}`);
+  assert.deepEqual(bad.slice(0, 6), [], `${bad.length} disagreement(s) between a reader and the grammar`);
 });
 
 // Helpers for the index builder: a doc wrapper + a point with a fixed id.
@@ -17815,7 +17932,8 @@ test('ancestor inheritance is wired at the math pill + check chip, own-node at t
   // promoteBraceBody is now a thin host-scope wrapper (see the {roll:} subtree-scope fix); the
   // branch chain lives in promoteBraceBodyIn. Pin the delegation too, so the wrapper can never be
   // left pointing at nothing.
-  assert.ok(/function promoteBraceBody\(node, body\) \{\s*return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body\)\);\s*\}/.test(_src),
+  // #1584: and hands it the voice for a refusal, the one DOM thing a promotion does.
+  assert.ok(/function promoteBraceBody\(node, body\) \{\s*return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body, flashHint\)\);\s*\}/.test(_src),
     'promoteBraceBody delegates to promoteBraceBodyIn inside withHostScope');
   const pb = fnBody(_src, 'promoteBraceBodyIn');
   assert.ok(/makeMathResult\(body\.slice\(1\)\.trim\(\), resolveNodeScope\(node, ancestorsOf\(node\), collectVars\(\)\)\)/.test(pb),
@@ -18757,25 +18875,35 @@ test('rollForwardRepeat — wiring (#462)', () => {
   assert.ok(/reopenTaskText\(node\)/.test(fn), 're-opens the task text so it recurs, not a done copy');
   // #1504 scoped this: `flashHint(` anywhere in the body stopped distinguishing the branches once
   // the dateless bail gained one of its own, so a mutant that deleted the RESCHEDULE announcement
-  // would still have found a flashHint here.
-  assert.ok(/flashHint\('⟳ Rescheduled to/.test(fn), 'visible + announced (flashHint reaches #a11y-live), never a silent flip');
+  // would still have found a flashHint here. #1584: the roll speaks through `tell` (its caller's
+  // `say`), so the sentence itself is now HEARD in '#1502 the one writer…' below.
+  assert.ok(/tell\('⟳ Rescheduled to/.test(fn), 'visible + announced (flashHint reaches #a11y-live), never a silent flip');
   // it is actually called at the two done-transition chokepoints
-  assert.ok(/rollForwardRepeat\(node, wasDone\)/.test(fnBody(_src, 'toggleTaskInNode')), 'wired into the checkbox path');
+  assert.ok(/rollForwardRepeat\(node, wasDone, flashHint\)/.test(fnBody(_src, 'toggleTaskInNode')), 'wired into the checkbox path, with a voice');
   // #1502: this comment said "the two chokepoints" while asserting ONE, and that gap was the bug.
   // The roll lived in exitEdit and toggleTaskInNode only, so every completion made outside an edit
   // session ended the recurrence for good. There is now one writer, and the census names its doors.
-  assert.match(fnBody(_src, 'commitTodoDone'), /rollForwardRepeat\(node, wasDone\)/,
+  assert.match(fnBody(_src, 'commitTodoDone'), /rollForwardRepeat\(node, wasDone, say\)/,
     'the shared writer is where the roll now lives');
   const DOORS = { exitEdit: 'typing #DONE / the state-cycle chord',
-                  applyTodoCycleToNodes: 'the bulk cycle chord over a selection',
+                  bulkCycleTodo: 'the bulk cycle chord over a selection',
                   showTodoPicker: 'the state-badge picker',
                   applyBlockCmd: 'the row-cursor state command' };
   for (const [fn, what] of Object.entries(DOORS)) {
-    assert.match(fnBody(_src, fn), /commitTodoDone\(/,
+    assert.match(fnBody(_src, fn), /(?:commitTodoDone|applyTodoCycleToNodes)\(/,
       `${what} (${fn}) must route its done-flip through the one writer, or it ends the recurrence silently`);
   }
+  // #1584: and EVERY call hands it a voice. The writer is DOM-free now and speaks only through its
+  // `say`, so a call without one ends a recurrence in silence, which is #1504 coming back by a new
+  // road. Every call in the app, not only the four doors above: a fifth door is the likelier miss.
+  const WRITER = /\b(?:commitTodoDone|rollForwardRepeat|applyTodoCycleToNodes)\(/;
+  const writerCalls = nonEmpty(_src.split('\n').filter(l => WRITER.test(l) && !/^\s*(?:\/\/|function )/.test(l)),
+    'calls to the done-flip writer');
+  assert.ok(writerCalls.length >= 8, `expected the writer's callers (doors and its own chain), found ${writerCalls.length}`);
+  const voiceless = writerCalls.filter(l => !/\b(?:commitTodoDone|rollForwardRepeat|applyTodoCycleToNodes)\([^()\n]*, (?:flashHint|say)\)/.test(l));
+  assert.deepEqual(voiceless.map(l => l.trim()), [], 'a call to the writer with no voice: pass flashHint (a door) or say (the chain)');
   // and none of them may re-derive `checked` themselves afterwards, which is how a door drifts back out
-  const stray = nonEmpty(Object.keys(DOORS), 'done-flip doors')
+  const stray = nonEmpty([...Object.keys(DOORS), 'applyTodoCycleToNodes'], 'done-flip doors')
     .filter(fn => /\.checked = todoDoneFromText\(/.test(fnBody(_src, fn)));
   assert.deepEqual(host(stray), [],
     'a door that sets .checked itself has stepped around the writer and lost the roll-forward');
@@ -18790,23 +18918,37 @@ test('#1502 the one writer rolls a repeating point forward, and leaves everythin
     n.checked = c.todoDoneFromText(n.text); return n;
   };
   const dueOf = n => (n.props || []).find(p => p.key.toLowerCase() === 'due')?.val ?? null;
-  const flip = n => { const w = n.checked; n.text = c.setTodoState(n.text, 'DONE'); return c.commitTodoDone(n, w); };
+  // #1584: the writer speaks through `say` (every door passes flashHint), so what each completion
+  // SAYS is asserted here instead of being swallowed by the vm stub.
+  let said = [];
+  const flip = n => { said = []; const w = n.checked; n.text = c.setTodoState(n.text, 'DONE'); return c.commitTodoDone(n, w, (m) => said.push(m)); };
 
   // the reported case: a repeating point rolls forward and RE-OPENS
   const rep = mk('#TODO Water plants', [['due', c.formatEpochDays(today)], ['repeat', 'every 3 days']]);
   assert.equal(flip(rep), true, 'the writer reports that it rescheduled');
   assert.equal(dueOf(rep), c.formatEpochDays(today + 3), 'the schedule advanced by the cadence');
   assert.equal(rep.checked, false, 'and the point is open again, not done');
+  assert.deepEqual(said, ['⟳ Rescheduled to ' + c.formatDateConcrete(today + 3) + '.'], 'and says where it went, once');
 
   // every case that must simply complete, with no roll
   const plain = mk('#TODO Buy milk', [['due', c.formatEpochDays(today)]]);
   assert.equal(flip(plain), false, 'a to-do with no repeat just completes');
   assert.equal(plain.checked, true);
   assert.equal(dueOf(plain), c.formatEpochDays(today), 'and its date is untouched');
+  assert.deepEqual(said, [], 'an ordinary completion has nothing to add');
 
   const noDate = mk('#TODO Stretch', [['repeat', 'every 3 days']]);
   assert.equal(flip(noDate), false, 'a repeat with no date has nothing to advance');
   assert.equal(noDate.checked, true);
+  assert.deepEqual(said, ['Completed. This repeat has no date to advance from, so it does not come back. Add a due or start date to make it recur.'],
+    '#1504: and says the recurrence is over, rather than ending it in silence');
+  // a bulk cycle speaks per point, through the voice its door hands it
+  said = [];
+  const bulk = [mk('#TODO A', [['due', c.formatEpochDays(today)], ['repeat', 'every 3 days']]), mk('#TODO B', [])];
+  assert.equal(c.applyTodoCycleToNodes(bulk, t => c.setTodoState(t, 'DONE'), (m) => said.push(m)), 2);
+  assert.deepEqual(said, ['⟳ Rescheduled to ' + c.formatDateConcrete(today + 3) + '.'], 'the repeating one says so; the other is silent');
+  assert.doesNotThrow(() => c.commitTodoDone(mk('#DONE C', [['due', c.formatEpochDays(today)], ['repeat', 'every 3 days']]), false),
+    'no voice given: silent, not a crash');
 
   const badPhrase = mk('#TODO Odd', [['due', c.formatEpochDays(today)], ['repeat', 'every blue moon']]);
   assert.equal(flip(badPhrase), false, 'an unrecognised phrase completes normally rather than erroring');
@@ -19151,7 +19293,7 @@ test('#1504 all three surfaces route through the ONE dateless predicate, and eac
 
   // surface 3 — completion, where the recurrence actually ends
   const roll = fnBody(_src, 'rollForwardRepeat');
-  assert.match(between(roll, 'if (base == null)', 'nextOccurrence('), /flashHint\(/,
+  assert.match(between(roll, 'if (base == null)', 'nextOccurrence('), /tell\(/,
     'the bail branch says the recurrence is over, instead of returning false in silence');
   assert.match(between(roll, 'if (base == null)', 'nextOccurrence('), /no date to advance from/,
     'and it names the same failure the chip and the dialog name (P1)');
@@ -20697,9 +20839,46 @@ test('#1333 isLongDecimal + the round-it nudge: a long ugly decimal teaches the 
   assert.ok(mnd.includes("!isGuided() || nudgeSeen('decimals')") && mnd.includes('isLongDecimal(display)') && mnd.includes("fireNudge('decimals'"),
     'maybeNudgeDecimals guards Guided/once, reads isLongDecimal, and fires the format nudge');
   assert.ok(/Decimal places/.test(_src), 'the nudge names the Decimal places field it opens');
-  // it runs only on the SUCCESSFUL number path, and never for a boolean or an author-formatted pill
-  assert.ok(fnBody(_src, 'renderMathPill').includes('if (!isBoolPill && !m.fmt) maybeNudgeDecimals(display)'),
-    'fired only for a successful, unformatted, non-boolean pill');
+  // it runs only on the SUCCESSFUL number path, and never for a boolean or an author-formatted pill.
+  // #1584: renderMathPill only NOTES it; the paint says it (see the test below).
+  assert.ok(fnBody(_src, 'renderMathPill').includes('if (!isBoolPill && !m.fmt && !opts.preview && isLongDecimal(display)) _longDecimalShown = display;'),
+    'noted only for a successful, unformatted, non-boolean pill that is not a preview');
+});
+
+// #1584: renderMathPill used to fire the tip itself, so every HTML string builder above it (mdInline,
+// mdToHtml, the readonly export, the formula dialog's preview) wrote localStorage and queued a toast,
+// and the tests that call those builders ran it against a stub that swallowed both. Now the builder
+// notes the decimal and only a paint that put the pill on screen says it.
+test('#1584 a renderer only notes a long decimal; the paint that shows the pill says it', () => {
+  const ctx = c._context, calls = [], saved = ctx.maybeNudgeDecimals;
+  ctx.maybeNudgeDecimals = (d) => calls.push(d);
+  const long = c.mkNode('total [[math:k1]]'); long.math = [{ key: 'k1', expr: '10/3' }];
+  const plain = c.mkNode('total [[math:k2]]'); plain.math = [{ key: 'k2', expr: '10/2' }];
+  try {
+    ctx.__decMath = long.math;
+    vm.runInContext('mathRenderList = __decMath;', ctx);
+    try { c.mdInline('total [[math:k1]]'); c.mdToHtml('total [[math:k1]]'); }
+    finally { vm.runInContext('mathRenderList = null;', ctx); }
+    assert.deepEqual(calls, [], 'a string builder (and so every export) fires nothing');
+    ctx.renderContentHTML(plain);
+    assert.deepEqual(calls, [], 'what a builder noted is not said by the NEXT paint: that paint showed no long decimal');
+    ctx.renderMathPill('preview', { key: 'preview', expr: '10/3' }, { preview: true });
+    ctx.sayLongDecimalShown();
+    assert.deepEqual(calls, [], 'a formula-dialog preview is not a pill on the page, so it never teaches');
+    ctx.renderContentHTML(long);
+    assert.deepEqual(calls, ['3.3333333'], 'the row paint says it, once, with the value the pill showed');
+    const fmt = c.mkNode('total [[math:k3]]'); fmt.math = [{ key: 'k3', expr: '10/3', fmt: { decimals: 2 } }];
+    calls.length = 0; ctx.renderContentHTML(fmt);
+    assert.deepEqual(calls, [], 'an author-formatted pill has nothing to teach');
+  } finally { ctx.maybeNudgeDecimals = saved; vm.runInContext('_longDecimalShown = null;', ctx); }
+  // the base widget is the other paint, and every caller that puts one on screen says it
+  const lines = _src.split('\n');
+  const sites = nonEmpty(lines.map((l, i) => i).filter(i => /buildTableWidget\(/.test(lines[i])
+    && !/^\s*\/\//.test(lines[i]) && !/function buildTableWidget/.test(lines[i])), 'buildTableWidget call sites');
+  assert.ok(sites.length >= 4, `expected the four widget paints, found ${sites.length}`);
+  for (const i of sites) assert.match(lines[i] + lines[i + 1], /sayLongDecimalShown\(\)/,
+    `a base paint that never says its long decimal: ${lines[i].trim()}`);
+  assert.match(fnBody(_src, 'buildTableWidget'), /^\{\s*_longDecimalShown = null;/, 'and the widget forgets anything noted before it');
 });
 
 test('fieldNudgeKey — a bare word:number tail is a field cue; prose / times / non-numeric are not', () => {
@@ -22983,16 +23162,17 @@ test('runGrammar — the guards do not fire on ordinary shallow rules', () => {
 
 // ── self-contained HTML export: OPML round-trips inside a <script> island even
 //    when node text contains a literal </script> (the C1 safety invariant) ────
-test('embedOpmlIntoHtml/extractEmbeddedOpml — </script> in node text round-trips', () => {
+test('embedOpmlIntoHtml: a </script> in node text cannot end the island early', () => {
   const root = c.mkRoot();
   const n = c.mkNode();
-  n.text = 'danger </script><img src=x onerror=alert(1)>';
+  n.text = 'danger </script><img src=x onerror=alert(1)> and </SCRIPT > too';
   root.children.push(n);
   const opml = c.toOpml(root);
-  assert.ok(!opml.includes('</script>'), 'toOpml must not emit a literal </script> (< > become entities)');
+  // the HTML parser ends script data at `</script` + whitespace, `/` or `>`, in any case
+  assert.ok(!/<\/script/i.test(opml), 'toOpml must not emit a literal </script, in any case (< > become entities)');
   const shell = '<html><body><script type="application/xml" id="pl-embedded-doc"></script></body></html>';
-  const back = c.extractEmbeddedOpml(c.embedOpmlIntoHtml(shell, opml));
-  assert.equal(back, opml, 'the embedded OPML round-trips byte-for-byte');
+  assert.ok(c.embedOpmlIntoHtml(shell, opml).includes('id="pl-embedded-doc">' + opml + '</script>'),
+    'the island holds the OPML byte-for-byte');
 });
 
 // ── evalMath: the √ unary operator (documented, previously unpinned) ─────────
@@ -24173,15 +24353,18 @@ test('mtCellHtml — a Number column honors its per-column colFmt (money/percent
 
 // ε: the per-column format setter creates lazily, aligns by index, and drops the whole array when
 // every column is back to default — so an untouched base serializes clean (mirrors mtSetColWidth).
-test('mtSetColFmt — lazy create, per-index set, drop-to-undefined when all null', () => {
+test('mtWriteColFmt: lazy create, per-index set, drop-to-undefined when all null', () => {
+  // #1584: the pure write under mtSetColFmt (which adds the dirty mark and the repaint)
   const node = { text: '| A | B |\n| --- | --- |\n| 1 | 2 |' };
-  c.mtSetColFmt(node, 1, { suffix: '%' });
+  assert.equal(c.mtWriteColFmt(node, 1, { suffix: '%' }), true);
   assert.deepEqual(host(node.colFmt), [null, { suffix: '%' }], 'lazily created and set at the column index');
-  c.mtSetColFmt(node, 1, null);
+  c.mtWriteColFmt(node, 1, null);
   assert.equal(node.colFmt, undefined, 'clearing the only format drops the array back to undefined');
-  // clearing a never-set format is a no-op (no array springs into existence)
-  c.mtSetColFmt(node, 0, null);
+  // clearing a never-set format is a no-op (no array springs into existence), and says so, so the
+  // door skips its repaint exactly as it did before the split
+  assert.equal(c.mtWriteColFmt(node, 0, null), false, 'nothing to clear: the door must not repaint');
   assert.equal(node.colFmt, undefined, 'clearing when there is nothing to clear stays undefined');
+  assert.match(fnBody(_src, 'mtSetColFmt'), /^\{\s*if \(!mtWriteColFmt\(node, colIdx, f\)\) return;/, 'the door writes through the pure core');
 });
 
 // ε: the DOM wiring that can't run headless — the column menu item, its dialog, the footer format,
@@ -24434,7 +24617,9 @@ test('bases round 1 — B4 read sites + write sites stay split (source pins)', (
   // write sites stay authored-only: mtSetColRole writes node.colRole (never a qbase) and, per #922,
   // SEEDS the array from the current inference on first touch so promoting one column to explicit
   // mode doesn't drop the others' auto-detected roles.
-  const scr = fnBody(_src, 'mtSetColRole');
+  // #1584: the write is mtWriteColRole now (pure, tested directly); mtSetColRole is its DOM door.
+  const scr = fnBody(_src, 'mtWriteColRole');
+  assert.match(fnBody(_src, 'mtSetColRole'), /^\{\s*mtWriteColRole\(node, colIdx, role\);/, 'the door writes through the pure core first');
   assert.ok(/node\.colRole \|\| inferredColRoles\(node\)\.slice\(\)/.test(scr), 'the role writer seeds from inference on first touch (#922)');
   assert.ok(/node\.colRole = arr\.every\(x => x == null\) \? undefined : arr;/.test(scr), 'the role writer still writes node.colRole directly (authored-only)');
 });
@@ -26702,8 +26887,19 @@ test('classifyBraceBody: an unparseable date value is invalid LIVE, matching the
 test('promoteBraceBody: the invalid-date decline flashes the shared message (#407)', () => {
   // #527 updated the shared wording source: DATE_FORMS_HINT became dateFormsHint() so the hint
   // follows the active calendar. The P4 contract is unchanged — one shared message, both twins.
-  assert.ok(_src.includes("flashHint('Not a valid date: ' + dd.val + '. ' + dateFormsHint())"),
-    'the exit decline must give the same P4 feedback as the /due:value twin');
+  // #1584: the core says it through `say`, so this HEARS it rather than finding it in the source,
+  // and the vm stub no longer swallows a flashHint nobody could observe.
+  const said = [];
+  assert.equal(c.promoteBraceBodyIn(c.mkNode('x'), 'date due: notadate', (m) => said.push(m)), null,
+    'an invalid date stays literal (the escape hatch)');
+  assert.deepEqual(said, ['Not a valid date: notadate. ' + c.dateFormsHint()],
+    'the exit decline must give the same P4 feedback as the /due:value twin, once');
+  said.length = 0;
+  assert.equal(c.promoteBraceBodyIn(c.mkNode('y'), 'date due: 2026-01-02', (m) => said.push(m)), '');
+  assert.deepEqual(said, [], 'a valid date is consumed in silence');
+  assert.doesNotThrow(() => c.promoteBraceBodyIn(c.mkNode('z'), 'date due: nope'), 'no voice given: silent, not a crash');
+  assert.match(fnBody(_src, 'promoteBraceBody'), /promoteBraceBodyIn\(node, body, flashHint\)/,
+    'and the door gives it the toast, or every promotion path refuses in silence');
 });
 
 // ── Inventory drift guards (#393/#408): the closed set must certify truthfully ──
@@ -28232,14 +28428,15 @@ test('mtModelText — parses a pipe table to rows+aligns, falls back to a starte
   assert.ok(fallback && Array.isArray(fallback.rows) && fallback.rows.length > 0, 'starter-table fallback, never null');
 });
 
-test('mtSetColRole — sets one column role index-aligned, clears to undefined when all null', () => {
+test('mtWriteColRole: sets one column role index-aligned, clears to undefined when all null', () => {
+  // #1584: the pure write under mtSetColRole (which adds the dirty mark, the repaint and the sentence)
   const node = { type: 'base', text: '| A | B |\n|---|---|\n| 1 | 2 |', colRole: undefined };
-  c.mtSetColRole(node, 1, 'number');
+  c.mtWriteColRole(node, 1, 'number');
   assert.deepEqual(host(node.colRole), [null, 'number'], 'role written at the right index, others untouched');
-  c.mtSetColRole(node, 0, 'status');
+  c.mtWriteColRole(node, 0, 'status');
   assert.deepEqual(host(node.colRole), ['status', 'number'], 'a second role does not disturb the first (index alignment)');
-  c.mtSetColRole(node, 0, null);
-  c.mtSetColRole(node, 1, null);
+  c.mtWriteColRole(node, 0, null);
+  c.mtWriteColRole(node, 1, null);
   assert.equal(node.colRole, undefined, 'clearing every role drops the array back to undefined (no empty [null,null] left behind)');
 });
 
@@ -30780,9 +30977,10 @@ test('#945 link picker embeds on Shift+Enter / Shift+click (src pins)', () => {
 test('#805: the pipe carries meaning — render passthrough + title-form creation doors', () => {
   // 4a: the same-doc callsite gained the foreign-context redirect (a bare [[#id]] inside a
   // cross-doc mirror resolves in ITS doc) — the label still passes through untouched on both arms.
-  assert.match(_fix3, /stash\(_inlineDocId \? renderCrossLinkPill\(_inlineDocId, target, label\) : renderLinkPill\(target, label\)\)/,
+  // #1584: one pass now, so both arms sit in one callback.
+  assert.match(_fix3, /: _inlineDocId \? renderCrossLinkPill\(_inlineDocId, target, label\) : renderLinkPill\(target, label\)\)\)/,
     'mdInline must pass label through (undefined = title form), with the foreign-doc redirect');
-  assert.match(_fix3, /stash\(renderCrossLinkPill\(docId, target, label\)\)/, 'cross-doc callsite too');
+  assert.match(_fix3, /stash\(docId \? renderCrossLinkPill\(docId, target, label\)/, 'cross-doc callsite too');
   assert.ok(!_fix3.includes('renderLinkPill(target, label ?? '), 'the label ?? \'\' collapse must be gone');
   assert.match(_fix3, /token = \(workspaceDir && root\.docId\) \? `\[\[\$\{root\.docId\}#\$\{id\}\]\]` : `\[\[#\$\{id\}\]\]`/, 'Copy link must emit the title form');
   assert.match(_fix3, /token = `\[\[#\$\{nn\.id\}\$\{pipe\}\]\]`/, 'link-and-create emits the title form by default (#945: pipe empty unless Shift+Enter embeds)');
@@ -38645,4 +38843,127 @@ test('#1586 the chip and the variable card each run ONE action from both gesture
   assert.match(vd, /roveTo\(cardEls\[at\], cardEls\[to\]\);/);
   assert.match(fnBody0(_src, '.var-pick-card:focus-visible'), /outline:2px solid var\(--acc\)/,
     'a new focus stop shows the standard ring (P3-3)');
+});
+
+// ─── #1584: the pure-core census ───────────────────────────────────────────────────────────────
+// load-cores' `need` list is a claim: these run in plain Node because they are DOM-free (CLAUDE.md:
+// "Pure cores are DOM-free"). Nothing checked the claim, and the loader's stub hides a false one: it
+// answers every document/window call with itself, so a listed function that pushed an undo, repainted
+// a base or queued a toast passed its test while doing all of that against nothing. #1584 found six
+// such roots in the list (mtApplyAggregate, mtSetColRole, mtSetColFmt, rollForwardRepeat,
+// promoteBraceBodyIn, and renderMathPill's decimals tip under mdInline), reaching nineteen listed
+// names between them.
+//
+// This reads the app's CODE (strings, comments and regex literals masked out, #1370) and follows
+// every reference between top-level declarations. A function is DOM-wired when it, or anything it
+// reaches, touches a browser surface: document, window, navigator, localStorage, sessionStorage,
+// location or history, or schedules through setTimeout, setInterval or requestAnimationFrame. Every
+// `need` name must be clear of that; every `wired` name must still reach it, or it belongs back in
+// `need`. Over-approximate on purpose: a bare reference counts as a call (a function handed to
+// forEach is followed), which can only make it stricter.
+test('#1584 every load-cores `need` name is DOM-free, and every `wired` one is not (census)', () => {
+  const SINK_RE = /(?<![\w$.])(?:document|window|navigator|localStorage|sessionStorage|location|history)\s*\.|(?<![\w$.])(?:setTimeout|setInterval|requestAnimationFrame|getComputedStyle|alert|confirm|prompt)\s*\(/;
+  function domReach(src) {
+    const mask = maskFor(src);
+    const code = (a, b) => { let t = ''; for (let i = a; i < b; i++) t += mask[i] ? src[i] : ' '; return t; };
+    const bodies = new Map();
+    for (const m of src.matchAll(/^(?:async\s+)?function\s*\*?\s*([\w$]+)\s*\(/gm)) {
+      const body = fnBody(src, m[1]);
+      const at = src.indexOf(body, m.index);
+      bodies.set(m[1], code(at, at + body.length));
+    }
+    // top-level const/let: an arrow, an alias (`const escQ = escAttr`), a factory call
+    // (`const footnoteOrder = makeDocCache(…)`) or plain data, read to the next statement at column 0.
+    // Its initializer ran ONCE, at load: `const IS_MAC = /mac/i.test(navigator.platform)` is a boolean
+    // by the time anything reads it. So only a sink inside a function in it (after its first `=>` or
+    // `function`) is touched at call time.
+    const loadTime = new Map();
+    for (const m of src.matchAll(/^(?:const|let)\s+([\w$]+)\s*=/gm)) {
+      if (bodies.has(m[1])) continue;
+      const next = src.slice(m.index + 1).search(/\n(?=[A-Za-z_$(/])/);
+      const end = next < 0 ? src.length : m.index + 1 + next;
+      const init = code(m.index + m[0].length, end);
+      bodies.set(m[1], init);
+      const fnAt = init.search(/=>|(?<![\w$])function(?![\w$])/);
+      loadTime.set(m[1], fnAt < 0 ? init.length : fnAt);
+    }
+    const direct = new Map(), refs = new Map();
+    for (const [name, body] of bodies) {
+      const hit = body.slice(loadTime.get(name) || 0).match(SINK_RE);
+      if (hit) direct.set(name, hit[0].trim());
+      const out = new Set();
+      for (const r of body.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)/g)) if (r[1] !== name && bodies.has(r[1])) out.add(r[1]);
+      refs.set(name, out);
+    }
+    // the shortest path from `name` to a function that touches the DOM itself, or null
+    return { bodies, path(name) {
+      const prev = new Map([[name, null]]), queue = [name];
+      while (queue.length) {
+        const n = queue.shift();
+        if (direct.has(n)) { const p = []; for (let x = n; x; x = prev.get(x)) p.unshift(x); return p.join(' > ') + ` [${direct.get(n)}]`; }
+        for (const k of refs.get(n) || []) if (!prev.has(k)) { prev.set(k, n); queue.push(k); }
+      }
+      return null;
+    } };
+  }
+  const reach = domReach(_src);
+  // Reached ONLY through closures the function returns, never runs. Each must still reach (else drop it).
+  const RETURNS_DOM_THUNKS = {
+    collectPillActions: 'its rows carry fn: () => … thunks that the pill menu runs; building the rows touches nothing',
+  };
+  assert.ok(reach.bodies.size > 1500, `the census must see the whole app, found ${reach.bodies.size} declarations`);
+  const pure = nonEmpty([...new Set(c._pure)], 'load-cores need[]');
+  const wired = nonEmpty([...new Set(c._wired)], 'load-cores wired[]');
+  const unseen = [...pure, ...wired].filter(n => !reach.bodies.has(n));
+  assert.deepEqual(unseen, [], 'the census cannot read these declarations, so it would pass them unread');
+  const dirty = pure.filter(n => !(n in RETURNS_DOM_THUNKS)).map(n => [n, reach.path(n)]).filter(([, p]) => p);
+  assert.deepEqual(dirty.map(([n, p]) => `${n}: ${p}`), [],
+    'a `need` core reaches the DOM. Extract its pure part (a core that returns, or takes a `say`, and a ' +
+    'door that does the DOM) or move it to `wired`; the stub would otherwise hide every one of these calls');
+  const clean = [...wired, ...Object.keys(RETURNS_DOM_THUNKS)].filter(n => !reach.path(n));
+  assert.deepEqual(clean, [], 'these no longer reach the DOM: move them back to `need` (or out of the exemption)');
+});
+
+// ─── #1584: the link-token grammar is written once ─────────────────────────────────────────────
+// Seven readers each carried a hand copy of it, and the tested copy (parseLinkToken) was the one
+// nothing called: a fix to the grammar reached none of the readers, and a change to a reader was
+// invisible to its tests. They all build from linkTokenRe now. This is the census that keeps it so:
+// every regex LITERAL in the app that spells a link token, by identity. The other two are not the
+// grammar: MIRROR_LINE_RE is the line gate for a block mirror (a whole line that is one `[[…|]]`),
+// and Copy as Markdown on a query base reads the bare `[[#id]]` its title cells are written as.
+test('#1584 the link-token grammar is spelled once, and every reader builds from it (census)', () => {
+  const LINK_LITERAL = /\\\[\\\[[^\n]*#\(?(?:\?:)?\[a-z0-9\]/;   // a regex literal opening `\[\[` … `#[a-z0-9]`
+  const lines = nonEmpty(_src.split('\n').filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, ''))
+    .filter(l => LINK_LITERAL.test(l)).map(l => l.trim()), 'link-token regex literals');
+  assert.deepEqual(lines, [
+    String.raw`const MIRROR_LINE_RE = /^\s*\[\[[a-z0-9]*#[a-z0-9]+\|\]\]\s*$/i;`,
+    String.raw`.replace(/\[\[#([a-z0-9]+)\]\]/gi, (_, tid) => {`,
+    String.raw`function linkTokenRe(flags) { return new RegExp(/\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/.source, flags || 'gi'); }`,
+  ], 'a new hand copy of the link grammar: build it from linkTokenRe() instead, so a grammar fix reaches it');
+  // …and each reader really is built from it (a tested grammar proves nothing about who uses it)
+  const READERS = {
+    mdInline: /s = s\.replace\(linkTokenRe\(\), \(_, docId, target, label\) =>/,
+    collectLinks: /const re = linkTokenRe\(\);/,
+    termMatchesNode: /term\.value === 'link' && linkTokenRe\('i'\)\.test\(node\.text \|\| ''\)/,
+    graphNodeLabel: /t = t\.replace\(linkTokenRe\(\),/,
+    tokenUnderCaret: /const re = linkTokenRe\(\);/,
+    parseLinkToken: /new RegExp\('\^\(\?:' \+ linkTokenRe\(\)\.source \+ '\)\$', 'i'\)/,
+    handlePaste: /const tok = parseLinkToken\(text\);/,
+  };
+  for (const [fn, re] of nonEmpty(Object.entries(READERS), 'link readers'))
+    assert.match(fnBody(_src, fn), re, `${fn} must read link tokens through the one grammar`);
+  assert.match(_src, /\nconst WLINK_RE = linkTokenRe\(\);\n/, 'the shared scanner is the grammar too');
+  // the paste door's caret step reads the label parseLinkToken returned
+  assert.match(fnBody(_src, 'handlePaste'), /getCaretOffset\(content\) - linkOnly\.label\.length - 2/);
+});
+
+// #1584: the doors call the cores their tests pin. Each of these cores replaced a tested twin that
+// nothing called (splitPastedPoints) or a door its tests drove against the stub (mtApplyAggregate),
+// and a tested core proves nothing about its call site. (Down here, after `_src`, because a test
+// that reads it above that line fails on its own when it is the first one a name filter runs.)
+test('#1584 the paste and Calculate doors call the cores their tests pin', () => {
+  assert.match(fnBody(_src, 'handlePaste'), /\n\s*const parsed = parseMLlines\(lines\);/,
+    'a multi-line paste must build its points with parseMLlines, the function the paste tests pin');
+  assert.match(fnBody(_src, 'mtApplyAggregate'), /\n\s*node\.text = mtAggregateText\(node, colIdx, fn\);/,
+    'Calculate must write the text mtAggregateText computes');
 });

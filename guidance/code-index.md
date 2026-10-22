@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2176 declarations in 158 sections across 17 domains.**
+**2179 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -469,6 +469,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `seqRenderList`
 - `grammarRenderList`
 - `cookieNode` — The node currently being rendered, so mdInline can compute a [/] / [%]
+- `_longDecimalShown` — #1584: a long decimal a math pill just showed (#1333), or null. renderMathPill only NOTES it, so
 - `withHostScope` — withHostScope(node, fn) — run fn with cookieNode set to the host point, restoring whatever was
 - `globalVarMap` — Collected variable map {name: value} for the current render; a SNAPSHOT of collectVars() taken by
 - `globalRuleMap`
@@ -754,7 +755,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `mtHasFooter` — True when the TBLFM contains at least one @>$N= footer-row formula.
 - `mtColAggKind` — Return the current aggregate kind ('sum'|'avg'|'count'|'min'|'max'|'none')
 - `aggKindLabel` — Display label for an aggregate kind — what the Calculate footer shows beside the
-- `mtApplyAggregate` — Apply an aggregate function to colIdx (0-based). Adds/removes the footer row
+- `mtAggregateText` — Pure (#1584): the text a base holds once colIdx (0-based) totals with `fn`. Adds/removes the
+- `mtApplyAggregate` — Apply an aggregate function to colIdx (0-based); calls mtRecompute + refreshTable to show
 - `mtSetFormula` — Set (or clear, when expr is empty) one TBLFM assignment and recompute (UXP-3
 - `openFormulaDialog` — The formula dialog (UXP-3 Part B): authors one column/cell formula with the
 
@@ -771,11 +773,13 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `mtInsertCol`
 - `COL_ROLE_CYCLE` — Set/clear a column's display role (FR-1). Lazily sized like colW; an all-null
 - `cycleColRole`
+- `mtWriteColRole` — Pure (#1584): write one column's role into node.colRole, and nothing else. mtSetColRole is
 - `mtSetColRole`
 - `mtMoveCol`
 - `mtDeleteCol`
 - `mtSetColWidth` — Set (or clear, with w=null) a column's pinned width and re-render the grid.
-- `mtSetColFmt` — Set (or clear, with f=null) a column's number format (ε). A parseNumFmt record
+- `mtWriteColFmt` — Set (or clear, with f=null) a column's number format (ε). A parseNumFmt record
+- `mtSetColFmt`
 - `mtApplyColWidthLive` — Live width during a drag: paint every cell in the column without a rebuild
 
 ## row model ops (mirror the column ops; surfaced in the Row menu)
@@ -1186,9 +1190,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## paste
 
 - `handlePaste`
-- `tableBlockEnd` — Shared GFM table-block detector (the ONE detector — reused by findFirstTableRange,
-- `splitPastedPoints` — Split pasted text into point-strings, grouping each GFM table block into ONE entry so
-- `parseMLlines`
+- `tableBlockEnd` — Shared GFM table-block detector (the ONE detector, reused by findFirstTableRange
+- `parseMLlines` — The multi-line paste: pasted lines -> a tree of { text, children } points. A GFM table
 
 ## keydown
 
@@ -1530,8 +1533,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 ## node links (same-document)
 
-- `LINK_RE` — A link is a [[#TARGETID|label]] token in node.text pointing at another node by id.
-- `_linksCacheVer`
+- `_linksCacheVer` — A link is a [[#TARGETID|label]] token in node.text pointing at another node by id.
 - `collectLinks`
 
 ## relationship graph (#516: the browsable recognition surface)
@@ -1576,7 +1578,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 ## cross-document link index (CF-1: the workspace-wide link/backlink foundation)
 
-- `WLINK_RE` — The same-doc link path above (LINK_RE / collectLinks) is per-document and stays exactly
+- `linkTokenRe` — The same-doc link path above (collectLinks) is per-document. This is its cross-file
+- `WLINK_RE` — The shared global instance (g+i: reset lastIndex before each scan).
 - `parseLinkToken` — Pure: parse a SINGLE [[...]] token (anchored) -> { docId|null, nodeId, label }, else null.
 - `tokenUnderCaret` — Pure: find the link token at or spanning `offset` in `text` (edit-mode caret offset).
 - `dupDocIdGroups` — Pure: build the whole-workspace link index from already-parsed docs.
@@ -2221,7 +2224,6 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## self-contained HTML export (C1)
 
 - `embedOpmlIntoHtml` — One file that IS the document AND the app: a copy of this whole page with the
-- `extractEmbeddedOpml`
 - `exportSelfContainedHtml`
 
 # Panels & recognition surfaces
@@ -2663,6 +2665,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `maybeNudgeField`
 - `isLongDecimal` — #1333 (driven panel #7): a division renders at 8 significant figures by default (91.666667), which a teacher
 - `maybeNudgeDecimals`
+- `sayLongDecimalShown` — #1584: the paint's half of the decimals tip. A paint that just put pills on screen calls this; the
 - `maybeAddFieldAffordance` — #1334 (driven panel #7): typing a bare `key: number` (hp: 15, cost: 120) is a beginner reaching for a
 - `maybeNudgeTypedLink` — A hand-typed `[[Name]]` that resolveTypedLinks could NOT turn into a link (no point by that
 - `_autosaveDeferred`

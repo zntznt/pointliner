@@ -373,7 +373,7 @@ running page (`document.documentElement`), empties the rendered/dynamic DOM (`#o
 `#var-panel-list`) so the file is lean and boots fresh, and inlines the current outline
 as **OPML** into the `#pl-embedded-doc` `<script type="application/xml">` **data-island**
 via the pure core `embedOpmlIntoHtml(html, opml)` (regex injection on the serialized
-string — `extractEmbeddedOpml` is its inverse; both Node-testable). The result is one
+string, Node-testable; the reader is the browser's own parser, driven in `tests/browser.mjs`). The result is one
 `.html` file that **is the app and the document**: opening it re-runs the app, and
 `restoreEmbeddedDoc()` (which runs *before* `restoreAutosave` and **wins over local
 autosave** — a shared snapshot must show exactly what was sent) hydrates `root` from the

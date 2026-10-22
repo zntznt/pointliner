@@ -24,6 +24,12 @@
 // fromOpml needs a real DOMParser, absent in Node — its re-parse is covered by the
 // browser verification, not here. DOM-touching functions (render, mkCmdItem, the
 // pill DOM builders) can't run either; source-pin their wiring instead.
+//
+// THE TWO LISTS (#1584). `need` is a claim: these names are pure, so they really run
+// here. The stub below cannot tell a pure core from one that touches the DOM, because
+// it answers every document/window call with itself; tests/test.mjs's census checks the
+// claim by reading the code. A name that is useful to test but touches the DOM goes in
+// `wired` instead, and its tests install their own fakes for what they assert.
 // ---------------------------------------------------------------------------
 
 import { readFileSync } from 'node:fs';
@@ -188,7 +194,6 @@ export function loadCores() {
     'sniffBibtex', 'parseBibtex', 'parseBibEntryBody', 'bibToPoints', 'bibFieldText', 'bibTranslateLatex',
     'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
     'emptyExtremalProp','depthExtremalProp',   // #1449 a quoted-search min/max that matched nothing (identity, not a division)
-    'promoteCellShorthand', 'promoteLoadedShorthand',   // per-cell base promotion (PR C)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
     'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
@@ -261,7 +266,7 @@ export function loadCores() {
     'insertDraftFrom', 'insertDraftMatches',   // UXP-246: the same rule across all 10 insert dialogs
     'tagColorOf', 'propIconOf', 'setTagColor', 'setPropIcon', 'normalizeAppearance', 'isValidTagName',
     'mkRoot', 'mkNode', 'ensureDocId', 'toOpml', 'toMarkdown', 'toPlainText',
-    'workspaceAffordance', 'workspaceFileName', 'firstLineTitle', 'lastAutosaveSavedAt',
+    'workspaceAffordance', 'workspaceFileName', 'firstLineTitle',
     'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
     'docIsBlank', 'connectWriteDecision',       // #839: connect-collision guard cores
     'isEmptyPoint', 'pointHasOwnContent',       // #1580: the one "is this point a placeholder" predicate
@@ -269,12 +274,12 @@ export function loadCores() {
     'unmarkedFilesNote',                        // #845: no-docId files skipped by the folder scan, surfaced in the broken-links report
     'displayName', 'toFileName',                // file-name display/normalize
 
-    'embedOpmlIntoHtml', 'extractEmbeddedOpml',
+    'embedOpmlIntoHtml',   // #1584: its reader is the browser's parser (tests/browser.mjs drives the round trip)
     'parseTable', 'serializeTable', 'stripMd', 'mdToHtml', 'clampColW',
     'orgResolveComp', 'parseOrgRef', 'parseTblfm', 'computeTable', 'extractTblfm', 'stripTblfm',
     'tableDelimCells', 'renderStaticTable', 'starterTableText', 'planBaseConvert', 'planTablePromote', 'findFirstTableRange',
-    'tableBlockEnd', 'splitPastedPoints',
-    'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtApplyAggregate', 'aggKindLabel',
+    'tableBlockEnd', 'parseMLlines',   // #1584: the multi-line paste handlePaste really calls
+    'mtBuildAggFormula', 'mtHasFooter', 'mtColAggKind', 'mtAggregateText', 'aggKindLabel',   // #1584: mtApplyAggregate is its DOM door
     'tblfmGetAssign', 'tblfmSetAssign',
     'mtModelText', 'mtModel', 'mtModelRead', 'isVarBase', 'baseFrozenMarkdown', 'baseRecipeMarkdown', 'baseToStaticText',
     'mtColumnLabel',   // #811: the columns-menu door's per-column label
@@ -295,10 +300,10 @@ export function loadCores() {
     'blankInviteDecision',   // blank-canvas door: the pure show-decision (beginner PR B)
     'mathCompletions','mathFragmentAt','mathFnGroup',
     'searchTokenAt','searchCompletions','oracleCompletions','meterTokenAt','meterCompletions',
-    'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','stashPayloadAsPrev','rekeyPayloadDocId','capturePayloadOf','defaultBraceChoice','tokenLeftOfCaret',
+    'applyBraceFormText','consumeTokenEnd','bodyCompletion','parsePrevStore','rekeyPayloadDocId','capturePayloadOf','defaultBraceChoice','tokenLeftOfCaret',
     'collectPropKeys',
     'colonlessGenerateKeyword','colonlessGenerateAttempt',   // #1501: a generate keyword one colon short of its form
-    'classifyBraceBody','braceAttemptReason','unresolvedRefs','unresolvedNote','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBody','promoteBraceBodyIn','renderVarPill','promoteInlineShorthand','codeSpanRanges','inCodeSpan','reorderInboxList',
+    'classifyBraceBody','braceAttemptReason','unresolvedRefs','unresolvedNote','isQuotedLiteral','braceTypeLabel','oracleParts','collectTags','filterTagCandidates','filterEmojiCandidates','parseVarDecl','varDeclIsPick','promoteBraceBodyIn','renderVarPill','codeSpanRanges','inCodeSpan','reorderInboxList',
     'nameSetSignature','pendingBraceMessage',   // #1357: the retry-promotion gate + its report
     'affordanceDirtyIds',                       // #1281: which rows a commit can change the doors on
     'pillTitleWithMenu',                        // #1373: joining a pill tooltip to the menu tip
@@ -343,7 +348,7 @@ export function loadCores() {
     'stripChordPasses',                          // #1519: which keys a transient strip lets through to the global handler
     'caretKeepPlan',                             // #1521: whether a re-render hands the caret back, and where to
     'rowCursorAnchorId','rowCursorEntryIndex',   // #1522: which row the arrows act from when the remembered id is stale
-    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','parseQBaseCols','mtCellHtml','mtSetColRole','mtSetColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
+    'parseSearchQuery','termMatchesNode','queryMatchesNode','searchHighlightNeedles','searchTermProblems','dateStillTyping','resolveSearchExpr','queryRows','queryParts','countParts','pickFromQuery','queryHits','queryHitsFolder','pickFromQueryFolder','stripQueryTags','rollLabel','queryCountIn','rollParts','inferRowShape','dataPropKeys','buildRow','inferPropType','rowContentTags','rowIsTodo','richestStructuredSibling','blankScaffoldText','blankScaffoldNode','findDeckRecord','deckCardText','queryTableRows','parseQBaseCols','mtCellHtml','mtWriteColRole','mtWriteColFmt','cycleColRole','qbaseColRoles','mtColRoles','inferColRolesFromModel','qbaseColList','qbaseFieldWritable','boardLanes','nextLaneKw','stepColW','calBaseItems','baseInlineView',
     'remapColIndex','reindexTblfmCols','remapNodeColumns','extractTblfm','stripTblfm', // column-op integrity
     'mtSortRows','mtSortOrder','parseQBaseSort', // SV-1/SV-2 sorting
     'effectiveAlign',   // #1475: the alignment a base cell actually gets (menu + renderer share it)
@@ -370,7 +375,6 @@ export function loadCores() {
     'viewDoorHost',   // #1240 phase 4: which node's doors the VIEW hosts
     'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'evictPrevVersions',   // per-doc previous-version store eviction (bounded restore history)
-    'withPrevStoreLock',   // #846: cross-tab prev-store RMW lock (sync fallback pinned here)
     'updatePeers', 'peerHoldsDoc',   // #847: multi-tab presence bookkeeping (pure)
     'calWeekLen','calWeekHeads','calMonthTitle','calDayLabel','calDayShort',   // #527 PR-A: the render-label layer
     'parseCalMonths','parseCalWeek','parseCalEras','calendarToText','auditCalendarSwitch','buildCalendarFromFields','dateFormsHint',   // #527 PR-C: the dialog grammars + the switch audit
@@ -387,7 +391,21 @@ export function loadCores() {
     'splitTopLevel', 'olNum',   // #452 boundary coverage
     'duplicateTitleIds',        // #468 is:duplicate-title
     'resolveTypedLinks',        // PR-δ: hand-typed [[Name]] → [[#id]] on unambiguous match
-    'clipboardWriteVia','writeClipboard','fallbackCopy','copyTextToClipboard','clipboardFailMessage',   // #1585: the one clipboard writer, its DOM fallback, its reporter, and what a refusal says
+    'clipboardWriteVia','clipboardFailMessage',   // #1585: the one clipboard write decision, and what a refusal says
+  ];
+  // #1584: DOM-WIRED, and named as such. Loaded exactly like `need` so tests can reach them, but each
+  // touches document / window / storage / a timer, directly or through what it calls, so it is NOT a
+  // pure core: under the stub above its DOM calls succeed silently. A test of one of these must
+  // install its own fake for the part it asserts (the #1585 clipboard tests do). The pure-core census
+  // in tests/test.mjs holds both lists honest: a `need` name that reaches the DOM fails it, and so
+  // does a name here that no longer does (it belongs back in `need`).
+  const wired = [
+    'lastAutosaveSavedAt',                        // reads the autosave out of localStorage
+    'stashPayloadAsPrev', 'withPrevStoreLock',    // #846: the prev-store write, under navigator.locks
+    'writeClipboard', 'fallbackCopy', 'copyTextToClipboard',   // #1585: the clipboard doors around clipboardWriteVia
+    // the promotion passes say a refused date through promoteBraceBody's flashHint (promoteBraceBodyIn,
+    // the decision itself, is pure and in `need`)
+    'promoteBraceBody', 'promoteInlineShorthand', 'promoteCellShorthand', 'promoteLoadedShorthand',
   ];
   // Two-pass lookup. `function foo(){}` declarations land on the context global, so
   // pass 1 reads them directly. Top-level `const`/`let` arrows (escHtml, escAttr, …) are
@@ -395,7 +413,7 @@ export function loadCores() {
   // evaluated in the same context, so pass 2 evaluates the bare name inside the vm.
   const cores = {};
   const missing = [];
-  for (const name of need) {
+  for (const name of [...need, ...wired]) {
     let v = context[name];
     if (typeof v !== 'function') {
       // Pass 2: reach a lexical const/let binding. Guard the eval with typeof so an
@@ -429,5 +447,6 @@ export function loadCores() {
   };
 
   cores._context = context; // escape hatch for ad-hoc probing
+  cores._pure = need.slice(); cores._wired = wired.slice();   // #1584: the two lists, for the census
   return cores;
 }

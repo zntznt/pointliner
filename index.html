@@ -7197,6 +7197,7 @@ const INLINE_CTL = 'contenteditable="false" tabindex="-1"';
 // inline tokens ([[dice:KEY]] etc.) can resolve. mdToHtml is synchronous, so
 // the globals are safe (no re-entrance).
 function renderContentHTML(node) {
+  _longDecimalShown = null;   // #1584: only a pill THIS paint shows may teach the decimals door
   diceRenderList    = node.dice    || null;
   markovRenderList  = node.markov  || null;
   mathRenderList    = node.math    || null;
@@ -7265,6 +7266,7 @@ function renderContentHTML(node) {
   renderVarMap      = globalVarMap;
   renderPosVarMap   = null;
   cookieNode        = null;
+  sayLongDecimalShown();
   return html;
 }
 
@@ -8476,12 +8478,9 @@ function mdInline(s) {
   // query pills — [[query:KEY]] runs the stored search over the live document
   s = s.replace(/\[\[query:([a-z0-9]+)\]\]/gi, (_, k) =>
     stash(renderQueryPill(k, queryRenderList?.find(q => q.key === k))));
-  // cross-document node links — [[DOCID#TARGETID]] or [[DOCID#TARGETID|label]] (CF-2).
-  // Mutually exclusive with the same-doc form below: this requires >=1 char before '#',
-  // the same-doc form requires none — so neither steals the other and order is irrelevant.
-  s = s.replace(/\[\[([a-z0-9]+)#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, docId, target, label) =>
-    stash(renderCrossLinkPill(docId, target, label)));
-  // node links — [[#TARGETID]] or [[#TARGETID|label]]. #805 (agent-review, UXP-204): the
+  // node links, one pass over the one grammar (linkTokenRe, #1584).
+  // cross-document: [[DOCID#TARGETID]] or [[DOCID#TARGETID|label]] (CF-2).
+  // same-document: [[#TARGETID]] or [[#TARGETID|label]]. #805 (agent-review, UXP-204): the
   // pipe now CARRIES MEANING — [[#id]] (no pipe, label undefined) = a live-TITLE reference
   // (the default every creation door emits); [[#id|]] (pipe, empty label) = the explicit
   // MIRROR/transclusion; [[#id|text]] = a fixed caption. The old `label ?? ''` collapse made
@@ -8489,8 +8488,12 @@ function mdInline(s) {
   // 4a: inside a FOREIGN doc's render (a cross-doc mirror), a bare [[#id]] means a point in
   // THAT doc — route it through the cross-doc pill so it resolves (and navigates) in its own
   // document instead of silently hitting the live doc's ids. _inlineDocId is null otherwise.
-  s = s.replace(/\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi, (_, target, label) =>
-    stash(_inlineDocId ? renderCrossLinkPill(_inlineDocId, target, label) : renderLinkPill(target, label)));
+  // #1584: this was two passes, cross-doc then same-doc, which disagreed with every other reader
+  // on a caption holding the other form: `[[#a|[[d#b]]` rendered a cross-doc pill to b while the
+  // backlinks and the workspace index read one link to a. One pass reads it the way they do.
+  s = s.replace(linkTokenRe(), (_, docId, target, label) =>
+    stash(docId ? renderCrossLinkPill(docId, target, label)
+      : _inlineDocId ? renderCrossLinkPill(_inlineDocId, target, label) : renderLinkPill(target, label)));
   // automatic URL linking for bare http(s) URLs — stash BEFORE emphasis/emoji/hashtag
   // so none of those passes can rewrite the inside of a URL (e.g. #frag or :word:). The URL
   // char classes exclude \x00 so a stashed pill/footnote/code placeholder (\x00N\x00) glued to
@@ -8683,6 +8686,11 @@ let grammarRenderList = null;
 // progress cookie against its tasks. Null outside a node render → cookies stay
 // literal text in any other mdInline caller (breadcrumbs, search, etc.).
 let cookieNode = null;
+// #1584: a long decimal a math pill just showed (#1333), or null. renderMathPill only NOTES it, so
+// the HTML builders (mdInline, mdToHtml, the exports) touch no storage and fire no toast. The paints
+// that put pills on screen clear it first and say it after (sayLongDecimalShown): renderContentHTML,
+// and buildTableWidget with its callers. A preview, an export or the guide never gets to say it.
+let _longDecimalShown = null;
 // withHostScope(node, fn) — run fn with cookieNode set to the host point, restoring whatever was
 // there before (the save/restore idiom the math/estimate dialog previews already use).
 //
@@ -10968,7 +10976,7 @@ function render() {
     if (vp.type === 'base') {
       const wrap = document.createElement('div');
       wrap.className = 'zoom-title zoom-title-base';
-      wrap.appendChild(buildTableWidget(vp, false));
+      wrap.appendChild(buildTableWidget(vp, false)); sayLongDecimalShown();
       container.appendChild(wrap);
     } else {
     const te = document.createElement('div');
@@ -11566,17 +11574,20 @@ function repeatNeedsDate(node) {
 // rollForwardRepeat is the bug coming back, and there is now only one thing to call.
 // Returns true when the point was rescheduled, so a caller can skip a "now hidden" cue: a
 // rescheduled task is not hidden, it is open again.
-function commitTodoDone(node, wasDone) {
+// #1584: `say` is how the roll speaks (every door passes flashHint), so this stays DOM-free and a
+// test can hear exactly what a completion says instead of a stub swallowing it.
+function commitTodoDone(node, wasDone, say) {
   if (!node) return false;
   node.checked = todoDoneFromText(node.text);
-  if (node.checked && rollForwardRepeat(node, wasDone)) {
+  if (node.checked && rollForwardRepeat(node, wasDone, say)) {
     node.checked = todoDoneFromText(node.text);   // re-derive: rollForwardRepeat re-opened it
     return true;
   }
   return false;
 }
-function rollForwardRepeat(node, wasDone) {
+function rollForwardRepeat(node, wasDone, say) {
   if (wasDone || !node || !node.checked) return false;      // only on a fresh not-done → done flip
+  const tell = typeof say === 'function' ? say : () => {};  // #1584: the caller's voice (flashHint)
   const phrase = repeatOf(node);
   if (!phrase) return false;
   const desc = parseRepeat(phrase);
@@ -11590,7 +11601,7 @@ function rollForwardRepeat(node, wasDone) {
     // #1504: it can't advance, and it used to say so nowhere. The completion itself is not silent
     // (the box ticks, the text gains [x]); what was silent is the RECURRENCE quietly ending. Say it
     // once, here, where the failure actually happens -- flashHint also reaches #a11y-live (P3/P4).
-    flashHint('Completed. This repeat has no date to advance from, so it does not come back. Add a due or start date to make it recur.');
+    tell('Completed. This repeat has no date to advance from, so it does not come back. Add a due or start date to make it recur.');
     return false;
   }
   const nextDue = nextOccurrence(desc, base);
@@ -11601,7 +11612,7 @@ function rollForwardRepeat(node, wasDone) {
   reopenTaskText(node);                                      // clear the done marker in node.text
   node.checked = todoDoneFromText(node.text);               // re-derive (now false)
   const when = formatDateConcrete(dueEp != null ? dueEp + delta : startEp + delta);
-  flashHint('⟳ Rescheduled to ' + when + '.');              // flashHint also reaches #a11y-live (P3/P4)
+  tell('⟳ Rescheduled to ' + when + '.');                   // flashHint also reaches #a11y-live (P3/P4)
   return true;
 }
 
@@ -12239,7 +12250,7 @@ function refreshTable(node) {
   const sel = host.contains(document.activeElement)
     ? baseRefocusSelector(baseFocusDescriptor(document.activeElement)) : null;
   const fresh = buildTableWidget(node, isQueryBase(node));
-  host.replaceWith(fresh);
+  host.replaceWith(fresh); sayLongDecimalShown();
   if (sel) fresh.querySelector(sel)?.focus();
   scheduleReconcile();
 }
@@ -12338,10 +12349,11 @@ function aggKindLabel(kind) {
   return { sum:'Sum', avg:'Average', count:'Count', min:'Min', max:'Max' }[kind] || '';
 }
 
-// Apply an aggregate function to colIdx (0-based). Adds/removes the footer row
-// as needed; calls mtRecompute + refreshTable to show computed values.
-function mtApplyAggregate(node, colIdx, fn) {
-  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
+// Pure (#1584): the text a base holds once colIdx (0-based) totals with `fn`. Adds/removes the
+// footer row as needed and rewrites the #+TBLFM line; node is only read. mtApplyAggregate is its
+// DOM door (undo, recompute, repaint, focus, the sentence), so the test of this is the test of
+// what Calculate writes.
+function mtAggregateText(node, colIdx, fn) {
   const col1 = colIdx + 1;
   const tblfm = extractTblfm(node.text);
   const newTblfm = mtBuildAggFormula(tblfm, col1, fn);
@@ -12355,12 +12367,19 @@ function mtApplyAggregate(node, colIdx, fn) {
     // column's total cell so no stale computed value lingers as a literal.
     model.rows[model.rows.length - 1][colIdx] = '';
   }
-  node.text = serializeTable(model) + (newTblfm ? '\n#+TBLFM: ' + newTblfm : '');
+  return serializeTable(model) + (newTblfm ? '\n#+TBLFM: ' + newTblfm : '');
+}
+// Apply an aggregate function to colIdx (0-based); calls mtRecompute + refreshTable to show
+// computed values.
+function mtApplyAggregate(node, colIdx, fn) {
+  pushUndo();   // #1387: destroying or reshaping a base was unrecoverable; Ctrl+Z reached PAST it
+  const label = mtColLabel(mtModel(node), colIdx);   // the header row, which a total never moves
+  node.text = mtAggregateText(node, colIdx, fn);
   markDirty();
   mtRecompute(node);
   refreshTable(node);
   mtFocusCell(node, 0, colIdx);   // #1400: stay on the column you totalled
-  flashHint(baseStructMessage('col-agg', { label: mtColLabel(model, colIdx), n: colIdx + 1,
+  flashHint(baseStructMessage('col-agg', { label, n: colIdx + 1,
     agg: fn === 'none' ? '' : fn[0].toUpperCase() + fn.slice(1) }));
 }
 
@@ -12521,7 +12540,9 @@ function cycleColRole(current, dir = 1) {
   return COL_ROLE_CYCLE[(at + dir + COL_ROLE_CYCLE.length) % COL_ROLE_CYCLE.length];
 }
 
-function mtSetColRole(node, colIdx, role) {
+// Pure (#1584): write one column's role into node.colRole, and nothing else. mtSetColRole is
+// its DOM door (dirty, repaint, the sentence).
+function mtWriteColRole(node, colIdx, role) {
   const nc = mtModel(node).aligns.length;
   // #922: the first explicit set SEEDS the array from the current inference, so promoting one
   // column to explicit mode doesn't drop the other columns' auto-detected roles (nothing shifts
@@ -12531,6 +12552,9 @@ function mtSetColRole(node, colIdx, role) {
   while (arr.length < nc) arr.push(null);
   arr[colIdx] = role;
   node.colRole = arr.every(x => x == null) ? undefined : arr;
+}
+function mtSetColRole(node, colIdx, role) {
+  mtWriteColRole(node, colIdx, role);
   markDirty(); refreshTable(node);
   // #1401: P4 on BOTH doors, for every role. Alt+R flashed its own confirmation and the Column
   // menu said nothing at all, so the confirmation moves here and the keyboard door's duplicate goes.
@@ -12606,10 +12630,16 @@ function mtSetColWidth(node, colIdx, w) {
 // like colW/colRole; an all-null array drops back to undefined so untouched bases
 // serialize clean. Display-only: the cell TEXT is never rewritten (the §3a text-is-truth
 // law), so a non-number cell falls through to its plain render untouched.
-function mtSetColFmt(node, colIdx, f) {
-  if (!node.colFmt) { if (f == null) return; node.colFmt = []; }
+// Pure (#1584): the write alone. False when there was nothing to change (clearing a format that
+// was never set), so the door below can skip the repaint, as it always did.
+function mtWriteColFmt(node, colIdx, f) {
+  if (!node.colFmt) { if (f == null) return false; node.colFmt = []; }
   node.colFmt[colIdx] = f || null;
   if (node.colFmt.every(x => x == null)) node.colFmt = undefined; // all default → drop it
+  return true;
+}
+function mtSetColFmt(node, colIdx, f) {
+  if (!mtWriteColFmt(node, colIdx, f)) return;
   markDirty(); refreshTable(node);
 }
 // Live width during a drag: paint every cell in the column without a rebuild
@@ -14067,6 +14097,7 @@ function buildCalendarWidget(node, model, readOnly) {
 }
 
 function buildTableWidget(node, readOnly) {
+  _longDecimalShown = null;   // #1584: the caller that puts this widget on screen says it (sayLongDecimalShown)
   const model = mtModelRead(node);   // paint-only — never mutated (views receive it read-only too)
   if (node.view?.kind === 'board') return buildBoardWidget(node, model, readOnly || !!node.qbase);
   if (node.view?.kind === 'cards') return buildCardsWidget(node, model, readOnly || !!node.qbase);
@@ -14794,7 +14825,7 @@ function renderRow(r) {
   if (isTable) {
     // The "Edit as markdown" affordance now lives in the base menu (the bullet icon),
     // not as a separate button under the grid.
-    content.appendChild(buildTableWidget(node, !!opts.searchCtx || isQueryBase(node)));
+    content.appendChild(buildTableWidget(node, !!opts.searchCtx || isQueryBase(node))); sayLongDecimalShown();
   } else {
     content.innerHTML = renderContentHTML(node); applyPillTitlePolicy(content);
     // completion cue (#646): if this row's parent owns a COMPUTED clock ([o /M]) and this
@@ -18385,7 +18416,7 @@ function rollLogFirstEntryMessage(homeLabel) {
 // does NOT turn the link broken in the SAME session, because buildIndex leaves the removed node in
 // nodeMap and renderLinkPill asks nodeById. On reload the styling and the "(broken link)" aria-label
 // are correct. That staleness affects every link in the app, not just these.
-// LINK_RE's label is [^\]\n]*, so a ']' or a newline in the source would truncate the token and
+// linkTokenRe's label is [^\]\n]*, so a ']' or a newline in the source would truncate the token and
 // leak raw syntax into the line; both are stripped from the LABEL only. A '|' is safe (the regex
 // takes everything to the closing ']]'), and the id is always uid(), so it never needs escaping.
 // No srcId degrades to the pre-2026-07 line, byte-identical — that is what the no-id pin locks.
@@ -19071,12 +19102,12 @@ function termMatchesNode(term, node, seqs, vars, links,
     if (term.value === 'footnote' && getFnRefs(node.text).some(id => fnIsWritten(root.footnotes, id))) return true;
     // QX-6: link/tag presence. has:link and has:tag are PURE node reads (the deferral
     // over-generalized): a link is any [[#id|..]] or [[docId#id|..]] token in the text
-    // (parseLinkToken's shape, unanchored); a tag is any hashtag sigil in the
+    // (the one link grammar, linkTokenRe, #1584); a tag is any hashtag sigil in the
     // link-blanked text (the same rule the #tag matcher and collectTags use, so state
     // keywords like #TODO count, consistent with the model). has:backlink needs the
     // doc-wide index: is any point linking TO this one (same-document; the cross-doc
     // index is CF-4's, not this filter's).
-    if (term.value === 'link' && /\[\[(?:[a-z0-9]+)?#[a-z0-9]+(?:\|[^\]\n]*)?\]\]/i.test(node.text || '')) return true;
+    if (term.value === 'link' && linkTokenRe('i').test(node.text || '')) return true;
     // (#827 item 3: the sniff requires a letter before any /, mirroring the tag grammar,
     // so a bare "#1" no longer counts as carrying a tag)
     // has:tag is deliberately NOT inherited, unlike a `#tag` term. It answers "does this point
@@ -21040,7 +21071,7 @@ function exitEdit(content, node) {
         render();
       } else {
         content.textContent = '';
-        content.appendChild(buildTableWidget(node, isQueryBase(node)));
+        content.appendChild(buildTableWidget(node, isQueryBase(node))); sayLongDecimalShown();
       }
     } else {
       // User removed the table structure — re-derive type and full re-render.
@@ -21092,7 +21123,7 @@ function exitEdit(content, node) {
   // next render, so say so once (P4). node.type is a derived hint, so gate on todo-ness by text.
   // recurring task completed by typing #DONE / the state-cycle chord: roll forward + re-open (#462).
   // Do this BEFORE the hidden-cue (a rescheduled task isn't hidden) and re-derive checked.
-  commitTodoDone(node, wasDone);   // #1502: one writer, shared with every non-edit door
+  commitTodoDone(node, wasDone, flashHint);   // #1502: one writer, shared with every non-edit door
   if (node.checked) flashHiddenIfDone(node, wasDone);
   // #1507: keep what the prune DROPPED, so the undo entry recorded below can put it back. Restoring
   // the text restores the [[type:key]] token, and prune can only ever delete -- nothing else in the
@@ -21268,12 +21299,15 @@ function handlePaste(e, node, content) {
     }
     // A lone link token pastes its label slot ready for typing: drop the caret
     // right after the | so the user can type a label immediately (empty → live title).
-    const linkOnly = text.match(/^\[\[#[a-z0-9]+\|([^\]\n]*)\]\]$/i);
+    // #1584: asked of parseLinkToken, the one-token reader. Same-doc and piped only, exactly the
+    // set the hand-copied regex here matched; routing the question did not widen the answer.
+    const tok = parseLinkToken(text);
+    const linkOnly = tok && !tok.docId && tok.label !== undefined ? tok : null;
     document.execCommand('insertText', false, text);
     node.text = editableText(content); markDirty();
     if (linkOnly) {
       // caret was left at the end of the inserted token; step back over the label + "]]"
-      const afterPipe = getCaretOffset(content) - linkOnly[1].length - 2;
+      const afterPipe = getCaretOffset(content) - linkOnly.label.length - 2;
       setCaretByOffset(content, afterPipe);
     }
     return;
@@ -21366,8 +21400,8 @@ function handlePaste(e, node, content) {
   }
 }
 
-// Shared GFM table-block detector (the ONE detector — reused by findFirstTableRange,
-// splitPastedPoints and parseMLlines; mirrors mdToHtml's inline detection). Given the
+// Shared GFM table-block detector (the ONE detector, reused by findFirstTableRange
+// and parseMLlines; mirrors mdToHtml's inline detection). Given the
 // line index `i`, returns the EXCLUSIVE end line of a table block that begins exactly at
 // `i` (header + delimiter + body rows + an optional trailing #+TBLFM: line), or -1 when
 // no table starts there. GFM-strict via tableDelimCells, so prose-with-pipes is ignored.
@@ -21381,22 +21415,9 @@ function tableBlockEnd(lines, i) {
   return j;
 }
 
-// Split pasted text into point-strings, grouping each GFM table block into ONE entry so
-// it lands as a single static-table point (PR 1 renders it) instead of one point per row.
-// Every non-table line stays its own entry. Pure; reuses tableBlockEnd. (parseMLlines
-// adds the outline's indentation/list nesting on top of this for real pastes.)
-function splitPastedPoints(text) {
-  const lines = (text || '').split('\n').map(l => l.replace(/\r$/, ''));
-  const out = [];
-  for (let i = 0; i < lines.length; i++) {
-    const end = tableBlockEnd(lines, i);                  // detect with blanks intact (they end a block)
-    if (end !== -1) { out.push(lines.slice(i, end).join('\n')); i = end - 1; continue; }
-    if (lines[i].trim() === '') continue;                 // blank lines aren't points (matches parseMLlines)
-    out.push(lines[i]);
-  }
-  return out;
-}
-
+// The multi-line paste: pasted lines -> a tree of { text, children } points. A GFM table
+// block groups into ONE point (tableBlockEnd); list markers and indentation nest; blank
+// lines are not points. Pure. handlePaste calls it, so its tests pin the paste that ships (#1584).
 function parseMLlines(lines) {
   const result = [];
   const stack = [{ indent:-1, item:{ text:'', children:result } }];
@@ -22555,14 +22576,15 @@ function selectedNodes() {
 // LEAN FLOOR: apply a to-do text-mutator (cycleTodoState / cycleTodoPriority) to every node in a list,
 // in place. Pure over the nodes + mutator, so it's Node-testable. Returns the count actually changed
 // (a mutator is a no-op on a non-todo, or when it produces identical text), so the caller can flash /
-// skip an empty apply. Each node's `checked` derived cache is refreshed. No DOM.
-function applyTodoCycleToNodes(nodes, mutator) {
+// skip an empty apply. Each node's `checked` derived cache is refreshed. No DOM: a repeating
+// point's roll speaks through `say`, which the door passes (#1584).
+function applyTodoCycleToNodes(nodes, mutator, say) {
   let changed = 0;
   for (const n of nodes) {
     const next = mutator(n.text);
     if (next !== n.text) {
       const wasDone = todoDoneFromText(n.text);   // #1502: read BEFORE the text moves
-      n.text = next; commitTodoDone(n, wasDone); changed++;
+      n.text = next; commitTodoDone(n, wasDone, say); changed++;
     }
   }
   return changed;
@@ -22576,7 +22598,7 @@ function bulkCycleTodo(which, dir = 1) {
   if (!nodes.length) return;
   const mutator = which === 'priority' ? (t => cycleTodoPriority(t, dir)) : (t => cycleTodoState(t, dir));
   pushUndo();
-  const n = applyTodoCycleToNodes(nodes, mutator);
+  const n = applyTodoCycleToNodes(nodes, mutator, flashHint);
   if (!n) { flashHint(which === 'priority' ? 'No to-do points in the selection to prioritize.' : 'Cycled no points (selection has no to-dos).'); return; }
   markDirty(); render();
   announce(`${which === 'priority' ? 'Priority' : 'State'} cycled on ${n} point${n === 1 ? '' : 's'}`);
@@ -23772,7 +23794,7 @@ function showTodoPicker(nodeId, anchorEl, targets = null) {
     for (const t of applyList) {
       const wasDone = t.checked;
       t.type = deriveTypeFromText(t.text) || (t.type === 'todo' ? 'ul' : t.type);
-      commitTodoDone(t, wasDone);   // #1502: a repeating point rolls forward here too
+      commitTodoDone(t, wasDone, flashHint);   // #1502: a repeating point rolls forward here too
       if (!wasDone && t.checked && !isVisible(t)) hiddenCount++;   // a rescheduled one is open, so never counted
     }
     // #1411: where the row SITS, read before the render that may remove it (see bpopRestoreFocus).
@@ -27568,7 +27590,7 @@ function duplicateTitleIds(rootNode) {
 
 // Resolve bare typed `[[Title]]` spans (no `#`) against the live document. The `[[` picker
 // writes a canonical `[[#id]]` token; a user who types the target's name by hand instead is
-// left with dead literal text (LINK_RE only matches `#id` tokens). This turns the unambiguous
+// left with dead literal text (the link grammar only matches `#id` tokens). This turns the unambiguous
 // case into the same token the picker would have inserted, at commit time.
 //   - `[[#id]]` tokens are NEVER touched (the inner regex requires the first char to be non-`#`).
 //   - Exactly one point (title OR alias, case-insensitive, excluding `selfId`) answers to the
@@ -27624,7 +27646,6 @@ function filterTagCandidates(tags, prefix) {
 // A link is a [[#TARGETID|label]] token in node.text pointing at another node by id.
 // `label` is only a fallback caption — display resolves the target's LIVE title.
 // Pure over rootNode; cached on _varsVer for the live document (mirrors collectVars).
-const LINK_RE = /\[\[#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
 let _linksCacheVer = -1, _linksCached = null; // doc-cache: collectLinks (see DOC_CACHES)
 regDocCache('collectLinks', { read: () => collectLinks() });
 function collectLinks(rootNode) {
@@ -27640,18 +27661,23 @@ function collectLinks(rootNode) {
   // graph in dated noise, so the log subtree is indexed for IDENTITY (ids, so links INTO it still
   // resolve and are not reported broken) but its own link tokens are not collected.
   const logHome = rollLogHome(rootNode);
+  // #1584: the one link grammar, read whole and the cross-doc tokens skipped (those are the
+  // workspace index's). A same-doc-only regex used to find `[[#x]]` INSIDE the caption of
+  // `[[d#n|[[#x]]`, a backlink to x that the renderer, which reads one cross-doc link, never drew.
+  const re = linkTokenRe();
   function walk(n, inLog) {
     ids.add(n.id);
     if (inLog) { for (const c of n.children) walk(c, true); return; }
     const seen = new Set();
-    let m; LINK_RE.lastIndex = 0;
-    while ((m = LINK_RE.exec(n.text)) !== null) {
-      // m[2] distinguishes the two empty-caption forms that both collapse to label '':
-      //   [[#id]]   → m[2] === undefined → a PLAIN link (renders the target's title)
-      //   [[#id|]]  → m[2] === ''        → a MIRROR (the pipe-with-empty-label transclusion form)
+    let m; re.lastIndex = 0;
+    while ((m = re.exec(n.text)) !== null) {
+      if (m[1]) continue;   // [[docId#…]]: a cross-doc link, not this document's
+      // m[3] distinguishes the two empty-caption forms that both collapse to label '':
+      //   [[#id]]   → m[3] === undefined → a PLAIN link (renders the target's title)
+      //   [[#id|]]  → m[3] === ''        → a MIRROR (the pipe-with-empty-label transclusion form)
       // A non-empty label ([[#id|text]]) is a fixed caption, never a mirror. `mirror` carries
       // the bit `?? ''` would otherwise lose, so the index can tell a transclusion from a plain ref.
-      const target = m[1], label = m[2] ?? '', mirror = m[2] === '';
+      const target = m[2], label = m[3] ?? '', mirror = m[3] === '';
       (outgoing[n.id] ||= []).push({ target, label, mirror });
       if (!seen.has(target)) { seen.add(target); (backlinks[target] ||= []).push(n.id); }
     }
@@ -27703,7 +27729,7 @@ function graphNodeLabel(firstLine, resolveLink, resolveArtifact) {
   // drop block prefixes the same way textForDisplay does (heading #, quote >, task/ol markers)
   t = t.replace(/^\s*(#{1,6}\s+|>\s+|-\s+\[[ xX]\]\s+|\d+\.\s+|[-*+]\s+)/, '');
   // a caption wins; otherwise the target's live title; otherwise (unresolvable) nothing
-  t = t.replace(/\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi,
+  t = t.replace(linkTokenRe(),
     (_, docId, id, cap) => cap || (resolveLink ? (resolveLink(id, docId || '') || '') : ''));
   // strip inline emphasis markers so a bolded title reads plain. Chained longest-first (triple
   // then double then single, like stripInlineMd) so the app's own combined ***bold-italic*** /
@@ -28355,26 +28381,34 @@ function collectBrokenLinks(links, titleOf, wsIndex, ownDocId) {
 }
 
 // ── cross-document link index (CF-1: the workspace-wide link/backlink foundation) ──
-// The same-doc link path above (LINK_RE / collectLinks) is per-document and stays exactly
-// as it is. This is its cross-file analog — a parser plus a pure index builder over MANY
-// already-parsed docs — the foundation CF-2 (the cross-doc token), CF-3 (the picker) and
-// CF-4 (cross-doc backlinks) all read. A cross-doc token carries an optional docId before
-// the '#' ([[docB#nodeId|label]]); a bare [[#nodeId]] targets the doc it is written in.
-// These are index-only: they do NOT replace LINK_RE, mdInline, renderLinkPill or the [[
-// picker, and the workspace index is NOT a _varsVer doc-cache (it spans documents and is
-// rebuilt on filesystem events, not per-edit — see scanWorkspace/refreshWorkspaceIndex).
+// The same-doc link path above (collectLinks) is per-document. This is its cross-file
+// analog: a pure index builder over MANY already-parsed docs, the foundation CF-2 (the
+// cross-doc token), CF-3 (the picker) and CF-4 (cross-doc backlinks) all read. A cross-doc
+// token carries an optional docId before the '#' ([[docB#nodeId|label]]); a bare
+// [[#nodeId]] targets the doc it is written in. The workspace index is NOT a _varsVer
+// doc-cache (it spans documents and is rebuilt on filesystem events, not per-edit; see
+// scanWorkspace/refreshWorkspaceIndex).
 //
-// WLINK_RE: group 1 = optional docId, 2 = nodeId, 3 = optional label. (g+i — reset
-// lastIndex before each scan, the same shared-global discipline collectLinks uses.)
-const WLINK_RE = /\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
+// #1584: THE link-token grammar, written once. Group 1 = optional docId, 2 = nodeId, 3 = the
+// caption, undefined when there is no pipe. That last bit carries meaning (#805): [[#id]] shows
+// the target's live title, [[#id|]] mirrors it, [[#id|text]] is a fixed caption. Every reader in
+// the app builds from this one source: the renderer (mdInline), collectLinks, the has:link
+// filter, graph labels, tokenUnderCaret, parseLinkToken and WLINK_RE below. There used to be
+// seven hand copies, so a grammar fix reached none of them, and the tested copy was one nothing
+// called. A function, not a const, so a reader above this line can never hit the TDZ.
+// Returns a FRESH regex: a reader that scans owns its lastIndex.
+function linkTokenRe(flags) { return new RegExp(/\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/.source, flags || 'gi'); }
+// The shared global instance (g+i: reset lastIndex before each scan).
+const WLINK_RE = linkTokenRe();
 
 // Pure: parse a SINGLE [[...]] token (anchored) -> { docId|null, nodeId, label }, else null.
-// Absent docId => same-doc (null). The CF-2 renderer/promoter reads this per-token; the
-// index builder below walks node text with WLINK_RE directly rather than token-by-token.
+// Absent docId => same-doc (null). `label` is undefined when the token has no pipe, the same
+// contract the renderer and collectLinks read (#805); collapsing it to '' would turn every plain
+// link into a mirror. Read by the paste door, which asks whether the paste IS one link token.
 function parseLinkToken(raw) {
-  const m = /^\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]$/i.exec(String(raw ?? ''));
+  const m = new RegExp('^(?:' + linkTokenRe().source + ')$', 'i').exec(String(raw ?? ''));
   if (!m) return null;
-  return { docId: m[1] || null, nodeId: m[2], label: m[3] ?? '' };
+  return { docId: m[1] || null, nodeId: m[2], label: m[3] };
 }
 
 // Pure: find the link token at or spanning `offset` in `text` (edit-mode caret offset).
@@ -28382,7 +28416,7 @@ function parseLinkToken(raw) {
 // token, null otherwise. Both same-doc [[#id|label]] and cross-doc [[docId#id|label]]
 // are matched. Offset at either boundary (start or end) counts as inside.
 function tokenUnderCaret(text, offset) {
-  const re = /\[\[([a-z0-9]+)?#([a-z0-9]+)(?:\|([^\]\n]*))?\]\]/gi;
+  const re = linkTokenRe();
   let m;
   while ((m = re.exec(text)) !== null) {
     const start = m.index, end = m.index + m[0].length;
@@ -29406,10 +29440,13 @@ function varDistHeadline(rec, vars = null, fmt = null) {   // #1115: fmt threads
 // one of those routes reaches the expander through a different branch below. This is the single
 // chokepoint for every promotion path (blur, base-cell commit, OPML/HTML load, starter insert),
 // so one wrapper fixes them all. See withHostScope.
+// #1584: it is also where a refusal is SAID. promoteBraceBodyIn hands its sentence to `say`, so the
+// core stays DOM-free and a test can hear it; this wrapper is the voice (flashHint), which makes it
+// and the promotion passes that call it DOM-wired (tests/load-cores.mjs lists them as such).
 function promoteBraceBody(node, body) {
-  return withHostScope(node, () => promoteBraceBodyIn(node, body));
+  return withHostScope(node, () => promoteBraceBodyIn(node, body, flashHint));
 }
-function promoteBraceBodyIn(node, body) {
+function promoteBraceBodyIn(node, body, say) {
   body = body.trim();
   if (!body) return null;
   // String literal: {"text"} / {'text'} is fixed prose, not a pill — stays literal (#521). Checked
@@ -29588,7 +29625,7 @@ function promoteBraceBodyIn(node, body) {
   if (dd) {
     if (!dd.val) { setDateProp(node, dd.key, ''); return ''; }        // empty → clear
     if (parseDueDate(dd.val) === null) {                               // invalid → stays literal {date …}
-      flashHint('Not a valid date: ' + dd.val + '. ' + dateFormsHint()); // P4 parity with /due:value (#407)
+      if (typeof say === 'function') say('Not a valid date: ' + dd.val + '. ' + dateFormsHint()); // P4 parity with /due:value (#407)
       return null;
     }
     setDateProp(node, dd.key, dd.val); return '';
@@ -32144,7 +32181,8 @@ function renderMathPill(key, m, opts = {}) {
   // (which still names the full expr for assistive tech), and click-to-edit.
   // #1333: this is the successful-number path (the #ERR / empty branches returned above). If it is showing a
   // long ugly decimal and the author set no format, teach the round-it door once (Guided-only).
-  if (!isBoolPill && !m.fmt) maybeNudgeDecimals(display);
+  // #1584: noted, not fired. A renderer is a string builder; the paint that shows this pill says it.
+  if (!isBoolPill && !m.fmt && !opts.preview && isLongDecimal(display)) _longDecimalShown = display;
   // a generative math pill re-rolls on a body click (the pencil still edits) — the dice/pick-var
   // gesture. Its class drives the re-roll cursor; its tip names the gesture instead of "click to edit".
   const genCls = m.gen ? ' math-gen' : '';
@@ -33314,7 +33352,7 @@ function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedesc
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
 // Always on (UXP-4: a built capability with no front door is non-conformant; the
 // rollout kill switch retired 2026-07-02). The picker is a discoverability layer over
-// the keyboard-first base path: type/paste a [[#id]] token directly (LINK_RE +
+// the keyboard-first base path: type/paste a [[#id]] token directly (linkTokenRe +
 // renderLinkPill), or "Copy link to this node" (bullet menu / Ctrl-Shift-L) and paste,
 // never the only way; the trigger regex excludes `#` so a raw token is never intercepted.
 const lpMenu = document.getElementById('lp-menu');
@@ -34233,7 +34271,7 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
     if (oldPrefix) node.text = node.text.slice(oldPrefix.length);
     node.text = setTodoState(node.text, kw);
     node.type = deriveTypeFromText(node.text) || 'ul';
-    commitTodoDone(node, wasDone);   // #1502: the row cursor must mean what edit mode means
+    commitTodoDone(node, wasDone, flashHint);   // #1502: the row cursor must mean what edit mode means
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
     finishBlockCmd();
@@ -34253,7 +34291,7 @@ function applyBlockCmd(id, nodeId, node, content, opts = {}) {
     // done-flip (the marker it adds is unchecked), so nothing rolls -- but keeping every
     // `checked` re-derive in this function on one path is what lets the census say "no door
     // sets checked itself", which is the assertion that catches the next door drifting out.
-    commitTodoDone(node, node.checked);
+    commitTodoDone(node, node.checked, flashHint);
     const activeEl = document.querySelector(`.node-content[data-id="${nodeId}"][data-editing]`);
     if (activeEl) activeEl.innerHTML = editModeHTML(node);
     const addedTodo = Math.max(0, node.text.length - before.length);   // #1463: caret past the marker
@@ -34521,7 +34559,7 @@ function toggleTaskInNode(node, taskIndex) {
   if (node.checked !== wasDone) {
     // recurring task: completing it rolls the schedule forward and re-opens it (#462) instead
     // of leaving a done copy. Runs before the hidden-cue since a rescheduled task is NOT hidden.
-    if (rollForwardRepeat(node, wasDone)) { render(); return; }
+    if (rollForwardRepeat(node, wasDone, flashHint)) { render(); return; }
     flashHiddenIfDone(node, wasDone); render(); return;
   }
   // done-ness unchanged → targeted repaint of this node (skips a full render)…
@@ -38960,19 +38998,17 @@ function exportNodesToMarkdown(nodes) {
 // ─── self-contained HTML export (C1) ─────────────────────────────────────────
 // One file that IS the document AND the app: a copy of this whole page with the
 // current outline inlined as OPML in the #pl-embedded-doc data-island. Opening it
-// re-runs the app and hydrates from that island (restoreEmbeddedDoc). The two cores
-// below are pure string ops on the data-island (regex, not DOM) so they are Node-
-// testable and live on the real export path. The `<\/script>` escapes keep THIS
-// script tag from closing early; the island's OPML can hold the literal sequence
-// without breaking, but toOpml never emits it (user '<'/'>' become entities).
+// re-runs the app and hydrates from that island (restoreEmbeddedDoc). The writer below
+// is a pure string op on the data-island (regex, not DOM), so it is Node-testable and
+// lives on the real export path. The READER is the browser's own HTML parser:
+// restoreEmbeddedDoc takes the island's textContent, and tests/browser.mjs drives that
+// round trip for real (#1584). The parser ends the island at the first `<\/script`, so the OPML
+// must never hold one, and toOpml never emits it (user '<'/'>' become entities). The
+// `<\/script>` escapes keep THIS script tag from closing early.
 function embedOpmlIntoHtml(html, opml) {
   return html.replace(
     /(<script\b[^>]*\bid=["']pl-embedded-doc["'][^>]*>)[\s\S]*?(<\/script>)/i,
     (_m, open, close) => open + opml + close);
-}
-function extractEmbeddedOpml(html) {
-  const m = html.match(/<script\b[^>]*\bid=["']pl-embedded-doc["'][^>]*>([\s\S]*?)<\/script>/i);
-  return m ? m[1].trim() : '';
 }
 function exportSelfContainedHtml() {
   // #954 follow-through: this file is labelled "Shareable file", so it honors Exclude from export
@@ -39956,7 +39992,7 @@ function countUnwrittenFnRefs(rootNode) {
 // Markdown keeps them now (mdLinkOut), but plain text has no link form and never will, so the
 // honest move is the UXP-237 one: do the lossy thing and report it.
 //
-// WLINK_RE, not LINK_RE. `collectLinks` uses LINK_RE, which is SAME-DOC ONLY, so a count built on
+// WLINK_RE, not collectLinks. `collectLinks` keeps SAME-DOC links only, so a count built on
 // it would silently under-report every cross-doc link - and this counter exists precisely to stop
 // under-reporting. It also counts every sink linkText actually reaches: text, note, properties and
 // footnote text, which the four fixes above just brought into the chain.
@@ -47782,6 +47818,13 @@ function isLongDecimal(s) { const m = /\.(\d{4,})$/.exec(String(s == null ? '' :
 function maybeNudgeDecimals(display) {
   if (!isGuided() || nudgeSeen('decimals')) return;
   if (isLongDecimal(display)) fireNudge('decimals', 'Tip: to round this number, click the pill and set Decimal places (you can also add a $, %, or unit there).');
+}
+// #1584: the paint's half of the decimals tip. A paint that just put pills on screen calls this; the
+// renderer only noted the long decimal (_longDecimalShown). Consumes the note either way.
+function sayLongDecimalShown() {
+  const d = _longDecimalShown;
+  _longDecimalShown = null;
+  if (d) maybeNudgeDecimals(d);
 }
 // #1334 (driven panel #7): typing a bare `key: number` (hp: 15, cost: 120) is a beginner reaching for a
 // trackable field, but a colon in prose is not a property — three personas hit dead text here and could not
