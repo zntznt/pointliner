@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2168 declarations in 158 sections across 17 domains.**
+**2171 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2021,6 +2021,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `hasFSA`
 - `fsaOk` — #1112: hasFSA is PRESENCE. The method exists in profiles that refuse to open the picker,
+- `saveRoute` — #1583: what Save does right now, by capability. A bound file writes back in place with no picker,
+- `currentSaveRoute`
 - `OPML_TYPE`
 - `PICKER_REFUSAL_MS` — #1112: did the picker get REFUSED, or did the user cancel it? The two are indistinguishable by
 - `pickerOutcome`
@@ -2431,6 +2433,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `SS_TITLE` — #1286: lead with the OWNED FILE, not "the browser." The nervous single-file user (Walter) read
 - `saveStatusState` — #1268: read the live save state for the chip. Impure (reads globals); the pure mapping is above.
 - `updateSaveStatus`
+- `fmStatusLine` — The File menu's status line. Pure: it reads the save ROUTE (#1583), so what it promises is what
 - `updateFmStatus`
 - `fmtKey`
 - `openFileMenu`
@@ -2637,7 +2640,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `scheduleAutosave`
 - `writeAutosavePayloadNow` — The debounce body, extracted so the pagehide flush below can run it synchronously.
 - `flushPendingAutosave` — #802 (agent-review, UXP-195): text typed in the debounce window must survive a tab
-- `_backupNudged` — UXP-119: on the weakest durability tier (no File System Access, so no folder auto-write and
+- `_backupNudged` — UXP-119: on the weakest durability tier (no working File System Access, so no folder auto-write and
 - `BACKUP_NUDGE_MIN`
 - `maybeBackupNudge`
 

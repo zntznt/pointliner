@@ -35940,7 +35940,21 @@ const hasFSA = 'showOpenFilePicker' in window;
 // #1112: hasFSA is PRESENCE. The method exists in profiles that refuse to open the picker,
 // so presence is not capability -- the same distinction #1113 drew for OPFS. fsaOk starts
 // optimistic and is cleared the first time a picker is actually refused.
+// #1583: and it must be READ. Until then nothing did, so every gate kept branching on presence and
+// a refusing profile reopened the refused picker on each Save. Anything asking "will the picker open
+// here?" reads fsaOk (Save asks through currentSaveRoute); hasFSA is only for "does the API exist",
+// and a test censuses its reads. Session-scoped like opfsOk, deliberately not persisted: a reload
+// starts optimistic again, so a false refusal costs one session at most and needs no reset control.
 let fsaOk = hasFSA;
+// #1583: what Save does right now, by capability. A bound file writes back in place with no picker,
+// even after a refusal; otherwise Save asks the picker where it opens, else it downloads, which is
+// exactly the no-API tier. Pure, so the status line, the Save row and the backup nudge can ask the
+// same question saveFile acts on instead of each re-deriving it.
+function saveRoute({ bound, fsaOk } = {}) {
+  if (bound) return 'write';
+  return fsaOk ? 'pick' : 'download';
+}
+function currentSaveRoute() { return saveRoute({ bound: !!fileHandle, fsaOk }); }
 const OPML_TYPE = { description:'Outline file', accept:{'text/x-opml':['.opml']} };
 // #1112: did the picker get REFUSED, or did the user cancel it? The two are indistinguishable by
 // error name, and treating a refusal as a cancel is why "Save did nothing at all" for a persona
@@ -35953,9 +35967,10 @@ const OPML_TYPE = { description:'Outline file', accept:{'text/x-opml':['.opml']}
 // could see, reach and dismiss a native dialog is a refusal too.
 //
 // This is a HEURISTIC and the threshold is a judgement call, not a fact. The asymmetry is what
-// justifies it: a false "refused" costs a visible message plus a download that works, while a false
-// "cancelled" is exactly the silence being fixed. 250ms sits 250x above the measured refusal and
-// well under any real dismissal, so both errors are unlikely and the cheap one is the survivor.
+// justifies it: a false "refused" costs a visible message plus a download that works (and, since
+// #1583, Save downloading until a reload), while a false "cancelled" is exactly the silence being
+// fixed. 250ms sits 250x above the measured refusal and well under any real dismissal, so both
+// errors are unlikely and the cheap one is the survivor.
 const PICKER_REFUSAL_MS = 250;
 function pickerOutcome({ errName, elapsedMs } = {}) {
   if (errName !== 'AbortError') return 'refused';
@@ -36183,6 +36198,9 @@ async function openFile() {
     message: 'Your current document has changes not saved to its file. Opening a different one will discard them permanently.',
     confirmLabel: 'Discard', cancelLabel: 'Keep editing',
   })) return;
+  // #1583: presence on purpose, unlike Save. Open has no fallback known to work where the picker is
+  // refused, its refusal message names drag-and-drop (which does), and a retry is how a false
+  // refusal heals.
   if (hasFSA) {
     try {
       const picked = await runPicker(() => window.showOpenFilePicker({ types:[OPML_TYPE] }));
@@ -36209,11 +36227,16 @@ async function openFile() {
 }
 
 async function saveFile() {
-  if (hasFSA) { if (fileHandle) { if (await writeH(fileHandle)) flashHint('Saved “' + displayName(fileName) + '”'); } else await saveAsFile(); }
+  // #1583: branch on what Save can do HERE, not on whether the API exists. After a refusal an unbound
+  // Save goes straight to the download the first refusal already announced, instead of reopening the
+  // refused picker and repeating the error on every press.
+  const route = currentSaveRoute();
+  if (route === 'write') { if (await writeH(fileHandle)) flashHint('Saved “' + displayName(fileName) + '”'); }
+  else if (route === 'pick') await saveAsFile();
   else dlOpml();
 }
 async function saveAsFile() {
-  if (hasFSA) {
+  if (fsaOk) {   // #1583: capability, not presence -- a refused profile downloads, as the no-API tier does
     try {
       const picked = await runPicker(() => window.showSaveFilePicker({
         suggestedName: (fileName==='unsaved' ? 'outline' : fileName.replace(/\.opml$/i,'')) + '.opml',
@@ -36223,7 +36246,7 @@ async function saveAsFile() {
       // (dlOpml is the non-FSA tier's save, three lines below) and say why, instead of the silence
       // that made a persona believe Save was broken.
       if (!picked.ok) {
-        if (picked.outcome === 'refused') { flashError(pickerRefusedMessage('saving', 'Downloading a copy instead.')); dlOpml(); }
+        if (picked.outcome === 'refused') { flashError(pickerRefusedMessage('saving', 'Downloading a copy instead, and Save will keep downloading until you reload.')); dlOpml(); }
         return;   // 'cancelled' stays silent, which is correct for a real dismissal
       }
       const newHandle = picked.value;
@@ -42949,19 +42972,24 @@ function updateSaveStatus() {
   el.setAttribute('aria-label', text + '. ' + tip);
 }
 
-function updateFmStatus() {
-  const status = document.getElementById('fm-status');
-  if (!status) return;
+// The File menu's status line. Pure: it reads the save ROUTE (#1583), so what it promises is what
+// saveFile will do rather than what the API's presence suggests.
+function fmStatusLine({ fileName, route, folder, dirty, saveKey } = {}) {
+  if (fileName === 'unsaved') return 'Autosaved in this browser, not saved to a file';
   // UXP-127: "named but unbound" — a reopened session restored the filename but not the write
   // handle (single-file tier), so we can't save back to disk yet. Don't claim "saved"; point at
   // the Reopen path. Folder-backed docs always have a live handle, so this only hits detached files.
-  const namedButUnbound = hasFSA && fileName !== 'unsaved' && !fileHandle && !workspaceFile;
-  if (fileName === 'unsaved')      status.textContent = 'Autosaved in this browser, not saved to a file';
-  else if (namedButUnbound)        status.textContent = 'Autosaved in this browser. Reopen “' + displayName(fileName) + '” to save back to it';
-  // UXP-152: on the non-FSA tier Ctrl+S downloads a fresh copy (dlOpml), it does not save back to an
-  // opened file, so the status must not claim "saves to file". FSA tiers do save back in place.
-  else if (dirty)                  status.textContent = hasFSA ? ('Unsaved changes. ' + fmtKey('S') + ' saves to file') : ('Unsaved changes. ' + fmtKey('S') + ' downloads a copy');
-  else                             status.textContent = 'All changes saved';
+  // #1583: only where the picker opens. After a refusal "Reopen" would send the user back through it.
+  if (route === 'pick' && !folder) return 'Autosaved in this browser. Reopen “' + displayName(fileName) + '” to save back to it';
+  // UXP-152: where Save downloads a fresh copy (dlOpml) it does not save back to an opened file, so
+  // the status must not claim "saves to file". A bound file does save back in place.
+  if (dirty) return 'Unsaved changes. ' + saveKey + (route === 'download' ? ' downloads a copy' : ' saves to file');
+  return 'All changes saved';
+}
+function updateFmStatus() {
+  const status = document.getElementById('fm-status');
+  if (!status) return;
+  status.textContent = fmStatusLine({ fileName, route: currentSaveRoute(), folder: !!workspaceFile, dirty, saveKey: fmtKey('S') });
 }
 
 const fmtKey = k => (typeof IS_MAC !== 'undefined' && IS_MAC) ? '⌘' + k : 'Ctrl+' + k;
@@ -42986,8 +43014,10 @@ function openFileMenu() {
   // Firefox/Safari can't write back to a file (no File System Access API), so "Save"
   // could only download a fresh copy — a misleading verb there. Hide it; "Save As"
   // (which downloads a copy honestly) remains. Chromium keeps the real Save.
+  // #1583: by route, not presence, so a profile that refused the picker is that same tier, and a
+  // file it still has bound keeps its real Save.
   const saveRow = document.getElementById('btn-save');
-  if (saveRow) saveRow.style.display = hasFSA ? '' : 'none';
+  if (saveRow) saveRow.style.display = currentSaveRoute() === 'download' ? 'none' : '';
   // #1268: the restore safety net is legible BEFORE it is needed. Always show the row; until a snapshot
   // exists it sits disabled with an honest note (reassurance without lying about availability). It only
   // ever hides on the memory-only tier, where there is no durable snapshot ring to roll back to.
@@ -47571,7 +47601,7 @@ function flushPendingAutosave() {
 }
 window.addEventListener('pagehide', flushPendingAutosave);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPendingAutosave(); });
-// UXP-119: on the weakest durability tier (no File System Access, so no folder auto-write and
+// UXP-119: on the weakest durability tier (no working File System Access, so no folder auto-write and
 // "Save" is a plain download), the notes live in this browser only and vanish on clear-site-data.
 // Nudge once per session, after the doc has real content, to download a backup — reusing the soft
 // #storage-warn banner (its "Save to file" button already triggers the download). Session-scoped
@@ -47581,7 +47611,9 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 let _backupNudged = false;
 const BACKUP_NUDGE_MIN = 4000; // chars — a doc with a paragraph or two of real work, not an empty shell
 function maybeBackupNudge(size) {
-  if (_backupNudged || hasFSA || fileHandle || workspaceFile || storageWarnState) return;
+  // #1583: "Save is a plain download" by capability. Reading hasFSA here exempted exactly the users
+  // whose profile refused the picker, whose browser storage is also the likeliest to be wiped.
+  if (_backupNudged || currentSaveRoute() !== 'download' || workspaceFile || storageWarnState) return;
   if (size < BACKUP_NUDGE_MIN) return;
   _backupNudged = true;
   showStorageWarn('soft', 'Your notes live in this browser only. Save to a file to keep a backup you can reopen.');

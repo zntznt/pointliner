@@ -1071,6 +1071,18 @@ apologising. Three mutations guard-proofed - and the first mutation initially re
 because a shell-escaping bug meant it never applied. The harness now asserts the target was found
 before trusting the result, which is the same vacuity class this register keeps recording.
 
+**Follow-up (#1583): the learned capability had no reader.** "`fsaOk` learns capability on a
+refusal, mirroring `opfsOk`" was half true: it was cleared on a refusal and then never read, so
+every gate kept branching on `hasFSA`.
+Driven on a refusing profile: three Saves opened the refused picker three times and showed the error
+three times, the Save row and the "Reopen" status line kept offering the picker, and the UXP-119
+backup nudge stayed off for exactly these users. Now a pure `saveRoute` (write / pick / download)
+decides what Save does, and `saveFile`, the status line, the Save row and the nudge all ask it, so a
+refused profile behaves as the no-API tier: one explanation, then a download on every press. A cancel
+still teaches nothing, and the learned "no" lasts until a reload, like `opfsOk`. A census pins every
+remaining `hasFSA` read as feature detection; Open deliberately still retries, because it has no
+picker-free door known to work where the picker is refused, and its message names drag-and-drop.
+
 ### UXP-257 ✓ An estimate rendered `7.00e+5`, which cannot go in front of a client 🟡 [estimates] (RESOLVED 2026-07-28)
 
 **P4 + P2.** Filed as #1115. The consulting persona named exactly two things standing between the app

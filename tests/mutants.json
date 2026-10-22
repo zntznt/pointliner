@@ -3942,6 +3942,78 @@
       "find": "    if (ok) flashHint(hint);\n    else flashError(fail || clipboardFailMessage());",
       "replace": "    flashHint(hint);",
       "kills": "every copy door says what the clipboard did"
+    },
+    {
+      "id": "fsa-route-reads-presence",
+      "suite": "unit",
+      "why": "#1583: the live save route must be computed from the learned capability; reading presence again is the reported bug at every gate at once",
+      "file": "index.html",
+      "find": "function currentSaveRoute() { return saveRoute({ bound: !!fileHandle, fsaOk }); }",
+      "replace": "function currentSaveRoute() { return saveRoute({ bound: !!fileHandle, fsaOk: hasFSA }); }",
+      "kills": "every save gate READS the learned capability"
+    },
+    {
+      "id": "fsa-save-as-presence",
+      "suite": "unit",
+      "why": "#1583: Save as on a refused profile must download, not reopen the refused picker and repeat the error",
+      "file": "index.html",
+      "find": "  if (fsaOk) {   // #1583: capability, not presence",
+      "replace": "  if (hasFSA) {   // #1583: capability, not presence",
+      "kills": "every save gate READS the learned capability"
+    },
+    {
+      "id": "fsa-save-row-presence",
+      "suite": "unit",
+      "why": "#1583: the File menu's Save row must hide by route, or a refused profile keeps being offered the picker",
+      "file": "index.html",
+      "find": "  if (saveRow) saveRow.style.display = currentSaveRoute() === 'download' ? 'none' : '';",
+      "replace": "  if (saveRow) saveRow.style.display = hasFSA ? '' : 'none';",
+      "kills": "every save gate READS the learned capability"
+    },
+    {
+      "id": "fsa-nudge-presence",
+      "suite": "unit",
+      "why": "#1583: the UXP-119 backup nudge must reach a refused profile, the weakest durability tier",
+      "file": "index.html",
+      "find": "  if (_backupNudged || currentSaveRoute() !== 'download' || workspaceFile || storageWarnState) return;",
+      "replace": "  if (_backupNudged || hasFSA || fileHandle || workspaceFile || storageWarnState) return;",
+      "kills": "census: hasFSA is read only where"
+    },
+    {
+      "id": "fsa-status-presence",
+      "suite": "unit",
+      "why": "#1583: the status line must say what Save will do; a presence route sends a refused profile to Reopen through the refused picker",
+      "file": "index.html",
+      "find": "  status.textContent = fmStatusLine({ fileName, route: currentSaveRoute(), folder: !!workspaceFile, dirty, saveKey: fmtKey('S') });",
+      "replace": "  status.textContent = fmStatusLine({ fileName, route: fileHandle ? 'write' : (hasFSA ? 'pick' : 'download'), folder: !!workspaceFile, dirty, saveKey: fmtKey('S') });",
+      "kills": "every save gate READS the learned capability"
+    },
+    {
+      "id": "fsa-cancel-teaches",
+      "suite": "unit",
+      "why": "#1583: a cancel must not be learned as 'the picker does not work here', or one dismissed dialog turns Save into a download",
+      "file": "index.html",
+      "find": "    if (outcome === 'refused') fsaOk = false;",
+      "replace": "    fsaOk = false;",
+      "kills": "every save gate READS the learned capability"
+    },
+    {
+      "id": "fsa-route-reads-presence-driven",
+      "suite": "browser",
+      "why": "#1583 driven: a route read from presence keeps the Save row, the Reopen line and no nudge on a refused profile. (Reverting saveFile alone is NOT a mutant here: saveAsFile's own fsaOk gate still downloads, so the two gates are each other's backstop.)",
+      "file": "index.html",
+      "find": "function currentSaveRoute() { return saveRoute({ bound: !!fileHandle, fsaOk }); }",
+      "replace": "function currentSaveRoute() { return saveRoute({ bound: !!fileHandle, fsaOk: hasFSA }); }",
+      "kills": "a refused picker is asked once"
+    },
+    {
+      "id": "fsa-refusal-not-learned-driven",
+      "suite": "browser",
+      "why": "#1583 driven: a refusal that teaches nothing reopens the refused picker and repeats the error on every Save",
+      "file": "index.html",
+      "find": "    if (outcome === 'refused') fsaOk = false;",
+      "replace": "    if (outcome === 'refused') {}",
+      "kills": "a refused picker is asked once"
     }
   ]
 }

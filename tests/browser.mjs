@@ -7500,3 +7500,112 @@ test('UXP-336 @action from the inline @ menu inserts a working action instead of
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
+
+// #1583 -- the refusal #1112 learned was never READ. Every save gate branched on hasFSA, which is
+// presence, so in a profile that refuses the picker each Save reopened it, repeated the error and only
+// then downloaded; the Save row and the "Reopen" status line kept offering it; and the UXP-119 backup
+// nudge stayed off for exactly these users. The pickers are FORCED, two ways, before the app loads
+// (hasFSA is read at boot): REFUSED rejects with AbortError at once, which is the measured Chromium
+// refusal, and CANCEL rejects the same way after 600ms, which is a person reaching for Cancel and
+// must teach the app nothing. What the app SAID is read through its own two channels.
+test('#1583 a refused picker is asked once: Save then downloads, the menu stops offering it, and a cancel teaches nothing', { skip: skip() }, async () => {
+  if (!browser) assert.fail(launchErr || 'no browser was launched');
+  const open = async (mode) => {
+    const ctx = await browser.newContext({ acceptDownloads: true });
+    const pg = await ctx.newPage();
+    pageErrors = [];
+    pg.on('pageerror', e => pageErrors.push(String(e).split('\n')[0]));
+    const downloads = [];
+    pg.on('download', d => downloads.push(d.suggestedFilename()));
+    await pg.addInitScript((m) => {
+      window.__pickers = [];
+      const picker = (name) => async () => {
+        window.__pickers.push(name);
+        if (m === 'cancel') await new Promise(r => setTimeout(r, 600));
+        throw new DOMException('The user aborted a request.', 'AbortError');
+      };
+      window.showOpenFilePicker = picker('open');
+      window.showSaveFilePicker = picker('save');
+      window.showDirectoryPicker = picker('folder');
+    }, mode);
+    await pg.goto(APP);
+    await pg.waitForSelector('#outline', { timeout: 10000 });
+    await pg.waitForTimeout(700);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    await pg.evaluate(() => {
+      window.__said = [];
+      const hint = flashHint, err = flashError;
+      window.flashHint = (msg, replay) => { window.__said.push(['hint', msg]); return hint(msg, replay); };
+      window.flashError = (msg) => { window.__said.push(['error', msg]); return err(msg); };
+      // a named document past the backup nudge's threshold, with no file bound
+      adoptDoc(mkRoot(), { fileName: 'Field notes.opml' });
+      root.children = [];
+      for (let i = 0; i < 60; i++) root.children.push(mkNode('Observation ' + i + ': the quick brown fox jumps over the lazy dog, twice.'));
+      buildIndex(root, null); markDirty(); render();
+    });
+    await pg.waitForTimeout(1200);   // the debounced autosave the nudge rides on
+    return { ctx, pg, downloads };
+  };
+  const save = async (pg) => {
+    await pg.evaluate(() => document.activeElement && document.activeElement.blur());
+    await pg.keyboard.press('ControlOrMeta+s');
+    await pg.waitForTimeout(800);
+  };
+  const look = (pg) => pg.evaluate(() => {
+    openFileMenu();
+    const s = {
+      fsaOk, hasFSA,
+      saveRow: document.getElementById('btn-save').style.display,
+      status: document.getElementById('fm-status').textContent,
+      key: fmtKey('S'),
+      nudge: document.getElementById('storage-warn').classList.contains('on')
+        ? document.getElementById('storage-warn-msg').textContent : null,
+    };
+    closeFileMenu();
+    return s;
+  });
+
+  // REFUSED: one picker, one explanation, then the download every time
+  {
+    const { ctx, pg, downloads } = await open('refuse');
+    try {
+      const before = await look(pg);
+      assert.equal(before.hasFSA, true, 'precondition: the API is present, which is the whole trap');
+      assert.equal(before.nudge, null, 'precondition: the picker tier is not nudged before anything is refused');
+      for (let i = 0; i < 3; i++) await save(pg);
+      assert.deepEqual(await pg.evaluate(() => window.__pickers), ['save'],
+        'the refused picker is asked ONCE; every later Save goes straight to the download');
+      const errors = (await pg.evaluate(() => window.__said)).filter(x => x[0] === 'error').map(x => x[1]);
+      assert.equal(errors.length, 1, `one explanation, not one per press: ${JSON.stringify(errors)}`);
+      assert.match(errors[0], /would not open the file picker for saving\. Downloading a copy instead, and Save will keep downloading until you reload\./);
+      assert.equal(downloads.length, 3, 'and every press still saved a copy');
+      await pg.evaluate(() => { root.children[0].text += ' (revised)'; markDirty(); render(); });
+      await pg.waitForTimeout(1300);
+      const after = await look(pg);
+      assert.equal(after.fsaOk, false);
+      assert.equal(after.saveRow, 'none', 'the Save row stops offering the picker, as on the no-API tier');
+      assert.equal(after.status, 'Unsaved changes. ' + after.key + ' downloads a copy',
+        'the status line says what Save will do, and no longer says Reopen');
+      assert.match(after.nudge || '', /Your notes live in this browser only/,
+        'the backup nudge treats a refused profile as the weakest durability tier it is');
+      assert.deepEqual(pageErrors, []);
+    } finally { await ctx.close(); }
+  }
+
+  // CANCEL: a person dismissing the dialog changes nothing
+  {
+    const { ctx, pg, downloads } = await open('cancel');
+    try {
+      for (let i = 0; i < 2; i++) await save(pg);
+      assert.deepEqual(await pg.evaluate(() => window.__pickers), ['save', 'save'], 'a cancel never stops the picker being offered');
+      assert.deepEqual((await pg.evaluate(() => window.__said)).filter(x => x[0] === 'error'), [], 'and a cancel is silent');
+      assert.equal(downloads.length, 0, 'and downloads nothing');
+      const s = await look(pg);
+      assert.equal(s.fsaOk, true);
+      assert.equal(s.saveRow, '', 'the Save row stays');
+      assert.match(s.status, /^Autosaved in this browser\. Reopen “Field notes” to save back to it$/);
+      assert.equal(s.nudge, null);
+      assert.deepEqual(pageErrors, []);
+    } finally { await ctx.close(); }
+  }
+});

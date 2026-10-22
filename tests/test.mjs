@@ -29806,8 +29806,90 @@ test('#1112 every picker routes through the classifier, and Save falls back to t
   }
   assert.match(fnBody(_src, 'saveAsFile'), /outcome === 'refused'[\s\S]{0,160}dlOpml\(\)/,
     'a refused save falls back to the download that already works');
-  assert.match(_src, /let fsaOk = hasFSA;/, 'capability is learned, mirroring opfsOk (#1113)');
-  assert.match(fnBody(_src, 'runPicker'), /fsaOk = false/, 'and cleared when a picker is refused');
+  // The fsaOk pins that lived here proved only that it was ASSIGNED, and nothing read it until
+  // #1583. They moved to the #1583 tests below, which prove the gates read it.
+});
+
+// ── #1583: the refusal is LEARNED, so it must also be USED ──
+// #1112 taught runPicker to clear fsaOk on a refusal and pinned that assignment. Nothing ever read
+// it: every gate still branched on hasFSA, which is PRESENCE. So in a profile that refuses the picker
+// each Save reopened it, repeated the error and only then downloaded (driven: 3 Saves, 3 pickers, 3
+// errors); the Save row and the "Reopen" status line kept offering the refused picker; and the
+// UXP-119 backup nudge stayed off for exactly the users whose browser storage is likeliest to go.
+test('#1583 saveRoute: capability decides what Save does, and a bound file needs no picker', () => {
+  assert.equal(c.saveRoute({ bound: true, fsaOk: true }), 'write');
+  assert.equal(c.saveRoute({ bound: true, fsaOk: false }), 'write',
+    'a file already bound saves back in place after a refusal too: writing to it opens no picker');
+  assert.equal(c.saveRoute({ bound: false, fsaOk: true }), 'pick');
+  assert.equal(c.saveRoute({ bound: false, fsaOk: false }), 'download',
+    'a refused profile is the no-API tier for Save: it downloads, without asking the picker again');
+});
+
+test('#1583 fmStatusLine: the File menu status says what Save will do on this route', () => {
+  const line = (o) => c.fmStatusLine({ fileName: 'Notes.opml', folder: false, dirty: true, saveKey: '⌘S', ...o });
+  // the refused tier, named but unbound: no "Reopen" through a picker that cannot open
+  assert.equal(line({ route: 'download' }), 'Unsaved changes. ⌘S downloads a copy');
+  assert.equal(line({ route: 'download', dirty: false }), 'All changes saved');
+  // the picker tier keeps UXP-127's line, and a bound file keeps "saves to file"
+  assert.equal(line({ route: 'pick' }), 'Autosaved in this browser. Reopen “Notes” to save back to it');
+  assert.equal(line({ route: 'write' }), 'Unsaved changes. ⌘S saves to file');
+  assert.equal(line({ route: 'pick', folder: true }), 'Unsaved changes. ⌘S saves to file',
+    'a folder-backed document is never "named but unbound"');
+  assert.equal(line({ route: 'download', fileName: 'unsaved' }), 'Autosaved in this browser, not saved to a file');
+});
+
+test('#1583 every save gate READS the learned capability, and only a refusal teaches it', () => {
+  // the learning half, from #1112: optimistic start, cleared by a refusal and never by a cancel
+  assert.match(_src, /let fsaOk = hasFSA;/, 'capability starts optimistic, mirroring opfsOk (#1113)');
+  assert.match(fnBody(_src, 'runPicker'), /if \(outcome === 'refused'\) fsaOk = false;/,
+    'cleared by a refusal only: a cancel is classified separately by pickerOutcome and teaches nothing');
+  // the reading half, which had no reader at all
+  assert.match(fnBody(_src, 'currentSaveRoute'), /saveRoute\(\{ bound: !!fileHandle, fsaOk \}\)/,
+    'the live route is computed from fsaOk');
+  const GATES = {
+    saveFile: /const route = currentSaveRoute\(\);[\s\S]*else if \(route === 'pick'\) await saveAsFile\(\);\s*else dlOpml\(\);/,
+    saveAsFile: /if \(fsaOk\) \{/,
+    updateFmStatus: /fmStatusLine\(\{[^}]*route: currentSaveRoute\(\)/,
+    openFileMenu: /saveRow\.style\.display = currentSaveRoute\(\) === 'download' \? 'none' : ''/,
+    maybeBackupNudge: /currentSaveRoute\(\) !== 'download'/,
+  };
+  for (const [fn, re] of nonEmpty(Object.entries(GATES), 'the save gates')) {
+    assert.match(fnBody(_src, fn), re, `${fn} must ask what Save can do here, not whether the API exists`);
+  }
+  // and the first refusal says what every later Save will do, and how to get the picker back
+  assert.match(fnBody(_src, 'saveAsFile'),
+    /pickerRefusedMessage\('saving', 'Downloading a copy instead, and Save will keep downloading until you reload\.'\)/);
+});
+
+test('#1583 census: hasFSA is read only where the question really is "does the API exist"', () => {
+  // Presence vs capability is the third instance of one root cause (hasOPFS #1113, hasFSA #1112).
+  // Each hasFSA read is classified here, so the next one has to be classified too.
+  const reads = (s) => (s.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n').match(/\bhasFSA\b/g) || []).length;
+  const FEATURE_DETECTION = {
+    adoptDoc: 1,         // the remembered last-file handle (IndexedDB) exists only where the API does
+    commitFileName: 2,   // a handle's own move(); holding a handle already proves a picker worked once
+    // DELIBERATE: Open retries after a refusal. Unlike Save it has no picker-free door known to work
+    // where the picker is refused (a profile policy that blocks file dialogs blocks <input type=file>
+    // too), its refusal message names drag-and-drop, which does work, and a retry is how a false
+    // refusal heals.
+    openFile: 1,
+  };
+  const LINES = ["const hasFSA = 'showOpenFilePicker' in window;", 'let fsaOk = hasFSA;',
+    'if (hasFSA) (async function reopenStoredFile() {'];   // boot: fsaOk === hasFSA until a picker runs
+  let allowed = 0;
+  for (const [fn, n] of nonEmpty(Object.entries(FEATURE_DETECTION), 'feature-detection sites')) {
+    assert.equal(reads(fnBody(_src, fn)), n, `${fn} reads hasFSA ${n} time(s)`);
+    allowed += n;
+  }
+  for (const l of nonEmpty(LINES, 'top-level sites')) {
+    assert.equal(_src.split(l).length - 1, 1, `exactly one \`${l}\``);
+    allowed += 1;
+  }
+  assert.equal(reads(_src), allowed,
+    'a new hasFSA read: if it asks whether the picker WORKS here, read fsaOk or currentSaveRoute() instead');
+  for (const fn of ['saveFile', 'saveAsFile', 'updateFmStatus', 'openFileMenu', 'maybeBackupNudge']) {
+    assert.equal(reads(fnBody(_src, fn)), 0, `${fn} is a capability gate and must not read presence`);
+  }
 });
 
 test('#1112 reconnectWorkspace stops swallowing a denied permission', () => {
