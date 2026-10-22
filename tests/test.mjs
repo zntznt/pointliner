@@ -18837,22 +18837,246 @@ test('#1536 the clipboard fallback returns the focus and the caret it borrowed',
     'and WHERE their caret was, as the app’s logical offset -- a DOM Range does not survive the ' +
     'refold that blurring the point triggers');
   assert.match(fn, /setCaretByOffset\(prev, caret\)/, 'and puts it back, not just the focus');
-  // both exits restore, and the throw is the one that matters: this function IS the failure path
-  assert.match(fn, /\} catch \(_\) \{ giveItBack\(\); \}/,
-    'a copy that threw still borrowed the focus, so it still owes it back');
-  // and it restores BEFORE it announces, with the toast still on the success path only: a throw
-  // must not claim "Link copied", which is the one thing the original catch got right
-  const success = between(fn, 'document.body.removeChild(ta);', '} catch');
-  assert.match(success, /giveItBack\(\);[\s\S]*if \(after\) after\(\)/,
-    'the focus comes back, then the copy reports success');
+  // both exits restore, and the throw is the one that matters: this function IS the failure path.
+  // #1585 moved the hand-back OUT of the try, after the catch, so one call covers the copy that
+  // worked, the copy that returned false and the copy that threw (driven in Node below).
+  assert.match(fn, /\} catch \(_\) \{ ok = false; \}[\s\S]*giveItBack\(\);\s*return ok;/,
+    'a copy that threw still borrowed the focus, so it still owes it back, before it reports');
+  // and it announces NOTHING itself any more (#1585): the caller reports, from the answer this
+  // returns, so a refused copy can no longer reach a "Link copied" by falling out of the try
+  assert.doesNotMatch(fn, /flashHint|flashError|after\(\)/,
+    'the fallback returns the truth; reporting it is the door’s job');
 
-  // the census: every door that copies goes through this one fallback, so fixing it fixes them all
+  // the census: every door that copies goes through one writer, so fixing it fixes them all.
+  // (#1585 widened this into a full census of raw clipboard writes; see below.)
   const DOORS = { copyNodeLink: 'Copy link / the keyboard shortcut',
                   copyTextToClipboard: 'copy this text (footnotes, share text)' };
   for (const [door, what] of Object.entries(DOORS)) {
-    assert.match(fnBody(_src, door), /fallbackCopy\(/,
-      `${what} (${door}) must fall back through the shared helper, or it keeps the old defect`);
+    assert.match(fnBody(_src, door), /writeClipboard\(|copyTextToClipboard\(/,
+      `${what} (${door}) must write through the shared helper, or it keeps the old defect`);
   }
+});
+
+// ─── #1585: a copy says what the clipboard actually did ──────────────────────
+// Every copy door claimed success it had not checked. `copySelection` swallowed a rejected write and
+// flashed "Copied 3 points" unconditionally; `fallbackCopy` discarded `execCommand('copy')`'s
+// boolean, which is how that command USUALLY says no (unsupported, disabled, no user activation), so
+// a refused fallback still ran "Link copied", and a throw said nothing at all; the base-cell copy
+// said nothing either way; and Ctrl+X never wrote the system clipboard, so copy and cut disagreed
+// about what "cut" means (P1). The remedy is one writer that answers true/false and one reporter.
+test('#1585 clipboardWriteVia resolves true only when the text really landed', async () => {
+  const api = (outcome) => {
+    const seen = [];
+    return { seen, writeText(t) {
+      seen.push(t);
+      if (outcome === 'throw') throw new Error('TypeError: sync');
+      return outcome === 'ok' ? Promise.resolve() : Promise.reject(new Error('NotAllowedError'));
+    } };
+  };
+  const exec = (answer) => {
+    const f = (t) => { f.seen.push(t); if (answer === 'throw') throw new Error('SecurityError'); return answer; };
+    f.seen = [];
+    return f;
+  };
+  // the API said yes: done, and the fallback is never touched
+  let a = api('ok'), x = exec(true);
+  assert.equal(await c.clipboardWriteVia('hi', a, x), true);
+  assert.deepEqual(a.seen, ['hi']);
+  assert.equal(x.seen.length, 0, 'a write that landed does not also run the fallback');
+  // the API refused and the fallback copied
+  x = exec(true);
+  assert.equal(await c.clipboardWriteVia('hi', api('no'), x), true);
+  assert.deepEqual(x.seen, ['hi'], 'the fallback copies the same text');
+  // THE P4-3 CASE: the API refused and execCommand answered false. This used to report success.
+  assert.equal(await c.clipboardWriteVia('hi', api('no'), exec(false)), false,
+    'execCommand says no by RETURNING false, not by throwing, and that is a failed copy');
+  assert.equal(await c.clipboardWriteVia('hi', api('no'), exec('throw')), false, 'a throwing fallback is a failed copy');
+  assert.equal(await c.clipboardWriteVia('hi', api('no'), exec(undefined)), false,
+    'only an explicit true counts: a fallback that did not say it worked did not work');
+  // the API throws synchronously instead of rejecting (an old engine, a bad receiver)
+  x = exec(true);
+  assert.equal(await c.clipboardWriteVia('hi', api('throw'), x), true);
+  assert.deepEqual(x.seen, ['hi'], 'a synchronous throw falls back exactly like a rejection');
+  // no API at all, or one without writeText: the fallback runs SYNCHRONOUSLY, inside the user's
+  // gesture, which execCommand needs. Measured before the promise is awaited, so a deferred
+  // fallback (outside the gesture) is caught.
+  for (const missing of [undefined, null, {}]) {
+    x = exec(true);
+    const p = c.clipboardWriteVia('hi', missing, x);
+    assert.deepEqual(x.seen, ['hi'], `${JSON.stringify(missing)}: the fallback ran before the promise settled`);
+    assert.equal(await p, true);
+    assert.equal(await c.clipboardWriteVia('hi', missing, exec(false)), false, `${JSON.stringify(missing)}: and false stays false`);
+  }
+  // it never rejects: every caller's `.then` is the whole story
+  for (const [ap, ex] of [[api('no'), exec('throw')], [api('throw'), exec('throw')], [undefined, exec('throw')]]) {
+    await assert.doesNotReject(() => c.clipboardWriteVia('hi', ap, ex));
+  }
+});
+
+// The DOM fallback, driven in Node against a fake document: the textarea, the command's answer, and
+// the focus it borrowed. A source pin could only say the comparison is present; this says it works.
+test('#1585 fallbackCopy reports the execCommand answer and gives focus back on every exit', () => {
+  const ctx = c._context, realDoc = ctx.document;
+  const mkDoc = (answer) => {
+    const log = [];
+    const prev = { isConnected: true, classList: { contains: () => false }, focus() { log.push('focus-back'); } };
+    const body = { kids: [],
+      appendChild(n) { this.kids.push(n); n.parentNode = this; },
+      removeChild(n) { this.kids = this.kids.filter(k => k !== n); n.parentNode = null; } };
+    const doc = { activeElement: prev, body,
+      createElement: () => ({ style: {}, value: '', select() { log.push('select'); } }),
+      execCommand(cmd) {
+        log.push(`exec:${cmd}:${body.kids[0] && body.kids[0].value}`);
+        if (answer === 'throw') throw new Error('SecurityError');
+        return answer;
+      } };
+    return { doc, log, body };
+  };
+  try {
+    for (const [answer, want] of [[true, true], [false, false], ['throw', false]]) {
+      const { doc, log, body } = mkDoc(answer);
+      ctx.document = doc;
+      assert.equal(c.fallbackCopy('[[#abc]]'), want, `execCommand answered ${answer}: the fallback must say ${want}`);
+      assert.ok(log.includes('exec:copy:[[#abc]]'), `${answer}: it copied the text it was given, from the borrowed textarea`);
+      assert.equal(log[log.length - 1], 'focus-back', `${answer}: focus goes back last, on this exit too (#1536)`);
+      assert.equal(body.kids.length, 0, `${answer}: the borrowed textarea is removed, even after a throw`);
+    }
+  } finally { ctx.document = realDoc; }
+});
+
+// The reporter, and the wiring under it: writeClipboard reads the REAL navigator.clipboard and falls
+// back through fallbackCopy, and copyTextToClipboard says the hint only on a landed write.
+test('#1585 copyTextToClipboard says the hint only when the write landed, and the door’s failure otherwise', async () => {
+  const ctx = c._context;
+  const saved = { navigator: ctx.navigator, document: ctx.document, flashHint: ctx.flashHint, flashError: ctx.flashError };
+  const said = [];
+  const execDoc = (answer) => ({ activeElement: null,
+    body: { appendChild() {}, removeChild() {} },
+    createElement: () => ({ style: {}, select() {}, get parentNode() { return null; } }),
+    execCommand: () => answer });
+  try {
+    ctx.flashHint = (m) => said.push(['hint', m]);
+    ctx.flashError = (m) => said.push(['error', m]);
+    const run = async (clipboard, answer) => {
+      said.length = 0;
+      ctx.navigator = { clipboard };
+      ctx.document = execDoc(answer);
+      const ok = await c.copyTextToClipboard('[[#abc]]', 'Link copied', 'FAIL SENTENCE');
+      return { ok, said: said.slice() };
+    };
+    const landed = await run({ writeText: () => Promise.resolve() }, false);
+    assert.deepEqual(landed, { ok: true, said: [['hint', 'Link copied']] }, 'a landed write says the hint, and only that');
+    const refused = await run({ writeText: () => Promise.reject(new Error('NotAllowedError')) }, false);
+    assert.deepEqual(refused, { ok: false, said: [['error', 'FAIL SENTENCE']] },
+      'API refused AND execCommand said false: the error channel carries the door’s own sentence, and no success');
+    const rescued = await run({ writeText: () => Promise.reject(new Error('NotAllowedError')) }, true);
+    assert.deepEqual(rescued, { ok: true, said: [['hint', 'Link copied']] }, 'a fallback that worked is a success');
+    const noApi = await run(undefined, false);
+    assert.deepEqual(noApi, { ok: false, said: [['error', 'FAIL SENTENCE']] }, 'no clipboard API and a refused fallback is a failure');
+    // the plain writer, with no reporting of its own, answers the same question
+    ctx.navigator = { clipboard: undefined }; ctx.document = execDoc(true);
+    assert.equal(await c.writeClipboard('x'), true, 'writeClipboard falls back through fallbackCopy');
+    ctx.document = execDoc(false);
+    assert.equal(await c.writeClipboard('x'), false);
+  } finally { Object.assign(ctx, saved); }
+});
+
+test('#1585 every clipboard door has its own failure sentence, and each names a way forward', () => {
+  const DOORS = ['link', 'page', 'footnote', 'table', 'cells', 'copy', 'cut'];
+  const msgs = DOORS.map(d => c.clipboardFailMessage(d, 3, '⌘'));
+  assert.equal(new Set(msgs).size, DOORS.length, 'one failure, one sentence (#1500): no two doors share one');
+  for (const [i, m] of msgs.entries()) {
+    assert.match(m, /the browser blocked the clipboard/i, `${DOORS[i]}: it names the cause`);
+    assert.ok(!m.includes('\u2014'), `${DOORS[i]}: no em dash in user copy`);
+    assert.match(m, /\.$/, `${DOORS[i]}: a sentence, not a fragment`);
+    assert.doesNotMatch(m, /\bnode\b|\bitem\b|\bwidget\b/i, `${DOORS[i]}: the user-facing vocabulary (point, pill)`);
+    // the next step is a SENTENCE OF ITS OWN after the cause, never just the cause
+    assert.ok(m.split('. ').length >= 2, `${DOORS[i]}: it says what to do next, not only what went wrong`);
+  }
+  // the point doors say what STILL works: the count, in-app paste, and (for cut) undo
+  const copy3 = c.clipboardFailMessage('copy', 3, '⌘'), cut3 = c.clipboardFailMessage('cut', 3, 'Ctrl');
+  assert.match(copy3, /^Copied 3 points for pasting inside Pointliner only\./);
+  assert.match(copy3, /⌘\+V/);
+  assert.match(cut3, /^Cut 3 points for pasting inside Pointliner only\./);
+  assert.match(cut3, /Ctrl\+V/, 'the in-app paste that still holds the cut points');
+  assert.match(cut3, /Ctrl\+Z to undo/, 'and the undo that puts them back');
+  assert.match(c.clipboardFailMessage('copy', 1, '⌘'), /^Copied 1 point for pasting.*paste it here/,
+    'one point is "it", never "1 points" or "them"');
+  assert.match(c.clipboardFailMessage('cut', 1, '⌘'), /^Cut 1 point for pasting.*paste it here/);
+  // the link doors name what they could not copy, and do not borrow each other's remedy
+  assert.match(c.clipboardFailMessage('link'), /the link was not copied.*type \[\[/);
+  assert.match(c.clipboardFailMessage('page'), /address bar/);
+  assert.match(c.clipboardFailMessage('footnote'), /Cite footnote/);
+  assert.match(c.clipboardFailMessage('table'), /Export \.md/);
+  // an unknown door still fails out loud rather than returning nothing
+  assert.match(c.clipboardFailMessage('something-new'), /the browser blocked the clipboard/i);
+});
+
+// THE CENSUS (UXP-302..306: check the siblings). The family is enumerable from the source, so the
+// next door that writes the clipboard raw fails here instead of shipping the old false success:
+//   - `navigator.clipboard` is read in exactly one place, writeClipboard
+//   - `execCommand('copy'|'cut')` runs in exactly one place, fallbackCopy
+//   - `.writeText(` is called in exactly one place, the pure clipboardWriteVia
+//   - nothing uses the rich clipboard (`clipboard.write(` / ClipboardItem) at all
+//   - every reported copy carries its door's failure sentence, and every sentence has a door
+test('#1585 census: every clipboard write goes through writeClipboard, and every door reports failure', () => {
+  // comment lines are prose about the API, not calls to it
+  const code = (s) => s.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const app = code(_src);
+  const n = (hay, re) => (hay.match(re) || []).length;
+  const ONLY_IN = [
+    [/navigator\.clipboard/g, 'writeClipboard', 'reads navigator.clipboard'],
+    [/execCommand\(\s*['"](?:copy|cut)['"]/g, 'fallbackCopy', 'runs execCommand copy/cut'],
+    [/\.writeText\(/g, 'clipboardWriteVia', 'calls writeText'],
+  ];
+  for (const [re, home, what] of ONLY_IN) {
+    const inHome = n(code(fnBody(_src, home)), re);
+    assert.ok(inHome >= 1, `${home} must itself ${what}, or this census is matching nothing`);
+    assert.equal(n(app, re), inHome,
+      `only ${home} ${what}; a door that does it directly skips the true/false answer and can claim a copy that never happened`);
+  }
+  assert.equal(n(app, /clipboard\??\.write\(|ClipboardItem/g), 0, 'a rich-clipboard write would bypass the census; route it through writeClipboard first');
+
+  // writeClipboard has exactly two callers: the reporter, and cut (which reports through
+  // deleteSelected on success and its own sentence on failure)
+  const writers = n(app, /\bwriteClipboard\(/g) - 1;   // minus the declaration
+  assert.equal(writers, n(code(fnBody(_src, 'copyTextToClipboard')), /\bwriteClipboard\(/g)
+    + n(code(fnBody(_src, 'cutSelection')), /\bwriteClipboard\(/g),
+    'every other door reports through copyTextToClipboard, which cannot say success without a landed write');
+
+  // every reported copy names its door's failure sentence...
+  // to the end of the STATEMENT, not the line: a long call wraps (the page-link door does)
+  const calls = nonEmpty([...app.matchAll(/(?<!function )\bcopyTextToClipboard\(([^;]*)/g)].map(m => m[1]), 'copyTextToClipboard call sites');
+  assert.ok(calls.length >= 8, `found ${calls.length} copy doors; the link, page link, footnote, two Copy as Markdown, Copy with formulas, points and cells doors are 8`);
+  const used = new Set();
+  for (const args of calls) {
+    const m = /clipboardFailMessage\('([\w-]+)'/.exec(args);
+    assert.ok(m, `a copy door without its failure sentence: copyTextToClipboard(${args.slice(0, 80)}`);
+    used.add(m[1]);
+  }
+  // ...and every sentence has a door (cut reports through writeClipboard, above)
+  const cutBody = fnBody(_src, 'cutSelection');
+  if (/flashError\(clipboardFailMessage\('cut'/.test(cutBody)) used.add('cut');
+  const sentences = nonEmpty([...fnBody(_src, 'clipboardFailMessage').matchAll(/case '([\w-]+)':/g)].map(m => m[1]), 'clipboardFailMessage doors');
+  assert.deepEqual([...used].sort(), [...sentences].sort(), 'each failure sentence is used by its door, and no door names a sentence that does not exist');
+});
+
+// Cut is the data-safety case. The points must be recoverable however the system write ends:
+// held for in-app paste BEFORE they are removed, the write started inside the gesture, and a
+// refused write said out loud with the two ways back.
+test('#1585 cut holds the points before it removes them, and a refused write says how to get them back', () => {
+  const cut = fnBody(_src, 'cutSelection');
+  const held = nonEmptyIdx(cut, 'nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };');
+  const wrote = nonEmptyIdx(cut, 'writeClipboard(serializeNodesToText(tops))');
+  const removed = nonEmptyIdx(cut, "deleteSelected('Cut')");
+  assert.ok(held < removed, 'the in-app copy exists before a single point is removed');
+  assert.ok(wrote < removed, 'the system write starts inside the gesture, before the re-render');
+  assert.match(cut, /if \(!ok\) flashError\(clipboardFailMessage\('cut', count, MOD\)\)/, 'a refused write is an error, with the ways back');
+  // and the chord calls it: the inline body that never wrote the system clipboard is gone
+  const chord = between(_src, "if (ctrl && e.key==='x' && selectedIds.size > 0) {", '}');
+  assert.match(chord, /cutSelection\(\)/, 'Ctrl+X cuts through cutSelection');
+  // copy and cut write the SAME text, so a paste elsewhere gets the same thing either way (P1)
+  assert.match(fnBody(_src, 'copySelection'), /copyTextToClipboard\(serializeNodesToText\(tops\)/);
 });
 
 // ─── #1504: a repeat with nothing to advance from ────────────────────────────

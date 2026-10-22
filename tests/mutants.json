@@ -1194,8 +1194,8 @@
       "suite": "browser",
       "why": "the reported defect: removing the borrowed textarea leaves focus on <body>, and in a contenteditable outliner that is the caret gone",
       "file": "index.html",
-      "find": "    giveItBack();\n    if (after) after();   // still only on success: a throw must not claim \"Link copied\"",
-      "replace": "    if (after) after();",
+      "find": "  giveItBack();\n  return ok;",
+      "replace": "  return ok;",
       "kills": "a copy that falls back to execCommand gives the caret back"
     },
     {
@@ -1212,8 +1212,8 @@
       "suite": "unit",
       "why": "this function IS the failure path, so the throw exit is the one that must give focus back",
       "file": "index.html",
-      "find": "  } catch (_) { giveItBack(); }",
-      "replace": "  } catch (_) {}",
+      "find": "  } catch (_) { ok = false; }",
+      "replace": "  } catch (_) { return false; }",
       "kills": "the clipboard fallback returns the focus and the caret it borrowed"
     },
     {
@@ -3888,6 +3888,60 @@
       "find": "if (Array.isArray(a)) n.colW = a;",
       "replace": "if (Array.isArray(a)) n.colW = a.filter(x => x != null);",
       "kills": "#1582 census: every document and point field toOpml saves"
+    },
+    {
+      "id": "clipboard-copy-raw-write",
+      "suite": "unit",
+      "why": "#1585, the reported defect: copySelection wrote the clipboard raw, swallowed the rejection and flashed success regardless. The census must see a door that bypasses writeClipboard",
+      "file": "index.html",
+      "find": "  copyTextToClipboard(serializeNodesToText(tops), `Copied ${ptsLabel(count)}`, clipboardFailMessage('copy', count, MOD));",
+      "replace": "  navigator.clipboard?.writeText(serializeNodesToText(tops)).catch(() => {}); flashHint(`Copied ${ptsLabel(count)}`);",
+      "kills": "census: every clipboard write goes through writeClipboard"
+    },
+    {
+      "id": "clipboard-fallback-ignores-answer",
+      "suite": "unit",
+      "why": "#1585 P4-3: execCommand says no by RETURNING false; discarding that value is how a refused fallback claimed \"Link copied\"",
+      "file": "index.html",
+      "find": "    ok = document.execCommand('copy') === true;",
+      "replace": "    document.execCommand('copy'); ok = true;",
+      "kills": "fallbackCopy reports the execCommand answer"
+    },
+    {
+      "id": "clipboard-reporter-silent-failure",
+      "suite": "unit",
+      "why": "#1585: the reporter that says the hint on success must also say the door's sentence on failure, or a refused copy is silent",
+      "file": "index.html",
+      "find": "    else flashError(fail || clipboardFailMessage());\n",
+      "replace": "",
+      "kills": "copyTextToClipboard says the hint only when the write landed"
+    },
+    {
+      "id": "clipboard-cut-drops-inapp-copy",
+      "suite": "unit",
+      "why": "#1585 data safety: the cut points must be held for an in-app paste before anything is removed, whatever the system write does",
+      "file": "index.html",
+      "find": "  nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };\n  const count = tops.reduce((n, t) => n + countPoints(t), 0);\n  const wrote = writeClipboard(",
+      "replace": "  const count = tops.reduce((n, t) => n + countPoints(t), 0);\n  const wrote = writeClipboard(",
+      "kills": "cut holds the points before it removes them"
+    },
+    {
+      "id": "clipboard-cut-silent-failure",
+      "suite": "unit",
+      "why": "#1585: a cut whose system write was refused must say the points paste inside Pointliner only, and how to undo",
+      "file": "index.html",
+      "find": "  wrote.then(ok => { if (!ok) flashError(clipboardFailMessage('cut', count, MOD)); });",
+      "replace": "  wrote.then(() => {});",
+      "kills": "cut holds the points before it removes them"
+    },
+    {
+      "id": "clipboard-reporter-claims-success-driven",
+      "suite": "browser",
+      "why": "#1585 driven: a reporter that says the hint whatever the write did is the reported false success, at every door at once",
+      "file": "index.html",
+      "find": "    if (ok) flashHint(hint);\n    else flashError(fail || clipboardFailMessage());",
+      "replace": "    flashHint(hint);",
+      "kills": "every copy door says what the clipboard did"
     }
   ]
 }

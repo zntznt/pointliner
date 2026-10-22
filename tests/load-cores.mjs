@@ -385,6 +385,7 @@ export function loadCores() {
     'splitTopLevel', 'olNum',   // #452 boundary coverage
     'duplicateTitleIds',        // #468 is:duplicate-title
     'resolveTypedLinks',        // PR-δ: hand-typed [[Name]] → [[#id]] on unambiguous match
+    'clipboardWriteVia','writeClipboard','fallbackCopy','copyTextToClipboard','clipboardFailMessage',   // #1585: the one clipboard writer, its DOM fallback, its reporter, and what a refusal says
   ];
   // Two-pass lookup. `function foo(){}` declarations land on the context global, so
   // pass 1 reads them directly. Top-level `const`/`let` arrows (escHtml, escAttr, …) are
