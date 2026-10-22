@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2172 declarations in 158 sections across 17 domains.**
+**2175 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1159,6 +1159,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `EMPTY_STUB_KEYWORDS` — The #1213 stub guard consumes an empty-bodied keyword pill ({= }, {roll: }, {count: }…) rather
 - `EMPTY_STUB_RE` — #1538: the family names join the PREDICATE (an empty {deck: } vanishes like {shuffle: } and says
 - `braceBodyIsEmptyStub` — Pure. The single source of truth for "promotion will consume this body to nothing"; promoteBraceBodyIn
+- `NAME_COMMIT_KEYWORDS` — #1591: the keywords that take a NAME ({rule tavern: …}). A space commits these; a colon commits every
+- `KEYWORD_COMMIT_RE` — An EMPTY tail is never matched: that body belongs to the stub guard above, which consumes it.
+- `keywordCommitted` — #1591: did this body COMMIT to a reserved keyword? Both walks ask it immediately before their
 - `EMPTY_STUB_FORM` — Each keyword's own form, matching guide/pill-syntax-reference.md. `=` is keyed by its symbol
 - `emptyStubAnnounce` — The sentence for an empty stub, or null if this body is not one. Pure; no DOM.
 - `braceAttemptAnnounce`

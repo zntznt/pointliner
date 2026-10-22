@@ -36803,6 +36803,133 @@ test('#1538 census: a word the cue tables teach through another keyword is a reg
   }
 });
 
+// ─── #1591: a keyword whose tail its parser rejects stays text, as its cue already says ─────────
+// {oracle: a | b | c}, {markov: a | b} and {meter: a | b} announced "It stays plain text" and then
+// became a pill anyway, showing the literal first alternative ("meter: a"). classifyBraceBody called
+// them attempts; promoteBraceBodyIn had no keyword return ahead of its alternation arm. That is the
+// #1359 split again: two walks in two orders, one body read two ways, and no pin spans the moment the
+// cue is spoken and the moment the pill is made. Enumerating the family found the same split on
+// keywords the report did not name, and a silent pill reading "rule: a" on the colon form of the
+// three keywords that take a name.
+const mk1591 = () => ({ text: '', props: [], grammar: [], math: [], query: [], dice: [], est: [], vars: [], markov: [], seq: [] });
+const records1591 = (n) => ['grammar', 'math', 'query', 'dice', 'est', 'vars', 'markov', 'seq'].reduce((s, k) => s + (n[k] || []).length, 0);
+test('#1591 a reserved keyword with a tail its parser rejects stays text, never a pill reading "meter: a"', () => {
+  const cases = [
+    // the reported three, in the shapes the alternation arm used to claim
+    ['oracle', 'oracle: a | b | c'], ['oracle', 'oracle: likely | b'], ['oracle', 'Oracle : a | b'],
+    ['markov', 'markov: a | b'], ['markov', 'markov: a, b | c'],
+    ['meter', 'meter: a | b'], ['meter', 'meter: hp/hpmax | b'],
+    // found by the census: the same split, on keywords nobody reported
+    ['shuffle', 'shuffle: | |'], ['cycle', 'cycle: | |'], ['once', 'once: | |'], ['stopping', 'stopping: | |'],
+    ['rule', 'rule : a | b'], ['rule', 'rule x y: a | b'], ['rule', 'rule of thumb | rule of law'],
+    ['prop', 'prop : a | b'], ['prop', 'prop due: a | b'],
+    // and the colon form of the three keywords that take a name, which was a silent coin flip
+    ['seq', 'seq: a | b'], ['rule', 'rule: a | b | c'], ['prop', 'prop: a | b'], ['seq', 'seq: draft'], ['rule', 'rule: be kind'],
+  ];
+  for (const [kw, body] of cases) {
+    const n = mk1591();
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'invalid', `{${body}} is an attempt at ${kw}`);
+    assert.equal(c.promoteBraceBody(n, body), null, `{${body}} stays text, as its cue says`);
+    assert.equal(records1591(n), 0, `{${body}} leaves no record behind`);
+    const why = c.braceAttemptReason(body, {}, {});
+    assert.ok(why.toLowerCase().includes(`{${kw}`), `{${body}} is taught its own form, not a neighbour's (got: ${why})`);
+    assert.doesNotMatch(why, /could not be created/, `{${body}} gets a specific cue, not the generic one`);
+    assert.equal(c.braceAttemptAnnounce(body, {}, {}), why + ' It stays plain text.', `{${body}} says what really happens`);
+    assert.ok(!/—/.test(why) && !/\bnode\b/.test(why), 'AP punctuation, and "point" in user copy');
+  }
+  // The deck modes each keep their own sentence (#1505). This arm sent all four to {shuffle: …}, which
+  // was unreachable for cycle, once and stopping until the classifier could call them attempts.
+  const modes = ['shuffle', 'cycle', 'once', 'stopping'].map(m => c.braceAttemptReason(`${m}: | |`, {}, {}));
+  assert.equal(new Set(modes).size, modes.length, 'no two deck modes share a sentence');
+});
+
+test('#1591 the valid forms beside the fix keep working, and {name: a | b} keeps its UXP-289 behaviour', () => {
+  const promotes = (body, re, why) => {
+    const n = mk1591();
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'artifact', `{${body}} is a real pill`);
+    assert.match(c.promoteBraceBody(n, body) || '', re, why || `{${body}} still promotes`);
+    return n;
+  };
+  for (const body of ['oracle: likely', 'oracle: 70 + swing', 'shuffle: a | b | c', 'cycle: a | b | c', 'once: a | b | c',
+                      'stopping: a | b | c', 'shuffle 3: a | b | c', 'roll: #a | #b']) promotes(body, /^\[\[grammar:/);
+  promotes('markov: a→b, b→a', /^\[\[markov:/);
+  promotes('count: is:todo | is:done', /^\[\[query:/);
+  promotes('query: a | b', /^\[\[query:/);
+  promotes('seq status: active | done', /^\[\[seq:/);
+  // a rule or a variable NAMED after a keyword is still a rule or a variable
+  assert.equal(promotes('rule meter: a | b', /^\[\[grammar:/).grammar[0].origin, 'meter', '{rule meter: …} registers a rule named meter');
+  assert.equal(promotes('rule oracle: a | b', /^\[\[grammar:/).grammar[0].origin, 'oracle');
+  assert.equal(promotes('meter := a | b', /^\[\[var:/).vars[0].name, 'meter', '{meter := …} declares a variable named meter');
+  // A meter is a text recipe: it stays in the text and renders live. One whose expression carries a `|`
+  // inside its parentheses was the same split in reverse, previewed as a meter and frozen into a pick.
+  for (const body of ['meter: hp/hpmax', 'meter: 8/12', 'meter: hp/5 hearts', 'meter: count(#a | #b)/10']) {
+    const n = mk1591();
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'artifact', `{${body}} is a real meter`);
+    assert.equal(c.promoteBraceBody(n, body), null, `{${body}} keeps its recipe in the text`);
+    assert.equal(records1591(n), 0, `{${body}} is never frozen into a grammar record`);
+  }
+  // UXP-289 leaves the general {name: a | b} open, and a keyword without its colon is ordinary prose.
+  // `{cycle 3: …}` falls through on purpose (seqParts: a counted cycle has no agreed meaning yet).
+  for (const body of ['loot: a | b', 'done: finished | still going', 'once upon a time | twice', 'count me in | count me out',
+                      'deck A | deck B', 'cycle 3: a | b', 'propeller: a | b', 'sequence: a | b', 'ruler: a | b']) {
+    promotes(body, /^\[\[grammar:/, `{${body}} keeps its current behaviour`);
+    assert.equal(c.keywordCommitted(body), false, `{${body}} did not commit to a keyword`);
+  }
+  // Empty stubs are #1505's and are untouched: still consumed, and the silent five still classify as prose.
+  for (const kw of ['seq', 'rule', 'cycle', 'once', 'stopping']) {
+    assert.equal(c.classifyBraceBody(`${kw}: `, {}, {}), 'literal', `{${kw}: } classifies as it did`);
+    assert.equal(c.promoteBraceBody(mk1591(), `${kw}: `), '', `{${kw}: } is still consumed`);
+    assert.equal(c.keywordCommitted(`${kw}: `), false, 'an empty tail is the stub guard\'s, not this one');
+  }
+  for (const body of ['oracle: a | b', 'meter: x', 'seq: x', 'rule of thumb', 'prop x', 'cycle: | |', 'Markov : a']) {
+    assert.equal(c.keywordCommitted(body), true, `{${body}} committed to its keyword`);
+  }
+});
+
+// CENSUS RATCHET. The family is read from every place the source keeps a keyword: the published
+// keyword list (#1213/#1215), the colon-commit table (#1501), the family names (#1538), and the
+// keyword-commit sniffs classifyBraceBody itself carries (`/^kw\s/` and `/^kw\s*:/`). A keyword that
+// joins any of them joins this census, so the next one cannot say "It stays plain text" and then make
+// a pill, or preview as a pill and then stay text.
+const COMMIT_SNIFFS = [...fnBody(_src, 'classifyBraceBody')
+  .matchAll(/\/\^(?:\(\?:)?([a-z]+(?:\|[a-z]+)*)\)?\\s(\*:)?\/i\.test\(body\)/g)]
+  .flatMap(m => m[1].split('|').map(kw => ({ kw, colon: !!m[2] })));
+test('#1591 census: for every reserved keyword, what the cue says about {kw: a | b | c} is what promotion does', () => {
+  const sniffs = nonEmpty(COMMIT_SNIFFS, "classifyBraceBody's keyword-commit sniffs");
+  const hints = [...between(_src, 'const GENERATE_FORM_HINT = {', '};').matchAll(/^\s*([a-z]+):/gm)].map(m => m[1]);
+  const family = [...new Set([...nonEmpty(STUB_KEYWORDS, 'stub keywords'), ...nonEmpty(hints, 'GENERATE_FORM_HINT entries'),
+    ...nonEmpty(FAMILY_NAMES, 'FAMILY_NAME_CUE entries'), ...sniffs.map(s => s.kw)])];
+  // identity, not existence: the reported three and the three that take a name are all in it
+  for (const kw of ['oracle', 'markov', 'meter', 'seq', 'rule', 'prop']) assert.ok(family.includes(kw), `${kw} is in the census`);
+  const named = new Set(sniffs.filter(s => !s.colon).map(s => s.kw));
+  for (const kw of family) {
+    const shapes = [`${kw}: a | b | c`, `${kw} : a | b | c`];
+    if (named.has(kw)) shapes.push(`${kw} x y: a | b | c`, `${kw} of a | ${kw} of b`);
+    for (const body of shapes) {
+      const n = mk1591();
+      const cls = c.classifyBraceBody(body, {}, {});
+      const tok = c.promoteBraceBody(n, body);
+      if (cls === 'invalid') {
+        assert.equal(tok, null, `{${body}} is announced as staying plain text, so it must stay text`);
+        assert.equal(records1591(n), 0, `{${body}} must not leave a record`);
+        assert.match(c.braceAttemptAnnounce(body, {}, {}), /It stays plain text\.$/, `{${body}} says so`);
+      } else {
+        assert.equal(cls, 'artifact', `{${body}} is a pill or an attempt, never prose`);
+        assert.ok(tok != null, `{${body}} previews as a pill, so it must become one`);
+      }
+      // and never the coin flip: an anonymous grammar whose one rule is the keyword line itself
+      const flip = n.grammar.find(g => new RegExp(`^origin:\\s*${kw}\\b`, 'i').test(g.def || ''));
+      assert.ok(!flip, `{${body}} became a pick between literal strings: ${flip && flip.def}`);
+    }
+  }
+  // One predicate, asked by both walks, is the remedy #1505 named: the cue's walk and the pill's walk
+  // cannot disagree about a committed keyword if they ask the same question at the same place.
+  assert.match(fnBody(_src, 'classifyBraceBody'), /if \(keywordCommitted\(body\)\) return 'invalid';\n\s*if \(splitTopLevel\(body, '\|'\)\.length > 1\) return 'artifact';/,
+    'the classifier asks it immediately before its alternation line');
+  assert.match(fnBody(_src, 'promoteBraceBodyIn'), /if \(keywordCommitted\(body\)\) return null;[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*if \(splitTopLevel\(body, '\|'\)\.length > 1\) \{/,
+    'and promotion asks it immediately before its alternation arm');
+});
+
 test('#1353 Phase 3: the Variables panel names a kind the value cannot show', () => {
   const L = c.varKindLabel;
   // Measured gap: the panel showed `a = 40` (formula) and `b = 20` (a frozen 1d20) identically,

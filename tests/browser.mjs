@@ -4011,6 +4011,78 @@ test('#1538 {deck: …} teaches the mode and never becomes a pill, while {shuffl
   assert.deepEqual(pageErrors, []);
 });
 
+// 62c. #1591 — {meter: a | b}, {oracle: a | b | c} and {markov: a | b} announced "It stays plain text"
+// and then became a pill reading "meter: a". Driven for the #1505 reason again: the sentence is spoken
+// as the `}` lands and the pill is made on exit, two moments no source pin spans. {rule: a | b} is the
+// sibling the census found (a silent "rule: a" pill). The controls beside them are the valid forms of
+// the same words, and the general {name: a | b} that UXP-289 leaves as it is.
+test('#1591 a keyword with a tail its parser rejects stays text as announced, and its valid forms still work', { skip: skip() }, async () => {
+  const errors = [];
+  const drive = async (body) => {
+    const pg = await fresh();
+    await pg.evaluate(() => {
+      const n = mkNode(''); n.type = 'ul';
+      root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+      buildIndex(root, null); markDirty(); render();
+      const c = document.querySelectorAll('.node-content')[0];
+      c.focus(); activeContentId = c.dataset.id;
+      const a = document.getElementById('a11y-live'); if (a) a.textContent = '';
+    });
+    await pg.waitForTimeout(200);
+    await pg.keyboard.type('Draw {' + body + '}');   // the announcement fires on the closing }
+    await pg.waitForTimeout(350);
+    const said = await pg.evaluate(() => (document.getElementById('a11y-live')?.textContent || '').trim());
+    await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(350);
+    const after = await pg.evaluate(() => {
+      const n = root.children[0], row = document.querySelector('.node-content');
+      const cue = row ? [...row.querySelectorAll('.brace-attempt')] : [];
+      return {
+        text: n.text,
+        grammar: (n.grammar || []).map(g => ({ origin: g.origin || null, def: g.def || null })),
+        cues: cue.length, reason: cue[0] ? cue[0].dataset.reason : '',
+        meters: row ? row.querySelectorAll('.meter:not(.meter-bad)').length : 0,
+        badMeters: row ? row.querySelectorAll('.meter-bad').length : 0,
+      };
+    });
+    errors.push(...pageErrors);
+    await pg.close();
+    return { said, ...after };
+  };
+
+  for (const body of ['oracle: a | b | c', 'markov: a | b', 'rule: a | b', 'meter: a | b']) {
+    const kw = body.split(':')[0];
+    const r = await drive(body);
+    assert.equal(r.text, `Draw {${body}}`, `{${body}} stays exactly as typed, as it was told`);
+    assert.deepEqual(r.grammar, [], `{${body}} makes no grammar record: this was a pill reading "${kw}: a"`);
+    assert.ok(r.said.toLowerCase().includes('{' + kw), `{${body}} is taught its own form (got: ${r.said})`);
+    assert.match(r.said, /It stays plain text\.$/, `{${body}} is told the outcome that really happens`);
+    if (kw === 'meter') {
+      // A meter's recipe lives in the text, so an unreadable one renders as the meter's own {meter?}
+      // marker, exactly like a malformed meter with no pipe in it, rather than as a brace attempt.
+      assert.equal(r.badMeters, 1, '{meter: a | b} renders as an unresolved meter, like every malformed meter');
+      continue;
+    }
+    assert.equal(r.cues, 1, `{${body}} wears the .brace-attempt cue`);
+    assert.equal(r.said, r.reason + ' It stays plain text.', `{${body}}: what is announced is what the cue says`);
+  }
+
+  // THE CONTROLS: the same words in their working forms, and the case UXP-289 leaves open
+  const oracle = await drive('oracle: likely');
+  assert.match(oracle.text, /^Draw \[\[grammar:[a-z0-9]+\]\]$/, '{oracle: likely} still promotes');
+  assert.equal(oracle.cues, 0);
+  const named = await drive('rule meter: a | b');
+  assert.match(named.text, /^Draw \[\[grammar:[a-z0-9]+\]\]$/, '{rule meter: …} still promotes');
+  assert.deepEqual(named.grammar.map(g => g.origin), ['meter'], 'to a rule registered as meter');
+  const meter = await drive('meter: 8/12');
+  assert.equal(meter.text, 'Draw {meter: 8/12}', 'a meter keeps its recipe in the text');
+  assert.equal(meter.meters, 1, 'and renders as a live meter');
+  assert.equal(meter.cues, 0, 'with no attempt cue');
+  const loot = await drive('loot: a | b');
+  assert.match(loot.text, /^Draw \[\[grammar:[a-z0-9]+\]\]$/, '{loot: a | b} keeps its UXP-289 behaviour');
+  assert.deepEqual(errors, []);
+});
+
 // 63. #1506 — a dialog Save that REFUSES was a total no-op: an ENABLED button, pressed, writing
 // nothing, saying nothing, changing nothing on screen. Driven, because the finding IS what a press
 // does: the validity cores are already tested and prove nothing about whether pressing Save tells

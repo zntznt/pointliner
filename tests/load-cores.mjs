@@ -307,6 +307,7 @@ export function loadCores() {
     'braceAttemptAnnounce',                     // #1353 Phase 1: what a refused brace SAYS
     'braceBodyIsEmptyStub','emptyStubAnnounce',  // #1505: will promotion delete this body, and what it says so
     'familyNameAttempt',                        // #1538: a family name ({deck: …}) used as if it were a keyword
+    'keywordCommitted',                         // #1591: did a body commit to a reserved keyword (asked by both walks)
     'varKindLabel',                             // #1353 Phase 3: naming a variable's kind
     'diceTotalStr','renderDicePill','renderMarkovPill','renderGrammarPill','renderSeqPill','renderSeqGenPill',
     'diceBreakdownHTML','mdInline',            // function decls that were simply not listed
