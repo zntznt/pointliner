@@ -949,10 +949,10 @@ Implemented:
   - **Cross-document links (CF-2, Chromium/workspace-gated):** `[[docId#nodeId|label]]`
     links to a point in **another workspace document** — the roadmap-locked cross-file
     extension of the same-doc token, **no new delimiter** (just an optional docId before
-    the `#`). The two forms are mutually exclusive by regex (same-doc requires `#` right
-    after `[[`; cross-doc requires ≥1 char before it), so `collectLinks`/`LINK_RE` and the
-    same-doc pill are **untouched** — CF-2 adds a parallel path (`renderCrossLinkPill`,
-    `mdInline` cross-doc stash). The caption comes from CF-1's `workspaceIndex.titles`
+    the `#`). One grammar reads both (`linkTokenRe`, #1584: same-doc has `#` right after
+    `[[`, cross-doc has ≥1 char before it); `collectLinks` and the same-doc pill keep the
+    same-doc ones, and CF-2 adds a parallel path for the rest (`renderCrossLinkPill`,
+    `mdInline`'s one link pass). The caption comes from CF-1's `workspaceIndex.titles`
     (empty label → the target's **live title**, following renames on the next folder scan);
     a missing target renders `.node-link-broken`. A token whose docId is the current doc
     **delegates to the same-doc pill** (mirror included), so a copied `[[A#id|]]` behaves
@@ -1165,9 +1165,9 @@ Implemented:
   the running page (`document.documentElement`), empties the rendered/dynamic DOM
   (`#outline`, `#var-panel-list`) so the file is lean and boots fresh, and inlines the
   current outline as **OPML** into the `#pl-embedded-doc` `<script type="application/xml">`
-  data-island. The injection is a pure string op — `embedOpmlIntoHtml(html, opml)` (and its
-  inverse `extractEmbeddedOpml`), Node-testable — operating on the serialized shell, not the
-  DOM. Safe because `toOpml` never emits the literal `</script>` (user `<`/`>` become
+  data-island. The injection is a pure, Node-testable string op, `embedOpmlIntoHtml(html, opml)`,
+  operating on the serialized shell, not the DOM; the reader is the browser's parser, and
+  `tests/browser.mjs` drives the round trip (#1584). Safe because `toOpml` never emits the literal `</script>` (user `<`/`>` become
   entities inside attributes), so raw OPML round-trips inside a `<script>` data-island.
   - **Opening one:** the app re-runs and `restoreEmbeddedDoc()` (before `restoreAutosave`,
     **winning over local autosave** — a shared snapshot must show exactly what was sent)
@@ -1287,7 +1287,7 @@ Implemented:
     **not a `_varsVer` doc-cache** — it spans documents and rebuilds on filesystem events, not
     per-edit; it trails the current doc by ≤ one ~0.8 s autosave debounce tick (the scan reads
     each doc's on-disk copy, which the current doc auto-writes continuously). The **same-doc
-    path is untouched** (`collectLinks`/`LINK_RE`/`renderLinkPill`/`linkCandidates` unchanged).
+    path is untouched** (`collectLinks`/`renderLinkPill`/`linkCandidates` unchanged).
     Pure cores `parseLinkToken`/`buildWorkspaceIndex` are Node-pinned; the FSA scan is
     mock-handle-verified headless. (`WLINK_RE`/`scanWorkspace`/`refreshWorkspaceIndex`.)
   - **Workspace-wide search core** (WS-1, *internal, no UI — the surface is WS-2*): "find

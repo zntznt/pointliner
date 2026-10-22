@@ -32,7 +32,8 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createServer } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { gzipSync } from 'node:zlib';
 
 const APP = 'file://' + join(dirname(fileURLToPath(import.meta.url)), '..', 'index.html');
@@ -3830,7 +3831,7 @@ test('#1504 an unanchored repeat says so on the chip, in the dialog, and at comp
     const flip = (n) => {
       const el = document.getElementById('flash-hint'); if (el) el.textContent = '';
       const w = n.checked; n.text = setTodoState(n.text, 'DONE');
-      const rolled = commitTodoDone(n, w);
+      const rolled = commitTodoDone(n, w, flashHint);   // #1584: the voice every door hands the writer
       return { rolled, checked: n.checked, said: (document.getElementById('flash-hint')?.textContent || '').trim() };
     };
     out.completeDateless = flip(seed([['repeat', 'every week']]));
@@ -7925,6 +7926,115 @@ test('#1586 the Known variables cards are one Tab stop, arrows move, and Enter o
   const di = cards.findIndex(c => c.name === 'dmg');
   assert.equal(ed.pressed[di], 'true', 'editing dmg presses its card');
   assert.equal(ed.stops[di], '0', 'and Shift+Tab from Name lands on it, not on the first card');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// #1584: three live paths whose tested twin was a function nothing called. Each is driven here
+// because the twin's tests are what used to stand in for it, and presence in the source is not proof.
+
+// The self-contained export's READER is the browser's HTML parser (restoreEmbeddedDoc takes the
+// island's textContent); a regex model of it used to be tested as "the inverse" while nothing called
+// it. This is the real round trip: the exact file the export writes, opened as a page.
+test('#1584 a self-contained export opens as the document it was saved from', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const TEXTS = ['Island test', 'danger </script> <SCRIPT>x</SCRIPT> & <!-- kept --> "quotes"', 'Last point'];
+  const html = await pg.evaluate((texts) => {
+    root.children = texts.map(t => mkNode(t));
+    root.children.forEach(n => { n.type = 'ul'; nodeMap.set(n.id, n); parentMap.set(n.id, root); });
+    buildIndex(root, null); markDirty(); render();
+    let out = null;
+    const real = downloadText;
+    downloadText = (content) => { out = content; return 'snapshot.html'; };   // the bytes, not a download
+    try { exportSelfContainedHtml(); } finally { downloadText = real; }
+    return out;
+  }, TEXTS);
+  assert.ok(html && html.includes('id="pl-embedded-doc">'), 'precondition: the export wrote a page with the island');
+  await pg.close();
+  const dir = mkdtempSync(join(tmpdir(), 'pl-1584-'));
+  try {
+    const file = join(dir, 'snapshot.html');
+    writeFileSync(file, html);
+    const opened = await browser.newPage();
+    const errs = [];
+    opened.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+    await opened.goto('file://' + file);
+    await opened.waitForSelector('#outline', { timeout: 10000 });
+    await opened.waitForTimeout(500);
+    const r = await opened.evaluate(() => ({ embed: loadedFromEmbed, failed: embedRestoreFailed,
+      texts: root.children.map(n => n.text), rows: document.querySelectorAll('.node-content[data-id]').length }));
+    assert.equal(r.failed, false, 'the island parsed');
+    assert.equal(r.embed, true, 'the page booted from its island, not from an autosave or the welcome doc');
+    assert.deepEqual(r.texts, TEXTS, 'every point came back byte for byte, a literal </script> included');
+    assert.equal(r.rows, TEXTS.length, 'and each one is on the page');
+    assert.deepEqual(errs, []);
+    await opened.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// handlePaste asks parseLinkToken whether the paste IS one link token, and steps the caret back into
+// its caption slot when it is a same-doc, piped one. The caret is the behaviour, so it is driven.
+test('#1584 a pasted lone link token leaves the caret in its caption slot', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const pasteInto = async (text) => {
+    await blankWithCaret(pg);
+    return pg.evaluate((t) => {
+      const el = document.querySelector('.node-content[data-editing]');
+      const dt = new DataTransfer();
+      dt.setData('text/plain', t);
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      return { text: root.children[0].text, caret: getCaretOffset(el) };
+    }, text);
+  };
+  const piped = await pasteInto('[[#abc12|Cap]]');
+  assert.equal(piped.text, '[[#abc12|Cap]]', 'precondition: the token landed as typed text');
+  assert.equal(piped.caret, '[[#abc12|'.length, 'the caret steps back to just after the pipe, ready to retitle');
+  const empty = await pasteInto('[[#abc12|]]');
+  assert.equal(empty.caret, '[[#abc12|'.length, 'an empty caption slot too');
+  // the negative cases: the question is "one same-doc token with a pipe", and nothing wider
+  const bare = await pasteInto('[[#abc12]]');
+  assert.equal(bare.caret, '[[#abc12]]'.length, 'no pipe, no slot: the caret stays at the end');
+  const cross = await pasteInto('[[docb#abc12|Cap]]');
+  assert.equal(cross.caret, '[[docb#abc12|Cap]]'.length, 'a cross-doc token keeps the caret at the end, exactly as before');
+  const prose = await pasteInto('see [[#abc12|Cap]]');
+  assert.equal(prose.caret, 'see [[#abc12|Cap]]'.length, 'a token inside prose is not a lone token');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// The decimals tip (#1333) used to fire from inside renderMathPill, so the formula dialog's live
+// preview, the exports and the guide all spent it on a pill that was not on the page. Now the renderer
+// notes the decimal and the paint that shows the pill says it.
+test('#1584 the decimals tip is said by the page, never by the formula preview', { skip: skip() }, async () => {
+  const pg = await fresh();   // fresh context = empty localStorage = the tip is unspent
+  assert.equal(await pg.evaluate(() => isGuided() && !nudgeSeen('decimals')), true,
+    'precondition: Guided verbosity with the once-ever decimals tip unspent');
+  await pg.evaluate(() => {
+    window.__said = [];
+    const live = document.getElementById('a11y-live');
+    new MutationObserver(() => window.__said.push(live.textContent)).observe(live, { childList: true, characterData: true, subtree: true });
+    openMathDialog({ title: 'Math', onResult() {} });
+  });
+  await pg.waitForTimeout(300);
+  await pg.locator('#io-card').getByLabel('Expression', { exact: true }).fill('10/3');
+  await pg.waitForTimeout(2200);   // past the tip's 1.5s yield
+  const inDialog = await pg.evaluate(() => ({ preview: (document.querySelector('#io-card .math-roll') || {}).textContent || '',
+    seen: nudgeSeen('decimals'), said: window.__said.filter(Boolean) }));
+  assert.match(inDialog.preview, /3\.3333/, 'precondition: the preview really shows the long decimal');
+  assert.equal(inDialog.seen, false, 'a preview is not a pill on the page, so the once-ever tip is not spent on it');
+  assert.deepEqual(inDialog.said.filter(s => /Tip: to round/.test(s)), [], 'and nothing says it');
+  await pg.evaluate(() => closeIo());
+  await pg.waitForTimeout(300);
+  await blankWithCaret(pg);
+  await pg.keyboard.type('Share {= 10/3}', { delay: 5 });
+  await pg.waitForTimeout(350);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(2200);
+  const onPage = await pg.evaluate(() => ({ pill: (document.querySelector('.node-content .math-roll') || {}).textContent || '',
+    seen: nudgeSeen('decimals'), said: window.__said.filter(s => /Tip: to round/.test(s || '')) }));
+  assert.match(onPage.pill, /3\.3333/, 'precondition: the pill shows the long decimal on the page');
+  assert.equal(onPage.seen, true, 'the row paint that shows it spends the tip');
+  assert.equal(onPage.said.length, 1, 'and says it, once');
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
