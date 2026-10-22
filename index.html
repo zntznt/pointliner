@@ -20399,18 +20399,21 @@ function classifyBraceBody(body, rules, vars) {
   // WITH a pipe used to reach the alternation branch and become a nonsense pill (`seq Growth: Seed,
   // Sprout | Bloom` promoted to a coin flip between the literal strings "seq Growth: Seed, Sprout"
   // and "Bloom"), while one WITHOUT a pipe classified 'literal' and said nothing at all.
-  if (/^seq\s/i.test(body)) return seqDeclParts(body) ? 'artifact' : 'invalid';
+  // #1591: unless it is a colon-less pick that only starts with the word ({seq of events | timeline}).
+  if (/^seq\s/i.test(body) && !colonlessKeywordPick(body)) return seqDeclParts(body) ? 'artifact' : 'invalid';
   // {rule tavern: The {adj} {noun}} — a typed named grammar declaration. KEYWORD-COMMIT (the
   // oracle/meter shape): once the body opens with `rule `, a tail that will not parse is INVALID,
   // never prose. That verdict is what earns it the .brace-attempt cue and, more importantly, what
   // engages promoteInlineShorthand's anti-shred guard — without it a broken {rule x: The {a} {b}}
   // classifies 'literal' and the walk descends to promote its inner braces as orphan pills.
-  if (/^rule\s/i.test(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';
+  // #1591: a colon-less pick that only starts with the word ({rule of thumb | rule of law}) is not one.
+  if (/^rule\s/i.test(body) && !colonlessKeywordPick(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';
   if (propDeclParts(body)) return 'artifact';                          // {prop owner: zeo} (LEAN FLOOR)
   // {prop …} committed to the keyword but has no `key: value` → an ATTEMPT, not prose (the same
   // keyword-commit shuffle/markov/seq/rule/oracle/meter already carry, UXP-253). Without it a
   // `{prop hp}` (no colon) or `{prop : 5}` (no key) fell through to 'literal' and leaked raw braces.
-  if (/^prop\s/i.test(body)) return 'invalid';
+  // #1591: except a colon-less pick that only starts with the word ({prop up | lean on}).
+  if (/^prop\s/i.test(body) && !colonlessKeywordPick(body)) return 'invalid';
   const dd0 = dateDeclParts(body);                                     // {date due: friday} (LEAN FLOOR)
   // lockstep with promoteBraceBody (#407): an unparseable value stays literal on exit,
   // so the edit surface must say so LIVE (gr-bad) instead of promising a promotion.
@@ -20595,12 +20598,14 @@ const EMPTY_STUB_RE = new RegExp('^(?:=|(?:' + EMPTY_STUB_KEYWORDS.concat(Object
 // Pure. The single source of truth for "promotion will consume this body to nothing"; promoteBraceBodyIn
 // tests the same predicate, so there is one answer to that question rather than two.
 function braceBodyIsEmptyStub(body) { return EMPTY_STUB_RE.test(String(body ?? '').trim()); }
-// #1591: the keywords that take a NAME ({rule tavern: …}). A space commits these; a colon commits every
-// keyword. A space after the others is prose: {once upon a time}, {count me in | count me out}.
+// #1591: the keywords that take a NAME before their colon ({rule tavern: …}). Every keyword commits only
+// on its colon: `kw:` for all of them, and `kw name:` for these three, where the name holds no `|` or
+// brace, so the colon belongs to the keyword and not to some later alternative. No colon, no keyword
+// syntax: {rule of thumb | rule of law} is a pick, exactly like {markov chain | random walk}.
 const NAME_COMMIT_KEYWORDS = ['seq', 'rule', 'prop'];
-// An EMPTY tail is never matched: that body belongs to the stub guard above, which consumes it.
+// An EMPTY tail after a bare `kw:` is never matched: that body belongs to the stub guard above.
 const KEYWORD_COMMIT_RE = new RegExp('^(?:(?:' + [...new Set([...EMPTY_STUB_KEYWORDS, ...COLON_COMMIT_KEYWORDS, ...NAME_COMMIT_KEYWORDS])].join('|')
-  + ')\\s*:(?!=)\\s*\\S|(?:' + NAME_COMMIT_KEYWORDS.join('|') + ')\\s)', 'i');
+  + ')\\s*:(?!=)\\s*\\S|(?:' + NAME_COMMIT_KEYWORDS.join('|') + ')\\s+[^:|{}]*:(?!=))', 'i');
 // #1591: did this body COMMIT to a reserved keyword? Both walks ask it immediately before their
 // alternation arm, so a body reaching it is one its keyword's own parser already turned down. Without
 // it the two walks disagreed: classifyBraceBody called {oracle: a | b | c}, {markov: a | b} and
@@ -20609,6 +20614,14 @@ const KEYWORD_COMMIT_RE = new RegExp('^(?:(?:' + [...new Set([...EMPTY_STUB_KEYW
 // A test reads this family back from every list the source keeps and from the classifier's own
 // keyword sniffs, so a keyword added to any of them cannot skip this question. Pure.
 function keywordCommitted(body) { return KEYWORD_COMMIT_RE.test(String(body ?? '').trim()); }
+// #1591: a colon-less body with a top-level `|` that merely STARTS with seq, rule or prop. It is an
+// ordinary pick, so the space-commit arms of both walks step aside for it. They used to flag
+// {rule of thumb | rule of law} and {prop up | lean on} as attempts ("It stays plain text") while
+// promotion made the pill. Without a pipe they keep their verdict: {prop hp} is still an attempt, and
+// {rule x {a|b}} still is too, which is what keeps its inner pick from being shredded. Pure.
+function colonlessKeywordPick(body) {
+  return !keywordCommitted(body) && splitTopLevel(String(body ?? '').trim(), '|').length > 1;
+}
 // Each keyword's own form, matching guide/pill-syntax-reference.md. `=` is keyed by its symbol
 // because that is its keyword. A test asserts every keyword in the list above has an entry.
 const EMPTY_STUB_FORM = {
@@ -29539,7 +29552,8 @@ function promoteBraceBodyIn(node, body) {
   // Keyword committed but the tail did not parse: stay literal so the cue can explain it. Without
   // this the body falls through to the alternation branch far below, which happily reads
   // `seq Growth: Seed, Sprout | Bloom` as two alternatives and freezes a nonsense pill.
-  if (/^seq\s/i.test(body)) return null;
+  // #1591: the classifier's seq arm steps aside for a colon-less pick ({seq of events | timeline}), so this does too.
+  if (/^seq\s/i.test(body) && !colonlessKeywordPick(body)) return null;
   // typed NAMED grammar declaration: {rule tavern: The {adj} {noun}} → a registered [[grammar:KEY]]
   // pill callable as {tavern} anywhere in the document. The typed twin of the @/Grammar dialog, and
   // the last of the three declaration forms to get one ({name := expr} and {seq Name: …} already

@@ -4176,6 +4176,33 @@
       "find": "  if (keywordCommitted(body)) return null;\n",
       "replace": "",
       "kills": "#1591 a keyword with a tail its parser rejects stays text as announced"
+    },
+    {
+      "id": "colonless-phrase-commits-again",
+      "suite": "unit",
+      "why": "#1591 review: a space commits the name-taking keywords again, so {rule of thumb | rule of law} counts as keyword syntax and an ordinary pick is turned into plain text",
+      "file": "index.html",
+      "find": "  + ')\\\\s*:(?!=)\\\\s*\\\\S|(?:' + NAME_COMMIT_KEYWORDS.join('|') + ')\\\\s+[^:|{}]*:(?!=))', 'i');",
+      "replace": "  + ')\\\\s*:(?!=)\\\\s*\\\\S|(?:' + NAME_COMMIT_KEYWORDS.join('|') + ')\\\\s)', 'i');",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "colonless-rule-pick-reflagged",
+      "suite": "unit",
+      "why": "#1591 review: the classifier's rule arm re-flags a colon-less phrase, so {rule word | other} is announced as staying plain text and then becomes the pill, the original contradiction in the other direction",
+      "file": "index.html",
+      "find": "  if (/^rule\\s/i.test(body) && !colonlessKeywordPick(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';",
+      "replace": "  if (/^rule\\s/i.test(body)) return ruleDeclParts(body) ? 'artifact' : 'invalid';",
+      "kills": "#1591 census: for every reserved keyword"
+    },
+    {
+      "id": "colonless-seq-pick-kept-as-text",
+      "suite": "unit",
+      "why": "#1591 review: promotion's seq arm keeps a colon-less phrase as text while the classifier previews the pick, so {seq word | other} promises a pill and never makes one",
+      "file": "index.html",
+      "find": "  if (/^seq\\s/i.test(body) && !colonlessKeywordPick(body)) return null;",
+      "replace": "  if (/^seq\\s/i.test(body)) return null;",
+      "kills": "#1591 census: for every reserved keyword"
     }
   ]
 }

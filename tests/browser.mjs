@@ -4080,6 +4080,15 @@ test('#1591 a keyword with a tail its parser rejects stays text as announced, an
   assert.equal(meter.cues, 0, 'with no attempt cue');
   const loot = await drive('loot: a | b');
   assert.match(loot.text, /^Draw \[\[grammar:[a-z0-9]+\]\]$/, '{loot: a | b} keeps its UXP-289 behaviour');
+  // No colon, no keyword syntax: a phrase that only starts with the word is an ordinary pick. These two
+  // were announced as attempts ("A rule needs a name before the colon… It stays plain text") and then
+  // became the pill anyway; the pill was right, so the cue is what changed.
+  for (const body of ['rule of thumb | rule of law', 'prop up | lean on']) {
+    const r = await drive(body);
+    assert.match(r.text, /^Draw \[\[grammar:[a-z0-9]+\]\]$/, `{${body}} is a pick-one pill`);
+    assert.equal(r.cues, 0, `{${body}} wears no attempt cue`);
+    assert.equal(r.said, '', `{${body}} is told nothing about a keyword it never used`);
+  }
   assert.deepEqual(errors, []);
 });
 

@@ -36821,7 +36821,7 @@ test('#1591 a reserved keyword with a tail its parser rejects stays text, never 
     ['meter', 'meter: a | b'], ['meter', 'meter: hp/hpmax | b'],
     // found by the census: the same split, on keywords nobody reported
     ['shuffle', 'shuffle: | |'], ['cycle', 'cycle: | |'], ['once', 'once: | |'], ['stopping', 'stopping: | |'],
-    ['rule', 'rule : a | b'], ['rule', 'rule x y: a | b'], ['rule', 'rule of thumb | rule of law'],
+    ['rule', 'rule : a | b'], ['rule', 'rule x y: a | b'],
     ['prop', 'prop : a | b'], ['prop', 'prop due: a | b'],
     // and the colon form of the three keywords that take a name, which was a silent coin flip
     ['seq', 'seq: a | b'], ['rule', 'rule: a | b | c'], ['prop', 'prop: a | b'], ['seq', 'seq: draft'], ['rule', 'rule: be kind'],
@@ -36875,14 +36875,34 @@ test('#1591 the valid forms beside the fix keep working, and {name: a | b} keeps
     promotes(body, /^\[\[grammar:/, `{${body}} keeps its current behaviour`);
     assert.equal(c.keywordCommitted(body), false, `{${body}} did not commit to a keyword`);
   }
+  // No colon, no commitment. A phrase that merely STARTS with one of the three name-taking keywords is
+  // an ordinary pick, the same as {markov chain | random walk}. The classifier used to flag these two
+  // as attempts ("A rule needs a name before the colon… It stays plain text") while promotion made the
+  // pill: the same contradiction, resolved toward the pill this time, because no keyword syntax was typed.
+  for (const body of ['rule of thumb | rule of law', 'prop up | lean on', 'seq of events | timeline', 'rule x y | z',
+                      'markov chain | random walk', 'meter maid | parking warden', 'oracle of delphi | sibyl']) {
+    promotes(body, /^\[\[grammar:/, `{${body}} is an ordinary pick`);
+    assert.equal(c.keywordCommitted(body), false, `{${body}} has no colon, so it did not commit`);
+  }
+  // and a colon-less body with no pipe keeps the verdicts it already had: {prop hp} is still an attempt
+  // (pinned by UXP-253), and {rule x {a|b}} still is too, which is what keeps its inner pick unshredded
+  for (const body of ['prop hp', 'rule x {a|b}', 'seq Flow']) {
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'invalid', `{${body}} is still an attempt`);
+    assert.equal(c.promoteBraceBody(mk1591(), body), null, `{${body}} still stays text`);
+  }
   // Empty stubs are #1505's and are untouched: still consumed, and the silent five still classify as prose.
   for (const kw of ['seq', 'rule', 'cycle', 'once', 'stopping']) {
     assert.equal(c.classifyBraceBody(`${kw}: `, {}, {}), 'literal', `{${kw}: } classifies as it did`);
     assert.equal(c.promoteBraceBody(mk1591(), `${kw}: `), '', `{${kw}: } is still consumed`);
     assert.equal(c.keywordCommitted(`${kw}: `), false, 'an empty tail is the stub guard\'s, not this one');
   }
-  for (const body of ['oracle: a | b', 'meter: x', 'seq: x', 'rule of thumb', 'prop x', 'cycle: | |', 'Markov : a']) {
+  for (const body of ['oracle: a | b', 'meter: x', 'seq: x', 'rule x: a', 'rule x y: a | b', 'prop : 5', 'prop due: a | b',
+                      'cycle: | |', 'Markov : a']) {
     assert.equal(c.keywordCommitted(body), true, `{${body}} committed to its keyword`);
+  }
+  // the colon has to follow the keyword (and its name), not turn up later in some other alternative
+  for (const body of ['rule of thumb', 'prop x', 'rule of thumb | note: x', 'prop up | lean on: x']) {
+    assert.equal(c.keywordCommitted(body), false, `{${body}} did not commit`);
   }
 });
 
@@ -36903,8 +36923,17 @@ test('#1591 census: for every reserved keyword, what the cue says about {kw: a |
   for (const kw of ['oracle', 'markov', 'meter', 'seq', 'rule', 'prop']) assert.ok(family.includes(kw), `${kw} is in the census`);
   const named = new Set(sniffs.filter(s => !s.colon).map(s => s.kw));
   for (const kw of family) {
+    // THE OTHER DIRECTION. No colon is no keyword syntax: a phrase that only starts with the word is an
+    // ordinary pick, so it previews as one, becomes one, and is told nothing about the keyword.
+    for (const body of [`${kw} word | other`, `${kw} of a | ${kw} of b`]) {
+      const n = mk1591();
+      assert.equal(c.keywordCommitted(body), false, `{${body}} has no colon, so it did not commit to ${kw}`);
+      assert.equal(c.classifyBraceBody(body, {}, {}), 'artifact', `{${body}} previews as an ordinary pick, with no cue`);
+      assert.match(c.promoteBraceBody(n, body) || '', /^\[\[grammar:[a-z0-9]+\]\]$/, `{${body}} becomes that pick`);
+      assert.equal(c.braceBodyIsEmptyStub(body), false, `{${body}} is not announced as a stub either`);
+    }
     const shapes = [`${kw}: a | b | c`, `${kw} : a | b | c`];
-    if (named.has(kw)) shapes.push(`${kw} x y: a | b | c`, `${kw} of a | ${kw} of b`);
+    if (named.has(kw)) shapes.push(`${kw} x y: a | b | c`);
     for (const body of shapes) {
       const n = mk1591();
       const cls = c.classifyBraceBody(body, {}, {});
