@@ -46,6 +46,12 @@ To zoom in: press `Ctrl/Cmd+Enter` while editing a point, click a point's **bull
 point's menu and choose **Zoom into**. The zoomed point becomes a large editable title with its note
 and children below.
 
+Zooming into a point with nothing under it gives you one blank point to type in. If you leave it
+empty, zooming out removes it again, so a quick look leaves nothing behind. A point you typed into
+and then cleared counts as empty; one with a note or a property stays. To keep that blank point every
+time, turn off **Remove unused points on zoom out** in the File menu under **Settings**. The choice is
+remembered in this browser.
+
 A **breadcrumb** row appears at the top: `Home › ancestor › … › current point`. Climb back out
 through it, click or press `Enter` on any ancestor crumb to jump to that level, or the **Home** crumb
 to return to the full document. Press `Esc` to step up just one level toward the parent rather than

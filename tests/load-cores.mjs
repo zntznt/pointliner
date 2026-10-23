@@ -270,6 +270,7 @@ export function loadCores() {
     'uniqueWorkspaceName', 'workspaceDocList', 'tabAdd', 'tabClose', 'tabCycle',
     'docIsBlank', 'connectWriteDecision',       // #839: connect-collision guard cores
     'isEmptyPoint', 'pointHasOwnContent',       // #1580: the one "is this point a placeholder" predicate
+    'provisionalToDrop', 'zoomCleanupFromStored', 'zoomCleanupCopy',   // #1613: which zoom point goes on zoom out, the stored setting, and its words
     'reconcileAction', 'bootPrefersFile', 'tmpWriteName', 'treeDepthExceeds',   // sync-safety + WAVE-3 ingestion depth clamp
     'unmarkedFilesNote',                        // #845: no-docId files skipped by the folder scan, surfaced in the broken-links report
     'displayName', 'toFileName',                // file-name display/normalize

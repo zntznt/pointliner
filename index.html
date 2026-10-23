@@ -3130,6 +3130,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         <div class="cmd-item" id="btn-theme"><div class="cmd-icon" id="theme-icon" data-fa="fa-solid fa-circle-half-stroke" data-fb="◑">◑</div><div class="cmd-info"><span class="cmd-label" id="theme-label">Theme: System</span><span class="cmd-desc" id="theme-desc">Cycles system → light → dark</span></div></div>
         <div id="accent-row"><span class="acc-row-lbl">Color</span><div id="accent-swatches"></div></div>
         <div class="cmd-item" id="btn-width" aria-pressed="false"><div class="cmd-icon" id="width-icon" data-fa="fa-solid fa-left-right" data-fb="⇿">⇿</div><div class="cmd-info"><span class="cmd-label" id="width-label">Width: Narrow</span><span class="cmd-desc">Widen the editing column</span></div></div>
+        <div class="cmd-item" id="btn-zoomcleanup" role="button" aria-pressed="true"><div class="cmd-icon" data-fa="fa-solid fa-magnifying-glass-plus" data-fb="⊙">⊙</div><div class="cmd-info"><span class="cmd-label" id="zoomcleanup-label">Remove unused points on zoom out: On</span><span class="cmd-desc" id="zoomcleanup-desc">Zooming into a point with nothing under it adds a blank point to type in. Zooming out removes it again if you left it empty.</span></div></div>
         <div class="fm-scard" id="fm-verbosity-card" role="radiogroup" aria-label="Guidance level">
           <div class="fm-scard-head"><span>Guidance</span><span class="cmd-key" id="verbosity-key">⌘⇧.</span></div>
           <div class="cmd-item fm-choice" data-tier="guided" role="radio"><span class="fm-choice-mark" aria-hidden="true"></span><span class="fm-choice-info"><span class="fm-choice-name">Guided</span><span class="fm-choice-desc">Point hints, pill tooltips and the search cheatsheet all shown.</span></span></div>
@@ -10617,17 +10618,41 @@ function commitActiveEdit() {
   if (activeContentId == null) return;
   document.querySelector(`.node-content[data-id="${activeContentId}"][data-editing]`)?.blur();
 }
-// #1573: drop the point render() minted for an empty viewport, once that viewport is left.
+// #1613: the storage key of the reader's zoom-point setting (File menu, Settings, "Remove unused points
+// on zoom out"): whether the point render() mints for an empty zoom is removed on the way out. On by
+// default, which is what an untouched zoom has always done; off keeps it every time. An app preference,
+// not document data, so it lives in this browser's localStorage beside the toolbar choices
+// (TOOLBAR_PREF_KEY) and never reaches the file. Read once here, before the first render can need it;
+// a blocked or malformed read leaves the default rather than stopping the boot.
+const ZOOM_CLEANUP_KEY = 'pl-zoom-cleanup';
+// Pure: the stored string to the setting. Only an explicit 'off' turns it off, so a missing key, a
+// private window or a value some later version wrote all land on the default.
+function zoomCleanupFromStored(raw) { return raw !== 'off'; }
+let zoomCleanup = true;
+try { zoomCleanup = zoomCleanupFromStored(localStorage.getItem(ZOOM_CLEANUP_KEY)); } catch (_) { /* private mode: keep the default */ }
+// #1613: which point leaving viewport `vp` removes, or null. Pure; `cleanup` is the reader's setting.
+// Only render's own mark (never a point the reader made with Enter), and only the lone child.
 // Emptiness is re-checked HERE rather than trusted from the mark, so a provisional point the reader
 // typed into is a real point and stays; one they typed into and cleared again is empty and goes.
 // #1580: re-checked through isEmptyPoint, not a list kept here. That list missed qbase, so a query
 // base built on this point from the command browser (which stamps nothing) was deleted on zoom out.
+// #1613: and asked with ignoreStamps, the rule the three fill doors use (#1596). Typing into the
+// point and clearing it again leaves the created/edited stamps behind, which show nothing, and
+// counting them kept exactly the point the line above says goes. A note, a property, a child, a pill
+// or a base is still content, so the point stays.
+function provisionalToDrop(vp, cleanup) {
+  if (!cleanup || !vp || !Array.isArray(vp.children) || vp.children.length !== 1) return null;
+  const only = vp.children[0];
+  if (!only || !only._provisional) return null;
+  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;
+  return only;
+}
+// #1573: drop the point render() minted for an empty viewport, once that viewport is left, when
+// provisionalToDrop says it goes.
 function dropProvisionalChild(vpId) {
   const vp = vpId ? nodeById(vpId) : null;
-  if (!vp || !Array.isArray(vp.children) || vp.children.length !== 1) return;
-  const only = vp.children[0];
-  if (!only._provisional) return;
-  if (!isEmptyPoint(only)) return;
+  const only = provisionalToDrop(vp, zoomCleanup);
+  if (!only) return;
   vp.children.length = 0;
   nodeMap.delete(only.id); parentMap.delete(only.id);
   markDirty();
@@ -34971,8 +34996,9 @@ const POINT_CONTENT_FIELDS = ['text', 'note', 'props', ...ARTIFACT_SIDECARS, 'qb
 // Counting them sent a recipe or a table below that blank line, which is the orphan the in-place fill
 // exists to avoid, while /template and /base filled the same point (measured, #1596). A fill writes
 // the point's props or replaces the point, so the stamps leave with the placeholder they described.
-// A note or any other property still counts. The default (counting them) is what the doors that
-// remove a point or judge a document blank have always used, and this does not revisit them.
+// A note or any other property still counts. #1613: removing the point render minted for a zoom
+// (provisionalToDrop) asks the same way, for the same reason: the stamps are all a cleared point
+// keeps. The default (counting them) is still what docIsBlank uses.
 //
 // #1596: typing `/` or `@` no longer stamps the point it is typed into (editStampVerdict), so a fresh
 // point reaches these doors with no stamps at all. ignoreStamps is not a workaround for that any more.
@@ -43965,6 +43991,34 @@ document.getElementById('btn-width').addEventListener('click', () => {
   scheduleAutosave();
   // stays open (item, modes batch): width is an in-place setting, not a navigation.
 });
+// #1613: the zoom-point cleanup toggle (zoomCleanup, read at boot beside provisionalToDrop). In place
+// like Width: the menu stays open, the label names the CURRENT state (#505), the description says what
+// that state does, and the change is announced. Pure copy, so both states' words are testable.
+function zoomCleanupCopy(on) {
+  return on
+    ? { label: 'Remove unused points on zoom out: On',
+        desc: 'Zooming into a point with nothing under it adds a blank point to type in. Zooming out removes it again if you left it empty.',
+        say: 'Zooming out now removes the blank point a zoom adds, if you left it empty.' }
+    : { label: 'Remove unused points on zoom out: Off',
+        desc: 'Zooming into a point with nothing under it adds a blank point to type in. It stays when you zoom out, even if you left it empty.',
+        say: 'Zooming out now keeps the blank point a zoom adds, even if it is empty.' };
+}
+function syncZoomCleanupRow() {
+  const c = zoomCleanupCopy(zoomCleanup);
+  const lbl = document.getElementById('zoomcleanup-label');
+  if (lbl) lbl.textContent = c.label;
+  const desc = document.getElementById('zoomcleanup-desc');
+  if (desc) desc.textContent = c.desc;
+  document.getElementById('btn-zoomcleanup')?.setAttribute('aria-pressed', zoomCleanup ? 'true' : 'false');
+}
+function setZoomCleanup(on) {
+  zoomCleanup = !!on;
+  try { localStorage.setItem(ZOOM_CLEANUP_KEY, zoomCleanup ? 'on' : 'off'); } catch (_) { /* private mode: it still applies for this session */ }
+  syncZoomCleanupRow();
+  flashHint(zoomCleanupCopy(zoomCleanup).say);   // reaches assistive tech through announce (P3/P4)
+}
+syncZoomCleanupRow();
+document.getElementById('btn-zoomcleanup')?.addEventListener('click', () => setZoomCleanup(!zoomCleanup));
 document.getElementById('btn-done').addEventListener('click', () => {
   showDone = !showDone;
   const btn = document.getElementById('btn-done');
@@ -44333,7 +44387,7 @@ const GUIDE = [
     ] },
   { id:'zoom', cat:'getting-around',
     title:'Zoom into a point',
-    body:"Work on one branch full-screen with the rest of the document out of sight, so a single project, a chapter or a busy task list fills the page with just it and its children. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet or choose Zoom into from its menu. The point becomes a large editable title with its note and children below.\n\nA breadcrumb row at the top shows Home then each ancestor then the current point. Click any crumb to jump to that level, or the Home crumb to return to the full document. Press Esc to step up one level toward the parent.\n\nParagraphs work differently. Zooming into a lone paragraph is pointless, so a paragraph's bullet collapses it to its first line instead: click the bullet (or Ctrl/Cmd+Enter, or Collapse to first line in its menu) and a long paragraph collapses to a one-line peek with an ellipsis. Click the bullet again, or click the text to edit it, to see the whole thing; the collapsed state is saved with the document.",
+    body:"Work on one branch full-screen with the rest of the document out of sight, so a single project, a chapter or a busy task list fills the page with just it and its children. Press Ctrl/Cmd+Enter while editing a point to zoom into it, click a point's bullet or choose Zoom into from its menu. The point becomes a large editable title with its note and children below.\n\nZooming into a point with nothing under it gives you one blank point to type in. If you leave it empty, zooming out removes it again, so a quick look leaves nothing behind. A point you typed into and then cleared counts as empty; one with a note or a property stays. To keep that blank point every time, turn off Remove unused points on zoom out in File → Settings.\n\nA breadcrumb row at the top shows Home then each ancestor then the current point. Click any crumb to jump to that level, or the Home crumb to return to the full document. Press Esc to step up one level toward the parent.\n\nParagraphs work differently. Zooming into a lone paragraph is pointless, so a paragraph's bullet collapses it to its first line instead: click the bullet (or Ctrl/Cmd+Enter, or Collapse to first line in its menu) and a long paragraph collapses to a one-line peek with an ellipsis. Click the bullet again, or click the text to edit it, to see the whole thing; the collapsed state is saved with the document.",
     related:['move-nest','point-types','corkboard'],
     examples:[
       { syn:'Ctrl/Cmd+Enter',  desc:"zoom into the point you're editing" },

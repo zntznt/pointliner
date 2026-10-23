@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2182 declarations in 158 sections across 17 domains.**
+**2189 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -610,7 +610,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## zoom / breadcrumb
 
 - `commitActiveEdit` — Commit any in-progress edit (flush text + refold artifacts via exitEdit's blur
-- `dropProvisionalChild` — #1573: drop the point render() minted for an empty viewport, once that viewport is left.
+- `ZOOM_CLEANUP_KEY` — #1613: the storage key of the reader's zoom-point setting (File menu, Settings, "Remove unused points
+- `zoomCleanupFromStored` — Pure: the stored string to the setting. Only an explicit 'off' turns it off, so a missing key, a
+- `zoomCleanup`
+- `provisionalToDrop` — #1613: which point leaving viewport `vp` removes, or null. Pure; `cleanup` is the reader's setting.
+- `dropProvisionalChild` — #1573: drop the point render() minted for an empty viewport, once that viewport is left, when
 - `zoomInto`
 - `zoomTo`
 - `ZOOM_TITLE_MIN` — Fit the zoomed point's title inside its max height (--zoom-title-max). Shrink the font
@@ -2492,6 +2496,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `applyTheme`
 - `fullWidth`
 - `applyWidth`
+- `zoomCleanupCopy` — #1613: the zoom-point cleanup toggle (zoomCleanup, read at boot beside provisionalToDrop). In place
+- `syncZoomCleanupRow`
+- `setZoomCleanup`
 - `syncDoneBadge` — MOBILE-2: the persistent "N done hidden" cue lives ON the Done button — the cue and the
 - `syncNotesBtn`
 - `IS_MAC` — The verbosity dial: cycle guided → standard → lean → guided, + persist + flash. Reachable via the

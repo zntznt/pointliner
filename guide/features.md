@@ -35,6 +35,8 @@ The everyday outliner. This is the part you use without thinking about it.
 - **To-dos.** Type `- [ ]` for a checkbox, or `#TODO` / `#NEXT` / `#WAITING` / `#DONE` for status,
   with `[#A]` priorities. ([to-dos](tasks-and-organizing.md#to-dos-and-tasks))
 - **Collapse and zoom.** Collapse any branch; click a bullet to zoom in and work on just that subtree.
+  Zooming into an empty point gives you a blank point to type in, removed again on zoom out if you
+  leave it empty (turn off **Remove unused points on zoom out** in the File menu to keep it).
   A **paragraph's** bullet instead collapses it to just its first line, so long notes stay scannable.
   The toolbar's **Show levels** control (1, 2, 3 or All) sets the whole outline's depth at once and
   collapses everything deeper; on a narrow screen it moves into the File menu.
