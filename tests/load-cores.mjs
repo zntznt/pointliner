@@ -385,6 +385,7 @@ export function loadCores() {
     'parseDateSlash','parseSlashQuery','looksLikeCellFormula','setCheckProp','setAliasProp','setDateProp',
     'propDeclParts','setProp','parsePropSlash','parsePropArg','propWriteRoute','parsePropLines','fieldNudgeKey','isLongDecimal','parseBaseSlash','dateDeclParts',   // LEAN FLOOR: inline-stub prop/date + /base:RxC (parsePropArg: #1119, the case-preserving payload half)
     'splitForSibling', 'inFence', 'mergeUpText', 'mergeBodyText', 'aggHasSkippedValues', 'setDateProp',
+    'editableText', 'editableTextBlocks',   // #1612: an editor's text, minus the browser's placeholder <br>
     'auditAgg', 'auditTitle', 'isAuditableAgg',   // #1284/#1321: explain-this-number audit + its cheap shape gate
     'dateSeries',   // #1297: the pure date-series generator (start, step, end → epochs, capped)
     'addTagToText',   // #1285: append a tag to a point's text, deduped + sanitized (bulk-tag-by-search)

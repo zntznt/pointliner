@@ -7828,17 +7828,24 @@ function pathTo(id) {
 const ZWSP = '​';
 // Read a live contenteditable's text: token spans contribute their raw [[TYPE:KEY]]
 // token, <br> contributes \n, text nodes are taken verbatim minus ZWSP anchors.
+// #1612: every <br> but one that ENDS the editable with nothing after it. That one is the browser's
+// placeholder: when the last line of a contenteditable empties, Chromium leaves a <br> to hold the
+// line open, and a <br> at the end of a block draws no line of its own. Read as "\n", a point
+// cleared with Backspace saved as "\n", and abc, Shift+Enter, Backspace twice saved "abc\n" while the
+// screen showed abc. A line break the reader TYPES is a "\n" text node (insertLineBreak), never a
+// <br>, so every typed newline reads as before; anything after the <br>, a ZWSP anchor included,
+// keeps its line and its "\n".
 function editableText(el) {
-  let out = '';
+  let out = '', tailBr = false;
   function walk(node) {
-    if (node.nodeType === 3) { out += node.nodeValue.replace(/​/g, ''); return; }
+    if (node.nodeType === 3) { if (node.nodeValue) tailBr = false; out += node.nodeValue.replace(/​/g, ''); return; }
     if (node.nodeType !== 1) return;
-    if (node.dataset && node.dataset.token) { out += node.dataset.token; return; }
-    if (node.nodeName === 'BR') { out += '\n'; return; }
+    if (node.dataset && node.dataset.token) { out += node.dataset.token; tailBr = false; return; }
+    if (node.nodeName === 'BR') { out += '\n'; tailBr = true; return; }
     for (const c of node.childNodes) walk(c);
   }
   for (const c of el.childNodes) walk(c);
-  return out;
+  return tailBr ? out.slice(0, -1) : out;
 }
 
 // Pure caret math for a trigger-menu apply: remove the trigger run (the trigger char
@@ -7891,19 +7898,20 @@ function stripTriggerRun(text, offset, queryLen, insert = '') {
 // never emits block wrappers) would glue a block onto the preceding text with no newline —
 // silently dropping an appended #+TBLFM: line. Here a block boundary counts as a line break
 // so appended/edited lines survive the commit. Kept separate so the caret-math suite that
-// pairs with editableText is untouched.
+// pairs with editableText is untouched. #1612: the same placeholder rule as editableText, so a
+// cleared markdown editor reads as "", not "\n".
 function editableTextBlocks(el) {
-  let out = '';
+  let out = '', tailBr = false;
   function walk(node) {
-    if (node.nodeType === 3) { out += node.nodeValue.replace(/​/g, ''); return; }
+    if (node.nodeType === 3) { if (node.nodeValue) tailBr = false; out += node.nodeValue.replace(/​/g, ''); return; }
     if (node.nodeType !== 1) return;
-    if (node.nodeName === 'BR') { out += '\n'; return; }
+    if (node.nodeName === 'BR') { out += '\n'; tailBr = true; return; }
     const isBlock = node.nodeName === 'DIV' || node.nodeName === 'P';
     if (isBlock && out && !out.endsWith('\n')) out += '\n'; // block starts a new line
     for (const c of node.childNodes) walk(c);
   }
   for (const c of el.childNodes) walk(c);
-  return out;
+  return tailBr ? out.slice(0, -1) : out;
 }
 
 // reject URLs that could execute script; allow data:image only for <img>
@@ -34909,8 +34917,8 @@ function inFence(text, offset) {
 // Pure core (UXP-68): merge `body` (the prefix-stripped trailing point) onto the end of
 // `prevText` (the previous visible point) when Backspace is pressed at offset 0 — the
 // inverse of splitForSibling. Joins FLUSH onto the target's last *content* line: a
-// trailing blank line on the target (a stray `\n` — e.g. a contenteditable filler `<br>`
-// that `editableText` turns into `\n`, common on parent points) and a leading blank line
+// trailing blank line on the target (a stray `\n` — e.g. one saved from a contenteditable
+// filler `<br>` before #1612, common on parent points) and a leading blank line
 // on the body are trimmed at the seam, so the body never lands on a spurious second line.
 // The returned `offset` is the FOLDED join position, turned into a caret by
 // unfoldedPrefixLen at the call site.
