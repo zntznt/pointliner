@@ -3435,8 +3435,8 @@
       "suite": "browser",
       "why": "without the _provisional mark the cleanup cannot tell render's point from one the reader made with Enter, and removing an empty child the reader created is a worse bug than the one being fixed",
       "file": "index.html",
-      "find": "  if (!only._provisional) return;",
-      "replace": "",
+      "find": "  if (!only || !only._provisional) return null;",
+      "replace": "  if (!only) return null;",
       "kills": "zooming into a childless point does not leave a point behind"
     },
     {
@@ -3444,7 +3444,7 @@
       "suite": "unit",
       "why": "emptiness must be re-checked at removal time, not trusted from the mark: a reader who types into the minted point has made it a real point and it must stay",
       "file": "index.html",
-      "find": "  if (!isEmptyPoint(only)) return;",
+      "find": "  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;\n",
       "replace": "",
       "kills": "the point render mints for an empty viewport is cleaned up"
     },
@@ -3453,8 +3453,8 @@
       "suite": "unit",
       "why": "the reported bug: back to a field list kept inside dropProvisionalChild, which never looked at qbase, so a query base built on the minted point is deleted on zoom out",
       "file": "index.html",
-      "find": "  if (!isEmptyPoint(only)) return;",
-      "replace": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;\n  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return;",
+      "find": "  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;",
+      "replace": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return null;\n  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return null;",
       "kills": "#1580 every door that discards or fills"
     },
     {
@@ -3462,9 +3462,117 @@
       "suite": "browser",
       "why": "the same regression, driven: Ctrl+K, Query base, Create, Escape and the base is gone",
       "file": "index.html",
-      "find": "  if (!isEmptyPoint(only)) return;",
-      "replace": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return;\n  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return;",
+      "find": "  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;",
+      "replace": "  if ((only.text || '').trim() || (only.children || []).length || (only.props || []).length) return null;\n  if (ARTIFACT_SIDECARS.some(k => (only[k] || []).length)) return null;",
       "kills": "#1580 a query base built on the point a zoom minted survives the zoom out"
+    },
+    {
+      "id": "zoom-cleanup-counts-stamps",
+      "suite": "unit",
+      "why": "#1613, the reported bug: the removal counts the created/edited stamps, so a zoom point typed into and cleared again (nothing left but the stamps) survives the zoom out",
+      "file": "index.html",
+      "find": "  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;",
+      "replace": "  if (!isEmptyPoint(only)) return null;",
+      "kills": "#1613 the zoom point goes on zoom out only when render minted it"
+    },
+    {
+      "id": "zoom-cleanup-counts-stamps-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: zoom in, type, leave, clear, leave, zoom out, and the point is still there",
+      "file": "index.html",
+      "find": "  if (!isEmptyPoint(only, { ignoreStamps: true })) return null;",
+      "replace": "  if (!isEmptyPoint(only)) return null;",
+      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
+    },
+    {
+      "id": "zoom-cleanup-setting-ignored",
+      "suite": "unit",
+      "why": "#1613: a tested decision core proves nothing if the call site stops passing the reader's setting; hard-wired on, Off removes the point anyway",
+      "file": "index.html",
+      "find": "const only = provisionalToDrop(vp, zoomCleanup);",
+      "replace": "const only = provisionalToDrop(vp, true);",
+      "kills": "the point render mints for an empty viewport is cleaned up"
+    },
+    {
+      "id": "zoom-cleanup-setting-ignored-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: the menu says Off and zooming out still removes the point",
+      "file": "index.html",
+      "find": "const only = provisionalToDrop(vp, zoomCleanup);",
+      "replace": "const only = provisionalToDrop(vp, true);",
+      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
+    },
+    {
+      "id": "zoom-cleanup-row-gone",
+      "suite": "unit",
+      "why": "#1613: the setting's only front door is its File menu row; a renamed or dropped row leaves a capability with no door (P2)",
+      "file": "index.html",
+      "find": "<div class=\"cmd-item\" id=\"btn-zoomcleanup\" role=\"button\" aria-pressed=\"true\">",
+      "replace": "<div class=\"cmd-item\" id=\"btn-zoom-cleanup\" role=\"button\" aria-pressed=\"true\">",
+      "kills": "#1613 the setting is a Settings row in the File menu"
+    },
+    {
+      "id": "zoom-cleanup-in-the-strip",
+      "suite": "unit",
+      "why": "#1613: the owner put this setting in the menu, NOT the strip; one more Toolbar features entry is how it would drift there",
+      "file": "index.html",
+      "find": "  { id: 'btn-notes',      name: 'Notes' },\n];",
+      "replace": "  { id: 'btn-notes',      name: 'Notes' },\n  { id: 'btn-zoomcleanup', name: 'Remove unused points on zoom out' },\n];",
+      "kills": "#1613 the setting is a Settings row in the File menu"
+    },
+    {
+      "id": "zoom-cleanup-not-persisted",
+      "suite": "unit",
+      "why": "#1613: a toggle that never writes this browser's storage forgets the reader's choice at the next load",
+      "file": "index.html",
+      "find": "  try { localStorage.setItem(ZOOM_CLEANUP_KEY, zoomCleanup ? 'on' : 'off'); } catch (_) { /* private mode: it still applies for this session */ }\n",
+      "replace": "",
+      "kills": "#1613 the setting is a Settings row in the File menu"
+    },
+    {
+      "id": "zoom-cleanup-not-persisted-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: turn it off, reload, and it is on again",
+      "file": "index.html",
+      "find": "  try { localStorage.setItem(ZOOM_CLEANUP_KEY, zoomCleanup ? 'on' : 'off'); } catch (_) { /* private mode: it still applies for this session */ }\n",
+      "replace": "",
+      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
+    },
+    {
+      "id": "zoom-cleanup-not-read-at-boot",
+      "suite": "unit",
+      "why": "#1613: a choice written and never read back at boot is the same forgotten setting from the other side",
+      "file": "index.html",
+      "find": "try { zoomCleanup = zoomCleanupFromStored(localStorage.getItem(ZOOM_CLEANUP_KEY)); } catch (_) { /* private mode: keep the default */ }",
+      "replace": "zoomCleanup = true;",
+      "kills": "#1613 the setting is a Settings row in the File menu"
+    },
+    {
+      "id": "zoom-cleanup-not-read-at-boot-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: the stored off is ignored after a reload",
+      "file": "index.html",
+      "find": "try { zoomCleanup = zoomCleanupFromStored(localStorage.getItem(ZOOM_CLEANUP_KEY)); } catch (_) { /* private mode: keep the default */ }",
+      "replace": "zoomCleanup = true;",
+      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
+    },
+    {
+      "id": "zoom-cleanup-silent-toggle",
+      "suite": "unit",
+      "why": "#1613: an in-place setting that flips without a word is a silent success, invisible to a screen reader (P3/P4)",
+      "file": "index.html",
+      "find": "  flashHint(zoomCleanupCopy(zoomCleanup).say);",
+      "replace": "",
+      "kills": "#1613 the setting is a Settings row in the File menu"
+    },
+    {
+      "id": "zoom-cleanup-row-unwired",
+      "suite": "browser",
+      "why": "#1613: a row with no handler renders, searches and takes focus perfectly, and does nothing when pressed",
+      "file": "index.html",
+      "find": "document.getElementById('btn-zoomcleanup')?.addEventListener('click', () => setZoomCleanup(!zoomCleanup));",
+      "replace": "",
+      "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
     },
     {
       "id": "template-replaces-a-noted-point",

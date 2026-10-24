@@ -11939,15 +11939,21 @@ test('#1573 the point render mints for an empty viewport is cleaned up when that
     'the cleanup runs BEFORE this render can mint a new one, or it would eat the point it just made');
   assert.match(rn, /n\._provisional = true;/, 'and the minted point is marked as render\'s own');
 
-  const drop = fnBody(_src, 'dropProvisionalChild');
-  assert.match(drop, /if \(!only\._provisional\) return;/,
+  // #1613: the decision moved into the pure provisionalToDrop (its behaviour is pinned by the #1613
+  // test below); these keep the shape of each rule, and the call site keeps it wired.
+  const decide = fnBody(_src, 'provisionalToDrop');
+  assert.match(decide, /if \(!only \|\| !only\._provisional\) return null;/,
     'only a point RENDER minted is ever removed -- one the reader made with Enter pushes undo and is theirs');
-  assert.match(drop, /vp\.children\.length !== 1/, 'and only when it is still the lone child');
+  assert.match(decide, /vp\.children\.length !== 1/, 'and only when it is still the lone child');
   // Emptiness re-checked at removal time rather than trusted from the mark: type into it and it is
   // a real point. #1580: every carrier of content is consulted through the ONE shared predicate,
   // whose field list is censused against toOpml below. The hand-kept text/children/props/sidecars
   // list that stood here missed qbase, so zooming out deleted a query base built on this point.
-  assert.match(drop, /if \(!isEmptyPoint\(only\)\) return;/, 'emptiness is the shared predicate, not a list kept here');
+  assert.match(decide, /if \(!isEmptyPoint\(only, \{ ignoreStamps: true \}\)\) return null;/,
+    'emptiness is the shared predicate, not a list kept here');
+  const drop = fnBody(_src, 'dropProvisionalChild');
+  assert.match(drop, /const only = provisionalToDrop\(vp, zoomCleanup\);\n  if \(!only\) return;/,
+    'the removal asks the decision, passing the reader\'s setting, and does nothing when it says no');
   assert.match(drop, /nodeMap\.delete\(only\.id\); parentMap\.delete\(only\.id\);/,
     'the index is cleaned too, or the id keeps resolving to a point no longer in the tree');
 
@@ -12008,8 +12014,8 @@ test('#1580 a point is empty only when nothing toOpml would save for it holds an
   assert.equal(c.isEmptyPoint(null), true);
   // The created/edited stamps. A point typed into and cleared again keeps them and shows nothing, so the
   // doors that fill or replace a point in place (/template, a Patterns recipe, a pasted spreadsheet)
-  // ask with ignoreStamps (#1596). The doors that remove a point or judge a document blank keep
-  // counting them, as before.
+  // ask with ignoreStamps (#1596), and so does removing the point a zoom minted (#1613). docIsBlank
+  // keeps counting them, as before.
   const stampedOnly = c.mkNode(''); c.stampEdit(stampedOnly);
   assert.equal(stampedOnly.props.length, 2, 'the fixture: both stamps are present');
   assert.equal(c.isEmptyPoint(stampedOnly), false, 'by default the stamps count, unchanged');
@@ -12065,7 +12071,8 @@ test('#1580 every door that discards or fills an "empty" point asks isEmptyPoint
   // The family: a point judged empty is removed (the minted point), replaced (a stamped template) or
   // filled in place (a Patterns recipe, a pasted spreadsheet). Each kept its own list, and each list
   // missed something toOpml saves. All four now share the predicate the census above holds honest.
-  assert.match(fnBody(_src, 'dropProvisionalChild'), /if \(!isEmptyPoint\(only\)\) return;/, 'the minted point');
+  assert.match(fnBody(_src, 'provisionalToDrop'), /if \(!isEmptyPoint\(only, \{ ignoreStamps: true \}\)\) return null;/,
+    'the minted point, looking past the stamps a cleared point keeps (#1613)');
   assert.match(fnBody(_src, 'stampTemplate'), /if \(isEmptyPoint\(cur, \{ ignoreStamps: true \}\)\) parent\.children\.splice\(idx, 1, clone\);/,
     'a template replaces the point only when it is empty -- the old check (text + children) replaced a point carrying a note or ' +
     'properties -- and looks past the stamps a cleared point keeps, or it leaves that blank line above the template');
@@ -12073,6 +12080,104 @@ test('#1580 every door that discards or fills an "empty" point asks isEmptyPoint
   assert.match(fnBody(_src, 'handlePaste'), /const curEmpty = node !== root && isEmptyPoint\(node, \{ ignoreStamps: true \}\);/, 'a pasted spreadsheet');
   assert.match(fnBody(_src, 'docIsBlank'), /const blank = n => !pointHasOwnContent\(n\) && \(n\.children \|\| \[\]\)\.every\(blank\);/,
     'the whole-document check walks the same predicate');
+});
+
+// #1613: the point render mints for a zoom, typed into and cleared again, survived the zoom out. It
+// keeps nothing but the created/edited stamps (and "\n" for text, #1612), and the removal counted the
+// stamps while its own comment said that point goes. The owner's decision: a point added and not used
+// can be removed, and whether it is removed is the reader's setting in the File menu, on by default.
+// Every combination of the four things the decision reads, against the rule written out longhand.
+test('#1613 the zoom point goes on zoom out only when render minted it, it is still alone and unused, and the setting is on', () => {
+  const stamped = (n) => { c.stampEdit(n); return n; };
+  // What the lone child holds, and whether that alone makes it unused.
+  const SHAPES = {
+    'untouched':         { unused: true,  make: () => c.mkNode('') },
+    'typed and cleared': { unused: true,  make: () => stamped(c.mkNode('\n')) },
+    'cleared to spaces': { unused: true,  make: () => stamped(c.mkNode('  ')) },
+    'typed into':        { unused: false, make: () => stamped(c.mkNode('abc')) },
+    'a note only':       { unused: false, make: () => { const n = stamped(c.mkNode('')); n.note = 'call the venue'; return n; } },
+    'a property only':   { unused: false, make: () => { const n = stamped(c.mkNode('')); n.props.push({ key: 'cost', val: '5' }); return n; } },
+    'a child':           { unused: false, make: () => { const n = c.mkNode(''); n.children.push(c.mkNode('kid')); return n; } },
+    'a pill record':     { unused: false, make: () => { const n = c.mkNode(''); n.dice = [{ key: 'd1' }]; return n; } },
+    'a query base':      { unused: false, make: () => { const n = c.mkNode(''); n.type = 'base'; n.qbase = { expr: 'is:todo', cols: [] }; return n; } },
+  };
+  const stampsOf = (n) => (n.props || []).map(p => p.key).filter(k => k === 'created' || k === 'edited').sort().join(',');
+  assert.equal(stampsOf(SHAPES['typed and cleared'].make()), 'created,edited', 'the fixture: the reported shape carries both stamps');
+  let cases = 0, drops = 0;
+  for (const [name, s] of nonEmpty(Object.entries(SHAPES), 'shapes')) {
+    for (const cleanup of [true, false]) for (const minted of [true, false]) for (const alone of [true, false]) {
+      const only = s.make();
+      if (minted) only._provisional = true;
+      const vp = c.mkNode('Alpha'); vp.children.push(only);
+      if (!alone) vp.children.push(c.mkNode('sibling'));
+      const want = cleanup && minted && alone && s.unused;
+      assert.equal(c.provisionalToDrop(vp, cleanup), want ? only : null,
+        `${name}, setting ${cleanup ? 'on' : 'off'}, ${minted ? 'minted by render' : 'made by the reader'}, ${alone ? 'alone' : 'beside a sibling'}`);
+      cases++; if (want) drops++;
+    }
+  }
+  assert.equal(cases, Object.keys(SHAPES).length * 8, 'every combination ran');
+  assert.equal(drops, 3, 'exactly the three unused shapes go, and only when minted, alone and with the setting on');
+  // The edges a caller can hand it: nothing to judge is never a removal.
+  assert.equal(c.provisionalToDrop(null, true), null, 'no viewport');
+  assert.equal(c.provisionalToDrop(c.mkNode('Alpha'), true), null, 'a viewport with no children');
+  const odd = c.mkNode('Alpha'); odd.children = [null];
+  assert.equal(c.provisionalToDrop(odd, true), null, 'a hole where the child should be');
+});
+
+test('#1613 the setting reads back from storage with a safe default, and its words name the state', () => {
+  assert.equal(c.zoomCleanupFromStored(null), true, 'nothing stored is on, which is what an untouched zoom always did');
+  assert.equal(c.zoomCleanupFromStored('on'), true);
+  assert.equal(c.zoomCleanupFromStored('off'), false, 'only an explicit off turns it off');
+  for (const v of ['', 'OFF', 'false', '0', 'garbage', undefined]) {
+    assert.equal(c.zoomCleanupFromStored(v), true, `${JSON.stringify(v)} falls back to the default`);
+  }
+  const on = c.zoomCleanupCopy(true), off = c.zoomCleanupCopy(false);
+  assert.equal(on.label, 'Remove unused points on zoom out: On');
+  assert.equal(off.label, 'Remove unused points on zoom out: Off', 'the label names the CURRENT state, like Width (#505)');
+  assert.notEqual(on.desc, off.desc, 'the description says what each state does');
+  assert.notEqual(on.say, off.say, 'and the announcement says which way it went');
+  for (const s of [on.label, on.desc, on.say, off.label, off.desc, off.say]) {
+    assert.ok(!/[—–]/.test(s), 'no em or en dash in user copy: ' + s);
+    assert.ok(!/\b(node|item|row|bullet|entry|outline)s?\b/i.test(s), 'canonical vocabulary, "point": ' + s);
+  }
+  // The markup ships the default's words, so the first paint is already the sentence the sync writes.
+  assert.ok(_src.includes(`<span class="cmd-label" id="zoomcleanup-label">${on.label}</span>`), 'the shipped label is the on label');
+  assert.ok(_src.includes(`<span class="cmd-desc" id="zoomcleanup-desc">${on.desc}</span>`), 'the shipped description is the on description');
+});
+
+test('#1613 the setting is a Settings row in the File menu, wired, kept in this browser, and not a toolbar button', () => {
+  const menu = between(_src, '<div id="file-menu"', '<div id="outline">');
+  const settings = between(menu, '<div class="fm-cat" data-cat="settings">', '<div class="fm-cat" data-cat="learn">');
+  assert.equal((_src.match(/id="btn-zoomcleanup"/g) || []).length, 1, 'exactly one element carries the id');
+  assert.match(settings, /<div class="cmd-item" id="btn-zoomcleanup" role="button" aria-pressed="true">/,
+    'a toggle row in the Settings category, pressed by default, a .cmd-item so the menu search reads its label and description');
+  // NOT in the strip: no toolbar button, and not one of the Toolbar features toggles.
+  const strip = between(_src, '<div id="tbtn-cluster" class="scroll-strip">', '<div id="doc-tabs"');
+  const features = between(_src, 'const TOOLBAR_FEATURES = [', '];');
+  for (const [where, s] of [['the toolbar strip', strip], ['TOOLBAR_FEATURES', features]]) {
+    assert.doesNotMatch(s, /zoomcleanup|zoomCleanup|zoom out/i, `the setting must not be in ${where}`);
+  }
+  // Wired: a click (Enter and Space reach it through the menu's own keydown) flips it in place.
+  assert.ok(_src.includes("document.getElementById('btn-zoomcleanup')?.addEventListener('click', () => setZoomCleanup(!zoomCleanup));"),
+    'the row toggles the setting');
+  const set = fnBody(_src, 'setZoomCleanup');
+  assert.match(set, /try \{ localStorage\.setItem\(ZOOM_CLEANUP_KEY, zoomCleanup \? 'on' : 'off'\); \} catch \(_\)/,
+    'the choice is written to this browser, and a refused write never throws out of the toggle');
+  assert.match(set, /syncZoomCleanupRow\(\);\n  flashHint\(zoomCleanupCopy\(zoomCleanup\)\.say\);/, 'the row repaints and the change is announced');
+  assert.doesNotMatch(set, /closeFileMenu/, 'an in-place setting leaves the menu open, like Width');
+  const sync = fnBody(_src, 'syncZoomCleanupRow');
+  assert.match(sync, /const c = zoomCleanupCopy\(zoomCleanup\);/, 'the row reads the one copy core');
+  assert.match(sync, /setAttribute\('aria-pressed', zoomCleanup \? 'true' : 'false'\)/, 'the state is exposed to assistive tech');
+  assert.ok(_src.includes('\nsyncZoomCleanupRow();\n'), 'and painted at boot from the stored choice');
+  // Read at boot, before the first render can need it, and a failed read keeps the default.
+  assert.ok(_src.includes("const ZOOM_CLEANUP_KEY = 'pl-zoom-cleanup';"), 'one key, prefixed like the other per-browser prefs');
+  const read = "try { zoomCleanup = zoomCleanupFromStored(localStorage.getItem(ZOOM_CLEANUP_KEY)); } catch (_)";
+  assert.ok(_src.includes(read), 'the stored choice is read inside a try');
+  assert.ok(_src.indexOf(read) < _src.indexOf('function dropProvisionalChild('), 'beside the removal that reads it');
+  // A preference of this browser, never document data.
+  assert.doesNotMatch(fnBody(_src, 'toOpml'), /zoomCleanup/, 'not written into the file');
+  assert.ok(!/JSON\.stringify\(\{ root[^\n]*zoomCleanup/.test(_src), 'and not into the autosave payload');
 });
 
 // #1596: typing `/` or `@` into a point opens the command browser, the browser takes focus, and the
@@ -12165,8 +12270,9 @@ test('#1594 census: every door that fills a point it judges empty leaves the edi
   const sites = nonEmpty([..._src.matchAll(/\bisEmptyPoint\(/g)].map(m => m.index)
     .filter(i => code[i] === 2 && _src.slice(i - 9, i) !== 'function '), 'isEmptyPoint call sites');
   // FILL: writes into, or replaces, the point it judged. REMOVE: discards it, no fill, no render of it.
+  // #1613: the removal's judgement lives in the pure provisionalToDrop, which dropProvisionalChild calls.
   const FILL = new Set(['stampTemplate', 'insertRecipe', 'handlePaste']);
-  const REMOVE = new Set(['dropProvisionalChild']);
+  const REMOVE = new Set(['provisionalToDrop']);
   const leaves = /commitActiveEdit\(\);|document\.querySelector\(`\.node-content\[data-id="\$\{nodeId\}"\]\[data-editing\]`\)\??\.blur\(\)|if \(el\) el\.blur\(\);/;
   const seen = new Set();
   for (const at of sites) {
@@ -12176,9 +12282,11 @@ test('#1594 census: every door that fills a point it judges empty leaves the edi
     assert.ok(FILL.has(fn.name) || REMOVE.has(fn.name),
       `${fn.name} judges a point empty and is not classified. If it fills or replaces the point in place, add it to FILL ` +
       '(it must leave the edit first and pass { ignoreStamps: true }); if it removes it, add it to REMOVE');
-    if (!FILL.has(fn.name)) continue;
     const call = _src.slice(at, _src.indexOf(')', at) + 1);
-    assert.match(call, /\{ ignoreStamps: true \}/, `${fn.name}: a fill looks past the created/edited stamps a cleared point keeps`);
+    // #1613: a removal looks past them too. The owner's rule: a point added and not used can go, and a
+    // point typed into and cleared again keeps nothing but those stamps.
+    assert.match(call, /\{ ignoreStamps: true \}/, `${fn.name}: a ${FILL.has(fn.name) ? 'fill' : 'removal'} looks past the created/edited stamps a cleared point keeps`);
+    if (!FILL.has(fn.name)) continue;
     const before = _src.slice(fn.open, at);
     assert.match(before, leaves, `${fn.name}: leaves the edit before it judges or writes the point, or render() writes the stale buffer back`);
   }

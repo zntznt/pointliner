@@ -6922,6 +6922,117 @@ test('#1580 a query base built on the point a zoom minted survives the zoom out,
   await pg.close();
 });
 
+// #1613: the point a zoom minted, typed into and cleared again, survived the zoom out. It keeps only
+// the created/edited stamps, and the removal counted them. Measured on origin/main with exactly this
+// sequence: 1 child left behind, against 0 for an untouched zoom. The owner's decision: a point added
+// and not used goes, and the reader can turn that off in the File menu (Settings, "Remove unused
+// points on zoom out"), on by default. Every step is a real key press: the File menu is the
+// keyboard's way to leave a point and come back (the point's blur commits and stamps it, Escape hands
+// the caret back), and the setting is found, toggled and persisted through that same menu.
+test('#1613 a zoom point typed into and cleared goes on zoom out, and the File menu setting keeps it', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const seed = async () => {
+    await pg.evaluate(() => { root.children = [mkNode('Alpha'), mkNode('Beta')]; buildIndex(root); markDirty(); render(); });
+    await pg.waitForTimeout(250);
+  };
+  const kids = () => pg.evaluate(() => root.children[0].children.map(k => ({
+    text: k.text.trim(), note: k.note || '', stamped: (k.props || []).some(p => p.key === 'edited'), mark: !!k._provisional })));
+  const zoomIn = async () => {
+    const id = await pg.evaluate(() => root.children[0].id);
+    await pg.click(`.node-content[data-id="${id}"]`); await pg.waitForTimeout(200);
+    await pg.keyboard.press('Control+Enter'); await pg.waitForTimeout(400);
+    assert.deepEqual(await kids(), [{ text: '', note: '', stamped: false, mark: true }], 'zooming in minted one point to type into');
+    assert.equal(await pg.evaluate(() => activeContentId === root.children[0].children[0].id), true, 'and the caret is in it');
+  };
+  const zoomOut = async () => {
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+    assert.equal(await pg.evaluate(() => focusedId), null, 'Escape zoomed out');
+  };
+  // Leave the point and come back, by the keyboard: focus the File button and press Enter, then Escape.
+  const viaMenu = async (inMenu) => {
+    const at = await pg.evaluate(() => activeContentId);
+    await pg.focus('#logo-btn'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(350);
+    assert.equal(await pg.evaluate(() => fileMenu.classList.contains('on')), true, 'the File menu opened from the keyboard');
+    if (inMenu) await inMenu();
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(400);
+    assert.equal(await pg.evaluate(() => fileMenu.classList.contains('on')), false, 'and Escape closed it');
+    if (at) assert.equal(await pg.evaluate(() => activeContentId), at, 'handing the caret back to the point it left');
+  };
+  const typeAndClear = async () => {
+    await pg.keyboard.type('abc', { delay: 5 }); await pg.waitForTimeout(150);
+    await viaMenu();
+    assert.deepEqual(await kids(), [{ text: 'abc', note: '', stamped: true, mark: true }], 'leaving committed the typing and stamped it');
+    for (let i = 0; i < 3; i++) await pg.keyboard.press('Backspace');
+    await pg.waitForTimeout(150);
+    await viaMenu();
+    assert.deepEqual(await kids(), [{ text: '', note: '', stamped: true, mark: true }],
+      'the reported shape: cleared, still stamped, still the point render minted');
+  };
+  const noteOnly = async () => {
+    await pg.keyboard.type('/note', { delay: 5 }); await pg.waitForTimeout(400);
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(400);
+    await pg.keyboard.type('call the venue', { delay: 5 }); await pg.waitForTimeout(150);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(350);   // commits the note, caret back in the point
+    assert.deepEqual(await kids(), [{ text: '', note: 'call the venue', stamped: true, mark: true }], 'the fixture: a note and nothing else');
+  };
+  const SHAPES = [['untouched', null], ['typed and cleared', typeAndClear], ['a note only', noteOnly]];
+  const measure = async () => {
+    const left = {};
+    for (const [name, act] of SHAPES) {
+      await seed(); await zoomIn();
+      if (act) await act();
+      await zoomOut();
+      left[name] = (await kids()).length;
+    }
+    return left;
+  };
+  const row = () => pg.evaluate(() => {
+    const r = document.getElementById('btn-zoomcleanup');
+    return { pressed: r.getAttribute('aria-pressed'), label: r.querySelector('.cmd-label').textContent, stored: localStorage.getItem(ZOOM_CLEANUP_KEY) };
+  });
+  // Find the row through the menu search, land on it with the arrow, and press `key` on it.
+  const toggle = (key, want) => viaMenu(async () => {
+    await pg.keyboard.type('zoom out', { delay: 5 }); await pg.waitForTimeout(250);
+    assert.deepEqual(await pg.evaluate(() => fmItems().map(r => r.id)), ['btn-zoomcleanup'], 'the menu search finds the setting, and only it');
+    await pg.keyboard.press('ArrowDown'); await pg.waitForTimeout(120);
+    assert.equal(await pg.evaluate(() => document.activeElement.id), 'btn-zoomcleanup', 'the arrow lands on the row');
+    await pg.keyboard.press(key); await pg.waitForTimeout(300);
+    assert.deepEqual(await row(), want, `${JSON.stringify(key)} flips it, and the row and this browser's storage say so`);
+    assert.equal(await pg.evaluate(() => fileMenu.classList.contains('on')), true, 'in place: the menu stays open');
+    assert.equal(await pg.evaluate(() => document.getElementById('a11y-live').textContent.trim()),
+      await pg.evaluate((on) => zoomCleanupCopy(on).say, want.pressed === 'true'), 'and the change is announced');
+  });
+  const reload = async () => {
+    await pg.reload(); await pg.waitForSelector('#outline', { timeout: 10000 }); await pg.waitForTimeout(700);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+  };
+
+  // ON, the default: what is unused goes, a note keeps the point.
+  assert.deepEqual(await row(), { pressed: 'true', label: 'Remove unused points on zoom out: On', stored: null }, 'on by default, nothing stored yet');
+  assert.deepEqual(await measure(), { 'untouched': 0, 'typed and cleared': 0, 'a note only': 1 },
+    'on: an untouched or cleared zoom point is removed, one with a note stays');
+
+  // OFF, through the menu: nothing the zoom minted is removed.
+  await seed();
+  await toggle('Enter', { pressed: 'false', label: 'Remove unused points on zoom out: Off', stored: 'off' });
+  assert.deepEqual(await measure(), { 'untouched': 1, 'typed and cleared': 1, 'a note only': 1 }, 'off: the zoom point stays every time');
+
+  // A preference of this browser: it survives a reload, and so does turning it back on (Space this time).
+  await reload();
+  assert.deepEqual(await row(), { pressed: 'false', label: 'Remove unused points on zoom out: Off', stored: 'off' }, 'off is remembered');
+  await seed(); await zoomIn(); await zoomOut();
+  assert.equal((await kids()).length, 1, 'and still applies after the reload');
+  await seed();
+  await toggle(' ', { pressed: 'true', label: 'Remove unused points on zoom out: On', stored: 'on' });
+  await reload();
+  assert.equal((await row()).pressed, 'true', 'on is remembered too');
+  await seed(); await zoomIn(); await zoomOut();
+  assert.equal((await kids()).length, 0, 'and an untouched zoom point is removed again');
+
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 // #1580, the siblings: each door that REPLACES or FILLS a point it judges empty kept its own list.
 // /template's read text and children only, so a point holding a note was replaced and the note lost
 // (driven on origin/main); a Patterns drop and a pasted table filled such a point in place, so the
