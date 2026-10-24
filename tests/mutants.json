@@ -3575,6 +3575,60 @@
       "kills": "#1613 a zoom point typed into and cleared goes on zoom out"
     },
     {
+      "id": "cleared-point-reader-swapped",
+      "suite": "unit",
+      "why": "#1612: a tested editableText proves nothing if exitEdit stops reading the point through it; innerText reads the placeholder <br> as a newline again",
+      "file": "index.html",
+      "find": "  node.text = editableText(content);\n  node.text = collapseTaskKeywordCollision(node.text);",
+      "replace": "  node.text = content.innerText;\n  node.text = collapseTaskKeywordCollision(node.text);",
+      "kills": "#1612 census: every editor reads its text back"
+    },
+    {
+      "id": "cleared-point-reader-swapped-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: a point cleared with Backspace saves a newline again",
+      "file": "index.html",
+      "find": "  node.text = editableText(content);\n  node.text = collapseTaskKeywordCollision(node.text);",
+      "replace": "  node.text = content.innerText;\n  node.text = collapseTaskKeywordCollision(node.text);",
+      "kills": "#1612 every editor cleared with the keyboard saves"
+    },
+    {
+      "id": "cleared-base-markdown-reader-swapped",
+      "suite": "unit",
+      "why": "#1612: the base markdown editor is the editableTextBlocks member of the family; a commit that reads innerText instead brings the newline back",
+      "file": "index.html",
+      "find": "    node.text = editableTextBlocks(content);\n",
+      "replace": "    node.text = content.innerText;\n",
+      "kills": "#1612 census: every editor reads its text back"
+    },
+    {
+      "id": "cleared-zoom-title-reader-swapped",
+      "suite": "unit",
+      "why": "#1612: the zoom title commits through its own closure, a few hundred lines from exitEdit, so a fix to exitEdit's reader would never reach it",
+      "file": "index.html",
+      "find": "      vp.text = editableText(te);\n      rederiveFromText(vp);",
+      "replace": "      vp.text = te.innerText;\n      rederiveFromText(vp);",
+      "kills": "#1612 census: every editor reads its text back"
+    },
+    {
+      "id": "cleared-zoom-title-reader-swapped-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: a zoom title cleared with Backspace saves a newline again",
+      "file": "index.html",
+      "find": "      vp.text = editableText(te);\n      rederiveFromText(vp);",
+      "replace": "      vp.text = te.innerText;\n      rederiveFromText(vp);",
+      "kills": "#1612 every editor cleared with the keyboard saves"
+    },
+    {
+      "id": "editor-census-misses-a-new-editor",
+      "suite": "unit",
+      "why": "#1612: the census must notice an editor opened somewhere it does not list, or the next one ships reading the placeholder <br> unseen",
+      "file": "index.html",
+      "find": "  ind.contentEditable = 'false';",
+      "replace": "  ind.contentEditable = 'true';",
+      "kills": "#1612 census: every editor reads its text back"
+    },
+    {
       "id": "template-replaces-a-noted-point",
       "suite": "unit",
       "why": "/template replaced any point with no text and no children, so a point carrying a note or properties was overwritten and the note was lost",

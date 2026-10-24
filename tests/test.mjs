@@ -20575,6 +20575,104 @@ test('splitForSibling tolerates null/undefined text', () => {
   assert.deepEqual(host(c.splitForSibling(undefined, 3, 'x')), { before: '', after: 'x' });
 });
 
+// ─── #1612: a cleared editor reads as "" ──────────────────────────────────────────────────────────
+// When the LAST line of a contenteditable empties, Chromium leaves a <br> there to hold the line
+// open, and a <br> at the end of a block draws no line of its own. editableText read it as "\n", so
+// a point cleared with Backspace saved "\n", and every state below saved one newline more than the
+// same screen reached by typing alone. Each shape is what Chromium left in a point, driven with real
+// keys and named by them. A line break the reader TYPES is a "\n" text node (insertLineBreak), so
+// the typed shapes, measured on main, must read exactly as before.
+function editorDom() {
+  const T = (v) => ({ nodeType: 3, nodeValue: v });
+  const BR = () => ({ nodeType: 1, nodeName: 'BR', childNodes: [] });
+  const EL = (nodeName, kids, token) => ({ nodeType: 1, nodeName, dataset: token ? { token } : {}, childNodes: kids });
+  return { T, BR, EL, ED: (...kids) => EL('DIV', kids), Z: '\u200b' };
+}
+test('#1612 a point cleared with the keyboard reads as "", and the same screen reads the same however it was reached', () => {
+  const { T, BR, EL, ED, Z } = editorDom();
+  const read = (...kids) => c.editableText(ED(...kids));
+  // the placeholder, by the keys that left it
+  assert.equal(read(BR()), '', 'abc, then Backspace x3; select all then Delete or Backspace; cut; Alt+Backspace; Shift+Home then Delete');
+  assert.equal(read(T('abc'), BR()), 'abc', 'abc, Shift+Enter, Backspace, Backspace: the screen shows abc again');
+  assert.equal(read(T('abc'), T('\n'), BR()), 'abc\n', 'abc, Shift+Enter, Backspace: two lines, the same as abc, Shift+Enter');
+  assert.equal(read(T('\n'), BR()), '\n', 'Shift+Enter, Backspace: the same as Shift+Enter');
+  assert.equal(read(T('\n'), T(Z), T('\n'), BR()), '\n\n', 'Shift+Enter twice, Backspace: the same as Shift+Enter twice');
+  assert.equal(read(T('a\nb\n'), BR()), 'a\nb\n', 'the last of three lines cleared: three lines are still on screen');
+  // the rule, where nothing measured above reaches it
+  assert.equal(read(EL('SPAN', [T('{2d6}'), BR()])), '{2d6}', 'a placeholder inside an inline span is still the last thing in the editor');
+  assert.equal(read(EL('SPAN', [T('7')], '[[dice:k1]]'), T(Z), BR()), '[[dice:k1]]', 'after a pill and its caret anchor');
+  assert.equal(read(T('abc'), BR(), T('')), 'abc', 'an empty text node after it holds nothing');
+  // typed shapes, measured on main: unchanged
+  for (const [kids, want, how] of [
+    [[T('abc')], 'abc', 'abc'],
+    [[T('ab'), T('\n'), T(Z + 'cd')], 'ab\ncd', 'ab, Shift+Enter, cd'],
+    [[T('abc'), T('\n'), T(Z)], 'abc\n', 'abc, Shift+Enter: a newline the reader typed at the end stays'],
+    [[T('\n'), T(Z)], '\n', 'Shift+Enter on an empty point'],
+    [[T('\n'), T(Z), T('\n'), T(Z)], '\n\n', 'Shift+Enter twice'],
+    [[T('  abc  ')], '  abc  ', 'spaces the reader typed are never trimmed'],
+    [[T('   ')], '   ', 'spaces only'],
+    [[T('line1\nline2\n')], 'line1\nline2\n', 'stored text with a trailing newline, entered and left untouched'],
+    [[T('Roll '), EL('SPAN', [T('7')], '[[dice:k1]]'), T(Z)], 'Roll [[dice:k1]]', 'a pill'],
+    [[T('a'), BR(), T('b')], 'a\nb', 'a <br> with text after it is a line break'],
+    [[T('abc'), BR(), T(Z)], 'abc\n', 'and so is one a caret anchor holds a line open after'],
+    [[BR(), BR()], '\n', 'two <br>: the first draws the line, only the last is the placeholder'],
+  ]) assert.equal(read(...kids), want, how);
+});
+
+// The base's "Edit as markdown" editor reads through editableTextBlocks, and clearing it left the
+// same <br>: on main the base turned into a point holding "\n".
+test('#1612 the markdown editor of a base cleared with the keyboard reads as "", and its lines are kept', () => {
+  const { T, BR, ED } = editorDom();
+  const read = (...kids) => c.editableTextBlocks(ED(...kids));
+  const tbl = '| a | b |\n| --- | --- |\n| 1 | 2 |';
+  assert.equal(read(BR()), '', 'select all then Delete');
+  assert.equal(read(T(tbl), ED(BR())), tbl + '\n', 'End, Enter: one empty line under the table (main read two)');
+  assert.equal(read(T(tbl), ED(BR()), ED(BR())), tbl + '\n\n', 'End, Enter, Enter: two (main read three)');
+  for (const [kids, want, how] of [
+    [[T(tbl)], tbl, 'the table as enterEdit writes it, untouched'],
+    [[T(tbl), ED(T('#+TBLFM: $2=$1'))], tbl + '\n#+TBLFM: $2=$1', 'End, Enter, then a recipe line'],
+    [[T('a'), BR(), ED(T('b'))], 'a\nb', 'a <br> before a block is one line break, as before'],
+  ]) assert.equal(read(...kids), want, how);
+});
+
+// #1612, the siblings: every editor the app opens, where it is opened and the reader its commit
+// uses. The four that read through editableText / editableTextBlocks had the bug; the rest read
+// textContent (a <br> is no text) or innerText with the trailing newline dropped, and already saved
+// "" when cleared (driven on main). A new editor fails the count until it is listed here with its
+// reader and driven type-then-clear in tests/browser.mjs.
+test('#1612 census: every editor reads its text back through a reader that drops the placeholder <br>', () => {
+  const EDITOR_RE = /\.contentEditable\s*=[^;\n]*'(?:true|plaintext-only)'|(?<![[\w])contenteditable="true"/g;
+  const editorsIn = (src) => src.split('\n').filter(l => !/^\s*\/\//.test(l)).map(l => l.replace(/\s\/\/ .*$/, ''))
+    .reduce((n, l) => n + (l.match(EDITOR_RE) || []).length, 0);
+  const fileName = between(_src, "const fn = document.getElementById('file-name');", "fn.addEventListener('blur', () => end(true));");
+  const HOSTS = [
+    ['renderRow', fnBody(_src, 'renderRow'), 1],                  // a point: exitEdit, editableText
+    ['buildCorkboard', fnBody(_src, 'buildCorkboard'), 1],        // a corkboard card: the same exitEdit
+    ['render', fnBody(_src, 'render'), 1],                        // the zoom title: exitZoomEdit, editableText
+    ['enterEdit', fnBody(_src, 'enterEdit'), 1],                  // a base as markdown: exitEdit, editableTextBlocks
+    ['buildTableWidget', fnBody(_src, 'buildTableWidget'), 3],    // base cells, query-base cells, the column name: textContent
+    ['buildCardsWidget', fnBody(_src, 'buildCardsWidget'), 1],    // base cards: the same cell focusout
+    ['buildNoteEl', fnBody(_src, 'buildNoteEl'), 2],              // a note (and its non-Chromium fallback): innerText
+    ['renderFnPanel', fnBody(_src, 'renderFnPanel'), 1],          // a footnote: innerText
+    ['the file name', fileName, 1],                               // textContent
+  ];
+  const got = HOSTS.map(([name, body]) => [name, editorsIn(body)]);
+  assert.deepEqual(got, HOSTS.map(([name, , n]) => [name, n]), 'each host opens the editors listed for it');
+  assert.equal(editorsIn(_src), HOSTS.reduce((n, h) => n + h[2], 0),
+    'an editor opened somewhere not listed here: add it with the reader its commit uses, and drive it type-then-clear in tests/browser.mjs');
+  // ...and each commit reads through the reader named for it
+  const ex = fnBody(_src, 'exitEdit');
+  assert.match(ex, /\n  node\.text = editableText\(content\);\n/, 'a point and a corkboard card commit through editableText');
+  assert.match(ex, /\n    node\.text = editableTextBlocks\(content\);\n/, 'a base edited as markdown commits through editableTextBlocks');
+  assert.match(fnBody(_src, 'renderRow'), /\n\s*if \(!opts\.searchCtx\) attachContentEvents\(content, node\);/, 'a point is the editor exitEdit commits');
+  assert.match(fnBody(_src, 'buildCorkboard'), /\n\s*attachContentEvents\(content, node\);/, 'a corkboard card is the same editor');
+  assert.match(fnBody(_src, 'render'), /const exitZoomEdit = \(\) => \{\n\s*vp\.text = editableText\(te\);/, 'the zoom title commits through editableText');
+  assert.match(fnBody(_src, 'mtWireCells'), /\n\s*let raw = cell\.textContent;/, 'a base cell commits its textContent');
+  assert.match(fnBody(_src, 'commitNote'), /const next = \(noteEl\.innerText \|\| ''\)\.replace\(\/\\n\+\$\/, ''\);/, 'a note drops its trailing newlines');
+  assert.match(fnBody(_src, 'renderFnPanel'), /entry\.text = contentEl\.innerText\.replace\(\/\\n\$\/, ''\);/, 'a footnote drops its trailing newline');
+  assert.match(fileName, /const typed = fn\.textContent;/, 'the file name commits its textContent');
+});
+
 // ─── mergeUpText (UXP-68: Backspace merges the point up into the one above) ────
 test('mergeUpText joins flush and reports the folded join offset', () => {
   assert.deepEqual(host(c.mergeUpText('bar', 'foo')), { text: 'barfoo', offset: 3 });
