@@ -7312,6 +7312,110 @@ test('#1595 a pasted table keeps its title, and a cleared point is blank to ever
   await pg.close();
 });
 
+// #1614: a paste of two or more lines made points that never got created/edited, while the single
+// line and typed text did. The merge target's baseline was moved past the paste and the new points
+// were built whole, so no commit ever saw a change. Every door that writes the reader's own content is
+// driven here on the point being edited, with a real paste event and the real undo. The negative is a
+// copy: Ctrl+C or Ctrl+X then Ctrl+V outside an edit clones the points, and a clone keeps its source's
+// stamps, so a cut-and-paste move keeps the point's created date.
+test('#1614 every paste door stamps the points it writes as typing does, and a copied point keeps its own', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const OLD = '2020-01-01T09:00';
+  const setup = (kids) => pg.evaluate(({ kids, OLD }) => {
+    const mk = (k) => {
+      const n = mkNode(k.text || '');
+      if (k.old) n.props = [{ key: 'created', val: OLD }, { key: 'edited', val: OLD }];
+      n.children = (k.children || []).map(mk); return n;
+    };
+    root.children = kids.map(mk); buildIndex(root, null); markDirty(); render();
+    undoStack.length = 0; redoStack.length = 0;
+  }, { kids, OLD });
+  const caret = (i, end) => pg.evaluate(({ i, end }) => {
+    const n = root.children[i], c = document.querySelector(`.node-content[data-id="${n.id}"]`);
+    if (!c.dataset.editing) enterEdit(c, n); c.focus(); activeContentId = n.id;
+    if (end) setCaretByOffset(c, (c.textContent || '').length);
+  }, { i, end });
+  const paste = (text, i = 0) => pg.evaluate(({ text, i }) => {
+    const c = document.querySelector(`.node-content[data-id="${root.children[i].id}"]`);
+    const dt = new DataTransfer(); dt.setData('text/plain', text);
+    c.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, { text, i });
+  const leave = async () => { await pg.keyboard.press('Escape'); await pg.evaluate(() => commitActiveEdit()); await pg.waitForTimeout(250); };
+  // every point in document order as `text [stamps]`, `old` marking a stamp the fixture wrote
+  const tree = () => pg.evaluate((OLD) => {
+    const st = n => (n.props || []).filter(p => TIMESTAMP_KEYS.has(p.key))
+      .map(p => p.key + (p.val === OLD ? ':old' : '')).sort().join(',') || '-';
+    const walk = (n, d) => [`${'>'.repeat(d)}${n.text.replace(/\[\[[a-z]+:[^\]]+\]\]/g, '[pill]')} [${st(n)}]`, ...n.children.flatMap(k => walk(k, d + 1))];
+    return root.children.flatMap(n => walk(n, 0));
+  }, OLD);
+  const S = 'created,edited';
+  const bad = [];
+  const check = async (name, want) => { const got = await tree(); if (JSON.stringify(got) !== JSON.stringify(want)) bad.push(`${name}: ${JSON.stringify(got)}`); };
+
+  // The controls, which stamped before the fix: typed text, and a one-line paste.
+  await setup([{}]); await caret(0); await pg.keyboard.type('alpha', { delay: 10 }); await leave();
+  await check('typed alpha', [`alpha [${S}]`]);
+  await setup([{}]); await caret(0); await paste('alpha'); await leave();
+  await check('one pasted line', [`alpha [${S}]`]);
+  // The reported case: two lines on a fresh point.
+  await setup([{}]); await caret(0); await paste('alpha\nbeta'); await pg.waitForTimeout(300); await leave();
+  await check('two pasted lines', [`alpha [${S}]`, `beta [${S}]`]);
+  // An outline: list markers and indentation nest, and a nested point is the reader's too.
+  await setup([{}]); await caret(0); await paste('- a\n  - b\n- c'); await pg.waitForTimeout(300); await leave();
+  await check('a pasted outline', [`a [${S}]`, `>b [${S}]`, `c [${S}]`]);
+  // Typed text, then a paste, on one edit: the merge target says something else either way.
+  await setup([{}]); await caret(0); await pg.keyboard.type('x', { delay: 10 }); await paste('alpha\nbeta'); await pg.waitForTimeout(300); await leave();
+  await check('typed, then pasted', [`xalpha [${S}]`, `beta [${S}]`]);
+  // Into a point that already has text and stamps: its created stays, its edited moves on.
+  await setup([{ text: 'Existing', old: true }]); await caret(0, true); await paste('alpha\nbeta'); await pg.waitForTimeout(300); await leave();
+  await check('into a stamped point', ['Existingalpha [created:old,edited]', `beta [${S}]`]);
+  // A spreadsheet fills the fresh point in place (#1324): the heading and every row.
+  await setup([{}]); await caret(0); await paste('name\tcost\nsword\t10\nshield\t5'); await pg.waitForTimeout(400); await leave();
+  await check('a pasted spreadsheet', [`## Imported table [${S}]`, `>sword  [${S}]`, `>shield  [${S}]`]);
+  // A dropped image makes a point, the drag twin of pasting its address.
+  await setup([{ text: 'Here' }]);
+  await pg.evaluate(() => {
+    const dt = new DataTransfer(); dt.setData('text/uri-list', 'https://example.com/cat.png');
+    document.querySelector('.node-content[data-id]').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  });
+  await pg.waitForTimeout(300); await leave();
+  await check('a dropped image', ['Here [-]', `![image](https://example.com/cat.png) [${S}]`]);
+  // A Patterns recipe on a fresh point (the command browser's doors to it are driven by #1596).
+  await setup([{}]); await caret(0);
+  await pg.evaluate(() => insertRecipe(PATTERN_RECIPES[0], root.children[0].id)); await pg.waitForTimeout(400); await leave();
+  const recipe = await tree();
+  if (recipe.length < 1 || !recipe.every(r => r.endsWith(`[${S}]`))) bad.push(`a Patterns recipe: ${JSON.stringify(recipe)}`);
+
+  // One undo still takes the whole paste back, stamps included.
+  await setup([{ text: 'Keep', old: true }, {}]); await caret(1); await paste('alpha\nbeta', 1); await pg.waitForTimeout(300); await leave();
+  await check('before the undo', ['Keep [created:old,edited:old]', `alpha [${S}]`, `beta [${S}]`]);
+  await pg.keyboard.press('Control+z'); await pg.waitForTimeout(400);
+  await check('one undo', ['Keep [created:old,edited:old]', ' [-]']);
+
+  // The negative: a copy keeps its source's stamps. A stamped point with a stamped child, selected from
+  // the row (Shift+ArrowDown takes the child too, so the copy is the point and its subtree).
+  const copyOf = async (chord) => {
+    await setup([{ text: 'Old', old: true, children: [{ text: 'kid', old: true }] }, { text: 'Next' }]);
+    await caret(0); await pg.waitForTimeout(150);
+    await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
+    await pg.keyboard.press('Shift+ArrowDown'); await pg.waitForTimeout(350);
+    await pg.keyboard.press(chord); await pg.waitForTimeout(350);
+    // Ctrl+C hands the caret back to a point, and a Ctrl+V there is a TEXT paste (#1617), so leave the
+    // edit to the row first, where Ctrl+V pastes the held points
+    if (await pg.evaluate(() => activeContentId != null)) { await pg.keyboard.press('Escape'); await pg.waitForTimeout(250); }
+    await pg.keyboard.press('Control+v'); await pg.waitForTimeout(400);
+    return (await tree()).map(r => r.replace(/^>+/, '')).sort();
+  };
+  const keptOld = ['Old [created:old,edited:old]', 'kid [created:old,edited:old]'];
+  const copied = await copyOf('Control+c');
+  if (JSON.stringify(copied) !== JSON.stringify(['Next [-]', ...keptOld, ...keptOld].sort())) bad.push(`Ctrl+C then Ctrl+V: ${JSON.stringify(copied)}`);
+  const moved = await copyOf('Control+x');
+  if (JSON.stringify(moved) !== JSON.stringify(['Next [-]', ...keptOld].sort())) bad.push(`Ctrl+X then Ctrl+V (a move): ${JSON.stringify(moved)}`);
+  assert.deepEqual(bad, [], 'a paste stamps what it writes as typing would, and a copy keeps the stamps it came with');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 test('#1573 an action pill announces the arithmetic it actually does', { skip: skip() }, async () => {
   // Every operator was described by one ADDITIVE template, so `{hp *= 2}` announced
   // "change hp by * 2" -- and that string is the accessible name and the hover tooltip both.

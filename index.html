@@ -6450,6 +6450,25 @@ function editStampVerdict({ text, prevText, carried = null, builderOwn = null })
   return { stamp: text !== base, carry: null };
 }
 
+// #1614: stamp the points a paste, a drop or a Patterns recipe just wrote, as typing them would.
+// The door is the reader's (a multi-line or spreadsheet paste, a dropped image, a recipe), and its
+// points are built whole, so none passes through a commit that sees its text change: the last one
+// is put into edit with its own text as the baseline. A new point starts from no text, so each one
+// that holds text is judged by editStampVerdict against '' and its subpoints the same way; a point
+// left empty is not stamped, as an empty typed point is not. A copy keeps its source's stamps, and
+// an import keeps whatever stamps its file carried (none is unknown, never now), so neither calls
+// this. Returns how many it stamped. Pure; `now` is injectable for tests.
+function stampNewPoints(points, now = nowStamp()) {
+  let stamped = 0;
+  const walk = n => {
+    if (!n) return;
+    if (editStampVerdict({ text: n.text || '', prevText: '' }).stamp) { stampEdit(n, now); stamped++; }
+    (n.children || []).forEach(walk);
+  };
+  (points || []).forEach(walk);
+  return stamped;
+}
+
 // Opted-in /-verbs that take a typed ":value" (the keyboard bridge that skips the
 // dialog). Gated narrowly: a colon after any OTHER verb stays plain text (P1). `due`
 // and `start` set a date; `check`/`alias` set a reserved property; `template` stamps.
@@ -21412,10 +21431,12 @@ function handlePaste(e, node, content) {
         node.text = src.text; node.props = src.props || []; node.children = src.children || [];
         if (built.length > 1) parent0.children.splice(idx0 + 1, 0, ...built.slice(1));
         [node, ...built.slice(1)].forEach(promoteLoadedShorthand);
+        stampNewPoints([node, ...built.slice(1)]);   // #1614: the table is the reader's, as typed text is
         focusId = node.id;
       } else {
         parent0.children.splice(idx0 < 0 ? parent0.children.length : idx0 + 1, 0, ...built);
         built.forEach(promoteLoadedShorthand);
+        stampNewPoints(built);   // #1614
         focusId = built[0].id;
       }
       buildIndex(root, null);
@@ -21429,10 +21450,16 @@ function handlePaste(e, node, content) {
   const parsed = parseMLlines(lines);
   const parent = parentOf(node.id);
   if (!parent) { document.execCommand('insertText', false, text); return; }
+  // #1614: the text this edit began from. pushUndo() moves the edit's baseline up to the typing so
+  // far, and the line below moves it past the pasted first line, both so that one undo takes the
+  // whole paste back. By the time the reader leaves the point, its commit sees no change and stamps
+  // nothing, so the paste judges the point here against where the edit began, as that commit would.
+  const began = content.dataset.prevText ?? '';
   pushUndo(); // flush the in-progress text edit + snapshot the pre-paste tree (undoable as a unit)
   node.text += parsed[0].text; content.textContent = node.text;
   // baseline stays in FOLDED coordinates (UXP-31) — the buffer may hold unfolded {…}
   content.dataset.prevText = foldedTextForSave(node);
+  if (editStampVerdict({ text: content.dataset.prevText, prevText: began }).stamp) stampEdit(node);
   const idx = parent.children.findIndex(c => c.id === node.id);
   const newNodes = [];
   function insDeep(item, par) {
@@ -21459,6 +21486,7 @@ function handlePaste(e, node, content) {
   // block in", so the omission sat on the documented onboarding path. The paste TARGET is not
   // promoted here: it is mid-edit with a live buffer, and exitEdit already converts it.
   pastedTops.forEach(promoteLoadedShorthand);
+  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too
   buildIndex(root, null);
   markDirty(); render();
   if (newNodes.length) {
@@ -22599,6 +22627,9 @@ function insertRecipe(recipe, curId) {
     nodes.forEach(promoteLoadedShorthand);
     focusId = nodes[0].id;
   }
+  // #1614: a recipe changes what the point says, as a pill inserted through the same browser does
+  // (applyInlineReplace, #1596), and no commit ever sees it: focusNode below starts the edit from it.
+  stampNewPoints(cur && curEmpty ? [cur] : nodes);
   buildIndex(root);   // register the spliced/filled node(s) in nodeMap/parentMap, or they render but never respond to edit/click
   markDirty();
   render();
@@ -39635,6 +39666,7 @@ function handleExternalDrop(e) {
   const parent = target ? (parentOf(target.id) || root) : root;
   pushUndo();
   const nn = mkNode(md);
+  stampNewPoints([nn]);   // #1614: the drag twin of pasting the same image or text, which stamps
   if (target) { const i = parent.children.findIndex(c => c.id === target.id); parent.children.splice(i < 0 ? parent.children.length : i + 1, 0, nn); }
   else root.children.push(nn);
   buildIndex(root, null); markDirty(); render();
