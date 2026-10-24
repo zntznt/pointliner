@@ -12331,6 +12331,125 @@ test('#1596 census: every door that opens the command browser on a point is driv
     assert.ok(driven.includes(`'${door}':`), `the browser check drives the ${door} door`);
 });
 
+// #1614: a multi-line paste made points that never got created/edited. They are built whole, so no
+// commit ever saw their text change. stampNewPoints stamps them as typing them would have: a new point
+// starts from no text, so every point holding text is stamped, and nothing else is touched.
+test('#1614 stampNewPoints stamps every written point that holds text, at any depth, and nothing else', () => {
+  const rng = c.rngFromSeed(1614);
+  const pick = a => a[Math.floor(rng() * a.length)];
+  const NOW = '2026-10-23T12:34', OLD = '2020-01-01T09:00';
+  const make = (depth) => {
+    const n = c.mkNode(pick(['', '', 'alpha', '- [ ] buy milk', 'Hit [[dice:k1]]', '| a | b |\n|---|---|', ' ']));
+    if (rng() < 0.3) n.props.push({ key: 'cost', val: '5' });
+    if (rng() < 0.15) n.props.push({ key: 'created', val: OLD });
+    if (depth < 3) for (let k = Math.floor(rng() * 3); k > 0; k--) n.children.push(make(depth + 1));
+    return n;
+  };
+  let empties = 0, nested = 0, kept = 0;
+  for (let i = 0; i < 300; i++) {
+    const tops = Array.from({ length: 1 + Math.floor(rng() * 3) }, () => make(0));
+    const all = [];
+    const walk = (n, d) => { all.push({ n, d, before: n.props.map(p => ({ ...p })) }); n.children.forEach(k => walk(k, d + 1)); };
+    tops.forEach(t => walk(t, 0));
+    const got = c.stampNewPoints(tops, NOW);
+    let want = 0;
+    for (const { n, d, before } of nonEmpty(all, 'written points')) {
+      // the oracle, stated without the code under test: typing this text into a new point changes it from ''
+      const typed = n.text !== '';
+      assert.equal(typed, c.editStampVerdict({ text: n.text, prevText: '' }).stamp, 'the same rule a typed edit is judged by');
+      if (!typed) { assert.deepEqual(host(n.props), host(before), 'an empty point is left exactly as it was'); empties++; continue; }
+      want++;
+      if (d > 0) nested++;
+      const val = k => host(n.props.filter(p => p.key === k).map(p => p.val));
+      const hadCreated = before.some(p => p.key === 'created');
+      assert.deepEqual(val('created'), [hadCreated ? OLD : NOW], 'created is set once, and kept if the point had one');
+      if (hadCreated) kept++;
+      assert.deepEqual(val('edited'), [NOW], 'edited is now');
+      const own = props => host(props.filter(p => p.key !== 'created' && p.key !== 'edited'));
+      assert.deepEqual(own(n.props), own(before), 'no other property is touched');
+    }
+    assert.equal(got, want, 'it reports how many points it stamped');
+  }
+  assert.ok(empties >= 50 && nested >= 50 && kept >= 20, `the sample must hold empty, nested and already-created points: ${empties}/${nested}/${kept}`);
+  // The reported case, literally: `alpha` and `beta` pasted on a fresh point.
+  const alpha = c.mkNode('alpha'), beta = c.mkNode('beta');
+  assert.equal(c.stampNewPoints([alpha, beta], NOW), 2);
+  for (const n of [alpha, beta]) assert.deepEqual(host(n.props), [{ key: 'created', val: NOW }, { key: 'edited', val: NOW }]);
+  assert.equal(c.stampNewPoints([], NOW), 0);
+  assert.equal(c.stampNewPoints(null, NOW), 0, 'nothing written, nothing stamped');
+  const clock = c.mkNode('x'); c.stampNewPoints([clock]);
+  assert.match(clock.props.find(p => p.key === 'edited').val, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'the default clock is nowStamp');
+});
+
+test('#1614 every door that writes the reader\'s points stamps them, and the paste judges the point it merges into', () => {
+  const hp = fnBody(_src, 'handlePaste');
+  // The merge target: judged against where the edit BEGAN, captured before pushUndo() moves the
+  // baseline, and only after the baseline has been moved past the paste (so one undo still takes it all).
+  assert.match(hp, /const began = content\.dataset\.prevText \?\? '';\n\s*pushUndo\(\);[^\n]*\n\s*node\.text \+= parsed\[0\]\.text;[^\n]*\n(?:\s*\/\/[^\n]*\n)*\s*content\.dataset\.prevText = foldedTextForSave\(node\);\n\s*if \(editStampVerdict\(\{ text: content\.dataset\.prevText, prevText: began \}\)\.stamp\) stampEdit\(node\);/,
+    'the point the first pasted line merges into is stamped when the edit changed it');
+  assert.match(hp, /pastedTops\.forEach\(promoteLoadedShorthand\);\n\s*stampNewPoints\(pastedTops\);/, 'every pasted point, nested ones too (the tops carry their subtrees)');
+  assert.match(hp, /\[node, \.\.\.built\.slice\(1\)\]\.forEach\(promoteLoadedShorthand\);\n\s*stampNewPoints\(\[node, \.\.\.built\.slice\(1\)\]\);/, 'a spreadsheet filled in place');
+  assert.match(hp, /built\.forEach\(promoteLoadedShorthand\);\n\s*stampNewPoints\(built\);/, 'a spreadsheet pasted below');
+  assert.match(fnBody(_src, 'handleExternalDrop'), /pushUndo\(\);\n\s*const nn = mkNode\(md\);\n\s*stampNewPoints\(\[nn\]\);/, 'a dropped image or text');
+  const ir = fnBody(_src, 'insertRecipe');
+  assert.match(ir, /\n  stampNewPoints\(cur && curEmpty \? \[cur\] : nodes\);\n  buildIndex\(root\);/, 'a Patterns recipe, filled in place or inserted');
+  assert.ok(ir.indexOf('pushUndo();') >= 0 && ir.indexOf('pushUndo();') < ir.indexOf('stampNewPoints('), 'after the undo snapshot, so one undo takes the stamps back with the recipe');
+});
+
+// #1614's cause, as a family. An edit is stamped when its text differs from the edit's baseline
+// (`dataset.prevText`), so a writer that moves the baseline past a change swallows that change's
+// stamp unless it stamps the change itself. enterEdit sets the baseline where an edit begins; every
+// other writer must stamp what it moves past. flushActiveTextEdit still does not (#1616: type, then
+// Enter or Tab, and the point is never stamped); when it does, this fails until it moves to STAMPS.
+test('#1614 census: every writer that moves an edit\'s baseline past a change stamps the change', () => {
+  const enc = enclosingFn(_src);
+  const code = maskFor(_src);
+  const BEGINS = new Set(['enterEdit']), STAMPS = new Set(['handlePaste']), OPEN = { flushActiveTextEdit: 1616 };
+  const seen = new Set();
+  for (const m of nonEmpty([..._src.matchAll(/\.dataset\.prevText = /g)].filter(m => code[m.index] === 2), 'edit baseline writers')) {
+    const fn = enc(m.index)?.name;
+    assert.ok(BEGINS.has(fn) || STAMPS.has(fn) || fn in OPEN,
+      `${fn || 'top level'} moves an edit's baseline and is not classified: if it moves it past a change, stamp the change (editStampVerdict, stampEdit) and add it to STAMPS`);
+    seen.add(fn);
+  }
+  assert.deepEqual([...seen].sort(), [...BEGINS, ...STAMPS, ...Object.keys(OPEN)].sort(), 'every classified writer still writes the baseline');
+  for (const fn of STAMPS) assert.match(fnBody(_src, fn), /editStampVerdict\([^)]*\)\.stamp\) stampEdit\(/, `${fn} stamps what it moves past`);
+  for (const [fn, issue] of Object.entries(OPEN))
+    assert.doesNotMatch(fnBody(_src, fn), /stampEdit\(|stampNewPoints\(/, `${fn} stamps now: move it from OPEN to STAMPS and close #${issue}`);
+});
+
+// #1614: the doors that build points out of something the reader brought in. Every call of a builder
+// is one, and each is classified. A paste, a Patterns recipe and a drop write the reader's own content,
+// so they stamp it as typing would. An import keeps the history the content came with: a Pointliner
+// file's own stamps, otherwise unknown (never now, the #467 back-fill rule), and a starter example is
+// imported the same way. A COPY keeps its source's stamps: duplicate, Ctrl+C or Ctrl+X then Ctrl+V,
+// and /template all clone, and a cut-and-paste move keeps the point's created date that way.
+test('#1614 census: every door that builds points from what the reader brought in is classified', () => {
+  const enc = enclosingFn(_src);
+  const code = maskFor(_src);
+  const calls = name => [..._src.matchAll(new RegExp(`\\b${name}\\(`, 'g'))]
+    .filter(m => code[m.index] === 2 && _src.slice(m.index - 9, m.index) !== 'function ').map(m => enc(m.index)?.name || 'top level');
+  const BUILDERS = ['parseMLlines', 'tableToPoints', 'markdownToPoints', 'markdownVaultToPoints', 'bibToPoints', 'recipeToNodes', 'appendOpmlSubtrees'];
+  const STAMPS = new Set(['handlePaste', 'insertRecipe']);
+  const KEEPS = new Set(['openImportDialog', 'markdownVaultToPoints', 'insertStarterSubtree']);
+  const seen = new Set();
+  for (const b of BUILDERS) for (const fn of nonEmpty(calls(b), `${b} call sites`)) {
+    assert.ok(STAMPS.has(fn) || KEEPS.has(fn),
+      `${fn} builds points with ${b} and is not classified: the reader's own content goes in STAMPS (and calls stampNewPoints), content with its own history in KEEPS`);
+    seen.add(fn);
+  }
+  assert.deepEqual([...seen].sort(), [...STAMPS, ...KEEPS].sort(), 'every classified door still builds points');
+  const stamps = /\bstampNewPoints\(|\bstampEdit\(/;
+  for (const fn of STAMPS) assert.match(fnBody(_src, fn), /\bstampNewPoints\(/, `${fn} stamps the points it writes`);
+  for (const fn of KEEPS) assert.doesNotMatch(fnBody(_src, fn), stamps, `${fn} brings content in with its own history, so it stamps nothing`);
+  // The doors that build with mkNode directly are named: the drop is the drag twin of a paste.
+  assert.match(fnBody(_src, 'handleExternalDrop'), /\bstampNewPoints\(/, 'a drop stamps the point it makes');
+  // The negative: a copy. Every clone keeps its source's props, the stamps included.
+  const copies = new Set(nonEmpty(calls('deepCloneNodeNewIds'), 'clone call sites'));
+  assert.ok(copies.has('pasteFromNodeClipboard') && copies.has('duplicateNode') && copies.has('stampTemplate'), 'the copy doors clone');
+  for (const fn of copies) assert.doesNotMatch(fnBody(_src, fn), stamps, `${fn} copies points, and a copy keeps its source's stamps`);
+});
+
 test('#1580 a copy of the minted point is the reader\'s, so it never carries the mark', () => {
   // The mark is what lets render's cleanup remove a point without an undo step. A duplicate, a paste
   // or a stamped template is a point the reader made, so a copy must not inherit it.

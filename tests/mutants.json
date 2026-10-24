@@ -3309,8 +3309,8 @@
       "suite": "unit",
       "why": "promoting AFTER buildIndex leaves the index holding the raw shorthand; the ordering is load-bearing and an ordering pin that cannot fail is the #1133 shape",
       "file": "index.html",
-      "find": "  pastedTops.forEach(promoteLoadedShorthand);\n  buildIndex(root, null);",
-      "replace": "  buildIndex(root, null);\n  pastedTops.forEach(promoteLoadedShorthand);",
+      "find": "  pastedTops.forEach(promoteLoadedShorthand);\n  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n  buildIndex(root, null);",
+      "replace": "  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n  buildIndex(root, null);\n  pastedTops.forEach(promoteLoadedShorthand);",
       "kills": "a pasted point gets the same"
     },
     {
@@ -4689,6 +4689,132 @@
       "find": "if (!selfTest()) process.exit(1);\n",
       "replace": "",
       "kills": "#1597 the mutation verdicts are proved on the current Node"
+    },
+    {
+      "id": "paste-target-unjudged",
+      "suite": "unit",
+      "why": "#1614: the point the first pasted line merges into has had its baseline moved past the paste, so nothing else ever stamps it",
+      "file": "index.html",
+      "find": "  if (editStampVerdict({ text: content.dataset.prevText, prevText: began }).stamp) stampEdit(node);\n",
+      "replace": "",
+      "kills": "#1614 every door that writes the reader"
+    },
+    {
+      "id": "paste-target-unjudged-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: alpha pasted with beta onto a fresh point is left unstamped",
+      "file": "index.html",
+      "find": "  if (editStampVerdict({ text: content.dataset.prevText, prevText: began }).stamp) stampEdit(node);\n",
+      "replace": "",
+      "kills": "#1614 every paste door stamps the points it writes as typing does"
+    },
+    {
+      "id": "pasted-points-unstamped",
+      "suite": "unit",
+      "why": "#1614, the reported defect: the points a multi-line paste builds never pass through a commit that sees their text change",
+      "file": "index.html",
+      "find": "  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n",
+      "replace": "",
+      "kills": "#1614 every door that writes the reader"
+    },
+    {
+      "id": "pasted-points-unstamped-driven",
+      "suite": "browser",
+      "why": "the same regression, driven: beta and every nested outline point come out unstamped",
+      "file": "index.html",
+      "find": "  stampNewPoints(pastedTops);   // #1614: every pasted line is a point the reader wrote, nested ones too\n",
+      "replace": "",
+      "kills": "#1614 every paste door stamps the points it writes as typing does"
+    },
+    {
+      "id": "table-paste-below-unstamped",
+      "suite": "unit",
+      "why": "#1614: the spreadsheet paste has two arms, and an arm that stops stamping is the sibling omission the pin exists for",
+      "file": "index.html",
+      "find": "        stampNewPoints(built);   // #1614\n",
+      "replace": "",
+      "kills": "#1614 every door that writes the reader"
+    },
+    {
+      "id": "drop-unstamped",
+      "suite": "unit",
+      "why": "#1614: a dropped image builds its point with mkNode directly, outside every builder the census enumerates, so it is named",
+      "file": "index.html",
+      "find": "  stampNewPoints([nn]);   // #1614: the drag twin of pasting the same image or text, which stamps\n",
+      "replace": "",
+      "kills": "#1614 census: every door that builds points from what the reader brought in"
+    },
+    {
+      "id": "recipe-unstamped",
+      "suite": "unit",
+      "why": "#1614: a door classified as writing the reader's content must stamp it; without this the recipe point is unstamped and the census has to notice",
+      "file": "index.html",
+      "find": "  stampNewPoints(cur && curEmpty ? [cur] : nodes);\n",
+      "replace": "",
+      "kills": "#1614 census: every door that builds points from what the reader brought in"
+    },
+    {
+      "id": "stamp-new-points-shallow",
+      "suite": "unit",
+      "why": "#1614: an outline paste nests, and a core that stamps only the tops leaves every subpoint unstamped",
+      "file": "index.html",
+      "find": "    (n.children || []).forEach(walk);\n  };\n  (points || []).forEach(walk);",
+      "replace": "  };\n  (points || []).forEach(walk);",
+      "kills": "#1614 stampNewPoints stamps every written point that holds text"
+    },
+    {
+      "id": "stamp-new-points-stamps-empty",
+      "suite": "unit",
+      "why": "#1614: an empty typed point is not stamped, so an empty written one must not be either (a pasted `- ` line)",
+      "file": "index.html",
+      "find": "    if (editStampVerdict({ text: n.text || '', prevText: '' }).stamp) { stampEdit(n, now); stamped++; }",
+      "replace": "    { stampEdit(n, now); stamped++; }",
+      "kills": "#1614 stampNewPoints stamps every written point that holds text"
+    },
+    {
+      "id": "unclassified-builder-door",
+      "suite": "unit",
+      "why": "#1614: a new door that builds points from text must be classified as stamping or keeping history, or it ships unstamped unseen",
+      "file": "index.html",
+      "find": "function insertSiblingAfter(id) {\n  const parent = parentOf(id);",
+      "replace": "function insertSiblingAfter(id) {\n  if (id === '#never') parseMLlines([]);\n  const parent = parentOf(id);",
+      "kills": "#1614 census: every door that builds points from what the reader brought in"
+    },
+    {
+      "id": "import-stamps-now",
+      "suite": "unit",
+      "why": "#1614, the negative: an import keeps the history its file came with, and stamping it now would claim every imported point was created today",
+      "file": "index.html",
+      "find": "      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });\n      tableNote = ok;",
+      "replace": "      stampNewPoints(points);\n      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });\n      tableNote = ok;",
+      "kills": "#1614 census: every door that builds points from what the reader brought in"
+    },
+    {
+      "id": "copy-stamps-now",
+      "suite": "unit",
+      "why": "#1614, the negative: a copy keeps its source's stamps, so a cut-and-paste move keeps the point's created date",
+      "file": "index.html",
+      "find": "  const clone = deepCloneNodeNewIds(cur);\n  parent.children.splice(idx + 1, 0, clone);",
+      "replace": "  const clone = deepCloneNodeNewIds(cur);\n  stampNewPoints([clone]);\n  parent.children.splice(idx + 1, 0, clone);",
+      "kills": "#1614 census: every door that builds points from what the reader brought in"
+    },
+    {
+      "id": "baseline-writer-unclassified",
+      "suite": "unit",
+      "why": "#1614's cause: a writer that moves an edit's baseline past a change swallows its stamp, so a new one must be classified",
+      "file": "index.html",
+      "find": "function insertSiblingAfter(id) {\n  const parent = parentOf(id);",
+      "replace": "function insertSiblingAfter(id) {\n  if (id === '#never') document.body.dataset.prevText = '';\n  const parent = parentOf(id);",
+      "kills": "#1614 census: every writer that moves an edit"
+    },
+    {
+      "id": "open-baseline-writer-fixed-unseen",
+      "suite": "unit",
+      "why": "#1616 ratchet: once flushActiveTextEdit stamps, the census must say so, so the open entry cannot outlive its fix",
+      "file": "index.html",
+      "find": "  el.dataset.prevText = next; // folded baseline so exitEdit won't double-record",
+      "replace": "  stampEdit(node);\n  el.dataset.prevText = next; // folded baseline so exitEdit won't double-record",
+      "kills": "#1614 census: every writer that moves an edit"
     }
   ]
 }
