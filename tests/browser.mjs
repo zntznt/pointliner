@@ -6351,6 +6351,105 @@ test('#1557 scrolling an edited row out of the window and back does not commit t
   await pg.close();
 });
 
+// #1612: a cleared editor saved "\n". When the last line of a contenteditable empties, Chromium leaves
+// a <br> there to hold the line open, and editableText read it as a newline. Driven with real keys on
+// the editors the #1612 census in tests/test.mjs lists: the four that read through editableText or
+// editableTextBlocks saved "\n" on main, the other four already saved "" and must keep doing so. The
+// typed shapes beside them, measured on main, must save exactly what they did, and a screen reached
+// with a Backspace must save what the same screen reached by typing alone saves.
+test('#1612 every editor cleared with the keyboard saves "", and a newline the reader typed is kept', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const W = (ms = 150) => pg.waitForTimeout(ms);
+  const keys = async (...ks) => {
+    for (const k of ks) { if (k.startsWith('T:')) await pg.keyboard.type(k.slice(2), { delay: 10 }); else await pg.keyboard.press(k); }
+    await W(100);
+  };
+  const clear = () => keys('End', 'Backspace', 'Backspace', 'Backspace');
+  const seed = async (build) => { await pg.evaluate(build); await W(300); };
+  const row = (i) => pg.evaluate((i) => `.node-content[data-id="${root.children[i].id}"]`, i);
+  const flat = () => seed(() => { root.children = [mkNode(''), mkNode('Next')]; buildIndex(root); markDirty(); render(); });
+  // Type into the first point and leave it by clicking the next one, the way a reader does.
+  const typed = async (...ks) => {
+    await flat(); await pg.click(await row(0)); await W(); await keys(...ks);
+    await pg.click(await row(1)); await W();
+    return pg.evaluate(() => root.children[0].text);
+  };
+  const BASE = (t) => `(() => { const b = mkNode(${JSON.stringify(t)}); b.type = 'base'; root.children = [b, mkNode('Next')]; buildIndex(root); markDirty(); render(); })()`;
+  const got = {};
+
+  // a point: type, leave, come back, clear, leave (both ways of clearing)
+  for (const [name, del] of [['point, Backspace', clear], ['point, select all then Delete', () => keys('ControlOrMeta+a', 'Delete')]]) {
+    await flat(); await pg.click(await row(0)); await W(); await keys('T:abc');
+    await pg.click(await row(1)); await W();
+    if (await pg.evaluate(() => root.children[0].text) !== 'abc') { got[name] = 'the fixture did not commit abc'; continue; }
+    await pg.click(await row(0)); await W(); await del();
+    await pg.click(await row(1)); await W();
+    got[name] = await pg.evaluate(() => root.children[0].text);
+  }
+  // a corkboard card: the same editor, inside a zoom
+  await seed(() => { const p = mkNode('Board'); p.children = [mkNode('abc'), mkNode('Two')]; p.cards = true; root.children = [p]; buildIndex(root); markDirty(); render(); zoomInto(p.id); });
+  const card = (i) => pg.evaluate((i) => `.cork-body[data-id="${root.children[0].children[i].id}"]`, i);
+  await pg.click(await card(0)); await W(); await clear(); await pg.click(await card(1)); await W();
+  got['corkboard card'] = await pg.evaluate(() => root.children[0].children[0].text);
+  await pg.evaluate(() => zoomOut()); await W(300);
+  // the zoom title, left by clicking the point under it
+  await seed(() => { const p = mkNode('abc'); p.children = [mkNode('kid')]; root.children = [p, mkNode('Next')]; buildIndex(root); markDirty(); render(); zoomInto(p.id); });
+  await pg.click('.zoom-title'); await W(); await clear();
+  await pg.click(`.node-content[data-id="${await pg.evaluate(() => root.children[0].children[0].id)}"]`); await W();
+  got['zoom title'] = await pg.evaluate(() => root.children[0].text);
+  await pg.evaluate(() => zoomOut()); await W(300);
+  // a base edited as markdown (the base menu's door; the keys and the commit are what is measured)
+  await seed(BASE('| a | b |\n|---|---|\n| 1 | 2 |'));
+  await pg.evaluate(() => { const n = root.children[0], el = document.querySelector(`.node-content[data-id="${n.id}"]`); enterEdit(el, n); el.focus(); });
+  await W(); await keys('ControlOrMeta+a', 'Delete'); await pg.click(await row(1)); await W();
+  got['base as markdown'] = await pg.evaluate(() => root.children[0].text);
+  // a base cell and a column name, left with Tab
+  await seed(BASE('| a | b |\n|---|---|\n| abc | 2 |'));
+  await pg.click('.mt-cell[data-r="1"][data-c="0"]'); await W(); await clear(); await keys('Tab'); await W(200);
+  got['base cell'] = await pg.evaluate(() => mtModel(root.children[0]).rows[1][0]);
+  await seed(BASE('| abc | b |\n|---|---|\n| 1 | 2 |'));
+  await pg.click('.mt-name-pill[data-c="0"]'); await W(); await clear(); await keys('Tab'); await W(200);
+  got['column name'] = await pg.evaluate(() => mtModel(root.children[0]).rows[0][0]);
+  // a note, left with Escape
+  await seed(() => { const n = mkNode('Point'); n.note = 'abc'; root.children = [n, mkNode('Next')]; buildIndex(root); markDirty(); render(); openNoteEditor(n.id); });
+  await clear(); await keys('Escape'); await W(200);
+  got['note'] = await pg.evaluate(() => root.children[0].note);
+  // a footnote, in the panel its point opens
+  await seed(() => { const n = mkNode('Point'); const fid = newFootnote('abc'); window.__fn1612 = fid; n.text = 'Point [^' + fid + ']'; root.children = [n, mkNode('Next')]; buildIndex(root); markDirty(); render(); });
+  await pg.click(await row(0)); await W(300);
+  await pg.evaluate(() => {
+    showFnPanel(root.children[0].id);
+    const el = document.querySelector(`#fn-list .fn-item[data-key="${CSS.escape(window.__fn1612)}"] .fn-content`);
+    el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+  });
+  await W(); await clear(); await keys('Escape'); await W(200);
+  got['footnote'] = await pg.evaluate(() => root.footnotes.find(f => f.id === window.__fn1612).text);
+  assert.deepEqual(got, {
+    'point, Backspace': '', 'point, select all then Delete': '', 'corkboard card': '', 'zoom title': '', 'base as markdown': '',
+    'base cell': '', 'column name': '', 'note': '', 'footnote': '',
+  }, 'every editor cleared with the keyboard saves the empty string');
+
+  // typed shapes, measured on main, save what they did; and the same screen saves the same text
+  const shapes = {};
+  for (const [name, ks] of [
+    ['ab, Shift+Enter, cd', ['T:ab', 'Shift+Enter', 'T:cd']],
+    ['abc, Shift+Enter', ['T:abc', 'Shift+Enter']],
+    ['Shift+Enter', ['Shift+Enter']],
+    ['spaces around', ['T:  abc  ']],
+    ['abc, Shift+Enter, Backspace', ['T:abc', 'Shift+Enter', 'Backspace']],
+    ['abc, Shift+Enter, Backspace, Backspace', ['T:abc', 'Shift+Enter', 'Backspace', 'Backspace']],
+  ]) shapes[name] = await typed(...ks);
+  assert.deepEqual(shapes, {
+    'ab, Shift+Enter, cd': 'ab\ncd', 'abc, Shift+Enter': 'abc\n', 'Shift+Enter': '\n', 'spaces around': '  abc  ',
+    // the first Backspace after Shift+Enter takes only the caret anchor, so the screen still shows two
+    // lines; main saved "abc\n\n" for it, and "abc\n" for the screen that shows abc alone
+    'abc, Shift+Enter, Backspace': 'abc\n', 'abc, Shift+Enter, Backspace, Backspace': 'abc',
+  }, 'a newline the reader typed is kept, spaces are not trimmed, and the placeholder adds nothing');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 // #653 — the two logs, driven. The journal and the roll log are IRL by decision (resolveCalendarId
 // pins the journal subtree to CAL_GREGORIAN, the timeline reads its rungs with a bare Date.UTC);
 // the Chronicle is the fiction-dated one. todayISO defaulted both of its seams to the ACTIVE
