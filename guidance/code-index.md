@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2189 declarations in 158 sections across 17 domains.**
+**2190 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -349,6 +349,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `setDateProp` — Set (or, with a falsy val, leave untouched) one date property on a node, replacing
 - `stampEdit` — #467: stamp the point's timestamps. `created` is set only if absent (first content);
 - `editStampVerdict` — #1596: does this commit stamp the point, and what does the next commit judge against? An edit is
+- `stampNewPoints` — #1614: stamp the points a paste, a drop or a Patterns recipe just wrote, as typing them would.
 - `SLASH_ARG_VERBS` — Opted-in /-verbs that take a typed ":value" (the keyboard bridge that skips the
 - `parseSlashQuery` — parseSlashQuery(rawQuery, trigger) — pure, Node-testable. Splits a captured slash
 - `setCheckProp` — Set (or, with an empty val, clear) the reserved `check` constraint property.
