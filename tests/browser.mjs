@@ -7499,8 +7499,10 @@ test('#1614 every paste door stamps the points it writes as typing does, and a c
     await pg.keyboard.press('Escape'); await pg.waitForTimeout(250);
     await pg.keyboard.press('Shift+ArrowDown'); await pg.waitForTimeout(350);
     await pg.keyboard.press(chord); await pg.waitForTimeout(350);
-    // Ctrl+C hands the caret back to a point, and a Ctrl+V there is a TEXT paste (#1617), so leave the
-    // edit to the row first, where Ctrl+V pastes the held points
+    // Ctrl+C hands the caret back to a point. A Ctrl+V there pastes the held points too (#1617), but
+    // through the paste event that carries the copied text, which a key press here cannot deliver
+    // (there is no system clipboard), so leave the edit to the row, where the key alone pastes them.
+    // The point door is driven by the #1617 check below.
     if (await pg.evaluate(() => activeContentId != null)) { await pg.keyboard.press('Escape'); await pg.waitForTimeout(250); }
     await pg.keyboard.press('Control+v'); await pg.waitForTimeout(400);
     return (await tree()).map(r => r.replace(/^>+/, '')).sort();
@@ -7511,6 +7513,167 @@ test('#1614 every paste door stamps the points it writes as typing does, and a c
   const moved = await copyOf('Control+x');
   if (JSON.stringify(moved) !== JSON.stringify(['Next [-]', ...keptOld].sort())) bad.push(`Ctrl+X then Ctrl+V (a move): ${JSON.stringify(moved)}`);
   assert.deepEqual(bad, [], 'a paste stamps what it writes as typing would, and a copy keeps the stamps it came with');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// #1617: Ctrl+C on a selection holds the points AND writes their text to the system clipboard, and it
+// hands the caret back to a point. So the next Ctrl+V is a paste INTO a point, and that took the text
+// path: every pill came back a broken `?`, the note and the properties were dropped. Now a paste that
+// carries exactly the text the copy wrote pastes the points, in every door that is a point's own text,
+// and the global Ctrl+V no longer takes the key from a field that holds text (it pasted the points
+// into the outline from the search box, the command browser, the File menu, a base cell).
+//
+// Real keys for the copy, the caret (clicks, Ctrl+F, Ctrl+K) and Ctrl+V. The paste PAYLOAD is the text
+// the copy wrote (recorded at navigator.clipboard.writeText; CI's Chromium refuses the real write),
+// dispatched to whatever has focus only when no app handler claimed the Ctrl+V keydown, which is what
+// the browser does. A window listener runs after every app handler: it notes the claim and stops the
+// browser's own paste, so the dispatched one is the only paste on every platform.
+test('#1617 copied points pasted while a point is being edited arrive as the points, and a text field keeps the text', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const OLD = '2020-01-01T09:00';
+  const W = (ms) => pg.waitForTimeout(ms);
+  await pg.evaluate(() => {
+    window.__wrote = [];
+    navigator.clipboard.writeText = (t) => { window.__wrote.push(t); return Promise.resolve(); };
+    window.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') { window.__claimed = e.defaultPrevented; e.preventDefault(); }
+    });
+  });
+  // the document every door starts from; the held copy survives a rebuild, as it survives an edit
+  const build = () => pg.evaluate((OLD) => {
+    const io = document.getElementById('io-back'); if (io?.classList.contains('on')) closeIo();
+    if (focusedId) zoomTo(null);
+    const stamp = n => { n.props = [{ key: 'created', val: OLD }, { key: 'edited', val: OLD }, ...n.props]; return n; };
+    const target = stamp(mkNode('Target'));
+    const cleared = stamp(mkNode(''));                                    // typed into and cleared again
+    const noted = stamp(Object.assign(mkNode(''), { note: 'only a note' }));
+    const page = stamp(mkNode('Page'));
+    const kept = root.children.find(n => n.note === 'Remember the bonus');   // the copy's source, once typed
+    if (kept) kept.children = kept.children.filter(k => k.text === 'kid');      // as it was copied
+    root.children = [...(kept ? [kept] : [mkNode('')]), target, cleared, noted, page];
+    buildIndex(root, null); markDirty(); render(); undoStack.length = 0; redoStack.length = 0;
+    return root.children.map(n => n.id);
+  }, OLD);
+  // every point as `text|note|props|old stamps|sidecars`, `>` per level, pills as [type]
+  const tree = () => pg.evaluate((OLD) => {
+    const row = (n, d) => {
+      const stamps = (n.props || []).filter(p => TIMESTAMP_KEYS.has(p.key));
+      const own = (n.props || []).filter(p => !TIMESTAMP_KEYS.has(p.key)).map(p => `${p.key}=${p.val}`).join(',');
+      const side = ['dice', 'grammar'].map(k => (n[k] || []).length).join('/');
+      return `${'>'.repeat(d)}${n.text.replace(/\[\[([a-z]+):[^\]]+\]\]/g, '[$1]')}|${n.note || ''}|${own}|${stamps.length && stamps.every(p => p.val === OLD) ? 'old' : stamps.length ? 'new' : '-'}|${side}`;
+    };
+    const walk = (n, d) => [row(n, d), ...n.children.flatMap(k => walk(k, d + 1))];
+    return root.children.flatMap(n => walk(n, 0));
+  }, OLD);
+  const caretTo = async (id) => { await pg.click(`.node-content[data-id="${id}"]`); await W(250); await pg.keyboard.press('End'); await W(80); };
+  const ctrlV = async (payload) => {
+    await pg.evaluate(() => { window.__claimed = undefined; });
+    await pg.keyboard.press('Control+v'); await W(300);
+    const claimed = await pg.evaluate(() => window.__claimed);
+    if (claimed === true) return 'claimed';
+    await pg.evaluate((payload) => {
+      const dt = new DataTransfer(); dt.setData('text/plain', payload ?? window.__wrote[window.__wrote.length - 1]);
+      document.activeElement.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, payload);
+    await W(400);
+    return 'pasted';
+  };
+  const leave = async () => { await pg.keyboard.press('Escape'); await W(250); await pg.evaluate(() => commitActiveEdit()); await W(150); };
+  const bad = [];
+  const expect = async (name, want) => { const got = await tree(); if (JSON.stringify(got) !== JSON.stringify(want)) bad.push(`${name}:\n      got  ${JSON.stringify(got)}\n      want ${JSON.stringify(want)}`); };
+
+  // The source: typed, so its pills are made the real way, with a note, a property and a child.
+  let ids = await build();
+  await caretTo(ids[0]);
+  await pg.keyboard.type('Hit {2d6} {red | blue}', { delay: 8 }); await leave();
+  await pg.evaluate((OLD) => {
+    const a = root.children[0];
+    a.note = 'Remember the bonus'; a.children = [mkNode('kid')];
+    a.props = [{ key: 'created', val: OLD }, { key: 'edited', val: OLD }, { key: 'dmg', val: '7' }];
+    buildIndex(root, null); markDirty(); render();
+  }, OLD);
+  await W(200);
+  ids = await build();
+  const SRC = ['Hit [dice] [grammar]|Remember the bonus|dmg=7|old|1/1', '>kid|||-|0/0'];
+  const COPY = SRC;   // a copy is the point: pills with their records, note, property, stamps, child
+  const REST = ['Target|||old|0/0', '|||old|0/0', '|only a note||old|0/0', 'Page|||old|0/0'];
+  await expect('the source', [...SRC, ...REST]);
+
+  // Copy it the way a reader does: Escape to the row, Shift+Down (it takes the child too), Ctrl+C.
+  await caretTo(ids[0]); await pg.keyboard.press('Escape'); await W(250);
+  await pg.keyboard.press('Shift+ArrowDown'); await W(300);
+  await pg.keyboard.press('Control+c'); await W(350);
+  const wrote = await pg.evaluate(() => window.__wrote[window.__wrote.length - 1]);
+  assert.match(wrote || '', /^- Hit \[\[dice:[a-z0-9]+\]\] \[\[grammar:[a-z0-9]+\]\]\n {2}- kid$/, 'the copy wrote its text');
+  // The issue's measurement, and the reason this door is the common one: the caret is back in a point.
+  assert.equal(await pg.evaluate(() => activeContentId && nodeById(activeContentId).text), 'kid', 'Ctrl+C hands the caret back to the last selected point');
+
+  // 1. Ctrl+V right there: the copy follows that point.
+  assert.equal(await ctrlV(), 'pasted', 'a point being edited keeps Ctrl+V for its paste');
+  await leave();
+  await expect('Ctrl+V where Ctrl+C left the caret', [...SRC, ...COPY.map(r => '>' + r), ...REST]);
+
+  // 2. A point with text: it keeps its text, and the copy follows it. One Ctrl+Z takes it back.
+  ids = await build(); await caretTo(ids[1]); await ctrlV(); await leave();
+  await expect('into a point with text', [...SRC, REST[0], ...COPY, ...REST.slice(1)]);
+  const shown = await pg.evaluate(() => [...document.querySelectorAll('.node-content')].map(e => e.innerText.replace(/\s+/g, ' ').trim()).filter(t => t.startsWith('Hit')));
+  assert.equal(shown.length, 2, 'the source and the copy are both shown');
+  assert.ok(shown.every(t => /^Hit 2d6 .*= \d+ (red|blue)$/.test(t)), `both show live pills, never a broken one: ${JSON.stringify(shown)}`);
+  await pg.keyboard.press('Control+z'); await W(400);
+  await expect('one Ctrl+Z', [...SRC, ...REST]);
+
+  // 3. Twice: two copies, each with ids of its own.
+  ids = await build(); await caretTo(ids[1]); await ctrlV(); await leave(); await caretTo(ids[1]); await ctrlV(); await leave();
+  await expect('pasted twice', [...SRC, REST[0], ...COPY, ...COPY, ...REST.slice(1)]);
+  const idsNow = await pg.evaluate(() => { const all = []; const walk = n => { all.push(n.id); n.children.forEach(walk); }; root.children.forEach(walk); return all; });
+  assert.equal(new Set(idsNow).size, idsNow.length, 'every copy has its own ids');
+
+  // 4. An empty point (only the stamps of a cleared one) is filled in place; a note-only one is not.
+  ids = await build(); await caretTo(ids[2]); await ctrlV(); await leave();
+  await expect('into an empty point', [...SRC, REST[0], ...COPY, ...REST.slice(2)]);
+  ids = await build(); await caretTo(ids[3]); await ctrlV(); await leave();
+  await expect('into a point with only a note', [...SRC, ...REST.slice(0, 3), ...COPY, REST[3]]);
+
+  // 5. What an OS clipboard does to the text (\r\n, a trailing line end) is still the copy...
+  ids = await build(); await caretTo(ids[1]); await ctrlV(wrote.replace(/\n/g, '\r\n') + '\r\n'); await leave();
+  await expect('the copy with \\r\\n line ends', [...SRC, REST[0], ...COPY, ...REST.slice(1)]);
+  // ...and anything copied in between is text, as it always was.
+  ids = await build(); await caretTo(ids[1]); await ctrlV('from another app'); await leave();
+  await expect('other text', [...SRC, 'Targetfrom another app|||new|0/0', ...REST.slice(1)]);
+
+  // 6. The zoom title is the zoomed point's own text: the copies open the page, under the title.
+  ids = await build();
+  await pg.evaluate((id) => { zoomTo(id); }, ids[4]); await W(400);
+  await pg.click('.zoom-title'); await W(250);
+  assert.equal(await ctrlV(), 'pasted', 'the zoom title keeps Ctrl+V for its paste');
+  assert.equal(await pg.evaluate(() => focusedId != null), true, 'still on the page');
+  await pg.evaluate(() => { commitActiveEdit(); zoomTo(null); }); await W(300);
+  await expect('into the zoom title', [...SRC, ...REST.slice(0, 3), REST[3], ...COPY.map(r => '>' + r)]);
+
+  // 7. A field that holds text keeps Ctrl+V: the outline gains nothing. (The browser pastes the text.)
+  const FIELDS = {
+    'search box': async () => { await pg.keyboard.press('Control+f'); },
+    'command browser search': async (ids) => { await caretTo(ids[1]); await pg.keyboard.press('Control+k'); await W(500); },
+    'base cell': async () => {
+      await pg.evaluate(() => { const b = mkNode('| a | b |\n| --- | --- |\n| 1 | 2 |'); b.type = 'base'; root.children.push(b); buildIndex(root, null); markDirty(); render(); });
+      await W(300); await pg.click('.mt-cell[data-r="1"][data-c="0"]');
+    },
+    'note editor': async (ids) => { await pg.evaluate(id => openNoteEditor(id), ids[3]); },
+    'File menu search': async () => { await pg.click('#logo-btn'); await W(300); await pg.click('#fm-search'); },
+  };
+  for (const [name, open] of Object.entries(FIELDS)) {
+    ids = await build();
+    await open(ids); await W(350);
+    const before = await tree();
+    const at = await pg.evaluate(() => { const a = document.activeElement; return a.id || a.className || a.tagName; });
+    const r = await ctrlV();
+    if (r === 'claimed') bad.push(`${name} (${at}): Ctrl+V was taken from the field`);
+    const after = await tree();
+    if (JSON.stringify(after) !== JSON.stringify(before)) bad.push(`${name} (${at}): the outline changed: ${JSON.stringify(after)}`);
+    await pg.keyboard.press('Escape'); await W(250); await pg.keyboard.press('Escape'); await W(250);
+  }
+  assert.deepEqual(bad, [], 'a copy pastes as the points it is, and a text field keeps its own paste');
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
