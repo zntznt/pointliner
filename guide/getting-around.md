@@ -126,6 +126,9 @@ Delete, plus a ✕ to clear the selection.
 
 From the keyboard, `Ctrl/Cmd+C` copies, `Ctrl/Cmd+X` cuts, and `Ctrl/Cmd+V` pastes the points;
 `Tab` / `Shift+Tab` indent or outdent the selection; `Delete` removes it and `Esc` clears it.
+`Ctrl/Cmd+V` pastes the points while you are typing in a point too: they land after it, or take the
+place of an empty one, with their pills, notes and properties. In a note or a search box it pastes
+their text.
 
 `Ctrl/Cmd+Shift+S` cycles the to-do state and `Ctrl/Cmd+Shift+P` cycles the priority across every
 selected point at once (the same two chords cycle a single point while you are editing it).

@@ -11121,6 +11121,15 @@ function render() {
       if (e.key === 'Enter') { e.preventDefault(); if (vp.children.length) focusNode(vp.children[0].id); }
       if (e.key === 'Escape') { e.preventDefault(); zoomOut(); }
     });
+    // #1617: the title is the zoomed point's own text, so the points Ctrl+C or Ctrl+X put on the
+    // clipboard paste here as points too, opening the page's list right under the title. Any other
+    // text is the title's own.
+    te.addEventListener('paste', e => {
+      if (!isHeldClipboardText(e.clipboardData ? e.clipboardData.getData('text/plain') : '', nodeClipboard)) return;
+      e.preventDefault();
+      te.blur();   // exitZoomEdit commits the title first
+      pasteFromNodeClipboard(vp.id, 'title');
+    });
     te.addEventListener('mousemove', e => {
       if (!te.dataset.editing || fnNodeId !== vp.id) return;
       hiFnItem(getFnKeyAtPoint(e.clientX, e.clientY));
@@ -21366,6 +21375,13 @@ function handlePaste(e, node, content) {
     document.execCommand('insertText', false, text);
     return;
   }
+  // #1617: the points Ctrl+C or Ctrl+X put on the clipboard paste as those points, as Ctrl+V from the
+  // row does, not as their text (see isHeldClipboardText). Before every text branch below, so a prose
+  // point is no exception. A cell above keeps the text: a cell holds one value, never points.
+  if (isHeldClipboardText(text, nodeClipboard)) {
+    pasteFromNodeClipboard(node.id, 'edit');
+    return;
+  }
   // #1327: a "copy image" from a web page arrives as text/html leading with an <img>; turn it into an
   // image reference (![](src)) instead of pasting nothing useful. Remote src offers the opt-in after.
   const imgHtml = imgSrcFromHtml(e.clipboardData.getData('text/html'));
@@ -22149,16 +22165,68 @@ function serializeNodesToText(nodes) {
   return nodes.flatMap(n => lines(n, 0)).join('\n');
 }
 
+// #1617: Ctrl+C or Ctrl+X on a selection holds the points AND writes their text to the system
+// clipboard, and Ctrl+C hands the caret back to a point. So the very next Ctrl+V is usually a paste
+// INTO a point, which arrives as that text: handlePaste split it into new points, every pill came
+// back as a broken `?` (the token without its record), the notes and properties were dropped and a
+// single point kept its `- ` marker. A paste that carries exactly the text the copy wrote is those
+// points, so it pastes them, as Ctrl+V from the row does (P1). Anything else is text: the reader
+// copied something in between, in another app or from a point, and that is what they paste.
+
+// #1617: the one form two copies of the clipboard text are compared in. Pure. An OS clipboard may
+// hand it back with \r\n line ends or a trailing newline added or dropped, and nothing else.
+function clipboardTextKey(s) {
+  return String(s == null ? '' : s).replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+}
+// #1617: is this pasted text the points the in-app clipboard holds? `held` is nodeClipboard. Pure.
+function isHeldClipboardText(text, held) {
+  if (!held || !Array.isArray(held.nodes) || !held.nodes.length || typeof held.text !== 'string') return false;
+  const want = clipboardTextKey(held.text);
+  return want !== '' && clipboardTextKey(text) === want;
+}
+// #1617: where a paste of the held points goes, as a splice on the list `kids`, asked from the point
+// at index `at` in it. Pure. `from` is the door:
+//   'row'   - Ctrl+V from the row cursor or a selection: the copies follow the point.
+//   'edit'  - Ctrl+V in a point being edited. A point that holds something keeps it, and the copies
+//             follow it, as from the row. An empty one is filled in place, by the rule every fill
+//             door uses (isEmptyPoint with ignoreStamps, #1580/#1596), so a point with only a note
+//             is never replaced.
+//   'title' - Ctrl+V in the zoom title. The zoomed point is the page, so the copies open its list,
+//             right under the title, and fill the one empty point a fresh page holds.
+function heldPastePlan(kids, at, from) {
+  if (!Array.isArray(kids)) return null;
+  if (from === 'title') return { index: 0, remove: kids.length === 1 && isEmptyPoint(kids[0], { ignoreStamps: true }) ? 1 : 0 };
+  if (!Number.isInteger(at) || at < 0 || at >= kids.length) return null;
+  if (from === 'edit' && isEmptyPoint(kids[at], { ignoreStamps: true })) return { index: at, remove: 1 };
+  return { index: at + 1, remove: 0 };
+}
+// #1617: the <input> types a reader types text into (takesTypedText).
+const TYPED_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
+// #1617: does the focused element take typed text? Pure over the element's shape. Ctrl+C, Ctrl+X and
+// Ctrl+V on the document act on POINTS, and claimed them in every field that did not stop the keys
+// itself: measured, Ctrl+V in the search box, the command browser's search, the File menu search, a
+// property dialog's key field, a base cell and the zoom title pasted the held points into the outline
+// (behind a dialog, or outside the zoomed page) and the field got nothing, and Ctrl+X in the File menu
+// search cut the selected points. A field that takes text owns those keys for its text.
+function takesTypedText(el) {
+  if (!el) return false;
+  if (el.isContentEditable === true) return true;
+  const tag = String(el.tagName || '').toUpperCase();
+  if (tag === 'TEXTAREA') return true;
+  return tag === 'INPUT' && TYPED_INPUT_TYPES.has(String(el.type || 'text').toLowerCase());
+}
+
 function copySelection() {
   if (selectedIds.size === 0) return;
   const tops = getTopLevelSelected();
   if (!tops.length) return;
-  nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };
+  const text = serializeNodesToText(tops);
+  nodeClipboard = { nodes: tops.map(n => structuredClone(n)), text };   // #1617: the text, so a paste can tell it is these points
   const count = tops.reduce((n, t) => n + countPoints(t), 0);
   // #1585: "Copied N points" only once the system clipboard has them. A refused write used to be
   // swallowed here and the success flashed regardless, so a paste into another app got whatever was
   // there before. The points are still held for an in-app paste, and the failure says so.
-  copyTextToClipboard(serializeNodesToText(tops), `Copied ${ptsLabel(count)}`, clipboardFailMessage('copy', count, MOD));
+  copyTextToClipboard(text, `Copied ${ptsLabel(count)}`, clipboardFailMessage('copy', count, MOD));
   clearSelection();
 }
 
@@ -22170,9 +22238,10 @@ function cutSelection() {
   if (selectedIds.size === 0) return;
   const tops = getTopLevelSelected();
   if (!tops.length) return;
-  nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };
+  const text = serializeNodesToText(tops);
+  nodeClipboard = { nodes: tops.map(n => structuredClone(n)), text };   // #1617: as copySelection
   const count = tops.reduce((n, t) => n + countPoints(t), 0);
-  const wrote = writeClipboard(serializeNodesToText(tops));   // started inside the gesture
+  const wrote = writeClipboard(text);                         // started inside the gesture
   deleteSelected('Cut');                                      // says "Cut N points. ⌘+Z to undo"
   wrote.then(ok => { if (!ok) flashError(clipboardFailMessage('cut', count, MOD)); });
 }
@@ -22260,14 +22329,21 @@ function outdentSelected() {
   if (moved) flashHint(`Outdented ${ptsLabel(moved)}`);
 }
 
-function pasteFromNodeClipboard(atId) {
+// The held points, pasted as fresh copies (new ids every time; a copy keeps its source's stamps, the
+// clone rule, #1614). `from` is the door, and heldPastePlan says where they go (#1617).
+function pasteFromNodeClipboard(atId, from = 'row') {
   if (!nodeClipboard || !nodeClipboard.nodes.length) return;
-  const parent = parentOf(atId);
+  // #1617: a paste from inside a point leaves the edit first, as every fill door does (#1594/#1595):
+  // render() below commits a live edit, and exitEdit would read the editor's stale buffer back.
+  commitActiveEdit();
+  const at = nodeById(atId);
+  const parent = from === 'title' ? at : parentOf(atId);
   if (!parent) return;
+  const plan = heldPastePlan(parent.children, parent.children.findIndex(c => c.id === atId), from);
+  if (!plan) return;
   pushUndo();
-  const idx = parent.children.findIndex(c => c.id === atId);
   const newNodes = nodeClipboard.nodes.map(n => deepCloneNodeNewIds(n));
-  parent.children.splice(idx + 1, 0, ...newNodes);
+  parent.children.splice(plan.index, plan.remove, ...newNodes).forEach(deregisterSubtree);
   buildIndex(root, null);
   markDirty();
   render();
@@ -44377,7 +44453,7 @@ const GUIDE = [
     ] },
   { id:'multi-select', cat:'getting-around',
     title:'Selecting many points',
-    body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete them all. Start a selection by Shift+clicking a point (a contiguous range) or Ctrl/Cmd+clicking points to pick them out of order, or press Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Export .md, Indent, Outdent, State, Dates, Check, Properties, Tag, Turn into, Refile and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it.\n\nTag is the fast way to make a lot of points queryable at once, which matters most right after importing a wall of text: run a search for the points that belong together, Shift+click the first and last match to select them all (or Shift+Up and Shift+Down from the row cursor), then Tag adds one #tag to all of them, so a fresh document becomes something the roll, count and query pills can work on in minutes instead of an evening of hand-tagging.",
+    body:"Work on many points at once instead of one at a time: copy or move a batch, indent or outdent a whole group, set a state, date, check or property across all of them, turn them all into another type or delete them all. Start a selection by Shift+clicking a point (a contiguous range) or Ctrl/Cmd+clicking points to pick them out of order, or press Shift+up/down from the keyboard, and a selection bar appears at the bottom showing how many points are selected with a button for each bulk action: Copy, Export .md, Indent, Outdent, State, Dates, Check, Properties, Tag, Turn into, Refile and Delete. From the keyboard, Ctrl/Cmd+C copies, Ctrl/Cmd+X cuts and Ctrl/Cmd+V pastes the points, Tab and Shift+Tab indent or outdent the selection, Delete removes it and Esc clears it. Ctrl/Cmd+V pastes the points while you are typing in a point too: they land after it, or take the place of an empty one, with their pills, notes and properties. In a note or a search box it pastes their text.\n\nTag is the fast way to make a lot of points queryable at once, which matters most right after importing a wall of text: run a search for the points that belong together, Shift+click the first and last match to select them all (or Shift+Up and Shift+Down from the row cursor), then Tag adds one #tag to all of them, so a fresh document becomes something the roll, count and query pills can work on in minutes instead of an evening of hand-tagging.",
     related:['move-nest','refile','export','row-cursor'],
     examples:[
       { syn:'Shift+Click',            desc:'select a range of points' },
@@ -47254,10 +47330,12 @@ document.addEventListener('keydown', e => {
   // the LOWERCASE key even though Shift is down (the old 'Z'-only check never matched, so the
   // redo chord was dead; Ctrl+Y still worked). Undo above already uses lowercase 'z'.
   if (ctrl && (e.key==='y' || (e.shiftKey && (e.key==='z' || e.key==='Z')))) { e.preventDefault(); redo(); }
-  // multi-select shortcuts
-  if (ctrl && e.key==='c' && !e.shiftKey && selectedIds.size > 0) { e.preventDefault(); copySelection(); }
-  if (ctrl && e.key==='x' && selectedIds.size > 0) { e.preventDefault(); cutSelection(); }
-  if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null) {
+  // multi-select shortcuts. #1617: never from a field that takes text (takesTypedText): there the
+  // three chords are the field's own, for its own text.
+  const fieldOwnsClipboard = takesTypedText(document.activeElement);
+  if (ctrl && e.key==='c' && !e.shiftKey && selectedIds.size > 0 && !fieldOwnsClipboard) { e.preventDefault(); copySelection(); }
+  if (ctrl && e.key==='x' && selectedIds.size > 0 && !fieldOwnsClipboard) { e.preventDefault(); cutSelection(); }
+  if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null && !fieldOwnsClipboard) {
     e.preventDefault();
     const el = document.activeElement?.closest?.('.node[data-id]');
     // #817 (agent-review, UXP-209): in row-cursor mode focus sits on <body>, so the old

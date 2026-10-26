@@ -12273,12 +12273,24 @@ test('#1594 census: every door that fills a point it judges empty leaves the edi
   // #1613: the removal's judgement lives in the pure provisionalToDrop, which dropProvisionalChild calls.
   const FILL = new Set(['stampTemplate', 'insertRecipe', 'handlePaste']);
   const REMOVE = new Set(['provisionalToDrop']);
+  // #1617: a FILL judged by a pure core, which cannot leave an edit itself, so the door that asks it
+  // must leave the edit first. core -> its door.
+  const PLANS = { heldPastePlan: 'pasteFromNodeClipboard' };
   const leaves = /commitActiveEdit\(\);|document\.querySelector\(`\.node-content\[data-id="\$\{nodeId\}"\]\[data-editing\]`\)\??\.blur\(\)|if \(el\) el\.blur\(\);/;
   const seen = new Set();
+  for (const [core, door] of Object.entries(PLANS)) {
+    const body = fnBody(_src, door);
+    const asks = nonEmptyIdx(body, `${core}(`);
+    assert.ok(leaves.test(body.slice(0, asks)), `${door}: leaves the edit before it asks ${core} whether the point is empty`);
+  }
   for (const at of sites) {
     const fn = enc(at);
     assert.ok(fn, `an isEmptyPoint call outside any named function at ${at}`);
     seen.add(fn.name);
+    if (fn.name in PLANS) {
+      assert.match(_src.slice(at, _src.indexOf(')', at) + 1), /\{ ignoreStamps: true \}/, `${fn.name}: a fill looks past the created/edited stamps a cleared point keeps`);
+      continue;
+    }
     assert.ok(FILL.has(fn.name) || REMOVE.has(fn.name),
       `${fn.name} judges a point empty and is not classified. If it fills or replaces the point in place, add it to FILL ` +
       '(it must leave the edit first and pass { ignoreStamps: true }); if it removes it, add it to REMOVE');
@@ -12290,7 +12302,7 @@ test('#1594 census: every door that fills a point it judges empty leaves the edi
     const before = _src.slice(fn.open, at);
     assert.match(before, leaves, `${fn.name}: leaves the edit before it judges or writes the point, or render() writes the stale buffer back`);
   }
-  assert.deepEqual([...seen].sort(), [...FILL, ...REMOVE].sort(), 'every classified door is still a door');
+  assert.deepEqual([...seen].sort(), [...FILL, ...REMOVE, ...Object.keys(PLANS)].sort(), 'every classified door is still a door');
   // The text-judged in-place doors are not isEmptyPoint callers, so they are named: both leave the edit first.
   for (const name of ['createBaseAt', 'qbaseCreateAt']) {
     const body = fnBody(_src, name);
@@ -19758,17 +19770,178 @@ test('#1585 census: every clipboard write goes through writeClipboard, and every
 // refused write said out loud with the two ways back.
 test('#1585 cut holds the points before it removes them, and a refused write says how to get them back', () => {
   const cut = fnBody(_src, 'cutSelection');
-  const held = nonEmptyIdx(cut, 'nodeClipboard = { nodes: tops.map(n => structuredClone(n)) };');
-  const wrote = nonEmptyIdx(cut, 'writeClipboard(serializeNodesToText(tops))');
+  const held = nonEmptyIdx(cut, 'nodeClipboard = { nodes: tops.map(n => structuredClone(n)), text };');
+  const wrote = nonEmptyIdx(cut, 'writeClipboard(text)');
   const removed = nonEmptyIdx(cut, "deleteSelected('Cut')");
   assert.ok(held < removed, 'the in-app copy exists before a single point is removed');
   assert.ok(wrote < removed, 'the system write starts inside the gesture, before the re-render');
   assert.match(cut, /if \(!ok\) flashError\(clipboardFailMessage\('cut', count, MOD\)\)/, 'a refused write is an error, with the ways back');
   // and the chord calls it: the inline body that never wrote the system clipboard is gone
-  const chord = between(_src, "if (ctrl && e.key==='x' && selectedIds.size > 0) {", '}');
+  const chord = between(_src, "if (ctrl && e.key==='x' && selectedIds.size > 0 && !fieldOwnsClipboard) {", '}');
   assert.match(chord, /cutSelection\(\)/, 'Ctrl+X cuts through cutSelection');
-  // copy and cut write the SAME text, so a paste elsewhere gets the same thing either way (P1)
-  assert.match(fnBody(_src, 'copySelection'), /copyTextToClipboard\(serializeNodesToText\(tops\)/);
+  // copy and cut write the SAME text, so a paste elsewhere gets the same thing either way (P1), and
+  // #1617: each holds exactly the text it writes, so a paste can tell the copy when it comes back
+  for (const [fn, write] of [['copySelection', 'copyTextToClipboard(text, '], ['cutSelection', 'writeClipboard(text)']]) {
+    const body = fnBody(_src, fn);
+    const made = nonEmptyIdx(body, 'const text = serializeNodesToText(tops);');
+    assert.ok(made < nonEmptyIdx(body, 'nodeClipboard = { nodes: tops.map(n => structuredClone(n)), text };'), `${fn}: holds the text it made`);
+    assert.ok(made < nonEmptyIdx(body, write), `${fn}: and writes that same text`);
+    assert.equal(body.split('serializeNodesToText(').length, 2, `${fn}: the text is made once, so what is held and what is written cannot differ`);
+  }
+});
+
+// ─── #1617: copied points pasted into a point being edited ──────────────────────────────────────
+// Ctrl+C on a selection holds the points AND writes their text, and hands the caret back to a point
+// (measured: the selection bar had focus, so clearSelection returns it to the last selected point).
+// The very next Ctrl+V was therefore a paste INTO a point, and it took the text path: every pill came
+// back a broken `?` (the token without its record), the notes and properties were dropped, and a lone
+// point kept its `- ` marker. A paste that carries exactly the text the copy wrote is those points.
+test('#1617 isHeldClipboardText knows its own copy through what an OS clipboard does to it, and nothing else', () => {
+  const rng = c.rngFromSeed(1617);
+  const pick = a => a[Math.floor(rng() * a.length)];
+  const make = (depth) => {
+    const n = c.mkNode(pick(['', 'alpha', 'Hit [[dice:k1]]', '- [ ] buy milk', 'cost: 5', '| a | b |', 'two  spaces ', '#tag {x}']));
+    if (depth < 2) for (let k = Math.floor(rng() * 3); k > 0; k--) n.children.push(make(depth + 1));
+    return n;
+  };
+  // what an OS clipboard hands back: \r\n or \r line ends, and a line end added at the end (or several)
+  const OS = [t => t, t => t.replace(/\n/g, '\r\n'), t => t.replace(/\n/g, '\r'), t => t + '\n', t => t + '\r\n', t => t.replace(/\n/g, '\r\n') + '\r\n', t => t + '\n\n'];
+  // what the reader may have copied in between: anything else, however close
+  const OTHER = [
+    t => { const i = Math.floor(rng() * t.length); return t.slice(0, i) + (t[i] === 'x' ? 'y' : 'x') + t.slice(i + 1); },   // one character changed
+    t => { const i = Math.floor(rng() * (t.length + 1)); return t.slice(0, i) + 'q' + t.slice(i); },                        // one added
+    t => { const i = Math.floor(rng() * t.length); return t.slice(0, i) + t.slice(i + 1); },                                   // one dropped
+    t => '  ' + t,                                                                                                              // indented: another outline
+    t => t + '\n- one more',                                                                                                    // a point more
+    t => t.split('\n').slice(1).join('\n'),                                                                                     // a point less
+    t => t.split('\n').map(l => l.replace(/^(\s*)- /, '$1')).join('\n'),                                                        // the text without its markers
+  ];
+  let matched = 0, refused = 0;
+  for (let i = 0; i < 400; i++) {
+    const tops = Array.from({ length: 1 + Math.floor(rng() * 3) }, () => make(0));
+    const text = c.serializeNodesToText(tops);
+    const held = { nodes: tops, text };
+    const back = pick(OS)(text);
+    assert.equal(c.isHeldClipboardText(back, held), true, `the copy, as the clipboard handed it back: ${JSON.stringify(back)}`);
+    matched++;
+    const other = pick(OTHER)(text);
+    // a change that touched only trailing whitespace IS the same copy (an OS may add or drop it); skip those
+    if (c.clipboardTextKey(other) === c.clipboardTextKey(text)) continue;
+    assert.equal(c.isHeldClipboardText(other, held), false, `something else is pasted as text: ${JSON.stringify(other)} vs ${JSON.stringify(text)}`);
+    refused++;
+  }
+  assert.ok(matched === 400 && refused >= 300, `the sample must exercise both answers: ${matched} matched, ${refused} refused`);
+  // The reported case, literally, and the point's own text copied natively from inside it.
+  const hit = c.mkNode('Hit [[dice:rydh898e]]');
+  const held = { nodes: [hit], text: c.serializeNodesToText([hit]) };
+  assert.equal(held.text, '- Hit [[dice:rydh898e]]');
+  assert.equal(c.isHeldClipboardText('- Hit [[dice:rydh898e]]', held), true);
+  assert.equal(c.isHeldClipboardText('Hit {2d6}', held), false, 'the point text copied from inside it is text');
+  assert.equal(c.isHeldClipboardText('Hit [[dice:rydh898e]]', held), false, 'so is its token without the marker');
+  // Nothing held, or nothing to compare with, is never a match, whatever is pasted.
+  for (const h of [null, undefined, {}, [hit], { nodes: [], text: held.text }, { nodes: [hit] }, { nodes: [hit], text: null }, { nodes: [hit], text: '' }, { nodes: [hit], text: '\n' }])
+    for (const t of [held.text, '', '\n', null, undefined]) assert.equal(c.isHeldClipboardText(t, h), false, `held ${JSON.stringify(h)}, pasted ${JSON.stringify(t)}`);
+});
+
+test('#1617 heldPastePlan: the copies follow a point, fill an empty one being edited, and open a zoomed page', () => {
+  const OLD = '2020-01-01T09:00';
+  const stamps = () => [{ key: 'created', val: OLD }, { key: 'edited', val: OLD }];
+  // every shape a point can have, by what fills it; `empty` is the fill doors' own rule, stated in full
+  const SHAPES = {
+    fresh:       { make: () => c.mkNode(''), empty: true },
+    cleared:     { make: () => Object.assign(c.mkNode(''), { props: stamps() }), empty: true },   // typed into and cleared: only the stamps
+    spaces:      { make: () => c.mkNode('   '), empty: true },
+    text:        { make: () => c.mkNode('Target'), empty: false },
+    noteOnly:    { make: () => Object.assign(c.mkNode(''), { note: 'just a note' }), empty: false },
+    propOnly:    { make: () => Object.assign(c.mkNode(''), { props: [{ key: 'cost', val: '5' }] }), empty: false },
+    pillOnly:    { make: () => Object.assign(c.mkNode(''), { dice: [{ key: 'k1' }] }), empty: false },
+    parentOnly:  { make: () => Object.assign(c.mkNode(''), { children: [c.mkNode('kid')] }), empty: false },
+  };
+  const rng = c.rngFromSeed(16171);
+  const names = Object.keys(SHAPES);
+  let fills = 0, follows = 0;
+  for (let i = 0; i < 300; i++) {
+    const shapes = Array.from({ length: 1 + Math.floor(rng() * 4) }, () => names[Math.floor(rng() * names.length)]);
+    const kids = shapes.map(s => SHAPES[s].make());
+    const at = Math.floor(rng() * kids.length);
+    assert.deepEqual(host(c.heldPastePlan(kids, at, 'row')), { index: at + 1, remove: 0 }, 'from the row the copies always follow the point');
+    const edit = host(c.heldPastePlan(kids, at, 'edit'));
+    if (SHAPES[shapes[at]].empty) { assert.deepEqual(edit, { index: at, remove: 1 }, `${shapes[at]}: an empty point being edited is filled in place`); fills++; }
+    else { assert.deepEqual(edit, { index: at + 1, remove: 0 }, `${shapes[at]}: a point that holds anything keeps it, and the copies follow`); follows++; }
+    const lone = kids.length === 1 && SHAPES[shapes[0]].empty;
+    assert.deepEqual(host(c.heldPastePlan(kids, at, 'title')), { index: 0, remove: lone ? 1 : 0 },
+      'from the zoom title the copies open the page, filling only the one empty point a fresh page holds');
+  }
+  assert.ok(fills >= 60 && follows >= 120, `the sample must fill and follow: ${fills}/${follows}`);
+  assert.deepEqual(host(c.heldPastePlan([], -1, 'title')), { index: 0, remove: 0 }, 'an empty page takes the copies at the top');
+  for (const [kids, at] of [[[c.mkNode('a')], -1], [[c.mkNode('a')], 1], [[c.mkNode('a')], 0.5], [null, 0], [undefined, 0]])
+    for (const from of ['row', 'edit']) assert.equal(c.heldPastePlan(kids, at, from), null, `no point to paste beside: ${from} at ${at}`);
+});
+
+test('#1617 takesTypedText: a field that takes text owns the clipboard keys, the outline\'s own state does not', () => {
+  for (const el of [
+    { tagName: 'DIV', isContentEditable: true },            // a point, the zoom title, a note, a base cell
+    { tagName: 'TEXTAREA' },                                // the strips
+    ...['text', 'search', 'url', 'email', 'tel', 'password', 'number'].map(type => ({ tagName: 'INPUT', type })),
+    { tagName: 'INPUT' },                                   // no type is a text field
+    { tagName: 'input', type: 'search' },
+  ]) assert.equal(c.takesTypedText(el), true, JSON.stringify(el));
+  for (const el of [
+    null, undefined, {},
+    { tagName: 'BODY' },                                    // the row cursor
+    { tagName: 'BUTTON' },                                  // the selection bar, where Shift+Arrow leaves focus
+    { tagName: 'DIV', isContentEditable: false },           // a row, a pill
+    ...['checkbox', 'radio', 'button', 'submit', 'range', 'color', 'file', 'date'].map(type => ({ tagName: 'INPUT', type })),
+    { tagName: 'SELECT' },
+  ]) assert.equal(c.takesTypedText(el), false, JSON.stringify(el));
+});
+
+test('#1617 the doors are wired: a point and the zoom title paste the held points, and a field keeps the keys', () => {
+  // handlePaste asks before any text branch, and after the cell branch (a cell holds a value)
+  const hp = fnBody(_src, 'handlePaste');
+  const ask = nonEmptyIdx(hp, 'if (isHeldClipboardText(text, nodeClipboard)) {');
+  assert.match(between(hp, 'if (isHeldClipboardText(text, nodeClipboard)) {', '}'), /^[^]*\n\s*pasteFromNodeClipboard\(node\.id, 'edit'\);\n\s*return;\n\s*$/, 'a match pastes the points, from the edit door, and nothing else');
+  assert.ok(nonEmptyIdx(hp, "e.target.closest('.mt-cell')") < ask, 'a cell keeps its text');
+  for (const later of ["imgSrcFromHtml(e.clipboardData.getData('text/html'))", 'if (lines.length === 1) {', "if (node.type === 'para') {", 'const delim = sniffDelimited(text);', 'const parsed = parseMLlines(lines);'])
+    assert.ok(ask < nonEmptyIdx(hp, later), `the copy is asked about before ${later}`);
+  // the zoom title asks the same question and pastes under itself
+  const title = between(_src, "te.addEventListener('paste', e => {", '\n    });');
+  assert.match(title, /if \(!isHeldClipboardText\(e\.clipboardData \? e\.clipboardData\.getData\('text\/plain'\) : '', nodeClipboard\)\) return;\n\s*e\.preventDefault\(\);\n\s*te\.blur\(\);[^\n]*\n\s*pasteFromNodeClipboard\(vp\.id, 'title'\);/);
+  // the paste leaves the edit, asks the plan, and splices exactly what it says, in that order
+  const pf = fnBody(_src, 'pasteFromNodeClipboard');
+  const order = ['commitActiveEdit();', "heldPastePlan(parent.children, parent.children.findIndex(c => c.id === atId), from)", 'pushUndo();', 'parent.children.splice(plan.index, plan.remove, ...newNodes).forEach(deregisterSubtree);']
+    .map(s => nonEmptyIdx(pf, s));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), 'leave the edit, plan, record undo, splice');
+  // the global chords: a field that takes text keeps all three
+  const gate = nonEmptyIdx(_src, 'const fieldOwnsClipboard = takesTypedText(document.activeElement);');
+  for (const chord of ["if (ctrl && e.key==='c' && !e.shiftKey && selectedIds.size > 0 && !fieldOwnsClipboard) {",
+                       "if (ctrl && e.key==='x' && selectedIds.size > 0 && !fieldOwnsClipboard) {",
+                       "if (ctrl && e.key==='v' && nodeClipboard && activeContentId == null && !fieldOwnsClipboard) {"])
+    assert.ok(gate < nonEmptyIdx(_src, chord), `the chord is gated: ${chord}`);
+  for (const k of ['c', 'x', 'v']) assert.equal(_src.split(`(ctrl && e.key==='${k}'`).length, 2, `one global Ctrl+${k.toUpperCase()} branch, and it is the gated one`);
+});
+
+// #1617 census: every paste listener is a door the copied points can reach. Each is classified: it
+// asks isHeldClipboardText and pastes the points, or it is a field that holds a value and keeps the
+// text. A new paste listener fails here until someone decides which it is. Fields with no listener of
+// their own (a note, a base cell, the search boxes, the strips, a dialog field) get the browser's text
+// paste; the global Ctrl+V branch no longer takes it from them (takesTypedText).
+test('#1617 census: every paste listener pastes the held points or is a field that keeps the text', () => {
+  const enc = enclosingFn(_src);
+  const code = maskFor(_src);
+  const HELD = { attachContentEvents: 'handlePaste', render: 'render' };   // the point editor, and the zoom title
+  const TEXT = { renderRows: 'a property dialog key field: one value, with its own multi-line key: value paste (#948)' };
+  const seen = new Set();
+  for (const m of nonEmpty([..._src.matchAll(/\.addEventListener\('paste',/g)].filter(m => code[m.index] === 2), 'paste listeners')) {
+    const fn = enc(m.index)?.name || 'top level';
+    assert.ok(fn in HELD || fn in TEXT, `${fn} listens for paste and is not classified: does a paste of copied points there paste the points (HELD) or the text (TEXT)?`);
+    seen.add(fn);
+  }
+  assert.deepEqual([...seen].sort(), [...Object.keys(HELD), ...Object.keys(TEXT)].sort(), 'every classified door still listens');
+  assert.match(fnBody(_src, 'attachContentEvents'), /content\.addEventListener\('paste', e => handlePaste\(e, node, content\)\);/);
+  assert.match(fnBody(_src, 'handlePaste'), /if \(isHeldClipboardText\(text, nodeClipboard\)\) \{/);
+  assert.match(between(fnBody(_src, 'render'), "addEventListener('paste'", '});'), /isHeldClipboardText\(/);
+  assert.doesNotMatch(between(fnBody(_src, 'renderRows'), "addEventListener('paste'", '});'), /isHeldClipboardText\(|pasteFromNodeClipboard\(/);
 });
 
 // ─── #1504: a repeat with nothing to advance from ────────────────────────────

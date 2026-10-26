@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2190 declarations in 158 sections across 17 domains.**
+**2195 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1228,13 +1228,18 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `remapClonedLinks`
 - `_cloneNodeNewIds`
 - `serializeNodesToText`
+- `clipboardTextKey` — #1617: the one form two copies of the clipboard text are compared in. Pure. An OS clipboard may
+- `isHeldClipboardText` — #1617: is this pasted text the points the in-app clipboard holds? `held` is nodeClipboard. Pure.
+- `heldPastePlan` — #1617: where a paste of the held points goes, as a splice on the list `kids`, asked from the point
+- `TYPED_INPUT_TYPES` — #1617: the <input> types a reader types text into (takesTypedText).
+- `takesTypedText` — #1617: does the focused element take typed text? Pure over the element's shape. Ctrl+C, Ctrl+X and
 - `copySelection`
 - `cutSelection` — #1585: Ctrl+X is copy, then remove (P1: the guide and the shortcut list pair "copy / cut"), so it
 - `exportSelectionToMarkdown` — Export the selected points (top-level only, so a selected child isn't duplicated under
 - `deleteSelected`
 - `indentSelected`
 - `outdentSelected`
-- `pasteFromNodeClipboard`
+- `pasteFromNodeClipboard` — The held points, pasted as fresh copies (new ids every time; a copy keeps its source's stamps, the
 
 ## selection toolbar
 

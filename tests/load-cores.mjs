@@ -396,6 +396,8 @@ export function loadCores() {
     'duplicateTitleIds',        // #468 is:duplicate-title
     'resolveTypedLinks',        // PR-δ: hand-typed [[Name]] → [[#id]] on unambiguous match
     'clipboardWriteVia','clipboardFailMessage',   // #1585: the one clipboard write decision, and what a refusal says
+    'serializeNodesToText', 'clipboardTextKey', 'isHeldClipboardText',   // #1617: is a pasted text the points the copy held
+    'heldPastePlan', 'takesTypedText',   // #1617: where a paste of the held points lands, and which fields keep the clipboard keys
   ];
   // #1584: DOM-WIRED, and named as such. Loaded exactly like `need` so tests can reach them, but each
   // touches document / window / storage / a timer, directly or through what it calls, so it is NOT a
