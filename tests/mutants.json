@@ -4986,6 +4986,24 @@
       "find": "  if (from === 'edit' && isEmptyPoint(kids[at], { ignoreStamps: true })) return { index: at, remove: 1 };",
       "replace": "  if (from === 'edit') return { index: at, remove: 1 };",
       "kills": "#1617 copied points pasted while a point is being edited"
+    },
+    {
+      "id": "uxp339-restore-reenters-a-left-edit",
+      "suite": "unit",
+      "why": "without the editing guard, checkInlineHighlight's caret-restore frame focuses a point the user just left and re-enters its edit, undoing the commit",
+      "file": "index.html",
+      "find": "    if (!content.dataset.editing) return;\n    content.focus();",
+      "replace": "    content.focus();",
+      "kills": "UXP-339 the closing-brace caret restore never re-enters an edit that has ended"
+    },
+    {
+      "id": "uxp339-restore-steals-focus-back",
+      "suite": "browser",
+      "why": "the #1501 CI flake, made deterministic: leave a point in the same frame as its closing brace and the restore pulls focus back, so no cue and no promoted pill",
+      "file": "index.html",
+      "find": "    if (!content.dataset.editing) return;\n    content.focus();",
+      "replace": "    content.focus();",
+      "kills": "UXP-339 leaving a point right after typing a closing brace stays left"
     }
   ]
 }
