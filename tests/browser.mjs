@@ -3303,14 +3303,14 @@ test('#1501 a colon-less generate keyword survives whole, and the repair does no
       const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
       window.__live = []; const el = document.getElementById('a11y-live');
       new MutationObserver(() => window.__live.push(el.textContent)).observe(el, { childList: true, characterData: true, subtree: true });
-      // DIAGNOSIS, not assertion. This check has failed in CI on unrelated PRs (4d913df, run 1694,
-      // PR #1577) and never locally -- not in the full suite, not on CI's own Chromium 131, not
-      // under 6x CPU throttling. On #1577 the cue did not paint in a 15 s wait, so it is not slow
-      // painting. Two shapes remain and fit every observation, because edit mode shows the raw
-      // text and so the text asserts pass either way: (a) the Escape never committed (an inline
-      // menu or some other layer took it), or (b) it committed and something re-entered edit
-      // before the first poll. These listeners only record; they change nothing. On failure they
-      // go into the assertion message, since CI prints only that.
+      // DIAGNOSIS, not assertion. This check failed in CI on unrelated PRs (4d913df, run 1694,
+      // #1577, and main at 01145bc) and never locally, because edit mode shows the raw text and so
+      // the text asserts pass whether or not the point actually committed. The fourth failure
+      // printed this diagnosis and named the cause: edit-off, then a focusin from
+      // checkInlineHighlight's caret-restore frame, then edit-on. That restore re-entered an edit
+      // the Escape had just ended; fixed and pinned as UXP-339, which reproduces it
+      // deterministically. These listeners only record, and stay so that any other re-entry names
+      // its own call site the same way.
       window.__trace = []; const t0 = performance.now();
       const at = () => Math.round(performance.now() - t0);
       document.addEventListener('focusin', ev => window.__trace.push({ at: at(), ev: 'focusin',
@@ -8701,6 +8701,44 @@ test('#1584 the decimals tip is said by the page, never by the formula preview',
   assert.match(onPage.pill, /3\.3333/, 'precondition: the pill shows the long decimal on the page');
   assert.equal(onPage.seen, true, 'the row paint that shows it spends the tip');
   assert.equal(onPage.said.length, 1, 'and says it, once');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+// ── UXP-339: a caret restore never re-enters an edit you just left ───────────────────────────────
+// Typing a closing `}` re-renders the edit buffer (checkInlineHighlight) and restores the caret in
+// the next frame with content.focus(). That restore only checked that no newer input had arrived,
+// never that the edit was still going: leave the point (Escape, Tab, a click) inside that one frame
+// and the stale restore focused it again, re-entering edit mode and undoing the commit. No cue on a
+// broken form, no pill from a valid one, and the caret yanked back. This is what the #1501 check
+// kept catching in CI: its own diagnosis printed edit-off, then focusin from that line, then
+// edit-on. Deterministic here: the `}` and the leave happen in ONE task, so the frame can only run
+// after the commit, on any machine.
+test('UXP-339 leaving a point right after typing a closing brace stays left, and the commit stands', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const CASES = [
+    { label: 'a broken form', typed: 'M2 {3x {a|b}', last: '}', want: (r) => r.cue && r.text === 'M2 {3x {a|b}}' },
+    { label: 'a valid pill',  typed: 'Roll {2d6',    last: '}', want: (r) => /^Roll \[\[dice:[a-z0-9]+\]\]$/.test(r.text) },
+    { label: 'plain text (control)', typed: 'just words', last: '!', want: (r) => r.text === 'just words!' },
+  ];
+  const bad = [];
+  for (const k of CASES) {
+    await pg.evaluate(() => { root.children = [mkNode(''), mkNode('another point')]; buildIndex(root); markDirty(); render(); });
+    await pg.waitForTimeout(200);
+    await pg.evaluate(() => { const c = document.querySelector('.node-content[data-id]'); const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id; });
+    await pg.keyboard.type(k.typed, { delay: 10 }); await pg.waitForTimeout(200);
+    const r = await pg.evaluate(async (last) => {
+      const c = document.querySelector('.node-content[data-editing]');
+      document.execCommand('insertText', false, last);   // the input that schedules the restore
+      c.blur();                                            // what Escape, Tab and a click all do
+      await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+      await new Promise(res => setTimeout(res, 250));
+      return { editing: !!c.dataset.editing, focusInPoint: !!document.activeElement.closest?.('.node-content'),
+        cue: !!document.querySelector('.brace-attempt'), text: root.children[0].text };
+    }, k.last);
+    if (r.editing || r.focusInPoint || !k.want(r)) bad.push(`${k.label}: ${JSON.stringify(r)}`);
+  }
+  assert.deepEqual(bad, [], 'a point left in the same frame as its closing brace stays left, and what it committed stands');
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
