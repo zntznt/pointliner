@@ -685,8 +685,8 @@ Implemented:
   `queryMatchesNode` (terms × node → bool, seqs injectable),
   `searchHighlightNeedles` (what `<mark>` highlights — positive text + tag terms;
   `is:` is structural). Wiring: `applySearch` parses once per query into
-  `searchTerms`; `nodeMatchesSearch` delegates; `highlightContent` marks the
-  earliest needle per text node. The search path ignores the show-done toggle
+  `searchTerms`; `nodeMatchesSearch` delegates; `highlightContent` marks every
+  needle hit per text node (`highlightRanges`). The search path ignores the show-done toggle
   (as it always has), so `is:done` / `-is:done` are the explicit override.
   Doors (P2): a **focus-shown legend** under the search box (`#search-hint`,
   CSS `:focus-within`, `aria-describedby` on the input) and a

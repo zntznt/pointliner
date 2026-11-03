@@ -19689,10 +19689,27 @@ function computeMatchSet(node, set, anc = '', states = knownStates(),
   return any;
 }
 
+// Every non-overlapping hit of any needle (lowercase) in `text`, left to right, as [start, end)
+// pairs: at each step the earliest needle wins, the longer one on a tie. It used to stop at the
+// first hit per text node, so "BLA or BLA" marked only the first BLA. Empty needles are skipped:
+// indexOf('') matches everywhere and the scan would never advance.
+function highlightRanges(text, needles) {
+  const lo = text.toLowerCase(), out = [];
+  for (let from = 0;;) {
+    let idx = -1, len = 0;
+    for (const nd of needles) {
+      if (!nd) continue;
+      const i = lo.indexOf(nd, from);
+      if (i !== -1 && (idx === -1 || i < idx || (i === idx && nd.length > len))) { idx = i; len = nd.length; }
+    }
+    if (idx === -1) return out;
+    out.push([idx, idx + len]);
+    from = idx + len;
+  }
+}
+
 function highlightContent(el, query) {
   if (!query) return;
-  // mark the earliest occurrence of any positive term per text node (the
-  // pre-operator behavior, generalized from one needle to the term list)
   const needles = searchHighlightNeedles(searchTerms);
   if (!needles.length) return;
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -19701,19 +19718,18 @@ function highlightContent(el, query) {
   while ((n = walker.nextNode())) nodes.push(n);
   for (const tn of nodes) {
     const text = tn.textContent;
-    const lo = text.toLowerCase();
-    let idx = -1, len = 0;
-    for (const nd of needles) {
-      const i = lo.indexOf(nd);
-      if (i !== -1 && (idx === -1 || i < idx)) { idx = i; len = nd.length; }
-    }
-    if (idx === -1) continue;
-    const mark = document.createElement('mark');
-    mark.textContent = text.slice(idx, idx + len);
+    const ranges = highlightRanges(text, needles);
+    if (!ranges.length) continue;
     const frag = document.createDocumentFragment();
-    frag.appendChild(document.createTextNode(text.slice(0, idx)));
-    frag.appendChild(mark);
-    frag.appendChild(document.createTextNode(text.slice(idx + len)));
+    let from = 0;
+    for (const [s, e] of ranges) {
+      if (s > from) frag.appendChild(document.createTextNode(text.slice(from, s)));
+      const mark = document.createElement('mark');
+      mark.textContent = text.slice(s, e);
+      frag.appendChild(mark);
+      from = e;
+    }
+    if (from < text.length) frag.appendChild(document.createTextNode(text.slice(from)));
     tn.parentNode.replaceChild(frag, tn);
   }
 }

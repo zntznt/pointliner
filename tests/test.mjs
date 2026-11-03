@@ -15050,6 +15050,17 @@ test('search query: searchHighlightNeedles — positive text + tags only', () =>
   assert.deepEqual(host(c.searchHighlightNeedles([])), []);
 });
 
+test('highlightRanges — marks every hit in a text node, not just the first', () => {
+  const text = 'Who BLA maybe they are BLA 2 or BLA 3';
+  assert.deepEqual(host(c.highlightRanges(text, ['bla'])), [[4, 7], [23, 26], [32, 35]]);
+  // several needles: earliest wins, longer on a tie, hits never overlap
+  assert.deepEqual(host(c.highlightRanges('ab abc', ['abc', 'ab'])), [[0, 2], [3, 6]]);
+  assert.deepEqual(host(c.highlightRanges('aaaa', ['aa'])), [[0, 2], [2, 4]]);
+  assert.deepEqual(host(c.highlightRanges('abc', ['', 'x'])), []);  // empty needle cannot loop
+  // and the DOM wiring actually consumes it
+  assert.ok(fnBody(_src, 'highlightContent').includes('highlightRanges(text, needles)'));
+});
+
 test('search query: front doors + wiring are present (src pins)', () => {
   // P2: the focus-shown legend under the search box, described to AT
   assert.ok(_src.includes('id="search-hint"'), 'search hint legend missing');

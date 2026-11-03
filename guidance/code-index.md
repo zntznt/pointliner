@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2195 declarations in 158 sections across 17 domains.**
+**2196 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1129,6 +1129,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `findTemplate`
 - `mergedTemplates` — #583: the list the /template picker and stamp paths read — the union of PACK templates and
 - `computeMatchSet` — Single post-order pass: record every node whose subtree (incl. self) matches,
+- `highlightRanges` — Every non-overlapping hit of any needle (lowercase) in `text`, left to right, as [start, end)
 - `highlightContent`
 
 ## content events
