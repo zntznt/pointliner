@@ -30584,6 +30584,11 @@ function checkInlineHighlight(content, node) {
   if (braceCls === 'artifact') showBracePreview(body, content, off - 1);
   requestAnimationFrame(() => {
     if (myGen !== _highlightGen) return; // a subsequent input ran; skip stale restore
+    // ...and the edit this restores may have ENDED before the frame: type a `}` and press Escape,
+    // Tab or click away inside one frame, and focus() here re-entered edit mode on a point the user
+    // had just left, undoing the commit (no cue, no promoted pill). A restore never starts an edit.
+    // This was the #1501 CI flake: rare on a fast machine, where the frame beats the next key.
+    if (!content.dataset.editing) return;
     content.focus();
     try { if (!caretAfterGrSrc(content, off)) setCaretByOffset(content, off); } catch(_) {}
   });

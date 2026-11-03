@@ -6777,3 +6777,42 @@ by thirteen chips). The standing answer is the roving group (ux-discipline §3: 
 row, arrows inside it, `roveIndex`), which is what #1586 gave the Variable dialog's Known variables
 cards. Drive both the nested and the standalone dialog: they share `buildChipRow`, and the
 standalone dialog currently makes every chip a Tab stop.
+
+---
+
+## UXP-339 -- leaving a point right after a closing brace pulled focus back into it
+
+**Status: shipped.** P3 / P1 / P4. Found by the #1501 CI flake's own diagnosis.
+
+### The defect, driven
+
+Typing a closing `}` re-renders the edit buffer (`checkInlineHighlight`) and restores the caret one
+frame later with `content.focus()`. That restore checked only that no newer input had arrived, not
+that the edit was still going. Leave the point inside that frame (Escape, Tab, a click elsewhere)
+and the stale restore focused it again: the point re-entered edit mode, the commit was undone, and
+the caret was pulled back. A broken form lost its `.brace-attempt` cue; a valid `{2d6}` never
+promoted to a pill. Rare by hand on a fast machine, because the frame usually beats the next key.
+
+This is what the `#1501` browser check caught four times in CI (4d913df, run 1694, #1577, main at
+01145bc) and never locally. The text assertions before the failing one passed regardless, since
+edit mode shows the raw text. #1578 made the check print every focus and edit-mode change after the
+Escape; the next CI failure read `edit-off`, then `focusin` from `checkInlineHighlight`'s restore
+frame, then `edit-on`.
+
+### The fix
+
+The restore returns when the edit has ended (`!content.dataset.editing`). A restore can keep an
+edit; it can never start one.
+
+The family was enumerated: every deferred callback that focuses or selects inside a point.
+`restoreChromeReturn`, `applyInlineReplace`, `navigateToPrev` / `navigateToNext` and the lean `/due`
+and `/prop` stubs move the caret somewhere the user just asked for, so they are out of scope.
+`checkInlineHighlight` is the only one that restores an edit already in progress, and the only one
+that could resurrect an edit that had ended.
+
+### Verification
+
+A driven check reproduces it deterministically, with the closing brace and the leave in one task so
+the frame can only run after the commit: a broken form keeps its cue, a valid pill promotes, focus
+stays out, and plain text is the control. A unit pin holds the guard inside the frame callback
+before the `focus()`. Both have mutants, killed.

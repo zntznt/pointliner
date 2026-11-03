@@ -23712,6 +23712,15 @@ test('UXP-336 both builder doors route through builderPaneKind, and @action inse
   assert.equal(atInsert, braceInsert, 'the @ door and the { door insert the same working action');
 });
 
+test('UXP-339 the closing-brace caret restore never re-enters an edit that has ended', () => {
+  // checkInlineHighlight restores the caret one frame after a `}` re-renders the edit buffer. If the
+  // user left the point inside that frame, focus() re-entered edit mode and undid the commit (the
+  // #1501 CI flake). The guard must sit inside the frame callback and BEFORE the focus().
+  const raf = between(fnBody(_src, 'checkInlineHighlight'), 'requestAnimationFrame(() => {', 'content.focus();');
+  assert.ok(raf.includes('if (!content.dataset.editing) return;'), 'the restore bails when the edit has ended');
+  assert.ok(raf.includes('if (myGen !== _highlightGen) return;'), 'and still bails when newer input superseded it');
+});
+
 test('#1267 palette is wired into the Builder (Patterns section, front-door lead, recipe apply path)', () => {
   assert.ok(/for \(const r of PATTERN_RECIPES\)/.test(_src), 'the Builder pool ingests the recipes');
   assert.ok(/type: 'pattern', _section: 'Patterns'/.test(_src), 'recipes form their own Patterns section');
