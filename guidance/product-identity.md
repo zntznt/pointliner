@@ -244,7 +244,14 @@ Against the named rivals, the confident answers:
   other than what the text says was considered and rejected (`saved-views-proposal.md`
   SV-3/SV-4; `base-views-vision.md` §0.6).
 - **No verbatim third-party oracle/table data.** Mechanics yes, published values never
-  (the IP guardrail, roadmap).
+  (the IP guardrail, roadmap). **Scope: this is an IP rule, not an aesthetic one.** Material
+  under an open licence that permits redistribution (CC BY, CC BY-SA and the like) carries no
+  IP risk, so the rule does not reach it: its values may be reproduced in full, within that
+  licence's terms and with the attribution, change-note and share-alike it requires. The bar is
+  the licence, not the word count — anything not openly licensed stays mechanics-only, and the
+  Harptos month names and the Mythic-style apparatus in `guide/solo-rpg/` are what that looks
+  like. Worked example of the permitted case: `guide/solo-rpg/triple-o/`, which ships all
+  thirteen of a CC BY-SA zine's tables entry for entry.
 
 ## 6. AI-independence (a durability fact worth stating plainly)
 
