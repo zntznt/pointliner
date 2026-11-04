@@ -6424,8 +6424,8 @@ function setDateProp(node, key, val) {
 }
 
 // #467: stamp the point's timestamps. `created` is set only if absent (first content);
-// `edited` is always (re)set to now. Called from the exitEdit commit ONLY when the point's
-// own text/note actually changed — structural moves and child edits don't stamp. `now` is
+// `edited` is always (re)set to now. Called on an edit commit only when the point's own
+// text/note actually changed — structural moves and child edits don't stamp. `now` is
 // injectable for tests. Pure (mutates node.props via setDateProp); no DOM.
 function stampEdit(node, now = nowStamp()) {
   if (!node) return;
@@ -10957,7 +10957,7 @@ function clipboardFailMessage(door, n, mod) {
     case 'footnote': return `${blocked}, so the footnote link was not copied. To cite it again, choose Cite footnote from the @ menu.`;
     case 'table':    return `${blocked}, so the table was not copied. To save it instead, select its point and choose Export .md.`;
     case 'cells':    return `${blocked}, so the cells were not copied. Click into a cell to select and copy its text by hand.`;
-    case 'copy':     return `Copied ${ptsLabel(n)} for pasting inside Pointliner only. ${blocked}, so paste ${them} here with ${mod}+V.`;
+    case 'copy':     return `Copied ${ptsLabel(n)} for pasting inside Pointliner only. ${blocked}, so press Esc first, then paste ${them} here with ${mod}+V.`;
     case 'cut':      return `Cut ${ptsLabel(n)} for pasting inside Pointliner only. ${blocked}, so paste ${them} here with ${mod}+V, or press ${mod}+Z to undo.`;
   }
   return `${blocked}, so nothing was copied. Try again.`;
@@ -22593,7 +22593,9 @@ function updateQuickBar() {
   quickBar.setAttribute('aria-hidden', show ? 'false' : 'true');
   document.documentElement.style.setProperty('--qbar-h', quickBarHeight() + 'px');
   if (show) syncScrollCue(document.getElementById('qb-tools'));   // UXP-259: see updateEditBar
+  syncFnPanelBottom();
   syncBlPanelBottom();
+  syncVarPanelBottom();
   syncBodyPadBottom();
 }
 // The bar's + is the ghost row's twin ("New point" means the same thing everywhere, P1):
@@ -36137,6 +36139,7 @@ function flushActiveTextEdit() {
   const node = nodeById(activeContentId);
   if (!node) return;
   const prev = el.dataset.prevText ?? '';
+  const propsJsonBefore = JSON.stringify(node.props || []);
   node.text = editableText(el);
   // Undo entries live in FOLDED coordinates (UXP-31): the live buffer transiently
   // holds {…} for unfolded artifacts, and recording it would let a later undo
@@ -36145,7 +36148,10 @@ function flushActiveTextEdit() {
   // next edit/exit would re-promote it as a fresh pill. prevText is folded too
   // (enterEdit sets it before unfoldArtifacts), so entries stay folded↔folded.
   const next = foldedTextForSave(node);
-  recordTextEdit(activeContentId, prev, next);
+  // A structural edit advances this baseline before exitEdit can see the typing. Stamp the
+  // content here, and carry the prop snapshots in the same undo entry so undo removes the stamp.
+  if (editStampVerdict({ text: next, prevText: prev }).stamp) stampEdit(node);
+  recordTextEdit(activeContentId, prev, next, propsJsonBefore, JSON.stringify(node.props || []));
   el.dataset.prevText = next; // folded baseline so exitEdit won't double-record
 }
 
@@ -40573,8 +40579,9 @@ function syncBlPanelBottom() {
   if (!bl) return;
   const fn = document.getElementById('fn-panel');
   const fnH = (fn?.classList.contains('on')) ? fn.offsetHeight : 0;
-  const base = fnH + quickBarHeight();   // #566: the quick bar is the stack floor on touch
-  bl.style.bottom = (bl.classList.contains('on') && base > 0) ? base + 'px' : '0';
+  const open = bl.classList.contains('on');
+  const base = fnH + (open ? currentBottomPanelFloorPx() : 0);
+  bl.style.bottom = (open ? base : 0) + 'px';
   syncHelpBtnBottom();
 }
 
@@ -41231,22 +41238,26 @@ function panelFloorPx(kbH, qbH) {
   return Math.max(n(kbH), n(qbH));
 }
 
+function currentBottomPanelFloorPx() {
+  const kbH = window.visualViewport
+    ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
+  return panelFloorPx(kbH, quickBarHeight());
+}
+
 function syncFnPanelBottom() {
   const panel = document.getElementById('fn-panel');
   if (!panel) return;
   const open = panel.classList.contains('on');
-  const kbH = (open && window.visualViewport)
-    ? Math.max(0, window.innerHeight - window.visualViewport.height) : 0;
-  // #1518: the quick bar is the OTHER floor, and forgetting it made this inline style a
-  // regression rather than an adjustment. With no software keyboard `kbH` is 0, so the panel was
-  // pinned to `bottom:0` -- and an inline 0 beats the `@media(hover:none)` rule
-  // `#fn-panel,#var-panel{bottom:var(--qbar-h,0px)}` that exists for exactly this. Measured at
-  // 390x844 and 768x1024: the panel's only interactive row sat entirely inside the opaque
-  // (z-640) quick bar, elementFromPoint returned `qb-capture`, and the footnote editor was
-  // focused and typing into the model while being completely invisible. `#var-panel` gets this
-  // lift from the CSS and `#bl-panel` computes it in JS; only this one dropped it.
-  panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px';
+  // The keyboard inset and touch quick bar are alternative floors; all bottom panels use this
+  // same floor, while the backlinks panel adds the open footnote panel's height above it.
+  panel.style.bottom = (open ? currentBottomPanelFloorPx() : 0) + 'px';
   syncHelpBtnBottom();   // keep the help button clear of the panel when it shows/moves
+}
+
+function syncVarPanelBottom() {
+  const panel = document.getElementById('var-panel');
+  if (!panel) return;
+  panel.style.bottom = (panel.classList.contains('on') ? currentBottomPanelFloorPx() : 0) + 'px';
 }
 
 function updateFnPanel(node) {
@@ -41434,13 +41445,13 @@ blPanelEl.addEventListener('mousedown', e => e.preventDefault());
 const varPanelEl = document.getElementById('var-panel');
 function isVarPanelOpen() { return varPanelEl.classList.contains('on'); }
 function openVarPanel() {
-  updateVarPanelContent(); varPanelEl.classList.add('on'); syncBodyPadBottom();
+  updateVarPanelContent(); varPanelEl.classList.add('on'); syncVarPanelBottom(); syncBodyPadBottom();
   // #1473: it is asked for, but focus lands on <body>, so nothing announces it either. Measured
   // alongside the two strips the issue reported; the other five docked panels take focus and
   // therefore must NOT speak here.
   announcePanelOpen(varPanelEl, document.querySelectorAll('#var-panel-list .vp-row').length);
 }
-function closeVarPanel() { varPanelEl.classList.remove('on'); forgetPanelSaid('var-panel'); syncBodyPadBottom(); }
+function closeVarPanel() { varPanelEl.classList.remove('on'); syncVarPanelBottom(); forgetPanelSaid('var-panel'); syncBodyPadBottom(); }
 function toggleVarPanel() { if (isVarPanelOpen()) closeVarPanel(); else openVarPanel(); }
 
 // Variable-base panel groups: a base's ~rows×cols projections collapse under one header so
@@ -47523,12 +47534,19 @@ window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventD
   window.addEventListener('resize', syncScrollbarW);
 }
 
-// keep footnote panel above the software keyboard on mobile (syncFnPanelBottom
-// is defined in the footnotes section; it no-ops the offset while the panel is
-// hidden so an empty bar can't appear above the keyboard)
+// Keep every bottom-docked panel above the software keyboard; each sync function no-ops its
+// offset while hidden so an empty panel can't appear above the keyboard.
+function syncBottomDockedPanels() {
+  syncFnPanelBottom();
+  syncBlPanelBottom();
+  syncVarPanelBottom();
+}
+
+window.addEventListener('resize', syncBottomDockedPanels);
 if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', syncFnPanelBottom);
-  window.visualViewport.addEventListener('scroll', syncFnPanelBottom);
+  const syncBottomPanels = () => syncBottomDockedPanels();
+  window.visualViewport.addEventListener('resize', syncBottomPanels);
+  window.visualViewport.addEventListener('scroll', syncBottomPanels);
 }
 
 // ─── autosave ─────────────────────────────────────────────────────────────────

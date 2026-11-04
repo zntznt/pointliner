@@ -3774,6 +3774,60 @@ test('#1585 every copy door says what the clipboard did, and a refused cut can b
   assert.deepEqual(bad, [], 'every copy door reports what the clipboard actually did');
 });
 
+test('#1621 refused selection copy tells you to Escape before in-app paste', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    navigator.clipboard.writeText = () => Promise.reject(new Error('NotAllowedError'));
+    document.execCommand = (command) => command === 'copy' ? false : false;
+    root.children = ['Held first', 'Held second', 'Leave in place'].map(text => {
+      const n = mkNode(text); n.type = 'ul'; return n;
+    });
+    buildIndex(root, null); markDirty(); render();
+  });
+  await pg.waitForTimeout(200);
+  await pg.evaluate(() => {
+    const c = document.querySelector('.node-content[data-id]');
+    const n = nodeById(c.dataset.id); enterEdit(c, n); c.focus(); activeContentId = n.id;
+  });
+  await pg.waitForTimeout(150);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(200);
+  await pg.keyboard.press('Shift+ArrowDown');
+  await pg.waitForTimeout(250);
+  await pg.keyboard.press('Control+c');
+  await pg.waitForTimeout(500);
+
+  const refused = await pg.evaluate(() => ({
+    message: (document.getElementById('a11y-live')?.textContent || '').trim(),
+    toast: (document.getElementById('flash-hint')?.textContent || '').trim(),
+    held: (nodeClipboard?.nodes || []).map(n => n.text),
+  }));
+  assert.match(refused.message, /press Esc first, then paste them here with Ctrl\+V/i,
+    `flashError's live-region message must explain the recovery route, got ${JSON.stringify(refused.message)}`);
+  assert.match(refused.toast, /press Esc first, then paste them here with Ctrl\+V/i,
+    'the visible error toast says the same thing as the live region');
+  assert.deepEqual(refused.held, ['Held first', 'Held second'], 'the selected points remain held for an in-app paste');
+
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(250);
+  const cursor = await pg.evaluate(() => ({
+    selected: selectedIds.size,
+    cursor: document.querySelector('.node-cursor .node-content')?.innerText.trim() || null,
+    held: (nodeClipboard?.nodes || []).map(n => n.text),
+  }));
+  assert.equal(cursor.selected, 0, 'Escape clears the selection');
+  assert.equal(cursor.cursor, 'Held second', 'Escape returns to the active row cursor at the selection focus');
+  assert.deepEqual(cursor.held, ['Held first', 'Held second'], 'the in-app payload survives leaving selection mode');
+
+  await pg.keyboard.press('Control+v');
+  await pg.waitForTimeout(450);
+  const afterPaste = await pg.evaluate(() => root.children.map(n => n.text));
+  assert.deepEqual(afterPaste, ['Held first', 'Held second', 'Held first', 'Held second', 'Leave in place'],
+    'the held points paste in-app after the row cursor without consulting the OS clipboard');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 // 61. #1504 — a repeat phrase with NO due and NO start date is inert: rollForwardRepeat has always
 // bailed on it, and every surface that could have said so stayed quiet. The chip read "Recurring",
 // the Schedule dialog promised "Advances when you complete it", and ticking the box completed the
@@ -5589,6 +5643,59 @@ test('#1518 the footnote panel sits ON the touch quick bar, not under it', { ski
   await pg.close();
 });
 
+test('#1553 backlinks and variables panels stay above the visual viewport keyboard floor', { skip: skip() }, async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+  const pg = await ctx.newPage();
+  const errs = [];
+  pg.on('pageerror', e => errs.push(String(e).split('\n')[0]));
+  await pg.goto(APP);
+  await pg.waitForSelector('#outline', { timeout: 10000 });
+  await pg.waitForTimeout(800);
+  await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => {
+    nodeMap.clear(); parentMap.clear(); nodeMap.set(root.id, root);
+    const target = mkNode('Claim [^fnA]');
+    const source = mkNode(`Source [[#${target.id}]]`);
+    root.children = [target, source];
+    root.footnotes = [{ id: 'fnA', text: 'A supporting source with enough detail to make the footnote panel measurable.' }];
+    for (const n of root.children) { nodeMap.set(n.id, n); parentMap.set(n.id, root); }
+    buildIndex(root, null); markDirty(); render();
+    Object.defineProperty(window.visualViewport, 'height', { configurable: true, get() { return 544; } });
+    window.visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await pg.waitForTimeout(300);
+
+  const floor = () => pg.evaluate(() => window.visualViewport.offsetTop + window.visualViewport.height);
+  const box = (selector) => pg.locator(selector).boundingBox();
+  const targetId = await pg.evaluate(() => root.children[0].id);
+
+  await pg.evaluate((id) => openVarPanel(), targetId);
+  await pg.waitForTimeout(250);
+  let floorY = await floor();
+  let vars = await box('#var-panel');
+  assert.ok(vars, 'the Variables panel opened');
+  assert.ok(vars.y + vars.height <= floorY + 0.5,
+    `Variables panel must end above the visual viewport floor ${floorY}, got ${JSON.stringify(vars)}`);
+  await pg.evaluate(() => closeVarPanel());
+
+  await pg.evaluate((id) => { showFnPanel(id); showBlPanel(id); }, targetId);
+  await pg.waitForTimeout(300);
+  floorY = await floor();
+  const fn = await box('#fn-panel');
+  const bl = await box('#bl-panel');
+  assert.ok(fn && bl, 'the footnotes and backlinks panels opened');
+  assert.ok(fn.y + fn.height <= floorY + 0.5,
+    `Footnotes panel must end above the visual viewport floor ${floorY}, got ${JSON.stringify(fn)}`);
+  assert.ok(bl.y + bl.height <= fn.y + 0.5,
+    `Backlinks panel must stack above the footnotes panel, got backlinks ${JSON.stringify(bl)} and footnotes ${JSON.stringify(fn)}`);
+  assert.ok(Math.abs((bl.y + bl.height) - (floorY - fn.height)) < 1,
+    `Backlinks panel must stack by the footnotes height above the shared floor, got backlinks ${JSON.stringify(bl)}, footnotes ${JSON.stringify(fn)}, floor ${floorY}`);
+  assert.deepEqual(errs, []);
+  await pg.close();
+  await ctx.close();
+});
+
 // 76. #1519 — all THREE transient strips carried the same blanket `else if (e.key !== 'Tab')
 // e.stopPropagation()`, which swallowed every global chord. Measured on each: after a commit,
 // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y were total no-ops while the commit sat on `undoStack`, and
@@ -6819,16 +6926,76 @@ test('#1572 a to-do checkbox announces which to-do it ticks', { skip: skip() }, 
   await pg.waitForTimeout(250);
   await pg.keyboard.press('Escape');
   await pg.waitForTimeout(400);
-  const box = await pg.evaluate(() => {
-    const cb = document.querySelector('.md-task-check');
-    return cb ? { aria: cb.getAttribute('aria-label'), role: cb.type } : null;
+  const checkbox = pg.getByRole('checkbox', { name: 'Buy milk', exact: true });
+  assert.equal(await checkbox.count(), 1, 'the checkbox is exposed by role with the to-do text as its accessible name');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1616 Enter and Tab while editing stamp the point and keep structural and text undo separate', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const inspect = () => pg.evaluate(() => {
+    const walk = (nodes, depth = 0) => nodes.flatMap(n => [{
+      text: n.text,
+      depth,
+      stamps: (n.props || []).filter(p => p.key === 'created' || p.key === 'edited').map(p => p.key).sort().join(','),
+    }, ...walk(n.children || [], depth + 1)]);
+    return { points: walk(root.children), undo: undoStack.length };
   });
-  assert.ok(box, 'a checkbox must render');
-  assert.equal(box.aria, 'Buy milk', 'the name is the to-do, not empty and not the raw markdown');
-  // The ACCESSIBILITY TREE, not just the attribute: an aria-label the AX tree ignores is no name.
-  const ax = await pg.accessibility.snapshot();
-  const walk = (n, out = []) => { if (n.role === 'checkbox') out.push(n.name); (n.children || []).forEach(ch => walk(ch, out)); return out; };
-  assert.deepEqual(walk(ax), ['Buy milk'], 'and Chromium reports exactly that name for the checkbox');
+
+  const failures = [];
+  for (const key of ['Enter', 'Tab']) {
+    if (key === 'Enter') {
+      await blankWithCaret(pg);
+    } else {
+      await pg.evaluate(() => {
+        root.children = [mkNode('Anchor'), mkNode('')];
+        buildIndex(root); markDirty(); render();
+      });
+      await pg.waitForTimeout(250);
+      await pg.evaluate(() => {
+        const c = [...document.querySelectorAll('.node-content[data-id]')].find(el => nodeById(el.dataset.id)?.text === '');
+        const n = nodeById(c.dataset.id);
+        enterEdit(c, n); c.focus(); activeContentId = n.id;
+      });
+      await pg.waitForTimeout(150);
+    }
+    await pg.evaluate(() => { undoStack.length = 0; redoStack.length = 0; });
+    const initial = await inspect();
+    await pg.keyboard.type(`typed-${key.toLowerCase()}`, { delay: 5 });
+    await pg.keyboard.press(key); // still editing: Enter splits; Tab indents.
+    await pg.waitForTimeout(200);
+    await pg.keyboard.press('Escape'); // leave the edit and commit it
+    await pg.waitForTimeout(350);
+
+    const after = await inspect();
+    const typedAfter = after.points.filter(p => p.text.includes(`typed-${key.toLowerCase()}`));
+    if (typedAfter.length !== 1) failures.push(`${key}: the typed point remains in the document`);
+    if (typedAfter[0]?.stamps !== 'created,edited') {
+      failures.push(`${key}: typed point has created+edited stamps, got ${JSON.stringify(after.points)}`);
+    }
+    if (!(after.undo > 0)) failures.push(`${key}: the edit is undoable`);
+
+    // The key's structural change is one undo entry; committing the typed text and stamps is the
+    // previous entry. Undo the structure first and prove the stamped text survives it.
+    await pg.keyboard.press('Control+z');
+    await pg.waitForTimeout(350);
+    const structureUndone = await inspect();
+    const typed = structureUndone.points.filter(p => p.text.includes(`typed-${key.toLowerCase()}`));
+    if (typed.length !== 1 || typed[0].stamps !== 'created,edited') {
+      failures.push(`${key}: one undo keeps the typed point and its stamps, got ${JSON.stringify(structureUndone.points)}`);
+    }
+    if (key === 'Enter' && structureUndone.points.length !== 1) failures.push(`Enter: one undo removes the split point, got ${JSON.stringify(structureUndone.points)}`);
+    if (key === 'Tab' && typed[0]?.depth !== 0) failures.push(`Tab: one undo restores the point to its original depth, got ${JSON.stringify(structureUndone.points)}`);
+
+    await pg.keyboard.press('Control+z');
+    await pg.waitForTimeout(350);
+    const textUndone = await inspect();
+    if (JSON.stringify(textUndone.points) !== JSON.stringify(initial.points)) {
+      failures.push(`${key}: the second undo restores the original unstamped tree, got ${JSON.stringify(textUndone.points)}`);
+    }
+  }
+  assert.deepEqual(failures, []);
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });

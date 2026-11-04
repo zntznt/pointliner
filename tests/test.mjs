@@ -12411,12 +12411,12 @@ test('#1614 every door that writes the reader\'s points stamps them, and the pas
 // #1614's cause, as a family. An edit is stamped when its text differs from the edit's baseline
 // (`dataset.prevText`), so a writer that moves the baseline past a change swallows that change's
 // stamp unless it stamps the change itself. enterEdit sets the baseline where an edit begins; every
-// other writer must stamp what it moves past. flushActiveTextEdit still does not (#1616: type, then
-// Enter or Tab, and the point is never stamped); when it does, this fails until it moves to STAMPS.
+// other writer must stamp what it moves past. #1616 was the open exception: type, then Enter or Tab,
+// and the point never got stamped. Its writer now stamps and carries the prop change for undo.
 test('#1614 census: every writer that moves an edit\'s baseline past a change stamps the change', () => {
   const enc = enclosingFn(_src);
   const code = maskFor(_src);
-  const BEGINS = new Set(['enterEdit']), STAMPS = new Set(['handlePaste']), OPEN = { flushActiveTextEdit: 1616 };
+  const BEGINS = new Set(['enterEdit']), STAMPS = new Set(['flushActiveTextEdit', 'handlePaste']), OPEN = {};
   const seen = new Set();
   for (const m of nonEmpty([..._src.matchAll(/\.dataset\.prevText = /g)].filter(m => code[m.index] === 2), 'edit baseline writers')) {
     const fn = enc(m.index)?.name;
@@ -12428,6 +12428,13 @@ test('#1614 census: every writer that moves an edit\'s baseline past a change st
   for (const fn of STAMPS) assert.match(fnBody(_src, fn), /editStampVerdict\([^)]*\)\.stamp\) stampEdit\(/, `${fn} stamps what it moves past`);
   for (const [fn, issue] of Object.entries(OPEN))
     assert.doesNotMatch(fnBody(_src, fn), /stampEdit\(|stampNewPoints\(/, `${fn} stamps now: move it from OPEN to STAMPS and close #${issue}`);
+  const flush = fnBody(_src, 'flushActiveTextEdit');
+  assert.ok(flush.indexOf('const propsJsonBefore = JSON.stringify(node.props || []);') < flush.indexOf('node.text = editableText(el);'),
+    'the stamp undo snapshot is taken before the text and props change');
+  assert.match(flush, /editStampVerdict\(\{ text: next, prevText: prev \}\)\.stamp\) stampEdit\(node\)/,
+    'the same folded text/baseline comparison decides whether this flush stamps');
+  assert.match(flush, /recordTextEdit\(activeContentId, prev, next, propsJsonBefore, JSON\.stringify\(node\.props \|\| \[\]\)\)/,
+    'undo and redo carry the created/edited props with the text');
 });
 
 // #1614: the doors that build points out of something the reader brought in. Every call of a builder
@@ -14586,19 +14593,33 @@ test('#1518 a bottom-docked panel clears the touch quick bar', () => {
   assert.equal(panelFloorPx('x', 53), 53);
   assert.equal(panelFloorPx(undefined, undefined), 0);
 
-  // ---- 2. THE CALL SITE. The bare kbH is what pinned the panel to the bar.
+  // ---- 2. THE CALL SITE. Each bottom panel must use the same live keyboard/quick-bar floor.
   const fb = fnBody(_src, 'syncFnPanelBottom');
-  assert.ok(fb.includes("panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px'"),
-    'the panel must lift by the FLOOR, not by the keyboard inset alone');
-  assert.ok(!/panel\.style\.bottom = kbH \+ 'px'/.test(fb),
-    'the bare keyboard-only lift must be gone — it is an inline 0 that beats the CSS lift');
-  // the CSS rule the inline style was overriding is still there and still names both panels.
+  assert.ok(fb.includes("panel.style.bottom = (open ? currentBottomPanelFloorPx() : 0) + 'px'"),
+    'the footnotes panel must use the shared current floor');
+  const floor = fnBody(_src, 'currentBottomPanelFloorPx');
+  assert.match(floor, /panelFloorPx\(kbH, quickBarHeight\(\)\)/,
+    'the shared floor is the taller of the visual-viewport keyboard inset and quick bar');
+  const bl = fnBody(_src, 'syncBlPanelBottom');
+  assert.match(bl, /fnH \+ \(open \? currentBottomPanelFloorPx\(\) : 0\)/,
+    'backlinks stack above the open footnotes panel and the shared floor');
+  const vars = fnBody(_src, 'syncVarPanelBottom');
+  assert.match(vars, /currentBottomPanelFloorPx\(\)/,
+    'the variables panel clears the keyboard as well as the quick bar');
+  // the CSS rule remains as a no-script quick-bar fallback; the open panels use the JS floor above.
   // NEWLINE-ANCHORED on purpose: the explanatory comment in syncFnPanelBottom quotes this rule
   // verbatim, so a bare `includes` matched the comment and the guard passed with the real rule
   // deleted — measured, by its own mutant surviving.
   const CSS_LIFT = '\n  #fn-panel,#var-panel{bottom:var(--qbar-h,0px)}';
   assert.ok(_src.includes(CSS_LIFT),
-    'the hover:none lift must survive: it is what #var-panel relies on entirely');
+    'the hover:none quick-bar fallback must remain');
+
+  const all = fnBody(_src, 'syncBottomDockedPanels');
+  for (const fn of ['syncFnPanelBottom', 'syncBlPanelBottom', 'syncVarPanelBottom'])
+    assert.ok(all.includes(`${fn}()`), `${fn} must refresh when the visual viewport moves`);
+  const quick = fnBody(_src, 'updateQuickBar');
+  for (const fn of ['syncFnPanelBottom', 'syncBlPanelBottom', 'syncVarPanelBottom'])
+    assert.ok(quick.includes(`${fn}()`), `${fn} must refresh when the quick bar changes`);
 
   // ---- 3. CENSUS RATCHET, over the app's OWN list of bottom-docked panels. `bottomStackHeight`
   // is where the file enumerates them; a fourth one added there must declare how it clears the bar.
@@ -14608,10 +14629,10 @@ test('#1518 a bottom-docked panel clears the touch quick bar', () => {
   assert.deepEqual(panels.slice().sort(), ['bl-panel', 'fn-panel', 'var-panel'],
     'the bottom-docked panel family');
   const LIFT = {
-    // each panel, and the ONE mechanism that lifts it over the quick bar
-    'var-panel': () => _src.includes(CSS_LIFT),
-    'fn-panel':  () => fnBody(_src, 'syncFnPanelBottom').includes('quickBarHeight()'),
-    'bl-panel':  () => fnBody(_src, 'syncBlPanelBottom').includes('quickBarHeight()'),
+    // each panel uses the same current floor; backlinks additionally stack above footnotes
+    'var-panel': () => vars.includes('currentBottomPanelFloorPx()'),
+    'fn-panel':  () => fb.includes('currentBottomPanelFloorPx()'),
+    'bl-panel':  () => bl.includes('currentBottomPanelFloorPx()'),
   };
   for (const id of panels) {
     assert.ok(LIFT[id], `${id} is docked at the bottom and nothing here says how it clears the quick bar`);
@@ -19711,7 +19732,8 @@ test('#1585 every clipboard door has its own failure sentence, and each names a 
   // the point doors say what STILL works: the count, in-app paste, and (for cut) undo
   const copy3 = c.clipboardFailMessage('copy', 3, '⌘'), cut3 = c.clipboardFailMessage('cut', 3, 'Ctrl');
   assert.match(copy3, /^Copied 3 points for pasting inside Pointliner only\./);
-  assert.match(copy3, /⌘\+V/);
+  assert.match(copy3, /press Esc first, then paste them here with ⌘\+V/,
+    'after a refused OS write, Escape returns to the row where Pointliner can paste its held copy');
   assert.match(cut3, /^Cut 3 points for pasting inside Pointliner only\./);
   assert.match(cut3, /Ctrl\+V/, 'the in-app paste that still holds the cut points');
   assert.match(cut3, /Ctrl\+Z to undo/, 'and the undo that puts them back');
@@ -37237,7 +37259,7 @@ test('#1369: undo takes back a property the text cannot carry', () => {
     'the entry can carry the props either side of the edit');
   assert.ok(/const propsMoved = propsPrev !== undefined && propsPrev !== propsNext;/.test(rec),
     'and only when they actually moved');
-  // the three-arg callers (flushActiveTextEdit, the base path) must behave exactly as before
+  // callers that do not change props may omit the snapshots and behave exactly as before
   assert.ok(/propsPrev !== undefined/.test(rec), 'an omitted propsPrev is not treated as a change');
   assert.ok(/if \(prev === next && !propsMoved\) return;/.test(rec),
     'a no-op focus+blur still records nothing, and a props-only change now does record');
