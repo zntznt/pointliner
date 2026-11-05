@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2199 declarations in 158 sections across 17 domains.**
+**2200 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1228,6 +1228,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `deepCloneNodeNewIds` — An internal [[#id|...]] link (a mirror/embed, or a same-doc jump) points at a node id, which the clone
 - `remapClonedLinks`
 - `_cloneNodeNewIds`
+- `clipboardTextForNode` — Plain-text clipboard form: preserve editable source where a pill can round-trip, but never leak an
 - `serializeNodesToText`
 - `clipboardTextKey` — #1617: the one form two copies of the clipboard text are compared in. Pure. An OS clipboard may
 - `isHeldClipboardText` — #1617: is this pasted text the points the in-app clipboard holds? `held` is nodeClipboard. Pure.

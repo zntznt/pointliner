@@ -19823,6 +19823,24 @@ test('#1585 cut holds the points before it removes them, and a refused write say
   }
 });
 
+// #1620: the OS clipboard must be readable without the document's sidecar records.
+test('#1620 plain-text point copies unfold live pills and snapshot atomic pills without sidecar tokens', () => {
+  const parent = c.mkNode('Hit [[dice:d1]] with [[grammar:g1]]');
+  parent.dice = [{ key: 'd1', expr: '2d6', total: 9, parts: [] }];
+  // A dialog-named grammar has no lossless inline shorthand, so external text gets its shown value.
+  parent.grammar = [{ key: 'g1', name: 'palette', result: 'red' }];
+  const child = c.mkNode('Damage [[dice:d2]]');
+  child.dice = [{ key: 'd2', expr: '1d8', total: 4, parts: [] }];
+  parent.children.push(child);
+
+  const text = c.serializeNodesToText([parent]);
+  assert.equal(text, '- Hit {2d6} with red\n  - Damage {1d8}');
+  assert.equal(parent.text, 'Hit [[dice:d1]] with [[grammar:g1]]', 'copy serialization does not mutate the document');
+  assert.equal(child.text, 'Damage [[dice:d2]]');
+  assert.equal(c.isHeldClipboardText(text, { nodes: [parent], text }), true,
+    'the readable system clipboard text is the same text held for #1617 matching');
+});
+
 // ─── #1617: copied points pasted into a point being edited ──────────────────────────────────────
 // Ctrl+C on a selection holds the points AND writes their text, and hands the caret back to a point
 // (measured: the selection bar had focus, so clearSelection returns it to the last selected point).
