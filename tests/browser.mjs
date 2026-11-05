@@ -7696,7 +7696,7 @@ test('#1614 every paste door stamps the points it writes as typing does, and a c
 // dispatched to whatever has focus only when no app handler claimed the Ctrl+V keydown, which is what
 // the browser does. A window listener runs after every app handler: it notes the claim and stops the
 // browser's own paste, so the dispatched one is the only paste on every platform.
-test('#1617/#1620 copied points stay intact in-app and readable after reload', { skip: skip() }, async () => {
+test('#1617 copied points pasted while a point is being edited arrive as the points, and a text field keeps the text (#1620 readable after reload)', { skip: skip() }, async () => {
   const pg = await fresh();
   const OLD = '2020-01-01T09:00';
   const W = (ms) => pg.waitForTimeout(ms);
