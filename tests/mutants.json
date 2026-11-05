@@ -2076,8 +2076,8 @@
       "suite": "unit",
       "why": "the whole defect: an inline bottom:0 that beats the CSS lift written for exactly this case",
       "file": "index.html",
-      "find": "  panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px';",
-      "replace": "  panel.style.bottom = kbH + 'px';",
+      "find": "  panel.style.bottom = (open ? currentBottomPanelFloorPx() : 0) + 'px';",
+      "replace": "  panel.style.bottom = (open ? 0 : 0) + 'px';",
       "kills": "#1518 a bottom-docked panel clears the touch quick bar"
     },
     {
@@ -2112,17 +2112,35 @@
       "suite": "unit",
       "why": "the census must notice a sibling losing its clearance, not just the reported one",
       "file": "index.html",
-      "find": "  const base = fnH + quickBarHeight();   // #566: the quick bar is the stack floor on touch",
-      "replace": "  const base = fnH;   // #566: the quick bar is the stack floor on touch",
+      "find": "  const base = fnH + (open ? currentBottomPanelFloorPx() : 0);",
+      "replace": "  const base = fnH;",
       "kills": "#1518 a bottom-docked panel clears the touch quick bar"
+    },
+    {
+      "id": "var-panel-ignores-the-keyboard-floor",
+      "suite": "unit",
+      "why": "#1553: the variables panel must use the keyboard floor, not only the CSS quick-bar offset",
+      "file": "index.html",
+      "find": "  panel.style.bottom = (panel.classList.contains('on') ? currentBottomPanelFloorPx() : 0) + 'px';",
+      "replace": "  panel.style.bottom = (panel.classList.contains('on') ? 0 : 0) + 'px';",
+      "kills": "#1518 a bottom-docked panel clears the touch quick bar"
+    },
+    {
+      "id": "docked-panels-ignore-keyboard-floor",
+      "suite": "browser",
+      "why": "#1553: geometry must be measured above the visual viewport when the software keyboard is open",
+      "file": "index.html",
+      "find": "  return panelFloorPx(kbH, quickBarHeight());",
+      "replace": "  return panelFloorPx(0, quickBarHeight());",
+      "kills": "#1553 backlinks and variables panels stay above the visual viewport keyboard floor"
     },
     {
       "id": "footnote-editor-invisible-under-the-bar",
       "suite": "browser",
       "why": "driven: 53px of overlap and a row that hit-tests to qb-capture is geometry, and geometry needs a real touch viewport",
       "file": "index.html",
-      "find": "  panel.style.bottom = (open ? panelFloorPx(kbH, quickBarHeight()) : 0) + 'px';",
-      "replace": "  panel.style.bottom = kbH + 'px';",
+      "find": "  return panelFloorPx(kbH, quickBarHeight());",
+      "replace": "  return panelFloorPx(0, quickBarHeight());",
       "kills": "#1518 the footnote panel sits ON the touch quick bar"
     },
     {
@@ -4862,12 +4880,12 @@
       "kills": "#1614 census: every writer that moves an edit"
     },
     {
-      "id": "open-baseline-writer-fixed-unseen",
+      "id": "flush-baseline-stamp-omitted",
       "suite": "unit",
-      "why": "#1616 ratchet: once flushActiveTextEdit stamps, the census must say so, so the open entry cannot outlive its fix",
+      "why": "#1616 ratchet: the baseline-writer census must fail if its conditional stamp is removed",
       "file": "index.html",
-      "find": "  el.dataset.prevText = next; // folded baseline so exitEdit won't double-record",
-      "replace": "  stampEdit(node);\n  el.dataset.prevText = next; // folded baseline so exitEdit won't double-record",
+      "find": "  if (editStampVerdict({ text: next, prevText: prev }).stamp) stampEdit(node);",
+      "replace": "  // stamp omitted",
       "kills": "#1614 census: every writer that moves an edit"
     },
     {
