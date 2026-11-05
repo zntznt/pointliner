@@ -22173,9 +22173,20 @@ function _cloneNodeNewIds(node, idMap) {
   };
 }
 
+// Plain-text clipboard form: preserve editable source where a pill can round-trip, but never leak an
+// opaque sidecar key for an atomic pill. Those pills have no lossless source shorthand, so expose
+// the value they currently show instead. This text is also held in nodeClipboard for #1617 matching.
+function clipboardTextForNode(node) {
+  const source = unfoldTokensIn(node.text, node);
+  return source.replace(artifactTokenRe(), (full, type, key) => {
+    const shown = frozenTokenText(type, key, node, varMapAt(node), root, node.type === 'para');
+    return shown === '' ? full : shown;
+  });
+}
+
 function serializeNodesToText(nodes) {
   function lines(n, depth) {
-    const r = ['  '.repeat(depth) + '- ' + n.text];
+    const r = ['  '.repeat(depth) + '- ' + clipboardTextForNode(n)];
     for (const c of n.children) r.push(...lines(c, depth + 1));
     return r;
   }

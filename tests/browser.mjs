@@ -7696,7 +7696,7 @@ test('#1614 every paste door stamps the points it writes as typing does, and a c
 // dispatched to whatever has focus only when no app handler claimed the Ctrl+V keydown, which is what
 // the browser does. A window listener runs after every app handler: it notes the claim and stops the
 // browser's own paste, so the dispatched one is the only paste on every platform.
-test('#1617 copied points pasted while a point is being edited arrive as the points, and a text field keeps the text', { skip: skip() }, async () => {
+test('#1617 copied points pasted while a point is being edited arrive as the points, and a text field keeps the text (#1620 readable after reload)', { skip: skip() }, async () => {
   const pg = await fresh();
   const OLD = '2020-01-01T09:00';
   const W = (ms) => pg.waitForTimeout(ms);
@@ -7772,7 +7772,7 @@ test('#1617 copied points pasted while a point is being edited arrive as the poi
   await pg.keyboard.press('Shift+ArrowDown'); await W(300);
   await pg.keyboard.press('Control+c'); await W(350);
   const wrote = await pg.evaluate(() => window.__wrote[window.__wrote.length - 1]);
-  assert.match(wrote || '', /^- Hit \[\[dice:[a-z0-9]+\]\] \[\[grammar:[a-z0-9]+\]\]\n {2}- kid$/, 'the copy wrote its text');
+  assert.match(wrote || '', /^- Hit \{2d6\} \{red \| blue\}\n {2}- kid$/, 'the clipboard exposes readable source instead of private pill tokens');
   // The issue's measurement, and the reason this door is the common one: the caret is back in a point.
   assert.equal(await pg.evaluate(() => activeContentId && nodeById(activeContentId).text), 'kid', 'Ctrl+C hands the caret back to the last selected point');
 
@@ -7841,6 +7841,22 @@ test('#1617 copied points pasted while a point is being edited arrive as the poi
     await pg.keyboard.press('Escape'); await W(250); await pg.keyboard.press('Escape'); await W(250);
   }
   assert.deepEqual(bad, [], 'a copy pastes as the points it is, and a text field keeps its own paste');
+
+  // After a reload the in-app held copy is gone; the system clipboard's source form is still
+  // readable and promotes back to live pills through the ordinary text-paste path (#1620).
+  ids = await build();
+  await pg.evaluate(() => { nodeClipboard = null; });
+  await caretTo(ids[1]);
+  assert.equal(await ctrlV(wrote), 'pasted', 'without the held sidecars, the system text takes the ordinary paste path');
+  await leave();
+  const recovered = await pg.evaluate(id => {
+    const n = nodeById(id);
+    return { text: n.text, dice: n.dice.map(r => r.key), grammar: n.grammar.map(r => r.key) };
+  }, ids[1]);
+  assert.equal(recovered.dice.length, 1, 'the pasted dice shorthand becomes a live pill after reload');
+  assert.equal(recovered.grammar.length, 1, 'the pasted grammar shorthand becomes a live pill after reload');
+  assert.ok(recovered.text.includes(`[[dice:${recovered.dice[0]}]]`), 'the dice token refers to its restored sidecar');
+  assert.ok(recovered.text.includes(`[[grammar:${recovered.grammar[0]}]]`), 'the grammar token refers to its restored sidecar');
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
