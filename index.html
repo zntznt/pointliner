@@ -20418,6 +20418,7 @@ const GENERATE_FORM_HINT = {
   query:    'query: is:todo',
   count:    'count: is:todo',
   meter:    'meter: hp/hpmax',
+  date:     'date due: tomorrow',
 };
 const COLON_COMMIT_KEYWORDS = Object.keys(GENERATE_FORM_HINT);
 // #1538: a FAMILY NAME is not a keyword, so it gets a teaching cue instead of a pill.
@@ -20718,7 +20719,7 @@ function templateParts(body, rules, vars) {
 // of them wrong in the same way: {cycle: }, {once: } and {stopping: } all fell through to the deck
 // branch and advised the reader about {shuffle: …}, a form they had not typed.
 const EMPTY_STUB_KEYWORDS = ['roll', 'count', 'query', 'shuffle', 'cycle', 'once', 'stopping',
-                             'markov', 'oracle', 'seq', 'rule'];
+                             'markov', 'oracle', 'seq', 'rule', 'prop', 'date'];
 // #1538: the family names join the PREDICATE (an empty {deck: } vanishes like {shuffle: } and says
 // why) but not the keyword list, which the #1215 guard holds to the published reference.
 const EMPTY_STUB_RE = new RegExp('^(?:=|(?:' + EMPTY_STUB_KEYWORDS.concat(Object.keys(FAMILY_NAME_CUE)).join('|') + ')\\s*:)\\s*$', 'i');
@@ -20764,6 +20765,8 @@ const EMPTY_STUB_FORM = {
   oracle:   'An oracle needs an odds word: try {oracle: likely}.',
   seq:      'A sequence needs a name and its states: try {seq status: active | done}.',
   rule:     'A rule needs a name and options: try {rule tavern: The Bell | The Anchor}.',
+  prop:     'A property needs a key and a value: try {prop hp: 12}.',
+  date:     'A date needs a key and a value: try {date due: tomorrow}.',
 };
 // The sentence for an empty stub, or null if this body is not one. Pure; no DOM.
 function emptyStubAnnounce(body) {
@@ -20832,8 +20835,10 @@ function braceAttemptReason(body, rules, vars) {
   if (/^rule[\s:]/i.test(body)) {
     const rm = /^rule\s+([^:]+?)\s*:(.*)$/i.exec(body);
     if (!rm || !rm[1].trim()) return 'A rule needs a name before the colon: try {rule tavern: The Rusty Flagon}.';
-    if (!rm[2].trim()) return 'A rule named "' + rm[1].trim() + '" needs something after the colon: try {rule ' + rm[1].trim() + ': option | option}.';
-    return 'This rule could not be read. A name, a colon, then the options: try {rule ' + rm[1].trim() + ': option | option}.';
+    const name = rm[1].trim();
+    if (/\s/.test(name)) return 'A rule name has to be one word: try {rule ' + name.replace(/\s+/g, '') + ': option | option}.';
+    if (!rm[2].trim()) return 'A rule named "' + name + '" needs something after the colon: try {rule ' + name + ': option | option}.';
+    return 'This rule could not be read. A name, a colon, then the options: try {rule ' + name + ': option | option}.';
   }
   // A {seq …} that classified invalid. The separators are the whole difficulty here, so lead with
   // them, and where the fix is mechanical (commas) hand back the corrected line rather than
@@ -20862,7 +20867,16 @@ function braceAttemptReason(body, rules, vars) {
     return had + 'A query needs a search after the colon: try {query: is:todo}.';
   }
   // {prop …} with no key: value. #1591: and {prop: …}, the colon with no key.
-  if (/^prop[\s:]/i.test(body)) return 'A property needs a key and a value: try {prop hp: 12}.';
+  if (/^prop[\s:]/i.test(body)) {
+    const key = /^prop\s+([^:]+?)\s*:/i.exec(body)?.[1]?.trim();
+    if (key && /^(?:due|start)$/i.test(key)) return 'A date needs a date value: try {date ' + key.toLowerCase() + ': tomorrow}.';
+    return 'A property needs a key and a value: try {prop hp: 12}.';
+  }
+  if (/^date\s*:/i.test(body)) return 'A date needs a key and a date value: try {date due: tomorrow}.';
+  if (/^date\s+(?:due|start)\s*:/i.test(body)) {
+    const key = /^date\s+(due|start)\s*:/i.exec(body)[1].toLowerCase();
+    return 'A date needs a valid date value: try {date ' + key + ': tomorrow}.';
+  }
   // {oracle: <bad band>} — the odds words are a closed set; list them (the bare-{oracle} NEAR_MISS
   // above never fires here because this body carries a tail after the colon).
   if (/^oracle\s*:/i.test(body)) return 'An oracle takes an odds word: certain, likely, even, unlikely or impossible. Try {oracle: likely}.';

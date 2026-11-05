@@ -125,8 +125,10 @@ Three ways to write a literal `{` in your prose without it becoming a pill:
   left as literal text, braces and all. (There is no backslash escape; these three are the only
   hatches.)
 
-An **empty-bodied** keyword pill (`{roll: }`, `{= }`, `{count: }`, and the like) is treated as an
-unfinished pill and vanishes rather than leaking its braces into the reading text.
+An **empty-bodied** keyword pill (`{roll: }`, `{= }`, `{count: }`, `{prop: }`, `{date: }`, and the like)
+is treated as an unfinished pill and vanishes rather than leaking its braces into the reading text.
+This only applies when the keyword has no key: `{prop hp: }` and `{date due: }` remain valid empty
+values that clear that property or date.
 
 ---
 
