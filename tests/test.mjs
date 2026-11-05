@@ -28035,7 +28035,7 @@ test('#1501 every keyword has a form hint, and every hint is a form that really 
     'GENERATE_FORM_HINT entries');
   const keys = hints.map(h => h[0]);
   assert.deepEqual(host(keys.slice().sort()),
-    ['count', 'cycle', 'deck', 'markov', 'meter', 'once', 'oracle', 'query', 'roll', 'shuffle', 'stopping'],
+    ['count', 'cycle', 'date', 'deck', 'markov', 'meter', 'once', 'oracle', 'query', 'roll', 'shuffle', 'stopping'],
     'every colon-committing keyword needs its own hint, or the cue teaches a generic form that is wrong for it');
   for (const [k, form] of hints) {
     assert.equal(c.classifyBraceBody(form, {}, {}), 'artifact',
@@ -37965,7 +37965,7 @@ test('#1538 census: a word the cue tables teach through another keyword is a reg
   const hints = nonEmpty([...between(_src, 'const GENERATE_FORM_HINT = {', '};').matchAll(/^\s*([a-z]+):\s*'([^']+)'/gm)]
     .map(m => [m[1], m[2]]), 'GENERATE_FORM_HINT entries');
   for (const [word, form] of hints) {
-    if (form.toLowerCase().startsWith(word + ':')) continue;   // its own keyword
+    if (form.toLowerCase().startsWith(word + ':') || (word === 'date' && form.toLowerCase().startsWith('date '))) continue;
     assert.ok(families.includes(word), `GENERATE_FORM_HINT teaches "${word}" through {${form}}, so it needs a FAMILY_NAME_CUE entry`);
   }
   const nearMiss = nonEmpty([...between(fnBody(_src, 'braceAttemptReason'), 'const NEAR_MISS = {', '};').matchAll(/^\s*([a-z]+):/gm)]
@@ -38010,7 +38010,8 @@ test('#1591 a reserved keyword with a tail its parser rejects stays text, never 
     // found by the census: the same split, on keywords nobody reported
     ['shuffle', 'shuffle: | |'], ['cycle', 'cycle: | |'], ['once', 'once: | |'], ['stopping', 'stopping: | |'],
     ['rule', 'rule : a | b'], ['rule', 'rule x y: a | b'],
-    ['prop', 'prop : a | b'], ['prop', 'prop due: a | b'],
+    ['prop', 'prop : a | b'],
+    ['date', 'date: a | b'], ['date', 'date due: a | b'],
     // and the colon form of the three keywords that take a name, which was a silent coin flip
     ['seq', 'seq: a | b'], ['rule', 'rule: a | b | c'], ['prop', 'prop: a | b'], ['seq', 'seq: draft'], ['rule', 'rule: be kind'],
   ];
@@ -38058,7 +38059,7 @@ test('#1591 the valid forms beside the fix keep working, and {name: a | b} keeps
   }
   // UXP-289 leaves the general {name: a | b} open, and a keyword without its colon is ordinary prose.
   // `{cycle 3: …}` falls through on purpose (seqParts: a counted cycle has no agreed meaning yet).
-  for (const body of ['loot: a | b', 'done: finished | still going', 'once upon a time | twice', 'count me in | count me out',
+  for (const body of ['loot: a | b', 'done: finished | still going', 'once upon a time | twice', 'count me in | count me out', 'date night | movie',
                       'deck A | deck B', 'cycle 3: a | b', 'propeller: a | b', 'sequence: a | b', 'ruler: a | b']) {
     promotes(body, /^\[\[grammar:/, `{${body}} keeps its current behaviour`);
     assert.equal(c.keywordCommitted(body), false, `{${body}} did not commit to a keyword`);
@@ -38078,12 +38079,23 @@ test('#1591 the valid forms beside the fix keep working, and {name: a | b} keeps
     assert.equal(c.classifyBraceBody(body, {}, {}), 'invalid', `{${body}} is still an attempt`);
     assert.equal(c.promoteBraceBody(mk1591(), body), null, `{${body}} still stays text`);
   }
-  // Empty stubs are #1505's and are untouched: still consumed, and the silent five still classify as prose.
-  for (const kw of ['seq', 'rule', 'cycle', 'once', 'stopping']) {
+  // Empty stubs are consumed, but keyed empty values remain valid clear operations.
+  for (const kw of ['seq', 'rule', 'cycle', 'once', 'stopping', 'prop', 'date']) {
     assert.equal(c.classifyBraceBody(`${kw}: `, {}, {}), 'literal', `{${kw}: } classifies as it did`);
     assert.equal(c.promoteBraceBody(mk1591(), `${kw}: `), '', `{${kw}: } is still consumed`);
     assert.equal(c.keywordCommitted(`${kw}: `), false, 'an empty tail is the stub guard\'s, not this one');
   }
+  for (const body of ['prop hp: ', 'date due: ']) {
+    assert.equal(c.classifyBraceBody(body, {}, {}), 'artifact', `{${body}} remains a valid clear operation`);
+    assert.equal(c.promoteBraceBody(mk1591(), body), '', `{${body}} clears its existing value`);
+    assert.equal(c.braceBodyIsEmptyStub(body), false, `{${body}} is not an unkeyed stub`);
+  }
+  assert.match(c.braceAttemptReason('rule x y: a | b', {}, {}), /try \{rule xy: option \| option\}/,
+    'a malformed multiword rule name suggests a valid one-word repair');
+  assert.match(c.braceAttemptReason('prop due: tomorrow', {}, {}), /try \{date due: tomorrow\}/,
+    'a date-valued prop points to the date declaration form');
+  assert.match(c.braceAttemptReason('date: a | b', {}, {}), /try \{date due: tomorrow\}/,
+    'a malformed date keyword points to a keyed date form');
   for (const body of ['oracle: a | b', 'meter: x', 'seq: x', 'rule x: a', 'rule x y: a | b', 'prop : 5', 'prop due: a | b',
                       'cycle: | |', 'Markov : a']) {
     assert.equal(c.keywordCommitted(body), true, `{${body}} committed to its keyword`);
@@ -38104,6 +38116,10 @@ const COMMIT_SNIFFS = [...fnBody(_src, 'classifyBraceBody')
   .flatMap(m => m[1].split('|').map(kw => ({ kw, colon: !!m[2] })));
 test('#1591 census: for every reserved keyword, what the cue says about {kw: a | b | c} is what promotion does', () => {
   const sniffs = nonEmpty(COMMIT_SNIFFS, "classifyBraceBody's keyword-commit sniffs");
+  const nameCommit = nonEmpty([...between(_src, 'const NAME_COMMIT_KEYWORDS = [', '];').matchAll(/'([a-z]+)'/g)]
+    .map(m => m[1]), 'name-taking keyword commits');
+  assert.deepEqual(nameCommit.sort(), ['prop', 'rule', 'seq'],
+    'each keyword that commits after a name must stay in the shared name-commit predicate');
   const hints = [...between(_src, 'const GENERATE_FORM_HINT = {', '};').matchAll(/^\s*([a-z]+):/gm)].map(m => m[1]);
   const family = [...new Set([...nonEmpty(STUB_KEYWORDS, 'stub keywords'), ...nonEmpty(hints, 'GENERATE_FORM_HINT entries'),
     ...nonEmpty(FAMILY_NAMES, 'FAMILY_NAME_CUE entries'), ...sniffs.map(s => s.kw)])];
