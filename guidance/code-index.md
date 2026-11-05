@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2196 declarations in 158 sections across 17 domains.**
+**2199 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2355,7 +2355,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `renderBlRows` — #953: the shared row renderer. This was renderBlPanel's body, with three things parameterised so
 - `updateBlPanel`
 - `panelFloorPx` — Keep the panel docked above the software keyboard on mobile. Crucially the
+- `currentBottomPanelFloorPx`
 - `syncFnPanelBottom`
+- `syncVarPanelBottom`
 - `updateFnPanel`
 - `renderFnPanel`
 - `convertToFootnote`
@@ -2607,6 +2609,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openBuilder`
 - `closeBuilder` — The one closeBuilder — shared by openBuilder (via ioCancel + its handlers) and the top-level
 - `builderReturnTypedText` — Put the palette's search text back into the point it was typed from (#1108).
+- `syncBottomDockedPanels` — Keep every bottom-docked panel above the software keyboard; each sync function no-ops its
 
 ## autosave
 
