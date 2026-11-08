@@ -3454,6 +3454,47 @@ test('#1502 every door that completes a repeating point rolls it forward', { ski
   await pg.close();
 });
 
+test('#1609 checking a recurring task checkbox uses the shared completion path', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const n = mkNode('- [ ] Water plants'); n.type = 'todo';
+    root.children = [n]; nodeMap.set(n.id, n); parentMap.set(n.id, root);
+    buildIndex(root, null);
+    const today = dueDateToday();
+    setDateProp(n, 'due', formatEpochDays(today));
+    setProp(n, 'repeat', 'every 3 days');
+    n.checked = todoDoneFromText(n.text);
+    markDirty(); render();
+    const said = [];
+    const original = window.announce;
+    window.announce = (message, ...args) => { said.push(message); return original(message, ...args); };
+    window.__taskCheckboxAnnouncements = said;
+    return { id: n.id, next: formatEpochDays(today + 3) };
+  });
+  const checkbox = pg.getByRole('checkbox', { name: 'Water plants', exact: true });
+  assert.equal(await checkbox.count(), 1, 'precondition: the recurring task has its checkbox');
+  await checkbox.click();
+  await pg.waitForTimeout(250);
+  const after = await pg.evaluate(id => {
+    const n = nodeById(id);
+    return {
+      due: (n.props || []).find(p => p.key.toLowerCase() === 'due')?.val ?? null,
+      checked: n.checked, text: n.text,
+      rowChecked: document.querySelector(`.node-content[data-id="${id}"] input.md-task-check`)?.checked,
+      live: document.getElementById('a11y-live')?.textContent || '',
+    };
+  }, r.id);
+  assert.equal(after.due, r.next, 'the due date advances by the repeat cadence');
+  assert.equal(after.checked, false, 'the recurring point reopens');
+  assert.doesNotMatch(after.text, /\[x\]/i, 'the completed checkbox is cleared in the saved text');
+  assert.equal(after.rowChecked, false, 'the rendered checkbox reflects the reopened point');
+  assert.match(after.live, /Rescheduled to/, 'the screen-reader live region announces the reschedule');
+  assert.ok(await pg.evaluate(() => window.__taskCheckboxAnnouncements.some(m => /Rescheduled to/.test(m))),
+    'the shared completion path sends the reschedule through announce');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 // 59. #1503 — a rollup computed AROUND a hole rendered in the plain success chrome. Driven because
 // the defect IS the rendered comparison: the reported pill was identical to an all-numeric control
 // in className, title, border and aria, so the only way to show the fix is to render both and

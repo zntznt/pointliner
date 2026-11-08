@@ -34798,12 +34798,10 @@ function toggleTaskInNode(node, taskIndex) {
   }
   const wasDone = node.checked;
   node.text = lines.join('\n');
-  node.checked = todoDoneFromText(node.text);
+  const rescheduled = commitTodoDone(node, wasDone, flashHint);
   markDirty();
+  if (rescheduled) { render(); return; }
   if (node.checked !== wasDone) {
-    // recurring task: completing it rolls the schedule forward and re-opens it (#462) instead
-    // of leaving a done copy. Runs before the hidden-cue since a rescheduled task is NOT hidden.
-    if (rollForwardRepeat(node, wasDone, flashHint)) { render(); return; }
     flashHiddenIfDone(node, wasDone); render(); return;
   }
   // done-ness unchanged → targeted repaint of this node (skips a full render)…

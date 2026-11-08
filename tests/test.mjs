@@ -19471,13 +19471,18 @@ test('rollForwardRepeat — wiring (#462)', () => {
   // `say`), so the sentence itself is now HEARD in '#1502 the one writer…' below.
   assert.ok(/tell\('⟳ Rescheduled to/.test(fn), 'visible + announced (flashHint reaches #a11y-live), never a silent flip');
   // it is actually called at the two done-transition chokepoints
-  assert.ok(/rollForwardRepeat\(node, wasDone, flashHint\)/.test(fnBody(_src, 'toggleTaskInNode')), 'wired into the checkbox path, with a voice');
+  assert.ok(/commitTodoDone\(node, wasDone, flashHint\)/.test(fnBody(_src, 'toggleTaskInNode')),
+    'the checkbox path routes the prior done state through the shared writer, with a voice');
+  const checkboxDoor = fnBody(_src, 'toggleTaskInNode');
+  assert.ok(checkboxDoor.indexOf('const wasDone = node.checked;') < checkboxDoor.indexOf('node.text = lines.join'),
+    'the checkbox path captures its prior done state before changing task text');
   // #1502: this comment said "the two chokepoints" while asserting ONE, and that gap was the bug.
   // The roll lived in exitEdit and toggleTaskInNode only, so every completion made outside an edit
   // session ended the recurrence for good. There is now one writer, and the census names its doors.
   assert.match(fnBody(_src, 'commitTodoDone'), /rollForwardRepeat\(node, wasDone, say\)/,
     'the shared writer is where the roll now lives');
-  const DOORS = { exitEdit: 'typing #DONE / the state-cycle chord',
+  const DOORS = { toggleTaskInNode: 'the task-checkbox toggle',
+                  exitEdit: 'typing #DONE / the state-cycle chord',
                   bulkCycleTodo: 'the bulk cycle chord over a selection',
                   showTodoPicker: 'the state-badge picker',
                   applyBlockCmd: 'the row-cursor state command' };
