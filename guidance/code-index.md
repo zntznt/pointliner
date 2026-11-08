@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2200 declarations in 158 sections across 17 domains.**
+**2201 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1668,6 +1668,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `retryPendingBraces` — #1357: promotion is ONE-SHOT. A `{…}` whose names were not resolvable when its point was
 - `promoteCellShorthand` — Promote {…} shorthand inside ONE base cell string. The promoteInlineShorthand walk,
 - `promoteLoadedShorthand` — Promote {…} shorthand across a whole loaded document. The edit-commit path
+- `invalidDateFeedbackSummary` — Adoption can encounter several malformed date forms at once. Keep the individual
 - `artifactToShorthand` — Inline-able artifact ⇄ grammar source. Returns the {…} text an artifact
 - `unfoldedPrefixLen` — Length `prefix` would have after unfoldArtifacts rewrites its inline-able tokens
 - `foldedOffsetFor` — The inverse: translate an offset captured against the UNFOLDED edit buffer into

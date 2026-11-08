@@ -2604,7 +2604,7 @@ test('the two {roll:} resolution chokepoints are wrapped in withHostScope', () =
   const w = fnBody(_src, 'withHostScope');
   assert.ok(/const save = cookieNode;/.test(w) && /finally \{ cookieNode = save; \}/.test(w),
     'withHostScope saves and restores, never strands a mutated global');
-  assert.ok(/return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body, flashHint\)\)/.test(_src),
+  assert.ok(/const voice = typeof say === 'function' \? say : flashHint;\s*return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body, voice\)\)/.test(fnBody(_src, 'promoteBraceBody')),
     'promotion (blur, base cell, OPML load, starter insert) resolves under the host scope');
   const rg = fnBody(_src, 'rerollGrammar');
   assert.ok(/withHostScope\(node, \(\) => runGrammar\(g\.def, g\.origin, null, null, deps\)\)/.test(rg),
@@ -18525,7 +18525,7 @@ test('ancestor inheritance is wired at the math pill + check chip, own-node at t
   // branch chain lives in promoteBraceBodyIn. Pin the delegation too, so the wrapper can never be
   // left pointing at nothing.
   // #1584: and hands it the voice for a refusal, the one DOM thing a promotion does.
-  assert.ok(/function promoteBraceBody\(node, body\) \{\s*return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body, flashHint\)\);\s*\}/.test(_src),
+  assert.ok(/function promoteBraceBody\(node, body, say\) \{\s*const voice = typeof say === 'function' \? say : flashHint;\s*return withHostScope\(node, \(\) => promoteBraceBodyIn\(node, body, voice\)\);\s*\}/.test(_src),
     'promoteBraceBody delegates to promoteBraceBodyIn inside withHostScope');
   const pb = fnBody(_src, 'promoteBraceBodyIn');
   assert.ok(/makeMathResult\(body\.slice\(1\)\.trim\(\), resolveNodeScope\(node, ancestorsOf\(node\), collectVars\(\)\)\)/.test(pb),
@@ -27808,8 +27808,27 @@ test('promoteBraceBody: the invalid-date decline flashes the shared message (#40
   assert.equal(c.promoteBraceBodyIn(c.mkNode('y'), 'date due: 2026-01-02', (m) => said.push(m)), '');
   assert.deepEqual(said, [], 'a valid date is consumed in silence');
   assert.doesNotThrow(() => c.promoteBraceBodyIn(c.mkNode('z'), 'date due: nope'), 'no voice given: silent, not a crash');
-  assert.match(fnBody(_src, 'promoteBraceBody'), /promoteBraceBodyIn\(node, body, flashHint\)/,
+  assert.match(fnBody(_src, 'promoteBraceBody'), /promoteBraceBodyIn\(node, body, voice\)/,
     'and the door gives it the toast, or every promotion path refuses in silence');
+});
+
+test('#1609 adoption batches malformed-date feedback without rewriting the braces', () => {
+  const root = c.mkNode('');
+  root.children = [c.mkNode('{date due: bad-one}'), c.mkNode('{date start: bad-two}')];
+  const said = [];
+  c.promoteLoadedShorthand(root, message => said.push(message));
+  assert.deepEqual(root.children.map(node => node.text), ['{date due: bad-one}', '{date start: bad-two}'],
+    'invalid date forms stay literal in the adopted document');
+  assert.deepEqual(said, [
+    'Not a valid date: bad-one. ' + c.dateFormsHint(),
+    'Not a valid date: bad-two. ' + c.dateFormsHint(),
+  ], 'the adoption collector receives each refusal without calling the toast');
+  assert.equal(c.invalidDateFeedbackSummary(said), 'Not valid dates: bad-one, bad-two. ' + c.dateFormsHint());
+  const adopt = fnBody(_src, 'adoptDoc');
+  assert.ok(adopt.includes('const invalidDateMessages = [];')
+    && adopt.includes('promoteLoadedShorthand(root, message => invalidDateMessages.push(message));')
+    && adopt.includes('flashHint(invalidDateFeedbackSummary(invalidDateMessages));'),
+    'adoptDoc collects promotion feedback and emits one summary after the walk');
 });
 
 // ── Inventory drift guards (#393/#408): the closed set must certify truthfully ──
