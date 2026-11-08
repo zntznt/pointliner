@@ -23255,16 +23255,70 @@ test('#1265 markdownToPoints — export then re-import is stable (round-trip fix
 
 test('#1265 Markdown import — wired into the Import door (format-sniffed, reuses appendOpmlSubtrees)', () => {
   assert.ok(_src.includes('markdownToPoints(text)'), 'the Import door parses non-OPML text as Markdown');
-  assert.ok(/appendOpmlSubtrees\(null, label, \{ all: true, announce: true, trees: points \}\)/.test(_src),
+  const dlg = fnBody(_src, 'openImportDialog');
+  const doImport = between(dlg, 'const doImport =', 'const doVaultImport');
+  assert.match(doImport, /appendOpmlSubtrees\(null, label, \{[\s\S]*?trees: points,[\s\S]*?successMessage:/,
     'Markdown points append as trees (skips the OPML round-trip so footnotes survive), reusing promote/undo/footnote-lift');
   assert.ok(/if \(opts\.trees\)/.test(_src), 'appendOpmlSubtrees accepts pre-parsed trees');
   assert.ok(_src.includes('.md,.markdown'), 'the file picker accepts .md/.markdown');
 });
 
+test('#1588 import read failures are errors, failed vault files are excluded, and success speaks once', () => {
+  const packs = fnBody(_src, 'importDataPacks');
+  assert.match(packs, /reader\.onerror\s*=\s*\(\)\s*=>\s*flashError\([^;]*file\.name/,
+    'data-pack FileReader failures name the file and use error feedback');
+  const dlg = fnBody(_src, 'openImportDialog');
+  assert.match(dlg, /reader\.onerror\s*=\s*\(\)\s*=>\s*flashError\([^;]*files\[0\]\.name/,
+    'single-file import failures name the file and use error feedback');
+  assert.match(dlg, /r\.onerror\s*=\s*\(\)\s*=>\s*resolve\(\{ ok: false, name: file\.name \}\)/,
+    'vault reads preserve failed-file identity instead of pretending the file was empty');
+  assert.match(dlg, /results\.filter\(r => r\.ok\)\.map\(\(\{ name, text \}\)/,
+    'only successfully read vault files reach the parser');
+  assert.match(dlg, /Could not read: \$\{failures\.map\(f => f\.name\)\.join\(', '\)\}/,
+    'partial vault success identifies files that were not readable');
+  const append = fnBody(_src, 'appendOpmlSubtrees');
+  assert.match(append, /const successMessage = opts\.successMessage \|\| \(opts\.all[\s\S]*?if \(opts\.successError\) flashError\(successMessage\);\s*else flashHint\(successMessage\);/,
+    'the shared append path emits one caller-specific hint or partial-failure error');
+  assert.doesNotMatch(dlg, /_nextImportSuccessMessage|let ok[^\n]*successMessage/,
+    'each import carries its message in the append options, with no out-of-band message state');
+  assert.match(dlg, /successMessage: 'Imported the table\.[^']*Undo removes it in one step\.'/,
+    'the table-specific message is passed directly with its append options');
+  const vault = between(dlg, 'const doVaultImport =', '// ── from a file ──');
+  assert.equal((vault.match(/flashHint\(/g) || []).length, 0,
+    'vault import does not overwrite the append undo toast');
+  const single = between(dlg, 'const doImport =', 'const doVaultImport');
+  assert.equal((single.match(/flashHint\(/g) || []).length, 0,
+    'single-file import does not overwrite the append toast either');
+  assert.match(vault, /successError: failures\.length > 0/,
+    'partial vault success reports an error-styled result');
+});
+
+test('#1588 operation failures use flashError while missing-stat guidance stays a hint', () => {
+  assert.match(fnBody(_src, 'promoteStaticTable'), /if \(!plan\) \{ flashError\(/);
+  const action = fnBody(_src, 'runActionPill');
+  assert.match(action, /if \(!tgt\) \{ flashHint\(`No stat named/,
+    'an absent stat is actionable guidance, not an operation error');
+  assert.match(action, /if \(nv === null\) \{ flashError\(/,
+    'a numeric action that cannot be computed is an operation failure');
+  const restore = fnBody(_src, 'restoreEarlierVersion');
+  assert.match(restore, /if \(!applyAutosaveData\(data\)\) \{ flashError\(/);
+  assert.match(restore, /catch \(_\) \{ flashError\(/);
+});
+
+test('#1588 File-menu Enter runs the first filtered result or announces no results; Space remains text', () => {
+  const keydown = between(_src, "fileMenu.addEventListener('keydown'", "document.getElementById('fm-search')?.addEventListener");
+  assert.match(keydown, /if \(onSearch && e\.key === ' '\) return/,
+    'Space in the search input stays a typed character');
+  assert.match(keydown, /if \(onSearch\) \{\s*if \(!rows\.length\) \{ announce\(fmEmptyMessage\(\)\); return; \}\s*rows\[0\]\.click\(\)/,
+    'Enter announces empty results or activates the first filtered row');
+});
+
 test('#1296 spreadsheet import — wired into the Import door (sniffed before Markdown, same append path, .csv accepted)', () => {
   assert.ok(_src.includes('(tblDelim = sniffDelimited(text))'), 'the Import door sniffs a delimited table before falling back to Markdown');
   assert.ok(_src.includes('tableToPoints(text, tblDelim)'), 'a detected table parses into heading+row trees');
-  assert.ok(/tableNote = ok/.test(_src) && _src.includes('click + Total to sum'), 'a successful table import nudges the user toward the + Total door');
+  const doImport = between(fnBody(_src, 'openImportDialog'), 'const doImport =', 'const doVaultImport');
+  assert.match(doImport, /successMessage: 'Imported the table\.[^']*click \+ Total to sum/,
+    'a successful table import nudges the user toward the + Total door');
   assert.ok(/inp\.accept = '[^']*\.csv/.test(_src), 'the file picker accepts .csv');
   // Order guard: the OPML sniff and the table sniff both precede the Markdown fallback, so a CSV never
   // reaches markdownToPoints (a comma-heavy sentence would otherwise import as one prose point).

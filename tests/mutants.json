@@ -4857,8 +4857,8 @@
       "suite": "unit",
       "why": "#1614, the negative: an import keeps the history its file came with, and stamping it now would claim every imported point was created today",
       "file": "index.html",
-      "find": "      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });\n      tableNote = ok;",
-      "replace": "      stampNewPoints(points);\n      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });\n      tableNote = ok;",
+      "find": "      ok = appendOpmlSubtrees(null, label, {\n        all: true, announce: true, trees: points,\n        successMessage: 'Imported the table. Open the section and click + Total to sum a number column. Undo removes it in one step.',\n      });",
+      "replace": "      stampNewPoints(points);\n      ok = appendOpmlSubtrees(null, label, {\n        all: true, announce: true, trees: points,\n        successMessage: 'Imported the table. Open the section and click + Total to sum a number column. Undo removes it in one step.',\n      });",
       "kills": "#1614 census: every door that builds points from what the reader brought in"
     },
     {
