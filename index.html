@@ -16756,6 +16756,7 @@ function importDataPacks() {
   inp.addEventListener('change', () => {
     const file = inp.files?.[0]; if (!file) return;
     const reader = new FileReader();
+    reader.onerror = () => flashError(`Could not read data-pack file "${file.name}". Try choosing it again.`);
     reader.onload = () => {
       const incoming = parsePackImport(String(reader.result || ''));
       if (!incoming.length) { flashHint('No valid packs found in that file'); return; }
@@ -24789,12 +24790,12 @@ function createBaseAt(nodeId, rows, cols) {
 // the original text lands somewhere, and the whole move is one undo step.
 function promoteStaticTable(node, l0, l1) {
   const plan = planTablePromote(node.text, l0, l1);
-  if (!plan) { flashHint('Couldn’t locate that table. Edit the point and try again.'); return; }
+  if (!plan) { flashError('Couldn’t locate that table. Edit the point and try again.'); return; }
   // normalize the grid + bake computed cells, exactly like the markdown-editor exit path
   const tblfm = extractTblfm(plan.table);
   const baseText = serializeTable(parseTable(stripTblfm(plan.table))) + (tblfm ? '\n#+TBLFM: ' + tblfm : '');
   const parent = parentOf(node.id);
-  if (!parent) return;
+  if (!parent) { flashError('Couldn’t convert that table because its point is no longer in the outline.'); return; }
   pushUndo();
   if (plan.before === '') {
     // table leads the point → the point itself becomes the base (keeps id + children)
@@ -40032,7 +40033,7 @@ function runActionPill(span) {
   const tgt = resolveStatTarget(node, act.target);
   if (!tgt) { flashHint(`No stat named ${act.target} to change here. Give this point (or one above it) a ${act.target} property, or declare {${act.target} := 0}.`); return; }
   const nv = actionNewValue(act, node, scope);
-  if (nv === null) { flashHint(`Could not apply ${act.target} ${act.op} ${act.rhs}. Check the values it uses are numbers.`); return; }
+  if (nv === null) { flashError(`Could not apply ${act.target} ${act.op} ${act.rhs}. Check the values it uses are numbers.`); return; }
   const val = formatStatValue(nv);
   pushUndo();
   if (tgt.kind === 'prop') setProp(tgt.node, act.target, val);
@@ -43495,11 +43496,14 @@ fileMenu.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Enter' || e.key === ' ') {
-    if (onSearch) return;   // typing space in the search box is a space, not an activate
+    if (onSearch && e.key === ' ') return;   // typing space in the search box is a space, not an activate
     e.preventDefault();
     if (onNav) { active.click(); fmItems()[0]?.focus(); return; }   // pick the category, dive into it
-    // #1510: Enter in the search box with nothing left to run was a total no-op. It says so now.
-    if (onSearch && !rows.length) { announce(fmEmptyMessage()); return; }
+    if (onSearch) {
+      if (!rows.length) { announce(fmEmptyMessage()); return; }
+      rows[0].click();   // Enter runs the first filtered result; arrows remain available to choose another.
+      return;
+    }
     active?.click();   // a row: run its handler
     return;
   }
@@ -48392,12 +48396,12 @@ async function restoreEarlierVersion() {
     confirmLabel: 'Restore', cancelLabel: 'Keep current',
   })) return false;
   try {
-    if (!applyAutosaveData(data)) { flashHint('Could not read the earlier version'); return false; }
+    if (!applyAutosaveData(data)) { flashError('Could not read the earlier version'); return false; }
     markDirty();                 // the restored state differs from disk; let it re-autosave (and re-snapshot)
     render();
     flashHint('Restored the earlier version');
     return true;
-  } catch (_) { flashHint('Could not read the earlier version'); return false; }
+  } catch (_) { flashError('Could not read the earlier version'); return false; }
 }
 
 // UXP-126 first-run Examples state. DECLARED here, ABOVE the boot restore, because the restore
@@ -49243,9 +49247,11 @@ function appendOpmlSubtrees(opml, label, opts = {}) {
   render();
   focusNode(clones[0].id);
   const total = clones.reduce((n, cl) => n + countPoints(cl), 0);
-  flashHint(opts.all
+  const successMessage = opts.successMessage || (opts.all
     ? `Imported ${ptsLabel(total)} from "${label}". Undo removes it in one step.`
     : `Added "${label}" (${ptsLabel(total)}). Delete it when you are done exploring.`);
+  if (opts.successError) flashError(successMessage);
+  else flashHint(successMessage);
   return true;
 }
 // #565: the starter gallery's additive insert — one `# heading` root subtree, and no toast on a
@@ -49282,7 +49288,7 @@ function openImportDialog() {
   // never a per-product importer.
   const doImport = (text, label) => {
     if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
-    let ok, skippedNote = '', tableNote = false, bibCount = 0, tblDelim;
+    let ok, skippedNote = '', tblDelim;
     if (/^\s*(<\?xml|<opml\b)/i.test(text)) {
       ok = appendOpmlSubtrees(text, label, { all: true, announce: true });
     } else if (sniffBibtex(text)) {
@@ -49292,42 +49298,49 @@ function openImportDialog() {
       const { points, skipped } = bibToPoints(text);
       if (!points.length) { flashError('Nothing to import: no references found in that BibTeX file.'); return false; }
       if (skipped.length) skippedNote = ` (${skipped.join(', ')} simplified)`;
-      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });
-      if (ok) bibCount = points[0].children.length;
+      ok = appendOpmlSubtrees(null, label, {
+        all: true, announce: true, trees: points,
+        successMessage: `Imported ${points[0].children.length} reference${points[0].children.length === 1 ? '' : 's'}${skippedNote}. Each citation is a footnote: open File then Footnotes to see them all. Undo removes it in one step.`,
+      });
     } else if ((tblDelim = sniffDelimited(text))) {
       // #1296: a pasted/opened spreadsheet — rows become points with number columns as properties,
       // under one heading so the + Total door can total a column. Rides the same append path.
       const { points } = tableToPoints(text, tblDelim);
       if (!points.length) { flashError('Nothing to import: no rows found in that table.'); return false; }
-      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });
-      tableNote = ok;
+      ok = appendOpmlSubtrees(null, label, {
+        all: true, announce: true, trees: points,
+        successMessage: 'Imported the table. Open the section and click + Total to sum a number column. Undo removes it in one step.',
+      });
     } else {
       const { points, skipped } = markdownToPoints(text);
       if (!points.length) { flashError('Nothing to import: no points found in that Markdown.'); return false; }
       if (skipped.length) skippedNote = ` (${skipped.join(', ')} simplified)`;
       // pass the trees straight through so their footnotes survive to the doc store (see appendOpmlSubtrees)
-      ok = appendOpmlSubtrees(null, label, { all: true, announce: true, trees: points });
+      ok = appendOpmlSubtrees(null, label, {
+        all: true, announce: true, trees: points,
+        successMessage: `Imported from Markdown${skippedNote}. Undo removes it in one step.`,
+      });
     }
-    if (ok) {
-      closeIo();
-      if (bibCount) flashHint(`Imported ${bibCount} reference${bibCount === 1 ? '' : 's'}${skippedNote}. Each citation is a footnote: open File then Footnotes to see them all.`);
-      else if (tableNote) flashHint('Imported the table. Open the section and click + Total to sum a number column.');
-      else if (skippedNote) flashHint(`Imported from Markdown${skippedNote}.`);
-    }
+    if (ok) closeIo();
     return ok;
   };
 
   // #1265 PR 2: import several Markdown files at once as ONE linked document. Each file becomes a top-
   // level section and [[wikilinks]] between them come in live (a note vault keeps its cross-references).
-  const doVaultImport = (files) => {
+  const doVaultImport = (files, failures = []) => {
     const md = files.filter(f => /\.(md|markdown)$/i.test(f.name));
     if (!md.length) { flashError('Select Markdown (.md) files to import as a linked set.'); return false; }
     if (typeof _showingExamples !== 'undefined' && _showingExamples) { _showingExamples = false; hideExamplesBanner(); }
     const { points, skipped } = markdownVaultToPoints(md);
-    if (!points.length) { flashError('Nothing to import: those files have no points.'); return false; }
+    const failureNote = failures.length ? ` Could not read: ${failures.map(f => f.name).join(', ')}.` : '';
+    if (!points.length) { flashError(`Nothing to import: those files have no points.${failureNote}`); return false; }
     const what = `${md.length} Markdown file${md.length === 1 ? '' : 's'}`;
-    const ok = appendOpmlSubtrees(null, what, { all: true, announce: true, trees: points, noClone: true });
-    if (ok) { closeIo(); flashHint(`Imported ${what} with their links resolved${skipped.length ? ` (${skipped.join(', ')} simplified)` : ''}.`); }
+    const ok = appendOpmlSubtrees(null, what, {
+      all: true, announce: true, trees: points, noClone: true,
+      successMessage: `Imported ${what} with their links resolved${skipped.length ? ` (${skipped.join(', ')} simplified)` : ''}. Undo removes it in one step.${failureNote}`,
+      successError: failures.length > 0,
+    });
+    if (ok) closeIo();
     return ok;
   };
 
@@ -49346,11 +49359,25 @@ function openImportDialog() {
       const files = [...(inp.files || [])]; if (!files.length) return;
       // several files -> a linked vault (each a section, wikilinks resolved); one file -> the sniffed path
       if (files.length > 1) {
-        const read = (file) => new Promise(res => { const r = new FileReader(); r.onload = () => res({ name: file.name, text: String(r.result || '') }); r.onerror = () => res({ name: file.name, text: '' }); r.readAsText(file); });
-        Promise.all(files.map(read)).then(doVaultImport);
+        const read = (file) => new Promise(resolve => {
+          const r = new FileReader();
+          r.onload = () => resolve({ ok: true, name: file.name, text: String(r.result || '') });
+          r.onerror = () => resolve({ ok: false, name: file.name });
+          r.readAsText(file);
+        });
+        Promise.all(files.map(read)).then(results => {
+          const failures = results.filter(r => !r.ok);
+          const readable = results.filter(r => r.ok).map(({ name, text }) => ({ name, text }));
+          if (failures.length && !readable.length) {
+            flashError(`Could not read any selected Markdown files: ${failures.map(f => f.name).join(', ')}.`);
+            return;
+          }
+          doVaultImport(readable, failures);
+        });
         return;
       }
       const reader = new FileReader();
+      reader.onerror = () => flashError(`Could not read "${files[0].name}". Try choosing the file again.`);
       reader.onload = () => doImport(String(reader.result || ''), files[0].name);
       reader.readAsText(files[0]);
     });

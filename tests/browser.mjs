@@ -8507,6 +8507,107 @@ const fileMenuState = (pg) => pg.evaluate(() => {
   return s;
 });
 
+test('#1588 File-menu search: Enter announces empty results or activates the first result; Space types', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => openFileMenu());
+  const search = pg.locator('#fm-search');
+  await search.fill('zz-no-such-file-menu-action-zz');
+  await pg.evaluate(() => {
+    window.__spoken = [];
+    const say = announce;
+    window.announce = msg => { window.__spoken.push(msg); say(msg); };
+    document.getElementById('fm-search').focus();
+  });
+  await pg.keyboard.press('Enter');
+  const empty = await pg.evaluate(() => ({
+    said: window.__spoken,
+    visible: [...document.querySelectorAll('.cmd-item')].filter(e => e.offsetParent !== null).length,
+  }));
+  assert.equal(empty.visible, 0, 'the query has no visible actions');
+  assert.ok(empty.said.some(s => /no matching action/i.test(s)), `Enter announces the empty result: ${JSON.stringify(empty.said)}`);
+
+  await search.fill('Import points');
+  await pg.evaluate(() => document.getElementById('fm-search').focus());
+  await pg.keyboard.press('Space');
+  assert.match(await search.inputValue(), /Import points $/, 'Space remains ordinary search text');
+  await search.fill('Import points');
+  await pg.evaluate(() => document.getElementById('fm-search').focus());
+  await pg.keyboard.press('Enter');
+  assert.equal(await pg.locator('#io-back').isVisible(), true, 'Enter activates the first filtered Import points action');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('#1588 import read errors and partial vault success use one truthful toast', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    window.__feedback = [];
+    const hint = flashHint, error = flashError;
+    window.flashHint = msg => { window.__feedback.push(['hint', msg]); hint(msg); };
+    window.flashError = msg => { window.__feedback.push(['error', msg]); error(msg); };
+    window.FileReader = class {
+      readAsText(file) {
+        setTimeout(() => {
+          if (file.name === 'Unreadable.md') this.onerror?.({ target: this });
+          else { this.result = file.name === 'Readable.md' ? '# Readable\n\nImported.' : '# Should not import'; this.onload?.({ target: this }); }
+        }, 0);
+      }
+    };
+    window.__pickImportFiles = files => {
+      const click = HTMLInputElement.prototype.click;
+      HTMLInputElement.prototype.click = function() {
+        if (this.type !== 'file') return click.call(this);
+        Object.defineProperty(this, 'files', { configurable: true, value: files });
+        this.dispatchEvent(new Event('change'));
+      };
+    };
+  });
+  await pg.evaluate(() => openImportDialog());
+  await pg.evaluate(() => {
+    __pickImportFiles([{ name: 'Unreadable.md' }]);
+    document.querySelector('#io-back .io-btn').click();
+  });
+  await pg.waitForFunction(() => window.__feedback.some(x => x[0] === 'error'));
+  const single = await pg.evaluate(() => ({
+    feedback: window.__feedback.slice(),
+    imported: root.children.some(n => n.text.includes('Should not import')),
+  }));
+  assert.ok(single.feedback.some(([kind, msg]) => kind === 'error' && /Unreadable\.md/.test(msg)), 'single-file read error names the failed file');
+  assert.equal(single.imported, false, 'failed single-file read is not parsed or imported');
+
+  await pg.evaluate(() => {
+    window.__feedback = [];
+    __pickImportFiles([{ name: 'Readable.md' }]);
+    document.querySelector('#io-back .io-btn').click();
+  });
+  await pg.waitForFunction(() => window.__feedback.some(x => x[0] === 'hint'));
+  const singleSuccess = await pg.evaluate(() => window.__feedback.slice());
+  assert.equal(singleSuccess.filter(x => x[0] === 'hint').length, 1, 'single-file success keeps the shared append toast only');
+  assert.match(singleSuccess.find(x => x[0] === 'hint')[1], /Undo removes it in one step/);
+
+  await pg.evaluate(() => {
+    window.__feedback = [];
+    openImportDialog();
+    __pickImportFiles([{ name: 'Readable.md' }, { name: 'Unreadable.md' }]);
+    document.querySelector('#io-back .io-btn').click();
+  });
+  await pg.waitForFunction(() => root.children.some(n => n.text.includes('Readable')));
+  const vault = await pg.evaluate(() => ({
+    feedback: window.__feedback.slice(),
+    readable: root.children.some(n => n.text.includes('Readable')),
+    failed: root.children.some(n => n.text.includes('Should not import')),
+  }));
+  assert.equal(vault.readable, true, 'a readable vault member imports');
+  assert.equal(vault.failed, false, 'the failed member is never parsed as empty Markdown');
+  assert.equal(vault.feedback.length, 1, 'partial vault import emits exactly one result toast');
+  assert.equal(vault.feedback[0][0], 'error', 'partial success is error feedback, not a neutral hint');
+  assert.match(vault.feedback[0][1], /Imported 1 Markdown file/, 'the message confirms the readable import');
+  assert.match(vault.feedback[0][1], /Undo removes it in one step/);
+  assert.match(vault.feedback[0][1], /Unreadable\.md/, 'partial success names the failed file');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 test('#1583 a refused picker is asked once: Save then downloads, the menu stops offering it, and a cancel teaches nothing', { skip: skip() }, async () => {
   // REFUSED: one picker, one explanation, then the download every time
   {
