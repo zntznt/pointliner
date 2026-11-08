@@ -9014,6 +9014,27 @@ test('#1584 a pasted lone link token leaves the caret in its caption slot', { sk
   await pg.close();
 });
 
+test('bare same- and cross-document links leave the caret after the token', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const pasteInto = async text => {
+    await blankWithCaret(pg);
+    return pg.evaluate(t => {
+      const el = document.querySelector('.node-content[data-editing]');
+      const dt = new DataTransfer(); dt.setData('text/plain', t);
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      return { text: root.children[0].text, caret: getCaretOffset(el) };
+    }, text);
+  };
+  const same = await pasteInto('[[#abc12]]');
+  const cross = await pasteInto('[[docb#abc12]]');
+  assert.equal(same.text, '[[#abc12]]');
+  assert.equal(cross.text, '[[docb#abc12]]');
+  assert.equal(same.caret, same.text.length, 'a same-document bare reference has no caption slot');
+  assert.equal(cross.caret, cross.text.length, 'a cross-document bare reference has no caption slot');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 // The decimals tip (#1333) used to fire from inside renderMathPill, so the formula dialog's live
 // preview, the exports and the guide all spent it on a pill that was not on the page. Now the renderer
 // notes the decimal and the paint that shows the pill says it.

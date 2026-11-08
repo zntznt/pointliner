@@ -21435,8 +21435,9 @@ function handlePaste(e, node, content) {
       maybeOfferWebImageConsent(oneUrl);
       return;
     }
-    // A lone link token pastes its label slot ready for typing: drop the caret
-    // right after the | so the user can type a label immediately (empty → live title).
+    // A lone same-document token with a pipe pastes its label slot ready for typing: drop the caret
+    // right after the | so the user can type a label immediately. An empty label is a mirror until
+    // the user types; a bare token has no caption slot and displays the target's live title.
     // #1584: asked of parseLinkToken, the one-token reader. Same-doc and piped only, exactly the
     // set the hand-copied regex here matched; routing the question did not widen the answer.
     const tok = parseLinkToken(text);

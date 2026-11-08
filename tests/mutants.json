@@ -5058,6 +5058,15 @@
       "find": "  promoteLoadedShorthand(root, message => invalidDateMessages.push(message)); // keep adoption feedback out of the toast until the walk finishes",
       "replace": "  promoteLoadedShorthand(root); // keep adoption feedback out of the toast until the walk finishes",
       "kills": "#1609 adoption batches malformed-date feedback"
+    },
+    {
+      "id": "bare-cross-doc-link-gets-caption-caret",
+      "suite": "unit",
+      "why": "#1609: a bare cross-document live-title link has no caption slot; treating it like an empty pipe moves the caret into its closing brackets",
+      "file": "index.html",
+      "find": "    const linkOnly = tok && !tok.docId && tok.label !== undefined ? tok : null;",
+      "replace": "    const linkOnly = tok && (tok.docId ? { ...tok, label: '' } : tok.label !== undefined ? tok : null);",
+      "kills": "bare cross-document links do not get caption-caret repositioning"
     }
   ]
 }
