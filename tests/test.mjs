@@ -39930,3 +39930,9 @@ test('#1584 the paste and Calculate doors call the cores their tests pin', () =>
   assert.match(fnBody(_src, 'mtApplyAggregate'), /\n\s*node\.text = mtAggregateText\(node, colIdx, fn\);/,
     'Calculate must write the text mtAggregateText computes');
 });
+
+test('bare cross-document links do not get caption-caret repositioning', () => {
+  assert.match(fnBody(_src, 'handlePaste'),
+    /const linkOnly = tok && !tok\.docId && tok\.label !== undefined \? tok : null;/,
+    'only same-document links with an explicit pipe have a caption slot');
+});
