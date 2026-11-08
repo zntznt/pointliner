@@ -5022,6 +5022,33 @@
       "find": "    if (!content.dataset.editing) return;\n    content.focus();",
       "replace": "    content.focus();",
       "kills": "UXP-339 leaving a point right after typing a closing brace stays left"
+    },
+    {
+      "id": "task-checkbox-bypasses-done-writer",
+      "suite": "unit",
+      "why": "#1609: the task checkbox must use the shared done-transition writer, not bypass it with its own recurrence call",
+      "file": "index.html",
+      "find": "  const rescheduled = commitTodoDone(node, wasDone, flashHint);",
+      "replace": "  const rescheduled = false;",
+      "kills": "rollForwardRepeat — wiring"
+    },
+    {
+      "id": "task-checkbox-derives-checked-itself",
+      "suite": "unit",
+      "why": "#1609: toggleTaskInNode must not derive checked outside commitTodoDone, or the checkbox becomes a second done-state writer",
+      "file": "index.html",
+      "find": "  const rescheduled = commitTodoDone(node, wasDone, flashHint);",
+      "replace": "  node.checked = todoDoneFromText(node.text);\n  const rescheduled = commitTodoDone(node, wasDone, flashHint);",
+      "kills": "rollForwardRepeat — wiring"
+    },
+    {
+      "id": "task-checkbox-captures-prior-done-state",
+      "suite": "unit",
+      "why": "#1609: the checkbox writer must snapshot done state before changing task text, or a completion is mistaken for an already-done task",
+      "file": "index.html",
+      "find": "  const wasDone = node.checked;\n  node.text = lines.join('\\n');",
+      "replace": "  node.text = lines.join('\\n');\n  const wasDone = node.checked;",
+      "kills": "rollForwardRepeat — wiring"
     }
   ]
 }
