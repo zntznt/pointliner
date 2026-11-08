@@ -547,6 +547,27 @@ test('#1581 reopening a copy of the file is silent about checks; undo still anno
   await pg.close();
 });
 
+test('#1609 adopting several malformed dates shows one summary and keeps their braces literal', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(() => {
+    const said = [];
+    const original = window.announce;
+    window.announce = (message, ...args) => { said.push(message); return original(message, ...args); };
+    const doc = mkRoot();
+    doc.children = [mkNode('{date due: bad-one}'), mkNode('{date start: bad-two}')];
+    adoptDoc(doc, { fileName: 'bad-dates.opml' });
+    window.announce = original;
+    return { said: said.filter(message => /Not valid dates:/.test(message)),
+      text: root.children.map(node => node.text), toast: document.querySelector('#flash-hint')?.textContent || '' };
+  });
+  assert.deepEqual(r.said, ['Not valid dates: bad-one, bad-two. ' + await pg.evaluate(() => dateFormsHint())],
+    'adoption announces one aggregated summary');
+  assert.deepEqual(r.text, ['{date due: bad-one}', '{date start: bad-two}'], 'the malformed braces remain literal');
+  assert.equal(r.toast, r.said[0], 'the visible toast is the same single summary');
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 // 12. import formats -- the sniff picks the right PARSER, and the import reaches the doc store.
 // A source pin cannot see this class: `indexOf('sniffBibtex') < indexOf('sniffDelimited')` stayed
 // green with the branch disabled (`false && sniffBibtex(text)`), because the substring never moved.

@@ -4695,8 +4695,8 @@
       "suite": "unit",
       "why": "#1584: the census holds `wired` honest too: a promotion pass that no longer reaches the DOM belongs back in `need` (and here it means every refused date goes unsaid)",
       "file": "index.html",
-      "find": "  return withHostScope(node, () => promoteBraceBodyIn(node, body, flashHint));",
-      "replace": "  return withHostScope(node, () => promoteBraceBodyIn(node, body));",
+      "find": "function promoteBraceBody(node, body, say) {\n  const voice = typeof say === 'function' ? say : flashHint;",
+      "replace": "function promoteBraceBody(node, body, say) {\n  const voice = typeof say === 'function' ? say : null;",
       "kills": "#1584 every load-cores"
     },
     {
@@ -5049,6 +5049,15 @@
       "find": "  const wasDone = node.checked;\n  node.text = lines.join('\\n');",
       "replace": "  node.text = lines.join('\\n');\n  const wasDone = node.checked;",
       "kills": "rollForwardRepeat — wiring"
+    },
+    {
+      "id": "adopt-doc-collects-invalid-date-feedback",
+      "suite": "unit",
+      "why": "#1609: adoption must collect promotion refusals before showing one summary, not let each invalid date flash independently",
+      "file": "index.html",
+      "find": "  promoteLoadedShorthand(root, message => invalidDateMessages.push(message)); // keep adoption feedback out of the toast until the walk finishes",
+      "replace": "  promoteLoadedShorthand(root); // keep adoption feedback out of the toast until the walk finishes",
+      "kills": "#1609 adoption batches malformed-date feedback"
     }
   ]
 }

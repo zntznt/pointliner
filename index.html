@@ -29682,8 +29682,9 @@ function varDistHeadline(rec, vars = null, fmt = null) {   // #1115: fmt threads
 // #1584: it is also where a refusal is SAID. promoteBraceBodyIn hands its sentence to `say`, so the
 // core stays DOM-free and a test can hear it; this wrapper is the voice (flashHint), which makes it
 // and the promotion passes that call it DOM-wired (tests/load-cores.mjs lists them as such).
-function promoteBraceBody(node, body) {
-  return withHostScope(node, () => promoteBraceBodyIn(node, body, flashHint));
+function promoteBraceBody(node, body, say) {
+  const voice = typeof say === 'function' ? say : flashHint;
+  return withHostScope(node, () => promoteBraceBodyIn(node, body, voice));
 }
 function promoteBraceBodyIn(node, body, say) {
   body = body.trim();
@@ -30060,7 +30061,8 @@ function promoteBraceBodyIn(node, body, say) {
 // never false-matches another node's token). unfoldedPrefixLen does NOT consult it — it measures the
 // canonical re-unfolded buffer. In-memory only; never serialized.
 let _promotedLit = new Map();
-function promoteInlineShorthand(node) {
+function promoteInlineShorthand(node, say) {
+  const voice = typeof say === 'function' ? say : flashHint;
   _promotedLit = new Map();
   const text = node.text;
   if (text.indexOf('{') < 0) return false;
@@ -30071,7 +30073,7 @@ function promoteInlineShorthand(node) {
       const j = matchBrace(text, i);
       if (j > i) {
         const litLen = (j + 1) - i;   // the literal {body} width the user actually typed
-        const token = promoteBraceBody(node, text.slice(i + 1, j));
+        const token = promoteBraceBody(node, text.slice(i + 1, j), voice);
         const km = token && token.match(/^\[\[[a-z]+:([a-z0-9]+)\]\]$/i);
         if (km) _promotedLit.set(km[1], litLen);
         // token: a [[…]] pill token, OR '' for a sidecar write that leaves no inline trace ({prop …}
@@ -30209,7 +30211,8 @@ function retryPendingBraces(from) {
 // unfold/caret translation (a cell shows raw tokens while editing). Same-cell declare-
 // then-reference ({x := 5} {x} in one cell) leaves the reference literal on this pass —
 // the declaration's token isn't committed yet; the next edit or reload promotes it.
-function promoteCellShorthand(node, cellText) {
+function promoteCellShorthand(node, cellText, say) {
+  const voice = typeof say === 'function' ? say : flashHint;
   const text = String(cellText ?? '');
   if (text.indexOf('{') < 0) return { text, changed: false };
   const codeSpans = codeSpanRanges(text);   // `{2d6}` inside inline code stays literal
@@ -30218,7 +30221,7 @@ function promoteCellShorthand(node, cellText) {
     if (text[i] === '{' && !inCodeSpan(codeSpans, i)) {
       const j = matchBrace(text, i);
       if (j > i) {
-        const token = promoteBraceBody(node, text.slice(i + 1, j));
+        const token = promoteBraceBody(node, text.slice(i + 1, j), voice);
         if (token != null) { out += token; i = j + 1; changed = true; continue; }
         // #916 anti-shred (see promoteInlineShorthand): an attempted-but-invalid outer form stays
         // one intact literal span — never promoted piecemeal into fragments.
@@ -30255,7 +30258,8 @@ function promoteCellShorthand(node, cellText) {
 // nothing new. Bounded: each non-final pass promotes ≥1 token, and the token count is
 // finite. resetDocCaches() bumps _varsVer; the final extra reset leaves a clean cache.
 // Returns the total count promoted (handy for tests).
-function promoteLoadedShorthand(rootNode) {
+function promoteLoadedShorthand(rootNode, say) {
+  const voice = typeof say === 'function' ? say : flashHint;
   let total = 0, pass;
   do {
     pass = 0;
@@ -30271,7 +30275,7 @@ function promoteLoadedShorthand(rootNode) {
           const m = mtModelText(node.text);
           let cellChanged = false;
           for (const row of m.rows) for (let c = 0; c < row.length; c++) {
-            const r = promoteCellShorthand(node, row[c]);
+            const r = promoteCellShorthand(node, row[c], voice);
             if (r.changed) { row[c] = r.text; cellChanged = true; }
           }
           if (cellChanged) {
@@ -30280,13 +30284,22 @@ function promoteLoadedShorthand(rootNode) {
             pass++;
           }
         }
-      } else if (node.text && promoteInlineShorthand(node)) pass++;
+      } else if (node.text && promoteInlineShorthand(node, voice)) pass++;
       for (const c of node.children || []) walk(c);
     })(rootNode);
     total += pass;
     if (pass) resetDocCaches(); // make this pass's new declarations visible to the next
   } while (pass);
   return total;
+}
+
+// Adoption can encounter several malformed date forms at once. Keep the individual
+// refusal copy at the promotion boundary, but give the document opener one summary.
+function invalidDateFeedbackSummary(messages) {
+  const hint = dateFormsHint();
+  const dates = [...new Set(messages.map(message => String(message)
+    .replace(/^Not a valid date: /, '').replace('. ' + hint, '')))];
+  return dates.length ? `Not valid dates: ${dates.join(', ')}. ${hint}` : '';
 }
 
 // Inline-able artifact ⇄ grammar source. Returns the {…} text an artifact
@@ -36450,7 +36463,9 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   migrateDocFootnotes(root);   // lift legacy per-node footnotes into the doc store (Phase A)
   applyDocSeed();              // #1243: seed the session RNG from this doc's seed (or Math.random if none)
   normalizeCalendarBindings(root); // #653: every adopted doc gets the {calendars, gamelog} shape (mkRoot has it, but a legacy import / self-contained HTML may not)
-  promoteLoadedShorthand(root);   // typed-but-unpromoted {…} from an imported/loaded doc → fresh pills
+  const invalidDateMessages = [];
+  promoteLoadedShorthand(root, message => invalidDateMessages.push(message)); // keep adoption feedback out of the toast until the walk finishes
+  if (invalidDateMessages.length) flashHint(invalidDateFeedbackSummary(invalidDateMessages));
   buildIndex(root, null);
   resetDocCaches();
   const assigned = !root.docId; ensureDocId(root);
