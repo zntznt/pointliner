@@ -32306,7 +32306,7 @@ test('#840 — the size fingerprint is anchored wherever the mtime anchor is set
   assert.match(_fSync, /function stopWorkspaceWatch\(\) \{[\s\S]{0,200}_wsKnownModified = 0;\s*\n\s*_wsKnownSize = 0;/, 'stopWorkspaceWatch must drop the size anchor too');
 });
 test('#840 — the flush pre-write gate and the change detector pass both fingerprints', () => {
-  assert.match(_fSync, /let diskModified = _wsKnownModified, diskSize = _wsKnownSize;\s*\n\s*try \{ const f = await workspaceFile\.getFile\(\); diskModified = f\.lastModified \|\| 0; diskSize = f\.size \|\| 0; \} catch \(_\) \{\}\s*\n\s*const action = reconcileAction\(\{ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty: true \}\);/,
+  assert.match(_fSync, /const f = await wf\.getFile\(\);\s*\n\s*if \(!current\(\)\) return false;\s*\n\s*const diskModified = f\.lastModified \|\| 0, diskSize = f\.size \|\| 0;\s*\n\s*const action = reconcileAction\(\{ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty: true \}\);/,
     'flushWorkspaceFile pre-write staleness gate must compare size too');
   assert.match(_fSync, /catch \(_\) \{ return; \}\s*\n\s*const action = reconcileAction\(\{ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty \}\);/,
     'checkExternalChange must compare size too');

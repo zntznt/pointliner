@@ -20,6 +20,15 @@
   ],
   "mutants": [
     {
+      "id": "workspace-manual-save-bypasses-reconcile",
+      "suite": "unit",
+      "why": "manual workspace saves must not bypass the conflict check",
+      "file": "index.html",
+      "find": "return await flushWorkspaceFile();",
+      "replace": "return true;",
+      "kills": "workspace manual save uses the reconciled flush"
+    },
+    {
       "id": "depth-tip-unwired",
       "suite": "unit",
       "why": "the core is tested and nothing calls it: a tested core proves nothing about its call site",

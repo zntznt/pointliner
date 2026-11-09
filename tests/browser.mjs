@@ -459,6 +459,157 @@ test('#1440 a view toggle writes nothing; a real edit still writes', { skip: ski
   assert.ok(wrote, 'and the write must contain the edit, not a stale serialization');
 });
 
+test('workspace manual save reconciles external changes and coalesces an active write', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const result = await pg.evaluate(async () => {
+    adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title></head><body><outline text="local"/></body></opml>'));
+    let disk = { lastModified: 200, size: 20 }, writes = [], prompts = 0, hints = [];
+    workspaceDir = {}; workspaceFile = { getFile: async () => disk }; fileHandle = workspaceFile;
+    fileName = 'notes.opml'; fsaOk = true; dirty = true; _wsKnownModified = 100; _wsKnownSize = 10;
+    window.withBgDialog = async fn => fn();
+    window.openReconcileDialog = async () => { prompts++; return 'later'; };
+    window.flashHint = s => hints.push(s);
+    window.refreshOwnDocInIndex = () => {};
+    window.safeWriteOpml = async (dir, name, opml) => { writes.push(opml); disk = { lastModified: 300, size: opml.length }; };
+    await saveFile();
+    const conflict = { writes: writes.length, prompts, dirty, hints: hints.slice() };
+    _wsPromptSnooze = 0; _wsKnownModified = disk.lastModified; _wsKnownSize = disk.size;
+    hints = []; await saveFile();
+    const success = { writes: writes.length, dirty, hints: hints.slice(), anchor: _wsKnownModified };
+    let release, started;
+    const blocked = new Promise(r => { release = r; });
+    const startedWrite = new Promise(r => { started = r; });
+    window.safeWriteOpml = async () => { writes.push('blocked'); started(); await blocked; };
+    dirty = true;
+    const first = flushWorkspaceFile(); await startedWrite;
+    hints = []; const concurrentSave = saveFile(); await Promise.resolve();
+    const concurrent = { writes: writes.length, pending: _wsPending, hints: hints.slice() };
+    release(); await first; await concurrentSave;
+    return { conflict, success, concurrent };
+  });
+  assert.equal(result.conflict.writes, 0);
+  assert.equal(result.conflict.prompts, 1);
+  assert.equal(result.conflict.dirty, true);
+  assert.equal(result.conflict.hints.some(s => /^Saved /.test(s)), false);
+  assert.equal(result.success.writes, 1);
+  assert.equal(result.success.dirty, false);
+  assert.equal(result.success.anchor, 300);
+  assert.equal(result.success.hints.some(s => /^Saved /.test(s)), true);
+  assert.equal(result.concurrent.writes, 2);
+  assert.equal(result.concurrent.pending, true);
+  assert.equal(result.concurrent.hints.some(s => /^Saved /.test(s)), false);
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('workspace keep mine retains the replacement write lock', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const state = await pg.evaluate(async () => {
+    let release, started;
+    const blocked = new Promise(r => { release = r; });
+    const writing = new Promise(r => { started = r; });
+    workspaceDir = {}; workspaceFile = { getFile: async () => ({ lastModified: 200, size: 20 }) };
+    fileHandle = workspaceFile; fileName = 'notes.opml'; fsaOk = true; dirty = true;
+    _wsKnownModified = 100; _wsKnownSize = 10;
+    window.withBgDialog = async fn => fn(); window.openReconcileDialog = async () => 'mine';
+    window.safeWriteOpml = async () => { started(); await blocked; };
+    window.refreshOwnDocInIndex = () => {};
+    await saveFile(); await writing;
+    const locked = _wsWriting;
+    const queued = saveFile(); await Promise.resolve();
+    const pending = _wsPending;
+    release();
+    await queued;
+    return { locked, pending };
+  });
+  assert.deepEqual(state, { locked: true, pending: true });
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+test('workspace save fails closed when the disk fingerprint cannot be read', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(async () => {
+    let writes = 0, warnings = 0, hints = [];
+    workspaceDir = {}; workspaceFile = { getFile: async () => { throw new Error('read failed'); } };
+    fileHandle = workspaceFile; fileName = 'a.opml'; fsaOk = true; dirty = true;
+    window.safeWriteOpml = async () => { writes++; };
+    window.degradeWorkspace = () => { warnings++; };
+    window.flashHint = s => hints.push(s);
+    await saveFile();
+    return { writes, warnings, dirty, hints };
+  });
+  assert.equal(r.writes, 0);
+  assert.equal(r.warnings, 1);
+  assert.equal(r.dirty, true);
+  assert.equal(r.hints.some(s => /^Saved /.test(s)), false);
+  assert.deepEqual(pageErrors, []); await pg.close();
+});
+
+test('workspace save never writes or cleans the document switched in during awaits', { skip: skip() }, async () => {
+  for (const stage of ['read', 'write', 'anchor']) {
+    const pg = await fresh();
+    const r = await pg.evaluate(async stage => {
+      let release, started, reads = 0, writes = [], hints = [];
+      const gate = new Promise(r => { release = r; });
+      const reached = new Promise(r => { started = r; });
+      const dirA = {}, fileA = { getFile: async () => {
+        reads++; if ((stage === 'read' && reads === 1) || (stage === 'anchor' && reads === 2)) { started(); await gate; }
+        return { lastModified: 100, size: 10 };
+      } };
+      workspaceDir = dirA; workspaceFile = fileA; fileHandle = fileA; fileName = 'a.opml';
+      fsaOk = true; dirty = true; _wsKnownModified = 100; _wsKnownSize = 10;
+      root.children = [mkNode('DOCUMENT A')];
+      window.flashHint = s => hints.push(s);
+      window.refreshOwnDocInIndex = () => {};
+      window.safeWriteOpml = async (dir, name, opml) => {
+        writes.push({ isA: dir === dirA, name, opml });
+        if (stage === 'write') { started(); await gate; }
+      };
+      const saving = saveFile(); await reached;
+      const docB = mkRoot(); docB.children = [mkNode('DOCUMENT B')];
+      root = docB; workspaceDir = {}; workspaceFile = { getFile: async () => ({ lastModified: 900, size: 99 }) };
+      fileHandle = workspaceFile; fileName = 'b.opml'; dirty = true; _wsKnownModified = 900; _wsKnownSize = 99;
+      release(); await saving;
+      return { writes, dirty, known: _wsKnownModified, size: _wsKnownSize, hints, text: root.children[0].text };
+    }, stage);
+    assert.equal(r.writes.length, stage === 'read' ? 0 : 1, stage);
+    for (const w of r.writes) { assert.equal(w.isA, true); assert.equal(w.name, 'a.opml'); assert.match(w.opml, /DOCUMENT A/); }
+    assert.deepEqual({ dirty: r.dirty, known: r.known, size: r.size, text: r.text },
+      { dirty: true, known: 900, size: 99, text: 'DOCUMENT B' }, stage);
+    assert.equal(r.hints.some(s => /^Saved /.test(s)), false, stage);
+    assert.deepEqual(pageErrors, []); await pg.close();
+  }
+});
+
+test('manual workspace save waits for a concurrent autosave and its own latest write', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const r = await pg.evaluate(async () => {
+    let release, started, writes = [], hints = [], done = false;
+    const gate = new Promise(r => { release = r; });
+    const reached = new Promise(r => { started = r; });
+    workspaceDir = {}; workspaceFile = { getFile: async () => ({ lastModified: 100, size: 10 }) };
+    fileHandle = workspaceFile; fileName = 'a.opml'; fsaOk = true; dirty = true;
+    _wsKnownModified = 100; _wsKnownSize = 10; root.children = [mkNode('FIRST')];
+    window.flashHint = s => hints.push(s); window.refreshOwnDocInIndex = () => {};
+    window.safeWriteOpml = async (dir, name, opml) => {
+      writes.push(opml); if (writes.length === 1) { started(); await gate; }
+    };
+    const auto = flushWorkspaceFile(); await reached;
+    root.children[0].text = 'LATEST'; markDirty();
+    const manual = saveFile().then(() => { done = true; });
+    await new Promise(r => setTimeout(r, 0));
+    const before = { done, dirty, hints: hints.slice(), writes: writes.length };
+    release(); await auto; await manual;
+    return { before, writes, done, dirty, hints };
+  });
+  assert.deepEqual(r.before, { done: false, dirty: true, hints: [], writes: 1 });
+  assert.equal(r.writes.length, 2); assert.match(r.writes[1], /LATEST/);
+  assert.equal(r.done, true); assert.equal(r.dirty, false);
+  assert.equal(r.hints.some(s => /^Saved /.test(s)), true);
+  assert.deepEqual(pageErrors, []); await pg.close();
+});
+
 // #1443 — the fix must not demote an INHERITED-tag match to a context row.
 //
 // The cheap version of this fix (pass '' everywhere) is 43% faster and WRONG: `self` decides whether

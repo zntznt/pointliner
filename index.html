@@ -36636,7 +36636,11 @@ async function saveFile() {
   // Save goes straight to the download the first refusal already announced, instead of reopening the
   // refused picker and repeating the error on every press.
   const route = currentSaveRoute();
-  if (route === 'write') { if (await writeH(fileHandle)) flashHint('Saved “' + displayName(fileName) + '”'); }
+  if (route === 'write') {
+    const target = fileHandle, name = fileName, doc = root;
+    if (await writeH(target) && fileHandle === target && fileName === name && root === doc)
+      flashHint('Saved “' + displayName(name) + '”');
+  }
   else if (route === 'pick') await saveAsFile();
   else dlOpml();
 }
@@ -36696,8 +36700,7 @@ async function writeH(h) {
     // a plain single-file save (Save / Save As, h is not the workspace file) keeps the
     // direct write — there's no folder handle to move() within and no sync race to guard.
     if (workspaceDir && h === workspaceFile) {
-      await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root)));
-      markClean(); await anchorWorkspaceFile(); return true;
+      return await flushWorkspaceFile();
     }
     const w = await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); return true;
   }
@@ -36735,6 +36738,7 @@ let workspaceFile = null;  // the current doc's FileSystemFileHandle within the 
 let workspaceIndex = null; // CF-1: the in-memory cross-doc link/backlink index (buildWorkspaceIndex), or null when no workspace. NOT a _varsVer doc-cache — rebuilt on workspace/FS events, not per-edit.
 let _wsIndexGen = 0;       // §5.1: the cross-doc generation — monotonic, bumped on every successful index (re)build; every cross-doc memo (wsDocVars, future folder reducers) keys on workspaceIndex.gen, the _varsVer twin for the folder.
 let _wsWriting = false, _wsPending = false; // flushWorkspaceFile coalescing: one write in flight, re-run with the latest state if edits arrived mid-write
+let _wsFlushPromise = null;
 let _wsWarned = false;     // one lost-access warning per event — never re-nag per tick (reset on reconnect/disconnect/swap)
 let _wsKnownModified = 0;  // sync-safety: lastModified of the workspace file as we last READ or WROTE it. The pre-write staleness check compares disk vs this; anchored on every load (anchorWorkspaceFile) and after every successful write (post-write getFile().lastModified, NOT wall-clock, so our own writes never read as external).
 let _wsKnownSize = 0;      // sync-safety #840: byte size (File.size) captured with the SAME getFile() as _wsKnownModified, everywhere the anchor is set. The second fingerprint: an external write landing in the same mtime bucket (FAT/exFAT 2s granularity, second-truncating or mtime-preserving sync tools) is caught by its size differing. 0 = never anchored (size-unknown → mtime-only verdict).
@@ -37896,10 +37900,9 @@ async function safeWriteOpml(dir, name, opml) {
 }
 
 // Continuous auto-write to the folder-backed file (brief #4). Called (not awaited) on
-// every debounced autosave tick when the doc is folder-backed. A coalesced async flush:
-// at most one write is in flight; if edits land mid-write, _wsPending re-runs it once
-// with the latest tree (so the file always converges on the newest state, never a torn
-// or stale write). Same withFoldedActive serialize as Save/autosave.
+// every debounced autosave tick when the doc is folder-backed. Concurrent callers wait for
+// the current flush and then serialize the latest tree, provided the target is still current.
+// Same withFoldedActive serialize as Save/autosave.
 //
 // sync-safety: before overwriting, a STALENESS CHECK (reconcileAction) compares the
 // on-disk lastModified against our anchor (_wsKnownModified). If the file changed under
@@ -37908,35 +37911,60 @@ async function safeWriteOpml(dir, name, opml) {
 // save a copy). The write itself is ATOMIC (safeWriteOpml: temp + move). A real-disk
 // write counts as saved → markClean, then we re-anchor. On lost access it degrades.
 async function flushWorkspaceFile() {
-  if (!workspaceFile) return;
-  if (_wsReconciling) return;                      // a prompt is open — don't write until the user decides
-  if (_wsWriting) { _wsPending = true; return; }   // coalesce — re-run after the in-flight write
+  if (!workspaceFile || !workspaceDir || _wsReconciling) return false;
+  const wf = workspaceFile, dir = workspaceDir, name = fileName, doc = root;
+  const current = () => workspaceFile === wf && workspaceDir === dir && fileName === name && root === doc;
+  if (_wsWriting) {
+    _wsPending = true;
+    await _wsFlushPromise;
+    return current() ? flushWorkspaceFile() : false;
+  }
   _wsWriting = true;
+  const run = flushWorkspaceFileOnce();
+  _wsFlushPromise = run;
+  return await run;
+
+  async function flushWorkspaceFileOnce() {
+  let releasedForReconcile = false;
   try {
     // pre-write staleness check — the heart of clobber-prevention. _wsForceWrite skips
     // it exactly once: the user explicitly chose "keep mine" in the reconcile prompt, so
     // overwriting is their decision, not a silent clobber (and it avoids a prompt loop).
     if (!_wsForceWrite) {
-      let diskModified = _wsKnownModified, diskSize = _wsKnownSize;
-      try { const f = await workspaceFile.getFile(); diskModified = f.lastModified || 0; diskSize = f.size || 0; } catch (_) {}
+      const f = await wf.getFile();
+      if (!current()) return false;
+      const diskModified = f.lastModified || 0, diskSize = f.size || 0;
       const action = reconcileAction({ diskModified, knownModified: _wsKnownModified, diskSize, knownSize: _wsKnownSize, dirty: true });
       if (action !== 'write') {                     // disk changed externally → reconcile, do not overwrite
         _wsWriting = false; _wsPending = false;
+        releasedForReconcile = true; // the prompt may start a new write; its lock is not ours to release
         await handleExternalChange(action === 'reload');
         return;
       }
     }
     _wsForceWrite = false;
-    const opml = withFoldedActive(() => toOpml(root));
-    await safeWriteOpml(workspaceDir, fileName, opml);
-    markClean();
-    await anchorWorkspaceFile();                    // re-anchor to OUR write's lastModified
+    if (!current()) return false;
+    const [version] = [_varsVer]; // local write snapshot, not a document cache
+    const opml = withFoldedActive(() => toOpml(doc));
+    await safeWriteOpml(dir, name, opml);
+    if (!current()) return false;
+    const saved = await wf.getFile();
+    if (!current()) return false;
+    _wsKnownModified = saved.lastModified || 0;
+    _wsKnownSize = saved.size || 0;
+    const unchanged = version === _varsVer;
+    if (unchanged) markClean();
     refreshOwnDocInIndex();                         // §5.4: fold the just-written doc into the index (throttled)
+    return unchanged;
   } catch (e) {
-    degradeWorkspace();
+    if (current()) degradeWorkspace();
+    return false;
   } finally {
-    _wsWriting = false;
-    if (_wsPending) { _wsPending = false; flushWorkspaceFile(); }
+    if (!releasedForReconcile) {
+      _wsWriting = false;
+      _wsPending = false;
+    }
+  }
   }
 }
 
