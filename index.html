@@ -10160,8 +10160,23 @@ ${(r.children.forEach(c=>nx(c,2)), out.join('\n'))}
 // Shallow per node ({...n}) so the sidecar arrays are shared by reference: toOpml only reads them
 // (JSON.stringify), so a deep copy would buy nothing and cost a full traversal of every artifact.
 function pruneNoexport(r) {
-  const keep = n => n.noexport ? null : { ...n, children: (n.children || []).map(keep).filter(Boolean) };
-  return { ...r, children: (r.children || []).map(keep).filter(Boolean) };
+  const keptRefs = new Set();
+  let excluded = false;
+  const collect = text => { for (const id of getFnRefs(text)) keptRefs.add(id); };
+  const keep = n => {
+    if (n.noexport) { excluded = true; return null; }
+    collect(n.text); collect(n.note);
+    return { ...n, children: (n.children || []).map(keep).filter(Boolean) };
+  };
+  const children = (r.children || []).map(c => keep(c)).filter(Boolean);
+  const copy = { ...r, children };
+  if (excluded && Array.isArray(r.footnotes)) {
+    const byId = new Map(r.footnotes.map(f => [f.id, f]));
+    // Set iteration includes newly added ids, so cycles terminate and transitive markers survive.
+    for (const id of keptRefs) { const f = byId.get(id); if (f) collect(f.text); }
+    copy.footnotes = r.footnotes.filter(f => keptRefs.has(f.id));
+  }
+  return copy;
 }
 
 // What a shared copy loses to those exclusions, so the person exporting learns it BEFORE they hand
@@ -23693,7 +23708,7 @@ function showBulletPopup(nodeId, bulletEl, opts = {}) {
     { sec:'More', icon:{ fa:'fa-solid fa-file-export', fb:'M' }, label:'Export to Markdown',
       fn: () => { hideBpop(); const n = nodeById(nodeId); if (n) exportNodesToMarkdown([n]); } },
     // #1310: on a section whose rows carry properties, offer a .csv export (the grid an accountant opens).
-    ...(sectionToCsvRows(node, knownStates(root)) ? [{ sec:'More', icon:{ fa:'fa-solid fa-table-cells', fb:'⇥' }, label:'Export table to CSV',
+    ...(!ancestorsOf(node).some(n => n.noexport) && sectionToCsvRows(node, knownStates(root)) ? [{ sec:'More', icon:{ fa:'fa-solid fa-table-cells', fb:'⇥' }, label:'Export table to CSV',
       fn: () => { hideBpop(); exportSectionCsv(nodeId); } }] : []),
     // #954: keep scaffolding (variable declarations, planning notes) out of a SHARED copy. The flag
     // skips this point AND its subtree in all three lossy exports — Markdown and text skip inside
@@ -38779,7 +38794,8 @@ function rowsToCsv(rows) {
 // missing one gets an empty cell), preceded by a `name` column holding each point's title cleaned of
 // pills, props and markdown markers. Row order is document order; column order is first-seen.
 function sectionToCsvRows(node, states) {
-  const kids = ((node && node.children) || []).filter(c => c && typeof c.text === 'string');
+  if (node && node.noexport) return null;
+  const kids = ((node && node.children) || []).filter(c => c && !c.noexport && typeof c.text === 'string');
   if (kids.length < 2) return null;
   const keys = [], seen = new Set();
   for (const c of kids) for (const p of (c.props || [])) {
@@ -39237,6 +39253,7 @@ function exportReadonlyHtml() { const n = downloadText(withFoldedActive(() => do
 // #1310: export a section's rows as a .csv an accountant or spreadsheet opens (the OUT mirror of paste).
 function exportSectionCsv(nodeId) {
   const node = nodeById(nodeId); if (!node) return;
+  if (node.noexport || ancestorsOf(node).some(n => n.noexport)) { flashHint('This point is excluded from export.'); return; }
   const rows = sectionToCsvRows(node, knownStates(root));
   if (!rows) { flashHint('No table to export here. This point needs at least two rows that carry properties.'); return; }
   const n = downloadText(rowsToCsv(rows), '.csv', 'text/csv');
@@ -39277,7 +39294,7 @@ function embedOpmlIntoHtml(html, opml) {
     /(<script\b[^>]*\bid=["']pl-embedded-doc["'][^>]*>)[\s\S]*?(<\/script>)/i,
     (_m, open, close) => open + opml + close);
 }
-function exportSelfContainedHtml() {
+async function exportSelfContainedHtml() {
   // #954 follow-through: this file is labelled "Shareable file", so it honors Exclude from export
   // like the markdown and text exports do. Only the OPML SAVE keeps everything now, which is what
   // makes the menu label accurate as written. Pruned INSIDE withFoldedActive so it reads the same
@@ -39290,6 +39307,10 @@ function exportSelfContainedHtml() {
     const p = pruneNoexport(root);
     return { pruned: p, impact: exportExclusionImpact(root, p) };
   });
+  const omitted = (root.footnotes || []).length - (pruned.footnotes || []).length;
+  if (omitted && !await openConfirmDialog({ title: 'Footnotes left out of shared copy',
+    message: `${omitted} unreferenced footnote${omitted === 1 ? '' : 's'} will be omitted from this copy because points are excluded. Your original document keeps them.`,
+    confirmLabel: 'Export copy', cancelLabel: 'Cancel' })) return;
   const opml = toOpml(pruned);
   const clone = document.documentElement.cloneNode(true);
   // Lean + boot-fresh: drop rendered/dynamic DOM (regenerated on load) and empty the

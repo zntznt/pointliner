@@ -9174,3 +9174,83 @@ test('Open selects the correct document and Save target after success or failure
     });
   }
 });
+
+test('excluded footnotes and CSV rows stay out of actual downloads', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const result = await pg.evaluate(async () => {
+    const section = mkNode('section');
+    const row = (text, key) => { const n = mkNode(text); n.props.push({ key, val: text }); return n; };
+    const secret = row('private row [^private] [^shared]', 'private_column'); secret.noexport = true;
+    section.children = [row('public [^shared]', 'value'), secret, row('other', 'value')];
+    root.children = [section];
+    root.footnotes = [{ id: 'private', text: 'PRIVATE FOOTNOTE BODY' }, { id: 'shared', text: 'SHARED FOOTNOTE BODY' }];
+    buildIndex(root, null); markDirty(); render();
+    const original = downloadText, outputs = [];
+    downloadText = content => { outputs.push(content); return 'export'; };
+    const confirm = openConfirmDialog, warnings = [];
+    openConfirmDialog = async options => { warnings.push(options.message); return true; };
+    try { await exportSelfContainedHtml(); exportSectionCsv(section.id); }
+    finally { downloadText = original; openConfirmDialog = confirm; }
+    return { html: outputs[0], csv: outputs[1], saved: toOpml(root), warnings };
+  });
+  assert.match(result.warnings[0], /1 unreferenced footnote/);
+  assert.equal(result.html.includes('PRIVATE FOOTNOTE BODY'), false);
+  assert.equal(result.html.includes('SHARED FOOTNOTE BODY'), true);
+  assert.equal(result.csv.includes('private row'), false);
+  assert.equal(result.csv.includes('private_column'), false);
+  assert.equal(result.csv.includes('other'), true);
+  assert.equal(result.saved.includes('PRIVATE FOOTNOTE BODY'), true);
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+
+test('share export warns before omitting orphan footnotes and cancellation writes nothing', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    const hidden = mkNode('private'); hidden.noexport = true;
+    root.children = [mkNode('public'), hidden];
+    root.footnotes = [{ id: 'orphan', text: 'PRIVATE ORPHAN' }];
+    buildIndex(root, null); markDirty(); render();
+    window.exportedCopies = [];
+    downloadText = content => { window.exportedCopies.push(content); return 'copy.html'; };
+  });
+  await pg.evaluate(() => { exportSelfContainedHtml(); });
+  await pg.getByText('Footnotes left out of shared copy', { exact: true }).waitFor();
+  assert.match(await pg.locator('#io-card p').innerText(), /1 unreferenced footnote/);
+  assert.equal(await pg.evaluate(() => window.exportedCopies.length), 0);
+  await pg.keyboard.press('Escape');
+  assert.equal(await pg.evaluate(() => window.exportedCopies.length), 0);
+  await pg.evaluate(() => { exportSelfContainedHtml(); });
+  await pg.getByRole('button', { name: 'Export copy' }).click();
+  await pg.waitForFunction(() => window.exportedCopies.length === 1);
+  const copy = await pg.evaluate(() => window.exportedCopies[0]);
+  const island = copy.match(/<script[^>]*id="pl-embedded-doc"[^>]*>([\s\S]*?)<\/script>/i)[1];
+  assert.equal(island.includes('PRIVATE ORPHAN'), false);
+  assert.equal(await pg.evaluate(() => toOpml(root).includes('PRIVATE ORPHAN')), true);
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
+
+test('CSV export refuses an excluded section and a section under an excluded point', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const result = await pg.evaluate(() => {
+    const parent = mkNode('private parent'), section = mkNode('section');
+    for (const label of ['first', 'second']) {
+      const row = mkNode(label); row.props.push({ key: 'secret', val: label }); section.children.push(row);
+    }
+    parent.children = [section]; root.children = [parent]; buildIndex(root, null);
+    let downloads = 0; const original = downloadText;
+    downloadText = () => { downloads++; return 'copy.csv'; };
+    try {
+      parent.noexport = true; exportSectionCsv(section.id);
+      parent.noexport = false; section.noexport = true; exportSectionCsv(section.id);
+      section.noexport = false; exportSectionCsv(section.id);
+    } finally { downloadText = original; }
+    return downloads;
+  });
+  assert.equal(result, 1);
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});

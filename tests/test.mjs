@@ -21848,6 +21848,36 @@ test('the HTML export prunes while the OPML save keeps everything', () => {
   assert.ok(!shared.includes('_noexport'), 'no flag can appear: a flagged node is never serialized');
 });
 
+test('shareable OPML prunes orphan footnotes only when points are excluded', () => {
+  const root = c.mkRoot();
+  root.footnotes = [{ id: 'secret', text: 'private citation' }, { id: 'shared', text: 'shared citation' },
+    { id: 'orphan', text: 'uncited citation' }, { id: 'public', text: 'public citation' }];
+  const hidden = c.mkNode('hidden'); hidden.noexport = true;
+  hidden.children.push(c.mkNode('deep [^secret] [^shared]'));
+  root.children.push(hidden, c.mkNode('visible [^shared] [^public]'));
+  const before = JSON.stringify(root);
+  const shared = c.toOpml(c.pruneNoexport(root));
+  assert.equal(shared.includes('private citation'), false);
+  for (const text of ['shared citation', 'public citation']) assert.equal(shared.includes(text), true);
+  assert.equal(shared.includes('uncited citation'), false);
+  hidden.noexport = false;
+  assert.equal(c.toOpml(c.pruneNoexport(root)).includes('uncited citation'), true);
+  hidden.noexport = true;
+  assert.equal(JSON.stringify(root), before);
+  assert.equal(c.toOpml(root).includes('private citation'), true);
+});
+
+test('shareable OPML retains note markers and transitive footnotes, including cycles', () => {
+  const root = c.mkRoot();
+  const visible = c.mkNode('public [^a]'); visible.note = 'note [^b]';
+  const hidden = c.mkNode('private [^b] [^secret]'); hidden.noexport = true;
+  root.children.push(visible, hidden);
+  root.footnotes = [{ id: 'a', text: 'first [^c]' }, { id: 'b', text: 'note body' },
+    { id: 'c', text: 'transitive [^a]' }, { id: 'secret', text: 'secret body' },
+    { id: 'orphan', text: 'orphan [^secret]' }];
+  assert.deepEqual(host(c.pruneNoexport(root).footnotes.map(f => f.id)), ['a', 'b', 'c']);
+});
+
 test('exportExclusionImpact — what a shared copy loses, so the exporter learns it first', () => {
   // A declaration is a [[var:key]] token plus its sidecar record, the shape promotion produces.
   const decl = (key, name, expr) => {
@@ -21931,6 +21961,8 @@ test('the HTML export wiring: pruned inside one folded pass, and no save path ga
   const fn = fnBody(_src, 'exportSelfContainedHtml');
   assert.ok(fn.includes('pruneNoexport(root)'), 'the export prunes');
   assert.ok(fn.includes('toOpml(pruned)'), 'and serializes the pruned copy, never the live root');
+  assert.ok(fn.indexOf('await openConfirmDialog') < fn.indexOf('downloadText('), 'confirm omissions before download');
+  assert.match(fn, /if \(omitted && !await openConfirmDialog/);
   assert.ok(!/toOpml\(root\)/.test(fn), 'the unpruned root must not reach toOpml here');
   // ONE withFoldedActive pass around both reads: the diff must compare like with like, or the
   // point being edited reports a spurious lost variable.
@@ -23172,6 +23204,19 @@ test('#1310 sectionToCsvRows: rows become a grid (union of property columns, val
   assert.equal(c.sectionToCsvRows(c.mkNode('lonely'), {}), null, 'no children → null');
   const plain = c.mkNode('p'); plain.children.push(c.mkNode('a'), c.mkNode('b'));
   assert.equal(c.sectionToCsvRows(plain, {}), null, 'rows with no properties → nothing to tabulate');
+});
+
+test('CSV excludes flagged rows and their columns before testing table eligibility', () => {
+  const section = c.mkNode('section');
+  const row = (text, key) => { const n = c.mkNode(text); n.props.push({ key, val: text }); return n; };
+  const hidden = row('PRIVATE', 'secret'); hidden.noexport = true;
+  section.children.push(row('one', 'public'), hidden, row('two', 'public'));
+  assert.deepEqual(host(c.sectionToCsvRows(section, {})), [['name', 'public'], ['one', 'one'], ['two', 'two']]);
+  section.children.pop();
+  assert.equal(c.sectionToCsvRows(section, {}), null);
+  assert.equal(section.children[1], hidden);
+  section.noexport = true;
+  assert.equal(c.sectionToCsvRows(section, {}), null);
 });
 
 test('#1310 the CSV export is wired (a section with property rows gets a bullet-menu door)', () => {
