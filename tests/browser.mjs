@@ -9204,6 +9204,30 @@ test('excluded footnotes and CSV rows stay out of actual downloads', { skip: ski
   await pg.close();
 });
 
+test('share export excludes duplicate footnotes imported from OPML', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const result = await pg.evaluate(async () => {
+    const doc = mkRoot(), hidden = mkNode('hidden'); hidden.noexport = true;
+    doc.children = [mkNode('visible [^a]'), hidden];
+    doc.footnotes = [{ id: 'a', text: 'PUBLIC [^b]' }, { id: 'a', text: 'PRIVATE [^secret]' },
+      { id: 'b', text: 'NESTED PUBLIC' }, { id: 'b', text: 'PRIVATE DUPLICATE' },
+      { id: 'secret', text: 'PRIVATE TRANSITIVE' }];
+    adoptDoc(fromOpml(toOpml(doc)));
+    let output = '';
+    downloadText = content => { output = content; return 'copy.html'; };
+    openConfirmDialog = async () => true;
+    await exportSelfContainedHtml();
+    return { output, saved: toOpml(root) };
+  });
+  const island = result.output.match(/<script[^>]*id="pl-embedded-doc"[^>]*>([\s\S]*?)<\/script>/i)[1];
+  assert.match(island, /PUBLIC/);
+  assert.match(island, /NESTED PUBLIC/);
+  assert.doesNotMatch(island, /PRIVATE/);
+  assert.match(result.saved, /PRIVATE DUPLICATE/);
+  assert.deepEqual(pageErrors, []);
+  await pg.close();
+});
+
 
 test('share export warns before omitting orphan footnotes and cancellation writes nothing', { skip: skip() }, async () => {
   const pg = await fresh();

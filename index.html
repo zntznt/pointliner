@@ -10171,10 +10171,11 @@ function pruneNoexport(r) {
   const children = (r.children || []).map(c => keep(c)).filter(Boolean);
   const copy = { ...r, children };
   if (excluded && Array.isArray(r.footnotes)) {
-    const byId = new Map(r.footnotes.map(f => [f.id, f]));
+    const byId = new Map();
+    for (const f of r.footnotes) if (!byId.has(f.id)) byId.set(f.id, f);
     // Set iteration includes newly added ids, so cycles terminate and transitive markers survive.
     for (const id of keptRefs) { const f = byId.get(id); if (f) collect(f.text); }
-    copy.footnotes = r.footnotes.filter(f => keptRefs.has(f.id));
+    copy.footnotes = [...byId.values()].filter(f => keptRefs.has(f.id));
   }
   return copy;
 }

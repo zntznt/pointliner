@@ -21878,6 +21878,27 @@ test('shareable OPML retains note markers and transitive footnotes, including cy
   assert.deepEqual(host(c.pruneNoexport(root).footnotes.map(f => f.id)), ['a', 'b', 'c']);
 });
 
+test('shareable OPML uses the first duplicate footnote for traversal and output', () => {
+  const root = c.mkRoot();
+  const hidden = c.mkNode('hidden'); hidden.noexport = true;
+  root.children.push(c.mkNode('visible [^a]'), hidden);
+  root.footnotes = [{ id: 'a', text: 'public [^b]' }, { id: 'a', text: 'PRIVATE [^secret]' },
+    { id: 'b', text: 'first nested' }, { id: 'b', text: 'PRIVATE duplicate' },
+    { id: 'secret', text: 'PRIVATE transitive' }];
+  const original = JSON.stringify(root);
+  const shared = c.pruneNoexport(root);
+  assert.deepEqual(host(shared.footnotes), [{ id: 'a', text: 'public [^b]' }, { id: 'b', text: 'first nested' }]);
+  assert.equal(c.toOpml(shared).includes('PRIVATE'), false);
+  assert.equal(JSON.stringify(root), original);
+  hidden.noexport = false;
+  assert.equal(c.pruneNoexport(root).footnotes.length, 5, 'ordinary exports retain the full store');
+});
+
+test('workspace manual save uses the reconciled flush', () => {
+  const write = fnBody(_src, 'writeH');
+  assert.match(write, /if \(workspaceDir && h === workspaceFile\)\s*\{\s*return await flushWorkspaceFile\(\);/);
+});
+
 test('exportExclusionImpact — what a shared copy loses, so the exporter learns it first', () => {
   // A declaration is a [[var:key]] token plus its sidecar record, the shape promotion produces.
   const decl = (key, name, expr) => {
