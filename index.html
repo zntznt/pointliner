@@ -36598,10 +36598,10 @@ async function openFile() {
         if (picked.outcome === 'refused') flashError(pickerRefusedMessage('opening a file', 'Drag a file onto the page, or use a different browser.'));
         return;
       }
-      [fileHandle] = picked.value;
-      const file = await fileHandle.getFile();
+      const [newHandle] = picked.value;
+      const file = await newHandle.getFile();
       const text = await file.text();
-      adoptDoc(fromOpml(text), { fileName: file.name, fileHandle });
+      adoptDoc(fromOpml(text), { fileName: file.name, fileHandle: newHandle });
     } catch(e) { if (e.name!=='AbortError') flashError('Could not open: '+e.message); }
   } else {
     const inp = document.createElement('input');

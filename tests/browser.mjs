@@ -9109,3 +9109,68 @@ test('UXP-339 leaving a point right after typing a closing brace stays left, and
   assert.deepEqual(pageErrors, []);
   await pg.close();
 });
+
+// Opening a file must not change the save target until its bytes have been read and parsed.
+// Fake only the picker and disk handles; Open, parsing, adoption and Save are the real paths.
+test('Open selects the correct document and Save target after success or failure', { skip: skip() }, async (t) => {
+  for (const scenario of ['success', 'read failure', 'parse failure']) {
+    await t.test(scenario, async () => {
+      if (!browser) assert.fail(launchErr || 'no browser was launched');
+      const pg = await browser.newPage();
+      const errors = [];
+      pg.on('pageerror', e => errors.push(String(e).split('\n')[0]));
+      await pg.addInitScript(() => { window.showOpenFilePicker = async () => [window.__picked]; });
+      try {
+        await pg.goto(APP);
+        await pg.waitForSelector('#outline', { timeout: 10000 });
+        await pg.waitForTimeout(700);
+        await pg.keyboard.press('Escape');
+        await pg.waitForTimeout(250);
+        await pg.evaluate((mode) => {
+          const opml = text => `<opml version="2.0"><head></head><body><outline text="${text}"/></body></opml>`;
+          window.__writes = { old: [], next: [] };
+          const handle = (key, name, contents) => ({ name, kind: 'file',
+            async getFile() {
+              if (key === 'next' && mode === 'read failure') throw new Error('read failed');
+              return new File([contents], name, { type: 'text/x-opml' });
+            },
+            async createWritable() {
+              let bytes = '';
+              return { async write(data) { bytes += data; }, async close() { window.__writes[key].push(bytes); } };
+            },
+            async queryPermission() { return 'granted'; }, async requestPermission() { return 'granted'; },
+          });
+          window.__old = handle('old', 'old.opml', opml('Old document'));
+          window.__next = handle('next', 'next.opml', mode === 'parse failure' ? '<opml><broken>' : opml('New document'));
+          window.__messages = [];
+          const reportError = flashError;
+          window.flashError = msg => { window.__messages.push(msg); return reportError(msg); };
+          window.__picked = window.__old;
+          markClean();
+        }, scenario);
+        await pg.evaluate(() => openFile());
+        assert.deepEqual(await pg.evaluate(() => ({ text: root.children[0].text, name: fileName, old: fileHandle === window.__old })),
+          { text: 'Old document', name: 'old.opml', old: true }, 'precondition: Open bound the original document');
+        await pg.evaluate(() => { markClean(); window.__picked = window.__next; });
+        await pg.evaluate(() => openFile());
+        const state = await pg.evaluate(() => ({ text: root.children[0].text, name: fileName,
+          old: fileHandle === window.__old, next: fileHandle === window.__next, messages: window.__messages }));
+        if (scenario === 'success') {
+          assert.deepEqual(state, { text: 'New document', name: 'next.opml', old: false, next: true, messages: [] });
+        } else {
+          assert.deepEqual({ text: state.text, name: state.name, old: state.old, next: state.next },
+            { text: 'Old document', name: 'old.opml', old: true, next: false }, 'failed Open preserves document and handle');
+          assert.match(state.messages.join(' '), scenario === 'read failure' ? /Could not open: read failed/ : /Could not open: Invalid OPML/);
+        }
+        await pg.evaluate(() => saveFile());
+        const writes = await pg.evaluate(() => window.__writes);
+        const target = scenario === 'success' ? 'next' : 'old';
+        const other = target === 'old' ? 'next' : 'old';
+        assert.equal(writes[target].length, 1, 'Save writes the expected handle');
+        assert.equal(writes[other].length, 0, 'Save never writes the other handle');
+        assert.match(writes[target][0], scenario === 'success' ? /New document/ : /Old document/);
+        assert.deepEqual(errors, []);
+      } finally { await pg.close(); }
+    });
+  }
+});
