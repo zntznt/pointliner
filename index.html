@@ -216,11 +216,18 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 #toolbar > *{flex-shrink:0}/* only the agenda strip (below) may give up height */
 #toolbar-row{padding:0 14px;height:44px;display:flex;align-items:center;gap:7px;position:relative;user-select:none;caret-color:transparent}
 #toolbar-row #search-wrap{caret-color:auto}
-#live-dialog{max-width:min(34rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);overflow:auto;background:var(--hbg);color:var(--fg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:1.25rem}
-#live-dialog::backdrop{background:rgba(0,0,0,.5)}
-#live-dialog label{display:block;margin:.75rem 0}
-#live-dialog input:not([type="checkbox"]){display:block;width:100%;max-width:26rem;box-sizing:border-box}
+#live-dialog{position:fixed;inset:16px;margin:auto;width:400px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);box-sizing:border-box;overflow:auto;background:var(--hbg);color:var(--fg);border:1px solid var(--bdr);border-radius:var(--r-lg);box-shadow:var(--sh-2);padding:16px 17px 14px}
+#live-dialog::backdrop{background:var(--scrim)}
+#live-dialog .io-field select{width:100%;font-family:var(--font);font-size:13.5px;color:var(--fg);background:var(--bg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:8px 11px}
+#live-dialog .io-field select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#live-dialog .live-copy{font-size:13px;line-height:1.45;color:var(--muted);margin:0 0 14px}
+#live-dialog .live-confirm{display:flex;align-items:start;gap:8px;font-size:13px;line-height:1.4}
+#live-dialog .live-confirm input{accent-color:var(--acc)}
+#live-error{color:var(--bad);font-size:13px;margin:0 0 11px}
 #live-error:empty{display:none}
+#file-menu button.cmd-item{width:100%;text-align:left;white-space:normal;font:inherit;color:inherit;border:0;background:transparent}
+#file-menu button.cmd-item:hover,#file-menu button.cmd-item:focus-visible{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+#live-disconnect:disabled{display:none}
 
 .logo{display:inline-flex;align-items:center;gap:7px;color:var(--fg);flex-shrink:0;cursor:pointer;user-select:none}
 .logo-text{font-family:var(--display-font);font-size:17px;font-weight:640;font-variation-settings:'opsz' 28;letter-spacing:-.01em}
@@ -348,7 +355,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 /* section eyebrow: a category label + a divider from the section above (the guide-nav-group recipe) */
 .fm-cat-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:10px 10px 5px;border-top:1px solid var(--bdr)}
 .fm-cat:first-child .fm-cat-head{border-top:none;padding-top:6px}
-.cmd-item.fm-search-hidden,.fm-scard.fm-search-hidden,#fm-live-bridge-card button.fm-search-hidden{display:none}      /* a row filtered out by the menu search (2 classes > .cmd-item) */
+.cmd-item.fm-search-hidden,.fm-scard.fm-search-hidden{display:none}      /* a row filtered out by the menu search (2 classes > .cmd-item) */
 #accent-row.fm-search-hidden{display:none}    /* the color swatches have no searchable text: hidden while searching */
 /* header */
 /* #603: the doc-identity block now lives at the top of the Document category pane (not a menu-wide
@@ -361,6 +368,8 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 .fm-title:focus-visible{background:var(--hbg);outline:2px solid var(--acc);outline-offset:-2px}/* #399: keyboard focus gets the standard ring, not the hover hairline (inset, matching the file-menu rows) */
 .fm-title.editing{overflow:visible;text-overflow:clip;background:var(--bg);outline:2px solid var(--acc);cursor:text}
 .fm-status{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Bridge state explains disconnection; unlike a filename it must never be ellipsized. */
+#live-status{white-space:normal;overflow:visible;overflow-wrap:anywhere}
 /* section labels */
 .fm-group{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:8px 10px 3px}
 /* file-menu rows: accent-tinted hover, icon + label light up, shortcut chips */
@@ -3003,16 +3012,16 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
      inside attributes), so a raw <script> data-island round-trips safely. -->
 <script type="application/xml" id="pl-embedded-doc"></script>
 <dialog id="live-dialog" aria-labelledby="live-title">
-  <h2 id="live-title">Connect experimental live bridge</h2>
-  <p>Only use a disposable OPML document. Choose what the local agent may read and where it may append. This is not production security.</p>
-  <label>Access scope <select id="live-scope-choice"><option value="">Choose a scope</option><option value="selected">Selected subtree</option><option value="document">Whole document</option></select></label>
-  <p>Selected point: <strong id="live-scope"></strong></p>
-  <p>Whole document access allows reading all points and appending a top-level point. Selected subtree access allows reading that branch and appending beneath its root.</p>
+  <div class="io-head"><span class="io-title" id="live-title">Connect experimental live bridge</span></div>
+  <p class="live-copy">Use a disposable OPML document only. This bridge is experimental and is not production-secure.</p>
+  <div class="io-field"><label for="live-scope-choice">Access scope</label><select id="live-scope-choice"><option value="">Choose a scope</option><option value="selected">Selected subtree</option><option value="document">Whole document</option></select></div>
+  <p class="live-copy" id="live-scope-selected" hidden>Selected point: <strong id="live-scope"></strong>. The agent can read this branch and append beneath its root.</p>
+  <p class="live-copy" id="live-scope-document" hidden>The agent can read all points and append a top-level point.</p>
   <p id="live-error" role="alert"></p>
-  <label>Helper port <input id="live-port" inputmode="numeric" autocomplete="off"></label>
-  <label>Browser secret <input id="live-secret" type="password" autocomplete="off" spellcheck="false"></label>
-  <label><input id="live-disposable" type="checkbox"> I am using a disposable document</label>
-  <button id="live-connect" type="button">Connect</button> <button id="live-cancel" type="button">Cancel</button>
+  <div class="io-field"><label for="live-port">Helper port</label><input id="live-port" inputmode="numeric" autocomplete="off"></div>
+  <div class="io-field"><label for="live-secret">Browser secret</label><input id="live-secret" type="password" autocomplete="off" spellcheck="false"></div>
+  <label class="live-confirm"><input id="live-disposable" type="checkbox"> <span>I am using a disposable document</span></label>
+  <div class="io-foot"><button class="io-btn" id="live-cancel" type="button">Cancel</button><button class="io-btn primary" id="live-connect" type="button">Connect</button></div>
 </dialog>
 <div id="toolbar">
   <div id="toolbar-row">
@@ -3126,12 +3135,8 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         </div>
         <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh document</span></div></div>
         <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open…</span><span class="cmd-desc">Open a document</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
-        <div class="fm-scard" id="fm-live-bridge-card" aria-label="Experimental local bridge">
-          <p>Experimental bridge for disposable documents only. Start the local helper and open its experimental copy.</p>
-          <button id="live-open" type="button">Live bridge</button>
-          <button id="live-disconnect" type="button" disabled>Disconnect bridge</button>
-          <span id="live-status" role="status">Disconnected</span>
-        </div>
+        <button class="cmd-item" id="live-open" type="button"><span class="cmd-icon" aria-hidden="true">↔</span><span class="cmd-info"><span class="cmd-label">Live bridge…</span><span class="cmd-desc">Experimental connection for disposable documents</span><span class="fm-status" id="live-status" role="status">Disconnected</span></span></button>
+        <button class="cmd-item" id="live-disconnect" type="button" disabled><span class="cmd-icon" aria-hidden="true">×</span><span class="cmd-info"><span class="cmd-label">Disconnect bridge</span><span class="cmd-desc">End the live connection</span></span></button>
         <div class="cmd-item" id="btn-import"><div class="cmd-icon" data-fa="fa-solid fa-inbox" data-fb="📥">📥</div><div class="cmd-info"><span class="cmd-label">Import points…</span><span class="cmd-desc">Add points from another .opml file or pasted text. Nothing here is replaced</span></div></div>
         <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
         <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
@@ -11024,6 +11029,8 @@ async function liveBridgeLoop(session) {
     selected = selFocusId; selectedDoc = root;
     document.getElementById('live-disposable').checked = false;
     document.getElementById('live-scope-choice').value = '';
+    document.getElementById('live-scope-selected').hidden = true;
+    document.getElementById('live-scope-document').hidden = true;
     document.getElementById('live-error').textContent = '';
     closeFileMenu();
     document.getElementById('live-scope').textContent = nodeById(selected)?.text || '(select a point first)';
@@ -11032,6 +11039,10 @@ async function liveBridgeLoop(session) {
   document.getElementById('live-cancel').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => { document.getElementById('live-secret').value = ''; });
   document.getElementById('live-disconnect').addEventListener('click', () => liveBridgeStop());
+  document.getElementById('live-scope-choice').addEventListener('change', event => {
+    document.getElementById('live-scope-selected').hidden = event.target.value !== 'selected';
+    document.getElementById('live-scope-document').hidden = event.target.value !== 'document';
+  });
   dialog.addEventListener('input', () => { document.getElementById('live-error').textContent = ''; });
   document.getElementById('live-connect').addEventListener('click', () => {
     const port = document.getElementById('live-port').value;
@@ -43458,21 +43469,10 @@ function fmApplySearch(q) {
     sec.querySelectorAll('.cmd-item').forEach(row => {
       const hay = ((row.querySelector('.cmd-label')?.textContent || '') + ' ' +
                    (row.querySelector('.cmd-desc')?.textContent || '')).toLowerCase();
-      const hit = row.offsetParent !== null && hay.includes(q);
+      const hit = row.offsetParent !== null && !row.disabled && hay.includes(q);
       row.classList.toggle('fm-search-hidden', !hit);
       if (hit) { any = true; total++; }
     });
-    const bridge = sec.querySelector('#fm-live-bridge-card');
-    if (bridge) {
-      let hits = 0;
-      bridge.querySelectorAll('button').forEach(button => {
-        const hit = bridge.offsetParent !== null && !button.disabled && button.textContent.toLowerCase().includes(q);
-        button.classList.toggle('fm-search-hidden', !hit);
-        if (hit) hits++;
-      });
-      bridge.classList.toggle('fm-search-hidden', hits === 0);
-      if (hits) { any = true; total += hits; }
-    }
     sec.querySelector('#accent-row')?.classList.add('fm-search-hidden');   // no searchable text
     sec.hidden = !any;   // a category with no matching action drops out entirely
   });
@@ -43678,7 +43678,7 @@ function closeFileMenu() {
 // The rows the arrows rove over = only the visible ones: excludes capability-hidden rows, rows the
 // search filtered out, and every row in a non-active category (offsetParent is null when any ancestor
 // is display:none). #603: this replaces the old style.display check, which couldn't see category/search hiding.
-const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item, #fm-live-bridge-card button')].filter(el => el.offsetParent !== null && !el.disabled);
+const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')].filter(el => el.offsetParent !== null && !el.disabled);
 const fmNavBtns = () => [...fileMenu.querySelectorAll('.guide-nav-btn')];
 // #507: only the plain <div> rows get role=button — the two external-link <a> rows keep
 // their native link semantics (a SR announces "opens in new window") and the native

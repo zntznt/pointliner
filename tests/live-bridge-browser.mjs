@@ -47,7 +47,14 @@ test('disposable OPML: CLI pairs, reads one branch, appends, respects editing, u
     const point = page.locator('.node-content').filter({ hasText: 'Sandbox' }).first();
     await point.click();
     await page.locator('#logo-btn').click(); await page.locator('#live-open').click();
+    assert.equal(await page.locator('#live-scope-selected').isVisible(), false);
+    assert.equal(await page.locator('#live-scope-document').isVisible(), false);
+    await page.locator('#live-scope-choice').selectOption('document');
+    assert.equal(await page.locator('#live-scope-document').isVisible(), true);
+    assert.equal(await page.locator('#live-scope-selected').isVisible(), false);
+    await page.locator('#live-scope-choice').selectOption('selected');
     assert.equal(await page.locator('#live-scope').innerText(), 'Sandbox');
+    assert.equal(await page.locator('#live-scope-document').isVisible(), false);
     await page.locator('#live-port').fill(port); await page.locator('#live-secret').fill(secret);
     await page.locator('#live-disposable').check(); await page.locator('#live-scope-choice').selectOption('selected'); await page.locator('#live-connect').click();
     try { await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Connected', null, {timeout: 5000}); } catch { throw Error('Connection failed: ' + await page.locator('#live-status').textContent() + ' / ' + errors.join('; ')); }
@@ -62,6 +69,16 @@ test('disposable OPML: CLI pairs, reads one branch, appends, respects editing, u
     console.log('Post-connect focus:', JSON.stringify(focusedBefore));
     const read = await command('read', 'Initial');
     assert.deepEqual(await page.evaluate(() => ({ id: document.activeElement.id, tag: document.activeElement.tagName })), focusedBefore);
+    // Connection state is operational feedback, not optional guidance.
+    await page.locator('#logo-btn').click();
+    for (const tier of ['standard', 'lean', 'guided']) {
+      await page.evaluate(tier => { setVerbosity(tier); if (!document.querySelector('#file-menu').classList.contains('on')) document.querySelector('#logo-btn').click(); }, tier);
+      assert.equal(await page.locator('#live-status').isVisible(), true, tier);
+      assert.equal(await page.locator('#live-status').textContent(), 'Connected');
+      await page.keyboard.press('Escape');
+    }
+
+    await page.evaluate(() => document.activeElement.blur());
     // Opening the File menu puts keyboard focus in its search field. It is
     // incidental UI, not an uncommitted document editor.
     await page.locator('#logo-btn').click();
@@ -219,7 +236,7 @@ test('switching documents immediately stops a paired disposable session', { time
     const port = await until(() => /Port: (\d+)/.exec(output)?.[1]);
     const app = 'file://' + await until(() => /Experimental app: ([^\r\n]+)/.exec(output)?.[1]);
     const secret = await until(() => /Browser secret \(paste once into Pointliner\): ([a-f0-9]{64})/.exec(output)?.[1]);
-    const page = await browser.newPage();
+    const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
     await page.goto(app); await page.waitForSelector('#outline'); await page.waitForTimeout(1000); await page.keyboard.press('Escape');
     await page.evaluate(xml => adoptDoc(fromOpml(xml), { fileName: 'disposable.opml' }), opml);
     await page.locator('.node-content').filter({ hasText: 'Sandbox' }).first().click();
@@ -229,6 +246,24 @@ test('switching documents immediately stops a paired disposable session', { time
     await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Connected');
     await page.evaluate(xml => adoptDoc(fromOpml(xml), { fileName: 'other-disposable.opml' }), opml);
     assert.equal(await page.locator('#live-status').textContent(), 'Disconnected: document changed');
+    await page.locator('#logo-btn').click();
+    for (const tier of ['guided', 'standard', 'lean']) {
+      await page.evaluate(tier => { setVerbosity(tier); if (!document.querySelector('#file-menu').classList.contains('on')) document.querySelector('#logo-btn').click(); }, tier);
+      const status = page.locator('#live-status');
+      await status.scrollIntoViewIfNeeded();
+      assert.equal(await status.isVisible(), true, tier);
+      const metrics = await status.evaluate(el => {
+        const range = document.createRange(); range.selectNodeContents(el);
+        const box = el.getBoundingClientRect(), pane = document.querySelector('#fm-pane').getBoundingClientRect();
+        return { width: el.clientWidth, scrollWidth: el.scrollWidth, height: el.clientHeight, scrollHeight: el.scrollHeight,
+          overflow: getComputedStyle(el).overflow, whiteSpace: getComputedStyle(el).whiteSpace,
+          lines: [...range.getClientRects()].map(r => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom })),
+          box: { left: box.left, right: box.right, top: box.top, bottom: box.bottom }, pane: { left: pane.left, right: pane.right, top: pane.top, bottom: pane.bottom } };
+      });
+      assert.ok(metrics.lines.length >= 2, JSON.stringify({ tier, metrics }));
+      assert.ok(metrics.scrollWidth <= metrics.width && metrics.scrollHeight <= metrics.height, JSON.stringify({ tier, metrics }));
+      for (const line of metrics.lines) assert.ok(line.left >= metrics.box.left - 1 && line.right <= metrics.box.right + 1 && line.top >= metrics.pane.top - 1 && line.bottom <= metrics.pane.bottom + 1, JSON.stringify({ tier, metrics }));
+    }
     assert.equal(await page.locator('#live-disconnect').isDisabled(), true);
     await new Promise(resolve => setTimeout(resolve, 600));
     const start = output.length; child.stdin.write('append Wrong document\n');
@@ -403,4 +438,27 @@ test('CLI accepts fixed port and rejects invalid lifetime and port', { timeout: 
     const bad = spawn(process.execPath, ['tools/live-agent.mjs', ...args], { cwd: repo });
     const code = await new Promise(resolve => bad.on('exit', resolve)); assert.equal(code, 1);
   }
+});
+
+
+test('bridge status and dialog remain usable in a short viewport across guidance levels', { timeout: 30000, skip: !chromium && !process.env.POINTLINER_REQUIRE_BROWSER }, async () => {
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {});
+  try {
+    const page = await browser.newPage({ viewport: { width: 375, height: 400 } });
+    await page.goto(defaultApp); await page.waitForSelector('#outline'); await page.keyboard.press('Escape');
+    for (const tier of ['guided', 'standard', 'lean']) {
+      await page.locator('#logo-btn').click();
+      await page.locator('#fm-verbosity-card [data-tier="' + tier + '"]').click();
+      assert.equal(await page.locator('#live-status').isVisible(), true, tier);
+      assert.equal(await page.locator('#live-status').textContent(), 'Disconnected');
+      await page.locator('#live-open').click();
+      await page.locator('#live-scope-choice').selectOption('document');
+      await page.locator('#live-connect').scrollIntoViewIfNeeded();
+      const box = await page.locator('#live-connect').boundingBox();
+      assert.ok(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= 375 && box.y + box.height <= 400, JSON.stringify({ tier, box }));
+      await page.locator('#live-connect').click();
+      assert.notEqual(await page.locator('#live-error').textContent(), '');
+      await page.locator('#live-cancel').click();
+    }
+  } finally { await browser.close(); }
 });
