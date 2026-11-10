@@ -442,10 +442,12 @@ test('CLI accepts fixed port and rejects invalid lifetime and port', { timeout: 
 
 
 test('bridge status and dialog remain usable in a short viewport across guidance levels', { timeout: 30000, skip: !chromium && !process.env.POINTLINER_REQUIRE_BROWSER }, async () => {
+  const { buildLiveBridgeApp } = await import('../tools/live-bridge-build.mjs');
+  const app = buildLiveBridgeApp(39119);
   const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {});
   try {
     const page = await browser.newPage({ viewport: { width: 375, height: 400 } });
-    await page.goto(defaultApp); await page.waitForSelector('#outline'); await page.keyboard.press('Escape');
+    await page.goto('file://' + app.path); await page.waitForSelector('#outline'); await page.keyboard.press('Escape');
     for (const tier of ['guided', 'standard', 'lean']) {
       await page.locator('#logo-btn').click();
       await page.locator('#fm-verbosity-card [data-tier="' + tier + '"]').click();
@@ -460,5 +462,68 @@ test('bridge status and dialog remain usable in a short viewport across guidance
       assert.notEqual(await page.locator('#live-error').textContent(), '');
       await page.locator('#live-cancel').click();
     }
-  } finally { await browser.close(); }
+  } finally { await browser.close(); app.cleanup(); }
+});
+
+test('bridge discovery is limited to helper-generated app', { timeout: 30000, skip: !chromium && !process.env.POINTLINER_REQUIRE_BROWSER }, async () => {
+  const { buildLiveBridgeApp } = await import('../tools/live-bridge-build.mjs');
+  const app = buildLiveBridgeApp(39119);
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {});
+  try {
+    for (const [url, enabled] of [[defaultApp, false], ['file://' + app.path, true]]) {
+      const page = await browser.newPage();
+      await page.goto(url); await page.waitForSelector('#outline'); await page.keyboard.press('Escape');
+      assert.equal(await page.evaluate(() => GUIDE.some(e => e.id === 'live-bridge')), enabled);
+      await page.locator('#logo-btn').click();
+      await page.locator('#fm-search').fill('live bridge');
+      assert.equal(await page.locator('#live-open').isVisible(), enabled);
+      if (enabled) { await page.keyboard.press('ArrowDown'); assert.equal(await page.evaluate(() => document.activeElement.id), 'live-open'); }
+      else {
+        assert.equal(await page.locator('#live-disconnect').isVisible(), false);
+        await page.keyboard.press('ArrowDown');
+        assert.notEqual(await page.evaluate(() => document.activeElement.id), 'live-open');
+        await page.keyboard.press('Enter');
+        assert.equal(await page.locator('#live-dialog').isVisible(), false);
+      }
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => openGuide('shortcuts'));
+      await page.locator('#io-card .guide-search').fill('Experimental live bridge');
+      assert.equal(await page.locator('#io-card').getByRole('button', { name: 'Experimental live bridge', exact: true }).isVisible(), enabled);
+      await page.close();
+    }
+  } finally { await browser.close(); app.cleanup(); }
+});
+
+test('a browser can apply a command delivered before helper revocation', { timeout: 30000, skip: !chromium && !process.env.POINTLINER_REQUIRE_BROWSER }, async () => {
+  const { createLiveBridge } = await import('../tools/live-bridge-helper.mjs');
+  const { buildLiveBridgeApp } = await import('../tools/live-bridge-build.mjs');
+  const bridge = createLiveBridge({ origin: 'null', lifetimeMs: 30000 });
+  await new Promise(resolve => bridge.server.listen(0, '127.0.0.1', resolve));
+  const port = bridge.server.address().port, app = buildLiveBridgeApp(port);
+  const secret = bridge.issueBrowser(); let native = bridge.issueNative();
+  const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH } : {});
+  let resume; const gate = new Promise(resolve => { resume = resolve; });
+  try {
+    const page = await browser.newPage();
+    let delivered = false;
+    await page.route(`http://127.0.0.1:${port}/bridge`, async route => {
+      if (route.request().method() !== 'POST') return route.continue();
+      const response = await route.fetch();
+      const body = await response.text();
+      if (JSON.parse(body).command?.op === 'append') { delivered = true; await gate; }
+      await route.fulfill({ response, body });
+    });
+    await page.goto('file://' + app.path); await page.waitForSelector('#outline'); await page.keyboard.press('Escape');
+    await page.evaluate(xml => adoptDoc(fromOpml(xml), { fileName: 'disposable.opml' }), opml);
+    await page.locator('#logo-btn').click(); await page.locator('#live-open').click();
+    await page.locator('#live-port').fill(String(port)); await page.locator('#live-secret').fill(secret);
+    await page.locator('#live-disposable').check(); await page.locator('#live-scope-choice').selectOption('document'); await page.locator('#live-connect').click();
+    await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Connected');
+    const response = await fetch(`http://127.0.0.1:${port}/bridge`, { method: 'POST', headers: { authorization: `Bearer ${native}`, 'content-type': 'application/json' }, body: JSON.stringify({ op: 'append', text: 'Delivered before revocation' }) });
+    const data = await response.json(); assert.ok(data.queued);
+    await until(() => delivered);
+    bridge.revoke(); resume();
+    await page.waitForFunction(() => root.children.some(n => n.text === 'Delivered before revocation'));
+    assert.equal(await page.evaluate(() => root.children.some(n => n.text === 'Delivered before revocation')), true);
+  } finally { resume(); await browser.close(); app.cleanup(); bridge.server.closeAllConnections(); await new Promise(resolve => bridge.server.close(resolve)); }
 });

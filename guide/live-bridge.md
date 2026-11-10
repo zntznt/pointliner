@@ -14,8 +14,7 @@ On Linux with Node.js and Chromium:
    **File** menu and choose **Live bridge**. Check the disposable-document confirmation, enter the
    port and secret, choose **Selected subtree**, and choose **Connect**. Alternatively explicitly choose **Whole document** to allow reading every point and appending a top-level point; no point selection is needed. Reopen the File menu to check that the status says
    **Connected**, then close the menu.
-4. In the terminal, run `read`, then `append A disposable point`. Only the selected point and its
-   descendants are read; append adds a direct child of that point. Leave point editing before issuing
+4. In the terminal, run `read`, then `append A disposable point`. With **Selected subtree**, read includes that point and its descendants, and append adds its direct child. With **Whole document**, read includes all points and append adds a top-level point. Leave point editing before issuing
    a command. Check the new point in the browser, then use Pointliner's undo.
 5. Choose **Disconnect bridge** in the File menu, or enter `disconnect` in the terminal. Discard
    the test document afterward. The helper expires after five minutes. Document replacement also
@@ -25,8 +24,7 @@ On Linux with Node.js and Chromium:
 
 If a command times out or a response is lost, the helper revokes the session and discards queued
 work. A failed read has no append side effect and is reported separately. **An append may already have been applied before its response was lost. Inspect the disposable
-document before retrying**, then restart the helper and pair again. Revocation cannot roll back a
-command already received by the browser.
+document before retrying**, then restart the helper and pair again. Revocation discards queued work, but a command already delivered to the browser may still apply after disconnect or expiry. Inspect the document before retrying; disconnect is not a guarantee that an in-flight command was cancelled.
 
 The browser and helper normally run on the same computer; SSH forwarding can connect a remote browser as described below. The helper supports one outstanding
 command, not arbitrary filesystem access, shell commands, or code evaluation. Limits include 500

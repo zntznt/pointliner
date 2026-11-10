@@ -11022,6 +11022,11 @@ async function liveBridgeLoop(session) {
   }
 }
 (function wireLiveBridge() {
+  // Only the helper-generated copy can connect; keep standalone menus searchable without dead actions.
+  if (!LIVE_BRIDGE_PORT) {
+    document.getElementById('live-open').style.display = 'none';
+    document.getElementById('live-disconnect').style.display = 'none';
+  }
   const dialog = document.getElementById('live-dialog');
   const status = document.getElementById('live-status');
   let selected = null, selectedDoc = null;
@@ -45726,6 +45731,12 @@ const GUIDE = [
 // GUIDE-END — stable boundary marker: tests slice the GUIDE array from `const GUIDE = [` to
 // here. Keep this line right after the array's closing `];`. (Replaces the old
 // `(function buildShortcutsPanel` boundary, retired with the shortcuts panel.)
+
+// The standalone build cannot connect to the experimental helper.
+if (!LIVE_BRIDGE_PORT) {
+  const bridgeGuide = GUIDE.findIndex(entry => entry.id === 'live-bridge');
+  if (bridgeGuide !== -1) GUIDE.splice(bridgeGuide, 1);
+}
 
 // A plain-text guide body becomes HTML: escape first, then two authoring conveniences
 // (#598, #599). Blank lines split the body into separate <p>s so a long entry reads as

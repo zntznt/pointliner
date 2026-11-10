@@ -114,3 +114,27 @@ test('close-only state expires even if the browser never polls', async () => {
     assert.equal((await send(browser, 'null', { op: 'poll' })).status, 410);
   } finally { bridge.server.closeAllConnections(); await new Promise(resolve => bridge.server.close(resolve)); }
 });
+
+test('revoked session rejects polling; previously delivered command remains in the client', async () => {
+  for (const delivered of [false, true]) {
+    const bridge = createLiveBridge({ origin: 'null', lifetimeMs: 10000 });
+    await new Promise(resolve => bridge.server.listen(0, '127.0.0.1', resolve));
+    try {
+      let browser = bridge.issueBrowser(), native = bridge.issueNative();
+      const url = `http://127.0.0.1:${bridge.server.address().port}/bridge`;
+      async function send(token, body, origin) {
+        const response = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(origin ? { origin } : {}) }, body: JSON.stringify(body) });
+        return [response.status, await response.json()];
+      }
+      let result;
+      [, result] = await send(browser, { op: 'poll' }, 'null'); browser = result.next;
+      [, result] = await send(native, { op: 'append', text: 'test' }); native = result.next;
+      let command;
+      if (delivered) { [, result] = await send(browser, { op: 'poll' }, 'null'); browser = result.next; command = result.command; }
+      bridge.revoke();
+      assert.equal((await send(browser, { op: 'poll' }, 'null'))[0], 410);
+      // Delivery transfers a command to the browser; revocation cannot erase its local copy.
+      assert.deepEqual(command, delivered ? { id: 1, op: 'append', text: 'test' } : undefined);
+    } finally { bridge.server.closeAllConnections(); await new Promise(resolve => bridge.server.close(resolve)); }
+  }
+});
