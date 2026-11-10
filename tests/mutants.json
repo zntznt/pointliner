@@ -5067,6 +5067,24 @@
       "find": "    const linkOnly = tok && !tok.docId && tok.label !== undefined ? tok : null;",
       "replace": "    const linkOnly = tok && (tok.docId ? { ...tok, label: '' } : tok.label !== undefined ? tok : null);",
       "kills": "bare cross-document links do not get caption-caret repositioning"
+    },
+    {
+      "id": "live-bridge-document-swap-unwired",
+      "suite": "unit",
+      "why": "A paired bridge must stop before a different document is adopted.",
+      "file": "index.html",
+      "find": "  if (liveBridge) liveBridgeStop('Disconnected: document changed');",
+      "replace": "  // Mutant: leave the old bridge active.",
+      "kills": "live bridge document swap and editor guards remain wired"
+    },
+    {
+      "id": "live-bridge-agent-disconnect-notice-unwired",
+      "suite": "unit",
+      "why": "An authenticated close notice must stop the browser before command processing.",
+      "file": "index.html",
+      "find": "      if (data.disconnected === true) { liveBridgeStop('Disconnected by agent'); return; }",
+      "replace": "      // Mutant: ignore the agent disconnect notice.",
+      "kills": "live bridge reports an authenticated agent disconnect"
     }
   ]
 }

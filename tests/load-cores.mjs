@@ -131,6 +131,7 @@ export function loadCores() {
   sandbox.scrollTo = () => {};
   sandbox.scroll = () => {};
   sandbox.queueMicrotask = (f) => { try { f(); } catch {} };
+  sandbox.TextEncoder = TextEncoder;
   sandbox.structuredClone = (v) => structuredClone(v);   // the app uses it (browsers >=2022); expose Node's into the vm realm
   sandbox.scrollX = 0;
   sandbox.scrollY = 0;
@@ -167,6 +168,7 @@ export function loadCores() {
   }
 
   const need = [
+    'liveBridgeScope', 'liveBridgeTimestampProps',
     'parseDice', 'rollParsed', 'diceExprStr', 'mathHasDice', 'freezeDiceInExpr', 'rollDiceTerm',
     'parseVersus', 'versusKind', 'rollVersus', 'versusSide', 'versusSideKind', 'versusValid', 'rollPickRecord', 'versusVerdict',   // #1243 opposed/margin rolls (contest cores; sides may be a roll, a constant, or a variable)
     'checkQuery',           // #1195: the query embedded in a check, for the reveal-offenders affordance

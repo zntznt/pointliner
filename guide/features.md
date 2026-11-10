@@ -9,11 +9,15 @@ over what you write (math, dates, sums that roll up the tree), all inside the wr
 surface is an **outline** (nested bullet points, like a foldable to-do list or a notebook), because
 that is what lets you reorganize thought freely; the generating and computing are the point.
 
-All of it runs in one file, offline, with nothing to install.
+The main app runs in one file, offline, with nothing to install. The opt-in experimental live bridge uses a local Node helper.
 
 Nothing below needs code. If you can type `{`, you can use it.
 
 ---
+
+## Experimental local agent
+
+- **Disposable live bridge.** Connect a local agent to one selected branch in a throwaway OPML document. ([setup and security limitations](live-bridge.md))
 
 ## Writing and structuring
 

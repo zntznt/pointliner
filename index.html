@@ -216,6 +216,12 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 #toolbar > *{flex-shrink:0}/* only the agenda strip (below) may give up height */
 #toolbar-row{padding:0 14px;height:44px;display:flex;align-items:center;gap:7px;position:relative;user-select:none;caret-color:transparent}
 #toolbar-row #search-wrap{caret-color:auto}
+#live-dialog{max-width:min(34rem,calc(100vw - 2rem));max-height:calc(100vh - 2rem);overflow:auto;background:var(--hbg);color:var(--fg);border:1px solid var(--bdr-ui);border-radius:var(--r-md);padding:1.25rem}
+#live-dialog::backdrop{background:rgba(0,0,0,.5)}
+#live-dialog label{display:block;margin:.75rem 0}
+#live-dialog input:not([type="checkbox"]){display:block;width:100%;max-width:26rem;box-sizing:border-box}
+#live-error:empty{display:none}
+
 .logo{display:inline-flex;align-items:center;gap:7px;color:var(--fg);flex-shrink:0;cursor:pointer;user-select:none}
 .logo-text{font-family:var(--display-font);font-size:17px;font-weight:640;font-variation-settings:'opsz' 28;letter-spacing:-.01em}
 .logo:focus-visible{outline:2px solid var(--acc);outline-offset:3px;border-radius:var(--r-xs)}
@@ -342,7 +348,7 @@ button.active{background:color-mix(in srgb,var(--acc) 16%,transparent);color:var
 /* section eyebrow: a category label + a divider from the section above (the guide-nav-group recipe) */
 .fm-cat-head{font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);padding:10px 10px 5px;border-top:1px solid var(--bdr)}
 .fm-cat:first-child .fm-cat-head{border-top:none;padding-top:6px}
-.cmd-item.fm-search-hidden{display:none}      /* a row filtered out by the menu search (2 classes > .cmd-item) */
+.cmd-item.fm-search-hidden,.fm-scard.fm-search-hidden,#fm-live-bridge-card button.fm-search-hidden{display:none}      /* a row filtered out by the menu search (2 classes > .cmd-item) */
 #accent-row.fm-search-hidden{display:none}    /* the color swatches have no searchable text: hidden while searching */
 /* header */
 /* #603: the doc-identity block now lives at the top of the Document category pane (not a menu-wide
@@ -2996,6 +3002,18 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
      OPML never contains the literal "</script>" (user '<'/'>' are escaped to entities
      inside attributes), so a raw <script> data-island round-trips safely. -->
 <script type="application/xml" id="pl-embedded-doc"></script>
+<dialog id="live-dialog" aria-labelledby="live-title">
+  <h2 id="live-title">Connect experimental live bridge</h2>
+  <p>Only use a disposable OPML document. Choose what the local agent may read and where it may append. This is not production security.</p>
+  <label>Access scope <select id="live-scope-choice"><option value="">Choose a scope</option><option value="selected">Selected subtree</option><option value="document">Whole document</option></select></label>
+  <p>Selected point: <strong id="live-scope"></strong></p>
+  <p>Whole document access allows reading all points and appending a top-level point. Selected subtree access allows reading that branch and appending beneath its root.</p>
+  <p id="live-error" role="alert"></p>
+  <label>Helper port <input id="live-port" inputmode="numeric" autocomplete="off"></label>
+  <label>Browser secret <input id="live-secret" type="password" autocomplete="off" spellcheck="false"></label>
+  <label><input id="live-disposable" type="checkbox"> I am using a disposable document</label>
+  <button id="live-connect" type="button">Connect</button> <button id="live-cancel" type="button">Cancel</button>
+</dialog>
 <div id="toolbar">
   <div id="toolbar-row">
     <!-- #827 item 1: the logo alone never read as a menu door — the welcome copy says "open the
@@ -3108,6 +3126,12 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
         </div>
         <div class="cmd-item" id="btn-new"><div class="cmd-icon" data-fa="fa-solid fa-plus" data-fb="+">+</div><div class="cmd-info"><span class="cmd-label" id="new-label">New</span><span class="cmd-desc" id="new-desc">Start a fresh document</span></div></div>
         <div class="cmd-item" id="btn-open"><div class="cmd-icon" data-fa="fa-solid fa-folder-open" data-fb="↑">↑</div><div class="cmd-info"><span class="cmd-label">Open…</span><span class="cmd-desc">Open a document</span></div><span class="cmd-key" id="key-open">⌘O</span></div>
+        <div class="fm-scard" id="fm-live-bridge-card" aria-label="Experimental local bridge">
+          <p>Experimental bridge for disposable documents only. Start the local helper and open its experimental copy.</p>
+          <button id="live-open" type="button">Live bridge</button>
+          <button id="live-disconnect" type="button" disabled>Disconnect bridge</button>
+          <span id="live-status" role="status">Disconnected</span>
+        </div>
         <div class="cmd-item" id="btn-import"><div class="cmd-icon" data-fa="fa-solid fa-inbox" data-fb="📥">📥</div><div class="cmd-info"><span class="cmd-label">Import points…</span><span class="cmd-desc">Add points from another .opml file or pasted text. Nothing here is replaced</span></div></div>
         <div class="cmd-item" id="btn-save"><div class="cmd-icon" id="save-icon" data-fa="fa-solid fa-floppy-disk" data-fb="↓">↓</div><div class="cmd-info"><span class="cmd-label" id="save-label">Save</span><span class="cmd-desc" id="save-desc">Save to this file</span></div><span class="cmd-key" id="key-save">⌘S</span></div>
         <div class="cmd-item" id="btn-save-as"><div class="cmd-icon" data-fa="fa-solid fa-copy" data-fb="⧉">⧉</div><div class="cmd-info"><span class="cmd-label">Save as…</span><span class="cmd-desc" id="save-as-desc">Save a copy as a separate file</span></div></div>
@@ -3351,6 +3375,9 @@ function makeDocCache(name, compute) {
 
 // ─── model ───────────────────────────────────────────────────────────────────
 
+const LIVE_BRIDGE_PORT = 0; // Experimental copies replace this and their connect-src together.
+let liveBridge = null;
+let liveComposing = false;
 let root      = mkRoot();
 let focusedId = null;
 let showDone  = true;   // #827 owner decision: completed points stay visible (struck through) by default; a persisted preference in the autosave payload still wins on restore
@@ -10865,6 +10892,172 @@ function flashError(msg) {
     if (_pendingHint) { const m = _pendingHint; _pendingHint = null; flashHint(m, true); }
   }, _errorHoldUntil - Date.now());
 }
+
+// The experimental bridge is opt-in and confined to one selected point.
+document.addEventListener('compositionstart', () => { liveComposing = true; }, true);
+document.addEventListener("compositionend", () => { liveComposing = false; }, true);
+
+// Reject ambiguous or large documents; only the chosen branch is projected.
+function liveBridgeScope(documentRoot, selectedId, reserve = 0) {
+  const seen = new Set(), ids = new Set(), points = [], stack = [[documentRoot, false, 0, null]];
+  let found = false;
+  while (stack.length) {
+    const [node, insideParent, depth, parentId] = stack.pop();
+    if (!node || typeof node !== 'object' || seen.has(node) || depth > 64 ||
+        typeof node.id !== 'string' || !node.id || node.id.length > 128 || ids.has(node.id) ||
+        typeof node.text !== 'string' || !Array.isArray(node.children)) return null;
+    seen.add(node); ids.add(node.id);
+    if (seen.size + stack.length + node.children.length + reserve > 1000) return null;
+    const inside = insideParent || node.id === selectedId;
+    if (node.id === selectedId) { if (reserve && depth >= 64) return null; found = true; }
+    if (inside) {
+      if (points.length >= 100 || node.text.length > 1000) return null;
+      points.push({ id: node.id, parentId: insideParent ? parentId : null, text: node.text });
+    }
+    for (let i = node.children.length - 1; i >= 0; i--) stack.push([node.children[i], inside, depth + 1, node.id]);
+  }
+  if (!found || new TextEncoder().encode(JSON.stringify(points)).length > 12000) return null;
+  return points;
+}
+function liveBridgeStop(message = 'Disconnected') {
+  if (liveBridge) liveBridge.stopped = true;
+  liveBridge = null;
+  document.getElementById('live-status').textContent = message;
+  document.getElementById('live-disconnect').disabled = true;
+}
+// Only ordinary timestamp properties are editable; other metadata stays untouched.
+function liveBridgeTimestampProps(props) {
+  return Array.isArray(props) && props.every(p => p && typeof p.key === 'string' && typeof p.val === 'string' && ['created', 'edited'].includes(p.key.toLowerCase()) && Object.keys(p).sort().join(',') === 'key,val');
+}
+function liveBridgePlainText(value) {
+  return typeof value === 'string' && /^[\p{L}\p{N} .,!?']{1,500}$/u.test(value) && !deriveTypeFromText(value);
+}
+function liveBridgeResult(session, command) {
+  if (liveBridge !== session || session.stopped || root.docId !== session.docId) return { error: 'disconnected' };
+  // Bridge settings and File-menu search do not hold document edits.
+  // All other editable controls remain conservative: they may contain uncommitted data.
+  const focused = document.activeElement;
+  const incidental = focused?.closest('#live-dialog') || focused?.id === 'fm-search';
+  if (liveComposing || activeContentId != null || (!incidental && (focused?.isContentEditable || focused?.matches('input, textarea, select')))) return { error: 'Finish editing or composition before using the bridge; your input was not changed' };
+  const points = liveBridgeScope(root, session.scopeId);
+  if (!points || !nodeById(session.scopeId)) return { error: 'Scope is unavailable or too large' };
+  if (command.op === 'read') return { points: points.map(p => {
+    const n = nodeById(p.id);
+    const props = n && liveBridgeTimestampProps(n.props) ? JSON.stringify(n.props) : null;
+    return { ...p, propsVersion: props && props.length <= 2000 ? props : null };
+  }) };
+  if (command.op === 'edit') {
+    if (typeof command.pointId !== 'string' || typeof command.expected !== 'string' || typeof command.text !== 'string' || command.text.length > 500 || typeof command.expectedProps !== 'string' || command.expectedProps.length > 2000) return { error: 'Invalid command' };
+    const point = points.find(p => p.id === command.pointId);
+    if (!point || point.id === root.id) return { error: 'Point is outside scope' };
+    const target = nodeById(point.id);
+    if (!target || target.text !== point.text) return { error: 'Scope changed' };
+    if (target.text !== command.expected) return { error: 'Stale text; read again' };
+    if (!liveBridgeTimestampProps(target.props)) return { error: 'Unsupported point or text; plain text only' };
+    if (JSON.stringify(target.props) !== command.expectedProps) return { error: 'Stale properties; read again' };
+    // Deliberately reject syntax-bearing text and any sidecars rather than attempting
+    // to reconcile pills, references, notes, or structured point types.
+    const sidecars = ['footnotes', 'dice', 'markov', 'math', 'vars', 'grammar', 'est', 'seq', 'query'];
+    if (target.type !== 'ul' || target.note || target.baseRows != null || target.checked || sidecars.some(k => !Array.isArray(target[k]) || target[k].length) || !liveBridgePlainText(target.text) || !liveBridgePlainText(command.text)) return { error: 'Unsupported point or text; plain text only' };
+    if (target.text === command.text) return { edited: false };
+    pushUndo(); target.text = command.text; stampEdit(target); markDirty(); render();
+    return { edited: true };
+  }
+  if (command.op !== 'append' || typeof command.text !== 'string' || !command.text || command.text.length > 500) return { error: 'Invalid command' };
+  if (!liveBridgePlainText(command.text)) return { error: 'Unsupported text; plain text only' };
+  if (!liveBridgeScope(root, session.scopeId, 1)) return { error: 'Document is full or the selected point is too deep' };
+  const parent = nodeById(session.scopeId);
+  // Verify the model and its index still agree before changing anything.
+  const stack = [root]; let inTree = false;
+  while (stack.length) { const node = stack.pop(); if (node === parent) { inTree = true; break; } stack.push(...node.children); }
+  if (!inTree || !parent || parent.id !== points[0].id) return { error: 'Scope changed' };
+  if (points.length >= 100 || new TextEncoder().encode(JSON.stringify([...points, { id: '0123456789', parentId: parent.id, text: command.text }])).length > 12000) return { error: 'Scope is full' };
+  const child = mkNode(command.text);
+  stampEdit(child);
+  for (let tries = 0; nodeMap.has(child.id) && tries < 16; tries++) child.id = uid();
+  if (nodeMap.has(child.id)) return { error: 'Could not allocate a point' };
+  pushUndo();
+  parent.children.push(child); parent.collapsed = false;
+  nodeMap.set(child.id, child); parentMap.set(child.id, parent);
+  markDirty(); render();
+  return { appended: true };
+}
+async function liveBridgeRequest(session, body) {
+  const response = await fetch(`http://127.0.0.1:${session.port}/bridge`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.secret },
+    body: JSON.stringify(body), cache: 'no-store', signal: AbortSignal.timeout(5000)
+  });
+  if (!response.ok) throw Error('Helper unavailable');
+  const data = await response.json();
+  if (typeof data.next === 'string') session.secret = data.next;
+  return data;
+}
+async function liveBridgeLoop(session) {
+  try {
+    while (!session.stopped) {
+      const data = await liveBridgeRequest(session, { op: 'poll' });
+      if (session.stopped) break;
+      if (data.disconnected === true) { liveBridgeStop('Disconnected by agent'); return; }
+      document.getElementById('live-status').textContent = 'Connected';
+      if (data.command) {
+        const result = liveBridgeResult(session, data.command);
+        let response = { op: 'respond', id: data.command.id, result };
+        // The helper limits the full UTF-8 request body, including envelope and
+        // JSON escaping, not just the projection before propsVersion is added.
+        if (new TextEncoder().encode(JSON.stringify(response)).length > 16384) {
+          response = { op: 'respond', id: data.command.id, result: { error: 'Response too large; choose a smaller scope' } };
+        }
+        await liveBridgeRequest(session, response);
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    await liveBridgeRequest(session, { op: 'disconnect' });
+  } catch (_) {
+    if (liveBridge === session) liveBridgeStop('Connection lost or expired');
+  }
+}
+(function wireLiveBridge() {
+  const dialog = document.getElementById('live-dialog');
+  const status = document.getElementById('live-status');
+  let selected = null, selectedDoc = null;
+  document.getElementById('live-open').addEventListener('click', () => {
+    selected = selFocusId; selectedDoc = root;
+    document.getElementById('live-disposable').checked = false;
+    document.getElementById('live-scope-choice').value = '';
+    document.getElementById('live-error').textContent = '';
+    closeFileMenu();
+    document.getElementById('live-scope').textContent = nodeById(selected)?.text || '(select a point first)';
+    dialog.showModal();
+  });
+  document.getElementById('live-cancel').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => { document.getElementById('live-secret').value = ''; });
+  document.getElementById('live-disconnect').addEventListener('click', () => liveBridgeStop());
+  dialog.addEventListener('input', () => { document.getElementById('live-error').textContent = ''; });
+  document.getElementById('live-connect').addEventListener('click', () => {
+    const port = document.getElementById('live-port').value;
+    const secretInput = document.getElementById('live-secret');
+    const secret = secretInput.value.trim();
+    const scope = document.getElementById('live-scope-choice').value;
+    const scopeId = scope === 'document' ? root.id : selected;
+    let error = '';
+    if (!LIVE_BRIDGE_PORT || location.protocol !== 'file:') error = 'Open the experimental app created by the helper.';
+    else if (liveBridge) error = 'Disconnect the current session before connecting again.';
+    else if (root !== selectedDoc) error = 'The document changed. Reopen the dialog and choose a scope again.';
+    else if (!scope) error = 'Choose an access scope.';
+    else if (scope === 'selected' && (!selected || selected === root.id || !nodeById(selected))) error = 'Select a point in the outline, then reopen this dialog; or choose whole document.';
+    else if (!liveBridgeScope(root, scopeId)) error = 'The chosen scope is unavailable or exceeds the bridge limits.';
+    else if (!/^\d{1,5}$/.test(port) || +port < 1 || +port > 65535 || +port !== LIVE_BRIDGE_PORT) error = 'Enter the helper port matching this experimental app.';
+    else if (!/^[a-f0-9]{64}$/.test(secret)) error = 'Enter the 64-character browser secret from the private pairing file.';
+    else if (!document.getElementById('live-disposable').checked) error = 'Confirm that this document is disposable.';
+    if (error) { document.getElementById('live-error').textContent = error; return; }
+    secretInput.value = ''; document.getElementById('live-error').textContent = '';
+    const session = { port, secret, scopeId, docId: root.docId, stopped: false };
+    liveBridge = session; document.getElementById('live-disconnect').disabled = false;
+    status.textContent = 'Connecting'; dialog.close();
+    liveBridgeLoop(session);
+  });
+  window.addEventListener('pagehide', () => liveBridgeStop());
+})();
 
 // One-time touch onboarding (D4): on touch there's no hover, so the bullet's press-hold
 // menu and drag-to-nest gestures are invisible. Teach them once with a longer-lived toast
@@ -36403,6 +36596,7 @@ function pickerRefusedMessage(what, fallback) {
 // forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
 // agendaShowDone.
 function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null, restoreFocusId = null } = {}) {
+  if (liveBridge) liveBridgeStop('Disconnected: document changed');
   // Cancel any pending debounced autosave from the OUTGOING doc. The timer closure reads
   // the module-level root/fileName/workspaceFile at fire time, so if it fired AFTER this
   // swap it would write the NEW doc's content — or, worse, be orphaned so the outgoing
@@ -43268,6 +43462,17 @@ function fmApplySearch(q) {
       row.classList.toggle('fm-search-hidden', !hit);
       if (hit) { any = true; total++; }
     });
+    const bridge = sec.querySelector('#fm-live-bridge-card');
+    if (bridge) {
+      let hits = 0;
+      bridge.querySelectorAll('button').forEach(button => {
+        const hit = bridge.offsetParent !== null && !button.disabled && button.textContent.toLowerCase().includes(q);
+        button.classList.toggle('fm-search-hidden', !hit);
+        if (hit) hits++;
+      });
+      bridge.classList.toggle('fm-search-hidden', hits === 0);
+      if (hits) { any = true; total += hits; }
+    }
     sec.querySelector('#accent-row')?.classList.add('fm-search-hidden');   // no searchable text
     sec.hidden = !any;   // a category with no matching action drops out entirely
   });
@@ -43473,7 +43678,7 @@ function closeFileMenu() {
 // The rows the arrows rove over = only the visible ones: excludes capability-hidden rows, rows the
 // search filtered out, and every row in a non-active category (offsetParent is null when any ancestor
 // is display:none). #603: this replaces the old style.display check, which couldn't see category/search hiding.
-const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item')].filter(el => el.offsetParent !== null);
+const fmItems = () => [...fileMenu.querySelectorAll('.cmd-item, #fm-live-bridge-card button')].filter(el => el.offsetParent !== null && !el.disabled);
 const fmNavBtns = () => [...fileMenu.querySelectorAll('.guide-nav-btn')];
 // #507: only the plain <div> rows get role=button — the two external-link <a> rows keep
 // their native link semantics (a SR announces "opens in new window") and the native
@@ -44350,6 +44555,7 @@ document.getElementById('tbtn-cluster').addEventListener('mouseout', e => {
 // Single registry: essential:true entries drive the corner panel; cat entries
 // drive the Concept guide. One source, two views, no drift.
 const GUIDE = [
+  { id:'live-bridge', cat:'files', title:'Experimental live bridge', body:'Connect a local agent only to a disposable OPML document. Open the File menu, choose Live bridge, choose an access scope, and enter the helper port and browser secret. The agent can read that scope, append to its root, and edit supported plain-text points. Disconnect before opening another document.', examples:[] },
   // ── Navigate (essentials only) ────────────────────────────────────────────
   { id:'nav-move',    essential:true, essSection:'Navigate', keys:['↑','↓'],      essLabel:'Move between points' },
   { id:'nav-enter',   essential:true, essSection:'Navigate', keys:['Enter'],         essLabel:'Edit the point the cursor is on (after Esc leaves an edit)' },

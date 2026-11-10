@@ -39936,3 +39936,50 @@ test('bare cross-document links do not get caption-caret repositioning', () => {
     /const linkOnly = tok && !tok\.docId && tok\.label !== undefined \? tok : null;/,
     'only same-document links with an explicit pipe have a caption slot');
 });
+
+
+test('live bridge scope projects only the chosen branch and rejects ambiguous or large models', () => {
+  const node = (id, text, children = []) => ({ id, text, children });
+  const tree = node('root', '', [node('a', 'sandbox', [node('b', 'child')]), node('c', 'outside')]);
+  assert.deepEqual(JSON.parse(JSON.stringify(c.liveBridgeScope(tree, 'a'))), [{ id: 'a', parentId: null, text: 'sandbox' }, { id: 'b', parentId: 'a', text: 'child' }]);
+  assert.equal(c.liveBridgeScope(tree, 'missing'), null);
+  tree.children[1].id = 'b';
+  assert.equal(c.liveBridgeScope(tree, 'a'), null);
+  tree.children[1].id = 'c'; tree.children[0].children[0].text = 'x'.repeat(1001);
+  assert.equal(c.liveBridgeScope(tree, 'a'), null);
+});
+
+test('live bridge timestamp properties reject noncanonical whitespace', () => {
+  assert.equal(c.liveBridgeTimestampProps([{ key: 'CREATED', val: '2020' }, { key: 'edited', val: '2021' }]), true);
+  for (const key of [' edited', 'edited ', '\tcreated', 'created\n']) {
+    assert.equal(c.liveBridgeTimestampProps([{ key, val: '2020' }]), false, key);
+  }
+});
+
+test('live bridge document swap and editor guards remain wired', () => {
+  assert.ok(fnBody(_src, 'adoptDoc').includes("if (liveBridge) liveBridgeStop('Disconnected: document changed');"));
+  const result = fnBody(_src, 'liveBridgeResult');
+  assert.ok(result.includes('liveComposing || activeContentId != null'));
+  assert.ok(result.includes('pushUndo();'));
+  assert.ok(result.includes('markDirty(); render();'));
+});
+
+
+test('live bridge append reserves a slot at the document-wide node boundary', () => {
+  const leaf = i => ({ id: 'n' + i, text: '', children: [] });
+  const tree = { id: 'root', text: '', children: Array.from({ length: 999 }, (_, i) => leaf(i)) };
+  assert.equal(c.liveBridgeScope(tree, 'n0').length, 1);
+  assert.equal(c.liveBridgeScope(tree, 'n0', 1), null);
+  tree.children.pop();
+  assert.equal(c.liveBridgeScope(tree, 'n0', 1).length, 1);
+  let deep = leaf('bottom');
+  for (let i = 0; i < 64; i++) deep = { id: 'd' + i, text: '', children: [deep] };
+  assert.equal(c.liveBridgeScope(deep, 'nbottom').length, 1);
+  assert.equal(c.liveBridgeScope(deep, 'nbottom', 1), null);
+});
+
+test('live bridge reports an authenticated agent disconnect without executing a command', () => {
+  const loop = fnBody(_src, 'liveBridgeLoop');
+  assert.ok(loop.includes("if (data.disconnected === true) { liveBridgeStop('Disconnected by agent'); return; }"));
+  assert.ok(loop.indexOf("liveBridgeStop('Disconnected by agent')") < loop.indexOf('liveBridgeResult(session, data.command)'));
+});

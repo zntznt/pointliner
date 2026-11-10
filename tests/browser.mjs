@@ -27,6 +27,7 @@
 // skip into a failure; a launch error is never a skip in either environment, because a developer
 // who has playwright and a broken browser wants to hear about it.
 
+import './live-bridge-browser.mjs';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
