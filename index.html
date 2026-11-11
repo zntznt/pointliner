@@ -3014,8 +3014,8 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
   <div class="io-head"><span class="io-title" id="live-title">Connect experimental live bridge</span></div>
   <p class="live-copy">Use a disposable OPML document only. This bridge is experimental and is not production-secure.</p>
   <div class="io-field"><label for="live-scope-choice">Access scope</label><select id="live-scope-choice"><option value="">Choose a scope</option><option value="selected">Selected subtree</option><option value="document">Whole document</option></select></div>
-  <p class="live-copy" id="live-scope-selected" hidden>Selected point: <strong id="live-scope"></strong>. The agent can read this branch.</p>
-  <p class="live-copy" id="live-scope-document" hidden>The agent can read all points.</p>
+  <p class="live-copy" id="live-scope-selected" hidden>Selected point: <strong id="live-scope"></strong>. The agent can read this branch and add a child to its selected point.</p>
+  <p class="live-copy" id="live-scope-document" hidden>The agent can read all points and add top-level points.</p>
   <p id="live-error" role="alert"></p>
   <div class="io-field"><label for="live-port">Helper port</label><input id="live-port" inputmode="numeric" autocomplete="off"></div>
   <div class="io-field"><label for="live-secret">Browser secret</label><input id="live-secret" type="password" autocomplete="off" spellcheck="false"></div>
@@ -3443,7 +3443,9 @@ function ensureDocId(root, gen) {
   return root.docId;
 }
 const LIVE_BRIDGE_PORT = 0;
-let liveBridge = null, liveBridgeGeneration = 0;
+let liveBridge = null, liveBridgeGeneration = 0, liveBridgeComposing = false;
+document.addEventListener('compositionstart', () => { liveBridgeComposing = true; }, true);
+document.addEventListener("compositionend", () => { liveBridgeComposing = false; }, true);
 function mkNode(text = '', type = 'ul') {
   return { id: uid(), text, note: '', type, checked: false, children: [], collapsed: false, folded: false, footnotes: [], dice: [], markov: [], math: [], vars: [], grammar: [], est: [], seq: [], props: [], query: [], baseRows: null };
 }
@@ -10925,10 +10927,24 @@ function liveBridgeStop(message = 'Disconnected') {
 }
 function liveBridgeResult(session, command) {
   if (liveBridge !== session || session.stopped || session.generation !== liveBridgeGeneration || root.docId !== session.docId) return { error: 'disconnected' };
-  if (command.op !== 'read') return { error: 'Read-only bridge' };
-  if (activeContentId != null || document.activeElement?.isContentEditable) return { error: 'Finish editing before reading' };
+  const focused = document.activeElement;
+  const incidental = focused?.closest('#live-dialog') || focused?.id === 'fm-search';
+  if (liveBridgeComposing || activeContentId != null || (!incidental && (focused?.isContentEditable || focused?.matches('input, textarea, select')))) return { error: 'Finish editing before using the bridge' };
   const points = liveBridgeScope(root, session.scopeId);
-  return points ? { points } : { error: 'Scope is unavailable or too large' };
+  if (!points) return { error: 'Scope is unavailable or too large' };
+  if (command.op === 'read') return { points };
+  if (command.op !== 'append' || typeof command.text !== 'string' || !/^[\p{L}\p{M}\p{N} .,!?':-]{1,500}$/u.test(command.text) || !command.text.trim() || /^\s*[-]\s/.test(command.text) || deriveTypeFromText(command.text.trimStart())) return { error: 'Unsupported text; plain text only' };
+  if (!liveBridgeScope(root, session.scopeId, 1)) return { error: 'Document is full or scope is too deep' };
+  const parent = nodeById(session.scopeId), stack = [root]; let found = false;
+  while (stack.length) { const node = stack.pop(); if (node === parent) { found = true; break; } stack.push(...node.children); }
+  if (!found || !parent || parent.id !== points[0].id) return { error: 'Scope changed' };
+  const child = mkNode(command.text);
+  for (let tries = 0; nodeMap.has(child.id) && tries < 16; tries++) child.id = uid();
+  if (nodeMap.has(child.id)) return { error: 'Could not allocate a point' };
+  if (points.length >= 100 || new TextEncoder().encode(JSON.stringify([...points, {id: child.id, parentId: parent.id, text: child.text}])).length > 12000) return { error: 'Scope is full' };
+  stampEdit(child); pushUndo(); parent.children.push(child); parent.collapsed = false;
+  nodeMap.set(child.id, child); parentMap.set(child.id, parent); markDirty(); render();
+  return { appended: true };
 }
 async function liveBridgeRequest(session, body) {
   const response = await fetch(`http://127.0.0.1:${session.port}/bridge`, {

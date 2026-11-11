@@ -34,7 +34,12 @@ test('one-use, role-bound capabilities relay bounded commands and revoke', async
     [ , r] = await send(native, { op: 'append', text: 'x'.repeat(501) }); native = r.next;
     assert.equal(r.error, 'invalid or busy');
     [ , r] = await send(native, { op: 'append', text: 'new point' }); native = r.next;
-    assert.equal(r.error, 'invalid or busy');
+    assert.ok(r.queued);
+    [ , r] = await send(browser, { op: 'poll' }, 'null'); browser = r.next;
+    assert.equal(r.command.text, 'new point');
+    [ , r] = await send(browser, { op: 'respond', id: r.command.id, result: { appended: true } }, 'null'); browser = r.next;
+    [ , r] = await send(native, { op: 'poll' }); native = r.next;
+    assert.equal(r.answer.result.appended, true);
     [ , r] = await send(native, { op: 'edit', pointId: 'x', expected: 'a', expectedProps: '[]', text: 'b' }); native = r.next;
     assert.equal(r.error, 'invalid or busy');
     [ , r] = await send(browser, { op: 'disconnect' }, 'null');
@@ -129,13 +134,13 @@ test('revoked session rejects polling; previously delivered command remains in t
       }
       let result;
       [, result] = await send(browser, { op: 'poll' }, 'null'); browser = result.next;
-      [, result] = await send(native, { op: 'read' }); native = result.next;
+      [, result] = await send(native, { op: 'append', text: 'Pending point' }); native = result.next;
       let command;
       if (delivered) { [, result] = await send(browser, { op: 'poll' }, 'null'); browser = result.next; command = result.command; }
       bridge.revoke();
       assert.equal((await send(browser, { op: 'poll' }, 'null'))[0], 410);
       // Delivery transfers a command to the browser; revocation cannot erase its local copy.
-      assert.deepEqual(command, delivered ? { id: 1, op: 'read' } : undefined);
+      assert.deepEqual(command, delivered ? { id: 1, op: 'append', text: 'Pending point' } : undefined);
     } finally { bridge.server.closeAllConnections(); await new Promise(resolve => bridge.server.close(resolve)); }
   }
 });
