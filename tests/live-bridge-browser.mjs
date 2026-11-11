@@ -27,14 +27,14 @@ test('experimental app pairs and reads only the selected subtree; standalone sta
     const chooser = page.waitForEvent('filechooser');
     await page.locator('#btn-open').click();
     await (await chooser).setFiles(resolve('tests/fixtures/live-bridge-disposable.opml'));
-    await page.waitForFunction(() => fileName === 'live-bridge-disposable.opml');
+    await until(() => page.evaluate(() => fileName === 'live-bridge-disposable.opml'));
     await page.locator('.node-content').filter({hasText:'Sandbox'}).first().click();
     await page.locator('#logo-btn').click(); await page.locator('#live-open').click();
     await page.locator('#live-scope-choice').selectOption('selected');
     await page.locator('#live-port').fill(String(bridge.server.address().port));
     await page.locator('#live-secret').fill(session.browserSecret);
     await page.locator('#live-disposable').check(); await page.locator('#live-connect').click();
-    await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Connected');
+    await until(async () => await page.locator('#live-status').textContent() === 'Connected');
     assert.equal(await page.locator('#live-secret').inputValue(), '');
     let native = session.nativeSecret;
     async function send(body) {
@@ -69,7 +69,7 @@ test('experimental app pairs and reads only the selected subtree; standalone sta
       markClean();
     });
     await page.locator('#logo-btn').click(); await page.locator('#btn-restore').click();
-    await page.waitForFunction(() => root.children[0].text === 'Private earlier version');
+    await until(() => page.evaluate(() => root.children[0].text === 'Private earlier version'));
     await until(async () => (await send({op:'read'})).status === 410);
     assert.equal(await page.locator('#live-status').textContent(), 'Disconnected');
     assert.equal(await page.locator('.node-content').filter({hasText:'blocked'}).count(), 0);
@@ -89,7 +89,7 @@ for (const mode of ['page close', 'failed transport', 'delayed poll', 'autosave 
       await page.locator('#live-port').fill(String(bridge.server.address().port));
       await page.locator('#live-secret').fill(session.browserSecret);
       await page.locator('#live-disposable').check(); await page.locator('#live-connect').click();
-      await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Connected');
+      await until(async () => await page.locator('#live-status').textContent() === 'Connected');
       let native = session.nativeSecret;
       if (mode === 'delayed poll') {
         let release, arrived;
@@ -116,7 +116,7 @@ for (const mode of ['page close', 'failed transport', 'delayed poll', 'autosave 
       } else {
         await page.route('http://127.0.0.1:*/bridge', route => route.abort());
         if (mode === 'page close') await page.close();
-        else await page.waitForFunction(() => document.querySelector('#live-status').textContent === 'Connection lost or expired');
+        else await until(async () => await page.locator('#live-status').textContent() === 'Connection lost or expired');
       }
       assert.match(await bridge.closed, mode === 'autosave replacement' ? /Session ended/ : /heartbeat lost/);
       const response = await fetch(`http://127.0.0.1:${bridge.server.address().port}/bridge`, {method:'POST', headers:{authorization:'Bearer '+native, 'content-type':'application/json'}, body:JSON.stringify({op:'read'})});
