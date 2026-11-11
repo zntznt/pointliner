@@ -8,20 +8,33 @@ const same = (a, b) => typeof a === 'string' && typeof b === 'string' && /^[a-f0
 const plain = x => x && typeof x === 'object' && !Array.isArray(x);
 const keys = (x, s) => plain(x) && Object.keys(x).sort().join(',') === s;
 
-export function createLiveBridge({ origin, lifetimeMs = 300000 } = {}) {
+export function createLiveBridge({ origin, lifetimeMs = 300000, leaseMs = 10000 } = {}) {
   if (typeof origin !== 'string' || (origin !== 'null' && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))) throw Error('A local browser origin is required');
   if (!Number.isInteger(lifetimeMs) || lifetimeMs < 1000 || lifetimeMs > 3600000) throw Error('Invalid lifetime');
-  let expires = Date.now() + lifetimeMs, revoked = false;
+  if (!Number.isInteger(leaseMs) || leaseMs < 1000 || leaseMs > 60000) throw Error('Invalid browser lease');
+  let expires = performance.now() + lifetimeMs, revoked = false, leaseUntil = 0, leaseTimer;
   let browser = token(), native = token(), pending = null, answer = null, sequence = 0, paired = false, closing = false;
   let notifyClosed, closingTimer;
   const closed = new Promise(resolve => { notifyClosed = resolve; });
-  const revoke = () => { revoked = true; browser = native = null; pending = answer = null; clearTimeout(closingTimer); notifyClosed(); };
+  const revoke = (reason = 'Session ended') => { if (revoked) return; revoked = true; browser = native = null; pending = answer = null; clearTimeout(closingTimer); clearTimeout(leaseTimer); notifyClosed(reason); };
+  const expired = () => performance.now() >= expires || (paired && performance.now() >= leaseUntil);
+  function heartbeat() {
+    leaseUntil = performance.now() + leaseMs;
+    clearTimeout(leaseTimer);
+    const check = () => {
+      const left = leaseUntil - performance.now();
+      if (left <= 0) return revoke('Browser heartbeat lost; session revoked');
+      leaseTimer = setTimeout(check, left); leaseTimer.unref();
+    };
+    check();
+  }
+  const expire = () => revoke(paired && performance.now() >= leaseUntil ? 'Browser heartbeat lost; session revoked' : 'Session expired');
   const server = http.createServer((req, res) => {
     const finish = (status, value) => {
       res.writeHead(status, { 'Cache-Control': 'no-store', 'Content-Type': 'application/json', 'X-Content-Type-Options': 'nosniff' });
       res.end(JSON.stringify(value));
     };
-    if (revoked || Date.now() >= expires) { revoke(); return finish(410, { error: 'expired' }); }
+    if (revoked || expired()) { expire(); return finish(410, { error: 'expired' }); }
     if (req.socket.remoteAddress !== '127.0.0.1' || req.headers.host !== `127.0.0.1:${server.address().port}` || req.url !== '/bridge') return finish(403, { error: 'denied' });
     const fromBrowser = req.headers.origin === origin;
     if (req.headers.origin !== undefined && !fromBrowser) return finish(403, { error: 'denied' });
@@ -41,7 +54,7 @@ export function createLiveBridge({ origin, lifetimeMs = 300000 } = {}) {
     let size = 0, chunks = [];
     req.on('data', chunk => { size += chunk.length; if (size <= 16384) chunks.push(chunk); });
     req.on('end', () => {
-      if (revoked || Date.now() >= expires) { revoke(); return finish(410, { error: 'expired' }); }
+      if (revoked || expired()) { expire(); return finish(410, { error: 'expired' }); }
       if (size > 16384) { revoke(); return finish(413, { error: 'too large' }); }
       let command;
       try { command = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { revoke(); return finish(400, { error: 'invalid' }); }
@@ -57,12 +70,8 @@ export function createLiveBridge({ origin, lifetimeMs = 300000 } = {}) {
       let result;
       if (role === 'native' && paired && keys(command, 'op') && command.op === 'read' && !pending && !answer) {
         pending = { id: ++sequence, op: 'read' }; result = { queued: pending.id };
-      } else if (role === 'native' && paired && keys(command, 'op,text') && command.op === 'append' && typeof command.text === 'string' && command.text.length > 0 && command.text.length <= 500 && !pending && !answer) {
-        pending = { id: ++sequence, op: 'append', text: command.text }; result = { queued: pending.id };
-      } else if (role === 'native' && paired && keys(command, 'expected,expectedProps,op,pointId,text') && command.op === 'edit' && typeof command.pointId === 'string' && command.pointId.length > 0 && command.pointId.length <= 128 && typeof command.expected === 'string' && command.expected.length <= 500 && typeof command.expectedProps === 'string' && command.expectedProps.length <= 2000 && typeof command.text === 'string' && command.text.length > 0 && command.text.length <= 500 && !pending && !answer) {
-        pending = { id: ++sequence, op: 'edit', pointId: command.pointId, expected: command.expected, expectedProps: command.expectedProps, text: command.text }; result = { queued: pending.id };
       } else if (role === 'browser' && keys(command, 'op') && command.op === 'poll') {
-        paired = true; result = { command: pending };
+        paired = true; heartbeat(); result = { command: pending };
       } else if (role === 'browser' && keys(command, 'id,op,result') && command.op === 'respond' && pending && command.id === pending.id && plain(command.result)) {
         answer = { id: pending.id, result: command.result }; pending = null; result = { accepted: true };
       } else if (role === 'native' && keys(command, 'op') && command.op === 'poll') {
@@ -84,7 +93,7 @@ export function createLiveBridge({ origin, lifetimeMs = 300000 } = {}) {
   server.on('close', () => { clearTimeout(timer); revoke(); });
   const issued = new Set();
   function issue(role) {
-    if (issued.has(role) || revoked || Date.now() >= expires) throw Error('Session unavailable');
+    if (issued.has(role) || revoked || expired()) throw Error('Session unavailable');
     issued.add(role); return role === 'browser' ? browser : native;
   }
   return { server, revoke, closed, issueBrowser: () => issue('browser'), issueNative: () => issue('native'),

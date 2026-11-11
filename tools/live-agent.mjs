@@ -43,7 +43,7 @@ if (pairingFileMode) {
 } else {
   tty.write(`\nDisposable documents only. Port: ${bridge.server.address().port}\nBrowser secret (paste once into Pointliner): ${browserSecret}\n`);
 }
-process.stdout.write(`Experimental app: ${app.path}\nCommands: read, append TEXT, edit JSON, disconnect\n`);
+process.stdout.write(`Experimental app: ${app.path}\nCommands: read, disconnect\n`);
 async function request(body) {
   const response = await fetch(url, { method: 'POST', headers: { authorization: 'Bearer ' + nativeSecret, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw Error('Session unavailable');
@@ -65,10 +65,7 @@ async function operation(body) {
     // The browser may already have received the command: revocation prevents a
     // queued command from being delivered later, but cannot roll back an in-flight one.
     bridge.revoke();
-    const outcome = body.op === 'append' || body.op === 'edit'
-      ? `An ${body.op} may have applied; inspect the disposable document before retrying.`
-      : 'The read did not return a result.';
-    throw Error('Connection lost or timed out. Session revoked. ' + outcome);
+    throw Error('Connection lost or timed out. Session revoked. The read did not return a result.');
   }
 }
 const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true, prompt: 'agent> ' });
@@ -83,21 +80,11 @@ rl.on('line', async line => {
       rl.close(); return;
     }
     if (line === 'read') process.stdout.write((await operation({ op: 'read' })) + '\n');
-    else if (line.startsWith('append ')) process.stdout.write((await operation({ op: 'append', text: line.slice(7) })) + '\n');
-    else if (line.startsWith('edit ')) {
-      let edit; try { edit = JSON.parse(line.slice(5)); } catch { throw Error('Invalid edit JSON'); }
-      if (!edit || typeof edit !== 'object' || Array.isArray(edit)) throw Error('Use edit JSON with pointId, expected, propsVersion, and text');
-      // Accept the old spelling for existing clients, but never ambiguous aliases.
-      const keys = Object.keys(edit).sort().join(',');
-      if (keys === 'expected,pointId,propsVersion,text') { edit.expectedProps = edit.propsVersion; delete edit.propsVersion; }
-      else if (keys !== 'expected,expectedProps,pointId,text') throw Error('Use edit JSON with pointId, expected, propsVersion, and text');
-      process.stdout.write((await operation({ op: 'edit', ...edit })) + '\n');
-    }
-    else process.stdout.write('Use read, append TEXT, edit JSON, or disconnect.\n');
+    else process.stdout.write('Use read or disconnect. This bridge is read-only.\n');
   } catch (e) { process.stdout.write(e.message + '\n'); }
   finally { busy = false; if (!rl.closed) { rl.resume(); rl.prompt(); } }
 });
-bridge.closed.then(() => { if (!rl.closed) { process.stdout.write('Bridge session ended.\n'); rl.close(); } });
+bridge.closed.then(reason => { if (!rl.closed) { process.stdout.write(`Bridge session ended: ${reason}.\n`); rl.close(); } });
 rl.on('close', () => { bridge.revoke(); bridge.server.closeAllConnections(); bridge.server.close(); app.cleanup(); tty.end(); });
 process.once('SIGHUP', () => rl.close());
 process.once('SIGTERM', () => rl.close());
