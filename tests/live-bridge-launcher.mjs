@@ -117,3 +117,48 @@ test('expiry closes the launcher and removes its app and pairing file without ex
   await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(port, '127.0.0.1', resolve); });
   await new Promise(resolve => probe.close(resolve));
 });
+
+for (const mode of ['disconnect', 'ambiguous append']) {
+  test(`PTY ${mode} preserves session semantics and keeps pairing secret out of output`, {timeout: 20000}, async t => {
+    const { dir } = await fixture(t);
+    const child = spawn('script', ['-q', '-e', '-c', `${process.execPath} tools/live-agent.mjs --pairing-file --lifetime 30`, '/dev/null'], {cwd:dir});
+    t.after(() => child.kill('SIGKILL'));
+    let output = '';
+    child.stdout.on('data', data => { output += data; });
+    child.stderr.on('data', data => { output += data; });
+    const until = async fn => { for (let i=0; i<160; i++) { const x = fn(); if (x) return x; await new Promise(r => setTimeout(r, 100)); } throw Error('PTY timeout: '+output); };
+    const pairing = await until(() => /Private pairing file: ([^\r\n]+)/.exec(output)?.[1]);
+    const port = Number(/Port: (\d+)/.exec(output)[1]);
+    let secret = readFileSync(pairing, 'utf8').trim();
+    const originalSecret = secret;
+    const request = async op => {
+      const response = await fetch(`http://127.0.0.1:${port}/bridge`, {method:'POST', headers:{origin:'null', authorization:'Bearer '+secret, 'content-type':'application/json'}, body:JSON.stringify({op})});
+      const body = await response.json(); if (body.next) secret = body.next; return {status:response.status, ...body};
+    };
+    assert.equal((await request('poll')).status, 200);
+    await until(() => output.includes('agent>'));
+    if (mode === 'ambiguous append') {
+      child.stdin.write('append Test point\n');
+      // Deliver the command but withhold its acknowledgement, as if the browser
+      // mutated and its response was lost. Keep the browser lease alive.
+      let command;
+      for (let i=0; i<90 && !command; i++) { await new Promise(r => setTimeout(r, 100)); command = (await request('poll')).command; }
+      assert.equal(command?.op, 'append');
+      const heartbeats = setInterval(() => request('poll').catch(() => {}), 500);
+      t.after(() => clearInterval(heartbeats));
+      await until(() => output.includes('may have applied'));
+      clearInterval(heartbeats);
+      assert.match(output, /inspect the document before retrying/);
+    } else {
+      child.stdin.write('disconnect\n');
+      await new Promise(r => setTimeout(r, 200));
+      const reply = await request('poll');
+      assert.equal(reply.disconnected, true);
+    }
+    await until(() => child.exitCode !== null);
+    assert.equal(child.exitCode, 0, output);
+    assert.ok(!output.includes(originalSecret));
+    assert.doesNotMatch(output, /\b[a-f0-9]{64}\b/);
+    assert.equal(existsSync(pairing), false);
+  });
+}
