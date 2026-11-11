@@ -87,7 +87,7 @@ export function createLiveBridge({ origin, lifetimeMs = 300000 } = {}) {
     if (issued.has(role) || revoked || Date.now() >= expires) throw Error('Session unavailable');
     issued.add(role); return role === 'browser' ? browser : native;
   }
-  return { server, revoke, issueBrowser: () => issue('browser'), issueNative: () => issue('native'),
+  return { server, revoke, closed, issueBrowser: () => issue('browser'), issueNative: () => issue('native'),
     waitForBrowserDisconnect() {
       if (!closing || revoked) return Promise.resolve();
       return new Promise(resolve => {

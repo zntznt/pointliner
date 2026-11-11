@@ -31,6 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: node --test tests/live-bridge-helper.mjs tests/live-bridge-launcher.mjs
       # Node 22 resolves a bare directory as a module; pass the explicit path.
       - run: node --test tests/test.mjs
 
