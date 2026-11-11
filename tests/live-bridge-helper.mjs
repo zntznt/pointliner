@@ -34,8 +34,9 @@ test('one-use, role-bound capabilities relay bounded commands and revoke', async
     [ , r] = await send(native, { op: 'append', text: 'x'.repeat(501) }); native = r.next;
     assert.equal(r.error, 'invalid or busy');
     [ , r] = await send(native, { op: 'append', text: 'new point' }); native = r.next;
-    [ , r] = await send(browser, { op: 'poll' }, 'null'); browser = r.next;
-    assert.deepEqual(r.command, { id: 2, op: 'append', text: 'new point' });
+    assert.equal(r.error, 'invalid or busy');
+    [ , r] = await send(native, { op: 'edit', pointId: 'x', expected: 'a', expectedProps: '[]', text: 'b' }); native = r.next;
+    assert.equal(r.error, 'invalid or busy');
     [ , r] = await send(browser, { op: 'disconnect' }, 'null');
     assert.equal(r.disconnected, true);
     assert.equal((await send(native, { op: 'poll' }))[0], 410);
@@ -71,7 +72,7 @@ test('agent disconnect permits only one authenticated browser close notice, neve
     }
     let result;
     [, result] = await send(browser, { op: 'poll' }, 'null'); browser = result.next;
-    [, result] = await send(native, { op: 'append', text: 'queued' }); native = result.next;
+    [, result] = await send(native, { op: 'read' }); native = result.next;
     [, result] = await send(native, { op: 'disconnect' });
     assert.equal(result.closing, true);
     assert.equal((await send(native, { op: 'append', text: 'must be denied' }))[0], 403);
@@ -128,13 +129,34 @@ test('revoked session rejects polling; previously delivered command remains in t
       }
       let result;
       [, result] = await send(browser, { op: 'poll' }, 'null'); browser = result.next;
-      [, result] = await send(native, { op: 'append', text: 'test' }); native = result.next;
+      [, result] = await send(native, { op: 'read' }); native = result.next;
       let command;
       if (delivered) { [, result] = await send(browser, { op: 'poll' }, 'null'); browser = result.next; command = result.command; }
       bridge.revoke();
       assert.equal((await send(browser, { op: 'poll' }, 'null'))[0], 410);
       // Delivery transfers a command to the browser; revocation cannot erase its local copy.
-      assert.deepEqual(command, delivered ? { id: 1, op: 'append', text: 'test' } : undefined);
+      assert.deepEqual(command, delivered ? { id: 1, op: 'read' } : undefined);
     } finally { bridge.server.closeAllConnections(); await new Promise(resolve => bridge.server.close(resolve)); }
   }
+});
+
+test('browser lease expires despite native traffic, discards queued work and cannot be revived', async () => {
+  const bridge = createLiveBridge({ origin: 'null', lifetimeMs: 10000, leaseMs: 1000 });
+  await new Promise(resolve => bridge.server.listen(0, '127.0.0.1', resolve));
+  try {
+    let browser = bridge.issueBrowser(), native = bridge.issueNative();
+    const url = `http://127.0.0.1:${bridge.server.address().port}/bridge`;
+    const send = (secret, body, origin) => fetch(url, { method:'POST', headers:{authorization:'Bearer '+secret, 'content-type':'application/json', ...(origin ? {origin} : {})}, body:JSON.stringify(body) });
+    browser = (await (await send(browser, {op:'poll'}, 'null')).json()).next;
+    await new Promise(r => setTimeout(r, 550));
+    browser = (await (await send(browser, {op:'poll'}, 'null')).json()).next;
+    let reply = await (await send(native, {op:'read'})).json(); native = reply.next;
+    assert.ok(reply.queued);
+    await new Promise(r => setTimeout(r, 550));
+    reply = await (await send(native, {op:'poll'})).json(); native = reply.next;
+    assert.equal(reply.paired, true);
+    assert.match(await bridge.closed, /heartbeat lost/);
+    assert.equal((await send(native, {op:'poll'})).status, 410);
+    assert.equal((await send(browser, {op:'poll'}, 'null')).status, 410);
+  } finally { bridge.server.closeAllConnections(); await new Promise(r => bridge.server.close(r)); }
 });

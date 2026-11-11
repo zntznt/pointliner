@@ -166,6 +166,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # Without this the job passes on six SKIPS if playwright fails to resolve, which is a green
       # gate that proved nothing -- the exact shape this file exists to catch.
+      - run: POINTLINER_REQUIRE_BROWSER=1 node --test tests/live-bridge-browser.mjs
       - run: node --test tests/browser.mjs
         env:
           POINTLINER_REQUIRE_BROWSER: '1'
