@@ -41,7 +41,9 @@ test('one-use, role-bound capabilities relay bounded commands and revoke', async
     [ , r] = await send(native, { op: 'poll' }); native = r.next;
     assert.equal(r.answer.result.appended, true);
     [ , r] = await send(native, { op: 'edit', pointId: 'x', expected: 'a', expectedProps: '[]', text: 'b' }); native = r.next;
-    assert.equal(r.error, 'invalid or busy');
+    assert.ok(r.queued);
+    [ , r] = await send(browser, { op: 'poll' }, 'null'); browser = r.next;
+    assert.equal(r.command.op, 'edit');
     [ , r] = await send(browser, { op: 'disconnect' }, 'null');
     assert.equal(r.disconnected, true);
     assert.equal((await send(native, { op: 'poll' }))[0], 410);
