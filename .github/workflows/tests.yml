@@ -31,6 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: node --test tests/live-bridge-helper.mjs tests/live-bridge-launcher.mjs
       # Node 22 resolves a bare directory as a module; pass the explicit path.
       - run: node --test tests/test.mjs
 
@@ -165,6 +166,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # Without this the job passes on six SKIPS if playwright fails to resolve, which is a green
       # gate that proved nothing -- the exact shape this file exists to catch.
+      - run: POINTLINER_REQUIRE_BROWSER=1 node --test tests/live-bridge-browser.mjs
       - run: node --test tests/browser.mjs
         env:
           POINTLINER_REQUIRE_BROWSER: '1'

@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2201 declarations in 158 sections across 17 domains.**
+**2211 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -71,6 +71,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `mkRoot`
 - `uid`
 - `ensureDocId`
+- `LIVE_BRIDGE_PORT`
+- `liveBridge`
 - `mkNode`
 - `inheritedType` — type that a new Enter-sibling should inherit
 - `BLOCK_PREFIX_MAP` — Block types that store their markdown prefix in node.text
@@ -413,6 +415,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `resolveVarDefs` — Resolve a name→expr `defs` map (+ frozen `pickVals` + first-seen `order`) into a
 - `migrateEmphasisText` — Add block prefix to nodes that have a type but no prefix in text (migration)
 - `migrateNodePrefixes`
+- `liveBridgeScope`
 - `buildIndex`
 - `deregisterSubtree`
 - `nodeById`
@@ -633,6 +636,13 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `flashHint`
 - `hintDwell` — #655: how long a hint stays up, by message length. Floor 1400ms (a short "Saved" confirmation),
 - `flashError` — Error toast: same #flash-hint element as flashHint, but red-tinted and longer-lived so a
+- `liveBridgeStop`
+- `liveBridgeTimestampProps`
+- `liveBridgePlainText`
+- `liveBridgeReadFits` — Budget the entire browser-to-helper envelope, including worst-case command ID.
+- `liveBridgeResult`
+- `liveBridgeRequest`
+- `liveBridgeLoop`
 - `TOUCH_HINT_KEY` — One-time touch onboarding (D4): on touch there's no hover, so the bullet's press-hold
 - `maybeShowTouchHint`
 - `ptsLabel` — Confirmation-toast helpers (P4-3, UXP-12): every structural/destructive action
