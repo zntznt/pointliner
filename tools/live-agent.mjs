@@ -43,7 +43,7 @@ if (pairingFileMode) {
 } else {
   tty.write(`\nDisposable documents only. Port: ${bridge.server.address().port}\nBrowser secret (paste once into Pointliner): ${browserSecret}\n`);
 }
-process.stdout.write(`Experimental app: ${app.path}\nCommands: read, append TEXT, disconnect\n`);
+process.stdout.write(`Experimental app: ${app.path}\nCommands: read, append TEXT, edit JSON, disconnect\n`);
 async function request(body) {
   const response = await fetch(url, { method: 'POST', headers: { authorization: 'Bearer ' + nativeSecret, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw Error('Session unavailable');
@@ -65,7 +65,7 @@ async function operation(body) {
     // The browser may already have received the command: revocation prevents a
     // queued command from being delivered later, but cannot roll back an in-flight one.
     bridge.revoke();
-    throw Error('Connection lost or timed out. Session revoked. ' + (body.op === 'append' ? 'The append may have applied; inspect the document before retrying.' : 'The read did not return a result.'));
+    throw Error('Connection lost or timed out. Session revoked. ' + (body.op === 'append' || body.op === 'edit' ? 'The write may have applied; inspect the document before retrying.' : 'The read did not return a result.'));
   }
 }
 const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true, prompt: 'agent> ' });
@@ -81,7 +81,13 @@ rl.on('line', async line => {
     }
     if (line === 'read') process.stdout.write((await operation({ op: 'read' })) + '\n');
     else if (line.startsWith('append ')) process.stdout.write((await operation({ op: 'append', text: line.slice(7) })) + '\n');
-    else process.stdout.write('Use read, append TEXT, or disconnect.\n');
+    else if (line.startsWith('edit ')) {
+      let edit; try { edit = JSON.parse(line.slice(5)); } catch { throw Error('Invalid edit JSON'); }
+      if (!edit || typeof edit !== 'object' || Array.isArray(edit) || Object.keys(edit).sort().join(',') !== 'expected,pointId,propsVersion,text') throw Error('Use edit JSON with pointId, expected, propsVersion, and text');
+      const {propsVersion: expectedProps, ...rest} = edit;
+      process.stdout.write((await operation({op:'edit', ...rest, expectedProps})) + '\n');
+    }
+    else process.stdout.write('Use read, append TEXT, edit JSON, or disconnect.\n');
   } catch (e) { process.stdout.write(e.message + '\n'); }
   finally { busy = false; if (!rl.closed) { rl.resume(); rl.prompt(); } }
 });

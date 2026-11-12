@@ -10920,10 +10920,29 @@ function flashError(msg) {
 }
 
 function liveBridgeStop(message = 'Disconnected') {
-  if (liveBridge) liveBridge.stopped = true;
+  if (liveBridge) { liveBridge.stopped = true; liveBridge.versions.clear(); }
   liveBridge = null;
   document.getElementById('live-status').textContent = message;
   document.getElementById('live-disconnect').disabled = true;
+}
+function liveBridgeTimestampProps(props) {
+  const keys = new Set();
+  return Array.isArray(props) && props.every(p => {
+    if (!p || typeof p.key !== 'string' || typeof p.val !== 'string' || Object.keys(p).sort().join(',') !== 'key,val') return false;
+    const key = p.key.toLowerCase();
+    if (!['created', 'edited'].includes(key) || keys.has(key)) return false;
+    keys.add(key); return true;
+  });
+}
+function liveBridgePlainText(text) {
+  return typeof text === 'string' && /^[\p{L}\p{M}\p{N} .,!?':-]{1,500}$/u.test(text) && !!text.trim() && !/^\s*-\s/.test(text) && !deriveTypeFromText(text.trimStart());
+}
+// Budget the entire browser-to-helper envelope, including worst-case command ID.
+function liveBridgeReadFits(points) {
+  const result = {points: points.map(p => ({...p, propsVersion: '0'.repeat(32)}))};
+  const id = Number.MAX_SAFE_INTEGER, encoder = new TextEncoder();
+  return [ {op:'respond', id, result}, {answer:{id, result}, paired:true, next:'0'.repeat(64)} ]
+    .every(envelope => encoder.encode(JSON.stringify(envelope)).length <= 16384);
 }
 function liveBridgeResult(session, command) {
   if (liveBridge !== session || session.stopped || session.generation !== liveBridgeGeneration || root.docId !== session.docId) return { error: 'disconnected' };
@@ -10932,7 +10951,38 @@ function liveBridgeResult(session, command) {
   if (liveBridgeComposing || activeContentId != null || (!incidental && (focused?.isContentEditable || focused?.matches('input, textarea, select')))) return { error: 'Finish editing before using the bridge' };
   const points = liveBridgeScope(root, session.scopeId);
   if (!points) return { error: 'Scope is unavailable or too large' };
-  if (command.op === 'read') return { points };
+  if (command.op === 'read') {
+    if (!liveBridgeReadFits(points)) return {error:'Response too large; choose a smaller scope'};
+    const versions = new Map();
+    const projected = points.map(p => {
+      const n = nodeById(p.id), props = n && liveBridgeTimestampProps(n.props) ? JSON.stringify(n.props) : null;
+      if (!props || props.length > 2000) return {...p, propsVersion:null};
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+      versions.set(token, {id:p.id, props}); return {...p, propsVersion:token};
+    });
+    session.versions = versions;
+    return {points:projected};
+  }
+  if (command.op === 'edit') {
+    if (typeof command.pointId !== 'string' || typeof command.expected !== 'string' || command.expected.length > 500 || typeof command.expectedProps !== 'string' || command.expectedProps.length > 2000 || !liveBridgePlainText(command.text)) return {error:'Invalid command or unsupported text'};
+    const point = points.find(p => p.id === command.pointId), target = point && nodeById(point.id);
+    if (!point || point.id === root.id || !target || target.id !== point.id || target.text !== point.text) return {error:'Point outside scope or scope changed'};
+    const stack = [root]; let inTree = false;
+    while (stack.length) { const node = stack.pop(); if (node === target) { inTree = true; break; } stack.push(...node.children); }
+    if (!inTree) return {error:'Scope changed'};
+    if (target.text !== command.expected) return {error:'Stale text; read again'};
+    if (!liveBridgeTimestampProps(target.props)) return {error:'Unsupported properties'};
+    const version = session.versions.get(command.expectedProps);
+    if (!version || version.id !== point.id || version.props !== JSON.stringify(target.props)) return {error:'Stale properties; read again'};
+    const sidecars = ['footnotes','dice','markov','math','vars','grammar','est','seq','query'];
+    const columns = ['colW','colRole','colFmt'];
+    if (target.type !== 'ul' || target.note || target.baseRows != null || target.checked || target.cards || target.noexport || target.qbase || target.varbase || target.view || target.rolltable?.length || columns.some(k => target[k] != null && (!Array.isArray(target[k]) || target[k].some(v => v != null))) || sidecars.some(k => !Array.isArray(target[k]) || target[k].length) || !liveBridgePlainText(target.text)) return {error:'Unsupported point'};
+    if (target.text === command.text) return {edited:false};
+    const projected = points.map(p => p.id === point.id ? {...p, text:command.text} : p);
+    if (new TextEncoder().encode(JSON.stringify(projected)).length > 12000 || !liveBridgeReadFits(projected)) return {error:'Scope is full'};
+    pushUndo(); target.text = command.text; stampEdit(target); markDirty(); render();
+    return {edited:true};
+  }
   if (command.op !== 'append' || typeof command.text !== 'string' || !/^[\p{L}\p{M}\p{N} .,!?':-]{1,500}$/u.test(command.text) || !command.text.trim() || /^\s*[-]\s/.test(command.text) || deriveTypeFromText(command.text.trimStart())) return { error: 'Unsupported text; plain text only' };
   if (!liveBridgeScope(root, session.scopeId, 1)) return { error: 'Document is full or scope is too deep' };
   const parent = nodeById(session.scopeId), stack = [root]; let found = false;
@@ -10941,7 +10991,8 @@ function liveBridgeResult(session, command) {
   const child = mkNode(command.text);
   for (let tries = 0; nodeMap.has(child.id) && tries < 16; tries++) child.id = uid();
   if (nodeMap.has(child.id)) return { error: 'Could not allocate a point' };
-  if (points.length >= 100 || new TextEncoder().encode(JSON.stringify([...points, {id: child.id, parentId: parent.id, text: child.text}])).length > 12000) return { error: 'Scope is full' };
+  const projected = [...points, {id: child.id, parentId: parent.id, text: child.text}];
+  if (points.length >= 100 || new TextEncoder().encode(JSON.stringify(projected)).length > 12000 || !liveBridgeReadFits(projected)) return { error: 'Scope is full' };
   stampEdit(child); pushUndo(); parent.children.push(child); parent.collapsed = false;
   nodeMap.set(child.id, child); parentMap.set(child.id, parent); markDirty(); render();
   return { appended: true };
@@ -11022,12 +11073,13 @@ async function liveBridgeLoop(session) {
     else if (!scope) error = 'Choose an access scope.';
     else if (scope === 'selected' && (!selected || selected === root.id || !nodeById(selected))) error = 'Select a point in the outline, then reopen this dialog; or choose whole document.';
     else if (!liveBridgeScope(root, scopeId)) error = 'The chosen scope is unavailable or exceeds the bridge limits.';
+    else if (!liveBridgeReadFits(liveBridgeScope(root, scopeId))) error = 'The chosen scope is too large to read; choose a smaller scope.';
     else if (!/^\d{1,5}$/.test(port) || +port < 1 || +port > 65535 || +port !== LIVE_BRIDGE_PORT) error = 'Enter the helper port matching this experimental app.';
     else if (!/^[a-f0-9]{64}$/.test(secret)) error = 'Enter the 64-character browser secret from the private pairing file.';
     else if (!document.getElementById('live-disposable').checked) error = 'Confirm that this document is disposable.';
     if (error) { document.getElementById('live-error').textContent = error; return; }
     secretInput.value = ''; document.getElementById('live-error').textContent = '';
-    const session = { port, secret, scopeId, docId: root.docId, generation: liveBridgeGeneration, stopped: false };
+    const session = { port, secret, scopeId, docId: root.docId, generation: liveBridgeGeneration, stopped: false, versions: new Map() };
     liveBridge = session; document.getElementById('live-disconnect').disabled = false;
     status.textContent = 'Connecting'; dialog.close();
     liveBridgeLoop(session);

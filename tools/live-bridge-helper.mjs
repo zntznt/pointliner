@@ -72,6 +72,8 @@ export function createLiveBridge({ origin, lifetimeMs = 300000, leaseMs = 10000 
         pending = { id: ++sequence, op: 'read' }; result = { queued: pending.id };
       } else if (role === 'native' && paired && keys(command, 'op,text') && command.op === 'append' && typeof command.text === 'string' && command.text.length > 0 && command.text.length <= 500 && !pending && !answer) {
         pending = { id: ++sequence, op: 'append', text: command.text }; result = { queued: pending.id };
+      } else if (role === 'native' && paired && keys(command, 'expected,expectedProps,op,pointId,text') && command.op === 'edit' && typeof command.pointId === 'string' && command.pointId.length > 0 && command.pointId.length <= 128 && typeof command.expected === 'string' && command.expected.length <= 500 && typeof command.expectedProps === 'string' && command.expectedProps.length <= 2000 && typeof command.text === 'string' && command.text.length > 0 && command.text.length <= 500 && !pending && !answer) {
+        pending = { id: ++sequence, ...command }; result = { queued: pending.id };
       } else if (role === 'browser' && keys(command, 'op') && command.op === 'poll') {
         paired = true; heartbeat(); result = { command: pending };
       } else if (role === 'browser' && keys(command, 'id,op,result') && command.op === 'respond' && pending && command.id === pending.id && plain(command.result)) {
