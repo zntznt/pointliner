@@ -13,10 +13,16 @@ export function createLiveBridge({ origin, lifetimeMs = 300000, leaseMs = 10000 
   if (!Number.isInteger(lifetimeMs) || lifetimeMs < 1000 || lifetimeMs > 3600000) throw Error('Invalid lifetime');
   if (!Number.isInteger(leaseMs) || leaseMs < 1000 || leaseMs > 60000) throw Error('Invalid browser lease');
   let expires = performance.now() + lifetimeMs, revoked = false, leaseUntil = 0, leaseTimer;
-  let browser = token(), native = token(), pending = null, answer = null, sequence = 0, paired = false, closing = false;
+  let browser = token(), native = token(), pending = null, answer = null, sequence = 0, paired = false, closing = false, closingId = null;
   let notifyClosed, closingTimer;
   const closed = new Promise(resolve => { notifyClosed = resolve; });
   const revoke = (reason = 'Session ended') => { if (revoked) return; revoked = true; browser = native = null; pending = answer = null; clearTimeout(closingTimer); clearTimeout(leaseTimer); notifyClosed(reason); };
+  const beginDisconnect = () => {
+    if (revoked || closing) return;
+    if (!paired) return revoke();
+    closing = true; closingId = pending?.id ?? null; native = null; pending = answer = null;
+    closingTimer = setTimeout(revoke, 1500); closingTimer.unref();
+  };
   const expired = () => performance.now() >= expires || (paired && performance.now() >= leaseUntil);
   function heartbeat() {
     leaseUntil = performance.now() + leaseMs;
@@ -60,12 +66,14 @@ export function createLiveBridge({ origin, lifetimeMs = 300000, leaseMs = 10000 
       try { command = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { revoke(); return finish(400, { error: 'invalid' }); }
       if (closing) {
         // Closing is a bounded, read-only notification state, not an active session.
-        // The sole allowed request consumes the browser's current capability.
-        if (role === 'browser' && keys(command, 'op') && command.op === 'poll') {
+        // A matching in-flight response is discarded; only the close notice is returned.
+        if (role === 'browser' && ((keys(command, 'op') && command.op === 'poll') ||
+            (closingId !== null && keys(command, 'id,op,result') && command.op === 'respond' && command.id === closingId && plain(command.result)))) {
           res.once('finish', revoke);
           return finish(200, { disconnected: true });
         }
-        revoke(); return finish(410, { error: 'closed' });
+        if (role === 'browser') revoke();
+        return finish(410, { error: 'closed' });
       }
       let result;
       if (role === 'native' && paired && keys(command, 'op') && command.op === 'read' && !pending && !answer) {
@@ -82,15 +90,14 @@ export function createLiveBridge({ origin, lifetimeMs = 300000, leaseMs = 10000 
         result = { answer, paired }; answer = null;
       } else if (keys(command, 'op') && command.op === 'disconnect') {
         if (role === 'native' && paired) {
-          closing = true; native = null; pending = answer = null;
-          closingTimer = setTimeout(revoke, 1500); closingTimer.unref();
+          beginDisconnect();
           return finish(200, { disconnected: true, closing: true });
         }
         revoke(); return finish(200, { disconnected: true });
       } else { result = { error: 'invalid or busy' }; }
       finish(200, { ...result, next });
     });
-    req.on('error', revoke);
+    req.on('error', () => { if (!closing) revoke(); });
   });
   server.headersTimeout = 5000; server.requestTimeout = 5000;
   const timer = setTimeout(revoke, lifetimeMs); timer.unref();
@@ -100,7 +107,7 @@ export function createLiveBridge({ origin, lifetimeMs = 300000, leaseMs = 10000 
     if (issued.has(role) || revoked || expired()) throw Error('Session unavailable');
     issued.add(role); return role === 'browser' ? browser : native;
   }
-  return { server, revoke, closed, issueBrowser: () => issue('browser'), issueNative: () => issue('native'),
+  return { server, revoke, beginDisconnect, closed, issueBrowser: () => issue('browser'), issueNative: () => issue('native'),
     waitForBrowserDisconnect() {
       if (!closing || revoked) return Promise.resolve();
       return new Promise(resolve => {

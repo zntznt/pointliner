@@ -45,8 +45,11 @@ export async function startLiveBridge(bridge, port, pairingFileMode, build = bui
     return { app, browserSecret, nativeSecret, pairingPath };
   } catch (error) {
     bridge.revoke();
-    bridge.server.closeAllConnections();
-    if (bridge.server.listening) await new Promise(resolve => bridge.server.close(resolve));
+    if (bridge.server.listening) {
+      const closed = new Promise(resolve => bridge.server.close(resolve));
+      bridge.server.closeAllConnections();
+      await closed;
+    }
     if (app) app.cleanup();
     throw error;
   }

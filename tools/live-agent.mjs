@@ -7,9 +7,10 @@ import { createLiveBridge } from './live-bridge-helper.mjs';
 import { startLiveBridge } from './live-bridge-build.mjs';
 
 const args = process.argv.slice(2);
-let pairingFileMode = false, port = 0, lifetimeMs = 300000;
+let pairingFileMode = false, agentMode = false, port = 0, lifetimeMs = 300000;
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '--pairing-file' && !pairingFileMode) pairingFileMode = true;
+  if (args[i] === '--agent' && !agentMode) agentMode = true;
+  else if (args[i] === '--pairing-file' && !pairingFileMode) pairingFileMode = true;
   else if (args[i] === '--port' || args[i] === '--lifetime') {
     const flag = args[i], value = args[++i];
     if (!/^[0-9]+$/.test(value || '')) { process.stderr.write(`Invalid ${flag}\n`); process.exit(1); }
@@ -18,6 +19,10 @@ for (let i = 0; i < args.length; i++) {
     else if (flag === '--lifetime' && n >= 1 && n <= 3600) lifetimeMs = n * 1000;
     else { process.stderr.write(`Invalid ${flag}\n`); process.exit(1); }
   } else { process.stderr.write('Usage: node tools/live-agent.mjs [--pairing-file] [--port 1024..65535] [--lifetime 1..3600 seconds]\n'); process.exit(1); }
+}
+if (agentMode) {
+  const { runAgent } = await import('./live-agent-pipe.mjs');
+  process.exit(await runAgent({ port, lifetimeMs }));
 }
 if (!process.stdin.isTTY) {
   process.stderr.write('Run this interactive tool in a terminal.\n');
