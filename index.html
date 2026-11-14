@@ -11022,7 +11022,8 @@ async function liveBridgeLoop(session) {
         if (new TextEncoder().encode(JSON.stringify(response)).length > 16384) {
           response = { op: 'respond', id: data.command.id, result: { error: 'Response too large; choose a smaller scope' } };
         }
-        await liveBridgeRequest(session, response);
+        const acknowledgement = await liveBridgeRequest(session, response);
+        if (acknowledgement.disconnected === true) { liveBridgeStop('Disconnected by agent'); return; }
       }
       await new Promise(resolve => setTimeout(resolve, 250));
     }
