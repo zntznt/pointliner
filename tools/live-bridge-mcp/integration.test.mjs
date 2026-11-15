@@ -6,6 +6,71 @@ import { existsSync, readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const path = new URL('./server.mjs', import.meta.url).pathname;
+test('expiry after a delivered append reports an unknown outcome', {timeout:45000}, async t => {
+  let chromium;
+  try { ({chromium} = await import('playwright')); } catch { if (process.env.POINTLINER_REQUIRE_BROWSER) throw Error('Playwright required'); t.skip('Playwright unavailable'); return; }
+  const {pathToFileURL, fileURLToPath} = await import('node:url');
+  const client = new Client({name:'expiry-write-test', version:'1'});
+  // Eight seconds is below the ten-second browser lease, so the held response
+  // cannot turn this into a heartbeat-expiry test instead of absolute expiry.
+  const transport = new StdioClientTransport({command:process.execPath,args:[path,'--lifetime','8'],stderr:'pipe'});
+  let stderr = '', browser, release;
+  transport.stderr.on('data', chunk => { stderr += chunk; });
+  try {
+    // Browser startup must not consume the helper's short absolute lifetime.
+    browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_PATH ? {executablePath:process.env.PLAYWRIGHT_CHROMIUM_PATH} : {});
+    const page = await browser.newPage();
+    await client.connect(transport);
+    const info = JSON.parse((await client.callTool({name:'session_info',arguments:{}})).content[0].text);
+    const secret = readFileSync(info.pairing,'utf8').trim();
+    await page.addInitScript(() => { delete window.showOpenFilePicker; });
+    await page.goto(pathToFileURL(info.app).href); await page.waitForSelector('#outline'); await page.keyboard.press('Escape');
+    await page.locator('#logo-btn').click(); const chooser = page.waitForEvent('filechooser'); await page.locator('#btn-open').click();
+    await (await chooser).setFiles(fileURLToPath(new URL('../../tests/fixtures/live-bridge-disposable.opml', import.meta.url)));
+    await page.locator('.node-content').filter({hasText:'Sandbox'}).first().click();
+    await page.locator('#logo-btn').click(); await page.locator('#live-open').click();
+    await page.locator('#live-scope-choice').selectOption('selected'); await page.locator('#live-port').fill(String(info.port));
+    await page.locator('#live-secret').fill(secret); await page.locator('#live-disposable').check(); await page.locator('#live-connect').click();
+    for (let i=0;i<100 && await page.locator('#live-status').textContent() !== 'Connected';i++) await delay(100);
+    assert.equal(await page.locator('#live-status').textContent(),'Connected');
+    let delivered; const arrived = new Promise(resolve => { delivered = resolve; });
+    const gate = new Promise(resolve => { release = resolve; });
+    await page.route('**/bridge', async route => {
+      let body; try { body = route.request().postDataJSON(); } catch {}
+      if (body?.op === 'respond' && body.result?.appended === true) { delivered(); await gate; await route.abort().catch(()=>{}); }
+      else await route.continue().catch(()=>{});
+    });
+    const write = client.callTool({name:'append',arguments:{text:'Applied before expiry'}});
+    await Promise.race([arrived, delay(10000).then(()=>{throw Error('browser did not apply write');})]);
+    assert.equal(await page.getByText('Applied before expiry',{exact:true}).count(),1);
+    const response = await write;
+    assert.equal(response.isError,true);
+    assert.match(response.content[0].text,/may have applied.*inspect the document before retrying/i);
+    assert.doesNotMatch(JSON.stringify(response) + stderr, new RegExp(secret));
+    release(); release = undefined;
+    assert.equal(await page.getByText('Applied before expiry',{exact:true}).count(),1);
+    for (let i=0;i<50 && existsSync(info.app);i++) await delay(100);
+    assert.equal(existsSync(info.app),false); assert.equal(existsSync(info.pairing),false);
+  } finally { release?.(); await browser?.close(); await client.close(); }
+});
+
+test('matched shutdown text is never exposed as a tool error', {timeout:10000}, async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), p = await import('node:path');
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(),'mcp-shutdown-test-')), pkg = p.join(dir,'tools','live-bridge-mcp');
+  fs.mkdirSync(pkg,{recursive:true});
+  for (const name of ['server.mjs','framing.mjs']) fs.copyFileSync(new URL('./'+name,import.meta.url),p.join(pkg,name));
+  fs.symlinkSync(p.resolve('tools/live-bridge-mcp/node_modules'),p.join(pkg,'node_modules'));
+  fs.writeFileSync(p.join(dir,'tools','live-agent.mjs'), `process.stdout.write(JSON.stringify({type:'ready',app:'/tmp/app',pairing:'/tmp/file',port:12345})+'\\n'); process.stdin.on('data',b=>{const m=JSON.parse(b);process.stdout.write(JSON.stringify({type:'shutdown',id:m.id,error:'SECRET_MARKER'})+'\\n')});`);
+  const client = new Client({name:'shutdown-test',version:'1'}), transport = new StdioClientTransport({command:process.execPath,args:[p.join(pkg,'server.mjs')],stderr:'pipe'});
+  let stderr = ''; transport.stderr.on('data', chunk => { stderr += chunk; });
+  try {
+    await client.connect(transport);
+    const response = await client.callTool({name:'append',arguments:{text:'example'}});
+    assert.equal(response.isError,true); assert.match(response.content[0].text,/may have applied.*inspect the document before retrying/i);
+    assert.ok(!JSON.stringify(response).includes('SECRET_MARKER')); assert.ok(!stderr.includes('SECRET_MARKER'));
+  } finally { await client.close(); fs.rmSync(dir,{recursive:true,force:true}); }
+});
+
 test('paired Chromium session reads, appends, and edits over MCP', {timeout:60000}, async t => {
   let chromium;
   try { ({chromium} = await import('playwright')); } catch { if (process.env.POINTLINER_REQUIRE_BROWSER) throw Error('Playwright required'); t.skip('Playwright unavailable'); return; }

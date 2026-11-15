@@ -9,8 +9,15 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 
+// Reject invalid configuration before creating files or spawning the helper.
+const args = process.argv.slice(2);
+if (args.length && (args.length !== 2 || args[0] !== '--lifetime' || !/^[1-9][0-9]*$/.test(args[1]) || Number(args[1]) > 3600)) {
+  process.stderr.write('Usage: server.mjs [--lifetime 1..3600 seconds]\n');
+  process.exit(1);
+}
 const ownedDir = mkdtempSync(join(tmpdir(), 'pointliner-mcp-'));
-const child = spawn(process.execPath, [fileURLToPath(new URL('../live-agent.mjs', import.meta.url)), '--agent'], {stdio:['pipe','pipe','pipe'], env:{...process.env, TMPDIR:ownedDir}});
+const helperArgs = [fileURLToPath(new URL('../live-agent.mjs', import.meta.url)), '--agent', ...args];
+const child = spawn(process.execPath, helperArgs, {stdio:['pipe','pipe','pipe'], env:{...process.env, TMPDIR:ownedDir}});
 child.stderr.resume(); // Never mix child diagnostics with MCP stdout or expose secrets.
 let buffer = Buffer.alloc(0), ready, nextId = 0, pending, dead = false, count = 0;
 let resolveReady, killTimer, exitOnClose = false, cleaned = false;
@@ -41,10 +48,12 @@ child.stdout.on('data', chunk => {
     if (message.type === 'ready' && !ready) {
       if (typeof message.app !== 'string' || typeof message.pairing !== 'string' || !Number.isInteger(message.port)) return stop();
       clearTimeout(startupTimer); ready = { app: message.app, pairing: message.pairing, port: message.port }; resolveReady(ready);
-    } else if (pending && message.id === pending.id && (Object.hasOwn(message, 'result') || Object.hasOwn(message, 'error'))) {
-      const p = pending; pending = null; p.resolve(message);
+    // Shutdown frames can carry the outstanding request ID and an error. Handle
+    // them first so an interrupted write keeps the fixed uncertainty warning.
     } else if (message.type === 'shutdown') stop();
-    else return stop();
+    else if (pending && message.id === pending.id && (Object.hasOwn(message, 'result') || Object.hasOwn(message, 'error'))) {
+      const p = pending; pending = null; p.resolve(message);
+    } else return stop();
   }
 });
 child.stdout.on('end', stop);
