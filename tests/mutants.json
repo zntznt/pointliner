@@ -5067,6 +5067,15 @@
       "find": "    const linkOnly = tok && !tok.docId && tok.label !== undefined ? tok : null;",
       "replace": "    const linkOnly = tok && (tok.docId ? { ...tok, label: '' } : tok.label !== undefined ? tok : null);",
       "kills": "bare cross-document links do not get caption-caret repositioning"
+    },
+    {
+      "id": "toolbar-chooser-drop-off-by-one",
+      "suite": "unit",
+      "why": "#1592: the drop splice reverted to the hand-rolled index, so a row dropped on the next row down stays put and none reaches the last slot",
+      "file": "index.html",
+      "find": "            rows.splice(reorderIndex(srcIdx, targetIdx, targetIdx > srcIdx), 0, moved);",
+      "replace": "            rows.splice(targetIdx > srcIdx ? targetIdx - 1 : targetIdx, 0, moved);",
+      "kills": "#1592 toolbar chooser drag lands on the target slot"
     }
   ]
 }

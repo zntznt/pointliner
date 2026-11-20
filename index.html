@@ -43877,7 +43877,8 @@ function buildToolbarChooser() {
           const srcIdx = rows.indexOf(_dragEl);
           if (srcIdx >= 0 && srcIdx !== targetIdx && targetIdx < rows.length) {
             const moved = rows.splice(srcIdx, 1)[0];
-            rows.splice(targetIdx > srcIdx ? targetIdx - 1 : targetIdx, 0, moved);
+            // #1592: dropping on a row takes its slot (after it when below, before it when above)
+            rows.splice(reorderIndex(srcIdx, targetIdx, targetIdx > srcIdx), 0, moved);
             rows.forEach(r => host.appendChild(r));
             commitOrder();
           }

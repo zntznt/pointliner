@@ -36305,6 +36305,19 @@ test('#955 reorderIndex: the off-by-one a manual test always misses', () => {
   assert.equal(c.reorderIndex(1, NaN, true), 1);
 });
 
+// #1592: the toolbar chooser's drag dropped the row BEFORE the target and then corrected for the
+// removal anyway, so a drop on the next row down was a no-op and no row could reach the last slot.
+// Dropping on a row means taking its slot: after it when it sits below the source, before it when
+// above. That is reorderIndex with `after = target > from`, and it must land exactly on the target.
+test('#1592 toolbar chooser drag lands on the target slot, in both directions and at the end', () => {
+  for (let from = 0; from < 5; from++) for (let to = 0; to < 5; to++) {
+    assert.equal(c.reorderIndex(from, to, to > from), to, `row ${from} dropped on row ${to} lands at ${to}`);
+  }
+  const drop = fnBody(_src, 'buildToolbarChooser');
+  assert.ok(drop.includes('rows.splice(reorderIndex(srcIdx, targetIdx, targetIdx > srcIdx), 0, moved)'),
+    'the pointerup drop must insert at reorderIndex(srcIdx, targetIdx, targetIdx > srcIdx)');
+});
+
 test('#955 the cell layer is extractable, and the gallery calls it', () => {
   // base-views-vision §0.2 claimed these handlers are "bound to <td data-r/data-c> grid geometry"
   // and that interaction on a non-table view is therefore net-new. They are delegated on a plain

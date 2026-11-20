@@ -9174,3 +9174,40 @@ test('Open selects the correct document and Save target after success or failure
     });
   }
 });
+
+// #1592: the toolbar chooser's drag dropped a row BEFORE its target and then corrected for the
+// removal anyway, so a drop on the next row down did nothing and no row could reach the last slot.
+// Driven with the real pointer through the grip, because the drop resolves its target from the
+// pointer's clientY: the unit pin proves the index math is wired, only this proves the gesture lands.
+test('#1592 dragging a toolbar chooser row moves it one down into the last slot, and up still works', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(() => openFileMenu());
+    const order = () => pg.evaluate(() => ({
+      dom: [...document.querySelectorAll('#fm-toolbar-opts .cmd-item')].map(r => r.dataset.fid),
+      saved: TOOLBAR_FEATURES.map(f => f.id),
+    }));
+    const drag = async (from, to) => {
+      const rows = pg.locator('#fm-toolbar-opts .cmd-item');
+      await rows.nth(to).scrollIntoViewIfNeeded();
+      await rows.nth(from).scrollIntoViewIfNeeded();
+      const g = await rows.nth(from).locator('.tfr-grip').boundingBox();
+      const t = await rows.nth(to).boundingBox();
+      await pg.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+      await pg.mouse.down();
+      await pg.mouse.move(t.x + t.width / 2, t.y + t.height / 2, { steps: 5 });
+      await pg.mouse.up();
+      await pg.waitForTimeout(100);
+    };
+    const before = (await order()).dom;
+    const n = before.length;
+    assert.ok(n >= 3, 'precondition: the chooser lists at least three toolbar features');
+    await drag(n - 2, n - 1);
+    const down = before.slice(0, n - 2).concat(before[n - 1], before[n - 2]);
+    assert.deepEqual(await order(), { dom: down, saved: down }, 'one place down, into the last slot, and saved');
+    await drag(2, 0);
+    const up = [down[2], down[0], down[1], ...down.slice(3)];
+    assert.deepEqual(await order(), { dom: up, saved: up }, 'dragging upward still lands on the target slot');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
