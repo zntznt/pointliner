@@ -170,7 +170,7 @@ button,[contenteditable],input{touch-action:manipulation}
   --display-font:'Fraunces',ui-serif,Georgia,serif;
   --mono:ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;
   --hbg:#fcfaf5;--bdr:#e5dfd2;--bdr-ui:#8f887b;--acc:#4338ca;--acc-fg:#fff;--ring:rgba(67,56,202,.25);
-  --cbg:#eee9dd;--del:#6b665c;--qbdr:color-mix(in srgb,var(--acc) 55%,transparent);
+  --cbg:#eee9dd;--del:#6b665c;--qbdr:color-mix(in srgb,var(--acc) 60%,transparent);/* #1590: 60% matches applyAccentCSS's live light value, as UXP-157 did for --ring */
   --ok:#1e7029;--warn:#8a5300;--bad:#b3271f;--info:#0f5cb0;
   --r-xs:3px;--r-sm:6px;--r-md:8px;--r-lg:12px;--r-badge:4px;
   --sh-1:0 1px 2px rgba(45,35,25,.08),0 6px 18px rgba(45,35,25,.10);
@@ -248,7 +248,7 @@ html{scrollbar-width:thin;scrollbar-color:var(--cb) transparent}
 .save-status .ss-text{overflow:hidden;text-overflow:ellipsis;min-width:0}
 .save-status:hover{background:var(--bdr)}
 .save-status .ss-ic{font-size:11px;line-height:1;flex-shrink:0}   /* the glyph never shrinks: it is the state */
-.save-status[data-kind="saved"] .ss-ic{color:var(--ok,#3a9d5d)}
+.save-status[data-kind="saved"] .ss-ic{color:var(--ok)}
 .save-status[data-kind="saving"]{color:var(--muted)}
 .save-status[data-kind="unsaved"] .ss-ic,.save-status[data-kind="memory"] .ss-ic{color:var(--acc)}
 .save-status[data-kind="memory"]{color:var(--acc)}
@@ -671,7 +671,7 @@ body.v-lean .addrow-affordance:focus-visible{opacity:1}
    Its row is not in this view, so the doors sit at the end of the rows they act on. Children are
    ordinary .addrow-affordance, so the verbosity gating and the touch rail above apply unchanged —
    this rule is layout only, and adds no new visual language. */
-.view-doors{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 0 var(--row-indent,26px);padding:0}
+.view-doors{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:2px 0 0 26px;padding:0}
 .view-doors>.addrow-affordance{margin-left:0}
 /* V6: pill edit-pencils are a verbose-tier affordance. Hidden AT REST (opacity 0 in
    each `*-edit` rule below) so pill-dense lines stay calm; revealed on pill-hover
@@ -1053,7 +1053,7 @@ body.mt-resizing,body.mt-resizing *{user-select:none}
 .mt-total-cell::before{content:attr(data-agg) '\00a0';font-size:.72em;font-weight:600;font-style:normal;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .md-img{max-width:100%;max-height:360px;width:auto;height:auto;border-radius:var(--r-sm);margin:3px 0;display:block;vertical-align:bottom;object-fit:contain}
 /* #1325: a not-yet-allowed remote image renders as this click-to-allow chip instead of an <img> (privacy). */
-.web-img-blocked{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px dashed var(--bdr-ui);border-radius:var(--r-md);background:var(--bg-2,var(--bg));color:var(--muted);font-size:12.5px;cursor:pointer;max-width:100%;transition:border-color .12s,color .12s}
+.web-img-blocked{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border:1px dashed var(--bdr-ui);border-radius:var(--r-md);background:var(--bg);color:var(--muted);font-size:12.5px;cursor:pointer;max-width:100%;transition:border-color .12s,color .12s}
 .web-img-blocked:hover,.web-img-blocked:focus-visible{border-color:var(--acc);color:var(--fg);outline:none}
 .web-img-blocked:focus-visible{box-shadow:0 0 0 3px var(--ring)}
 .web-img-blocked i{font-size:.95em}
