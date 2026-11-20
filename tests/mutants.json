@@ -5076,6 +5076,24 @@
       "find": "            rows.splice(reorderIndex(srcIdx, targetIdx, targetIdx > srcIdx), 0, moved);",
       "replace": "            rows.splice(targetIdx > srcIdx ? targetIdx - 1 : targetIdx, 0, moved);",
       "kills": "#1592 toolbar chooser drag lands on the target slot"
+    },
+    {
+      "id": "palette-phantom-token",
+      "suite": "unit",
+      "why": "#1590: .web-img-blocked reads a --bg-2 that no palette home declares again, so it silently means its fallback forever",
+      "file": "index.html",
+      "find": "border-radius:var(--r-md);background:var(--bg);color:var(--muted);font-size:12.5px;cursor:pointer;max-width:100%;",
+      "replace": "border-radius:var(--r-md);background:var(--bg-2,var(--bg));color:var(--muted);font-size:12.5px;cursor:pointer;max-width:100%;",
+      "kills": "#1590 palette hygiene"
+    },
+    {
+      "id": "palette-literal-fallback",
+      "suite": "unit",
+      "why": "#1590: the saved check icon carries a literal #3a9d5d fallback again, a color in no palette home",
+      "file": "index.html",
+      "find": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok)}",
+      "replace": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok,#3a9d5d)}",
+      "kills": "#1590 palette hygiene"
     }
   ]
 }
