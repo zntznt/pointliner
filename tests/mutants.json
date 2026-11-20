@@ -4547,6 +4547,15 @@
       "kills": "#1587 V-1 census"
     },
     {
+      "id": "vocab-census-note-for-point",
+      "suite": "unit",
+      "why": "#1607: \"note\" for a POINT (\"a buried note\") must bite while a point's own note stays legal",
+      "file": "guide/getting-around.md",
+      "find": "pull a buried point up",
+      "replace": "pull a buried note up",
+      "kills": "#1587 V-1 census"
+    },
+    {
       "id": "vocab-census-guide-entry",
       "suite": "unit",
       "why": "#1587: a GUIDE body must be on the census, and \"notebook\" for the folder must bite",

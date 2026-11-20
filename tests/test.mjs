@@ -28235,6 +28235,9 @@ test('#1587 V-1 census: no banned synonym for document, folder, point, pill or c
       '\\b(?:foot of|sits in|sits under) the note\\b', "\\bthe note's own\\b", '\\bnote set\\b', '\\bspans many notes\\b',
       '\\$\\{[^}]*\\} notes\\b',
     ].join('|')) },
+    // #1607: the same word meaning a POINT ("a buried note", "an index note"); a point's own note,
+    // the note field, stays legal because none of these adjectives describe it
+    { id: 'note-point', say: 'point', re: P('\\b(?:context|index|buried) notes?\\b') },
     // a loot item, a line item, a deck's items and an item field stay legal; these mean a POINT
     { id: 'item', say: 'point', re: P('\\b(?:overdue|late|done|completed|finished|started|running|dated|undated|tagged|priciest|cheapest) items?\\b|\\bitems? it holds\\b|\\bclick any item\\b') },
     // "unfold"/"refold" are code; "folder" is a different word; these mean COLLAPSE
