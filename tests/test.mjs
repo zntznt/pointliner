@@ -39949,3 +39949,34 @@ test('bare cross-document links do not get caption-caret repositioning', () => {
     /const linkOnly = tok && !tok\.docId && tok\.label !== undefined \? tok : null;/,
     'only same-document links with an explicit pipe have a caption slot');
 });
+
+// #1639: snapshot undo (and every other root swap) rebuilt the node index on top of the old one, so
+// a point the undo removed stayed reachable through nodeById while absent from the live tree.
+test('#1639 indexTree rebuilds the index from scratch, dropping ids no longer in the tree', () => {
+  const kid = { id: 'k1639', text: 'kept', children: [] };
+  const tree = { id: 'r1639', text: '', children: [kid] };
+  const gone = { id: 'g1639', text: 'removed', children: [] };
+  const nmap = new Map([['g1639', gone]]), pmap = new Map([['g1639', tree]]);
+  c.indexTree(tree, nmap, pmap);
+  assert.deepEqual([...nmap.keys()], ['r1639', 'k1639']);
+  assert.deepEqual([...pmap.entries()], [['r1639', null], ['k1639', tree]]);
+});
+
+test('#1639 restoreSnapshot leaves no removed point in nodeById', () => {
+  const r = vm.runInContext(`(() => {
+    root = { id: 'r1639s', text: '', children: [{ id: 'a1639', text: 'kept', children: [] }] };
+    buildIndex(root, null);
+    const before = snapshot();
+    root.children.push({ id: 'b1639', text: 'appended', children: [] });
+    buildIndex(root, null);
+    const seen = nodeById('b1639') !== null;
+    restoreSnapshot(before);
+    const out = { seen, after: nodeById('b1639'), parent: parentOf('b1639'), kept: nodeById('a1639')?.text };
+    root = mkRoot(); buildIndex(root, null); resetDocCaches();
+    return out;
+  })()`, c._context);
+  assert.equal(r.seen, true, 'the appended point was indexed before the undo');
+  assert.equal(r.after, null, 'and is gone from nodeById after it');
+  assert.equal(r.parent, undefined, 'and from parentMap');
+  assert.equal(r.kept, 'kept', 'while the surviving point still resolves');
+});
