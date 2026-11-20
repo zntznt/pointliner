@@ -7809,11 +7809,20 @@ function migrateNodePrefixes(n) {
   n.children.forEach(migrateNodePrefixes);
 }
 
-function buildIndex(n, parent = null) {
-  nodeMap.set(n.id, n);
-  parentMap.set(n.id, parent);
-  for (const c of n.children) buildIndex(c, n);
+// #1639: a full REBUILD, not an add. Every caller passes the whole root, and a root swap (snapshot
+// undo, adoptDoc, the autosave reconcile) or a splice that skipped deregisterSubtree would otherwise
+// leave points that are no longer in the tree answering nodeById. Clearing first is the one place
+// all of them route through.
+function indexTree(rootNode, nmap, pmap) {
+  nmap.clear(); pmap.clear();
+  const walk = (n, parent) => {
+    nmap.set(n.id, n);
+    pmap.set(n.id, parent);
+    for (const c of n.children) walk(c, n);
+  };
+  walk(rootNode, null);
 }
+function buildIndex(rootNode) { indexTree(rootNode, nodeMap, parentMap); }
 function deregisterSubtree(n) {
   nodeMap.delete(n.id);
   parentMap.delete(n.id);
