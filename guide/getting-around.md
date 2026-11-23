@@ -136,7 +136,7 @@ selected point at once (the same two chords cycle a single point while you are e
 ## Refile a point
 
 Move a point and everything under it to a new home far across the document: drop a stray idea into the
-right project, tuck a finished point under an archive or pull a buried note up to the top.
+right project, tuck a finished point under an archive or pull a buried point up to the top.
 
 Open the point's menu and choose **Refile** to browse the whole document as a searchable tree: type to
 filter to a destination, walk it with the arrow keys, then press `Enter` to move the point there as

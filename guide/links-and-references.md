@@ -9,7 +9,7 @@ folder of documents.*
 ## Linking points
 
 Build a personal wiki where ideas refer to each other, create a table of contents that links to
-sections or connect a task to its full context note.
+sections or connect a task to the point that holds its context.
 
 Type **`[[`** and pick the point to link to. Two things make these links low-maintenance:
 
@@ -157,7 +157,7 @@ character sheet in one file can show inside a session log in another, a definiti
 every document that needs it.
 
 On its own line it brings the point's **whole subtree** along (same rules as the same-document form:
-collapsing in the source bounds it, 40-row cap), so an index note can compose sections from several
+collapsing in the source bounds it, 40-row cap), so an index point can compose sections from several
 files.
 
 The embedded copy shows the point **as it was last saved** in its file (another document is its file
