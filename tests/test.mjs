@@ -27631,6 +27631,37 @@ test('#654/#655 the toast sizes to content and dwells by length (src pins)', () 
   assert.ok(_src.includes('el.style.opacity = \'0\'; }, hintDwell(msg))'), 'the hint dwell must come from hintDwell(msg)');
 });
 
+test('#1589 canShiftPoint: a point can indent only after a sibling, outdent only below a real parent', () => {
+  // a tree: root > A > (A1, A2) ; root > B. Zoomed on A in the focus case.
+  const A1 = { id: 'A1', children: [] }, A2 = { id: 'A2', children: [] };
+  const A = { id: 'A', children: [A1, A2] }, B = { id: 'B', children: [] };
+  const R = { id: 'R', children: [A, B] };
+  const par = new Map([['A', R], ['B', R], ['A1', A], ['A2', A]]);
+  const pOf = id => par.get(id);
+  const can = (id, right, focus = null) => c.canShiftPoint(id, right, pOf, R, focus);
+  assert.equal(can('A', true), false, 'a first child has nothing to indent under');
+  assert.equal(can('B', true), true, 'a later sibling indents under the one above');
+  assert.equal(can('A2', true), true);
+  assert.equal(can('A1', true), false);
+  assert.equal(can('A', false), false, 'a top-level point cannot outdent');
+  assert.equal(can('A1', false), true, 'a nested point outdents to its grandparent');
+  assert.equal(can('A1', false, 'A'), false, 'nor past the zoom root');
+  assert.equal(can('ghost', true), false, 'a detached id moves nowhere');
+  assert.equal(can('ghost', false), false);
+});
+
+test('#1589 the swipe cue and the Tab actions share canShiftPoint (src pins)', () => {
+  // The chip used to be built for any swipe, so a blocked direction still advertised a move.
+  const sw = fnBody(_src, 'attachSwipeIndent');
+  assert.ok(sw.includes('const allowed = canShiftPoint(node.id, dir > 0);'), 'the swipe must ask canShiftPoint');
+  assert.ok(sw.includes('if (allowed) ensureCue(dir > 0);'), 'the chip is built only for an allowed direction');
+  assert.ok(sw.includes("row()?.classList.toggle('swipe-blocked', !allowed);"), 'a blocked direction hides an existing chip');
+  assert.ok(sw.includes("'swipe-blocked');"), 'reset clears the blocked state');
+  assert.ok(_src.includes('.node-row.swipe-blocked .swipe-cue{display:none}'), 'the CSS hides the chip on a blocked row');
+  assert.ok(fnBody(_src, 'indentNode').includes('if (!canShiftPoint(id, true)) return;'), 'indentNode guards with the same answer');
+  assert.ok(fnBody(_src, 'outdentNode').includes('if (!canShiftPoint(id, false)) return;'), 'outdentNode guards with the same answer');
+});
+
 test('#658/#659/#660 toast + banner positioning (src pins)', () => {
   // #660: the touch onboarding hint routes through flashHint (gate-aware, styling-reset) instead of
   // hand-writing the shared element (which clobbered an active error toast and inherited its tint).

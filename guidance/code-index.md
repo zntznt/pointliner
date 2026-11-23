@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2202 declarations in 158 sections across 17 domains.**
+**2203 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1962,6 +1962,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `insertSiblingAfter`
 - `mergeUpInto` — UXP-68: Backspace at offset 0 of a non-empty point merges it UP into the previous
 - `caretOffsetIfEditing` — #814 (agent-review, UXP-207): a structural op on the point being edited preserves the
+- `canShiftPoint` — #1589: can point `id` move sideways? right = indent (needs a previous sibling), left = outdent
 - `indentNode`
 - `outdentNode`
 - `deleteNode`

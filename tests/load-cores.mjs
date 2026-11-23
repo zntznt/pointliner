@@ -173,6 +173,7 @@ export function loadCores() {
     'deepCloneNodeNewIds', '_cloneNodeNewIds', 'remapClonedLinks', 'uid',   // clone + internal-link remap
     'distReadout', 'sampleGenerator', 'distChanceAtLeast', 'distChanceAtMost', 'pickOneHit',   // distribution peek
     'tapFloorCandidates',   // UXP-249: the static tap-floor guard
+    'canShiftPoint',        // #1589: can a point indent/outdent (swipe cue + Tab share it)
     'scrollCueClasses',     // UXP-259: which edge fades a .scroll-strip shows
     'tagHit', 'stripStateTags', 'ancestorTagText', 'tagScanText', 'extendAncTagText',   // tag inheritance
     'searchBlob',           // doc-cache: the text-term haystack

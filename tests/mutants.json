@@ -5085,6 +5085,24 @@
       "find": "            rows.splice(reorderIndex(srcIdx, targetIdx, targetIdx > srcIdx), 0, moved);",
       "replace": "            rows.splice(targetIdx > srcIdx ? targetIdx - 1 : targetIdx, 0, moved);",
       "kills": "#1592 toolbar chooser drag lands on the target slot"
+    },
+    {
+      "id": "swipe-cue-ungated",
+      "suite": "unit",
+      "why": "#1589: the chip was built for every swipe, so a blocked direction still advertised a move",
+      "file": "index.html",
+      "find": "    if (allowed) ensureCue(dir > 0);\n",
+      "replace": "    ensureCue(dir > 0);\n",
+      "kills": "#1589 the swipe cue and the Tab actions share canShiftPoint"
+    },
+    {
+      "id": "shift-indent-first-child",
+      "suite": "unit",
+      "why": "#1589: an off-by-one lets a first child claim it can indent, and the chip lies again",
+      "file": "index.html",
+      "find": "  if (right) return p.children.findIndex(c => c.id === id) > 0;",
+      "replace": "  if (right) return p.children.findIndex(c => c.id === id) >= 0;",
+      "kills": "#1589 canShiftPoint"
     }
   ]
 }
