@@ -9211,3 +9211,41 @@ test('#1592 dragging a toolbar chooser row moves it one down into the last slot,
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
 });
+
+// #1661: Ctrl+P printed the app (toolbar, help button, tip toast, "+ Add", "New point", the open
+// point's edit tint and its raw {…} source). Headless Chromium cannot open a print dialog, so this
+// fires the browser's own beforeprint and then renders with print media, which is what the dialog
+// does. Identity, not existence: the ONLY top-level element left showing is the outline.
+test('#1661 printing shows only the outline, with no doors and the open point committed to values', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(() => adoptDoc(fromOpml(STARTERS[0].opml), { fileName: 'unsaved' }));
+    await pg.waitForTimeout(400);
+    const id = await pg.evaluate(() => [...document.querySelectorAll('.node-content[data-id]')]
+      .find(c => nodeById(c.dataset.id)?.text.startsWith('Open tasks left')).dataset.id);
+    await pg.click(`.node-content[data-id="${id}"]`);
+    await pg.waitForTimeout(200);
+    assert.ok(await pg.evaluate(i => document.querySelector(`.node-content[data-id="${i}"]`).dataset.editing, id),
+      'precondition: the pill point is open, showing its source');
+    await pg.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    await pg.emulateMedia({ media: 'print' });
+    const r = await pg.evaluate(i => {
+      const shown = el => getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
+      const all = sel => [...document.querySelectorAll(sel)];
+      return {
+        top: [...document.body.children].filter(e => e.tagName !== 'SCRIPT' && shown(e) && e.getBoundingClientRect().height > 0).map(e => '#' + e.id),
+        doors: nonEmptyList(all('#outline .addrow-affordance, #outline .ghost-row, #outline .has-children>.node-row>.collapse-btn')).filter(shown).length,
+        editing: all('[data-editing]').length,
+        text: document.querySelector(`.node-content[data-id="${i}"]`).textContent,
+      };
+      function nonEmptyList(l) { if (!l.length) throw new Error('no doors rendered: the check would be vacuous'); return l; }
+    }, id);
+    assert.deepEqual(r.top, ['#outline'], 'only the document prints');
+    assert.equal(r.doors, 0, 'no + Add, New point or fold arrow on paper');
+    assert.equal(r.editing, 0, 'beforeprint committed the open point');
+    assert.ok(!r.text.includes('{') && /\d/.test(r.text), `the pill prints its value, got ${JSON.stringify(r.text)}`);
+    await pg.emulateMedia({ media: 'screen' });
+    assert.ok(await pg.evaluate(() => getComputedStyle(document.getElementById('toolbar')).display !== 'none'), 'the screen still has its toolbar');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});

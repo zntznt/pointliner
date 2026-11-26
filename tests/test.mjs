@@ -40047,3 +40047,20 @@ test('#1639 restoreSnapshot leaves no removed point in nodeById', () => {
   assert.equal(r.parent, undefined, 'and from parentMap');
   assert.equal(r.kept, 'kept', 'while the surviving point still resolves');
 });
+
+// #1661: Ctrl+P printed the app chrome. The print sheet is an ALLOWLIST (only #outline survives at
+// the top level) so a future panel or toast is hidden by default; the doors inside the outline are
+// named. tests/browser.mjs drives the rendered result; these pin that the rules and the hook exist.
+test('#1661 the print stylesheet keeps only the outline and hides the in-outline doors', () => {
+  const css = between(_src, '@media print{', '\n}');
+  assert.ok(css.includes('body>*:not(#outline)'), 'top-level allowlist: everything but the outline is hidden');
+  for (const door of ['.ghost-row', '.addrow-affordance', '.swipe-cue'])
+    assert.ok(css.includes(door), `${door} does not print`);
+  assert.ok(css.includes('.collapse-btn{visibility:hidden'), 'fold arrows hide but keep their indent column');
+  assert.ok(!/(^|[;{])\s*color\s*:/.test(css), 'hides only, never colors: a color here would bypass applyTheme');
+});
+
+test('#1661 beforeprint commits an open point so paper gets pill values, not source', () => {
+  const hook = between(_src, "window.addEventListener('beforeprint'", '\n');
+  assert.ok(hook.includes('dataset?.editing') && hook.includes('.blur()'), 'the open point is blurred (committed) before print');
+});

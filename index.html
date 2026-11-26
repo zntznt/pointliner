@@ -2988,6 +2988,16 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
 }
+/* #1661 print: paper gets the document, not the app. An allowlist (only #outline survives at
+   the top level) so a new toolbar, panel or toast is hidden by default instead of printing
+   until someone remembers to list it. Inside the outline, the doors to add or fold go, and so
+   does the focus/edit highlight. Hides only, sets no color: nothing here for applyTheme. */
+@media print{
+  body>*:not(#outline),.ghost-row,.addrow-affordance,.swipe-cue{display:none !important}
+  .collapse-btn{visibility:hidden !important}
+  .node-content:focus,.node-note[data-editing]{box-shadow:none !important}
+  .node-row:has(.node-content[data-editing]){background:none !important}
+}
 </style>
 </head>
 <body>
@@ -47552,6 +47562,8 @@ document.addEventListener('keydown', e => {
 // - autosave disabled with no OPFS fallback: memory is the only copy
 // Plain default-mode autosave (OPFS/localStorage) survives a reload, so it needs no warning.
 window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventDefault(); e.returnValue=''; } });
+// #1661: an open point shows its {…} source, so commit it before printing; paper gets the values.
+window.addEventListener('beforeprint', () => { if (document.activeElement?.dataset?.editing) document.activeElement.blur(); });
 
 // keep body padding in sync with the fixed top chrome: the toolbar (breadcrumb changes its height)
 // PLUS the #storage-warn banner while it shows. Banners push the outline down, never overlap it

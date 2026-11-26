@@ -5121,6 +5121,42 @@
       "find": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok)}",
       "replace": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok,#3a9d5d)}",
       "kills": "#1590 palette hygiene"
+    },
+    {
+      "id": "print-allowlist-gone",
+      "suite": "unit",
+      "why": "#1661: without the top-level allowlist the toolbar, help button and toasts print again",
+      "file": "index.html",
+      "find": "  body>*:not(#outline),.ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "replace": "  .ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "kills": "#1661 the print stylesheet keeps only the outline"
+    },
+    {
+      "id": "print-hook-gone",
+      "suite": "unit",
+      "why": "#1661: without beforeprint the open point prints its {…} source instead of the pill value",
+      "file": "index.html",
+      "find": "window.addEventListener('beforeprint', () => { if (document.activeElement?.dataset?.editing) document.activeElement.blur(); });",
+      "replace": "window.addEventListener('beforeprint', () => {});",
+      "kills": "#1661 beforeprint commits an open point"
+    },
+    {
+      "id": "print-allowlist-gone-driven",
+      "suite": "browser",
+      "why": "#1661: the driven check sees the chrome on paper when the allowlist is dropped",
+      "file": "index.html",
+      "find": "  body>*:not(#outline),.ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "replace": "  .ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "kills": "#1661 printing shows only the outline"
+    },
+    {
+      "id": "print-hook-gone-driven",
+      "suite": "browser",
+      "why": "#1661: the driven check sees the open point still editing on paper when beforeprint does nothing",
+      "file": "index.html",
+      "find": "window.addEventListener('beforeprint', () => { if (document.activeElement?.dataset?.editing) document.activeElement.blur(); });",
+      "replace": "window.addEventListener('beforeprint', () => {});",
+      "kills": "#1661 printing shows only the outline"
     }
   ]
 }
