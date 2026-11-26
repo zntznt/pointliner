@@ -3844,12 +3844,16 @@ function countParts(body) {
 // resolveBrace, which only ever sees the body. The scope lives in the text or it cannot survive a
 // re-roll. A bonus over the scoped query pill: this DOES unfold in edit mode, because the text can
 // say it. Same pre-colon modifier shape as {prop KEY: …} / {date due: …} / {rule Name: …}.
+// #1659: an optional COUNT before the modifier deals that many DISTINCT matching points,
+// {roll 3: #history}, the same `N` slot and 1-99 range {shuffle 3: a | b} already uses.
 function rollParts(body) {
-  const m = /^roll(\s+folder)?\s*:(.*)$/is.exec((body || '').trim());
+  const m = /^roll(?:\s+(\d{1,2}))?(\s+folder)?\s*:(.*)$/is.exec((body || '').trim());
   if (!m) return null;
-  const expr = m[2].trim();
+  const expr = m[3].trim();
   if (!expr) return null;                              // {roll:} with no query → not a roll
-  return { expr, folder: !!m[1] };
+  const count = m[1] ? parseInt(m[1], 10) : 1;
+  if (count < 1) return null;                          // {roll 0: …} deals nothing: an attempt, not a roll
+  return { expr, folder: !!m[2], count };
 }
 
 // LEAN FLOOR phase 1 — the promoting inline stub for a SIDECAR-backed verb. propDeclParts(body) sniffs
@@ -19522,6 +19526,12 @@ function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
 function pickOneHit(hits) {
   return hits.length ? hits[Math.floor(srand() * hits.length)] : '';   // #1243: a roll picks on-action -> session-seeded
 }
+// #1659: {roll N: …} deals N DISTINCT hits (no repeats), capped at the pool, joined the way a
+// counted shuffle deal joins. N = 1 is exactly pickOneHit, so the plain roll's draw is unchanged.
+function dealHits(hits, n = 1) {
+  if (n <= 1) return pickOneHit(hits);
+  return shuffledIndices(hits.length, srand).slice(0, n).map(i => hits[i]).join(' ');
+}
 
 // #899: the FOLDER-scoped pool behind {roll folder: <query>} — the generative member of the 4c
 // family, joining queryReduceFolder (the reducers) and queryRowsFolder (the query pill). Same
@@ -20528,6 +20538,8 @@ function classifyBraceBody(body, rules, vars) {
   // (Unlike `seq`, there is no shred to close here: `seqParts` accepts comma-separated items, so
   // `{shuffle: a, b | c}` parses and stays a real pill. Verified, not assumed.)
   if (/^shuffle\s*:/i.test(body)) return 'invalid';
+  // #1659: a counted shuffle ({shuffle 3: …}), and any deck whose list is one search, are attempts too
+  if (/^shuffle\s+\d{1,2}\s*:/i.test(body) || deckSearchHint(body)) return 'invalid';
   if (/^markov\s*:/i.test(body)) return 'invalid';
   // #1538: a family name with a colon ({deck: a | b | c}) is an attempt at a deck, not a pick
   // between "deck: a" and "b". Saying so here is what keeps it off the alternation line below.
@@ -20563,7 +20575,7 @@ function classifyBraceBody(body, rules, vars) {
   // UXP-253 parity: query/count/roll committed to their keyword (opened with `verb:`) but the tail did
   // not parse — an ATTEMPT, not prose. Without this a `{count: }` / `{query:}` / `{roll: }` (empty or
   // malformed tail) fell through to 'literal' and leaked its raw braces into rendered prose with no cue.
-  if (/^(?:query|count|roll)\s*:/i.test(body)) return 'invalid';
+  if (/^(?:query|count|roll(?:\s+\d+)?(?:\s+folder)?)\s*:/i.test(body)) return 'invalid';
   // {oracle: likely} — the band name is a closed set, so an unknown band is an ATTEMPT
   // (typo styling), not prose; the text still stays literal on exit (#543, the #407 model).
   if (/^oracle\s*:/i.test(body)) return oracleParts(body) ? 'artifact' : 'invalid';
@@ -20894,7 +20906,9 @@ function braceAttemptReason(body, rules, vars) {
   if (/^meter\s*:/i.test(body)) return 'A meter reads a value over its max: try {meter: hp/hpmax} or {meter: 8/12}.';
   // {shuffle|cycle|once|stopping: <bad list>}. #1591: each mode in its own words (#1505's rule). This
   // sent all four to {shuffle: …}, which nobody heard while only shuffle could be called an attempt.
-  const deckMode = /^(shuffle|cycle|once|stopping)\s*:/i.exec(body);
+  const dsh = deckSearchHint(body);
+  if (dsh) return dsh;
+  const deckMode = /^(shuffle|cycle|once|stopping)(?:\s+\d{1,2})?\s*:/i.exec(body);
   if (deckMode) return EMPTY_STUB_FORM[deckMode[1].toLowerCase()];
   // {markov: <no arrows>}
   if (/^markov\s*:/i.test(body)) return 'A markov chain links states with arrows: try {markov: a→b, b→c}.';
@@ -26941,6 +26955,7 @@ function resolveField(base, field, ctx) {
 // a top-level `:`), so it is disjoint from conditionals (which carry a comparison
 // before the `:`) and from plain alternation (which has no mode keyword).
 const SEQ_MODES = ['shuffle', 'cycle', 'once', 'stopping'];
+const DECK_SEARCH_RE = /^(?:#[\w-]|(?:is|has):)/i;   // #1659: a list item that is really a search
 
 // Parse a {mode: a | b | c} body → {mode, items, count} or null. The FIRST top-level `:`
 // splits the mode from the items (an item may itself contain a `:`); items split
@@ -26963,7 +26978,20 @@ function seqParts(body) {
   if (count < 1 || (count !== 1 && mode !== 'shuffle')) return null;
   const rest = body.slice(segs[0].length + 1);
   const items = splitTopLevel(rest, '|').map(s => s.trim()).filter(s => s !== '');
+  if (items.length === 1 && DECK_SEARCH_RE.test(items[0])) return null;   // #1659: a search, see deckSearchHint
   return items.length ? { mode, items, count } : null;
+}
+// #1659: a deck whose whole list is ONE search ({shuffle 3: #history}) used to become a one-card deck
+// dealing the literal word "#history", a silent wrong success. A deck deals a list you type; a roll is
+// the verb that reads your points. Returns the coaching sentence (naming the {roll N: …} that does it),
+// or null when the body is not that shape. Pure.
+function deckSearchHint(body) {
+  const m = /^(shuffle|cycle|once|stopping)(?:\s+(\d{1,2}))?\s*:(.*)$/is.exec((body || '').trim());
+  if (!m) return null;
+  const q = m[3].trim();
+  if (!DECK_SEARCH_RE.test(q) || splitTopLevel(q, '|').length > 1) return null;
+  const n = m[2] && parseInt(m[2], 10) > 1 ? ' ' + parseInt(m[2], 10) : '';
+  return 'A ' + m[1].toLowerCase() + ' deals from a list you type, not a search. To draw points that match, try {roll' + n + ': ' + q + '}.';
 }
 
 // A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests can seed it). `rng`
@@ -27085,13 +27113,12 @@ function resolveBrace(body, ctx) {
   if (rlp) {
     // #899: `{roll folder: …}` draws from the whole reading set instead. hostId still excludes the
     // pill's own point on both paths, so a roll can never draw itself.
-    const picked = rlp.folder
-      ? pickFromQueryFolder(rlp.expr, cookieNode ? cookieNode.id : null)
-      : pickFromQuery(rlp.expr, root, cookieNode ? cookieNode.id : null, root);
+    const hostId = cookieNode ? cookieNode.id : null;
+    const picked = dealHits(rlp.folder ? queryHitsFolder(rlp.expr, hostId) : queryHits(rlp.expr, root, hostId, root), rlp.count);
     // The marker keeps its shape: it is inline TEXT inside the point, so a full sentence does not
     // belong here. renderGrammarPill turns it into the pill's tooltip instead (UXP-232). It echoes
     // the modifier so the marker reads back as the source that made it.
-    return picked || `{roll${rlp.folder ? ' folder' : ''}: ${rlp.expr}?}`;
+    return picked || `{roll${rlp.count > 1 ? ' ' + rlp.count : ''}${rlp.folder ? ' folder' : ''}: ${rlp.expr}?}`;
   }
   const cp = condParts(body);
   if (cp) {
@@ -29253,7 +29280,7 @@ function renderGrammarPill(key, g) {
   // would silently lose its reason and fall back to the confidently wrong "Nothing matched yet".
   let badFilter = '';
   if (emptyMark) {
-    const rm = /\{\s*roll(?:\s+folder)?\s*:([^{}]*)\}/i.exec(g.def || '');
+    const rm = /\{\s*roll(?:\s+\d{1,2})?(?:\s+folder)?\s*:([^{}]*)\}/i.exec(g.def || '');
     if (rm) {
       const probs = searchTermProblems(parseSearchQuery(rm[1].trim()), { states: [...knownStates()] });
       if (probs.length) badFilter = probs[0].message;
@@ -29273,7 +29300,7 @@ function renderGrammarPill(key, g) {
   // reading set is a folder of one. Say so, the way the query pill does (query-folder-off): sniff
   // the SOURCE (the isYesNoOracle content-sniff pattern, so typed and dialog-made rolls read alike)
   // and name both the scope and its staleness in the tip and the aria-label together (P3).
-  const rollSrcM = /\{\s*(roll(?:\s+folder)?\s*:[^{}]*)\}/i.exec(g.def || '');
+  const rollSrcM = /\{\s*(roll(?:\s+\d{1,2})?(?:\s+folder)?\s*:[^{}]*)\}/i.exec(g.def || '');
   const folderRoll = !!(rollSrcM && rollParts(rollSrcM[1])?.folder);
   const folderLive = folderRoll && !!workspaceIndex?.roots;
   const scopeTip = !folderRoll ? '' : folderLive
@@ -45097,6 +45124,7 @@ const GUIDE = [
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
       { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
       { syn:'{roll folder: #npc}',      desc:'draw from every document in the connected folder' },
+      { syn:'{roll 3: #history}',       desc:'deal three different matching points at once, no repeats' },
     ] },
   { id:'roll-palette', cat:'generators',
     title:'Roll menu (touch)',

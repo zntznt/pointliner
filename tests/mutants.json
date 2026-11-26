@@ -20,6 +20,15 @@
   ],
   "mutants": [
     {
+      "id": "roll-count-scope-sniff",
+      "suite": "unit",
+      "why": "the folder-scope tip reads the roll head out of g.def; a counted {roll 2 folder: ...} must still be read as a folder roll",
+      "file": "index.html",
+      "find": "const rollSrcM = /\\{\\s*(roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:[^{}]*)\\}/i.exec(g.def || '');",
+      "replace": "const rollSrcM = /\\{\\s*(roll(?:\\s+folder)?\\s*:[^{}]*)\\}/i.exec(g.def || '');",
+      "kills": "#1659 {roll N: "
+    },
+    {
       "id": "depth-tip-unwired",
       "suite": "unit",
       "why": "the core is tested and nothing calls it: a tested core proves nothing about its call site",
