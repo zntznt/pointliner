@@ -21476,7 +21476,8 @@ test('#1402 every caption sink resolves BEFORE it strips — a frozen census, no
   assert.deepEqual(unresolved, [], 'a new caption sink must resolve its text before stripping tags');
   // 12 in NC, 13 in the raw source: one is my own comment quoting the call. Scanning the raw source
   // here would count comments as sinks — the #1398 lesson, met again in the same session.
-  assert.equal(calls.length, 12, 'census: 12 call sites — a new one lands here deliberately');
+  // 13: table-view slice 4's qbaseTitleHtml paints a list table's Name cell from displayText(src).
+  assert.equal(calls.length, 13, 'census: 13 call sites, a new one lands here deliberately');
 });
 
 // The no-pill sinks must route titles through the legible wrapper, not raw
@@ -25919,7 +25920,7 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
   const btw = fnBody(_src, 'buildTableWidget') + fnBody(_src, 'mtWireCells');
   assert.ok(/qbaseColList\(node\.qbase\.cols\)\.map\(x => x\.field\.trim\(\)\)/.test(btw), 'the paint shares the filter');
   // paint: writable qbase cells are contenteditable and badged; others stay read-only
-  assert.ok(/qEdit = _qFields && qbaseFieldWritable\(_qFields\[c\]\)/.test(btw), 'only writable columns edit');
+  assert.ok(/qEdit = _qFields && qbaseFieldWritable\(_qFields\[c\], node\.qbase\.scope\)/.test(btw), 'only writable columns edit');
   assert.ok(/mt-qcell/.test(btw) && /write to the matching point's/.test(btw), 'editable cells carry the class + explaining title');
   // the wiring: raw swap on focus, source-prop write + undo + flash + membership check on blur
   const w = fnBody(_src, 'mtWireQBaseEdit');
@@ -25936,7 +25937,7 @@ test('Phase C — qbaseColList/qbaseFieldWritable + the write-through wiring (pi
     'the cell repaints from what was STORED, so a normalized date does not disagree with the model');
   assert.ok(/qids\.includes\(nid\)/.test(w) && /no longer matches this query/.test(w), 'a membership-breaking edit is announced, never silent');
   assert.ok(/scheduleVarBaseRender\(host\)/.test(w), 'the repaint is deferred + focus-aware');
-  assert.ok(/qbaseFieldWritable\(field\)/.test(w), 'the commit re-checks writability');
+  assert.ok(/qbaseFieldWritable\(field, node\.qbase\.scope\)/.test(w), 'the commit re-checks writability');
   assert.ok(/mtWireQBaseEdit\(host, node\)/.test(btw), 'wired before the readOnly return');
   // P1 nav parity: Enter/Shift+Enter move by column, Tab by cell, inside the wiring
   assert.ok(/e\.key !== 'Tab' && e\.key !== 'Enter'/.test(w) && /x\.dataset\.c === cell\.dataset\.c/.test(w), 'Enter/Tab mirror the authored-cell grammar');
@@ -40575,4 +40576,77 @@ test('table view: editQBase preserves every qbase config field (census)', () => 
   // (`{ showAll: true }`, `{ sort }`, `{ scope }`). A bare includes('sort') matches `sortText`.
   const rebuilt = between(fnBody(_src, 'editQBase'), 'node.qbase = {', 'markDirty');
   for (const f of fields) assert.ok(new RegExp(`\\{\\s*${f}\\b`).test(rebuilt), `editQBase drops qbase.${f} on Save`);
+});
+
+// table-view-proposal.md slice 4 (owner call 2026-11-26): a list table adds, reorders and renames the
+// points of its own list. The pure halves first: what the Name cell renames, where a move lands, and
+// when a move must refuse.
+test('table view slice 4: the Name cell renames the title part and keeps everything else', () => {
+  const st = new Set(['TODO', 'DONE']);
+  const parts = t => { const p = c.pointTitleParts(t, st); return [p.head, p.title, p.tail]; };
+  assert.deepEqual(parts('Kale'), ['', 'Kale', '']);
+  assert.deepEqual(parts('Kale #veg '), ['', 'Kale', '#veg ']);
+  assert.deepEqual(parts('## Crops'), ['## ', 'Crops', '']);
+  assert.deepEqual(parts('- [ ] Water beds [[math:m1]]'), ['- [ ] ', 'Water beds', '[[math:m1]]']);
+  assert.deepEqual(parts('#TODO Buy seed #shop'), ['#TODO ', 'Buy seed', '#shop'], 'a leading state word is not the title');
+  assert.deepEqual(parts('#veg Kale'), ['', '', '#veg Kale'], 'a leading tag that is no state is kept, not renamed');
+  assert.deepEqual(parts('Roll [[dice:d1]] damage'), ['', 'Roll', '[[dice:d1]] damage'], 'only the words before the first pill');
+  assert.deepEqual(parts('Kale\nnotes here'), ['', 'Kale', '\nnotes here']);
+  assert.deepEqual(parts('C# notes'), ['', 'C# notes', ''], 'a # inside a word is not a tag');
+  const re = (t, n) => c.retitleText(t, n, st);
+  assert.equal(re('Kale #veg ', 'Curly kale'), 'Curly kale #veg ');
+  assert.equal(re('- [x] Water [[math:m1]]', '  Water   all beds '), '- [x] Water all beds [[math:m1]]', 'spaces collapse, box kept');
+  assert.equal(re('#TODO Buy seed', 'Buy compost'), '#TODO Buy compost');
+  assert.equal(re('Kale\nnotes', 'Chard'), 'Chard\nnotes', 'later lines stay, no stray space');
+  assert.equal(re('Kale #veg', ''), '#veg', 'clearing the name keeps the tag');
+  assert.equal(re('', 'Peas'), 'Peas', 'a new empty point takes its first name');
+});
+
+test('table view slice 4: moves land beside the neighbour in the table, and a sorted table refuses', () => {
+  const kids = ['tv', 'a', 'x', 'b', 'c'];   // x is in the list but filtered out of the table
+  assert.deepEqual(host(c.listMoveIndices(kids, 'b', 'a')), { from: 3, to: 1 }, 'up past the shown neighbour, over the hidden one');
+  assert.deepEqual(host(c.listMoveIndices(kids, 'a', 'b')), { from: 1, to: 3 });
+  assert.equal(c.listMoveIndices(kids, 'a', 'a'), null);
+  assert.equal(c.listMoveIndices(kids, 'gone', 'a'), null, 'a row that left the list does not move');
+  assert.equal(c.listMoveIndices(kids, 'a', undefined), null, 'no neighbour at the edge');
+  const cols = [{ name: 'Name', field: 'title' }, { name: 'Beds', field: 'beds' }];
+  assert.equal(c.qbaseMoveBlock({ cols, scope: 'siblings' }), null, 'document order: moves allowed');
+  assert.equal(c.qbaseMoveBlock({ cols, scope: 'siblings', sort: { col: 1, dir: 'desc' } }),
+    'This table is sorted by Beds. Clear the sort in Edit query to move points.');
+  assert.equal(c.qbaseListScoped({ scope: 'siblings' }), true);
+  assert.equal(c.qbaseListScoped({ expr: 'is:todo' }), false, 'a search base has no list');
+  assert.equal(c.qbaseFieldWritable('title', 'siblings'), true, 'a list table renames');
+  assert.equal(c.qbaseFieldWritable('title'), false, 'a search base still does not');
+  assert.equal(c.qbaseFieldWritable('= beds * 2', 'siblings'), false, 'formulas stay computed');
+  assert.equal(c.baseRefocusSelector({ nid: 'n7', qc: 0 }), 'tr[data-nid="n7"] .mt-cell[data-c="0"]', 'a list cell refocuses itself');
+  assert.equal(c.baseRefocusSelector({ nid: 'n7', qc: '0"]' }), 'tr[data-nid="n7"] .node-link', 'a non-integer column is never interpolated');
+});
+
+// Sibling census: the authored base and the list table expose the SAME row doors, one by one, and the
+// one the list table leaves out (delete) is left out on purpose. Each write takes one undo step and
+// re-reads the live list first. Pins name call sites, not just presence.
+test('table view slice 4: row ops census, authored base vs list table (same door on both)', () => {
+  const authored = fnBody(_src, 'mtWireCells'), list = fnBody(_src, 'mtWireQBaseRows');
+  const menu = fnBody(_src, 'showQRowPanel'), edit = fnBody(_src, 'mtWireQBaseEdit');
+  const doors = [
+    ['row handle opens the row menu', fnBody(_src, 'mtWireCells').includes('showRowPanel(node, +rh.dataset.r, rh)'), list.includes('showQRowPanel(node, nid, rh)')],
+    ['Shift+F10 on a cell opens it', fnBody(_src, 'showColPanel').includes("addSection('Move row', true)"), list.includes('showQRowPanel(node, nid, cell, c)')],
+    ['Alt+Up/Down moves the row', authored.includes('mtMoveRow(node, r, -1, c)'), list.includes("qbaseMoveRow(node, nid, e.key === 'ArrowUp' ? -1 : 1, c)")],
+    ['dragging the handle moves it', authored.includes("rh = e.target.closest('.mt-rowh')"), list.includes('qbaseMoveRow(node, f, 0, 0, to)')],
+    ['Tab past the last cell adds a row', authored.includes('add a row, land in its first cell'), edit.includes('qbaseListScoped(node.qbase)) qbaseAddRow(node)')],
+    ['the menu moves up and down', fnBody(_src, 'showRowPanel').includes("'Move up'"), menu.includes("qbaseMoveRow(node, nid, -1, c)") && menu.includes("qbaseMoveRow(node, nid, 1, c)")],
+    ['the menu adds', fnBody(_src, 'showRowPanel').includes("'Insert below'"), menu.includes('qbaseAddRow(node, c)')],
+  ];
+  for (const [door, a, l] of nonEmpty(doors, 'row doors')) assert.deepEqual([door, a, l], [door, true, true], door);
+  assert.ok(fnBody(_src, 'showRowPanel').includes("'Delete row'") && !/delete/i.test(menu),
+    'delete stays out of the list table: deleting a point is the outline\'s job, not a text splice');
+  assert.ok(fnBody(_src, 'mtWireQBaseEdit').includes('if (qbaseListScoped(node.qbase)) mtWireQBaseRows(host, node)'), 'only a list table is wired');
+  const btw = fnBody(_src, 'buildTableWidget');
+  assert.ok(btw.includes('const _rowh = !readOnly || _qList;') && btw.includes('qbaseTitleHtml(nid)'), 'handles and the Name cell paint');
+  // every write: one undo step, a fresh read of the list, an announcement
+  const mv = fnBody(_src, 'qbaseMoveRow'), rn = fnBody(_src, 'qbaseRenameCommit');
+  assert.ok(mv.includes('qbaseMoveBlock(node.qbase)') && mv.includes('qbaseModel(node).qids') && /pushUndo\(\);\s*mtMoveItem\(list\.children/.test(mv) && mv.includes('flashHint(`Moved'), 'move: block, fresh, undo, say');
+  assert.ok(rn.includes('src.text !== srcText') && /pushUndo\(\);\s*src\.text = retitleText\(/.test(rn) && rn.includes('flashHint(raw ? `Renamed'), 'rename: stale check, undo, say');
+  assert.ok(/pushUndo\(\);[^\n]*\n\s*const n = mkNode\(text\)/.test(fnBody(_src, 'createPromotedRow')), 'adding a point is one undo step (the + Add door shares it)');
+  assert.ok(fnBody(_src, 'qbaseAddRow').includes('createPromotedRow(list, buildRow(inferRowShape('), 'the add reuses the + Add builder');
 });

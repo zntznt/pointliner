@@ -90,7 +90,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Base views architecture (red-team rules) | `guidance/base-views-vision.md` | Delivered |
 | Query base proposal (QP-2) | `guidance/query-base-proposal.md` | Shipped |
 | Saved views proposal (SV) | `guidance/saved-views-proposal.md` | Closed |
-| Table view of a list (+ Table view, list-scoped query base) | `guidance/table-view-proposal.md` | Slice 1 shipped; slice 4 needs owner call |
+| Table view of a list (+ Table view, list-scoped query base) | `guidance/table-view-proposal.md` | Slices 1 and 4 shipped |
 | Concept guide authoring | `guidance/concept-guide.md` | Reference |
 | Artifact build recipe | `guidance/adding-an-artifact.md` | Reference |
 | Accessibility remediation plan | `guidance/accessibility.md` | Complete |

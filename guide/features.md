@@ -241,6 +241,8 @@ Turn the document into a lightweight planner.
   **+ Table view** door: one click shows exactly that list as a table at its top, a row per point and
   a column per property, with no search or column syntax to write. Edit a number in it and the point
   changes; sort it from the strip. Also in the menu of the list's heading or any of its points.
+  The table renames, adds and reorders the list's points too (type a name, Tab past the last cell,
+  Alt+Up/Down), each one Undo step.
   ([a list as a table](getting-around.md#see-a-list-as-a-table))
 - **Pills in base cells.** Type `{2d6}`, `{= price * 1.1}` or `{Orc.HP}` straight into a base
   cell and it becomes the live pill when you leave the cell, exactly as in a point.

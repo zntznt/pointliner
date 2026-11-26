@@ -64,6 +64,10 @@ This inverts three things the base UI assumes:
    edit it, you would have to resolve `id -> foreign node -> field` and mutate *that* node.
 2. **Row mutation.** `mtInsertRow` / `mtDeleteRow` / `mtMoveRow` / Tab-to-add-row all splice
    `model.rows` and re-serialize. For a result set, hand-adding or reordering a row is meaningless.
+   **Amended 2026-11-26 (owner call, `table-view-proposal.md` slice 4):** a LIST-SCOPED base
+   (`qbase.scope = 'siblings'`) is not a result set: its rows are its own list's points, so it adds a
+   point at the end of the list, moves points within it, and renames a point from its Name cell
+   (title part only). A search-scoped base keeps this line, and neither kind deletes rows.
 3. **Persistence.** A normal base persists rows-as-text plus `_colw`. A query base must persist the
    query and the column definitions and must **not** persist rows (they recompute every render, like
    the pill).
@@ -127,6 +131,8 @@ The pill caps at 10; a base wants the full result set. Uncapped live results nee
 The version where a query-base cell edit mutates the **source node's** field. This is the hardest
 part and the one that reopens the fence furthest, so it is deliberately last and optional:
 
+- (As shipped, Phase C wrote properties only, never `node.text`. Amended 2026-11-26: a list-scoped
+  base's Name cell writes the point's title part; see `table-view-proposal.md` slice 4.)
 - Editing a cell resolves `id -> node -> field` and writes the property (or title, or the source
   markdown for a `{= }` column, which would be read-only). A commit re-runs the query.
 - This is powerful (a task table you can edit in place) but it is the piece that most resembles a

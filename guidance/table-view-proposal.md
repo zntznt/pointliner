@@ -1,7 +1,7 @@
 # Table view of a list: proposal
 
-**Status: slice 1 SHIPPED (2026-11-26); slices 2 and 3 within doctrine, not built; slice 4 needs an
-owner decision.** Read alongside `bases-direction.md` (binding), `base-views-vision.md` §0 and §3b,
+**Status: slice 1 SHIPPED (2026-11-26); slices 2 and 3 within doctrine; slice 4 owner-approved
+(2026-11-26) and SHIPPED.** Read alongside `bases-direction.md` (binding), `base-views-vision.md` §0 and §3b,
 `query-base-proposal.md`, `saved-views-proposal.md` (§0.6, the saved-views line is drawn by kind),
 `ux-discipline.md` (P5, the UXP-20 syntax guard) and issue #866 (the substrate test).
 
@@ -153,21 +153,55 @@ no new syntax (P5). Formula columns stay text, which is where the math grammar a
 
 **Verdict: within doctrine, no owner call needed.**
 
-### Slice 4: add, reorder and retitle rows from the table (needs an owner decision)
+### Slice 4: add, reorder and rename points from the table (SHIPPED)
 
-**What.** A list-scoped query base is the one query base where "add a row" has an unambiguous
-meaning (a new point at the end of the list, with the shape's properties), and where reordering rows
-maps to reordering points. Titles would write `node.text`.
+**Owner decision (2026-11-26), verbatim:** *"table should be able to add, reorder and rename points."*
+It answers the question below and lifts two recorded lines, for list-scoped bases only:
+`query-base-proposal.md` §3 (row ops suppressed on a query base) and Phase C's "properties only,
+never `node.text`". A search-scoped base keeps both lines: there is no list to add into and no
+document order a result set owns.
 
-**Fences.** Two recorded lines are in the way. `query-base-proposal.md` §3 suppresses row ops on a
-query base ("hand-adding or reordering a row is meaningless" for a result set), and Phase C writes
-properties only, never `node.text` ("a point owns its own text"). Both were written for
-document-wide search results, where they are right. A list-scoped base is different in kind, but
-lifting either line is the owner's call, not a build detail.
+The question it answered: *"May a list-scoped query base (rows = the points of its own list) create
+new points at the end of that list, move points within it, and write a point's title from its Name
+cell? Or do rows stay owned by the outline, with `+ Add` on the list as the only way to grow it?"*
 
-**Verdict: needs owner decision:** *"May a list-scoped query base (rows = the points of its own list)
-create new points at the end of that list, move points within it, and write a point's title from its
-Name cell? Or do rows stay owned by the outline, with `+ Add` on the list as the only way to grow it?"*
+**As built** (only when `qbase.scope = 'siblings'`, and only in the Table view; Board, Cards and
+Calendar on a query base stay read-only):
+
+- **Rename.** The Name cell is editable. On entry it shows the point's title part
+  (`pointTitleParts`: after the heading marker, checkbox and leading state word, up to the first
+  pill, `#tag` or line break); on leave it writes `retitleText`, so pills, tags, properties and later
+  lines stay as they were. A `{...}` typed into the name is promoted as in the outline. If the point's
+  text changed while the cell was open, nothing is written and the flash says so.
+- **Add.** Tab past the last cell, or the row menu's *At the end of the list*, appends a point to the
+  list through the `+ Add` door's own builder (`buildRow` over `inferRowShape`, then
+  `createPromotedRow`): the list's shared tags and to-do box come with it, values empty. The caret
+  lands in the new row's Name cell; typing and Tab fill the point and its properties through the
+  existing write-through. If the table's search does not show the new point, the flash says it is in
+  the outline.
+- **Reorder.** Alt+Up / Alt+Down on any cell (the outline's and the authored base's move keys), the
+  row handle's menu (*Move up* / *Move down*), or dragging the row handle. A row steps past its
+  neighbour IN THE TABLE (`listMoveIndices`), so a filtered table skips the points it hides. **A
+  sorted table refuses** (`qbaseMoveBlock`): the menu items are disabled under a *Move point
+  (sorted)* section, and the keys and drag say *"This table is sorted by X. Clear the sort in Edit
+  query to move points."* This matches the authored base, which has no persisted sort to fight:
+  reorder only means anything in document order.
+- **Doors, census-pinned against the authored base:** row handle click opens the row menu, Shift+F10
+  on a cell opens the same menu (a date cell keeps Shift+F10 for its calendar), Alt+Arrow moves, Tab
+  adds, the handle drags. Focus follows the moved or added row (`baseRefocusSelector` gained a
+  `{nid, qc}` arm so a rebuild returns to the same cell of the same point).
+- **Every write** is one undo step, re-reads the live list first (a row that left the table is
+  refused out loud), and flashes what changed on which point.
+- **Not built: deleting rows.** The authored base has *Delete row*, but it splices text the base
+  owns; deleting a point is the outline's operation and does not fall out of the same machinery.
+  Delete the point in the outline.
+
+**Sibling fix on the way.** The list's `+ Add` door, which the table's add reuses, pushed no undo:
+on `main`, Ctrl+Z after `+ Add` left the new point in place. `createPromotedRow` now takes one
+snapshot, so both doors undo.
+
+**Pure cores:** `qbaseListScoped`, `qbaseMoveBlock`, `listMoveIndices`, `pointTitleParts`,
+`retitleText`, and `qbaseFieldWritable(field, scope)`.
 
 ---
 

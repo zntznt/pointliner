@@ -680,6 +680,10 @@ Implemented:
   and the bullet menu's "Show list as table view" (`tableViewListFor`, heading or row);
   both call `createListTableView`, which inserts the base as the list's first point. The
   strip words the source via `qbaseSourceText`; `editQBase` keeps the scope as a checkbox.
+  **Slice 4 (owner call 2026-11-26)**: a list-scoped base renames (`pointTitleParts` /
+  `retitleText`, Name cell), adds (`qbaseAddRow`, the `+ Add` builder through `createPromotedRow`,
+  which now pushes undo) and moves (`qbaseMoveRow` over `listMoveIndices`, refused when sorted by
+  `qbaseMoveBlock`) its list's points; doors in `mtWireQBaseRows` / `showQRowPanel`.
   **QX-6 added the link/tag presence family**:
   `has:link` and `has:tag` are pure node reads (an unanchored `parseLinkToken`-shaped
   test; the tag sigil rule over link-blanked text, so state keywords count);
