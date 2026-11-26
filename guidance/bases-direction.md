@@ -108,6 +108,17 @@ This deliberately diverges from Notion/Obsidian (whose bases anchor on links to 
   cell (no context menu — its column ops are authored-only) enters the grid on the same
   Shift+F10 key. **Still below the line:** image/title roles and any validation.
 
+  **The list table view shipped (2026-11-26, `table-view-proposal.md` slice 1, within doctrine).**
+  A list of points with properties had no door to a grid (driven: `/base` made an empty one, and a
+  query base needed a search, the column mini-language, and could not say "this list"). A
+  `+ Table view` door (and the bullet menu's "Show list as table view") inserts a query base as the
+  list's first point with `qbase.scope = 'siblings'` (inside the existing `_qbase` JSON, the
+  `showAll`/`sort` precedent; not a new per-base node field, so §7c's trigger does not fire) and
+  columns from `inferRowShape`. It narrows WHICH points a query base reads; it adds no predicate over
+  owned rows and no view library (`base-views-vision.md` §0.6), and nothing turns into a base (§6).
+  Row ops and title writes stay suppressed (`query-base-proposal.md` §3); lifting that for
+  list-scoped bases is the proposal's slice 4 and an owner call.
+
   **Per-column number format shipped (ε, 2026-07-24).** A Number column can format as
   money/measure/percent, not only group thousands: `node.colFmt` (OPML `_colfmt`) holds a
   `parseNumFmt` record `{decimals?,prefix?,suffix?}|null` per column, index-aligned beside

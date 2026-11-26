@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2213 declarations in 158 sections across 17 domains.**
+**2217 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -735,6 +735,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `QBASE_ROW_CAP`
 - `parseQBaseSort` — SV-2: parse the query editor's sort field against the column list. Blank -> null
 - `isQueryBase`
+- `qbaseSourceText` — The strip's words for where a query base's rows come from: its search, or for a list's table view
 - `qbaseColList` — The rendered-column list: entries with a usable field, exactly as queryTableRows
 - `qbaseFieldWritable` — Phase C: a column WRITES THROUGH when it projects a plain property key — the exact
 - `qbaseModel`
@@ -1828,6 +1829,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `varBasePreviewHtml`
 - `openVarBaseDialog`
 - `qbaseCreateAt` — Create a query base at a point, mirroring createBaseAt's non-destructive rule:
+- `createListTableView` — table-view-proposal.md slice 1: a list's table view is a query base that reads the points beside
 - `editQuery`
 - `editSeq`
 - `MATH_CHIPS` — Math chips: constants + operators that are tedious to type, plus the most
@@ -2576,6 +2578,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `SHAPE_SKIP_KEYS` — Keys that are never a USER COLUMN, so they can neither become one nor make a row look like data.
 - `dataPropKeys`
 - `inferRowShape` — inferRowShape(siblings, states?) → { sharedTags:[...], props:[{key,type}], todo } | null. A tag/prop is
+- `tableViewListFor` — Which list a point's menu offers to show as a table view: the point's own list (it is the heading),
+- `listTableSpec` — table-view-proposal.md slice 1: the columns a list's "+ Table view" shows (Name, then each property
 - `buildRow` — buildRow(shape, values, textValue) → the bullet text a filled form produces, in the authored order the
 - `_descCount` — #1240 phase 2: the STRUCTURED path. When a list's rows are PAGES (they have their own children — a
 - `richestStructuredSibling`

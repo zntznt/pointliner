@@ -40465,3 +40465,114 @@ test('#1661 beforeprint commits an open point so paper gets pill values, not sou
   const hook = between(_src, "window.addEventListener('beforeprint'", '\n');
   assert.ok(hook.includes('dataset?.editing') && hook.includes('.blur()'), 'the open point is blurred (committed) before print');
 });
+
+// ── Table view of a list (guidance/table-view-proposal.md, slice 1) ─────────────────────────
+// A list of points with properties had no door to a grid: /base makes an EMPTY grid and the query
+// base needed a search, a column mini-language, and could not say "the points of THIS list" at all
+// (has:beds searches the whole document, so a second list with beds silently joined). The door
+// inserts a query base scoped to its own list: qbase.scope = 'siblings'.
+const TV_FARM = () => ({ children: [
+  { id: 'crops', text: '## Crops', children: [
+    { id: 'kale', text: 'Kale', props: [{ key: 'created', val: '2026-11-26T10:00' }, { key: 'beds', val: '4' }, { key: 'yield', val: '30' }], children: [] },
+    { id: 'chard', text: 'Chard', props: [{ key: 'beds', val: '2' }, { key: 'yield', val: '12' }], children: [] },
+    { id: 'beans', text: 'Beans #legume', props: [{ key: 'beds', val: '3' }, { key: 'yield', val: '20' }], children: [] },
+  ] },
+  { id: 'old', text: '## Last year', children: [
+    { id: 'leek', text: 'Leek', props: [{ key: 'beds', val: '9' }], children: [] },
+  ] },
+] });
+
+test('table view: a siblings-scoped query base reads only the points of its own list', () => {
+  const root = TV_FARM();
+  root.children[0].children.unshift({ id: 'tv', text: '', type: 'base', children: [] });
+  const cols = [{ name: 'Name', field: 'title' }, { name: 'beds', field: 'beds' }];
+  const r = host(c.queryTableRows('', cols, root, 'tv', 100, 'siblings'));
+  assert.deepEqual(r.rows.map(x => x.id), ['kale', 'chard', 'beans'], 'its list, in order, never the base itself');
+  assert.deepEqual(r.rows[0].cells, ['[[#kale]]', '4']);
+  assert.equal(r.total, 3);
+  // has:beds document-wide is the trap the scope closes: last year's Leek joins it.
+  const wide = host(c.queryTableRows('has:beds', cols, root, 'tv'));
+  assert.ok(wide.rows.some(x => x.id === 'leek'), 'the unscoped search does reach the other list (the measured wall)');
+  // A search still narrows WITHIN the list, and an inherited-tag term still sees the ancestors.
+  assert.deepEqual(host(c.queryTableRows('beds:>2', cols, root, 'tv', 100, 'siblings')).rows.map(x => x.id), ['kale', 'beans']);
+  assert.deepEqual(host(c.queryTableRows('#legume', cols, root, 'tv', 100, 'siblings')).rows.map(x => x.id), ['beans']);
+  // The cap still caps, with the true total.
+  const capped = host(c.queryTableRows('', cols, root, 'tv', 2, 'siblings'));
+  assert.equal(capped.rows.length, 2); assert.equal(capped.total, 3); assert.equal(capped.truncated, true);
+  // A host that is gone reads nothing, and an unscoped empty search is still empty (unchanged).
+  assert.deepEqual(host(c.queryTableRows('', cols, root, 'nope', 100, 'siblings')).rows, []);
+  assert.deepEqual(host(c.queryTableRows('', cols, root, 'tv')).rows, []);
+});
+
+test('table view: the top level of a document is a list too', () => {
+  const root = { children: [
+    { id: 'tv', text: '', type: 'base', children: [] },
+    { id: 'h1', text: 'Hive 1', props: [{ key: 'honey', val: '18' }], children: [] },
+    { id: 'h2', text: 'Hive 2', props: [{ key: 'honey', val: '11' }], children: [] },
+  ] };
+  const r = host(c.queryTableRows('', [{ name: 'honey', field: 'honey' }], root, 'tv', 100, 'siblings'));
+  assert.deepEqual(r.rows.map(x => x.cells[0]), ['18', '11']);
+});
+
+test('table view: listTableSpec gives Name plus the list\'s property columns, or null', () => {
+  const states = new Set(['TODO', 'DONE']);
+  const farm = TV_FARM();
+  const spec = host(c.listTableSpec(farm.children[0], states));
+  assert.deepEqual(spec.cols, [{ name: 'Name', field: 'title' }, { name: 'beds', field: 'beds' }, { name: 'yield', field: 'yield' }],
+    'created/edited are bookkeeping, never a column');
+  // No property column -> no table view (a table of titles is the outline itself).
+  const tagged = { children: [{ text: 'a #x', children: [] }, { text: 'b #x', children: [] }] };
+  assert.equal(c.listTableSpec(tagged, states), null);
+  assert.equal(c.listTableSpec({ children: [] }, states), null);
+  // Once the list has its table view, no second door.
+  farm.children[0].children.unshift({ id: 'tv', text: '', type: 'base', qbase: { expr: '', cols: [], scope: 'siblings' }, children: [] });
+  assert.equal(c.listTableSpec(farm.children[0], states), null, 'the list already shows as a table');
+  // ...but a document-wide query base sitting in the list does not count as its table view.
+  farm.children[0].children[0].qbase = { expr: 'is:todo', cols: [] };
+  assert.ok(c.listTableSpec(farm.children[0], states), 'an unscoped query base is not this list\'s table');
+});
+
+test('table view: the menu door finds the list from its heading or from any row in it', () => {
+  const states = new Set(['TODO', 'DONE']);
+  const farm = TV_FARM(), crops = farm.children[0], kale = crops.children[0];
+  assert.equal(c.tableViewListFor(crops, farm, states).list.id, 'crops', 'on the heading: its own list');
+  assert.equal(c.tableViewListFor(kale, crops, states).list.id, 'crops', 'on a row: the list it sits in');
+  const top = { id: 'top', children: [{ text: 'Hive 1', props: [{ key: 'honey', val: '1' }], children: [] },
+                           { text: 'Hive 2', props: [{ key: 'honey', val: '2' }], children: [] }] };
+  assert.equal(c.tableViewListFor(top.children[0], top, states).list.id, 'top', 'a row at the top level reaches the document list');
+  assert.equal(c.tableViewListFor({ text: 'prose', children: [] }, { children: [] }, states), null, 'prose offers nothing');
+  assert.ok(fnBody(_src, 'showBulletPopup').includes('tableViewListFor(node, parentOf(nodeId)'), 'the bullet menu calls it');
+});
+
+test('table view: the strip says where the rows come from, in words', () => {
+  assert.equal(c.qbaseSourceText({ expr: '', scope: 'siblings' }, 'Crops'), 'Points in Crops');
+  assert.equal(c.qbaseSourceText({ expr: 'beds:>2', scope: 'siblings' }, 'Crops'), 'beds:>2, in Crops');
+  assert.equal(c.qbaseSourceText({ expr: '', scope: 'siblings' }, ''), 'Points in this list');
+  assert.equal(c.qbaseSourceText({ expr: 'is:todo' }, 'Crops'), 'is:todo', 'an unscoped base still shows its search');
+});
+
+test('table view: the wiring (door, model, strip, editor) passes the scope through', () => {
+  assert.ok(fnBody(_src, 'qbaseModel').includes('node.qbase.scope'), 'qbaseModel hands the scope to queryTableRows');
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.ok(aff.includes("'+ Table view'") && aff.includes('listTableSpec('), 'the door is gated on listTableSpec');
+  assert.ok(aff.includes('createListTableView('), 'and its click creates the table view');
+  const mk = fnBody(_src, 'createListTableView');
+  assert.ok(mk.includes("scope: 'siblings'") && mk.includes('pushUndo()') && mk.includes('children.unshift('),
+    'one undoable insert, as the list\'s first point, scoped to its siblings');
+  assert.ok(fnBody(_src, 'mtBaseChromeHtml').includes('qbaseSourceText('), 'the strip names the source in words');
+});
+
+// Sibling census: every field a query base's config carries must survive the query editor. showAll
+// and sort were each preserved by hand in editQBase; a new field (scope) dropped there would turn a
+// list's table into a document-wide search on the first Save. Enumerated from source, so the next
+// field added without the editor's help fails here.
+test('table view: editQBase preserves every qbase config field (census)', () => {
+  const fields = new Set([..._src.matchAll(/\bqbase\.(\w+)/g)].map(m => m[1]));
+  for (const f of ['expr', 'cols']) fields.delete(f);   // the editor's own inputs
+  nonEmpty([...fields], 'qbase config fields');
+  assert.ok(fields.has('scope'), 'the census sees the scope field');
+  // Identity, not substring: the field must be written back as a KEY of the rebuilt config
+  // (`{ showAll: true }`, `{ sort }`, `{ scope }`). A bare includes('sort') matches `sortText`.
+  const rebuilt = between(fnBody(_src, 'editQBase'), 'node.qbase = {', 'markDirty');
+  for (const f of fields) assert.ok(new RegExp(`\\{\\s*${f}\\b`).test(rebuilt), `editQBase drops qbase.${f} on Save`);
+});

@@ -5235,6 +5235,60 @@
     {"id": "seltb-door-unwired", "suite": "browser", "why": "#1542: Alt+F10 no longer reaches the toolbar", "file": "index.html", "find": "  if (active == null) return e.key === 'F10' && e.altKey", "replace": "  if (active == null) return e.key === 'F11' && e.altKey", "kills": "#1542 Alt+F10 reaches the selection toolbar"},
     {"id": "1657-dialog-preview-global", "suite": "unit", "why": "the preview pin asserts a call site is PRESENT; reverting the Edit expression preview to the doc-wide map must turn it red", "file": "index.html", "find": "const vars = pillScopeAt(node, existing, collectVars());   // #1657: the pill's scope, props and position included", "replace": "const vars = collectVars();   // #1657: the pill's scope, props and position included", "kills": "#1657 the var pill and the math dialog preview read the pill scope"},
     {"id": "1657-var-pill-no-props", "suite": "unit", "why": "the declaration pill must keep reading its point's props; dropping them is the panel #8 'tot = ?'", "file": "index.html", "find": "evalMath(v.expr, cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), declVars) : declVars)", "replace": "evalMath(v.expr, declVars)", "kills": "#1657 the var pill and the math dialog preview read the pill scope"},
+    {
+      "id": "table-view-door-dropped",
+      "suite": "unit",
+      "why": "the + Table view door is an existence guard over the whole door builder; dropping the door line must fail the wiring pin",
+      "file": "index.html",
+      "find": "  if (tv) mkAff('+ Table view', 'Show list as table view: ' + noun, () => createListTableView(node, tv.cols));\n",
+      "replace": "",
+      "kills": "table view: the wiring (door, model, strip, editor) passes the scope through"
+    },
+    {
+      "id": "table-view-editor-drops-scope",
+      "suite": "unit",
+      "why": "the editQBase census must see a dropped config field as a KEY, not as a substring of sortText or the scope: prop",
+      "file": "index.html",
+      "find": "        ...(sort ? { sort } : {}),\n        ...(scope ? { scope } : {}) };",
+      "replace": "        ...(sort ? { sort } : {}) };",
+      "kills": "table view: editQBase preserves every qbase config field (census)"
+    },
+    {
+      "id": "table-view-scope-ignored",
+      "suite": "unit",
+      "why": "without the scope the list's table reads nothing (empty search), which the row test must catch",
+      "file": "index.html",
+      "find": "  const siblings = scope === 'siblings';\n",
+      "replace": "  const siblings = false;\n",
+      "kills": "table view: a siblings-scoped query base reads only the points of its own list"
+    },
+    {
+      "id": "table-view-door-browser",
+      "suite": "browser",
+      "why": "the driven check asserts the door is on screen; a door built but never appended must fail it",
+      "file": "index.html",
+      "find": "  if (tv) mkAff('+ Table view', 'Show list as table view: ' + noun, () => createListTableView(node, tv.cols));\n",
+      "replace": "",
+      "kills": "table view: + Table view shows a typed list as a grid that edits its points"
+    },
+    {
+      "id": "table-view-menu-door-renamed",
+      "suite": "browser",
+      "why": "the keyboard check asserts the menu OFFERS the item by its exact name; renaming it must fail rather than match some other row",
+      "file": "index.html",
+      "find": "label:'Show list as table view'",
+      "replace": "label:'Show as grid'",
+      "kills": "table view: Shift+F10 on a row reaches"
+    },
+    {
+      "id": "table-view-door-row-nowrap",
+      "suite": "browser",
+      "why": "the door row must wrap on a phone; without the rule the + door run runs off a 320px screen (it did on main)",
+      "file": "index.html",
+      "find": ".node-row:has(>.addrow-affordance){flex-wrap:wrap;row-gap:4px}",
+      "replace": "",
+      "kills": "the doors of a list stay on a 320px screen"
+    },
     {"id": "1666-tip-drops-duration", "suite": "unit", "why": "the census asserts the sum tip's reader is PRESENT in the duration family; reverting it to plain Number() must turn it red", "file": "index.html", "find": "? Number(p.val) : parseDuration(p.val); };   // #1666: a duration column earns the tip too", "replace": "? Number(p.val) : null; };   // #1666: a duration column earns the tip too", "kills": "#1666 census: every property-number reader takes a duration"},
     {"id": "1666-pill-display-skips-inherit", "suite": "unit", "why": "the display census asserts every rollup display goes through rollupFmt; the pill reverting to its bare fmt must turn it red", "file": "index.html", "find": "const display = formatMathDisplay(fresh, m.expr, rollupFmt(cookieNode, m.expr, m.fmt));", "replace": "const display = formatMathDisplay(fresh, m.expr, m.fmt);", "kills": "#1666 census: every property-number reader takes a duration"},
     {"id": "1666-export-skips-inherit", "suite": "unit", "why": "the export must show what the pill shows; a 2.0833333 export beside a 2:05 pill must turn the census red", "file": "index.html", "find": "formatMathDisplay(fresh, m.expr, rollupFmt(node, m.expr, m.fmt)) : rootNode === root", "replace": "formatMathDisplay(fresh, m.expr, m.fmt) : rootNode === root", "kills": "#1666 census: every property-number reader takes a duration"}

@@ -1025,6 +1025,13 @@ test('#1460 every control the guide points at is on screen under the name the gu
       root.children = [mkNode('Parent')]; root.children[0].children = [mkNode('Child')];
       buildIndex(root); markDirty(); render(); zoomTo(root.children[0].id); render();
     },
+    // a list whose points share a property earns the + Table view door
+    'list-table-view': () => {
+      root.children = [mkNode('## Crops')];
+      root.children[0].children = [mkNode('Kale'), mkNode('Chard')];
+      root.children[0].children.forEach((k, i) => { k.props = [{ key: 'beds', val: String(i + 2) }]; });
+      buildIndex(root); markDirty(); render();
+    },
     // #1666: the format fields live in the pill's dialog, so open the one a pencil opens.
     'number-format': () => openMathDialog({ title: 'Edit expression', expr: '2 + 2', node: root.children[0], onResult() {} }),
     'multi-select': () => {
@@ -9355,6 +9362,114 @@ test('#1542 Alt+F10 reaches the selection toolbar, and Enter, Space and Escape d
       'Escape backs out of the toolbar only: still editing, selection kept, nothing applied');
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
+});
+
+// table-view-proposal.md slice 1 -- a list of points with properties becomes a grid with one click.
+// Measured wall: no door on the list led to a grid (/base made an EMPTY one; the query base needed a
+// search and a column spec, and has:beds dragged in every other list with beds). This types the list
+// the way a person does, uses the door, and watches what MOVED: the grid holds the list's own rows,
+// a cell edit lands on the point, the door does not offer a second table, and undo takes it away.
+test('table view: + Table view shows a typed list as a grid that edits its points', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>Farm</title></head>' +
+    '<body><outline text=""/><outline text="## Last year"><outline text="Leek {prop beds: 9}"/></outline></body></opml>')); render(); });
+  await pg.waitForTimeout(300);
+  await pg.click('.node-content');
+  const type = s => pg.keyboard.type(s, { delay: 5 });
+  await type('## Crops'); await pg.keyboard.press('Enter'); await pg.keyboard.press('Tab');
+  await type('Kale {prop beds: 4} {prop yield: 30}'); await pg.keyboard.press('Enter');
+  await type('Chard {prop beds: 2} {prop yield: 12}'); await pg.keyboard.press('Escape');
+  await pg.waitForTimeout(500);
+
+  const doorsOn = title => pg.evaluate(t => {
+    const r = [...document.querySelectorAll('.node-row')].find(r => (r.querySelector('.node-content')?.innerText || '').trim() === t);
+    return [...(r?.querySelectorAll(':scope > .addrow-affordance') || [])].filter(d => d.textContent.trim() === '+ Table view').length;
+  }, title);
+  assert.equal(await doorsOn('Crops'), 1, 'exactly one + Table view door on the typed list');
+  await pg.evaluate(() => [...document.querySelectorAll('.node-row')]
+    .find(r => (r.querySelector('.node-content')?.innerText || '').trim() === 'Crops')
+    .querySelector(':scope > .addrow-affordance[aria-label="Show list as table view: Crops"]').click());
+  await pg.waitForTimeout(600);
+
+  const grid = await pg.evaluate(() => {
+    const hosts = document.querySelectorAll('.md-table-host');
+    const h = hosts[0];
+    return { hosts: hosts.length, strip: h?.querySelector('.mt-qbase-expr')?.textContent,
+      rows: [...(h?.querySelectorAll('tr') || [])].map(tr => [...tr.children].map(td => td.innerText.trim())),
+      hint: document.getElementById('flash-hint')?.textContent || '' };
+  });
+  assert.equal(grid.hosts, 1, 'one grid appeared');
+  assert.deepEqual(grid.rows, [['Name', 'beds', 'yield'], ['Kale', '4', '30'], ['Chard', '2', '12']],
+    'the grid is this list, and only this list (Leek is under another heading)');
+  assert.equal(grid.strip, 'Points in Crops', 'the strip names the list, not an empty search');
+  assert.match(grid.hint, /table view/i, 'the insert is announced (P4)');
+  assert.equal(await doorsOn('Crops'), 0, 'and the list no longer offers a second one');
+
+  // Edit through the grid with real keys: the POINT changes.
+  await pg.locator('td.mt-qcell').first().click();
+  await pg.keyboard.press('Control+a'); await type('7'); await pg.keyboard.press('Tab');
+  await pg.waitForTimeout(600);
+  const beds = await pg.evaluate(() => nodeById(root.children[0].children.find(n => /Kale/.test(n.text)).id)
+    .props.find(p => p.key === 'beds').val);
+  assert.equal(beds, '7', 'a cell edit wrote back to Kale');
+
+  // Undo twice (the edit, then the insert): the list is back to points only.
+  await pg.evaluate(() => document.activeElement?.blur());
+  await pg.keyboard.press('Control+z'); await pg.keyboard.press('Control+z'); await pg.waitForTimeout(400);
+  const after = await pg.evaluate(() => root.children[0].children.map(n => n.type));
+  assert.ok(!after.includes('base'), 'undo takes the table view away: ' + JSON.stringify(after));
+  await pg.close();
+});
+
+// The keyboard half. The + Table view door is tabindex -1 (every + door is), so a keyboard user's
+// route is the point menu, and at the TOP of a document there is no heading bullet to open it on:
+// the root has no row. This types two top-level rows, opens the menu on one with Shift+F10, walks
+// to the item with the arrows, and presses Enter. Only the moved focus and the grid prove it.
+test('table view: Shift+F10 on a row reaches "Show list as table view" at the top level', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  const type = s => pg.keyboard.type(s, { delay: 5 });
+  await type('Hive 1 {prop honey: 18}'); await pg.keyboard.press('Enter');
+  await type('Hive 2 {prop honey: 11}');
+  await pg.waitForTimeout(300);
+  await pg.keyboard.press('Shift+F10'); await pg.waitForTimeout(450);
+  const steps = await pg.evaluate(() => {
+    const items = [...document.querySelectorAll('#bpop [role=menuitem]')];
+    return { at: items.indexOf(document.activeElement), want: items.findIndex(i => i.innerText.trim() === 'Show list as table view') };
+  });
+  assert.ok(steps.want >= 0, 'the menu on a row offers the list\'s table view');
+  for (let i = steps.at; i < steps.want; i++) await pg.keyboard.press('ArrowDown');
+  const focused = await pg.evaluate(() => document.activeElement?.innerText.trim());
+  assert.equal(focused, 'Show list as table view', 'the arrows reach the item');
+  await pg.keyboard.press('Enter'); await pg.waitForTimeout(600);
+  const r = await pg.evaluate(() => ({
+    first: root.children[0].qbase || null,
+    rows: [...(document.querySelector('.md-table-host')?.querySelectorAll('tr') || [])].map(tr => [...tr.children].map(td => td.innerText.trim())),
+  }));
+  assert.equal(r.first?.scope, 'siblings', 'a list-scoped table view is the document\'s first point');
+  assert.deepEqual(r.rows, [['Name', 'honey'], ['Hive 1', '18'], ['Hive 2', '11']]);
+  await pg.close();
+});
+
+// The door row on a phone. Driven before the fix: on `main` the + Add ... + Variance run of a list
+// with two number columns ran off a 320px and a 375px screen and gave the page a sideways scroll, and
+// + Table view made it one door longer. A row carrying doors now wraps them below its text.
+test('table view: the doors of a list stay on a 320px screen', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.setViewportSize({ width: 320, height: 800 });
+  await pg.evaluate(() => { adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>F</title></head><body>' +
+    '<outline text="## Crops"><outline text="Kale {prop beds: 4} {prop yield: 30}"/><outline text="Chard {prop beds: 2} {prop yield: 12}"/></outline>' +
+    '</body></opml>')); render(); });
+  await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => {
+    const doors = [...document.querySelectorAll('.node-row > .addrow-affordance')];
+    return { n: doors.length, off: doors.filter(d => d.getBoundingClientRect().right > innerWidth).map(d => d.textContent),
+      scroll: document.documentElement.scrollWidth > innerWidth };
+  });
+  assert.ok(r.n >= 6, 'the list shows its full door run, + Table view included: ' + r.n);
+  assert.deepEqual(r.off, [], 'no door runs past the right edge');
+  assert.equal(r.scroll, false, 'and the page does not scroll sideways');
+  await pg.close();
 });
 
 // #1666: h:mm durations, driven with the issue's own keystrokes. On main the total read
