@@ -1025,6 +1025,8 @@ test('#1460 every control the guide points at is on screen under the name the gu
       root.children = [mkNode('Parent')]; root.children[0].children = [mkNode('Child')];
       buildIndex(root); markDirty(); render(); zoomTo(root.children[0].id); render();
     },
+    // #1666: the format fields live in the pill's dialog, so open the one a pencil opens.
+    'number-format': () => openMathDialog({ title: 'Edit expression', expr: '2 + 2', node: root.children[0], onResult() {} }),
     'multi-select': () => {
       root.children = [mkNode('One'), mkNode('Two')]; buildIndex(root); markDirty(); render();
       selectedIds = new Set(root.children.map(n => n.id));
@@ -9351,6 +9353,55 @@ test('#1542 Alt+F10 reaches the selection toolbar, and Enter, Space and Escape d
     s = await state();
     assert.deepEqual([s.inPoint, s.label, s.painted, s.sel, s.text], [true, null, [], 'now', 'Buy milk now'],
       'Escape backs out of the toolbar only: still editing, selection kept, nothing applied');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
+// #1666: h:mm durations, driven with the issue's own keystrokes. On main the total read
+// `0 2 not counted`: `1:15` was words to every rollup. Now it is 1.25 hours, and a total over an
+// all-h:mm column inherits the h:mm display (a spreadsheet's SUM over time cells does the same). The
+// opt-out is driven too: unticking the inherited box in the pill's own dialog must stick, or the
+// pill would inherit again on the next render and the box would be a control that does nothing.
+test('#1666 a running order of h:mm times totals 2:05, and the h:mm box can be unticked', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await blankWithCaret(pg);
+    const k = s => pg.keyboard.type(s, { delay: 5 });
+    await k('## Run'); await pg.keyboard.press('Enter'); await pg.keyboard.press('Tab');
+    await k('S1 {prop t: 1:15}'); await pg.keyboard.press('Enter');
+    await k('S2 {prop t: 0:50}'); await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => {
+      const c = document.querySelector(`.node-content[data-id="${root.children[0].id}"]`);
+      enterEdit(c, root.children[0]); c.focus(); activeContentId = root.children[0].id;
+    });
+    await pg.keyboard.press('End'); await k(' {= sum(t)}'); await pg.keyboard.press('Escape');
+    await pg.waitForTimeout(400);
+    const pill = () => pg.evaluate(() => {
+      const el = document.querySelector(`.node-content[data-id="${root.children[0].id}"] .math-roll`);
+      return el ? el.querySelector('.math-result')?.innerText.trim() + ' | ' + el.innerText.replace(/\s+/g, ' ') : null;
+    });
+    const shown = await pill();
+    assert.match(shown || '', /^2:05 \|/, 'the total reads 2:05: ' + shown);
+    assert.ok(!/not counted/.test(shown), 'and no row is left out');
+
+    // the format door: the pencil opens the dialog with the h:mm box ticked, because that is what shows
+    await pg.evaluate(() => {
+      const ed = document.querySelector(`.node-content[data-id="${root.children[0].id}"] .math-roll .math-edit:not(.math-explain)`);
+      ed.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      ed.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await pg.waitForTimeout(300);
+    const box = pg.getByLabel('Show as hours and minutes (h:mm)');
+    assert.equal(await box.count(), 1, 'exactly one control carries the h:mm name');
+    assert.equal(await box.isChecked(), true, 'it opens ticked, matching the pill');
+    await box.focus(); await pg.keyboard.press('Space');
+    assert.equal(await box.isChecked(), false, 'Space unticks it from the keyboard');
+    await pg.keyboard.press('Enter');
+    await pg.waitForTimeout(400);
+    const after = await pg.evaluate(() => ({ fmt: root.children[0].math?.[0]?.fmt || null }));
+    assert.deepEqual(after.fmt, { time: false }, 'the opt-out is stored, so it sticks');
+    assert.match((await pill()) || '', /^2\.083/, 'and the pill shows decimal hours again');
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
 });
