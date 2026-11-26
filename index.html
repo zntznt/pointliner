@@ -1658,7 +1658,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #sel-tb{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;gap:3px;align-items:center;box-shadow:var(--sh-1);transform:translateX(-50%)}
 #sel-tb.on{display:flex}
 #sel-tb .cmd-icon{cursor:pointer}
-#sel-tb .cmd-icon:hover{background:var(--acc);color:var(--acc-fg)}
+#sel-tb .cmd-icon:hover,#sel-tb .cmd-icon.kb-active{background:var(--acc);color:var(--acc-fg)}
 #sel-tb .cmd-sep{width:1px;height:20px;background:var(--bdr);margin:0 1px;flex-shrink:0}
 #sel-tb.cell-sel .seltb-fn{display:none} /* footnotes are node-level, not per-cell */
 
@@ -3188,7 +3188,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 <div id="outline"></div>
 
 <!-- selection toolbar (dark) -->
-<div id="sel-tb"></div>
+<div id="sel-tb" role="toolbar" aria-label="Format the selection"></div>
 <!-- bullet popup -->
 <div id="bpop" role="menu" aria-label="Point actions"></div>
 <!-- column operations panel -->
@@ -22445,8 +22445,51 @@ function buildSelTb() {
   fnIc.title = 'Convert to footnote';
   fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
   selTb.appendChild(fnIc);
+  selTb.querySelectorAll('.cmd-icon').forEach((el, i) => { el.id = 'seltb-opt-' + i; });
 }
 buildSelTb();
+
+// #1542: the toolbar's keyboard door. Alt+F10 from the caret roves the icons the way the { picker
+// roves its rows: focus and the selection stay in the point (aria-activedescendant), so every
+// action still reads the live selection, and Enter/Space dispatch the icon's own mousedown, as
+// #bpop does. Any other key leaves the toolbar and does its usual job.
+let selTbKbd = null;   // { host, idx } while the toolbar owns the arrows
+// Pure: what one key does to the toolbar. null = not ours; {to} = rove; {run} = activate the
+// icon at that index; {exit} = leave the toolbar (pass: and let the key act as it normally would).
+function selTbKey(e, active, count) {
+  if (!count) return null;
+  const mod = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
+  if (active == null) return e.key === 'F10' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey ? { to: 0 } : null;
+  if (mod) return { exit: true, pass: true };
+  if (e.key === 'Escape') return { exit: true };
+  if (e.key === 'Enter' || e.key === ' ') return { run: active };
+  if (!/^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) return { exit: true, pass: true };
+  return { to: roveIndex(e.key, active, count) ?? active };   // null at an end: hold, never let it collapse the selection
+}
+const selTbItems = () => [...selTb.querySelectorAll('.cmd-icon')].filter(el => el.offsetParent);   // the footnote icon hides in cells
+function setSelTbActive(items, i) {
+  const host = selTbKbd?.host || document.activeElement;
+  selTbKbd = { host, idx: i };
+  items.forEach((el, j) => el.classList.toggle('kb-active', j === i));
+  host?.setAttribute('aria-activedescendant', items[i].id);
+}
+function endSelTbKbd() {
+  if (!selTbKbd) return;
+  selTb.querySelectorAll('.kb-active').forEach(el => el.classList.remove('kb-active'));
+  if (selTbKbd.host?.getAttribute('aria-activedescendant')?.startsWith('seltb-opt-')) selTbKbd.host.removeAttribute('aria-activedescendant');
+  selTbKbd = null;
+}
+// capture phase: ahead of the point's own Enter (new point) and Escape (leave the point)
+document.addEventListener('keydown', e => {
+  const items = selTb.classList.contains('on') ? selTbItems() : [];
+  const step = selTbKey(e, selTbKbd ? selTbKbd.idx : null, items.length);
+  if (!step) return;
+  if (step.pass) { endSelTbKbd(); return; }
+  e.preventDefault(); e.stopPropagation();
+  if (step.exit) endSelTbKbd();
+  else if (step.run != null) { endSelTbKbd(); items[step.run].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); }
+  else setSelTbActive(items, step.to);
+}, true);
 
 document.getElementById('nsb-copy').addEventListener('click', copySelection);
 document.getElementById('nsb-export-md').addEventListener('click', exportSelectionToMarkdown);
@@ -22993,7 +23036,7 @@ function updateSelToolbar() {
     selTb.style.top = (above < tbH + 4 ? rect.bottom + 8 : above) + 'px';
   });
 }
-function hideSelTb() { selTb.classList.remove('on'); }
+function hideSelTb() { endSelTbKbd(); selTb.classList.remove('on'); }
 document.addEventListener('selectionchange', updateSelToolbar);
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('#sel-tb')) hideSelTb();
@@ -44395,6 +44438,7 @@ const GUIDE = [
   { id:'edit-capn',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+1–0`],         essLabel:'Capture to inbox 1–10 (empty slot adopts the current point)' },
   { id:'edit-setinbox',essential:true, essSection:'Edit', keys:[`${MOD}+Alt+1–0`],       essLabel:'Set current point as inbox 1–10' },
   { id:'edit-format', essential:true, essSection:'Edit', keys:[`${MOD}+B`,`${MOD}+I`,`${MOD}+U`], essLabel:'Bold / italic / underline the selection' },
+  { id:'edit-seltb',  essential:true, essSection:'Edit', keys:['Alt+F10'],             essLabel:'Reach the selection toolbar (every format, link and footnote)' },
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Add or tick a to-do on this line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state (this point, or the whole selection)' },
   { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority (this point, or the whole selection)' },
@@ -44633,7 +44677,7 @@ const GUIDE = [
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',
-    body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you.",
+    body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you. Every style, plus link and footnote, is also on the toolbar that appears over a selection; press Alt+F10 to reach it from the keyboard, the arrow keys to pick, and Enter to apply.",
     related:['point-types','footnotes','secret','image-size','deflist'],
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
