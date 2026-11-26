@@ -27,9 +27,11 @@ cycle the state and `Ctrl/Cmd+Shift+P` to cycle the priority (the same chords wo
 that uses a status word instead, the state cycle stays in charge. Press `Enter` on a task and the
 next point is a task too, so running off a list is fast.
 
-Once a point has two or more children, its bullet menu can **sort** them: by state and priority (open
-before done, `A` before `B` before `C`, unmarked last), by due or start date when a child carries one,
-or alphabetically. A sort touches only the direct children, and undo takes it back.
+Once a point has two or more children, its bullet menu can **sort** them. **Sort children by state /
+priority** puts open before done, `A` before `B` before `C` (unmarked last) and, within the same
+priority, follows the order of the [workflow](#custom-workflows). The same menu sorts by due or start
+date when a child carries one, or alphabetically A–Z. A sort touches only the direct children, and
+undo takes it back.
 
 ## Custom workflows
 
