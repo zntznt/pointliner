@@ -4518,17 +4518,16 @@ function collectScoped(node, depth) {
 // (Bianca/Sofia): a line you'd naturally write as {= qty * price} can instead be a property that both
 // shows its result AND rolls up. Only a self-contained expression (an operator/paren, and no undeclared
 // name) evaluates; a plain number, a date, or plain text is untouched. Returns the number or null.
-function propExprValue(raw) {
+// #1656: `vars` lets a formula read the row's OWN other properties (gal * ppg); see rowPropVars.
+function propExprValue(raw, vars = {}) {
   const s = String(raw == null ? '' : raw).trim();
   if (!s || !/[+*/^%()]/.test(s)) return null;        // needs a math operator/paren (a bare number, word, or "-5" is not a formula)
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return null;       // an ISO date is not arithmetic (its dashes are not minus)
-  const v = evalMath(s, {});
+  const v = evalMath(s, vars);
   return (v !== null && Number.isFinite(v)) ? v : null;
 }
-function childPropNumber(child, prop) {
-  const p = (child?.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).trim().toLowerCase());
-  if (!p) return null;
-  const raw0 = String(p.val).trim();
+// A non-formula property value as a number: plain, thousands-grouped, or a date (epoch-day). null otherwise.
+function propScalar(raw0) {
   if (!raw0) return null;                           // blank value is not a number (Number('')===0 would miscount)
   // #809 (agent-review, UXP-203): accept locale thousands-separators ("3,000" = 3000) —
   // strictly grouped only, so "1,2" stays non-numeric. A formatted cost silently dropping
@@ -4536,8 +4535,37 @@ function childPropNumber(child, prop) {
   const raw = /^-?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(raw0) ? raw0.replace(/,/g, '') : raw0;
   const n = Number(raw);
   if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
-  const d = parseDueDate(raw);                       // a date-shaped value aggregates as its epoch-day (strict)
-  return d !== null ? d : propExprValue(raw0);       // #1317: else a formula value ("60 * 3.50") computes to a number
+  return parseDueDate(raw);                         // a date-shaped value aggregates as its epoch-day (strict)
+}
+// #1656 (the #1317 follow-up): the row's own properties as formula variables, so `cost: gal * ppg`
+// computes from the same row's gal and ppg. Plain values first, then formulas in passes, so a chain
+// (total: cost + tip) resolves in any order and a cycle (a: b + 1, b: a + 1) stays unreadable. Pure.
+function rowPropVars(node) {
+  const vars = Object.create(null);
+  let todo = [];
+  for (const p of (node?.props || [])) {
+    const k = (p.key || '').trim().toLowerCase();
+    if (!/^[a-z_]\w*$/.test(k) || k in vars) continue;
+    const raw0 = String(p.val ?? '').trim(), n = propScalar(raw0);
+    if (n !== null) vars[k] = n; else todo.push([k, raw0]);
+  }
+  for (let grew = true; grew && todo.length;) {
+    grew = false;
+    todo = todo.filter(([k, raw0]) => {
+      const v = propExprValue(raw0, vars);
+      if (v === null) return true;
+      vars[k] = v; grew = true; return false;
+    });
+  }
+  return vars;
+}
+function childPropNumber(child, prop) {
+  const p = (child?.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).trim().toLowerCase());
+  if (!p) return null;
+  const raw0 = String(p.val).trim();
+  const n = propScalar(raw0);
+  if (n !== null || !raw0) return n;
+  return propExprValue(raw0, rowPropVars(child));   // #1317/#1656: else a formula value ("60 * 3.50", "gal * ppg") computes
 }
 // #809: does an aggregated property in `expr` skip a child's NON-EMPTY, non-numeric value?
 // A check must ERROR over a skipped value ("12o", stray text), never silently pass a sum
@@ -4961,6 +4989,12 @@ const BUILTIN_UNITS = {
   yd:{dim:'length',ratio:0.9144}, yard:{dim:'length',ratio:0.9144}, yards:{dim:'length',ratio:0.9144},
   ft:{dim:'length',ratio:0.3048}, foot:{dim:'length',ratio:0.3048}, feet:{dim:'length',ratio:0.3048},
   in:{dim:'length',ratio:0.0254}, inch:{dim:'length',ratio:0.0254}, inches:{dim:'length',ratio:0.0254},
+  // area (base: square meter), #1656: acreage, floor plans and plots are everyday quantities
+  m2:{dim:'area',ratio:1}, sqm:{dim:'area',ratio:1}, km2:{dim:'area',ratio:1e6}, cm2:{dim:'area',ratio:1e-4},
+  ha:{dim:'area',ratio:1e4}, hectare:{dim:'area',ratio:1e4}, hectares:{dim:'area',ratio:1e4},
+  ft2:{dim:'area',ratio:0.09290304}, sqft:{dim:'area',ratio:0.09290304}, in2:{dim:'area',ratio:0.00064516},
+  yd2:{dim:'area',ratio:0.83612736}, mi2:{dim:'area',ratio:2589988.110336},
+  acre:{dim:'area',ratio:4046.8564224}, acres:{dim:'area',ratio:4046.8564224},
   // mass (base: kilogram)
   kg:{dim:'mass',ratio:1}, g:{dim:'mass',ratio:0.001}, mg:{dim:'mass',ratio:1e-6},
   lb:{dim:'mass',ratio:0.45359237}, lbs:{dim:'mass',ratio:0.45359237}, pound:{dim:'mass',ratio:0.45359237}, pounds:{dim:'mass',ratio:0.45359237},
@@ -5021,7 +5055,7 @@ function normalizeUnits(raw) {
 // The built-in base unit of each built-in dimension (the ratio-1 anchor), so unitsToText can
 // name a reconstructed derived unit against the right base. Custom dimensions carry their own
 // ratio-1 base in root.units.
-const UNIT_DIM_BASE = { length: 'm', mass: 'kg', volume: 'l', time: 's' };
+const UNIT_DIM_BASE = { length: 'm', area: 'm2', mass: 'kg', volume: 'l', time: 's' };
 // Reconstruct editable declaration text from a resolved table (the dialog's round-trip, the
 // calendarToText precedent — canonical, not byte-identical: a chain gp=10 sp reads back as
 // gp = 100 cp, mathematically identical). A ratio-1 unit in a NEW dimension is a bare base
@@ -5043,8 +5077,8 @@ function unitsToText(units) {
 // and by the time the message is chosen the call itself is gone (replaceConvert has substituted a
 // sentinel), so every failure was reported as the dimension mismatch: `convert(10, blorp, kg)` and
 // `convert(12, m2, ft2)` both read "a conversion between two different kinds of units (like a
-// length and a mass)". The second is the sympathetic case -- there is no area dimension at all, so
-// m2/ft2 fail by the identical unknown-unit path as blorp. Returns null when the units are fine
+// length and a mass)". The second is the sympathetic case -- there was no area dimension at all, so
+// m2/ft2 failed by the identical unknown-unit path as blorp (#1656 added area). Returns null when the units are fine
 // (the failure was the VALUE argument, which is not this function's business). Pure.
 function convertFailKind(from, to, table) {
   const t = table || {};
@@ -5392,7 +5426,10 @@ function firstEmptyRollup(expr, node, opts = {}) {
     const prop = m[1];
     const depth = m[2] === undefined ? 1 : resolveScopeDepth(m[2]);
     if (depth === null) continue;   // a bad scope is an #ERR concern, not an empty-match one
-    const any = collectScoped(node || {}, depth).some(c => childPropNumber(c, prop) !== null);
+    // #1656: a column whose values are all PRESENT but unreadable is not empty; that is a partial
+    // total ("N not counted"), and "No cost below this point" would be false.
+    const any = collectScoped(node || {}, depth).some(c => (c.props || []).some(x =>
+      (x.key || '').trim().toLowerCase() === prop.toLowerCase() && String(x.val ?? '').trim() !== ''));
     if (!any) return prop;
   }
   return null;
@@ -9740,7 +9777,7 @@ function arityPhrase(expr) {
 function unknownUnitPhrase(expr) {
   const m = /#ERR_UNIT_([A-Za-z][\w]*)/.exec(String(expr || ''));
   return (m ? `a unit this document does not know, "${m[1]}"` : 'a unit this document does not know')
-    + '. Built-in units cover length, mass, volume and time; define your own with /units (File then Custom units),'
+    + '. Built-in units cover length, area, mass, volume and time; define your own with /units (File then Custom units),'
     + ' one per line and the base first, like "cp" then "gp = 100 cp"';
 }
 function mathReasonPhrase(why, expr) {
@@ -10469,7 +10506,7 @@ const BLOCK_CMDS = [
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', ex:'/journal', section:'Organize' },
   { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', ex:'/variables', section:'Organize' },
   { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'All commands', desc:'Open All commands: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', ex:'/builder', section:'Organize' },
-  { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, mass, volume and time units already work.', ex:'/units', section:'Organize' },
+  { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, area, mass, volume and time units already work.', ex:'/units', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -10595,7 +10632,7 @@ const INSERT_CMDS = [
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  keys:['state','status','workflow','kanban','stages'], label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
   { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  keys:['search','find','filter'], label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
   { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  keys:['howmany','number','total','tag','occurrences'], label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. The search can be a #tag, an is:todo flag, or any filter: {count: #idea} counts every point tagged #idea (how many times that theme comes up), {count: is:todo} counts open tasks. Type it inline.', ex:'{count: #idea} · {count: is:todo}', section:'Organize' },
-  { id:'convert', icon:'⇄',  fa:'fa-solid fa-arrow-right-arrow-left', keys:['unit','units','measure','km','mi','kg','lb','ml','minutes'], label:'Convert units', desc:'Convert a value between units (length, mass, volume, time, or your own). Inserts a live {= convert()} pill. Define custom units with /units.', ex:'{= convert(10, km, mi)}', section:'Compute' },
+  { id:'convert', icon:'⇄',  fa:'fa-solid fa-arrow-right-arrow-left', keys:['unit','units','measure','km','mi','kg','lb','ml','minutes','area','acre'], label:'Convert units', desc:'Convert a value between units (length, area, mass, volume, time, or your own). Inserts a live {= convert()} pill. Define custom units with /units.', ex:'{= convert(10, km, mi)}', section:'Compute' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -15229,7 +15266,7 @@ function buildPropsArea(node) {
     // #1317: a formula-valued property ("cost: 60 * 3.50") shows its computed RESULT like a math pill,
     // not the raw formula, so a line value both reads as a number and rolls up. Reserved keys are skipped.
     if (!DATE_KEYS.has(propK) && propK !== 'when' && propK !== 'date' && propK !== ALIAS_KEY && propK !== REPEAT_KEY) {
-      const ev = propExprValue(val);
+      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row
       if (ev !== null) { displayVal = formatNumDisplay(ev, null); chip.classList.add('prop-computed'); chip.title = `${val} = ${displayVal}. Click to edit`; chip.setAttribute('aria-label', `${key}: ${displayVal} (from ${val}). Click to edit properties`); }
     }
     if (!chip.title) chip.title = 'Edit properties';
@@ -38888,7 +38925,7 @@ function sectionToCsvRows(node, states) {
     const val = k => {
       const p = (c.props || []).find(x => (x.key || '').trim().toLowerCase() === k.toLowerCase());
       if (!p) return '';
-      const ev = propExprValue(p.val);            // #1317: freeze a formula property to its computed value in the CSV
+      const ev = propExprValue(p.val, rowPropVars(c));   // #1317/#1656: freeze a formula property to its computed value in the CSV
       return ev !== null ? String(ev) : p.val;
     };
     rows.push([auditTitle(c.text), ...keys.map(val)]);
@@ -44890,7 +44927,7 @@ const GUIDE = [
     ] },
   { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
-    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, the point's own metadata, shown as a small pill below the point. Type `/prop:owner=zeo` to set one inline, or `/prop` to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again.\n\nTo add several at once (a character stat block, a set of line items), paste a list of `key: value` lines into the key field of the editor and each line becomes a property. Search by them with `has:key` to find every point that has a property, or `key:value` to match an exact one; to match a value that has spaces, quote it, like `area:\"Home Renovation\"` (a quoted value matches any value that contains it). Child properties feed the roll-up totals.\n\nA property's value can be a small calculation of its own: write `{prop cost: 60 * 3.50}` and the pill shows 210, computed, while still being an ordinary cost property that totals. So a line whose price is a small calculation (quantity times unit price, hours times a rate) stays one thing that both reads as its result and rolls up, instead of a separate math pill the total cannot see.",
+    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, the point's own metadata, shown as a small pill below the point. Type `/prop:owner=zeo` to set one inline, or `/prop` to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again.\n\nTo add several at once (a character stat block, a set of line items), paste a list of `key: value` lines into the key field of the editor and each line becomes a property. Search by them with `has:key` to find every point that has a property, or `key:value` to match an exact one; to match a value that has spaces, quote it, like `area:\"Home Renovation\"` (a quoted value matches any value that contains it). Child properties feed the roll-up totals.\n\nA property's value can be a small calculation of its own: write `{prop cost: 60 * 3.50}` and the pill shows 210, computed, while still being an ordinary cost property that totals. So a line whose price is a small calculation (quantity times unit price, hours times a rate) stays one thing that both reads as its result and rolls up, instead of a separate math pill the total cannot see. The calculation can use the point's other properties too: on a fuel stop with `{prop gal: 100}` and `{prop ppg: 4}`, `{prop cost: gal * ppg}` shows 400 and totals like any cost.",
     related:['check','rollups','hashtags','recipe-budget','addrow'],
     examples:[
       { syn:'/prop:owner=zeo',     desc:'set a property inline, no dialog' },
@@ -46262,8 +46299,11 @@ function inferRowShape(siblings, states) {
   const vals = new Map();   // prop key → the value seen on each row (one entry per row that carries it)
   for (const n of rows) {
     const here = new Map();
-    for (const k of dataPropKeys(n)) if (!here.has(k))
-      here.set(k, String((n.props.find(p => p && p.key === k) || {}).val ?? ''));
+    for (const k of dataPropKeys(n)) if (!here.has(k)) {
+      const raw = String((n.props.find(p => p && p.key === k) || {}).val ?? '');
+      const ev = propExprValue(raw, rowPropVars(n));   // #1656: a row formula (gal * ppg) types as its number
+      here.set(k, ev !== null ? String(ev) : raw);
+    }
     for (const [k, v] of here) { if (!vals.has(k)) vals.set(k, []); vals.get(k).push(v); }
   }
   const props = [];

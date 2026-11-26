@@ -14019,6 +14019,8 @@ const GUIDE_VALUE_CLAIMS = {
   // The guide states the property this reads two sentences earlier; `declares` pins the map's
   // 14 to the guide's own `STR: 14` rather than letting the map invent a convenient input.
   '{= STR + 2}':            { shows: '16', vars: { str: 14 }, declares: 'give a point a `STR: 14` property' },
+  // #1656: a row formula reads its own row; the inputs are the two props the same sentence hands the reader.
+  '{prop cost: gal * ppg}': { shows: '400', vars: { gal: 100, ppg: 4 }, declares: 'with `{prop gal: 100}` and `{prop ppg: 4}`' },
   '{= roundto(x, 5)}': {
     gloss: '5, 25 and 0.5 are step sizes offered, not the pill\'s output',
     states: ['nearest 5, 25 or 0.5'],
@@ -25940,7 +25942,7 @@ test('units — parse decls, convert, normalize, and the substitution (SR-6)', (
 
 // ── #1500: convert() has four failure modes and reported the fourth for all of them ──────────
 // `convert(10, blorp, kg)` and `convert(12, m2, ft2)` both read "a conversion between two different
-// kinds of units (like a length and a mass)" — and there is no area dimension at all, so m2/ft2
+// kinds of units (like a length and a mass)", and there was no area dimension, so m2/ft2 (m3/ft3 here, since #1656 added area)
 // fails by the identical unknown-unit path as blorp. convertUnits collapses the causes into one
 // null and replaceConvert substitutes a bare sentinel, so by the time the message is chosen the
 // call is gone. The marker now says which, on BOTH surfaces that read it (the pill and the edit
@@ -25951,8 +25953,8 @@ test('#1500 convertFailKind says WHICH failure, and stays silent when the units 
   assert.deepEqual(host(c.convertFailKind('km', 'blorp', T)), { why: 'unit', unit: 'blorp' });
   assert.deepEqual(host(c.convertFailKind('nope', 'alsonope', T)), { why: 'unit', unit: 'nope' },
     'the FIRST unknown one is the one to name');
-  assert.deepEqual(host(c.convertFailKind('m2', 'ft2', T)), { why: 'unit', unit: 'm2' },
-    'there is no area dimension, so m2 is an unknown unit — not the mismatch it used to report');
+  assert.deepEqual(host(c.convertFailKind('m3', 'ft3', T)), { why: 'unit', unit: 'm3' },
+    'cubic names are not built in (volume is l/gal), so m3 is an unknown unit, not the mismatch it used to report');
   assert.deepEqual(host(c.convertFailKind('km', 'kg', T)), { why: 'dim' }, 'the real mismatch keeps its name');
   assert.equal(c.convertFailKind('km', 'm', T), null, 'units fine → not this function\'s failure');
   assert.equal(c.convertFailKind(' KM ', 'M', T), null, 'case and whitespace are normalised, like convertUnits');
@@ -25974,14 +25976,14 @@ test('#1500 replaceConvert leaves a DIFFERENT marker for each of the four failur
   const marks = {
     ok:       c.replaceConvert('convert(10, km, m)', ev, B),
     unknown:  c.replaceConvert('convert(10, blorp, kg)', ev, B),
-    area:     c.replaceConvert('convert(12, m2, ft2)', ev, B),
+    area:     c.replaceConvert('convert(12, m3, ft3)', ev, B),
     mismatch: c.replaceConvert('convert(10, km, kg)', ev, B),
     amount:   c.replaceConvert('convert(budgt, km, m)', ev, B),
     parts:    c.replaceConvert('convert(10, km)', ev, B),
   };
   assert.equal(marks.ok, '(10000)', 'a good conversion still substitutes its number');
   assert.equal(marks.unknown, '#ERR_UNIT_blorp');
-  assert.equal(marks.area, '#ERR_UNIT_m2');
+  assert.equal(marks.area, '#ERR_UNIT_m3');
   assert.equal(marks.mismatch, '#ERR', 'the true mismatch keeps the original marker, so its wording is untouched');
   assert.equal(marks.amount, '#ERR_CONVAMT');
   assert.equal(marks.parts, '#ERR_CONVARGS');
@@ -25990,7 +25992,7 @@ test('#1500 replaceConvert leaves a DIFFERENT marker for each of the four failur
   for (const [k, v] of Object.entries(marks)) {
     if (k === 'ok') continue;
     assert.ok(String(v).includes('#ERR'), `${k} must keep the #ERR prefix mathPrepassErrs looks for`);
-    assert.equal(c.mathPrepassErrs(({ unknown: 'convert(10, blorp, kg)', area: 'convert(12, m2, ft2)',
+    assert.equal(c.mathPrepassErrs(({ unknown: 'convert(10, blorp, kg)', area: 'convert(12, m3, ft3)',
       mismatch: 'convert(10, km, kg)', amount: 'convert(budgt, km, m)', parts: 'convert(10, km)' })[k]), true,
       `${k} must still promote to a loud #ERR pill`);
   }
@@ -25999,7 +26001,7 @@ test('#1500 replaceConvert leaves a DIFFERENT marker for each of the four failur
 test('#1500 each marker reaches its own reason and its own sentence', () => {
   const R = e => c.mathErrorReason(c.expandAggExpr(e, null), {});
   assert.equal(R('convert(10, blorp, kg)'), 'unknown unit');
-  assert.equal(R('convert(12, m2, ft2)'), 'unknown unit');
+  assert.equal(R('convert(12, m3, ft3)'), 'unknown unit');
   assert.equal(R('convert(10, km, kg)'), 'convert', 'the true mismatch is unchanged');
   assert.equal(R('convert(budgt, km, m)'), 'convert amount');
   assert.equal(R('convert(10, km)'), 'convert parts');
@@ -26014,7 +26016,7 @@ test('#1500 each marker reaches its own reason and its own sentence', () => {
     'exactly one of them claims a dimension mismatch, and it is the one that has one');
   // the unknown-unit sentence names the unit and the door that was driven end to end before being cited
   assert.match(say('convert(10, blorp, kg)'), /"blorp"/, 'it names the unit it did not know');
-  assert.match(say('convert(12, m2, ft2)'), /"m2"/);
+  assert.match(say('convert(12, m3, ft3)'), /"m3"/);
   assert.match(say('convert(10, blorp, kg)'), /\/units/, 'and the remedy the app actually ships');
   // no marker may reach a reader
   for (const p of four) assert.doesNotMatch(p, /#ERR/, `an internal marker reached the sentence: ${JSON.stringify(p)}`);
@@ -31773,6 +31775,64 @@ test('#1317 propExprValue: a formula-valued property computes, so a math-style l
   const shape = c.inferRowShape(head.children, {});
   assert.ok(nonEmpty(shape.props, 'shape props').some(p => p.key === 'cost' && p.type === 'number'),
     'inferRowShape marks the formula column numeric, so the + Total / + Variance door appears');
+});
+
+// ── #1656: everyday quantities the rollups could not read ─────────────────────────────────────
+// Panel #8: `{prop cost: gal * ppg}` stayed literal text, so sum(cost) read "0 nothing matched" and
+// its tooltip said "No cost below this point" over rows that all carried a cost.
+test('#1656 a row formula reads its OWN row, so cost: gal * ppg totals', () => {
+  const row = (title, props) => { const n = c.mkNode(title); n.props = Object.entries(props).map(([key, val]) => ({ key, val })); return n; };
+  const fuel = c.mkNode('## Fuel');
+  fuel.children.push(row('Stop 1', { gal: '100', ppg: '4', cost: 'gal * ppg' }), row('Stop 2', { gal: '50', ppg: '4', cost: 'gal * ppg' }));
+  assert.equal(c.childPropNumber(fuel.children[0], 'cost'), 400, 'the row formula computes from its own gal and ppg');
+  assert.equal(c.aggregateChildren(fuel, 'sum', 'cost'), 600, 'and the column totals');
+  assert.equal(c.evalMath(c.expandAggExpr('sum(cost)', fuel, {}), {}), 600, 'through the same expansion the pill uses');
+  assert.ok(nonEmpty(c.inferRowShape(fuel.children, {}).props, 'shape props').some(p => p.key === 'cost' && p.type === 'number'),
+    'the + Total door sees the formula column as numeric');
+  // a chain resolves in any order; a cycle, a self-reference and an unknown name stay unreadable
+  const chain = row('Dinner', { total: 'sub + tip', tip: 'sub * 0.2', sub: '50' });
+  assert.equal(c.childPropNumber(chain, 'total'), 60, 'total reads tip, which reads sub');
+  const cyc = row('Loop', { a: 'b + 1', b: 'a + 1' });
+  assert.equal(c.childPropNumber(cyc, 'a'), null, 'a cycle never computes');
+  assert.equal(c.childPropNumber(row('Self', { cost: 'cost * 2' }), 'cost'), null, 'a self-reference never computes');
+  assert.equal(c.childPropNumber(row('Typo', { gal: '10', cost: 'gall * 4' }), 'cost'), null, 'an unknown name stays text');
+  // a NEIGHBOUR row's numbers are not in scope: the formula reads its own row only
+  const lone = c.mkNode('## Lone'); lone.children.push(row('A', { gal: '5' }), row('B', { cost: 'gal * 2' }));
+  assert.equal(c.childPropNumber(lone.children[1], 'cost'), null, 'a sibling row does not leak into the formula');
+  assert.deepEqual({ ...c.rowPropVars(row('R', { Gal: '3,000', ppg: '2', cost: 'gal * ppg', note: 'hi' })) },
+    { gal: 3000, ppg: 2, cost: 6000 }, 'keys lowercase, thousands parse, text is left out');
+});
+
+test('#1656 a column with values but none readable is "not counted", never "No cost below"', () => {
+  const row = (title, val) => { const n = c.mkNode(title); if (val !== null) n.props = [{ key: 'cost', val }]; return n; };
+  const tree = (...kids) => { const p = c.mkNode('Parent'); p.children = kids; return p; };
+  const unreadable = tree(row('A', '£850'), row('B', 'TBC'));
+  assert.equal(c.firstEmptyRollup('sum(cost)', unreadable, { extrema: true }), null, 'present values are not an empty column');
+  assert.equal(c.aggHasSkippedValues(unreadable, 'sum(cost)'), true, 'so the partial-total cue takes it');
+  assert.equal(c.firstEmptyRollup('sum(cost)', tree(row('A', null), row('B', '')), { extrema: true }), 'cost',
+    'absent or blank everywhere is still genuinely empty');
+  assert.equal(c.evalCheck(Object.assign(unreadable, { props: [{ key: 'check', val: 'sum(cost) <= 10' }] }), {}), 'error',
+    'a check over an unreadable column still errors');
+});
+
+test('#1656 convert() knows area', () => {
+  const B = host(c.unitTable(null));
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9 * Math.max(1, Math.abs(b)), `${a} ~ ${b}`);
+  near(c.convertUnits(43560, 'ft2', 'acre', B), 1);
+  near(c.convertUnits(1, 'ha', 'acre', B), 2.471053814671653);
+  near(c.convertUnits(10, 'sqft', 'm2', B), 0.9290304);
+  near(c.convertUnits(1, 'mi2', 'acres', B), 640);
+  assert.equal(c.convertUnits(1, 'acre', 'm', B), null, 'area is its own dimension, not length');
+});
+
+test('#1656 every row-formula reader passes the row, not an empty scope', () => {
+  assert.ok(fnBody(_src, 'childPropNumber').includes('propExprValue(raw0, rowPropVars(child))'), 'the rollup reader');
+  assert.ok(fnBody(_src, 'buildPropsArea').includes('propExprValue(val, rowPropVars(node))'), 'the chip shows the computed value');
+  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('propExprValue(p.val, rowPropVars(c))'), 'CSV freezes the computed value');
+  assert.ok(fnBody(_src, 'inferRowShape').includes('propExprValue(raw, rowPropVars(n))'), 'the shape types the column');
+  // census: no caller may drop back to the scope-less form, which reads gal * ppg as text
+  const bare = [..._src.matchAll(/propExprValue\(([^()]*)\)/g)].filter(m => !m[1].includes(','));
+  assert.deepEqual(bare.map(m => m[0]), ['propExprValue(x)'], 'only inferPropType (values only, already frozen) may omit the row');
 });
 
 test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a check errors, never passes', () => {

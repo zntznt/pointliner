@@ -3243,7 +3243,7 @@ test('#1499 an oracle keeps its own words through the authoring cycle, and a han
 test('#1500 convert() names the failure it actually had, on the pill and in the repair dialog', { skip: skip() }, async () => {
   const pg = await fresh();
   const CASES = [
-    { src: 'convert(12, m2, ft2)',   reason: 'unknown unit',   says: /a unit this document does not know, "m2"/ },
+    { src: 'convert(12, m3, ft3)',   reason: 'unknown unit',   says: /a unit this document does not know, "m3"/ },
     { src: 'convert(10, blorp, kg)', reason: 'unknown unit',   says: /a unit this document does not know, "blorp"/ },
     { src: 'convert(10, km, kg)',    reason: 'convert',        says: /different kinds of units/ },
     { src: 'convert(budgt, km, m)',  reason: 'convert amount', says: /amount is not a number/ },

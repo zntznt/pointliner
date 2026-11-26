@@ -49,7 +49,8 @@ The everyday outliner. This is the part you use without thinking about it.
 - **Properties.** Give a point `key: value` data (like `cost: 12` or `owner: me`) you can total
   and search; paste a list of `key: value` lines into the editor to add a whole stat block at once.
   A value can be a small formula, `{prop cost: 60 * 3.50}` shows `210` and still totals, so a
-  computed line value stays one thing that both reads as its result and rolls up.
+  computed line value stays one thing that both reads as its result and rolls up. The formula can
+  use the point's other properties: `{prop gal: 100} {prop ppg: 4} {prop cost: gal * ppg}` shows `400`.
   ([properties](tasks-and-organizing.md#properties))
 - **Tag colors and property icons.** File then Tag & property styling: give a `#tag` its own
   on-brand color (nested tags inherit it) and a property key a small icon. Purely visual, stored
@@ -119,7 +120,7 @@ A live calculator that can see your document. Math pills recompute on their own.
   ([show just the value](computing-numbers.md#show-just-the-value))
 - **Logic.** Combine comparisons with `and(…)` / `or(…)` / `not(x)`; one check can assert several
   rules at once. ([functions](computing-numbers.md#functions))
-- **Units and dates.** Convert units with `@convert` or `{= convert(10, km, mi)}` (temperature via
+- **Units and dates.** Convert units with `@convert` or `{= convert(10, km, mi)}` (area too, like `convert(43560, ft2, acre)`; temperature via
   `{= c2f(20)}`), and declare your own units (a currency, a fictional measure) with `/units` or File
   then Custom units. Do date math (`{= daysuntil(due)}`).
   ([units](computing-numbers.md#units) · [your own units](computing-numbers.md#your-own-units) · [dates](computing-numbers.md#dates))

@@ -1068,7 +1068,7 @@
       "suite": "unit",
       "why": "naming the failure without the door leaves the reader stuck; /units was driven end to end before being cited, so the citation is the deliverable",
       "file": "index.html",
-      "find": "    + '. Built-in units cover length, mass, volume and time; define your own with /units (File then Custom units),'",
+      "find": "    + '. Built-in units cover length, area, mass, volume and time; define your own with /units (File then Custom units),'",
       "replace": "    + '.'.slice(0, 1) + ''",
       "kills": "each marker reaches its own reason"
     },
@@ -5130,6 +5130,15 @@
       "find": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok)}",
       "replace": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok,#3a9d5d)}",
       "kills": "#1590 palette hygiene"
+    },
+    {
+      "id": "prop-chip-drops-the-row",
+      "suite": "unit",
+      "why": "#1656: the chip evaluates a row formula with no row, so `cost: gal * ppg` shows the raw text while the total counts 400; a source-presence pin, so it needs a standing mutant",
+      "file": "index.html",
+      "find": "      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row",
+      "replace": "      const ev = propExprValue(val);",
+      "kills": "#1656 every row-formula reader"
     },
     {
       "id": "print-allowlist-gone",
