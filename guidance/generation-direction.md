@@ -189,7 +189,7 @@ enumerates each; the requirements are:
 - **Extends** the variable system (`collectVars`, `[[var:key]]`, `{name}`, `globalVarMap`,
   `renderVarPill`, the picker/panel) — the document-wide, cached, persisted, discoverable machinery
   is exactly what "declare once, call anywhere" needs.
-- **Uses** the grammar engine (`runGrammar`/`expandText`) to produce the pick — the freeze pattern
+- **Uses** the grammar engine (`runGrammar`/`expandTemplate`) to produce the pick — the freeze pattern
   mirrors how dice/grammar pills already freeze rolled state and re-generate on click.
 - **Supersedes** the reverted per-expansion bound-picks model (`:=` / `ctx.binds`, PR #51) — see §2.
   That approach is retired; do not reintroduce it.

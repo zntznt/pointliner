@@ -20520,7 +20520,7 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
   // agenda: permanent List on the top bar + Timeline/Calendar as toggled full-width bars below
-  assert.ok(_src.includes('agendaBars'), 'agenda view-bars state missing');
+  assert.ok(_src.includes("agendaView = data.agendaBars.timeline ? 'timeline' : data.agendaBars.calendar ? 'month' : '';"), 'legacy agendaBars migrates to agendaView on load');
   assert.ok(_src.includes('ag-top') && _src.includes('ag-pane'), 'agenda top bar / stacked bars missing');
   assert.ok(_src.includes('renderAgendaGantt'), 'agenda Gantt view missing');
   assert.ok(_src.includes('renderAgendaCalendar'), 'agenda calendar view missing');
@@ -35567,7 +35567,6 @@ test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL'
     'openInsertDialog + the four migrated dialogs + the #518 import dialog + the footnotes manager + the Phase C cite picker each construct exactly one shell');
   // The appearance dialog's private in-place signal became a shell option.
   assert.ok(/freshOnly: true,/.test(_src), 'the appearance dialog restores on a FRESH open only');
-  assert.ok(/const _apprFresh = _shell\.fresh;/.test(_src), 'and takes that signal from the shell');
   // The bodies these dialogs hand-roll are precisely what a field vocabulary could not express, and
   // are untouched by the migration — the point of fixing the shell instead.
   assert.ok(_src.includes("grid.className = 'var-pick-grid'"), 'the variable picker grid survives');
@@ -40073,4 +40072,12 @@ test('#1639 restoreSnapshot leaves no removed point in nodeById', () => {
   assert.equal(r.after, null, 'and is gone from nodeById after it');
   assert.equal(r.parent, undefined, 'and from parentMap');
   assert.equal(r.kept, 'kept', 'while the surviving point still resolves');
+});
+
+// #1589: these declarations had no reader (eslint no-unused-vars) and were deleted. A declaration
+// coming back means a dead name is back, or a doc that names it is describing code that never runs.
+test('#1589 the dead top-level declarations stay deleted', () => {
+  for (const name of ['BASE_ROWS_DEFAULT', 'SCOPE_TOKEN_RE', 'diceExprStr', 'braceWouldPromote', 'expandText',
+    '_wsLastScanReparsed', 'agendaBars', 'VERBOSITY_NAMES', '_apprFresh', '_cancelProps', '_cancelAppr', '_dragSrc', 'outHandle'])
+    assert.ok(!new RegExp(`(?:const|let|function)\\s+${name}\\b|\\b${name}\\s*=[^=]`).test(_src), `${name} is declared or assigned again`);
 });
