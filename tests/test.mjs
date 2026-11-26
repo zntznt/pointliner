@@ -4278,10 +4278,12 @@ test('math body completion uses the node scope the pill evaluates, not the bare 
   const uses = (body.match(/vv\.vars \?\?= completionScopeVars\(nodeId\)/g) || []).length;
   assert.equal(uses, 2, 'both the {= …} and conditional branches must read completionScopeVars');
   const scope = fnBody(_src, 'completionScopeVars');
-  assert.ok(/resolveNodeScope\(node, ancestorsOf\(node\), varMapAt\(node\)\)/.test(scope),
-    'completionScopeVars must compose the render scope: positional vars + own/ancestor props');
-  assert.ok(/collectVars\(\)/.test(scope),
-    'a node outside the live index still degrades to the global map');
+  assert.ok(/pillScopeAt\(nodeById\(nodeId\), null, collectVars\(\)\)/.test(scope),
+    'completionScopeVars reads the shared pill scope (#1657), falling back to the global map off-index');
+  assert.ok(/resolveNodeScope\(node, ancestorsOf\(node\), vars\)/.test(fnBody(_src, 'pillScopeAt')),
+    'pillScopeAt composes the render scope: positional vars + own/ancestor props');
+  assert.ok(/renderPosVarMaps\(node\)\?\.get\(key\)\) \|\| varMapAt\(node\)/.test(fnBody(_src, 'pillVarsAt')),
+    'pillVarsAt reads the per-pill positional map, else the point map, as renderMathPill does');
 });
 
 test('filterBraceForms — prefix filters by label and keyword aliases', () => {
@@ -17443,7 +17445,7 @@ test('word count: cores + front door wired (src pins)', () => {
 
 test('subtree aggregation: render + export + front-door wiring (src pins)', () => {
   assert.ok(_src.includes('expandAggExpr(evalSrc, cookieNode, vmap)') && _src.includes('const evalSrc = m.gen ? (m.rolled || m.expr) : m.expr;'), 'renderMathPill live-aggregation wiring missing (PR D: the positional vmap feeds base.col column totals; a gen pill evaluates its frozen roll)');
-  assert.ok(_src.includes('expandAggExpr(m.expr, node)'), 'flattenArtifacts export aggregation wiring missing');
+  assert.ok(_src.includes('expandAggExpr(m.gen ? (m.rolled || m.expr) : m.expr, node, scope)'), 'flattenArtifacts export aggregation wiring missing (#1657: the pill scope, and a gen pill its frozen roll)');
   assert.ok(_src.includes("id:'rollups'") && _src.includes("syn:'{= sum(cost)}'"), 'GUIDE rollups entry or sum example missing');
   assert.ok(_src.includes('sum|avg|count|min|max'), 'expandAggExpr min/max regex extension missing');
   // #610 trimmed the math dialog hint (it duplicated the guide); the front door for the min/max
@@ -18516,12 +18518,89 @@ test('evalCheck: own props win over doc vars; evalMath constants still win over 
   assert.equal(c.evalCheck(mkCheckNode('rate == 7', {}), { rate: 7 }), 'pass');
 });
 
-test('nodePropVars: numeric own props only — skips dates, the check key, and non-numbers', () => {
+test('nodePropVars: numbers and dates (as epoch days) — skips the check key and non-numbers', () => {
   const n = c.mkNode('x');
   n.props.push({ key: 'budget', val: '100' }, { key: 'hours', val: '8' },
     { key: 'name', val: 'abc' }, { key: 'due', val: '2026-01-01' },
     { key: 'start', val: '2026-01-01' }, { key: 'check', val: 'hours<=8' });
-  assert.deepEqual(host(c.nodePropVars(n)), { budget: 100, hours: 8 });
+  const day = c.parseDueDate('2026-01-01');
+  assert.equal(typeof day, 'number');
+  assert.deepEqual(host(c.nodePropVars(n)), { budget: 100, hours: 8, due: day, start: day });
+});
+
+// #1657 (panel #8): a scheduled point's `due` was invisible to its own {= daysuntil(due)}, though a
+// query base column already joined dates. One scope now, so every surface agrees.
+test('#1657 dates join the pill scope: daysuntil(due), a custom date, and due/start stay dates only', () => {
+  const n = c.mkNode('Load B');
+  n.props.push({ key: 'due', val: '2026-11-20' }, { key: 'delivered', val: '2026-11-20' }, { key: 'start', val: '5' });
+  const s = c.resolveNodeScope(n, [], {});
+  assert.equal(s.due, c.parseDueDate('2026-11-20'), 'due joins as its epoch day');
+  assert.equal(s.delivered, s.due, 'a custom date-shaped prop joins the same way');
+  assert.equal('start' in s, false, 'a reserved date key never reads as a plain number (start: 5)');
+  assert.equal(c.evalMath('due + 30 - delivered', s), 30, 'date arithmetic computes in a {= } scope');
+  assert.notEqual(c.evalMath('daysuntil(due)', s), null, 'daysuntil(due) resolves (was: no value here)');
+});
+
+// #1657: a variable reads its declaring point's props, like a {= } beside it, on every resolver.
+test('#1657 a := declaration sees its own point and ancestor props (collectVars, varMapAt, renderPosVarMaps)', () => {
+  const root = c.mkRoot();
+  const sheet = c.mkNode('Sheet'); sheet.props.push({ key: 'base', val: '10' });
+  const pt = c.mkNode('Bears [[var:t1]] [[var:u1]]');
+  pt.props.push({ key: 'r1', val: '8' }, { key: 'r2', val: '7' });
+  pt.vars = [{ key: 't1', name: 'tot', expr: 'r1 + r2 + base' }, { key: 'u1', name: 'tot', expr: '' }];
+  const later = c.mkNode('Later [[var:u2]]'); later.vars = [{ key: 'u2', name: 'tot', expr: '' }];
+  sheet.children.push(pt); root.children.push(sheet, later);
+  c._context.__r1657 = root;
+  vm.runInContext('root = __r1657; buildIndex(root); resetDocCaches();', c._context);
+  try {
+    assert.equal(c.collectVars(root).tot, 25, 'document-wide: own r1, r2 plus the ancestor base');
+    assert.equal(c.varMapAt(later).tot, 25, 'positional, at a later point');
+    assert.equal(c.renderPosVarMaps(pt).get('u1').tot, 25, 'intra-point, a reference after the declaration');
+    // without props the same expression stays unresolved, so the scope (not the expr) is what changed
+    assert.equal(vm.runInContext("resolveVarDefs({ tot: 'r1 + r2' }, {}, ['tot']).resolved.tot", c._context), undefined);
+  } finally {
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context);
+  }
+});
+
+// #1657, the call sites the headless cores cannot run: the declaration pill evaluates its own
+// expression with the point's props, and the Edit expression preview reads the pill's scope.
+test('#1657 the var pill and the math dialog preview read the pill scope (src pins)', () => {
+  assert.match(fnBody(_src, 'renderVarPill'),
+    /evalMath\(v\.expr, cookieNode \? resolveNodeScope\(cookieNode, ancestorsOf\(cookieNode\), declVars\) : declVars\)/,
+    'a declaration pill shows its value with own + ancestor props in scope');
+  const dlg = fnBody(_src, 'openMathDialog');
+  assert.match(dlg, /const vars = pillScopeAt\(node, existing, collectVars\(\)\);/,
+    'the live preview reads the same positional scope the pill renders with');
+  assert.match(dlg, /mathErrorReason\([^\n]*, vars, _varCycles, collectVars\(\)\)/,
+    'and names a forward reference "declared later", as the pill does');
+});
+
+// #1657: a formula ahead of its declaration showed #ERR (declared later) while its edit dialog
+// previewed 130 and the exports wrote 130. The export now reads the pill's own scope.
+test('#1657 export agrees with the pill: a declared-later formula freezes to #ERR, props resolve', () => {
+  const root = c.mkRoot();
+  const a = c.mkNode('Labour [[math:m1]]'); a.math = [{ key: 'm1', expr: '2 * rate', result: '130' }];
+  const b = c.mkNode('Shop rate [[var:v1]]'); b.vars = [{ key: 'v1', name: 'rate', expr: '65' }];
+  const d = c.mkNode('Bears [[math:m2]] [[var:t1]]'); d.math = [{ key: 'm2', expr: 'r1 + r2', result: '?' }];
+  d.vars = [{ key: 't1', name: 'tot', expr: 'r1 * 2' }];
+  d.props.push({ key: 'r1', val: '8' }, { key: 'r2', val: '7' });
+  const e = c.mkNode('Rate twice [[math:m3]]'); e.math = [{ key: 'm3', expr: '2 * rate', result: '' }];
+  root.children.push(a, b, d, e);
+  c._context.__r1657 = root;
+  vm.runInContext('root = __r1657; buildIndex(root); resetDocCaches();', c._context);
+  try {
+    const vars = c.collectVars();
+    assert.equal(c.frozenTokenText('math', 'm1', a, vars), '#ERR', 'declared later: the pill shows #ERR, so does the export');
+    assert.equal(c.frozenTokenText('math', 'm3', e, vars), '130', 'declared above: 130');
+    assert.equal(c.frozenTokenText('math', 'm2', d, vars), '15', 'own props resolve in the export');
+    assert.equal(c.frozenTokenText('var', 't1', d, vars), 'tot = 16', 'a declaration exports the value its pill shows');
+    assert.equal(c.pillScopeAt(a, 'm1', vars).rate, undefined, 'the shared scope is positional');
+    const foreign = c.mkNode('x');
+    assert.equal(c.pillScopeAt(foreign, null, vars), vars, 'a node outside the live index keeps the fallback');
+  } finally {
+    vm.runInContext('root = mkRoot(); buildIndex(root); resetDocCaches();', c._context);
+  }
 });
 
 // ─── point timestamps (#467) — nowStamp / parseStamp / stampEdit ────────────────
@@ -18596,11 +18675,12 @@ test('resolveNodeScope: empty ancestors == own-node-only scope (#460 unchanged)'
   // a missing/undefined ancestors list is treated as empty, never throws
   assert.deepEqual(host(c.resolveNodeScope(node, undefined, doc)), { budget: 50, hours: 6 });
 });
-test('resolveNodeScope: only numeric props inherit (nodePropVars filter applies up the chain)', () => {
+test('resolveNodeScope: only numbers and dates inherit (nodePropVars filter applies up the chain)', () => {
   const parent = propNode('Character', { STR: 14, name: 'Bram', due: '2026-01-01' });
   const node = propNode('Scene');
   const scope = host(c.resolveNodeScope(node, [parent], {}));
-  assert.deepEqual(scope, { str: 14 }, 'text + date ancestor props do not become variables (keys lowercased)');
+  assert.deepEqual(scope, { str: 14, due: c.parseDueDate('2026-01-01') },
+    'a text prop does not become a variable; a date joins as its epoch day (#1657; keys lowercased)');
 });
 test('evalCheck: a check inherits ancestor props (parity with the math pill, #461)', () => {
   // a scene under a STR:14 character; the check references STR with no own STR
@@ -37815,7 +37895,7 @@ test('#1571 the pill and the export read the same verdict, and freeze keeps the 
   assert.match(ft, /if \(rec\.versus\) \{/,
     'freeze/export has a contest arm at all -- without one it fell through to the varMap lookup');
   assert.match(ft, /versusVerdict\(v\)/, 'and reads the same verdict the pill shows');
-  assert.ok(ft.indexOf('if (rec.versus) {') < ft.indexOf('const val = varMap['),
+  assert.ok(ft.indexOf('if (rec.versus) {') < ft.indexOf('const val = (rootNode === root ? pillVarsAt('),
     'BEFORE the generic var arm, which is the arm that produced " = ?" for an anonymous contest');
 });
 

@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2206 declarations in 158 sections across 17 domains.**
+**2208 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1888,6 +1888,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `_bodyVocab` — Per-SESSION vocabulary cache for body completion. The input handler runs markDirty()
 - `bodyVocab`
 - `completionScopeVars` — The variable scope a {= …} / conditional body will actually resolve against: positional
+- `pillVarsAt` — #1657: THE scope a pill at `node` evaluates against, as renderMathPill composes it: the
+- `pillScopeAt`
 - `bodyCompletion` — Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 - `checkBraceTrigger`
 - `BRACE_BROWSE_ROW` — The one row in the brace menu that does not insert text: it opens the full Pill picker. Offered

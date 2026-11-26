@@ -202,6 +202,7 @@ export function loadCores() {
     'rollLogHome', 'rollLogToggleMessage', 'rollLogFirstEntryMessage',   // UXP-245: the log's door + what it says
     'collectVars', 'orphanedVarRefCount', 'exprNamesVar', 'freezeOrphanNote', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'renderPosVarMaps',   // #767 positional per-pill var maps
+    'pillScopeAt', 'pillVarsAt',   // #1657 the one scope a pill, its dialog and the exports read
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
     'docGraphModel',                                                   // 4b: the doc-level folder graph
     'graphUnlinkedEdges', 'mergeUnlinkedEdges', 'matchableNodeNames',  // graph's unlinked (textual-match) edges
