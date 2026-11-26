@@ -115,6 +115,7 @@ User-facing copy says **"point"** and **"pill"** (code keeps `node`/`artifact`).
 | Markdown import (format-based import bridges) | `guidance/markdown-import-proposal.md` | Shipped |
 | Single-file reassurance + scaling legibility | `guidance/single-file-reassurance-proposal.md` | Shipped |
 | Snippet / pattern palette (using `{…}` at speed) | `guidance/snippet-palette-proposal.md` | Shipped |
+| h:mm durations (read as hours, shown as h:mm) | `guidance/duration-proposal.md` | Shipped |
 
 ## Working notes
 

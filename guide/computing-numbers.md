@@ -52,12 +52,30 @@ number). For money or units, open the pill and set a **format** in the dialog:
   clears the other.
 - **Prefix** goes in front (`$` → `$1,200.00`).
 - **Suffix** goes after (` kg` → `12 kg`, or `%`).
+- **Show as hours and minutes (h:mm)** reads a number of hours as a duration, so `2.0833` shows as
+  `2:05` and `0.75` as `0:45`. Seconds appear only when there are some (`0:01:30`).
 
 ```
 {= 70000 * 12}        →  840,000        (grouped by default)
 {= 1200}  + $ / 2dp   →  $1,200.00      (money format)
 {= weight}  + " kg"   →  12 kg          (unit suffix)
 ```
+
+### Durations (h:mm)
+
+Running times, driving hours and timesheets are written `h:mm`, so write them that way in a
+property: `{prop t: 1:15}`. Pointliner reads it the way every spreadsheet and logbook does, as 1 hour
+15 minutes, and counts it as **1.25 hours**. That makes it an ordinary number: `sum`, `avg`, `min`,
+`max`, a check like `drive <= 11` and `convert(t, hr, min)` all work on it, and a plain `2` in the
+same column adds as 2 hours. `1:15:30` adds seconds; minutes and seconds are always two digits.
+
+A `{= sum(t)}` over `1:15` and `0:50` shows `2:05` on its own, because every value it adds was written
+as a duration. Explain this number lists each row in `h:mm` too. To show any number of hours that way,
+check **Show as hours and minutes (h:mm)** in the pill's format; uncheck it to see decimal hours.
+
+A time written inside a formula is not read as a duration, because `:` in a formula belongs to the
+`?` choice (`x > 0 ? 1 : 30`). Keep durations in properties, or write the hours as a number (`1.25`).
+
 
 ---
 

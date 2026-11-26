@@ -361,7 +361,7 @@ export function loadCores() {
 
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
-    'childPropNumber','propExprValue','propScalar','rowPropVars','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','childrenComputePillsNotProp','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
+    'childPropNumber','propExprValue','propScalar','parseDuration','formatDuration','rollupFmt','rowPropVars','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','childrenComputePillsNotProp','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
     'parseUnitDecls','unitTable','normalizeUnits','convertUnits','splitArgsTopLevel','replaceConvert','unitsToText', // #875 units
     'convertFailKind','convertUnitErrToken','unknownUnitPhrase',   // #1500: WHICH of convert()'s four failures happened
     'resolveScopeDepth','collectScoped',
