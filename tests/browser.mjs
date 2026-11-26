@@ -459,6 +459,89 @@ test('#1440 a view toggle writes nothing; a real edit still writes', { skip: ski
   assert.ok(wrote, 'and the write must contain the edit, not a stale serialization');
 });
 
+// A keystroke that lands while the folder write is in flight. The write resolved and called
+// markClean(), so the debounce that followed skipped the folder (`workspaceFile && dirty`) and the
+// file never received the keystroke while the chip said saved. The write is held on a promise this
+// test releases, so the keystroke lands inside the await by construction; no timer decides it.
+test('a keystroke during an in-flight folder write stays unsaved and reaches the file next', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await pg.evaluate(() => {
+    adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title></head><body>' +
+      '<outline text="one"/></body></opml>'));
+    focusedId = null; render();
+    window.__writes = []; window.__held = []; window.__anchors = 0;
+    window.safeWriteOpml = (dir, name, opml) => new Promise(r => window.__held.push(() => { window.__writes.push(opml); r(); }));
+    window.anchorWorkspaceFile = async () => { window.__anchors++; };
+    window.refreshOwnDocInIndex = () => {};
+    workspaceDir = { name: 'nb' };
+    workspaceFile = { getFile: async () => ({ lastModified: _wsKnownModified, size: _wsKnownSize }) };
+    fileName = 'notes.opml';
+    root.children[0].text = 'one two'; markDirty(); clearTimeout(autosaveTimer);
+    writeAutosavePayloadNow();             // the debounce body: dirty, so it starts the folder write
+  });
+  await waitFn(pg, () => window.__held.length === 1);
+  await pg.evaluate(() => { root.children[0].text = 'one two three'; markDirty(); clearTimeout(autosaveTimer); });
+  await pg.evaluate(() => window.__held[0]());
+  await waitFn(pg, () => !_wsWriting);
+  const mid = await pg.evaluate(() => ({ dirty, unsaved: unsavedToDisk(), anchors: window.__anchors, wrote: window.__writes.slice() }));
+  assert.equal(mid.wrote.length, 1);
+  assert.ok(!/three/.test(mid.wrote[0]), 'the first write was serialized before the keystroke');
+  assert.equal(mid.dirty, true, 'the file lacks "three", so the document must not be marked saved');
+  assert.equal(mid.unsaved, true, 'and the save state must say so');
+  assert.equal(mid.anchors, 1, 'our write still re-anchors, so the follow-up is not read as an external change');
+
+  await pg.evaluate(() => writeAutosavePayloadNow());   // the debounce the keystroke scheduled
+  await waitFn(pg, () => window.__held.length === 2);
+  await pg.evaluate(() => window.__held[1]());
+  await waitFn(pg, () => !_wsWriting && !dirty);
+  const last = await pg.evaluate(() => window.__writes[1] || '');
+  assert.ok(/one two three/.test(last), 'the follow-up write carries the keystroke');
+  assert.deepEqual(pageErrors, []);
+});
+
+// Boot kept a newer local copy of a folder document (closed inside the debounce: pagehide reached
+// localStorage, the folder write did not) and left it clean, so a tab switch skipped the pre-swap
+// flush and the file never got it. The kept copy must be unsaved; a copy equal to the file must not.
+test('a kept boot copy the file lacks is unsaved and written; one the file has is left alone', { skip: skip() }, async () => {
+  const pg = await fresh();
+  const run = async edited => {
+    const after = await pg.evaluate(async edited => {
+      adoptDoc(fromOpml('<?xml version="1.0"?><opml version="2.0"><head><title>N</title><_docid>doc-kept</_docid></head><body>' +
+        '<outline text="on disk"/></body></opml>'));
+      const fileText = toOpml(root);
+      if (edited) root.children[0].text = 'on disk, then typed';
+      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ root, fileName: 'notes.opml', savedAt: Date.now(), fileModified: 1000 }));
+      root = JSON.parse(localStorage.getItem(AUTOSAVE_KEY)).root; buildIndex(root, null);   // as the boot restore leaves it
+      window.__writes = [];
+      window.safeWriteOpml = async (dir, name, opml) => { window.__writes.push(opml); };
+      window.anchorWorkspaceFile = async () => {};
+      window.refreshOwnDocInIndex = () => {};
+      const fh = { getFile: async () => ({ lastModified: 1000, size: fileText.length, text: async () => fileText }) };
+      clearTimeout(autosaveTimer); dirty = false;
+      await reopenWorkspaceDoc({ name: 'nb', getFileHandle: async () => fh }, 'notes.opml');
+      return { dirty, kept: root.children[0].text, anchor: _wsKnownModified, bound: workspaceFile === fh };
+    }, edited);
+    await pg.evaluate(() => { clearTimeout(autosaveTimer); writeAutosavePayloadNow(); });   // the debounce the reopen scheduled, or a view tick
+    await waitFn(pg, () => !_wsWriting);
+    return { ...after, ...(await pg.evaluate(() => ({ writes: window.__writes.slice(), dirtyAfter: dirty }))) };
+  };
+
+  const kept = await run(true);
+  assert.equal(kept.bound, true, 'the file handle is rebound');
+  assert.equal(kept.kept, 'on disk, then typed', 'the newer local copy is kept');
+  assert.equal(kept.anchor, 1000, 'anchored to the file as read');
+  assert.equal(kept.dirty, true, 'the file lacks the kept copy, so it is unsaved');
+  assert.equal(kept.writes.length, 1, 'and the normal debounce writes it');
+  assert.ok(/on disk, then typed/.test(kept.writes[0]));
+  assert.equal(kept.dirtyAfter, false, 'then it reads as saved');
+
+  const same = await run(false);
+  assert.equal(same.bound, true);
+  assert.equal(same.dirty, false, 'a copy the file already holds (opened and read) is not unsaved');
+  assert.equal(same.writes.length, 0, 'and rewrites nothing');
+  assert.deepEqual(pageErrors, []);
+});
+
 // #1443 — the fix must not demote an INHERITED-tag match to a context row.
 //
 // The cheap version of this fix (pass '' everywhere) is 43% faster and WRONG: `self` decides whether

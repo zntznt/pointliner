@@ -3409,6 +3409,7 @@ let heightCache = new Map(); // node id → measured px height
 let vlist = null, vTop = null, vBot = null;
 let winStart = 0, winEnd = -1;
 let dirty     = false;
+let _editGen  = 0;        // bumped by every markDirty(): a write that awaited across a bump does not hold that edit (writeOutcome)
 let _savePending = false;   // #1268: a debounced autosave is scheduled but not yet written ("Saving…")
 let _lastSavedAt = 0;       // #1268: epoch-ms of the last completed autosave write, for the "Saved <time>" chip
 let fileHandle = null;
@@ -36339,7 +36340,7 @@ function updateDirtyDot() {
   updateSaveStatus();   // #1268: the same save truth drives the toolbar chip
 }
 function markDirty() {
-  dirty = true;
+  dirty = true; _editGen++;
   // UXP-126: the first edit to the Examples doc means the user engaged — it becomes their doc, so
   // stop suppressing autosave and drop the "these are examples" banner. (Guarded so it's a no-op
   // in normal use; the flag only exists during a fresh first-run.)
@@ -36559,6 +36560,14 @@ function markClean() {
   dirty = false;
   updateDirtyDot();
   updateSaveStatus();   // #1268: a save-to-file clears the unsaved-to-disk chip too
+}
+// Pure: what a write that just landed may claim. It serialized document `doc0` at edit generation
+// `gen0`. If another document is open now it says nothing about that one ('swapped'); if an edit
+// landed during the await the file lacks it ('edited': stay dirty, so the debounce that edit
+// scheduled writes again); only otherwise is the document clean.
+function writeOutcome(gen0, gen1, doc0, doc1) {
+  if (doc0 !== doc1) return 'swapped';
+  return gen0 === gen1 ? 'clean' : 'edited';
 }
 // Pure: the user-facing name for a stored filename , drop the .opml extension and
 // show the placeholder for the unsaved sentinel. The extension is an implementation
@@ -36969,11 +36978,17 @@ async function writeH(h) {
     // sync-safety: a folder-backed save uses the atomic temp+move path and re-anchors;
     // a plain single-file save (Save / Save As, h is not the workspace file) keeps the
     // direct write — there's no folder handle to move() within and no sync race to guard.
+    const gen0 = _editGen, doc0 = root.docId, opml = withFoldedActive(() => toOpml(root));
     if (workspaceDir && h === workspaceFile) {
-      await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root)));
-      markClean(); await anchorWorkspaceFile(); return true;
+      await safeWriteOpml(workspaceDir, fileName, opml);
+      const outcome = writeOutcome(gen0, _editGen, doc0, root.docId);
+      if (outcome === 'clean') markClean();
+      if (outcome !== 'swapped') await anchorWorkspaceFile();
+      return true;
     }
-    const w = await h.createWritable(); await w.write(withFoldedActive(() => toOpml(root))); await w.close(); markClean(); return true;
+    const w = await h.createWritable(); await w.write(opml); await w.close();
+    if (writeOutcome(gen0, _editGen, doc0, root.docId) === 'clean') markClean();
+    return true;
   }
   catch(e) {
     if (workspaceDir && (h === workspaceFile || h === fileHandle)) degradeWorkspace('Lost access to the folder. Reconnect, or use Save as to keep your work.');
@@ -37246,6 +37261,12 @@ function bootPrefersFile({ diskModified, knownFileMod, localSavedAt }) {
   const known = Number(knownFileMod) || 0;
   if (known > 0) return disk > known;              // same filesystem clock — robust
   return disk >= (Number(localSavedAt) || 0);      // legacy fallback (no recorded mtime)
+}
+// Pure: do two toOpml() outputs hold the same document? Ignores <dateModified>, stamped fresh on
+// every serialize, so a boot copy that only moved view state never reads as unsaved.
+function sameSavedOpml(a, b) {
+  const body = s => String(s).replace(/<dateModified>[^<]*<\/dateModified>/, '');
+  return body(a) === body(b);
 }
 
 // Pure: the temp filename for an atomic write. We write here, then move() over the
@@ -37671,7 +37692,7 @@ async function reopenWorkspaceDoc(dir, name) {
   const fileIsAuthoritative = bootPrefersFile({ diskModified: file.lastModified, knownFileMod, localSavedAt: lastAutosaveSavedAt() });
   let localPayload = null; try { localPayload = localStorage.getItem(AUTOSAVE_KEY); } catch (_) {}
   const localId = root?.docId || null;   // the in-memory doc's identity, captured before any adopt
-  let restoreFocusId = null;
+  let restoreFocusId = null, localAhead = false;
   if (localPayload) {
     try {
       const lp = JSON.parse(localPayload);
@@ -37727,6 +37748,7 @@ async function reopenWorkspaceDoc(dir, name) {
     }
     if (root && root.docId && fileRoot.docId && root.docId === fileRoot.docId) {
       fileHandle = fh; workspaceFile = fh; fileName = name; // same document, a real newer local edit → keep it
+      localAhead = !sameSavedOpml(toOpml(root), toOpml(fileRoot));   // the file lacks it (closed inside the debounce), unless only view state moved
       renderFileName(); updateTitle();
     } else {
       // Different document, OR a file with no docId (a legacy/other-tool file that no
@@ -37767,6 +37789,7 @@ async function reopenWorkspaceDoc(dir, name) {
   }
   _wsKnownModified = file.lastModified || 0;             // sync-safety: anchor to the on-disk version
   _wsKnownSize = file.size || 0;                         // #840: size fingerprint rides the same anchor
+  if (localAhead) markDirty();                           // after the anchor: the debounce writes the kept copy, checked against it
   startWorkspaceWatch();                                 // sync-safety: watch the reopened file
   _wsWarned = false;
   return true;
@@ -37926,9 +37949,10 @@ async function switchWorkspaceDoc(name) {
   if (workspaceFile && dirty) {
     clearTimeout(autosaveTimer);          // stop the debounce firing against the new doc
     const outName = fileName;
-    const outOpml = withFoldedActive(() => toOpml(root));
+    let gen0;
     try {
-      await safeWriteOpml(workspaceDir, outName, outOpml);   // atomic write to the outgoing file
+      // atomic write to the outgoing file; again if an edit landed during it, since the swap below discards root
+      do { gen0 = _editGen; const outOpml = withFoldedActive(() => toOpml(root)); await safeWriteOpml(workspaceDir, outName, outOpml); } while (gen0 !== _editGen);
       markClean();
     } catch (e) {
       // Don't silently swap away from unsaved work if we couldn't save it.
@@ -37972,7 +37996,7 @@ async function newWorkspaceDoc() {
   // silently discard them (the old DISCARD prompt was wrong for an auto-saving doc).
   if (workspaceFile && dirty) {
     clearTimeout(autosaveTimer);
-    try { await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root))); markClean(); }
+    try { let gen0; do { gen0 = _editGen; await safeWriteOpml(workspaceDir, fileName, withFoldedActive(() => toOpml(root))); } while (gen0 !== _editGen); markClean(); }
     catch (_) { if (!await openConfirmDialog({ title: 'Could not save this document', message: 'Saving the current document failed, so creating a new one would lose your recent edits. Continue anyway, or stay?', confirmLabel: 'Continue and lose edits', cancelLabel: 'Stay' })) return; }
   } else if (!workspaceFile && dirty && !await openConfirmDialog(DISCARD_CONFIRM)) return;
   // idea 6b: prompt for a name instead of auto-creating "outline.opml" (the single-file path lets
@@ -38178,7 +38202,7 @@ async function safeWriteOpml(dir, name, opml) {
 // us (folder sync from another device, or another app), we DON'T clobber: a clean doc
 // reloads losslessly; a dirty doc opens the reconcile prompt (keep mine / load theirs /
 // save a copy). The write itself is ATOMIC (safeWriteOpml: temp + move). A real-disk
-// write counts as saved → markClean, then we re-anchor. On lost access it degrades.
+// write that holds every edit counts as saved → markClean (writeOutcome), then we re-anchor. On lost access it degrades.
 async function flushWorkspaceFile() {
   if (!workspaceFile) return;
   if (_wsReconciling) return;                      // a prompt is open — don't write until the user decides
@@ -38199,10 +38223,13 @@ async function flushWorkspaceFile() {
       }
     }
     _wsForceWrite = false;
+    const gen0 = _editGen, doc0 = root.docId;
     const opml = withFoldedActive(() => toOpml(root));
     await safeWriteOpml(workspaceDir, fileName, opml);
-    markClean();
-    await anchorWorkspaceFile();                    // re-anchor to OUR write's lastModified
+    const outcome = writeOutcome(gen0, _editGen, doc0, root.docId);
+    if (outcome === 'swapped') { _wsPending = false; return; }   // the swap flushed and anchored its own docs; a re-run would rewrite the new one
+    if (outcome === 'clean') markClean();          // 'edited': stays dirty, so the debounce that edit scheduled writes it (or _wsPending, if it fires mid-write)
+    await anchorWorkspaceFile();                    // re-anchor to OUR write's lastModified, either way
     refreshOwnDocInIndex();                         // §5.4: fold the just-written doc into the index (throttled)
   } catch (e) {
     degradeWorkspace();
@@ -50076,7 +50103,8 @@ requestAnimationFrame(() => {
 // is authoritative and skips this entirely. A moved/deleted folder is forgotten.
 // Newer-wins rule: if the folder file is as new or newer than the localStorage autosave,
 // the folder copy wins; otherwise the local copy (which may hold post-degrade edits) is
-// kept and the write target is simply rebound so the next edit reconverges the two.
+// kept, the write target is rebound, and when the file lacks that copy the doc is marked unsaved so
+// the normal debounce writes it (a tab switch flushes it first, too).
 if (hasWorkspace) (async function reopenStoredWorkspace() {
   if (loadedFromEmbed) return;                  // a shared snapshot is authoritative
   try {

@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2219 declarations in 158 sections across 17 domains.**
+**2222 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -56,6 +56,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `vlist`
 - `winStart`
 - `dirty`
+- `_editGen`
 - `_savePending`
 - `_lastSavedAt`
 - `fileHandle`
@@ -2049,6 +2050,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `undo`
 - `redo`
 - `markClean`
+- `writeOutcome` — Pure: what a write that just landed may claim. It serialized document `doc0` at edit generation
 - `displayName` — Pure: the user-facing name for a stored filename , drop the .opml extension and
 - `toFileName` — Pure: turn a user-typed/bare name back into a storage filename (sanitize + ensure
 - `updateTitle`
@@ -2123,6 +2125,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `reconcileAction` — Folder sync (Dropbox/iCloud/Drive on the workspace folder) can change a doc's
 - `bootPrefersFile` — #746 pure decision: at boot, is the on-disk file the authoritative copy (vs the local
+- `sameSavedOpml` — Pure: do two toOpml() outputs hold the same document? Ignores <dateModified>, stamped fresh on
 - `_wsTmpSeq` — Pure: the temp filename for an atomic write. We write here, then move() over the
 - `tmpWriteName`
 

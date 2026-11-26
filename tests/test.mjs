@@ -22682,6 +22682,92 @@ test('bootPrefersFile — falls back to the wall-clock compare only when no mtim
   assert.equal(c.bootPrefersFile({ diskModified: 90,  knownFileMod: null, localSavedAt: 100 }), false);
 });
 
+// ── a write that awaited across an edit must not mark the document clean ──────────────────────
+// flushWorkspaceFile used to serialize, await the write, then markClean() unconditionally. A
+// keystroke landing during the await set dirty, the resolving write cleared it, and the debounce
+// 800 ms later skipped the folder write (`workspaceFile && dirty`), as did the pre-swap flush: the
+// chip said saved and the file lacked the keystroke. The decision is pure; the race is replayed
+// below with controlled promises, no timers.
+test('writeOutcome: only a write that holds every edit of the open document marks it clean', () => {
+  assert.equal(c.writeOutcome(4, 4, 'docA', 'docA'), 'clean');
+  assert.equal(c.writeOutcome(4, 5, 'docA', 'docA'), 'edited', 'an edit during the await is not in the file');
+  assert.equal(c.writeOutcome(4, 4, 'docA', 'docB'), 'swapped', 'a swap during the await: the write says nothing about the doc on screen');
+  assert.equal(c.writeOutcome(4, 9, 'docA', 'docB'), 'swapped', 'a swap wins over an edit: touch nothing of the new doc');
+});
+
+test('writeOutcome: the race replayed with a controlled write promise', async () => {
+  // A miniature of flushWorkspaceFile's shape: capture, serialize, await, decide.
+  let gen = 0, docId = 'A', dirty = false, text = 'one', release;
+  const disk = [];
+  const markDirty = () => { dirty = true; gen++; };
+  const flush = async () => {
+    const gen0 = gen, doc0 = docId, opml = text;
+    await new Promise(r => { release = r; });
+    disk.push(opml);
+    if (c.writeOutcome(gen0, gen, doc0, docId) === 'clean') dirty = false;
+  };
+  markDirty();
+  const w = flush();
+  text = 'one two'; markDirty();          // the keystroke lands while the write is in flight
+  release(); await w;
+  assert.deepEqual(disk, ['one']);
+  assert.equal(dirty, true, 'the document must stay dirty: the file lacks "two"');
+  const w2 = flush(); release(); await w2; // the debounce gate (`workspaceFile && dirty`) lets the next write through
+  assert.deepEqual(disk, ['one', 'one two']);
+  assert.equal(dirty, false, 'a write that holds everything marks clean');
+});
+
+test('the serialize-await-markClean sites gate markClean on writeOutcome (src pins)', () => {
+  assert.ok(/function markDirty\(\) \{\s*\n\s*dirty = true;\s*_editGen\+\+;/.test(_src),
+    'markDirty is the single invalidation point: it bumps the edit generation');
+  const fl = fnBody(_src, 'flushWorkspaceFile');
+  const cap = fl.indexOf('const gen0 = _editGen, doc0 = root.docId;');
+  const ser = fl.indexOf('withFoldedActive(() => toOpml(root))');
+  const wr = fl.indexOf('await safeWriteOpml(workspaceDir, fileName, opml)');
+  const dec = fl.indexOf('writeOutcome(gen0, _editGen, doc0, root.docId)');
+  assert.ok(cap !== -1 && cap < ser && ser < wr && wr < dec, 'flush captures the generation BEFORE serializing and decides AFTER the await');
+  assert.ok(/if \(outcome === 'clean'\) markClean\(\);/.test(fl), 'flush marks clean only on a clean outcome');
+  assert.ok(!/^\s*markClean\(\);/m.test(fl), 'no unconditional markClean left in the flush');
+  assert.ok(/if \(outcome === 'swapped'\) \{ _wsPending = false; return; \}/.test(fl), 'a swap during the write touches nothing of the new doc');
+  assert.ok(dec < fl.indexOf('await anchorWorkspaceFile()'), 'an edited (not swapped) write still re-anchors to OUR write, so the follow-up is not read as external');
+  const wh = fnBody(_src, 'writeH');
+  assert.equal(nonEmpty(wh.match(/writeOutcome\(gen0, _editGen, doc0, root\.docId\)/g) || [], 'writeH outcome checks').length, 2,
+    'both writeH arms (folder and single-file) decide after the await');
+  assert.ok(!/markClean\(\); await anchorWorkspaceFile\(\)/.test(wh) && !/await w\.close\(\); markClean\(\)/.test(wh),
+    'writeH has no unconditional markClean after an await');
+  // The pre-swap flushes cannot leave the edit to a later write: the swap discards root. They rewrite until no edit landed.
+  for (const name of ['switchWorkspaceDoc', 'newWorkspaceDoc']) {
+    const fn = fnBody(_src, name);
+    assert.ok(/do \{ gen0 = _editGen;[^\n]*await safeWriteOpml\([^\n]*\} while \(gen0 !== _editGen\);\s*markClean\(\);/.test(fn),
+      name + ' must rewrite the outgoing doc until no edit landed during its own write, then mark clean');
+  }
+});
+
+// ── boot keeps a newer local copy of a folder document: it must not look saved ────────────────
+// reopenWorkspaceDoc's "local autosave is newer" branch kept the local copy and rebound the handle
+// but left it clean, so nothing wrote it to the file; a tab switch then skipped the pre-swap flush
+// and coming back loaded the stale file. The case: type, close the tab inside the 800 ms debounce
+// (pagehide reaches localStorage, the async folder write does not), reopen.
+test('sameSavedOpml: two serializations of one document match across a fresh <dateModified>', () => {
+  const r = c.mkRoot(); r.docId = 'd1'; r.children.push(c.mkNode('kept'));
+  const a = c.toOpml(r);
+  const b = a.replace(/<dateModified>[^<]*<\/dateModified>/, '<dateModified>Thu, 01 Jan 1970 00:00:00 GMT</dateModified>');
+  assert.notEqual(a, b);
+  assert.equal(c.sameSavedOpml(a, b), true, 'only the timestamp differs: nothing to write');
+  r.children[0].text = 'kept and edited';
+  assert.equal(c.sameSavedOpml(a, c.toOpml(r)), false, 'a real edit differs');
+});
+
+test('reopenWorkspaceDoc marks a kept, newer local copy dirty, after the anchor (src pins)', () => {
+  const fn = fnBody(_src, 'reopenWorkspaceDoc');
+  const keep = fn.indexOf('localAhead = !sameSavedOpml(toOpml(root), toOpml(fileRoot));');
+  const anchor = fn.indexOf('_wsKnownSize = file.size || 0;');
+  const mark = fn.indexOf('if (localAhead) markDirty();');
+  assert.ok(keep !== -1 && keep < fn.indexOf('} else {', keep), 'the keep-local branch decides whether the file lacks the local copy');
+  assert.ok(anchor !== -1 && mark > anchor, 'markDirty only after the external-change anchor exists, so the write it schedules is checked against it');
+  assert.ok(!_src.includes('so the next edit reconverges the two'), 'the boot comment no longer promises an edit will do it');
+});
+
 // ── data-safety: switching/creating a folder doc must PERSIST the outgoing one first ──
 // (the tab-switch data-loss regression: the debounced folder write was orphaned by the
 // swap, so recent edits to the doc you left never reached disk). Src pins — the FS path
