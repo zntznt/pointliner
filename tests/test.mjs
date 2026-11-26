@@ -24276,6 +24276,39 @@ test('#1150: every graph edge clears the 3:1 non-text floor in both themes, in b
   assert.deepEqual(failures, [], 'graph edges below the 3:1 non-text floor');
 });
 
+// #1590. The name-parity guard above compares token NAMES only, so it cannot see a VALUE that
+// drifts between homes or a token that no home defines (design-language §3). Three slipped through:
+// the static light --qbdr said 55% while applyAccentCSS paints .6, `.save-status` carried a literal
+// #3a9d5d fallback that is in no palette, and `.web-img-blocked` read a --bg-2 nothing declares.
+test('#1590 palette hygiene: accent alphas match applyAccentCSS, no phantom tokens, no literal color fallbacks', () => {
+  // (1) the static accent fallback shows what the appended accent <style> paints (cf. UXP-157 --ring)
+  const accent = fnBody(RAW_HTML, 'applyAccentCSS');
+  const qb = accent.match(/--qbdr:rgba\([^;]*\$\{dark \? ([\d.]+) : ([\d.]+)\}\)/);
+  assert.ok(qb, 'applyAccentCSS no longer writes --qbdr as rgba(..., dark ? a : b): re-point this guard');
+  const ring = accent.match(/--ring:rgba\([^;]*,([\d.]+)\);/);
+  assert.ok(ring, 'applyAccentCSS no longer writes --ring as rgba(..., a): re-point this guard');
+  const cssLight = _tokens(CSS_TEXT.match(/:root\{([\s\S]*?)\}/)[1]);
+  const cssDark = _tokens(CSS_TEXT.match(/@media\(prefers-color-scheme:dark\)\{:root\{([\s\S]*?)\}\}/)[1]);
+  const mixAlpha = v => Number(v.match(/color-mix\(in srgb,var\(--acc\) (\d+)%,transparent\)/)[1]) / 100;
+  const rgbaAlpha = v => Number(v.match(/rgba\([^)]*,([\d.]+)\)/)[1]);
+  assert.equal(mixAlpha(cssLight.get('--qbdr')), Number(qb[2]), 'light --qbdr: CSS :root vs applyAccentCSS');
+  assert.equal(mixAlpha(cssDark.get('--qbdr')), Number(qb[1]), 'dark --qbdr: CSS dark block vs applyAccentCSS');
+  assert.equal(rgbaAlpha(cssLight.get('--ring')), Number(ring[1]), 'light --ring: CSS :root vs applyAccentCSS');
+  assert.equal(rgbaAlpha(cssDark.get('--ring')), Number(ring[1]), 'dark --ring: CSS dark block vs applyAccentCSS');
+
+  // (2) every custom property READ is declared somewhere (a CSS/JS declaration or a setProperty).
+  // A phantom with a fallback never errors, it just silently means "the fallback, forever".
+  const declared = new Set([...RAW_HTML.matchAll(/(--[\w-]+)\s*:/g)].map(m => m[1]));
+  for (const m of RAW_HTML.matchAll(/setProperty\(\s*['"`](--[\w-]+)/g)) declared.add(m[1]);
+  const read = nonEmpty(new Set([...RAW_HTML.matchAll(/var\((--[\w-]+)/g)].map(m => m[1])), 'var() reads');
+  assert.deepEqual([...read].filter(v => !declared.has(v)).sort(), [], 'read via var() but declared nowhere');
+
+  // (3) no literal color as a var() fallback: a color outside the palette homes is a third home
+  // that neither the dual-home guard nor a theme toggle can reach.
+  const literal = [...RAW_HTML.matchAll(/var\(--[\w-]+\s*,\s*(?:#[0-9a-fA-F]{3,8}\b|(?:rgb|hsl)a?\()[^)]*\)?/g)].map(m => m[0]);
+  assert.deepEqual(literal, [], 'var() with a literal color fallback');
+});
+
 test('#1150: the broken and unlinked edges stay distinguishable by DASH, not by faintness', () => {
   // Raising contrast must not collapse the three edge kinds into one. The researcher called the
   // dotted unlinked-mention edge "the single best idea in here" — it has to still read as
