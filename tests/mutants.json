@@ -2979,6 +2979,33 @@
       "kills": "the service worker caches ONE copy of the shell"
     },
     {
+      "id": "sw-every-navigation-is-the-shell",
+      "suite": "unit",
+      "why": "the shipped defect: every ok navigation in scope was written over the cached index.html, so visiting guide/a.md or an icon made the next offline launch serve Markdown or a PNG as the app",
+      "file": "service-worker.js",
+      "find": "  if (req.mode === 'navigate' && isShellUrl(req.url, self.registration.scope)) {",
+      "replace": "  if (req.mode === 'navigate') {",
+      "kills": "the service worker treats only the app URL as the shell"
+    },
+    {
+      "id": "sw-shell-url-ignores-path",
+      "suite": "unit",
+      "why": "a predicate that says yes to everything restores the overwrite while the call site still looks guarded",
+      "file": "service-worker.js",
+      "find": "  return path === new URL(scope).pathname || path === new URL(SHELL, scope).pathname;",
+      "replace": "  return path.startsWith(new URL(scope).pathname);",
+      "kills": "the service worker treats only the app URL as the shell"
+    },
+    {
+      "id": "sw-late-refresh-not-extended",
+      "suite": "unit",
+      "why": "the shipped defect: only respondWith extended the event, so once the cache won the race the late waitUntil threw and nothing kept the worker alive for the download and the cache write",
+      "file": "service-worker.js",
+      "find": "      event.waitUntil(net.catch(() => {}));",
+      "replace": "      net.catch(() => {});",
+      "kills": "the navigate handler extends the event on the download"
+    },
+    {
       "id": "recipe-sel-plain-indexof",
       "suite": "unit",
       "why": "a plain indexOf selects the first occurrence of the value anywhere in the point, which for pat-sum is the word in its LABEL, not the one in the pill",

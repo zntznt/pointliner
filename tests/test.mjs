@@ -13643,6 +13643,44 @@ test('the service worker caches ONE copy of the shell, not two spellings of it',
     `the navigate fallback must look up SHELL and nothing else, got ${JSON.stringify(lookups)}`);
 });
 
+test('the service worker treats only the app URL as the shell, not every in-scope navigation', () => {
+  // The host serves the whole repo inside the SW scope, so a direct visit to guide/a.md or an icon
+  // is a navigation too. Every ok navigation used to be written over the cached index.html, and the
+  // next offline launch served Markdown or a PNG as the app. The decision is a pure function; run it.
+  const sw = _rootFile('service-worker.js');
+  const SHELL = eval(/const SHELL = ([^;]+);/.exec(sw)[1]);
+  const isShellUrl = new Function('url', 'scope', 'SHELL', fnBody(sw, 'isShellUrl').slice(1, -1));
+  const scope = 'https://example.test/pointliner/';
+  const is = (u) => isShellUrl(new URL(u, scope).href, scope, SHELL);
+  assert.equal(is('./'), true, 'the scope root is the app (manifest start_url)');
+  assert.equal(is('./index.html'), true, 'SHELL itself is the app');
+  assert.equal(is('./?append=x'), true, 'the share target opens ./?append=..., still the app');
+  assert.equal(is('./index.html?append=x#top'), true, 'query and hash do not change which file it is');
+  for (const other of ['./guide/a.md', './icon-512.png', './README.md', './guide/index.html', '../index.html']) {
+    assert.equal(is(other), false, `${other} is not the app and must never overwrite the cached shell`);
+  }
+  // The call site: a tested predicate proves nothing if the navigate branch stops asking it.
+  assert.match(sw, /if \(req\.mode === 'navigate' && isShellUrl\(req\.url, self\.registration\.scope\)\)/,
+    'the navigate (shell) branch must be gated on isShellUrl against the registration scope');
+});
+
+test('the navigate handler extends the event on the download, during dispatch', () => {
+  // respondWith extends the event only until its own promise settles, which is when the cache wins
+  // the race. After that the event is inactive and waitUntil throws (ServiceWorker spec, "active":
+  // dispatch flag set or pending promises count > 0), so the late download and its cache write had
+  // nothing keeping the worker alive. The extension must be made on `net` before any await.
+  const sw = _rootFile('service-worker.js');
+  const handler = between(sw, "req.mode === 'navigate'", '\n    return;');
+  const ext = handler.indexOf('event.waitUntil(net.catch(');
+  assert.ok(ext > 0, 'the navigate handler must waitUntil the network promise itself');
+  // Between the end of the `net` callback (whose own awaits run later, inside the fetch) and the
+  // extension, no await, comments aside: after one, dispatch may be over and waitUntil throws.
+  const lead = between(handler, 'const net = fetch(req)', 'event.waitUntil(net.catch(');
+  assert.ok(!/\bawait\b/.test(lead.slice(lead.indexOf('\n      });')).replace(/^\s*\/\/.*$/gm, '')),
+    'the extension must be made synchronously, before the handler awaits anything');
+  assert.ok(ext < handler.indexOf('await Promise.race'), 'the extension must precede the race');
+});
+
 test('manifest.webmanifest colours are real palette homes, not orphan values', () => {
   const mf = JSON.parse(_rootFile('manifest.webmanifest'));
   const lightBg = _src.match(/--bg:\s*(#[0-9a-f]{6})/i)[1].toLowerCase();
