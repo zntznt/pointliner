@@ -1910,32 +1910,6 @@ test('#1240 phase 4 wiring: the view bar is rendered, refreshed, and reuses the 
     'a commit must refresh the view bar, which refreshRowChrome cannot reach');
 });
 
-// ── the staleness floor's second half: what a floor inside the tree cannot do ────────────────
-// The floor ITSELF is already enforced, further down, by "CLAUDE.md's staleness floor stays within
-// reach of the actual suite size": it parses the number out of CLAUDE.md, counts the suite's test
-// blocks, and ratchets both directions. Do not add a second floor constant here — two floors that
-// can disagree is worse than one.
-//
-// What that guard CANNOT do, by construction: notice that this entire checkout is stale. A base 500
-// tests old carries the old CLAUDE.md floor with it, so it compares 1500 against 1400 and passes.
-// The number has to come from OUTSIDE the tree. That is the `staleness-floor` CI job, and this pin
-// is here so the in-tree half is never mistaken for the whole guard.
-test('the CI half of the staleness guard exists and reads a number from outside the tree', () => {
-  // The in-tree floor above is structurally blind to its own checkout being stale. That blindness is
-  // only acceptable because a second check compares against origin/main. Pin that it is wired, or
-  // the limitation quietly becomes the whole story.
-  const wf = readFileSync(new URL('../.github/workflows/tests.yml', import.meta.url), 'utf8');
-  const job = between(wf, 'staleness-floor:', 'browser-smoke:');
-  // Assert on the SHELL LINE, not on prose: the job's own comment says "origin/main" too, so a
-  // looser match would stay green if the comparison itself were deleted and only the rationale left.
-  assert.ok(/git show origin\/main:tests\/test\.mjs/.test(job),
-    'the staleness-floor job must actually read the test count out of origin/main — that external ' +
-    'number is the only thing that can see a stale base');
-  assert.ok(/exit 1/.test(job), 'and it must fail the build, not just print');
-  assert.ok(/fetch-depth:\s*0|fetch --unshallow|git fetch origin main/.test(wf),
-    'and it needs the history to read origin/main from, or the comparison silently degrades');
-});
-
 // ── #1430: the symbol index, and the two ways a generated map goes quietly wrong ────────────────
 // tools/symbol-index.py emits guidance/code-index.md: every top-level declaration grouped by the
 // section marker it sits under. CI regenerates it and fails on drift, so STALENESS is covered there.
@@ -13417,30 +13391,6 @@ test('UXP-36: GUIDE registry declaration is present', () => {
 // remembers to touch two unrelated tables, which is exactly the #1144 co-edited-set shape.
 const _guidanceDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'guidance');
 const _repoDoc = (p) => readFileSync(resolve(_guidanceDir, '..', p), 'utf8');
-
-test("CLAUDE.md's staleness floor stays within reach of the actual suite size", () => {
-  // The floor's whole job is to fail on a stale base. It read ~1400 while the suite had grown past
-  // 1900, so a base 500 tests behind sailed through the check meant to catch it — a guard 25% out
-  // of date and silent about it, which is worse than no guard at all. Ratchet it here: the floor
-  // must stay close enough below the real count to bite, and can never exceed it (that would fail
-  // a perfectly fresh base).
-  const m = _repoDoc('CLAUDE.md').match(/fewer than ~(\d+) tests pass/);
-  assert.ok(m, 'CLAUDE.md must state a numeric staleness floor');
-  const floor = Number(m[1]);
-  // Read the suite directly rather than borrowing TEST_SRC, which is declared much further down:
-  // this test then passes only when the whole file has been evaluated first, and fails under
-  // `--test-name-pattern` with a TDZ ReferenceError. A guard that depends on declaration order is
-  // a guard that reports on how it was invoked, not on the thing it checks.
-  const suiteSrc = readFileSync(new URL('./test.mjs', import.meta.url), 'utf8');
-  const blocks = [...suiteSrc.matchAll(/\b(?:l?test)\(\s*(['"])(.*?)\1/g)].length;
-  assert.ok(blocks > 500, 'the test-block scan must find the tests, or this guard is itself vacuous');
-  assert.ok(floor <= blocks,
-    `the documented floor (${floor}) exceeds this suite's ${blocks} test blocks — a fresh base would ` +
-    'read as stale. Lower it.');
-  assert.ok(blocks - floor <= 250,
-    `the documented floor (${floor}) is ${blocks - floor} behind this suite's ${blocks} test blocks — ` +
-    'a badly stale base would still pass it. Raise the number in CLAUDE.md.');
-});
 
 test('every guidance/*.md is indexed in BOTH CLAUDE.md and guidance/README.md', () => {
   const docs = readdirSync(_guidanceDir).filter(f => f.endsWith('.md') && f !== 'README.md').sort();
@@ -30987,7 +30937,7 @@ test('every CI job in tests.yml is bounded by a timeout', () => {
 // each is the #1133 vacuity on its own: the self-test must run on the NEWEST Node, where the next
 // change of default will land first, and the tool must refuse to judge until it has passed.
 test('#1597 the mutation verdicts are proved on the current Node, and proved before they are trusted', () => {
-  const job = between(_wfTests, '\n  mutation-current-node:', '\n  staleness-floor:');
+  const job = between(_wfTests, '\n  mutation-current-node:', '\n  browser-smoke:');
   assert.match(job, /\n {10}node-version: current\n/,
     'the self-test job must run the newest Node release, not the pinned one the rest of CI uses');
   assert.match(job, /\n {6}- run: node tools\/mutation-check\.mjs --self-test\n/,

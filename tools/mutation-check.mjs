@@ -263,9 +263,8 @@ if (args.includes('--list')) {
   process.exit(0);
 }
 
-// Only the unit suite runs by default: one run is ~5s, so a dozen mutants is under a minute. A
-// driven mutant costs ~80s, which is a different budget; those are recorded with suite:"browser"
-// and skipped here. The skip is COUNTED and printed rather than silent -- a quiet skip reads as
+// Only suite:"unit" entries run. Any other suite (an old suite:"browser" entry on a branch) is
+// skipped, and the skip is COUNTED and printed rather than silent -- a quiet skip reads as
 // coverage that was never run, which is the failure this whole file exists to catch.
 const selected = mutants.filter(m => (only ? m.id === only : m.suite === 'unit'));
 const skipped = mutants.filter(m => !selected.includes(m));
@@ -283,7 +282,7 @@ for (const r of results) {
   const mark = r.verdict === 'killed' ? '  ok  ' : ' FAIL ';
   console.log(`${mark} ${r.id.padEnd(28)} ${r.verdict.padEnd(9)} ${r.detail}`);
 }
-if (skipped.length) console.log(`\n${skipped.length} mutant(s) not run here (driven; suite:"browser"): ${skipped.map(m => m.id).join(', ')}`);
+if (skipped.length) console.log(`\n${skipped.length} mutant(s) not run here (suite is not "unit"):${skipped.map(m => m.id).join(', ')}`);
 
 const bad = results.filter(r => r.verdict !== 'killed');
 if (bad.length) {
