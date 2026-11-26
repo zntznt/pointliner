@@ -300,6 +300,7 @@ export function loadCores() {
     'migrateTodoText','migrateNodePrefixes','migrateEmphasisText','textForDisplay',
     'collectCallables','filterBraceCandidates','filterBraceForms',
     'stripTriggerRun','restoreTypedRun','builderCmdPool','builderGuideEntry','builderPreviewSample',   // builder window: shared trigger-strip math + command pool/guide-lookup + pane live-sample (retro pins)
+    'builderCmdSay',                               // #1660: one sentence names a builder command, compared to stop a stutter
     'builderFilterCmds','builderBestIdx',            // #1106: the builder search speaks /verb:value, and Enter fires the exact-id command
     'blankInviteDecision',   // blank-canvas door: the pure show-decision (beginner PR B)
     'mathCompletions','mathFragmentAt','mathFnGroup',

@@ -24401,6 +24401,9 @@ function positionSlashMenu(content, slashOffset) {
 // one-line STATUS readout of the match Enter will insert (not a menu/submenu — no list, no navigation
 // chrome, pointer-events off), positioned at the caret, and ALSO push it to #a11y-live so AT speaks it.
 const leanSlashTip = document.getElementById('lean-slash-tip');
+// #1660: what the tip last spoke. slashState is rebuilt every keystroke, so this lives outside it and
+// hideSlashMenu clears it: an argument typed after /check is not a new match, a reopened menu is.
+let _leanSlashSaid = null;
 function renderLeanSlashTip() {
   if (!slashState || !leanSlashTip) return;
   const { matches, activeIdx, content, slashOffset } = slashState;
@@ -24411,7 +24414,9 @@ function renderLeanSlashTip() {
   leanSlashTip.classList.add('on');
   // position at the caret, reusing the same range walk as positionSlashMenu (via a shared placement)
   placeAtCaret(leanSlashTip, content, slashOffset);
-  announce(`${cmd.label}${total > 1 ? `, ${pos} of ${total}` : ''}. Enter to insert.`);
+  const msg = `${cmd.label}${total > 1 ? `, ${pos} of ${total}` : ''}. Enter to insert.`;
+  if (msg !== _leanSlashSaid) announce(msg);
+  _leanSlashSaid = msg;
 }
 // shared caret-anchored placement for a fixed-position element (menu + lean tip use it)
 function placeAtCaret(el, content, slashOffset) {
@@ -33725,7 +33730,7 @@ function roveTo(from, to) {
   to.focus();
 }
 
-function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); leanSlashTip?.classList.remove('on'); slashState = null; }
+function hideSlashMenu() { slashState?.content?.removeAttribute('aria-activedescendant'); slashState?.content?.removeAttribute('aria-controls'); slashMenu.classList.remove('on'); leanSlashTip?.classList.remove('on'); _leanSlashSaid = null; slashState = null; }
 
 // ─── link picker ([[ trigger) ─────────────────────────────────────────────────
 // Always on (UXP-4: a built capability with no front door is non-conformant; the
@@ -45982,6 +45987,12 @@ function openGuide(initialId) {
 // selected command's guide entry on the right.
 let builderState = null; // { nodeId, content, trigger, offset, query, rawArg }
 
+// UXP-173/#1660: the sentence that names a selected builder command. Pure, so the caller can compare
+// it with what it last said: the selection holding still while an argument is typed is not news.
+function builderCmdSay(cmd) {
+  return cmd.desc ? cmd.label + ': ' + cmd.desc : cmd.label;
+}
+
 // #1106: the builder's search is the COMMAND LINE in Guided (the default tier) — `/` matches every
 // command, so the window opens on the trigger char alone and every keystroke after it lands in the
 // search box, not in the point. It therefore has to speak the same `verb:value` grammar the inline
@@ -47014,6 +47025,9 @@ function openBuilder(trigger) {
   // #1474: has the list ALREADY been empty? The empty state is announced on the way in, not on
   // every keystroke that leaves it empty. Scoped to this builder session, so re-opening speaks.
   let _builderWasEmpty = false;
+  // #1660: the command sentence last spoken. Typing /check:hours re-read Check's whole description
+  // under every letter; only a different selection, or recovery from empty, is worth saying.
+  let _builderLastSaid = null;
 
   // #1106: in Guided (the DEFAULT tier) this search box IS the command line — `/` matches every
   // command, so the builder opens on the trigger char alone and every keystroke after it lands
@@ -47083,7 +47097,9 @@ function openBuilder(trigger) {
     if (!liveSuppress) {
       const cmd = vis[activeIdx];
       if (cmd) {
-        announce(cmd.desc ? cmd.label + ': ' + cmd.desc : cmd.label);
+        const msg = builderCmdSay(cmd);
+        if (msg !== _builderLastSaid) announce(msg);
+        _builderLastSaid = msg;
         _builderWasEmpty = false;
       } else if (!_builderWasEmpty) {
         // #1474: the list emptying is the state change nothing spoke for. Before this the live
@@ -47092,6 +47108,7 @@ function openBuilder(trigger) {
         // to force a re-read, so repeating it on every further keystroke would be a stutter.
         announce(builderEmptyMessage());
         _builderWasEmpty = true;
+        _builderLastSaid = null;   // #1660: recovery names the command again, even the same one
       }
     }
     liveSuppress = false;
