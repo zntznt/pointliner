@@ -5121,6 +5121,24 @@
       "find": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok)}",
       "replace": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok,#3a9d5d)}",
       "kills": "#1590 palette hygiene"
+    },
+    {
+      "id": "1657-dialog-preview-global",
+      "suite": "unit",
+      "why": "the preview pin asserts a call site is PRESENT; reverting the Edit expression preview to the doc-wide map must turn it red",
+      "file": "index.html",
+      "find": "const vars = pillScopeAt(node, existing, collectVars());   // #1657: the pill's scope, props and position included",
+      "replace": "const vars = collectVars();   // #1657: the pill's scope, props and position included",
+      "kills": "#1657 the var pill and the math dialog preview read the pill scope"
+    },
+    {
+      "id": "1657-var-pill-no-props",
+      "suite": "unit",
+      "why": "the declaration pill must keep reading its point's props; dropping them is the panel #8 'tot = ?'",
+      "file": "index.html",
+      "find": "evalMath(v.expr, cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), declVars) : declVars)",
+      "replace": "evalMath(v.expr, declVars)",
+      "kills": "#1657 the var pill and the math dialog preview read the pill scope"
     }
   ]
 }

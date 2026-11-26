@@ -5651,16 +5651,20 @@ function repeatOf(node) {
 
 // The point's OWN numeric properties as a { name: number } overlay, so a bare name
 // in a check (`budget`, `hours`) resolves to THIS point's value. Parsed like
-// childPropNumber (finite Number, else skipped); the reserved keys (check + dates)
-// never become variables. Null-proto (a prop named `constructor` is a real key).
-// Pure; no DOM.
+// childPropNumber (finite Number, else skipped); the reserved keys (check, alias,
+// repeat, timestamps) never become variables. Null-proto (a prop named `constructor`
+// is a real key). #1657: a date-shaped value (`due`, `start`, or a custom
+// `delivered: 2026-11-20`) joins as its epoch-day number, so daysuntil(due) and
+// due - today compute on every surface, not only in a query base column.
+// `due`/`start` are dates only: `due: 5` is not a number here. Pure; no DOM.
 function nodePropVars(node) {
   const out = Object.create(null);
   for (const p of (node?.props || [])) {
     const k = (p.key || '').trim().toLowerCase();
-    if (!k || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || TIMESTAMP_KEYS.has(k) || DATE_KEYS.has(k)) continue;
-    const n = Number(String(p.val).trim());
-    if (Number.isFinite(n)) out[k] = n;
+    if (!k || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || TIMESTAMP_KEYS.has(k)) continue;
+    const n = DATE_KEYS.has(k) ? NaN : Number(String(p.val).trim());
+    const v = Number.isFinite(n) ? n : parseDueDate(String(p.val ?? ''));
+    if (v !== null && Number.isFinite(v)) out[k] = v;
   }
   return out;
 }
@@ -7498,9 +7502,10 @@ function collectVars(rootNode) {
   // in document order, as { name, key, isDecl }. A declaration is "shadowed" (dead) only if
   // NO reference falls in its range — between it and the next same-name declaration (Stage B).
   const events = [];
+  const propScopes = Object.create(null), ancStack = [];   // #1657: props at each name's declaring point
   function gather(node) {
     const re = /\[\[var:([a-z0-9]+)\]\]/gi;
-    let m;
+    let m, ps;
     while ((m = re.exec(node.text)) !== null) {
       const v = node.vars?.find(v => v.key === m[1]);
       if (!v?.name) continue;
@@ -7516,6 +7521,7 @@ function collectVars(rootNode) {
         // #952: a distribution declaration claims the name in the sibling lane and, because a
         // later formula/pick of the same name must clear it, the delete is unconditional first.
         if (v.kind === 'dist') dists[nm] = v; else delete dists[nm];
+        propScopes[nm] = ps ??= resolveNodeScope(node, ancStack.slice().reverse());
         lastKeyForName[nm] = v.key;
         (allKeysForName[nm] ||= []).push(v.key);
         events.push({ name: nm, key: v.key, isDecl: true });
@@ -7533,9 +7539,12 @@ function collectVars(rootNode) {
         if (d.pick !== undefined) pickVals[d.name] = d.pick;
         else delete pickVals[d.name];
         delete dists[d.name];   // #952: a base row redeclaring the name clears any distribution above it
+        delete propScopes[d.name];
       }
     }
+    ancStack.push(node);
     for (const c of node.children) gather(c);
+    ancStack.pop();
   }
   // Pack variables (formula-only) declared FIRST, so a document var of the same name
   // overrides on collision (last-wins). They resolve through the same evalMath +
@@ -7548,7 +7557,7 @@ function collectVars(rootNode) {
     else delete pickVals[nm];
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
-  const { resolved, cycles } = resolveVarDefs(defs, pickVals, order);
+  const { resolved, cycles } = resolveVarDefs(defs, pickVals, order, propScopes);
   attachVarDists(resolved, dists);
   // Only the live-document pass owns the display globals. An explicit-root call
   // (e.g. workspace search resolving a FOREIGN doc's vars) must not clobber them:
@@ -7583,11 +7592,13 @@ function varMapAt(targetNode) {
   if (id != null && _varMapAtCache.has(id)) return _varMapAtCache.get(id);
 
   const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const add = (nm, expr, pick, dist) => {
+  const propScopes = Object.create(null), anc = [];   // #1657
+  const add = (nm, expr, pick, dist, ps) => {
     if (!(nm in defs)) order.push(nm);
     defs[nm] = expr;
     if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
     if (dist !== undefined) dists[nm] = dist; else delete dists[nm];   // #952 sibling lane
+    if (ps) propScopes[nm] = ps; else delete propScopes[nm];
   };
   // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
   // #585: a pack pick var passes its frozen roll through the `pick` slot, like a document pick.
@@ -7602,14 +7613,16 @@ function varMapAt(targetNode) {
       // include declarations that appear in targetNode's own text BEFORE this point is moot
       // for a whole-node read; include the node's own typed declarations so {a:=5}{a} in one
       // node resolves, then stop (nothing after the target is visible).
-      collectNodeDecls(node, add);
+      collectNodeDecls(node, add, anc);
       done = true; return;
     }
-    collectNodeDecls(node, add);
+    collectNodeDecls(node, add, anc);
+    if (node !== root) anc.unshift(node);
     for (const c of node.children || []) { walk(c); if (done) return; }
+    if (node !== root) anc.shift();
   })(root);
 
-  const { resolved } = resolveVarDefs(defs, pickVals, order);
+  const { resolved } = resolveVarDefs(defs, pickVals, order, propScopes);
   attachVarDists(resolved, dists);
   if (id != null) _varMapAtCache.set(id, resolved);
   return resolved;
@@ -7618,13 +7631,14 @@ function varMapAt(targetNode) {
 // Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
 // accumulator via `add(name, expr, pickVal|undefined)`, in the token order they appear in
 // the text. Mirrors collectVars' gather for one node. Display-only refs (empty expr) skipped.
-function collectNodeDecls(node, add) {
+// `anc` (nearest-first) gives each declaration the props of its point (#1657), passed as add's 5th arg.
+function collectNodeDecls(node, add, anc = []) {
   const re = /\[\[var:([a-z0-9]+)\]\]/gi;
-  let m;
+  let m, ps;
   while ((m = re.exec(node.text || '')) !== null) {
     const v = node.vars?.find(v => v.key === m[1]);
     if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
-                               v.kind === 'dist' ? v : undefined);
+                               v.kind === 'dist' ? v : undefined, ps ??= resolveNodeScope(node, anc));
   }
   // A variable base is a declaration site like any other: its projected rows enter the
   // positional walk here (covers varMapAt AND renderPosVarMaps), after the node's own
@@ -7650,20 +7664,21 @@ function renderPosVarMaps(node) {
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
   if (node.id != null && _posVarMapCache.has(node.id)) return _posVarMapCache.get(node.id);
   const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const add = (nm, expr, pick, dist) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; };
+  const propScopes = Object.create(null), anc = [];   // #1657: props at each declaring point
+  const add = (nm, expr, pick, dist, ps) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; if (ps) propScopes[nm] = ps; else delete propScopes[nm]; };
   for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
   let done = false;    // gather declarations from every point ABOVE this one (document order)
-  (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add); for (const c of n.children || []) { walk(c); if (done) return; } })(root);
-  const byKey = new Map();
+  (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add, anc); if (n !== root) anc.unshift(n); for (const c of n.children || []) { walk(c); if (done) return; } if (n !== root) anc.shift(); })(root);
+  const byKey = new Map(), ownProps = resolveNodeScope(node, ancestorsOf(node));
   const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   let m;
   while ((m = RE.exec(node.text || '')) !== null) {
     // the dists lane is a snapshot too — copy it, or every token would share the final map (#952)
-    byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order).resolved, Object.assign(Object.create(null), dists)));
+    byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order, propScopes).resolved, Object.assign(Object.create(null), dists)));
     if (m[1] === 'var') {                                              // a declaration adds itself, so a
       const v = node.vars?.find(x => x.key === m[2]);                  // LATER ref sees it, an earlier one not
       if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
-                                 v.kind === 'dist' ? v : undefined);
+                                 v.kind === 'dist' ? v : undefined, ownProps);
     }
   }
   if (node.id != null) _posVarMapCache.set(node.id, byKey);
@@ -7706,7 +7721,10 @@ function varDistRec(vars, name) {
 // evalMath's `name in vars` / `vars[name]` drive on-demand resolution of dependencies;
 // `stack` tracks the active chain so a re-entered name is recognised as a cycle (and every
 // member of that cycle is flagged) rather than recursing forever. Pure: no globals, no DOM.
-function resolveVarDefs(defs, pickVals, order) {
+// #1657: `propScopes` (optional) maps a name to the props visible at its DECLARING point
+// (resolveNodeScope over that point and its ancestors), so `{tot := r1 + r2}` reads the point's
+// own `r1` exactly as a `{= r1 + r2}` beside it does. Props win over variables, as in a pill.
+function resolveVarDefs(defs, pickVals, order, propScopes) {
   const resolved = Object.create(null);   // name -> number (successful only; the returned map)
   const memo = Object.create(null);       // name -> number | undefined (incl. failures) — null-proto, or `'constructor' in memo` short-circuits to the Object function
   const stack = [];
@@ -7715,6 +7733,14 @@ function resolveVarDefs(defs, pickVals, order) {
     has: (_, k) => typeof k === 'string' && k.toLowerCase() in defs,
     get: (_, k) => resolve(String(k).toLowerCase()),
   });
+  const scopeOf = name => {
+    const ps = propScopes?.[name];
+    if (!ps || !Object.keys(ps).length) return proxy;
+    return new Proxy({}, {
+      has: (_, k) => typeof k === 'string' && (k.toLowerCase() in ps || k.toLowerCase() in defs),
+      get: (_, k) => { const l = String(k).toLowerCase(); return l in ps ? ps[l] : resolve(l); },
+    });
+  };
   function resolve(name) {
     if (name in memo) return memo[name];
     // Random pick: return the frozen rolled value. The grammar engine ran at
@@ -7736,7 +7762,7 @@ function resolveVarDefs(defs, pickVals, order) {
       return undefined;
     }
     stack.push(name);
-    const val = evalMath(defs[name], proxy);
+    const val = evalMath(defs[name], scopeOf(name));
     stack.pop();
     const ok = val !== null && isFinite(val) && !cycles.has(name);
     memo[name] = ok ? val : undefined;
@@ -19574,15 +19600,7 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
     if (f === 'title') return `[[#${n.id}]]`;
     if (f[0] === '=') {
       const src = f.slice(1).trim();
-      const scope = Object.assign(Object.create(null), vars, nodePropVars(n));
-      // date-shaped props join the scope as epoch-day numbers (nodePropVars skips
-      // them since they are not numeric), so daysuntil(due) and due - today compute
-      for (const p of (n.props || [])) {
-        const k = (p.key || '').trim().toLowerCase();
-        if (!k || k in scope) continue;
-        const d = parseDueDate(String(p.val ?? ''));
-        if (d !== null) scope[k] = d;
-      }
+      const scope = Object.assign(Object.create(null), vars, nodePropVars(n));   // dates join as epoch-days (#1657)
       const v = evalMath(expandAggExpr(src, n), scope);
       return v === null ? '#ERR' : formatMathDisplay(v, src);
     }
@@ -32606,7 +32624,9 @@ function renderVarPill(key, v) {
   }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
   const shadowed = _varShadowedKeys.has(key);
-  const fresh    = cyclic ? null : evalMath(v.expr, (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap);   // #767: positional
+  const declVars = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap;   // #767: positional
+  // #1657: a declaration reads its point's own + ancestor props, as a {= } pill beside it does
+  const fresh    = cyclic ? null : evalMath(v.expr, cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), declVars) : declVars);
   const display  = fresh !== null ? formatMathResult(fresh) : (cyclic ? '↻' : '?');
   let cls = 'var-pill';
   if (cyclic)   cls += ' var-cycle';
@@ -33043,6 +33063,7 @@ function propKeyChips() {
 }
 
 function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, bare = false, fmt = null, onResult }) {
+  const saveScope = () => node ? resolveNodeScope(node, ancestorsOf(node), collectVars()) : collectVars();   // #1657
   // #946: assemble a fmt from the dialog's three format fields (or null) — thousands separators are
   // the default, so an ordinary pill needs none of these.
   const fmtOf = all => all ? parseNumFmt(all.decimals, all.prefix, all.suffix, all.sigfigs) : null;
@@ -33063,19 +33084,20 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         // (second arg) so the preview pill matches how it will render (value-only + number format).
         preview: (v, all) => {
           if (!v) return '';
-          const vars = collectVars();
-          const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
+          const vars = pillScopeAt(node, existing, collectVars());   // #1657: the pill's scope, props and position included
+          const r = evalMath(expandAggExpr(v, node, vars), vars); // node → sum/avg/count(prop) preview against real children
           if (r === null) {
-            const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node), vars), expandAggExpr(v, node));
+            const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node, vars), vars, _varCycles, collectVars()), expandAggExpr(v, node, vars));   // doc-wide map: names "declared later" as the pill does
             return `<span class="io-preview-bad">Invalid expression${phrase ? ': ' + phrase : ''}</span>`;
           }
           const f = fmtOf(all);
-          const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
+          const save = cookieNode, saveVars = renderVarMap; cookieNode = node; // so the preview pill's own aggregation resolves too
+          renderVarMap = pillVarsAt(node, existing, renderVarMap);   // #1657: and its recompute reads the same positional vars
           // #1181: `{ preview: true }` strips the pill's interactive chrome. Without it this preview
           // carried a role="button" pencil and a "Click to edit the formula or number format." title,
           // both inert, inside the very dialog that click would have opened.
           try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v, f), bare: !!(all && all.bare), fmt: f }, { preview: true }); }
-          finally { cookieNode = save; }
+          finally { cookieNode = save; renderVarMap = saveVars; }
         },
       },
       {
@@ -33114,10 +33136,12 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. kg or %',
       },
     ],
-    validate: v => evalMath(expandAggExpr(v.expr, node), collectVars()) !== null,
+    // Save accepts what typing {= …} promotes (makeBraceArtifact's scope: doc-wide vars + props), so a
+    // formula ahead of its declaration saves and then reads "declared later", as the typed one does.
+    validate: v => { const vars = saveScope(); return evalMath(expandAggExpr(v.expr, node, vars), vars) !== null; },
     onSubmit: v => {
-      const vars = collectVars();
-      const r = evalMath(expandAggExpr(v.expr, node), vars);
+      const vars = saveScope();
+      const r = evalMath(expandAggExpr(v.expr, node, vars), vars);
       if (r === null) return;
       const roll = { key: existing || mathKey(), expr: v.expr, result: formatMathResult(r) };
       if (v.bare) roll.bare = true;   // absent unless on, so ordinary records stay lean
@@ -33183,7 +33207,8 @@ function rerollMath(node, key, _opts = {}) {
   m.rolled = freezeDiceInExpr(m.expr);
   markDirty();
   repaintNodeContent(node);
-  const v = evalMath(expandAggExpr(m.rolled, node), resolveNodeScope(node, ancestorsOf(node), collectVars()));
+  const sc = pillScopeAt(node, key, collectVars());
+  const v = evalMath(expandAggExpr(m.rolled, node, sc), sc);
   if (v !== null && Number.isFinite(v)) announce(m.expr + ' is now ' + formatMathResult(v));
 }
 function editMath(node, key) {
@@ -33982,8 +34007,20 @@ function bodyVocab(nodeId, braceStart) {
 // menu taught names and values the pill would not use (P1). Computed once per completion
 // session via the bodyVocab cache, never per keystroke.
 function completionScopeVars(nodeId) {
-  const node = nodeById(nodeId);
-  return node ? resolveNodeScope(node, ancestorsOf(node), varMapAt(node)) : collectVars();
+  return pillScopeAt(nodeById(nodeId), null, collectVars());
+}
+// #1657: THE scope a pill at `node` evaluates against, as renderMathPill composes it: the
+// variables visible at that pill's position (renderPosVarMaps per key, else varMapAt) with own +
+// ancestor props on top. The edit dialog, the exports and the completion menu read it here, so
+// none can show a value the pill does not (a later declaration read as 130 beside an #ERR pill).
+// A node outside the live index (a foreign doc, a detached preview) gets `fallback` unchanged.
+function pillVarsAt(node, key, fallback) {
+  if (!node || nodeById(node.id) !== node) return fallback;
+  return (key != null && renderPosVarMaps(node)?.get(key)) || varMapAt(node);
+}
+function pillScopeAt(node, key, fallback) {
+  const vars = pillVarsAt(node, key, fallback);
+  return vars === fallback ? fallback : resolveNodeScope(node, ancestorsOf(node), vars);
 }
 // Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 // (fragStart RELATIVE to the char after `{`) for a recognized completing lead — matches
@@ -38361,10 +38398,12 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
   }
   if (type === 'math') {
     const m = node.math?.find(x => x.key === key); if (!m) return '';
-    const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
+    const scope = rootNode === root ? pillScopeAt(node, key, varMap) : varMap;   // #1657: the pill's own scope
+    const fresh = evalMath(expandAggExpr(m.gen ? (m.rolled || m.expr) : m.expr, node, scope), scope);   // node → subtree aggregation freezes to its computed value
     // #946: export the SHOWN value (grouping + any per-pill format), so a lossy snapshot reads like
     // the pill ("$1,200.00"), matching what was on screen. Export is one-way, so grouping is safe here.
-    return fresh !== null ? formatMathDisplay(fresh, m.expr, m.fmt) : m.result;
+    // a live document freezes a failing pill to what the pill shows (#ERR, UXP-34), never its stale last-good value
+    return fresh !== null ? formatMathDisplay(fresh, m.expr, m.fmt) : rootNode === root ? '#ERR' : m.result;
   }
   // var: "name = value" for defining pills, or just "value" for display-only
   const rec = node.vars?.find(x => x.key === key);
@@ -38393,7 +38432,9 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
     const body = `${v.leftTotal} vs ${v.rightTotal} · ${verdict ? verdict.marginLabel : ''}`.trim();
     return (rec.name && !prose) ? `${rec.name} = ${body}` : body;
   }
-  const val = varMap[(rec.name || '').toLowerCase()];
+  // #1657: positional, as the pill. A reference reads the vars at its token; a declaration reads its point's map
+  // (its own value resolved there, props included). A foreign doc keeps the document-wide map.
+  const val = (rootNode === root ? pillVarsAt(node, rec.expr ? null : key, varMap) : varMap)[(rec.name || '').toLowerCase()];
   const valStr = val !== undefined ? formatVarValue(val) : '?';
   return (rec.expr && !prose) ? `${rec.name} = ${valStr}` : valStr;
 }
