@@ -66,9 +66,15 @@ async function fresh() {
   page.on('console', m => { if (m.type() === 'error') pageErrors.push('console: ' + m.text()); });
   await page.goto(APP);
   await page.waitForSelector('#outline', { timeout: 10000 });
-  await page.waitForTimeout(700);
+  // Boot is settled once the OPFS reconcile has released autosave and the Welcome chooser's rAF has
+  // put focus on its card: Escape is handled on that overlay, so pressing it any earlier is lost.
+  await waitFn(page, () => _opfsReconciled && _welcomeOpen
+    && document.getElementById('io-card').contains(document.activeElement), null, 10000);
   await page.keyboard.press('Escape');          // dismiss the first-run welcome
-  await page.waitForTimeout(250);
+  // dismissWelcome closes the card and focuses the first point synchronously; two frames let the
+  // deferred paint work it queued land before the check starts.
+  await waitFn(page, () => !_welcomeOpen && document.activeElement.matches('.node-content'), null, 10000);
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
   return page;
 }
 
@@ -452,7 +458,7 @@ test('#1440 a view toggle writes nothing; a real edit still writes', { skip: ski
 
   // The half that must NOT regress: a genuine edit still reaches disk.
   await pg.evaluate(() => { root.children[0].children[0].text += ' extra'; markDirty(); });
-  await pg.waitForTimeout(1400);
+  await waitFn(pg, () => window.__writes.length > 0, null, 15000).catch(() => {});
   const afterEdit = await pg.evaluate(() => window.__writes.length);
   assert.equal(afterEdit, 1, 'a real text edit must still write the document');
   const wrote = await pg.evaluate(() => /extra/.test(window.__writes[0] || ''));
@@ -3124,7 +3130,9 @@ test('#1498 the sum tip still fires when there is no rollup, and waits its turn'
     buildIndex(root, null); markDirty(); render();
     maybeNudgeSum(w, 'cost');
   });
-  await pg.waitForTimeout(2600);   // past the tip's yield delay
+  // the tip lands after its yield delay; wait for it to hold the region, which the asserts below read
+  await waitFn(pg, () => /Tip: put \{= sum\(cost\)\}/.test(document.getElementById('a11y-live').textContent || ''),
+    null, 15000).catch(() => {});
 
   const spoken = (await pg.evaluate(() => window.__live.slice())).filter(e => e.v);
   const at = spoken.findIndex(e => /^Check failing on/.test(e.v));
@@ -8254,8 +8262,13 @@ test('SW: a precache that fails does not destroy the working offline copy', { sk
     await pg.evaluate(async () => {
       const r = await navigator.serviceWorker.getRegistration();
       try { await r.update(); } catch (_) { /* a failed install is the POINT */ }
+      window.__swReg = r;
     });
-    await pg.waitForTimeout(4000);
+    // The update has run its course once nothing is installing or waiting and any new worker has
+    // finished activating: a failed install goes redundant, a wrongly "successful" one activates
+    // (and its activate is what would delete the old cache), so both outcomes are settled here.
+    await waitFn(pg, () => { const r = window.__swReg;
+      return !r.installing && !r.waiting && (!r.active || r.active.state === 'activated'); }, null, 30000);
     assert.deepEqual(await swCachePaths(pg), before,
       'a failed precache must leave the previous cache untouched; losing /index.html here is the ' +
       'app silently losing the ability to open offline at all');
@@ -8682,7 +8695,7 @@ async function pickerPage(mode) {
     for (let i = 0; i < 60; i++) root.children.push(mkNode('Observation ' + i + ': the quick brown fox jumps over the lazy dog, twice.'));
     buildIndex(root, null); markDirty(); render();
   });
-  await pg.waitForTimeout(1200);   // the debounced autosave the nudge rides on
+  await waitFn(pg, () => !_savePending, null, 15000);   // the debounced autosave the nudge rides on
   return { ctx, pg, downloads };
 }
 async function pressSave(pg) {
@@ -8822,7 +8835,7 @@ test('#1583 a refused picker is asked once: Save then downloads, the menu stops 
       assert.match(errors[0], /would not open the file picker for saving\. Downloading a copy instead, and Save will keep downloading until you reload\./);
       assert.equal(downloads.length, 3, 'and every press still saved a copy');
       await pg.evaluate(() => { root.children[0].text += ' (revised)'; markDirty(); render(); });
-      await pg.waitForTimeout(1300);
+      await waitFn(pg, () => !_savePending, null, 15000);   // the debounced autosave
       const after = await fileMenuState(pg);
       assert.equal(after.fsaOk, false);
       assert.equal(after.saveRow, 'none', 'the Save row stops offering the picker, as on the no-API tier');
