@@ -5131,6 +5131,24 @@
       "replace": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok,#3a9d5d)}",
       "kills": "#1590 palette hygiene"
     },
+    {
+      "id": "root-doors-write-again",
+      "suite": "unit",
+      "why": "#1658: the view bar stops gating the writing doors on doorWritesShow, so + Total writes into the invisible document root",
+      "file": "index.html",
+      "find": "maybeAddRowAffordance(host, bar, { noWrite: !doorWritesShow(host) });",
+      "replace": "maybeAddRowAffordance(host, bar, { noWrite: false });",
+      "kills": "#1658 doorWritesShow"
+    },
+    {
+      "id": "variance-pairs-sparse-columns",
+      "suite": "unit",
+      "why": "#1658: + Variance offered on two sparse columns that never share a row, writing a meaningless sum(b) - sum(a)",
+      "file": "index.html",
+      "find": "if (numKeys.length === 2 && !shape.props.some(p => p.sparse) && ",
+      "replace": "if (numKeys.length === 2 && ",
+      "kills": "#1658 inferRowShape: a sparse number column"
+    },
     {"id": "seltb-door-bubble-phase", "suite": "unit", "why": "#1542: registered in the bubble phase, the point's own Enter splits it before the toolbar runs", "file": "index.html", "find": "  else setSelTbActive(items, step.to);\n}, true);", "replace": "  else setSelTbActive(items, step.to);\n});", "kills": "#1542 the toolbar door is wired"},
     {"id": "seltb-hide-keeps-arrows", "suite": "unit", "why": "#1542: a hidden toolbar that keeps the roving state swallows the next arrow", "file": "index.html", "find": "function hideSelTb() { endSelTbKbd(); selTb", "replace": "function hideSelTb() { selTb", "kills": "#1542 the toolbar door is wired"},
     {"id": "seltb-door-unwired", "suite": "browser", "why": "#1542: Alt+F10 no longer reaches the toolbar", "file": "index.html", "find": "  if (active == null) return e.key === 'F10' && e.altKey", "replace": "  if (active == null) return e.key === 'F11' && e.altKey", "kills": "#1542 Alt+F10 reaches the selection toolbar"}

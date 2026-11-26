@@ -46257,7 +46257,15 @@ function inferRowShape(siblings, states) {
     for (const [k, v] of here) { if (!vals.has(k)) vals.set(k, []); vals.get(k).push(v); }
   }
   const props = [];
-  for (const [key, vs] of vals) if (vs.length === rows.length) props.push({ key, type: inferPropType(vs) });
+  for (const [key, vs] of vals) {
+    const type = inferPropType(vs);
+    if (vs.length === rows.length) props.push({ key, type });
+    // #1658: a ticket's parts and labour lines each carry their own number, so neither was on EVERY
+    // row and the section lost every door. A number on 2+ rows is a column (the same 2+ this function
+    // already asks of rows; sum() skips a row without it); a text key stays every-row, so a stray note
+    // never becomes a field.
+    else if (type === 'number' && vs.length >= 2) props.push({ key, type, sparse: true });
+  }
   const todo = rows.every(n => rowIsTodo(n.text, states));
   if (!sharedTags.length && !props.length && !todo) return null;
   return { sharedTags, props, todo };
@@ -46273,6 +46281,7 @@ function buildRow(shape, values, textValue) {
   for (const t of (shape.sharedTags || [])) s += ' #' + t;
   for (const p of (shape.props || [])) {
     const v = String(vals[p.key] == null ? '' : vals[p.key]).trim();
+    if (p.sparse && !v) continue;   // #1658: a labour line leaves the parts column out, as its siblings do
     s += p.type === 'date' ? ` {date ${p.key}: ${v}}` : ` {prop ${p.key}: ${v}}`;
   }
   return s;
@@ -46330,7 +46339,9 @@ function deckCardText(card, answer) {
 // at-rest chrome). The visible "+ Add" affordance (phase 1b) and a /-verb call straight into this; here it
 // is reachable via openAddRowForm(headingId) for the live-drive. No new syntax — buildRow emits existing forms.
 function rowNoun(contextNode, shape) {
-  let t = String((contextNode && contextNode.text) || '').replace(/^#+\s*/, '');
+  // #1658: the DISPLAYED text (pills resolved, markers gone), never node.text: a `{= sum(honey)}` on the
+  // heading titled the dialog, toast and aria-label `Hives [[math:xi05zdeb]] kg` (the #1526 family).
+  let t = contextNode ? displayText(contextNode) : '';
   t = t.replace(ROW_TAG_RE, '').replace(/\s*\[[\/%xX \-]\]\s*$/, '').trim();
   if (t) return t;
   const tags = (shape && shape.sharedTags) || [];
@@ -46459,6 +46470,13 @@ function refreshRowChrome(nodeId) {
   maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row); maybeAddCardAffordance(node, row);
 }
 
+// #1658: may a door WRITE onto `node`? Not onto the document root: the top-level view renders no
+// title for it, so + Total wrote a sum into text nobody sees ("Totalling honey", no total, P4). A
+// zoomed point shows its text as the masthead, and a row shows its own, so only the root is out.
+function doorWritesShow(node, rootNode = root) {
+  return !!node && node !== rootNode;
+}
+
 // ── #1240 phase 4: the doors of the point you are LOOKING AT ─────────────────────────────────
 // DOM-free. Every "+ Add" / "+ Total" / "+ Check" / "+ Variance" door hangs off its parent's
 // rendered row. The point you are looking AT — the document root, or the point you zoomed into —
@@ -46491,7 +46509,7 @@ function renderViewDoors(vp, container, opts = {}) {
   if (!host) return null;
   const bar = document.createElement('div');
   bar.className = 'view-doors';
-  maybeAddRowAffordance(host, bar);
+  maybeAddRowAffordance(host, bar, { noWrite: !doorWritesShow(host) });
   maybeAddFieldAffordance(host, bar);
   maybeAddCardAffordance(host, bar);
   if (!bar.children.length) return null;   // earned no doors — add no bar
@@ -46499,8 +46517,9 @@ function renderViewDoors(vp, container, opts = {}) {
   // says which point they act on (P3: the control must be self-describing out of row context).
   bar.setAttribute('role', 'group');
   // The heading markers are syntax, not the name of the thing — a screen reader saying "Add to
-  // hash hash Groceries" is the marker leaking into speech. stripMd leaves them, so drop them here.
-  const title = stripMd(String(host.text || '').replace(/^\s*#{1,6}\s+/, '')).trim();
+  // hash hash Groceries" is the marker leaking into speech. #1658: displayText drops them AND
+  // resolves a pill to its value, where stripMd left a glyph and a raw token leaked.
+  const title = displayText(host);
   bar.setAttribute('aria-label', 'Add to ' + (title || 'this document'));
   container.appendChild(bar);
   return bar;
@@ -46521,7 +46540,7 @@ function refreshViewDoors() {
   if (bar && anchor) container.insertBefore(bar, anchor);
 }
 
-function maybeAddRowAffordance(node, row) {
+function maybeAddRowAffordance(node, row, opts = {}) {
   // A section heading — derived from the TEXT, not node.type: a `## Groceries` point renders as an H2 via
   // the content markdown while its node.type stays 'ul', so deriveTypeFromText is the reliable check.
   const isHeading = /^h[1-6]$/.test(deriveTypeFromText(node.text) || '');
@@ -46566,6 +46585,10 @@ function maybeAddRowAffordance(node, row) {
                          : () => openAddRowForm(node.id);
   mkAff('+ Add', 'Add to ' + noun, onAdd);
   fireNudge('addrow-affordance', 'Tip: the + Add on a section grows the list without typing tags or braces');
+  // #1658: every door below WRITES onto `node` (a sum, a check, a variance). Where its text is never
+  // rendered (the document root) the result would be invisible, so the door stays (P2) but refuses
+  // with the way out instead of a "Totalling" toast over nothing (P4).
+  const writes = fn => opts.noWrite ? () => flashHint('The top of a document has no line to show this on. Indent these points under a heading first.') : fn;
   // #1281: "add up a column here" — the panel's #1 wall. When the flat rows carry a number property, a
   // point-and-click door totals that column with a child-scoped {= sum(KEY)} (correct on THIS heading, no
   // scope recall, no braces typed). One number column -> "+ Total"; several -> one door each. Skip a
@@ -46575,35 +46598,35 @@ function maybeAddRowAffordance(node, row) {
   // ponytail: prefix collision (cost vs costume) at worst hides a duplicate door; harmless.
   for (const key of numKeys) {
     if (summed(key)) continue;
-    mkAff(numKeys.length === 1 ? '+ Total' : '+ Total ' + key, 'Total the ' + key + ' column', () => {
+    mkAff(numKeys.length === 1 ? '+ Total' : '+ Total ' + key, 'Total the ' + key + ' column', writes(() => {
       node.text = node.text.replace(/\s+$/, '') + ' {= sum(' + key + ')}';
       promoteLoadedShorthand(node);      // {= sum(KEY)} -> a live math pill, the load path's promoter
       buildIndex(root, null); markDirty(); render();
       flashHint('Totalling ' + key);
-    });
+    }));
   }
   // #1281 check door — the sum/CHECK half of the wall (panel #1284, "trust the numbers"). One "+ Check"
   // on the first number column opens the check dialog with the scary part already written (sum(KEY) <= ),
   // so the user supplies only the limit; the check then flags the heading when the column crosses it.
   // Skipped when the heading already carries a check, so the door never fights an existing one.
   if (numKeys.length && !checkExprOf(node)) {
-    mkAff('+ Check', 'Add a check on the ' + numKeys[0] + ' column', () => openCheckDialog(node.id, null, 'sum(' + numKeys[0] + ') <= '));
+    mkAff('+ Check', 'Add a check on the ' + numKeys[0] + ' column', writes(() => openCheckDialog(node.id, null, 'sum(' + numKeys[0] + ') <= ')));
   }
   // #1312 variance door (panel re-run, Fiona at adopt): quote-vs-actual. On a section with EXACTLY two
   // number columns, one click writes the over/under with no hand-authoring: a per-row {= B - A} (a
   // property is a variable, so each row reads its own two numbers) and a total {= sum(B) - sum(A)} on the
   // heading. Columns in document order are A (e.g. quote) then B (e.g. actual), so a positive result is
   // over. Skipped once a variance (any `- sum(` on the heading) exists, so the door never doubles up.
-  if (numKeys.length === 2 && !(node.math || []).some(m => /-\s*sum\(/.test(String(m.expr || '')))) {
+  if (numKeys.length === 2 && !shape.props.some(p => p.sparse) && !(node.math || []).some(m => /-\s*sum\(/.test(String(m.expr || '')))) {
     const [a, b] = numKeys;
     const has = (c, k) => (c.props || []).some(p => (p.key || '').trim().toLowerCase() === k.toLowerCase());
-    mkAff('+ Variance', 'Add the ' + b + ' minus ' + a + ' variance (over or under)', () => {
+    mkAff('+ Variance', 'Add the ' + b + ' minus ' + a + ' variance (over or under)', writes(() => {
       for (const c of node.children) if (has(c, a) && has(c, b)) { c.text = c.text.replace(/\s+$/, '') + ' {= ' + b + ' - ' + a + '}'; promoteLoadedShorthand(c); }
       node.text = node.text.replace(/\s+$/, '') + ' {= sum(' + b + ') - sum(' + a + ')}';
       promoteLoadedShorthand(node);
       buildIndex(root, null); markDirty(); render();
       flashHint('Added ' + b + ' minus ' + a + ' variance');
-    });
+    }));
   }
 }
 // #1240 phase 3 DOM half: append a card to a deck record + re-render (round-trips to the shuffle shorthand).

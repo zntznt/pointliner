@@ -377,7 +377,7 @@ export function loadCores() {
     'collectChronicleDates',   // #652 chronicle (in-world game log) timeline source
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
     'addRowTarget',  // #1438: which list `/addrow` acts on from the caret
-    'viewDoorHost',   // #1240 phase 4: which node's doors the VIEW hosts
+    'viewDoorHost', 'doorWritesShow', 'rowNoun',   // #1240 phase 4: which node's doors the VIEW hosts
     'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'evictPrevVersions',   // per-doc previous-version store eviction (bounded restore history)
     'updatePeers', 'peerHoldsDoc',   // #847: multi-tab presence bookkeeping (pure)
