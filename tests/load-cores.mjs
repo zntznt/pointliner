@@ -196,7 +196,7 @@ export function loadCores() {
     'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
     'emptyExtremalProp','depthExtremalProp',   // #1449 a quoted-search min/max that matched nothing (identity, not a division)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
-    'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
+    'seqParts', 'deckSearchHint', 'dealHits', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
     'rollLogEntry', 'grammarLogSource',   // #918 roll-log line + grammar source label (pure)
     'rollLogHome', 'rollLogToggleMessage', 'rollLogFirstEntryMessage',   // UXP-245: the log's door + what it says
