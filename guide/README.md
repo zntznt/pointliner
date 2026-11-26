@@ -43,24 +43,25 @@ That is the entire interaction model. Everything else is just more kinds of `{â€
 - **[What Pointliner can do](features.md)** is the scannable feature map: every capability in one
   line, with links to where you learn it. Skim this if you just want to know "can it do X?"
 - **[Writing and formatting](writing-and-formatting.md)** is headings and point types, inline
-  styling, tables, footnotes, images, emoji and per-point notes. (The full
+  styling, tables and bases (with their formulas and totals), footnotes, images, emoji and per-point
+  notes. (The full
   [emoji shortcode reference](emoji-shortcodes.md) lists every `:name:`.)
 - **[Getting around](getting-around.md)** is the everyday outliner: navigating, searching, nesting,
   zoom, hashtags, plus the live search pills (`{query:}`, `{count:}`) and the query bases that
   build on search.
-- **[Tasks and organizing](tasks-and-organizing.md)** is to-dos, custom workflows, properties,
-  progress bars, templates, quick capture and aliases.
+- **[Tasks and organizing](tasks-and-organizing.md)** is to-dos, custom workflows, properties, progress bars, templates, quick capture and aliases.
 - **[Dates and planning](dates-and-planning.md)** is scheduling points, the agenda and calendar,
   and the daily journal.
 - **[Links and references](links-and-references.md)** is `[[` links with live titles, backlinks,
   unlinked mentions and links across a folder of documents.
-- **[Files and export](files-and-export.md)** is saving, a folder of documents, appearance, and sharing
-  or exporting (Markdown, plain text, Shareable page, self-contained HTML). Your work is always plain
+- **[Files and export](files-and-export.md)** is saving, a folder of documents, appearance, importing
+  (OPML, Markdown, spreadsheets, BibTeX), reusable packs, and sharing or exporting (Markdown, plain text, Shareable page, self-contained HTML). Your work is always plain
   text you own, and its **Taking your work elsewhere** section is the no-lock-in exit story: OPML for a
   full-fidelity archive you can reopen, Markdown, text or a Shareable page for readable snapshots,
   HTML to hand someone a live copy.
 - **[Generating text](generating-text.md)** and **[Computing numbers](computing-numbers.md)** are
-  the two deep guides for the pill families above.
+  the two deep guides for the pill families above. Generating text also covers the ready-made
+  patterns and the touch Roll menu.
 - **[Composing pills](composing-pills.md)** shows how to put pills together (side by side,
   through variables, and through the tree) so one pill feeds another.
 - **[Cookbook](cookbook.md)** is copy-paste recipes that combine the two.
