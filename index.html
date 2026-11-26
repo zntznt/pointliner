@@ -869,7 +869,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 /* UXP-179: the base-view focusable controls share ONE canonical focus recipe (DL §4) — a solid
    accent outline, not a suppressed-outline --ring ghost (which failed the §3 3:1 non-text floor and
    vanished under forced-colors). Folded into one selector list so they can't drift apart again. */
-.mt-qbase-head:focus-visible,.mt-qbase-cap:focus-visible,.mt-view-btn:focus-visible,.bv-card:focus-visible,.cv-btn:focus-visible,.mt-base-collapse:focus-visible,.mt-base-rows:focus-visible,.mt-base-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.mt-qbase-head:focus-visible,.mt-qsort:focus-visible,.mt-qbase-cap:focus-visible,.mt-view-btn:focus-visible,.bv-card:focus-visible,.cv-btn:focus-visible,.mt-base-collapse:focus-visible,.mt-base-rows:focus-visible,.mt-base-more:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .mt-qbase-ico{color:color-mix(in srgb,var(--pill) 80%,var(--fg));display:inline-flex;font-size:.9em}
 .mt-qbase-expr{font-family:var(--mono);font-size:.92em;color:var(--fg);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mt-qbase-count{font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;color:var(--muted)}
@@ -955,6 +955,7 @@ ul.md-tasklist{list-style:none;padding-left:.2em}
 .mt-cell:focus-visible{box-shadow:inset 0 0 0 2px var(--acc)}
 .mt-cell.mt-selected{background:var(--cell-sel)}
 .mt-headcell{font-weight:600;background:var(--cbg);border-bottom-width:2px}
+.mt-qsort{cursor:pointer;user-select:none;border-radius:var(--r-sm)}/* slice 2: a query base header sorts */
 
 .md-table-host tr:hover>.mt-cell:not(:focus):not(.mt-selected){background:color-mix(in srgb,var(--fg) 3%,transparent)}
 .mt-cell.mt-a-center{text-align:center}
@@ -12271,6 +12272,19 @@ function parseQBaseSort(text, cols) {
   if (idx < 0) return undefined;
   return { col: idx, dir: (m[2] || 'asc').toLowerCase() };
 }
+// table-view-proposal.md slice 2: a press on a query base's column header is a second door onto
+// the SAME qbase.sort the editor's Sort rows field writes. It cycles ascending, descending, then
+// document order (null); a press on another column starts that column at ascending. Pure.
+function qbaseNextSort(sort, col) {
+  if (!sort || sort.col !== col) return { col, dir: 'asc' };
+  return sort.dir === 'desc' ? null : { col, dir: 'desc' };
+}
+// The header's aria-sort for column `col`: only the sorted column carries one (WAI-ARIA asks for
+// aria-sort on one header at a time), so every other header returns null. Pure.
+function qbaseAriaSort(sort, col) {
+  if (!sort || sort.col !== col) return null;
+  return sort.dir === 'desc' ? 'descending' : 'ascending';
+}
 function isQueryBase(node) { return node?.type === 'base' && !!node.qbase; }
 // The strip's words for where a query base's rows come from: its search, or for a list's table view
 // (scope 'siblings') the list it reads, so the door's base never shows an empty search box. Pure.
@@ -13704,6 +13718,36 @@ function mtWireQBaseEdit(host, node) {
   });
 }
 
+// Slice 2: the header sort door. Pointer acts on mousedown + preventDefault (the caret invariant:
+// a press never moves focus), Enter/Space alongside it for the keyboard, which keeps focus on the
+// same header after the rebuild so the cycle can be pressed through.
+function mtWireQBaseSort(host, node) {
+  if (!node.qbase) return;
+  host.querySelectorAll('.mt-qsort').forEach(b => {
+    const c = +b.dataset.c;
+    b.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, false);
+    });
+    b.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault(); e.stopPropagation(); qbaseSortByHeader(node, c, true);
+    });
+  });
+}
+function qbaseSortByHeader(node, col, refocus) {
+  const next = qbaseNextSort(node.qbase.sort, col);
+  if (next) node.qbase.sort = next; else delete node.qbase.sort;
+  markDirty(); refreshTable(node);
+  if (refocus) mtHost(node.id)?.querySelector(`.mt-qsort[data-c="${col}"]`)?.focus();
+  const m = qbaseModel(node);
+  const name = String(m.rows[0]?.[col] || 'column ' + (col + 1)).trim();
+  if (!next) { flashHint(`Rows back in document order.`); return; }
+  // The SV-1 reading copy, so "smallest number first" means the same thing from either sort door.
+  const sc = sortReadingCopy(sortReading(m.rows, col, qbaseColRoles(node.qbase.cols)[col] || null, m.rows.length - 1));
+  flashHint(`Sorted by ${name}, ${next.dir === 'desc' ? sc.desc : sc.asc}. Press again to ${next.dir === 'desc' ? 'go back to document order' : 'reverse'}.`);
+}
+
 // ── FR-1 per-role cell editors ────────────────────────────────────────────────
 // While a Date- or Status-role cell is focused for editing, a popover under the cell
 // offers the value: the Schedule dialog's calendar (buildDatePicker) for a date, the
@@ -14378,7 +14422,15 @@ function buildTableWidget(node, readOnly) {
   for (let c=0;c<nc;c++) {
     const ch0 = computedCells.has('0,'+c);
     const nm = model.rows[0][c] || '';
-    if (readOnly || ch0) {
+    if (node.qbase) {
+      // Slice 2: a query base's header is its sort door (mtWireQBaseSort). The state rides on the
+      // <th> as aria-sort; the inner control keeps tabindex 0 because it is not a .mt-cell, so
+      // the roving reset below never takes it out of the Tab order.
+      const as = qbaseAriaSort(node.qbase.sort, c);
+      h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}" data-r="0" data-c="${c}"${as ? ` aria-sort="${as}"` : ''}${colStyle(c)}>`
+         + `<span class="mt-qsort" data-c="${c}" role="button" tabindex="0" title="Sort by this column: ascending, descending, then document order">${mtInline(node, nm)}`
+         + `<span class="mt-qsort-ind" aria-hidden="true">${as === 'ascending' ? ' ↑' : as === 'descending' ? ' ↓' : ''}</span></span></th>`;
+    } else if (readOnly || ch0) {
       const ce = ch0 ? ' contenteditable="false" tabindex="0" aria-readonly="true"' : '';
       h += `<th class="mt-cell mt-headcell${aCls(model.aligns[c])}${ch0?' mt-computed':''}" data-r="0" data-c="${c}"${colStyle(c)}${ce}>${mtInline(node, nm)}</th>`;
     } else {
@@ -14443,6 +14495,7 @@ function buildTableWidget(node, readOnly) {
   host.innerHTML = h;
   mtWireBaseChrome(host, node);
   mtWireQBaseEdit(host, node);   // Phase C: property cells write through (before the readOnly return)
+  mtWireQBaseSort(host, node);   // slice 2: the header sorts (same readOnly-surviving placement)
   // Seed the roving tab stop (#443): exactly one cell carries tabindex 0 so Tab enters the
   // grid at a predictable cell (the first data cell, falling back to any cell — e.g. a
   // read-only query base whose only cells are computed). Applies to readOnly grids too.
@@ -45095,7 +45148,7 @@ const GUIDE = [
     ] },
   { id:'querybase', cat:'todos', covers:['querybase'],
     title:'Query bases',
-    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (roll-ups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, so it is always a view of the live document.\n\nType / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. A column that shows a property is editable in place: type in a cell and the value writes back to that point. The title column and any `= formula` column stay read-only, so change those on the points themselves and the rows follow.",
+    body:"Turn a live search into a table. A query base's rows are the points matching a search, and its columns show whatever you pick per point: the title (clickable), a property like due or cost, or a formula computed for each row (roll-ups like sum(cost) work). The grid updates itself as the document changes; nothing is stored, so it is always a view of the live document.\n\nType / and choose Query base, then give it a search and one column per line. Click the strip above the grid to change either. Click a column's header to sort by it: once for ascending, again for descending, a third time for document order (Enter on a focused header does the same). A column that shows a property is editable in place: type in a cell and the value writes back to that point. The title column and any `= formula` column stay read-only, so change those on the points themselves and the rows follow.",
     related:['query','base-views','tables','bases-overview','list-table-view'],
     examples:[
       { syn:'/querybase',            desc:'create one from the / menu' },
@@ -45104,7 +45157,7 @@ const GUIDE = [
     ] },
   { id:'list-table-view', cat:'todos',
     title:'See a list as a table',
-    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). The Name column links to the point; rename it on the point itself.\n\nTo sort, filter or pick columns, click the strip above the table: Sort rows takes a column name and desc, a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
+    body:"When the points in a list carry the same properties (crops with beds and yield, hives with honey, a cast with HP), you can see them as a table, like a spreadsheet grid with one row per point and one column per property. Click \u002b Table view at the end of the list, or open the menu on the list's heading or on any of its points and choose Show list as table view.\n\nThe table goes in as the first point of the list and shows only that list's points, kept up to date as you add, change or remove them. Nothing is copied: each row IS the point. Type a new number into a cell and the point's property changes too (Undo puts it back). The Name column links to the point; rename it on the point itself.\n\nTo sort, click a column's header (or press Enter on it): once for ascending, again for descending, a third time for document order. To filter or pick columns, click the strip above the table: Sort rows also takes a column name and desc, a search narrows the rows within the list, and unticking Only the points in this list (with a search) widens it to the whole document. The table is a query base, so Board, Cards and Calendar work on it too, and Convert to text in its menu freezes it into a typed table.",
     related:['querybase','bases-overview','properties','addrow'],
     examples:[
       { syn:'\u002b Table view',            desc:'at the end of a list whose points share properties', ctl:'Show list as table view' },
