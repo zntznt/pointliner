@@ -1658,7 +1658,7 @@ mark{background:var(--hl);color:inherit;border-radius:var(--r-xs);padding:0 1px}
 #sel-tb{position:fixed;display:none;z-index:600;background:var(--hbg);border:1px solid var(--bdr);border-radius:var(--r-lg);padding:5px;gap:3px;align-items:center;box-shadow:var(--sh-1);transform:translateX(-50%)}
 #sel-tb.on{display:flex}
 #sel-tb .cmd-icon{cursor:pointer}
-#sel-tb .cmd-icon:hover{background:var(--acc);color:var(--acc-fg)}
+#sel-tb .cmd-icon:hover,#sel-tb .cmd-icon.kb-active{background:var(--acc);color:var(--acc-fg)}
 #sel-tb .cmd-sep{width:1px;height:20px;background:var(--bdr);margin:0 1px;flex-shrink:0}
 #sel-tb.cell-sel .seltb-fn{display:none} /* footnotes are node-level, not per-cell */
 
@@ -2988,6 +2988,16 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
 }
+/* #1661 print: paper gets the document, not the app. An allowlist (only #outline survives at
+   the top level) so a new toolbar, panel or toast is hidden by default instead of printing
+   until someone remembers to list it. Inside the outline, the doors to add or fold go, and so
+   does the focus/edit highlight. Hides only, sets no color: nothing here for applyTheme. */
+@media print{
+  body>*:not(#outline),.ghost-row,.addrow-affordance,.swipe-cue{display:none !important}
+  .collapse-btn{visibility:hidden !important}
+  .node-content:focus,.node-note[data-editing]{box-shadow:none !important}
+  .node-row:has(.node-content[data-editing]){background:none !important}
+}
 </style>
 </head>
 <body>
@@ -3188,7 +3198,7 @@ body:not(.v-guided) #file-menu .cmd-desc{display:none}
 <div id="outline"></div>
 
 <!-- selection toolbar (dark) -->
-<div id="sel-tb"></div>
+<div id="sel-tb" role="toolbar" aria-label="Format the selection"></div>
 <!-- bullet popup -->
 <div id="bpop" role="menu" aria-label="Point actions"></div>
 <!-- column operations panel -->
@@ -3844,12 +3854,16 @@ function countParts(body) {
 // resolveBrace, which only ever sees the body. The scope lives in the text or it cannot survive a
 // re-roll. A bonus over the scoped query pill: this DOES unfold in edit mode, because the text can
 // say it. Same pre-colon modifier shape as {prop KEY: …} / {date due: …} / {rule Name: …}.
+// #1659: an optional COUNT before the modifier deals that many DISTINCT matching points,
+// {roll 3: #history}, the same `N` slot and 1-99 range {shuffle 3: a | b} already uses.
 function rollParts(body) {
-  const m = /^roll(\s+folder)?\s*:(.*)$/is.exec((body || '').trim());
+  const m = /^roll(?:\s+(\d{1,2}))?(\s+folder)?\s*:(.*)$/is.exec((body || '').trim());
   if (!m) return null;
-  const expr = m[2].trim();
+  const expr = m[3].trim();
   if (!expr) return null;                              // {roll:} with no query → not a roll
-  return { expr, folder: !!m[1] };
+  const count = m[1] ? parseInt(m[1], 10) : 1;
+  if (count < 1) return null;                          // {roll 0: …} deals nothing: an attempt, not a roll
+  return { expr, folder: !!m[2], count };
 }
 
 // LEAN FLOOR phase 1 — the promoting inline stub for a SIDECAR-backed verb. propDeclParts(body) sniffs
@@ -4026,7 +4040,6 @@ function calBaseItems(model, dateBy, lastRow = (model.rows || []).length - 1) {
 // shows. Otherwise: a collapsed base shows no rows; an uncapped base (baseRows null or
 // <= 0) shows all; a capped base shows the first N data rows and flags `clipped` when
 // there are more, so the widget can offer a "zoom in for the rest" footer. Pure.
-const BASE_ROWS_DEFAULT = 8;   // a fresh base is uncapped; this is the cap a user's toggle applies
 function baseInlineView(collapsed, baseRows, totalDataRows, isZoomed) {
   if (isZoomed) return { collapsed: false, shown: totalDataRows, clipped: false, hidden: 0 };
   if (collapsed) return { collapsed: true, shown: 0, clipped: totalDataRows > 0, hidden: totalDataRows };
@@ -4464,7 +4477,6 @@ function clockCompletionCue(parent, child) {
 //   self → 0 (node only; no descendants) · children → 1 · subtree → Infinity · N → N
 // An unrecognized token → null, so the caller leaves the expr literal and evalMath /
 // the cookie renderer surfaces the error (P4: never a silent miscount). Pure.
-const SCOPE_TOKEN_RE = /^(self|children|subtree|\d+)$/;
 function resolveScopeDepth(token) {
   const t = String(token == null ? '' : token).trim().toLowerCase();
   if (t === 'self') return 0;
@@ -4504,17 +4516,16 @@ function collectScoped(node, depth) {
 // (Bianca/Sofia): a line you'd naturally write as {= qty * price} can instead be a property that both
 // shows its result AND rolls up. Only a self-contained expression (an operator/paren, and no undeclared
 // name) evaluates; a plain number, a date, or plain text is untouched. Returns the number or null.
-function propExprValue(raw) {
+// #1656: `vars` lets a formula read the row's OWN other properties (gal * ppg); see rowPropVars.
+function propExprValue(raw, vars = {}) {
   const s = String(raw == null ? '' : raw).trim();
   if (!s || !/[+*/^%()]/.test(s)) return null;        // needs a math operator/paren (a bare number, word, or "-5" is not a formula)
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return null;       // an ISO date is not arithmetic (its dashes are not minus)
-  const v = evalMath(s, {});
+  const v = evalMath(s, vars);
   return (v !== null && Number.isFinite(v)) ? v : null;
 }
-function childPropNumber(child, prop) {
-  const p = (child?.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).trim().toLowerCase());
-  if (!p) return null;
-  const raw0 = String(p.val).trim();
+// A non-formula property value as a number: plain, thousands-grouped, or a date (epoch-day). null otherwise.
+function propScalar(raw0) {
   if (!raw0) return null;                           // blank value is not a number (Number('')===0 would miscount)
   // #809 (agent-review, UXP-203): accept locale thousands-separators ("3,000" = 3000) —
   // strictly grouped only, so "1,2" stays non-numeric. A formatted cost silently dropping
@@ -4522,8 +4533,37 @@ function childPropNumber(child, prop) {
   const raw = /^-?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(raw0) ? raw0.replace(/,/g, '') : raw0;
   const n = Number(raw);
   if (Number.isFinite(n)) return n;                 // numeric first, so "5" stays 5 (not a date)
-  const d = parseDueDate(raw);                       // a date-shaped value aggregates as its epoch-day (strict)
-  return d !== null ? d : propExprValue(raw0);       // #1317: else a formula value ("60 * 3.50") computes to a number
+  return parseDueDate(raw);                         // a date-shaped value aggregates as its epoch-day (strict)
+}
+// #1656 (the #1317 follow-up): the row's own properties as formula variables, so `cost: gal * ppg`
+// computes from the same row's gal and ppg. Plain values first, then formulas in passes, so a chain
+// (total: cost + tip) resolves in any order and a cycle (a: b + 1, b: a + 1) stays unreadable. Pure.
+function rowPropVars(node) {
+  const vars = Object.create(null);
+  let todo = [];
+  for (const p of (node?.props || [])) {
+    const k = (p.key || '').trim().toLowerCase();
+    if (!/^[a-z_]\w*$/.test(k) || k in vars) continue;
+    const raw0 = String(p.val ?? '').trim(), n = propScalar(raw0);
+    if (n !== null) vars[k] = n; else todo.push([k, raw0]);
+  }
+  for (let grew = true; grew && todo.length;) {
+    grew = false;
+    todo = todo.filter(([k, raw0]) => {
+      const v = propExprValue(raw0, vars);
+      if (v === null) return true;
+      vars[k] = v; grew = true; return false;
+    });
+  }
+  return vars;
+}
+function childPropNumber(child, prop) {
+  const p = (child?.props || []).find(x => (x.key || '').trim().toLowerCase() === String(prop).trim().toLowerCase());
+  if (!p) return null;
+  const raw0 = String(p.val).trim();
+  const n = propScalar(raw0);
+  if (n !== null || !raw0) return n;
+  return propExprValue(raw0, rowPropVars(child));   // #1317/#1656: else a formula value ("60 * 3.50", "gal * ppg") computes
 }
 // #809: does an aggregated property in `expr` skip a child's NON-EMPTY, non-numeric value?
 // A check must ERROR over a skipped value ("12o", stray text), never silently pass a sum
@@ -4947,6 +4987,12 @@ const BUILTIN_UNITS = {
   yd:{dim:'length',ratio:0.9144}, yard:{dim:'length',ratio:0.9144}, yards:{dim:'length',ratio:0.9144},
   ft:{dim:'length',ratio:0.3048}, foot:{dim:'length',ratio:0.3048}, feet:{dim:'length',ratio:0.3048},
   in:{dim:'length',ratio:0.0254}, inch:{dim:'length',ratio:0.0254}, inches:{dim:'length',ratio:0.0254},
+  // area (base: square meter), #1656: acreage, floor plans and plots are everyday quantities
+  m2:{dim:'area',ratio:1}, sqm:{dim:'area',ratio:1}, km2:{dim:'area',ratio:1e6}, cm2:{dim:'area',ratio:1e-4},
+  ha:{dim:'area',ratio:1e4}, hectare:{dim:'area',ratio:1e4}, hectares:{dim:'area',ratio:1e4},
+  ft2:{dim:'area',ratio:0.09290304}, sqft:{dim:'area',ratio:0.09290304}, in2:{dim:'area',ratio:0.00064516},
+  yd2:{dim:'area',ratio:0.83612736}, mi2:{dim:'area',ratio:2589988.110336},
+  acre:{dim:'area',ratio:4046.8564224}, acres:{dim:'area',ratio:4046.8564224},
   // mass (base: kilogram)
   kg:{dim:'mass',ratio:1}, g:{dim:'mass',ratio:0.001}, mg:{dim:'mass',ratio:1e-6},
   lb:{dim:'mass',ratio:0.45359237}, lbs:{dim:'mass',ratio:0.45359237}, pound:{dim:'mass',ratio:0.45359237}, pounds:{dim:'mass',ratio:0.45359237},
@@ -5007,7 +5053,7 @@ function normalizeUnits(raw) {
 // The built-in base unit of each built-in dimension (the ratio-1 anchor), so unitsToText can
 // name a reconstructed derived unit against the right base. Custom dimensions carry their own
 // ratio-1 base in root.units.
-const UNIT_DIM_BASE = { length: 'm', mass: 'kg', volume: 'l', time: 's' };
+const UNIT_DIM_BASE = { length: 'm', area: 'm2', mass: 'kg', volume: 'l', time: 's' };
 // Reconstruct editable declaration text from a resolved table (the dialog's round-trip, the
 // calendarToText precedent — canonical, not byte-identical: a chain gp=10 sp reads back as
 // gp = 100 cp, mathematically identical). A ratio-1 unit in a NEW dimension is a bare base
@@ -5029,8 +5075,8 @@ function unitsToText(units) {
 // and by the time the message is chosen the call itself is gone (replaceConvert has substituted a
 // sentinel), so every failure was reported as the dimension mismatch: `convert(10, blorp, kg)` and
 // `convert(12, m2, ft2)` both read "a conversion between two different kinds of units (like a
-// length and a mass)". The second is the sympathetic case -- there is no area dimension at all, so
-// m2/ft2 fail by the identical unknown-unit path as blorp. Returns null when the units are fine
+// length and a mass)". The second is the sympathetic case -- there was no area dimension at all, so
+// m2/ft2 failed by the identical unknown-unit path as blorp (#1656 added area). Returns null when the units are fine
 // (the failure was the VALUE argument, which is not this function's business). Pure.
 function convertFailKind(from, to, table) {
   const t = table || {};
@@ -5378,7 +5424,10 @@ function firstEmptyRollup(expr, node, opts = {}) {
     const prop = m[1];
     const depth = m[2] === undefined ? 1 : resolveScopeDepth(m[2]);
     if (depth === null) continue;   // a bad scope is an #ERR concern, not an empty-match one
-    const any = collectScoped(node || {}, depth).some(c => childPropNumber(c, prop) !== null);
+    // #1656: a column whose values are all PRESENT but unreadable is not empty; that is a partial
+    // total ("N not counted"), and "No cost below this point" would be false.
+    const any = collectScoped(node || {}, depth).some(c => (c.props || []).some(x =>
+      (x.key || '').trim().toLowerCase() === prop.toLowerCase() && String(x.val ?? '').trim() !== ''));
     if (!any) return prop;
   }
   return null;
@@ -5651,16 +5700,20 @@ function repeatOf(node) {
 
 // The point's OWN numeric properties as a { name: number } overlay, so a bare name
 // in a check (`budget`, `hours`) resolves to THIS point's value. Parsed like
-// childPropNumber (finite Number, else skipped); the reserved keys (check + dates)
-// never become variables. Null-proto (a prop named `constructor` is a real key).
-// Pure; no DOM.
+// childPropNumber (finite Number, else skipped); the reserved keys (check, alias,
+// repeat, timestamps) never become variables. Null-proto (a prop named `constructor`
+// is a real key). #1657: a date-shaped value (`due`, `start`, or a custom
+// `delivered: 2026-11-20`) joins as its epoch-day number, so daysuntil(due) and
+// due - today compute on every surface, not only in a query base column.
+// `due`/`start` are dates only: `due: 5` is not a number here. Pure; no DOM.
 function nodePropVars(node) {
   const out = Object.create(null);
   for (const p of (node?.props || [])) {
     const k = (p.key || '').trim().toLowerCase();
-    if (!k || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || TIMESTAMP_KEYS.has(k) || DATE_KEYS.has(k)) continue;
-    const n = Number(String(p.val).trim());
-    if (Number.isFinite(n)) out[k] = n;
+    if (!k || k === CHECK_KEY || k === ALIAS_KEY || k === REPEAT_KEY || TIMESTAMP_KEYS.has(k)) continue;
+    const n = DATE_KEYS.has(k) ? NaN : Number(String(p.val).trim());
+    const v = Number.isFinite(n) ? n : parseDueDate(String(p.val ?? ''));
+    if (v !== null && Number.isFinite(v)) out[k] = v;
   }
   return out;
 }
@@ -7498,9 +7551,10 @@ function collectVars(rootNode) {
   // in document order, as { name, key, isDecl }. A declaration is "shadowed" (dead) only if
   // NO reference falls in its range — between it and the next same-name declaration (Stage B).
   const events = [];
+  const propScopes = Object.create(null), ancStack = [];   // #1657: props at each name's declaring point
   function gather(node) {
     const re = /\[\[var:([a-z0-9]+)\]\]/gi;
-    let m;
+    let m, ps;
     while ((m = re.exec(node.text)) !== null) {
       const v = node.vars?.find(v => v.key === m[1]);
       if (!v?.name) continue;
@@ -7516,6 +7570,7 @@ function collectVars(rootNode) {
         // #952: a distribution declaration claims the name in the sibling lane and, because a
         // later formula/pick of the same name must clear it, the delete is unconditional first.
         if (v.kind === 'dist') dists[nm] = v; else delete dists[nm];
+        propScopes[nm] = ps ??= resolveNodeScope(node, ancStack.slice().reverse());
         lastKeyForName[nm] = v.key;
         (allKeysForName[nm] ||= []).push(v.key);
         events.push({ name: nm, key: v.key, isDecl: true });
@@ -7533,9 +7588,12 @@ function collectVars(rootNode) {
         if (d.pick !== undefined) pickVals[d.name] = d.pick;
         else delete pickVals[d.name];
         delete dists[d.name];   // #952: a base row redeclaring the name clears any distribution above it
+        delete propScopes[d.name];
       }
     }
+    ancStack.push(node);
     for (const c of node.children) gather(c);
+    ancStack.pop();
   }
   // Pack variables (formula-only) declared FIRST, so a document var of the same name
   // overrides on collision (last-wins). They resolve through the same evalMath +
@@ -7548,7 +7606,7 @@ function collectVars(rootNode) {
     else delete pickVals[nm];
   }
   if (rootNode?.children) for (const c of rootNode.children) gather(c);
-  const { resolved, cycles } = resolveVarDefs(defs, pickVals, order);
+  const { resolved, cycles } = resolveVarDefs(defs, pickVals, order, propScopes);
   attachVarDists(resolved, dists);
   // Only the live-document pass owns the display globals. An explicit-root call
   // (e.g. workspace search resolving a FOREIGN doc's vars) must not clobber them:
@@ -7583,11 +7641,13 @@ function varMapAt(targetNode) {
   if (id != null && _varMapAtCache.has(id)) return _varMapAtCache.get(id);
 
   const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const add = (nm, expr, pick, dist) => {
+  const propScopes = Object.create(null), anc = [];   // #1657
+  const add = (nm, expr, pick, dist, ps) => {
     if (!(nm in defs)) order.push(nm);
     defs[nm] = expr;
     if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm];
     if (dist !== undefined) dists[nm] = dist; else delete dists[nm];   // #952 sibling lane
+    if (ps) propScopes[nm] = ps; else delete propScopes[nm];
   };
   // Pack (plugin) vars first — global, always in scope, overridden by any document decl above.
   // #585: a pack pick var passes its frozen roll through the `pick` slot, like a document pick.
@@ -7602,14 +7662,16 @@ function varMapAt(targetNode) {
       // include declarations that appear in targetNode's own text BEFORE this point is moot
       // for a whole-node read; include the node's own typed declarations so {a:=5}{a} in one
       // node resolves, then stop (nothing after the target is visible).
-      collectNodeDecls(node, add);
+      collectNodeDecls(node, add, anc);
       done = true; return;
     }
-    collectNodeDecls(node, add);
+    collectNodeDecls(node, add, anc);
+    if (node !== root) anc.unshift(node);
     for (const c of node.children || []) { walk(c); if (done) return; }
+    if (node !== root) anc.shift();
   })(root);
 
-  const { resolved } = resolveVarDefs(defs, pickVals, order);
+  const { resolved } = resolveVarDefs(defs, pickVals, order, propScopes);
   attachVarDists(resolved, dists);
   if (id != null) _varMapAtCache.set(id, resolved);
   return resolved;
@@ -7618,13 +7680,14 @@ function varMapAt(targetNode) {
 // Pull a node's variable DECLARATIONS (name → expr, with frozen pick value) into the
 // accumulator via `add(name, expr, pickVal|undefined)`, in the token order they appear in
 // the text. Mirrors collectVars' gather for one node. Display-only refs (empty expr) skipped.
-function collectNodeDecls(node, add) {
+// `anc` (nearest-first) gives each declaration the props of its point (#1657), passed as add's 5th arg.
+function collectNodeDecls(node, add, anc = []) {
   const re = /\[\[var:([a-z0-9]+)\]\]/gi;
-  let m;
+  let m, ps;
   while ((m = re.exec(node.text || '')) !== null) {
     const v = node.vars?.find(v => v.key === m[1]);
     if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
-                               v.kind === 'dist' ? v : undefined);
+                               v.kind === 'dist' ? v : undefined, ps ??= resolveNodeScope(node, anc));
   }
   // A variable base is a declaration site like any other: its projected rows enter the
   // positional walk here (covers varMapAt AND renderPosVarMaps), after the node's own
@@ -7650,20 +7713,21 @@ function renderPosVarMaps(node) {
   if (_posVarMapCacheVer !== _varsVer) { _posVarMapCache = new Map(); _posVarMapCacheVer = _varsVer; }
   if (node.id != null && _posVarMapCache.has(node.id)) return _posVarMapCache.get(node.id);
   const defs = Object.create(null), pickVals = Object.create(null), dists = Object.create(null), order = [];
-  const add = (nm, expr, pick, dist) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; };
+  const propScopes = Object.create(null), anc = [];   // #1657: props at each declaring point
+  const add = (nm, expr, pick, dist, ps) => { if (!(nm in defs)) order.push(nm); defs[nm] = expr; if (pick !== undefined) pickVals[nm] = pick; else delete pickVals[nm]; if (dist !== undefined) dists[nm] = dist; else delete dists[nm]; if (ps) propScopes[nm] = ps; else delete propScopes[nm]; };
   for (const pv of packVarDefs(root?.plugins)) add(pv.name.toLowerCase(), pv.expr, pv.kind === 'pick' ? String(pv.rolled ?? '') : undefined);
   let done = false;    // gather declarations from every point ABOVE this one (document order)
-  (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add); for (const c of n.children || []) { walk(c); if (done) return; } })(root);
-  const byKey = new Map();
+  (function walk(n) { if (done || !n) return; if (n === node) { done = true; return; } collectNodeDecls(n, add, anc); if (n !== root) anc.unshift(n); for (const c of n.children || []) { walk(c); if (done) return; } if (n !== root) anc.shift(); })(root);
+  const byKey = new Map(), ownProps = resolveNodeScope(node, ancestorsOf(node));
   const RE = /\[\[(dice|math|var|grammar|est|markov|seq|query):([a-z0-9]+)\]\]/gi;
   let m;
   while ((m = RE.exec(node.text || '')) !== null) {
     // the dists lane is a snapshot too — copy it, or every token would share the final map (#952)
-    byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order).resolved, Object.assign(Object.create(null), dists)));
+    byKey.set(m[2], attachVarDists(resolveVarDefs(defs, pickVals, order, propScopes).resolved, Object.assign(Object.create(null), dists)));
     if (m[1] === 'var') {                                              // a declaration adds itself, so a
       const v = node.vars?.find(x => x.key === m[2]);                  // LATER ref sees it, an earlier one not
       if (v?.name && v.expr) add(v.name.toLowerCase(), v.expr, v.kind === 'pick' ? String(v.rolled ?? '') : undefined,
-                                 v.kind === 'dist' ? v : undefined);
+                                 v.kind === 'dist' ? v : undefined, ownProps);
     }
   }
   if (node.id != null) _posVarMapCache.set(node.id, byKey);
@@ -7706,7 +7770,10 @@ function varDistRec(vars, name) {
 // evalMath's `name in vars` / `vars[name]` drive on-demand resolution of dependencies;
 // `stack` tracks the active chain so a re-entered name is recognised as a cycle (and every
 // member of that cycle is flagged) rather than recursing forever. Pure: no globals, no DOM.
-function resolveVarDefs(defs, pickVals, order) {
+// #1657: `propScopes` (optional) maps a name to the props visible at its DECLARING point
+// (resolveNodeScope over that point and its ancestors), so `{tot := r1 + r2}` reads the point's
+// own `r1` exactly as a `{= r1 + r2}` beside it does. Props win over variables, as in a pill.
+function resolveVarDefs(defs, pickVals, order, propScopes) {
   const resolved = Object.create(null);   // name -> number (successful only; the returned map)
   const memo = Object.create(null);       // name -> number | undefined (incl. failures) — null-proto, or `'constructor' in memo` short-circuits to the Object function
   const stack = [];
@@ -7715,6 +7782,14 @@ function resolveVarDefs(defs, pickVals, order) {
     has: (_, k) => typeof k === 'string' && k.toLowerCase() in defs,
     get: (_, k) => resolve(String(k).toLowerCase()),
   });
+  const scopeOf = name => {
+    const ps = propScopes?.[name];
+    if (!ps || !Object.keys(ps).length) return proxy;
+    return new Proxy({}, {
+      has: (_, k) => typeof k === 'string' && (k.toLowerCase() in ps || k.toLowerCase() in defs),
+      get: (_, k) => { const l = String(k).toLowerCase(); return l in ps ? ps[l] : resolve(l); },
+    });
+  };
   function resolve(name) {
     if (name in memo) return memo[name];
     // Random pick: return the frozen rolled value. The grammar engine ran at
@@ -7736,7 +7811,7 @@ function resolveVarDefs(defs, pickVals, order) {
       return undefined;
     }
     stack.push(name);
-    const val = evalMath(defs[name], proxy);
+    const val = evalMath(defs[name], scopeOf(name));
     stack.pop();
     const ok = val !== null && isFinite(val) && !cycles.has(name);
     memo[name] = ok ? val : undefined;
@@ -8925,14 +9000,6 @@ function rollParsed(terms) {
   return { total, parts };
 }
 
-// Canonical expression string, e.g. "4d6-2+5d12"
-function diceExprStr(terms) {
-  return terms.map((t, i) => {
-    const op = t.sign < 0 ? '-' : (i === 0 ? '' : '+');
-    return op + (t.kind === 'dice' ? `${t.count}d${t.sides}` : `${t.value}`);
-  }).join('');
-}
-
 function diceKey() { return 'r' + Math.random().toString(36).slice(2, 9); }
 
 // #1243 opposed rolls. Split "A vs B" into its two dice-expression sides at the top level. Exactly
@@ -9726,7 +9793,7 @@ function arityPhrase(expr) {
 function unknownUnitPhrase(expr) {
   const m = /#ERR_UNIT_([A-Za-z][\w]*)/.exec(String(expr || ''));
   return (m ? `a unit this document does not know, "${m[1]}"` : 'a unit this document does not know')
-    + '. Built-in units cover length, mass, volume and time; define your own with /units (File then Custom units),'
+    + '. Built-in units cover length, area, mass, volume and time; define your own with /units (File then Custom units),'
     + ' one per line and the base first, like "cp" then "gp = 100 cp"';
 }
 function mathReasonPhrase(why, expr) {
@@ -10455,7 +10522,7 @@ const BLOCK_CMDS = [
   { id:'journal', icon:'📖',  fa:'fa-solid fa-book',  keys:['daily','diary','today','log'], label:'Journal',    desc:'Open or create today\'s journal entry. Set a home point via the bullet menu.', ex:'/journal', section:'Organize' },
   { id:'variables', icon:'$', fa:'fa-solid fa-dollar-sign', label:'Variables panel', desc:'Open the Variables panel: every variable in the document with its live value.', ex:'/variables', section:'Organize' },
   { id:'builder', icon:'▤', fa:'fa-solid fa-list-check', keys:['commands','palette','browse','insert','build','menu'], label:'All commands', desc:'Open All commands: search and insert any point command, generator, or pill from one place. Also on the toolbar and Ctrl/Cmd+K.', ex:'/builder', section:'Organize' },
-  { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, mass, volume and time units already work.', ex:'/units', section:'Organize' },
+  { id:'units', icon:'⚖', fa:'', keys:['unit','convert','define','custom','measure'], label:'Custom units', desc:'Define your own units (coins, tokens, anything), then convert with {= convert(x, from, to)} or @convert. Built-in length, area, mass, volume and time units already work.', ex:'/units', section:'Organize' },
 ];
 
 // State entries for the / menu, generated per sequence (default + declared) so a
@@ -10581,7 +10648,7 @@ const INSERT_CMDS = [
   { id:'sequence', icon:'⇶',  fa:'fa-solid fa-list-check',  keys:['state','status','workflow','kanban','stages'], label:'Sequence',     desc:'Declare a custom state set for points; states right of the | count as done. Add a second | for a held (blocked) band, like DOING | BLOCKED | SHIPPED. Type {seq Flow: BACKLOG DOING | SHIPPED} to declare one inline, then apply states via /.', ex:'{seq Flow: BACKLOG DOING | SHIPPED}', section:'Organize' },
   { id:'query', icon:'🔍',  fa:'fa-solid fa-magnifying-glass',  keys:['search','find','filter'], label:'Query',        desc:'A live embedded search: lists the points matching a search, updating as the document changes. Type {query: is:todo | due:week} to write one inline.', ex:'{query: is:todo}', section:'Organize' },
   { id:'count', icon:'🔢',  fa:'fa-solid fa-magnifying-glass',  keys:['howmany','number','total','tag','occurrences'], label:'Count',        desc:'A live number: how many points match a search, updating as the document changes. The search can be a #tag, an is:todo flag, or any filter: {count: #idea} counts every point tagged #idea (how many times that theme comes up), {count: is:todo} counts open tasks. Type it inline.', ex:'{count: #idea} · {count: is:todo}', section:'Organize' },
-  { id:'convert', icon:'⇄',  fa:'fa-solid fa-arrow-right-arrow-left', keys:['unit','units','measure','km','mi','kg','lb','ml','minutes'], label:'Convert units', desc:'Convert a value between units (length, mass, volume, time, or your own). Inserts a live {= convert()} pill. Define custom units with /units.', ex:'{= convert(10, km, mi)}', section:'Compute' },
+  { id:'convert', icon:'⇄',  fa:'fa-solid fa-arrow-right-arrow-left', keys:['unit','units','measure','km','mi','kg','lb','ml','minutes','area','acre'], label:'Convert units', desc:'Convert a value between units (length, area, mass, volume, time, or your own). Inserts a live {= convert()} pill. Define custom units with /units.', ex:'{= convert(10, km, mi)}', section:'Compute' },
 ];
 
 // Inline formatting — decorate a SELECTION. Lives on the selection toolbar.
@@ -15215,7 +15282,7 @@ function buildPropsArea(node) {
     // #1317: a formula-valued property ("cost: 60 * 3.50") shows its computed RESULT like a math pill,
     // not the raw formula, so a line value both reads as a number and rolls up. Reserved keys are skipped.
     if (!DATE_KEYS.has(propK) && propK !== 'when' && propK !== 'date' && propK !== ALIAS_KEY && propK !== REPEAT_KEY) {
-      const ev = propExprValue(val);
+      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row
       if (ev !== null) { displayVal = formatNumDisplay(ev, null); chip.classList.add('prop-computed'); chip.title = `${val} = ${displayVal}. Click to edit`; chip.setAttribute('aria-label', `${key}: ${displayVal} (from ${val}). Click to edit properties`); }
     }
     if (!chip.title) chip.title = 'Edit properties';
@@ -15396,7 +15463,6 @@ function openPropsDialog(nodeId, targets = null) {
   _shell.wireDraft(
     () => ({ rows: JSON.stringify(props) }),
     v => { try { const r = JSON.parse(v.rows); if (Array.isArray(r) && r.length) props = r; } catch (_) {} });
-  const _cancelProps = _shell.close;
 
   function renderRows(focusLast = false) {
     list.innerHTML = '';
@@ -15478,7 +15544,6 @@ function openPropsDialog(nodeId, targets = null) {
     { key: 'cancel', role: 'dismiss', label: 'Cancel' },
     { key: 'save', role: 'commit', label: 'Save', onClick: () => save() },
   ]);
-  const cancelBtn = _shell.btns.cancel, saveBtn = _shell.btns.save;
 
   function save() {
     const cleaned = props.map(p => ({ key: p.key.trim(), val: p.val.trim() })).filter(p => p.key);
@@ -16097,7 +16162,6 @@ function openDueDateDialog(nodeId, targets = null) {
     { key: 'cancel', role: 'dismiss', label: 'Cancel' },
     { key: 'save', role: 'commit', label: 'Save', onClick: () => save() },
   ]);
-  const cancelBtn = _shell.btns.cancel, saveBtn = _shell.btns.save;
 
   function save() {
     // #1506: each refusal leads with the OUTCOME ("Not saved"), then the same sentence the field
@@ -16800,7 +16864,7 @@ function openAppearanceDialog() {
   root.appearance = root.appearance || { tags: {}, props: {} };
   const ap = root.appearance;
   // UXP-247: the shell supplies the in-place-rebuild signal that used to be this dialog's private
-  // `_apprFresh`. This dialog re-renders itself after every swatch/icon commit, and `freshOnly`
+  // `_apprFresh` local. This dialog re-renders itself after every swatch/icon commit, and `freshOnly`
   // tells the shell that a draft may be restored on a FIRST open only — restoring mid-rebuild would
   // push a stale name over the input being typed into.
   const _shell = openDialogShell({
@@ -16810,7 +16874,6 @@ function openAppearanceDialog() {
     // lookups, not stored state, so the seeds are blank and "matches" reduces to "was anything typed"
     seeds: { tag: '', prop: '' }, freshOnly: true,
   });
-  const _apprFresh = _shell.fresh;
 
   const commit = (msg) => { markDirty(); render(); if (msg) flashHint(msg); openAppearanceDialog(); };
 
@@ -16897,12 +16960,10 @@ function openAppearanceDialog() {
   _shell.wireDraft(
     () => ({ tag: tagIn.value, prop: propIn.value }),
     v => { tagIn.value = v.tag ?? ''; propIn.value = v.prop ?? ''; });   // freshOnly gates this
-  const _cancelAppr = _shell.close;
 
   // A settings surface: no submit, so Close is the only button. It is the DISMISS role, which is
   // why it can carry the shell's `close` and keep the typed lookup on the way out.
   _shell.mountFooter([{ key: 'close', role: 'dismiss', label: 'Close' }]);
-  const closeBtn = _shell.btns.close;
   // #464 review #1: after an in-place rebuild, return focus to the section the user was acting in
   // (not always the Tag input), so configuring several properties in a row doesn't jump to the top.
   requestAnimationFrame(() => (_apprFocus === 'prop' ? propIn : tagIn).focus());
@@ -17995,7 +18056,6 @@ function renderCaptureStrip({ keepFocus = false } = {}) {
   if (!strip) return;
   const hadFocus = keepFocus && strip.contains(document.activeElement) && document.activeElement.id !== 'cap-input';
   strip.innerHTML = '';
-  const slots = root.inboxes || [];
   // #1517: read through the SHARED destination, so the name on the chip is the place the commit
   // will use. `null` here means "the top level", which is what the copy below says.
   const landing = captureDest();
@@ -19522,6 +19582,12 @@ function queryHits(expr, rootNode, hostId, ctxRoot = rootNode) {
 function pickOneHit(hits) {
   return hits.length ? hits[Math.floor(srand() * hits.length)] : '';   // #1243: a roll picks on-action -> session-seeded
 }
+// #1659: {roll N: …} deals N DISTINCT hits (no repeats), capped at the pool, joined the way a
+// counted shuffle deal joins. N = 1 is exactly pickOneHit, so the plain roll's draw is unchanged.
+function dealHits(hits, n = 1) {
+  if (n <= 1) return pickOneHit(hits);
+  return shuffledIndices(hits.length, srand).slice(0, n).map(i => hits[i]).join(' ');
+}
 
 // #899: the FOLDER-scoped pool behind {roll folder: <query>} — the generative member of the 4c
 // family, joining queryReduceFolder (the reducers) and queryRowsFolder (the query pill). Same
@@ -19574,15 +19640,7 @@ function queryTableRows(expr, cols, rootNode, hostId, cap = 100) {
     if (f === 'title') return `[[#${n.id}]]`;
     if (f[0] === '=') {
       const src = f.slice(1).trim();
-      const scope = Object.assign(Object.create(null), vars, nodePropVars(n));
-      // date-shaped props join the scope as epoch-day numbers (nodePropVars skips
-      // them since they are not numeric), so daysuntil(due) and due - today compute
-      for (const p of (n.props || [])) {
-        const k = (p.key || '').trim().toLowerCase();
-        if (!k || k in scope) continue;
-        const d = parseDueDate(String(p.val ?? ''));
-        if (d !== null) scope[k] = d;
-      }
+      const scope = Object.assign(Object.create(null), vars, nodePropVars(n));   // dates join as epoch-days (#1657)
       const v = evalMath(expandAggExpr(src, n), scope);
       return v === null ? '#ERR' : formatMathDisplay(v, src);
     }
@@ -20528,6 +20586,8 @@ function classifyBraceBody(body, rules, vars) {
   // (Unlike `seq`, there is no shred to close here: `seqParts` accepts comma-separated items, so
   // `{shuffle: a, b | c}` parses and stays a real pill. Verified, not assumed.)
   if (/^shuffle\s*:/i.test(body)) return 'invalid';
+  // #1659: a counted shuffle ({shuffle 3: …}), and any deck whose list is one search, are attempts too
+  if (/^shuffle\s+\d{1,2}\s*:/i.test(body) || deckSearchHint(body)) return 'invalid';
   if (/^markov\s*:/i.test(body)) return 'invalid';
   // #1538: a family name with a colon ({deck: a | b | c}) is an attempt at a deck, not a pick
   // between "deck: a" and "b". Saying so here is what keeps it off the alternation line below.
@@ -20563,7 +20623,7 @@ function classifyBraceBody(body, rules, vars) {
   // UXP-253 parity: query/count/roll committed to their keyword (opened with `verb:`) but the tail did
   // not parse — an ATTEMPT, not prose. Without this a `{count: }` / `{query:}` / `{roll: }` (empty or
   // malformed tail) fell through to 'literal' and leaked its raw braces into rendered prose with no cue.
-  if (/^(?:query|count|roll)\s*:/i.test(body)) return 'invalid';
+  if (/^(?:query|count|roll(?:\s+\d+)?(?:\s+folder)?)\s*:/i.test(body)) return 'invalid';
   // {oracle: likely} — the band name is a closed set, so an unknown band is an ATTEMPT
   // (typo styling), not prose; the text still stays literal on exit (#543, the #407 model).
   if (/^oracle\s*:/i.test(body)) return oracleParts(body) ? 'artifact' : 'invalid';
@@ -20894,7 +20954,9 @@ function braceAttemptReason(body, rules, vars) {
   if (/^meter\s*:/i.test(body)) return 'A meter reads a value over its max: try {meter: hp/hpmax} or {meter: 8/12}.';
   // {shuffle|cycle|once|stopping: <bad list>}. #1591: each mode in its own words (#1505's rule). This
   // sent all four to {shuffle: …}, which nobody heard while only shuffle could be called an attempt.
-  const deckMode = /^(shuffle|cycle|once|stopping)\s*:/i.exec(body);
+  const dsh = deckSearchHint(body);
+  if (dsh) return dsh;
+  const deckMode = /^(shuffle|cycle|once|stopping)(?:\s+\d{1,2})?\s*:/i.exec(body);
   if (deckMode) return EMPTY_STUB_FORM[deckMode[1].toLowerCase()];
   // {markov: <no arrows>}
   if (/^markov\s*:/i.test(body)) return 'A markov chain links states with arrows: try {markov: a→b, b→c}.';
@@ -20923,13 +20985,6 @@ function braceAttemptReason(body, rules, vars) {
     return 'This looks like a dice roll but could not be read. Try a form like 2d6 or d20+3.';
   }
   return 'This looks like a pill but could not be created. Check the syntax, or wrap it in backticks to keep it as text.';
-}
-
-// Would a {body} promote to an artifact pill on exit? (Thin doc-context wrapper —
-// see classifyBraceBody. Now also catches the bodies that used to style as valid
-// but fail promotion, e.g. {2d6kh} or {= 2*}: those classify 'invalid', not true.)
-function braceWouldPromote(body) {
-  return classifyBraceBody(body, collectRules(), collectVars()) === 'artifact';
 }
 
 // What pill type will a valid {body} become? Returns [pillType, detail|null].
@@ -21005,7 +21060,7 @@ function braceTypeLabel(body, rules, vars) {
 // would promote to a pill (or was unfolded from an existing artifact) in a
 // .gr-src span so it reads as editable grammar text.
 // unfoldedSet: optional Set of {sh} strings from the current unfold session —
-// always highlighted even if braceWouldPromote returns false (e.g. {color} when
+// always highlighted even if classifyBraceBody says it would not promote (e.g. {color} when
 // the rule isn't defined yet in this document).
 function highlightGrammarText(str, unfoldedSet) {
   let out = '', run = '', i = 0;
@@ -21061,7 +21116,7 @@ function anchorEditInlines(html) {
 function editModeHTML(node) {
   const TOKEN_RE = /(\[\[(dice|markov|math|var|grammar|seq|est|query):([a-z0-9]+)\]\])/gi;
   // Build a set of shorthands that were unfolded from existing artifacts — always
-  // styled as .gr-src even if braceWouldPromote returns false (e.g. {color} when
+  // styled as .gr-src even if classifyBraceBody says it would not promote (e.g. {color} when
   // the rule isn't currently defined in the document).
   const unfolded = _unfoldData.get(node);
   const unfoldedSet = unfolded?.length ? new Set(unfolded.map(u => u.sh)) : null;
@@ -22445,8 +22500,51 @@ function buildSelTb() {
   fnIc.title = 'Convert to footnote';
   fnIc.addEventListener('mousedown', e => { e.preventDefault(); convertToFootnote(); });
   selTb.appendChild(fnIc);
+  selTb.querySelectorAll('.cmd-icon').forEach((el, i) => { el.id = 'seltb-opt-' + i; });
 }
 buildSelTb();
+
+// #1542: the toolbar's keyboard door. Alt+F10 from the caret roves the icons the way the { picker
+// roves its rows: focus and the selection stay in the point (aria-activedescendant), so every
+// action still reads the live selection, and Enter/Space dispatch the icon's own mousedown, as
+// #bpop does. Any other key leaves the toolbar and does its usual job.
+let selTbKbd = null;   // { host, idx } while the toolbar owns the arrows
+// Pure: what one key does to the toolbar. null = not ours; {to} = rove; {run} = activate the
+// icon at that index; {exit} = leave the toolbar (pass: and let the key act as it normally would).
+function selTbKey(e, active, count) {
+  if (!count) return null;
+  const mod = e.ctrlKey || e.metaKey || e.altKey || e.shiftKey;
+  if (active == null) return e.key === 'F10' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey ? { to: 0 } : null;
+  if (mod) return { exit: true, pass: true };
+  if (e.key === 'Escape') return { exit: true };
+  if (e.key === 'Enter' || e.key === ' ') return { run: active };
+  if (!/^(Arrow(Left|Right|Up|Down)|Home|End)$/.test(e.key)) return { exit: true, pass: true };
+  return { to: roveIndex(e.key, active, count) ?? active };   // null at an end: hold, never let it collapse the selection
+}
+const selTbItems = () => [...selTb.querySelectorAll('.cmd-icon')].filter(el => el.offsetParent);   // the footnote icon hides in cells
+function setSelTbActive(items, i) {
+  const host = selTbKbd?.host || document.activeElement;
+  selTbKbd = { host, idx: i };
+  items.forEach((el, j) => el.classList.toggle('kb-active', j === i));
+  host?.setAttribute('aria-activedescendant', items[i].id);
+}
+function endSelTbKbd() {
+  if (!selTbKbd) return;
+  selTb.querySelectorAll('.kb-active').forEach(el => el.classList.remove('kb-active'));
+  if (selTbKbd.host?.getAttribute('aria-activedescendant')?.startsWith('seltb-opt-')) selTbKbd.host.removeAttribute('aria-activedescendant');
+  selTbKbd = null;
+}
+// capture phase: ahead of the point's own Enter (new point) and Escape (leave the point)
+document.addEventListener('keydown', e => {
+  const items = selTb.classList.contains('on') ? selTbItems() : [];
+  const step = selTbKey(e, selTbKbd ? selTbKbd.idx : null, items.length);
+  if (!step) return;
+  if (step.pass) { endSelTbKbd(); return; }
+  e.preventDefault(); e.stopPropagation();
+  if (step.exit) endSelTbKbd();
+  else if (step.run != null) { endSelTbKbd(); items[step.run].dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); }
+  else setSelTbActive(items, step.to);
+}, true);
 
 document.getElementById('nsb-copy').addEventListener('click', copySelection);
 document.getElementById('nsb-export-md').addEventListener('click', exportSelectionToMarkdown);
@@ -22993,7 +23091,7 @@ function updateSelToolbar() {
     selTb.style.top = (above < tbH + 4 ? rect.bottom + 8 : above) + 'px';
   });
 }
-function hideSelTb() { selTb.classList.remove('on'); }
+function hideSelTb() { endSelTbKbd(); selTb.classList.remove('on'); }
 document.addEventListener('selectionchange', updateSelToolbar);
 document.addEventListener('mousedown', e => {
   if (!e.target.closest('#sel-tb')) hideSelTb();
@@ -24179,7 +24277,7 @@ function checkSlash(content, nodeId, opts) {
   // when the query is empty, so the "no matches -> hide" branch below can never fire for it.
   if (slashOffset !== 0 && !rawQuery && !(opts && opts.force)) { hideSlashMenu(); return; }
   if (m[2] === '/' && slashOffset !== 0 && nodeById(nodeId)?.type === 'para') { hideSlashMenu(); return; }
-  const { word, query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
+  const { query, hasArg, rawArg, matchWord } = parseSlashQuery(rawQuery, trigger);
   const pool = trigger === '@' ? INSERT_CMDS : blockCmdsPool();
   // "start" is an alias of the single "due" (Schedule) command so /start:VALUE has a
   // menu door too; the actual key (due vs start) is read from the query at apply time.
@@ -24308,7 +24406,7 @@ const leanSlashTip = document.getElementById('lean-slash-tip');
 let _leanSlashSaid = null;
 function renderLeanSlashTip() {
   if (!slashState || !leanSlashTip) return;
-  const { matches, activeIdx, content, slashOffset, trigger } = slashState;
+  const { matches, activeIdx, content, slashOffset } = slashState;
   const cmd = matches[activeIdx];
   if (!cmd) { leanSlashTip.classList.remove('on'); return; }
   const pos = activeIdx + 1, total = matches.length;
@@ -25867,7 +25965,7 @@ function openInsertDialog(opts) {
     { key: 'cancel', role: 'dismiss', label: 'Cancel' },
     { key: 'ok', role: 'commit', label: opts.submitLabel || 'Insert', onClick: () => submit() },
   ]);
-  const cancelBtn = _shell.btns.cancel, okBtn = _shell.btns.ok;
+  const okBtn = _shell.btns.ok;
 
   // GUIDE entry below the dialog form when nested in the builder
   if (isNested && _dialogGuideCmd) {
@@ -26903,6 +27001,7 @@ function resolveField(base, field, ctx) {
 // a top-level `:`), so it is disjoint from conditionals (which carry a comparison
 // before the `:`) and from plain alternation (which has no mode keyword).
 const SEQ_MODES = ['shuffle', 'cycle', 'once', 'stopping'];
+const DECK_SEARCH_RE = /^(?:#[\w-]|(?:is|has):)/i;   // #1659: a list item that is really a search
 
 // Parse a {mode: a | b | c} body → {mode, items, count} or null. The FIRST top-level `:`
 // splits the mode from the items (an item may itself contain a `:`); items split
@@ -26925,7 +27024,20 @@ function seqParts(body) {
   if (count < 1 || (count !== 1 && mode !== 'shuffle')) return null;
   const rest = body.slice(segs[0].length + 1);
   const items = splitTopLevel(rest, '|').map(s => s.trim()).filter(s => s !== '');
+  if (items.length === 1 && DECK_SEARCH_RE.test(items[0])) return null;   // #1659: a search, see deckSearchHint
   return items.length ? { mode, items, count } : null;
+}
+// #1659: a deck whose whole list is ONE search ({shuffle 3: #history}) used to become a one-card deck
+// dealing the literal word "#history", a silent wrong success. A deck deals a list you type; a roll is
+// the verb that reads your points. Returns the coaching sentence (naming the {roll N: …} that does it),
+// or null when the body is not that shape. Pure.
+function deckSearchHint(body) {
+  const m = /^(shuffle|cycle|once|stopping)(?:\s+(\d{1,2}))?\s*:(.*)$/is.exec((body || '').trim());
+  if (!m) return null;
+  const q = m[3].trim();
+  if (!DECK_SEARCH_RE.test(q) || splitTopLevel(q, '|').length > 1) return null;
+  const n = m[2] && parseInt(m[2], 10) > 1 ? ' ' + parseInt(m[2], 10) : '';
+  return 'A ' + m[1].toLowerCase() + ' deals from a list you type, not a search. To draw points that match, try {roll' + n + ': ' + q + '}.';
 }
 
 // A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests can seed it). `rng`
@@ -27047,13 +27159,12 @@ function resolveBrace(body, ctx) {
   if (rlp) {
     // #899: `{roll folder: …}` draws from the whole reading set instead. hostId still excludes the
     // pill's own point on both paths, so a roll can never draw itself.
-    const picked = rlp.folder
-      ? pickFromQueryFolder(rlp.expr, cookieNode ? cookieNode.id : null)
-      : pickFromQuery(rlp.expr, root, cookieNode ? cookieNode.id : null, root);
+    const hostId = cookieNode ? cookieNode.id : null;
+    const picked = dealHits(rlp.folder ? queryHitsFolder(rlp.expr, hostId) : queryHits(rlp.expr, root, hostId, root), rlp.count);
     // The marker keeps its shape: it is inline TEXT inside the point, so a full sentence does not
     // belong here. renderGrammarPill turns it into the pill's tooltip instead (UXP-232). It echoes
     // the modifier so the marker reads back as the source that made it.
-    return picked || `{roll${rlp.folder ? ' folder' : ''}: ${rlp.expr}?}`;
+    return picked || `{roll${rlp.count > 1 ? ' ' + rlp.count : ''}${rlp.folder ? ' folder' : ''}: ${rlp.expr}?}`;
   }
   const cp = condParts(body);
   if (cp) {
@@ -27317,7 +27428,7 @@ function depsChanged(deps, vars) {
 // Returns the expanded string, or null if the definition is malformed / origin
 // rule is missing. When `depsOut` (a plain object) is given, the vars map is
 // wrapped in recordVarReads so the caller receives the expansion's input
-// snapshot (#827 item 5) — omitted by previews and expandText, so recording
+// snapshot (#827 item 5) — omitted by previews, so recording
 // costs nothing outside the freeze paths.
 function runGrammar(def, origin, docRules = null, vars = null, depsOut = null) {
   const parsed = parseRules(def);
@@ -27327,13 +27438,6 @@ function runGrammar(def, origin, docRules = null, vars = null, depsOut = null) {
   if (!rules[start]) return null;
   const baseVars = vars || collectVars();
   return expandRule(start, { rules, vars: depsOut ? recordVarReads(baseVars, depsOut) : baseVars, depth: 0, stack: [] });
-}
-
-// Expand a plain string's {…} against document-wide rules + variables. Used by
-// any artifact that wants composition (e.g. roll-table entries that roll dice or
-// call rules). A bare string with no braces comes back unchanged.
-function expandText(str) {
-  return expandTemplate(str || '', { rules: collectRules(), vars: collectVars(), depth: 0, stack: [] });
 }
 
 // Expand a random-pick variable's source ONCE against the document namespace.
@@ -29215,7 +29319,7 @@ function renderGrammarPill(key, g) {
   // would silently lose its reason and fall back to the confidently wrong "Nothing matched yet".
   let badFilter = '';
   if (emptyMark) {
-    const rm = /\{\s*roll(?:\s+folder)?\s*:([^{}]*)\}/i.exec(g.def || '');
+    const rm = /\{\s*roll(?:\s+\d{1,2})?(?:\s+folder)?\s*:([^{}]*)\}/i.exec(g.def || '');
     if (rm) {
       const probs = searchTermProblems(parseSearchQuery(rm[1].trim()), { states: [...knownStates()] });
       if (probs.length) badFilter = probs[0].message;
@@ -29235,7 +29339,7 @@ function renderGrammarPill(key, g) {
   // reading set is a folder of one. Say so, the way the query pill does (query-folder-off): sniff
   // the SOURCE (the isYesNoOracle content-sniff pattern, so typed and dialog-made rolls read alike)
   // and name both the scope and its staleness in the tip and the aria-label together (P3).
-  const rollSrcM = /\{\s*(roll(?:\s+folder)?\s*:[^{}]*)\}/i.exec(g.def || '');
+  const rollSrcM = /\{\s*(roll(?:\s+\d{1,2})?(?:\s+folder)?\s*:[^{}]*)\}/i.exec(g.def || '');
   const folderRoll = !!(rollSrcM && rollParts(rollSrcM[1])?.folder);
   const folderLive = folderRoll && !!workspaceIndex?.roots;
   const scopeTip = !folderRoll ? '' : folderLive
@@ -32611,7 +32715,9 @@ function renderVarPill(key, v) {
   }
   const cyclic   = _varCycles.has((v.name || '').toLowerCase());
   const shadowed = _varShadowedKeys.has(key);
-  const fresh    = cyclic ? null : evalMath(v.expr, (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap);   // #767: positional
+  const declVars = (renderPosVarMap && renderPosVarMap.get(key)) || renderVarMap;   // #767: positional
+  // #1657: a declaration reads its point's own + ancestor props, as a {= } pill beside it does
+  const fresh    = cyclic ? null : evalMath(v.expr, cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), declVars) : declVars);
   const display  = fresh !== null ? formatMathResult(fresh) : (cyclic ? '↻' : '?');
   let cls = 'var-pill';
   if (cyclic)   cls += ' var-cycle';
@@ -33048,6 +33154,7 @@ function propKeyChips() {
 }
 
 function openMathDialog({ title, submitLabel, expr = '', existing = null, node = null, bare = false, fmt = null, onResult }) {
+  const saveScope = () => node ? resolveNodeScope(node, ancestorsOf(node), collectVars()) : collectVars();   // #1657
   // #946: assemble a fmt from the dialog's three format fields (or null) — thousands separators are
   // the default, so an ordinary pill needs none of these.
   const fmtOf = all => all ? parseNumFmt(all.decimals, all.prefix, all.suffix, all.sigfigs) : null;
@@ -33068,19 +33175,20 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         // (second arg) so the preview pill matches how it will render (value-only + number format).
         preview: (v, all) => {
           if (!v) return '';
-          const vars = collectVars();
-          const r = evalMath(expandAggExpr(v, node), vars); // node → sum/avg/count(prop) preview against real children
+          const vars = pillScopeAt(node, existing, collectVars());   // #1657: the pill's scope, props and position included
+          const r = evalMath(expandAggExpr(v, node, vars), vars); // node → sum/avg/count(prop) preview against real children
           if (r === null) {
-            const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node), vars), expandAggExpr(v, node));
+            const phrase = mathReasonPhrase(mathErrorReason(expandAggExpr(v, node, vars), vars, _varCycles, collectVars()), expandAggExpr(v, node, vars));   // doc-wide map: names "declared later" as the pill does
             return `<span class="io-preview-bad">Invalid expression${phrase ? ': ' + phrase : ''}</span>`;
           }
           const f = fmtOf(all);
-          const save = cookieNode; cookieNode = node; // so the preview pill's own aggregation resolves too
+          const save = cookieNode, saveVars = renderVarMap; cookieNode = node; // so the preview pill's own aggregation resolves too
+          renderVarMap = pillVarsAt(node, existing, renderVarMap);   // #1657: and its recompute reads the same positional vars
           // #1181: `{ preview: true }` strips the pill's interactive chrome. Without it this preview
           // carried a role="button" pencil and a "Click to edit the formula or number format." title,
           // both inert, inside the very dialog that click would have opened.
           try { return renderMathPill('preview', { key:'preview', expr:v, result:formatMathDisplay(r, v, f), bare: !!(all && all.bare), fmt: f }, { preview: true }); }
-          finally { cookieNode = save; }
+          finally { cookieNode = save; renderVarMap = saveVars; }
         },
       },
       {
@@ -33119,10 +33227,12 @@ function openMathDialog({ title, submitLabel, expr = '', existing = null, node =
         placeholder: 'e.g. kg or %',
       },
     ],
-    validate: v => evalMath(expandAggExpr(v.expr, node), collectVars()) !== null,
+    // Save accepts what typing {= …} promotes (makeBraceArtifact's scope: doc-wide vars + props), so a
+    // formula ahead of its declaration saves and then reads "declared later", as the typed one does.
+    validate: v => { const vars = saveScope(); return evalMath(expandAggExpr(v.expr, node, vars), vars) !== null; },
     onSubmit: v => {
-      const vars = collectVars();
-      const r = evalMath(expandAggExpr(v.expr, node), vars);
+      const vars = saveScope();
+      const r = evalMath(expandAggExpr(v.expr, node, vars), vars);
       if (r === null) return;
       const roll = { key: existing || mathKey(), expr: v.expr, result: formatMathResult(r) };
       if (v.bare) roll.bare = true;   // absent unless on, so ordinary records stay lean
@@ -33188,7 +33298,8 @@ function rerollMath(node, key, _opts = {}) {
   m.rolled = freezeDiceInExpr(m.expr);
   markDirty();
   repaintNodeContent(node);
-  const v = evalMath(expandAggExpr(m.rolled, node), resolveNodeScope(node, ancestorsOf(node), collectVars()));
+  const sc = pillScopeAt(node, key, collectVars());
+  const v = evalMath(expandAggExpr(m.rolled, node, sc), sc);
   if (v !== null && Number.isFinite(v)) announce(m.expr + ' is now ' + formatMathResult(v));
 }
 function editMath(node, key) {
@@ -33421,7 +33532,7 @@ function openVarDialog({ title, submitLabel, name = '', expr = '', kind = undefi
   // setMode() below rewrites this button's text (the D2 two-verb rule: a random-pick var creates
   // with "Roll", a formula var with its submitLabel), which is exactly why the shell hands the
   // element back rather than owning the label.
-  const cancelBtn = _shell.btns.cancel, okBtn = _shell.btns.ok;
+  const okBtn = _shell.btns.ok;
 
   function valid() {
     const nm = nameInp.value.trim(), ex = exprInp.value.trim();
@@ -33987,8 +34098,20 @@ function bodyVocab(nodeId, braceStart) {
 // menu taught names and values the pill would not use (P1). Computed once per completion
 // session via the bodyVocab cache, never per keystroke.
 function completionScopeVars(nodeId) {
-  const node = nodeById(nodeId);
-  return node ? resolveNodeScope(node, ancestorsOf(node), varMapAt(node)) : collectVars();
+  return pillScopeAt(nodeById(nodeId), null, collectVars());
+}
+// #1657: THE scope a pill at `node` evaluates against, as renderMathPill composes it: the
+// variables visible at that pill's position (renderPosVarMaps per key, else varMapAt) with own +
+// ancestor props on top. The edit dialog, the exports and the completion menu read it here, so
+// none can show a value the pill does not (a later declaration read as 130 beside an #ERR pill).
+// A node outside the live index (a foreign doc, a detached preview) gets `fallback` unchanged.
+function pillVarsAt(node, key, fallback) {
+  if (!node || nodeById(node.id) !== node) return fallback;
+  return (key != null && renderPosVarMaps(node)?.get(key)) || varMapAt(node);
+}
+function pillScopeAt(node, key, fallback) {
+  const vars = pillVarsAt(node, key, fallback);
+  return vars === fallback ? fallback : resolveNodeScope(node, ancestorsOf(node), vars);
 }
 // Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 // (fragStart RELATIVE to the char after `{`) for a recognized completing lead — matches
@@ -36421,7 +36544,7 @@ function pickerRefusedMessage(what, fallback) {
 // searchQuery/searchQueryLC/searchTerms · undoStack/redoStack ·
 // autosaveDisabled · storageWarnState · _checkVerdicts.
 // App-wide prefs NOT touched (they survive a swap): showDone · showNotes ·
-// forcedTheme · fullWidth · accentId · agendaBars · agendaShowRunning ·
+// forcedTheme · fullWidth · accentId · agendaView · agendaShowRunning ·
 // agendaShowDone.
 function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null, workspaceFile: wf = null, restoreFocusId = null } = {}) {
   // Cancel any pending debounced autosave from the OUTGOING doc. The timer closure reads
@@ -37552,7 +37675,6 @@ function scanReparseList(present, cache) {
 // different file). getFile() is a metadata read (lastModified/size); only .text() reads content.
 let _wsScanCache = new Map();   // name -> {lastModified, size, state, docId?, root?}
 let _wsScanDir = null;
-let _wsLastScanReparsed = 0;    // instrumentation: files actually re-parsed on the last scan
 async function scanWorkspace(dir) {
   if (dir !== _wsScanDir) { _wsScanCache = new Map(); _wsScanDir = dir; }
   const present = [], fileByName = new Map();
@@ -37564,7 +37686,6 @@ async function scanWorkspace(dir) {
     } catch (_) { /* skip a file that vanished mid-scan */ }
   }
   const reparse = new Set(scanReparseList(present, _wsScanCache));
-  _wsLastScanReparsed = reparse.size;
   const next = new Map();       // the fresh cache — exactly the present set, so deletions drop out
   for (const { name, lastModified, size } of present) {
     if (!reparse.has(name)) { next.set(name, _wsScanCache.get(name)); continue; }   // unchanged → reuse
@@ -37658,7 +37779,7 @@ async function switchWorkspaceDoc(name) {
   // doc NOW and write it directly to ITS OWN handle before adopting, awaited so it lands.
   if (workspaceFile && dirty) {
     clearTimeout(autosaveTimer);          // stop the debounce firing against the new doc
-    const outHandle = workspaceFile, outName = fileName;
+    const outName = fileName;
     const outOpml = withFoldedActive(() => toOpml(root));
     try {
       await safeWriteOpml(workspaceDir, outName, outOpml);   // atomic write to the outgoing file
@@ -38366,10 +38487,12 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
   }
   if (type === 'math') {
     const m = node.math?.find(x => x.key === key); if (!m) return '';
-    const fresh = evalMath(expandAggExpr(m.expr, node), varMap);   // node → subtree aggregation freezes to its computed value
+    const scope = rootNode === root ? pillScopeAt(node, key, varMap) : varMap;   // #1657: the pill's own scope
+    const fresh = evalMath(expandAggExpr(m.gen ? (m.rolled || m.expr) : m.expr, node, scope), scope);   // node → subtree aggregation freezes to its computed value
     // #946: export the SHOWN value (grouping + any per-pill format), so a lossy snapshot reads like
     // the pill ("$1,200.00"), matching what was on screen. Export is one-way, so grouping is safe here.
-    return fresh !== null ? formatMathDisplay(fresh, m.expr, m.fmt) : m.result;
+    // a live document freezes a failing pill to what the pill shows (#ERR, UXP-34), never its stale last-good value
+    return fresh !== null ? formatMathDisplay(fresh, m.expr, m.fmt) : rootNode === root ? '#ERR' : m.result;
   }
   // var: "name = value" for defining pills, or just "value" for display-only
   const rec = node.vars?.find(x => x.key === key);
@@ -38398,7 +38521,9 @@ function frozenTokenText(type, key, node, varMap, rootNode = root, proseExport =
     const body = `${v.leftTotal} vs ${v.rightTotal} · ${verdict ? verdict.marginLabel : ''}`.trim();
     return (rec.name && !prose) ? `${rec.name} = ${body}` : body;
   }
-  const val = varMap[(rec.name || '').toLowerCase()];
+  // #1657: positional, as the pill. A reference reads the vars at its token; a declaration reads its point's map
+  // (its own value resolved there, props included). A foreign doc keeps the document-wide map.
+  const val = (rootNode === root ? pillVarsAt(node, rec.expr ? null : key, varMap) : varMap)[(rec.name || '').toLowerCase()];
   const valStr = val !== undefined ? formatVarValue(val) : '?';
   return (rec.expr && !prose) ? `${rec.name} = ${valStr}` : valStr;
 }
@@ -38813,7 +38938,7 @@ function sectionToCsvRows(node, states) {
     const val = k => {
       const p = (c.props || []).find(x => (x.key || '').trim().toLowerCase() === k.toLowerCase());
       if (!p) return '';
-      const ev = propExprValue(p.val);            // #1317: freeze a formula property to its computed value in the CSV
+      const ev = propExprValue(p.val, rowPropVars(c));   // #1317/#1656: freeze a formula property to its computed value in the CSV
       return ev !== null ? String(ev) : p.val;
     };
     rows.push([auditTitle(c.text), ...keys.map(val)]);
@@ -41663,7 +41788,6 @@ let agendaOpen = false;
 // (a single switcher, not additive stacked bars): '' = List only, or 'week'|'month'|
 // 'timeline'. Clicking the active view again returns to List-only.
 let agendaView = '';
-let agendaBars = { timeline: false, calendar: false };  // legacy (persisted) — migrated to agendaView on load
 let agendaShowRunning = true;   // List: bottom row visible by default
 let agendaShowDone = false;     // completed dated points hidden by default
 let agendaOverdueOnly = false;  // focus filter: when on, every view shows only overdue items
@@ -42501,7 +42625,6 @@ function renderAgendaCalendar(host, visible, totalDated) {
     else { ich.setAttribute('aria-hidden', 'true'); ich.style.pointerEvents = 'none'; }
     return ich;
   };
-  const mkItem = (it) => mkChip(it, { nav: true });
   // Fill ONE month grid from `anchor`. `side` (prev/next) months are display-only: their
   // cells aren't focusable and a whole-month click switches to that month.
   function paintMonth(gridEl, anchor, side) {
@@ -43683,7 +43806,6 @@ document.getElementById('btn-rolllog-tb')?.addEventListener('click', toggleRollL
 // Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
 // leaves the menu open, so the user can try each tier and watch the app change behind the dialog.
 // The keyboard cycle (⌘⇧.) still works; both paths converge on setVerbosity so the card stays in sync.
-const VERBOSITY_NAMES = { guided: 'Guided', standard: 'Standard', lean: 'Lean' };
 function syncVerbosityCard() {
   document.querySelectorAll('#fm-verbosity-card .fm-choice').forEach(el => {
     const on = el.dataset.tier === verbosity;
@@ -43841,7 +43963,7 @@ function buildToolbarChooser() {
   const host = document.getElementById('fm-toolbar-opts');
   if (!host) return;
   host.innerHTML = '';
-  let _dragSrc = null, _dragEl = null, _dragY = 0;
+  let _dragEl = null, _dragY = 0;
 
   const commitOrder = () => {
     const rows = [...host.querySelectorAll('.cmd-item')];
@@ -43871,7 +43993,6 @@ function buildToolbarChooser() {
       grip.addEventListener('pointerdown', e => {
         e.preventDefault();
         e.stopPropagation();
-        _dragSrc = f;
         _dragEl = row;
         row.classList.add('tfr-dragging');
         grip.setPointerCapture(e.pointerId);
@@ -43904,11 +44025,11 @@ function buildToolbarChooser() {
             commitOrder();
           }
         }
-        _dragSrc = null; _dragEl = null;
+        _dragEl = null;
       });
       grip.addEventListener('pointercancel', () => {
         if (_dragEl) _dragEl.classList.remove('tfr-dragging');
-        _dragSrc = null; _dragEl = null;
+        _dragEl = null;
       });
 
       row.appendChild(grip);
@@ -44400,6 +44521,7 @@ const GUIDE = [
   { id:'edit-capn',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+1–0`],         essLabel:'Capture to inbox 1–10 (empty slot adopts the current point)' },
   { id:'edit-setinbox',essential:true, essSection:'Edit', keys:[`${MOD}+Alt+1–0`],       essLabel:'Set current point as inbox 1–10' },
   { id:'edit-format', essential:true, essSection:'Edit', keys:[`${MOD}+B`,`${MOD}+I`,`${MOD}+U`], essLabel:'Bold / italic / underline the selection' },
+  { id:'edit-seltb',  essential:true, essSection:'Edit', keys:['Alt+F10'],             essLabel:'Reach the selection toolbar (every format, link and footnote)' },
   { id:'edit-task',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+X`],           essLabel:'Add or tick a to-do on this line' },
   { id:'edit-state',   essential:true, essSection:'Edit', keys:[`${MOD}+⇧+S`],           essLabel:'Cycle to-do state (this point, or the whole selection)' },
   { id:'edit-prio',    essential:true, essSection:'Edit', keys:[`${MOD}+⇧+P`],           essLabel:'Cycle to-do priority (this point, or the whole selection)' },
@@ -44638,7 +44760,7 @@ const GUIDE = [
     ] },
   { id:'inline-md', cat:'writing',
     title:'Styling text',
-    body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you.",
+    body:"Format text to make key words stand out, mark something as code, highlight a phrase for review or drop in a clickable link to a source, all without leaving the document. Wrap words in the marks below to apply the style; they work on any line of any point, including headings and quotes. Or select some text and press Ctrl/Cmd+B, I or U to wrap it in bold, italic or underline for you. Every style, plus link and footnote, is also on the toolbar that appears over a selection; press Alt+F10 to reach it from the keyboard, the arrow keys to pick, and Enter to apply.",
     related:['point-types','footnotes','secret','image-size','deflist'],
     examples:[
       { syn:'**bold** or __bold__',     desc:'bold' },
@@ -44814,7 +44936,7 @@ const GUIDE = [
     ] },
   { id:'properties', cat:'todos', covers:['prop'],
     title:'Properties',
-    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, the point's own metadata, shown as a small pill below the point. Type `/prop:owner=zeo` to set one inline, or `/prop` to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again.\n\nTo add several at once (a character stat block, a set of line items), paste a list of `key: value` lines into the key field of the editor and each line becomes a property. Search by them with `has:key` to find every point that has a property, or `key:value` to match an exact one; to match a value that has spaces, quote it, like `area:\"Home Renovation\"` (a quoted value matches any value that contains it). Child properties feed the roll-up totals.\n\nA property's value can be a small calculation of its own: write `{prop cost: 60 * 3.50}` and the pill shows 210, computed, while still being an ordinary cost property that totals. So a line whose price is a small calculation (quantity times unit price, hours times a rate) stays one thing that both reads as its result and rolls up, instead of a separate math pill the total cannot see.",
+    body:"Tag a point with structured facts (an owner, a status, a cost, a category) so you can filter and total by them later. Each property is a key and a value, the point's own metadata, shown as a small pill below the point. Type `/prop:owner=zeo` to set one inline, or `/prop` to fill in the blanks, or open a point's menu and choose Add property for the full editor. Click any property pill to edit it again.\n\nTo add several at once (a character stat block, a set of line items), paste a list of `key: value` lines into the key field of the editor and each line becomes a property. Search by them with `has:key` to find every point that has a property, or `key:value` to match an exact one; to match a value that has spaces, quote it, like `area:\"Home Renovation\"` (a quoted value matches any value that contains it). Child properties feed the roll-up totals.\n\nA property's value can be a small calculation of its own: write `{prop cost: 60 * 3.50}` and the pill shows 210, computed, while still being an ordinary cost property that totals. So a line whose price is a small calculation (quantity times unit price, hours times a rate) stays one thing that both reads as its result and rolls up, instead of a separate math pill the total cannot see. The calculation can use the point's other properties too: on a fuel stop with `{prop gal: 100}` and `{prop ppg: 4}`, `{prop cost: gal * ppg}` shows 400 and totals like any cost.",
     related:['check','rollups','hashtags','recipe-budget','addrow'],
     examples:[
       { syn:'/prop:owner=zeo',     desc:'set a property inline, no dialog' },
@@ -45058,6 +45180,7 @@ const GUIDE = [
       { syn:'{roll: #npc}',             desc:'a random point tagged #npc, anywhere' },
       { syn:'{who := {roll: #npc}}',    desc:'freeze one pick; {who} stays put, click to re-roll' },
       { syn:'{roll folder: #npc}',      desc:'draw from every document in the connected folder' },
+      { syn:'{roll 3: #history}',       desc:'deal three different matching points at once, no repeats' },
     ] },
   { id:'roll-palette', cat:'generators',
     title:'Roll menu (touch)',
@@ -46191,12 +46314,23 @@ function inferRowShape(siblings, states) {
   const vals = new Map();   // prop key → the value seen on each row (one entry per row that carries it)
   for (const n of rows) {
     const here = new Map();
-    for (const k of dataPropKeys(n)) if (!here.has(k))
-      here.set(k, String((n.props.find(p => p && p.key === k) || {}).val ?? ''));
+    for (const k of dataPropKeys(n)) if (!here.has(k)) {
+      const raw = String((n.props.find(p => p && p.key === k) || {}).val ?? '');
+      const ev = propExprValue(raw, rowPropVars(n));   // #1656: a row formula (gal * ppg) types as its number
+      here.set(k, ev !== null ? String(ev) : raw);
+    }
     for (const [k, v] of here) { if (!vals.has(k)) vals.set(k, []); vals.get(k).push(v); }
   }
   const props = [];
-  for (const [key, vs] of vals) if (vs.length === rows.length) props.push({ key, type: inferPropType(vs) });
+  for (const [key, vs] of vals) {
+    const type = inferPropType(vs);
+    if (vs.length === rows.length) props.push({ key, type });
+    // #1658: a ticket's parts and labour lines each carry their own number, so neither was on EVERY
+    // row and the section lost every door. A number on 2+ rows is a column (the same 2+ this function
+    // already asks of rows; sum() skips a row without it); a text key stays every-row, so a stray note
+    // never becomes a field.
+    else if (type === 'number' && vs.length >= 2) props.push({ key, type, sparse: true });
+  }
   const todo = rows.every(n => rowIsTodo(n.text, states));
   if (!sharedTags.length && !props.length && !todo) return null;
   return { sharedTags, props, todo };
@@ -46212,6 +46346,7 @@ function buildRow(shape, values, textValue) {
   for (const t of (shape.sharedTags || [])) s += ' #' + t;
   for (const p of (shape.props || [])) {
     const v = String(vals[p.key] == null ? '' : vals[p.key]).trim();
+    if (p.sparse && !v) continue;   // #1658: a labour line leaves the parts column out, as its siblings do
     s += p.type === 'date' ? ` {date ${p.key}: ${v}}` : ` {prop ${p.key}: ${v}}`;
   }
   return s;
@@ -46269,7 +46404,9 @@ function deckCardText(card, answer) {
 // at-rest chrome). The visible "+ Add" affordance (phase 1b) and a /-verb call straight into this; here it
 // is reachable via openAddRowForm(headingId) for the live-drive. No new syntax — buildRow emits existing forms.
 function rowNoun(contextNode, shape) {
-  let t = String((contextNode && contextNode.text) || '').replace(/^#+\s*/, '');
+  // #1658: the DISPLAYED text (pills resolved, markers gone), never node.text: a `{= sum(honey)}` on the
+  // heading titled the dialog, toast and aria-label `Hives [[math:xi05zdeb]] kg` (the #1526 family).
+  let t = contextNode ? displayText(contextNode) : '';
   t = t.replace(ROW_TAG_RE, '').replace(/\s*\[[\/%xX \-]\]\s*$/, '').trim();
   if (t) return t;
   const tags = (shape && shape.sharedTags) || [];
@@ -46398,6 +46535,13 @@ function refreshRowChrome(nodeId) {
   maybeAddRowAffordance(node, row); maybeAddFieldAffordance(node, row); maybeAddCardAffordance(node, row);
 }
 
+// #1658: may a door WRITE onto `node`? Not onto the document root: the top-level view renders no
+// title for it, so + Total wrote a sum into text nobody sees ("Totalling honey", no total, P4). A
+// zoomed point shows its text as the masthead, and a row shows its own, so only the root is out.
+function doorWritesShow(node, rootNode = root) {
+  return !!node && node !== rootNode;
+}
+
 // ── #1240 phase 4: the doors of the point you are LOOKING AT ─────────────────────────────────
 // DOM-free. Every "+ Add" / "+ Total" / "+ Check" / "+ Variance" door hangs off its parent's
 // rendered row. The point you are looking AT — the document root, or the point you zoomed into —
@@ -46430,7 +46574,7 @@ function renderViewDoors(vp, container, opts = {}) {
   if (!host) return null;
   const bar = document.createElement('div');
   bar.className = 'view-doors';
-  maybeAddRowAffordance(host, bar);
+  maybeAddRowAffordance(host, bar, { noWrite: !doorWritesShow(host) });
   maybeAddFieldAffordance(host, bar);
   maybeAddCardAffordance(host, bar);
   if (!bar.children.length) return null;   // earned no doors — add no bar
@@ -46438,8 +46582,9 @@ function renderViewDoors(vp, container, opts = {}) {
   // says which point they act on (P3: the control must be self-describing out of row context).
   bar.setAttribute('role', 'group');
   // The heading markers are syntax, not the name of the thing — a screen reader saying "Add to
-  // hash hash Groceries" is the marker leaking into speech. stripMd leaves them, so drop them here.
-  const title = stripMd(String(host.text || '').replace(/^\s*#{1,6}\s+/, '')).trim();
+  // hash hash Groceries" is the marker leaking into speech. #1658: displayText drops them AND
+  // resolves a pill to its value, where stripMd left a glyph and a raw token leaked.
+  const title = displayText(host);
   bar.setAttribute('aria-label', 'Add to ' + (title || 'this document'));
   container.appendChild(bar);
   return bar;
@@ -46460,7 +46605,7 @@ function refreshViewDoors() {
   if (bar && anchor) container.insertBefore(bar, anchor);
 }
 
-function maybeAddRowAffordance(node, row) {
+function maybeAddRowAffordance(node, row, opts = {}) {
   // A section heading — derived from the TEXT, not node.type: a `## Groceries` point renders as an H2 via
   // the content markdown while its node.type stays 'ul', so deriveTypeFromText is the reliable check.
   const isHeading = /^h[1-6]$/.test(deriveTypeFromText(node.text) || '');
@@ -46505,6 +46650,10 @@ function maybeAddRowAffordance(node, row) {
                          : () => openAddRowForm(node.id);
   mkAff('+ Add', 'Add to ' + noun, onAdd);
   fireNudge('addrow-affordance', 'Tip: the + Add on a section grows the list without typing tags or braces');
+  // #1658: every door below WRITES onto `node` (a sum, a check, a variance). Where its text is never
+  // rendered (the document root) the result would be invisible, so the door stays (P2) but refuses
+  // with the way out instead of a "Totalling" toast over nothing (P4).
+  const writes = fn => opts.noWrite ? () => flashHint('The top of a document has no line to show this on. Indent these points under a heading first.') : fn;
   // #1281: "add up a column here" — the panel's #1 wall. When the flat rows carry a number property, a
   // point-and-click door totals that column with a child-scoped {= sum(KEY)} (correct on THIS heading, no
   // scope recall, no braces typed). One number column -> "+ Total"; several -> one door each. Skip a
@@ -46514,35 +46663,35 @@ function maybeAddRowAffordance(node, row) {
   // ponytail: prefix collision (cost vs costume) at worst hides a duplicate door; harmless.
   for (const key of numKeys) {
     if (summed(key)) continue;
-    mkAff(numKeys.length === 1 ? '+ Total' : '+ Total ' + key, 'Total the ' + key + ' column', () => {
+    mkAff(numKeys.length === 1 ? '+ Total' : '+ Total ' + key, 'Total the ' + key + ' column', writes(() => {
       node.text = node.text.replace(/\s+$/, '') + ' {= sum(' + key + ')}';
       promoteLoadedShorthand(node);      // {= sum(KEY)} -> a live math pill, the load path's promoter
       buildIndex(root, null); markDirty(); render();
       flashHint('Totalling ' + key);
-    });
+    }));
   }
   // #1281 check door — the sum/CHECK half of the wall (panel #1284, "trust the numbers"). One "+ Check"
   // on the first number column opens the check dialog with the scary part already written (sum(KEY) <= ),
   // so the user supplies only the limit; the check then flags the heading when the column crosses it.
   // Skipped when the heading already carries a check, so the door never fights an existing one.
   if (numKeys.length && !checkExprOf(node)) {
-    mkAff('+ Check', 'Add a check on the ' + numKeys[0] + ' column', () => openCheckDialog(node.id, null, 'sum(' + numKeys[0] + ') <= '));
+    mkAff('+ Check', 'Add a check on the ' + numKeys[0] + ' column', writes(() => openCheckDialog(node.id, null, 'sum(' + numKeys[0] + ') <= ')));
   }
   // #1312 variance door (panel re-run, Fiona at adopt): quote-vs-actual. On a section with EXACTLY two
   // number columns, one click writes the over/under with no hand-authoring: a per-row {= B - A} (a
   // property is a variable, so each row reads its own two numbers) and a total {= sum(B) - sum(A)} on the
   // heading. Columns in document order are A (e.g. quote) then B (e.g. actual), so a positive result is
   // over. Skipped once a variance (any `- sum(` on the heading) exists, so the door never doubles up.
-  if (numKeys.length === 2 && !(node.math || []).some(m => /-\s*sum\(/.test(String(m.expr || '')))) {
+  if (numKeys.length === 2 && !shape.props.some(p => p.sparse) && !(node.math || []).some(m => /-\s*sum\(/.test(String(m.expr || '')))) {
     const [a, b] = numKeys;
     const has = (c, k) => (c.props || []).some(p => (p.key || '').trim().toLowerCase() === k.toLowerCase());
-    mkAff('+ Variance', 'Add the ' + b + ' minus ' + a + ' variance (over or under)', () => {
+    mkAff('+ Variance', 'Add the ' + b + ' minus ' + a + ' variance (over or under)', writes(() => {
       for (const c of node.children) if (has(c, a) && has(c, b)) { c.text = c.text.replace(/\s+$/, '') + ' {= ' + b + ' - ' + a + '}'; promoteLoadedShorthand(c); }
       node.text = node.text.replace(/\s+$/, '') + ' {= sum(' + b + ') - sum(' + a + ')}';
       promoteLoadedShorthand(node);
       buildIndex(root, null); markDirty(); render();
       flashHint('Added ' + b + ' minus ' + a + ' variance');
-    });
+    }));
   }
 }
 // #1240 phase 3 DOM half: append a card to a deck record + re-render (round-trips to the shuffle shorthand).
@@ -47569,6 +47718,8 @@ document.addEventListener('keydown', e => {
 // - autosave disabled with no OPFS fallback: memory is the only copy
 // Plain default-mode autosave (OPFS/localStorage) survives a reload, so it needs no warning.
 window.addEventListener('beforeunload', e => { if (unsavedToDisk()) { e.preventDefault(); e.returnValue=''; } });
+// #1661: an open point shows its {…} source, so commit it before printing; paper gets the values.
+window.addEventListener('beforeprint', () => { if (document.activeElement?.dataset?.editing) document.activeElement.blur(); });
 
 // keep body padding in sync with the fixed top chrome: the toolbar (breadcrumb changes its height)
 // PLUS the #storage-warn banner while it shows. Banners push the outline down, never overlap it

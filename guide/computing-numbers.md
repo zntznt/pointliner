@@ -278,7 +278,9 @@ You can also build any of these from the **`@` → Variable** dialog if you pref
 
 A point's own numeric **properties** are visible to its math pills by their key. Give a point a
 `STR: 14` property and a `{= STR + 2}` pill on that same point reads **16**, no separate `{STR := …}`
-declaration needed.
+declaration needed. A variable declared on the point sees them too: `{bonus := STR - 10}` reads **4**.
+A date property (`due`, `start`, or your own `delivered: 2026-11-20`) joins as a date, so
+`{= daysuntil(due)}` and `{= asdate(delivered + 30)}` compute on the point that carries it.
 
 Properties also **inherit down the document**. A pill reads any numeric property set on an **ancestor**
 point, so you can put shared values on a parent and use them in the children:
@@ -293,7 +295,7 @@ The **nearest** value wins: a point's own property overrides the same key on an 
 nearer ancestor overrides a farther one. So a scene with its own `STR: 20` reads **22**, not 16.
 
 This is the natural way to keep a character sheet, a per-section config or any set of values that a
-subtree should share. Only numbers inherit, and only *down* the tree; a value on a sibling or a child
+subtree should share. Only numbers and dates inherit, and only *down* the tree; a value on a sibling or a child
 is not in scope.
 
 **Order does not matter.** You can write the formula first and supply the value afterwards. A
@@ -728,8 +730,9 @@ A Markdown table can carry a spreadsheet-style formula line, Org-mode style:
 ```
 
 The `#+TBLFM:` line computes the column and is hidden in the rendered table. For richer
-spreadsheet-like grids, the **`/base`** command makes an interactive base. (Tables are a deeper
-topic; this is just the pointer.)
+spreadsheet-like grids, the **`/base`** command makes an interactive base, with a **Calculate** total
+row and column and cell formulas from each column's menu; see
+[formulas and totals in a base](writing-and-formatting.md#formulas-and-totals-in-a-base).
 
 ---
 

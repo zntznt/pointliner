@@ -3287,7 +3287,7 @@ test('#1499 an oracle keeps its own words through the authoring cycle, and a han
 test('#1500 convert() names the failure it actually had, on the pill and in the repair dialog', { skip: skip() }, async () => {
   const pg = await fresh();
   const CASES = [
-    { src: 'convert(12, m2, ft2)',   reason: 'unknown unit',   says: /a unit this document does not know, "m2"/ },
+    { src: 'convert(12, m3, ft3)',   reason: 'unknown unit',   says: /a unit this document does not know, "m3"/ },
     { src: 'convert(10, blorp, kg)', reason: 'unknown unit',   says: /a unit this document does not know, "blorp"/ },
     { src: 'convert(10, km, kg)',    reason: 'convert',        says: /different kinds of units/ },
     { src: 'convert(budgt, km, m)',  reason: 'convert amount', says: /amount is not a number/ },
@@ -9252,6 +9252,105 @@ test('#1592 dragging a toolbar chooser row moves it one down into the last slot,
     await drag(2, 0);
     const up = [down[2], down[0], down[1], ...down.slice(3)];
     assert.deepEqual(await order(), { dom: up, saved: up }, 'dragging upward still lands on the target slot');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
+// #1661: Ctrl+P printed the app (toolbar, help button, tip toast, "+ Add", "New point", the open
+// point's edit tint and its raw {…} source). Headless Chromium cannot open a print dialog, so this
+// fires the browser's own beforeprint and then renders with print media, which is what the dialog
+// does. Identity, not existence: the ONLY top-level element left showing is the outline.
+test('#1661 printing shows only the outline, with no doors and the open point committed to values', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await pg.evaluate(() => adoptDoc(fromOpml(STARTERS[0].opml), { fileName: 'unsaved' }));
+    await pg.waitForTimeout(400);
+    const id = await pg.evaluate(() => [...document.querySelectorAll('.node-content[data-id]')]
+      .find(c => nodeById(c.dataset.id)?.text.startsWith('Open tasks left')).dataset.id);
+    await pg.click(`.node-content[data-id="${id}"]`);
+    await pg.waitForTimeout(200);
+    assert.ok(await pg.evaluate(i => document.querySelector(`.node-content[data-id="${i}"]`).dataset.editing, id),
+      'precondition: the pill point is open, showing its source');
+    await pg.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+    await pg.emulateMedia({ media: 'print' });
+    const r = await pg.evaluate(i => {
+      const shown = el => getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
+      const all = sel => [...document.querySelectorAll(sel)];
+      return {
+        top: [...document.body.children].filter(e => e.tagName !== 'SCRIPT' && shown(e) && e.getBoundingClientRect().height > 0).map(e => '#' + e.id),
+        doors: nonEmptyList(all('#outline .addrow-affordance, #outline .ghost-row, #outline .has-children>.node-row>.collapse-btn')).filter(shown).length,
+        editing: all('[data-editing]').length,
+        text: document.querySelector(`.node-content[data-id="${i}"]`).textContent,
+      };
+      function nonEmptyList(l) { if (!l.length) throw new Error('no doors rendered: the check would be vacuous'); return l; }
+    }, id);
+    assert.deepEqual(r.top, ['#outline'], 'only the document prints');
+    assert.equal(r.doors, 0, 'no + Add, New point or fold arrow on paper');
+    assert.equal(r.editing, 0, 'beforeprint committed the open point');
+    assert.ok(!r.text.includes('{') && /\d/.test(r.text), `the pill prints its value, got ${JSON.stringify(r.text)}`);
+    await pg.emulateMedia({ media: 'screen' });
+    assert.ok(await pg.evaluate(() => getComputedStyle(document.getElementById('toolbar')).display !== 'none'), 'the screen still has its toolbar');
+    assert.deepEqual(pageErrors, []);
+  } finally { await pg.close(); }
+});
+
+// #1542: five of the selection toolbar's nine actions (code, strikethrough, highlight, link,
+// footnote) had no keyboard path: its icons act on mousedown and nothing moved focus to them.
+// Alt+F10 from the caret now roves the toolbar while focus and the selection stay in the point.
+test('#1542 Alt+F10 reaches the selection toolbar, and Enter, Space and Escape do what they say', { skip: skip() }, async () => {
+  const pg = await fresh();
+  try {
+    await blankWithCaret(pg);
+    await pg.keyboard.type('Buy milk now', { delay: 12 });
+    const select = async () => {
+      await pg.keyboard.press('End');
+      for (let i = 0; i < 3; i++) await pg.keyboard.press('Shift+ArrowLeft');
+      await pg.waitForTimeout(250);
+      assert.ok(await pg.evaluate(() => document.getElementById('sel-tb').classList.contains('on')),
+        'precondition: an intentional selection shows the toolbar');
+    };
+    const state = () => pg.evaluate(() => {
+      const c = document.activeElement, id = c?.getAttribute('aria-activedescendant');
+      return { inPoint: !!c?.matches('.node-content[data-editing]'), label: id ? document.getElementById(id)?.getAttribute('aria-label') : null,
+        painted: [...document.querySelectorAll('#sel-tb .kb-active')].map(el => el.getAttribute('aria-label')),
+        sel: String(window.getSelection()), text: root.children[0].text };
+    });
+    // rove to the icon named `label` with ArrowRight, as a user reading the announcements would
+    const roveTo = async label => {
+      for (let i = 0; i < 12 && (await state()).label !== label; i++) await pg.keyboard.press('ArrowRight');
+      assert.equal((await state()).label, label, `ArrowRight reaches ${label}`);
+    };
+
+    await select();
+    await pg.keyboard.press('Alt+F10');
+    let s = await state();
+    assert.equal(s.inPoint, true, 'focus stays in the point, so the selection survives the excursion');
+    assert.equal(s.label, 'Bold', 'Alt+F10 lands on the first action');
+    assert.deepEqual(s.painted, ['Bold'], 'exactly the active icon is painted');
+    await pg.keyboard.press('ArrowLeft');
+    s = await state();
+    assert.deepEqual([s.label, s.sel], ['Bold', 'now'], 'ArrowLeft at the first icon holds and keeps the selection');
+    await roveTo('Strikethrough');
+    assert.equal((await state()).sel, 'now', 'roving moves no caret and drops no selection');
+    await pg.keyboard.press('Enter'); await pg.waitForTimeout(200);
+    s = await state();
+    assert.equal(s.text, 'Buy milk ~~now~~', 'Enter runs the active action, the same wrap the mouse gets');
+    assert.equal(s.label, null, 'and leaves the toolbar');
+
+    await pg.evaluate(() => { root.children[0].text = 'Buy milk now';
+      const c = document.querySelector('.node-content[data-editing]'); c.innerHTML = editModeHTML(root.children[0]); setCaretByOffset(c, 0); });
+    await select();
+    await pg.keyboard.press('Alt+F10'); await roveTo('Highlight');
+    await pg.keyboard.press(' '); await pg.waitForTimeout(200);
+    assert.equal((await state()).text, 'Buy milk ==now==', 'Space runs it too');
+
+    await pg.evaluate(() => { root.children[0].text = 'Buy milk now';
+      const c = document.querySelector('.node-content[data-editing]'); c.innerHTML = editModeHTML(root.children[0]); setCaretByOffset(c, 0); });
+    await select();
+    await pg.keyboard.press('Alt+F10'); await pg.keyboard.press('Escape'); await pg.waitForTimeout(200);
+    s = await state();
+    assert.deepEqual([s.inPoint, s.label, s.painted, s.sel, s.text], [true, null, [], 'now', 'Buy milk now'],
+      'Escape backs out of the toolbar only: still editing, selection kept, nothing applied');
     assert.deepEqual(pageErrors, []);
   } finally { await pg.close(); }
 });

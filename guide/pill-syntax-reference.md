@@ -51,7 +51,7 @@ Two things to know before the table:
 | `{= sum(cost)}` | rolls a property up the point's children (`sum`/`avg`/`count`/`min`/`max`), or a wider scope with a second argument (`sum(cost, subtree)`) | **doc** |
 | `{= sum("query", cost)}` | rolls a property up every point matching a search | **doc** |
 | `{= words(subtree)}` | counts words in this point and below (`subtree`/`self`/`children`; add `, notes` to count notes too) | **doc** |
-| `{= convert(2, km, mi)}` | converts between units (length, mass, volume and time are built in; you can declare your own) | self\* |
+| `{= convert(2, km, mi)}` | converts between units (length, area, mass, volume and time are built in; you can declare your own) | self\* |
 | `{name := expr}` | declares a variable (a formula, or a random pick frozen once) | doc |
 | `{name}` | reads a declared variable | **doc** |
 | `{row.field}`, `{base.row.field}` | reads a cell from a variable base (a table used as data) | **doc** |

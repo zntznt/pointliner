@@ -117,6 +117,63 @@ You are told when this happens: the message after the export names the variables
 counts any links that now point at something the copy does not contain. Move the declaration to a
 point you are keeping, or leave it out on purpose.
 
+## Importing points from a shared file
+
+When someone shares a Pointliner document with you, or you want to pull a piece of one document into
+another, use **File then Import points**. It adds the points to the end of your current document and
+leaves everything you already have untouched. This is the difference from **File then Open**, which
+replaces the whole document: Import only ever adds. Everything comes in live, so dice, calculations,
+oracles, decks and links keep working exactly as they did.
+
+It reads four formats, and detects which one you gave it, so you can also paste any of them into the
+box:
+
+- **A Pointliner `.opml` file** comes in exactly as it left.
+- **A Markdown (`.md`) file** is turned into points: headings become the outline's shape, bullets and
+  numbered lists nest by their indentation, checkboxes become to-dos, and quotes and footnotes carry
+  over.
+- **A spreadsheet** comes in as data: paste rows from Excel or Google Sheets, or open a `.csv`, and
+  each row becomes a point under one heading, with every column after the first attached as a
+  property. Numbers stay numbers even with a dollar sign or thousands commas, so you can click
+  **+ Total** on the heading to sum a column with no formula typed. You do not even need the dialog
+  for this: paste rows straight into the outline and they land the same way, and a toast tells you
+  so a single Undo backs it out if you wanted plain text.
+- **A BibTeX (`.bib`) bibliography** comes in as your sources: every entry becomes a point titled by
+  the work, with the citation kept as that point's footnote. The entry's key becomes the footnote's
+  name, so typing `[^ives2019]` on a claim points at the citation your `.bib` already holds. The key
+  and the year are kept as properties too, so a reading list sorts by year. The `@` menu's **Cite
+  footnote** row lists every source you have. This is not a reference manager: it writes no
+  bibliography, has no citation styles and reads the file once.
+
+You can also choose **several Markdown files at once**, which brings in a whole folder of linked
+notes (an Obsidian vault, say) as one document. Each file becomes its own section, a `[[Page]]` link
+becomes a live link to that section and a `![[Page]]` embed becomes a live mirror of it. A link to a
+page that was not among the files you chose is left as plain text.
+
+Anything Pointliner does not model yet (a page's frontmatter, a bibliography's macros) is kept as
+plain text and the toast tells you what was simplified, never a silent loss. Whatever the format, it
+lands below your current points and the view jumps to the first one that arrived. One Undo removes
+the whole import, and a file with no points in it is refused with a message.
+
+## Reusable packs
+
+Bundle the pieces of a whole game system, setting or adventure into one file you can share: grammar
+rules, variables and captured pieces of your document like a character sheet, an oracle or a thread
+deck. A pack is pure data, stored with the document, and never runs code; it adds only the same
+rules, variables and pills the engine already understands.
+
+- **Capture a working piece.** Build a character sheet, stat block or shuffle deck as ordinary
+  points, then choose **Add to a pack** from the point's bullet menu. The whole subtree, pills intact,
+  becomes a template in the pack, ready to stamp from the `/template` picker. A deck captured this
+  way keeps drawing without repeats; a deck typed as a pack rule just draws at random, because a
+  rule has no memory.
+- **Manage packs** in **File then Reusable packs**: create, enable, edit, import or export them, or
+  toggle one off without deleting it.
+- **Rules and variables.** Type grammar rules one per line (`npc: knight | rogue | mage`, callable as
+  `{npc}` anywhere) and variables. A variable is either a formula (`tax = 0.2`, which recomputes live)
+  or a random pick (`strength: 3d6`, rolled once when you save and then fixed, so a pack can ship a
+  rolled stat block).
+
 ## Taking your work elsewhere
 
 Your work is never trapped here. Whatever you write stays plain text you own, and there are three

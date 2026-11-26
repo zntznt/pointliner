@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2205 declarations in 158 sections across 17 domains.**
+**2210 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -123,8 +123,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `boardLanes` — boardLanes(model, groupBy, seqs, lastRow) — the board view's pure lane model
 - `nextLaneKw` — LEAN FLOOR phase 3: the next lane keyword for a keyboard board-card move. `states` is the sequence's
 - `calBaseItems` — calBaseItems(model, dateBy, lastRow) — the calendar view's pure item model
-- `BASE_ROWS_DEFAULT` — baseInlineView(collapsed, baseRows, totalDataRows, isZoomed) — the pure decision for
-- `baseInlineView`
+- `baseInlineView` — baseInlineView(collapsed, baseRows, totalDataRows, isZoomed) — the pure decision for
 - `keywordIsDone` — Done-ness, generalized: the keyword sits at-or-right-of its sequence's done split.
 - `keywordIsHeld` — UXP-158: held-ness (blocked), generalized: the keyword sits in the [heldFrom, doneFrom) band. A
 - `_statesCacheVer` — Every recognized state keyword (default + declared), uppercase. Cached on
@@ -185,13 +184,14 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 ## depth scope: the shared "how deep" vocabulary (UXP-159)
 
-- `SCOPE_TOKEN_RE` — One closed set of scope tokens, honored by every child-scoped rollup (property
-- `resolveScopeDepth`
+- `resolveScopeDepth` — One closed set of scope tokens, honored by every child-scoped rollup (property
 - `collectScoped` — Gather descendants of `node` down to `depth` levels (depth 1 = direct children,
 
 ## subtree aggregation: sum / avg / count over a child PROPERTY
 
 - `propExprValue` — A math pill may aggregate a named property over the point's DIRECT children —
+- `propScalar` — A non-formula property value as a number: plain, thousands-grouped, or a date (epoch-day). null otherwise.
+- `rowPropVars` — #1656 (the #1317 follow-up): the row's own properties as formula variables, so `cost: gal * ppg`
 - `childPropNumber`
 - `aggHasSkippedValues` — #809: does an aggregated property in `expr` skip a child's NON-EMPTY, non-numeric value?
 - `isAuditableAgg` — #1284 "explain this number": the audit behind a child-rollup pill (the panel's "trust the numbers").
@@ -492,7 +492,6 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `setDocSeed` — Set or clear the document session seed and re-seed the RNG. A number activates reproducible draws;
 - `rnd`
 - `rollParsed` — Roll a parsed term list into {total, parts} — parts keep individual roll chains.
-- `diceExprStr` — Canonical expression string, e.g. "4d6-2+5d12"
 - `diceKey`
 - `parseVersus` — #1243 opposed rolls. Split "A vs B" into its two dice-expression sides at the top level. Exactly
 - `versusKind` — A parsed dice term list is a success POOL when any term counts successes, else a SUM.
@@ -1112,6 +1111,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `pickFromQuery`
 - `queryHits` — #899: the POOL behind a roll, split out of pickFromQuery so the draw is testable without
 - `pickOneHit`
+- `dealHits` — #1659: {roll N: …} deals N DISTINCT hits (no repeats), capped at the pool, joined the way a
 - `queryHitsFolder` — #899: the FOLDER-scoped pool behind {roll folder: <query>} — the generative member of the 4c
 - `pickFromQueryFolder`
 - `queryTableRows` — queryTableRows(expr, cols, rootNode, hostId, cap) — the query-base row engine
@@ -1179,7 +1179,6 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `emptyStubAnnounce` — The sentence for an empty stub, or null if this body is not one. Pure; no DOM.
 - `braceAttemptAnnounce`
 - `braceAttemptReason`
-- `braceWouldPromote` — Would a {body} promote to an artifact pill on exit? (Thin doc-context wrapper —
 - `braceTypeLabel` — What pill type will a valid {body} become? Returns [pillType, detail|null].
 - `highlightGrammarText` — Escape a plain-text segment for edit mode, wrapping each top-level {…} that
 - `EDIT_ANCHOR` — A sentinel placed right after each ATOMIC pill span (contenteditable=false) in
@@ -1248,6 +1247,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `selTb`
 - `buildSelTb`
+- `selTbKbd` — #1542: the toolbar's keyboard door. Alt+F10 from the caret roves the icons the way the { picker
+- `selTbKey` — Pure: what one key does to the toolbar. null = not ours; {to} = rove; {run} = activate the
+- `selTbItems`
+- `setSelTbActive`
+- `endSelTbKbd`
 
 ## touch edit bar
 
@@ -1486,7 +1490,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## stateful sequences (decks / cycles)
 
 - `SEQ_MODES` — A {mode: a | b | c} brace whose leading `mode` keyword gives it MEMORY: a
+- `DECK_SEARCH_RE`
 - `seqParts` — Parse a {mode: a | b | c} body → {mode, items, count} or null. The FIRST top-level `:`
+- `deckSearchHint` — #1659: a deck whose whole list is ONE search ({shuffle 3: #history}) used to become a one-card deck
 - `shuffledIndices` — A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests can seed it). `rng`
 - `nextSeqIndex` — Advance a sequence record's state and return the index of the item to emit, or
 - `advanceSeq` — Advance a sequence and return its emitted text — the chosen item expanded
@@ -1498,7 +1504,6 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `recordVarReads` — A grammar pill freezes its expansion by design (a document must not rewrite
 - `depsChanged` — Has any recorded input changed since the freeze? `deps` is the roll-time
 - `runGrammar` — Run a grammar definition, merged with document-wide rules. Local rules win.
-- `expandText` — Expand a plain string's {…} against document-wide rules + variables. Used by
 - `rollPickSource` — Expand a random-pick variable's source ONCE against the document namespace.
 - `rollPickRecord` — #1243: roll a pick var's source into its stored shape. A contest source ("A vs B") rolls both
 - `_rulesCacheVer` — Document-wide rule map: walk the whole tree and merge into one namespace
@@ -1884,6 +1889,8 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `_bodyVocab` — Per-SESSION vocabulary cache for body completion. The input handler runs markDirty()
 - `bodyVocab`
 - `completionScopeVars` — The variable scope a {= …} / conditional body will actually resolve against: positional
+- `pillVarsAt` — #1657: THE scope a pill at `node` evaluates against, as renderMathPill composes it: the
+- `pillScopeAt`
 - `bodyCompletion` — Dispatch a {…} body to its stage-2 completion. Returns {prefix, fragStart, matches}
 - `checkBraceTrigger`
 - `BRACE_BROWSE_ROW` — The one row in the brace menu that does not insert text: it opens the full Pill picker. Offered
@@ -2139,7 +2146,6 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `scanReparseList` — §5.2 (cross-document-direction.md): which files a rescan must actually re-read + re-parse.
 - `_wsScanCache` — §5.2 incremental rescan. Still visits every file (so additions/deletions are always caught —
 - `_wsScanDir`
-- `_wsLastScanReparsed`
 - `scanWorkspace`
 - `refreshWorkspaceIndex` — Rebuild the index from the connected folder. Call (do NOT await — background) after any
 - `_wsOwnIdxAt` — §5.4: refresh-on-save — after a successful folder write of the CURRENT doc, fold its live
@@ -2386,7 +2392,6 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `agendaOpen`
 - `agendaView` — The extra view shown as a full-width bar below the always-present List. One at a time
-- `agendaBars`
 - `agendaShowRunning`
 - `agendaShowDone`
 - `agendaOverdueOnly`
@@ -2472,8 +2477,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `syncRollLogLabel` — #918: the roll-log on/off toggle. Sets state IN PLACE (no closeFileMenu) so it reads like the
 - `toggleRollLog`
 - `syncWebImagesToggle` — #1328: the per-document web-image control — the revocation half of the #1325 opt-in. The label names the
-- `VERBOSITY_NAMES` — Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
-- `syncVerbosityCard`
+- `syncVerbosityCard` — Guidance level is a 3-choice CARD (modes batch, item 4): picking a tier sets it IN PLACE and
 - `syncVerbosityStrip`
 - `caretKeepPlan` — #1521: the verbosity dial is a DISPLAY setting -- it changes which teaching aids show -- so it
 - `renderKeepingCaret`
@@ -2587,6 +2591,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openAddRowForm`
 - `affordanceDirtyIds` — #1240 phase 1b: the VISIBLE front door. On a heading whose children share a shape, append a "+ Add"
 - `refreshRowChrome` — The DOM half. Everything buildRow puts on a point OUTSIDE `.node-content` goes stale after a commit,
+- `doorWritesShow` — #1658: may a door WRITE onto `node`? Not onto the document root: the top-level view renders no
 
 ## #1240 phase 4: the doors of the point you are LOOKING AT
 

@@ -849,7 +849,7 @@ Implemented:
   elapsed `▶ Nd`), a **Timeline** Gantt chart (`agendaGantt` — range bars start→due, 1-day bars for
   deadline-only points, dashed open-ended bars for started-no-deadline, with a "today" line), and a
   month **Calendar** (`agendaMonthCells` over `calendarMonthGrid`, ‹ ›/Today nav, up to 3 chips/cell
-  then `+N`). Timeline and Calendar are independent toggles (persisted `agendaBars`). The two layout
+  then `+N`). Timeline and Calendar are one-at-a-time views (persisted `agendaView`; a legacy `agendaBars` migrates on load). The two layout
   models are **pure cores**, test-pinned. Search operators `due:`/`start:` take
   `today`/`overdue`/`<date`/`>date`, and **QX-2** added the forward relative windows
   `week`/`month` (`op:'window'`, matching today through today+7/+30 inclusive; a recorded

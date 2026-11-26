@@ -20,6 +20,15 @@
   ],
   "mutants": [
     {
+      "id": "roll-count-scope-sniff",
+      "suite": "unit",
+      "why": "the folder-scope tip reads the roll head out of g.def; a counted {roll 2 folder: ...} must still be read as a folder roll",
+      "file": "index.html",
+      "find": "const rollSrcM = /\\{\\s*(roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:[^{}]*)\\}/i.exec(g.def || '');",
+      "replace": "const rollSrcM = /\\{\\s*(roll(?:\\s+folder)?\\s*:[^{}]*)\\}/i.exec(g.def || '');",
+      "kills": "#1659 {roll N: "
+    },
+    {
       "id": "depth-tip-unwired",
       "suite": "unit",
       "why": "the core is tested and nothing calls it: a tested core proves nothing about its call site",
@@ -1095,7 +1104,7 @@
       "suite": "unit",
       "why": "naming the failure without the door leaves the reader stuck; /units was driven end to end before being cited, so the citation is the deliverable",
       "file": "index.html",
-      "find": "    + '. Built-in units cover length, mass, volume and time; define your own with /units (File then Custom units),'",
+      "find": "    + '. Built-in units cover length, area, mass, volume and time; define your own with /units (File then Custom units),'",
       "replace": "    + '.'.slice(0, 1) + ''",
       "kills": "each marker reaches its own reason"
     },
@@ -5157,6 +5166,74 @@
       "find": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok)}",
       "replace": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok,#3a9d5d)}",
       "kills": "#1590 palette hygiene"
-    }
+    },
+    {
+      "id": "prop-chip-drops-the-row",
+      "suite": "unit",
+      "why": "#1656: the chip evaluates a row formula with no row, so `cost: gal * ppg` shows the raw text while the total counts 400; a source-presence pin, so it needs a standing mutant",
+      "file": "index.html",
+      "find": "      const ev = propExprValue(val, rowPropVars(node));   // #1656: a row formula reads its own row",
+      "replace": "      const ev = propExprValue(val);",
+      "kills": "#1656 every row-formula reader"
+    },
+    {
+      "id": "print-allowlist-gone",
+      "suite": "unit",
+      "why": "#1661: without the top-level allowlist the toolbar, help button and toasts print again",
+      "file": "index.html",
+      "find": "  body>*:not(#outline),.ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "replace": "  .ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "kills": "#1661 the print stylesheet keeps only the outline"
+    },
+    {
+      "id": "print-hook-gone",
+      "suite": "unit",
+      "why": "#1661: without beforeprint the open point prints its {…} source instead of the pill value",
+      "file": "index.html",
+      "find": "window.addEventListener('beforeprint', () => { if (document.activeElement?.dataset?.editing) document.activeElement.blur(); });",
+      "replace": "window.addEventListener('beforeprint', () => {});",
+      "kills": "#1661 beforeprint commits an open point"
+    },
+    {
+      "id": "print-allowlist-gone-driven",
+      "suite": "browser",
+      "why": "#1661: the driven check sees the chrome on paper when the allowlist is dropped",
+      "file": "index.html",
+      "find": "  body>*:not(#outline),.ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "replace": "  .ghost-row,.addrow-affordance,.swipe-cue{display:none !important}",
+      "kills": "#1661 printing shows only the outline"
+    },
+    {
+      "id": "print-hook-gone-driven",
+      "suite": "browser",
+      "why": "#1661: the driven check sees the open point still editing on paper when beforeprint does nothing",
+      "file": "index.html",
+      "find": "window.addEventListener('beforeprint', () => { if (document.activeElement?.dataset?.editing) document.activeElement.blur(); });",
+      "replace": "window.addEventListener('beforeprint', () => {});",
+      "kills": "#1661 printing shows only the outline"
+    },
+    {
+      "id": "root-doors-write-again",
+      "suite": "unit",
+      "why": "#1658: the view bar stops gating the writing doors on doorWritesShow, so + Total writes into the invisible document root",
+      "file": "index.html",
+      "find": "maybeAddRowAffordance(host, bar, { noWrite: !doorWritesShow(host) });",
+      "replace": "maybeAddRowAffordance(host, bar, { noWrite: false });",
+      "kills": "#1658 doorWritesShow"
+    },
+    {
+      "id": "variance-pairs-sparse-columns",
+      "suite": "unit",
+      "why": "#1658: + Variance offered on two sparse columns that never share a row, writing a meaningless sum(b) - sum(a)",
+      "file": "index.html",
+      "find": "if (numKeys.length === 2 && !shape.props.some(p => p.sparse) && ",
+      "replace": "if (numKeys.length === 2 && ",
+      "kills": "#1658 inferRowShape: a sparse number column"
+    },
+    {"id": "seltb-door-bubble-phase", "suite": "unit", "why": "#1542: registered in the bubble phase, the point's own Enter splits it before the toolbar runs", "file": "index.html", "find": "  else setSelTbActive(items, step.to);\n}, true);", "replace": "  else setSelTbActive(items, step.to);\n});", "kills": "#1542 the toolbar door is wired"},
+    {"id": "seltb-hide-keeps-arrows", "suite": "unit", "why": "#1542: a hidden toolbar that keeps the roving state swallows the next arrow", "file": "index.html", "find": "function hideSelTb() { endSelTbKbd(); selTb", "replace": "function hideSelTb() { selTb", "kills": "#1542 the toolbar door is wired"},
+    {"id": "seltb-door-unwired", "suite": "browser", "why": "#1542: Alt+F10 no longer reaches the toolbar", "file": "index.html", "find": "  if (active == null) return e.key === 'F10' && e.altKey", "replace": "  if (active == null) return e.key === 'F11' && e.altKey", "kills": "#1542 Alt+F10 reaches the selection toolbar"},
+    {"id": "1657-dialog-preview-global", "suite": "unit", "why": "the preview pin asserts a call site is PRESENT; reverting the Edit expression preview to the doc-wide map must turn it red", "file": "index.html", "find": "const vars = pillScopeAt(node, existing, collectVars());   // #1657: the pill's scope, props and position included", "replace": "const vars = collectVars();   // #1657: the pill's scope, props and position included", "kills": "#1657 the var pill and the math dialog preview read the pill scope"},
+    {"id": "1657-var-pill-no-props", "suite": "unit", "why": "the declaration pill must keep reading its point's props; dropping them is the panel #8 'tot = ?'", "file": "index.html", "find": "evalMath(v.expr, cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), declVars) : declVars)", "replace": "evalMath(v.expr, declVars)", "kills": "#1657 the var pill and the math dialog preview read the pill scope"}
   ]
 }

@@ -167,7 +167,7 @@ export function loadCores() {
   }
 
   const need = [
-    'parseDice', 'rollParsed', 'diceExprStr', 'mathHasDice', 'freezeDiceInExpr', 'rollDiceTerm',
+    'parseDice', 'rollParsed', 'mathHasDice', 'freezeDiceInExpr', 'rollDiceTerm',
     'parseVersus', 'versusKind', 'rollVersus', 'versusSide', 'versusSideKind', 'versusValid', 'rollPickRecord', 'versusVerdict',   // #1243 opposed/margin rolls (contest cores; sides may be a roll, a constant, or a variable)
     'checkQuery',           // #1195: the query embedded in a check, for the reveal-offenders affordance
     'deepCloneNodeNewIds', '_cloneNodeNewIds', 'remapClonedLinks', 'uid',   // clone + internal-link remap
@@ -196,12 +196,13 @@ export function loadCores() {
     'bibDropsLatex', 'bibAuthorNames', 'bibYear', 'bibCitation',   // #1265 BibTeX bridge (.bib -> citations in the footnote store)
     'emptyExtremalProp','depthExtremalProp',   // #1449 a quoted-search min/max that matched nothing (identity, not a division)
     'aggregateVarBaseColumn',   // variable-base column totals (PR D)
-    'seqParts', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
+    'seqParts', 'deckSearchHint', 'dealHits', 'shuffledIndices', 'nextSeqIndex', 'advanceSeq', 'makeSeqGen', 'repeatParts',
     'templateParts', 'templateAttempt',   // #916 glue templates ({Ael|Bor}{ric|wyn} as one pill)
     'rollLogEntry', 'grammarLogSource',   // #918 roll-log line + grammar source label (pure)
     'rollLogHome', 'rollLogToggleMessage', 'rollLogFirstEntryMessage',   // UXP-245: the log's door + what it says
     'collectVars', 'orphanedVarRefCount', 'exprNamesVar', 'freezeOrphanNote', 'shadowedDeclKeys', 'toastGate', 'hintDwell', 'collectRules', 'collectLinks', 'collectBrokenLinks', 'tokenUnderCaret', 'linkCandidates', 'linkCreateOption',
     'renderPosVarMaps',   // #767 positional per-pill var maps
+    'pillScopeAt', 'pillVarsAt',   // #1657 the one scope a pill, its dialog and the exports read
     'graphModel', 'graphLayout', 'clampPositions', 'graphNodeLabel',   // #516 relationship graph pure cores
     'docGraphModel',                                                   // 4b: the doc-level folder graph
     'graphUnlinkedEdges', 'mergeUnlinkedEdges', 'matchableNodeNames',  // graph's unlinked (textual-match) edges
@@ -209,6 +210,7 @@ export function loadCores() {
     'timelineModel',   // #516 timeline pure core
     'overlayCountMessage',   // UXP-241: what a graph/timeline toggle announces after a re-render
     'roveIndex',   // UXP-240: shared roving-tabindex index math (clamping + group paging)
+    'selTbKey',    // #1542: what one key does to the selection toolbar's Alt+F10 roving
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'markdownToPoints',   // #1265 v1: Markdown import (the inverse of toMarkdown)
@@ -359,7 +361,7 @@ export function loadCores() {
 
     'toggleSavedSearch','isSavedSearch',
     'tallyMarkers','progressCount','formatProgressCookie','countHiddenDone',
-    'childPropNumber','propExprValue','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','childrenComputePillsNotProp','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
+    'childPropNumber','propExprValue','propScalar','rowPropVars','aggregateChildren','reduceAgg','queryReduce','queryReduceFolder','queryRowsFolder','wsAllDocRoots','expandAggExpr','mathPrepassErrs','firstEmptyRollup','childrenComputePillsNotProp','queryReducerLeaf','wordsScopeLeaf','countWords','subtreeWords',
     'parseUnitDecls','unitTable','normalizeUnits','convertUnits','splitArgsTopLevel','replaceConvert','unitsToText', // #875 units
     'convertFailKind','convertUnitErrToken','unknownUnitPhrase',   // #1500: WHICH of convert()'s four failures happened
     'resolveScopeDepth','collectScoped',
@@ -377,7 +379,7 @@ export function loadCores() {
     'collectChronicleDates',   // #652 chronicle (in-world game log) timeline source
     'normalizeCalendar','calYearLength','epochToCal','calToEpoch','calEraYear','calYearFromEra','calWeekdayName','calMonthName','calComponents','dueWindowDays',
     'addRowTarget',  // #1438: which list `/addrow` acts on from the caret
-    'viewDoorHost',   // #1240 phase 4: which node's doors the VIEW hosts
+    'viewDoorHost', 'doorWritesShow', 'rowNoun',   // #1240 phase 4: which node's doors the VIEW hosts
     'resolveCalendarId','normalizeCalendarBindings',   // #653 calendar coexistence (two-log slice)
     'evictPrevVersions',   // per-doc previous-version store eviction (bounded restore history)
     'updatePeers', 'peerHoldsDoc',   // #847: multi-tab presence bookkeeping (pure)
