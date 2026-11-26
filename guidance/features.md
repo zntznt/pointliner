@@ -672,7 +672,15 @@ Implemented:
   `buildTableWidget` renders it read-only through the one seam. Doors: `/querybase`
   (dialog with live count + column preview), the strip above the grid, and the base
   bullet menu's Edit query + frozen Copy as Markdown. `mtRecompute` and the raw-markdown
-  edit path are guarded off. **QX-6 added the link/tag presence family**:
+  edit path are guarded off. **The list table view (table-view-proposal.md slice 1)**: a
+  `qbase.scope = 'siblings'` (riding `_qbase`) makes `queryTableRows` read only the host's
+  own list, one level deep (relative, so a duplicated section reads its own copy; an empty
+  search means every point there). Doors: the `+ Table view` row/view door in
+  `maybeAddRowAffordance` (gated on the pure `listTableSpec`, which reuses `inferRowShape`)
+  and the bullet menu's "Show list as table view" (`tableViewListFor`, heading or row);
+  both call `createListTableView`, which inserts the base as the list's first point. The
+  strip words the source via `qbaseSourceText`; `editQBase` keeps the scope as a checkbox.
+  **QX-6 added the link/tag presence family**:
   `has:link` and `has:tag` are pure node reads (an unanchored `parseLinkToken`-shaped
   test; the tag sigil rule over link-blanked text, so state keywords count);
   `has:backlink` and `is:broken` read the doc-wide `collectLinks` index, threaded into

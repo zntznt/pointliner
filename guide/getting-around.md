@@ -283,6 +283,28 @@ Property columns are editable in place: type in a `due` or `cost` cell and the v
 the matching point itself (a message names what changed where, and one undo takes it back). Editing a
 value so the point stops matching removes its row, and the message says so.
 
+### See a list as a table
+
+You do not need a search to see your own list as a table. When the points of a list carry the same
+properties, for example
+
+```
+## Crops
+  Kale {prop beds: 4} {prop yield: 30}
+  Chard {prop beds: 2} {prop yield: 12}
+```
+
+a **+ Table view** door appears at the end of the list, beside **+ Add** and **+ Total**. Click it
+(or, from the keyboard, press `Shift+F10` on the heading or on any point of the list and choose
+**Show list as table view**). A table goes in as the list's first point with a **Name** column and one
+column per property, and its strip reads **Points in Crops** instead of a search.
+
+It is a query base that reads only the points beside it, so everything above applies: property cells
+write back to their points, the strip's **Sort rows** orders it, Board, Cards and Calendar work, and
+Undo removes it. A search typed into its strip narrows the rows within the list (`beds:>2`); untick
+**Only the points in this list** and give a search to widen it to the whole document. The table
+follows its list: duplicate or move the section and the copy shows its own points.
+
 The title column stays a link (click it to jump to the point) and formula columns stay computed.
 
 ## Searching all your documents
