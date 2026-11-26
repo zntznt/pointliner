@@ -28911,7 +28911,7 @@ test('expandAggExpr — min/max numeric 2nd arg is a variadic arg, not a rollup 
 // renderContentHTML throw on .find/.map. (DOM-coupled, so pinned at the source.)
 test('fromOpml — every array sidecar is Array-guarded via arrAttr (#448)', () => {
   assert.ok(_src.includes('function arrAttr('), 'the arrAttr helper must exist');
-  assert.ok(/return Array\.isArray\(v\) \? v : \[\]/.test(_src), 'arrAttr must Array-guard the parsed value');
+  assert.ok(/return Array\.isArray\(v\) \? v\.filter\(r => r && typeof r === 'object' && typeof r\.key === 'string'\) : \[\]/.test(_src), 'arrAttr must Array-guard the parsed value');
   for (const key of ['footnotes', 'dice', 'markov', 'rolltable', 'math', 'vars', 'grammar', 'est', 'seq', 'query', 'props']) {
     assert.ok(new RegExp(`${key}:\\s*arrAttr\\(el, '_${key === 'footnotes' ? 'footnotes' : key}'\\)`).test(_src)
       || new RegExp(`${key}:\\s*arrAttr\\(el, '_\\w+'\\)`).test(_src),
@@ -40575,4 +40575,87 @@ test('table view: editQBase preserves every qbase config field (census)', () => 
   // (`{ showAll: true }`, `{ sort }`, `{ scope }`). A bare includes('sort') matches `sortText`.
   const rebuilt = between(fnBody(_src, 'editQBase'), 'node.qbase = {', 'markDirty');
   for (const f of fields) assert.ok(new RegExp(`\\{\\s*${f}\\b`).test(rebuilt), `editQBase drops qbase.${f} on Save`);
+});
+
+// ─── untrusted-file hardening: a shared OPML's sidecar records are attacker-shaped ───────────────
+// arrAttr used to check only "is an array", so every record inside reached the pill renderers as
+// the file wrote it. Each test below is a shape that, before its fix, injected markup or threw out
+// of render() (and an autosave of that tree then threw on every boot).
+const HOSTILE = '"><img src=x onerror=alert(1)>';
+test('untrusted file: a contest pill escapes the totals it reads from _vars into its aria-label', () => {
+  const html = c.renderVarPill('k', { key: 'k', kind: 'pick', name: 'a', rolled: '1', versus: { leftTotal: HOSTILE, rightTotal: 1, margin: 0 } });
+  assert.doesNotMatch(html, /<img/, 'no element may be injected');
+  assert.match(html, / aria-label="Contest a: &quot;&gt;&lt;img /, 'escaped once at the sink');
+  // the parts that were already escaped must not be escaped twice
+  const plain = c.renderVarPill('k', { key: 'k', kind: 'pick', name: 'a&b', rolled: 'x<y' });
+  assert.match(plain, / aria-label="Random variable a&amp;b = x&lt;y\. Click to re-roll"/);
+});
+test('untrusted file: a deck pill escapes its card count in title and aria-label', () => {
+  const html = c.renderSeqGenPill('k', { key: 'k', mode: 'shuffle', anon: true, items: { length: HOSTILE }, bag: [1], result: 'x' });
+  assert.doesNotMatch(html, /<img/, 'no element may be injected');
+  assert.equal(html.match(/1 of &quot;&gt;&lt;img/g)?.length, 2, 'both title and aria-label carry the escaped count');
+});
+test('untrusted file: toOpml escapes _type, so it can neither end the HTML data island nor break the XML', () => {
+  const r = c.mkRoot();
+  const a = c.mkNode('a'); a.type = '</script><script>alert(1)</script>';
+  const b = c.mkNode('b'); b.type = 'a&b';
+  r.children.push(a, b);
+  const opml = c.toOpml(r);
+  assert.ok(!opml.includes('</script'), 'the self-contained export embeds this raw inside a <script>');
+  assert.match(opml, /_type="a&amp;b"/);
+  assert.match(opml, /_type="&lt;\/script&gt;/);
+});
+test('untrusted file: arrAttr keeps only object records with a string key', () => {
+  const el = v => ({ getAttribute: () => v });
+  const arr = (v, name) => JSON.parse(JSON.stringify(c.arrAttr(el(v), name)));   // out of the vm realm
+  assert.deepEqual(arr('[null, 1, "s", {}, {"key": 2}, {"key": "k", "expr": "2d6"}]', '_dice'), [{ key: 'k', expr: '2d6' }]);
+  assert.deepEqual(arr('[{"key": "", "val": ""}]', '_props'), [{ key: '', val: '' }], 'an empty prop row is a real record');
+  assert.deepEqual(arr('{"key": "k"}', '_dice'), [], 'the #448 non-array guard still holds');
+  assert.match(fnBody(_src, 'fromOpml'), /const freshId = \(raw\) => \{ let id = raw && !\/\["\\\\\\x00-\\x1f\]\/\.test\(raw\) \? raw : uid\(\);/,
+    'an id that cannot sit inside the raw [data-id="…"] selectors is reassigned');
+});
+test('untrusted file: a throwing pill renderer costs one row its pills, never the whole render', () => {
+  const ctx = c._context;
+  const setRoot = vm.runInContext('(r) => { root = r; buildIndex(root, null); resetDocCaches(); }', ctx);
+  const shapes = [
+    ['[[dice:k]]', 'dice', [{ key: 'k' }]], ['[[dice:k]]', 'dice', [null]], ['[[math:k]]', 'math', [null]],
+    ['[[est:k]]', 'est', [null]], ['[[query:k]]', 'query', [null]], ['[[markov:k]]', 'markov', [{ key: 'k' }]],
+    ['[[seq:k]]', 'seq', [{ key: 'k' }]], ['[[var:k]]', 'vars', [null]], ['[[grammar:k]]', 'grammar', [null]],
+    ['[[seq:k]]', 'seq', [null]],
+  ];
+  const err = console.error; console.error = () => {};
+  try {
+    for (const [tok, field, recs] of nonEmpty(shapes, 'hostile shapes')) {
+      const r = c.mkRoot(); const n = c.mkNode(tok + ' a<b'); n[field] = recs; r.children.push(n);
+      setRoot(r);
+      let html;
+      assert.doesNotThrow(() => { html = c.renderContentHTML(n); }, `${field} ${JSON.stringify(recs)}`);
+      assert.ok(typeof html === 'string' && !html.includes('a<b'), `${field}: the row text is still escaped`);
+    }
+  } finally { console.error = err; setRoot(c.mkRoot()); }
+  // render() reads collectSequences through parseTodo outside the row boundary
+  assert.doesNotThrow(() => c.collectSequences({ children: [{ text: '[[seq:k]]', seq: [null], children: [] }] }));
+  assert.equal(c.formatNumDisplay(2, { sigfigs: 0 }), '2', 'an out-of-range sigfigs from a file falls back, not RangeError');
+  assert.equal(c.formatNumDisplay(2.5, { sigfigs: 3 }), '2.50');
+});
+test('untrusted file: a 5000-deep brace line is not walked quadratically', () => {
+  assert.equal(c.braceDepthExceeds('{a {b {c {d}}}}'), false, 'the guide nests 4 deep');
+  assert.equal(c.braceDepthExceeds('{'.repeat(32) + '}'.repeat(32)), false);
+  assert.equal(c.braceDepthExceeds('{'.repeat(33)), true, 'unclosed braces count too: matchBrace scans to the end for each');
+  assert.equal(c.braceDepthExceeds('{}'.repeat(5000)), false, 'many flat pills are not deep');
+  const deep = '{'.repeat(5000) + '}'.repeat(5000);
+  const ctx = c._context, real = ctx.matchBrace;
+  let scanned = 0;
+  ctx.matchBrace = (s, i) => { const j = real(s, i); scanned += (j < 0 ? s.length : j) - i; return j; };
+  try {
+    c.mdInline(deep);
+    const r = c.mkRoot(); r.children.push(c.mkNode(deep));
+    c.promoteLoadedShorthand(r, () => {});
+    assert.ok(scanned < 100000, `matchBrace scanned ${scanned} chars for a 10000-char line (it was ~25M before the cap)`);
+    scanned = 0;
+    c.mdInline('{= junk {2d6} +}');
+    assert.ok(scanned > 0, 'a shallow nested line still gets the nested pass');
+  } finally { ctx.matchBrace = real; }
+  assert.match(fnBody(_src, 'mdInline'), /if \(\/\\\{\[\^\{\}\]\*\\\{\/\.test\(s\) && !braceDepthExceeds\(s\)\) \{/);
+  assert.match(fnBody(_src, 'promoteInlineShorthand'), /if \(text\.indexOf\('\{'\) < 0 \|\| braceDepthExceeds\(text\)\) return false;/);
 });
