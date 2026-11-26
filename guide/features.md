@@ -21,7 +21,8 @@ The everyday outliner. This is the part you use without thinking about it.
 
 - **Nested points.** Type, press `Enter` for a new point, `Tab` / `Shift+Tab` to indent or outdent.
   ([point types](writing-and-formatting.md#point-types))
-- **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line.
+- **Markdown formatting.** `**bold**`, `*italic*`, `# headings`, `> quotes`, code, all per line. Select text for a
+  toolbar of styles, links and footnotes; `Alt+F10` reaches it from the keyboard.
   ([styling text](writing-and-formatting.md#styling-text))
 - **Image size.** An image fits the reading column by default; add `"wide"`, `"full"` or a
   percentage in the Markdown title to run it three quarters of the window, edge to edge, or at a
@@ -100,7 +101,7 @@ becomes a clickable pill. Full guide: **[Generating text](generating-text.md)**.
 - **Markov chains and a yes/no oracle** for organic sequences and solo-play decisions; type an
   oracle as `{oracle: likely}`.
   ([Markov](generating-text.md#markov-chains) · [oracle](generating-text.md#yesno-oracle))
-- **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (anywhere in it, like a search), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every document in a connected folder.
+- **Roll on your own document.** `{roll: is:todo}` picks a random point from your live document (anywhere in it, like a search), so a random open thread or NPC gets chosen from what you already wrote. `{roll folder: #npc}` widens the table to every document in a connected folder, and `{roll 3: #history}` deals three different matching points at once, with no repeats.
   ([roll on your document](generating-text.md#roll-on-your-own-document))
 - **Random results log.** Turn on File menu, Log random results and every random result (dice, generators, tables, decks, chains, the oracle, pick-from-document, estimates) is also written to a dated log, each line linking back to the point that produced it, so re-using a pill never loses the record. Off by default; set a home point from the bullet menu. ([random results](dates-and-planning.md#random-results-log))
 - **Reproducible rolls.** File menu, Random seed fixes this document's dice, decks and rolls to a
@@ -351,6 +352,10 @@ Build a connected folder of documents (Zettelkasten style), not just a single on
   no app, where every pill shows the value it had when you saved: a total is its number, a roll its
   result, an estimate its range, a check its ✓ or ✗. The one to hand to a client or stakeholder who
   just needs to read your work. ([exporting](files-and-export.md#exporting-and-sharing))
+- **Print.** Ctrl+P prints the document, not the app: no toolbar, buttons or tips, and a point you
+  were editing prints its pills' values rather than their `{…}` source. It prints what the outline
+  shows, so a collapsed point prints collapsed and an excluded point still prints; for a copy that
+  leaves those out, export a Shareable page.
 - **Export a table to CSV.** On a point holding same-shaped rows with properties (a budget, an
   inventory), its menu offers Export table to CSV: one row per point, a column per property, values
   frozen, an accountant-or-Excel file. The exact reverse of pasting a spreadsheet in, so a table

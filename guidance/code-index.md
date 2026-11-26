@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2205 declarations in 158 sections across 17 domains.**
+**2214 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1114,6 +1114,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `pickFromQuery`
 - `queryHits` — #899: the POOL behind a roll, split out of pickFromQuery so the draw is testable without
 - `pickOneHit`
+- `dealHits` — #1659: {roll N: …} deals N DISTINCT hits (no repeats), capped at the pool, joined the way a
 - `queryHitsFolder` — #899: the FOLDER-scoped pool behind {roll folder: <query>} — the generative member of the 4c
 - `pickFromQueryFolder`
 - `queryTableRows` — queryTableRows(expr, cols, rootNode, hostId, cap) — the query-base row engine
@@ -1250,6 +1251,11 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
 - `selTb`
 - `buildSelTb`
+- `selTbKbd` — #1542: the toolbar's keyboard door. Alt+F10 from the caret roves the icons the way the { picker
+- `selTbKey` — Pure: what one key does to the toolbar. null = not ours; {to} = rove; {run} = activate the
+- `selTbItems`
+- `setSelTbActive`
+- `endSelTbKbd`
 
 ## touch edit bar
 
@@ -1487,7 +1493,9 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## stateful sequences (decks / cycles)
 
 - `SEQ_MODES` — A {mode: a | b | c} brace whose leading `mode` keyword gives it MEMORY: a
+- `DECK_SEARCH_RE`
 - `seqParts` — Parse a {mode: a | b | c} body → {mode, items, count} or null. The FIRST top-level `:`
+- `deckSearchHint` — #1659: a deck whose whole list is ONE search ({shuffle 3: #history}) used to become a one-card deck
 - `shuffledIndices` — A fresh shuffled [0..n-1] (Fisher–Yates; routes through Math.random so tests can seed it). `rng`
 - `nextSeqIndex` — Advance a sequence record's state and return the index of the item to emit, or
 - `advanceSeq` — Advance a sequence and return its emitted text — the chosen item expanded
@@ -2587,6 +2595,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openAddRowForm`
 - `affordanceDirtyIds` — #1240 phase 1b: the VISIBLE front door. On a heading whose children share a shape, append a "+ Add"
 - `refreshRowChrome` — The DOM half. Everything buildRow puts on a point OUTSIDE `.node-content` goes stale after a commit,
+- `doorWritesShow` — #1658: may a door WRITE onto `node`? Not onto the document root: the top-level view renders no
 
 ## #1240 phase 4: the doors of the point you are LOOKING AT
 
