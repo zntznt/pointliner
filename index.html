@@ -5394,8 +5394,8 @@ function expandAggExpr(expr, node, vars = null) {
   // number. Seeded from the call text so the answer is STABLE across renders and decorrelated per
   // call; the session RNG is saved and restored so nothing else is touched. Not a dice expression,
   // an unresolvable N/threshold, or N < 1 → literal → #ERR (P4).
-  // ponytail: dice only (the peek covers deck/grammar sims); N capped at SIM_MAX so a per-render
-  // recompute stays cheap.
+  // ponytail: dice only (the peek covers deck/grammar sims); N capped at SIM_MAX, total dice rolled
+  // capped at SIM_WORK_MAX (#ERR above it), and the result memoized in _simMemo per call + terms.
   if (/\bsimulate\s*\(/.test(e)) {
     e = e.replace(/\bsimulate\s*\(\s*([^,()]+?)\s*,\s*([^,()]+?)\s*,\s*(>=|<=|==|!=|>|<|=)\s*([^,()]+?)\s*\)/g,
       (m, nExpr, dice, op, thExpr) => {
@@ -5404,14 +5404,25 @@ function expandAggExpr(expr, node, vars = null) {
         const th = /^-?\d+(?:\.\d+)?$/.test(thExpr.trim()) ? Number(thExpr) : evalMath(thExpr, vars);
         if (N === null || !Number.isFinite(N) || N < 1) return m;
         if (th === null || !Number.isFinite(th)) return m;
-        if (!parseDice(dice, vars)) return m;                             // not a dice expression → #ERR
+        const terms = parseDice(dice, vars);
+        if (!terms) return m;                                             // not a dice expression → #ERR
         const trials = Math.min(SIM_MAX, Math.max(1, Math.round(N)));
-        const saved = _sessionRng;
-        _sessionRng = rngFromSeed(hashSeedStr(dice + '|' + op + th + '|' + trials));
-        let outcomes;
-        try { outcomes = sampleGenerator('dice', { expr: dice }, trials, { vars }); }
-        finally { _sessionRng = saved; }
-        const v = simulateChance(outcomes, op, th);
+        if (trials * simDiceCost(terms) > SIM_WORK_MAX) return m;         // too much work for one paint → #ERR
+        const seedStr = dice + '|' + op + th + '|' + trials;
+        // The result is a pure function of the seed text and the parsed terms (which carry any
+        // variable's resolved value), so memoize it: a paint must not re-run the Monte Carlo.
+        const key = seedStr + '|' + JSON.stringify(terms);
+        let v = _simMemo.get(key);
+        if (v === undefined) {
+          const saved = _sessionRng;
+          _sessionRng = rngFromSeed(hashSeedStr(seedStr));
+          let outcomes;
+          try { outcomes = sampleGenerator('dice', { expr: dice }, trials, { vars }); }
+          finally { _sessionRng = saved; }
+          v = simulateChance(outcomes, op, th);
+          if (_simMemo.size >= 500) _simMemo.clear();   // bounded: a few hundred distinct calls
+          _simMemo.set(key, v);
+        }
         return v === null ? m : '(' + v + ')';
       });
   }
@@ -32085,8 +32096,19 @@ function simulateChance(outcomes, op, t) {
   let n = 0; for (const x of xs) if (test(x)) n++;
   return n / xs.length * 100;
 }
-const SIM_MAX = 20000;   // Monte-Carlo trials cap: ~±0.35% std error at p=.5, cheap enough per render.
-                         // ponytail: raise if a bigger sample is shown to be needed; memoize only if it lags.
+const SIM_MAX = 20000;   // Monte-Carlo trials cap: ~±0.35% std error at p=.5.
+// Work cap for one simulate(): trials x dice rolled per trial. rollParsed costs ~1 us a die, so
+// one evaluation stays near half a second at the top (20000 trials of 25d6), paid once per input since
+// _simMemo holds the result; above it the call is #ERR (999d6! x 20000 froze the tab for 26 s).
+const SIM_WORK_MAX = 500000;
+// Expected dice rolled per trial: an exploding dN rolls N/(N-1) on average, a d1 the 100-face chain cap.
+function simDiceCost(terms) {
+  let n = 0;
+  for (const t of terms) if (t.kind === 'dice') n += t.count * (t.exploding ? Math.min(100, t.sides / (t.sides - 1)) : 1);
+  return n;
+}
+// simulate() results by call text + resolved terms: a pure function of its key, so no doc reset.
+const _simMemo = new Map();
 // FNV-1a of a string → uint32, to seed a simulate() from its own call text so the answer is STABLE
 // across renders (a probability in your doc must not flicker) and decorrelated per distinct call.
 function hashSeedStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
@@ -36367,7 +36389,7 @@ function markDirty() {
   updateDirtyDot();
   scheduleAutosave();
   scheduleVarPanelUpdate();
-  if (agendaOpen) renderAgenda();
+  scheduleAgendaRender();
 }
 // markDirty fires per keystroke (prose and base cells alike); rebuilding the whole
 // variables panel synchronously on every one is work the user can't perceive — and a
@@ -36380,6 +36402,17 @@ function scheduleVarPanelUpdate() {
   _varPanelTimer = setTimeout(() => {
     _varPanelTimer = null;
     if (document.getElementById('var-panel')?.classList.contains('on')) updateVarPanelContent();
+  }, 150);
+}
+// The open agenda strip, likewise: renderAgenda gathers every dated point (~100 ms at 10k points),
+// so a keystroke schedules one trailing rebuild. Callers that must see the strip now call
+// renderAgenda() directly, which cancels the pending one.
+let _agendaTimer = null;
+function scheduleAgendaRender() {
+  if (!agendaOpen || _agendaTimer) return;
+  _agendaTimer = setTimeout(() => {
+    _agendaTimer = null;
+    if (agendaOpen) renderAgenda();
   }, 150);
 }
 
@@ -36745,6 +36778,7 @@ function adoptDoc(newRoot, { fileName: fname = 'unsaved', fileHandle: fh = null,
   // reported points that no longer existed (measured: 3 selected, 0 of them in the new document).
   selectedIds.clear(); selAnchorId = null; selFocusId = null;
   clearTimeout(searchDebounce);
+  clearTimeout(_agendaTimer); _agendaTimer = null;   // a pending agenda rebuild belongs to the outgoing doc
   searchQuery = ''; searchQueryLC = ''; searchTerms = [];
   undoStack.length = 0; redoStack.length = 0;
   // #1581: the check chips' last verdicts belong to the OUTGOING document. Ids repeat across copies
@@ -42158,6 +42192,7 @@ function mkAgChip(it, kind) {
 // (not markDirty) persists the prefs to localStorage without dirtying the document.
 
 function renderAgenda() {
+  clearTimeout(_agendaTimer); _agendaTimer = null;   // this paint supersedes a scheduled one
   const strip = document.getElementById('agenda-strip');
   if (!strip) return;
   strip.innerHTML = '';

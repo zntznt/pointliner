@@ -6589,6 +6589,49 @@ test('#1298 simulate end-to-end: N rolls of a dice expr reduce to the true proba
   assert.ok(Math.abs(c.simulateChance(outcomes, '>=', 8) - 41.67) < 5, 'simulate over 2d6 approximates P(>=8)');
 });
 
+// simulate() re-ran its whole Monte Carlo on every paint. The result is a pure function of the call
+// text (dice, op, threshold, trials: the seed) and the parsed terms (which carry a variable's resolved
+// value; the doc seed never reaches it, the session RNG is swapped out), so it is memoized on those.
+const withSimSampler = (fake, fn) => {
+  const ctx = c._context;
+  vm.runInContext('_simMemo.clear(); globalThis.__realSG = sampleGenerator; globalThis.__sgCalls = 0;', ctx);
+  ctx.__fakeSG = fake;
+  vm.runInContext('sampleGenerator = function (...a) { __sgCalls++; return __fakeSG ? __fakeSG(...a) : __realSG(...a); };', ctx);
+  try { return fn(() => ctx.__sgCalls); }
+  finally { vm.runInContext('sampleGenerator = __realSG; _simMemo.clear();', ctx); }
+};
+test('simulate memo: the same call samples once; a changed variable feeding the dice re-samples', () => {
+  withSimSampler(null, calls => {
+    const a = c.expandAggExpr('simulate(1000, 2d6+bonus, >= 9)', null, { bonus: 1 });
+    assert.equal(c.expandAggExpr('simulate(1000, 2d6+bonus, >= 9)', null, { bonus: 1 }), a, 'same answer');
+    assert.equal(calls(), 1, 'the second paint of the same call reused the result');
+    const b = c.expandAggExpr('simulate(1000, 2d6+bonus, >= 9)', null, { bonus: 3 });
+    assert.equal(calls(), 2, 'a new value of bonus is a new key');
+    assert.notEqual(b, a, 'and a new answer');
+  });
+});
+test('simulate work cap: trials x dice rolled (exploding counted) above SIM_WORK_MAX is #ERR, unsampled', () => {
+  withSimSampler(() => [1, 2, 3], calls => {
+    const run = q => c.expandAggExpr(q, null, {});
+    assert.equal(run('simulate(20000, 999d6!, >= 3500)'), 'simulate(20000, 999d6!, >= 3500)', 'the 26 s call stays literal');
+    assert.equal(calls(), 0, 'and never rolls');
+    assert.equal(run('simulate(20000, 26d6, >= 90)'), 'simulate(20000, 26d6, >= 90)', '520000 dice: over');
+    assert.equal(calls(), 0);
+    assert.notEqual(run('simulate(20000, 25d6, >= 90)'), 'simulate(20000, 25d6, >= 90)', '500000 dice: at the cap, allowed');
+    assert.notEqual(run('simulate(1000000, 25d6, >= 88)'), 'simulate(1000000, 25d6, >= 88)', 'trials clamp to SIM_MAX first');
+    assert.notEqual(run('simulate(10000, 8d6, >= 30)'), 'simulate(10000, 8d6, >= 30)', 'an ordinary existing call still works');
+    assert.notEqual(run('simulate(417, 999d6!, >= 3500)'), 'simulate(417, 999d6!, >= 3500)', 'exploding d6 = 1.2 dice each: 499900');
+    assert.equal(run('simulate(418, 999d6!, >= 3500)'), 'simulate(418, 999d6!, >= 3500)', 'one more trial is over: 501098');
+    assert.equal(calls(), 4);
+  });
+});
+test('simulate: ordinary calls give the same seeded numbers as before the memo and cap', () => {
+  vm.runInContext('_simMemo.clear()', c._context);
+  assert.equal(c.expandAggExpr('simulate(1000, 2d6, >= 8)', null, {}), '(42.4)');
+  assert.equal(c.expandAggExpr('simulate(5000, 4d6r1kh3, >= 12)', null, {}), '(76.8)');
+  assert.equal(c.expandAggExpr('simulate(2000, 6d6!>=5, >= 3)', null, {}), '(43.25)');
+});
+
 test('#1298 hypergeom + simulate are wired into the math pre-pass (scalar substitution, RNG restored)', () => {
   const agg = fnBody(_src, 'expandAggExpr');
   assert.ok(agg.includes('hypergeomAtLeast('), 'hypergeom substitutes a scalar before evalMath, like percentile');
@@ -25961,6 +26004,35 @@ test('round 2 — isVarBase + mtModelRead (the paint-path parse memo)', () => {
   assert.notEqual(c.mtModel(n), c.mtModel(n), 'mtModel returns a fresh parse every call');
 });
 
+// With the agenda open, markDirty rebuilt it synchronously on every keystroke (collectDueDates walks
+// every point: ~100 ms at 10k). It now schedules one trailing rebuild, like the variables panel.
+test('agenda strip: markDirty schedules one trailing rebuild; a direct render or a doc swap cancels it', () => {
+  assert.ok(/scheduleAgendaRender\(\)/.test(fnBody(_src, 'markDirty')) && !/renderAgenda\(/.test(fnBody(_src, 'markDirty')),
+    'markDirty defers the agenda rebuild');
+  assert.ok(/clearTimeout\(_agendaTimer\); _agendaTimer = null;/.test(fnBody(_src, 'renderAgenda')), 'a direct render cancels the pending one');
+  assert.ok(/clearTimeout\(_agendaTimer\); _agendaTimer = null;/.test(fnBody(_src, 'adoptDoc')), 'a doc swap drops the pending one');
+  const ctx = c._context, timers = [];
+  const realST = ctx.setTimeout;
+  ctx.setTimeout = fn => { timers.push(fn); return timers.length; };
+  vm.runInContext('globalThis.__realRA = renderAgenda; globalThis.__raN = 0; renderAgenda = () => { __raN++; }; _agendaTimer = null;', ctx);
+  try {
+    vm.runInContext('agendaOpen = false; scheduleAgendaRender();', ctx);
+    assert.equal(timers.length, 0, 'a closed agenda schedules nothing');
+    vm.runInContext('agendaOpen = true; scheduleAgendaRender(); scheduleAgendaRender(); scheduleAgendaRender();', ctx);
+    assert.equal(timers.length, 1, 'a burst of keystrokes is one timer');
+    assert.equal(ctx.__raN, 0, 'and nothing painted synchronously');
+    timers[0]();
+    assert.equal(ctx.__raN, 1, 'the timer paints once');
+    vm.runInContext('scheduleAgendaRender();', ctx);
+    assert.equal(timers.length, 2, 'the next keystroke after it fired schedules again');
+    vm.runInContext('agendaOpen = false;', ctx); timers[1]();
+    assert.equal(ctx.__raN, 1, 'closed before the timer fired: no paint');
+  } finally {
+    ctx.setTimeout = realST;
+    vm.runInContext('renderAgenda = __realRA; agendaOpen = false; _agendaTimer = null;', ctx);
+  }
+});
+
 test('round 2 — perf wiring + canonical vocabulary (source pins)', () => {
   // the variables-panel rebuild is debounced out of markDirty (it ran synchronously per keystroke)
   const md = fnBody(_src, 'markDirty');
@@ -35670,6 +35742,7 @@ test('#1581 census: every module-level cache is in DOC_CACHES or named as exempt
     _tagReCache: 'a compiled tag regex per tag string: a pure function of its key',
     _wsScanCache: "the folder scan, keyed on each file's lastModified and size: a changed file re-parses",
     _graphUnlinkedCache: 'one graph open: openGraph resets it, the graph is a summoned snapshot',
+    _simMemo: 'simulate() results keyed on call text + resolved dice terms: a pure function of its key',
   };
   for (const name of Object.keys(EXEMPT))
     assert.ok(declLine.has(name), `${name} is exempt but no longer declared at module level: drop the exemption`);

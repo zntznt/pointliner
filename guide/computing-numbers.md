@@ -637,8 +637,8 @@ reads as the question it is.
 
 The simulation is **seeded**, so the number holds still between edits rather than flickering; a
 larger `N` is a steadier estimate, up to 20,000 trials, which is where it stops. Ask for a million
-and you get exactly the answer 20,000 gives, because the pill recomputes on every render and a
-bigger sample costs time it cannot pay back.
+and you get exactly the answer 20,000 gives. The trials times the dice each one rolls can reach
+500,000 (20,000 trials of 25d6, or 5,000 of 100d6); past that the pill shows an error, so lower `N`.
 
 ### The honest range around a rate (`wilsonlow` / `wilsonhigh`)
 
