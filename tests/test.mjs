@@ -2515,6 +2515,56 @@ function withRollScopeRoot(fn) {
   finally { vm.runInContext('root = mkRoot(); cookieNode = null; resetDocCaches();', c._context); }
 }
 
+// #1659 (panel #8): a quiz host wanted "three history questions, no repeats". {roll 3: #history}
+// stayed literal with no cue, and {shuffle 3: #history} became a one-card deck dealing the word.
+test('#1659 {roll N: …} deals N distinct matching points; a deck holding one search coaches toward it', () => {
+  assert.deepEqual(host(c.rollParts('roll 3: #history')), { expr: '#history', folder: false, count: 3 });
+  assert.deepEqual(host(c.rollParts('roll 2 folder: #npc')), { expr: '#npc', folder: true, count: 2 });
+  assert.equal(c.rollParts('roll 0: #history'), null);
+  assert.equal(c.rollParts('roll 3:'), null);
+  // was 'literal' with no cue (P4); now a real roll, and {roll 0:} is a marked attempt
+  assert.equal(c.classifyBraceBody('roll 3: #history', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('roll 0: #history', {}, {}), 'invalid');
+  // dealHits: N distinct, capped at the pool; N = 1 is the single pick
+  const pool = ['Q1', 'Q2', 'Q3', 'Q4'];
+  for (let k = 0; k < 50; k++) {
+    const three = c.dealHits(pool, 3).split(' ');
+    assert.equal(three.length, 3);
+    assert.equal(new Set(three).size, 3, 'no repeats in one deal');
+    assert.ok(three.every(q => pool.includes(q)));
+  }
+  assert.equal(c.dealHits(pool, 9).split(' ').length, 4, 'capped at the pool');
+  assert.ok(pool.includes(c.dealHits(pool, 1)));
+  assert.equal(c.dealHits([], 3), '');
+  // end to end through the roll branch of resolveBrace, on a real tree (four #openq points)
+  const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
+  withRollScopeRoot(() => {
+    for (let k = 0; k < 20; k++) {
+      const got = c.resolveBrace('roll 3: #openq', ctx).split(' ');
+      assert.equal(new Set(got).size, 3, got.join(' '));
+      assert.ok(got.every(w => ['alpha', 'beta', 'gamma', 'delta'].includes(w)), got.join(' '));
+    }
+    assert.equal(c.resolveBrace('roll 3: #nothing', ctx), '{roll 3: #nothing?}');
+  });
+  // a deck whose whole list is one search no longer parses as a deck of the literal word
+  assert.equal(c.seqParts('shuffle 3: #history'), null);
+  assert.equal(c.seqParts('shuffle: is:todo'), null);
+  assert.equal(c.classifyBraceBody('shuffle 3: #history', {}, {}), 'invalid');
+  assert.equal(c.classifyBraceBody('cycle: #history', {}, {}), 'invalid');
+  assert.equal(c.braceAttemptReason('shuffle 3: #history', {}, {}),
+    'A shuffle deals from a list you type, not a search. To draw points that match, try {roll 3: #history}.');
+  assert.equal(c.braceAttemptReason('shuffle: #history', {}, {}),
+    'A shuffle deals from a list you type, not a search. To draw points that match, try {roll: #history}.');
+  // a typed list of tags is still a real deck, and so is ordinary text
+  assert.equal(host(c.seqParts('shuffle: #a | #b')).items.length, 2);
+  assert.equal(c.deckSearchHint('shuffle: #a | #b'), null);
+  assert.equal(c.deckSearchHint('shuffle: hashtag'), null);
+  assert.equal(host(c.seqParts('shuffle 2: a | b | c')).count, 2);
+  // the pill's def sniffs (bad-filter reason, folder scope tip) must read the counted head too
+  assert.ok(_src.includes('/\\{\\s*roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:([^{}]*)\\}/i'));
+  assert.ok(_src.includes('/\\{\\s*(roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:[^{}]*)\\}/i'));
+});
+
 // #1107 drift guard. There was no test that loaded shipped content and checked a roll RESOLVES,
 // which is why five starters, the first-run tour and the living-oracle demo could all ship with
 // every roll pill reading "no match yet" and nothing turn red. This scrapes the OPML we ship and
@@ -11792,15 +11842,15 @@ test('folder-scoped reducers + query rows: sum/count("q", …, folder) across th
 
 test('#899 rollParts: an optional `folder` modifier, and `folder` stays searchable text', () => {
   // the plain form is untouched
-  assert.deepEqual(host(c.rollParts('roll: #npc')), { expr: '#npc', folder: false });
+  assert.deepEqual(host(c.rollParts('roll: #npc')), { expr: '#npc', folder: false, count: 1 });
   // the modifier widens the draw
-  assert.deepEqual(host(c.rollParts('roll folder: #npc')), { expr: '#npc', folder: true });
-  assert.deepEqual(host(c.rollParts('roll   folder  :  is:todo | #thread')), { expr: 'is:todo | #thread', folder: true });
+  assert.deepEqual(host(c.rollParts('roll folder: #npc')), { expr: '#npc', folder: true, count: 1 });
+  assert.deepEqual(host(c.rollParts('roll   folder  :  is:todo | #thread')), { expr: 'is:todo | #thread', folder: true, count: 1 });
   // THE load-bearing guarantee (the §4c decision: `folder` must stay searchable TEXT). A query FOR
   // the word "folder" is not a folder-scoped roll — the modifier lives before the colon, never in
   // the query. Without this, {roll: folder} would silently stop meaning what it says.
-  assert.deepEqual(host(c.rollParts('roll: folder')), { expr: 'folder', folder: false });
-  assert.deepEqual(host(c.rollParts('roll: #folder is:todo')), { expr: '#folder is:todo', folder: false });
+  assert.deepEqual(host(c.rollParts('roll: folder')), { expr: 'folder', folder: false, count: 1 });
+  assert.deepEqual(host(c.rollParts('roll: #folder is:todo')), { expr: '#folder is:todo', folder: false, count: 1 });
   // an empty query is not a roll, modifier or not
   assert.equal(c.rollParts('roll folder:'), null);
   assert.equal(c.rollParts('roll:'), null);
@@ -15305,7 +15355,7 @@ test('UXP-232: the roll pill and the math pill carry the reason too', () => {
   // #899: the extraction regex must accept the OPTIONAL `folder` modifier, or a folder roll with an
   // unreadable filter loses its reason. The old form of this line fell back to gp.includes('roll'),
   // which is true of every grammar pill — vacuous. Pin the widened regex itself.
-  assert.ok(/roll\(\?:\\s\+folder\)\?\\s\*:/.test(gp),
+  assert.ok(/roll\(\?:\\s\+\\d\{1,2\}\)\?\(\?:\\s\+folder\)\?\\s\*:/.test(gp),   // #1659: and the count
     'it reads the query back out of g.def, modifier or not');
   // Assert the ternary's SHAPE, not string positions: the comment above it quotes the old copy,
   // so indexOf would measure the comment rather than the code (the same trap the announce() count
@@ -39854,14 +39904,12 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     'renderTreeRows:row':   { why: 'the point-tree picker: its search box owns ↑/↓/Enter (activedescendant)', proof: /search\.setAttribute\('aria-activedescendant', 'tp-opt-' \+ activeIdx\)/ },
     'showCellEditorPop:b':  { why: 'the status popover is the pointer path; the cell’s Shift+F10 menu "Set to" rows are its keyboard twin', proof: /addSection\('Set to', true\);/ },
     'showCellEditorPop:none': { why: 'its Clear, twinned by the same menu’s Clear row', proof: /addItem\('Clear', \{ active: curVal === '', onApply/ },
+    // #1542: the selection toolbar roves from the caret (Alt+F10, activedescendant) and Enter/Space
+    // dispatch the active icon's mousedown, so the icons' keyboard half lives in one capture listener.
+    ...Object.fromEntries(['ic', 'linkIc', 'fnIc'].map(r => [`buildSelTb:${r}`, { why: '#sel-tb: Alt+F10 roves it from the caret, Enter/Space dispatch the icon mousedown',
+      proof: /else if \(step\.run != null\) \{ endSelTbKbd\(\); items\[step\.run\]\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true, cancelable: true \}\)\); \}/ }])),
     "(top):document.getElementById('btn-graph')": { why: 'a pre-click snapshot of the caret, not the action; the button’s own click is what Enter/Space fire', proof: /document\.getElementById\('btn-graph'\)\.addEventListener\('click', toggleGraph\);/ },
   };
-  // #1542: KNOWN GAP, deliberately allowlisted and NOT fixed here: the selection toolbar's format,
-  // link and footnote icons act on mousedown with no keyboard twin, which leaves 5 of its 9 actions
-  // without a keyboard path. It needs a focus model for a floating toolbar first (#1542). This list
-  // may only SHRINK: the day one of these gains a twin, its entry goes stale and fails below, and a
-  // NEW twin-less site anywhere fails the census rather than joining this list quietly.
-  const KNOWN_GAP_1542 = new Set(['buildSelTb:ic', 'buildSelTb:linkIc', 'buildSelTb:fnIc']);
 
   const dead = [], used = new Set(), twins = new Set();
   for (const s of sites) {
@@ -39869,7 +39917,7 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     if (s.recv === 'document' || s.recv === 'window') continue;            // the page itself: dismissal, bookkeeping
     const key = `${s.fn}:${s.recv}`;
     if (hasKeyTwin(s.scope, s.recv)) { twins.add(key); continue; }
-    if (EXEMPT[key] || KNOWN_GAP_1542.has(key)) { used.add(key); continue; }
+    if (EXEMPT[key]) { used.add(key); continue; }
     dead.push(key);
   }
   assert.deepEqual(dead, [],
@@ -39879,11 +39927,40 @@ test('#1586 every mousedown that acts has a keyboard twin, or a named and checke
     assert.ok(used.has(k), `stale exemption: ${k} no longer acts without a twin, so remove it from EXEMPT`);
     assert.match(_src, EXEMPT[k].proof, `${k}: the evidence for "${EXEMPT[k].why}" is gone, so the exemption is no longer true`);
   }
-  for (const k of KNOWN_GAP_1542) {
-    assert.ok(used.has(k), `${k} has a keyboard twin now (or moved): take it off the #1542 allowlist`);
-  }
   // and the two #1586 sites are counted as twinned BY the census, not merely present
   assert.ok(twins.has('buildChipRow:b'), 'the insert-dialog chip is a twinned control');
+});
+
+// #1542: the selection toolbar's keyboard door, as a pure step and its wiring.
+test('#1542 selTbKey: Alt+F10 enters, arrows rove, Enter/Space run, Escape leaves, anything else passes', () => {
+  const k = (key, m = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...m });
+  const step = (...a) => { const r = c.selTbKey(...a); return r && { ...r }; };   // out of the vm realm
+  assert.deepEqual(step(k('F10', { altKey: true }), null, 8), { to: 0 }, 'Alt+F10 lands on the first icon');
+  assert.equal(step(k('F10', { altKey: true }), null, 0), null, 'no toolbar on screen, no claim');
+  assert.equal(step(k('F10', { altKey: true, shiftKey: true }), null, 8), null, 'Shift+Alt+F10 is not the door');
+  assert.equal(step(k('F10', { shiftKey: true }), null, 8), null, 'Shift+F10 stays the context menu');
+  assert.equal(step(k('Enter'), null, 8), null, 'outside the toolbar, Enter is the point\'s');
+  assert.deepEqual(step(k('ArrowRight'), 2, 8), { to: 3 });
+  assert.deepEqual(step(k('ArrowLeft'), 0, 8), { to: 0 }, 'ends clamp, as every roving group does');
+  assert.deepEqual(step(k('End'), 2, 8), { to: 7 });
+  assert.deepEqual(step(k('End'), 7, 8), { to: 7 }, 'an end key at the end holds rather than passing to the caret');
+  assert.deepEqual(step(k('PageDown'), 1, 8), { exit: true, pass: true }, 'a key the toolbar has no use for is not swallowed');
+  assert.deepEqual(step(k('Enter'), 4, 8), { run: 4 });
+  assert.deepEqual(step(k(' '), 5, 8), { run: 5 });
+  assert.deepEqual(step(k('Escape'), 5, 8), { exit: true }, 'Escape leaves the toolbar only');
+  assert.deepEqual(step(k('a'), 1, 8), { exit: true, pass: true }, 'typing leaves and types');
+  assert.deepEqual(step(k('ArrowLeft', { shiftKey: true }), 1, 8), { exit: true, pass: true }, 'Shift+arrows still extend the selection');
+});
+
+test('#1542 the toolbar door is wired: capture phase, stamped ids, cleared on hide', () => {
+  const door = between(_src, 'let selTbKbd = null;', '}, true);');
+  assert.match(door, /const step = selTbKey\(e, selTbKbd \? selTbKbd\.idx : null, items\.length\);/, 'the listener asks the pure step');
+  assert.match(door, /e\.preventDefault\(\); e\.stopPropagation\(\);/, 'a claimed key never reaches the point (Enter would split it)');
+  assert.match(_src, /items\[step\.run\]\.dispatchEvent\(new MouseEvent\('mousedown', \{ bubbles: true, cancelable: true \}\)\); \}\n  else setSelTbActive\(items, step\.to\);\n\}, true\);/,
+    'registered in the capture phase, ahead of the point\'s own keys');
+  assert.match(fnBody(_src, 'buildSelTb'), /el\.id = 'seltb-opt-' \+ i;/, 'every icon gets the id activedescendant names');
+  assert.match(fnBody(_src, 'hideSelTb'), /endSelTbKbd\(\);/, 'a hidden toolbar cannot keep the arrows');
+  assert.match(_src, /<div id="sel-tb" role="toolbar" aria-label="Format the selection"><\/div>/);
 });
 
 // The other half of the family: a <div>/<span> with a click listener and nothing else is mouse-only
