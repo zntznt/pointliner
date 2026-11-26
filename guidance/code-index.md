@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2203 declarations in 158 sections across 17 domains.**
+**2205 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -1334,6 +1334,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `renderSlashMenu`
 - `positionSlashMenu`
 - `leanSlashTip` — LEAN MODE: the / @ menu renders nothing, but a fully-blind menu is a trap (panel review, 5/6 lenses:
+- `_leanSlashSaid` — #1660: what the tip last spoke. slashState is rebuilt every keystroke, so this lives outside it and
 - `renderLeanSlashTip`
 - `placeAtCaret` — shared caret-anchored placement for a fixed-position element (menu + lean tip use it)
 - `slashMove`
@@ -2545,6 +2546,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 ## builder window
 
 - `builderState` — Guided-only: a unified command browser that absorbs the /, @ and { inline menus.
+- `builderCmdSay` — UXP-173/#1660: the sentence that names a selected builder command. Pure, so the caller can compare
 - `builderFilterCmds` — #1106: the builder's search is the COMMAND LINE in Guided (the default tier) — `/` matches every
 - `builderBestIdx` — #1106: which row Enter actually fires. The list keeps POOL order so renderNav's section headers
 - `builderCmdPool`

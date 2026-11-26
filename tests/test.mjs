@@ -26441,7 +26441,7 @@ test('DIAL: LEAN is the keyboard canvas — blind menu shows a one-line match ti
   assert.ok(_src.includes('function isSlashMenuOpen() { return slashState != null; }'), 'isSlashMenuOpen must key off slashState, not the .on class');
   assert.ok(_src.includes('if (!isLean()) { renderSlashMenu(); positionSlashMenu(content, slashOffset); }'), 'the blind-render guard (lean only) is missing');
   assert.ok(_src.includes('else renderLeanSlashTip();'), 'lean must render the one-line match tip instead of nothing (panel-review blocker fix)');
-  assert.ok(_src.includes('function renderLeanSlashTip()') && _src.includes('announce(`${cmd.label}'), 'the lean tip must name the current match AND announce it to AT');
+  assert.ok(/const msg = `\$\{cmd\.label\}[\s\S]*announce\(msg\)/.test(fnBody(_src, 'renderLeanSlashTip')), 'the lean tip must name the current match AND announce it to AT');
   // the body carries one v-<tier> class; the pencil CSS keys on body.v-lean directly (no legacy lean-mode)
   assert.ok(_src.includes("VERBOSITY_TIERS.forEach(t => b.toggle('v-' + t, verbosity === t))"), 'syncVerbosityClass must set a v-<tier> class per tier');
   assert.ok(!_src.includes("b.toggle('lean-mode'"), 'the legacy lean-mode class must be retired (dual source of truth)');
@@ -32483,6 +32483,26 @@ test('#1474 the list emptying is announced, once, in the words already on screen
     'the second, different sentence for the same state is gone');
   // and Enter at zero uses the same reader rather than its own copy
   assert.match(_src, /if \(visibleCmds\(\)\.length\) applyBuilder\(\);\s*\n\s*else announce\(builderEmptyMessage\(\)\);/);
+});
+
+// ── #1660: the non-empty half of #1474 ───────────────────────────────────────
+// Typing /check:hours <= 8 re-read Check's whole description under every letter (15 announcements
+// for 11 characters): syncActive announced on every sync, though the selection never moved. Lean's
+// one-line tip did the same with "Check. Enter to insert."
+test('#1660 a builder command is named once, until the selection changes', () => {
+  assert.equal(c.builderCmdSay({ label: 'Check', desc: 'A pass/fail constraint.' }), 'Check: A pass/fail constraint.');
+  assert.equal(c.builderCmdSay({ label: 'Bold', desc: '' }), 'Bold', 'no description, no dangling colon');
+  // #1133: the core proves nothing about its call site
+  const sync = between(_src, '  function syncActive() {', '  function applyBuilder() {');
+  assert.match(sync, /const msg = builderCmdSay\(cmd\);\s*\n\s*if \(msg !== _builderLastSaid\) announce\(msg\);\s*\n\s*_builderLastSaid = msg;/,
+    'the builder compares with what it last said before speaking');
+  assert.match(sync, /_builderWasEmpty = true;\s*\n\s*_builderLastSaid = null;/,
+    'emptying the list unlatches it, so recovery onto the same command speaks again (#1474)');
+  assert.match(_src, /let _builderLastSaid = null;/, 'per builder session, so reopening speaks');
+  // the sibling door
+  assert.match(fnBody(_src, 'renderLeanSlashTip'), /if \(msg !== _leanSlashSaid\) announce\(msg\);\s*\n\s*_leanSlashSaid = msg;/,
+    'the Lean tip does not stutter either');
+  assert.match(fnBody(_src, 'hideSlashMenu'), /_leanSlashSaid = null;/, 'and a closed menu unlatches it');
 });
 
 // ── #1472: typing a command's whole NAME selects that command ────────────────

@@ -398,6 +398,42 @@
       "kills": "#1474 the list emptying is announced"
     },
     {
+      "id": "builder-cmd-stutters",
+      "suite": "unit",
+      "why": "#1660: re-announcing the unchanged command on every keystroke",
+      "file": "index.html",
+      "find": "        if (msg !== _builderLastSaid) announce(msg);",
+      "replace": "        announce(msg);",
+      "kills": "#1660 a builder command is named once"
+    },
+    {
+      "id": "builder-cmd-stutters-driven",
+      "suite": "browser",
+      "why": "#1660: the stutter as a screen-reader user hears it",
+      "file": "index.html",
+      "find": "        if (msg !== _builderLastSaid) announce(msg);",
+      "replace": "        announce(msg);",
+      "kills": "#1660 typing an argument does not re-announce"
+    },
+    {
+      "id": "builder-cmd-latch-survives-empty",
+      "suite": "unit",
+      "why": "#1660: without the unlatch, recovering onto the same command is silent",
+      "file": "index.html",
+      "find": "        _builderLastSaid = null;   // #1660: recovery names the command again, even the same one",
+      "replace": "        ;",
+      "kills": "#1660 a builder command is named once"
+    },
+    {
+      "id": "lean-tip-stutters",
+      "suite": "browser",
+      "why": "#1660: the Lean tip re-read its match under every letter",
+      "file": "index.html",
+      "find": "  if (msg !== _leanSlashSaid) announce(msg);",
+      "replace": "  announce(msg);",
+      "kills": "#1660 typing an argument does not re-announce"
+    },
+    {
       "id": "builder-empty-message-forked",
       "suite": "unit",
       "why": "#1474: a second sentence for one state is how the screen and the live region disagreed",

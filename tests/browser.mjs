@@ -1980,6 +1980,50 @@ test('#1474 the builder says when the list empties, once, and speaks again on re
   }
 });
 
+// #1660: the non-empty half of #1474. Typing an argument after /check re-read the unchanged
+//     command's whole description under every letter: 15 announcements for 11 characters. The
+//     selection never moves, so after the first naming nothing is news until it does.
+test('#1660 typing an argument does not re-announce the command it already named', { skip: skip() }, async () => {
+  const pg = await fresh();
+  await blankWithCaret(pg);
+  await pg.evaluate(() => {
+    window.__spoken = [];
+    const el = document.getElementById('a11y-live');
+    new MutationObserver(() => { const t = (el.textContent || '').trim(); if (t) window.__spoken.push(t); })
+      .observe(el, { childList: true, characterData: true, subtree: true });
+  });
+  await pg.keyboard.type('/check:hours <= 8', { delay: 30 });
+  await pg.waitForTimeout(500);
+  const spoken = await pg.evaluate(() => window.__spoken.slice());
+  const sel = await pg.evaluate(() => document.querySelector('.builder-item[aria-selected="true"] .cmd-label')?.textContent);
+  assert.equal(sel, 'Check', 'precondition: the builder selected Check');
+  const named = spoken.filter(s => s.startsWith('Check: '));
+  assert.equal(named.length, 1, `Check is named once, not per keystroke; heard ${JSON.stringify(spoken)}`);
+  // a real change of selection still speaks: `c` selects another command, and `ch` moves it to Check
+  assert.ok(spoken.length >= 2 && !spoken[0].startsWith('Check: '),
+    `the command selected before Check was named too; heard ${JSON.stringify(spoken)}`);
+  await pg.close();
+
+  // the sibling door: Lean has no menu, only a one-line tip that speaks its match, and it stuttered
+  // "Check. Enter to insert." under every letter the same way
+  const lp = await fresh();
+  await lp.evaluate(() => setVerbosity('lean'));
+  await blankWithCaret(lp);
+  await lp.evaluate(() => {
+    window.__spoken = [];
+    const el = document.getElementById('a11y-live');
+    new MutationObserver(() => { const t = (el.textContent || '').trim(); if (t) window.__spoken.push(t); })
+      .observe(el, { childList: true, characterData: true, subtree: true });
+  });
+  await lp.keyboard.type('/check:hours <= 8', { delay: 30 });
+  await lp.waitForTimeout(500);
+  const lean = await lp.evaluate(() => window.__spoken.slice());
+  assert.equal(lean.filter(s => s === 'Check. Enter to insert.').length, 1,
+    `Lean names Check once; heard ${JSON.stringify(lean)}`);
+  assert.ok(lean.length >= 2, `and still names each earlier match; heard ${JSON.stringify(lean)}`);
+  await lp.close();
+});
+
 // 33. #1475 — the Alignment section reported a state the grid was not in: after Show as > Number
 //     the cells render right-aligned and the menu still ticked "Left". Driven because the claim is
 //     that a computed style and a menu tick disagree, which no source pin can compare.
