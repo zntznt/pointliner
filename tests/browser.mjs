@@ -9395,7 +9395,7 @@ test('table view: + Table view shows a typed list as a grid that edits its point
     const hosts = document.querySelectorAll('.md-table-host');
     const h = hosts[0];
     return { hosts: hosts.length, strip: h?.querySelector('.mt-qbase-expr')?.textContent,
-      rows: [...(h?.querySelectorAll('tr') || [])].map(tr => [...tr.children].map(td => td.innerText.trim())),
+      rows: [...(h?.querySelectorAll('tr') || [])].map(tr => [...tr.children].filter(td => !td.classList.contains("mt-rowh")).map(td => td.innerText.trim())),
       hint: document.getElementById('flash-hint')?.textContent || '' };
   });
   assert.equal(grid.hosts, 1, 'one grid appeared');
@@ -9406,7 +9406,7 @@ test('table view: + Table view shows a typed list as a grid that edits its point
   assert.equal(await doorsOn('Crops'), 0, 'and the list no longer offers a second one');
 
   // Edit through the grid with real keys: the POINT changes.
-  await pg.locator('td.mt-qcell').first().click();
+  await pg.locator('td.mt-qcell[data-c="1"]').first().click();
   await pg.keyboard.press('Control+a'); await type('7'); await pg.keyboard.press('Tab');
   await pg.waitForTimeout(600);
   const beds = await pg.evaluate(() => nodeById(root.children[0].children.find(n => /Kale/.test(n.text)).id)
@@ -9444,7 +9444,7 @@ test('table view: Shift+F10 on a row reaches "Show list as table view" at the to
   await pg.keyboard.press('Enter'); await pg.waitForTimeout(600);
   const r = await pg.evaluate(() => ({
     first: root.children[0].qbase || null,
-    rows: [...(document.querySelector('.md-table-host')?.querySelectorAll('tr') || [])].map(tr => [...tr.children].map(td => td.innerText.trim())),
+    rows: [...(document.querySelector('.md-table-host')?.querySelectorAll('tr') || [])].map(tr => [...tr.children].filter(td => !td.classList.contains("mt-rowh")).map(td => td.innerText.trim())),
   }));
   assert.equal(r.first?.scope, 'siblings', 'a list-scoped table view is the document\'s first point');
   assert.deepEqual(r.rows, [['Name', 'honey'], ['Hive 1', '18'], ['Hive 2', '11']]);
