@@ -210,6 +210,7 @@ export function loadCores() {
     'timelineModel',   // #516 timeline pure core
     'overlayCountMessage',   // UXP-241: what a graph/timeline toggle announces after a re-render
     'roveIndex',   // UXP-240: shared roving-tabindex index math (clamping + group paging)
+    'selTbKey',    // #1542: what one key does to the selection toolbar's Alt+F10 roving
     'brokenNodeMessage',   // UXP-242: what a broken graph node says when activated
     'nearestDistances', 'relaxSeparation', 'tapRadius',   // UXP-243: tap-target floor for graph nodes
     'markdownToPoints',   // #1265 v1: Markdown import (the inverse of toMarkdown)

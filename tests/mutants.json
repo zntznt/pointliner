@@ -5139,6 +5139,9 @@
       "find": "evalMath(v.expr, cookieNode ? resolveNodeScope(cookieNode, ancestorsOf(cookieNode), declVars) : declVars)",
       "replace": "evalMath(v.expr, declVars)",
       "kills": "#1657 the var pill and the math dialog preview read the pill scope"
-    }
+    },
+    {"id": "seltb-door-bubble-phase", "suite": "unit", "why": "#1542: registered in the bubble phase, the point's own Enter splits it before the toolbar runs", "file": "index.html", "find": "  else setSelTbActive(items, step.to);\n}, true);", "replace": "  else setSelTbActive(items, step.to);\n});", "kills": "#1542 the toolbar door is wired"},
+    {"id": "seltb-hide-keeps-arrows", "suite": "unit", "why": "#1542: a hidden toolbar that keeps the roving state swallows the next arrow", "file": "index.html", "find": "function hideSelTb() { endSelTbKbd(); selTb", "replace": "function hideSelTb() { selTb", "kills": "#1542 the toolbar door is wired"},
+    {"id": "seltb-door-unwired", "suite": "browser", "why": "#1542: Alt+F10 no longer reaches the toolbar", "file": "index.html", "find": "  if (active == null) return e.key === 'F10' && e.altKey", "replace": "  if (active == null) return e.key === 'F11' && e.altKey", "kills": "#1542 Alt+F10 reaches the selection toolbar"}
   ]
 }
