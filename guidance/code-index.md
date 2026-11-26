@@ -11,7 +11,7 @@ No line numbers, deliberately: they drift every edit and names do not
 (`guidance/architecture-reference.md`). Grep a name to find it. For jump-to-symbol while
 editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 
-**2203 declarations in 158 sections across 17 domains.**
+**2204 declarations in 158 sections across 17 domains.**
 
 # Document model & caches
 
@@ -2585,6 +2585,7 @@ editing, `python3 tools/symbol-index.py --with-lines` prints them to stdout.
 - `openAddRowForm`
 - `affordanceDirtyIds` — #1240 phase 1b: the VISIBLE front door. On a heading whose children share a shape, append a "+ Add"
 - `refreshRowChrome` — The DOM half. Everything buildRow puts on a point OUTSIDE `.node-content` goes stale after a commit,
+- `doorWritesShow` — #1658: may a door WRITE onto `node`? Not onto the document root: the top-level view renders no
 
 ## #1240 phase 4: the doors of the point you are LOOKING AT
 

@@ -1834,17 +1834,73 @@ test('#1240 viewDoorHost: the view hosts the doors only when a row cannot', () =
   assert.doesNotThrow(() => c.viewDoorHost(shaped));
 });
 
+// #1658 (panel #8). At the top of a document the view bar hosts the ROOT's doors, and the root's
+// text is rendered nowhere, so + Total wrote `{= sum(honey)}` into it: a "Totalling honey" toast and
+// no total anywhere (P4). A door that writes onto its host is offered only where the host shows.
+test('#1658 doorWritesShow: the document root is never written by a door', () => {
+  const doc = { text: '', children: [] }, heading = { text: '## Hives', children: [] };
+  doc.children.push(heading);
+  assert.equal(c.doorWritesShow(doc, doc), false, 'the root renders no text, so nothing may land there');
+  assert.equal(c.doorWritesShow(heading, doc), true, 'a zoomed or row-hosted point shows its own text');
+  assert.equal(c.doorWritesShow(null, doc), false);
+  // CALL SITES: the view bar passes it, and EVERY writing door is wrapped (counted, so a fourth
+  // writing door added bare fails here). + Add is not wrapped: it adds a row, which does show.
+  assert.match(fnBody(_src, 'renderViewDoors'), /maybeAddRowAffordance\(host, bar, \{ noWrite: !doorWritesShow\(host\) \}\)/);
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.match(aff, /const writes = fn => opts\.noWrite \? \(\) => flashHint\('The top of a document/, 'a refusal says why (P4)');
+  assert.equal((aff.match(/', writes\(\(\) =>/g) || []).length, 3, '+ Total, + Check and + Variance all go through writes()');
+  assert.ok(!/mkAff\('\+ Add'[^\n]*writes\(/.test(aff), '+ Add still adds at the top level');
+});
+
+// #1658: the door labels read node.text raw, so `## Hives {= sum(honey)} kg` titled the dialog
+// `Add to "Hives [[math:xi05zdeb]] kg"` and said the token to a screen reader. Same family as #1526.
+test('#1658 rowNoun names the list by its displayed text, never a pill token', () => {
+  const n = { id: 'h', type: 'h2', text: '## Hives [[math:k1]] kg #apiary', math: [{ key: 'k1', expr: '2 + 3' }], children: [] };
+  const noun = c.rowNoun(n, null);
+  assert.ok(!/\[\[|\]\]/.test(noun), 'no raw token: ' + noun);
+  assert.match(noun, /^Hives\b.*kg$/, 'the heading marker and tag go, the words stay: ' + noun);
+  assert.equal(c.rowNoun({ text: '', children: [] }, { sharedTags: ['hive'] }), 'hive', 'the tag fallback still works');
+  // and the view bar's group name says the same thing, not stripMd's pill glyph
+  assert.match(fnBody(_src, 'renderViewDoors'), /displayText\(host\)/);
+});
+
+// #1658: a repair ticket has parts lines and labour lines; a column counted only when EVERY row
+// carried it, so the section got no doors at all, not even + Add. Not a "most rows" fraction (the
+// ticket is 2 of 4 each, and #1132 bans the unmeasured constant): a NUMBER key on two or more rows
+// is a column, marked sparse. A text key stays every-row, so an occasional note is not a field.
+test('#1658 inferRowShape: a sparse number column is still a column', () => {
+  const row = (text, props = []) => ({ id: 'x', text, props, children: [] });
+  const j = o => JSON.stringify(o);
+  const ticket = [
+    row('Pads', [{ key: 'parts', val: '24.99' }]), row('Chain', [{ key: 'parts', val: '39.5' }]),
+    row('Tune-up', [{ key: 'hours', val: '1.5' }]), row('Truing', [{ key: 'hours', val: '0.5' }]),
+  ];
+  assert.equal(j(c.inferRowShape(ticket)), j({ sharedTags: [], props: [
+    { key: 'parts', type: 'number', sparse: true }, { key: 'hours', type: 'number', sparse: true }], todo: false }));
+  assert.equal(j(c.inferRowShape([...ticket, row('Bell', [{ key: 'note', val: 'loud' }]), row('Lock', [{ key: 'note', val: 'cut' }])]).props.map(p => p.key)),
+    j(['parts', 'hours']), 'a text key on some rows is not a column');
+  assert.equal(c.inferRowShape([row('a', [{ key: 'n', val: '1' }]), row('b', [{ key: 'm', val: '2' }])]), null,
+    'a number on ONE row is not a column');
+  // a filled form leaves a blank sparse column out, rather than writing `{prop parts: }`
+  const shape = c.inferRowShape(ticket);
+  assert.equal(c.buildRow(shape, { hours: '2' }, 'Bleed'), 'Bleed {prop hours: 2}');
+  // + Variance pairs columns that live on the SAME rows; two sparse columns that never meet would
+  // write a meaningless sum(hours) - sum(parts).
+  assert.match(fnBody(_src, 'maybeAddRowAffordance'), /numKeys\.length === 2 && !shape\.props\.some\(p => p\.sparse\)/);
+});
+
 test('#1240 phase 4 wiring: the view bar is rendered, refreshed, and reuses the row builders', () => {
   const fn = fnBody(_src, 'renderViewDoors');
   // It must call the SAME builders the row path calls. A copy of their gating would drift, which is
   // the sibling-divergence trap; pin the reuse so a future edit cannot quietly fork it.
   for (const b of ['maybeAddRowAffordance', 'maybeAddFieldAffordance', 'maybeAddCardAffordance'])
-    assert.ok(fn.includes(b + '(host, bar)'), `renderViewDoors must reuse ${b}, not reimplement its gating`);
+    assert.ok(fn.includes(b + '(host, bar'), `renderViewDoors must reuse ${b}, not reimplement its gating`);
   assert.ok(/if \(!bar\.children\.length\) return null/.test(fn),
     'a bar that earned no doors must not be appended — an ordinary prose outline grows no chrome');
   assert.ok(/role', 'group'/.test(fn) && /aria-label/.test(fn),
     'out of row context the group must say which point it acts on (P3)');
-  assert.ok(/#\{1,6\}/.test(fn),
+  // #1658: displayText strips them (textForDisplay) and resolves pills, which the old regex did not.
+  assert.ok(/displayText\(host\)/.test(fn),
     'the heading markers must be stripped from the label — a reader saying "hash hash Groceries" is syntax leaking into speech');
   // The call site, not just the function: a tested builder proves nothing about whether render calls it.
   assert.ok(/renderViewDoors\(vp, container, \{ corkOn, searchQuery \}\)/.test(_src),
@@ -37296,7 +37352,9 @@ test('#1281: a placeholder row and the app’s own timestamps are not columns', 
 
   // The dropping is scoped to rows that carry NO information: a blank-texted row with a real
   // property is still data, and must still be able to break a column that it genuinely lacks.
-  assert.equal(c.inferRowShape([...real, row('', [{ key: 'note', val: 'x' }, ...stamp])]), null,
+  // (#1658: cost on 3 of 4 rows is now a SPARSE column rather than none, which is the proof it counted.)
+  assert.equal(JSON.stringify(c.inferRowShape([...real, row('', [{ key: 'note', val: 'x' }, ...stamp])]).props),
+    JSON.stringify([{ key: 'cost', type: 'number', sparse: true }]),
     'a propertied row with no text still counts, so cost stops being on every row');
   // and the under-2 gate counts REAL rows, not placeholders
   assert.equal(c.inferRowShape([priced(1), row(''), row('')]), null, 'one real row plus blanks is not a list');

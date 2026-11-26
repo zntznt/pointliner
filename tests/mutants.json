@@ -5121,6 +5121,24 @@
       "find": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok)}",
       "replace": ".save-status[data-kind=\"saved\"] .ss-ic{color:var(--ok,#3a9d5d)}",
       "kills": "#1590 palette hygiene"
+    },
+    {
+      "id": "root-doors-write-again",
+      "suite": "unit",
+      "why": "#1658: the view bar stops gating the writing doors on doorWritesShow, so + Total writes into the invisible document root",
+      "file": "index.html",
+      "find": "maybeAddRowAffordance(host, bar, { noWrite: !doorWritesShow(host) });",
+      "replace": "maybeAddRowAffordance(host, bar, { noWrite: false });",
+      "kills": "#1658 doorWritesShow"
+    },
+    {
+      "id": "variance-pairs-sparse-columns",
+      "suite": "unit",
+      "why": "#1658: + Variance offered on two sparse columns that never share a row, writing a meaningless sum(b) - sum(a)",
+      "file": "index.html",
+      "find": "if (numKeys.length === 2 && !shape.props.some(p => p.sparse) && ",
+      "replace": "if (numKeys.length === 2 && ",
+      "kills": "#1658 inferRowShape: a sparse number column"
     }
   ]
 }
