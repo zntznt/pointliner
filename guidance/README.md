@@ -123,6 +123,7 @@ have shipped in full and are retained as design rationale); a **ledger/reference
 | --- | --- |
 | `query-base-proposal.md` | SHIPPED in full (Phases A/B/C); retained as design rationale |
 | `saved-views-proposal.md` | COMPLETE — SV-1/SV-2 shipped, SV-3/SV-4 recorded NO |
+| `table-view-proposal.md` | Slice 1 SHIPPED (+ Table view: a list-scoped query base); slices 2-3 within doctrine, slice 4 needs an owner call |
 | `typed-var-declaration-proposal.md` | SHIPPED (Stages A + B) |
 | `brace-completion-proposal.md` | Phases 1 + 2 shipped |
 | `base-views-vision.md` | Delivered; trimmed to the two durable parts — §0 (binding red-team corrections) + §3b (column-type catalogue). The rest moved to `bases-direction.md` §4 / `product-identity.md` |
