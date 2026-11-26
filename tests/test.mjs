@@ -1834,17 +1834,73 @@ test('#1240 viewDoorHost: the view hosts the doors only when a row cannot', () =
   assert.doesNotThrow(() => c.viewDoorHost(shaped));
 });
 
+// #1658 (panel #8). At the top of a document the view bar hosts the ROOT's doors, and the root's
+// text is rendered nowhere, so + Total wrote `{= sum(honey)}` into it: a "Totalling honey" toast and
+// no total anywhere (P4). A door that writes onto its host is offered only where the host shows.
+test('#1658 doorWritesShow: the document root is never written by a door', () => {
+  const doc = { text: '', children: [] }, heading = { text: '## Hives', children: [] };
+  doc.children.push(heading);
+  assert.equal(c.doorWritesShow(doc, doc), false, 'the root renders no text, so nothing may land there');
+  assert.equal(c.doorWritesShow(heading, doc), true, 'a zoomed or row-hosted point shows its own text');
+  assert.equal(c.doorWritesShow(null, doc), false);
+  // CALL SITES: the view bar passes it, and EVERY writing door is wrapped (counted, so a fourth
+  // writing door added bare fails here). + Add is not wrapped: it adds a row, which does show.
+  assert.match(fnBody(_src, 'renderViewDoors'), /maybeAddRowAffordance\(host, bar, \{ noWrite: !doorWritesShow\(host\) \}\)/);
+  const aff = fnBody(_src, 'maybeAddRowAffordance');
+  assert.match(aff, /const writes = fn => opts\.noWrite \? \(\) => flashHint\('The top of a document/, 'a refusal says why (P4)');
+  assert.equal((aff.match(/', writes\(\(\) =>/g) || []).length, 3, '+ Total, + Check and + Variance all go through writes()');
+  assert.ok(!/mkAff\('\+ Add'[^\n]*writes\(/.test(aff), '+ Add still adds at the top level');
+});
+
+// #1658: the door labels read node.text raw, so `## Hives {= sum(honey)} kg` titled the dialog
+// `Add to "Hives [[math:xi05zdeb]] kg"` and said the token to a screen reader. Same family as #1526.
+test('#1658 rowNoun names the list by its displayed text, never a pill token', () => {
+  const n = { id: 'h', type: 'h2', text: '## Hives [[math:k1]] kg #apiary', math: [{ key: 'k1', expr: '2 + 3' }], children: [] };
+  const noun = c.rowNoun(n, null);
+  assert.ok(!/\[\[|\]\]/.test(noun), 'no raw token: ' + noun);
+  assert.match(noun, /^Hives\b.*kg$/, 'the heading marker and tag go, the words stay: ' + noun);
+  assert.equal(c.rowNoun({ text: '', children: [] }, { sharedTags: ['hive'] }), 'hive', 'the tag fallback still works');
+  // and the view bar's group name says the same thing, not stripMd's pill glyph
+  assert.match(fnBody(_src, 'renderViewDoors'), /displayText\(host\)/);
+});
+
+// #1658: a repair ticket has parts lines and labour lines; a column counted only when EVERY row
+// carried it, so the section got no doors at all, not even + Add. Not a "most rows" fraction (the
+// ticket is 2 of 4 each, and #1132 bans the unmeasured constant): a NUMBER key on two or more rows
+// is a column, marked sparse. A text key stays every-row, so an occasional note is not a field.
+test('#1658 inferRowShape: a sparse number column is still a column', () => {
+  const row = (text, props = []) => ({ id: 'x', text, props, children: [] });
+  const j = o => JSON.stringify(o);
+  const ticket = [
+    row('Pads', [{ key: 'parts', val: '24.99' }]), row('Chain', [{ key: 'parts', val: '39.5' }]),
+    row('Tune-up', [{ key: 'hours', val: '1.5' }]), row('Truing', [{ key: 'hours', val: '0.5' }]),
+  ];
+  assert.equal(j(c.inferRowShape(ticket)), j({ sharedTags: [], props: [
+    { key: 'parts', type: 'number', sparse: true }, { key: 'hours', type: 'number', sparse: true }], todo: false }));
+  assert.equal(j(c.inferRowShape([...ticket, row('Bell', [{ key: 'note', val: 'loud' }]), row('Lock', [{ key: 'note', val: 'cut' }])]).props.map(p => p.key)),
+    j(['parts', 'hours']), 'a text key on some rows is not a column');
+  assert.equal(c.inferRowShape([row('a', [{ key: 'n', val: '1' }]), row('b', [{ key: 'm', val: '2' }])]), null,
+    'a number on ONE row is not a column');
+  // a filled form leaves a blank sparse column out, rather than writing `{prop parts: }`
+  const shape = c.inferRowShape(ticket);
+  assert.equal(c.buildRow(shape, { hours: '2' }, 'Bleed'), 'Bleed {prop hours: 2}');
+  // + Variance pairs columns that live on the SAME rows; two sparse columns that never meet would
+  // write a meaningless sum(hours) - sum(parts).
+  assert.match(fnBody(_src, 'maybeAddRowAffordance'), /numKeys\.length === 2 && !shape\.props\.some\(p => p\.sparse\)/);
+});
+
 test('#1240 phase 4 wiring: the view bar is rendered, refreshed, and reuses the row builders', () => {
   const fn = fnBody(_src, 'renderViewDoors');
   // It must call the SAME builders the row path calls. A copy of their gating would drift, which is
   // the sibling-divergence trap; pin the reuse so a future edit cannot quietly fork it.
   for (const b of ['maybeAddRowAffordance', 'maybeAddFieldAffordance', 'maybeAddCardAffordance'])
-    assert.ok(fn.includes(b + '(host, bar)'), `renderViewDoors must reuse ${b}, not reimplement its gating`);
+    assert.ok(fn.includes(b + '(host, bar'), `renderViewDoors must reuse ${b}, not reimplement its gating`);
   assert.ok(/if \(!bar\.children\.length\) return null/.test(fn),
     'a bar that earned no doors must not be appended — an ordinary prose outline grows no chrome');
   assert.ok(/role', 'group'/.test(fn) && /aria-label/.test(fn),
     'out of row context the group must say which point it acts on (P3)');
-  assert.ok(/#\{1,6\}/.test(fn),
+  // #1658: displayText strips them (textForDisplay) and resolves pills, which the old regex did not.
+  assert.ok(/displayText\(host\)/.test(fn),
     'the heading markers must be stripped from the label — a reader saying "hash hash Groceries" is syntax leaking into speech');
   // The call site, not just the function: a tested builder proves nothing about whether render calls it.
   assert.ok(/renderViewDoors\(vp, container, \{ corkOn, searchQuery \}\)/.test(_src),
@@ -2458,6 +2514,56 @@ function withRollScopeRoot(fn) {
   try { return fn(r); }
   finally { vm.runInContext('root = mkRoot(); cookieNode = null; resetDocCaches();', c._context); }
 }
+
+// #1659 (panel #8): a quiz host wanted "three history questions, no repeats". {roll 3: #history}
+// stayed literal with no cue, and {shuffle 3: #history} became a one-card deck dealing the word.
+test('#1659 {roll N: …} deals N distinct matching points; a deck holding one search coaches toward it', () => {
+  assert.deepEqual(host(c.rollParts('roll 3: #history')), { expr: '#history', folder: false, count: 3 });
+  assert.deepEqual(host(c.rollParts('roll 2 folder: #npc')), { expr: '#npc', folder: true, count: 2 });
+  assert.equal(c.rollParts('roll 0: #history'), null);
+  assert.equal(c.rollParts('roll 3:'), null);
+  // was 'literal' with no cue (P4); now a real roll, and {roll 0:} is a marked attempt
+  assert.equal(c.classifyBraceBody('roll 3: #history', {}, {}), 'artifact');
+  assert.equal(c.classifyBraceBody('roll 0: #history', {}, {}), 'invalid');
+  // dealHits: N distinct, capped at the pool; N = 1 is the single pick
+  const pool = ['Q1', 'Q2', 'Q3', 'Q4'];
+  for (let k = 0; k < 50; k++) {
+    const three = c.dealHits(pool, 3).split(' ');
+    assert.equal(three.length, 3);
+    assert.equal(new Set(three).size, 3, 'no repeats in one deal');
+    assert.ok(three.every(q => pool.includes(q)));
+  }
+  assert.equal(c.dealHits(pool, 9).split(' ').length, 4, 'capped at the pool');
+  assert.ok(pool.includes(c.dealHits(pool, 1)));
+  assert.equal(c.dealHits([], 3), '');
+  // end to end through the roll branch of resolveBrace, on a real tree (four #openq points)
+  const ctx = { rules: {}, vars: {}, depth: 0, stack: [] };
+  withRollScopeRoot(() => {
+    for (let k = 0; k < 20; k++) {
+      const got = c.resolveBrace('roll 3: #openq', ctx).split(' ');
+      assert.equal(new Set(got).size, 3, got.join(' '));
+      assert.ok(got.every(w => ['alpha', 'beta', 'gamma', 'delta'].includes(w)), got.join(' '));
+    }
+    assert.equal(c.resolveBrace('roll 3: #nothing', ctx), '{roll 3: #nothing?}');
+  });
+  // a deck whose whole list is one search no longer parses as a deck of the literal word
+  assert.equal(c.seqParts('shuffle 3: #history'), null);
+  assert.equal(c.seqParts('shuffle: is:todo'), null);
+  assert.equal(c.classifyBraceBody('shuffle 3: #history', {}, {}), 'invalid');
+  assert.equal(c.classifyBraceBody('cycle: #history', {}, {}), 'invalid');
+  assert.equal(c.braceAttemptReason('shuffle 3: #history', {}, {}),
+    'A shuffle deals from a list you type, not a search. To draw points that match, try {roll 3: #history}.');
+  assert.equal(c.braceAttemptReason('shuffle: #history', {}, {}),
+    'A shuffle deals from a list you type, not a search. To draw points that match, try {roll: #history}.');
+  // a typed list of tags is still a real deck, and so is ordinary text
+  assert.equal(host(c.seqParts('shuffle: #a | #b')).items.length, 2);
+  assert.equal(c.deckSearchHint('shuffle: #a | #b'), null);
+  assert.equal(c.deckSearchHint('shuffle: hashtag'), null);
+  assert.equal(host(c.seqParts('shuffle 2: a | b | c')).count, 2);
+  // the pill's def sniffs (bad-filter reason, folder scope tip) must read the counted head too
+  assert.ok(_src.includes('/\\{\\s*roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:([^{}]*)\\}/i'));
+  assert.ok(_src.includes('/\\{\\s*(roll(?:\\s+\\d{1,2})?(?:\\s+folder)?\\s*:[^{}]*)\\}/i'));
+});
 
 // #1107 drift guard. There was no test that loaded shipped content and checked a roll RESOLVES,
 // which is why five starters, the first-run tour and the living-oracle demo could all ship with
@@ -11738,15 +11844,15 @@ test('folder-scoped reducers + query rows: sum/count("q", …, folder) across th
 
 test('#899 rollParts: an optional `folder` modifier, and `folder` stays searchable text', () => {
   // the plain form is untouched
-  assert.deepEqual(host(c.rollParts('roll: #npc')), { expr: '#npc', folder: false });
+  assert.deepEqual(host(c.rollParts('roll: #npc')), { expr: '#npc', folder: false, count: 1 });
   // the modifier widens the draw
-  assert.deepEqual(host(c.rollParts('roll folder: #npc')), { expr: '#npc', folder: true });
-  assert.deepEqual(host(c.rollParts('roll   folder  :  is:todo | #thread')), { expr: 'is:todo | #thread', folder: true });
+  assert.deepEqual(host(c.rollParts('roll folder: #npc')), { expr: '#npc', folder: true, count: 1 });
+  assert.deepEqual(host(c.rollParts('roll   folder  :  is:todo | #thread')), { expr: 'is:todo | #thread', folder: true, count: 1 });
   // THE load-bearing guarantee (the §4c decision: `folder` must stay searchable TEXT). A query FOR
   // the word "folder" is not a folder-scoped roll — the modifier lives before the colon, never in
   // the query. Without this, {roll: folder} would silently stop meaning what it says.
-  assert.deepEqual(host(c.rollParts('roll: folder')), { expr: 'folder', folder: false });
-  assert.deepEqual(host(c.rollParts('roll: #folder is:todo')), { expr: '#folder is:todo', folder: false });
+  assert.deepEqual(host(c.rollParts('roll: folder')), { expr: 'folder', folder: false, count: 1 });
+  assert.deepEqual(host(c.rollParts('roll: #folder is:todo')), { expr: '#folder is:todo', folder: false, count: 1 });
   // an empty query is not a roll, modifier or not
   assert.equal(c.rollParts('roll folder:'), null);
   assert.equal(c.rollParts('roll:'), null);
@@ -13915,6 +14021,8 @@ const GUIDE_VALUE_CLAIMS = {
   // The guide states the property this reads two sentences earlier; `declares` pins the map's
   // 14 to the guide's own `STR: 14` rather than letting the map invent a convenient input.
   '{= STR + 2}':            { shows: '16', vars: { str: 14 }, declares: 'give a point a `STR: 14` property' },
+  // #1656: a row formula reads its own row; the inputs are the two props the same sentence hands the reader.
+  '{prop cost: gal * ppg}': { shows: '400', vars: { gal: 100, ppg: 4 }, declares: 'with `{prop gal: 100}` and `{prop ppg: 4}`' },
   '{= roundto(x, 5)}': {
     gloss: '5, 25 and 0.5 are step sizes offered, not the pill\'s output',
     states: ['nearest 5, 25 or 0.5'],
@@ -15251,7 +15359,7 @@ test('UXP-232: the roll pill and the math pill carry the reason too', () => {
   // #899: the extraction regex must accept the OPTIONAL `folder` modifier, or a folder roll with an
   // unreadable filter loses its reason. The old form of this line fell back to gp.includes('roll'),
   // which is true of every grammar pill — vacuous. Pin the widened regex itself.
-  assert.ok(/roll\(\?:\\s\+folder\)\?\\s\*:/.test(gp),
+  assert.ok(/roll\(\?:\\s\+\\d\{1,2\}\)\?\(\?:\\s\+folder\)\?\\s\*:/.test(gp),   // #1659: and the count
     'it reads the query back out of g.def, modifier or not');
   // Assert the ternary's SHAPE, not string positions: the comment above it quotes the old copy,
   // so indexOf would measure the comment rather than the code (the same trap the announce() count
@@ -20600,7 +20708,7 @@ test('due dates: front-door wiring (src pins)', () => {
   assert.ok(_src.includes('agendaShowRunning'), 'agenda running toggle missing');
   assert.ok(_src.includes('ag-controls'), 'agenda control group missing');
   // agenda: permanent List on the top bar + Timeline/Calendar as toggled full-width bars below
-  assert.ok(_src.includes('agendaBars'), 'agenda view-bars state missing');
+  assert.ok(_src.includes("agendaView = data.agendaBars.timeline ? 'timeline' : data.agendaBars.calendar ? 'month' : '';"), 'legacy agendaBars migrates to agendaView on load');
   assert.ok(_src.includes('ag-top') && _src.includes('ag-pane'), 'agenda top bar / stacked bars missing');
   assert.ok(_src.includes('renderAgendaGantt'), 'agenda Gantt view missing');
   assert.ok(_src.includes('renderAgendaCalendar'), 'agenda calendar view missing');
@@ -25914,7 +26022,7 @@ test('units — parse decls, convert, normalize, and the substitution (SR-6)', (
 
 // ── #1500: convert() has four failure modes and reported the fourth for all of them ──────────
 // `convert(10, blorp, kg)` and `convert(12, m2, ft2)` both read "a conversion between two different
-// kinds of units (like a length and a mass)" — and there is no area dimension at all, so m2/ft2
+// kinds of units (like a length and a mass)", and there was no area dimension, so m2/ft2 (m3/ft3 here, since #1656 added area)
 // fails by the identical unknown-unit path as blorp. convertUnits collapses the causes into one
 // null and replaceConvert substitutes a bare sentinel, so by the time the message is chosen the
 // call is gone. The marker now says which, on BOTH surfaces that read it (the pill and the edit
@@ -25925,8 +26033,8 @@ test('#1500 convertFailKind says WHICH failure, and stays silent when the units 
   assert.deepEqual(host(c.convertFailKind('km', 'blorp', T)), { why: 'unit', unit: 'blorp' });
   assert.deepEqual(host(c.convertFailKind('nope', 'alsonope', T)), { why: 'unit', unit: 'nope' },
     'the FIRST unknown one is the one to name');
-  assert.deepEqual(host(c.convertFailKind('m2', 'ft2', T)), { why: 'unit', unit: 'm2' },
-    'there is no area dimension, so m2 is an unknown unit — not the mismatch it used to report');
+  assert.deepEqual(host(c.convertFailKind('m3', 'ft3', T)), { why: 'unit', unit: 'm3' },
+    'cubic names are not built in (volume is l/gal), so m3 is an unknown unit, not the mismatch it used to report');
   assert.deepEqual(host(c.convertFailKind('km', 'kg', T)), { why: 'dim' }, 'the real mismatch keeps its name');
   assert.equal(c.convertFailKind('km', 'm', T), null, 'units fine → not this function\'s failure');
   assert.equal(c.convertFailKind(' KM ', 'M', T), null, 'case and whitespace are normalised, like convertUnits');
@@ -25948,14 +26056,14 @@ test('#1500 replaceConvert leaves a DIFFERENT marker for each of the four failur
   const marks = {
     ok:       c.replaceConvert('convert(10, km, m)', ev, B),
     unknown:  c.replaceConvert('convert(10, blorp, kg)', ev, B),
-    area:     c.replaceConvert('convert(12, m2, ft2)', ev, B),
+    area:     c.replaceConvert('convert(12, m3, ft3)', ev, B),
     mismatch: c.replaceConvert('convert(10, km, kg)', ev, B),
     amount:   c.replaceConvert('convert(budgt, km, m)', ev, B),
     parts:    c.replaceConvert('convert(10, km)', ev, B),
   };
   assert.equal(marks.ok, '(10000)', 'a good conversion still substitutes its number');
   assert.equal(marks.unknown, '#ERR_UNIT_blorp');
-  assert.equal(marks.area, '#ERR_UNIT_m2');
+  assert.equal(marks.area, '#ERR_UNIT_m3');
   assert.equal(marks.mismatch, '#ERR', 'the true mismatch keeps the original marker, so its wording is untouched');
   assert.equal(marks.amount, '#ERR_CONVAMT');
   assert.equal(marks.parts, '#ERR_CONVARGS');
@@ -25964,7 +26072,7 @@ test('#1500 replaceConvert leaves a DIFFERENT marker for each of the four failur
   for (const [k, v] of Object.entries(marks)) {
     if (k === 'ok') continue;
     assert.ok(String(v).includes('#ERR'), `${k} must keep the #ERR prefix mathPrepassErrs looks for`);
-    assert.equal(c.mathPrepassErrs(({ unknown: 'convert(10, blorp, kg)', area: 'convert(12, m2, ft2)',
+    assert.equal(c.mathPrepassErrs(({ unknown: 'convert(10, blorp, kg)', area: 'convert(12, m3, ft3)',
       mismatch: 'convert(10, km, kg)', amount: 'convert(budgt, km, m)', parts: 'convert(10, km)' })[k]), true,
       `${k} must still promote to a loud #ERR pill`);
   }
@@ -25973,7 +26081,7 @@ test('#1500 replaceConvert leaves a DIFFERENT marker for each of the four failur
 test('#1500 each marker reaches its own reason and its own sentence', () => {
   const R = e => c.mathErrorReason(c.expandAggExpr(e, null), {});
   assert.equal(R('convert(10, blorp, kg)'), 'unknown unit');
-  assert.equal(R('convert(12, m2, ft2)'), 'unknown unit');
+  assert.equal(R('convert(12, m3, ft3)'), 'unknown unit');
   assert.equal(R('convert(10, km, kg)'), 'convert', 'the true mismatch is unchanged');
   assert.equal(R('convert(budgt, km, m)'), 'convert amount');
   assert.equal(R('convert(10, km)'), 'convert parts');
@@ -25988,7 +26096,7 @@ test('#1500 each marker reaches its own reason and its own sentence', () => {
     'exactly one of them claims a dimension mismatch, and it is the one that has one');
   // the unknown-unit sentence names the unit and the door that was driven end to end before being cited
   assert.match(say('convert(10, blorp, kg)'), /"blorp"/, 'it names the unit it did not know');
-  assert.match(say('convert(12, m2, ft2)'), /"m2"/);
+  assert.match(say('convert(12, m3, ft3)'), /"m3"/);
   assert.match(say('convert(10, blorp, kg)'), /\/units/, 'and the remedy the app actually ships');
   // no marker may reach a reader
   for (const p of four) assert.doesNotMatch(p, /#ERR/, `an internal marker reached the sentence: ${JSON.stringify(p)}`);
@@ -31749,6 +31857,64 @@ test('#1317 propExprValue: a formula-valued property computes, so a math-style l
     'inferRowShape marks the formula column numeric, so the + Total / + Variance door appears');
 });
 
+// ── #1656: everyday quantities the rollups could not read ─────────────────────────────────────
+// Panel #8: `{prop cost: gal * ppg}` stayed literal text, so sum(cost) read "0 nothing matched" and
+// its tooltip said "No cost below this point" over rows that all carried a cost.
+test('#1656 a row formula reads its OWN row, so cost: gal * ppg totals', () => {
+  const row = (title, props) => { const n = c.mkNode(title); n.props = Object.entries(props).map(([key, val]) => ({ key, val })); return n; };
+  const fuel = c.mkNode('## Fuel');
+  fuel.children.push(row('Stop 1', { gal: '100', ppg: '4', cost: 'gal * ppg' }), row('Stop 2', { gal: '50', ppg: '4', cost: 'gal * ppg' }));
+  assert.equal(c.childPropNumber(fuel.children[0], 'cost'), 400, 'the row formula computes from its own gal and ppg');
+  assert.equal(c.aggregateChildren(fuel, 'sum', 'cost'), 600, 'and the column totals');
+  assert.equal(c.evalMath(c.expandAggExpr('sum(cost)', fuel, {}), {}), 600, 'through the same expansion the pill uses');
+  assert.ok(nonEmpty(c.inferRowShape(fuel.children, {}).props, 'shape props').some(p => p.key === 'cost' && p.type === 'number'),
+    'the + Total door sees the formula column as numeric');
+  // a chain resolves in any order; a cycle, a self-reference and an unknown name stay unreadable
+  const chain = row('Dinner', { total: 'sub + tip', tip: 'sub * 0.2', sub: '50' });
+  assert.equal(c.childPropNumber(chain, 'total'), 60, 'total reads tip, which reads sub');
+  const cyc = row('Loop', { a: 'b + 1', b: 'a + 1' });
+  assert.equal(c.childPropNumber(cyc, 'a'), null, 'a cycle never computes');
+  assert.equal(c.childPropNumber(row('Self', { cost: 'cost * 2' }), 'cost'), null, 'a self-reference never computes');
+  assert.equal(c.childPropNumber(row('Typo', { gal: '10', cost: 'gall * 4' }), 'cost'), null, 'an unknown name stays text');
+  // a NEIGHBOUR row's numbers are not in scope: the formula reads its own row only
+  const lone = c.mkNode('## Lone'); lone.children.push(row('A', { gal: '5' }), row('B', { cost: 'gal * 2' }));
+  assert.equal(c.childPropNumber(lone.children[1], 'cost'), null, 'a sibling row does not leak into the formula');
+  assert.deepEqual({ ...c.rowPropVars(row('R', { Gal: '3,000', ppg: '2', cost: 'gal * ppg', note: 'hi' })) },
+    { gal: 3000, ppg: 2, cost: 6000 }, 'keys lowercase, thousands parse, text is left out');
+});
+
+test('#1656 a column with values but none readable is "not counted", never "No cost below"', () => {
+  const row = (title, val) => { const n = c.mkNode(title); if (val !== null) n.props = [{ key: 'cost', val }]; return n; };
+  const tree = (...kids) => { const p = c.mkNode('Parent'); p.children = kids; return p; };
+  const unreadable = tree(row('A', '£850'), row('B', 'TBC'));
+  assert.equal(c.firstEmptyRollup('sum(cost)', unreadable, { extrema: true }), null, 'present values are not an empty column');
+  assert.equal(c.aggHasSkippedValues(unreadable, 'sum(cost)'), true, 'so the partial-total cue takes it');
+  assert.equal(c.firstEmptyRollup('sum(cost)', tree(row('A', null), row('B', '')), { extrema: true }), 'cost',
+    'absent or blank everywhere is still genuinely empty');
+  assert.equal(c.evalCheck(Object.assign(unreadable, { props: [{ key: 'check', val: 'sum(cost) <= 10' }] }), {}), 'error',
+    'a check over an unreadable column still errors');
+});
+
+test('#1656 convert() knows area', () => {
+  const B = host(c.unitTable(null));
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9 * Math.max(1, Math.abs(b)), `${a} ~ ${b}`);
+  near(c.convertUnits(43560, 'ft2', 'acre', B), 1);
+  near(c.convertUnits(1, 'ha', 'acre', B), 2.471053814671653);
+  near(c.convertUnits(10, 'sqft', 'm2', B), 0.9290304);
+  near(c.convertUnits(1, 'mi2', 'acres', B), 640);
+  assert.equal(c.convertUnits(1, 'acre', 'm', B), null, 'area is its own dimension, not length');
+});
+
+test('#1656 every row-formula reader passes the row, not an empty scope', () => {
+  assert.ok(fnBody(_src, 'childPropNumber').includes('propExprValue(raw0, rowPropVars(child))'), 'the rollup reader');
+  assert.ok(fnBody(_src, 'buildPropsArea').includes('propExprValue(val, rowPropVars(node))'), 'the chip shows the computed value');
+  assert.ok(fnBody(_src, 'sectionToCsvRows').includes('propExprValue(p.val, rowPropVars(c))'), 'CSV freezes the computed value');
+  assert.ok(fnBody(_src, 'inferRowShape').includes('propExprValue(raw, rowPropVars(n))'), 'the shape types the column');
+  // census: no caller may drop back to the scope-less form, which reads gal * ppg as text
+  const bare = [..._src.matchAll(/propExprValue\(([^()]*)\)/g)].filter(m => !m[1].includes(','));
+  assert.deepEqual(bare.map(m => m[0]), ['propExprValue(x)'], 'only inferPropType (values only, already frozen) may omit the row');
+});
+
 test('#809: aggHasSkippedValues flags non-empty non-numeric child values; a check errors, never passes', () => {
   const p = c.mkNode('Budget');
   const kid = (val) => { const n = c.mkNode('item'); n.props = [{ key: 'cost', val }]; return n; };
@@ -35647,7 +35813,6 @@ test('UXP-246/247 the four hand-rolled dialogs share the rule through the SHELL'
     'openInsertDialog + the four migrated dialogs + the #518 import dialog + the footnotes manager + the Phase C cite picker each construct exactly one shell');
   // The appearance dialog's private in-place signal became a shell option.
   assert.ok(/freshOnly: true,/.test(_src), 'the appearance dialog restores on a FRESH open only');
-  assert.ok(/const _apprFresh = _shell\.fresh;/.test(_src), 'and takes that signal from the shell');
   // The bodies these dialogs hand-roll are precisely what a field vocabulary could not express, and
   // are untouched by the migration — the point of fixing the shell instead.
   assert.ok(_src.includes("grid.className = 'var-pick-grid'"), 'the variable picker grid survives');
@@ -37376,7 +37541,9 @@ test('#1281: a placeholder row and the app’s own timestamps are not columns', 
 
   // The dropping is scoped to rows that carry NO information: a blank-texted row with a real
   // property is still data, and must still be able to break a column that it genuinely lacks.
-  assert.equal(c.inferRowShape([...real, row('', [{ key: 'note', val: 'x' }, ...stamp])]), null,
+  // (#1658: cost on 3 of 4 rows is now a SPARSE column rather than none, which is the proof it counted.)
+  assert.equal(JSON.stringify(c.inferRowShape([...real, row('', [{ key: 'note', val: 'x' }, ...stamp])]).props),
+    JSON.stringify([{ key: 'cost', type: 'number', sparse: true }]),
     'a propertied row with no text still counts, so cost stops being on every row');
   // and the under-2 gate counts REAL rows, not placeholders
   assert.equal(c.inferRowShape([priced(1), row(''), row('')]), null, 'one real row plus blanks is not a list');
@@ -40153,4 +40320,29 @@ test('#1639 restoreSnapshot leaves no removed point in nodeById', () => {
   assert.equal(r.after, null, 'and is gone from nodeById after it');
   assert.equal(r.parent, undefined, 'and from parentMap');
   assert.equal(r.kept, 'kept', 'while the surviving point still resolves');
+});
+
+// #1589: these declarations had no reader (eslint no-unused-vars) and were deleted. A declaration
+// coming back means a dead name is back, or a doc that names it is describing code that never runs.
+test('#1589 the dead top-level declarations stay deleted', () => {
+  for (const name of ['BASE_ROWS_DEFAULT', 'SCOPE_TOKEN_RE', 'diceExprStr', 'braceWouldPromote', 'expandText',
+    '_wsLastScanReparsed', 'agendaBars', 'VERBOSITY_NAMES', '_apprFresh', '_cancelProps', '_cancelAppr', '_dragSrc', 'outHandle'])
+    assert.ok(!new RegExp(`(?:const|let|function)\\s+${name}\\b|\\b${name}\\s*=[^=]`).test(_src), `${name} is declared or assigned again`);
+});
+
+// #1661: Ctrl+P printed the app chrome. The print sheet is an ALLOWLIST (only #outline survives at
+// the top level) so a future panel or toast is hidden by default; the doors inside the outline are
+// named. tests/browser.mjs drives the rendered result; these pin that the rules and the hook exist.
+test('#1661 the print stylesheet keeps only the outline and hides the in-outline doors', () => {
+  const css = between(_src, '@media print{', '\n}');
+  assert.ok(css.includes('body>*:not(#outline)'), 'top-level allowlist: everything but the outline is hidden');
+  for (const door of ['.ghost-row', '.addrow-affordance', '.swipe-cue'])
+    assert.ok(css.includes(door), `${door} does not print`);
+  assert.ok(css.includes('.collapse-btn{visibility:hidden'), 'fold arrows hide but keep their indent column');
+  assert.ok(!/(^|[;{])\s*color\s*:/.test(css), 'hides only, never colors: a color here would bypass applyTheme');
+});
+
+test('#1661 beforeprint commits an open point so paper gets pill values, not source', () => {
+  const hook = between(_src, "window.addEventListener('beforeprint'", '\n');
+  assert.ok(hook.includes('dataset?.editing') && hook.includes('.blur()'), 'the open point is blurred (committed) before print');
 });
